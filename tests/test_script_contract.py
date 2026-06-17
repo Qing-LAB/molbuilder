@@ -330,6 +330,86 @@ def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
     assert sc.merge_user_custom_from_target(fresh, target) == fresh
 
 
+# --------------------------------------------------------------------- #
+#  ATOM-METADATA load path (Step 3)                                    #
+# --------------------------------------------------------------------- #
+
+
+def test_extract_atom_metadata_dict_round_trips_through_emit_then_parse():
+    """Emit + extract should round-trip the same data."""
+    emitted = sc.emit_atom_metadata(
+        regions={"L-electrode": [0, 1, 2], "bridge": [3, 4]},
+        frozen_atoms=[0, 4],
+        n_atoms_total=5,
+        created_by="molbuilder render_fdf",
+        created_at="2026-06-16T17:00:00-07:00",
+    )
+    # Wrap in a "host" file so it looks like real .fdf content.
+    text = "SystemLabel siesta\n\n" + emitted + "\n\nBlockSize 64\n"
+    payload = sc.extract_atom_metadata_dict(text)
+    assert payload is not None
+    assert payload["regions"] == {"L-electrode": [0, 1, 2], "bridge": [3, 4]}
+    assert payload["frozen_atoms"] == [0, 4]
+    assert payload["created_by"] == "molbuilder render_fdf"
+
+
+def test_extract_atom_metadata_dict_returns_none_when_block_missing():
+    assert sc.extract_atom_metadata_dict("SystemLabel siesta\nBlockSize 64\n") is None
+
+
+def test_extract_atom_metadata_dict_returns_none_on_malformed_json():
+    text = (
+        "# === molbuilder atom-metadata BEGIN ===\n"
+        "# format: molstruct-json/v3\n"
+        "# {this is not valid json\n"
+        "# === molbuilder atom-metadata END ===\n"
+    )
+    assert sc.extract_atom_metadata_dict(text) is None
+
+
+class _StructLike:
+    """Duck-typed Structure for apply_inbody_atom_metadata tests."""
+    def __init__(self):
+        self.regions = {}
+        self.frozen_atoms = []
+
+
+def test_apply_inbody_atom_metadata_populates_regions_and_frozen():
+    struct = _StructLike()
+    emitted = sc.emit_atom_metadata(
+        regions={"R-electrode": [10, 11, 12]},
+        frozen_atoms=[10, 12],
+        n_atoms_total=20,
+    )
+    text = "engine body\n" + emitted + "\nmore engine\n"
+    assert sc.apply_inbody_atom_metadata(struct, text) is True
+    assert struct.regions == {"R-electrode": [10, 11, 12]}
+    assert struct.frozen_atoms == [10, 12]
+
+
+def test_apply_inbody_atom_metadata_returns_false_when_no_block():
+    struct = _StructLike()
+    assert sc.apply_inbody_atom_metadata(struct, "SystemLabel siesta\n") is False
+    assert struct.regions == {}
+    assert struct.frozen_atoms == []
+
+
+def test_apply_inbody_atom_metadata_normalises_indices():
+    """Dedup + sort per region; coerce to int."""
+    struct = _StructLike()
+    text = (
+        "# === molbuilder atom-metadata BEGIN ===\n"
+        "# format: molstruct-json/v3\n"
+        '# {"schema_version": 3, "n_atoms_total": 5,\n'
+        '#  "regions": {"r": [3, 1, 3, 2]},\n'
+        '#  "frozen_atoms": [2, 0, 2]}\n'
+        "# === molbuilder atom-metadata END ===\n"
+    )
+    assert sc.apply_inbody_atom_metadata(struct, text) is True
+    assert struct.regions == {"r": [1, 2, 3]}
+    assert struct.frozen_atoms == [0, 2]
+
+
 def test_merge_user_custom_round_trip_idempotent(tmp_path):
     """Generating, saving, then regenerating an unchanged form
     should produce a byte-identical user-custom block.  Pins the
@@ -371,3 +451,162 @@ def test_blocksize_field_constrains_pow2_and_range():
     bs = next(f for f in sc.SIESTA_BENCH_FIELDS if f.name == "BlockSize")
     assert bs.type_ == "pow2"
     assert bs.range_ == (16, 256)
+
+
+# --------------------------------------------------------------------- #
+#  PROVENANCE extract (bundle-contract.md § 5.1)                        #
+# --------------------------------------------------------------------- #
+
+
+def test_extract_provenance_dict_round_trips_emit_output():
+    """The extractor reads back what the emitter wrote."""
+    block = sc.emit_provenance(
+        generator_version="molbuilder git abc123",
+        generated_at="2026-06-17T12:00:00-07:00",
+        form_config_hash="hash-deadbeef",
+        resolved_defaults={
+            "BlockSize":   "auto -> 256 (10 * 212 atoms / mpi_np)",
+            "MeshCutoff":  "350.0 Ry (default)",
+        },
+    )
+    got = sc.extract_provenance_dict(block + "\nengine body line\n")
+    assert got is not None
+    assert got["generator-version"] == "molbuilder git abc123"
+    assert got["generated-at"]      == "2026-06-17T12:00:00-07:00"
+    assert got["form-config-hash"]  == "hash-deadbeef"
+    assert got["resolved-defaults.BlockSize"]  == "auto -> 256 (10 * 212 atoms / mpi_np)"
+    assert got["resolved-defaults.MeshCutoff"] == "350.0 Ry (default)"
+
+
+def test_extract_provenance_dict_returns_none_when_block_missing():
+    assert sc.extract_provenance_dict("SystemLabel siesta\n") is None
+
+
+def test_extract_provenance_dict_handles_no_defaults_section():
+    block = sc.emit_provenance(
+        generator_version="vX",
+        generated_at="2026-06-17T00:00:00Z",
+    )
+    got = sc.extract_provenance_dict(block + "\n")
+    assert got == {
+        "generator-version": "vX",
+        "generated-at":      "2026-06-17T00:00:00Z",
+    }
+
+
+# --------------------------------------------------------------------- #
+#  ScriptSource umbrella (bundle-contract.md § 5.1)                     #
+# --------------------------------------------------------------------- #
+
+
+def _composed_script(*, with_atom_md: bool = True,
+                     with_user_custom: bool = True,
+                     with_provenance: bool = True) -> str:
+    parts = []
+    if with_provenance:
+        parts.append(sc.emit_provenance(
+            generator_version="molbuilder git test",
+            generated_at="2026-06-17T00:00:00Z",
+        ))
+    if with_atom_md:
+        am = sc.emit_atom_metadata(
+            regions={"L-electrode": [1, 2], "R-electrode": [10, 11]},
+            frozen_atoms=[1, 11],
+            n_atoms_total=12,
+        )
+        assert am is not None
+        parts.append(am)
+    parts.append("SystemLabel test\nBlockSize 64\n")
+    if with_user_custom:
+        parts.append(sc.emit_user_custom_placeholder())
+    return "\n".join(parts) + "\n"
+
+
+def test_extract_script_source_full_round_trip():
+    text = _composed_script()
+    src = sc.extract_script_source(text)
+    assert src.regions == {"L-electrode": [1, 2], "R-electrode": [10, 11]}
+    assert src.frozen_atoms == [1, 11]
+    assert src.user_custom_lines is not None
+    assert any("preserve" in line for line in src.user_custom_lines)
+    assert src.provenance is not None
+    assert src.provenance["generator-version"] == "molbuilder git test"
+    assert src.schema_version == 3
+    assert src.notes == []
+
+
+def test_extract_script_source_no_atom_metadata():
+    """Block absent -> regions / frozen are ``None`` (NOT empty)."""
+    text = _composed_script(with_atom_md=False)
+    src = sc.extract_script_source(text)
+    assert src.regions is None
+    assert src.frozen_atoms is None
+    assert src.schema_version is None
+    # Other fields still extracted.
+    assert src.user_custom_lines is not None
+    assert src.provenance is not None
+
+
+def test_extract_script_source_returns_dataclass_with_notes_list():
+    """``notes`` is never None (frozen dataclass invariant)."""
+    src = sc.extract_script_source("SystemLabel only\n")
+    assert isinstance(src.notes, list)
+    assert src.regions is None
+    assert src.frozen_atoms is None
+    assert src.user_custom_lines is None
+    assert src.provenance is None
+    assert src.schema_version is None
+
+
+def test_extract_script_source_notes_on_future_schema_version():
+    """``schema_version > 3`` loads + notes; doesn't fail."""
+    text = (
+        "# === molbuilder atom-metadata BEGIN ===\n"
+        "# format: molstruct-json/v4\n"
+        '# {"schema_version": 4, "n_atoms_total": 3,\n'
+        '#  "regions": {"r": [0]}, "frozen_atoms": [0]}\n'
+        "# === molbuilder atom-metadata END ===\n"
+    )
+    src = sc.extract_script_source(text)
+    assert src.schema_version == 4
+    assert src.regions == {"r": [0]}
+    assert src.frozen_atoms == [0]
+    assert any("schema_version 4" in n for n in src.notes)
+
+
+def test_extract_script_source_rejects_old_schema_version():
+    """``schema_version < 3`` -> regions/frozen None + diagnostic note.
+    Bundle layer raises BundleError on this state; the extractor
+    itself is pure and only surfaces the note."""
+    text = (
+        "# === molbuilder atom-metadata BEGIN ===\n"
+        "# format: molstruct-json/v2\n"
+        '# {"schema_version": 2, "n_atoms_total": 3}\n'
+        "# === molbuilder atom-metadata END ===\n"
+    )
+    src = sc.extract_script_source(text)
+    assert src.schema_version == 2
+    assert src.regions is None
+    assert src.frozen_atoms is None
+    assert any("older than v3" in n for n in src.notes)
+
+
+def test_extract_script_source_empty_blocks_present_but_empty():
+    """Present-but-empty regions distinct from missing.
+
+    The emitter NEVER writes an empty atom-metadata block (per
+    script-contract.md § 4.4 emission rule), so we hand-craft one
+    here to pin the extractor's behavior if a future schema /
+    third-party writer does emit empty arrays.  Distinct from the
+    no-block case above where regions is ``None``."""
+    text = (
+        "# === molbuilder atom-metadata BEGIN ===\n"
+        "# format: molstruct-json/v3\n"
+        '# {"schema_version": 3, "n_atoms_total": 0,\n'
+        '#  "regions": {}, "frozen_atoms": []}\n'
+        "# === molbuilder atom-metadata END ===\n"
+    )
+    src = sc.extract_script_source(text)
+    assert src.regions == {}        # present, empty
+    assert src.frozen_atoms == []   # present, empty
+    assert src.schema_version == 3

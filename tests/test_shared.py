@@ -363,6 +363,202 @@ class TestOkStructureResponse:
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+#  apply_companion_labels_if_present + companion-wins-over-sidecar      #
+#  (bundle-contract.md § 4.2 + § 5.3)                                   #
+# --------------------------------------------------------------------- #
+
+
+def _h2o_xyz_text():
+    return "3\nwater\nO 0.0 0.0 0.0\nH 0.96 0.0 0.0\nH -0.24 0.93 0.0\n"
+
+
+def _h2o_structure_path(tmp_path):
+    """Write a small XYZ to tmp_path; return its absolute path."""
+    p = tmp_path / "water.xyz"
+    p.write_text(_h2o_xyz_text())
+    return p
+
+
+def _fdf_with_atom_metadata(regions, frozen, n_atoms_total):
+    """Synthesize a minimal .fdf body carrying an ATOM-METADATA
+    block via the canonical emitter so the test text always tracks
+    the emitter's format."""
+    from molbuilder import script_contract as sc
+    block = sc.emit_atom_metadata(
+        regions=regions,
+        frozen_atoms=frozen,
+        n_atoms_total=n_atoms_total,
+    )
+    assert block is not None
+    return f"SystemLabel test\nBlockSize 64\n\n{block}\n"
+
+
+def test_apply_companion_labels_returns_none_when_no_companion(tmp_path):
+    """No .fdf / .py next to the .xyz -> companion path is a no-op."""
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_companion_labels_if_present
+    p = _h2o_structure_path(tmp_path)
+    struct = Structure.from_xyz(_h2o_xyz_text())
+    assert apply_companion_labels_if_present(struct, p) is None
+    assert struct.regions == {}
+    assert struct.frozen_atoms == []
+
+
+def test_apply_companion_labels_picks_up_sibling_fdf(tmp_path):
+    """.fdf with ATOM-METADATA next to the .xyz applies its labels."""
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_companion_labels_if_present
+    p = _h2o_structure_path(tmp_path)
+    (tmp_path / "water.fdf").write_text(
+        _fdf_with_atom_metadata(
+            regions={"L-electrode": [0, 1]},
+            frozen=[2],
+            n_atoms_total=3,
+        )
+    )
+    struct = Structure.from_xyz(_h2o_xyz_text())
+    marker = apply_companion_labels_if_present(struct, p)
+    assert marker == "applied:fdf"
+    assert struct.regions == {"L-electrode": [0, 1]}
+    assert struct.frozen_atoms == [2]
+
+
+def test_apply_companion_labels_picks_up_sibling_py_when_no_fdf(tmp_path):
+    """Falls through to .py when .fdf absent."""
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_companion_labels_if_present
+    p = _h2o_structure_path(tmp_path)
+    (tmp_path / "water.py").write_text(
+        _fdf_with_atom_metadata(
+            regions={"R-electrode": [1, 2]},
+            frozen=[],
+            n_atoms_total=3,
+        )
+    )
+    struct = Structure.from_xyz(_h2o_xyz_text())
+    marker = apply_companion_labels_if_present(struct, p)
+    assert marker == "applied:py"
+    assert struct.regions == {"R-electrode": [1, 2]}
+
+
+def test_apply_companion_labels_fdf_wins_when_both_present(tmp_path):
+    """When both .fdf and .py exist, .fdf is checked first
+    (transport/SIESTA being the canonical continuation workflow)."""
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_companion_labels_if_present
+    p = _h2o_structure_path(tmp_path)
+    (tmp_path / "water.fdf").write_text(
+        _fdf_with_atom_metadata(regions={"from_fdf": [0]}, frozen=[],
+                                n_atoms_total=3)
+    )
+    (tmp_path / "water.py").write_text(
+        _fdf_with_atom_metadata(regions={"from_py": [1]}, frozen=[],
+                                n_atoms_total=3)
+    )
+    struct = Structure.from_xyz(_h2o_xyz_text())
+    marker = apply_companion_labels_if_present(struct, p)
+    assert marker == "applied:fdf"
+    assert struct.regions == {"from_fdf": [0]}
+    assert "from_py" not in struct.regions
+
+
+def test_apply_sidecar_if_possible_companion_wins_over_sidecar(tmp_path, monkeypatch):
+    """End-to-end of the priority rule (bundle-contract.md § 4.2):
+    when a companion .fdf + a .molstruct.json BOTH sit next to the
+    .xyz, the .fdf is the authoritative label source.  The sidecar's
+    regions are NOT applied on top."""
+    import hashlib, json
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_sidecar_if_possible
+    from molbuilder import diagnostics
+
+    # Pin tmp_path as a picker root so apply_sidecar_if_possible's
+    # _resolve_within_roots accepts the .xyz path.
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+
+    xyz_text = _h2o_xyz_text()
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(xyz_text)
+
+    # .molstruct.json carries one region label.
+    sidecar = tmp_path / "water.molstruct.json"
+    sidecar.write_text(json.dumps({
+        "schema_version": 3,
+        "n_atoms_total":  3,
+        "structure_hash": hashlib.sha256(xyz_text.encode("utf-8")).hexdigest(),
+        "frozen_atoms":   [],
+        "regions":        {"from_sidecar": [0]},
+        "created_by":     "test",
+        "created_at":     "2026-06-17T00:00:00Z",
+    }))
+
+    # Companion .fdf carries a DIFFERENT region label.
+    (tmp_path / "water.fdf").write_text(
+        _fdf_with_atom_metadata(
+            regions={"from_fdf": [1, 2]},
+            frozen=[1],
+            n_atoms_total=3,
+        )
+    )
+
+    struct = Structure.from_xyz(xyz_text)
+    notice = apply_sidecar_if_possible(struct, str(xyz))
+    assert notice is None
+    # In-body wins: the companion .fdf's labels are present;
+    # the sidecar's are NOT layered in or stacked.
+    assert struct.regions == {"from_fdf": [1, 2]}
+    assert struct.frozen_atoms == [1]
+    assert "from_sidecar" not in struct.regions
+
+
+def test_apply_sidecar_if_possible_falls_through_when_no_companion(tmp_path, monkeypatch):
+    """Smoke check: when only the .molstruct.json exists (no
+    companion .fdf/.py), apply_sidecar_if_possible still applies
+    the sidecar as before.  Pins backward compatibility."""
+    import hashlib, json
+    from molbuilder.structure import Structure
+    from molbuilder.web.blueprints._shared import apply_sidecar_if_possible
+    from molbuilder import diagnostics
+
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+
+    xyz_text = _h2o_xyz_text()
+    xyz = tmp_path / "water.xyz"
+    xyz.write_text(xyz_text)
+    sidecar = tmp_path / "water.molstruct.json"
+    sidecar.write_text(json.dumps({
+        "schema_version": 3,
+        "n_atoms_total":  3,
+        "structure_hash": hashlib.sha256(xyz_text.encode("utf-8")).hexdigest(),
+        "frozen_atoms":   [0],
+        "regions":        {"from_sidecar": [0, 1]},
+        "created_by":     "test",
+        "created_at":     "2026-06-17T00:00:00Z",
+    }))
+
+    struct = Structure.from_xyz(xyz_text)
+    assert apply_sidecar_if_possible(struct, str(xyz)) is None
+    assert struct.regions == {"from_sidecar": [0, 1]}
+    assert struct.frozen_atoms == [0]
+
+
 def test_every_helper_carries_atoms_for_three_atom_water():
     """Regression for the 2026-06-07 audit's root cause: the
     ``atoms`` key was missing from ``/api/build/load`` because the

@@ -251,6 +251,119 @@ def emit_user_custom_placeholder() -> str:
 
 
 # --------------------------------------------------------------------- #
+#  ATOM-METADATA load: parse in-body JSON, apply to Structure-like      #
+# --------------------------------------------------------------------- #
+#
+# Step 3 (audit finding A1, 2026-06-16): molstruct_json.from_dict
+# validates ``structure_hash`` (>=16 chars).  The in-body
+# atom-metadata deliberately omits structure_hash per the contract
+# (metadata + coordinates are written by the same generator pass and
+# cannot drift apart by construction).  So molstruct_json's loader
+# is the wrong entry point for in-body payloads -- we need a small
+# local apply that doesn't require the hash.
+
+
+def extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
+    """Find the ATOM-METADATA block in ``text`` and return its JSON
+    payload as a dict.
+
+    Returns ``None`` when:
+      * No ATOM-METADATA block is present.
+      * The block markers are unbalanced.
+      * The JSON between markers fails to parse.
+
+    Comment-prefix-per-line is stripped before JSON parsing.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_ATOM_METADATA:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    # Inner lines: strip leading "# " (or "#") to recover JSON.
+    inner: List[str] = []
+    for raw in lines[begin_idx + 1: end_idx]:
+        if raw.startswith("# "):
+            inner.append(raw[2:])
+        elif raw.startswith("#"):
+            inner.append(raw[1:])
+        else:
+            inner.append(raw)
+    # First content line is "format: molstruct-json/v3" -- skip it
+    # for JSON-parse purposes (leaving it in would break json.loads).
+    # We could verify the format tag here too if we wanted strict
+    # version checking; today we accept whatever the block claims and
+    # let downstream apply_inbody_atom_metadata sanity-check fields.
+    #
+    # Brace-balance walk so the extractor accepts BOTH pretty-printed
+    # JSON (molbuilder's emit_atom_metadata via json.dumps indent=2)
+    # AND compact / single-line JSON (a future / third-party writer
+    # that emits ``{"schema_version": 3, ...}`` on one line).  The
+    # contract on the wire is "valid JSON inside the block"; how the
+    # writer formatted it isn't load-bearing.
+    json_lines: List[str] = []
+    saw_open = False
+    brace_depth = 0
+    for line in inner:
+        stripped = line.strip()
+        if not saw_open:
+            if not stripped or not stripped.startswith("{"):
+                continue
+            saw_open = True
+        json_lines.append(line)
+        brace_depth += stripped.count("{") - stripped.count("}")
+        if brace_depth <= 0:
+            break
+    if not json_lines:
+        return None
+    try:
+        return json.loads("\n".join(json_lines))
+    except json.JSONDecodeError:
+        return None
+
+
+def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
+    """If ``text`` carries an ATOM-METADATA block, apply its
+    ``regions`` and ``frozen_atoms`` to ``struct``.
+
+    ``struct`` is duck-typed: any object with mutable ``regions``
+    (dict) and ``frozen_atoms`` (list) attributes will do.
+    Mirrors the protocol that ``molstruct_json.apply_to_structure``
+    uses for the sidecar path, minus the structure_hash check.
+
+    Returns ``True`` when labels were applied, ``False`` otherwise
+    (no block, or block carried empty regions + frozen_atoms).
+    """
+    payload = extract_atom_metadata_dict(text)
+    if payload is None:
+        return False
+    regions = payload.get("regions") or {}
+    frozen = payload.get("frozen_atoms") or []
+    if not regions and not frozen:
+        return False
+    if regions:
+        # Normalise: sort + dedupe per region; coerce to int.
+        struct.regions = {
+            str(k): sorted({int(i) for i in v})
+            for k, v in regions.items()
+        }
+    if frozen:
+        struct.frozen_atoms = sorted({int(i) for i in frozen})
+    return True
+
+
+# --------------------------------------------------------------------- #
 #  USER-CUSTOM round-trip preservation                                  #
 # --------------------------------------------------------------------- #
 #
@@ -348,6 +461,179 @@ def merge_user_custom_from_target(rendered: str,
     return replace_user_custom_inner(rendered, old_inner)
 
 
+# --------------------------------------------------------------------- #
+#  PROVENANCE extract                                                   #
+# --------------------------------------------------------------------- #
+#
+# PROVENANCE has no version tag; keys are additive.  Format (per
+# emit_provenance):
+#
+#   # === molbuilder provenance BEGIN ===
+#   #   generator-version    <value>
+#   #   generated-at         <iso8601>
+#   #   form-config-hash     <hash>          (optional)
+#   #   resolved-defaults:
+#   #     <key>              <description>
+#   #     <key>              <description>
+#   # === molbuilder provenance END ===
+#
+# extract_provenance_dict returns a flat {key -> value} where the
+# resolved-defaults sub-block expands into "resolved-defaults.<key>"
+# entries.  Forward-compatible: unknown top-level keys flow through.
+
+
+_PROVENANCE_KV_RE = re.compile(r"^#\s+(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+_PROVENANCE_DEFAULTS_HDR = re.compile(r"^#\s+resolved-defaults\s*:\s*$")
+_PROVENANCE_DEFAULTS_KV_RE = re.compile(r"^#\s{4,}(?P<key>[A-Za-z][A-Za-z0-9._-]*)\s{2,}(?P<val>.+?)\s*$")
+
+
+def extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
+    """Find the PROVENANCE block in ``text`` and return its k/v
+    payload as a flat dict.
+
+    Returns ``None`` when no well-formed PROVENANCE block is present.
+    The ``resolved-defaults:`` sub-block expands into keys of the
+    form ``"resolved-defaults.<field>"`` so the result is fully
+    flat.  Unknown top-level keys flow through.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_PROVENANCE:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out: Dict[str, str] = {}
+    in_defaults = False
+    for raw in lines[begin_idx + 1: end_idx]:
+        if _PROVENANCE_DEFAULTS_HDR.match(raw):
+            in_defaults = True
+            continue
+        if in_defaults:
+            dm = _PROVENANCE_DEFAULTS_KV_RE.match(raw)
+            if dm:
+                out[f"resolved-defaults.{dm.group('key')}"] = dm.group("val")
+                continue
+            # A non-defaults-shaped line ends the sub-block; the
+            # top-level k/v matcher below may still pick it up.
+            in_defaults = False
+        m = _PROVENANCE_KV_RE.match(raw)
+        if m:
+            out[m.group("key")] = m.group("val")
+    return out or None
+
+
+# --------------------------------------------------------------------- #
+#  ScriptSource -- umbrella extract for the bundle layer                #
+# --------------------------------------------------------------------- #
+#
+# One pass over the script text returns everything the bundle layer
+# needs: regions, frozen_atoms, user-custom inner lines, provenance,
+# atom-metadata schema_version.  See docs/protocols/bundle-contract.md
+# § 5.1 for the contract.
+#
+# Field semantics:
+#   * ``None`` on a field  -> block absent or unparseable
+#   * Empty ``[]`` / ``{}`` -> block present, deliberately empty
+# These are distinct states that downstream code treats differently
+# (notably, an absent atom-metadata block is the honest "this run
+# had no labels" signal -- per script-contract.md § 4.4).
+
+
+@dataclass(frozen=True)
+class ScriptSource:
+    """Everything extractable from one .fdf / .py text body relevant
+    to the run-bundle handoff.
+
+    Frozen so callers can pass it around without defensive copies.
+    ``notes`` is always a list (never None) for diagnostic flow-
+    through; the other fields use None vs empty-collection to
+    distinguish "block missing" from "block present-but-empty".
+    """
+    regions:           Optional[Dict[str, List[int]]]
+    frozen_atoms:      Optional[List[int]]
+    user_custom_lines: Optional[List[str]]
+    provenance:        Optional[Dict[str, str]]
+    schema_version:    Optional[int]
+    notes:             List[str]
+
+
+def extract_script_source(text: str) -> ScriptSource:
+    """Single-pass extract over a generated-script body.
+
+    See ``docs/protocols/bundle-contract.md § 5.1`` for semantics.
+    Pure function: no I/O.  Diagnostic notes are surfaced for
+    schema-version drift; hard errors (atom-count mismatches, both
+    engines in one dir) are the bundle layer's job, not this
+    extractor's.
+    """
+    notes: List[str] = []
+    atom_md = extract_atom_metadata_dict(text)
+    regions: Optional[Dict[str, List[int]]] = None
+    frozen: Optional[List[int]] = None
+    schema_version: Optional[int] = None
+    if atom_md is not None:
+        sv = atom_md.get("schema_version")
+        if isinstance(sv, int):
+            schema_version = sv
+            if sv < 3:
+                # Backward-incompatible; the bundle layer raises
+                # BundleError on this state.  The extractor is pure,
+                # so we only note + leave regions/frozen as None.
+                notes.append(
+                    f"atom-metadata schema_version {sv} is older "
+                    f"than v3; re-render the source script."
+                )
+            else:
+                if sv > 3:
+                    # Forward-compat: load with the current handler
+                    # since v3+ promises additive keys.  The note
+                    # surfaces the drift so an audit can spot the
+                    # mismatch.
+                    notes.append(
+                        f"atom-metadata schema_version {sv}; molbuilder "
+                        f"expects 3 — loading with current handler."
+                    )
+                raw_regions = atom_md.get("regions")
+                if isinstance(raw_regions, dict):
+                    regions = {
+                        str(k): sorted({int(i) for i in v})
+                        for k, v in raw_regions.items()
+                    }
+                else:
+                    regions = {}
+                raw_frozen = atom_md.get("frozen_atoms")
+                if isinstance(raw_frozen, list):
+                    frozen = sorted({int(i) for i in raw_frozen})
+                else:
+                    frozen = []
+        else:
+            notes.append("atom-metadata block has no schema_version; ignored.")
+    return ScriptSource(
+        regions=regions,
+        frozen_atoms=frozen,
+        user_custom_lines=extract_user_custom_inner(text),
+        provenance=extract_provenance_dict(text),
+        schema_version=schema_version,
+        notes=notes,
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Git / time helpers                                                   #
+# --------------------------------------------------------------------- #
+
+
 def molbuilder_git_sha() -> str:
     """Return the molbuilder git SHA (short form), or "unknown".
 
@@ -384,7 +670,10 @@ __all__ = [
     "BenchField", "SIESTA_BENCH_FIELDS",
     "emit_header", "emit_provenance", "emit_bench_marks",
     "emit_atom_metadata", "emit_user_custom_placeholder",
+    "extract_atom_metadata_dict", "apply_inbody_atom_metadata",
     "extract_user_custom_inner", "replace_user_custom_inner",
     "merge_user_custom_from_target",
+    "extract_provenance_dict",
+    "ScriptSource", "extract_script_source",
     "molbuilder_git_sha", "generated_at_now",
 ]

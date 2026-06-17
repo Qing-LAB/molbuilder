@@ -1061,6 +1061,16 @@ def apply_sidecar_if_possible(struct, structure_path):
                 f"boundary condition for this run.")
     if resolved.suffix.lower() not in (".xyz", ".pdb"):
         return None
+    # In-body wins over sidecar (bundle-contract.md § 4.2): if a
+    # same-stem .fdf / .py companion sits next to the structure file
+    # AND carries an ATOM-METADATA block, those labels are the
+    # authoritative record (the script was the basis of an actual
+    # run; the .molstruct.json sidecar is editable in isolation and
+    # may have drifted).  apply_companion_labels_if_present mutates
+    # struct in place and returns a marker string when it applied;
+    # the sidecar branch is skipped in that case.
+    if apply_companion_labels_if_present(struct, resolved) is not None:
+        return None
     sidecar_path = _molstruct_json.sidecar_path_for(resolved)
     if not sidecar_path.exists():
         return None
@@ -1073,6 +1083,61 @@ def apply_sidecar_if_possible(struct, structure_path):
                 f"the sole boundary condition for this run.  "
                 f"Re-export the sidecar from the Structure tab to "
                 f"re-enable sidecar-driven divergence checks.")
+    return None
+
+
+def apply_companion_labels_if_present(struct, structure_path):
+    """Same-stem ``.fdf`` / ``.py`` companion next to a ``.xyz`` /
+    ``.pdb`` wins over a ``.molstruct.json`` sidecar as the label
+    source.  See ``docs/protocols/bundle-contract.md § 4.2`` and § 5.3.
+
+    Why companion-wins: the script was the actual basis of a
+    molbuilder-generated run.  Its in-body ATOM-METADATA block is
+    written by the same generator pass that wrote the engine body,
+    so the labels and the coordinates cannot drift apart.  The
+    ``.molstruct.json`` sidecar, by contrast, is editable in
+    isolation and may have been mutated after the script was
+    generated.  When both exist, the script is the truth.
+
+    Parameters
+    ----------
+    struct
+        Mutated in place: ``struct.regions`` / ``struct.frozen_atoms``
+        are populated when the companion carries them.
+    structure_path
+        ``Path``-like.  Resolved already by the caller; this
+        function does NOT re-validate against the picker roots
+        (caller's job).
+
+    Returns
+    -------
+    None
+        No companion present, OR companion present but carrying no
+        ATOM-METADATA block.  Caller falls through to the sidecar
+        branch.
+    str
+        ``"applied:fdf"`` or ``"applied:py"`` — labels were applied
+        from the named companion.  Caller skips the sidecar branch.
+    """
+    from molbuilder import script_contract as _sc
+    from pathlib import Path as _Path
+    base = _Path(structure_path)
+    # Iterate by priority: .fdf first (SIESTA / transport are the
+    # canonical workflows), .py second (PySCF).
+    for ext, marker in ((".fdf", "applied:fdf"), (".py", "applied:py")):
+        companion = base.with_suffix(ext)
+        if not companion.exists():
+            continue
+        try:
+            text = companion.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            # An unreadable companion is not a hard error -- fall
+            # through to sidecar.  The caller surfaces sidecar
+            # outcomes as warn-Issues; an unreadable companion
+            # behaves the same as "no companion present".
+            continue
+        if _sc.apply_inbody_atom_metadata(struct, text):
+            return marker
     return None
 
 
@@ -1136,5 +1201,6 @@ __all__ = [
     "config_from_params",
     "apply_labels_to_struct",
     "apply_sidecar_if_possible",
+    "apply_companion_labels_if_present",
     "regions_pattern_b_notice",
 ]

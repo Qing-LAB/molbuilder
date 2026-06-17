@@ -57,6 +57,9 @@ _L1_MODULES = {
                          # domain deps; siesta + pyscf + spectra + runwrap all use it)
     "pseudos",           # PSML pseudopotential header parser + coverage check
                          # (pure XML parsing + dataclass; no domain deps)
+    "script_contract",   # generated-script format I/O (emit + extract); pure
+                         # functions, no domain deps -- siesta/pyscf/runwrap/
+                         # bench all use it.  Same layering reason as runtime_info.
 }
 
 _L2_MODULES = {
@@ -74,6 +77,12 @@ _L2_MODULES = {
     "envs",              # subprocess dispatch
     "runwrap",           # bash-wrapper emitter
     "data",              # bundled JSON tables
+    "script_bundle",     # workflow-handoff RunBundle: consumes script_contract +
+                         # Structure to fuse run-dir artifacts into a portable
+                         # .xyz + .molstruct.json pair.  L2 because it knows
+                         # engine-specific final-coords sources (.XV, .opt.xyz).
+    "bench",             # bench subcommand machinery -- consumes siesta config +
+                         # runwrap; generates BENCH-MARKS-aware sweeps.
 }
 
 _L3_MODULES = {
