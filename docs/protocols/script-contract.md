@@ -137,10 +137,10 @@ fields in the engine body are safe to override, within what limits.
 #   gpu_mode            true
 #   numa_pin            socket-0
 #
-#   field BlockSize        line=404  type=pow2  range=[16,256]  default=256
-#   field MaxSCFIterations line=358  type=int   default=500
-#   field MD.NumCGsteps    line=421  type=int   default=200
-#   field MeshCutoff       line=267  type=float unit=Ry  default=400.0
+#   field BlockSize        anchor=BlockSize        type=pow2  range=[16,256]  default=256
+#   field MaxSCFIterations anchor=MaxSCFIterations type=int   default=500
+#   field MD.NumCGsteps    anchor=MD.NumCGsteps    type=int   default=200
+#   field MeshCutoff       anchor=MeshCutoff       type=float unit=Ry  default=400.0
 # === molbuilder bench-marks END ===
 ```
 
@@ -152,8 +152,13 @@ fields in the engine body are safe to override, within what limits.
 - `field <name> ...` lines declare overridable parameters. Tools
   override only `field`-declared parameters; everything else stays
   as the generator emitted it.
-- `line=N` is the 1-indexed line number in the file where the
-  parameter currently sits (matches grep / editor convention).
+- `anchor=<text>` is the literal token a parser greps for at the
+  start of a code line (after leading whitespace) in ENGINE BODY
+  to locate the override site. Anchor-based, not line-number-
+  based, so the reference survives any layout drift in the
+  reserved blocks above. For SIESTA `.fdf` the anchor is the
+  keyword name (e.g. `BlockSize`); for PySCF `.py` it is the
+  Python identifier (e.g. `max_memory_mb`).
 - `type=` ∈ `{int, float, str, pow2}`. `pow2` means "power of 2".
 - `range=[a,b]` and `unit=...` are advisory bounds the tool uses
   to validate user-requested overrides.
@@ -223,9 +228,9 @@ BEGIN. The generator owns this region; users should not edit it
 (edits are lost on regenerate). It is not bracketed because it is
 the bulk of the file.
 
-The `line=N` references in BENCH-MARKS point INTO this region.
-Indices are 1-based relative to the whole file (matches grep,
-editors).
+The `anchor=<text>` references in BENCH-MARKS point INTO this
+region. Parsers locate an override site by greping the engine body
+for `^\s*<anchor>\b`. Anchors are stable; line numbers are not.
 
 ### 4.6 USER-CUSTOM
 
