@@ -30,27 +30,41 @@
         el.textContent = txt;
     }
 
-    /** Read the projects-sidebar's current cursor, or null. */
-    function currentSidebarDir() {
+    /** Return the sidebar's current selection as ``{dir, file}``,
+     *  or null when the public API isn't on the page.
+     *
+     *  Audit follow-up: the prior version read ``getState().cursor``
+     *  which the projects-sidebar public surface (state.js § C1)
+     *  has never exposed.  The actual API is ``getCurrentDir()`` +
+     *  ``getCurrentFile()`` (state.js:767-768). */
+    function currentSidebarSelection() {
         try {
             var ws = (window.molbuilder && window.molbuilder.projects) || null;
-            if (!ws || typeof ws.getState !== 'function') return null;
-            var state = ws.getState();
-            // ``cursor`` is the absolute path the sidebar is browsing.
-            // See docs/protocols/projects-sidebar.md § 4.1.
-            return (state && state.cursor) || null;
+            if (!ws ||
+                typeof ws.getCurrentDir  !== 'function' ||
+                typeof ws.getCurrentFile !== 'function') return null;
+            return {
+                dir:  ws.getCurrentDir()  || '',
+                file: ws.getCurrentFile() || '',
+            };
         } catch (_) {
             return null;
         }
     }
 
-    /** Try to refresh the sidebar at ``dir``; tolerate any missing
-     *  surface so the bundle write still counts as a success. */
-    function refreshSidebar(dir) {
+    /** Navigate the sidebar to ``dir`` so the user sees the new
+     *  bundle pair without manual refresh.  Per bundle-contract.md
+     *  § 7.5: the endpoint does NOT route through writeFile so the
+     *  auto-refresh path doesn't fire -- the client invokes
+     *  navigateTo (NOT refresh -- refresh() takes no dir arg and
+     *  re-lists wherever the sidebar already points; see state.js:296).
+     *  Tolerate any missing surface so the bundle write still
+     *  counts as a success. */
+    function navigateSidebarTo(dir) {
         try {
             var ws = (window.molbuilder && window.molbuilder.projects) || null;
-            if (ws && typeof ws.refresh === 'function') {
-                ws.refresh(dir);
+            if (ws && typeof ws.navigateTo === 'function') {
+                ws.navigateTo(dir);
             }
         } catch (_) { /* swallow -- the bundle is already on disk */ }
     }
@@ -131,24 +145,36 @@
         var status = $('[data-status]', form);
         var result = $('[data-result]', form.parentElement || form);
 
-        // Pre-fill from the sidebar cursor.  When ``cursor`` is a
-        // file path the user probably means "bundle from this file's
-        // dir"; resolve to the parent.  When it's already a dir,
-        // use it verbatim.
-        var cursor = currentSidebarDir();
-        if (cursor) {
-            // Best-effort: strip the trailing /<basename> only when
-            // there's a "." in the last segment (i.e. it looks like
-            // a file).  Pure heuristic; the user can edit.
-            var asDir = cursor;
-            var last  = cursor.split('/').pop() || '';
-            if (last.indexOf('.') >= 0) {
-                asDir = cursor.substring(0, cursor.length - last.length - 1)
-                              || cursor;
+        // Pre-fill from the sidebar's selection.  Use the
+        // public API explicitly: getCurrentFile() tells us whether
+        // the cursor is on a file (so we want its parent for
+        // run_dir) vs. a directory (use verbatim).  Pre-fix this
+        // used a "does last segment contain '.'" heuristic which
+        // misfired on dotted directory names like ``v1.2/``.
+        var sel = currentSidebarSelection();
+        var runDirDefault    = '';
+        var targetDirDefault = '';
+        if (sel) {
+            if (sel.file) {
+                // Cursor is on a file: bundle from the file's dir.
+                var idx = sel.file.lastIndexOf('/');
+                runDirDefault = (idx > 0) ? sel.file.substring(0, idx) : sel.dir;
+            } else {
+                runDirDefault = sel.dir;
             }
-            if (runIn  && !runIn.value)  runIn.value  = asDir;
-            if (dstIn  && !dstIn.value)  dstIn.value  = asDir;
+            // Default target lands in a DEDICATED sub-dir of the
+            // run dir, NOT the run dir itself.  Pre-fix the default
+            // was the run dir verbatim, which mixed bundle output
+            // with the run's source script -- a sibling .fdf could
+            // then shadow the bundle's sidecar via
+            // apply_companion_labels_if_present on the next load.
+            // bundle-contract.md § 7.2 + audit-IMPORTANT.
+            targetDirDefault = runDirDefault
+                ? (runDirDefault + '/handoff')
+                : '';
         }
+        if (runIn  && !runIn.value)  runIn.value  = runDirDefault;
+        if (dstIn  && !dstIn.value)  dstIn.value  = targetDirDefault;
         if (stemIn && !stemIn.value) {
             stemIn.value = 'handoff';
         }
@@ -183,7 +209,7 @@
                     setText(status, '');
                     if (resp.body && resp.body.ok) {
                         renderResult(result, resp.body);
-                        refreshSidebar(dstIn.value.trim());
+                        navigateSidebarTo(dstIn.value.trim());
                     } else {
                         var msg = (resp.body && resp.body.error)
                             || ('HTTP ' + resp.status);

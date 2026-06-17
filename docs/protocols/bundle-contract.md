@@ -135,8 +135,8 @@ Per engine, in priority order — first hit wins:
 In-body ATOM-METADATA in the source script is the authoritative
 label source.  Where bundle assembly is initiated from a `.xyz`
 load path with a sibling generated script AND a `.molstruct.json`
-sidecar, **in-body wins over sidecar** (see § 4.2 below; same rule
-asserted in `script-contract.md` § 4.4).
+sidecar, **in-body wins over sidecar** — mirroring the normative
+rule in [`script-contract.md`](script-contract.md) § 4.4.
 
 ### 4.3 Conflict policy
 
@@ -303,25 +303,25 @@ loader a clean "this sidecar is stale" detector.
 ### 7.5 Sidebar refresh
 
 The PR-E client-side caller (the Bundle button's POST handler)
-MUST trigger a sidebar refresh of ``target_dir`` after the response
-lands, so the user sees the new pair without manual interaction.
-The projects-sidebar has no server→client event bus today; the
-refresh is client-driven via the public API:
+MUST trigger a sidebar listing of ``target_dir`` after the response
+lands so the user sees the new pair without manual interaction.
 
-* When ``target_dir`` is the current cursor: the standard write
-  path (``projects.writeFile`` C4) auto-refreshes after every
-  mutation per sidebar § 4.4 row 4 — so a bundle written to the
-  current cursor needs no explicit call IF the endpoint routes
-  through writeFile.
-* When ``target_dir`` is elsewhere (a sibling project, a sub-dir
-  not currently open): explicit ``projects.refresh(target_dir)``
-  after the POST resolves.  Sidebar will re-list and the two
-  bundle files land as a single structure↔sidecar paired entry.
+Refresh is **always explicit, always client-side**.  The endpoint
+bypasses the projects-sidebar's `writeFile` path (it writes via
+`molstruct_json.save` + `_atomic_write_text` directly), so the
+auto-refresh that fires after `writeFile` per sidebar § 4.4 row 4
+does NOT fire here.
+
+The correct primitive is `projects.navigateTo(target_dir)` (sidebar
+§ 5.4 C7), NOT `projects.refresh(...)`.  `refresh()` takes no
+directory argument (see `lib/projects/state.js::refresh`) — it
+re-lists wherever the sidebar already points, which may be
+elsewhere when `target_dir` differs from the current cursor.
+`navigateTo(absPath)` cursors the sidebar AT the new directory and
+lists it, which is what the user actually wants after a bundle.
 
 Rationale: PR-E's UX promise is "click Bundle, see the result in
-the sidebar."  Without the refresh, the user has to navigate
-away and back; the sidebar's auto-refresh covers the common case
-but the cross-dir case needs the explicit call.
+the sidebar."  Manual navigation negates the promise.
 
 ### 7.6 Lock model
 
@@ -407,6 +407,7 @@ Test pyramid placement:
 - SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parsers/siesta_struct.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
 - PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parsers/pyscf_struct.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
+- HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
 
 ## 13. Process
 

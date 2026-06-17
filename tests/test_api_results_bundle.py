@@ -118,11 +118,24 @@ def test_bundle_endpoint_rejects_missing_stem(web_client):
 
 
 def test_bundle_endpoint_rejects_bad_stem_charset(web_client, tmp_path, monkeypatch):
-    """Stem MUST be ``[A-Za-z0-9._-]+``; the endpoint refuses
-    whitespace, shell-special, Unicode."""
+    """Stem MUST start with [A-Za-z0-9] and contain only
+    [A-Za-z0-9._-]; the endpoint refuses whitespace, shell-special,
+    leading dot, leading dash, all-dots stems, and NUL."""
     _set_picker_root(monkeypatch, tmp_path)
     run_dir = _siesta_run_dir(tmp_path)
-    for bad in ("h2 bundle", "h2/bundle", "h2;rm -rf /", "h2$VAR"):
+    for bad in (
+        "h2 bundle",     # whitespace
+        "h2/bundle",     # slash
+        "h2;rm -rf /",   # shell-special
+        "h2$VAR",        # shell-var
+        ".hidden",       # leading dot -> dotfile, sidebar filters out
+        ".",             # bare dot -> ..xyz
+        "..",            # all dots -> ...xyz
+        "...",           # all dots -> ....xyz
+        "-flag",         # leading dash -> CLI consumer reads as flag
+        "h2\x00null",    # NUL byte -- filename-injection class
+        "ñame",          # non-ASCII -- NFKC spoofing class per memory
+    ):
         r = web_client.post("/api/results/bundle", json={
             "run_dir":    str(run_dir),
             "target_dir": str(tmp_path / "dst"),
@@ -131,7 +144,60 @@ def test_bundle_endpoint_rejects_bad_stem_charset(web_client, tmp_path, monkeypa
         assert r.status_code == 400, bad
         body = r.get_json()
         assert body["ok"] is False
-        assert "[A-Za-z0-9._-]" in body["error"]
+        assert "stem" in body["error"]
+
+
+def test_bundle_endpoint_accepts_canonical_stems(web_client, tmp_path, monkeypatch):
+    """Boundary check on the regex.  Stems like ``h2``, ``h2-bundle``,
+    ``a_b.c``, single-char ``h``, and exact-64-char are accepted."""
+    _set_picker_root(monkeypatch, tmp_path)
+    run_dir = _siesta_run_dir(tmp_path)
+    for good in ("h", "h2", "h2-bundle", "a_b.c", "x" * 64):
+        r = web_client.post("/api/results/bundle", json={
+            "run_dir":    str(run_dir),
+            "target_dir": str(tmp_path / good),
+            "stem":       good,
+        })
+        # We don't assert on the bundle content here; just that the
+        # stem is accepted (so the endpoint reaches assemble + write).
+        assert r.status_code == 200, (good, r.get_json())
+
+
+def test_bundle_endpoint_rejects_non_dict_body(web_client, tmp_path, monkeypatch):
+    """Audit BLOCKER: ``request.get_json(silent=True) or {}`` lets a
+    JSON list / number / string sail past the falsy check (they're
+    all truthy non-dicts), then ``body.get(...)`` raised AttributeError
+    -> uncaught 500.  Tighten to require an object."""
+    _set_picker_root(monkeypatch, tmp_path)
+    for bad in ([1, 2, 3], "just a string", 42, True):
+        r = web_client.post(
+            "/api/results/bundle",
+            data=__import__("json").dumps(bad),
+            content_type="application/json",
+        )
+        assert r.status_code == 400, bad
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "JSON object" in body["error"]
+
+
+def test_bundle_endpoint_rejects_target_dir_pointing_at_file(web_client, tmp_path, monkeypatch):
+    """If target_dir is an existing FILE (inside picker roots), the
+    materialiser would crash inside mkdir.  Pre-check rejects it
+    with an actionable 400."""
+    _set_picker_root(monkeypatch, tmp_path)
+    run_dir = _siesta_run_dir(tmp_path)
+    not_a_dir = tmp_path / "this-is-a-file"
+    not_a_dir.write_text("not a directory\n")
+    r = web_client.post("/api/results/bundle", json={
+        "run_dir":    str(run_dir),
+        "target_dir": str(not_a_dir),
+        "stem":       "h2",
+    })
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "not a directory" in body["error"].lower()
 
 
 def test_bundle_endpoint_rejects_path_outside_picker_roots(web_client, tmp_path, monkeypatch):
@@ -273,6 +339,58 @@ def test_results_page_renders_bundle_panel(web_client):
     assert 'name="stem"' in html
     assert 'name="overwrite"' in html
     assert 'bundle-handoff-submit' in html
+
+
+def test_bundle_handoff_js_uses_correct_sidebar_api(tmp_path):
+    """Audit BLOCKER: the prior JS read ``getState().cursor`` and
+    called ``ws.refresh(dir)``.  Neither exists on the projects-
+    sidebar public surface (``state.js::projects`` exports
+    ``getCurrentDir`` / ``getCurrentFile`` + ``navigateTo``; the
+    ``refresh()`` it exports takes no dir argument).  Pin the
+    correct call sites so a future regression here is caught
+    without needing a Playwright run."""
+    import re
+    from pathlib import Path
+    js_raw = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    # Strip block + line comments before asserting on call shapes so
+    # historical-context mentions ("the prior JS used ws.getState()")
+    # don't false-positive the regression check.
+    no_block_comments = re.sub(r"/\*.*?\*/", "", js_raw, flags=re.DOTALL)
+    js = "\n".join(
+        line for line in no_block_comments.splitlines()
+        if not line.lstrip().startswith("//")
+    )
+    # Correct public-API calls present.
+    assert "getCurrentDir" in js
+    assert "getCurrentFile" in js
+    assert "navigateTo" in js
+    # Phantom calls absent (matched as actual call sites).
+    assert not re.search(r"\bws\.getState\s*\(", js), (
+        "bundle-handoff.js calls ws.getState() — the projects-sidebar "
+        "public API never exposed that.  Switch to getCurrentDir() + "
+        "getCurrentFile().")
+    # refresh(<arg>) is the wrong shape; the public refresh() takes
+    # only an opts object.  navigateTo is the correct way to move
+    # the sidebar to a specific dir.
+    assert not re.search(r"\bws\.refresh\s*\(\s*[A-Za-z_]", js), (
+        "bundle-handoff.js calls ws.refresh(<some-identifier>) — "
+        "refresh() takes no directory argument; it re-lists wherever "
+        "the sidebar already points.  Use navigateTo(dir) so the "
+        "sidebar moves to and lists the new bundle dir.")
+
+
+def test_bundle_handoff_default_target_is_subdir(tmp_path):
+    """Audit IMPORTANT: pre-fix the JS defaulted target_dir to the
+    same path as run_dir.  Bundling into the run dir meant the new
+    .molstruct.json sat next to the run's source .fdf, which can
+    then shadow the bundle's labels via apply_companion_labels_if_present
+    on next load.  The default is now ``<run_dir>/handoff``."""
+    from pathlib import Path
+    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    assert "/handoff" in js, (
+        "bundle-handoff.js no longer appends '/handoff' to the default "
+        "target_dir.  This re-introduces the data-loss trap where a "
+        "sibling .fdf shadows the bundle's sidecar.")
 
 
 def test_bundle_endpoint_carries_xv_unreadable_warn_note(web_client, tmp_path, monkeypatch):

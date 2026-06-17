@@ -42,7 +42,16 @@ bp = Blueprint("results", __name__)
 # 1-64 chars.  Keeps shell-special / Unicode / whitespace out of
 # every downstream consumer (filesystem rename, sidebar list view,
 # the next tab's form fields).
-_BUNDLE_STEM_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+#
+# Additional restrictions over the bare charset (audit follow-up):
+#   * MUST start with [A-Za-z0-9] -- a leading ``.`` would write a
+#     dot-file the sidebar filters out by convention; a leading
+#     ``-`` would land in a name a CLI consumer reads as a flag.
+#   * Must contain at least one non-``.`` char -- stems like ``.``
+#     and ``..`` produce ``..xyz`` / ``...molstruct.json`` and
+#     pollute listings.
+_BUNDLE_STEM_RE       = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_BUNDLE_STEM_ALL_DOTS = re.compile(r"^\.+$")
 
 
 @bp.route("/results")
@@ -193,7 +202,18 @@ def api_results_bundle():
     )
     from .files import _resolve_within_roots, _PickerError
 
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    # Defense in depth: ``get_json(silent=True)`` returns whatever
+    # the client sent as parsed JSON.  A list / number / string /
+    # null all return a truthy non-dict that the older
+    # ``or {}`` idiom didn't normalise, so ``body.get(...)``
+    # later raised AttributeError -> uncaught 500.  Reject anything
+    # that isn't an object up-front.
+    if not isinstance(body, dict):
+        return jsonify({
+            "ok": False,
+            "error": "request body must be a JSON object",
+        }), 400
     run_dir    = (body.get("run_dir")    or "").strip()
     target_dir = (body.get("target_dir") or "").strip()
     stem       = (body.get("stem")       or "").strip()
@@ -205,12 +225,14 @@ def api_results_bundle():
         return jsonify({"ok": False, "error": "missing 'target_dir'"}), 400
     if not stem:
         return jsonify({"ok": False, "error": "missing 'stem'"}), 400
-    if not _BUNDLE_STEM_RE.match(stem):
+    if _BUNDLE_STEM_ALL_DOTS.match(stem) or not _BUNDLE_STEM_RE.match(stem):
         return jsonify({
             "ok": False,
             "error": (
-                "'stem' must be [A-Za-z0-9._-]+ (1-64 chars); got "
-                f"{stem!r}.  No whitespace, no shell-special chars."
+                "'stem' must start with [A-Za-z0-9] and contain only "
+                "[A-Za-z0-9._-] (1-64 chars); got "
+                f"{stem!r}.  No whitespace, no shell-special chars, "
+                f"no leading '.' / '-', not just dots."
             ),
         }), 400
 
@@ -231,8 +253,20 @@ def api_results_bundle():
                 f"{run_path}.  Pick a finished SIESTA/PySCF run dir."
             ),
         }), 404
-    # target_path is allowed to not exist; the materialiser creates
-    # it (bundle-contract.md § 7.2).
+    # target_path is allowed to not exist (the materialiser creates
+    # missing parents per bundle-contract.md § 7.2), but if it DOES
+    # exist it must be a directory; pointing target_dir at a file
+    # would crash deep inside mkdir/replace.  Pre-check so the
+    # client sees an actionable 400 instead of an opaque 500.
+    if target_path.exists() and not target_path.is_dir():
+        return jsonify({
+            "ok": False,
+            "error": (
+                f"target_dir exists but is not a directory: "
+                f"{target_path}.  Pick a directory or remove the "
+                f"file first."
+            ),
+        }), 400
 
     try:
         bundle = assemble_from_run_dir(run_path)
@@ -245,6 +279,15 @@ def api_results_bundle():
         )
     except BundleError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    except OSError as exc:
+        # Disk full, permission denied, EROFS, broken symlink on
+        # write path -- surface as a 500 with the OS error message
+        # rather than letting Flask's default error handler leak a
+        # traceback.  Pre-fix this entire class escaped the endpoint.
+        return jsonify({
+            "ok": False,
+            "error": f"OS error writing bundle: {exc}",
+        }), 500
 
     return jsonify({
         "ok":                 True,
