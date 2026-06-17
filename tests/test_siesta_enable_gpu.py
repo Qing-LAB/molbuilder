@@ -140,13 +140,24 @@ def test_render_fdf_elpa_algorithm_choice_propagates():
 
 
 def test_render_fdf_omits_diag_algorithm_without_gpu():
-    """When GPU is off, leave Diag.Algorithm OUT entirely so SIESTA
-    falls through to its default Divide-and-Conquer ScaLAPACK path
-    (which is the right CPU recipe).  The elpa_algorithm field
-    setting is ignored in this case."""
+    """When GPU is off, leave Diag.Algorithm OUT of the engine body
+    so SIESTA falls through to its default Divide-and-Conquer ScaLAPACK
+    path (the right CPU recipe).  The elpa_algorithm field is ignored
+    in this case.
+
+    The BENCH-MARKS contract block legitimately declares Diag.Algorithm
+    as a sweep anchor on a comment line; what matters is that no
+    non-comment line sets the FDF value.
+    """
     cfg = SiestaConfig(enable_gpu=False, elpa_algorithm="ELPA-2STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
-    assert "Diag.Algorithm" not in fdf
+    engine_lines = [
+        ln for ln in fdf.splitlines()
+        if "Diag.Algorithm" in ln and not ln.lstrip().startswith("#")
+    ]
+    assert engine_lines == [], (
+        f"engine body should not set Diag.Algorithm, got: {engine_lines!r}"
+    )
 
 
 def test_elpa_algorithm_field_metadata():
@@ -427,7 +438,7 @@ def test_gpu_mpirun_binds_to_physical_cores_not_ht_siblings(
     """2026-06-16 fix: replace the ppr:K:package:PE=N form (which on
     Intel HT boxes allocated PE=2 PUs per rank mapped as HT-sibling
     pairs of ONE physical core, halving the effective core count)
-    with the canonical ``package:PE=N --bind-to core --rank-by core``
+    with the canonical ``package:PE=N --bind-to core``
     form.
 
     The user-visible symptom that prompted the fix: live 212-atom
@@ -447,7 +458,7 @@ def test_gpu_mpirun_binds_to_physical_cores_not_ht_siblings(
     # The new form: package-level mapping, PE counts physical cores,
     # bound to core, ranked by core for deterministic ordering.
     assert ('_mpirun_bind="--bind-to core --map-by '
-            'package:PE=$_omp_threads --rank-by core"' in wrapper_text)
+            'package:PE=$_omp_threads"' in wrapper_text)
     # Older broken forms MUST NOT appear.
     assert "ppr:" not in wrapper_text  # the HT-stacking ppr form
     assert "_effective_sockets" not in wrapper_text  # no longer needed

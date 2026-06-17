@@ -31,8 +31,12 @@ def bench_group() -> None:
 @click.argument("project_dir", type=click.Path(exists=True, file_okay=False,
                                                 resolve_path=True))
 @click.option("--points", "points_str", default=None,
-              help='space-separated triplets, e.g. "4,2,32 4,2,64 10,1,64".  '
-                   'Default: 5-point sweep (see docs/protocols/script-contract.md).')
+              help='space-separated triplets or quadruplets, e.g. '
+                   '"4,2,64 4,2,64,2s 10,1,64,1s".  Three-token form uses '
+                   'the default Diag.Algorithm (ELPA-1STAGE); four-token '
+                   'form pins it ("1s"/"2s" or "ELPA-1STAGE"/"ELPA-2STAGE").  '
+                   'Default: 10-point sweep (5 shapes × ELPA-1/2STAGE) '
+                   '— see docs/protocols/script-contract.md.')
 @click.option("--iters", "iters", type=int, default=5, show_default=True,
               help="MaxSCFIterations cap per test point.")
 @click.option("--cold", "cold", is_flag=True,
@@ -108,7 +112,9 @@ def cmd_siesta_gpu(project_dir: str,
     click.echo(f"cold      : {cold}")
     click.echo(f"sweep     : {len(points)} points")
     for i, p in enumerate(points, 1):
-        click.echo(f"            {i}. np={p.np}  omp={p.omp}  bs={p.bs}")
+        click.echo(
+            f"            {i}. np={p.np}  omp={p.omp}  bs={p.bs}  diag={p.diag}"
+        )
     click.echo("")
 
     bench_root = proj / f"{basename}.bench"
@@ -117,7 +123,10 @@ def cmd_siesta_gpu(project_dir: str,
 
     # Run each point sequentially -- they share the GPU.
     for i, point in enumerate(points, 1):
-        click.echo(f"---- [{i}/{len(points)}] np={point.np} omp={point.omp} bs={point.bs} ----")
+        click.echo(
+            f"---- [{i}/{len(points)}] np={point.np} omp={point.omp} "
+            f"bs={point.bs} diag={point.diag} ----"
+        )
         point_dir = _prepare_point_dir(
             proj, basename, fdf_text, runsh_text, point, iters, cold,
         )
@@ -149,13 +158,13 @@ def cmd_siesta_gpu(project_dir: str,
     )
     click.echo("")
     click.echo("==== results sorted by avg s/iter (winner first) ====")
-    header = f"{'point':<18} {'avg/iter':>10} {'wall':>8} {'iters':>6}"
+    header = f"{'point':<22} {'avg/iter':>10} {'wall':>8} {'iters':>6}"
     click.echo(header)
     click.echo("-" * len(header))
     for r in ranked:
         avg = f"{r.avg_iter_s:.1f}" if r.avg_iter_s is not None else "n/a"
         click.echo(
-            f"{r.point.slug:<18} {avg:>10} {r.walltime_s:>8} {r.iters_done:>6}"
+            f"{r.point.slug:<22} {avg:>10} {r.walltime_s:>8} {r.iters_done:>6}"
         )
     click.echo("")
     click.echo(f"csv: {csv}")

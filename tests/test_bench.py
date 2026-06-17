@@ -6,7 +6,7 @@ import pytest
 
 from molbuilder import bench
 from molbuilder.bench import (
-    DEFAULT_POINTS, FieldDecl, Point,
+    DEFAULT_POINTS, DIAG_1STAGE, DIAG_2STAGE, FieldDecl, Point,
     disable_md, force_max_scf_iters,
     override_field_value, parse_bench_marks,
 )
@@ -20,12 +20,25 @@ from molbuilder.bench import (
 def test_point_parse_plain_triplet():
     p = Point.parse("4,2,64")
     assert p.np == 4 and p.omp == 2 and p.bs == 64
-    assert p.slug == "np4_omp2_bz64"
+    assert p.diag == DIAG_1STAGE
+    assert p.slug == "np4_omp2_bz64_1s"
 
 
 def test_point_parse_keyed_triplet():
     p = Point.parse("np=10,omp=1,bs=64")
     assert p.np == 10 and p.omp == 1 and p.bs == 64
+    assert p.diag == DIAG_1STAGE
+
+
+def test_point_parse_plain_quadruplet_diag_alias():
+    p = Point.parse("4,2,64,2s")
+    assert p.diag == DIAG_2STAGE
+    assert p.slug == "np4_omp2_bz64_2s"
+
+
+def test_point_parse_keyed_quadruplet():
+    p = Point.parse("np=4,omp=2,bs=64,diag=ELPA-2STAGE")
+    assert p.diag == DIAG_2STAGE
 
 
 def test_point_parse_rejects_bad_arity():
@@ -34,15 +47,21 @@ def test_point_parse_rejects_bad_arity():
 
 
 def test_default_points_match_design():
-    """Pin the 5-point default sweep we agreed to."""
-    triplets = [(p.np, p.omp, p.bs) for p in DEFAULT_POINTS]
-    assert triplets == [
+    """Pin the 10-point default sweep (5 base shapes × ELPA-1STAGE / 2STAGE)."""
+    quads = [(p.np, p.omp, p.bs, p.diag) for p in DEFAULT_POINTS]
+    base_shapes = [
         (4, 2,  32),
         (4, 2,  64),
         (4, 2, 128),
         (2, 5,  64),
         (10, 1, 64),
     ]
+    expected = [
+        (np, omp, bs, diag)
+        for (np, omp, bs) in base_shapes
+        for diag in (DIAG_1STAGE, DIAG_2STAGE)
+    ]
+    assert quads == expected
 
 
 # --------------------------------------------------------------------- #
@@ -145,6 +164,7 @@ _SAMPLE_OUT = """\
 some pre-banner text
 * ProcessorY, Blocksize:    2  64
 molbuilder: chosen 4 ranks × 2 threads = 8 of 19 budget cores
+diag: Algorithm                                = ELPA-2stage
 some setup
    scf:    1  -100.0  -101.0  -101.0  1.0 -5.0 100.0
 timer: Routine,Calls,Time,% = IterSCF        1      45.225  37.28
@@ -162,6 +182,7 @@ def test_parse_point_out_extracts_effective_values(tmp_path):
     assert parsed["effective_np"] == 4
     assert parsed["effective_omp"] == 2
     assert parsed["effective_bs"] == 64
+    assert parsed["effective_diag"] == "ELPA-2stage"
 
 
 def test_parse_point_out_missing_file_returns_zero(tmp_path):

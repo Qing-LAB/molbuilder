@@ -1538,12 +1538,14 @@ def render_run_wrapper(script_path: Path, *,
                 #     bind each rank to its PE cores (one cpuset
                 #     per rank covering all its cores; OS scheduler
                 #     places OMP threads on those cores).
-                #   --rank-by core
-                #     stable rank ordering (rank 0 -> first core in
-                #     map, ...) so a future fix to identify "the
-                #     master rank" works deterministically.
+                #
+                # NB: NO ``--rank-by core``.  OpenMPI 4.x rejects it
+                # ("Valid directives: slot:node:fill:span"); rank
+                # ordering defaults to map order which is already
+                # deterministic for our use.  Caught 2026-06-16 by
+                # bench rc=213 on the user's box.
                 '_mpirun_bind="--bind-to core --map-by '
-                'package:PE=$_omp_threads --rank-by core"\n'
+                'package:PE=$_omp_threads"\n'
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )

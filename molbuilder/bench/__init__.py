@@ -30,40 +30,73 @@ from .. import script_contract as _sc
 # --------------------------------------------------------------------- #
 
 
+DIAG_1STAGE = "ELPA-1STAGE"
+DIAG_2STAGE = "ELPA-2STAGE"
+
+
 @dataclass(frozen=True)
 class Point:
-    """One (mpi_np, omp, BlockSize) test point."""
+    """One (mpi_np, omp, BlockSize, Diag.Algorithm) test point."""
     np: int
     omp: int
     bs: int
+    diag: str = DIAG_1STAGE  # default matches typical generator output
 
     @property
     def slug(self) -> str:
-        return f"np{self.np}_omp{self.omp}_bz{self.bs}"
+        # Diag tag: "1s" or "2s" keeps the directory name short.
+        d = "2s" if "2" in self.diag else "1s"
+        return f"np{self.np}_omp{self.omp}_bz{self.bs}_{d}"
 
     @classmethod
     def parse(cls, s: str) -> "Point":
-        """Parse a "4,2,64" or "np=4,omp=2,bs=64" triplet."""
+        """Parse "4,2,64" / "4,2,64,2stage" / "np=4,omp=2,bs=64,diag=ELPA-2STAGE".
+
+        Three-token shape uses the default diag (ELPA-1STAGE).  Four
+        tokens pin diag; the value may be a SIESTA keyword
+        ("ELPA-1STAGE" / "ELPA-2STAGE") or a shorthand "1stage" /
+        "2stage" / "1s" / "2s".
+        """
         parts = [p.strip() for p in s.split(",")]
-        if len(parts) != 3:
-            raise ValueError(f"need 3 comma-separated values, got: {s!r}")
-        vals: List[int] = []
-        for p in parts:
-            tok = p.split("=", 1)[1] if "=" in p else p
-            vals.append(int(tok))
-        return cls(np=vals[0], omp=vals[1], bs=vals[2])
+        if len(parts) not in (3, 4):
+            raise ValueError(
+                f"need 3 or 4 comma-separated values, got: {s!r}"
+            )
+        vals: List[str] = [(p.split("=", 1)[1] if "=" in p else p)
+                           for p in parts]
+        diag = DIAG_1STAGE
+        if len(vals) == 4:
+            v = vals[3].lower()
+            if "2" in v:
+                diag = DIAG_2STAGE
+            elif "1" in v:
+                diag = DIAG_1STAGE
+            else:
+                raise ValueError(
+                    f"bad diag value: {vals[3]!r} "
+                    f"(want 1stage/2stage/ELPA-1STAGE/ELPA-2STAGE)"
+                )
+        return cls(
+            np=int(vals[0]), omp=int(vals[1]), bs=int(vals[2]),
+            diag=diag,
+        )
 
 
-# Five-point default sweep from docs/protocols/script-contract.md
-# discussion: holds variables one at a time to isolate which axis
-# matters.  np * omp <= 10 for every row (fits the GPU-proximate
-# socket on the standard workstation).
+# Default sweep: 5 baseline shapes × 2 ELPA diag variants = 10 points.
+# Holds (np, omp, bs) constant within each diag pair so the comparison
+# isolates 1STAGE vs 2STAGE on the same workload.  np * omp <= 10 for
+# every row (fits the GPU-proximate socket on the standard workstation).
+_BASE_SHAPES: List[Tuple[int, int, int]] = [
+    (4, 2,  32),   # baseline-with-smaller-block
+    (4, 2,  64),   # baseline anchor (ELPA published 4 ranks/GPU)
+    (4, 2, 128),   # baseline-with-bigger-block
+    (2, 5,  64),   # fewer ranks, more OMP (host-bound test)
+    (10, 1, 64),   # max host parallelism (MPS Hyper-Q test)
+]
 DEFAULT_POINTS: List[Point] = [
-    Point(4, 2,  32),   # baseline-with-smaller-block
-    Point(4, 2,  64),   # baseline anchor (ELPA published 4 ranks/GPU)
-    Point(4, 2, 128),   # baseline-with-bigger-block
-    Point(2, 5,  64),   # fewer ranks, more OMP (host-bound test)
-    Point(10, 1, 64),   # max host parallelism (MPS Hyper-Q test)
+    Point(np, omp, bs, diag)
+    for (np, omp, bs) in _BASE_SHAPES
+    for diag in (DIAG_1STAGE, DIAG_2STAGE)
 ]
 
 
@@ -208,6 +241,7 @@ class PointResult:
     effective_np: Optional[int] = None
     effective_omp: Optional[int] = None
     effective_bs: Optional[int] = None
+    effective_diag: Optional[str] = None
     error: Optional[str] = None
 
     @property
@@ -232,6 +266,10 @@ _BLOCKSIZE_RE = re.compile(
 )
 _BANNER_RE    = re.compile(
     r"chosen\s+(\d+)\s+ranks\s*[x××]\s*(\d+)\s+threads"
+)
+# SIESTA echoes "diag: Algorithm   =   ELPA-1stage" (or ELPA-2stage) early.
+_DIAG_RE      = re.compile(
+    r"diag:\s*Algorithm\s*=\s*(\S+)", re.IGNORECASE
 )
 
 
@@ -265,12 +303,17 @@ def parse_point_out(out_path: Path) -> Dict[str, Any]:
             effective_omp = int(m.group(2))
         except ValueError:
             pass
+    effective_diag: Optional[str] = None
+    m = _DIAG_RE.search(text)
+    if m:
+        effective_diag = m.group(1)
     return {
         "iters_done":    iters_done,
         "first_iter_s":  first_iter_s,
         "effective_np":  effective_np,
         "effective_omp": effective_omp,
         "effective_bs":  effective_bs,
+        "effective_diag": effective_diag,
     }
 
 
@@ -309,6 +352,7 @@ def _prepare_point_dir(project_dir: Path, basename: str,
     point_dir.mkdir(parents=True)
     # Write modified .fdf
     modified = override_field_value(fdf_text, "BlockSize", str(point.bs))
+    modified = override_field_value(modified, "Diag.Algorithm", point.diag)
     modified = force_max_scf_iters(modified, iters)
     modified = disable_md(modified)
     (point_dir / f"{basename}.fdf").write_text(modified, encoding="utf-8")
@@ -375,14 +419,15 @@ def run_point(point_dir: Path, basename: str, point: Point,
     out_path = point_dir / f"{basename}-run0.out"
     parsed = parse_point_out(out_path)
     return PointResult(
-        point        = point,
-        walltime_s   = walltime,
-        iters_done   = int(parsed.get("iters_done", 0)),
-        first_iter_s = parsed.get("first_iter_s"),
-        effective_np = parsed.get("effective_np"),
-        effective_omp= parsed.get("effective_omp"),
-        effective_bs = parsed.get("effective_bs"),
-        error        = None if rc == 0 else f"siesta exit rc={rc}",
+        point         = point,
+        walltime_s    = walltime,
+        iters_done    = int(parsed.get("iters_done", 0)),
+        first_iter_s  = parsed.get("first_iter_s"),
+        effective_np  = parsed.get("effective_np"),
+        effective_omp = parsed.get("effective_omp"),
+        effective_bs  = parsed.get("effective_bs"),
+        effective_diag= parsed.get("effective_diag"),
+        error         = None if rc == 0 else f"siesta exit rc={rc}",
     )
 
 
@@ -393,6 +438,7 @@ def write_results_csv(results: List[PointResult],
     with csv.open("w", encoding="utf-8") as fh:
         fh.write(
             "point,req_np,eff_np,req_omp,eff_omp,req_bs,eff_bs,"
+            "req_diag,eff_diag,"
             "iters,first_iter_s,avg_iter_s,wall_s,error\n"
         )
         for r in results:
@@ -401,6 +447,7 @@ def write_results_csv(results: List[PointResult],
                 f"{r.point.np},{r.effective_np if r.effective_np else ''},"
                 f"{r.point.omp},{r.effective_omp if r.effective_omp else ''},"
                 f"{r.point.bs},{r.effective_bs if r.effective_bs else ''},"
+                f"{r.point.diag},{r.effective_diag or ''},"
                 f"{r.iters_done},"
                 f"{r.first_iter_s if r.first_iter_s else ''},"
                 f"{r.avg_iter_s if r.avg_iter_s else ''},"

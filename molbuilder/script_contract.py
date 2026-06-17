@@ -92,6 +92,11 @@ SIESTA_BENCH_FIELDS: List[BenchField] = [
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
     BenchField("MD.NumCGsteps",    "MD.NumCGsteps",    "int"),
     BenchField("MeshCutoff",       "MeshCutoff",       "float", None, "Ry"),
+    # ELPA solver variant.  ELPA-1STAGE: direct dense.
+    # ELPA-2STAGE: tridiagonalises through a banded form; typically
+    # wins on N>1000 orbital problems and on GPU because the band
+    # step parallelises well.  Bench sweeps both.
+    BenchField("Diag.Algorithm",   "Diag.Algorithm",   "enum"),
 ]
 
 
