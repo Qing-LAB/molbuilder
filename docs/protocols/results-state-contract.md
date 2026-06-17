@@ -231,12 +231,25 @@ field".
 | **user toggles hide-frozen** | keep | keep | mutate | keep | keep |
 
 **Mutation rules.**
-- `fileState`, `lifecycle`, `derived` MUST be mutated only inside
-  `transition()`. The reset matrix is the complete list.
+- `fileState`, `derived` MUST be mutated only inside `transition()`.
+  The reset matrix is the complete list.  Writes to `fileState`
+  always go through `transition('APPLY', payload)` (the sole
+  canonical writer), and resets go through the reset-matrix rows.
+- `lifecycle` MUST be reset only inside `transition()` (controllers
+  aborted, timers stopped, counters cleared per matrix). HOWEVER,
+  per-tick protocol *setup* MAY happen at the fetch site:
+  `loadByPath` creates a new `loadAbort` AFTER `transition('LOADING')`
+  nulled the old one; `pollOnce` creates a `pollAbort` and sets
+  `pollInFlight=true` before its fetch, then clears `pollInFlight`
+  in the `finally`.  These are per-tick fetch-protocol writes, not
+  state-machine transitions -- the contract's intent is to prevent
+  *drift* (the bucketed fields go out of sync with the state machine),
+  not to literally route every controller assignment through
+  `transition()`.
 - `viewState` MAY be mutated directly by event handlers (frame
   scrub, mode pick, atom pick) — these are intra-state events,
   not state transitions. Handlers must NOT mutate
-  `fileState`/`lifecycle`/`derived` as a side effect.
+  `fileState`/`derived` as a side effect.
 - `uiPrefs` MAY be mutated directly by handlers (toggle, slider
   change). Persistence to sessionStorage happens on dispose or
   on visibilitychange; handlers don't need to call it.

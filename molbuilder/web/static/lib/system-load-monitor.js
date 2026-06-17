@@ -330,25 +330,14 @@
         // server work + wasted client bandwidth.  Expanding restarts
         // polling AND triggers an immediate first sample so the
         // sparklines re-populate without a 1 s wait.
-        // results-state-contract.md § 9: the monitor exports its
-        // current height as --monitor-height on :root so scroll
-        // containers can reserve space (scroll-padding-bottom).
-        // CSS defines two named-height tokens; this function picks
-        // which one is active.  See system-load-monitor.css :root.
-        function updateMonitorHeightVar(collapsed) {
-            try {
-                document.documentElement.style.setProperty(
-                    "--monitor-height",
-                    collapsed
-                        ? "var(--monitor-height-collapsed)"
-                        : "var(--monitor-height-expanded)"
-                );
-            } catch (_) { /* ignore; CSS fallback is the collapsed value */ }
-        }
+        // PR 5 (2026-06-17 user-report-2): --monitor-height CSS var
+        // retired -- the monitor moved INSIDE .results-main as a
+        // normal flow element, so scroll containers no longer need
+        // to reserve space.  See system-load-monitor.css for the
+        // in-flow layout.
 
         function applyCollapsed(collapsed) {
             userClosed = !!collapsed;
-            updateMonitorHeightVar(collapsed);
             if (collapsed) {
                 root.classList.add("is-collapsed");
                 toggle.setAttribute("aria-pressed", "true");

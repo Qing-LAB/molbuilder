@@ -49,7 +49,6 @@
 
 {% set active_tab = "results" %}
 {% include "_app_header.html" %}
-{% include "_system_load_monitor.html" %}
 {% include "_projects_sidebar.html" %}
 
 <main class="results-main">
@@ -140,6 +139,15 @@
       </p>
     </div>
   </section>
+
+  {# System-load monitor lives INSIDE the results-main flow so it
+     stays within the Results-tab panel and never overlaps plots /
+     inspector content.  Foldable; collapse stops polling.  Pre-
+     2026-06-17 user-report-2 it was outside <main> with
+     ``position: fixed; bottom: 0`` and overlapped inspector content
+     even with scroll-padding compensation -- the user's "still
+     occupies space" complaint.  PR 5 moves it in-flow. #}
+  {% include "_system_load_monitor.html" %}
 
 </main>
 

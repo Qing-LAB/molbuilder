@@ -1,63 +1,46 @@
-/* System-load monitor -- fixed bottom strip at the page edge.
+/* System-load monitor -- in-flow strip inside the Results-tab panel.
  *
  * Polled + drawn by lib/system-load-monitor.js.  Compact, dark, semi-
  * transparent so it doesn't pull focus from the main content but is
  * always glanceable while a long job runs.
  *
- * Layout invariant (results-state-contract.md § 9):
- *   1. The monitor exports its current height as --monitor-height on
- *      :root.  JS updates it on collapse/expand.
- *   2. Scroll containers (body + .results-main) reserve that height
- *      via scroll-padding-bottom so content can scroll past the
- *      monitor instead of disappearing under it.
- *   3. The strip itself uses pointer-events: none so clicks on plots
- *      beneath the strip pass through; only .system-load-toggle stays
- *      clickable.  Prevents "I can't reach this plot legend" reports.
- *   4. Collapsed BY DEFAULT on first visit (JS-side change).  Users
- *      opt in to the expanded strip.
+ * Layout (PR 5, 2026-06-17 user-report-2):
+ *   1. The monitor mounts INSIDE ``.results-main`` (the page's flow
+ *      container).  It scrolls with content; never overlaps plots /
+ *      inspector cards / file-picker.
+ *   2. Pre-PR-5 it was outside ``<main>`` with ``position: fixed;
+ *      bottom: 0`` + a scroll-padding-bottom compensation on the
+ *      scroll container.  Even with pointer-events: none on the
+ *      strip, the visual overlay still confused users into asking
+ *      "why does this take screen real estate".  The in-flow shape
+ *      eliminates the problem class entirely.
+ *   3. Foldable via the ``≡`` toggle.  Collapsed state stops
+ *      polling (the JS clears the timer + aborts in-flight fetch).
+ *   4. Collapsed BY DEFAULT on first visit (sessionStorage key
+ *      missing => collapsed).  Users opt in to the expanded strip.
  */
 
-:root {
-    /* Default = collapsed height.  JS bumps to --monitor-height-expanded
-     * when the user opens the strip; the default value here matches the
-     * toggle-only height (toggle pill ~20px + 4px padding). */
-    --monitor-height-collapsed: 24px;
-    --monitor-height-expanded:  48px;
-    --monitor-height: var(--monitor-height-collapsed);
-}
-
-/* Scroll-past compensation lives in the per-page stylesheet that
- * owns the scroll container.  The monitor mounts only on /results
- * today (88aba08), so results/style.css:.results-main reserves
- * --monitor-height there.  When the monitor goes global again,
- * add a ``body { scroll-padding-bottom: var(--monitor-height); }``
- * rule to lib/page-shell.css and a matching pin in
- * tests/test_monitor_layout_invariant.py. */
-
 #system-load-monitor {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 90;                              /* above sidebar (z-50 ish),
-                                                 below modals (z-1000+) */
+    /* In-flow inside .results-main.  No ``position: fixed``; the
+     * strip occupies its own row in the page's flex column. */
     display: flex;
     align-items: center;
     gap: var(--space-3, 12px);
     padding: 6px 12px;
     background: var(--surface-elevated, rgba(20, 24, 28, 0.92));
     color: var(--text-primary, #e7e7e7);
-    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 6px;
     font-size: 12px;
     font-family: var(--font-mono, "Menlo", "Consolas", monospace);
     line-height: 1.2;
-    /* Pointer-events: none on the strip so clicks pass through to the
-     * plots beneath.  The toggle re-enables itself below.  Without
-     * this rule the bottom 48px of the viewport intercepted clicks
-     * on Plotly hover-tooltips and the rightmost plot legend
-     * (audit § Layout, 2026-06-17). */
-    pointer-events: none;
+    /* Margin-top: keep the monitor a hair separated from the inspector
+     * card above so it reads as a distinct UI element.  Auto pushes
+     * it to the bottom of the flex column when there's slack space.
+     * margin-top: auto would push it past short content; use a fixed
+     * gap instead so the page lays out predictably regardless of
+     * inspector height. */
+    margin-top: var(--space-md, 16px);
 }
 
 #system-load-monitor[hidden] {
@@ -80,11 +63,6 @@
     font-family: inherit;
     cursor: pointer;
     line-height: 1;
-    /* Re-enable clicks for the toggle even though the parent monitor
-     * has pointer-events: none.  Same pattern for the strip cells
-     * when expanded: cells need to be hover-able for sparkline-
-     * tooltip readouts even if we don't add the tooltip today. */
-    pointer-events: auto;
 }
 
 .system-load-toggle:hover,
@@ -97,12 +75,10 @@
     display: flex;
     gap: var(--space-4, 16px);
     flex: 1;
-    /* Strip is informational; no click handlers today.  Keep clicks
-     * passing through to plot legends beneath -- the primary fix for
-     * the audit § Layout report.  When we eventually add hover
-     * tooltips on sparklines, switch this back to ``auto`` and add
-     * a hover-region affordance that doesn't trap plot clicks. */
-    pointer-events: none;
+    /* In-flow strip: pointer-events default (auto).  Pre-PR-5 the
+     * strip was pointer-events: none so clicks passed through the
+     * fixed overlay to plots beneath; that rule is moot now that
+     * the monitor lives inside the page flow. */
 }
 
 .system-load-cell {

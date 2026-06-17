@@ -36,14 +36,12 @@
      * their natural flow. */
     max-width: 1200px;
     margin: 0 auto;
-    /* padding-bottom: reserve the system-load-monitor's actual
-     * height (defined as --monitor-height on :root by
-     * lib/system-load-monitor.css) so the last plot row isn't
-     * hidden under the fixed-position strip.  scroll-padding-bottom
-     * does the same job for keyboard / scrollIntoView navigation.
-     * See docs/protocols/results-state-contract.md § 9. */
-    padding: var(--space-lg) var(--space-md) var(--monitor-height);
-    scroll-padding-bottom: var(--monitor-height);
+    /* PR 5 (2026-06-17 user-report-2): the system-load monitor moved
+     * INSIDE this flow container (see results.html), so the previous
+     * scroll-padding-bottom + padding-bottom: var(--monitor-height)
+     * compensations are no longer needed.  The monitor takes its own
+     * height naturally, never overlaps content. */
+    padding: var(--space-lg) var(--space-md);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
