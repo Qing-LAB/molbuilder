@@ -642,57 +642,74 @@ tests for the actual reset-on-Refresh fix live in the existing
   the `step_initial_etot` fallback gets explicit `None` handling.
   Not a contract-design question.
 
-### Known gaps in PR 2 / PR 2.1 (deferred to future commits)
+### Trajectory implementation status (after PR 2.3)
 
 PR 2 shipped the state-machine backbone + reset matrix + file-
-identity guard + in-progress filter.  PR 2.1 (audit follow-up)
-added the LOADED/WATCHING/ERROR branches, the 2-tick buffer, and
-fixed per-load Refresh listener pile-up.  The following contract
-clauses are NOT yet enforced in the trajectory implementation;
-spectra's PR 3 will inherit the same shape, so worth resolving
-before then:
+identity guard + in-progress filter.  PR 2.1 added the LOADED/
+WATCHING/ERROR branches + 2-tick buffer + per-mount Refresh
+listener.  PR 2.2 fixed the buffer counter-reset position bug.
+PR 2.3 closed the architectural-violation gap:
 
-1. **`fileState` writes outside `transition()`.** Contract § 2
-   forbids direct mutation of `fileState` "outside a → LOADING
-   → LOADED/WATCHING arc".  `applyNewData` still patches
-   `state.mtime` / `state.data` / `state.format` / `state.label`
-   / `state.path` via the backward-compat aliases (sequential
-   writes; not atomic replacement).  User-visible impact: zero
-   (the sequence is synchronous and no render fires between).
-   Architectural impact: transition() isn't the SOLE writer.
-   Fix shape: route applyNewData through a new
-   `transition('APPLY_DATA', {payload})` branch that does the
-   atomic fileState replacement.
+**Closed:**
 
-2. **`uiPrefs` sessionStorage wiring.** The `state.uiPrefs`
-   bucket is an empty `{}` today.  The decided sessionStorage
-   key `molbuilder.results.uiPrefs.v1` is not wired anywhere.
-   The actual UI pref this inspector exposes (`hideFrozen`)
-   lives in `mol-viewer-embed.js`'s own sessionStorage with a
-   different key.  Until the embed's prefs migrate into the
-   contract's `uiPrefs` bucket, the persistence row is a no-op.
+1. **`fileState` writes outside `transition()`** — CLOSED in PR
+   2.3 via the `transition('APPLY', {mtime, data, format?,
+   label?, path?})` branch.  `applyNewData` no longer writes
+   fileState fields directly; both its noNewContent branch and
+   its full-rebuild branch route through transition().
+   transition() is now the SINGLE entry-point for fileState
+   writes, matching contract § 2.
 
-3. **Render-with-snapshot (Invariant 3).** The `snap()` helper
-   is defined but render functions still close over `state`
-   directly.  PR 2 acknowledged this; PR 2.1 doesn't close it.
+2. **`snap()` helper** — CLOSED in PR 2.3 by deletion.  The
+   helper went unused (render functions close over `state`
+   directly).  Keeping the dead code made the contract
+   "aspirational in code, claimed in tests"; deleting it makes
+   the implementation honest.  If Invariant 3 becomes load-
+   bearing later (e.g. when async renders land), bring the
+   snapshot pattern back per § 4 Invariant 3.
 
-4. **Frame-canonical source (Invariant 2 follow-on).** Plot
-   trace builders still use parallel arrays
+3. **PyScf `in_progress`** — NOT A BUG (clarified PR 2.3).
+   PyScf's parser skips torn frames at EOF (parsers/pyscf.py
+   line 201-204) rather than tagging them as in_progress.  The
+   wire format's `in_progress: []` collapsed-empty array is
+   correct for PyScf; the JS plottableFrames filter is a no-op
+   for PyScf which is also correct (no partial frames to
+   filter).  The SIESTA-specific behavior of EOF-flushing a
+   synthetic in-progress frame with the preamble Etot is the
+   only case the contract's Invariant 2 was written for.
+
+**Still deferred (documented; not load-bearing today):**
+
+4. **Render-with-snapshot (Invariant 3).** Render functions
+   read `state` directly.  applyNewData runs synchronously and
+   calls render before yielding to the event loop, so there
+   is no observable "stale-during-tick" race today.  When
+   render becomes async (e.g. WebGPU adoption, Web Workers),
+   the snapshot pattern is the right protection -- bring back
+   the `snap()` helper and convert render targets per § 4
+   Invariant 3 at that point.
+
+5. **Frame-canonical source.** Plots use parallel arrays
    (`_plottableIdx.map(i => energies_raw[i])`) rather than
-   per-frame `frame.energy` reads.  The wire format would need
-   to emit nested frame objects with inline energy/max_force
-   for this to land cleanly.  PR 4 territory.
+   per-frame `frame.energy`.  The wire format would need to
+   emit nested frame objects with inline energy/max_force.
+   PR 4 covers the server-side schema change.
 
-5. **PyScf `in_progress` parser side.** Server's
-   `parsers/__init__.py` reads `getattr(f, "in_progress",
-   False)` so PyScf frames silently report `False`.  PyScf
-   parser doesn't currently tag partial frames; the bug it
-   would catch is parser-specific.  PR 4 covers the parser-side
-   completion.
+6. **`uiPrefs` sessionStorage wiring.** Trajectory has no
+   trajectory-specific uiPrefs today (hide-frozen lives in
+   mol-viewer-embed's own sessionStorage with key
+   `mol.viewer.hideFrozen`; playback speed/loop live in the
+   embed).  The `uiPrefs: {}` bucket is preserved present-but-
+   empty so the five-bucket contract shape holds; the
+   sessionStorage key is reserved (`molbuilder.results.
+   trajectory.uiPrefs.v1`) for when a trajectory-only pref
+   appears.  Spectra's PR 3 mapping populates spectra's
+   uiPrefs from day one.
 
-These gaps are tracked in the PR 2 + PR 2.1 commit messages and
-re-listed here so a future contributor reading just this doc
-knows the current state of enforcement.
+This list IS the current state; a future contributor reading
+just this doc should treat anything above CLOSED as enforced
+and anything in "Still deferred" as known-aspirational with
+the rationale.
 
 ### Extending the contract to a new inspector
 

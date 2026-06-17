@@ -106,19 +106,33 @@ class TestTrajectoryNoNewContentGuard:
     def test_applyNewData_early_returns_on_noNewContent(self, core_body):
         """If noNewContent is true the function MUST bail before
         ``rebuildModel`` runs.  Pin the structural shape
-        ``if (noNewContent) { ... return; }``."""
-        # Locate the guard body and confirm a ``return`` statement
-        # lives inside the same braced block (not somewhere later in
-        # the function where the rebuild would already have fired).
+        ``if (noNewContent) { ... return; }``.
+
+        Updated 2026-06-17 (PR 2.3): the noNewContent body now
+        contains nested ``{...}`` (e.g. ``transition('APPLY',
+        {mtime, data})``).  The naive [^}]*? regex stopped at the
+        first ``}`` and broke.  Use a brace-balancing approach:
+        find the opening brace, then walk to the matching close."""
         m = re.search(
-            r"if\s*\(\s*noNewContent\s*\)\s*\{([^}]*?)\}",
-            core_body, re.DOTALL,
+            r"if\s*\(\s*noNewContent\s*\)\s*\{", core_body,
         )
         assert m is not None, (
             "trajectory/core.js no longer has an `if (noNewContent)` "
             "block; the same-content live-watch guard has been "
             "removed and the camera-reset bug will return.")
-        body = m.group(1)
+        # Walk from the position right after the opening brace,
+        # counting depth until we find the matching close.
+        start = m.end()
+        depth = 1
+        i = start
+        while i < len(core_body) and depth > 0:
+            if core_body[i] == "{":
+                depth += 1
+            elif core_body[i] == "}":
+                depth -= 1
+            i += 1
+        assert depth == 0, "noNewContent body has unbalanced braces"
+        body = core_body[start:i - 1]
         assert "return" in body, (
             "trajectory/core.js's `if (noNewContent)` block no "
             "longer early-returns — the function falls through to "

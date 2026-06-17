@@ -350,6 +350,81 @@ class TestSettlePostLoad:
             "A Refresh during a finished+settling state would "
             "inherit the counter from the prior run.")
 
+    def test_apply_branch_exists(self, core_body):
+        """PR 2.3 closes deferred Gap #1.  transition('APPLY', payload)
+        is the SINGLE canonical fileState writer; applyNewData routes
+        through it instead of patching state.mtime / state.data
+        directly via the backward-compat aliases."""
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']APPLY[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, (
+            "trajectory/core.js transition() has no APPLY branch. "
+            "applyNewData would be back to writing fileState fields "
+            "directly via aliases -- contract § 2 'transition() is "
+            "the SOLE entry-point' is violated.")
+        body = m.group(1)
+        for field in ("mtime", "data", "format", "label", "path"):
+            assert f"state.fileState.{field}" in body, (
+                f"transition('APPLY') no longer writes "
+                f"state.fileState.{field}.  The atomic-replacement "
+                f"semantics is broken.")
+
+    def test_applyNewData_routes_writes_through_transition(self, core_body):
+        """applyNewData's two write blocks (noNewContent + full
+        rebuild) MUST both go through transition('APPLY').  Direct
+        ``state.mtime = ...`` / ``state.data = ...`` writes are
+        forbidden -- the alias bridge would route them to fileState
+        but bypass the single-entry-point contract."""
+        m = re.search(
+            r"function\s+applyNewData\s*\(\s*r\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "applyNewData function not found"
+        body = m.group(1)
+        # No direct legacy-alias writes of fileState fields.
+        forbidden = [
+            r"\bstate\.mtime\s*=",
+            r"\bstate\.data\s*=",
+            r"\bstate\.format\s*=",
+            r"\bstate\.label\s*=",
+            r"\bstate\.path\s*=",
+        ]
+        for pat in forbidden:
+            assert not re.search(pat, body), (
+                f"applyNewData still has a direct fileState write "
+                f"matching ``{pat}``.  PR 2.3 routed these through "
+                f"transition('APPLY', ...); the regression brings "
+                f"back the contract § 2 'sole-writer' violation.")
+        # AT LEAST two transition('APPLY', ...) call sites in the
+        # function body (one per write block).
+        apply_calls = re.findall(
+            r"transition\s*\(\s*[\"']APPLY[\"']", body
+        )
+        assert len(apply_calls) >= 2, (
+            f"applyNewData has {len(apply_calls)} transition('APPLY') "
+            f"call(s).  Expected >= 2 (noNewContent path + full-"
+            f"rebuild path).  Either a write block was removed or a "
+            f"direct write was reintroduced.")
+
+    def test_snap_helper_deleted(self, core_body):
+        """PR 2.3 deletes the dead ``snap()`` helper.  It was defined
+        for contract § 4 Invariant 3 but went unused -- render
+        functions still close over state directly.  Keeping the
+        dead code made the contract aspirational; deleting it makes
+        the implementation honest.  If Invariant 3 lands later,
+        re-introduce per the contract."""
+        assert not re.search(
+            r"function\s+snap\s*\(\s*\)\s*\{",
+            core_body,
+        ), ("trajectory/core.js still defines a snap() helper.  "
+            "PR 2.3 deleted it because it was unused dead code.  "
+            "Either it's being USED now (good; remove this pin and "
+            "add tests for Invariant 3 conversion) or it's a "
+            "regression that brings back the contract-mismatch.")
+
     def test_finishedTicks_reset_in_settle_ongoing_branch(self, core_body):
         """The ongoing branch of _settlePostLoad MUST reset
         finishedTicks -- an ongoing tick breaks any consecutive

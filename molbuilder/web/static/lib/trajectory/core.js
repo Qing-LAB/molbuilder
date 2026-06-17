@@ -197,10 +197,19 @@
             firstFit:     true,
         },
 
-        // uiPrefs: today the only persistent UI pref this inspector
-        // owns is hide-frozen (sessionStorage in mol-viewer-embed).
-        // Reserved for future per-session knobs (playback speed,
-        // loop, plot tab selection, etc.).
+        // uiPrefs: contract § 3 reserves this bucket for per-session
+        // knobs (sessionStorage-persisted, survives file-switch).
+        // Trajectory has NO fields here today: hide-frozen is owned
+        // by mol-viewer-embed's own sessionStorage with its own key
+        // (mol.viewer.hideFrozen), playback speed/loop live in the
+        // embed.  When/if a trajectory-only pref appears (e.g. a
+        // plot tab selection that isn't a viewer concern), populate
+        // this bucket and wire the sessionStorage roundtrip
+        // (key: molbuilder.results.trajectory.uiPrefs.v1).  Keeping
+        // the bucket present-but-empty matches the five-bucket
+        // contract shape so tests can pin it; the alternative
+        // (omit the bucket) would force inspector-specific test
+        // matrices.
         uiPrefs: {},
 
         lifecycle: {
@@ -400,6 +409,37 @@
             state.machine = "ERROR";
             return;
         }
+        if (target === "APPLY") {
+            // PR 2.3: close deferred gap #1.  applyNewData no longer
+            // writes fileState fields directly via the backward-
+            // compat aliases; it routes here.  Single canonical
+            // writer for fileState matches the contract § 2
+            // forbidden list ("Direct mutation of fileState outside
+            // a → LOADING → LOADED/WATCHING arc").
+            //
+            // Two callers (both in applyNewData):
+            //   1. noNewContent branch -- payload carries only
+            //      {mtime, data} (format/label/path stay because the
+            //      file identity didn't change).  Contract § 3 matrix
+            //      row "watch tick (new SCF iter same step)" /
+            //      "watch tick (new frame)" → "replace .data".
+            //   2. full-rebuild branch -- payload carries all five
+            //      fields.  This is the LOADING → LOADED/WATCHING
+            //      arc.
+            //
+            // Either way the writes happen atomically inside this
+            // single function; render code observes either the
+            // pre-update or the post-update view but never a
+            // half-updated state.  Machine field is set by
+            // _settlePostLoad after the APPLY (it inspects the new
+            // data.run_state).
+            if (payload.mtime  !== undefined) state.fileState.mtime  = payload.mtime;
+            if (payload.data   !== undefined) state.fileState.data   = payload.data;
+            if (payload.format !== undefined) state.fileState.format = payload.format;
+            if (payload.label  !== undefined) state.fileState.label  = payload.label;
+            if (payload.path   !== undefined) state.fileState.path   = payload.path;
+            return;
+        }
         // Unknown target: silent no-op.  Future targets (the
         // contract reserves room for sub-states) land here.
     }
@@ -441,22 +481,18 @@
         transition("WATCHING");
     }
 
-    // Snapshot helper -- returns a shallow {fileState, viewState,
-    // uiPrefs} for render functions per contract § 4 Invariant 3.
-    // fileState is REPLACED (not patched) on every applyNewData, so
-    // a shallow reference is safe -- the snapshot's view of
-    // fileState stays consistent for the call's duration even if a
-    // poll resolves mid-render.  Not yet used by every render
-    // function (snapshot signature conversion deferred to a
-    // follow-up); transition() and the in-progress filter are the
-    // load-bearing PR 2 invariants.
-    function snap() {                                                 // eslint-disable-line no-unused-vars
-        return {
-            fileState: state.fileState,
-            viewState: state.viewState,
-            uiPrefs:   state.uiPrefs,
-        };
-    }
+    // (Contract § 4 Invariant 3 "render-with-snapshot" is NOT
+    // enforced today.  In practice the render functions close over
+    // ``state`` directly; applyNewData runs synchronously and calls
+    // render functions before yielding to the event loop, so there
+    // is no observable "stale-during-tick" race.  A snap() helper
+    // existed in PR 2 but went unused and was deleted in PR 2.3 to
+    // match implementation -- pulling the dead code prevents the
+    // contract from being "aspirational in code, claimed in tests".
+    // If Invariant 3 becomes load-bearing later, the snapshot
+    // pattern lives at:
+    //   docs/protocols/results-state-contract.md § 4 Invariant 3
+    // -- bring it back when the conversion is committed.)
 
     // Per-frame in-progress filter (contract § 4 Invariant 2).
     // The parser tags partial frames with in_progress=true
@@ -2676,13 +2712,16 @@
             // energy / dDmax / residual plots frozen until a new CG
             // frame landed.  ``_scfFingerprint`` adds the missing
             // axis: per-step iter count + last cycle's energy.
-            state.mtime = r.mtime;
             const runStateChanged =
                 oldData.run_state !== r.data.run_state
              || oldData.error_message !== r.data.error_message;
             const scfChanged =
                 _scfFingerprint(oldData) !== _scfFingerprint(r.data);
-            state.data = r.data;
+            // Contract § 2: route fileState writes through
+            // transition() so this function is no longer a fileState
+            // writer in disguise.  noNewContent only updates the two
+            // fields that can change on a same-content tick.
+            transition("APPLY", { mtime: r.mtime, data: r.data });
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
             if (runStateChanged || scfChanged) makePlots();
@@ -2691,16 +2730,23 @@
 
         const wasAtEnd = !oldData || state.currentFrame >= oldLen - 1;
 
-        state.mtime  = r.mtime;
-        state.data   = r.data;
-        state.format = r.format || (r.data && r.data.source_format) || "?";
-        state.label  = r.label  || state.format;
-        // 2026-06-12: remember the source path so the Export-CSV
-        // button can record it in the file's ``# source =`` header.
+        // Contract § 2: full-rebuild path -- route the atomic
+        // fileState replacement through transition('APPLY') so
+        // transition() is the SINGLE entry-point for fileState
+        // writes (closes deferred Gap #1).
+        //
         // ``r.path`` is the server-resolved absolute path (the input
         // may have been a directory; r.path is the file actually
         // loaded — same value the live-poll URL uses).
-        if (r.path !== undefined) state.path = r.path;
+        const resolvedFormat = r.format
+            || (r.data && r.data.source_format) || "?";
+        transition("APPLY", {
+            mtime:  r.mtime,
+            data:   r.data,
+            format: resolvedFormat,
+            label:  r.label || resolvedFormat,
+            path:   r.path,  // undefined → keep existing per APPLY shape
+        });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
 
