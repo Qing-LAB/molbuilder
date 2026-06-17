@@ -121,7 +121,11 @@ def cmd_siesta_gpu(project_dir: str,
         point_dir = _prepare_point_dir(
             proj, basename, fdf_text, runsh_text, point, iters, cold,
         )
-        result = run_point(point_dir, basename, point, quiet=not verbose)
+        result = run_point(
+            point_dir, basename, point,
+            siesta_gpu_env=siesta_gpu_env,
+            quiet=not verbose,
+        )
         results.append(result)
         click.echo(
             f"     iters={result.iters_done} "

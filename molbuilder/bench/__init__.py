@@ -333,16 +333,32 @@ def _prepare_point_dir(project_dir: Path, basename: str,
 
 
 def run_point(point_dir: Path, basename: str, point: Point,
+              siesta_gpu_env: str,
               quiet: bool = True) -> PointResult:
     """Execute one test point.  Times the wall, parses the .out
-    afterwards, returns a PointResult."""
+    afterwards, returns a PointResult.
+
+    Wrapper is invoked via ``conda run -n <siesta_gpu_env>`` so the
+    target conda env is already active when the wrapper's internal
+    ``conda activate`` fires.  This sidesteps a real bug seen
+    2026-06-16: conda's cuda-nvcc activate hook references an unset
+    ``NVCC_PREPEND_FLAGS`` and dies under the wrapper's ``set -u``
+    when activated for the first time -- never a problem when the
+    user's interactive shell already has the env active (the
+    internal activate is then a no-op for the hook).
+    """
     env = os.environ.copy()
     env["MOLBUILDER_MPI_NP"]         = str(point.np)
     env["MOLBUILDER_OMP_NUM_THREADS"] = str(point.omp)
     start = int(time.time())
     try:
         cp = subprocess.run(
-            ["bash", f"{basename}.run.sh", "--force"],
+            [
+                "conda", "run",
+                "-n", siesta_gpu_env,
+                "--no-capture-output",
+                "bash", f"{basename}.run.sh", "--force",
+            ],
             cwd=str(point_dir),
             env=env,
             stdout=subprocess.DEVNULL if quiet else None,
