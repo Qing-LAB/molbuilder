@@ -10,10 +10,10 @@
  *   * Card-shape: bordered + rounded + standard inspector-card padding.
  *     Reads as a distinct UI element in the page's flex column rather
  *     than the floating overlay it used to be.
- *   * Header row: title ("Server load") on the left, ``≡`` toggle on
- *     the right.  Always visible -- when collapsed, just the header
- *     remains so the user can re-open without hunting for a hidden
- *     button.
+ *   * Header row: just the ``≡`` toggle, pushed to the right.
+ *     Always visible -- when collapsed, the header remains so the
+ *     toggle stays reachable.  No title text: the per-cell labels
+ *     (CPU / RAM / GPU / ...) self-document the widget.
  *   * Cells wrap on narrow viewports via ``flex-wrap`` so a 1200 px
  *     results-main doesn't overflow when GPU + VRAM + GPU-BW are all
  *     present (5 cells × ~200 px ~= 1000 px, fits; on phones the
@@ -60,20 +60,13 @@
     padding-block: 6px;
 }
 
-/* Header row: title + toggle.  Always visible. */
+/* Header row: just the toggle, pushed to the right.  Always
+ * visible (collapsed state keeps the header row alive so the toggle
+ * stays reachable). */
 .system-load-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm, 8px);
-}
-
-.system-load-title {
-    color: var(--text-secondary, #a4a4a4);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    font-size: 11px;
+    justify-content: flex-end;
 }
 
 .system-load-toggle {

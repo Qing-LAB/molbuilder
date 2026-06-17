@@ -17,12 +17,10 @@
     tabs. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/system-load-monitor.css') }}">
 <aside id="system-load-monitor" aria-label="Server load monitor">
-  {# PR 5.1: header row with title + toggle.  Title makes the
-     in-flow card legible ("this is the server-load widget, not a
-     random row of numbers") and the toggle sits on the right where
-     it's reachable when the strip is collapsed. #}
+  {# PR 5.1b: header row contains just the toggle (no title).
+     Metric labels self-document.  The header stays visible when
+     the strip is collapsed so the toggle remains reachable. #}
   <div class="system-load-header">
-    <span class="system-load-title">Server load</span>
     <button class="system-load-toggle" type="button"
             aria-pressed="false" title="Hide server load">≡</button>
   </div>
