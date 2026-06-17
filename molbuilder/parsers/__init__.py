@@ -241,6 +241,15 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     out_iterations: List[int] = []
     out_scf:        List[List[Dict[str, Any]]] = []
     out_wall_times: List[Any] = []
+    # Per-frame "this frame is still being written" flag.  Set True
+    # on the synthetic EOF-flush frame the SIESTA parser appends
+    # when the file ends mid-step (siesta.py:1543) so the JS
+    # results-state-contract.md § 4 Invariant 2 filter can omit it
+    # from plots.  The frame still ships -- the inspector still
+    # shows it with a "computing..." badge in the inspect list --
+    # but its energy/forces aren't real numbers yet and don't
+    # belong in the energy/force plot.
+    out_in_progress: List[bool] = []
 
     for f in traj.frames:
         atom_rows: List[List[Any]] = []
@@ -259,6 +268,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         out_iterations.append(f.step_index)
         out_scf.append(f.scf_history if f.scf_history is not None else [])
         out_wall_times.append(f.wall_time)
+        out_in_progress.append(bool(getattr(f, "in_progress", False)))
 
     # Legacy shape quirk: when no parser tracks SCF data for ANY
     # frame (PySCF .log absent, SIESTA had no `scf:` lines), the
@@ -311,6 +321,14 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     out_frames = _nan_to_none(out_frames)
     lattice_out = _nan_to_none(lattice_out)
 
+    # When NO frame is in-progress (the typical case for a finished
+    # run), collapse to a top-level empty list -- same shape pattern
+    # as max_forces_constrained.  The JS filter falls back to "all
+    # frames plottable" when this is [] (vs. expecting per-frame
+    # bools).
+    if not any(out_in_progress):
+        out_in_progress = []
+
     return {
         "frames":        out_frames,
         "lattice":       lattice_out,
@@ -321,6 +339,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         "forces":        out_forces,
         "scf_history":   out_scf,
         "wall_times":    out_wall_times,
+        "in_progress":   out_in_progress,
         "source_format": traj.source_format,
         # Run-state markers from end-of-run detection.  See
         # Trajectory.run_state docstring.

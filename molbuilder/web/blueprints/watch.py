@@ -554,7 +554,13 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         "frames": [], "energies": [], "max_forces": [],
         "forces": [], "scf_history": [], "wall_times": [],
         "iterations": [], "step_indices": [], "stages": [],
+        # in_progress: per-frame bool array used by the JS
+        # plottableFrames filter (results-state-contract.md § 4
+        # Invariant 2).  Stays [] when no stage carries an
+        # in-progress frame (the typical case for completed runs).
+        "in_progress": [],
     }
+    any_in_progress = False
     stages: List[Dict[str, Any]] = []
     any_scf = False
     last_traj_legacy: Optional[Dict[str, Any]] = None
@@ -597,6 +603,18 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         merged["max_forces"].extend(legacy["max_forces"])
         merged["forces"].extend(legacy["forces"])
         merged["wall_times"].extend(legacy["wall_times"])
+        # Propagate per-frame in_progress flags.  The adapter
+        # collapses to [] when no frame is in-progress, so we
+        # expand back to per-frame bools here for the merge, then
+        # collapse again at the bottom if no stage contributed any.
+        stage_in_prog = legacy.get("in_progress") or []
+        if stage_in_prog:
+            any_in_progress = True
+            merged["in_progress"].extend(stage_in_prog)
+        else:
+            # Stage carried no in_progress flags; pad with False so
+            # the array stays aligned 1:1 with merged["frames"].
+            merged["in_progress"].extend([False] * len(legacy["frames"]))
         # Preserve the per-stage step indices alongside the global
         # iteration renumbering below.  Save-frame-as-XYZ uses these
         # to label the file with the source-log step number rather
@@ -644,6 +662,10 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     # use cases that need the original log-local numbering.
     merged["iterations"] = list(range(len(merged["frames"])))
     merged["stages"] = stages
+    # Collapse in_progress back to top-level [] when no stage
+    # contributed any -- matches the single-stage adapter contract.
+    if not any_in_progress:
+        merged["in_progress"] = []
     return merged, stages
 
 

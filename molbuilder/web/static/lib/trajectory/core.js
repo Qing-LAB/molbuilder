@@ -153,53 +153,247 @@
     /*  State                                                              */
     /* ------------------------------------------------------------------ */
 
+    // Bucketed state shape per docs/protocols/results-state-contract.md.
+    // The contract partitions inspector state into five disjoint
+    // buckets with explicit reset semantics:
+    //
+    //   fileState  -- replaced atomically each LOADING -> LOADED
+    //                 (path, mtime, format, label, parsed data)
+    //   viewState  -- per-file user interaction (currentFrame, firstFit, picks)
+    //   uiPrefs    -- per-session knobs (hideFrozen etc.)
+    //   lifecycle  -- controllers + timers (poll timer, abort controllers, fetchSeq)
+    //   derived    -- recomputed from fileState (scfPollHistory)
+    //
+    // Backward-compat aliases at the end of this block keep the
+    // existing ~3000 lines of render code working with the legacy
+    // flat ``state.X`` shape while new code reads/writes through
+    // the bucketed canonical home.  The legacy aliases are simple
+    // getter/setter properties -- no behavior change for callers,
+    // only the canonical storage moved.
+    //
+    // The state machine field is the contract's enforcement point:
+    // bucket mutations OUTSIDE transition() are forbidden for
+    // fileState / lifecycle / derived (matrix § 3); viewState and
+    // uiPrefs CAN be mutated by event handlers (frame scrub,
+    // hide-frozen toggle, etc.).
     const state = {
-        mtime: null,
-        data: null,            // {frames, lattice, iterations, energies, max_forces, max_forces_constrained, forces}
-        currentFrame: 0,
-        pollTimer: null,
-        // SCF wall-time progression tracker.  Each entry:
-        //   { ts: Date.now() ms, totalIters: int }
-        // We measure WALL CLOCK between consecutive polls and divide
-        // by the SCF-iter delta to get a true per-iter wall-time
-        // estimate that DOES include the brief CPU work between iters
-        // (DM mixing, mesh setup) -- exactly what the user cares about
-        // when judging "is this run going to finish today?".  See the
-        // SCF chart status-line builder for the display logic that
-        // prefers this measurement over the iter1=X baseline once a
-        // few polls have accumulated.
-        scfPollHistory: [],
-        // playTimer removed by #246 A1: the embed owns playback now;
-        // the parallel setInterval was racing with the embed loop.
-        firstFit: true,        // call handle.refit() once after first load
-        // #234 / #236 follow-up: cellShapes / forceShapes / indexLabels
-        // / pickShapes arrays gone -- cell wireframe, atom-index
-        // labels, force arrows, and pick halos are all owned by the
-        // embed now (setCell / setLabels / arrowsPerFrame / pick.halo
-        // + setPickedIndices).
-        // Inspect-tab pick state lives in the embed (D3 contract);
-        // trajectory reads via _handle.getPickedIndices() so there
-        // is only one source of truth.  The pickedAtoms mirror was
-        // dropped in #246 B3.
-        // AbortControllers for in-flight HTTP requests.  Separate
-        // load + poll so a new file load supersedes the previous
-        // load but doesn't kill the poll cadence, and a poll never
-        // cancels a load.  dispose() aborts both.  Without these,
-        // rapid file-switching on /results can race responses (late
-        // poll arrives after load, late load arrives after dispose,
-        // etc.) -- typically harmless because the receiver checks
-        // ``state.viewer`` before mutating it, but cleanly aborting
-        // is cheaper than checking and matches the adapter-level
-        // AbortController pattern in lib/inspectors/trajectory.js.
-        loadAbort:  null,
-        pollAbort:  null,
-        // 2026-06-14 tick-overlap guard.  ``true`` while a poll
-        // fetch is on the wire; the next tick (POLL_MS later)
-        // checks this flag and SKIPS instead of aborting + re-
-        // firing.  Cleared in ``pollOnce``'s ``finally`` so
-        // settle-then-tick is always allowed.
-        pollInFlight: false,
+        // Per contract § 2: IDLE / LOADING / LOADED / WATCHING / ERROR.
+        machine: "IDLE",
+
+        fileState: {
+            path:   null,
+            mtime:  null,
+            format: null,
+            label:  null,
+            // data shape: {frames, lattice, iterations, energies,
+            //   max_forces, max_forces_constrained, forces,
+            //   scf_history, wall_times, in_progress, run_state,
+            //   error_message, runtime_info, parse_warnings, ...}
+            data:   null,
+        },
+
+        viewState: {
+            currentFrame: 0,
+            firstFit:     true,
+        },
+
+        // uiPrefs: today the only persistent UI pref this inspector
+        // owns is hide-frozen (sessionStorage in mol-viewer-embed).
+        // Reserved for future per-session knobs (playback speed,
+        // loop, plot tab selection, etc.).
+        uiPrefs: {},
+
+        lifecycle: {
+            pollTimer:    null,
+            pollInFlight: false,
+            loadAbort:    null,
+            pollAbort:    null,
+            // File-identity guard (contract § 4 Invariant 1).
+            // Every fetch resolution checks (response.path,
+            // current fetchSeq) before applying.  Late responses
+            // from a prior file can never write into the current
+            // file's view.
+            fetchSeq:     0,
+        },
+
+        derived: {
+            // SCF wall-time progression tracker.  Each entry:
+            //   { ts: Date.now() ms, totalIters: int }
+            // The SCF status-line builder consumes this to compute a
+            // rolling per-iter wall-time estimate.  Per contract § 3
+            // reset matrix, derived is cleared on every transition
+            // to LOADING (file-switch / Refresh) -- so the buffer
+            // never carries stale samples from a prior file.
+            scfPollHistory: [],
+        },
     };
+
+    // Backward-compat aliases.  Render code throughout this file
+    // still reads/writes the legacy flat shape (state.mtime,
+    // state.data, state.currentFrame, state.firstFit, ...).  The
+    // aliases route through to the bucketed canonical home so the
+    // entire body of render code keeps working unchanged; the
+    // contract's reset matrix is enforced at transition() and at
+    // the four documented external entry-points (loadByPath,
+    // Refresh, pollOnce result, dispose).
+    //
+    // ESLint warns on ``Object.defineProperty(state, ...)`` from
+    // inside a closure; we squelch by setting properties first then
+    // overwriting with defineProperty.  Same pattern as the
+    // workspace dispatcher's compat shims.
+    (function _wireBackcompatAliases() {
+        function alias(key, bucket) {
+            Object.defineProperty(state, key, {
+                get: function ()    { return state[bucket][key]; },
+                set: function (v)   { state[bucket][key] = v; },
+                enumerable: true,
+                configurable: true,
+            });
+        }
+        alias("path",         "fileState");
+        alias("mtime",        "fileState");
+        alias("format",       "fileState");
+        alias("label",        "fileState");
+        alias("data",         "fileState");
+        alias("currentFrame", "viewState");
+        alias("firstFit",     "viewState");
+        alias("pollTimer",    "lifecycle");
+        alias("pollInFlight", "lifecycle");
+        alias("loadAbort",    "lifecycle");
+        alias("pollAbort",    "lifecycle");
+        alias("scfPollHistory", "derived");
+    })();
+
+    // Transition orchestrator (contract § 2).  ALL state changes
+    // that involve resetting fileState / lifecycle / derived go
+    // through here.  Direct mutation of viewState / uiPrefs from
+    // event handlers is allowed (frame scrub, hide-frozen toggle).
+    //
+    // payload shape:
+    //   target = 'LOADING'                 -> { path: string }
+    //   target = 'LOADED' | 'WATCHING'     -> { data: payload }  (driven by transition itself)
+    //   target = 'ERROR'                   -> { message: string }
+    //   target = 'IDLE'                    -> {} (dispose path)
+    //
+    // Reset matrix (contract § 3) enforced here:
+    //   -> LOADING: empty fileState, reset viewState (currentFrame=0,
+    //               firstFit=true), keep uiPrefs, abort + clear all
+    //               in-flight controllers, clear derived, bump fetchSeq.
+    //   -> IDLE:    clear fileState, viewState, derived; abort + clear
+    //               all controllers; stop poll timer.
+    function transition(target, payload) {
+        payload = payload || {};
+        if (target === "LOADING") {
+            // Abort all in-flight requests.  Their .then() handlers
+            // still fire, but the file-identity guard (Invariant 1)
+            // catches them via the bumped fetchSeq.
+            if (state.lifecycle.loadAbort) {
+                try { state.lifecycle.loadAbort.abort(); } catch (_) {}
+                state.lifecycle.loadAbort = null;
+            }
+            if (state.lifecycle.pollAbort) {
+                try { state.lifecycle.pollAbort.abort(); } catch (_) {}
+                state.lifecycle.pollAbort = null;
+            }
+            state.lifecycle.pollInFlight = false;
+            // Stop the poll timer; LOADED/WATCHING will restart it
+            // if the run is ongoing.
+            if (state.lifecycle.pollTimer) {
+                clearInterval(state.lifecycle.pollTimer);
+                state.lifecycle.pollTimer = null;
+            }
+            // Empty fileState.  The new path is the only thing the
+            // caller cares about; data populates when the fetch
+            // resolves and applyNewData runs under the file-identity
+            // guard.
+            state.fileState.path   = payload.path || null;
+            state.fileState.mtime  = null;
+            state.fileState.format = null;
+            state.fileState.label  = null;
+            state.fileState.data   = null;
+            // Reset viewState per matrix: playhead to 0, refit camera
+            // on next render.
+            state.viewState.currentFrame = 0;
+            state.viewState.firstFit     = true;
+            // Clear derived caches.
+            state.derived.scfPollHistory.length = 0;
+            // Bump fetchSeq AFTER aborts so the new fetch carries a
+            // fresh sequence number that no in-flight response can
+            // match.
+            state.lifecycle.fetchSeq++;
+            state.machine = "LOADING";
+            return;
+        }
+        if (target === "IDLE") {
+            if (state.lifecycle.loadAbort) {
+                try { state.lifecycle.loadAbort.abort(); } catch (_) {}
+                state.lifecycle.loadAbort = null;
+            }
+            if (state.lifecycle.pollAbort) {
+                try { state.lifecycle.pollAbort.abort(); } catch (_) {}
+                state.lifecycle.pollAbort = null;
+            }
+            state.lifecycle.pollInFlight = false;
+            if (state.lifecycle.pollTimer) {
+                clearInterval(state.lifecycle.pollTimer);
+                state.lifecycle.pollTimer = null;
+            }
+            state.fileState.path   = null;
+            state.fileState.mtime  = null;
+            state.fileState.format = null;
+            state.fileState.label  = null;
+            state.fileState.data   = null;
+            state.viewState.currentFrame = 0;
+            state.viewState.firstFit     = true;
+            state.derived.scfPollHistory.length = 0;
+            state.machine = "IDLE";
+            return;
+        }
+        // LOADED / WATCHING / ERROR transitions don't reset state
+        // -- they just set the machine field.  applyNewData
+        // populates fileState atomically before this is called.
+        state.machine = target;
+    }
+
+    // Snapshot helper -- returns a shallow {fileState, viewState,
+    // uiPrefs} for render functions per contract § 4 Invariant 3.
+    // fileState is REPLACED (not patched) on every applyNewData, so
+    // a shallow reference is safe -- the snapshot's view of
+    // fileState stays consistent for the call's duration even if a
+    // poll resolves mid-render.  Not yet used by every render
+    // function (snapshot signature conversion deferred to a
+    // follow-up); transition() and the in-progress filter are the
+    // load-bearing PR 2 invariants.
+    function snap() {                                                 // eslint-disable-line no-unused-vars
+        return {
+            fileState: state.fileState,
+            viewState: state.viewState,
+            uiPrefs:   state.uiPrefs,
+        };
+    }
+
+    // Per-frame in-progress filter (contract § 4 Invariant 2).
+    // The parser tags partial frames with in_progress=true
+    // (parsers/__init__.py emits a per-frame bool array; collapses
+    // to [] when no frame is in-progress).  Plot trace builders
+    // call plottableFrames() to omit partial frames -- the energy
+    // / max_force values for those frames are placeholders (the
+    // siesta parser's step_initial_etot fallback) and don't belong
+    // in the user-facing plot.  The frame still ships and shows
+    // in the inspect list with a "computing..." badge.
+    function plottableFrames(data) {
+        if (!data || !Array.isArray(data.frames)) return [];
+        var inProg = (data.in_progress && data.in_progress.length)
+            ? data.in_progress : null;
+        var out = [];
+        for (var i = 0; i < data.frames.length; i++) {
+            if (inProg && inProg[i]) continue;
+            out.push(i);
+        }
+        return out;
+    }
+    // Expose for tests + future render-function migration.
+    state._plottableFrames = plottableFrames;                          // eslint-disable-line camelcase
 
     // #205 Part A migration: mount via the standard embed so the
     // knob bar (Style / Labels / Axes / Reset / PNG / Background /
@@ -1457,7 +1651,31 @@
 
     function makePlots() {
         if (!state.data) return;
-        const x = state.data.iterations;
+        // Contract § 4 Invariant 2 (in-progress frame filter):
+        // ``data.in_progress[i]`` flags a partial frame whose
+        // energy / max_force values are placeholders (the parser
+        // emits these at EOF when the engine is still writing the
+        // step).  Plot trace builders use ``_plottableIdx`` to
+        // omit those frames from x / y arrays -- avoids the "odd
+        // value disappears on full refresh" bug class.  The frame
+        // still ships and shows in the inspect list with a
+        // "computing..." badge; only the user-facing plot omits
+        // its placeholder y-value.
+        const _plottableIdx = plottableFrames(state.data);
+        // Derive filtered x / energy / max_force / max_force_C
+        // arrays once -- all three plot traces below consume them.
+        const x_raw = state.data.iterations || [];
+        const energies_raw = state.data.energies || [];
+        const max_forces_raw = state.data.max_forces || [];
+        const max_forces_c_raw = state.data.max_forces_constrained || [];
+        const x = _plottableIdx.map(i => x_raw[i]);
+        const energies_plot = _plottableIdx.map(i => energies_raw[i]);
+        const max_forces_plot = _plottableIdx.map(i => max_forces_raw[i]);
+        const has_constrained =
+            Array.isArray(max_forces_c_raw) && max_forces_c_raw.length > 0;
+        const max_forces_c_plot = has_constrained
+            ? _plottableIdx.map(i => max_forces_c_raw[i])
+            : [];
         const theme = _themeColors();
         const ct = _convergenceTargets();
         const stageMx = stageMarkers(theme);
@@ -1474,7 +1692,7 @@
 
         Plotly.react("energy-plot", [{
             x: x,
-            y: state.data.energies,
+            y: energies_plot,
             mode: "lines+markers",
             line: { color: theme.energy, width: 1.5 },
             marker: { size: 6 },
@@ -1518,10 +1736,10 @@
         // ``max_forces_constrained`` is an empty list when no frame
         // in the run carried a constrained value (no frozen atoms);
         // in that case we render the single trace as before.
-        const constrained = state.data.max_forces_constrained;
+        const constrained = max_forces_c_plot;  // filtered via plottableFrames
         const forceTraces = [{
             x: x,
-            y: state.data.max_forces,
+            y: max_forces_plot,
             mode: "lines+markers",
             line: { color: theme.forceAllAtoms, width: 1.5,
                     dash: (constrained && constrained.length)
@@ -2074,9 +2292,14 @@
         if (state.pollInFlight) {
             return;
         }
-        state.pollAbort = new AbortController();
-        const signal = state.pollAbort.signal;
-        state.pollInFlight = true;
+        state.lifecycle.pollAbort = new AbortController();
+        const signal = state.lifecycle.pollAbort.signal;
+        state.lifecycle.pollInFlight = true;
+        // File-identity guard (contract § 4 Invariant 1): the
+        // sequence number this poll is bound to.  If a file-switch
+        // / Refresh bumps fetchSeq while this fetch is on the wire,
+        // the response is dropped.
+        const mySeq = state.lifecycle.fetchSeq;
         try {
             const url = state.mtime !== null
                 ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
@@ -2084,6 +2307,7 @@
             const r = await fetch(url, { signal: signal })
                 .then(x => x.json());
             if (signal.aborted) return;
+            if (state.lifecycle.fetchSeq !== mySeq) return;
             if (!r.ok) {
                 setStatus(r.error || "Server error.", "error");
                 return;
@@ -2595,10 +2819,18 @@
         // tears down with the inspector dispose path.
         const C = (window.molbuilder || {}).constants;
         if (C && C.EVENT_REFRESH_REQUESTED) {
+            // Refresh button => full file-switch with the current
+            // path (contract § 5: "Refresh = file-switch with same
+            // path").  Pre-fix this was ``pollOnce()`` which left
+            // stale state.derived.scfPollHistory samples carrying
+            // bogus per-iter time estimates for ~32 polls.
+            // transition('LOADING') runs the reset matrix, then
+            // loadByPath does the actual fetch under the new
+            // fetchSeq.
             const _onRefresh = () => {
-                if (!state.data) return;     // not yet loaded; nothing to refresh
-                if (state.pollInFlight) return;  // a tick is already running
-                pollOnce();
+                const p = state.fileState.path;
+                if (!p) return;     // not yet loaded; nothing to refresh
+                loadByPath(p);
             };
             document.addEventListener(C.EVENT_REFRESH_REQUESTED,
                                        _onRefresh);
@@ -2648,36 +2880,24 @@
         // the picked indices may not exist in the new model.
         clearAtomPicks();
         setStatus("Loading\u2026", "");
-        // Cancel any previous in-flight load (rapid file-switching
-        // case).  Start a new controller; dispose() will abort it.
-        if (state.loadAbort) state.loadAbort.abort();
-        // L1 2026-06-14 (R4-A finding): also abort any in-flight
-        // /api/watch/data POLL whose response is bound to the
-        // PRIOR file's mtime.  Without this, a poll that started
-        // while the user was viewing file A would land AFTER
-        // loadByPath(B) completed and call applyNewData with A's
-        // (stale) frames -- silently reverting the user's data.
-        // The pollTimer keeps running, so a NEW poll fires on the
-        // next tick already pinned to B's mtime; only the in-
-        // flight pre-supersede response is killed.  Mirrors the
-        // K2 fix for spectra loadByPath ↔ watchTick.
-        if (state.pollAbort) state.pollAbort.abort();
-        state.pollInFlight = false;
-        // P1.A 2026-06-16 (audit follow-up): scfPollHistory accumulates
-        // ``(ts, totalIters)`` across polls of the CURRENT file.  When
-        // the user switches files (or this loadByPath call comes via
-        // the file-picker's Refresh), totalIters from file A is
-        // meaningless for file B -- the STAGE-2b rolling-avg fallback
-        // would compute ``(now - oldest_ts) / (B_totalIters -
-        // A_totalIters)`` and surface a bogus "from poll estimate"
-        // annotation in the SCF status line for ~32 polls (one full
-        // buffer cycle) before the bad reference rolls off.
-        // ``setting length = 0`` is the canonical JS array-truncate;
-        // cheaper than ``new Array()`` and preserves identity for any
-        // accidental holder (none today, but future-proof).
-        state.scfPollHistory.length = 0;
-        state.loadAbort = new AbortController();
-        const signal = state.loadAbort.signal;
+        // Contract \u00a7 2: file-switch -> transition('LOADING').  This
+        // single call runs the reset matrix (matrix \u00a7 3 row 1):
+        //   * abort in-flight loadAbort + pollAbort
+        //   * stop poll timer + clear pollInFlight
+        //   * empty fileState (sets path = new path)
+        //   * reset viewState (currentFrame=0, firstFit=true)
+        //   * clear derived (scfPollHistory)
+        //   * bump fetchSeq for the file-identity guard
+        // Refresh button arrives here too -- same code path, same
+        // resets.  Eliminates the half-refresh class.
+        transition("LOADING", { path: path });
+        const mySeq = state.lifecycle.fetchSeq;
+        // The legacy inline aborts + scfPollHistory clear that used
+        // to live here (L1 2026-06-14 R4-A + P1.A 2026-06-16) are
+        // GONE -- transition('LOADING') above does them all in a
+        // single canonical site.  See contract § 3 reset matrix.
+        state.lifecycle.loadAbort = new AbortController();
+        const signal = state.lifecycle.loadAbort.signal;
         try {
             const r = await fetch("/api/watch/load", {
                 method: "POST",
@@ -2687,11 +2907,16 @@
             }).then(x => x.json());
 
             if (signal.aborted) return;
+            // Contract § 4 Invariant 1 (file-identity guard): if a
+            // newer transition('LOADING') ran while this fetch was
+            // on the wire, fetchSeq has been bumped and our
+            // response no longer corresponds to the current file.
+            // Drop it; the new fetch is already in flight.
+            if (state.lifecycle.fetchSeq !== mySeq) return;
             if (!r.ok) {
                 setStatus(r.error || "Load failed.", "error");
                 return;
             }
-            state.firstFit = true;
             applyNewData({
                 mtime:  r.mtime,
                 data:   r.data,
@@ -3000,16 +3225,18 @@
             while (_cleanups.length) {
                 try { _cleanups.pop()(); } catch (_) {}
             }
-            // Abort in-flight HTTP requests so their then-handlers
-            // don't fire against torn-down DOM (the dispose path is
-            // typically triggered by /results' registry mid-fetch
-            // when the user picks a different file).
-            if (state.loadAbort) { state.loadAbort.abort(); state.loadAbort = null; }
-            if (state.pollAbort) { state.pollAbort.abort(); state.pollAbort = null; }
-            stopPolling();
-            // playTimer cleanup removed in #246 A1 (no parallel
-            // playback loop anymore); handle.dispose() below tears
-            // down the embed's animation loop on its own.
+            // Contract § 2: dispose -> transition('IDLE').  The
+            // matrix § 3 row "dispose / unmount" runs:
+            //   * abort in-flight loadAbort + pollAbort
+            //   * stop poll timer
+            //   * clear pollInFlight
+            //   * clear fileState, viewState, derived
+            //   * leave machine = 'IDLE'
+            // Pre-PR-2 the inline aborts + stopPolling() lived here
+            // and state.data / state.mtime / state.scfPollHistory
+            // were LEFT in place (audit § 1: dispose leaks state.
+            // data).  transition() makes the dispose clean.
+            transition("IDLE");
             // handle.dispose() tears down the embed's animation loop,
             // ResizeObserver, knob bar, models / shapes / labels and
             // releases its references on the 3Dmol viewer.
