@@ -428,21 +428,156 @@ def test_assemble_from_run_dir_picks_largest_fdf_among_multiple(tmp_path):
     assert any("multiple .fdf" in n for n in bundle.notes)
 
 
-def test_write_bundle_as_handoff_is_reserved_stub(tmp_path):
-    """Same reasoning as the assembler stub: the seat exists, the
-    impl arrives in PR-D."""
-    s = Structure(elements=["H"], positions=[[0.0, 0.0, 0.0]])
-    bundle = sb.RunBundle(
+# --------------------------------------------------------------------- #
+#  write_bundle_as_handoff (PR-D)                                       #
+# --------------------------------------------------------------------- #
+
+
+def _h2_bundle():
+    """Build a minimal RunBundle in-memory for materializer tests."""
+    from pathlib import Path as _Path
+    s = Structure(elements=["H", "H"],
+                  positions=[[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]])
+    return sb.RunBundle(
         structure=s,
-        regions={},
-        frozen_atoms=[],
+        regions={"L-electrode": [0], "bridge": [1]},
+        frozen_atoms=[1],
         user_custom_lines=[],
-        provenance={},
-        source_script=Path("/tmp/x.fdf"),
+        provenance={"generator-version": "test"},
+        source_script=_Path("/tmp/origin.fdf"),
         source_engine="siesta",
-        final_coords_from="fdf-initial",
+        final_coords_from="xv",
         notes=[],
     )
-    with pytest.raises(NotImplementedError) as exc:
-        sb.write_bundle_as_handoff(bundle, tmp_path, stem="x")
-    assert "PR-D" in str(exc.value) or "#491" in str(exc.value)
+
+
+def test_write_bundle_as_handoff_writes_both_files(tmp_path):
+    bundle = _h2_bundle()
+    xyz_path, sidecar_path = sb.write_bundle_as_handoff(
+        bundle, tmp_path, stem="handoff",
+    )
+    assert xyz_path  == tmp_path / "handoff.xyz"
+    assert sidecar_path == tmp_path / "handoff.molstruct.json"
+    assert xyz_path.exists() and sidecar_path.exists()
+    # XYZ comment carries the source provenance.
+    text = xyz_path.read_text()
+    assert "bundled from origin.fdf" in text
+    assert "(siesta/xv)" in text
+
+
+def test_write_bundle_as_handoff_sidecar_carries_labels(tmp_path):
+    from molbuilder.parsers import molstruct_json as _msj
+    bundle = _h2_bundle()
+    _, sidecar_path = sb.write_bundle_as_handoff(
+        bundle, tmp_path, stem="h2",
+    )
+    data = _msj.load(sidecar_path)
+    assert data["regions"] == {"L-electrode": [0], "bridge": [1]}
+    assert data["frozen_atoms"] == [1]
+    assert data["n_atoms_total"] == 2
+    # Hash matches the .xyz on disk (apply_sidecar_if_possible will
+    # verify the same way).
+    expected_hash = _msj.sha256_of_file(tmp_path / "h2.xyz")
+    assert data["structure_hash"] == expected_hash
+
+
+def test_write_bundle_as_handoff_refuses_existing_target(tmp_path):
+    """overwrite=False (default) raises when the .xyz OR the sidecar
+    already lives in target_dir under the same stem."""
+    bundle = _h2_bundle()
+    (tmp_path / "h2.xyz").write_text("existing\n")
+    with pytest.raises(sb.BundleError) as exc:
+        sb.write_bundle_as_handoff(bundle, tmp_path, stem="h2")
+    assert "exists" in str(exc.value)
+
+
+def test_write_bundle_as_handoff_overwrite_true_replaces(tmp_path):
+    bundle = _h2_bundle()
+    (tmp_path / "h2.xyz").write_text("placeholder\n")
+    (tmp_path / "h2.molstruct.json").write_text("{}\n")
+    xyz_path, _ = sb.write_bundle_as_handoff(
+        bundle, tmp_path, stem="h2", overwrite=True,
+    )
+    # Replaced — placeholder text is gone.
+    assert "placeholder" not in xyz_path.read_text()
+
+
+def test_write_bundle_as_handoff_creates_missing_target_dir(tmp_path):
+    bundle = _h2_bundle()
+    target = tmp_path / "nested" / "deeper"
+    xyz_path, sidecar_path = sb.write_bundle_as_handoff(
+        bundle, target, stem="h2",
+    )
+    assert target.exists()
+    assert xyz_path.exists() and sidecar_path.exists()
+
+
+# --------------------------------------------------------------------- #
+#  L3 round-trip: assemble -> write -> reload -> labels recovered       #
+# --------------------------------------------------------------------- #
+
+
+def test_l3_roundtrip_siesta_labels_survive_handoff(tmp_path):
+    """End-to-end: a SIESTA run dir with .fdf+ATOM-METADATA + .XV is
+    bundled, materialized to a target dir, then re-loaded via the
+    canonical .xyz load path.  Labels survive intact.  Proves the
+    in-body-wins-over-sidecar rule is end-to-end consistent: the
+    new sidecar IS the only label source after handoff."""
+    from molbuilder.parsers import molstruct_json as _msj
+
+    # Source SIESTA dir.
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "h2.fdf").write_text(
+        _h2_fdf_text(
+            atom_md_block=_atom_md(
+                regions={"L-electrode": [0]},
+                frozen=[1],
+                n_atoms_total=2,
+            ),
+        )
+    )
+    (src_dir / "h2.XV").write_text(_h2_xv_text())
+
+    # Assemble -> materialize.
+    bundle = sb.assemble_from_run_dir(src_dir)
+    dst_dir = tmp_path / "dst"
+    xyz_path, sidecar_path = sb.write_bundle_as_handoff(
+        bundle, dst_dir, stem="handoff",
+    )
+
+    # Re-load: pretend this is the next workflow stage opening the
+    # bundle.  XYZ -> Structure, then sidecar applies regions/frozen.
+    s = Structure.from_xyz(xyz_path.read_text())
+    sidecar_data = _msj.load(sidecar_path)
+    _msj.apply_to_structure(s, sidecar_data)
+    assert s.regions == {"L-electrode": [0]}
+    assert s.frozen_atoms == [1]
+
+
+def test_l3_roundtrip_pyscf_labels_survive_handoff(tmp_path):
+    """Mirror of the SIESTA L3, for the PySCF assembler branch."""
+    from molbuilder.parsers import molstruct_json as _msj
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "h2.py").write_text(_h2_py_text())  # JOB="h2-test" + atom-md
+    (src_dir / "h2-test_optimized.xyz").write_text(_h2_optimized_xyz(0.80))
+
+    bundle = sb.assemble_from_run_dir(src_dir)
+    dst_dir = tmp_path / "dst"
+    xyz_path, sidecar_path = sb.write_bundle_as_handoff(
+        bundle, dst_dir, stem="handoff",
+    )
+
+    s = Structure.from_xyz(xyz_path.read_text())
+    sidecar_data = _msj.load(sidecar_path)
+    _msj.apply_to_structure(s, sidecar_data)
+    # _h2_py_text labels: regions={"R-electrode":[1]}, frozen=[0].
+    assert s.regions == {"R-electrode": [1]}
+    assert s.frozen_atoms == [0]
+    # Optimized coords (0.80) survived too.
+    import numpy as np
+    np.testing.assert_allclose(s.positions[1, 0], 0.80)
+
+

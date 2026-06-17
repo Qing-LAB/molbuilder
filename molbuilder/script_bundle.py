@@ -360,17 +360,88 @@ def write_bundle_as_handoff(bundle: RunBundle,
     """Materialize ``bundle`` as ``<target_dir>/<stem>.xyz`` +
     ``<target_dir>/<stem>.molstruct.json``.
 
-    Atomic via :func:`molstruct_json.save`.  ``overwrite=False``
-    raises :class:`BundleError` when either destination file exists.
+    The next tab's existing ``.xyz`` load path (build / spectra /
+    transport) picks the pair up unchanged: it reads the XYZ for
+    structure, then ``apply_sidecar_if_possible`` picks the sidecar
+    up for labels.  No new load primitive needed downstream.
+
+    ``overwrite=False`` raises :class:`BundleError` when either
+    destination file already exists.  Writes are atomic
+    (tmp + rename) for both files individually; if the .xyz lands
+    but the sidecar write fails partway through, the caller is
+    left with a labeled-but-no-sidecar XYZ — recoverable but a
+    diagnostic note is added downstream.
 
     Returns ``(xyz_path, sidecar_path)``.
 
-    Not yet implemented -- lands in PR-D (task #491) alongside the
-    L3 round-trip test.
+    Contract: ``docs/protocols/bundle-contract.md § 5.2 + § 8``.
     """
-    raise NotImplementedError(
-        "write_bundle_as_handoff lands in task #491 (PR-D)."
+    from molbuilder.parsers import molstruct_json as _msj
+
+    target_dir = Path(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    xyz_path     = target_dir / f"{stem}.xyz"
+    sidecar_path = _msj.sidecar_path_for(xyz_path)
+    if not overwrite:
+        for p in (xyz_path, sidecar_path):
+            if p.exists():
+                raise BundleError(
+                    f"target exists: {p}.  Pass overwrite=True to "
+                    f"replace, or pick a different stem/target_dir.")
+
+    # Provenance line on the .xyz so a curious user reading the
+    # XYZ comment can trace the bundle back to its source.
+    comment = (
+        f"bundled from {bundle.source_script.name} "
+        f"({bundle.source_engine}/{bundle.final_coords_from})"
     )
+    xyz_text = bundle.structure.to_xyz(comment=comment)
+    _atomic_write_text(xyz_path, xyz_text)
+
+    # structure_hash is the SHA-256 of the XYZ file BYTES (per
+    # molstruct_json.sha256_of_file); compute from the freshly-
+    # written file so the invariant pin is what apply_sidecar_if_possible
+    # will check on load.
+    structure_hash = _msj.sha256_of_file(xyz_path)
+    sidecar_payload = _msj.to_dict(
+        n_atoms_total=len(bundle.structure.elements),
+        structure_hash=structure_hash,
+        regions=bundle.regions or None,
+        frozen_atoms=bundle.frozen_atoms or None,
+        created_by="molbuilder script_bundle",
+    )
+    _msj.save(sidecar_path, sidecar_payload)
+    return (xyz_path, sidecar_path)
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically (tmp + rename) so a
+    partial write never leaves a half-XYZ on disk.
+
+    Mirrors :func:`molstruct_json.save`'s pattern: same parent-dir
+    tempfile, same fsync-before-replace.  Imported as a helper here
+    rather than re-using molstruct_json's because that function
+    serialises a dict, not arbitrary text.
+    """
+    import os
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 __all__ = [

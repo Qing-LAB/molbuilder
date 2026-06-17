@@ -232,7 +232,92 @@ the .xyz load case.
 PR-A defines the contract surface; PR-B/C/D implement the
 extractors; PR-E adds the UI button.
 
-## 7. Versioning
+## 7. Storage + projects-sidebar integration
+
+This section answers two questions: **where** does the bundle pair
+land on disk, and **how** does the projects sidebar mediate that.
+
+### 7.1 Target-dir semantics
+
+The materializer ``write_bundle_as_handoff(bundle, target_dir,
+*, stem, overwrite=False)`` writes to
+``<target_dir>/<stem>.xyz`` + ``<target_dir>/<stem>.molstruct.json``.
+It does NOT validate that ``target_dir`` is inside a sandbox — it
+is a pure function on a `Path`.  The security boundary is the
+**web endpoint** (PR-E) which calls
+``_resolve_within_roots(target_dir)`` exactly like every other
+write path (rename / save / upload) per
+``docs/protocols/projects-sidebar.md § 5.4 C4``.  CLI callers
+(future) carry their own sandbox at the OS level.
+
+### 7.2 Default target shape
+
+The Results-panel UI (PR-E) offers a destination chooser pre-filled
+with the **run dir's parent** (the project directory).  Convention:
+
+| User picks | Bundle lands at |
+|---|---|
+| The project dir itself | `<project>/<stem>.xyz` + `<project>/<stem>.molstruct.json` |
+| A sub-dir (e.g. ``handoff/``) | `<project>/handoff/<stem>.xyz` + `<project>/handoff/<stem>.molstruct.json` |
+| A different project | `<other-project>/<stem>.xyz` + sidecar |
+
+The stem defaults to the source-script basename without engine
+suffix (``h2-stage2.fdf`` → ``h2-stage2``); the user can override.
+The sidebar's existing ``createProject`` / ``mkdir`` primitives
+(C5) handle creating missing parents; the materializer also calls
+``target_dir.mkdir(parents=True, exist_ok=True)`` defensively so a
+CLI caller doesn't need the sidebar.
+
+### 7.3 Existence + overwrite policy
+
+``overwrite=False`` (default) raises :class:`BundleError` when
+**either** the ``.xyz`` OR the ``.molstruct.json`` already exists at
+the target stem.  This is stricter than just checking the XYZ:
+overwriting a stale sidecar that points at a different XYZ would
+silently corrupt the projects-sidebar's structure↔sidecar pairing
+invariant (sidebar § 5.4 C5 + sidecar-contract.md).
+
+``overwrite=True`` replaces both files atomically (tmp + rename for
+each); a crash between the two replaces leaves a consistent .xyz
+on disk but a stale sidecar — the next sidebar refresh + the
+``apply_sidecar_if_possible`` hash-check will surface the
+mismatch as a warn-Issue.
+
+### 7.4 Atomicity boundary
+
+Per-file writes are atomic (tmp + fsync + os.replace, mirroring
+``molstruct_json.save``).  The **pair** is best-effort:
+``.xyz`` lands first, then the sidecar.  If the sidecar write
+fails, the .xyz is on disk without labels.  Recoverable by re-
+running the materializer with ``overwrite=True``; downstream code
+that loads the .xyz without a sidecar already has a clean no-op
+path (the structure carries no regions/frozen — same as a hand-
+exported XYZ).
+
+A full two-phase pair-rename atomic is intentionally out of scope:
+it would require a fs-level rename of the pair (POSIX has no such
+primitive), and the sidecar's hash-pin already gives the next
+loader a clean "this sidecar is stale" detector.
+
+### 7.5 Sidebar refresh
+
+The PR-E web endpoint MUST emit a ``files-changed`` event for the
+target directory after a successful write so the sidebar re-lists
+without a manual refresh.  Mirrors the existing pattern in
+``/api/files/save`` (sidebar § 4.4 + C4).  The two files land as a
+single sidecar-paired entry per the sidebar's structure↔sidecar
+display rule.
+
+### 7.6 Lock model
+
+``write_bundle_as_handoff`` does NOT take a lock.  The sidebar's
+``with_lock`` model is for **read-modify-write** cycles on a single
+sidecar (sidecar-contract.md § 5).  Bundle materialization is a
+fresh write — there's no pre-existing sidecar to read.  Concurrent
+bundle writes to the same ``<target>/<stem>`` are a user error and
+``overwrite=False`` is the guard.
+
+## 8. Versioning
 
 - `ScriptSource.schema_version` reflects the ATOM-METADATA block's
   declared version.  `extract_script_source` accepts only the
@@ -244,7 +329,7 @@ extractors; PR-E adds the UI button.
   emitted `.xyz` + `.molstruct.json` pair, both of which carry
   their own schema versions.
 
-## 8. Error model
+## 9. Error model
 
 | State | Outcome |
 |---|---|
@@ -257,7 +342,7 @@ extractors; PR-E adds the UI button.
 | Final-coords source missing all branches | bundle assembles from `.fdf`/`.py` initial coords; `notes` records the fallback |
 | `write_bundle_as_handoff` target exists, `overwrite=False` | `BundleError("target exists")` |
 
-## 9. Tests
+## 10. Tests
 
 Test pyramid placement:
 
@@ -275,7 +360,7 @@ Test pyramid placement:
 - **L2** (`test_web.py`):  companion `.fdf` next to `.xyz` wins
   over `.molstruct.json` sidecar in the build endpoint flow.
 
-## 10. Out of scope (forward references)
+## 11. Out of scope (forward references)
 
 - **PySCF optimized-geometry parser.**  PR-C lands the reader; this
   contract pins where it plugs in but not how it parses.
@@ -284,7 +369,7 @@ Test pyramid placement:
 - **Multi-fragment composition** (electrode-pair + center).  Higher
   level than a single bundle; not in this contract.
 
-## 11. Pinned references
+## 12. Pinned references
 
 - Script format: [`script-contract.md`](script-contract.md) (§ 4.4 atom-metadata, § 4.6 user-custom).
 - Sidecar format: `molbuilder/parsers/molstruct_json.py` (schema v3).
@@ -293,7 +378,7 @@ Test pyramid placement:
 - SIESTA `.XV` reader: `molbuilder/parsers/siesta.py` (TBD — added in PR-B).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
 
-## 12. Process
+## 13. Process
 
 Updates to this contract require:
 1. Code change matched to the doc change in the same commit.
