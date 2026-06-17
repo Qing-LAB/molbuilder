@@ -73,7 +73,7 @@ class RunBundle:
     provenance:        Dict[str, str]                  # k/v from PROVENANCE
     source_script:     Path                            # which .fdf / .py
     source_engine:     Literal["siesta", "pyscf"]
-    final_coords_from: Literal["xv", "stdout", "fdf-initial",
+    final_coords_from: Literal["xv", "fdf-initial",
                                "py-log", "py-initial"]
     notes:             List[str]                       # diagnostics
 ```
@@ -109,8 +109,13 @@ Per engine, in priority order — first hit wins:
 | Source | Mark | When chosen |
 |---|---|---|
 | `<stem>.XV`              | `"xv"`           | converged geometry-opt or any run that wrote `.XV` |
-| `<stem>.out` parsed final | `"stdout"`       | `.XV` missing but stdout carries final coords |
-| `.fdf` initial coords    | `"fdf-initial"`  | both above missing — bundle still emits, but `notes` records the fallback |
+| `.fdf` initial coords    | `"fdf-initial"`  | `.XV` missing — bundle still emits, but `notes` records the fallback |
+
+> **Deferred.** A `<stem>.out` stdout-parsed final-coords source is a
+> possible future addition (mark would be `"stdout"`) for runs that
+> died before writing `.XV` but printed final coords to stdout.  Not
+> in PR-B; the `.XV` write is robust enough that this is a rare edge
+> case.
 
 **PySCF:**
 
