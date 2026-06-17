@@ -702,10 +702,15 @@ class SiestaParser(TrajectoryParser):
                             and math.isfinite(candidate)):
                         frame_energy = float(candidate)
                         break
-            if (frame_energy is None
-                    and step_initial_etot is not None
-                    and math.isfinite(step_initial_etot)):
-                frame_energy = step_initial_etot
+            # PR 4 (results-state-contract § 6): no preamble-Etot
+            # fallback.  If the SCF ran without a finite energy, the
+            # run is diverging; using ``step_initial_etot`` as a
+            # frame energy would HIDE the divergence behind a
+            # plausible-looking number.  ``frame_energy`` stays
+            # ``None`` (-> JSON null -> Plotly gap in the line ->
+            # user sees the divergence).  The preamble Etot is
+            # preserved in ``runtime_info["initial_etot"]`` for
+            # display, NOT as a frame energy.
             frames.append(Frame(
                 structure   = struct,
                 step_index  = len(frames),
@@ -1528,13 +1533,17 @@ class SiestaParser(TrajectoryParser):
                 if math.isfinite(fv):
                     in_prog_energy = fv
                     break
-            if in_prog_energy is None and step_initial_etot is not None:
-                try:
-                    fv = float(step_initial_etot)
-                    if math.isfinite(fv):
-                        in_prog_energy = fv
-                except (TypeError, ValueError):
-                    pass
+            # PR 4 (results-state-contract § 6): no
+            # ``step_initial_etot`` fallback.  Pre-PR-4 the
+            # preamble-Etot leaked into the in-progress frame's
+            # ``energy`` field and the JS energy plot showed a
+            # placeholder point that disappeared on full refresh
+            # (the "odd value" bug class users reported 2026-06-17).
+            # When the SCF hasn't reported a finite cycle yet,
+            # ``in_prog_energy`` stays ``None`` -> JSON null -> the
+            # JS plottableFrames filter omits the point.  The
+            # preamble Etot is preserved separately in
+            # ``runtime_info["initial_etot"]`` for display.
             frames.append(Frame(
                 structure   = placeholder_struct,
                 step_index  = len(frames),
@@ -1602,6 +1611,18 @@ class SiestaParser(TrajectoryParser):
             frozen_set = read_frozen_atoms_from_siesta_fdf(path)
         if frozen_set:
             runtime_info["frozen_atoms"] = sorted(frozen_set)
+
+        # PR 4 (results-state-contract § 6): preserve the preamble
+        # ``Etot`` as ``runtime_info["initial_etot"]`` for display.
+        # Pre-PR-4 this value leaked into per-frame ``energy`` fields
+        # via the now-deleted fallback paths.  The contract: it stays
+        # informational (where the SCF started from), not a frame
+        # energy.  ``step_initial_etot`` holds the most-recent value
+        # seen during parse; for finished runs that's the LAST step's
+        # initial Etot, for ongoing runs the IN-FLIGHT step's.
+        if (step_initial_etot is not None
+                and math.isfinite(step_initial_etot)):
+            runtime_info["initial_etot"] = float(step_initial_etot)
 
         return Trajectory(
             source_format  = cls.name,

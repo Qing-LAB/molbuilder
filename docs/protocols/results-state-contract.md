@@ -563,14 +563,56 @@ shipped shape) in `lib/spectra/core.js`.  **Shipped 2026-06-17.**
 (`molbuilder.results.spectra.uiPrefs.v1`) is still TODO; today
 the values reset to defaults on every mount.
 
-### PR 4 — Parser `in_progress` + server cache
+### PR 4 — Parser `in_progress` + server cache (SHIPPED)
 
-Files: `parsers/siesta.py`, `parsers/pyscf.py`,
-`web/blueprints/watch.py`, `tests/test_watch_cache.py`.
+Files: `parsers/siesta.py`, `web/blueprints/watch.py`,
+`tests/test_watch_cache_contract.py`.  **Shipped 2026-06-17.**
 
-Changes per § 6. Test that the cache evicts at LRU bound, that the
-200ms freshness gate kicks in, that `in_progress=true` frames have
-`energy=None`.
+**Parser side (siesta.py):**
+- The committed-frame fallback (`frame_energy = step_initial_etot`
+  when the SCF reports no finite cycle energy) is removed.  A
+  divergent SCF now emits `energy=None` instead of a misleading
+  preamble value -- the Plotly gap in the line IS the divergence
+  signal.
+- The in-progress-frame fallback (same fallback for synthetic EOF-
+  flush frames) is removed.  Partial frames have `energy=None`;
+  the JS `plottableFrames` filter omits them from the energy plot.
+- `runtime_info["initial_etot"]` preserves the preamble Etot for
+  display; it is no longer a frame energy.
+- PyScf: NO PARSER CHANGE.  PyScf already drops torn EOF frames
+  entirely (`parsers/pyscf.py:201-204`) instead of emitting an
+  in-progress placeholder, so the contract's Invariant 2 has no
+  work to do for PyScf -- as documented in § 13.
+
+**Server cache side (watch.py):**
+- `_MERGE_PARSE_CACHE` migrated to `OrderedDict` for LRU
+  semantics.
+- Cache key on the value side is now `(mtime, size)` not just
+  `mtime`.  1-second mtime granularity systems (NFS / FAT) get
+  torn-read defense for free -- any size change invalidates.
+- LRU bound: 64 entries (`_MERGE_PARSE_CACHE_LRU_BOUND`).
+  Eviction is FIFO once the bound is hit; deleted files age out
+  naturally.
+- Insertion gated on a 200 ms freshness window
+  (`_MERGE_PARSE_FRESHNESS_S = 0.200`).  Reads taken less than
+  200 ms after the file's mtime do NOT enter the cache -- the
+  file was still being written.  The next poll re-parses cheaply.
+- Three helpers: `_merge_parse_cache_get`,
+  `_merge_parse_cache_put`, `_merge_parse_cache_is_fresh`.
+
+**Test coverage** (`test_watch_cache_contract.py`, 12 tests):
+- Parser pins: no `step_initial_etot` fallback for committed
+  frames OR in-progress frames; `runtime_info["initial_etot"]`
+  preserved.
+- Cache pins: OrderedDict shape, get-hit moves to end, mtime
+  invalidation, size invalidation, LRU bound evicts oldest,
+  freshness gate threshold = 0.200, fresh-read-not-cached
+  integration, aged-file-caches integration.
+
+Two golden signature files (`hemeC-stage2-run3-finished-42fr.out`
+and `BDT-stage3-propor_error-32fr.out`) had their last frame's
+`energy` regenerated from the pre-contract fallback value to
+`null`.  Captured the intentional parser-output change.
 
 ### Order
 

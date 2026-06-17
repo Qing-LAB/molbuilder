@@ -38,6 +38,8 @@ import os
 import re
 import sys
 import tempfile
+import time
+from collections import OrderedDict
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -521,7 +523,58 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 # poll that picks up new frames in the newest stage doesn't re-parse
 # the 2 or 3 prior (static) stage logs.  Single-process, single-user
 # scope -- bounded by the number of stages in flight (≤ a handful).
-_MERGE_PARSE_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+# Multi-stage parse cache.  Per docs/protocols/results-state-contract.md
+# § 6 (PR 4):
+#
+#   * Keyed by absolute path.
+#   * Value's cache-key tuple is (mtime, size).  1-second mtime
+#     granularity systems (NFS, FAT) get torn-read defense for free
+#     -- any size change invalidates.
+#   * LRU bound: deleted files age out naturally as new entries push
+#     them off the back.
+#   * Insertion is gated on the freshness check at the cache-miss
+#     site: a parsed snapshot is NOT cached if the read completed
+#     less than ``_MERGE_PARSE_FRESHNESS_S`` after the file's mtime
+#     (the file was still being written at parse time).
+_MERGE_PARSE_CACHE: "OrderedDict[str, Tuple[Tuple[float, int], Dict[str, Any]]]" = OrderedDict()
+_MERGE_PARSE_CACHE_LRU_BOUND = 64
+# Don't cache snapshots taken less than this many seconds after the
+# file's mtime.  200ms covers the typical "atomic-replace" window
+# without being so long that warm runs lose cache benefit.  See
+# results-state-contract.md § 6 cache contract.
+_MERGE_PARSE_FRESHNESS_S = 0.200
+
+
+def _merge_parse_cache_get(path: str, mtime: float, size: int
+                            ) -> Optional[Dict[str, Any]]:
+    """LRU-aware cache read.  Returns the cached legacy dict iff
+    the stored (mtime, size) matches; on hit, moves the entry to
+    the back (most-recently-used)."""
+    entry = _MERGE_PARSE_CACHE.get(path)
+    if entry is None:
+        return None
+    if entry[0] != (mtime, size):
+        return None
+    _MERGE_PARSE_CACHE.move_to_end(path)
+    return entry[1]
+
+
+def _merge_parse_cache_put(path: str, mtime: float, size: int,
+                            legacy: Dict[str, Any]) -> None:
+    """Store the parsed snapshot.  Evicts the oldest entry when
+    the LRU bound is exceeded."""
+    _MERGE_PARSE_CACHE[path] = ((mtime, size), legacy)
+    _MERGE_PARSE_CACHE.move_to_end(path)
+    while len(_MERGE_PARSE_CACHE) > _MERGE_PARSE_CACHE_LRU_BOUND:
+        _MERGE_PARSE_CACHE.popitem(last=False)
+
+
+def _merge_parse_cache_is_fresh(mtime: float) -> bool:
+    """Return True iff a snapshot taken NOW would be safe to cache
+    (the file's mtime is older than the freshness window, so it
+    isn't mid-write).  Pure helper -- the caller decides whether
+    to skip the put."""
+    return (time.time() - mtime) >= _MERGE_PARSE_FRESHNESS_S
 
 
 def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
@@ -575,13 +628,18 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         n_before = len(merged["frames"])
         try:
             mt = os.path.getmtime(path)
-            cached = _MERGE_PARSE_CACHE.get(path)
-            if cached is not None and cached[0] == mt:
-                legacy = cached[1]
-            else:
+            sz = os.path.getsize(path)
+            legacy = _merge_parse_cache_get(path, mt, sz)
+            if legacy is None:
                 traj   = MolwatchLogParser.parse(path)
                 legacy = trajectory_to_legacy_dict(traj)
-                _MERGE_PARSE_CACHE[path] = (mt, legacy)
+                # PR 4 (results-state-contract § 6): 200 ms
+                # freshness gate.  If the file's mtime is younger
+                # than _MERGE_PARSE_FRESHNESS_S, the read may have
+                # raced an in-flight write -- don't poison the
+                # cache; the next tick will re-parse cheaply.
+                if _merge_parse_cache_is_fresh(mt):
+                    _merge_parse_cache_put(path, mt, sz, legacy)
         except Exception as exc:                              # noqa: BLE001
             # Log to stderr so the operator has a signal beyond the
             # frontend's stages-metadata entry; dedupe by (path, exc-type)

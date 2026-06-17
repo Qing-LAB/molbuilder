@@ -315,7 +315,7 @@
     {
       "coords_n": 0,
       "coords_sum": null,
-      "energy": -1725.68434,
+      "energy": null,
       "forces_n": 0,
       "forces_sum": null,
       "max_force": null,
