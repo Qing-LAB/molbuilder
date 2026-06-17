@@ -203,6 +203,54 @@ def test_assemble_from_run_dir_siesta_uses_system_label_for_xv(tmp_path):
     )
 
 
+def test_assemble_from_run_dir_siesta_warns_on_left_handed_xv(tmp_path):
+    """A .XV with negative-determinant cell silently mirrors the
+    structure through any Fractional projection.  Bundle must add
+    a loud notes entry so the user sees it in the result panel.
+    Audit follow-up: deferral #4."""
+    (tmp_path / "h2.fdf").write_text(_h2_fdf_text())
+    # Negate the third cell row of the .XV -> det < 0.
+    (tmp_path / "h2.XV").write_text(
+        "  10.0   0.0   0.0   0.0 0.0 0.0\n"
+        "   0.0  10.0   0.0   0.0 0.0 0.0\n"
+        "   0.0   0.0 -10.0   0.0 0.0 0.0\n"
+        "  2\n"
+        "  1   1   0.000   0.000   0.000   0.0 0.0 0.0\n"
+        "  1   1   1.500   0.000   0.000   0.0 0.0 0.0\n"
+    )
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "xv"  # still bundles
+    combined = "\n".join(bundle.notes)
+    assert "LEFT-HANDED" in combined
+    assert "chirality" in combined.lower()
+
+
+def test_assemble_from_run_dir_siesta_warns_on_left_handed_fdf_lattice(tmp_path):
+    """Same warning surfaces when the .fdf's LatticeVectors block
+    is left-handed, even when the .XV is fine."""
+    fdf_with_lh_lattice = (
+        "SystemLabel h2\n"
+        "%block ChemicalSpeciesLabel\n"
+        "    1    1    H\n"
+        "%endblock ChemicalSpeciesLabel\n"
+        "%block LatticeVectors\n"
+        "  1.0 0.0  0.0\n"
+        "  0.0 1.0  0.0\n"
+        "  0.0 0.0 -1.0\n"
+        "%endblock LatticeVectors\n"
+        "AtomicCoordinatesFormat Ang\n"
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        "    0.000 0.000 0.000 1\n"
+        "    0.740 0.000 0.000 1\n"
+        "%endblock AtomicCoordinatesAndAtomicSpecies\n"
+    )
+    (tmp_path / "h2.fdf").write_text(fdf_with_lh_lattice)
+    (tmp_path / "h2.XV").write_text(_h2_xv_text())  # right-handed
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    combined = "\n".join(bundle.notes)
+    assert "LEFT-HANDED" in combined
+
+
 def test_assemble_from_run_dir_siesta_xv_unreadable_warn_combined(tmp_path):
     """Audit IMPORTANT 5: when .XV exists but read_xv fails, the
     fallback note MUST loudly say 'NOT converged geometry' so the

@@ -407,7 +407,7 @@ Test pyramid placement:
 - SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parsers/siesta_struct.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
 - PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parsers/pyscf_struct.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
-- HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
+- HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Wire shape documented in [`web-api.md`](web-api.md) § 11a.  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
 
 ## 13. Process
 

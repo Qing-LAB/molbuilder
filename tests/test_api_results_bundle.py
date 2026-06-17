@@ -379,6 +379,46 @@ def test_bundle_handoff_js_uses_correct_sidebar_api(tmp_path):
         "sidebar moves to and lists the new bundle dir.")
 
 
+def test_bundle_handoff_js_has_fetch_timeout(tmp_path):
+    """Audit follow-up deferral #1: pre-fix the fetch had no
+    timeout, so a hung server left the button disabled forever.
+    Pin both the AbortController wiring and the timeout constant."""
+    from pathlib import Path
+    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    assert "AbortController" in js, (
+        "bundle-handoff.js no longer uses AbortController; the fetch "
+        "can hang indefinitely without surfacing a timeout.")
+    assert "FETCH_TIMEOUT_MS" in js, (
+        "bundle-handoff.js no longer defines a FETCH_TIMEOUT_MS "
+        "constant; timeout regression risk.")
+    assert "timedOut" in js, (
+        "bundle-handoff.js no longer distinguishes timeout from other "
+        "AbortError sources; the error message would be ambiguous.")
+
+
+def test_bundle_handoff_js_handles_non_json_response(tmp_path):
+    """Audit follow-up deferral #2: a Flask default 500 returns HTML,
+    not JSON.  Pre-fix r.json() rejected with SyntaxError and the
+    user saw 'Unexpected token <'.  Pin the content-type guard."""
+    from pathlib import Path
+    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    assert "content-type" in js.lower(), (
+        "bundle-handoff.js no longer checks the response's "
+        "content-type; a non-JSON 500 will surface as SyntaxError.")
+
+
+def test_bundle_handoff_html_has_spinner_element(tmp_path):
+    """Audit follow-up deferral #1: visual feedback that a request
+    is in flight.  Pin the spinner element + data-spinner hook so
+    the JS's element lookup can never silently miss."""
+    from pathlib import Path
+    html = Path("molbuilder/web/templates/_bundle_handoff_panel.html").read_text()
+    assert "data-spinner" in html, (
+        "_bundle_handoff_panel.html no longer carries a [data-spinner] "
+        "element; the JS spinner toggle becomes a no-op.")
+    assert "bundle-handoff-spinner" in html
+
+
 def test_bundle_handoff_default_target_is_subdir(tmp_path):
     """Audit IMPORTANT: pre-fix the JS defaulted target_dir to the
     same path as run_dir.  Bundling into the run dir meant the new

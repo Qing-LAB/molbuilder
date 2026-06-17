@@ -134,16 +134,23 @@
             .replace(/'/g, '&#39;');
     }
 
+    // Fetch timeout: caps how long the Bundle button stays disabled
+    // when the server hangs (network drop, infra issue, very large
+    // write).  After this elapses we abort, re-enable the form,
+    // and tell the user.
+    var FETCH_TIMEOUT_MS = 30000;
+
     function mount() {
-        var form   = $('#bundle-handoff-form');
+        var form    = $('#bundle-handoff-form');
         if (!form) return;       // panel not on this page; bail.
-        var runIn  = form.querySelector('input[name="run_dir"]');
-        var dstIn  = form.querySelector('input[name="target_dir"]');
-        var stemIn = form.querySelector('input[name="stem"]');
-        var ow     = form.querySelector('input[name="overwrite"]');
-        var btn    = form.querySelector('button[type="submit"]');
-        var status = $('[data-status]', form);
-        var result = $('[data-result]', form.parentElement || form);
+        var runIn   = form.querySelector('input[name="run_dir"]');
+        var dstIn   = form.querySelector('input[name="target_dir"]');
+        var stemIn  = form.querySelector('input[name="stem"]');
+        var ow      = form.querySelector('input[name="overwrite"]');
+        var btn     = form.querySelector('button[type="submit"]');
+        var status  = $('[data-status]', form);
+        var spinner = $('[data-spinner]', form);
+        var result  = $('[data-result]', form.parentElement || form);
 
         // Pre-fill from the sidebar's selection.  Use the
         // public API explicitly: getCurrentFile() tells us whether
@@ -179,6 +186,15 @@
             stemIn.value = 'handoff';
         }
 
+        /** Unwind the in-flight UI state.  Always called when the
+         *  POST settles (success / error / timeout).  Keeps the
+         *  spinner + button + status text in a consistent state. */
+        function settle(statusText) {
+            btn.disabled = false;
+            if (spinner) spinner.hidden = true;
+            setText(status, statusText || '');
+        }
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             if (!runIn.value || !dstIn.value || !stemIn.value) {
@@ -186,8 +202,25 @@
                 return;
             }
             btn.disabled = true;
+            if (spinner) spinner.hidden = false;
             setText(status, 'Bundling…');
             result.hidden = true;
+
+            // Timeout via AbortController.  On the deadline we abort
+            // the fetch (DOMException 'AbortError') which lands in
+            // the .catch below; we then distinguish from other
+            // errors by reading aborter.signal.aborted to render a
+            // tailored timeout message.
+            var aborter = (typeof AbortController === 'function')
+                ? new AbortController() : null;
+            var timedOut = false;
+            var timerId  = setTimeout(function () {
+                timedOut = true;
+                if (aborter) {
+                    try { aborter.abort(); } catch (_) { /* swallow */ }
+                }
+            }, FETCH_TIMEOUT_MS);
+
             fetch('/api/results/bundle', {
                 method:  'POST',
                 credentials: 'same-origin',
@@ -198,15 +231,37 @@
                     stem:       stemIn.value.trim(),
                     overwrite:  !!ow.checked,
                 }),
+                signal:  aborter ? aborter.signal : undefined,
             })
                 .then(function (r) {
+                    // Content-type guard: a 500 from Flask's default
+                    // error handler returns HTML; r.json() would
+                    // reject with SyntaxError and the user would see
+                    // "Unexpected token <".  When the body isn't
+                    // JSON, fall back to text + a synthetic ok:false
+                    // envelope so the result panel renders something
+                    // actionable.
+                    var ct = (r.headers.get('content-type') || '').toLowerCase();
+                    if (ct.indexOf('application/json') < 0) {
+                        return r.text().then(function (text) {
+                            var snippet = (text || '').trim().slice(0, 200);
+                            return {
+                                status: r.status,
+                                body: {
+                                    ok:    false,
+                                    error: 'HTTP ' + r.status
+                                           + (snippet ? (': ' + snippet) : ''),
+                                },
+                            };
+                        });
+                    }
                     return r.json().then(function (body) {
                         return { status: r.status, body: body };
                     });
                 })
                 .then(function (resp) {
-                    btn.disabled = false;
-                    setText(status, '');
+                    clearTimeout(timerId);
+                    settle('');
                     if (resp.body && resp.body.ok) {
                         renderResult(result, resp.body);
                         navigateSidebarTo(dstIn.value.trim());
@@ -217,9 +272,22 @@
                     }
                 })
                 .catch(function (err) {
-                    btn.disabled = false;
-                    setText(status, '');
-                    renderError(result, String(err));
+                    clearTimeout(timerId);
+                    settle('');
+                    if (timedOut) {
+                        renderError(result, (
+                            'Bundle timed out after '
+                            + (FETCH_TIMEOUT_MS / 1000) + ' s.  '
+                            + 'The server may be busy or unreachable; '
+                            + 'try again in a moment.'
+                        ));
+                    } else if (err && err.name === 'AbortError') {
+                        // User-driven aborts could land here in the
+                        // future; today we don't expose Cancel.
+                        renderError(result, 'Bundle aborted.');
+                    } else {
+                        renderError(result, String(err));
+                    }
                 });
         });
     }

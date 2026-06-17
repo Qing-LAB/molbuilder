@@ -1238,6 +1238,119 @@ Error responses:
 
 ---
 
+## 11a. Run-bundle handoff — `/api/results/bundle`
+
+The workflow-handoff endpoint exposed by Step 3 PR-E.  Given a
+finished SIESTA or PySCF run directory, the endpoint fuses the
+final structure (`.XV` / `<JOB>_optimized.xyz`) with the labels
+the originating script carried (in-body `ATOM-METADATA`) and
+materialises a `<stem>.xyz` + `<stem>.molstruct.json` pair at the
+target.  The next tab's existing `.xyz` load path picks the pair
+up unchanged.
+
+Full workflow contract: [`bundle-contract.md`](bundle-contract.md).
+Backend: `molbuilder/web/blueprints/results.py::api_results_bundle`.
+Frontend: `molbuilder/web/static/lib/results/bundle-handoff.js` +
+the `_bundle_handoff_panel.html` partial mounted in `results.html`.
+
+### 11a.1 Endpoint table
+
+| Route | Methods | Purpose |
+|---|---|---|
+| `/api/results/bundle` | `POST` | Bundle a finished run dir into a portable `.xyz` + `.molstruct.json` pair under a chosen stem |
+
+### 11a.2 Request body
+
+```jsonc
+{
+  "run_dir":    "<abs path to finished SIESTA/PySCF run dir>",
+  "target_dir": "<abs path where the bundle lands>",
+  "stem":       "<basename for the .xyz + .molstruct.json pair>",
+  "overwrite":  false                            // optional, default false
+}
+```
+
+- `run_dir` MUST resolve inside an allowed picker root (§ 1.2).
+  The endpoint refuses traversal outside roots with HTTP 400.
+- `target_dir` MUST resolve inside an allowed picker root.  May
+  be a non-existent directory — the materialiser creates missing
+  parents.  Pointing at an existing FILE (not a directory) is
+  rejected with HTTP 400.
+- `stem` MUST start with `[A-Za-z0-9]` and contain only
+  `[A-Za-z0-9._-]` (1–64 chars).  No leading `.` or `-`; not just
+  dots.  Same charset family as region labels (`_shared.py`) and
+  wrapper basenames (`runwrap.py`).
+- `overwrite=true` replaces an existing `<target>/<stem>.xyz`
+  AND/OR `<target>/<stem>.molstruct.json` at the target stem;
+  `overwrite=false` (default) refuses if either exists.
+
+### 11a.3 Response — success
+
+```jsonc
+{
+  "ok":                 true,
+  "xyz_path":           "/abs/.../handoff.xyz",
+  "sidecar_path":       "/abs/.../handoff.molstruct.json",
+  "source_engine":      "siesta" | "pyscf",
+  "final_coords_from":  "xv" | "fdf-initial" | "py-opt" | "py-initial",
+  "n_atoms":            42,
+  "regions":            ["L-electrode", "bridge"],
+  "frozen_atoms_count": 7,
+  "notes":              [<diagnostic string>, ...]
+}
+```
+
+- `final_coords_from` is load-bearing.  `xv` / `py-opt` mean the
+  bundle reflects converged geometry; `fdf-initial` / `py-initial`
+  mean the run's optimization output was missing and the bundle
+  fell back to initial coords — the JS turns the result panel
+  amber in that case.
+- `notes` carries non-fatal diagnostics: `.XV` exists but
+  unreadable, multiple `*_optimized.xyz` and `JOB` doesn't
+  disambiguate, **LEFT-HANDED cell warnings** (chirality flip
+  risk), atom-metadata schema-version drift, etc.  The UI
+  renders every entry.
+
+### 11a.4 Response — error envelope
+
+| Status | When |
+|---|---|
+| 400 | Bad request shape (non-dict body, missing/invalid `run_dir` / `target_dir` / `stem`) |
+| 400 | Stem violates charset (`[A-Za-z0-9]` start, `[A-Za-z0-9._-]` body, ≤64 chars, not all dots) |
+| 400 | Path outside picker roots, contains `..` (defense-in-depth, also caught by § 1.2) |
+| 400 | `target_dir` exists but is a file, not a directory |
+| 400 | `BundleError`: no script in `run_dir`, both engines present, atom-count mismatch, `overwrite=false` with existing target |
+| 404 | `run_dir` does not exist or is not a directory |
+| 500 | `OSError` writing the bundle (disk full, EACCES, EROFS, broken-symlink stat) |
+
+All errors return `{ok: false, error: "<message>"}` per the
+uniform envelope (§ 1.1).  500s do NOT leak Python tracebacks —
+the OSError catch returns a typed envelope with the OS error
+message.
+
+### 11a.5 Client-side companion (`bundle-handoff.js`)
+
+The JS form handler at `lib/results/bundle-handoff.js`:
+
+1. Pre-fills `run_dir` from the sidebar's current selection
+   (`projects.getCurrentDir()` + `getCurrentFile()`).
+2. Pre-fills `target_dir` to `<run_dir>/handoff` — keeping the
+   bundle in its own sub-dir avoids a sibling `.fdf` / `.py`
+   overriding the bundle's labels via the in-body-wins rule on
+   the next load.
+3. POSTs the body with a 30 s `AbortController` timeout; visual
+   spinner + status text while in flight.
+4. Tolerates non-JSON 500 responses via a `content-type` guard
+   (the prior version surfaced `SyntaxError: Unexpected token <`
+   to the user).
+5. On success: renders the summary panel with the
+   `final_coords_from` state + every `notes` entry; calls
+   `projects.navigateTo(target_dir)` so the sidebar moves to and
+   lists the new bundle pair (the endpoint bypasses `writeFile`,
+   so the sidebar's auto-refresh doesn't fire).
+
+---
+
 ## 12. Shared + page routes
 
 | Route | Method | Body | Success |

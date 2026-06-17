@@ -206,6 +206,78 @@ def test_extract_system_label_returns_none_when_absent():
     assert extract_system_label("# no SystemLabel here\n") is None
 
 
+# --------------------------------------------------------------------- #
+#  check_xv_handedness + check_fdf_handedness                            #
+# --------------------------------------------------------------------- #
+
+
+def test_check_xv_handedness_returns_none_for_right_handed_cell(tmp_path):
+    """Identity cell has det = +1; no warning."""
+    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    p = tmp_path / "right.XV"
+    p.write_text(_h2_xv())
+    assert check_xv_handedness(p) is None
+
+
+def test_check_xv_handedness_warns_on_left_handed_cell(tmp_path):
+    """Flip the third cell vector → det = -1."""
+    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    p = tmp_path / "left.XV"
+    # Cell row 3 has z = -10 (negated) → det = -1000.
+    p.write_text(
+        "  10.0   0.0   0.0   0.0 0.0 0.0\n"
+        "   0.0  10.0   0.0   0.0 0.0 0.0\n"
+        "   0.0   0.0 -10.0   0.0 0.0 0.0\n"
+        "  1\n"
+        "  1   1   0.000   0.000   0.000   0.0 0.0 0.0\n"
+    )
+    warn = check_xv_handedness(p)
+    assert warn is not None
+    assert "LEFT-HANDED" in warn
+    assert "chirality" in warn.lower()
+    assert "left.XV" in warn
+
+
+def test_check_xv_handedness_returns_none_on_unreadable(tmp_path):
+    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    # Path doesn't exist.
+    assert check_xv_handedness(tmp_path / "nope.XV") is None
+
+
+def test_check_fdf_handedness_warns_on_left_handed_lattice():
+    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    text = (
+        "%block LatticeVectors\n"
+        "  1.0 0.0 0.0\n"
+        "  0.0 1.0 0.0\n"
+        "  0.0 0.0 -1.0\n"
+        "%endblock LatticeVectors\n"
+    )
+    warn = check_fdf_handedness(text)
+    assert warn is not None
+    assert "LEFT-HANDED" in warn
+    assert "chirality" in warn.lower()
+
+
+def test_check_fdf_handedness_returns_none_when_no_lattice_block():
+    """No LatticeVectors block -> nothing to check.  Fractional coords
+    would fail in read_fdf_initial_coords for a separate reason."""
+    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    assert check_fdf_handedness("SystemLabel x\n") is None
+
+
+def test_check_fdf_handedness_returns_none_for_right_handed():
+    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    text = (
+        "%block LatticeVectors\n"
+        "  1.0 0.0 0.0\n"
+        "  0.0 1.0 0.0\n"
+        "  0.0 0.0 1.0\n"
+        "%endblock LatticeVectors\n"
+    )
+    assert check_fdf_handedness(text) is None
+
+
 def test_read_fdf_initial_coords_fractional_uses_lattice():
     """Fractional needs LatticeVectors + projection.  Atom at frac
     [0.5, 0, 0] in a 10×10×10 Å box → 5 Å."""

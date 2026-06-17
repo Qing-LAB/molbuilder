@@ -420,10 +420,112 @@ def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
     )
 
 
+# --------------------------------------------------------------------- #
+#  Chirality / handedness diagnostic                                    #
+# --------------------------------------------------------------------- #
+#
+# SIESTA accepts a ``%block LatticeVectors`` with negative determinant
+# (a left-handed cell).  When that is paired with ``AtomicCoordinatesFormat
+# Fractional``, the fractional → Å projection silently MIRRORS the
+# structure -- chirality flipped.  For chiral molecules this is the
+# wrong physics.  These functions are diagnostic-only: they return a
+# loud multi-line warning string when a left-handed cell is detected,
+# else None.  The bundle layer appends the warning to ``RunBundle.notes``
+# so the user sees it in the result panel.
+
+
+def _left_handed_warning(source_label: str, det_value: float) -> str:
+    """Return a multi-line warning string suitable for RunBundle.notes.
+
+    Phrased loudly because a silent chirality flip on a chiral
+    molecule is genuinely wrong physics; the user MUST notice.
+    """
+    return (
+        f"WARNING: LEFT-HANDED CELL DETECTED in {source_label} "
+        f"(det = {det_value:.4g}).  "
+        f"This silently MIRRORS the structure (chirality flip).  "
+        f"For chiral molecules this is wrong physics.  "
+        f"Verify the LatticeVectors block; if the inversion is "
+        f"intentional, ignore."
+    )
+
+
+def check_xv_handedness(path: Union[str, Path]) -> Optional[str]:
+    """Return a left-handed-cell warning when ``path`` is a `.XV` whose
+    first three rows form a negative-determinant cell.
+
+    Cheap to call: reads only the cell rows of the file, doesn't
+    parse atoms.  Returns ``None`` when the cell is right-handed,
+    the file is unreadable, or the .XV is malformed (the caller's
+    own read_xv will surface those classes properly).
+    """
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 3:
+        return None
+    rows: List[List[float]] = []
+    for i in range(3):
+        toks = lines[i].split()
+        if len(toks) < 3:
+            return None
+        try:
+            rows.append([float(toks[0]), float(toks[1]), float(toks[2])])
+        except ValueError:
+            return None
+    det = float(np.linalg.det(np.asarray(rows, dtype=float)))
+    if det < 0:
+        return _left_handed_warning(p.name, det)
+    return None
+
+
+def check_fdf_handedness(text: str) -> Optional[str]:
+    """Return a left-handed-cell warning when ``text``'s
+    ``%block LatticeVectors`` (scaled by ``LatticeConstant`` per
+    spec) has negative determinant.
+
+    Returns ``None`` when no cell block is present (Fractional
+    coords would then fail in read_fdf_initial_coords anyway) or
+    the cell is right-handed.  Tracks the same parse rules as
+    read_fdf_initial_coords: LatticeConstant defaults to Bohr when
+    the unit is omitted.
+    """
+    cell_block = _BLOCK_CELL.search(text)
+    if cell_block is None:
+        return None
+    rows: List[List[float]] = []
+    for raw in cell_block.group(1).splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        toks = line.split()
+        if len(toks) < 3:
+            continue
+        try:
+            rows.append([float(toks[0]), float(toks[1]), float(toks[2])])
+        except ValueError:
+            continue
+    if len(rows) != 3:
+        return None
+    lattice = np.asarray(rows, dtype=float)
+    # Apply LatticeConstant scale per the spec: positive scalar can't
+    # flip the determinant sign, so the sign of det(lattice * scale)
+    # equals the sign of det(lattice).  Skip the multiplication.
+    det = float(np.linalg.det(lattice))
+    if det < 0:
+        return _left_handed_warning("LatticeVectors block (.fdf)", det)
+    return None
+
+
 __all__ = [
     "SiestaXVError",
     "SiestaFdfStructureError",
     "read_xv",
     "read_fdf_initial_coords",
     "extract_system_label",
+    "check_xv_handedness",
+    "check_fdf_handedness",
 ]

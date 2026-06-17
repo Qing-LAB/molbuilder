@@ -50,7 +50,12 @@
 
     <div class="bundle-handoff-actions">
       <button type="submit" class="bundle-handoff-submit">Bundle</button>
-      <span class="bundle-handoff-status" data-status></span>
+      {# Spinner is purely visual feedback that the POST is in
+         flight; aria-hidden so screen readers don't read its
+         tick.  Status text alongside it carries the
+         announceable label ("Bundling…" / timeout reason). #}
+      <span class="bundle-handoff-spinner" data-spinner hidden aria-hidden="true"></span>
+      <span class="bundle-handoff-status" data-status aria-live="polite"></span>
     </div>
   </form>
 

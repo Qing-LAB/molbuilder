@@ -131,6 +131,7 @@ def _assemble_siesta(run_dir: Path, fdf_paths: list[Path]) -> RunBundle:
     from molbuilder import script_contract as _sc
     from molbuilder.parsers.siesta_struct import (
         read_xv, read_fdf_initial_coords, extract_system_label,
+        check_xv_handedness, check_fdf_handedness,
         SiestaXVError, SiestaFdfStructureError,
     )
 
@@ -251,6 +252,21 @@ def _assemble_siesta(run_dir: Path, fdf_paths: list[Path]) -> RunBundle:
                 f"final structure atom count ({len(structure.elements)}). "
                 f"The script and the final coords likely come from "
                 f"different runs; re-render or clean the run dir.")
+
+    # Handedness diagnostic.  A left-handed cell silently mirrors
+    # the structure when Fractional coords project through it; for
+    # chiral molecules this is wrong physics.  We check both the
+    # source of the final coords AND the .fdf's LatticeVectors
+    # block.  Soft (notes-only, doesn't refuse to bundle) because
+    # the cell COULD be intentional; loud warning text gives the
+    # user the obligation to look.
+    if final_coords_from == "xv" and xv_path is not None:
+        warn = check_xv_handedness(xv_path)
+        if warn:
+            notes.append(warn)
+    fdf_handedness_warn = check_fdf_handedness(fdf_text)
+    if fdf_handedness_warn:
+        notes.append(fdf_handedness_warn)
 
     return RunBundle(
         structure=structure,
