@@ -308,6 +308,70 @@ class TestSettlePostLoad:
             "loop never auto-stops on a finished run; runs forever "
             "until dispose.")
 
+    def test_finishedTicks_not_reset_in_watching_transition(self, core_body):
+        """REGRESSION pin (PR 2.2): the 2-tick buffer counter MUST NOT
+        be reset inside transition('WATCHING').  Pre-PR-2.2 it was --
+        and _settlePostLoad's LOADING -> WATCHING path on a freshly-
+        finished file would increment then immediately wipe the count,
+        turning the 2-tick buffer into a 3-tick one (extra 15 s of
+        wasted polling per fresh-finished-file load).
+
+        The buffer reset moved to two correct sites:
+          (a) transition('LOADING'): fresh-load ground-truth reset.
+          (b) _settlePostLoad's ongoing branch: an ongoing tick
+              breaks any 'finished' streak."""
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']WATCHING[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "WATCHING branch missing"
+        body = m.group(1)
+        assert "finishedTicks = 0" not in body, (
+            "transition('WATCHING') is resetting finishedTicks.  "
+            "The 2-tick buffer regression from pre-PR-2.2 is back: "
+            "_settlePostLoad's LOADING -> WATCHING path on a "
+            "finished file will increment finishedTicks then wipe "
+            "it here.")
+
+    def test_finishedTicks_reset_in_loading_transition(self, core_body):
+        """The counter MUST be reset in transition('LOADING') -- a
+        fresh load is new ground truth; any stale count from a
+        prior file MUST NOT leak in."""
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "finishedTicks" in body and "= 0" in body, (
+            "transition('LOADING') no longer resets finishedTicks.  "
+            "A Refresh during a finished+settling state would "
+            "inherit the counter from the prior run.")
+
+    def test_finishedTicks_reset_in_settle_ongoing_branch(self, core_body):
+        """The ongoing branch of _settlePostLoad MUST reset
+        finishedTicks -- an ongoing tick breaks any consecutive
+        finished streak.  Per contract § 13."""
+        m = re.search(
+            r"function\s+_settlePostLoad\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        # The reset MUST appear somewhere after the LOADED-branch
+        # block (i.e. in the fall-through ongoing path).  Easiest
+        # check: count the resets in the helper body -- should be
+        # at least one for the ongoing path.
+        assert "finishedTicks = 0" in body, (
+            "_settlePostLoad no longer resets finishedTicks in the "
+            "ongoing-branch fall-through.  A 'finished' streak that "
+            "spans across an 'ongoing' tick won't break correctly "
+            "-- the buffer could trip on non-consecutive finished "
+            "ticks (eventually-consistent runs that flap "
+            "ongoing/finished/ongoing).")
+
 
 class TestRefreshListenerWiredOnce:
     """PR 2.1 audit follow-up: the EVENT_REFRESH_REQUESTED listener

@@ -323,6 +323,15 @@
             state.viewState.firstFit     = true;
             // Clear derived caches.
             state.derived.scfPollHistory.length = 0;
+            // Reset the 2-tick WATCHING -> LOADED buffer counter.
+            // A fresh load is a new ground truth; any stale
+            // finishedTicks from a prior file/run must not carry
+            // over.  (Pre-PR-2.2: this reset lived in
+            // transition('WATCHING') which had the side effect of
+            // wiping a just-incremented count when _settlePostLoad
+            // transitioned LOADING -> WATCHING with a finished
+            // run.  Now the reset is here, where it belongs.)
+            state.lifecycle.finishedTicks = 0;
             // Bump fetchSeq AFTER aborts so the new fetch carries a
             // fresh sequence number that no in-flight response can
             // match.
@@ -369,10 +378,16 @@
             // matrix row "fetch resolved, run ongoing": START poll
             // timer.  startPolling() is idempotent so re-entering
             // WATCHING on a mid-poll tick is a no-op for the timer.
+            //
+            // NOTE: do NOT reset finishedTicks here.  _settlePostLoad
+            // owns the counter: it increments on a "finished" tick
+            // BEFORE transitioning to WATCHING (if not yet ready to
+            // flip to LOADED).  Resetting here would wipe the
+            // just-incremented value and effectively turn the
+            // 2-tick buffer into a 3-tick one.  The "ongoing tick
+            // breaks the consecutive count" reset lives in
+            // _settlePostLoad's ongoing branch instead.
             startPolling();
-            // A non-finished tick clears the 2-tick buffer; only
-            // CONSECUTIVE finished ticks count.
-            state.lifecycle.finishedTicks = 0;
             state.machine = "WATCHING";
             return;
         }
@@ -418,7 +433,11 @@
             }
             return;
         }
-        // Ongoing (rs === "ongoing" or absent).
+        // Ongoing (rs === "ongoing" or absent).  Reset the buffer
+        // counter: a non-finished tick breaks any consecutive
+        // "finished" streak.  Per contract § 13 the buffer counts
+        // CONSECUTIVE ticks only.
+        state.lifecycle.finishedTicks = 0;
         transition("WATCHING");
     }
 
