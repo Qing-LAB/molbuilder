@@ -21,24 +21,39 @@ def test_point_parse_plain_triplet():
     p = Point.parse("4,2,64")
     assert p.np == 4 and p.omp == 2 and p.bs == 64
     assert p.diag == DIAG_1STAGE
-    assert p.slug == "np4_omp2_bz64_1s"
+    assert p.pin is True
+    assert p.slug == "np4_omp2_bz64_1s_p1"
 
 
 def test_point_parse_keyed_triplet():
     p = Point.parse("np=10,omp=1,bs=64")
     assert p.np == 10 and p.omp == 1 and p.bs == 64
     assert p.diag == DIAG_1STAGE
+    assert p.pin is True
 
 
 def test_point_parse_plain_quadruplet_diag_alias():
     p = Point.parse("4,2,64,2s")
     assert p.diag == DIAG_2STAGE
-    assert p.slug == "np4_omp2_bz64_2s"
+    assert p.pin is True
+    assert p.slug == "np4_omp2_bz64_2s_p1"
 
 
 def test_point_parse_keyed_quadruplet():
     p = Point.parse("np=4,omp=2,bs=64,diag=ELPA-2STAGE")
     assert p.diag == DIAG_2STAGE
+    assert p.pin is True
+
+
+def test_point_parse_plain_quintuplet_pin_alias():
+    p = Point.parse("20,1,64,1s,nopin")
+    assert p.pin is False
+    assert p.slug == "np20_omp1_bz64_1s_p0"
+
+
+def test_point_parse_keyed_quintuplet():
+    p = Point.parse("np=10,omp=2,bs=64,diag=2s,pin=false")
+    assert p.np == 10 and p.omp == 2 and p.pin is False
 
 
 def test_point_parse_rejects_bad_arity():
@@ -46,22 +61,40 @@ def test_point_parse_rejects_bad_arity():
         Point.parse("4,2")
 
 
+def test_point_parse_rejects_bad_pin():
+    with pytest.raises(ValueError):
+        Point.parse("4,2,64,1s,bogus")
+
+
 def test_default_points_match_design():
-    """Pin the 10-point default sweep (5 base shapes × ELPA-1STAGE / 2STAGE)."""
-    quads = [(p.np, p.omp, p.bs, p.diag) for p in DEFAULT_POINTS]
+    """Pin the 18-point default sweep (9 base shapes × ELPA-1/2STAGE).
+
+    Run-order: most aggressive first (all-cores, biggest blocks).
+    """
+    quints = [(p.np, p.omp, p.bs, p.diag, p.pin) for p in DEFAULT_POINTS]
     base_shapes = [
-        (4, 2,  32),
-        (4, 2,  64),
-        (4, 2, 128),
-        (2, 5,  64),
-        (10, 1, 64),
+        # all-physical-cores cross-socket (pin=False)
+        (20, 1,  64, False),
+        (10, 2,  64, False),
+        # max single-socket, biggest blocks (pin=True)
+        (10, 1, 256, True),
+        (10, 1, 128, True),
+        (10, 1,  64, True),
+        # 4-ranks-per-GPU anchor, big-to-small block
+        (4, 2,  128, True),
+        (4, 2,   64, True),
+        (4, 2,   32, True),
+        # host-bound stress test
+        (2, 5,   64, True),
     ]
     expected = [
-        (np, omp, bs, diag)
-        for (np, omp, bs) in base_shapes
+        (np, omp, bs, diag, pin)
+        for (np, omp, bs, pin) in base_shapes
         for diag in (DIAG_1STAGE, DIAG_2STAGE)
     ]
-    assert quads == expected
+    assert quints == expected
+    # 9 shapes × 2 diag = 18.
+    assert len(DEFAULT_POINTS) == 18
 
 
 # --------------------------------------------------------------------- #
@@ -153,6 +186,32 @@ def test_disable_md_handles_alternate_relax_keyword():
     text = "MD.NumBroydenSteps  100\nBlockSize 64\n"
     out = disable_md(text)
     assert "MD.NumBroydenSteps          0" in out
+
+
+def test_strip_numa_pin_clobbers_exact_literal():
+    """Match the exact assignment line runwrap.py writes today."""
+    text = (
+        '_n_sockets=$(grep -c "^physical id" /proc/cpuinfo)\n'
+        'if [ "$_gpu_numa" != "unknown" ] && [ "$_n_sockets" -ge 2 ]; then\n'
+        '    _numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa --membind=$_gpu_numa"\n'
+        'fi\n'
+        '$_numa_wrap_gpu mpirun -np 4 siesta\n'
+    )
+    out = bench._strip_numa_pin(text)
+    assert 'numactl --cpunodebind' not in out
+    assert '_numa_wrap_gpu=""' in out
+    # mpirun launch line preserved unchanged.
+    assert '$_numa_wrap_gpu mpirun -np 4 siesta' in out
+
+
+def test_strip_numa_pin_is_idempotent_when_already_empty():
+    """When the wrapper already has no numactl pin, leave it alone."""
+    text = (
+        '_numa_wrap_gpu=""\n'
+        '$_numa_wrap_gpu mpirun -np 4 siesta\n'
+    )
+    out = bench._strip_numa_pin(text)
+    assert out == text
 
 
 # --------------------------------------------------------------------- #

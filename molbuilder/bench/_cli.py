@@ -31,12 +31,14 @@ def bench_group() -> None:
 @click.argument("project_dir", type=click.Path(exists=True, file_okay=False,
                                                 resolve_path=True))
 @click.option("--points", "points_str", default=None,
-              help='space-separated triplets or quadruplets, e.g. '
-                   '"4,2,64 4,2,64,2s 10,1,64,1s".  Three-token form uses '
-                   'the default Diag.Algorithm (ELPA-1STAGE); four-token '
-                   'form pins it ("1s"/"2s" or "ELPA-1STAGE"/"ELPA-2STAGE").  '
-                   'Default: 10-point sweep (5 shapes × ELPA-1/2STAGE) '
-                   '— see docs/protocols/script-contract.md.')
+              help='space-separated 3/4/5-tuples, e.g. '
+                   '"4,2,64 4,2,64,2s 20,1,64,1s,nopin".  Fields are '
+                   'np,omp,bs[,diag[,pin]].  diag: "1s"/"2s" or '
+                   '"ELPA-1STAGE"/"ELPA-2STAGE".  pin: "pin"/"nopin" '
+                   '(default pin = GPU socket).  Default: 18-point sweep '
+                   '(9 shapes × ELPA-1/2STAGE) covering all-cores '
+                   'cross-socket + np10 big-block + ELPA 4-rank anchor '
+                   '+ host-bound stress.  See docs/protocols/script-contract.md.')
 @click.option("--iters", "iters", type=int, default=5, show_default=True,
               help="MaxSCFIterations cap per test point.")
 @click.option("--cold", "cold", is_flag=True,
@@ -112,8 +114,10 @@ def cmd_siesta_gpu(project_dir: str,
     click.echo(f"cold      : {cold}")
     click.echo(f"sweep     : {len(points)} points")
     for i, p in enumerate(points, 1):
+        pin_tag = "pin=GPU-socket" if p.pin else "pin=none (all cores)"
         click.echo(
-            f"            {i}. np={p.np}  omp={p.omp}  bs={p.bs}  diag={p.diag}"
+            f"            {i}. np={p.np}  omp={p.omp}  bs={p.bs}  "
+            f"diag={p.diag}  {pin_tag}"
         )
     click.echo("")
 
@@ -123,9 +127,10 @@ def cmd_siesta_gpu(project_dir: str,
 
     # Run each point sequentially -- they share the GPU.
     for i, point in enumerate(points, 1):
+        pin_tag = "pinned" if point.pin else "all-cores"
         click.echo(
             f"---- [{i}/{len(points)}] np={point.np} omp={point.omp} "
-            f"bs={point.bs} diag={point.diag} ----"
+            f"bs={point.bs} diag={point.diag} {pin_tag} ----"
         )
         point_dir = _prepare_point_dir(
             proj, basename, fdf_text, runsh_text, point, iters, cold,

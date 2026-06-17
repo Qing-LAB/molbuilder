@@ -36,36 +36,47 @@ DIAG_2STAGE = "ELPA-2STAGE"
 
 @dataclass(frozen=True)
 class Point:
-    """One (mpi_np, omp, BlockSize, Diag.Algorithm) test point."""
+    """One (mpi_np, omp, BlockSize, Diag.Algorithm, pin) test point.
+
+    ``pin=True``  -- bind to the GPU-proximate NUMA node (default,
+                     matches the wrapper as generated).  np * omp must
+                     fit within one socket.
+    ``pin=False`` -- strip the numactl wrap so MPI ranks can span
+                     sockets.  Needed to use all physical cores
+                     when np * omp exceeds one socket's core count.
+    """
     np: int
     omp: int
     bs: int
     diag: str = DIAG_1STAGE  # default matches typical generator output
+    pin: bool = True
 
     @property
     def slug(self) -> str:
         # Diag tag: "1s" or "2s" keeps the directory name short.
         d = "2s" if "2" in self.diag else "1s"
-        return f"np{self.np}_omp{self.omp}_bz{self.bs}_{d}"
+        p = "p1" if self.pin else "p0"
+        return f"np{self.np}_omp{self.omp}_bz{self.bs}_{d}_{p}"
 
     @classmethod
     def parse(cls, s: str) -> "Point":
-        """Parse "4,2,64" / "4,2,64,2stage" / "np=4,omp=2,bs=64,diag=ELPA-2STAGE".
+        """Parse "4,2,64" / "4,2,64,2stage" / "20,1,64,1s,nopin" /
+        "np=4,omp=2,bs=64,diag=ELPA-2STAGE,pin=true".
 
-        Three-token shape uses the default diag (ELPA-1STAGE).  Four
-        tokens pin diag; the value may be a SIESTA keyword
-        ("ELPA-1STAGE" / "ELPA-2STAGE") or a shorthand "1stage" /
-        "2stage" / "1s" / "2s".
+        Three-token form uses default diag (ELPA-1STAGE) + default
+        pin (True).  Four tokens pin diag; five also pin the NUMA
+        pin axis.  Pin values: "pin"/"nopin", "p1"/"p0",
+        "true"/"false", "1"/"0", "yes"/"no".
         """
         parts = [p.strip() for p in s.split(",")]
-        if len(parts) not in (3, 4):
+        if len(parts) not in (3, 4, 5):
             raise ValueError(
-                f"need 3 or 4 comma-separated values, got: {s!r}"
+                f"need 3, 4, or 5 comma-separated values, got: {s!r}"
             )
         vals: List[str] = [(p.split("=", 1)[1] if "=" in p else p)
                            for p in parts]
         diag = DIAG_1STAGE
-        if len(vals) == 4:
+        if len(vals) >= 4:
             v = vals[3].lower()
             if "2" in v:
                 diag = DIAG_2STAGE
@@ -76,26 +87,54 @@ class Point:
                     f"bad diag value: {vals[3]!r} "
                     f"(want 1stage/2stage/ELPA-1STAGE/ELPA-2STAGE)"
                 )
+        pin = True
+        if len(vals) == 5:
+            v = vals[4].lower()
+            if v in ("nopin", "p0", "false", "0", "no", "off"):
+                pin = False
+            elif v in ("pin", "p1", "true", "1", "yes", "on"):
+                pin = True
+            else:
+                raise ValueError(
+                    f"bad pin value: {vals[4]!r} "
+                    f"(want pin/nopin/p1/p0/true/false)"
+                )
         return cls(
             np=int(vals[0]), omp=int(vals[1]), bs=int(vals[2]),
-            diag=diag,
+            diag=diag, pin=pin,
         )
 
 
-# Default sweep: 5 baseline shapes × 2 ELPA diag variants = 10 points.
-# Holds (np, omp, bs) constant within each diag pair so the comparison
-# isolates 1STAGE vs 2STAGE on the same workload.  np * omp <= 10 for
-# every row (fits the GPU-proximate socket on the standard workstation).
-_BASE_SHAPES: List[Tuple[int, int, int]] = [
-    (4, 2,  32),   # baseline-with-smaller-block
-    (4, 2,  64),   # baseline anchor (ELPA published 4 ranks/GPU)
-    (4, 2, 128),   # baseline-with-bigger-block
-    (2, 5,  64),   # fewer ranks, more OMP (host-bound test)
-    (10, 1, 64),   # max host parallelism (MPS Hyper-Q test)
+# Default sweep: baseline shapes (pinned to GPU socket) + all-cores
+# shapes (cross-socket) + np10 BlockSize push, each × 2 ELPA diag
+# variants.  Holds (np, omp, bs, pin) constant within each diag pair
+# so the comparison isolates 1STAGE vs 2STAGE on the same workload.
+#
+# Tuples shape: (np, omp, bs, pin).  Workstation reference layout:
+# 2 sockets × 10 physical cores = 20 cores; GPU on NUMA node 0.
+# pin=True rows respect np*omp <= 10 (single-socket budget);
+# pin=False rows let mpirun --map-by package span both sockets.
+_BASE_SHAPES: List[Tuple[int, int, int, bool]] = [
+    # Most aggressive first: all-physical-cores, biggest blocks, max
+    # parallelism.  Run-order chosen so the most interesting result
+    # arrives early -- a stalled bench still gives signal.
+    # All physical cores, cross-socket (no NUMA pin).
+    (20, 1,  64, False),   # every physical core gets one rank
+    (10, 2,  64, False),   # 10 ranks × 2 OMP spread across sockets
+    # Pinned to GPU socket: max-rank single-socket, biggest blocks.
+    (10, 1, 256, True),    # np10 + biggest block
+    (10, 1, 128, True),    # np10 + bigger block
+    (10, 1,  64, True),    # max single-socket parallelism
+    # ELPA published 4-ranks-per-GPU anchor, big-to-small block.
+    (4, 2,  128, True),    # bigger-block baseline
+    (4, 2,   64, True),    # ELPA published 4 ranks/GPU anchor
+    (4, 2,   32, True),    # smaller-block baseline
+    # Least aggressive last (host-bound stress test).
+    (2, 5,   64, True),    # fewer ranks, more OMP
 ]
 DEFAULT_POINTS: List[Point] = [
-    Point(np, omp, bs, diag)
-    for (np, omp, bs) in _BASE_SHAPES
+    Point(np, omp, bs, diag, pin)
+    for (np, omp, bs, pin) in _BASE_SHAPES
     for diag in (DIAG_1STAGE, DIAG_2STAGE)
 ]
 
@@ -340,6 +379,28 @@ def _resolve_project(project_dir: Path) -> Tuple[Path, Path, str]:
     return fdf, runsh, basename
 
 
+def _strip_numa_pin(runsh_text: str) -> str:
+    """Clobber the wrapper's ``_numa_wrap_gpu`` assignment so mpirun
+    launches without ``numactl --cpunodebind``.  Lets ranks span both
+    sockets via ``--map-by package`` -- needed when np * omp exceeds
+    one socket's physical-core budget.
+    """
+    target = '_numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa --membind=$_gpu_numa"'
+    replacement = '_numa_wrap_gpu=""  # molbuilder-bench: pin=False, allow cross-socket'
+    if target in runsh_text:
+        return runsh_text.replace(target, replacement, 1)
+    # Fallback: blank any line that assigns _numa_wrap_gpu to a
+    # numactl invocation.  Keeps the file syntactically valid even
+    # if the exact literal drifts in a future runwrap.py refactor.
+    return re.sub(
+        r'^\s*_numa_wrap_gpu="numactl[^"]*"\s*$',
+        replacement,
+        runsh_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
 def _prepare_point_dir(project_dir: Path, basename: str,
                        fdf_text: str, runsh_text: str,
                        point: Point, iters: int,
@@ -356,8 +417,13 @@ def _prepare_point_dir(project_dir: Path, basename: str,
     modified = force_max_scf_iters(modified, iters)
     modified = disable_md(modified)
     (point_dir / f"{basename}.fdf").write_text(modified, encoding="utf-8")
-    # Copy the wrapper as-is.
-    (point_dir / f"{basename}.run.sh").write_text(runsh_text, encoding="utf-8")
+    # Wrapper: strip NUMA pin when point.pin is False so MPI can
+    # span both sockets.  Otherwise use the project's wrapper verbatim.
+    if point.pin:
+        wrapper_text = runsh_text
+    else:
+        wrapper_text = _strip_numa_pin(runsh_text)
+    (point_dir / f"{basename}.run.sh").write_text(wrapper_text, encoding="utf-8")
     os.chmod(point_dir / f"{basename}.run.sh", 0o755)
     # Symlink read-only siblings (psml, ion, ion.nc, ion.xml).
     for pattern in ("*.psml", "*.ion", "*.ion.nc", "*.ion.xml"):
@@ -438,7 +504,7 @@ def write_results_csv(results: List[PointResult],
     with csv.open("w", encoding="utf-8") as fh:
         fh.write(
             "point,req_np,eff_np,req_omp,eff_omp,req_bs,eff_bs,"
-            "req_diag,eff_diag,"
+            "req_diag,eff_diag,req_pin,"
             "iters,first_iter_s,avg_iter_s,wall_s,error\n"
         )
         for r in results:
@@ -448,6 +514,7 @@ def write_results_csv(results: List[PointResult],
                 f"{r.point.omp},{r.effective_omp if r.effective_omp else ''},"
                 f"{r.point.bs},{r.effective_bs if r.effective_bs else ''},"
                 f"{r.point.diag},{r.effective_diag or ''},"
+                f"{'gpu-socket' if r.point.pin else 'all-cores'},"
                 f"{r.iters_done},"
                 f"{r.first_iter_s if r.first_iter_s else ''},"
                 f"{r.avg_iter_s if r.avg_iter_s else ''},"
