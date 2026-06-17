@@ -642,6 +642,58 @@ tests for the actual reset-on-Refresh fix live in the existing
   the `step_initial_etot` fallback gets explicit `None` handling.
   Not a contract-design question.
 
+### Known gaps in PR 2 / PR 2.1 (deferred to future commits)
+
+PR 2 shipped the state-machine backbone + reset matrix + file-
+identity guard + in-progress filter.  PR 2.1 (audit follow-up)
+added the LOADED/WATCHING/ERROR branches, the 2-tick buffer, and
+fixed per-load Refresh listener pile-up.  The following contract
+clauses are NOT yet enforced in the trajectory implementation;
+spectra's PR 3 will inherit the same shape, so worth resolving
+before then:
+
+1. **`fileState` writes outside `transition()`.** Contract § 2
+   forbids direct mutation of `fileState` "outside a → LOADING
+   → LOADED/WATCHING arc".  `applyNewData` still patches
+   `state.mtime` / `state.data` / `state.format` / `state.label`
+   / `state.path` via the backward-compat aliases (sequential
+   writes; not atomic replacement).  User-visible impact: zero
+   (the sequence is synchronous and no render fires between).
+   Architectural impact: transition() isn't the SOLE writer.
+   Fix shape: route applyNewData through a new
+   `transition('APPLY_DATA', {payload})` branch that does the
+   atomic fileState replacement.
+
+2. **`uiPrefs` sessionStorage wiring.** The `state.uiPrefs`
+   bucket is an empty `{}` today.  The decided sessionStorage
+   key `molbuilder.results.uiPrefs.v1` is not wired anywhere.
+   The actual UI pref this inspector exposes (`hideFrozen`)
+   lives in `mol-viewer-embed.js`'s own sessionStorage with a
+   different key.  Until the embed's prefs migrate into the
+   contract's `uiPrefs` bucket, the persistence row is a no-op.
+
+3. **Render-with-snapshot (Invariant 3).** The `snap()` helper
+   is defined but render functions still close over `state`
+   directly.  PR 2 acknowledged this; PR 2.1 doesn't close it.
+
+4. **Frame-canonical source (Invariant 2 follow-on).** Plot
+   trace builders still use parallel arrays
+   (`_plottableIdx.map(i => energies_raw[i])`) rather than
+   per-frame `frame.energy` reads.  The wire format would need
+   to emit nested frame objects with inline energy/max_force
+   for this to land cleanly.  PR 4 territory.
+
+5. **PyScf `in_progress` parser side.** Server's
+   `parsers/__init__.py` reads `getattr(f, "in_progress",
+   False)` so PyScf frames silently report `False`.  PyScf
+   parser doesn't currently tag partial frames; the bug it
+   would catch is parser-specific.  PR 4 covers the parser-side
+   completion.
+
+These gaps are tracked in the PR 2 + PR 2.1 commit messages and
+re-listed here so a future contributor reading just this doc
+knows the current state of enforcement.
+
 ### Extending the contract to a new inspector
 
 To add a new results-tab inspector (e.g., Transport when task

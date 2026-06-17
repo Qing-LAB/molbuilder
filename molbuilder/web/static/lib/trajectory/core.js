@@ -214,6 +214,15 @@
             // from a prior file can never write into the current
             // file's view.
             fetchSeq:     0,
+            // 2-consecutive-ticks WATCHING -> LOADED buffer
+            // (contract § 2, § 3 matrix row "poll says run
+            // finished (2 consecutive ticks)").  A single tick
+            // can lie -- the server may see `run_state=finished`
+            // while the parser is still flushing trailing data.
+            // Incremented in pollOnce when r.data.run_state ===
+            // "finished"; reset to 0 on LOADING / WATCHING tick
+            // with ongoing state.
+            finishedTicks: 0,
         },
 
         derived: {
@@ -298,10 +307,7 @@
             state.lifecycle.pollInFlight = false;
             // Stop the poll timer; LOADED/WATCHING will restart it
             // if the run is ongoing.
-            if (state.lifecycle.pollTimer) {
-                clearInterval(state.lifecycle.pollTimer);
-                state.lifecycle.pollTimer = null;
-            }
+            stopPolling();
             // Empty fileState.  The new path is the only thing the
             // caller cares about; data populates when the fetch
             // resolves and applyNewData runs under the file-identity
@@ -334,10 +340,7 @@
                 state.lifecycle.pollAbort = null;
             }
             state.lifecycle.pollInFlight = false;
-            if (state.lifecycle.pollTimer) {
-                clearInterval(state.lifecycle.pollTimer);
-                state.lifecycle.pollTimer = null;
-            }
+            stopPolling();
             state.fileState.path   = null;
             state.fileState.mtime  = null;
             state.fileState.format = null;
@@ -349,10 +352,74 @@
             state.machine = "IDLE";
             return;
         }
-        // LOADED / WATCHING / ERROR transitions don't reset state
-        // -- they just set the machine field.  applyNewData
-        // populates fileState atomically before this is called.
-        state.machine = target;
+        if (target === "LOADED") {
+            // Run is finished (run_state="finished") OR static
+            // file (no run_state).  Side effects per contract § 3
+            // matrix row "fetch resolved, run finished": stop poll
+            // timer if running; clear pollInFlight; reset
+            // finishedTicks (we're already in LOADED).
+            stopPolling();
+            state.lifecycle.pollInFlight = false;
+            state.lifecycle.finishedTicks = 0;
+            state.machine = "LOADED";
+            return;
+        }
+        if (target === "WATCHING") {
+            // Run is ongoing.  Side effects per contract § 3
+            // matrix row "fetch resolved, run ongoing": START poll
+            // timer.  startPolling() is idempotent so re-entering
+            // WATCHING on a mid-poll tick is a no-op for the timer.
+            startPolling();
+            // A non-finished tick clears the 2-tick buffer; only
+            // CONSECUTIVE finished ticks count.
+            state.lifecycle.finishedTicks = 0;
+            state.machine = "WATCHING";
+            return;
+        }
+        if (target === "ERROR") {
+            // Side effects per contract § 3 row "fetch failed N
+            // times": stop poll timer.  Keeps last-good fileState
+            // in place so the user still sees what they had.
+            stopPolling();
+            state.lifecycle.pollInFlight = false;
+            state.machine = "ERROR";
+            return;
+        }
+        // Unknown target: silent no-op.  Future targets (the
+        // contract reserves room for sub-states) land here.
+    }
+
+    // Helper for applyNewData et al: after fileState has been
+    // populated, transition to the appropriate post-LOADING state
+    // based on run_state.  Centralizes the "finished/ongoing"
+    // decision + the 2-consecutive-ticks WATCHING -> LOADED buffer
+    // (contract § 2, § 13).
+    function _settlePostLoad() {
+        const rs = state.fileState.data
+                && state.fileState.data.run_state;
+        if (rs === "errored") {
+            transition("ERROR");
+            return;
+        }
+        if (rs === "finished") {
+            // 2-tick buffer: a single "finished" tick may lie if
+            // the parser is still flushing trailing data.  Stay in
+            // WATCHING until we've seen N consecutive finished
+            // ticks; flip to LOADED on the Nth.
+            state.lifecycle.finishedTicks++;
+            if (state.lifecycle.finishedTicks >= 2) {
+                transition("LOADED");
+            } else {
+                // First finished tick: stay in WATCHING (keep the
+                // timer running for one more cycle).
+                if (state.machine !== "WATCHING") {
+                    transition("WATCHING");
+                }
+            }
+            return;
+        }
+        // Ongoing (rs === "ongoing" or absent).
+        transition("WATCHING");
     }
 
     // Snapshot helper -- returns a shallow {fileState, viewState,
@@ -2319,9 +2386,20 @@
                     + "(checked " + new Date().toLocaleTimeString() + ").",
                     "ok"
                 );
+                // No new data, but a no-change tick still counts
+                // for the 2-tick WATCHING -> LOADED buffer if the
+                // run was previously reported finished.  Settle
+                // re-using the cached fileState.data.run_state.
+                _settlePostLoad();
                 return;
             }
             applyNewData(r);
+            // Contract \u00a7 3 matrix rows "watch tick (new SCF iter)"
+            // and "watch tick (new frame)" + the WATCHING->LOADED
+            // 2-tick buffer all run through _settlePostLoad.  This
+            // is the single canonical site where run_state drives
+            // state-machine transitions (Refresh path is the other).
+            _settlePostLoad();
         } catch (e) {
             // AbortError: dispose() or a file-change supersede ran.
             // Silent -- the next tick (or the unmount) is the
@@ -2803,42 +2881,34 @@
         );
     }
 
+    // Refresh-button listener wiring.  Wired ONCE at mount; not
+    // re-wired on every load/transition.  Pre-PR-2.1 this lived
+    // inside startPolling() which loadByPath called on every load
+    // -- meaning the listener was re-attached every load and the
+    // old one was only torn down on dispose, multiplying handlers.
+    function _wireRefreshListener() {
+        const C = (window.molbuilder || {}).constants;
+        if (!C || !C.EVENT_REFRESH_REQUESTED) return;
+        // Contract § 5: Refresh = file-switch with current path.
+        // loadByPath -> transition('LOADING') runs the full reset
+        // matrix (scfPollHistory clear, fetchSeq bump, etc.).
+        const _onRefresh = () => {
+            const p = state.fileState.path;
+            if (!p) return;     // not yet loaded; nothing to refresh
+            loadByPath(p);
+        };
+        document.addEventListener(C.EVENT_REFRESH_REQUESTED,
+                                   _onRefresh);
+        _cleanups.push(() => {
+            document.removeEventListener(C.EVENT_REFRESH_REQUESTED,
+                                          _onRefresh);
+        });
+    }
+
     function startPolling() {
+        // Idempotent timer-start.  Called by transition('WATCHING').
         if (state.pollTimer) clearInterval(state.pollTimer);
         state.pollTimer = setInterval(pollOnce, POLL_MS);
-        // Honor the user-driven refresh button: the file picker
-        // dispatches EVENT_REFRESH_REQUESTED on click; we run an
-        // immediate poll instead of making the user wait up to 60 s
-        // (POLL_MS) for the next scheduled tick.  This is the
-        // intuitive ask: "I clicked Refresh -- update the chart NOW."
-        //
-        // pollOnce() already guards against tick-overlap via
-        // state.pollInFlight, so a click during an in-flight poll
-        // is a no-op (the in-flight poll will pick up the latest
-        // mtime on its own).  Pushed into _cleanups so the listener
-        // tears down with the inspector dispose path.
-        const C = (window.molbuilder || {}).constants;
-        if (C && C.EVENT_REFRESH_REQUESTED) {
-            // Refresh button => full file-switch with the current
-            // path (contract § 5: "Refresh = file-switch with same
-            // path").  Pre-fix this was ``pollOnce()`` which left
-            // stale state.derived.scfPollHistory samples carrying
-            // bogus per-iter time estimates for ~32 polls.
-            // transition('LOADING') runs the reset matrix, then
-            // loadByPath does the actual fetch under the new
-            // fetchSeq.
-            const _onRefresh = () => {
-                const p = state.fileState.path;
-                if (!p) return;     // not yet loaded; nothing to refresh
-                loadByPath(p);
-            };
-            document.addEventListener(C.EVENT_REFRESH_REQUESTED,
-                                       _onRefresh);
-            _cleanups.push(() => {
-                document.removeEventListener(C.EVENT_REFRESH_REQUESTED,
-                                              _onRefresh);
-            });
-        }
     }
 
     function stopPolling() {
@@ -2892,10 +2962,6 @@
         // resets.  Eliminates the half-refresh class.
         transition("LOADING", { path: path });
         const mySeq = state.lifecycle.fetchSeq;
-        // The legacy inline aborts + scfPollHistory clear that used
-        // to live here (L1 2026-06-14 R4-A + P1.A 2026-06-16) are
-        // GONE -- transition('LOADING') above does them all in a
-        // single canonical site.  See contract § 3 reset matrix.
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
         try {
@@ -2949,7 +3015,13 @@
                 }
                 setStatus(msg, "ok");
             }
-            startPolling();
+            // Contract § 2: transition to LOADED or WATCHING based
+            // on run_state.  _settlePostLoad starts the poll timer
+            // iff the run is ongoing (WATCHING branch) -- finished
+            // files don't get polled.  Pre-PR-2.1 startPolling()
+            // fired unconditionally; finished files would burn a
+            // server request every 15 s forever.
+            _settlePostLoad();
         } catch (e) {
             // AbortError fires when the user picks another file
             // (or dispose() runs) before this fetch completes.  Not
@@ -2958,6 +3030,7 @@
             // would be misleading.
             if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
+            transition("ERROR");
         }
     }
 
@@ -3196,6 +3269,14 @@
         loadByPath(opts.file);
     }
 
+    // Refresh-button listener wires here ONCE per mount.  Tears
+    // down with the inspector's dispose path via _cleanups.
+    // Pre-PR-2.1 this lived inside startPolling() which loadByPath
+    // called on every load -- so the listener was re-attached each
+    // load and the old ones piled up until dispose.  PR 2.1 audit
+    // follow-up makes the wiring strictly per-mount.
+    _wireRefreshListener();
+
     // The handle the caller uses to dispose + control the mounted
     // inspector.  Required for /results' registry-based dispatch
     // (the registry calls dispose() before mounting the next
@@ -3226,16 +3307,8 @@
                 try { _cleanups.pop()(); } catch (_) {}
             }
             // Contract § 2: dispose -> transition('IDLE').  The
-            // matrix § 3 row "dispose / unmount" runs:
-            //   * abort in-flight loadAbort + pollAbort
-            //   * stop poll timer
-            //   * clear pollInFlight
-            //   * clear fileState, viewState, derived
-            //   * leave machine = 'IDLE'
-            // Pre-PR-2 the inline aborts + stopPolling() lived here
-            // and state.data / state.mtime / state.scfPollHistory
-            // were LEFT in place (audit § 1: dispose leaks state.
-            // data).  transition() makes the dispose clean.
+            // matrix § 3 row "dispose / unmount" runs the full
+            // reset (aborts, timer stop, bucket clears).
             transition("IDLE");
             // handle.dispose() tears down the embed's animation loop,
             // ResizeObserver, knob bar, models / shapes / labels and

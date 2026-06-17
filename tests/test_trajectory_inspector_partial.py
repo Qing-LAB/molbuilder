@@ -515,13 +515,23 @@ class TestTrajectoryCoreMountContract:
         raise AssertionError("dispose() body has unbalanced braces")
 
     def test_dispose_clears_poll_timer(self, viewer_js):
-        """``stopPolling()`` is the canonical entry; dispose must call
-        it or the 15 s background poll loop survives every file swap
-        on /results."""
+        """``stopPolling()`` is the canonical timer-stop entry; dispose
+        must invoke it (directly or via ``transition('IDLE')``, which
+        delegates to stopPolling per PR 2.1) or the 15 s background
+        poll loop survives every file swap on /results."""
         body = self._dispose_body(viewer_js)
-        assert "stopPolling()" in body, (
-            "dispose() doesn't call stopPolling -- the 15 s poll "
-            "loop would survive every file swap on /results"
+        # Accept either the direct call or transition('IDLE') -- the
+        # latter is the contract-blessed entry (results-state-contract
+        # § 3 matrix row 'dispose / unmount') and routes through
+        # stopPolling internally.
+        direct = "stopPolling()" in body
+        via_transition = re.search(
+            r"transition\s*\(\s*[\"']IDLE[\"']", body
+        ) is not None
+        assert direct or via_transition, (
+            "dispose() doesn't stop the poll timer -- neither "
+            "stopPolling() nor transition('IDLE') is called.  The "
+            "15 s poll loop would survive every file swap on /results."
         )
 
     def test_dispose_does_not_carry_a_play_timer(self, viewer_js):

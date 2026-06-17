@@ -209,6 +209,140 @@ class TestTransitionOrchestrator:
             "trajectory/core.js transition('IDLE') no longer clears "
             "scfPollHistory.")
 
+    @pytest.mark.parametrize("state_name", ["LOADED", "WATCHING", "ERROR"])
+    def test_transition_has_state_branch(self, core_body, state_name):
+        """PR 2.1 audit follow-up: LOADED / WATCHING / ERROR branches
+        in transition() are no longer stubs.  Each MUST set
+        state.machine = <state> and call stopPolling() or
+        startPolling() per the contract § 3 reset matrix."""
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']" + state_name
+            + r"[\"']\s*\)\s*\{(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, (
+            f"trajectory/core.js transition() has no branch for "
+            f"target='{state_name}'.  The state machine is a stub "
+            f"(audit BLOCKER 1, 2026-06-17).")
+        body = m.group(1)
+        assert f'state.machine = "{state_name}"' in body, (
+            f"transition('{state_name}') branch doesn't set "
+            f"state.machine = '{state_name}'.  The machine field "
+            f"never reaches this state.")
+        # WATCHING starts the timer; LOADED/ERROR stop it.
+        if state_name == "WATCHING":
+            assert "startPolling" in body, (
+                "transition('WATCHING') no longer starts the poll "
+                "timer.  Contract § 3 matrix row 'fetch resolved, "
+                "run ongoing' violated.")
+        else:
+            assert "stopPolling" in body, (
+                f"transition('{state_name}') no longer stops the "
+                f"poll timer.  A finished file would keep getting "
+                f"polled forever (audit BLOCKER 4).")
+
+
+class TestSettlePostLoad:
+    """The 2-consecutive-ticks WATCHING -> LOADED buffer (contract
+    § 2, § 13) lives in ``_settlePostLoad()``.  Called from both
+    loadByPath and pollOnce; reads run_state, decides which
+    transition to invoke."""
+
+    def test_helper_exists(self, core_body):
+        assert re.search(
+            r"function\s+_settlePostLoad\s*\(\s*\)",
+            core_body,
+        ), ("trajectory/core.js no longer defines _settlePostLoad.  "
+            "The 2-tick WATCHING -> LOADED buffer is gone; a finished "
+            "run never auto-stops polling (audit BLOCKER 3).")
+
+    def test_helper_implements_2_tick_buffer(self, core_body):
+        """When run_state == 'finished', the helper increments
+        finishedTicks; only transitions to LOADED when >= 2.  Single
+        finished tick stays in WATCHING."""
+        m = re.search(
+            r"function\s+_settlePostLoad\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "_settlePostLoad body shape changed"
+        body = m.group(1)
+        assert "finishedTicks" in body, (
+            "_settlePostLoad doesn't read/write finishedTicks.  The "
+            "2-tick buffer is broken.")
+        assert ">= 2" in body or "> 1" in body, (
+            "_settlePostLoad's finished-tick threshold isn't 2.  The "
+            "contract § 13 settled decision is M=2 consecutive ticks.")
+        # Both LOADED and WATCHING transitions referenced in the
+        # finished-branch body.
+        assert "LOADED" in body and "WATCHING" in body, (
+            "_settlePostLoad doesn't reference both LOADED and "
+            "WATCHING transitions.  The 2-tick branch can't flip.")
+
+    def test_helper_called_from_loadByPath(self, core_body):
+        """loadByPath's success path MUST call _settlePostLoad after
+        applyNewData -- otherwise the freshly-loaded file's run_state
+        is never inspected and we never transition out of LOADING."""
+        m = re.search(
+            r"async\s+function\s+loadByPath\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "_settlePostLoad" in body, (
+            "loadByPath no longer calls _settlePostLoad after "
+            "applyNewData.  state.machine stays 'LOADING' forever; "
+            "the poll timer never starts.")
+
+    def test_helper_called_from_pollOnce(self, core_body):
+        """pollOnce MUST call _settlePostLoad on success ticks -- the
+        2-tick WATCHING -> LOADED buffer only advances if the helper
+        runs."""
+        m = re.search(
+            r"async\s+function\s+pollOnce\s*\(\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "_settlePostLoad" in body, (
+            "pollOnce no longer calls _settlePostLoad.  The poll "
+            "loop never auto-stops on a finished run; runs forever "
+            "until dispose.")
+
+
+class TestRefreshListenerWiredOnce:
+    """PR 2.1 audit follow-up: the EVENT_REFRESH_REQUESTED listener
+    is wired ONCE at mount via _wireRefreshListener(), not re-wired
+    per-load by startPolling().  Pre-fix the listener piled up on
+    every load and only tore down on dispose."""
+
+    def test_wire_function_exists(self, core_body):
+        assert re.search(
+            r"function\s+_wireRefreshListener\s*\(\s*\)",
+            core_body,
+        ), ("_wireRefreshListener function is gone.  Refresh button "
+            "is unwired (PR 2.1 audit follow-up regressed).")
+
+    def test_wire_function_called_at_mount(self, core_body):
+        """The call site lives BEFORE the mountInspector's return
+        statement -- ensures it fires exactly once per mount."""
+        assert "_wireRefreshListener();" in core_body, (
+            "_wireRefreshListener is defined but never called.  "
+            "Refresh button is unwired.")
+
+    def test_startPolling_no_longer_wires_listener(self, core_body):
+        """startPolling MUST be timer-only.  The Refresh listener
+        wiring must NOT live in its body."""
+        m = re.search(
+            r"function\s+startPolling\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "EVENT_REFRESH_REQUESTED" not in body, (
+            "startPolling still wires EVENT_REFRESH_REQUESTED -- "
+            "called per-load, the listener piles up.  PR 2.1 moved "
+            "this to _wireRefreshListener.")
+
 
 # --------------------------------------------------------------------- #
 #  Refresh = file-switch (contract § 5)                                 #
@@ -223,22 +357,23 @@ class TestRefreshIsFileSwitch:
 
     def test_refresh_handler_calls_loadByPath(self, core_body):
         """The EVENT_REFRESH_REQUESTED handler body MUST call
-        loadByPath(...) -- not pollOnce()."""
+        loadByPath(...) -- not pollOnce().  Per PR 2.1 the handler
+        lives in _wireRefreshListener() (wired once at mount), not
+        startPolling() (called per-load) -- prevents listener pile-up."""
         m = re.search(
-            r"EVENT_REFRESH_REQUESTED[^{]*\{"
-            r".+?_onRefresh\s*=\s*\(\)\s*=>\s*\{([^}]+)\}",
+            r"function\s+_wireRefreshListener\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
             core_body, re.DOTALL,
         )
-        assert m is not None, "Refresh handler not found"
+        assert m is not None, "_wireRefreshListener not found"
         body = m.group(1)
         assert "loadByPath" in body, (
-            "Refresh handler no longer calls loadByPath().  Pre-PR-2 "
-            "it called pollOnce() directly which skipped the reset "
-            "matrix; the half-refresh bug returns.")
+            "_wireRefreshListener no longer calls loadByPath().  "
+            "Refresh button skips the reset matrix; the half-refresh "
+            "bug returns.")
         assert "pollOnce" not in body, (
-            "Refresh handler is back to calling pollOnce() directly. "
-            "scfPollHistory leaks stale samples; firstFit stays false; "
-            "the half-refresh bug returns.")
+            "_wireRefreshListener is calling pollOnce() directly. "
+            "scfPollHistory leaks stale samples; the half-refresh "
+            "bug returns.")
 
 
 # --------------------------------------------------------------------- #
