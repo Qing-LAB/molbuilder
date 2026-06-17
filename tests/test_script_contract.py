@@ -231,6 +231,121 @@ def test_emit_atom_metadata_honors_created_by_and_created_at():
 
 
 # --------------------------------------------------------------------- #
+#  USER-CUSTOM round-trip preservation (Step 2b)                       #
+# --------------------------------------------------------------------- #
+
+
+_SAMPLE_WITH_USER_CUSTOM = """\
+some engine body
+more engine body
+# === molbuilder user-custom BEGIN ===
+# user line one
+# user line two
+SomeUserDirective foo
+# === molbuilder user-custom END ===
+"""
+
+
+def test_extract_user_custom_inner_returns_inner_lines():
+    inner = sc.extract_user_custom_inner(_SAMPLE_WITH_USER_CUSTOM)
+    assert inner == [
+        "# user line one",
+        "# user line two",
+        "SomeUserDirective foo",
+    ]
+
+
+def test_extract_user_custom_inner_returns_none_when_no_block():
+    assert sc.extract_user_custom_inner("BlockSize 64\nSystemName foo\n") is None
+
+
+def test_extract_user_custom_inner_returns_none_on_unbalanced_markers():
+    # BEGIN without END.
+    text = "engine\n# === molbuilder user-custom BEGIN ===\nstuff\n"
+    assert sc.extract_user_custom_inner(text) is None
+
+
+def test_replace_user_custom_inner_splices_new_inner():
+    placeholder = sc.emit_user_custom_placeholder()
+    full = "engine line\n\n" + placeholder + "\n"
+    spliced = sc.replace_user_custom_inner(
+        full, ["# MY EDIT", "MY_KEYWORD value"]
+    )
+    inner = sc.extract_user_custom_inner(spliced)
+    assert inner == ["# MY EDIT", "MY_KEYWORD value"]
+
+
+def test_replace_user_custom_inner_no_change_when_no_block():
+    text = "no markers here\n"
+    assert sc.replace_user_custom_inner(text, ["X"]) == text
+
+
+def test_merge_user_custom_from_target_preserves_existing(tmp_path):
+    """The canonical Step 2b case: regenerated text has the placeholder,
+    on-disk target has the user's actual edits.  Result: new text
+    with user's edits spliced in."""
+    target = tmp_path / "siesta-stage3.fdf"
+    target.write_text(_SAMPLE_WITH_USER_CUSTOM, encoding="utf-8")
+
+    fresh_render = (
+        "fresh engine body\n\n"
+        + sc.emit_user_custom_placeholder() + "\n"
+    )
+    merged = sc.merge_user_custom_from_target(fresh_render, target)
+    inner = sc.extract_user_custom_inner(merged)
+    assert inner == [
+        "# user line one",
+        "# user line two",
+        "SomeUserDirective foo",
+    ]
+    # Engine body from the fresh render is preserved.
+    assert "fresh engine body" in merged
+    assert "some engine body" not in merged  # was the old engine body
+
+
+def test_merge_user_custom_from_target_missing_file(tmp_path):
+    """Target doesn't exist (first-time generate): merge returns
+    rendered text unchanged."""
+    target = tmp_path / "new.fdf"
+    fresh = "engine\n" + sc.emit_user_custom_placeholder() + "\n"
+    assert sc.merge_user_custom_from_target(fresh, target) == fresh
+
+
+def test_merge_user_custom_from_target_target_lacks_block(tmp_path):
+    """Target file exists but has no USER-CUSTOM block (e.g.,
+    pre-contract file): merge returns rendered text unchanged."""
+    target = tmp_path / "legacy.fdf"
+    target.write_text("BlockSize 64\nSystemName foo\n", encoding="utf-8")
+    fresh = "engine\n" + sc.emit_user_custom_placeholder() + "\n"
+    assert sc.merge_user_custom_from_target(fresh, target) == fresh
+
+
+def test_merge_user_custom_from_target_rendered_lacks_placeholder(tmp_path):
+    """Rendered text has no USER-CUSTOM block (e.g., a non-contract
+    file type someone is writing through /api/files/write): merge
+    leaves it alone."""
+    target = tmp_path / "siesta-stage3.fdf"
+    target.write_text(_SAMPLE_WITH_USER_CUSTOM, encoding="utf-8")
+    fresh = "no placeholder in this content\n"
+    assert sc.merge_user_custom_from_target(fresh, target) == fresh
+
+
+def test_merge_user_custom_round_trip_idempotent(tmp_path):
+    """Generating, saving, then regenerating an unchanged form
+    should produce a byte-identical user-custom block.  Pins the
+    "no drift on no-op" property."""
+    target = tmp_path / "siesta-stage3.fdf"
+    fresh = "engine\n" + sc.emit_user_custom_placeholder() + "\n"
+    # First write -- target doesn't exist.
+    first = sc.merge_user_custom_from_target(fresh, target)
+    target.write_text(first, encoding="utf-8")
+    # Second write of identical fresh text -- should be unchanged
+    # round-trip (placeholder in == placeholder out).
+    second = sc.merge_user_custom_from_target(fresh, target)
+    assert second == first
+
+
+# --------------------------------------------------------------------- #
 #  emit_user_custom_placeholder                                         #
 # --------------------------------------------------------------------- #
 

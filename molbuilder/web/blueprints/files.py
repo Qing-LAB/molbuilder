@@ -1332,6 +1332,22 @@ def api_files_write():
     except OSError as exc:
         return jsonify({"ok": False,
                         "error": f"is_symlink check failed: {exc}"}), 500
+    # Step 2b USER-CUSTOM round-trip preservation -- when this write
+    # is a fresh regenerate (expected_mtime is None), splice any
+    # USER-CUSTOM block content from the existing target into the
+    # incoming text.  Edit-save (expected_mtime set) bypasses the
+    # merge: the user is explicitly committing their text byte-for-
+    # byte and a merge would silently undo edits inside the user-
+    # custom block.  The merge helper is safe in every degenerate
+    # case (no target file, no markers on either side, unreadable
+    # target) -- it returns the incoming text unchanged.  See
+    # docs/protocols/script-contract.md.
+    if expected_mtime is None:
+        from molbuilder.script_contract import (
+            merge_user_custom_from_target as _mb_merge_user_custom
+        )
+        text = _mb_merge_user_custom(text, resolved)
+
     # 2026-06-09: atomic write — temp-file in the same directory
     # (so ``os.replace`` is a same-filesystem rename), fsync the data
     # before replace so a crash between write() and replace() can't

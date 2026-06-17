@@ -245,6 +245,104 @@ def emit_user_custom_placeholder() -> str:
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+#  USER-CUSTOM round-trip preservation                                  #
+# --------------------------------------------------------------------- #
+#
+# Step 2b: when the generator writes a fresh render over an existing
+# target file, preserve the user-custom block content byte-for-byte.
+# Callers (typically the /api/files/write endpoint) chain
+#
+#     final_text = merge_user_custom_from_target(rendered, target_path)
+#
+# before actually writing.  ``rendered`` is what render_fdf /
+# render_script / render_run_wrapper produced (carries the empty
+# placeholder); ``target_path`` is where the file will live.  If the
+# existing target carries a user-custom block, its inner lines splice
+# into the new render's placeholder.  Edge cases (no existing file,
+# no markers on either side, corrupt markers) all degrade to "return
+# rendered unchanged" -- the merge never throws.
+
+
+def extract_user_custom_inner(text: str) -> Optional[List[str]]:
+    """Return the inner lines of the USER-CUSTOM block in ``text``, or
+    ``None`` if there is no well-formed USER-CUSTOM BEGIN/END pair.
+
+    Inner lines are everything STRICTLY between the BEGIN and END
+    markers (markers excluded).  Trailing/leading whitespace inside
+    the block is preserved.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_USER_CUSTOM:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
+        return None
+    return lines[begin_idx + 1: end_idx]
+
+
+def replace_user_custom_inner(text: str, inner_lines: List[str]) -> str:
+    """Return ``text`` with its USER-CUSTOM block's inner lines
+    replaced by ``inner_lines``.  If ``text`` has no USER-CUSTOM
+    block, return it unchanged.
+    """
+    lines = text.splitlines(keepends=False)
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) != BLOCK_USER_CUSTOM:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None or end_idx <= begin_idx:
+        return text
+    new_lines = lines[: begin_idx + 1] + list(inner_lines) + lines[end_idx:]
+    # Preserve trailing newline policy of the input.
+    trailing = "\n" if text.endswith("\n") else ""
+    return "\n".join(new_lines) + trailing
+
+
+def merge_user_custom_from_target(rendered: str,
+                                  target_path: Path) -> str:
+    """High-level merge: splice the existing target file's USER-CUSTOM
+    block content into ``rendered`` before write.
+
+    Safe in every degenerate case:
+      * Target doesn't exist -> return rendered.
+      * Target has no USER-CUSTOM block -> return rendered.
+      * Rendered has no USER-CUSTOM placeholder -> return rendered.
+      * Target is unreadable -> return rendered.
+    """
+    try:
+        if not target_path.exists():
+            return rendered
+        old_text = target_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return rendered
+    old_inner = extract_user_custom_inner(old_text)
+    if old_inner is None:
+        return rendered
+    return replace_user_custom_inner(rendered, old_inner)
+
+
 def molbuilder_git_sha() -> str:
     """Return the molbuilder git SHA (short form), or "unknown".
 
@@ -281,5 +379,7 @@ __all__ = [
     "BenchField", "SIESTA_BENCH_FIELDS",
     "emit_header", "emit_provenance", "emit_bench_marks",
     "emit_atom_metadata", "emit_user_custom_placeholder",
+    "extract_user_custom_inner", "replace_user_custom_inner",
+    "merge_user_custom_from_target",
     "molbuilder_git_sha", "generated_at_now",
 ]
