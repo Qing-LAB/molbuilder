@@ -636,7 +636,7 @@ exported only for tests.
     tests for `lib/selection/measurements.js` (xyz / distance /
     angle, pickOrder vs geometric fallback, 4+ atoms → null).
   * `tests/test_molbuilder_e2e.py::test_measurement_readout_shows_xyz_distance_angle`
-    -- end-to-end pin for the chip overlay on the Modify tab.
+    -- end-to-end pin for the chip overlay on the Molbuilder tab.
   * JS unit tests (future): see `tests/test_atom_selection_js.py`
     once the Playwright harness covers the panel.
 
@@ -672,7 +672,7 @@ the original sin that prompted the module):
 
 **Positions provider** — the page wires
 `window.molbuilder.selection.positionsProvider = () =>
-number[][]` returning the current xyz array.  The Modify tab's
+number[][]` returning the current xyz array.  The Molbuilder tab's
 viewer returns its parsed `state.positions`; future trajectory
 and structure inspectors (tasks #299, #300) will return their
 own per-frame coords.

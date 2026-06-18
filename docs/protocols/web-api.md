@@ -233,7 +233,7 @@ flowchart LR
     end
 ```
 
-Sections § 3–§ 10 below cover each blueprint in detail.
+Sections § 3–§ 13 below cover each blueprint in detail.
 
 ---
 
@@ -1046,7 +1046,7 @@ via `psutil` (required core dep).  GPU via `nvidia-ml-py` (in the
 
 ---
 
-## 9. Run helpers — `/api/run/*` + `/api/siesta/*`
+## 10. Run helpers — `/api/run/*` + `/api/siesta/*`
 
 Implementation: `molbuilder/web/blueprints/build.py`.
 
@@ -1062,7 +1062,7 @@ basename convention + `runwrap.py` for the bash logic.
 
 ---
 
-## 10. Structure analysis — `/api/structure/analyze`
+## 11. Structure analysis — `/api/structure/analyze`
 
 | Route | Method | Body | Success |
 |---|---|---|---|
@@ -1121,7 +1121,7 @@ The full runtime call graph + dataclass shapes are documented in
 
 ---
 
-## 11. Transport calculation — `/api/transport/*`
+## 12. Transport calculation — `/api/transport/*`
 
 Phase B.3 (2026-06-10) wires the Transport tab to a real engine
 dispatcher.  The schema endpoint backs the form on the page; the
@@ -1129,14 +1129,14 @@ render endpoint dispatches via the registry in
 `molbuilder.transport` so new engines (transiesta today, pyscf-negf
 planned) drop in without endpoint code changes.
 
-### 11.1 Endpoint table
+### 12.1 Endpoint table
 
 | Route | Method | Body | Success |
 |---|---|---|---|
 | `/api/transport/schema` | GET | — | `{ok, schema}` — the rendered form schema for `TransportConfig` |
 | `/api/transport/render` | POST | `{params, structure_path, frozen_atoms?, regions?}` | `{ok, engine, script, filename, issues, errors_only}` |
 
-### 11.2 `/api/transport/schema`
+### 12.2 `/api/transport/schema`
 
 Mirrors `/api/build/schema/<engine>` and `/api/build/schema/spectra`
 (see § 4.7 for the per-field `engine_key` metadata contract).
@@ -1148,7 +1148,7 @@ All 20 fields carry `engine_key` metadata pinning the keyword the
 field writes into the generated script — pinned by
 `test_transport_blueprint.py::test_every_field_carries_engine_key_metadata`.
 
-### 11.3 `/api/transport/render`
+### 12.3 `/api/transport/render`
 
 Dispatches via the engine registry (`molbuilder.transport.get_engine`).
 Adding a new engine = drop `molbuilder/transport/<engine>.py` with
@@ -1214,7 +1214,7 @@ Error responses:
 | `engine.parse_output` raises `NotImplementedError` | 501 | `{ok: false, engine, error: "..."}` |
 | Engine render raises arbitrary exception | 500 | `{ok: false, engine, error: "render failed: ..."}` |
 
-### 11.4 Preflight checks the engine runs
+### 12.4 Preflight checks the engine runs
 
 `TransiestaEngine.preflight` returns `Issue` records for:
 
@@ -1234,7 +1234,7 @@ Error responses:
     Build/Spectra — the cross-engine consistency rule from
     [`science.md`](../science.md) § 2.4 holds on Transport too)
 
-### 11.5 Deferred (in-tree, see roadmap.md § 2.2)
+### 12.5 Deferred (in-tree, see roadmap.md § 2.2)
 
 - Electrode `.TSHS` generation workflow (manual today)
 - Bias-scan driver (multi-`.fdf` + shell loop)
@@ -1244,7 +1244,7 @@ Error responses:
 
 ---
 
-## 11a. Run-bundle handoff — `/api/results/bundle`
+## 13. Run-bundle handoff — `/api/results/bundle`
 
 The workflow-handoff endpoint exposed by Step 3 PR-E.  Given a
 finished SIESTA or PySCF run directory, the endpoint fuses the
@@ -1259,13 +1259,13 @@ Backend: `molbuilder/web/blueprints/results.py::api_results_bundle`.
 Frontend: `molbuilder/web/static/lib/results/bundle-handoff.js` +
 the `_bundle_handoff_panel.html` partial mounted in `results.html`.
 
-### 11a.1 Endpoint table
+### 13.1 Endpoint table
 
 | Route | Methods | Purpose |
 |---|---|---|
 | `/api/results/bundle` | `POST` | Bundle a finished run dir into a portable `.xyz` + `.molstruct.json` pair under a chosen stem |
 
-### 11a.2 Request body
+### 13.2 Request body
 
 ```jsonc
 {
@@ -1290,7 +1290,7 @@ the `_bundle_handoff_panel.html` partial mounted in `results.html`.
   AND/OR `<target>/<stem>.molstruct.json` at the target stem;
   `overwrite=false` (default) refuses if either exists.
 
-### 11a.3 Response — success
+### 13.3 Response — success
 
 ```jsonc
 {
@@ -1317,7 +1317,7 @@ the `_bundle_handoff_panel.html` partial mounted in `results.html`.
   risk), atom-metadata schema-version drift, etc.  The UI
   renders every entry.
 
-### 11a.4 Response — error envelope
+### 13.4 Response — error envelope
 
 | Status | When |
 |---|---|
@@ -1334,7 +1334,7 @@ uniform envelope (§ 1.1).  500s do NOT leak Python tracebacks —
 the OSError catch returns a typed envelope with the OS error
 message.
 
-### 11a.5 Client-side companion (`bundle-handoff.js`)
+### 13.5 Client-side companion (`bundle-handoff.js`)
 
 The JS form handler at `lib/results/bundle-handoff.js`:
 
@@ -1357,7 +1357,7 @@ The JS form handler at `lib/results/bundle-handoff.js`:
 
 ---
 
-## 12. Shared + page routes
+## 14. Shared + page routes
 
 | Route | Method | Body | Success |
 |---|---|---|---|
@@ -1386,7 +1386,7 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 
 ---
 
-### 11.1 Request-size cap
+### 14.1 Request-size cap
 
 `MAX_CONTENT_LENGTH = 50 MB` on the Flask app (`web/app.py`).
 Watch uploads (large trajectory logs) need the headroom; Build's
@@ -1397,7 +1397,7 @@ into JSON so the JS uploaders' `r.json()` doesn't crash).
 
 Pinned by `tests/test_review_fixes.py::test_s6_web_app_caps_upload_size`.
 
-### 11.2 Naming constraint (project / structure / topic)
+### 14.2 Naming constraint (project / structure / topic)
 
 Every name that participates in a
 `projects/<project>/<topic>/<structure>/` path MUST satisfy
@@ -1448,7 +1448,7 @@ shows what's there. A user who hand-creates a directory named
 and rename it) but won't be able to use it as the target of a
 project-create / rename action without renaming.
 
-### 11.3 Projects-hierarchy convention
+### 14.3 Projects-hierarchy convention
 
 The picker is intentionally **generic** — it doesn't enforce the
 `<project>/<topic>/<structure>/` shape, because users may want
@@ -1468,7 +1468,7 @@ Beyond the topic level, the structure directory is flat by
 job-layout-v1 convention; the picker will still show whatever
 exists there (including any subdirs the user created off-spec).
 
-### 11.4 Front-end contract
+### 14.4 Front-end contract
 
 All tabs share these conventions:
 
@@ -1510,7 +1510,7 @@ All tabs share these conventions:
   `sessionStorage["builder-form"]` survives form values across
   navigation.
 
-### 11.5 Form-side compatibility rules
+### 14.5 Form-side compatibility rules
 
 `viewer.js::applyCompatibility()` locks parameter combinations
 that would produce an invalid or wrong-physics config. Runs on
@@ -1533,7 +1533,7 @@ field gets `disabled` + a `.lock-reason` hint span.
 | `spin_polarized = false` | `spin_total` | SpinTotal meaningless without polarisation |
 | `relax_type = "none"` | `relax_steps`, `force_tol`, `max_displ` | no MD block emitted |
 
-### 11.6 Defence in depth
+### 14.6 Defence in depth
 
 The server does NOT trust the UI. Even if a malicious or buggy
 client submits an invalid combination, the same validators
@@ -1541,7 +1541,7 @@ client submits an invalid combination, the same validators
 field metadata. The UI rules give the user fast feedback; the
 server rules protect the data.
 
-### 11.7 Forbidden patterns
+### 14.7 Forbidden patterns
 
 The Flask app must NOT:
 
@@ -1560,7 +1560,7 @@ The Flask app must NOT:
    through Jinja2's autoescape.
 4. **Trust the UI's compatibility-locking to validate inputs** —
    the server-side validation pass is the source of truth
-   (§ 11.6).
+   (§ 14.6).
 5. **Hold the global `_lock` during a parse** — see § 8.6
    concurrency contract. The `/api/watch/data` endpoint
    snapshots state under the lock, drops it, parses, then
@@ -1573,7 +1573,7 @@ The Flask app must NOT:
 
 ---
 
-## 12. Test coverage map
+## 15. Test coverage map
 
 | Endpoint group | Primary test file | Test count |
 |---|---|---|
@@ -1589,7 +1589,7 @@ The Flask app must NOT:
 
 ---
 
-## 13. Rewrite history (this file)
+## 16. Rewrite history (this file)
 
 This doc was fully rewritten 2026-06-02 (task #196) against the
 implementing code. The OLD `web-api.md` covered only ~30% of

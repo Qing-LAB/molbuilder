@@ -4,21 +4,30 @@ The Build routes are still defined directly on the app in
 ``web/app.py`` (historical layout).  The blueprint modules in this
 package hold the page + API routes for the other tabs:
 
-  * ``watch.py``    -- /api/watch/* trajectory API endpoints
-                       (consumed by the /results trajectory
-                       inspector; the legacy /watch page route was
-                       retired 2026-05-19).
+  * ``watch.py``     -- /api/watch/* trajectory API endpoints
+                        (consumed by the /results trajectory
+                        inspector; the legacy /watch page route was
+                        retired 2026-05-19; the module name is
+                        kept for git-history continuity per the
+                        2026-06-07 rename-and-no-redirect rule).
   * ``files.py``     -- /api/files/* file IO endpoints
-  * ``spectra.py``   -- /spectra page + /api/spectra/* endpoints
-  * ``modify.py``    -- /modify page + /api/modify/* endpoints
-  * ``results.py``   -- /results page + /partials/* partials
+  * ``spectra.py``   -- /spectrum-calculation page (was ``/spectra``
+                        pre-2026-06-07) + /api/spectra/* endpoints
+  * ``modify.py``    -- /molbuilder page (was ``/modify``
+                        pre-2026-06-07) + /api/modify/* endpoints
+  * ``transport.py`` -- /transport-calculation page +
+                        /api/transport/* endpoints
+  * ``results.py``   -- /results page + /partials/* partials +
+                        /api/results/bundle (Step-3 PR-E)
   * ``selection.py`` -- /api/selection/eval + /api/selection/atoms +
-                       /api/selection/save + /api/selection/save-sidecar
-                       + /api/selection/refresh-hash (atom-selection rule
-                       eval + atom list + sidecar I/O; Pattern C:
-                       stateless, JS holds the rule tree, Python
-                       canonicalises + evaluates.  Click-toggle is
-                       handled client-side in the selection store)
+                        /api/selection/save + /api/selection/save-sidecar
+                        + /api/selection/refresh-hash (atom-selection rule
+                        eval + atom list + sidecar I/O; Pattern C:
+                        stateless, JS holds the rule tree, Python
+                        canonicalises + evaluates.  Click-toggle is
+                        handled client-side in the selection store)
+  * ``system.py``    -- /api/system/load (server-load snapshot for
+                        the bottom-strip widget, 2026-06-15)
   * ``auth.py``      -- /login + /oauth-callback/* + provider dispatch
 
 All blueprints are registered into a single Flask app by

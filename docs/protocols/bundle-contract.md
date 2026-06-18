@@ -152,13 +152,19 @@ rule in [`script-contract.md`](script-contract.md) § 4.4.
 
 ## 5. APIs
 
-Two-layer module split:
+Three sites carry the bundle-contract surface:
 
 - **`molbuilder.script_contract`** (existing) — file-format
   extractors.  Pure, no I/O on bundle assembly path beyond the text
   passed in.
 - **`molbuilder.script_bundle`** (new) — workflow assembly.  Reads
   the run dir, fuses primitives, returns a `RunBundle`.
+- **`molbuilder.web.blueprints._shared`** — the web-layer wire-in
+  (`apply_companion_labels_if_present`, § 5.3 below).  Lives there
+  because it's the load-path consumer that calls
+  `script_contract.apply_inbody_atom_metadata`; the function is
+  documented as part of this contract even though its physical home
+  is the web-layer shared module.
 
 ### 5.1 `script_contract` extract primitives
 
@@ -226,12 +232,13 @@ the .xyz load case.
 | Consumer | Wired? | Slice |
 |---|---|---|
 | `.xyz` load picks up sibling `.fdf`/`.py` labels (companion-wins-over-sidecar) | yes | PR-A |
-| Results panel "Bundle for next stage →" button | no | PR-E |
+| Results panel "Bundle for next stage →" button + `POST /api/results/bundle` endpoint | yes | PR-E |
 | Transport tab consumes the bundle for electrode/buffer assignment | no | #487 |
 | Continuation Optimization tab consumes the bundle as starting structure | no | future |
 
 PR-A defines the contract surface; PR-B/C/D implement the
-extractors; PR-E adds the UI button.
+extractors; PR-E adds the UI button.  All of PR-A through PR-E
+have shipped (2026-06-17).
 
 ## 7. Storage + projects-sidebar integration
 
@@ -409,7 +416,7 @@ Test pyramid placement:
 - SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parsers/siesta_struct.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
 - PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parsers/pyscf_struct.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
-- HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Wire shape documented in [`web-api.md`](web-api.md) § 11a.  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
+- HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Wire shape documented in [`web-api.md`](web-api.md) § 13.  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
 
 ## 13. Process
 

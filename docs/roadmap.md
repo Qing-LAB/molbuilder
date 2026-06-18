@@ -307,8 +307,25 @@ from the same TransportConfig + Structure pair.
 
 Future: inelastica integration (electron-phonon-resolved
 transmission, IETS).  That's a SEPARATE engine that consumes a
-TransportConfig + the `.spectra.json` from the Spectra tab; not
+TransportConfig + the `.spectra.json` from the Spectrum-calculation tab; not
 in scope for B.3.
+
+### 2.1.1 Bundle-handoff consumption (after the 2026-06-17 Step 3 ship)
+
+- **TranSIESTA generator consumes the bundle's regions for
+  electrode/buffer assignment** (task #487).  Once a project tree
+  carries a `<stem>.xyz` + `<stem>.molstruct.json` pair from the
+  Step-3 PR-E Bundle button, the Transport tab's `.fdf` emitter
+  should pull `Structure.regions["L-electrode"]` /
+  `Structure.regions["R-electrode"]` / `Structure.regions["bridge"]`
+  for `TS.Atoms.Buffer` / `TS.Elecs.*` lines instead of requiring
+  the user to retype them.  Contract:
+  [`bundle-contract.md`](protocols/bundle-contract.md) § 6
+  ("Continuation Optimization tab consumes the bundle as starting
+  structure" + "Transport tab consumes the bundle for
+  electrode/buffer assignment").  Sequence-wise, this depends on
+  Step 3 PR-E (shipped) but not on the screenshot-capture pass
+  (which is separable).
 
 ### 2.2 What's deferred for transiesta (after the 2026-06-10 ship)
 
@@ -386,6 +403,17 @@ log when it shipped:
 - Structure-inspector hand-off to /molbuilder (2026-06-05; route was /modify).
 - Animation/snapshot save-to-project fix + export modal (Phase
   6e, 2026-06-05 + cleanup commits through 2026-06-06).
+- **Step 3 PR-A through PR-E: run-bundle handoff** (2026-06-17,
+  tasks #485 + #488–#492).  Closes the workflow-continuation gap:
+  `POST /api/results/bundle` reads a finished SIESTA/PySCF run dir,
+  fuses final coords with the labels the originating script
+  carried in its in-body ATOM-METADATA block, and writes a portable
+  `.xyz` + `.molstruct.json` pair the next workflow tab loads with
+  no copy/paste.  New protocol `bundle-contract.md` (13 sections),
+  `web-api.md` § 13, design.md 2026-06-17 entry.  Five audit
+  rounds closed ~20 verified findings; 253 targeted-sweep tests
+  pass.  Follow-on #487 (TranSIESTA consumes the bundle's regions
+  for electrode/buffer assignment) is the trivial next step.
 
 ---
 

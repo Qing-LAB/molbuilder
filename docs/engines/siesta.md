@@ -23,7 +23,7 @@ protocol](../protocols/job-layout.md), or at the SIESTA `.out` file directly.
 Set `cfg.write_molwatch_log = False` to suppress the sibling file.
 
 **Stage-aware filename** (job-layout v1): when `cfg.stage` is set
-to 1/2/3 (the Build tab's "Relaxation stage" preset), the sibling
+to 1/2/3 (the Structure-optimization tab's "Relaxation stage" preset), the sibling
 log filename becomes `<basename>-stage<N>.molwatch.log` so multiple
 stages accumulate in one directory without collisions.  The
 `SystemLabel` itself stays unsuffixed across stages so SIESTA's
@@ -39,7 +39,7 @@ recommending the canonical invocation:
 # === Run with (job-layout v1) ===
 # Run from this directory -- all outputs share the SystemLabel basename below.
 #     mpirun -np 4 siesta < <basename>[-stage<N>].fdf > <basename>[-stage<N>].out
-# Watch the run live: open the Watch tab and point it at this directory
+# Watch the run live: open the Results tab and point it at this directory
 # (the loader resolves it to <basename>[-stage<N>].molwatch.log).
 ```
 

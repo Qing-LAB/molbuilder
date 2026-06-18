@@ -38,8 +38,8 @@
     <label class="bundle-handoff-field">
       <span class="label">Stem</span>
       <input type="text" name="stem" placeholder="handoff" required
-             pattern="[A-Za-z0-9._-]{1,64}"
-             title="Letters, digits, dot, underscore, dash; 1–64 chars">
+             pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}"
+             title="Must start with a letter or digit; then letters, digits, dot, underscore, dash; 1–64 chars total.  No leading '.' or '-', not just dots.">
       <span class="hint">Files land at <code>&lt;target_dir&gt;/&lt;stem&gt;.xyz</code> + <code>.molstruct.json</code>.</span>
     </label>
 
