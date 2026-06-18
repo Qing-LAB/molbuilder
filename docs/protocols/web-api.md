@@ -148,7 +148,7 @@ the verb is unambiguous.
 
 ---
 
-## 2. Endpoint index — all 47 routes
+## 2. Endpoint index — all 48 routes
 
 ```mermaid
 flowchart LR
@@ -213,6 +213,9 @@ flowchart LR
     subgraph "Transport (NEGF)"
         tp_schema["GET /api/transport/schema"]
         tp_render["POST /api/transport/render"]
+    end
+    subgraph "Results — bundle handoff"
+        r_bundle["POST /api/results/bundle"]
     end
     subgraph "Watch (trajectory inspector backing)"
         w_load["POST /api/watch/load"]
@@ -1577,6 +1580,7 @@ The Flask app must NOT:
 | `/api/selection/*` | `test_selection_blueprint.py` | 73 |
 | `/api/spectra/*` | `tests/spectra/test_blueprint.py` | 60+ |
 | `/api/watch/*` | `tests/watch/test_api_load.py` + trajectory inspector e2e | ~20 |
+| `/api/results/*` (bundle handoff, PR-E) | `test_api_results_bundle.py` | 18 |
 | Page routes + partials | `test_results_blueprint.py` | 46 |
 | Cross-cutting envelope | `test_projects_api_envelope_js.py` (node) + `TestUniformEnvelope` in selection blueprint | 31 + 6 |
 

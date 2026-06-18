@@ -197,6 +197,12 @@
 
         form.addEventListener('submit', function (e) {
             e.preventDefault();
+            // Re-entrancy guard: Enter-in-input can dispatch a second
+            // submit event before the browser observes btn.disabled
+            // from the first handler.  Pre-fix two concurrent fetches
+            // shared the status/spinner/result DOM; whichever settled
+            // second clobbered the first's render.
+            if (btn.disabled) return;
             if (!runIn.value || !dstIn.value || !stemIn.value) {
                 setText(status, 'Fill all three paths first.');
                 return;
@@ -206,19 +212,41 @@
             setText(status, 'Bundling…');
             result.hidden = true;
 
-            // Timeout via AbortController.  On the deadline we abort
-            // the fetch (DOMException 'AbortError') which lands in
-            // the .catch below; we then distinguish from other
-            // errors by reading aborter.signal.aborted to render a
-            // tailored timeout message.
+            // Timeout via AbortController.  ``settled`` is the
+            // single source of truth for "this request is done";
+            // it gates BOTH the timer's render AND the fetch
+            // promise chain's render so neither can clobber the
+            // other.
+            //
+            // Pre-fix race: the timer macrotask could fire BETWEEN
+            // fetch() resolving and the body-parse promise
+            // resolving; abort() would then reject the body-parse
+            // with AbortError and the user saw "Bundle timed out"
+            // for a request that actually completed server-side.
+            //
+            // Pre-fix abort-absent fallback: when AbortController
+            // is missing the timer's setting of timedOut was
+            // meaningless -- the fetch wasn't cancelled and the
+            // UI stayed stuck in "Bundling…" if the server hung.
+            // Now the timer renders the timeout message DIRECTLY
+            // and flips settled=true; the eventual .then/.catch
+            // see settled and no-op.
+            var settled = false;
             var aborter = (typeof AbortController === 'function')
                 ? new AbortController() : null;
-            var timedOut = false;
-            var timerId  = setTimeout(function () {
-                timedOut = true;
+            var timerId = setTimeout(function () {
+                if (settled) return;
+                settled = true;
                 if (aborter) {
                     try { aborter.abort(); } catch (_) { /* swallow */ }
                 }
+                settle('');
+                renderError(result, (
+                    'Bundle timed out after '
+                    + (FETCH_TIMEOUT_MS / 1000) + ' s.  '
+                    + 'The server may be busy or unreachable; '
+                    + 'try again in a moment.'
+                ));
             }, FETCH_TIMEOUT_MS);
 
             fetch('/api/results/bundle', {
@@ -260,6 +288,8 @@
                     });
                 })
                 .then(function (resp) {
+                    if (settled) return;   // timer already rendered
+                    settled = true;
                     clearTimeout(timerId);
                     settle('');
                     if (resp.body && resp.body.ok) {
@@ -272,18 +302,16 @@
                     }
                 })
                 .catch(function (err) {
+                    if (settled) return;   // timer already rendered
+                    settled = true;
                     clearTimeout(timerId);
                     settle('');
-                    if (timedOut) {
-                        renderError(result, (
-                            'Bundle timed out after '
-                            + (FETCH_TIMEOUT_MS / 1000) + ' s.  '
-                            + 'The server may be busy or unreachable; '
-                            + 'try again in a moment.'
-                        ));
-                    } else if (err && err.name === 'AbortError') {
-                        // User-driven aborts could land here in the
-                        // future; today we don't expose Cancel.
+                    if (err && err.name === 'AbortError') {
+                        // The timer-fired branch is handled by the
+                        // timer callback directly (settled=true
+                        // gates this .catch).  Reaching here with
+                        // AbortError means a user-driven abort,
+                        // which we don't expose a UI for today.
                         renderError(result, 'Bundle aborted.');
                     } else {
                         renderError(result, String(err));

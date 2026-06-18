@@ -379,6 +379,61 @@ def test_bundle_handoff_js_uses_correct_sidebar_api(tmp_path):
         "sidebar moves to and lists the new bundle dir.")
 
 
+def test_bundle_handoff_js_gates_timer_and_chain_on_settled_flag(tmp_path):
+    """Audit follow-up race fix: the timer macrotask could fire
+    AFTER fetch resolved but BEFORE the body-parse promise resolved;
+    abort() then rejected the body parse with AbortError and the
+    user saw 'timed out' for a request that completed.  Pin the
+    ``settled`` flag pattern so a future refactor can't drop the
+    gate."""
+    from pathlib import Path
+    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    assert "settled" in js, (
+        "bundle-handoff.js no longer carries a ``settled`` flag; "
+        "the timer/promise race window re-opens.")
+    # The timer's render lives inside the setTimeout callback, AND
+    # the .then + .catch both check the flag.  At minimum we
+    # require three sites: timer flips it, .then guards on it,
+    # .catch guards on it.  We use a loose pattern (`settled` as
+    # an identifier surrounded by JS-shaped neighbors) rather than
+    # exact-line matching so trivial refactors don't break the pin.
+    occurrences = len([line for line in js.splitlines()
+                       if "settled" in line])
+    assert occurrences >= 5, (
+        f"bundle-handoff.js mentions ``settled`` only "
+        f"{occurrences}× -- expected at least 5 (declaration + "
+        f"timer set + timer early-return + .then early-return + "
+        f".catch early-return).  The settled-gate pattern may have "
+        f"been simplified into a single check, re-opening the "
+        f"timer/promise race window.")
+
+
+def test_bundle_handoff_js_guards_double_submit(tmp_path):
+    """Audit follow-up: Enter-in-input can dispatch a second submit
+    event before the browser observes ``btn.disabled``.  Pre-fix two
+    concurrent fetches shared the status/spinner/result DOM and
+    clobbered each other's render.  Pin the early-return guard."""
+    import re
+    from pathlib import Path
+    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    # Strip block comments so the historical-context mention doesn't
+    # false-positive.
+    cleaned = re.sub(r"/\*.*?\*/", "", js, flags=re.DOTALL)
+    cleaned = "\n".join(
+        line for line in cleaned.splitlines()
+        if not line.lstrip().startswith("//")
+    )
+    # The guard reads ``btn.disabled`` early in the submit handler.
+    # Match the call shape (identifier . identifier) so a future
+    # rename to ``submitBtn.disabled`` is still picked up.
+    assert re.search(r"\bif\s*\(\s*\w+\.disabled\s*\)\s*return", cleaned), (
+        "bundle-handoff.js no longer guards the submit handler with "
+        "an early-return on btn.disabled.  Enter-in-input can fire "
+        "two submit events before the browser disables the button; "
+        "without this guard two in-flight fetches clobber each "
+        "other's render.")
+
+
 def test_bundle_handoff_js_has_fetch_timeout(tmp_path):
     """Audit follow-up deferral #1: pre-fix the fetch had no
     timeout, so a hung server left the button disabled forever.
