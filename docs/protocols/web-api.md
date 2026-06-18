@@ -866,7 +866,7 @@ trajectory inspector on `/results` instead. Tests:
 
 | Route | Method | Body | Success | Error codes |
 |---|---|---|---|---|
-| `/api/watch/load` | POST | JSON `{path}` OR multipart `file=` | see § 8.3 | 400 · 403 (outside `MOLBUILDER_WATCH_ROOT`) · 404 · 413 · 500 |
+| `/api/watch/load` | POST | JSON `{path}` OR multipart `file=` | see § 8.3 | 400 (outside picker roots / unsupported format / empty path) · 404 · 413 · 500 |
 | `/api/watch/data` | GET | `?mtime=` (optional) | see § 8.4 | 200 (errors carry `{ok:false, error}`) |
 
 ### 8.2 `/api/watch/load` — two modes
@@ -875,14 +875,17 @@ trajectory inspector on `/results` instead. Tests:
 Server-side handling:
 
 1. Reject empty path with HTTP 400.
-2. Resolve via `os.path.abspath(os.path.expanduser(path))`.
-3. If `MOLBUILDER_WATCH_ROOT` is set, refuse paths outside it
-   with HTTP 403 (see § 8.5).
-4. Reject non-existent file with HTTP 404.
-5. `detect_parser(path)`; reject unsupported with HTTP 400 (the
+2. Route through `_resolve_within_roots` (§ 1.2) — constrains
+   the path to the configured picker roots (default:
+   `<cwd>/projects`).  Same gate every other path-taking
+   endpoint uses; rejects `..`, resolves symlinks, and refuses
+   any path outside the roots with HTTP 400.  (2026-06-18
+   security hotfix — see § 8.5.)
+3. Reject non-existent file with HTTP 404.
+4. `detect_parser(path)`; reject unsupported with HTTP 400 (the
    error body uses the multi-line message from
    `molbuilder/parsers/__init__.py`).
-6. Replace `_state` (path / parser) atomically; force a re-parse
+5. Replace `_state` (path / parser) atomically; force a re-parse
    on the next refresh.
 
 Detection happens **before** the new path is committed to
@@ -1018,15 +1021,25 @@ The server-side ring buffer is bounded at 16 samples; both fields
 clear on a `/api/watch/load` to a different path or directory.
 Algorithm + rationale: see `web/blueprints/watch.py::_attach_iter_walltime`.
 
-### 8.5 `MOLBUILDER_WATCH_ROOT` env var
+### 8.5 Picker-roots scope (was `MOLBUILDER_WATCH_ROOT` env var)
 
-When the operator sets `MOLBUILDER_WATCH_ROOT=/abs/path` before
-starting the server, `/api/watch/load` Mode A refuses any path
-outside that subtree (HTTP 403, structured error). Intended
-deployment posture on shared / multi-user hosts: scope the
-read-arbitrary-file primitive to the operator's intended run
-area. Unset by default; the server trusts the caller's path
-when the env var is absent.
+**2026-06-18 security hotfix (audit B1).**  Pre-fix, Mode A
+resolved arbitrary host paths via
+`os.path.realpath(os.path.expanduser(path))` and only refused
+paths outside `MOLBUILDER_WATCH_ROOT` when that env var was set —
+the default deployment left it unset, so a logged-in user could
+POST `{"path": "/etc/shadow"}` and the parser read it.
+
+The hotfix routes Mode A through the canonical
+`_resolve_within_roots` helper (§ 1.2) — the same gate every
+other path-taking endpoint uses.  Paths are constrained to
+`Capabilities.file_picker_roots()` (default: `<cwd>/projects`).
+The `MOLBUILDER_WATCH_ROOT` env var is RETIRED — its job is now
+done by the deployment-wide picker-roots configuration.
+
+Pinned by `tests/watch/test_api_load.py::
+test_load_by_json_path_rejects_path_outside_picker_roots` +
+`test_load_by_json_path_rejects_dot_dot_traversal`.
 
 ### 8.6 Concurrency contract
 

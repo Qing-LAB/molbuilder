@@ -27,7 +27,38 @@ _SIESTA_HEAD = (
 
 
 @pytest.fixture
-def client():
+def client(tmp_path):
+    """Flask test client with ``tmp_path`` injected as the picker root.
+
+    2026-06-18 security hotfix (audit B1) routes /api/watch/load
+    through ``_resolve_within_roots``, which constrains the JSON-path
+    mode to the configured picker roots (default: ``<cwd>/projects``).
+    These tests want to point /api/watch/load at fixture files under
+    ``tmp_path``, so we inject the tmp directory as the sole picker
+    root for the duration of the test.  The conftest-level
+    ``_reset_caps_each_test`` autouse fixture resets after each test.
+    """
+    from molbuilder import diagnostics
+    from molbuilder.diagnostics import Capabilities
+
+    class _TmpRootCaps(Capabilities):
+        def file_picker_roots(self):  # type: ignore[override]
+            return ((tmp_path.resolve(), "test-tmp"),)
+
+    # ``create_app`` calls ``_initialize_diagnostics()`` which
+    # OVERWRITES any previously-set capabilities, so we must inject
+    # AFTER it runs.  Order-dependent — pin it here.
+    app = create_app(config={})
+    diagnostics.set_capabilities(_TmpRootCaps())
+    return app.test_client()
+
+
+@pytest.fixture
+def client_with_default_roots():
+    """Test client that does NOT inject tmp_path — used by the
+    security regression to verify the default deployment (projects/
+    only) rejects an out-of-root path.
+    """
     return create_app(config={}).test_client()
 
 
@@ -71,6 +102,59 @@ def test_load_by_json_path_empty(client):
     body = r.get_json()
     assert r.status_code == 400
     assert body["ok"] is False
+
+
+# --------------------------------------------------------------------- #
+#  Security regression — audit B1 (2026-06-18)                          #
+# --------------------------------------------------------------------- #
+
+
+def test_load_by_json_path_rejects_path_outside_picker_roots(
+        client_with_default_roots):
+    """Pre-fix /api/watch/load resolved arbitrary host paths via
+    ``os.path.realpath`` with an OPTIONAL ``MOLBUILDER_WATCH_ROOT``
+    gate that the default deployment left unset.  A logged-in user
+    could POST ``{"path": "/etc/shadow"}`` and the parser read it.
+
+    Hotfix routes through ``_resolve_within_roots``, which constrains
+    the path to picker roots (default: ``<cwd>/projects``).  This
+    test posts ``/etc/passwd`` and asserts the picker error fires
+    BEFORE any disk read attempt — proving the read-arbitrary-file
+    primitive is gone.
+
+    Pinned to web-api.md § 1.2 (every path-taking endpoint goes
+    through ``_resolve_within_roots``).
+    """
+    r = client_with_default_roots.post(
+        "/api/watch/load",
+        json={"path": "/etc/passwd"},
+    )
+    body = r.get_json()
+    assert r.status_code == 400, (
+        f"expected 400 (outside picker roots); got {r.status_code} "
+        f"body={body!r}.  If you see 200/404, the security fix has "
+        f"regressed and the endpoint is reading arbitrary host files."
+    )
+    assert body["ok"] is False
+    # The picker error names the resolved path + roots so the user
+    # knows WHY it was rejected.
+    assert "outside" in body["error"].lower(), body["error"]
+
+
+def test_load_by_json_path_rejects_dot_dot_traversal(
+        client_with_default_roots):
+    """``..`` is rejected early per the defense-in-depth check in
+    ``_resolve_within_roots``."""
+    r = client_with_default_roots.post(
+        "/api/watch/load",
+        json={"path": "projects/../etc/passwd"},
+    )
+    body = r.get_json()
+    assert r.status_code == 400
+    assert body["ok"] is False
+    # The picker's defense-in-depth check rejects raw ``..`` before
+    # resolution, so the error names ``..`` rather than "outside".
+    assert ".." in body["error"], body["error"]
 
 
 # --------------------------------------------------------------------- #

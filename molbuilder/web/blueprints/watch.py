@@ -757,30 +757,22 @@ def api_load():
     raw_path = (body.get("path") or "").strip()
     if not raw_path:
         return jsonify({"ok": False, "error": "Empty path."}), 400
-    # realpath (not just abspath) so symlinks pointing outside the
-    # opt-in MOLBUILDER_WATCH_ROOT are rejected too.
-    raw_path = os.path.realpath(os.path.expanduser(raw_path))
-    # Optional deployment-stance constraint: when MOLBUILDER_WATCH_ROOT
-    # is set, /api/watch/load refuses paths outside that subtree.
-    # Useful on shared / multi-user hosts to keep the read-arbitrary-
-    # file primitive scoped to the operator's intended run area.
-    # Unset by default (current behaviour: trust the user's path).
-    watch_root = os.environ.get("MOLBUILDER_WATCH_ROOT")
-    if watch_root:
-        watch_root_abs = os.path.realpath(os.path.expanduser(watch_root))
-        try:
-            common = os.path.commonpath([raw_path, watch_root_abs])
-        except ValueError:
-            common = ""
-        if common != watch_root_abs:
-            return jsonify({
-                "ok": False,
-                "error": (
-                    f"Path {raw_path!r} is outside MOLBUILDER_WATCH_ROOT "
-                    f"({watch_root_abs!r}); refusing to read.  Unset the "
-                    "env var or move the file under that root."
-                ),
-            }), 403
+    # 2026-06-18 security fix (audit B1): the JSON-path mode now
+    # routes through the canonical ``_resolve_within_roots`` helper
+    # like every other path-taking endpoint, per web-api.md § 1.2.
+    # Pre-fix this site used ``os.path.realpath(expanduser(...))``
+    # with an OPTIONAL ``MOLBUILDER_WATCH_ROOT`` gate that was unset
+    # in the default deployment — a logged-in user could POST
+    # ``{"path": "/etc/shadow"}`` and the parser would read it.
+    # ``_resolve_within_roots`` constrains to picker roots
+    # (Capabilities.file_picker_roots(); today: <cwd>/projects);
+    # the per-endpoint MOLBUILDER_WATCH_ROOT env var is retired in
+    # favour of the deployment-wide picker roots configuration.
+    from .files import _resolve_within_roots, _PickerError
+    try:
+        raw_path = str(_resolve_within_roots(raw_path))
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
 
     # Directory-aware resolution per docs/protocols/job-layout.md.  If the
     # user passed a directory, scan it for the canonical artefacts
