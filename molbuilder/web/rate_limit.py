@@ -93,21 +93,44 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, session
 
 logger = logging.getLogger(__name__)
 
 
 # Default tunables — overridable per-deployment via cfg["rate_limit"].
+#
+# DESIGN NOTE (2026-06-18 hotfix):
+#
+#   ``threshold_total`` is DISABLED by default (set to 0).  The
+#   original 60/60s ceiling tripped on every legitimate 1 Hz
+#   poll from the system-load monitor (#472) — within a minute
+#   the very user-driven traffic the limiter is meant to protect
+#   gets killed.  Successful 200s should not count toward an
+#   abuse signal; the 404-storm signal already catches the
+#   canonical scanner pattern (rapid path enumeration generates
+#   4xx, not 2xx).
+#
+#   Operators who want total-burst back on for a paranoid
+#   deployment set ``threshold_total`` to a non-zero value in
+#   ``molbuilder.json``.  Recommended floor: 600 (= 10/s
+#   sustained for a minute), well above any legitimate poll
+#   cadence.
+#
+#   ``127.0.0.1`` / ``::1`` are baked into the default
+#   allowlist.  When the bind guard refuses non-loopback HTTP
+#   without TLS (cli.py::_refuse_remote_bind_without_tls),
+#   localhost requests really are local — never the scanner.
+#
 DEFAULTS: Dict[str, Any] = {
     "enabled":         True,
     "window_404_s":    30,
     "threshold_404":   20,
     "window_total_s":  60,
-    "threshold_total": 60,
+    "threshold_total": 0,          # 0 = disabled; see DESIGN NOTE
     "cooldown_s":      3600,
     "trust_proxy":     False,
-    "allowlist":       [],         # list of "ip" or "cidr/prefix" strings
+    "allowlist":       ["127.0.0.1", "::1"],
     "max_tracked_ips": 10_000,
 }
 
@@ -203,6 +226,7 @@ class RateLimiter:
 
     def check_request(
         self, ip: str, path_with_query: str,
+        *, authenticated: bool = False,
     ) -> Optional[Tuple[str, int]]:
         """Run pre-handler signals against this request.
 
@@ -210,8 +234,16 @@ class RateLimiter:
         (either already blocked, or just tripped a signal), else
         ``None``.  Caller (the before_request hook) returns an
         empty 429 response on a tuple result.
+
+        ``authenticated`` short-circuits the limiter entirely.
+        A logged-in principal has already passed the SSO gate
+        (CAS / OAuth); the limiter's purpose is to deflect
+        anonymous scanners, not to throttle real users.  When
+        auth is disabled at the deployment level the caller
+        always passes ``authenticated=False`` and the normal
+        signal chain runs.
         """
-        if not self.enabled or self.is_allowlisted(ip):
+        if not self.enabled or authenticated or self.is_allowlisted(ip):
             return None
         now = time.monotonic()
         with self._lock:
@@ -230,27 +262,44 @@ class RateLimiter:
                 self._block_locked(ip, st, REASON_SIGNATURE, now)
                 return (REASON_SIGNATURE, self.cooldown_s)
 
-            # Record the request.  If the buf was already full (at
-            # threshold), evicting the oldest entry happens
-            # automatically via deque(maxlen=...).  After the append
-            # we check the window.
-            _append_bounded(st.requests_buf, now, self.threshold_total)
-            if _exceeds_window(st.requests_buf,
-                               self.threshold_total,
-                               self.window_total_s, now):
-                self._block_locked(ip, st, REASON_STORM_TOTAL, now)
-                return (REASON_STORM_TOTAL, self.cooldown_s)
+            # Record the request.  When ``threshold_total`` is 0
+            # the total-burst signal is disabled — skip the buffer
+            # bookkeeping entirely.  This is the documented default
+            # (see DEFAULTS docstring): successful 200s from a
+            # legitimate poller should not accumulate toward an
+            # abuse counter.
+            if self.threshold_total > 0:
+                _append_bounded(st.requests_buf, now, self.threshold_total)
+                if _exceeds_window(st.requests_buf,
+                                   self.threshold_total,
+                                   self.window_total_s, now):
+                    self._block_locked(ip, st, REASON_STORM_TOTAL, now)
+                    return (REASON_STORM_TOTAL, self.cooldown_s)
 
         return None
 
-    def record_response(self, ip: str, status_code: int) -> None:
+    def record_response(
+        self, ip: str, status_code: int,
+        *, authenticated: bool = False,
+    ) -> None:
         """Post-handler hook.  Tracks 4xx responses toward the
         404-storm signal.  Idempotent w.r.t. already-blocked IPs
         (they'll already get the connection-close path next time).
+
+        Authenticated requests don't accumulate the 4xx counter
+        either — same rationale as ``check_request``.  A real
+        user mis-clicking through their session shouldn't grow
+        toward a blocklist trip.
         """
-        if not self.enabled or self.is_allowlisted(ip):
+        if not self.enabled or authenticated or self.is_allowlisted(ip):
             return
         if not (400 <= status_code < 500):
+            return
+        # threshold_404 <= 0 disables the 404-storm signal — same
+        # opt-out shape as threshold_total.  The signature-match
+        # signal stays on regardless because it is the canonical
+        # "this is unambiguous abuse" detector.
+        if self.threshold_404 <= 0:
             return
         now = time.monotonic()
         with self._lock:
@@ -375,6 +424,27 @@ def _matches_signature(path_with_query: str) -> bool:
     return False
 
 
+def _is_authenticated_session() -> bool:
+    """True iff the current Flask session carries a logged-in user.
+
+    The auth layer (``molbuilder.web.auth``) stashes the principal
+    under ``session["user"]`` after a successful CAS / OAuth flow.
+    When auth is disabled at the deployment level the key is never
+    set and this returns False — the limiter then runs normally
+    against everyone.
+
+    Safe to call outside a request context (returns False); safe
+    to call when auth is not installed (no exception, just False).
+    """
+    try:
+        return bool(session.get("user"))
+    except Exception:  # noqa: BLE001
+        # Outside-request-context (RuntimeError), unsigned cookie,
+        # missing secret key, malformed session — anything that
+        # makes the session unreadable counts as anonymous.
+        return False
+
+
 def _append_bounded(buf: Deque[float], now: float, maxlen: int) -> None:
     """Append, keeping the deque at most ``maxlen`` entries.
 
@@ -432,7 +502,10 @@ def init_rate_limit(app: Flask, cfg: Mapping[str, Any]) -> RateLimiter:
         if qs:
             path_with_query = f"{path_with_query}?{qs}"
         path_with_query = unquote_plus(path_with_query)
-        decision = rl.check_request(ip, path_with_query)
+        decision = rl.check_request(
+            ip, path_with_query,
+            authenticated=_is_authenticated_session(),
+        )
         if decision is None:
             return None
         # Drop the connection.  Empty body + Connection: close
@@ -446,7 +519,10 @@ def init_rate_limit(app: Flask, cfg: Mapping[str, Any]) -> RateLimiter:
     @app.after_request
     def _rate_limit_after(response):
         try:
-            rl.record_response(rl.client_ip(), response.status_code)
+            rl.record_response(
+                rl.client_ip(), response.status_code,
+                authenticated=_is_authenticated_session(),
+            )
         except Exception:  # noqa: BLE001
             # Never let a rate-limit bookkeeping error tank the
             # response.  Log + move on.

@@ -70,25 +70,54 @@ The 4xx count is tracked in a bounded deque per IP (size =
 threshold).  When the deque is full AND the oldest entry is
 within the window, the IP trips.
 
-### 2.3 Total-burst
+### 2.x Authenticated bypass (2026-06-18)
+
+If the current request carries a logged-in Flask session
+(`session["user"]` is set after a successful CAS / OAuth flow),
+the limiter short-circuits the whole signal chain.  Rationale: a
+principal that passed the SSO gate is by definition not an
+anonymous scanner, and the limiter exists to deflect anonymous
+scanners.  An authenticated user mis-clicking through their
+session shouldn't accumulate toward a blocklist trip.
+
+This bypass is in addition to the IP-based allowlist; either one
+short-circuits.  When auth isn't installed at the deployment
+level, `session["user"]` is never set and every request runs
+through the signal chain normally.
+
+### 2.3 Total-burst (off by default)
 
 `threshold_total` total requests (any status) within
 `window_total_s` seconds → block.  Catches slower scanners that
 don't trip the 404 signal because they found a real 200 and
 started hammering.
 
+**Disabled by default** (`threshold_total = 0`) since the
+2026-06-18 hotfix: the 60/60s ceiling killed the legitimate 1 Hz
+poll of `/api/system/load` from the system-load monitor (#472),
+which is exactly the user-driven traffic the limiter exists to
+protect.  Successful 200s should not count toward an abuse
+signal; the 404-storm + signature signals already catch the
+canonical scanner pattern.
+
+To turn it back on (paranoid deployment, no legitimate poller),
+set `threshold_total` to a non-zero value — recommended floor is
+**600** (= 10/s sustained for a minute), well above any
+legitimate poll cadence.  Setting either signal's threshold to
+`0` disables it; the signature-match signal is always on.
+
 ## 3. Defaults
 
 | Knob | Default | Tuned against |
 |---|---|---|
-| `enabled` | `true` | always on; disable explicitly via cfg |
+| `enabled` | `true` | always on; disable entirely via cfg |
 | `window_404_s` | `30` | scanner cadence (~5 req/s sustained) |
 | `threshold_404` | `20` | 30-second false-positive bound on a careful real user |
-| `window_total_s` | `60` | slower scanners (≤1 req/s) |
-| `threshold_total` | `60` | ~1 req/s sustained = real user |
+| `window_total_s` | `60` | (unused while `threshold_total = 0`) |
+| `threshold_total` | `0` (off) | see § 2.3 — disabled to protect legitimate pollers |
 | `cooldown_s` | `3600` | 1 hour — enough to deter, short enough to recover from a false positive |
 | `trust_proxy` | `false` | use `request.remote_addr` only |
-| `allowlist` | `[]` | no IP exempt by default |
+| `allowlist` | `["127.0.0.1", "::1"]` | localhost always trusted; bind guard ensures localhost really is local |
 | `max_tracked_ips` | `10_000` | LRU eviction bound |
 
 Override any subset in `molbuilder.json`:

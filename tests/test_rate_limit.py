@@ -362,6 +362,76 @@ class TestAdminEndpoints:
 
 
 # --------------------------------------------------------------------- #
+#  Authenticated bypass                                                 #
+# --------------------------------------------------------------------- #
+
+
+class TestAuthenticatedBypass:
+    """A logged-in session short-circuits the limiter.
+
+    Rationale: a principal that passed CAS / OAuth is by
+    definition not an anonymous scanner.  The 2026-06-18 hotfix
+    added this bypass after the original total-burst threshold
+    killed legitimate 1 Hz pollers; even with total-burst now
+    off by default, an authenticated user mis-clicking through
+    their session shouldn't accumulate toward a blocklist trip.
+    """
+
+    def test_signature_match_allowed_for_authenticated(self):
+        # Build a client with an absurdly tight threshold so
+        # even ONE bad request would trip.  Then put a "user" in
+        # the session and verify the limiter stays out of the
+        # way.
+        app, client = _build_client({
+            "threshold_404": 1,
+            "cooldown_s":    60,
+        })
+        # Sessions need a signed secret key; the no-auth default
+        # config doesn't install one, so set a test-only value.
+        app.secret_key = "test-only-not-for-prod"
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "203.0.113.99"}
+        # Without the session, the signature match blocks.
+        r = client.get("/?<script>x</script>")
+        assert r.status_code == 429
+        # Clear the blocklist so the next test isolates the
+        # session signal.
+        app.extensions["rate_limiter"].clear_all()
+        # With a logged-in session, the same URL must pass
+        # through (the route's 404 / 302 is whatever Flask
+        # returns; the key is "NOT 429+Connection-close").
+        with client.session_transaction() as s:
+            s["user"] = {"email": "alice@example.com"}
+        r = client.get("/?<script>x</script>")
+        assert r.headers.get("Connection") != "close", (
+            "authenticated session must bypass the limiter; "
+            f"got Connection={r.headers.get('Connection')!r}, "
+            f"status={r.status_code}"
+        )
+
+    def test_404_storm_not_counted_for_authenticated(self):
+        # 4xx responses from an authenticated user must NOT
+        # accumulate toward the 404 storm signal.
+        app, client = _build_client({
+            "threshold_404":  3,
+            "window_404_s":   60,
+            "cooldown_s":     60,
+        })
+        app.secret_key = "test-only-not-for-prod"
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "203.0.113.100"}
+        with client.session_transaction() as s:
+            s["user"] = {"email": "alice@example.com"}
+        # 5 404s with an active session — none should count.
+        for i in range(5):
+            r = client.get(f"/no-such-{i}")
+            assert r.status_code in (302, 404), r.status_code
+        # The next normal request must still pass (no block).
+        r = client.get("/api/health")
+        assert r.status_code == 200
+
+
+# --------------------------------------------------------------------- #
 #  Disabled mode                                                        #
 # --------------------------------------------------------------------- #
 
