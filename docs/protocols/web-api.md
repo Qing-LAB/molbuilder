@@ -216,7 +216,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 47 routes
+## 2. Endpoint index — all 59 routes
 
 ```mermaid
 flowchart LR

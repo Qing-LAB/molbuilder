@@ -726,7 +726,9 @@ def api_build_fdf():
         # back.  Body carries the merged issue list so the form's
         # workflow cards (web-ui-coherence Rule 2) render the
         # findings inline; the user adjusts parameters and
-        # resubmits.  HTTP 200, ok:false.
+        # resubmits.  HTTP 200 is EXPLICIT (not Flask default)
+        # so the intent is visible at the call site and the
+        # contract test catches future drift.
         merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         # Add any pre-render issues NOT already in exc.issues (de-dup
         # by (severity, where, message) tuple).
@@ -739,7 +741,7 @@ def api_build_fdf():
             "ok":     False,
             "error":  str(exc),
             "issues": merged_issues,
-        })
+        }), 200
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500
@@ -792,8 +794,7 @@ def api_build_pyscf():
     except ValidationError as exc:
         # web-api.md § 1.6 (b) scientific advisory — see the
         # mirroring /api/build/fdf path above for the rationale.
-        # HTTP 200, ok:false; issues drive the form's per-card
-        # rendering.
+        # HTTP 200 explicit so the intent is visible.
         merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         exc_keys = {(d["severity"], d.get("where", ""), d["message"])
                     for d in merged_issues}
@@ -804,7 +805,7 @@ def api_build_pyscf():
             "ok":     False,
             "error":  str(exc),
             "issues": merged_issues,
-        })
+        }), 200
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500

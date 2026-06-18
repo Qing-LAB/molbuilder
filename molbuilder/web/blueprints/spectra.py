@@ -418,15 +418,14 @@ def api_spectra_render():
     # Block render on any error-severity issue.
     # web-api.md § 1.6 (b) scientific advisory: validator hard-fail
     # blocks emission, but the HTTP exchange succeeded — the server
-    # ran the check and is reporting back.  HTTP 200, ok:false; the
-    # form's workflow cards (web-ui-coherence Rule 2) render the
-    # findings inline.
+    # ran the check and is reporting back.  HTTP 200 explicit so
+    # the intent is visible at the call site.
     if any(i.severity == "error" for i in issues):
         return jsonify({
             "ok":     False,
             "error":  "preflight failed; see issues",
             "issues": _issues_to_json(issues, cfg=cfg),
-        })
+        }), 200
 
     # Render the script + Methods text + bibliography keys.
     try:

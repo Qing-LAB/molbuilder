@@ -258,8 +258,8 @@ def api_transport_render() -> Any:
         # absence to drive the script-preview card visibility.
         # Mirrors /api/build/fdf, /api/build/pyscf,
         # /api/spectra/render.
-        # web-api.md § 1.6 (b) scientific advisory: HTTP 200,
-        # ok:false — the form's workflow cards (web-ui-coherence
+        # web-api.md § 1.6 (b) scientific advisory: HTTP 200
+        # explicit — the form's workflow cards (web-ui-coherence
         # Rule 2) render the findings inline.
         return jsonify({
             "ok":          False,
@@ -267,7 +267,7 @@ def api_transport_render() -> Any:
             "error":       "preflight failed; see issues",
             "issues":      _issues_to_json(issues, cfg=cfg),
             "errors_only": _issues_to_json(errors_only, cfg=cfg),
-        })
+        }), 200
 
     # Emit the script.  Engine-side rendering is pure (no I/O); the
     # web layer writes the file separately via /api/files/write if
