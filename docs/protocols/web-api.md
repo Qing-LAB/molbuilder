@@ -165,7 +165,7 @@ Every response falls in exactly one of four buckets:
 
 | Class | HTTP | `body.ok` | When |
 |---|---|---|---|
-| Success | 2xx (typically 200) | `true` | Endpoint produced the artifact.  Validator may have emitted warnings / infos alongside (`issues: [...warns + infos...]`, `errors_only: []`) — emission still succeeded. |
+| Success | 2xx (typically 200) | `true` | Endpoint produced its expected output: an artifact (`/api/build/fdf` → script, `/api/build/molecule` → structure) with `errors_only: []`, OR a verdict (`/api/build/preflight` → `issues + errors_only`) where `errors_only` MAY be non-empty — the verdict IS the output; consumers gate submission on `errors_only`. |
 | **Scientific advisory** | **200** | **`false`** | Validator / preflight returned hard errors; emission refused.  Body carries `issues + errors_only` so the form's workflow cards ([`web-ui-coherence.md`](web-ui-coherence.md) Rule 2) can render the findings inline.  The user reviews the form, adjusts parameters, resubmits — **there is no error page to navigate to**. |
 | Protocol error | 4xx (typically 400) | `false` | The request itself was malformed: missing required field, schema mismatch, bad path (§ 1.2), unrecognised engine name, charset-rejected identifier.  Client must fix the call before retrying. |
 | Server fault | 5xx (typically 500) | `false` | Server tried and failed: IO / parse error on a user-selected file, engine crash, internal exception, missing dependency.  Not the user's fault; not addressable from form input. |
@@ -206,8 +206,9 @@ entry would supersede this section if we ever do.
 
 | Endpoint + failure | Status | Body |
 |---|---|---|
-| `/api/build/preflight` — validator hard-error on user's form values | **200** | `{ok:false, error:"preflight failed; see issues", issues:[...], errors_only:[...]}` |
-| `/api/build/fdf` — render refuses because spin is wrong for the chemistry | **200** | `{ok:false, errors_only:[...]}` |
+| `/api/build/preflight` — validator found hard errors (pure-check endpoint; never refuses) | **200** | `{ok:true, issues:[...], errors_only:[...]}` — verdict IS the output; consumer (`viewer.js`) gates on `errors_only` |
+| `/api/build/fdf` — render refuses because spin is wrong for the chemistry | **200** | `{ok:false, error:"preflight failed; see issues", issues:[...], errors_only:[...]}` |
+| `/api/spectra/render` — validator hard-error blocks script emission | **200** | `{ok:false, error:"preflight failed; see issues", issues:[...], errors_only:[...]}` |
 | `/api/files/read` — path outside picker roots (§ 1.2) | **400** | `{ok:false, error:"path outside roots"}` |
 | `/api/results/bundle` — `stem` contains NUL or is `.` / `..` | **400** | `{ok:false, error:"<charset/all-dots reason>"}` |
 | `/api/watch/data` — trajectory file can't be parsed | **500** | `{ok:false, error:"parse failed: ..."}` |
