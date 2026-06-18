@@ -505,6 +505,17 @@ def get_envs(cfg: Mapping[str, Any]) -> Dict[str, str]:
     return dict(cfg.get("envs", {}))
 
 
+def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return the ``rate_limit`` section, or ``{}``.
+
+    The ``rate_limit`` block tunes the IP-based scanner-detection +
+    blocklist installed by :mod:`molbuilder.web.rate_limit`.  See
+    :file:`docs/protocols/rate-limit.md` for the full schema.
+    Trivial accessor -- defaults are applied inside ``RateLimiter``.
+    """
+    return dict(cfg.get("rate_limit", {}))
+
+
 __all__ = [
     "CONFIG_FILENAME",
     "RuntimeConfigError",
@@ -514,4 +525,5 @@ __all__ = [
     "get_auth",
     "get_providers",
     "get_secret_key_file",
+    "get_rate_limit",
 ]

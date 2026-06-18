@@ -72,6 +72,22 @@ def _maybe_install_auth(app, cfg) -> None:
     init_auth(app, auth_cfg, get_secret_key_file(cfg))
 
 
+def _install_rate_limit(app, cfg) -> None:
+    """Always-on IP rate-limit + scanner detection.
+
+    Unlike auth, this is on by default — see
+    ``docs/protocols/rate-limit.md`` for the threat model.  The
+    ``rate_limit`` config block tunes thresholds + allowlist; an
+    empty block uses defaults (20 4xx/30s, 60 req/60s, 1 h
+    cooldown, signature match → immediate block, allowlist=[],
+    trust_proxy=False).  Operators who want to disable entirely
+    set ``rate_limit.enabled = false``.
+    """
+    from ..runtime_config import get_rate_limit
+    from .rate_limit import init_rate_limit
+    init_rate_limit(app, get_rate_limit(cfg))
+
+
 def request_is_https() -> bool:
     """True when the current request reached us over HTTPS, either
     directly (Flask's TLS) or via a reverse proxy that set
@@ -228,6 +244,13 @@ def create_app(*, config=None) -> Flask:
     # a no-op (the localhost-only default).  See molbuilder/web/auth.py
     # + docs/deployment.md for the auth-enabled shape.
     _maybe_install_auth(app, config)
+
+    # IP rate-limit + scanner detection (always on, configurable).
+    # MUST land BEFORE blueprints so the before_request hook runs
+    # first in the chain; a signature match drops the connection
+    # before any handler spends a render cycle.  See
+    # docs/protocols/rate-limit.md for the threat model + defaults.
+    _install_rate_limit(app, config)
 
     # Build + Watch route groups live on Blueprints so each half is
     # self-contained (handlers, helpers, validation).  Both blueprints

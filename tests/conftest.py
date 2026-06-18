@@ -94,5 +94,10 @@ def web_client():
     """
     pytest.importorskip("flask")
     from molbuilder.web.app import create_app
-    app = create_app(config={})
+    # rate_limit.enabled=false in the default test client because
+    # several test files fire 60+ requests within the rolling
+    # window and would otherwise hit the total-burst threshold.
+    # tests/test_rate_limit.py builds its own client with the
+    # limiter enabled to exercise the module directly.
+    app = create_app(config={"rate_limit": {"enabled": False}})
     return app.test_client()
