@@ -385,27 +385,46 @@ def test_bundle_handoff_js_gates_timer_and_chain_on_settled_flag(tmp_path):
     abort() then rejected the body parse with AbortError and the
     user saw 'timed out' for a request that completed.  Pin the
     ``settled`` flag pattern so a future refactor can't drop the
-    gate."""
+    gate.
+
+    Counts only CODE occurrences -- comments are stripped first so
+    the historical-context block at the top doesn't inflate the
+    count past the threshold even after a future refactor removes
+    every actual guard.  Pre-fix the test counted comment mentions
+    toward the 5-line threshold.
+    """
+    import re
     from pathlib import Path
-    js = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    js_raw = Path("molbuilder/web/static/lib/results/bundle-handoff.js").read_text()
+    no_block = re.sub(r"/\*.*?\*/", "", js_raw, flags=re.DOTALL)
+    js = "\n".join(
+        line for line in no_block.splitlines()
+        if not line.lstrip().startswith("//")
+    )
     assert "settled" in js, (
-        "bundle-handoff.js no longer carries a ``settled`` flag; "
-        "the timer/promise race window re-opens.")
-    # The timer's render lives inside the setTimeout callback, AND
-    # the .then + .catch both check the flag.  At minimum we
-    # require three sites: timer flips it, .then guards on it,
-    # .catch guards on it.  We use a loose pattern (`settled` as
-    # an identifier surrounded by JS-shaped neighbors) rather than
-    # exact-line matching so trivial refactors don't break the pin.
-    occurrences = len([line for line in js.splitlines()
-                       if "settled" in line])
-    assert occurrences >= 5, (
-        f"bundle-handoff.js mentions ``settled`` only "
-        f"{occurrences}× -- expected at least 5 (declaration + "
-        f"timer set + timer early-return + .then early-return + "
-        f".catch early-return).  The settled-gate pattern may have "
-        f"been simplified into a single check, re-opening the "
-        f"timer/promise race window.")
+        "bundle-handoff.js no longer carries a ``settled`` flag in "
+        "code (excluding comments); the timer/promise race window "
+        "re-opens.")
+    # Require three concrete patterns: the declaration + at least
+    # one write (``settled = true``) + at least two early-return
+    # guards (``if (settled) return``).  Each is a distinct site
+    # that the race fix needs.  Loose enough to survive ident
+    # rename refactors via the ``\bsettled\b`` boundary, strict
+    # enough that "settled" appearing in a string literal can't
+    # satisfy the test.
+    assert re.search(r"\bvar\s+settled\s*=\s*false\b", js), (
+        "bundle-handoff.js no longer declares ``var settled = false``; "
+        "the race-gate is missing its initial state.")
+    assert len(re.findall(r"\bsettled\s*=\s*true\b", js)) >= 1, (
+        "bundle-handoff.js no longer assigns ``settled = true`` "
+        "anywhere; the race gate never closes.")
+    guards = re.findall(r"\bif\s*\(\s*settled\s*\)\s*return\b", js)
+    assert len(guards) >= 2, (
+        f"bundle-handoff.js has only {len(guards)} ``if (settled) "
+        f"return`` guards (need ≥ 2: at least one each on the "
+        f"timer / .then / .catch path).  The race-gate may have "
+        f"been simplified into a single check, leaving paths "
+        f"where the timer can clobber the chain or vice-versa.")
 
 
 def test_bundle_handoff_js_guards_double_submit(tmp_path):

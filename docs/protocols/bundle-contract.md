@@ -367,7 +367,7 @@ a bundle to a stem that already exists in the target.
 | ATOM-METADATA `schema_version > 3` and only-additive keys | bundle assembles; `notes` records "atom-metadata schema_version <N>; molbuilder expects 3" |
 | ATOM-METADATA `schema_version < 3` | `BundleError("atom-metadata schema_version <N> is older than v3; re-render the source script with current molbuilder")` |
 | Final-coords source missing all branches | bundle assembles from `.fdf`/`.py` initial coords; `notes` records the fallback |
-| SIESTA `.XV` exists but malformed | bundle assembles from `.fdf` initial coords; `notes` records the parse error + "NOT converged geometry" warning.  Same shape for PySCF `<JOB>_optimized.xyz` |
+| SIESTA `.XV` exists but malformed | bundle assembles from `.fdf` initial coords; `notes` records ONE combined entry: the parse error followed by `"-- NOT converged geometry. Re-run if you need optimized coords."`  Same shape for PySCF `<JOB>_optimized.xyz` |
 | Source cell (`.XV` or `.fdf` `LatticeVectors`) has det < 0 (left-handed) | bundle assembles; `notes` records a loud `"WARNING: LEFT-HANDED CELL DETECTED ... chirality flip"` warning so the user sees it in the result panel.  Soft (the cell could be intentional) but the warning text obligates the user to verify.  See `parsers/siesta_struct.py::check_xv_handedness` + `check_fdf_handedness` |
 | `write_bundle_as_handoff` target exists, `overwrite=False` | `BundleError("target exists")` |
 
