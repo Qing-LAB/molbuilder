@@ -612,37 +612,48 @@ class TestSpectraDisposeContract:
             self, web_client):
         """dispose() must drain _cleanups FIRST so timer/raf
         callbacks (which themselves may dispatch events to listeners)
-        don't fire against torn-down DOM.  Ordering matters."""
+        don't fire against torn-down DOM.  Ordering matters.
+
+        Per results-state-contract.md § 2 ("All state changes go
+        through one function") the canonical site for poll-timer
+        cleanup is ``transition("IDLE")`` — its IDLE branch in
+        lib/spectra/core.js clears state.lifecycle.watchTimer
+        (guarded with an ``if`` check, so a second call is a
+        no-op).  This test asserts the ordering of the canonical
+        chain: _cleanups drained, THEN transition("IDLE").
+        """
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
-        # Locate dispose() body.
         m = re.search(
             r"dispose\(\)\s*\{(.+?)\n        \},", js, re.DOTALL)
         assert m, "could not locate dispose() body in lib/spectra/core.js"
         body = m.group(1)
-        # Order check: _cleanups.pop()() before clearInterval.
         cleanups_idx = body.find("_cleanups.pop()")
-        cleartimer_idx = body.find("clearInterval(state.watchTimer)")
+        idle_idx     = body.find('transition("IDLE")')
         assert cleanups_idx > -1, (
             "dispose() does not walk _cleanups — listeners leak"
         )
-        assert cleartimer_idx > -1, (
-            "dispose() does not clear state.watchTimer — poll leaks"
+        assert idle_idx > -1, (
+            "dispose() does not call transition(\"IDLE\") — "
+            "the canonical state-machine cleanup site per "
+            "results-state-contract.md § 2"
         )
-        assert cleanups_idx < cleartimer_idx, (
-            "dispose() must walk _cleanups BEFORE clearing timers "
-            "so timer callbacks don't fire against torn-down listeners"
+        assert cleanups_idx < idle_idx, (
+            "dispose() must walk _cleanups BEFORE calling "
+            "transition(\"IDLE\") so torn-down listeners don't "
+            "fire on the bucket-clear cascade"
         )
 
     def test_dispose_clears_every_long_lived_resource(self, web_client):
         """dispose() must tear down every long-lived resource the
-        mount allocated: watch poller, the mode-viewer embed handle
-        (which owns its own vibration rAF + 3Dmol viewer per #231
-        Part B), and the Plotly chart.  Pinning each cleanup site
-        rather than just host.innerHTML="" so a future refactor that
-        drops, say, the Plotly.purge call lands with a clear failure
-        (and not silently with `host cleared therefore dispose
-        worked`).
+        mount allocated: watch poller (cleared via the canonical
+        ``transition("IDLE")`` site per results-state-contract.md
+        § 2), the mode-viewer embed handle (which owns its own
+        vibration rAF + 3Dmol viewer per #231 Part B), and the
+        Plotly chart.  Pinning each cleanup site rather than just
+        host.innerHTML="" so a future refactor that drops, say,
+        the Plotly.purge call lands with a clear failure (and not
+        silently with `host cleared therefore dispose worked`).
         """
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
@@ -651,8 +662,10 @@ class TestSpectraDisposeContract:
         assert m
         body = m.group(1)
         for needle, what in (
-            ("clearInterval(state.watchTimer)",
-                "live-watch poller (state.watchTimer)"),
+            ('transition("IDLE")',
+                "live-watch poller (cleared via the canonical "
+                "transition('IDLE') site per "
+                "results-state-contract.md § 2)"),
             ("state.handle.dispose()",
                 "mode-viewer embed handle (state.handle — owns the "
                 "vibration rAF + the 3Dmol viewer)"),
@@ -715,15 +728,23 @@ class TestSpectraDisposeContract:
             r"dispose\(\)\s*\{(.+?)\n        \},", js, re.DOTALL)
         assert m
         body = m.group(1)
-        # Each per-resource cleanup is guarded by an `if (state.X)`
-        # check or a `typeof Plotly !== "undefined"` check that
-        # makes a second call a no-op.  Pin the guards explicitly.
-        # The vibration animation + 3Dmol viewer are owned by the
-        # mode-viewer embed handle (#231 Part B); their guard is
-        # ``if (state.handle)`` against the handle reference, not
-        # the legacy ``state.animTimer`` / ``state.viewer`` slots.
+        # Each per-resource cleanup is guarded so a second dispose()
+        # call is a safe no-op:
+        #
+        # * The watch-poller cleanup lives one level deep, inside
+        #   transition("IDLE")'s IDLE branch (see lib/spectra/core.js
+        #   IDLE-branch ``if (state.lifecycle.watchTimer)`` guard).
+        #   dispose() invokes ``transition("IDLE")`` — that's the
+        #   canonical state-machine site per
+        #   results-state-contract.md § 2 ("All state changes go
+        #   through one function").  A second dispose() call hits
+        #   the same guard against a now-null timer and is a no-op.
+        # * The mode-viewer embed handle (#231 Part B) owns the
+        #   vibration rAF + 3Dmol viewer; guarded by
+        #   ``if (state.handle)`` against the handle reference.
+        # * Plotly purge is guarded by ``typeof Plotly !== "undefined"``.
         for guard in (
-            "if (state.watchTimer)",
+            'transition("IDLE")',
             "if (state.handle)",
             'typeof Plotly !== "undefined"',
         ):
@@ -1244,26 +1265,36 @@ class TestRenderEndpoint:
         assert "could not parse structure text" in body["error"].lower()
 
     def test_unsupported_method_blocks_render(self, web_client):
-        """Preflight catches an unknown method -- response is 400
-        with the error issue surfaced."""
+        """Preflight catches an unknown method -- response carries
+        the error issue surfaced.
+
+        Per web-api.md § 1.6: bad enum has two possible paths --
+        (a) coercion fails in _spectra_config_from_params -> HTTP
+        400 + ok:false (protocol error, class (c)); (b) coercion
+        accepts the string and preflight catches it -> HTTP 200 +
+        ok:false (scientific advisory, class (b)).  Either status
+        is contract-compliant; the test pins the ok:false outcome.
+        """
         r = self._render(web_client, structure_text=_WATER_XYZ, params={
             "method": "BOGUS_METHOD",
         })
-        # Bad enum may either fail coercion (HTTP 400 from param parse)
-        # OR pass through and trip preflight (HTTP 400 with issues).
-        # Either way, response is 400 + ok=False.
-        assert r.status_code == 400
+        assert r.status_code in (200, 400), r.status_code
         body = r.get_json()
         assert body["ok"] is False
 
     def test_preflight_error_returns_issues(self, web_client):
         """top_n selector without prior L3 produces an error-severity
-        issue from selection.validate_selection.  Response is 400."""
+        issue from selection.validate_selection.
+
+        Per web-api.md § 1.6 (b) this is the scientific-advisory
+        bucket — HTTP 200 + ok:false; the form's workflow cards
+        render the findings inline.
+        """
         r = self._render(web_client, structure_text=_WATER_XYZ, params={
             "es_mode_selection": "top_n",
             "es_top_n":          5,
         })
-        assert r.status_code == 400
+        assert r.status_code == 200, r.status_code
         body = r.get_json()
         assert body["ok"] is False
         assert "issues" in body

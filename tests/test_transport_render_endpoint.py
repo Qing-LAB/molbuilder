@@ -149,7 +149,9 @@ def test_render_blocks_when_regions_missing(web):
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "unlabeled"},
     })
-    assert r.status_code == 400, r.get_data(as_text=True)
+    # web-api.md § 1.6 (b): validator hard-fail is scientific
+    # advisory — HTTP 200 + ok:false, not 4xx.
+    assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
     assert body["ok"] is False
     assert body.get("script") is None
@@ -306,7 +308,8 @@ def test_render_preflight_error_envelope_carries_top_level_error(web):
         "structure_path": str(xyz),
         "params": {"engine": "transiesta", "job_name": "envelope"},
     })
-    assert r.status_code == 400
+    # web-api.md § 1.6 (b): scientific advisory at HTTP 200.
+    assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False
     assert isinstance(body.get("error"), str) and body["error"], (

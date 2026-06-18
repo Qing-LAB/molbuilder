@@ -2738,18 +2738,19 @@
     function _wireRefreshListener() {
         const C = (window.molbuilder || {}).constants;
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
-        const _onRefresh = () => {
+        // Route through the _on() helper so dispose() tears down
+        // via _cleanups — same contract as every other listener
+        // registered in this module.  Pinned by
+        // tests/spectra/test_blueprint.py::
+        // TestSpectraDisposeContract::
+        // test_all_element_listeners_route_through_on_helper.
+        _on(document, C.EVENT_REFRESH_REQUESTED, () => {
             const p = state.fileState.path;
             if (!p) return;     // not yet loaded; nothing to refresh
             // Match the els.watchPath input so loadByPath picks up
             // the current value (loadByPath reads from the DOM).
             if (els.watchPath) els.watchPath.value = p;
             loadByPath();
-        };
-        document.addEventListener(C.EVENT_REFRESH_REQUESTED, _onRefresh);
-        _cleanups.push(() => {
-            document.removeEventListener(
-                C.EVENT_REFRESH_REQUESTED, _onRefresh);
         });
     }
 

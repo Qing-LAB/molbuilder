@@ -554,7 +554,11 @@ def api_build_molecule():
         return jsonify({"ok": False,
                         "error": f"missing dependency: {exc}"}), 500
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        # web-api.md § 1.6 (d): an unhandled exception from the
+        # builder dispatch is server fault, not protocol error.
+        # The user's input passed shape validation (kind + input)
+        # before reaching here; whatever went wrong is on us.
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Endpoint-
@@ -716,13 +720,13 @@ def api_build_fdf():
     try:
         fdf = render_fdf(struct, cfg)
     except ValidationError as exc:
-        # Preserve the sidecar notice (and any other pre-validate
-        # issues we appended above) in the error response.  Previously
-        # we returned only ``exc.issues`` -- the user lost the
-        # "sidecar at <file> could not be applied" warn on render
-        # failure, which is exactly when they need it (the missing
-        # sidecar may be the reason validation rejected the run).
-        # Caught by the 2026-05-26 review.
+        # web-api.md § 1.6 (b) scientific advisory: validator
+        # hard-fail blocks emission, but the HTTP exchange
+        # succeeded — the server ran the check and is reporting
+        # back.  Body carries the merged issue list so the form's
+        # workflow cards (web-ui-coherence Rule 2) render the
+        # findings inline; the user adjusts parameters and
+        # resubmits.  HTTP 200, ok:false.
         merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         # Add any pre-render issues NOT already in exc.issues (de-dup
         # by (severity, where, message) tuple).
@@ -735,7 +739,7 @@ def api_build_fdf():
             "ok":     False,
             "error":  str(exc),
             "issues": merged_issues,
-        }), 400
+        })
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500
@@ -786,10 +790,10 @@ def api_build_pyscf():
     try:
         script = render_script(struct, cfg)
     except ValidationError as exc:
-        # Same merge as /api/build/fdf above: keep the sidecar notice
-        # + any pre-render issues in the error response so the user
-        # sees the full picture instead of just render_script's
-        # internal validation issues.
+        # web-api.md § 1.6 (b) scientific advisory — see the
+        # mirroring /api/build/fdf path above for the rationale.
+        # HTTP 200, ok:false; issues drive the form's per-card
+        # rendering.
         merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         exc_keys = {(d["severity"], d.get("where", ""), d["message"])
                     for d in merged_issues}
@@ -800,7 +804,7 @@ def api_build_pyscf():
             "ok":     False,
             "error":  str(exc),
             "issues": merged_issues,
-        }), 400
+        })
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500

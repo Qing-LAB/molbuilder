@@ -977,7 +977,14 @@ def api_data():
     client_mtime = request.args.get("mtime", type=float)
     state, err = _refresh_if_changed()
     if err:
-        return jsonify({"ok": False, "error": err})
+        # web-api.md § 1.6 (d) server fault: parse / IO error on a
+        # user-selected trajectory file.  The sibling /api/watch/load
+        # returns 500 on the same failure class (line 884); aligning
+        # this site closes the inconsistency that motivated § 1.6's
+        # codification.  JS poll-loop reads body.ok so its behaviour
+        # is unchanged; external consumers (curl / CI / monitoring)
+        # gating on HTTP status now see the actual failure.
+        return jsonify({"ok": False, "error": err}), 500
     if client_mtime is not None and client_mtime == state["mtime"]:
         return jsonify({"ok": True, "changed": False, "mtime": state["mtime"]})
     parser_cls = state["parser"]
