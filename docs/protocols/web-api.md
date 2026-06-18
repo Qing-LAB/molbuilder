@@ -56,7 +56,8 @@ name is a wire-break — pick a new name instead.
 HTTP status codes classify (200 / 4xx / 5xx) but the body shape
 **does not** depend on status — the JS apiX wrappers
 (`lib/projects/api.js`) branch on `body.ok`, not on
-`Response.ok`.
+`Response.ok`.  Which status code maps to each shape is the
+subject of § 1.6.
 
 #### 1.1.3 Naming rules for new fields
 
@@ -113,7 +114,8 @@ field runs it through `_resolve_within_roots` in `files.py`:
    returned by `Capabilities.file_picker_roots()` (today: a
    single `(<cwd>/projects, "projects")` entry).
 
-Failures → HTTP 400 with `{ok: false, error: "..."}`.
+Failures → HTTP 400 with `{ok: false, error: "..."}` (a special
+case of the protocol-error class in § 1.6).
 
 ### 1.3 Cache control — `cache: "no-store"` is the default
 
@@ -145,6 +147,71 @@ write/upload/delete would leave the lock UI hung.
 `/api/files/rename` uses POST (not PUT) for parity with the rest
 of the mutation surface; `/api/files/delete` uses DELETE because
 the verb is unambiguous.
+
+### 1.6 HTTP status semantics
+
+`body.ok` and HTTP status answer different questions and are
+independent (§ 1.1):
+
+* **HTTP status** — *Did the server understand and process your
+  request?*  2xx = yes; 4xx = no, your request was malformed;
+  5xx = yes I tried, but I hit a server-side failure.
+* **`body.ok`** — *Is the body the artifact you asked me to
+  generate?*  `true` = yes; `false` = no, the body carries either
+  an error description (protocol / server) or a scientific
+  advisory (validator says: fix these parameters and resubmit).
+
+Every response falls in exactly one of four buckets:
+
+| Class | HTTP | `body.ok` | When |
+|---|---|---|---|
+| Success | 2xx (typically 200) | `true` | Endpoint produced the artifact.  Validator may have emitted warnings / infos alongside (`issues: [...warns + infos...]`, `errors_only: []`) — emission still succeeded. |
+| **Scientific advisory** | **200** | **`false`** | Validator / preflight returned hard errors; emission refused.  Body carries `issues + errors_only` so the form's workflow cards ([`web-ui-coherence.md`](web-ui-coherence.md) Rule 2) can render the findings inline.  The user reviews the form, adjusts parameters, resubmits — **there is no error page to navigate to**. |
+| Protocol error | 4xx (typically 400) | `false` | The request itself was malformed: missing required field, schema mismatch, bad path (§ 1.2), unrecognised engine name, charset-rejected identifier.  Client must fix the call before retrying. |
+| Server fault | 5xx (typically 500) | `false` | Server tried and failed: IO / parse error on a user-selected file, engine crash, internal exception, missing dependency.  Not the user's fault; not addressable from form input. |
+
+#### Why "scientific advisory" stays at HTTP 200
+
+A validator hard-error is the server doing its job — running the
+scientific-correctness check and reporting back.  Mapping it to
+4xx would make a browser / curl / CI read it as "the request was
+rejected at the protocol layer," which is the wrong story.  The
+HTTP exchange succeeded; `errors_only` is what the user must act
+on, and the form already knows how to fan it out per
+[`web-ui-coherence.md`](web-ui-coherence.md) Rule 2.
+
+This convention also preserves the existing client pattern:
+every JS form site already does `if (!body.ok) showIssues(body.issues)`
+(preflight, render, build).  Splitting the advisory case into
+HTTP 4xx would require either (a) the JS to also branch on
+`Response.ok` and treat 4xx-with-`ok:false` specially, or
+(b) re-defining `ok:true` so a future `{ok:true, errors_only:[...]}`
+shape signals refusal.  Both are defensible, but neither is free
+— see the next subsection.
+
+#### Could this be revisited?
+
+Yes.  If a future direction wanted `body.ok` to mean strictly
+"the HTTP exchange + protocol layer succeeded" (decoupled from
+validator outcome), the advisory case would shift to
+`{ok: true, errors_only: [...]}` + HTTP 200, and consumers would
+gate on `errors_only` being non-empty instead of on `!body.ok`.
+That is a defensible convention too.  Today's choice preserves
+backward compatibility with every existing client and matches
+what `/api/build/preflight` has always done; flipping it is a
+coordinated server + client + test revision.  A Decisions-log
+entry would supersede this section if we ever do.
+
+#### Worked examples (current rule)
+
+| Endpoint + failure | Status | Body |
+|---|---|---|
+| `/api/build/preflight` — validator hard-error on user's form values | **200** | `{ok:false, error:"preflight failed; see issues", issues:[...], errors_only:[...]}` |
+| `/api/build/fdf` — render refuses because spin is wrong for the chemistry | **200** | `{ok:false, errors_only:[...]}` |
+| `/api/files/read` — path outside picker roots (§ 1.2) | **400** | `{ok:false, error:"path outside roots"}` |
+| `/api/results/bundle` — `stem` contains NUL or is `.` / `..` | **400** | `{ok:false, error:"<charset/all-dots reason>"}` |
+| `/api/watch/data` — trajectory file can't be parsed | **500** | `{ok:false, error:"parse failed: ..."}` |
+| `/api/build/molecule` — builder raised an exception | **500** | `{ok:false, error:"build failed: ..."}` |
 
 ---
 
