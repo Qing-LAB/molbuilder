@@ -140,12 +140,18 @@ class PySCFConfig:
     })
     density_fit: bool = field(default=True, metadata={
         "section": "Method",
+        # Profile-level: method-family identity choice; SpectraConfig's
+        # density_fit (config/spectra.py) is also profile.
+        "workflow_group": "profile",
         "label":   "Density fitting",
         "engine_key":  'mf = mf.density_fit()',
         "help": "use density fitting (faster Coulomb/exchange evaluation)",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section": "Method",
+        # Profile-level: method-family choice; SpectraConfig's
+        # dispersion is also profile.  Setting once per project.
+        "workflow_group": "profile",
         "label":   "Dispersion",
         "engine_key":  'mf = mf.add_dispersion(...)',
         # ``none`` is in the choices list so that the case-insensitive
@@ -198,6 +204,9 @@ class PySCFConfig:
     })
     scf_init_guess: str = field(default="minao", metadata={
         "section": "SCF",
+        # Profile-level: SCF initial-guess algorithm is a system-
+        # character choice (chosen with the system, not tightened).
+        "workflow_group": "profile",
         "label":  "scf.init_guess",
         "engine_key":  'mf.init_guess',
         "id_suffix": "init-guess",
@@ -221,6 +230,10 @@ class PySCFConfig:
     })
     level_shift: float = field(default=0.0, metadata={
         "section": "SCF",
+        # Profile-level: SCF stability knob (mirrors SIESTA's
+        # mixing_weight which is also profile) — set with the
+        # system, doesn't tighten stage-to-stage.
+        "workflow_group": "profile",
         "label": "Level shift", "unit": "Hartree",
         "engine_key":  'mf.level_shift',
         "range": (0.0, 1.0),
@@ -248,18 +261,26 @@ class PySCFConfig:
     # ---------------- Pre-optimization (optional warm-up) ----------------
     preopt: bool = field(default=False, metadata={
         "section": "Pre-optimization (optional)",
+        # Profile-level: gating the two-stage workflow is a run-
+        # shape identity choice (with-or-without warm-up).
+        "workflow_group": "profile",
         "label":   "Enable pre-optimization",
         "engine_key":  '(molbuilder: two-stage relax workflow)',
         "help": "run a cheap PBE/def2-SVP pre-opt before main run",
     })
     preopt_functional: str = field(default="PBE", metadata={
         "section": "Pre-optimization (optional)",
+        # Profile-level: same family as main ``functional`` which
+        # is profile.
+        "workflow_group": "profile",
         "label":   "Pre-opt functional",
         "engine_key":  'mf.xc  (in pre-opt stage)',
         "help": "XC functional for the pre-opt stage",
     })
     preopt_basis: str = field(default="def2-SVP", metadata={
         "section": "Pre-optimization (optional)",
+        # Profile-level: same family as main ``basis`` which is profile.
+        "workflow_group": "profile",
         "label":   "Pre-opt basis",
         "engine_key":  'gto.M(basis=...)  (in pre-opt stage)',
         "help": "Gaussian basis for the pre-opt stage",
@@ -279,6 +300,9 @@ class PySCFConfig:
     })
     preopt_max_steps: int = field(default=50, metadata={
         "section": "Pre-optimization (optional)",
+        # Budget-level: same shape as ``geom_max_steps`` (budget) --
+        # max-step caps are resource budgets, not convergence targets.
+        "workflow_group": "budget",
         "label":   "Pre-opt max steps",
         "engine_key":  'geomeTRIC max_steps  (in pre-opt stage)',
         "range":   (1, 1000),
@@ -297,12 +321,18 @@ class PySCFConfig:
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
         "section": "Compute & budget",
+        # Profile-level: gates whether a relax happens at all --
+        # run-shape identity (relax-or-single-point).
+        "workflow_group": "profile",
         "label":   "Optimize geometry",
         "engine_key":  '(molbuilder: gates geomeTRIC opt() vs single-point)',
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
         "section": "Compute & budget",
+        # Profile-level: optimizer family choice; parallel to SIESTA's
+        # relax_type (also profile).
+        "workflow_group": "profile",
         "label":   "Optimizer",
         "engine_key":  'geomeTRIC / berny  (driver selection)',
         "choices": ("geometric", "berny"),
@@ -492,6 +522,9 @@ class PySCFConfig:
     })
     temperature_K: float = field(default=298.15, metadata={
         "section": "Frequencies / thermochemistry",
+        # Profile-level: standard-state thermochemistry condition;
+        # paired with ``pressure_atm`` (also profile).
+        "workflow_group": "profile",
         "label": "Thermochemistry temperature", "unit": "K",
         "engine_key":  'thermo.thermo(temperature=...)',
         "id_suffix": "temperature",

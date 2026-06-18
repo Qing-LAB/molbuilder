@@ -321,6 +321,10 @@ class SiestaConfig:
     # SCF
     solution_method: str = field(default="diagon", metadata={
         "section": "SCF",
+        # Profile-level: SCF solver family is a system-level
+        # decision (diagon / OMM / TranSIESTA), set once with XC +
+        # basis.  Switching stages MUST NOT rewrite this.
+        "workflow_group": "profile",
         "label": "SolutionMethod",
         "engine_key":  'SolutionMethod',
         "choices": ("diagon", "OMM", "transiesta"),
@@ -340,6 +344,10 @@ class SiestaConfig:
     })
     pulay_history: int = field(default=3, metadata={
         "section": "SCF",
+        # Profile-level: DIIS history depth pairs with mixing_weight
+        # (also profile) — both are SCF-stability tuning that
+        # depends on what the system IS, not on the stage.
+        "workflow_group": "profile",
         "label": "DM.NumberPulay",
         "engine_key":  'DM.NumberPulay',
         "range": (0, 20),
@@ -438,6 +446,10 @@ class SiestaConfig:
     # in the FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "section": "Compute & budget",
+        # Profile-level: relax/MD algorithm family (CG / Broyden /
+        # FIRE / Verlet / Nose) is a run-shape identity choice,
+        # parallel to PySCF's ``optimizer`` (also profile).
+        "workflow_group": "profile",
         "label": "MD.TypeOfRun",
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
@@ -503,6 +515,10 @@ class SiestaConfig:
     # them as ignored-for-CG so the form doesn't mislead non-MD users.
     md_initial_temperature: float = field(default=300.0, metadata={
         "section": "Compute & budget",
+        # Profile-level: MD ensemble identity (initial-velocity-
+        # seed temperature for Verlet/Nose); set with the run, not
+        # tightened stage-to-stage.
+        "workflow_group": "profile",
         "label": "MD.InitialTemperature", "unit": "K",
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
@@ -514,6 +530,9 @@ class SiestaConfig:
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
         "section": "Compute & budget",
+        # Profile-level: NVT target temperature is MD ensemble
+        # identity (Nose-Hoover thermostat target).
+        "workflow_group": "profile",
         "label": "MD.TargetTemperature", "unit": "K",
         "engine_key":  'MD.TargetTemperature',
         "null_label": "(use MD.InitialTemperature)",
@@ -526,6 +545,10 @@ class SiestaConfig:
     })
     md_length_timestep: float = field(default=1.0, metadata={
         "section": "Compute & budget",
+        # Profile-level: MD integration timestep depends on system
+        # composition (bonded H needs ~0.5 fs, heavier systems 1
+        # fs); chosen with the run, not tightened stage-to-stage.
+        "workflow_group": "profile",
         "label": "MD.LengthTimeStep", "unit": "fs",
         "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),

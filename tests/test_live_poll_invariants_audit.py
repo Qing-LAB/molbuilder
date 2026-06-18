@@ -594,26 +594,68 @@ class TestWorkflowGroupSchemaConsistency:
             f"allowlist or add to the presets.")
 
     def test_only_canonical_workflow_group_values(self):
-        """Smoke check: no SIESTA field ever ends up tagged with
-        a contradictory or unknown workflow_group.  Only the three
+        """Smoke check across ALL FOUR engine configs (Siesta, PySCF,
+        Transport, Spectra): no field ever ends up tagged with a
+        contradictory or unknown workflow_group.  Only the three
         documented values (profile/stage/budget) are valid.  The
         old "system" value was renamed to "profile" on 2026-06-13
         to avoid the collision with the existing "System" schema
         section name + the OS/file-system + physics-system
         meanings; a stale "system" tag is a sign the rename was
-        half-applied."""
+        half-applied.
+
+        Pre-2026-06-17 this test inspected only SiestaConfig; the
+        other three engines drifted (the round-7 audit found 7+
+        misalignments).  Now it walks all four."""
         import dataclasses
-        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.config.siesta    import SiestaConfig
+        from molbuilder.config.pyscf     import PySCFConfig
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.config.spectra   import SpectraConfig
         valid = {"profile", "stage", "budget"}
         bad = []
-        for f in dataclasses.fields(SiestaConfig):
-            tag = f.metadata.get("workflow_group")
-            if tag is not None and tag not in valid:
-                bad.append((f.name, tag))
+        for cls in (SiestaConfig, PySCFConfig, TransportConfig, SpectraConfig):
+            for f in dataclasses.fields(cls):
+                tag = f.metadata.get("workflow_group")
+                if tag is not None and tag not in valid:
+                    bad.append((cls.__name__, f.name, tag))
         assert not bad, (
-            f"SiestaConfig fields tagged with non-canonical "
+            f"Config fields tagged with non-canonical "
             f"workflow_group values: {bad}.  Allowed values: "
             f"{sorted(valid)}.")
+
+    def test_every_form_shown_field_has_workflow_group(self):
+        """Across ALL FOUR engine configs, every field that surfaces
+        on the form (carries a ``section`` metadata key) MUST also
+        carry ``workflow_group`` so the corresponding validator
+        Issues route to the Profile / Stage / Budget cards per
+        web-ui-coherence.md Rule 2.
+
+        Pre-2026-06-17 17 fields drifted into the residual ("Other")
+        panel because the metadata fan-out from sections to
+        workflow groups was half-done.  Each new ``section``-tagged
+        field landing without ``workflow_group`` re-introduces the
+        same residual-panel drift; this test catches it the moment
+        the field is added rather than waiting for a UI audit."""
+        import dataclasses
+        from molbuilder.config.siesta    import SiestaConfig
+        from molbuilder.config.pyscf     import PySCFConfig
+        from molbuilder.config.transport import TransportConfig
+        from molbuilder.config.spectra   import SpectraConfig
+        untagged = []
+        for cls in (SiestaConfig, PySCFConfig, TransportConfig, SpectraConfig):
+            for f in dataclasses.fields(cls):
+                if "section" in f.metadata and "workflow_group" not in f.metadata:
+                    untagged.append((cls.__name__, f.name,
+                                     f.metadata.get("section")))
+        assert not untagged, (
+            f"Form-shown fields missing ``workflow_group`` "
+            f"metadata: {untagged}.  Each lands in the 'Other' "
+            f"residual panel and its validator Issues can't route "
+            f"to the Profile / Stage / Budget card.  Tag the field "
+            f"with one of: ``profile`` (system identity, set once), "
+            f"``stage`` (convergence target that tightens), "
+            f"``budget`` (resource cap).")
 
     def test_detection_chip_renderer_present(self):
         """The .workflow-detection-chip in the Profile + Budget
