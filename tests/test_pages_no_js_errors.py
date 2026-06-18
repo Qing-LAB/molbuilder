@@ -92,7 +92,13 @@ _PAGES = [
     # Results tab: registry-dispatched inspector shell.  Trajectory
     # inspection lives here via the inspector registry; the legacy
     # /watch tab was retired with the migration.
-    ("/results", "#results-current-file"),
+    # 2026-06-18: ready-selector was ``#results-current-file`` but
+    # that span is now hidden by the CSS rule at results/style.css
+    # line 597 ("hide the redundant top-of-page readout when the
+    # picker dropdown is shown") — task #471 made the picker bar
+    # always visible.  The picker bar itself is the right
+    # always-visible probe.
+    ("/results", "#results-file-picker-bar"),
 ]
 
 

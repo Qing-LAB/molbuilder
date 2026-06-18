@@ -259,6 +259,17 @@ class TestNoUnsafeInnerHTML:
             # the template, same trust boundary as the inspector
             # adapters above.
             ("modify/selection-bootstrap.js", "host.innerHTML = html"),
+            # Bundle-handoff result panel (Step 3 PR-E): builds an
+            # HTML array out of literal tags + escapeHtml(...) calls
+            # on every dynamic value (paths, engine name, region
+            # labels, notes), then assigns ``html.join('')``.  The
+            # escapeHtml calls are upstream of the .innerHTML line
+            # so the heuristic above (which scans the RHS for
+            # ``escapeHtml(``) can't see them — pinned by inspection
+            # at lib/results/bundle-handoff.js lines 85-110.  The
+            # error-path sibling (renderError) escapes the message
+            # at the assignment site and is auto-accepted.
+            ("lib/results/bundle-handoff.js", "result.innerHTML = html.join"),
         }
         rel_name = str(js_path.relative_to(STATIC_ROOT))
         real_offenders = []

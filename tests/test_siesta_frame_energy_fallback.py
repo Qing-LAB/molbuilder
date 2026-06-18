@@ -133,17 +133,43 @@ class TestEnergyFallback:
         traj = _parse_synthetic(body)
         assert traj.frames[0].energy is None
 
-    def test_initial_etot_fallback_when_no_scf_cycles(self):
-        """The preamble Etot fallback: when SIESTA has written the
-        ``Program's energy decomposition`` block but NOT the first
-        scf: cycle yet, frame.energy uses the preamble Etot."""
+    def test_preamble_etot_surfaces_via_runtime_info_not_frame_energy(self):
+        """Preamble ``siesta: Etot = ...`` (post-initial-DM, pre-
+        first-SCF) lives in ``runtime_info["initial_etot"]`` for
+        the Results-tab display, NOT in frame.energy.
+
+        PR 4 contract (results-state-contract § 6): no
+        preamble-Etot fallback into frame.energy.  Pre-PR-4 the
+        preamble Etot was used as a 3rd-tier fallback after the
+        canonical E_KS line and the SCF-cycle history; the user
+        feedback was "using ``step_initial_etot`` as a frame
+        energy would HIDE the divergence behind a plausible-
+        looking number" -- a diverging SCF run with no finite
+        cycle energies would have its preamble Etot leak through,
+        making the plot look healthy.  The contract now keeps the
+        preamble Etot as informational state (where the SCF
+        started from) but never lets it become a frame energy.
+        """
         body = _BASE_BODY.format(scf_block="").replace(
             "outcoor: Atomic coordinates (Ang):",
             "siesta: Etot    =   -1234.5678\n\n"
             "outcoor: Atomic coordinates (Ang):"
         )
         traj = _parse_synthetic(body)
-        assert traj.frames[0].energy == pytest.approx(-1234.5678)
+        # Frame energy MUST stay None (no preamble fallback).
+        assert traj.frames[0].energy is None, (
+            f"frame.energy must stay None per PR 4 contract "
+            f"(results-state-contract § 6); got "
+            f"{traj.frames[0].energy!r}"
+        )
+        # The preamble Etot DOES surface via runtime_info for the
+        # Results-tab display.  Pinned by the parser's commit()
+        # hop into runtime_info["initial_etot"].
+        assert traj.runtime_info.get("initial_etot") == pytest.approx(
+            -1234.5678), (
+            f"runtime_info[\"initial_etot\"] must carry the preamble "
+            f"Etot for display; got {traj.runtime_info!r}"
+        )
 
     def test_etot_anchor_rejects_etot_over_n_variant(self):
         """The 2026-06-14 audit found the original rule used
@@ -151,7 +177,11 @@ class TestEnergyFallback:
         ``siesta: Etot/N = ...`` or ``siesta: Etot(eV) = ...`` if
         SIESTA ever printed those.  Pin that the tightened anchor
         rejects them so the fallback isn't overwritten with a
-        per-atom or unit-suffixed value."""
+        per-atom or unit-suffixed value.
+
+        Per the PR 4 contract above, the surfaced value lives in
+        ``runtime_info["initial_etot"]`` (not frame.energy).
+        """
         # Synthetic decomposition block that emits a misleading
         # ``siesta: Etot/N = ...`` line BEFORE the real
         # ``siesta: Etot = ...`` row.  If the regex were still
@@ -165,12 +195,16 @@ class TestEnergyFallback:
             "outcoor: Atomic coordinates (Ang):"
         )
         traj = _parse_synthetic(body)
-        # Must be the real Etot, NOT Etot/N.
-        assert traj.frames[0].energy == pytest.approx(-1234.5678), (
-            f"got {traj.frames[0].energy!r}; expected -1234.5678 "
-            f"(the real Etot value).  Pre-fix the regex matched "
-            f"both ``Etot`` and ``Etot/N`` -- the latter would "
-            f"have been silently captured first."
+        # Frame energy MUST stay None (PR 4 contract).
+        assert traj.frames[0].energy is None
+        # The real Etot — NOT Etot/N — surfaces in runtime_info.
+        assert traj.runtime_info.get("initial_etot") == pytest.approx(
+            -1234.5678), (
+            f"runtime_info[\"initial_etot\"] = "
+            f"{traj.runtime_info.get('initial_etot')!r}; expected "
+            f"-1234.5678 (the real Etot value).  Pre-fix the regex "
+            f"matched both ``Etot`` and ``Etot/N`` -- the latter "
+            f"would have been silently captured first."
         )
 
     def test_explicit_e_ks_wins_over_scf_fallback(self):

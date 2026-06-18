@@ -721,6 +721,19 @@ class SiestaParser(TrajectoryParser):
                 scf_history = list(current_scf) if current_scf else None,
                 in_progress = in_progress,
             ))
+            # PR 4 (results-state-contract § 6): preserve the
+            # preamble Etot into runtime_info BEFORE the reset.
+            # Without this hop the value is lost — step_initial_etot
+            # is per-step (gets cleared when the next step's preamble
+            # runs) and the end-of-parse fallback at the bottom of
+            # parse() only catches the IN-FLIGHT step.  Each commit
+            # writes its step's value; the LAST committed step wins
+            # for finished runs, the in-flight step wins for ongoing
+            # runs.  Pinned by
+            # tests/test_siesta_frame_energy_fallback.py.
+            if (step_initial_etot is not None
+                    and math.isfinite(step_initial_etot)):
+                runtime_info["initial_etot"] = float(step_initial_etot)
             step_frame = None
             step_energy = None
             step_max_force = None

@@ -474,11 +474,32 @@ class TestPseudosEndpoint:
         # by the ``_run_index_resolver`` block to ``{basename}-runN.out``
         # so ``--continue`` doesn't clobber prior runs).
         assert "_mpi_np_default=4" in text
-        assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
+        # 2026-06-16 (NUMA-aware GPU placement, task #483): the
+        # launch command now embeds ``$_numa_wrap_gpu`` (a numactl
+        # prefix set by _gpu_runtime_defaults_block in GPU mode,
+        # empty otherwise) and ``$_mpirun_bind`` (an MPI
+        # binding-policy string set by _runtime_defaults_block).
+        # Both vars are defined upstream so CPU-mode wrappers see
+        # empty strings and produce a clean ``mpirun -np N siesta``
+        # at run time.  Assert the substantive contract — MPI launch
+        # with the requested rank count + the siesta binary — and
+        # leave room for future binding-policy tweaks.
+        assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
+                '$_mpirun_bind siesta"' in text), (
+            "wrapper does not contain the canonical MPI launch line"
+        )
         assert "$_launch_cmd test.fdf > $_out_file" in text
-        # 2026-05-24: OMP defaults to 1 (SIESTA mainline isn't OMP-aware);
-        # user-set omp_threads=5 still wins when explicit.
-        assert "export OMP_NUM_THREADS=5" in text
+        # 2026-06-16 (task #482, "OMP=(phys-1)/np" policy): the
+        # wrapper no longer Python-bakes the OMP value into an
+        # ``export OMP_NUM_THREADS=N`` literal.  Instead it
+        # exports the runtime variable ``$_omp_threads``, which
+        # resolves to ``${OMP_NUM_THREADS:-$_omp_threads_default}``
+        # at run time — so a user can override via env without
+        # editing the wrapper, and the policy default is honoured
+        # otherwise.  The Python-passed ``omp_threads=5`` shows up
+        # one line up as ``_omp_threads_default=5``.
+        assert "_omp_threads_default=5" in text
+        assert "export OMP_NUM_THREADS=$_omp_threads" in text
         assert "export OPENBLAS_NUM_THREADS=1" in text
         assert "ulimit -v 4096000" in text
 

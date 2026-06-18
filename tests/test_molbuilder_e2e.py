@@ -4920,19 +4920,25 @@ def test_build_form_renders_siesta_sections_in_pinned_order(
     #   * Pass 2 cards (profile / stage / budget), each containing
     #     mini-fieldsets per original section.
     #   * Pass 2 untagged residual sections in schema declaration
-    #     order.
-    # Pre-restructure single-pass order is preserved as a comment
-    # in ``config/siesta.py::_form_section_order`` for context.
+    #     order.  Now empty for SIESTA after the 3159a2d metadata
+    #     closure — every form-shown field carries workflow_group.
+    # 2026-06-16 form restructure (design.md Decisions log): the
+    # "Relaxation" + "Parallel execution" sections merged into
+    # "Compute & budget".
+    # 2026-06-17 (commit 3159a2d): closed the workflow_group gap
+    # on 17 fields — ``relax_type``, ``solution_method``,
+    # ``pulay_history``, ``md_*`` (all SIESTA), plus the PySCF
+    # peers — so they now land in the right Profile / Stage /
+    # Budget bucket per web-ui-coherence.md Rule 2 instead of
+    # the untagged residual.
     assert legends == [
         # --- Profile card ---
         'System', 'Exchange-correlation', 'SCF', 'Spin',
-        'Output & positioning',
+        'Output & positioning', 'Compute & budget',
         # --- Stage card ---
-        'Basis & grid', 'SCF', 'Relaxation',
+        'Basis & grid', 'SCF', 'Compute & budget',
         # --- Budget card ---
-        'SCF', 'Relaxation', 'Parallel execution',
-        # --- Untagged residuals ---
-        'Basis & grid', 'SCF', 'Relaxation',
+        'SCF', 'Compute & budget',
     ], legends
 
 
@@ -4949,17 +4955,25 @@ def test_build_form_renders_pyscf_sections_in_pinned_order(
         "  document.querySelectorAll('#pyscf-form-container fieldset > legend')"
         ").map(l => l.textContent.trim())"
     )
+    # 2026-06-16 form restructure: "Optimization" + "Runtime &
+    # output" sections folded into "Compute & budget".
+    # 2026-06-17 (commit 3159a2d): workflow_group metadata added
+    # to ``density_fit``, ``dispersion``, ``scf_init_guess``,
+    # ``level_shift``, ``preopt``, ``preopt_functional``,
+    # ``preopt_basis``, ``optimize``, ``optimizer``,
+    # ``temperature_K`` (all profile) and ``preopt_max_steps``
+    # (budget) — so the SCF + Pre-optimization sections appear
+    # under the Profile card instead of the untagged residual,
+    # matching the design intent of web-ui-coherence.md Rule 2.
     assert legends == [
         # --- Profile card ---
-        'System', 'Method', 'Solvent (optional)',
-        'Frequencies / thermochemistry', 'Runtime & output',
+        'System', 'Method', 'SCF', 'Pre-optimization (optional)',
+        'Solvent (optional)', 'Frequencies / thermochemistry',
+        'Compute & budget',
         # --- Stage card ---
-        'SCF', 'Pre-optimization (optional)', 'Optimization',
+        'SCF', 'Pre-optimization (optional)', 'Compute & budget',
         # --- Budget card ---
-        'SCF', 'Optimization', 'Runtime & output',
-        # --- Untagged residuals ---
-        'Method', 'SCF', 'Pre-optimization (optional)',
-        'Optimization', 'Frequencies / thermochemistry',
+        'SCF', 'Pre-optimization (optional)', 'Compute & budget',
     ], legends
 
 
