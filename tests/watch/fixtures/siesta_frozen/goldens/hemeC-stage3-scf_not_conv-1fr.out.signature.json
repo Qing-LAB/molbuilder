@@ -25,6 +25,7 @@
       "max_scf_iter": 500,
       "source": "siesta_input_echo"
     },
+    "initial_etot": -12878.348992,
     "n_mpi_processes": 8
   },
   "source_format": "siesta"
