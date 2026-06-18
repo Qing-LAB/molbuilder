@@ -293,16 +293,32 @@ class TestXFFTrust:
 # --------------------------------------------------------------------- #
 
 
+def _admin_login(app, client, email="admin@example.com"):
+    """Attach a logged-in admin session to ``client``.
+
+    The admin endpoints now refuse non-admin sessions; the
+    existing TestAdminEndpoints cases were written before the
+    role gate landed.  This helper centralises the
+    secret-key + session injection so the per-test boilerplate
+    stays short.
+    """
+    app.secret_key = "test-only-not-for-prod"
+    with client.session_transaction() as s:
+        s["user"] = {"email": email}
+
+
 class TestAdminEndpoints:
     """``/api/admin/rate_limit/*`` surfaces for live inspection."""
 
     def test_status_reports_blocked_ips(self, fast_client):
-        # Trigger a block.
+        # Trigger a block from the attacker IP.
         fast_client.get("/?<script>x</script>")
         # Switch to a NON-attacker IP so the status query itself
-        # isn't dropped.
+        # isn't dropped, and attach an admin session so the role
+        # gate lets us in.
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(fast_client.application, fast_client)
         r = fast_client.get("/api/admin/rate_limit/status")
         assert r.status_code == 200
         body = r.get_json()
@@ -319,6 +335,7 @@ class TestAdminEndpoints:
         fast_client.get("/?<script>x</script>")
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(fast_client.application, fast_client)
         r = fast_client.post(
             "/api/admin/rate_limit/clear",
             json={"ip": "203.0.113.7"},
@@ -335,6 +352,7 @@ class TestAdminEndpoints:
         fast_client.get("/?<script>x</script>")
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(fast_client.application, fast_client)
         r = fast_client.post(
             "/api/admin/rate_limit/clear",
             json={"all": True},
@@ -347,6 +365,7 @@ class TestAdminEndpoints:
     def test_clear_rejects_non_dict_body(self, fast_client):
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(fast_client.application, fast_client)
         r = fast_client.post(
             "/api/admin/rate_limit/clear",
             json=["not", "a", "dict"],
@@ -357,8 +376,91 @@ class TestAdminEndpoints:
     def test_clear_rejects_missing_ip(self, fast_client):
         fast_client.environ_base = {**fast_client.environ_base,
                                     "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(fast_client.application, fast_client)
         r = fast_client.post("/api/admin/rate_limit/clear", json={})
         assert r.status_code == 400
+
+
+class TestAdminRoleGate:
+    """The admin role gate refuses non-admin sessions even when
+    they're logged-in.  Pinned per audit API-I6.
+    """
+
+    def test_unauthenticated_session_refused(self):
+        _app, client = _build_client({})
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        # No session at all → 403.
+        r = client.get("/api/admin/rate_limit/status")
+        assert r.status_code == 403
+        assert "admin auth required" in r.get_json()["error"]
+
+    def test_empty_admin_emails_treats_any_logged_in_as_admin(self):
+        # Default: ``admin_emails = []``.  Any session with an
+        # email passes.
+        app, client = _build_client({})
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(app, client, email="alice@asu.edu")
+        r = client.get("/api/admin/rate_limit/status")
+        assert r.status_code == 200, r.get_data(as_text=True)
+
+    def test_non_admin_email_refused_when_allowlist_set(self):
+        app, client = _build_client({
+            "admin_emails": ["operator@asu.edu"],
+        })
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(app, client, email="bob@asu.edu")
+        r = client.get("/api/admin/rate_limit/status")
+        assert r.status_code == 403
+
+    def test_listed_admin_email_passes(self):
+        app, client = _build_client({
+            "admin_emails": ["operator@asu.edu"],
+        })
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(app, client, email="operator@asu.edu")
+        r = client.get("/api/admin/rate_limit/status")
+        assert r.status_code == 200, r.get_data(as_text=True)
+
+    def test_admin_email_match_is_case_insensitive(self):
+        # auth.py lowercases the email before stashing it in the
+        # session; the admin_emails set is also lowercased on init.
+        # Verify the comparison works against an upper-cased input
+        # in the cfg (which gets normalised).
+        app, client = _build_client({
+            "admin_emails": ["Operator@ASU.EDU"],
+        })
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        _admin_login(app, client, email="operator@asu.edu")
+        r = client.get("/api/admin/rate_limit/status")
+        assert r.status_code == 200
+
+    def test_clear_endpoint_also_gated(self):
+        # Same gate on the mutating endpoint — verify in case a
+        # future refactor decorates one but forgets the other.
+        _app, client = _build_client({})
+        client.environ_base = {**client.environ_base,
+                               "REMOTE_ADDR": "127.0.0.1"}
+        r = client.post(
+            "/api/admin/rate_limit/clear",
+            json={"all": True},
+        )
+        assert r.status_code == 403
+
+    def test_malformed_admin_emails_does_not_crash_init(self):
+        # Non-string entries + empty strings are silently dropped
+        # so a typo in molbuilder.json doesn't take down the app.
+        _app, client = _build_client({
+            "admin_emails": ["valid@asu.edu", "", None, 42, "  "],
+        })
+        # The app stood up — that's what the test asserts.  Verify
+        # the surviving entry works.
+        rl = _app.extensions["rate_limiter"]
+        assert rl.admin_emails == frozenset({"valid@asu.edu"})
 
 
 # --------------------------------------------------------------------- #

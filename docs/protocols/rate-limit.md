@@ -119,6 +119,7 @@ legitimate poll cadence.  Setting either signal's threshold to
 | `trust_proxy` | `false` | use `request.remote_addr` only |
 | `allowlist` | `["127.0.0.1", "::1"]` | localhost always trusted; bind guard ensures localhost really is local |
 | `max_tracked_ips` | `10_000` | LRU eviction bound |
+| `admin_emails` | `[]` | empty = any logged-in user is admin (single-tenant default); non-empty = email allowlist for `/api/admin/rate_limit/*` (see § 5) |
 
 Override any subset in `molbuilder.json`:
 
@@ -160,10 +161,42 @@ the spec-correct sub-code for rate-limit triggers.
 
 ## 5. Admin surface
 
-Two endpoints, both under `/api/admin/rate_limit/*`.  They go
-through the auth gate when auth is enabled; otherwise they're
-reachable from localhost only (the bind guard at `cli.py`
-prevents non-loopback HTTP without TLS).
+Two endpoints, both under `/api/admin/rate_limit/*`.  Two layers
+of gate:
+
+1. **Login gate** — when auth is configured, the
+   `_require_login` before_request hook refuses unauthenticated
+   requests with HTTP 401.  Without auth installed, this layer
+   is a no-op; the deployment is expected to be loopback-only,
+   gated by the bind guard at
+   `cli.py::_refuse_remote_bind_without_tls`.
+2. **Admin role gate** — `RateLimiter.is_admin_request()` then
+   refuses non-admin sessions with HTTP 403.  The "admin" set
+   is controlled by `rate_limit.admin_emails`:
+
+   * **Empty list** (the default) → any logged-in user is
+     admin.  Appropriate for single-tenant lab-tool deployments
+     where the SSO-authenticated principal IS the operator.
+   * **Non-empty list** → the session's `email` (lowercased by
+     the auth layer) must be in the set.  Use this on
+     multi-tenant deployments where many users share the auth
+     provider but only some are operators.
+
+Config example for an SSO deployment with two operators:
+
+```json
+{
+  "rate_limit": {
+    "admin_emails": ["operator@asu.edu", "backup-operator@asu.edu"]
+  }
+}
+```
+
+The match is case-insensitive (the auth layer lowercases the
+session email; the admin set is also lowercased on init).
+Malformed entries (non-string, empty, whitespace-only) are
+silently dropped at init — a typo in `molbuilder.json` never
+takes down the app.
 
 ### 5.1 `GET /api/admin/rate_limit/status`
 
