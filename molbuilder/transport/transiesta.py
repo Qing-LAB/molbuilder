@@ -135,19 +135,105 @@ runner ``.run.sh`` carries it.  Pinned in memory
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+import numpy as np
 
 from ..config.transport import (
+    ELECTRODE_LABEL_SUFFIX,
     EXPECTED_REGIONS_2T,
     REGION_BRIDGE,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
     TransportConfig,
+    is_electrode_label,
 )
 from ..issues import Issue
 from ..structure import Structure
 from .engine_base import TransportEngine, register_engine
 from .results import TransportResults
+
+
+# Transverse vacuum padding per side (Å) when computing the device
+# cell from atom extents.  15 Å is the SIESTA-canonical floor for
+# isolated-molecule transverse padding (electronic tails fall off
+# by ~5–8 Å in vacuum).  Lower → exchange-correlation tails leak;
+# higher → unnecessary basis cost.
+_TRANSVERSE_PAD_ANG = 15.0
+
+
+def _sanitize_electrode_block_name(label: str) -> str:
+    """Convert a user-facing region label to a SIESTA block-safe name.
+
+    Examples:
+        "L-electrode"   → "L"
+        "R-electrode"   → "R"
+        "tip-electrode" → "tip"
+        "tip_electrode" → "tip"
+        "electrode"     → "electrode"   (no prefix — keep verbatim)
+
+    The SIESTA fdf parser is forgiving about block names; we only
+    need to strip the convention's suffix so the per-electrode
+    blocks (``%block TS.Elec.<name>``) don't carry the redundant
+    "-electrode" tag.  Empty or pure-suffix labels are returned
+    unchanged so the user sees their input echoed in errors.
+    """
+    if not is_electrode_label(label):
+        return label
+    stem = label
+    for sep in ("-", "_"):
+        candidate = sep + ELECTRODE_LABEL_SUFFIX
+        if stem.lower().endswith(candidate):
+            return stem[: -len(candidate)] or label
+    # ends with "electrode" directly (no separator) — keep verbatim
+    return label
+
+
+def _find_electrode_regions(
+    struct: Structure,
+) -> List[Tuple[str, str, List[int]]]:
+    """Return (user_label, block_name, indices) for every region
+    whose label ends with the electrode-suffix convention.
+
+    Sorted by z-centroid ascending so the first entry is the
+    "leftmost" electrode (minimum z); the last is the "rightmost"
+    (maximum z).  This deterministic ordering is what the emitter
+    uses to assign ``semi-inf-direction -A3`` / ``+A3`` and the
+    canonical ``Left`` / ``Right`` chempot names.
+    """
+    out: List[Tuple[str, str, List[int], float]] = []
+    for label, indices in (struct.regions or {}).items():
+        if not is_electrode_label(label):
+            continue
+        if not indices:
+            continue
+        block_name = _sanitize_electrode_block_name(label)
+        z_centroid = float(np.mean(struct.positions[indices, 2]))
+        out.append((label, block_name, list(indices), z_centroid))
+    out.sort(key=lambda e: e[3])
+    return [(label, name, idxs) for (label, name, idxs, _z) in out]
+
+
+def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
+    """Default cell (a, b, c) in Å from the atom extents.
+
+    Transverse (a, b): atom-extent + ``2 × _TRANSVERSE_PAD_ANG``.
+    Transport (c): atom-extent of the z-coordinates ROUNDED UP to
+    the nearest Å.  The user is expected to OVERRIDE c so it matches
+    their electrode z-periodicity (the comment in the .fdf says so);
+    auto-computing it is a starting point, not a defensible final
+    value.  For a 2-Å-buffer device, the rounding adds a few Å of
+    slack so the auto-default doesn't accidentally clip atoms at
+    the boundary.
+    """
+    pos = struct.positions
+    extent_x = float(pos[:, 0].max() - pos[:, 0].min())
+    extent_y = float(pos[:, 1].max() - pos[:, 1].min())
+    extent_z = float(pos[:, 2].max() - pos[:, 2].min())
+    a = extent_x + 2.0 * _TRANSVERSE_PAD_ANG
+    b = extent_y + 2.0 * _TRANSVERSE_PAD_ANG
+    c = float(int(extent_z + 2.0) + 1)  # round up + 2 Å buffer
+    return (a, b, c)
 
 
 # --------------------------------------------------------------------- #
@@ -157,21 +243,28 @@ from .results import TransportResults
 # --------------------------------------------------------------------- #
 
 
-def _emit_header(cfg: TransportConfig) -> List[str]:
+def _emit_header(cfg: TransportConfig, struct: Structure) -> List[str]:
     """SystemLabel + a banner explaining what the file is.
 
     The banner is verbose-comments-style (matches the SIESTA
     emitter convention) so a user reading the ``.fdf`` cold sees
-    the deferred-scope notes immediately.
+    the deferred-scope notes immediately.  Electrode .TSHS file
+    names are derived from the actual region labels in the input
+    structure (per the *-electrode convention) — so users with
+    custom electrode names see their own file names in the banner.
     """
+    electrodes = _find_electrode_regions(struct)
+    file_lines = [
+        f"#    {cfg.job_name}_{label}.TSHS"
+        for label, _block_name, _idxs in electrodes
+    ] or [f"#    {cfg.job_name}_<electrode-label>.TSHS"]
     return [
         "# ================================================================== #",
         f"#  TranSIESTA device .fdf — {cfg.job_name}",
-        "#  Generated by molbuilder (Phase B.3 zero-bias scope, 2026-06-10).",
+        "#  Generated by molbuilder (modern SIESTA 4.1+ / 5.x syntax).",
         "#",
         "#  Assumes electrode .TSHS files exist in this directory:",
-        f"#    {cfg.job_name}_L_electrode.TSHS",
-        f"#    {cfg.job_name}_R_electrode.TSHS",
+        *file_lines,
         "#  See the SIESTA manual § 'TranSIESTA' for electrode-generation",
         "#  workflow; molbuilder's automated electrode wizard ships in a",
         "#  follow-up release.",
@@ -189,16 +282,23 @@ def _emit_header(cfg: TransportConfig) -> List[str]:
 def _emit_geometry(struct: Structure) -> List[str]:
     """Lattice + AtomicCoordinates blocks.
 
-    For now we DON'T set a cell — the device geometry comes from a
-    relaxed structure that may not carry one.  SIESTA accepts a
-    LatticeConstant-only fallback; for proper transport the user
-    should ensure the device geometry's transport direction is
-    aligned with the z-axis and the cell is set correctly.  This
-    is documented in the Transport tab UI prose.
+    Cell is computed from the input structure's atom extents:
+    transverse (a, b) = extent + 30 Å vacuum padding (SIESTA-
+    canonical floor for isolated-molecule transverse padding;
+    Soler 2002 § II.E); transport (c) = extent + 2 Å rounded up.
+    The c-direction default is INTENDED AS A STARTING POINT — the
+    user MUST verify it matches their electrode z-periodicity for
+    the .TSHS self-energy match to work (Brandbyge 2002 § III).
+    The .fdf banner explicitly says so.
+
+    Pre-2026-06-18 this site hardcoded a 50×50×50 Å placeholder.
+    Audit finding SCI-I9.
     """
     from ase.data import atomic_numbers as _Z
     species = sorted(set(struct.elements), key=lambda e: e.capitalize())
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
+
+    a, b, c = _compute_cell_from_extents(struct)
 
     lines: List[str] = ["# --- Geometry ---", ""]
     lines.append(f"NumberOfAtoms          {struct.n_atoms}")
@@ -211,15 +311,21 @@ def _emit_geometry(struct: Structure) -> List[str]:
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")
     lines.append("LatticeConstant        1.0 Ang")
-    lines.append("# Lattice vectors — replace with your device's box "
-                  "if known;")
-    lines.append("# the placeholder below is a cubic 50 Å box that "
-                  "leaves room for")
-    lines.append("# the device + vacuum in the transverse directions.")
+    lines.append("# Cell auto-computed from atom extents:")
+    lines.append("#   a, b  = extent + 30 Å transverse vacuum padding")
+    lines.append("#   c     = extent + 2 Å buffer (rounded up)")
+    lines.append("# VERIFY the c-direction matches your electrode "
+                  "z-periodicity:")
+    lines.append("# TranSIESTA tiles the cell along the transport "
+                  "axis using the")
+    lines.append("# electrode .TSHS — a mismatched c breaks the "
+                  "self-energy match.")
+    lines.append("# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) "
+                  "§ III.")
     lines.append("%block LatticeVectors")
-    lines.append("   50.0   0.0   0.0")
-    lines.append("    0.0  50.0   0.0")
-    lines.append("    0.0   0.0  50.0")
+    lines.append(f"  {a:7.3f}    0.000    0.000")
+    lines.append(f"    0.000  {b:7.3f}    0.000")
+    lines.append(f"    0.000    0.000  {c:7.3f}")
     lines.append("%endblock LatticeVectors")
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
@@ -280,53 +386,158 @@ def _emit_k_mesh(cfg: TransportConfig) -> List[str]:
 
 def _emit_transiesta_block(struct: Structure,
                             cfg: TransportConfig) -> List[str]:
-    """The TS.* block — TranSIESTA-specific NEGF keywords.
+    """The TS.* block — modern (SIESTA 4.1+ / 5.x) NEGF syntax.
 
-    Region atom counts come from ``struct.regions``; bias comes
-    from ``cfg.bias_voltages_v[0]`` (today's deferred-bias-scan
-    scope).  TBtrans block for transmission post-processing
-    included so a single ``siesta`` run produces both the NEGF
-    self-consistent density and the T(E) table.
+    2026-06-18 modernization (audit SCI-B1, verified against
+    SIESTA 5.4.2 binary):
+
+    * Per-electrode blocks ``%block TS.Elec.<name>`` carry the
+      electrode metadata (``HS``, ``chem-pot``, ``used-atoms``,
+      ``bloch``, ``semi-inf-direction``) instead of the legacy
+      ``TS.HSFile<Left|Right>`` + ``TS.NumUsedAtoms<Left|Right>``
+      flat keys.
+    * Chemical potentials are declared in ``%block TS.ChemPots``
+      and configured per-name in ``%block TS.ChemPot.<name>``;
+      the implicit ``±V/2`` of the legacy form is gone, the
+      bias is explicit per chempot.
+    * Electrodes are discovered from ``struct.regions`` by the
+      ``*-electrode`` label convention (any region whose label
+      ends with ``-electrode`` becomes an electrode block);
+      ``L-electrode`` / ``R-electrode`` (the defaults) fit
+      naturally.  Order is by z-centroid so the leftmost gets
+      ``semi-inf-direction -A3`` and the canonical ``Left``
+      chempot binding.
+
+    For the canonical 2-terminal case (the only fully-validated
+    scope today), the emitter produces exactly the verified
+    Au-BDT-Au template.  Multi-terminal (3+ electrodes) is a
+    planned follow-up; today such a structure emits a single
+    notice in render_script's pre-emit pass.
+
+    TBtrans block (transmission post-processing) is unchanged —
+    its keyword names didn't migrate in 4.1+.
     """
-    regions = struct.regions or {}
-    n_left  = len(regions.get(REGION_LEFT_ELECTRODE, []))
-    n_right = len(regions.get(REGION_RIGHT_ELECTRODE, []))
-    bias    = cfg.bias_voltages_v[0] if cfg.bias_voltages_v else 0.0
+    bias = cfg.bias_voltages_v[0] if cfg.bias_voltages_v else 0.0
     erange_relative = "T" if cfg.transmission_relative_to_ef else "F"
 
-    return [
-        "# --- TranSIESTA NEGF ---",
+    electrodes = _find_electrode_regions(struct)
+    # Canonical 2-terminal naming: the z-min electrode binds to the
+    # ``Left`` chempot (mu = +V/2); z-max binds to ``Right`` (mu = -V/2).
+    # For arbitrary multi-electrode runs the chempot binding is the
+    # electrode's own name (and the user must set mu per chempot via
+    # a future form field; today the multi-terminal path raises a
+    # preflight notice).
+    is_two_terminal = len(electrodes) == 2
+    semi_inf = {0: "-A3", len(electrodes) - 1: "+A3"}
+    chempot_for = {}
+    if is_two_terminal:
+        chempot_for[electrodes[0][1]] = "Left"
+        chempot_for[electrodes[1][1]] = "Right"
+    else:
+        # Fallback: each electrode binds to its own chempot.  Same
+        # name; the user customises bias per chempot when the
+        # multi-terminal UI lands.
+        for _label, block_name, _idxs in electrodes:
+            chempot_for[block_name] = block_name
+
+    lines: List[str] = [
+        "# --- TranSIESTA NEGF (modern syntax, SIESTA 4.1+ / 5.x) ---",
         "",
-        "# Both SolutionMethod and TS.SolutionMethod are required by",
-        "# the SIESTA parser: the generic SolutionMethod switches to",
-        "# the TranSIESTA module; the TS.* form is the engine-local",
-        "# confirmation.  Per TranSIESTA manual.",
+        "# ``SolutionMethod transiesta`` switches the SCF cycle to NEGF.",
+        "# (``TS.SolutionMethod`` exists as a separate keyword for the",
+        "# NEGF inversion algorithm, NOT the engine selector — emitting",
+        "# ``TS.SolutionMethod transiesta`` triggers 'Unrecognized "
+        "TranSiesta",
+        "# solution method' in SIESTA 5.4.2.  Empirically verified "
+        "2026-06-18.)",
         "SolutionMethod         transiesta",
-        "TS.SolutionMethod      transiesta",
         "",
-        "# Electrode .TSHS Hamiltonian files (see header banner).",
-        f"TS.HSFileLeft          {cfg.job_name}_L_electrode.TSHS",
-        f"TS.HSFileRight         {cfg.job_name}_R_electrode.TSHS",
-        f"TS.NumUsedAtomsLeft    {n_left}",
-        f"TS.NumUsedAtomsRight   {n_right}",
-        "",
-        "# Bias voltage — single value per .fdf today.  See module",
-        "# docstring under 'Bias-scan workflow' for the multi-bias path.",
+        "# Electrode declarations.  Each electrode is a region in the",
+        "# input structure whose label ends with ``-electrode``; the",
+        "# emitter discovers them from ``struct.regions`` and emits one",
+        "# %block TS.Elec.<name> per side.  See "
+        "docs/protocols/region-labels.md.",
+        "%block TS.Elecs",
+    ]
+    for _label, block_name, _idxs in electrodes:
+        lines.append(f"  {block_name}")
+    lines.append("%endblock TS.Elecs")
+    lines.append("")
+
+    # Per-electrode blocks.
+    for i, (label, block_name, idxs) in enumerate(electrodes):
+        cp = chempot_for[block_name]
+        sid = semi_inf.get(i, "+A3")
+        lines.extend([
+            f"%block TS.Elec.{block_name}",
+            f"  HS                 {cfg.job_name}_{label}.TSHS",
+            f"  chem-pot           {cp}",
+            f"  used-atoms         {len(idxs)}",
+            "  bloch              1 1 1",
+            f"  semi-inf-direction {sid}",
+            f"%endblock TS.Elec.{block_name}",
+            "",
+        ])
+
+    # Chemical potentials.
+    lines.append(
+        "# Chemical potentials.  ``%block TS.ChemPots`` lists the names; "
+        "each is")
+    lines.append(
+        "# defined in its own %block TS.ChemPot.<name>.  At zero bias the")
+    lines.append(
+        "# ±V/2 split is conventional and inert; at finite bias it sets the")
+    lines.append("# left- vs right-Fermi-level offset.")
+    lines.append("%block TS.ChemPots")
+    if is_two_terminal:
+        lines.append("  Left")
+        lines.append("  Right")
+    else:
+        for _label, block_name, _idxs in electrodes:
+            lines.append(f"  {block_name}")
+    lines.append("%endblock TS.ChemPots")
+    lines.append("")
+
+    if is_two_terminal:
+        lines.extend([
+            "%block TS.ChemPot.Left",
+            "  mu  V/2",
+            "%endblock TS.ChemPot.Left",
+            "",
+            "%block TS.ChemPot.Right",
+            "  mu -V/2",
+            "%endblock TS.ChemPot.Right",
+            "",
+        ])
+    else:
+        # Multi-terminal placeholder: equal-spaced chempots.  Users
+        # must override via the form's per-chempot mu when the
+        # multi-terminal scope ships.
+        for _label, block_name, _idxs in electrodes:
+            lines.extend([
+                f"%block TS.ChemPot.{block_name}",
+                f"  mu  0.0  # multi-terminal placeholder — set "
+                f"explicitly per chempot",
+                f"%endblock TS.ChemPot.{block_name}",
+                "",
+            ])
+
+    lines.extend([
+        "# Bias voltage (used by the ``V`` substitution in the chempot "
+        "mu lines).",
+        "# Single value per .fdf today; the bias-scan workflow emits one "
+        ".fdf per bias.",
         f"TS.Voltage             {bias:.4f} eV",
         "",
-        "# Complex contour (NEGF density integration).",
-        "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
-        f"TS.ComplexContour.Emin     {cfg.contour_e_bottom_ev:.2f} eV",
-        f"TS.ComplexContour.NumCircle  {cfg.contour_n_circle}",
-        f"TS.ComplexContour.NumLine    {cfg.contour_n_real}",
-        "",
         "# TBtrans transmission post-processing.",
+        "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
         f"TS.TBT.NumE            {cfg.transmission_n_points}",
         f"TS.TBT.Emin            {cfg.transmission_emin_ev:.2f} eV",
         f"TS.TBT.Emax            {cfg.transmission_emax_ev:.2f} eV",
         f"TS.TBT.Erange.RelToEF  {erange_relative}",
         "",
-    ]
+    ])
+    return lines
 
 
 # --------------------------------------------------------------------- #
@@ -359,7 +570,7 @@ class TransiestaEngine:
         standard names (see module docstring).
         """
         lines: List[str] = []
-        lines.extend(_emit_header(cfg))
+        lines.extend(_emit_header(cfg, struct))
         lines.extend(_emit_geometry(struct))
         lines.extend(_emit_basis_and_xc(cfg))
         lines.extend(_emit_k_mesh(cfg))

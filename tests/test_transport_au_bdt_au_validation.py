@@ -219,23 +219,37 @@ def test_preflight_clean_on_au_bdt_au_fixture():
 
 
 def test_render_script_emits_correct_atom_counts():
-    """The emitted .fdf must carry TS.NumUsedAtomsLeft = 3 and
-    TS.NumUsedAtomsRight = 3 — derived from the sidecar's region
-    sizes, NOT from a hardcoded constant.  Pin so a future refactor
-    that hardcodes these silently passes for OUR fixture but breaks
-    on user structures.
+    """The emitted .fdf must carry ``used-atoms 3`` inside both
+    electrode blocks — derived from the sidecar's region sizes,
+    NOT from a hardcoded constant.  Pin so a future refactor that
+    hardcodes these silently passes for OUR fixture but breaks on
+    user structures.
+
+    2026-06-18: modern TranSIESTA syntax (SIESTA 4.1+ / 5.x) uses
+    ``%block TS.Elec.<name>`` with a ``used-atoms <N>`` line
+    instead of the legacy ``TS.NumUsedAtomsLeft = N`` / Right
+    flat keys.  Empirically verified against SIESTA 5.4.2; see
+    ``tests/test_transiesta_siesta_smoke_l4.py``.
     """
     from molbuilder.config.transport import TransportConfig
     from molbuilder.transport import get_engine
     cfg = TransportConfig(job_name="au_bdt_au_test")
     script = get_engine("transiesta").render_script(
         _struct_with_sidecar(), cfg)
-    assert "TS.NumUsedAtomsLeft    3" in script
-    assert "TS.NumUsedAtomsRight   3" in script
+    # Au-BDT-Au has 3 atoms in each electrode region — both modern
+    # ``used-atoms`` lines must say 3.  Pinning both occurrences so a
+    # future refactor that hardcodes one but breaks the other surfaces.
+    assert script.count("used-atoms         3") == 2, (
+        "expected ``used-atoms 3`` on EACH electrode block (2 total) "
+        "in the modern TS.Elec.<name> emission; got "
+        f"{script.count('used-atoms         3')} occurrences"
+    )
     # SystemLabel echoes the job_name.
     assert "SystemLabel            au_bdt_au_test" in script
-    # NEGF block emitted.
-    assert "TS.SolutionMethod      transiesta" in script
+    # NEGF block emitted (modern syntax — only the top-level
+    # SolutionMethod, NOT TS.SolutionMethod which 5.4.2 rejects
+    # with "Unrecognized TranSiesta solution method").
+    assert "SolutionMethod         transiesta" in script
     # TBtrans block for transmission.
     assert "TS.TBT.NumE            401" in script   # default 401 points
 

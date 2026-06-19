@@ -72,14 +72,42 @@ REGION_LEFT_ELECTRODE  = "L-electrode"
 REGION_RIGHT_ELECTRODE = "R-electrode"
 REGION_BRIDGE          = "bridge"
 
-# The full set of expected region labels for a 2-terminal calculation.
-# A sidecar that's missing one of these or includes an unknown label
-# is rejected at preflight by the transport engine.
+# The defaults that ship with the modify tab.  See
+# docs/protocols/region-labels.md for the convention + scientific
+# meaning of each label.
 EXPECTED_REGIONS_2T = (
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
     REGION_BRIDGE,
 )
+
+# 2026-06-18 convention expansion: any region whose label ENDS WITH
+# this suffix (case-insensitive, optionally preceded by ``-`` or
+# ``_``) is treated by the TranSIESTA emitter as an electrode region.
+# ``L-electrode``, ``R-electrode`` (the defaults) fit naturally;
+# users can add e.g. ``tip-electrode`` for STM-style asymmetric leads
+# or ``gate-electrode`` for 3-terminal devices without changing the
+# emitter.  See docs/protocols/region-labels.md.
+ELECTRODE_LABEL_SUFFIX = "electrode"
+
+
+def is_electrode_label(label: str) -> bool:
+    """True iff ``label`` is to be treated as a TranSIESTA electrode
+    region per the *-electrode convention.
+
+    Accepts ``<name>-electrode`` (canonical), ``<name>_electrode``,
+    and the bare suffix ``electrode``.  Case-insensitive.  Used by
+    the validator + emitter to discover electrode regions without
+    a closed enum.
+    """
+    if not isinstance(label, str):
+        return False
+    lo = label.lower()
+    return (
+        lo == ELECTRODE_LABEL_SUFFIX
+        or lo.endswith("-" + ELECTRODE_LABEL_SUFFIX)
+        or lo.endswith("_" + ELECTRODE_LABEL_SUFFIX)
+    )
 
 
 # --------------------------------------------------------------------- #
