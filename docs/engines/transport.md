@@ -24,6 +24,20 @@
   (region labels: electrode / bridge / anchor; ordering
   invariants):
   [`../protocols/sidecar-contract.md`](../protocols/sidecar-contract.md).
+* **Region-label convention** (added 2026-06-18) — the
+  `*-electrode` convention the TranSIESTA emitter uses to discover
+  electrode regions; canonical L/R/bridge/interface meanings;
+  scientific citations; UI affordances (the ⓘ popover):
+  [`../protocols/region-labels.md`](../protocols/region-labels.md).
+* **Modern SIESTA 4.1+ / 5.x syntax** (added 2026-06-18) — the
+  emitter uses `%block TS.Elec.<name>` per electrode + `%block
+  TS.ChemPots` per chempot, NOT the legacy `TS.HSFileLeft/Right`
+  flat keys.  Empirically verified against SIESTA 5.4.2:
+  `tests/test_transiesta_siesta_smoke_l4.py` runs the real binary
+  on the molbuilder-emitted .fdf and asserts parse-clean.  The
+  legacy flat keys still work in 5.4.2 but lock the device to a
+  closed 2-terminal topology; the modern syntax unlocks
+  multi-terminal, Bloch expansion, per-chempot contour blocks.
 * **Scientific validation** — Au-BDT-Au zero-bias fixture
   cross-check vs Reed 2006 / Stokbro 2003; the placeholder
   integration test that runs the emitted `.fdf` and asserts

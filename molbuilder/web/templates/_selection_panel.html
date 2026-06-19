@@ -196,6 +196,27 @@
         {#- Populated dynamically by lib/selection-panel.js
             (renderAssignTarget). -#}
       </select>
+      <button type="button" id="selection-target-info-btn"
+              class="selection-target-info-btn"
+              title="What do these region labels mean?  Click for the scientific definitions + naming convention."
+              aria-label="Region label definitions"
+              aria-expanded="false"
+              aria-controls="selection-target-info-panel">
+        ⓘ
+      </button>
+    </div>
+    {# Region-label definitions popover (2026-06-18).
+       Hidden by default; toggles on #selection-target-info-btn click.
+       Populated dynamically by lib/region-label-definitions.js so
+       the popover only lists labels actually present in the
+       current structure + the canonical defaults.  See
+       docs/protocols/region-labels.md. #}
+    <div id="selection-target-info-panel"
+         class="selection-target-info-panel"
+         role="region"
+         aria-labelledby="selection-target-info-btn"
+         hidden>
+      {#- Body rendered by region-label-definitions.js. -#}
     </div>
     <input type="text" id="selection-assign-new-label"
            class="selection-new-label" hidden
