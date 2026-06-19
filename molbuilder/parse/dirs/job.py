@@ -125,8 +125,14 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
     for ``^<key>\\b``, take the rest of the line minus any trailing
     comment.  Block-valued keys (kgrid_Monkhorst_Pack) get a special
     "NxNxN" reduction from their %block content.
+
+    SIESTA key matching is case-insensitive (the engine itself
+    treats fdf keys as case-insensitive); whitespace separators
+    include tabs (post-2026-06-19 review fix I2).
     """
     out: Dict[str, Optional[str]] = {k: None for k in ENGINE_BODY_KEYS}
+    # case-insensitive lookup: lowered key -> canonical key.
+    _lc_lookup = {k.lower(): k for k in ENGINE_BODY_KEYS}
     # Line-by-line scan; only inspect lines that are outside any of
     # the reserved comment blocks (those are owned by the script-
     # contract extractors).  Coarse heuristic: skip lines starting
@@ -139,12 +145,14 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
         # Take "Keyword value [unit]" — strip trailing `# comment`.
         if "#" in line:
             line = line.split("#", 1)[0].rstrip()
-        if " " not in line:
+        # split on any whitespace (tab OR space) per SIESTA convention.
+        parts = line.split(None, 1)
+        if len(parts) < 2:
             continue
-        key, _, value = line.partition(" ")
-        value = value.strip()
-        if key in out and out[key] is None:
-            out[key] = value
+        key, value = parts[0], parts[1].strip()
+        canonical = _lc_lookup.get(key.lower())
+        if canonical is not None and out[canonical] is None:
+            out[canonical] = value
 
     # kgrid_Monkhorst_Pack is a %block, not a directive.  Pull the
     # 3x3 diagonal and reduce to "AxBxC".
@@ -397,7 +405,12 @@ def _consolidate_plots(out_paths: List[Path]
                 if not isinstance(cycle, int):
                     continue
                 global_iter = scf_iter_global_offset + cycle
-                dDmax = entry.get("dDmax") or entry.get("dHmax")
+                # Explicit None check — `... or ...` falsy-skips a
+                # legitimate 0.0 (fully converged SCF cycle), then
+                # falls through to dHmax (post-2026-06-19 fix I1).
+                dDmax = entry.get("dDmax")
+                if dDmax is None:
+                    dDmax = entry.get("dHmax")
                 if isinstance(dDmax, (int, float)):
                     scf_resid_bucket.append([global_iter, float(dDmax)])
                 e = entry.get("energy")
@@ -444,21 +457,31 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
                 break
             except SiestaXVError:
                 continue
-    if structure is None and files["fdf"]:
-        fdf = files["fdf"][0]
+    # Pick ONE anchor .fdf for everything — the highest-stage one,
+    # matching the rest of decode_run_dir's "active stage"
+    # semantics.  Mixing low-stage initial coords with high-stage
+    # cell+regions silently produces a Frankenstein geometry
+    # (post-2026-06-19 review fix B1).
+    anchor_fdf: Optional[Path] = None
+    if files["fdf"]:
+        anchor_fdf = sorted(
+            files["fdf"],
+            key=lambda p: (_detect_stage(p.name) or 0, p.name),
+        )[-1]
+    if structure is None and anchor_fdf is not None:
         try:
             structure = read_fdf_initial_coords(
-                fdf.read_text(encoding="utf-8", errors="replace"))
-            coords_source = fdf.name
+                anchor_fdf.read_text(encoding="utf-8", errors="replace"))
+            coords_source = anchor_fdf.name
             coords_state = "initial"
         except SiestaFdfStructureError:
             pass
 
     regions: Dict[str, List[int]] = {}
     frozen: List[int] = []
-    if files["fdf"]:
+    if anchor_fdf is not None:
         src = extract_script_source(
-            files["fdf"][-1].read_text(encoding="utf-8", errors="replace"))
+            anchor_fdf.read_text(encoding="utf-8", errors="replace"))
         regions = src.regions or {}
         frozen = src.frozen_atoms or []
 
@@ -476,9 +499,9 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
         ]
     else:
         out["xyz"] = []
-    # Structure doesn't carry cell; read it from the .fdf's
-    # %block LatticeVectors instead.
-    out["cell"] = _read_cell_from_fdf(files["fdf"][-1]) if files["fdf"] else None
+    # Structure doesn't carry cell; read it from the same anchor
+    # .fdf we used above (same single-source guarantee).
+    out["cell"] = _read_cell_from_fdf(anchor_fdf) if anchor_fdf is not None else None
     return out
 
 
@@ -486,22 +509,58 @@ _LATTICE_BLOCK_RE = re.compile(
     r"%block\s+LatticeVectors\s*\n(.*?)%endblock\s+LatticeVectors",
     re.S | re.IGNORECASE,
 )
+_LATTICE_CONSTANT_RE = re.compile(
+    r"^\s*LatticeConstant\s+([+\-0-9.eE]+)(?:\s+(\S+))?",
+    re.M | re.IGNORECASE,
+)
+_BOHR_PER_ANG = 1.8897259886    # SIESTA's au -> Ang conversion factor
 
 
 def _read_cell_from_fdf(fdf_path: Path) -> Optional[List[List[float]]]:
-    """Return the LatticeVectors block contents as a 3x3 list (Angstrom),
-    or None if the block is absent / malformed."""
+    """Return the LatticeVectors block contents as a 3x3 list in
+    Angstroms, applying SIESTA's ``LatticeConstant <value> <unit>``
+    scaling.  Returns None if the block is absent / malformed.
+
+    SIESTA's convention (manual § 7.3.5): LatticeVectors are
+    dimensionless multipliers of LatticeConstant.  Unit defaults
+    to Bohr (``au`` or ``Bohr``) when not specified; ``Ang`` is
+    the common explicit choice.  Without this scaling, a file with
+    ``LatticeConstant 5.43 Ang`` + identity vectors silently
+    produced a 1Å unit cube (post-2026-06-19 review fix B2).
+    """
     text = fdf_path.read_text(encoding="utf-8", errors="replace")
     m = _LATTICE_BLOCK_RE.search(text)
     if not m:
         return None
+
+    # Resolve LatticeConstant (default: 1.0 Bohr per SIESTA convention).
+    scale_to_ang = 1.0 / _BOHR_PER_ANG    # 1 Bohr in Å
+    lc_m = _LATTICE_CONSTANT_RE.search(text)
+    if lc_m:
+        try:
+            value = float(lc_m.group(1))
+        except ValueError:
+            return None
+        unit = (lc_m.group(2) or "Bohr").strip().lower()
+        if unit in ("ang", "angstrom"):
+            scale_to_ang = value
+        elif unit in ("bohr", "au"):
+            scale_to_ang = value / _BOHR_PER_ANG
+        else:
+            # Unknown unit — assume Bohr per SIESTA's default.
+            scale_to_ang = value / _BOHR_PER_ANG
+
     rows: List[List[float]] = []
     for raw in m.group(1).strip().splitlines():
         toks = raw.split()
         if len(toks) < 3:
             continue
         try:
-            rows.append([float(toks[0]), float(toks[1]), float(toks[2])])
+            rows.append([
+                float(toks[0]) * scale_to_ang,
+                float(toks[1]) * scale_to_ang,
+                float(toks[2]) * scale_to_ang,
+            ])
         except ValueError:
             return None
         if len(rows) == 3:
@@ -638,7 +697,8 @@ def decode_run_dir(run_dir: Path) -> JobResult:
         )[-1]
         text = active_fdf.read_text(encoding="utf-8", errors="replace")
         job_type = _classify_job_type(text)
-        m = re.search(r"^\s*SystemLabel\s+(\S+)", text, re.M)
+        # SIESTA fdf keys are case-insensitive (post-2026-06-19 fix I4).
+        m = re.search(r"^\s*SystemLabel\s+(\S+)", text, re.M | re.I)
         if m:
             system_label = m.group(1)
     else:
@@ -713,14 +773,17 @@ class JobDirParser(DirParser):
     @classmethod
     def can_parse(cls, run_dir: Path) -> bool:
         """Claim any directory that contains at least one ``.fdf``
-        or ``.py`` engine script.  A directory with only inputs
-        but no .out yet is still a valid (running / pre-launch)
-        job dir."""
+        engine script (SIESTA / TranSIESTA).  A directory with only
+        inputs but no .out yet is still a valid (running / pre-
+        launch) job dir.
+
+        ``.py`` (PySCF) dirs are NOT claimed yet — the decoder
+        produces empty results for them.  Re-add when PySCF
+        DirParser support ships (post-2026-06-19 fix B3).
+        """
         try:
             for child in run_dir.iterdir():
-                if child.is_file() and (
-                    child.name.endswith(".fdf") or child.name.endswith(".py")
-                ):
+                if child.is_file() and child.name.endswith(".fdf"):
                     return True
         except OSError:
             return False

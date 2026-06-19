@@ -654,7 +654,7 @@
     margin-left: 0.3em;
 }
 .region-defs-badge.in-use {
-    background: #2d7d4f;
+    background: var(--success);
     color: white;
 }
 .region-defs-badge.available {
