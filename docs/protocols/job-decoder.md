@@ -350,7 +350,13 @@ blocks at all):
 
 ### Step 3 — `.py` (PySCF) classification
 
-Same logic, with Python-side anchors:
+**Status: deferred (2026-06-19).** PySCF DirParser support is not
+yet implemented.  `JobDirParser.can_parse` currently refuses
+`.py`-only directories, and the public `parse_dir()` raises
+:exc:`UnknownFormatError` with the supported-formats list.
+
+When the PySCF DirParser ships:
+
 * `tools.geomopt.optimize` or `as_pyscf_method` calls → `optimization`
 * TDDFT / IR / Raman objects → `spectrum`
 * No TranSIESTA-equivalent today; `transport` not supported via PySCF.

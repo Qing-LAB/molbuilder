@@ -59,7 +59,7 @@ def test_parse_dir_dispatches_to_jobdirparser():
     for a job directory."""
     decoded = parse_dir(_need_dir(TJ_DIR))
     assert isinstance(decoded, JobResult)
-    assert decoded.parser_name == "JobDirParser"
+    assert decoded.parser_name == "job-dir"
 
 
 def test_decode_tj_bdt_au111_smoke():
@@ -70,7 +70,7 @@ def test_decode_tj_bdt_au111_smoke():
     assert decoded.engine == "siesta"
     assert decoded.system_label == "siesta-BDT-Au111-TJ"
     # Top-level ParseResult fields
-    assert decoded.parser_name == "JobDirParser"
+    assert decoded.parser_name == "job-dir"
     assert decoded.parsed_at.endswith("Z")
     assert decoded.source.endswith("TJ-BDT-Au111")
 

@@ -11,7 +11,6 @@ dataclass).
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 from molbuilder.parse.base import FileParser
@@ -39,8 +38,13 @@ class TransportSidecarFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
         results = _legacy_parse(path)
-        payload = asdict(results)
-        sv = payload.get("schema_version", 1)
+        # Use .to_dict() (not dataclasses.asdict) so numpy ndarrays
+        # convert to JSON-trivially-serialisable lists.  asdict()
+        # preserves ndarray objects, which then break json.dumps()
+        # at webhook delivery + cache pickle (post-2026-06-19
+        # round-2 fix).
+        payload = results.to_dict()
+        sv = payload.get("schema_version", "1")
         return build_sidecar_result(
             payload=payload,
             schema=f"transport/v{sv}",

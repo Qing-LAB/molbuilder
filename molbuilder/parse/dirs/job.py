@@ -108,6 +108,19 @@ def _detect_stage(filename: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def _anchor_sort_key(p: Path) -> Tuple[bool, int, str]:
+    """Sort key for picking the "highest-stage" .fdf as the anchor.
+
+    Distinguishes "no stage" from "stage 0" so an unstaged template
+    file can't beat a real staged file via lex tie-break.  Sort
+    ascending → ``[-1]`` gives the highest-staged anchor; unstaged
+    files sort BEFORE all staged ones (post-2026-06-19 round-2 fix
+    for the B1 fix's residual sort-tiebreak bug).
+    """
+    stage = _detect_stage(p.name)
+    return (stage is not None, stage if stage is not None else -1, p.name)
+
+
 def _iso_z(ts: float) -> str:
     """Format a POSIX timestamp as an ISO-8601 UTC string."""
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(
@@ -149,7 +162,11 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
         parts = line.split(None, 1)
         if len(parts) < 2:
             continue
-        key, value = parts[0], parts[1].strip()
+        key = parts[0]
+        # Normalise internal whitespace (collapse tabs + repeated
+        # spaces) so the stored value reads cleanly downstream
+        # (post-2026-06-19 round-2 fix for I2 tab-in-value).
+        value = " ".join(parts[1].split())
         canonical = _lc_lookup.get(key.lower())
         if canonical is not None and out[canonical] is None:
             out[canonical] = value
@@ -408,10 +425,13 @@ def _consolidate_plots(out_paths: List[Path]
                 # Explicit None check — `... or ...` falsy-skips a
                 # legitimate 0.0 (fully converged SCF cycle), then
                 # falls through to dHmax (post-2026-06-19 fix I1).
+                # bool is a subclass of int in Python; reject it
+                # explicitly so a malformed True/False reading
+                # doesn't get charted as a 1.0 / 0.0 residual.
                 dDmax = entry.get("dDmax")
                 if dDmax is None:
                     dDmax = entry.get("dHmax")
-                if isinstance(dDmax, (int, float)):
+                if isinstance(dDmax, (int, float)) and not isinstance(dDmax, bool):
                     scf_resid_bucket.append([global_iter, float(dDmax)])
                 e = entry.get("energy")
                 if isinstance(e, (int, float)):
@@ -464,10 +484,7 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
     # (post-2026-06-19 review fix B1).
     anchor_fdf: Optional[Path] = None
     if files["fdf"]:
-        anchor_fdf = sorted(
-            files["fdf"],
-            key=lambda p: (_detect_stage(p.name) or 0, p.name),
-        )[-1]
+        anchor_fdf = sorted(files["fdf"], key=_anchor_sort_key)[-1]
     if structure is None and anchor_fdf is not None:
         try:
             structure = read_fdf_initial_coords(
@@ -510,7 +527,7 @@ _LATTICE_BLOCK_RE = re.compile(
     re.S | re.IGNORECASE,
 )
 _LATTICE_CONSTANT_RE = re.compile(
-    r"^\s*LatticeConstant\s+([+\-0-9.eE]+)(?:\s+(\S+))?",
+    r"^\s*LatticeConstant\b\s+([+\-0-9.eE]+)(?:\s+(\S+))?",
     re.M | re.IGNORECASE,
 )
 _BOHR_PER_ANG = 1.8897259886    # SIESTA's au -> Ang conversion factor
@@ -691,10 +708,7 @@ def decode_run_dir(run_dir: Path) -> JobResult:
     job_type: str
     system_label: Optional[str] = None
     if files["fdf"]:
-        active_fdf = sorted(
-            files["fdf"],
-            key=lambda p: (_detect_stage(p.name) or 0, p.name),
-        )[-1]
+        active_fdf = sorted(files["fdf"], key=_anchor_sort_key)[-1]
         text = active_fdf.read_text(encoding="utf-8", errors="replace")
         job_type = _classify_job_type(text)
         # SIESTA fdf keys are case-insensitive (post-2026-06-19 fix I4).
@@ -733,7 +747,10 @@ def decode_run_dir(run_dir: Path) -> JobResult:
     return JobResult(
         schema_version=SCHEMA_VERSION,
         parsed_at=_iso_z(_wall_now()),
-        parser_name="JobDirParser",
+        # Use the slug ("job-dir") to match the engines + sidecars
+        # envelope convention (post-2026-06-19 round-2 fix —
+        # was the literal classname "JobDirParser").
+        parser_name=JobDirParser.name,
         source=str(run_dir.resolve()),
         job_type=job_type,
         engine="siesta",

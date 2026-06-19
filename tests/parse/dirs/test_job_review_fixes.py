@@ -109,10 +109,17 @@ def test_i2_engine_body_summary_case_insensitive() -> None:
 
 def test_i2_engine_body_summary_tab_separated() -> None:
     """I2: SIESTA accepts tab as separator; previous parser
-    required a space.  Tab-separated MeshCutoff must parse."""
+    required a space.  Tab-separated MeshCutoff must parse.
+
+    Round-2 fix: internal whitespace in the VALUE collapses to a
+    single space so downstream consumers (Results tab UI) get a
+    clean string (was ``"350.0\\tRy"`` before; see
+    tests/parse/test_round2_fixes.py for the explicit
+    test_i2_tab_in_value_normalised_to_space test).
+    """
     fdf_text = "MeshCutoff\t350.0\tRy\n"
     summary = _parse_engine_body_summary(fdf_text)
-    assert summary["MeshCutoff"] == "350.0\tRy"
+    assert summary["MeshCutoff"] == "350.0 Ry"
 
 
 def test_i2_engine_body_summary_canonical_keys_unchanged() -> None:

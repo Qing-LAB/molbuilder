@@ -32,10 +32,17 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
     The frames/lattice/run_state/etc. fields pass through
     unchanged.  parse_warnings get normalised from the legacy
     ``Warning`` dataclass into :class:`ParseWarning`.
+
+    Source path is resolved to an absolute path for envelope
+    consistency across phases B/C/D (post-2026-06-19 round-2 fix).
     """
+    try:
+        source_str = str(Path(source).resolve())
+    except OSError:
+        source_str = str(source)
     warnings = [
         ParseWarning(
-            source=str(source),
+            source=source_str,
             line_no=getattr(w, "line_no", None),
             snippet=getattr(w, "snippet", None),
             error=getattr(w, "error", ""),
@@ -47,7 +54,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
         schema_version=1,
         parsed_at=_iso_z(),
         parser_name=parser_name,
-        source=str(source),
+        source=source_str,
         frames=traj.frames,
         lattice=traj.lattice,
         source_format=traj.source_format,

@@ -16,7 +16,6 @@ legacy import path directly — Phase H sorts the consumer side).
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 from molbuilder.parse.base import FileParser
@@ -44,8 +43,12 @@ class SpectraSidecarFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
         results = _legacy_parse(path)
-        payload = asdict(results)
-        sv = payload.get("schema_version", 4)
+        # Use .to_dict() (not dataclasses.asdict) so numpy ndarrays
+        # convert to JSON-trivially-serialisable lists -- same
+        # rationale as the transport sidecar fix
+        # (post-2026-06-19 round-2 review).
+        payload = results.to_dict()
+        sv = payload.get("schema_version", 1)
         return build_sidecar_result(
             payload=payload,
             schema=f"spectra/v{sv}",

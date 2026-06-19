@@ -26,13 +26,19 @@ def build_sidecar_result(payload: Dict[str, Any], schema: str,
 
     ``schema`` is the discriminator (``"molstruct/v3"``,
     ``"spectra/v4"``, ``"transport/v1"``, etc.) consumers use to
-    type-narrow further.
+    type-narrow further.  Source path is resolved to an absolute
+    path for envelope consistency across phases B/C/D
+    (post-2026-06-19 round-2 fix).
     """
+    try:
+        source_str = str(Path(source).resolve())
+    except OSError:
+        source_str = str(source)
     return SidecarResult(
         schema_version=1,
         parsed_at=_iso_z(),
         parser_name=parser_name,
-        source=str(source),
+        source=source_str,
         payload=payload,
         schema=schema,
     )

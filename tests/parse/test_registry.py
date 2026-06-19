@@ -106,7 +106,7 @@ def test_parse_dir_dispatches_jobdirparser():
     result = parse_dir(_need(TJ_DIR))
     assert isinstance(result, JobResult)
     assert result.result_kind == "job"
-    assert result.parser_name == "JobDirParser"
+    assert result.parser_name == "job-dir"
 
 
 def test_parse_dir_on_non_directory_raises():
