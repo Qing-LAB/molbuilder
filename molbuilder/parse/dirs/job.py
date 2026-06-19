@@ -1,7 +1,8 @@
-"""Directory-level job decoder.
+"""Directory-level job DirParser.
 
-Implements ``decode_run_dir(path)`` per
-``docs/protocols/job-decoder.md``.  Pure composer over the existing
+Implements :class:`JobDirParser` + :func:`decode_run_dir` per
+``docs/protocols/job-decoder.md`` + ``docs/protocols/parse-module.md``
+§ 7 composer pattern.  Pure composer over the existing
 infrastructure:
 
 * ``molbuilder.parsers`` — file-level TrajectoryParser registry; the
@@ -16,6 +17,11 @@ The only NEW parsing this module does is ``_parse_engine_body_summary``
 which extracts a CURATED list of ~21 SIESTA engine-body directives.
 That list is frozen by the doc; adding a key requires a doc update
 + a test.
+
+Phase B of parse-module.md migration: ``decode_run_dir`` now returns
+a :class:`JobResult` frozen dataclass.  The class API
+(:class:`JobDirParser`) is the canonical entry point;
+``decode_run_dir`` is a thin module-level convenience.
 """
 
 from __future__ import annotations
@@ -25,6 +31,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from molbuilder.parse.base import DirParser
+from molbuilder.parse.types import JobResult, ParseWarning
 
 
 # Doc-pinned constants ------------------------------------------------- #
@@ -605,10 +614,12 @@ def _build_progress(plots: Dict[str, Dict[str, List[List[float]]]],
 # ---- top-level entry ------------------------------------------------- #
 
 
-def decode_run_dir(run_dir: Path) -> Dict[str, Any]:
-    """Decode a project directory into the contract document.
+def decode_run_dir(run_dir: Path) -> JobResult:
+    """Decode a project directory into a :class:`JobResult`.
 
-    See ``docs/protocols/job-decoder.md`` § 2 for the schema.
+    See ``docs/protocols/job-decoder.md`` § 2 for the field
+    semantics.  This is the module-level convenience; equivalent
+    to ``JobDirParser.parse(run_dir)``.
     """
     run_dir = Path(run_dir)
     if not run_dir.is_dir():
@@ -648,24 +659,73 @@ def decode_run_dir(run_dir: Path) -> Dict[str, Any]:
     progress = _build_progress(plots, engine_input_by_stage,
                                out_run_states, stages_total_known)
 
-    return {
-        "schema_version":    SCHEMA_VERSION,
-        "decoded_at":        _iso_z(_wall_now()),
-        "decoder_version":   "phase1",
-        "job_type":          job_type,
-        "engine":            "siesta",
-        "system_label":      system_label,
-        "run_dir":           str(run_dir.resolve()),
-        "status":            status,
-        "progress":          progress,
-        "geometry":          geometry,
-        "plots":             plots,
-        "source_files":      source_files,
-        "engine_input_by_stage": engine_input_by_stage,
-        "parse_warnings":    parse_warnings,
-        "diagnostics": {
+    warnings_typed = [
+        ParseWarning(
+            source=w.get("source", ""),
+            line_no=w.get("line_no"),
+            snippet=w.get("snippet"),
+            error=w.get("error", ""),
+            category=w.get("category", ""),
+        )
+        for w in parse_warnings
+    ]
+
+    return JobResult(
+        schema_version=SCHEMA_VERSION,
+        parsed_at=_iso_z(_wall_now()),
+        parser_name="JobDirParser",
+        source=str(run_dir.resolve()),
+        job_type=job_type,
+        engine="siesta",
+        system_label=system_label,
+        run_dir=str(run_dir.resolve()),
+        status=status,
+        progress=progress,
+        geometry=geometry,
+        plots=plots,
+        source_files=source_files,
+        engine_input_by_stage=engine_input_by_stage,
+        parse_warnings=warnings_typed,
+        diagnostics={
             "active_decoder_path": __file__,
             "tick_count":          1,
             "last_tick_wall_ms":   None,
         },
-    }
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Class wrapper — the canonical DirParser entry point.                 #
+# --------------------------------------------------------------------- #
+
+
+class JobDirParser(DirParser):
+    """Parse a project directory (any SIESTA / PySCF run dir) into a
+    :class:`JobResult`.
+
+    Per parse-module.md § 7, composes registered FileParsers + the
+    script-contract extractors — no inline file-level parsing.
+    """
+    name   = "job-dir"
+    label  = "molbuilder job directory (SIESTA / PySCF)"
+    output = JobResult
+
+    @classmethod
+    def can_parse(cls, run_dir: Path) -> bool:
+        """Claim any directory that contains at least one ``.fdf``
+        or ``.py`` engine script.  A directory with only inputs
+        but no .out yet is still a valid (running / pre-launch)
+        job dir."""
+        try:
+            for child in run_dir.iterdir():
+                if child.is_file() and (
+                    child.name.endswith(".fdf") or child.name.endswith(".py")
+                ):
+                    return True
+        except OSError:
+            return False
+        return False
+
+    @classmethod
+    def parse(cls, run_dir: Path) -> JobResult:
+        return decode_run_dir(run_dir)
