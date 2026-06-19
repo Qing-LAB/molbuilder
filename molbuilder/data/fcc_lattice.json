@@ -1,16 +1,67 @@
 {
-    "_format": "molbuilder.data.fcc_lattice v1",
+    "_format": "molbuilder.data.fcc_lattice v2",
     "_units": {
-        "a": "angstrom",
-        "temperature_K": 298
+        "a": "angstrom"
     },
-    "_source": "Wyckoff 1963 vol. 1 p. 10 (see molbuilder/data/README.md for the full citation chain)",
+    "_sources": {
+        "experimental": {
+            "citation": "Wyckoff 1963 vol. 1 p. 10",
+            "temperature_K": 298,
+            "notes": "Room-T fcc lattice constants; reference choice when matching crystallographic geometry or running LDA/HSE."
+        },
+        "pbe": {
+            "citation": "Haas, Tran, Blaha 2009 PRB 79 085104 (Table II) + erratum PRB 79 209902; cross-checked Csonka 2009 PRB 79 155107, Janthon 2013/2014 JCTC 9 1631 / 10 3832",
+            "method": "all-electron WIEN2k, scalar-relativistic, basis-converged",
+            "spin_polarized": ["Ni"],
+            "notes": "PBE-XC consistent. Use when running PBE DFT to avoid ~1-2% lead/device lattice mismatch in transport calcs. Ni value assumes SpinPolarized=T (ferromagnetic ground state)."
+        },
+        "pbe_siesta_psml": {
+            "citation": "user-measured via a bulk-cell relax in their specific SIESTA + PSML setup",
+            "notes": "All-electron PBE (a_pbe) and the value SIESTA+PSML produces can differ by 0.5-1.5% due to pseudopotential + basis effects. Run a bulk-cell relax with the same Au.psml, basis (e.g. DZP), and MeshCutoff to populate this; the workflow is the most accurate option for the user's stack."
+        }
+    },
     "metals": {
-        "Au": { "a": 4.0782, "system": "fcc", "name": "Gold" },
-        "Ag": { "a": 4.0853, "system": "fcc", "name": "Silver" },
-        "Cu": { "a": 3.6149, "system": "fcc", "name": "Copper" },
-        "Ni": { "a": 3.5240, "system": "fcc", "name": "Nickel" },
-        "Pt": { "a": 3.9242, "system": "fcc", "name": "Platinum" },
-        "Pd": { "a": 3.8907, "system": "fcc", "name": "Palladium" }
+        "Au": {
+            "name": "Gold",
+            "system": "fcc",
+            "a_experimental": 4.0782,
+            "a_pbe": 4.158,
+            "a_pbe_siesta_psml": null
+        },
+        "Ag": {
+            "name": "Silver",
+            "system": "fcc",
+            "a_experimental": 4.0853,
+            "a_pbe": 4.147,
+            "a_pbe_siesta_psml": null
+        },
+        "Cu": {
+            "name": "Copper",
+            "system": "fcc",
+            "a_experimental": 3.6149,
+            "a_pbe": 3.635,
+            "a_pbe_siesta_psml": null
+        },
+        "Ni": {
+            "name": "Nickel",
+            "system": "fcc",
+            "a_experimental": 3.5240,
+            "a_pbe": 3.520,
+            "a_pbe_siesta_psml": null
+        },
+        "Pt": {
+            "name": "Platinum",
+            "system": "fcc",
+            "a_experimental": 3.9242,
+            "a_pbe": 3.967,
+            "a_pbe_siesta_psml": null
+        },
+        "Pd": {
+            "name": "Palladium",
+            "system": "fcc",
+            "a_experimental": 3.8907,
+            "a_pbe": 3.943,
+            "a_pbe_siesta_psml": null
+        }
     }
 }

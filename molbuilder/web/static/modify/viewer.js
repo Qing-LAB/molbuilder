@@ -888,8 +888,9 @@
         const m         = Number($("elc-m").value);
         const n         = Number($("elc-n").value);
         const layers    = Number($("elc-layers").value);
-        return {
-            element:    $("elc-element").value,
+        const element   = $("elc-element").value;
+        const out = {
+            element:    element,
             plane:      getCheckedRadio("elc-plane") || "111",
             size:       [m, n, layers],
             orthogonal: $("elc-orthogonal").checked,
@@ -898,6 +899,23 @@
                 Number($("elc-dy").value),
             ],
         };
+        // Resolve the chosen lattice reference -> a numeric
+        // `lattice_constant` payload field.  The API already accepts
+        // `lattice_constant` (modify.py:448); the radio is purely a
+        // client-side picker that looks up the right value from the
+        // /api/modify/meta lattice_table.  Default ref "experimental"
+        // matches pre-2026-06-18 behaviour (no field sent ->
+        // backend falls back to its hardcoded experimental).
+        const ref = getCheckedRadio("elc-lattice-ref") || "experimental";
+        const lat = window.__elcLatticeTable
+                    && window.__elcLatticeTable[element];
+        if (ref !== "experimental" && lat) {
+            const value = lat[`a_${ref}`];
+            if (typeof value === "number") {
+                out.lattice_constant = value;
+            }
+        }
+        return out;
     }
 
     // Populate the element <select> and plane radios from the
@@ -917,6 +935,9 @@
             || ["Au", "Ag", "Cu", "Ni", "Pt", "Pd"];
         const planes   = (meta && meta.fcc_planes)
             || ["100", "110", "111"];
+        // Stash the lattice table for readElcCommonBody.  Schema:
+        // { Au: {a_experimental, a_pbe, a_pbe_siesta_psml, name, system}, ... }
+        window.__elcLatticeTable = (meta && meta.lattice_table) || {};
         const elSel = $("elc-element");
         if (elSel) {
             elSel.innerHTML = "";
@@ -927,6 +948,9 @@
                 if (sym === "Au") opt.selected = true;
                 elSel.appendChild(opt);
             }
+            // Re-render lattice-ref radios when the element changes
+            // so the displayed values track the picker.
+            elSel.addEventListener("change", renderLatticeRefRadios);
         }
         const planeBox = $("elc-plane-radios");
         if (planeBox) {
@@ -942,6 +966,52 @@
                 lbl.appendChild(document.createTextNode(p));
                 planeBox.appendChild(lbl);
             }
+        }
+        // Lattice-ref radios + ⓘ popover wiring.
+        renderLatticeRefRadios();
+        const infoBtn = $("elc-lattice-ref-info");
+        const infoPanel = $("elc-lattice-ref-panel");
+        if (infoBtn && infoPanel) {
+            infoBtn.addEventListener("click", () => {
+                const open = !infoPanel.hidden;
+                infoPanel.hidden = open;
+                infoBtn.setAttribute("aria-expanded", open ? "false" : "true");
+            });
+        }
+    }
+
+    function renderLatticeRefRadios() {
+        const box = $("elc-lattice-ref-radios");
+        if (!box) return;
+        const element = ($("elc-element") && $("elc-element").value) || "Au";
+        const lat = (window.__elcLatticeTable || {})[element] || {};
+        const refs = [
+            ["experimental",    "Experimental",       lat.a_experimental,    "Wyckoff 1963"],
+            ["pbe",             "PBE (all-electron)", lat.a_pbe,             "Haas 2009"],
+            ["pbe_siesta_psml", "Your bulk run",      lat.a_pbe_siesta_psml, "user-measured"],
+        ];
+        // Preserve current pick across re-renders if still valid.
+        const currentPick = getCheckedRadio("elc-lattice-ref") || "experimental";
+        box.innerHTML = "";
+        for (const [value, label, num, src] of refs) {
+            const lbl = document.createElement("label");
+            const inp = document.createElement("input");
+            inp.type = "radio";
+            inp.name = "elc-lattice-ref";
+            inp.value = value;
+            const disabled = (num == null);
+            if (disabled) inp.disabled = true;
+            const picked = (value === currentPick) && !disabled;
+            const fallback = (currentPick === "pbe_siesta_psml")
+                             && (lat.a_pbe_siesta_psml == null);
+            inp.checked = picked || (fallback && value === "experimental");
+            lbl.appendChild(inp);
+            const txt = (typeof num === "number")
+                        ? ` ${label} (${num.toFixed(4)} Å — ${src})`
+                        : ` ${label} (unset — ${src})`;
+            lbl.appendChild(document.createTextNode(txt));
+            if (disabled) lbl.style.opacity = "0.55";
+            box.appendChild(lbl);
         }
     }
 

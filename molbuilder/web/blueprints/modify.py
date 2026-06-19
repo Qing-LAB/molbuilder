@@ -76,7 +76,7 @@ catch it.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
@@ -122,10 +122,26 @@ def api_modify_meta():
     layer that drift from the Python tuples.  Adding a new metal in
     ``molbuilder.modify`` reaches the UI automatically.
     """
+    # Lattice table: per-element a_experimental + a_pbe + the nullable
+    # a_pbe_siesta_psml (populated by the user when they run a bulk-
+    # cell relax with their specific Au.psml/etc.).  UI renders a
+    # 3-way radio per element so the user can pick the value matching
+    # their XC + pseudopotential.  Failures here surface as a
+    # diagnostic + an empty table so the UI degrades to the prior
+    # behavior (always experimental, no radio).
+    lattice_table: Dict[str, Any] = {}
+    lattice_error: Optional[str] = None
+    try:
+        from molbuilder.modify import _load_fcc_lattice_full
+        lattice_table = _load_fcc_lattice_full()
+    except Exception as exc:                                # pragma: no cover -- defensive
+        lattice_error = str(exc)
     return jsonify({
-        "ok":           True,
-        "fcc_elements": list(SUPPORTED_FCC_ELEMENTS),
-        "fcc_planes":   list(SUPPORTED_FCC_PLANES),
+        "ok":            True,
+        "fcc_elements":  list(SUPPORTED_FCC_ELEMENTS),
+        "fcc_planes":    list(SUPPORTED_FCC_PLANES),
+        "lattice_table": lattice_table,
+        "lattice_error": lattice_error,
     })
 
 

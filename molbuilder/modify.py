@@ -499,13 +499,17 @@ def _data_dir_candidates() -> List[_Path]:
     return candidates
 
 
-def _load_fcc_lattice() -> dict:
-    """Load the FCC lattice-constant table from ``fcc_lattice.json``.
+def _load_fcc_lattice_full() -> dict:
+    """Load the full FCC lattice-constant table from ``fcc_lattice.json``.
 
-    Walks ``_data_dir_candidates()`` and returns the first found file's
-    contents.  Format is checked at parse time -- a missing file or a
-    schema mismatch raises a clear error so a misconfigured override
-    surfaces immediately at import.
+    v2 schema (2026-06-18 onward): each metal carries
+    ``a_experimental`` (Wyckoff 1963), ``a_pbe`` (Haas-Tran-Blaha 2009),
+    and ``a_pbe_siesta_psml`` (user-measured, nullable until populated
+    via a bulk-cell relax in the user's specific SIESTA+PSML setup).
+
+    Returns the metals dict directly: ``{symbol: {a_experimental: float,
+    a_pbe: float, a_pbe_siesta_psml: Optional[float], name: str,
+    system: str}}``.  Format check is strict; v1 ("a" only) files raise.
     """
     last_error: Optional[Exception] = None
     for candidate_dir in _data_dir_candidates():
@@ -525,14 +529,32 @@ def _load_fcc_lattice() -> dict:
                 f"FCC lattice table at {path!s} missing required 'metals' key"
             )
             continue
+        fmt = data.get("_format", "")
+        if "v2" not in fmt:
+            raise RuntimeError(
+                f"FCC lattice table at {path!s} is not v2 (got "
+                f"{fmt!r}).  Each metal must carry a_experimental, "
+                f"a_pbe, a_pbe_siesta_psml; the v1 'a'-only schema "
+                f"is no longer supported."
+            )
         metals: dict = {}
         for sym, entry in data["metals"].items():
             try:
-                metals[sym] = float(entry["a"])
+                a_exp = float(entry["a_experimental"])
+                a_pbe = float(entry["a_pbe"])
+                a_psml_raw = entry.get("a_pbe_siesta_psml")
+                a_psml = float(a_psml_raw) if a_psml_raw is not None else None
             except (KeyError, TypeError, ValueError) as exc:
                 raise RuntimeError(
                     f"FCC lattice entry {sym!r} in {path!s} is malformed: {exc}"
                 ) from exc
+            metals[sym] = {
+                "a_experimental":    a_exp,
+                "a_pbe":             a_pbe,
+                "a_pbe_siesta_psml": a_psml,
+                "name":              entry.get("name", sym),
+                "system":            entry.get("system", "fcc"),
+            }
         if not metals:
             raise RuntimeError(
                 f"FCC lattice table at {path!s} contains zero entries"
@@ -543,6 +565,19 @@ def _load_fcc_lattice() -> dict:
         f"{[str(p) for p in _data_dir_candidates()]}.  "
         f"Last error: {last_error}"
     )
+
+
+def _load_fcc_lattice() -> dict:
+    """Back-compat shim: return ``{symbol: a_experimental_float}``.
+
+    This was the v1 loader's return shape, kept here so callers that
+    only need "the default experimental lattice constant" don't have
+    to know about v2's per-XC fields.  Callers that need to pick
+    between experimental / PBE / user-measured values should hit
+    ``_load_fcc_lattice_full`` directly (the web meta endpoint does).
+    """
+    full = _load_fcc_lattice_full()
+    return {sym: entry["a_experimental"] for sym, entry in full.items()}
 
 
 # Closed list of supported FCC electrode metals.  Hardcoded (rather

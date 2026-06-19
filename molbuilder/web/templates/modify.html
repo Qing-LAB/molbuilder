@@ -575,6 +575,37 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
           </label>
         </div>
 
+        {# Lattice-constant reference selector.  Radios populated at #}
+        {# init from /api/modify/meta's lattice_table.  Default      #}
+        {# "experimental" (Wyckoff 1963 a; preserves pre-2026-06-18  #}
+        {# behaviour); user picks "pbe" when their device run is     #}
+        {# PBE-XC (avoids ~1-2% lead/device lattice mismatch); picks #}
+        {# "siesta_psml" once they have a bulk-cell relax measured   #}
+        {# under their specific SIESTA + PSML setup.  Greyed         #}
+        {# automatically when the JSON value is null.                #}
+        <div class="op-row">
+          <label>Lattice ref
+            <span class="axis-radios" id="elc-lattice-ref-radios"></span>
+            <button type="button"
+                    id="elc-lattice-ref-info"
+                    class="selection-target-info-btn"
+                    title="Which lattice constant to use, and when. Click for details."
+                    aria-expanded="false"
+                    aria-controls="elc-lattice-ref-panel">ⓘ</button>
+          </label>
+        </div>
+        <div id="elc-lattice-ref-panel"
+             class="selection-target-info-panel"
+             role="region"
+             hidden>
+          <div class="region-defs-body">
+            <p><b>Experimental</b> — Wyckoff 1963 room-T value.  Use when matching crystallographic geometry or running LDA / HSE.</p>
+            <p><b>PBE (all-electron)</b> — Haas, Tran, Blaha 2009 PRB 79 085104.  Use when your device run is PBE-XC; avoids the ~1-2% lead/device lattice mismatch that experimental introduces.</p>
+            <p><b>Your bulk run</b> — measured in YOUR SIESTA + PSML setup via a bulk-cell relax.  Most accurate when populated.  Greyed if not yet measured.  All-electron PBE and PSML PBE can differ by 0.5-1.5%.</p>
+            <p>Ni note: the PBE value assumes <code>SpinPolarized=T</code> (ferromagnetic ground state).</p>
+          </div>
+        </div>
+
         <div class="op-row">
           <label>m
             <input id="elc-m" type="number" min="1" max="20" step="1" value="3">
