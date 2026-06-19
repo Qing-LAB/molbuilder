@@ -537,6 +537,129 @@ def extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
     return out
 
 
+def extract_header_text(text: str) -> Optional[str]:
+    """Find the HEADER block and return its inner content as a single
+    string (free-form prose, comment prefixes stripped).
+
+    Returns ``None`` when no HEADER block is present.  The leading
+    ``# `` (or ``#``) on each line is removed so the result is the
+    raw prose the generator wrote; line ordering is preserved.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != BLOCK_HEADER:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out_lines: List[str] = []
+    for raw in lines[begin_idx + 1: end_idx]:
+        # Strip the comment prefix the generator emits ("# " or "#").
+        if raw.startswith("# "):
+            out_lines.append(raw[2:])
+        elif raw.startswith("#"):
+            out_lines.append(raw[1:])
+        else:
+            out_lines.append(raw)
+    return "\n".join(out_lines)
+
+
+def extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
+    """Find the BENCH-MARKS block and return its structured payload.
+
+    Returns ``None`` when no BENCH-MARKS block is present.  The payload
+    shape mirrors the doc's spec:
+
+      {
+        "version":         "v1",                    # from `version vN`
+        "n_atoms":         212,                     # top-level scalars
+        "n_orbitals_est":  2700,
+        "gpu_mode":        true,
+        "numa_pin":        "socket-0",
+        "fields": [
+          {"name": "BlockSize", "anchor": "BlockSize", "type": "pow2",
+           "range": [16, 256], "default": 256, ...},
+          ...
+        ]
+      }
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != BLOCK_BENCH_MARKS:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out: Dict[str, Any] = {"fields": []}
+    for raw in lines[begin_idx + 1: end_idx]:
+        # Strip "#   " comment prefix.
+        s = raw.lstrip("#").strip()
+        if not s:
+            continue
+        # `field <name> anchor=<x> type=<y> ...` rows.
+        if s.startswith("field "):
+            tokens = s.split()
+            field: Dict[str, Any] = {"name": tokens[1]}
+            for tok in tokens[2:]:
+                if "=" not in tok:
+                    continue
+                k, _, v = tok.partition("=")
+                v = v.strip()
+                # Coerce numeric range / default values.
+                if k == "range" and v.startswith("[") and v.endswith("]"):
+                    try:
+                        a, b = v[1:-1].split(",")
+                        field["range"] = [_coerce_scalar(a), _coerce_scalar(b)]
+                    except ValueError:
+                        field["range"] = v
+                elif k == "default":
+                    field["default"] = _coerce_scalar(v)
+                else:
+                    field[k] = v
+            out["fields"].append(field)
+            continue
+        # Top-level `key value` scalars.
+        if " " in s and not s.startswith("field "):
+            k, _, v = s.partition(" ")
+            v = v.strip()
+            if k == "version":
+                out["version"] = v
+            elif v.lower() in ("true", ".true."):
+                out[k] = True
+            elif v.lower() in ("false", ".false."):
+                out[k] = False
+            else:
+                out[k] = _coerce_scalar(v)
+    return out
+
+
+def _coerce_scalar(s: str) -> Any:
+    """Best-effort numeric coercion for BENCH-MARKS scalar values."""
+    s = s.strip()
+    try:
+        if "." in s or "e" in s.lower():
+            return float(s)
+        return int(s)
+    except ValueError:
+        return s
+
+
 # --------------------------------------------------------------------- #
 #  ScriptSource -- umbrella extract for the bundle layer                #
 # --------------------------------------------------------------------- #
