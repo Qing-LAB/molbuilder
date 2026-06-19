@@ -219,6 +219,13 @@ class TestNoUnsafeInnerHTML:
             ("lib/spectra/core.js", "spectrumChart.innerHTML"),
             # Sidebar empty-state message (static literal).
             ("lib/projects-sidebar.js", "list.innerHTML"),
+            # Region-label definitions popover (Phase 2a transport
+            # UI shipped 2026-06-18): renderPopover() builds the
+            # innerHTML from a curated CANONICAL_DEFINITIONS array
+            # at the top of the same file — no user-controlled data
+            # in the value chain.  Region labels (the one dynamic
+            # piece) flow through escapeHtml().
+            ("lib/region-label-definitions.js", "panel.innerHTML"),
             # 2026-06-12: forms.js renamed to mutation-bar.js after the
             # v2 buttons-not-inline-forms refactor; the New-project
             # subdir-list innerHTML was deleted with the inline form

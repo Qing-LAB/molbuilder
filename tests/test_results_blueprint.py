@@ -962,6 +962,11 @@ class TestPartialSelectionPanelEndpoint:
         # panel v3; lib/selection-panel.js queries both by id).
         "selection-invert-btn",
         "selection-isolate-checkbox",
+        # Region-label definitions popover (Phase 2a transport UI
+        # shipped 2026-06-18; lib/region-label-definitions.js
+        # toggles aria-expanded on the button + un-hides the panel).
+        "selection-target-info-btn",
+        "selection-target-info-panel",
     )
 
     def test_endpoint_returns_html_200(self, web):

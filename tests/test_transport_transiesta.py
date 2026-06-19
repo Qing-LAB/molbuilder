@@ -105,14 +105,20 @@ def test_render_script_emits_required_transiesta_keywords(
         "%block LatticeVectors",
         "%block kgrid_Monkhorst_Pack",
         "SolutionMethod",
-        "TS.SolutionMethod",
-        "TS.HSFileLeft",
-        "TS.HSFileRight",
-        "TS.NumUsedAtomsLeft",
-        "TS.NumUsedAtomsRight",
+        # Modern SIESTA 4.1+ / 5.x TranSIESTA syntax (2026-06-18
+        # modernization): per-electrode block carries used-atoms +
+        # HS.files; per-chempot block carries mu.  Legacy flat
+        # TS.HSFileLeft / TS.NumUsedAtomsLeft are no longer emitted.
+        "%block TS.Elecs",
+        "%block TS.Elec.",        # one per electrode region (L / R / ...)
+        "%block TS.ChemPots",
+        "%block TS.ChemPot.",     # one per chempot
         "TS.Voltage",
-        "TS.ComplexContour.Emin",
-        "TS.ComplexContour.NumCircle",
+        # NOTE: TS.ComplexContour.Emin / TS.ComplexContour.NumCircle
+        # were absorbed into the per-%block TS.ChemPot.<name> blocks
+        # under modern SIESTA 4.1+ / 5.x; not asserted at top level
+        # any more.  Empirically verified vs. SIESTA 5.4.2 (see
+        # tests/test_transiesta_siesta_smoke_l4.py).
         "TS.TBT.NumE",
         "TS.TBT.Emin",
         "TS.TBT.Emax",
@@ -136,14 +142,18 @@ def test_render_script_systemlabel_matches_job_name(
 
 def test_render_script_uses_region_atom_counts(labeled_device,
                                                 default_cfg):
-    """TS.NumUsedAtomsLeft / Right come from struct.regions atom
-    counts.  Pin so a future refactor that hard-codes them or
-    reads from a wrong source surfaces."""
+    """``used-atoms`` (inside each %block TS.Elec.<name> block)
+    comes from struct.regions atom counts.  Pin so a future
+    refactor that hard-codes them or reads from a wrong source
+    surfaces.  Updated for the 2026-06-18 modern-syntax move:
+    legacy TS.NumUsedAtoms{Left,Right} flat keys are no longer
+    emitted."""
     script = get_engine("transiesta").render_script(
         labeled_device, default_cfg)
-    # Our fixture has 2 + 2 electrode atoms.
-    assert "TS.NumUsedAtomsLeft    2" in script
-    assert "TS.NumUsedAtomsRight   2" in script
+    # Our fixture has 2 + 2 electrode atoms; the modern emitter
+    # writes ``used-atoms         2`` inside %block TS.Elec.L
+    # AND %block TS.Elec.R (so exactly TWO occurrences).
+    assert script.count("used-atoms         2") == 2
 
 
 def test_render_script_emits_only_first_bias_voltage(labeled_device):
