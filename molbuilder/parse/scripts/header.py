@@ -1,20 +1,60 @@
 """HEADER block TextParser.
 
-Phase F of parse-module.md migration: thin wrapper over the
-legacy ``script_contract.extract_header_text``.  HEADER is
-human-readable prose between the BEGIN/END markers — no
-structure, just verbatim text.
+H1 of parse-module.md migration (was Phase F wrapper around
+``script_contract.extract_header_text``): absorbed the extractor
+body directly so this module no longer imports from
+``molbuilder.script_contract``.
+
+HEADER is human-readable prose between the BEGIN/END markers — no
+structure, just verbatim text with the leading ``# `` comment
+prefix stripped from each line.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import List, Optional
 
 from molbuilder.parse.base import TextParser
 from molbuilder.parse.types import ScriptResult
-from molbuilder.script_contract import extract_header_text as _legacy_extract
 
 from ._helpers import empty_script_result
+from .markers import BLOCK_HEADER, MARKER_RE
+
+
+def _extract_header_text(text: str) -> Optional[str]:
+    """Find the HEADER block and return its inner content as a single
+    string (free-form prose, comment prefixes stripped).
+
+    Returns ``None`` when no HEADER block is present.  The leading
+    ``# `` (or ``#``) on each line is removed so the result is the
+    raw prose the generator wrote; line ordering is preserved.
+    """
+    lines = text.splitlines()
+    begin_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        m = MARKER_RE.match(line)
+        if not m or m.group(1) != BLOCK_HEADER:
+            continue
+        if m.group(2) == "BEGIN":
+            begin_idx = i
+            end_idx = None
+        elif m.group(2) == "END" and begin_idx is not None:
+            end_idx = i
+            break
+    if begin_idx is None or end_idx is None:
+        return None
+    out_lines: List[str] = []
+    for raw in lines[begin_idx + 1: end_idx]:
+        # Strip the comment prefix the generator emits ("# " or "#").
+        if raw.startswith("# "):
+            out_lines.append(raw[2:])
+        elif raw.startswith("#"):
+            out_lines.append(raw[1:])
+        else:
+            out_lines.append(raw)
+    return "\n".join(out_lines)
 
 
 class HeaderTextParser(TextParser):
@@ -29,4 +69,4 @@ class HeaderTextParser(TextParser):
     @classmethod
     def parse(cls, text: str) -> ScriptResult:
         base = empty_script_result(cls.name)
-        return replace(base, header=_legacy_extract(text))
+        return replace(base, header=_extract_header_text(text))

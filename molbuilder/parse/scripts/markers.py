@@ -1,30 +1,44 @@
-"""Re-export of the shared block markers + regex from the legacy
-``molbuilder.script_contract`` module.
+"""Shared block markers + regex for the script-contract reserved
+blocks.
+
+H1 of parse-module.md migration: absorbed from
+``molbuilder.script_contract``.  The legacy module re-exports these
+same constants/regex from its own copy; the absorbed copy here is
+private to ``parse/scripts/`` and lets the per-block extractors
+operate without importing from ``molbuilder.script_contract``.
 
 The script-contract reserved blocks (HEADER / PROVENANCE /
-BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) are bracketed by
-literal marker lines:
+BENCH-MARKS / ATOM-METADATA / USER-CUSTOM) are bracketed by literal
+marker lines::
 
     # === molbuilder <block-name> BEGIN ===
     ... content ...
     # === molbuilder <block-name> END ===
 
-The marker regex and per-block name constants live in
-``molbuilder.script_contract`` as the canonical source; Phase F
-re-exports them so the new ``parse/scripts/*`` modules don't
-have to depend on the legacy module path more than necessary.
-Phase H absorbs the constants directly + drops the legacy
-module.
+:data:`MARKER_RE` matches either marker for any block.  Group 1:
+block name (one of the :data:`BLOCK_*` constants); group 2: ``BEGIN``
+or ``END``.
 """
 
-from molbuilder.script_contract import (
-    BLOCK_ATOM_METADATA,
-    BLOCK_BENCH_MARKS,
-    BLOCK_HEADER,
-    BLOCK_PROVENANCE,
-    BLOCK_USER_CUSTOM,
-    MARKER_RE,
+from __future__ import annotations
+
+import re
+
+# Block names used in the markers.  Centralised so a typo doesn't
+# silently produce a file the parser refuses.
+BLOCK_HEADER        = "header"
+BLOCK_PROVENANCE    = "provenance"
+BLOCK_BENCH_MARKS   = "bench-marks"
+BLOCK_ATOM_METADATA = "atom-metadata"
+BLOCK_USER_CUSTOM   = "user-custom"
+
+
+# Regex matching either marker for any block.  Group 1: block name;
+# group 2: BEGIN | END.
+MARKER_RE = re.compile(
+    r"^#\s*===\s+molbuilder\s+([a-z-]+)\s+(BEGIN|END)\s+===\s*$"
 )
+
 
 __all__ = [
     "BLOCK_ATOM_METADATA",
