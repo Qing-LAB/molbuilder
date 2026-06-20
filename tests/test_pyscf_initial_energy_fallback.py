@@ -186,3 +186,103 @@ class TestInitialEnergyFallback:
         )
         traj = PySCFParser.parse(str(xyz))
         assert traj.frames[0].energy is None
+
+
+# --- Sibling .molwatch.log header/footer enrichment ------------------- #
+
+
+class TestMolwatchSiblingEnrichment:
+    """Regression for the 2026-06-20 PDT incident: when the user opens
+    the geomeTRIC ``_geom_optim.xyz`` trajectory directly, the PySCF
+    parser previously returned a Trajectory with run_state="unknown"
+    and no convergence_targets — the Results-tab badge showed
+    "Ongoing" + the convergence-targets banner said "not found in
+    source" even though the sibling ``.molwatch.log`` carried both.
+
+    These tests pin:
+      1. When sibling .molwatch.log is present, convergence_targets
+         lift onto runtime_info verbatim (incl. the source stamp).
+      2. ``# concluded: <iso>`` footer → run_state = "finished".
+      3. ``# error: <msg>`` footer → run_state = "error" +
+         error_message populated; error wins over concluded.
+      4. No sibling log = clean no-op (run_state="unknown", no
+         convergence_targets key).
+    """
+
+    @staticmethod
+    def _mw_log(*, concluded: bool = False, error: str = None) -> str:
+        body = (
+            "# molwatch trajectory log v1\n"
+            "# generator: molbuilder/pyscf_input\n"
+            "# engine: pyscf\n"
+            "# created: 2026-06-20T13:22:56\n"
+            "# convergence.max_force_tol_eV_per_A: 0.023139\n"
+            "# convergence.scf_energy_tol: 1e-09\n"
+            "# convergence.max_scf_iter: 100\n"
+            "# convergence.max_geom_iter: 200\n"
+            "\n"
+            "==== molwatch step 0 begin ====\n"
+            "step_index: 0\n"
+            "n_atoms: 2\n"
+            "coordinates (Ang):\n"
+            "   H  0.0  0.0  0.0\n"
+            "energy (eV): -0.5\n"
+            "forces (eV/Ang):\n"
+            "max_force (eV/Ang): 0.0\n"
+            "scf_history begin\n"
+            "scf_history end\n"
+            "==== molwatch step 0 end ====\n"
+        )
+        if error is not None:
+            body += f"\n# error: {error}\n"
+        if concluded:
+            body += "\n# concluded: 2026-06-20T13:23:42\n"
+        return body
+
+    def test_sibling_molwatch_log_surfaces_convergence_targets(self, tmp_path):
+        xyz = tmp_path / "h2_geom_optim.xyz"
+        xyz.write_text(_H2_INITIAL_XYZ)
+        (tmp_path / "h2.molwatch.log").write_text(
+            self._mw_log(concluded=True))
+        traj = PySCFParser.parse(str(xyz))
+        ct = traj.runtime_info.get("convergence_targets")
+        assert ct is not None, (
+            "PySCF parser must lift convergence targets from sibling "
+            ".molwatch.log (2026-06-20 PDT incident)"
+        )
+        assert ct["source"] == "molwatch_header"
+        assert ct["max_force_tol_eV_per_A"] == pytest.approx(0.023139)
+        assert ct["scf_energy_tol"] == pytest.approx(1e-09)
+        assert ct["max_scf_iter"] == 100
+        assert ct["max_geom_iter"] == 200
+
+    def test_sibling_molwatch_concluded_sets_finished_run_state(
+            self, tmp_path):
+        xyz = tmp_path / "h2_geom_optim.xyz"
+        xyz.write_text(_H2_INITIAL_XYZ)
+        (tmp_path / "h2.molwatch.log").write_text(
+            self._mw_log(concluded=True))
+        traj = PySCFParser.parse(str(xyz))
+        assert traj.run_state == "finished"
+        assert traj.error_message is None
+
+    def test_sibling_molwatch_error_sets_error_run_state(self, tmp_path):
+        xyz = tmp_path / "h2_geom_optim.xyz"
+        xyz.write_text(_H2_INITIAL_XYZ)
+        (tmp_path / "h2.molwatch.log").write_text(
+            self._mw_log(error="diverged at SCF cycle 47", concluded=True))
+        traj = PySCFParser.parse(str(xyz))
+        # Error has priority over concluded (per molwatch parser
+        # contract; the excepthook fires before atexit so both lines
+        # appear and error wins).
+        assert traj.run_state == "error"
+        assert traj.error_message == "diverged at SCF cycle 47"
+
+    def test_no_sibling_molwatch_log_is_clean_noop(self, tmp_path):
+        xyz = tmp_path / "h2_geom_optim.xyz"
+        xyz.write_text(_H2_INITIAL_XYZ)
+        # No sibling .molwatch.log written.
+        traj = PySCFParser.parse(str(xyz))
+        assert traj.run_state == "unknown"
+        assert traj.error_message is None
+        assert "convergence_targets" not in traj.runtime_info

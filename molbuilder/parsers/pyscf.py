@@ -293,12 +293,124 @@ class PySCFParser(TrajectoryParser):
         if frozen:
             runtime_info["frozen_atoms"] = frozen
 
+        # Sibling-log enrichment.  When the molbuilder-generated
+        # ``<stem>.molwatch.log`` is present next to the trajectory,
+        # pull convergence_targets + run_state + error_message from
+        # its header/footer.  Mirrors the post-2026-06-20 PDT-incident
+        # fix in parse/engines/pyscf.py; both copies must stay in
+        # lock-step (Y-discipline during H1-H4).
+        mw_meta = cls._read_molwatch_metadata(path)
+        if "convergence_targets" in mw_meta:
+            runtime_info["convergence_targets"] = mw_meta["convergence_targets"]
+        run_state = mw_meta.get("run_state", "unknown")
+        error_message = mw_meta.get("error_message")
+
         return Trajectory(
             source_format = cls.name,
             frames        = frames,
             lattice       = None,           # geomeTRIC traj has no cell
+            run_state     = run_state,
+            error_message = error_message,
             runtime_info  = runtime_info,
         )
+
+    # ------------------------------------------------------------- #
+    #  Sibling .molwatch.log header/footer scan                     #
+    # ------------------------------------------------------------- #
+    #
+    # Post-2026-06-20 PDT-incident: when the user opens the
+    # ``_geom_optim.xyz`` trajectory directly (instead of the
+    # ``.molwatch.log``), the legacy PySCF parser returned a
+    # Trajectory with no convergence_targets (Results-tab plots had
+    # no threshold lines) and no run_state ("Ongoing" badge even
+    # when the script had concluded).  This helper closes the gap
+    # by pulling the same metadata fields the molwatch parser
+    # surfaces, from the sibling .molwatch.log when present.
+    #
+    # Mirrors parse/engines/pyscf.py:_read_molwatch_metadata.
+    @classmethod
+    def _read_molwatch_metadata(cls, traj_path: str) -> Dict[str, Any]:
+        """Return dict that may contain ``convergence_targets``,
+        ``run_state``, ``error_message`` from the sibling
+        ``<stem>.molwatch.log``.  Empty dict when no sibling log."""
+        base, fname = os.path.split(traj_path)
+        if not base:
+            base = "."
+        stem = fname
+        for suffix in ("_geom_optim.xyz", "_initial.xyz",
+                       "_optimized.xyz", ".xyz"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        log_path = os.path.join(base, stem + ".molwatch.log")
+        if not os.path.isfile(log_path):
+            return {}
+
+        out: Dict[str, Any] = {}
+        convergence: Dict[str, Any] = {}
+        step_begin_re = re.compile(
+            r"====\s*molwatch\s+step\s+\d+\s+begin\s*====")
+        conv_re = re.compile(
+            r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+        concluded_re = re.compile(
+            r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
+        error_re = re.compile(
+            r"^#\s*error:\s*(.+)$", re.IGNORECASE)
+
+        def _coerce(val: str):
+            if val == "None" or val == "null":
+                return None
+            if val in ("True", "False"):
+                return val == "True"
+            try:
+                return int(val)
+            except ValueError:
+                pass
+            try:
+                return float(val)
+            except ValueError:
+                pass
+            return val
+
+        # Header: read up to first step-begin marker.
+        try:
+            with open(log_path, "r", errors="replace") as fh:
+                for line in fh:
+                    if step_begin_re.search(line):
+                        break
+                    m = conv_re.match(line.rstrip("\n"))
+                    if m:
+                        convergence[m.group(1)] = _coerce(m.group(2).strip())
+        except OSError:
+            return {}
+        if convergence:
+            convergence["source"] = "molwatch_header"
+            out["convergence_targets"] = convergence
+
+        # Footer: tail last ~32 KB for # concluded: / # error:.
+        try:
+            with open(log_path, "rb") as fh:
+                try:
+                    fh.seek(0, os.SEEK_END)
+                    size = fh.tell()
+                    tail_size = min(32 * 1024, size)
+                    fh.seek(size - tail_size)
+                    tail_bytes = fh.read()
+                except OSError:
+                    return out
+            tail = tail_bytes.decode("utf-8", errors="replace")
+        except OSError:
+            return out
+        for raw in tail.splitlines():
+            m_err = error_re.match(raw)
+            if m_err:
+                out["run_state"] = "error"
+                out["error_message"] = m_err.group(1).strip()
+                continue
+            m_con = concluded_re.match(raw)
+            if m_con and out.get("run_state") != "error":
+                out["run_state"] = "finished"
+        return out
 
     # ------------------------------------------------------------- #
     #  Early-window fallback: scan sibling .pyscf.log for initial   #

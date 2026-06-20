@@ -114,6 +114,141 @@ def _can_parse_xyz(path: str) -> bool:
         return False
 
 
+def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
+    """Return the path of the sibling ``<stem>.molwatch.log`` for
+    ``traj_path``, or None when no candidate exists.
+
+    For a trajectory at ``<base>_geom_optim.xyz`` (or any of the
+    other recognised .xyz variants) we look for ``<base>.molwatch.log``
+    in the same directory.  Used by :func:`_read_molwatch_metadata`
+    to surface convergence_targets + run_state + error_message onto
+    PySCF-parser Trajectories — which the molwatch parser already
+    extracts but is otherwise lost when the user is viewing the
+    trajectory file instead of the .molwatch.log.
+    """
+    base, fname = os.path.split(traj_path)
+    if not base:
+        base = "."
+    stem = fname
+    for suffix in ("_geom_optim.xyz", "_initial.xyz",
+                   "_optimized.xyz", ".xyz"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    candidate = os.path.join(base, stem + ".molwatch.log")
+    if os.path.isfile(candidate):
+        return candidate
+    return None
+
+
+# Marker regexes scoped to the header / footer scan.  Header lines
+# all start with ``#`` and appear before the first ``==== molwatch
+# step N begin ====`` block; footer markers (``# concluded:`` /
+# ``# error:``) appear after the last ``==== ... end ====`` block.
+_MW_HEADER_LINE_RE = re.compile(r"^#")
+_MW_STEP_BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+\d+\s+begin\s*====")
+_MW_CONVERGENCE_RE = re.compile(
+    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+_MW_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
+_MW_ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
+
+
+def _coerce_convergence_value(val: str):
+    """Same coercion the molwatch parser uses: None / bool / int /
+    float / str.  Kept private here to avoid coupling pyscf parser
+    to molwatch parser internals."""
+    if val == "None" or val == "null":
+        return None
+    if val in ("True", "False"):
+        return val == "True"
+    try:
+        return int(val)
+    except ValueError:
+        pass
+    try:
+        return float(val)
+    except ValueError:
+        pass
+    return val
+
+
+def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
+    """Read the sibling ``.molwatch.log``'s header (for
+    ``convergence_targets``) and footer markers (``# concluded:`` /
+    ``# error:`` for run_state) without parsing the per-step blocks.
+
+    Returns a dict that may contain:
+      * ``"convergence_targets"`` — dict with the molwatch-emitter
+        keys (max_force_tol_eV_per_A, scf_energy_tol, etc.) plus a
+        ``"source": "molwatch_header"`` stamp matching what the
+        molwatch parser surfaces.
+      * ``"run_state"``     — "finished" | "error" when the
+        corresponding marker is present.
+      * ``"error_message"`` — when ``# error:`` is present.
+
+    Returns empty dict when there is no sibling .molwatch.log.
+    Header read is bounded to the lines before the first step
+    begin; footer scan is bounded to the lines after the last step
+    end.  Cost is O(header + footer lines), NOT O(file size).
+
+    Mirrors the molwatch parser semantics so the PySCF parser can
+    surface the same fields when the user is viewing the geomeTRIC
+    trajectory (which has no header) instead of the molwatch.log.
+    """
+    log_path = _sibling_molwatch_log(traj_path)
+    if log_path is None:
+        return {}
+    out: Dict[str, object] = {}
+    convergence: Dict[str, object] = {}
+
+    # Header scan: read until the first ``==== molwatch step N
+    # begin ====`` line (exclusive).  Header is normally <50 lines.
+    try:
+        with open(log_path, "r", errors="replace") as fh:
+            for line in fh:
+                if _MW_STEP_BEGIN_RE.search(line):
+                    break
+                m = _MW_CONVERGENCE_RE.match(line.rstrip("\n"))
+                if m:
+                    key, raw_val = m.group(1), m.group(2).strip()
+                    convergence[key] = _coerce_convergence_value(raw_val)
+    except OSError:
+        return {}
+    if convergence:
+        convergence["source"] = "molwatch_header"
+        out["convergence_targets"] = convergence
+
+    # Footer scan: tail the last ~32 KB and look for # concluded: or
+    # # error: markers.  The emitter writes them at the very end so
+    # tail is bounded; even pathological cases (large user-custom
+    # block at the bottom) stay within the tail window.
+    try:
+        with open(log_path, "rb") as fh:
+            try:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                tail_size = min(32 * 1024, size)
+                fh.seek(size - tail_size)
+                tail_bytes = fh.read()
+            except OSError:
+                return out
+        tail = tail_bytes.decode("utf-8", errors="replace")
+    except OSError:
+        return out
+    for raw in tail.splitlines():
+        m_err = _MW_ERROR_RE.match(raw)
+        if m_err:
+            out["run_state"] = "error"
+            out["error_message"] = m_err.group(1).strip()
+            # Error takes priority — keep scanning so a later concluded
+            # doesn't downgrade us, but error_message wins.
+            continue
+        m_con = _MW_CONCLUDED_RE.match(raw)
+        if m_con and out.get("run_state") != "error":
+            out["run_state"] = "finished"
+    return out
+
+
 def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
     """Return the geomeTRIC ``Step 0`` energy (eV) from the sibling
     ``.pyscf.log`` / ``-run<N>.pyscf.log`` file, or None when no log
@@ -416,10 +551,28 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     if frozen:
         runtime_info["frozen_atoms"] = frozen
 
+    # Sibling-log enrichment.  The user may load the geomeTRIC
+    # ``_geom_optim.xyz`` directly; that file carries no convergence
+    # targets and no run-state markers.  When the molbuilder-generated
+    # ``<stem>.molwatch.log`` is present next to it, pull
+    # convergence_targets (for the threshold lines on the Results-tab
+    # force/energy plots) and run_state (so the badge says "Finished"
+    # / "Error" instead of "Ongoing").  Symmetric with how the
+    # molwatch parser surfaces these when the user loads the .log
+    # directly — same data, same field names, just sourced via the
+    # sibling file.
+    mw_meta = _read_molwatch_metadata(path)
+    if "convergence_targets" in mw_meta:
+        runtime_info["convergence_targets"] = mw_meta["convergence_targets"]
+    run_state = mw_meta.get("run_state", "unknown")
+    error_message = mw_meta.get("error_message")
+
     return Trajectory(
         source_format = "pyscf",
         frames        = frames,
         lattice       = None,           # geomeTRIC traj has no cell
+        run_state     = run_state,
+        error_message = error_message,
         runtime_info  = runtime_info,
     )
 
