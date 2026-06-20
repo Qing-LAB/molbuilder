@@ -332,15 +332,16 @@ molbuilder/parse/
 │   ├── spectra.py       # was parsers/spectra_json.py
 │   └── transport.py     # was parsers/transport_json.py
 │
-├── scripts/             # PENDING (Phase F) — TextParsers for the 6 fdf reserved blocks
-│   ├── __init__.py
-│   ├── markers.py       # MARKER_RE + block names (shared)
-│   ├── header.py        # was script_contract.py extract_header_text
-│   ├── provenance.py    # was script_contract.py extract_provenance_dict
-│   ├── bench_marks.py   # was script_contract.py extract_bench_marks_dict
-│   ├── atom_metadata.py # was script_contract.py extract_atom_metadata_dict
-│   ├── user_custom.py   # was script_contract.py extract_user_custom_inner
-│   └── source.py        # umbrella -> ScriptResult (was extract_script_source)
+├── scripts/             # ✓ shipped (Phase F) — TextParsers for the 5 fdf reserved blocks
+│   ├── __init__.py      # public surface (re-exports per-block + umbrella classes)
+│   ├── _helpers.py      # empty_script_result() envelope helper
+│   ├── markers.py       # MARKER_RE + block-name constants (re-exported from legacy)
+│   ├── header.py        # HeaderTextParser
+│   ├── provenance.py    # ProvenanceTextParser
+│   ├── bench_marks.py   # BenchMarksTextParser
+│   ├── atom_metadata.py # AtomMetadataTextParser (also surfaces schema_version)
+│   ├── user_custom.py   # UserCustomTextParser
+│   └── source.py        # ScriptSourceTextParser (umbrella, composes all 5)
 │
 └── dirs/                # PARTIAL — JobDirParser shipped (Phase B); BundleDirParser pending (Phase G)
     ├── __init__.py
@@ -434,7 +435,7 @@ ships in this order:
 | **C** | Wrap `parsers/{siesta,pyscf,molwatch_log}.py` as `FileParser`s in `parse/engines/*` | ✓ shipped |
 | **D** | Wrap `parsers/{molstruct,spectra,transport}_json.py` as `FileParser`s in `parse/sidecars/*` | ✓ shipped |
 | **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` (StructureResult with cell — closes the Phase 1 lattice-extraction gap) | ✓ shipped |
-| **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella) | pending |
+| **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella as TextParsers) | ✓ shipped |
 | **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` | pending |
 | **H** | **Phase H prerequisite — absorb legacy logic into the new wrappers** so `parse/engines/*`, `parse/sidecars/*`, and `parse/dirs/*` no longer import from `molbuilder.parsers` / `molbuilder.script_contract`.  THEN delete the legacy `molbuilder/parsers/` package + `molbuilder/script_contract.py` + `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | pending |
 
