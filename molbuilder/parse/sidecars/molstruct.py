@@ -21,22 +21,21 @@ from typing import Any, Dict, List, Optional, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
+# Canonical home for both ``SCHEMA_VERSION`` (the on-disk version
+# constant) and ``MolstructJsonError`` is the write-side module so
+# read and write surfaces stay in lock-step.
+from molbuilder.sidecars.molstruct import (
+    SCHEMA_VERSION,
+    MolstructJsonError,
+)
 
 from ._helpers import build_sidecar_result
 
-
-SCHEMA_VERSION = 3
 
 # Only the current schema version loads.  v1/v2 sidecars (which used
 # the older ``fixed_atoms`` key name) must be re-exported from /modify
 # to produce a v3 file.
 _READABLE_SCHEMA_VERSIONS = (3,)
-
-
-class MolstructJsonError(ValueError):
-    """Sidecar JSON is malformed, refers to a different structure, or
-    fails an invariant check.  Distinct exception type so callers can
-    differentiate "user-error sidecar" from "I/O failure"."""
 
 
 def _normalised_dict(

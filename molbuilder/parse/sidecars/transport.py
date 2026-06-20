@@ -25,48 +25,17 @@ from typing import Any, Dict, Union
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
 from molbuilder.transport.results import SCHEMA_VERSION, TransportResults
+# Canonical home for the exception classes is the write-side
+# module so read and write surfaces stay in lock-step.
+from molbuilder.sidecars.transport import (
+    TransportJsonError,
+    TransportJsonNotFoundError,
+    TransportJsonMalformedError,
+    TransportJsonSchemaError,
+    TransportJsonFieldError,
+)
 
 from ._helpers import build_sidecar_result
-
-
-# --------------------------------------------------------------------- #
-#  Exceptions                                                            #
-# --------------------------------------------------------------------- #
-
-
-class TransportJsonError(Exception):
-    """Base class for transport-JSON parser failures."""
-
-
-class TransportJsonNotFoundError(TransportJsonError, FileNotFoundError):
-    """The file does not exist (yet).  Dual base lets existing
-    ``except FileNotFoundError`` blocks keep working."""
-
-
-class TransportJsonMalformedError(TransportJsonError):
-    """The file exists but isn't valid JSON, isn't a JSON object at
-    the top level, contains a non-standard token (``NaN`` /
-    ``Infinity``), or can't be decoded as UTF-8."""
-
-
-class TransportJsonSchemaError(TransportJsonError):
-    """``schema_version`` is missing, the wrong type, or doesn't
-    match :data:`SCHEMA_VERSION`."""
-
-    def __init__(self, expected: str, actual: Any):
-        super().__init__(
-            f"transport.json schema_version mismatch: expected "
-            f"{expected}, got {actual!r}.  Either the file was "
-            f"written by a different molbuilder version, or it "
-            f"isn't a Transport-tab result file."
-        )
-        self.expected = expected
-        self.actual   = actual
-
-
-class TransportJsonFieldError(TransportJsonError):
-    """A required field was missing / had the wrong type at the
-    :meth:`TransportResults.from_dict` reconstitution step."""
 
 
 # --------------------------------------------------------------------- #

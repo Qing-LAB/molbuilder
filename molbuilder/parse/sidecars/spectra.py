@@ -27,50 +27,17 @@ from typing import Any, Dict, Union
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
 from molbuilder.spectra.results import SCHEMA_VERSION, SpectraResults
+# Canonical home for the exception classes is the write-side
+# module so read and write surfaces stay in lock-step.
+from molbuilder.sidecars.spectra import (
+    SpectraJsonError,
+    SpectraJsonNotFoundError,
+    SpectraJsonMalformedError,
+    SpectraJsonSchemaError,
+    SpectraJsonFieldError,
+)
 
 from ._helpers import build_sidecar_result
-
-
-# --------------------------------------------------------------------- #
-#  Exceptions                                                            #
-# --------------------------------------------------------------------- #
-
-
-class SpectraJsonError(Exception):
-    """Base class for spectra-JSON parser failures.  Catch this when
-    the caller wants "any parse problem"; catch the specific subclasses
-    below when the failure mode matters."""
-
-
-class SpectraJsonNotFoundError(SpectraJsonError, FileNotFoundError):
-    """The file does not exist (yet).  Dual base lets existing
-    ``except FileNotFoundError`` blocks keep working."""
-
-
-class SpectraJsonMalformedError(SpectraJsonError):
-    """The file exists but isn't valid JSON, isn't a JSON object at
-    the top level, contains a non-standard token (``NaN`` /
-    ``Infinity``), or can't be decoded as UTF-8."""
-
-
-class SpectraJsonSchemaError(SpectraJsonError):
-    """``schema_version`` is missing, the wrong type, or doesn't
-    match :data:`SCHEMA_VERSION`."""
-
-    def __init__(self, expected: int, actual: Any):
-        super().__init__(
-            f"spectra.json schema_version mismatch: expected "
-            f"{expected}, got {actual!r}.  Either the file was "
-            f"written by a different molbuilder version, or it "
-            f"isn't a Spectra-tab result file."
-        )
-        self.expected = expected
-        self.actual   = actual
-
-
-class SpectraJsonFieldError(SpectraJsonError):
-    """A required field was missing / had the wrong type at the
-    :meth:`SpectraResults.from_dict` reconstitution step."""
 
 
 # --------------------------------------------------------------------- #
