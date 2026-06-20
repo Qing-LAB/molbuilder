@@ -317,12 +317,13 @@ molbuilder/parse/
 │   ├── pyscf.py         # was parsers/pyscf.py
 │   └── molwatch.py      # was parsers/molwatch_log.py
 │
-├── coords/              # PENDING (Phase E) — geometry-file FileParsers
-│   ├── __init__.py
-│   ├── siesta_xv.py     # was parsers/siesta_struct.py::read_xv
-│   ├── siesta_fdf.py    # was read_fdf_initial_coords (TextParser-wrapped)
-│   ├── pyscf_geom.py    # was parsers/pyscf_struct.py
-│   └── xyz.py           # plain .xyz reader
+├── coords/              # ✓ shipped (Phase E) — geometry-file FileParsers
+│   ├── __init__.py      # imports + registers each
+│   ├── _helpers.py      # build_structure_result() envelope helper
+│   ├── siesta_xv.py     # ✓ was parsers/siesta_struct.py::read_xv + cell
+│   ├── pyscf_geom.py    # ✓ was parsers/pyscf_struct.py::read_optimized_xyz
+│   ├── siesta_fdf.py    # PENDING — was read_fdf_initial_coords
+│   └── xyz.py           # PENDING — plain .xyz reader
 │
 ├── sidecars/            # ✓ shipped (Phase D) — molbuilder JSON sidecar FileParsers
 │   ├── __init__.py
@@ -432,7 +433,7 @@ ships in this order:
 | **B** | Move `jobs/decoder.py` → `parse/dirs/job.py` as the first concrete `DirParser` example | ✓ shipped |
 | **C** | Wrap `parsers/{siesta,pyscf,molwatch_log}.py` as `FileParser`s in `parse/engines/*` | ✓ shipped |
 | **D** | Wrap `parsers/{molstruct,spectra,transport}_json.py` as `FileParser`s in `parse/sidecars/*` | ✓ shipped |
-| **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` | pending |
+| **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` (StructureResult with cell — closes the Phase 1 lattice-extraction gap) | ✓ shipped |
 | **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella) | pending |
 | **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` | pending |
 | **H** | **Phase H prerequisite — absorb legacy logic into the new wrappers** so `parse/engines/*`, `parse/sidecars/*`, and `parse/dirs/*` no longer import from `molbuilder.parsers` / `molbuilder.script_contract`.  THEN delete the legacy `molbuilder/parsers/` package + `molbuilder/script_contract.py` + `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | pending |

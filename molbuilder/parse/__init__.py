@@ -31,6 +31,7 @@ from .types import (
 
 # Import sub-packages so their register() side-effects run.
 from . import engines as _engines   # noqa: F401  -- side-effect import
+from . import coords as _coords   # noqa: F401  -- side-effect import
 from . import sidecars as _sidecars   # noqa: F401  -- side-effect import
 from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
