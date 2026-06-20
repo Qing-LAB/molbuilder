@@ -1832,7 +1832,7 @@ def render_run_wrapper(script_path: Path, *,
     # only) and must not surface as a per-call value -- the
     # test_render_pyscf_ignores_mpi_np invariant (same wrapper text
     # regardless of mpi_np input) is the contract here.
-    from . import script_contract as _sc
+    from . import script_emit as _sc
     _is_pyscf = suffix == ".py"
     _resolved_defaults = {
         "target_env":    target_env,

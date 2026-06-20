@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .. import script_contract as _sc
+from .. import script_emit as _sc
 
 
 # --------------------------------------------------------------------- #

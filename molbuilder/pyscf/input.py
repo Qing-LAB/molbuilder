@@ -767,7 +767,7 @@ def render_script(struct: Structure,
     # contract allows it; we just don't have a static field list
     # yet).  ATOM-METADATA emitted only when regions/frozen_atoms
     # are non-empty.  USER-CUSTOM placeholder for round-trip in 2b.
-    from .. import script_contract as _sc
+    from .. import script_emit as _sc
     _provenance = _sc.emit_provenance(
         generator_version=_sc.molbuilder_git_sha(),
         generated_at=_sc.generated_at_now(),

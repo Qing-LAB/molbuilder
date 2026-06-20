@@ -1215,7 +1215,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     #     emission rule, absence is the honest signal.
     #   - USER-CUSTOM placeholder: empty in 2a; Step 2b adds the
     #     round-trip preservation of user edits.
-    from .. import script_contract as _sc
+    from .. import script_emit as _sc
     _provenance = _sc.emit_provenance(
         generator_version=_sc.molbuilder_git_sha(),
         generated_at=_sc.generated_at_now(),
