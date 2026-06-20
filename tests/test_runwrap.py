@@ -824,3 +824,82 @@ def test_siesta_wrapper_banner_still_mentions_out(tmp_path):
     text = wrapper_path.read_text()
     assert "first run -> -run0.out" in text
     assert "first run -> -run0.pyscf.log" not in text
+
+
+# --- bash -n syntax-check gates ---------------------------------------- #
+
+
+def test_pyscf_wrapper_passes_bash_n(tmp_path):
+    """Regression for the 2026-06-20 PDT incident: the PySCF wrapper's
+    warm-label-extraction line emitted a broken ``awk -F'["\\'"]'``
+    which left bash with an unterminated DQ.  The user only found out
+    when they tried to run the generated script.
+
+    There was an analogous ``bash -n`` test for the SIESTA branch
+    (``test_siesta_enable_gpu.py:test_gpu_wrapper_keeps_siesta_
+    template_intact``) but NONE for the PySCF branch — the gap that
+    let the bug ship.  This test closes that gap.
+
+    Belt-and-braces: :func:`write_run_wrapper` also self-checks the
+    rendered text via ``bash -n`` internally now (raises
+    :exc:`WrapperError` on failure), so if the generator regresses
+    this assertion will fire BEFORE the file is written to disk —
+    but the post-write check here is still useful as a contract
+    pin on the public surface.
+    """
+    _bind()
+    import subprocess
+    script = tmp_path / "pyscf_relax.py"
+    # Use a non-trivial JOB literal with both double quotes (canonical)
+    # so the awk -F regex actually has to handle them.
+    script.write_text('JOB = "pdt-mol"\nimport pyscf\n')
+    wrapper_path = write_run_wrapper(script)
+    cp = subprocess.run(
+        ["bash", "-n", str(wrapper_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert cp.returncode == 0, (
+        f"PySCF wrapper failed bash -n syntax check.  This is the "
+        f"2026-06-20 PDT-incident class of bug — a generator template "
+        f"emitting invalid shell.  bash stderr:\n{cp.stderr}"
+    )
+
+
+def test_pyscf_wrapper_passes_bash_n_single_quoted_job(tmp_path):
+    """Same as above but the JOB literal uses single quotes
+    (``JOB = 'pdt-mol'``).  The awk -F character class must split on
+    BOTH ``"`` and ``'`` — pinning the SQ variant catches a half-fix
+    that only handled DQ."""
+    _bind()
+    import subprocess
+    script = tmp_path / "pyscf_relax.py"
+    script.write_text("JOB = 'pdt-mol'\nimport pyscf\n")
+    wrapper_path = write_run_wrapper(script)
+    cp = subprocess.run(
+        ["bash", "-n", str(wrapper_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert cp.returncode == 0, (
+        f"PySCF wrapper (SQ JOB) failed bash -n syntax check.  "
+        f"bash stderr:\n{cp.stderr}"
+    )
+
+
+def test_siesta_wrapper_passes_bash_n(tmp_path):
+    """Symmetric coverage for SIESTA — duplicates the assertion that
+    :mod:`tests.test_siesta_enable_gpu` makes but in the file readers
+    expect (``test_runwrap.py``).  Cheap insurance against a future
+    refactor that breaks SIESTA template rendering."""
+    _bind()
+    import subprocess
+    script = tmp_path / "myjob.fdf"
+    script.write_text("SystemLabel myjob\nNumberOfAtoms 0\n")
+    wrapper_path = write_run_wrapper(script)
+    cp = subprocess.run(
+        ["bash", "-n", str(wrapper_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert cp.returncode == 0, (
+        f"SIESTA wrapper failed bash -n syntax check.  bash stderr:\n"
+        f"{cp.stderr}"
+    )

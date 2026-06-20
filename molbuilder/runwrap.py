@@ -24,6 +24,7 @@ overrides.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -321,8 +322,15 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         # PySCF: extract the JOB assignment from the script.
         # Anchored to a literal ``JOB =`` (whitespace tolerant) on
         # a single line.  Same set-u guard as SIESTA.
+        # The -F char class needs to match both ``"`` and ``'``.
+        # We use awk's octal ``\047`` for ``'`` so the bash-side SQ
+        # delimiter never has to be escape-broken.  The malformed
+        # ``-F'["\\'"]'`` pattern that shipped pre-2026-06-20 left
+        # bash with an unterminated DQ; gated now by `bash -n` self-
+        # check in :func:`_validate_rendered_wrapper` + an L2 test on
+        # the PySCF render path (test_runwrap_pyscf_bash_n).
         label_extract = (
-            f'_warm_label=$(awk -F\'["\\\'"]\' \''
+            f'_warm_label=$(awk -F\'["\\047]\' \''
             f'/^[[:space:]]*JOB[[:space:]]*=/ '
             f'{{print $2; exit}}'
             f'\' "{basename}.py" 2>/dev/null || true)\n'
@@ -543,8 +551,9 @@ def _runtime_status_block(
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
         )
     else:                              # pyscf
+        # Same octal-\047 escape rationale as in label_extract above.
         label_extract_unconditional = (
-            f'_warm_label=$(awk -F\'["\\\'"]\' \''
+            f'_warm_label=$(awk -F\'["\\047]\' \''
             f'/^[[:space:]]*JOB[[:space:]]*=/ '
             f'{{print $2; exit}}'
             f'\' "{script_name}" 2>/dev/null || true)\n'
@@ -1924,6 +1933,15 @@ def write_run_wrapper(script_path: Path, *,
         max_memory_mb=max_memory_mb,
         n_atoms=n_atoms,
     )
+    # Defense-in-depth: every rendered wrapper goes through ``bash -n``
+    # (parse-only, no execution) before we hand it back.  Catches the
+    # whole class of "shipped malformed shell" bugs that the
+    # 2026-06-20 pentanedithiol incident exposed (an awk -F char-
+    # class with a broken SQ-escape produced an unterminated DQ; the
+    # user only found out when they tried to run the script).  Both
+    # the writer-side L2 tests and this in-line gate must agree:
+    # ``bash -n`` rejects → caller never sees a broken file on disk.
+    _validate_rendered_wrapper(text, script_path)
     # Use stem + ".run.sh" rather than ``.with_suffix(".run.sh")``: the
     # latter REPLACES only the last suffix, so ``job.spectra.py`` would
     # become ``job.run.sh`` and lose the "spectra" tag.  We want
@@ -1932,6 +1950,49 @@ def write_run_wrapper(script_path: Path, *,
     wrapper_path.write_text(text)
     wrapper_path.chmod(0o755)
     return wrapper_path
+
+
+def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
+    """Run ``bash -n`` (parse-only) on the rendered wrapper text.
+    Raises :exc:`WrapperError` if bash rejects it as malformed shell.
+
+    Writes the text to a tempfile (in the same dir so a quirky FS
+    can't surprise us) and runs ``bash -n`` against it.  No execution
+    happens; bash only checks shell-syntax validity.
+
+    Cheap: a few ms per render; the user's wait is dominated by the
+    upstream form-submit roundtrip anyway.  The alternative — only
+    finding out at run time — costs the user a full re-render cycle
+    (or worse, a confused "why doesn't my script run?" support
+    request like the 2026-06-20 PDT incident).
+    """
+    import subprocess
+    import tempfile
+    parent = script_path.parent
+    fd, tmp = tempfile.mkstemp(
+        prefix=".runwrap-syntax-check-",
+        suffix=".sh",
+        dir=str(parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        cp = subprocess.run(
+            ["bash", "-n", tmp],
+            capture_output=True, text=True, timeout=15,
+        )
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    if cp.returncode != 0:
+        raise WrapperError(
+            f"generator produced malformed shell for {script_path.name}; "
+            f"bash -n rejected the rendered wrapper.  This is a "
+            f"molbuilder bug -- the wrapper template emitted invalid "
+            f"syntax.  bash stderr:\n{cp.stderr}"
+        )
 
 
 __all__ = [
