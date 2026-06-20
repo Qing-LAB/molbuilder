@@ -1,28 +1,205 @@
 """``.spectra.json`` sidecar FileParser.
 
-Phase D of parse-module.md migration: thin wrapper over the
-legacy :mod:`molbuilder.parsers.spectra_json` module.
+H1 of parse-module.md migration (was Phase D wrapper around
+``molbuilder.parsers.spectra_json.parse_spectra_json``): absorbed
+the read-side ``parse_spectra_json`` + supporting validators +
+exception classes directly so this module no longer imports from
+``molbuilder.parsers``.  The legacy module stays in place until H4;
+consumers (web blueprints) still use it for the write-side helper
+``dump_spectra_json`` which H2 rehomes.
 
-Unlike the molstruct loader (which returns a raw dict), the
-legacy ``parse_spectra_json`` returns a typed
-:class:`molbuilder.spectra.results.SpectraResults` dataclass.
-The wrapper unwraps it back to a dict for the SidecarResult
-payload via :func:`dataclasses.asdict`, keeping the
-SidecarResult shape uniform across kinds.  Callers that need the
-typed object can ``from molbuilder.spectra.results import
-SpectraResults; SpectraResults(**result.payload)`` (or use the
-legacy import path directly — Phase H sorts the consumer side).
+The legacy ``parse_spectra_json`` returns a typed
+:class:`molbuilder.spectra.results.SpectraResults` dataclass.  The
+sidecar wrapper unwraps it back to a dict for the SidecarResult
+payload via ``results.to_dict()`` (NOT :func:`dataclasses.asdict`
+— that preserves ndarrays which then break ``json.dumps`` at
+webhook delivery + cache pickle).
 """
 
 from __future__ import annotations
 
+import json
+import math
+import os
 from pathlib import Path
+from typing import Any, Dict, Union
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
-from molbuilder.parsers.spectra_json import parse_spectra_json as _legacy_parse
+from molbuilder.spectra.results import SCHEMA_VERSION, SpectraResults
 
 from ._helpers import build_sidecar_result
+
+
+# --------------------------------------------------------------------- #
+#  Exceptions                                                            #
+# --------------------------------------------------------------------- #
+
+
+class SpectraJsonError(Exception):
+    """Base class for spectra-JSON parser failures.  Catch this when
+    the caller wants "any parse problem"; catch the specific subclasses
+    below when the failure mode matters."""
+
+
+class SpectraJsonNotFoundError(SpectraJsonError, FileNotFoundError):
+    """The file does not exist (yet).  Dual base lets existing
+    ``except FileNotFoundError`` blocks keep working."""
+
+
+class SpectraJsonMalformedError(SpectraJsonError):
+    """The file exists but isn't valid JSON, isn't a JSON object at
+    the top level, contains a non-standard token (``NaN`` /
+    ``Infinity``), or can't be decoded as UTF-8."""
+
+
+class SpectraJsonSchemaError(SpectraJsonError):
+    """``schema_version`` is missing, the wrong type, or doesn't
+    match :data:`SCHEMA_VERSION`."""
+
+    def __init__(self, expected: int, actual: Any):
+        super().__init__(
+            f"spectra.json schema_version mismatch: expected "
+            f"{expected}, got {actual!r}.  Either the file was "
+            f"written by a different molbuilder version, or it "
+            f"isn't a Spectra-tab result file."
+        )
+        self.expected = expected
+        self.actual   = actual
+
+
+class SpectraJsonFieldError(SpectraJsonError):
+    """A required field was missing / had the wrong type at the
+    :meth:`SpectraResults.from_dict` reconstitution step."""
+
+
+# --------------------------------------------------------------------- #
+#  Internals                                                             #
+# --------------------------------------------------------------------- #
+
+
+def _reject_nonfinite_constant(token: str):
+    """``json.loads(..., parse_constant=...)`` hook.  Fires for symbolic
+    ``NaN`` / ``Infinity`` / ``-Infinity`` -- non-standard tokens that
+    Python accepts on input but downstream consumers (browsers, jq,
+    RFC-8259 parsers) reject."""
+    raise SpectraJsonMalformedError(
+        f"non-finite numeric literal {token!r} is not valid JSON; "
+        f"the engine must filter or null out NaN/Inf before "
+        f"writing (likely an SCF that failed to converge produced "
+        f"a divergent energy)"
+    )
+
+
+def _strict_finite_float(s: str) -> float:
+    """``json.loads(..., parse_float=...)`` hook.  Rejects overflow-
+    to-infinity from valid-syntax literals (``1e500``) that
+    ``parse_constant`` does not see.  Underflow to 0.0 is accepted."""
+    v = float(s)
+    if not math.isfinite(v):
+        raise SpectraJsonMalformedError(
+            f"numeric literal {s!r} overflows to non-finite {v!r}; "
+            f"the wire format requires finite IEEE 754 doubles "
+            f"(a divergent SCF or unit-mismatched energy is the "
+            f"common cause)"
+        )
+    return v
+
+
+# Schema versions this parser can read.  Older versions are accepted on
+# read so previously-saved JSONs still load; remove from this set when
+# dropping support.  Per-version read-time handling lives in the typed-
+# class ``from_dict`` methods (see ``ModeData.from_dict`` for the
+# v1 -> v2 eigenvector remap).
+_READABLE_SCHEMA_VERSIONS = {4}
+
+
+def _validate_schema_version(actual: Any) -> None:
+    """Version check against :data:`_READABLE_SCHEMA_VERSIONS`.  Rejects
+    bool (``True == 1`` would otherwise sneak past), non-int types, and
+    unsupported version numbers."""
+    if not isinstance(actual, int) or isinstance(actual, bool):
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+    if actual not in _READABLE_SCHEMA_VERSIONS:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+
+
+def _validate_dict_to_results(d: Dict[str, Any],
+                              where: str) -> SpectraResults:
+    """Shared reconstitution + error-wrapping logic.  ``where`` is a
+    short label (path or ``"input dict"``) interpolated into the
+    FieldError message so callers can tell which input failed."""
+    try:
+        return SpectraResults.from_dict(d)
+    except KeyError as e:
+        raise SpectraJsonFieldError(
+            f"{where} is missing required field {e.args[0]!r}"
+        ) from e
+    except (TypeError, ValueError, AttributeError) as e:
+        raise SpectraJsonFieldError(
+            f"{where} has a malformed field: {e}"
+        ) from e
+
+
+# --------------------------------------------------------------------- #
+#  Read entry-point                                                      #
+# --------------------------------------------------------------------- #
+
+
+def _parse_spectra_json(
+        path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
+    """Read a ``<job>.spectra.json`` file and return a typed
+    :class:`SpectraResults`.  Raises :class:`SpectraJsonNotFoundError`
+    / :class:`SpectraJsonMalformedError` /
+    :class:`SpectraJsonSchemaError` / :class:`SpectraJsonFieldError`
+    on the corresponding failure modes."""
+    p = os.fspath(path)
+
+    if not os.path.exists(p):
+        raise SpectraJsonNotFoundError(
+            f"spectra.json not found at {p!r} (engine hasn't "
+            f"written its first phase checkpoint yet, or the path "
+            f"is wrong)"
+        )
+
+    try:
+        with open(p, "r", encoding="utf-8-sig") as fh:
+            raw = fh.read()
+    except UnicodeDecodeError as e:
+        raise SpectraJsonMalformedError(
+            f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
+        ) from e
+    except OSError as e:
+        raise SpectraJsonError(f"failed to read {p!r}: {e}") from e
+
+    try:
+        d = json.loads(
+            raw,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_strict_finite_float,
+        )
+    except json.JSONDecodeError as e:
+        raise SpectraJsonMalformedError(
+            f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
+            f"col {e.colno})"
+        ) from e
+
+    if not isinstance(d, dict):
+        raise SpectraJsonMalformedError(
+            f"{p!r} top-level JSON value must be an object, got "
+            f"{type(d).__name__}"
+        )
+
+    if "schema_version" not in d:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
+    _validate_schema_version(d["schema_version"])
+
+    return _validate_dict_to_results(d, repr(p))
+
+
+# --------------------------------------------------------------------- #
+#  FileParser wrapper                                                    #
+# --------------------------------------------------------------------- #
 
 
 class SpectraSidecarFileParser(FileParser):
@@ -42,11 +219,11 @@ class SpectraSidecarFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
-        results = _legacy_parse(path)
+        results = _parse_spectra_json(path)
         # Use .to_dict() (not dataclasses.asdict) so numpy ndarrays
-        # convert to JSON-trivially-serialisable lists -- same
-        # rationale as the transport sidecar fix
-        # (post-2026-06-19 round-2 review).
+        # convert to JSON-trivially-serialisable lists -- ndarrays
+        # leaked through asdict would break json.dumps at webhook
+        # delivery + cache pickle.
         payload = results.to_dict()
         sv = payload.get("schema_version", 1)
         return build_sidecar_result(
@@ -55,3 +232,13 @@ class SpectraSidecarFileParser(FileParser):
             parser_name=cls.name,
             source=path,
         )
+
+
+__all__ = [
+    "SpectraJsonError",
+    "SpectraJsonNotFoundError",
+    "SpectraJsonMalformedError",
+    "SpectraJsonSchemaError",
+    "SpectraJsonFieldError",
+    "SpectraSidecarFileParser",
+]
