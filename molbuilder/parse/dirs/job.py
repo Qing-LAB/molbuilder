@@ -224,9 +224,11 @@ def _classify_job_type(fdf_text: str) -> str:
     fields presence.
     Step 2: sniff fallback on engine-body markers.
     """
-    from molbuilder.script_contract import extract_bench_marks_dict
+    from molbuilder.parse.scripts.bench_marks import (
+        _extract_bench_marks_dict,
+    )
     # Step 1a: explicit `job_type` field in BENCH-MARKS (forward-compat).
-    bench = extract_bench_marks_dict(fdf_text) or {}
+    bench = _extract_bench_marks_dict(fdf_text) or {}
     if isinstance(bench.get("job_type"), str):
         return bench["job_type"]
     bench_field_names = {f["name"] for f in bench.get("fields", []) if isinstance(f, dict)}
@@ -272,18 +274,26 @@ def _classify_job_type(fdf_text: str) -> str:
 
 def _build_engine_input(fdf_path: Path) -> Dict[str, Any]:
     """Build the per-stage engine_input envelope per § 2.1."""
-    from molbuilder.script_contract import (
-        extract_atom_metadata_dict, extract_bench_marks_dict,
-        extract_header_text, extract_provenance_dict,
-        extract_user_custom_inner,
+    from molbuilder.parse.scripts.atom_metadata import (
+        _extract_atom_metadata_dict,
+    )
+    from molbuilder.parse.scripts.bench_marks import (
+        _extract_bench_marks_dict,
+    )
+    from molbuilder.parse.scripts.header import _extract_header_text
+    from molbuilder.parse.scripts.provenance import (
+        _extract_provenance_dict,
+    )
+    from molbuilder.parse.scripts.user_custom import (
+        _extract_user_custom_inner,
     )
     text = fdf_path.read_text(encoding="utf-8-sig", errors="replace")
 
-    header = extract_header_text(text)
-    provenance = extract_provenance_dict(text)
-    bench = extract_bench_marks_dict(text)
-    atom_md = extract_atom_metadata_dict(text)
-    user_custom_lines = extract_user_custom_inner(text)
+    header = _extract_header_text(text)
+    provenance = _extract_provenance_dict(text)
+    bench = _extract_bench_marks_dict(text)
+    atom_md = _extract_atom_metadata_dict(text)
+    user_custom_lines = _extract_user_custom_inner(text)
 
     return {
         "schema_version": 1,
@@ -393,7 +403,7 @@ def _consolidate_plots(out_paths: List[Path]
         out_run_states:  {out_filename: "finished"|"failed"|"in_progress"|"unknown"}
         parse_warnings:  flattened list of {source, line_no, snippet, error, category}
     """
-    from molbuilder.parsers import detect_parser, UnknownFormatError
+    from molbuilder.parse import detect, UnknownFormatError
     plots: Dict[str, Dict[str, List[List[float]]]] = {
         "etot_per_cg":  {},
         "fmax_per_cg":  {},
@@ -412,8 +422,8 @@ def _consolidate_plots(out_paths: List[Path]
     scf_iter_global_offset = 0
     for out_path in sorted_outs:
         try:
-            parser = detect_parser(str(out_path))
-            traj = parser.parse(str(out_path))
+            parser = detect(out_path)
+            traj = parser.parse(out_path)
         except (UnknownFormatError, OSError, ValueError) as exc:
             warnings.append({
                 "source":   out_path.name,
@@ -488,11 +498,14 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
                     ) -> Dict[str, Any]:
     """Build the geometry field — reuses parsers/siesta_struct.read_xv
     when a .XV is present; falls back to .fdf initial coords otherwise."""
-    from molbuilder.parsers.siesta_struct import (
-        read_xv, read_fdf_initial_coords,
-        SiestaXVError, SiestaFdfStructureError,
+    from molbuilder.parse.coords.siesta_xv import (
+        SiestaXVError,
+        _read_xv as read_xv,
     )
-    from molbuilder.script_contract import extract_script_source
+    from ._assembler_helpers import (
+        SiestaFdfStructureError,
+        read_fdf_initial_coords,
+    )
 
     structure = None
     coords_source: Optional[str] = None
@@ -526,10 +539,11 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
     regions: Dict[str, List[int]] = {}
     frozen: List[int] = []
     if anchor_fdf is not None:
-        src = extract_script_source(
+        from .bundle import _extract_script_source
+        src = _extract_script_source(
             anchor_fdf.read_text(encoding="utf-8-sig", errors="replace"))
-        regions = src.regions or {}
-        frozen = src.frozen_atoms or []
+        regions = src["regions"] or {}
+        frozen = src["frozen_atoms"] or []
 
     out: Dict[str, Any] = {
         "n_atoms":       len(structure.elements) if structure is not None else 0,

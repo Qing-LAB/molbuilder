@@ -19,9 +19,8 @@ from pathlib import Path
 import pytest
 
 from molbuilder.parse import BundleResult
-from molbuilder.parse.dirs.bundle import BundleDirParser
+from molbuilder.parse.dirs.bundle import BundleDirParser, BundleError
 from molbuilder.parse.registry import _registered_dir_parsers
-from molbuilder.script_bundle import BundleError
 
 
 REPO = Path(__file__).resolve().parents[3]
