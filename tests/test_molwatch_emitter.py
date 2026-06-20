@@ -217,3 +217,64 @@ def test_emitted_lines_exact_for_zero_force_step(tmp_path, h2_mol):
         "scf_history end",
     ]:
         assert needle in block, f"missing {needle!r}; block:\n{block}"
+
+
+def test_scf_cycle_hook_snapshots_wall_time(tmp_path, h2_mol):
+    """Each scf_cycle_hook call records a 'wall_time' (epoch seconds)
+    on the per-cycle buffer dict.  Surfaces per-SCF-cycle timing all
+    the way through to the parser without any client-side stitching.
+    Added 2026-06-20."""
+    p = tmp_path / "wt.molwatch.log"
+    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em.scf_cycle_hook({"cycle": 0, "e_tot": -1.10, "last_hf_e": None,
+                       "norm_gorb": 1.0e-2, "norm_ddm": 1.0e-3})
+    em.scf_cycle_hook({"cycle": 1, "e_tot": -1.15, "last_hf_e": -1.10,
+                       "norm_gorb": 1.0e-4, "norm_ddm": 1.0e-5})
+    assert "wall_time" in em._scf_buf[0]
+    assert isinstance(em._scf_buf[0]["wall_time"], float)
+    assert "wall_time" in em._scf_buf[1]
+    # Second cycle's wall_time is >= first cycle's (time only marches
+    # forward; identical is OK on fast hardware within the same tick).
+    assert em._scf_buf[1]["wall_time"] >= em._scf_buf[0]["wall_time"]
+
+
+def test_opt_step_hook_emits_wall_time_column_in_scf_rows(tmp_path, h2_mol):
+    """The 6-column SCF row (`cycle energy delta_E gnorm ddm wall_time`)
+    is what the parser reads back as the per-cycle dict's 'wall_time'
+    field.  This pins the on-disk format: each SCF row has a trailing
+    epoch-seconds token, the header advertises 'wall_time(s)', and the
+    column is the 6th whitespace-separated field."""
+    import numpy as np
+    p = tmp_path / "fmt.molwatch.log"
+    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em.scf_cycle_hook({"cycle": 0, "e_tot": -1.15, "last_hf_e": -1.10,
+                       "norm_gorb": 1.0e-4, "norm_ddm": 1.0e-5})
+    em.opt_step_hook({"mol": h2_mol, "energy": -1.15,
+                      "gradients": np.zeros((2, 3))})
+    body = p.read_text()
+    # Header advertises wall_time(s).
+    assert "wall_time(s)" in body
+    # Find the one SCF data line (the one inside scf_history begin/end,
+    # not starting with '#') and check it has at least 6 tokens.
+    in_scf = False
+    found_row = None
+    for ln in body.splitlines():
+        if ln.startswith("scf_history begin"):
+            in_scf = True
+            continue
+        if ln.startswith("scf_history end"):
+            in_scf = False
+            continue
+        if not in_scf:
+            continue
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        found_row = ln
+        break
+    assert found_row is not None, f"no SCF data row in:\n{body}"
+    tokens = found_row.split()
+    assert len(tokens) == 6, (
+        f"SCF row must have 6 tokens (cycle/energy/delta_E/gnorm/ddm/"
+        f"wall_time); got {len(tokens)}: {tokens!r}")
+    # 6th token parses as a float epoch.
+    assert float(tokens[5]) > 0

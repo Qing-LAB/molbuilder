@@ -149,3 +149,44 @@ def test_timer_without_scf_silently_ignored():
     # No scf cycle parsed -> no in-progress frame to attach the timer
     # to.  Empty frames; no exception.
     assert len(traj.frames) == 0
+
+
+def test_frame_wall_time_carries_last_cumulative_walltime_s():
+    """Symmetric per-iteration timing (2026-06-20).  ``Frame.wall_time``
+    is populated from the LAST SCF cycle's ``cumulative_walltime_s`` so
+    per-CG-step time = ``frames[i+1].wall_time - frames[i].wall_time``
+    without any client-side stitching.
+
+    This pins the same code path for both the committed-frame branch
+    (outcoor-bounded) and the in-progress-frame branch at EOF.  The
+    fixture below has no outcoor block -> in-progress frame, which is
+    the easier case to construct and runs through the SAME wall_time
+    surfacing logic.
+    """
+    traj = _parse(_TWO_ITERS_CLEAN)
+    assert len(traj.frames) == 1
+    f = traj.frames[0]
+    # In-progress frame -- still gets wall_time from the last cycle.
+    assert f.in_progress is True
+    # Last cycle's cumulative time was 75.400 s -- that's the wall-clock
+    # at which SIESTA finished its 2nd SCF cycle.
+    assert f.wall_time == pytest.approx(75.400)
+
+
+def test_frame_wall_time_is_none_when_no_iter_scf_timer():
+    """When SIESTA didn't emit any ``timer: ... IterSCF`` lines (older
+    build, or stripped output), the per-cycle dicts carry no
+    ``cumulative_walltime_s`` and ``Frame.wall_time`` falls back to
+    ``None`` rather than crashing or picking up some other field."""
+    out_body = dedent("""\
+        Running on 4 procs
+
+           Parallelisations: MPI, OpenMP
+
+             iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax    Ef(eV) dHmax(eV)
+           scf:    1   -798748.382767  -804434.909422  -804435.406774  2.772203  1.493296 90.109736
+           scf:    2   -806618.752906  -805857.884182  -805858.389926  0.445086  0.781420 39.179556
+        """)
+    traj = _parse(out_body)
+    assert len(traj.frames) == 1
+    assert traj.frames[0].wall_time is None

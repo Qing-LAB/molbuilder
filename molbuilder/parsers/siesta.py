@@ -711,6 +711,19 @@ class SiestaParser(TrajectoryParser):
             # user sees the divergence).  The preamble Etot is
             # preserved in ``runtime_info["initial_etot"]`` for
             # display, NOT as a frame energy.
+            # SIESTA emits per-SCF-cycle ``timer: ... IterSCF N <cum_s>``
+            # lines; we attach the cumulative wall-clock onto the last
+            # cycle dict.  For the CG step's end-of-time we surface the
+            # LAST cycle's cumulative_walltime_s -- that's when the SCF
+            # converged, i.e. when this CG step finished.  Per-CG-step
+            # time is then frames[i+1].wall_time - frames[i].wall_time.
+            # None when no SCF cycles in this step (rare: single-shot
+            # runs) or when SIESTA didn't emit the timer.
+            frame_wall_time: Optional[float] = None
+            if current_scf:
+                cum = current_scf[-1].get("cumulative_walltime_s")
+                if isinstance(cum, (int, float)) and math.isfinite(cum):
+                    frame_wall_time = float(cum)
             frames.append(Frame(
                 structure   = struct,
                 step_index  = len(frames),
@@ -719,6 +732,7 @@ class SiestaParser(TrajectoryParser):
                 max_force   = step_max_force,
                 max_force_constrained = step_max_force_constrained,
                 scf_history = list(current_scf) if current_scf else None,
+                wall_time   = frame_wall_time,
                 in_progress = in_progress,
             ))
             # PR 4 (results-state-contract § 6): preserve the
@@ -1557,11 +1571,20 @@ class SiestaParser(TrajectoryParser):
             # JS plottableFrames filter omits the point.  The
             # preamble Etot is preserved separately in
             # ``runtime_info["initial_etot"]`` for display.
+            # Same wall-time surfacing as for committed frames: last
+            # SCF cycle's cumulative_walltime_s = the wall-clock at the
+            # moment SIESTA last ticked the IterSCF timer.
+            ip_wall_time: Optional[float] = None
+            if current_scf:
+                cum = current_scf[-1].get("cumulative_walltime_s")
+                if isinstance(cum, (int, float)) and math.isfinite(cum):
+                    ip_wall_time = float(cum)
             frames.append(Frame(
                 structure   = placeholder_struct,
                 step_index  = len(frames),
                 energy      = in_prog_energy,
                 scf_history = list(current_scf),
+                wall_time   = ip_wall_time,
                 in_progress = True,
             ))
 

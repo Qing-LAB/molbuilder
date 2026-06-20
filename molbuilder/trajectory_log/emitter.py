@@ -156,12 +156,19 @@ class MolwatchEmitter:
         g_eV_A  = (float(norm_gorb) * self.HARTREE_BOHR_TO_EV_ANG) \
                   if norm_gorb is not None else None
         ddm     = float(norm_ddm) if norm_ddm is not None else None
+        # Snapshot wall-clock at the moment this SCF cycle finished.
+        # Surfaced as a 6th column on the per-cycle row so per-cycle
+        # time = scf[i+1].wall_time - scf[i].wall_time without any
+        # client-side stitching.  Same epoch-second format as the
+        # per-step ``wall_time:`` line above.
+        wt      = _mw_time.time()
         self._scf_buf.append({
-            'cycle':   int(cycle) + 1,        # 1-indexed in our log
-            'energy':  e_eV,
-            'delta_E': dE_eV,
-            'gnorm':   g_eV_A,
-            'ddm':     ddm,
+            'cycle':     int(cycle) + 1,      # 1-indexed in our log
+            'energy':    e_eV,
+            'delta_E':   dE_eV,
+            'gnorm':     g_eV_A,
+            'ddm':       ddm,
+            'wall_time': wt,
         })
 
     # ----- opt step hook (wired to optimize(callback=...)) -----
@@ -196,15 +203,21 @@ class MolwatchEmitter:
                 fh.write(f"   {el:<2s}  {fx:14.8f}  {fy:14.8f}  {fz:14.8f}\n")
             fh.write(f"max_force (eV/Ang): {max_f:.8f}\n")
             fh.write("scf_history begin\n")
-            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV/Ang)            ddm\n")
+            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV/Ang)            ddm        wall_time(s)\n")
             for c in scf:
                 g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
                          else 'None')
                 d_str = (f"{c['ddm']:.8e}" if c['ddm'] is not None
                          else 'None')
+                # wall_time is the 6th column (epoch seconds, .3f).
+                # Older logs without this column round-trip fine
+                # through the parser (it skips beyond the 5th token).
+                wt    = c.get('wall_time')
+                w_str = (f"{wt:.3f}" if wt is not None else 'None')
                 fh.write(
                     f"   {c['cycle']:5d}   {c['energy']:18.8f}"
-                    f"  {c['delta_E']:18.8f}  {g_str:>20s}  {d_str:>16s}\n"
+                    f"  {c['delta_E']:18.8f}  {g_str:>20s}  {d_str:>16s}"
+                    f"  {w_str:>16s}\n"
                 )
             fh.write("scf_history end\n")
             fh.write(f"==== molwatch step {idx} end ====\n")

@@ -167,9 +167,14 @@ def test_scf_history_per_step(mw_path):
 
 
 def test_scf_cycle_keys(mw_path):
-    """Every per-cycle entry has the unified key set."""
+    """Every per-cycle entry has the unified key set.
+
+    ``wall_time`` (2026-06-20) is included unconditionally — None
+    for pre-feature .molwatch.log files (5-column SCF rows),
+    epoch-seconds float for new files (6-column SCF rows).
+    """
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
-    expected = {"cycle", "energy", "delta_E", "gnorm", "ddm"}
+    expected = {"cycle", "energy", "delta_E", "gnorm", "ddm", "wall_time"}
     for run in result["scf_history"]:
         for entry in run:
             assert set(entry.keys()) == expected
@@ -401,3 +406,84 @@ def test_wall_time_absent_in_old_logs(mw_path):
     wt = result["wall_times"]
     assert len(wt) == len(result["frames"])
     assert all(v is None for v in wt)
+
+
+def test_scf_cycle_wall_time_round_trip(tmp_path):
+    """6-column SCF rows (added 2026-06-20) round-trip through the
+    parser as a 'wall_time' field on each per-cycle dict.  Per-cycle
+    time delta is then ``scf[i+1]['wall_time'] - scf[i]['wall_time']``
+    without any client-side stitching."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# created: 2026-06-20T10:00:00\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): -0.5\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): 0.0\n"
+        "scf_history begin\n"
+        "#  cycle  energy(eV)  delta_E(eV)  gnorm(eV/Ang)  ddm  wall_time(s)\n"
+        "       1     -0.40000000      0.00000000     1.00000000e-01"
+        "   2.00000000e-01    1718500000.100\n"
+        "       2     -0.49000000     -0.09000000     5.00000000e-02"
+        "   1.00000000e-01    1718500001.350\n"
+        "       3     -0.50000000     -0.01000000     1.00000000e-03"
+        "   1.00000000e-03    1718500002.500\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+    )
+    p = tmp_path / "scfwt.molwatch.log"
+    p.write_text(sample)
+    traj = MolwatchLogParser.parse(str(p))
+    assert len(traj.frames) == 1
+    scf = traj.frames[0].scf_history
+    assert scf is not None
+    assert len(scf) == 3
+    # Every cycle dict carries wall_time as a float epoch.
+    for c in scf:
+        assert "wall_time" in c
+        assert isinstance(c["wall_time"], float)
+    # Deltas: 1.25 s, then 1.15 s -- direct subtraction works.
+    assert scf[1]["wall_time"] - scf[0]["wall_time"] == pytest.approx(1.25)
+    assert scf[2]["wall_time"] - scf[1]["wall_time"] == pytest.approx(1.15)
+
+
+def test_scf_cycle_wall_time_optional_in_old_logs(tmp_path):
+    """Pre-feature .molwatch.log files (5-column SCF rows) must
+    parse fine; the 'wall_time' field surfaces as None on each cycle
+    dict so consumers can branch on presence without crashing."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# created: 2026-04-25T11:00:00\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): -0.5\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): 0.0\n"
+        "scf_history begin\n"
+        "#  cycle  energy(eV)  delta_E(eV)  gnorm(eV/Ang)  ddm\n"
+        "       1     -0.40000000      0.00000000     1.00000000e-01"
+        "   2.00000000e-01\n"
+        "       2     -0.50000000     -0.10000000     1.00000000e-03"
+        "   1.00000000e-03\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+    )
+    p = tmp_path / "oldscf.molwatch.log"
+    p.write_text(sample)
+    traj = MolwatchLogParser.parse(str(p))
+    scf = traj.frames[0].scf_history
+    assert scf is not None
+    for c in scf:
+        assert "wall_time" in c
+        assert c["wall_time"] is None

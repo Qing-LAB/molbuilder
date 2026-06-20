@@ -388,12 +388,20 @@ class MolwatchLogParser(TrajectoryParser):
                 return CONTINUE
             gnorm = _maybe_float(parts[3])
             ddm   = _maybe_float(parts[4])
+            # Optional 6th column: wall_time(s) -- epoch seconds when
+            # the emitter saw this SCF cycle finish.  Older
+            # .molwatch.log files (pre-2026-06-20) have 5 columns; we
+            # surface None for those.  Per-cycle time =
+            # scf[i+1].wall_time - scf[i].wall_time.
+            wall_time = (_maybe_float(parts[5])
+                         if len(parts) >= 6 else None)
             block_scf.append({
-                "cycle":   cycle,
-                "energy":  energy,
-                "delta_E": delta_E,
-                "gnorm":   gnorm,
-                "ddm":     ddm,
+                "cycle":     cycle,
+                "energy":    energy,
+                "delta_E":   delta_E,
+                "gnorm":     gnorm,
+                "ddm":       ddm,
+                "wall_time": wall_time,
             })
             return CONTINUE
 
