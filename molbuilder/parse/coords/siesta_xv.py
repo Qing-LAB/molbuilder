@@ -1,54 +1,162 @@
 """SIESTA ``.XV`` (final-coordinates) FileParser.
 
-Phase E of parse-module.md migration: wraps
-:func:`molbuilder.parsers.siesta_struct.read_xv` AND surfaces the
-cell vectors that the legacy reader internally computes but
-discards.
+H1 of parse-module.md migration (was Phase E wrapper around
+``molbuilder.parsers.siesta_struct.read_xv``): absorbed the legacy
+``SiestaXVError`` + ``read_xv`` body directly so this module no
+longer imports from ``molbuilder.parsers``.  The legacy module stays
+in place until H4; consumers (script_bundle, .out parser sidecar)
+still use it until H3.
 
-The legacy ``read_xv`` returns a :class:`Structure` (geometry-
-only); cell vectors are read from the file but dropped per a
-historical "Structure is geometry-only" choice.  The Phase 1
-JobMonitor decoder hit this gap and had to read the cell
-separately from the .fdf's ``%block LatticeVectors`` (with all
-the LatticeConstant-unit-conversion bugs that came with it).
+The legacy ``read_xv`` returned a :class:`Structure` (geometry-only);
+cell vectors were read from the file but dropped per a historical
+"Structure is geometry-only" choice.  The Phase 1 JobMonitor decoder
+hit this gap and had to read the cell separately from the .fdf's
+``%block LatticeVectors`` (with all the LatticeConstant-unit-
+conversion bugs that came with it).
 
-This parser closes the gap: :class:`StructureResult` carries
-``cell`` as a first-class field, populated directly from the
-.XV's leading 3 rows (always Bohr per SIESTA convention; we
-convert to Å here).
+This parser closes the gap: :class:`StructureResult` carries ``cell``
+as a first-class field, populated directly from the .XV's leading 3
+rows (always Bohr per SIESTA convention; we convert to Å here).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy as np
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import StructureResult
-from molbuilder.parsers.siesta_struct import (
-    SiestaXVError,
-    read_xv as _legacy_read_xv,
-)
+from molbuilder.structure import Structure
 
 from ._helpers import build_structure_result
 
 
-# Source: CODATA 2018 + SIESTA manual § 7.3.5.  The exact value
-# molbuilder uses elsewhere; cross-checked in
-# tests/parse/test_round2_fixes.py.
-_ANGSTROM_PER_BOHR = 0.529177249
+# 1 Bohr in Ångström.  Same value used elsewhere in the project
+# (molbuilder/parsers/pyscf.py uses 0.5291772108 too).
+_ANGSTROM_PER_BOHR = 0.5291772108
+
+
+class SiestaXVError(ValueError):
+    """Raised when a ``.XV`` file can't be parsed (malformed shape,
+    wrong atom count, unreadable Z mapping)."""
+
+
+def _read_xv(path: Union[str, Path]) -> Structure:
+    """Read a SIESTA ``.XV`` file and return a :class:`Structure`.
+
+    File format (SIESTA manual, ``siesta/Src/iofa.f``)::
+
+        ax1 ax2 ax3 vx1 vx2 vx3        (cell row 1, Bohr + Bohr/fs)
+        bx1 bx2 bx3 vy1 vy2 vy3        (cell row 2)
+        cx1 cx2 cx3 vz1 vz2 vz3        (cell row 3)
+        N                              (number of atoms)
+        ispec(1) iza(1) x(1) y(1) z(1) vx(1) vy(1) vz(1)
+        ispec(2) iza(2) x(2) y(2) z(2) vx(2) vy(2) vz(2)
+        ...
+
+    ``ispec`` is the species index into the ``ChemicalSpeciesLabel``
+    block; ``iza`` is the atomic number Z.  We key off Z because it
+    survives across re-orderings of the species block; the species
+    index requires a matching ``.fdf``.
+
+    Positions come back in Å.  Velocities are discarded.  Cell vectors
+    are read but NOT surfaced on the returned Structure (geometry-only
+    dataclass); :func:`_read_xv_cell` exposes the cell for callers
+    that need it.
+    """
+    p = Path(path)
+    text = p.read_text(encoding="utf-8", errors="replace")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 4:
+        raise SiestaXVError(
+            f"{p.name}: file too short ({len(lines)} non-blank lines); "
+            f"expected at least 3 cell rows + atom count + atoms."
+        )
+
+    # Cell: 3 rows × 6 floats; the trailing 3 are cell-velocity (vc/dt).
+    cell_bohr = np.zeros((3, 3), dtype=float)
+    for i in range(3):
+        toks = lines[i].split()
+        if len(toks) < 3:
+            raise SiestaXVError(
+                f"{p.name}: cell row {i+1} has {len(toks)} tokens; "
+                f"expected at least 3."
+            )
+        cell_bohr[i] = [float(toks[0]), float(toks[1]), float(toks[2])]
+    # Cell is read for the helper :func:`_read_xv_cell`; the returned
+    # Structure stays geometry-only.
+
+    try:
+        n_atoms = int(lines[3].strip().split()[0])
+    except (ValueError, IndexError) as exc:
+        raise SiestaXVError(
+            f"{p.name}: line 4 must be an integer atom count; got "
+            f"{lines[3]!r}"
+        ) from exc
+    if n_atoms <= 0:
+        raise SiestaXVError(
+            f"{p.name}: atom count must be > 0; got {n_atoms}."
+        )
+
+    atom_lines = lines[4:4 + n_atoms]
+    if len(atom_lines) != n_atoms:
+        raise SiestaXVError(
+            f"{p.name}: header declares {n_atoms} atoms but only "
+            f"{len(atom_lines)} lines follow."
+        )
+
+    elements: List[str] = []
+    positions_bohr = np.zeros((n_atoms, 3), dtype=float)
+    # Lazy import: ase isn't a build-time dep for every consumer.
+    try:
+        from ase.data import chemical_symbols as _SYMBOLS
+    except ImportError as exc:                                  # pragma: no cover
+        raise SiestaXVError(
+            "ase is required to map .XV atomic numbers to element "
+            "symbols.  Install ase or read .XV via molbuilder's own "
+            "tools."
+        ) from exc
+
+    for i, raw in enumerate(atom_lines):
+        toks = raw.split()
+        if len(toks) < 5:
+            raise SiestaXVError(
+                f"{p.name}: atom row {i+1} has {len(toks)} tokens; "
+                f"expected at least 5 (ispec iza x y z [vx vy vz])."
+            )
+        try:
+            iza = int(toks[1])
+        except ValueError as exc:
+            raise SiestaXVError(
+                f"{p.name}: atom row {i+1} has non-integer Z {toks[1]!r}."
+            ) from exc
+        if iza <= 0 or iza >= len(_SYMBOLS):
+            raise SiestaXVError(
+                f"{p.name}: atom row {i+1} has atomic number {iza} "
+                f"outside the element table (1..{len(_SYMBOLS)-1})."
+            )
+        elements.append(_SYMBOLS[iza])
+        positions_bohr[i] = [
+            float(toks[2]), float(toks[3]), float(toks[4]),
+        ]
+
+    return Structure(
+        elements=elements,
+        positions=positions_bohr * _ANGSTROM_PER_BOHR,
+        title=p.stem,
+    )
 
 
 def _read_xv_cell(path: Path) -> Optional[np.ndarray]:
     """Read JUST the 3 cell-vector rows from a .XV file and return
     them in Å as a 3x3 ndarray.  Returns None on parse failure;
-    the structure portion is the legacy reader's responsibility
-    (it will raise SiestaXVError on the same file).
+    the structure portion is :func:`_read_xv`'s responsibility (it
+    will raise SiestaXVError on the same file).
 
-    Cell rows are in Bohr per SIESTA convention; we convert to Å
-    here.  Velocity columns (the trailing 3 floats) are discarded.
+    Cell rows are in Bohr per SIESTA convention; we convert to Å here.
+    Velocity columns (the trailing 3 floats) are discarded.
     """
     try:
         text = path.read_text(encoding="utf-8-sig", errors="replace")
@@ -89,13 +197,7 @@ class SiestaXVFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:
-        # Structure portion via the legacy reader (positions,
-        # elements, atom count consistency checks).
-        try:
-            structure = _legacy_read_xv(path)
-        except SiestaXVError:
-            raise
-        # Cell portion via the cell-only helper (legacy discards it).
+        structure = _read_xv(path)
         cell = _read_xv_cell(path)
         return build_structure_result(
             structure=structure,
@@ -104,3 +206,6 @@ class SiestaXVFileParser(FileParser):
             source=path,
             source_format="siesta-xv",
         )
+
+
+__all__ = ["SiestaXVError", "SiestaXVFileParser"]
