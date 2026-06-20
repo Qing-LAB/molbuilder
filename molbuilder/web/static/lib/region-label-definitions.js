@@ -182,10 +182,13 @@
             custom.join("") +
             "<p class=\"region-defs-bias\"><strong>Bias direction.</strong> " +
             escapeHtml(BIAS_NOTE) + "</p>" +
+            // Doc path is informational only — no link; clicking
+            // ``href=\"#\"`` would silently scroll the page to the
+            // top, which we don't want.  Plain monospace text
+            // makes the path copy-pasteable instead.
             "<p class=\"region-defs-doc\">" +
             "Full convention + references: " +
-            "<a href=\"#\" data-region-defs-docs=\"true\">" +
-            "docs/protocols/region-labels.md</a>" +
+            "<code>docs/protocols/region-labels.md</code>" +
             "</p>";
         panel.innerHTML = html;
     }

@@ -990,8 +990,18 @@
             ["pbe",             "PBE (all-electron)", lat.a_pbe,             "Haas 2009"],
             ["pbe_siesta_psml", "Your bulk run",      lat.a_pbe_siesta_psml, "user-measured"],
         ];
-        // Preserve current pick across re-renders if still valid.
-        const currentPick = getCheckedRadio("elc-lattice-ref") || "experimental";
+        // Resolve what should be checked BEFORE the render loop so
+        // the per-radio code stays simple.  Rule:
+        //   1. If the user's current pick is still selectable
+        //      (its numeric value is present), keep it.
+        //   2. Otherwise (e.g. previous "siesta_psml" pick where the
+        //      value is now null), fall back to "experimental".
+        const currentPick = getCheckedRadio("elc-lattice-ref")
+                            || "experimental";
+        const isPickValid = refs.some(function (r) {
+            return r[0] === currentPick && r[2] !== null && r[2] !== undefined;
+        });
+        const effectivePick = isPickValid ? currentPick : "experimental";
         box.innerHTML = "";
         for (const [value, label, num, src] of refs) {
             const lbl = document.createElement("label");
@@ -999,18 +1009,20 @@
             inp.type = "radio";
             inp.name = "elc-lattice-ref";
             inp.value = value;
-            const disabled = (num == null);
-            if (disabled) inp.disabled = true;
-            const picked = (value === currentPick) && !disabled;
-            const fallback = (currentPick === "pbe_siesta_psml")
-                             && (lat.a_pbe_siesta_psml == null);
-            inp.checked = picked || (fallback && value === "experimental");
+            const disabled = (num === null || num === undefined);
+            if (disabled) {
+                inp.disabled = true;
+                // Accessibility: screen readers don't get any signal
+                // from the visual opacity fade alone.
+                inp.setAttribute("aria-disabled", "true");
+                lbl.classList.add("elc-lattice-ref-disabled");
+            }
+            inp.checked = (value === effectivePick);
             lbl.appendChild(inp);
             const txt = (typeof num === "number")
                         ? ` ${label} (${num.toFixed(4)} Å — ${src})`
                         : ` ${label} (unset — ${src})`;
             lbl.appendChild(document.createTextNode(txt));
-            if (disabled) lbl.style.opacity = "0.55";
             box.appendChild(lbl);
         }
     }

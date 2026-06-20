@@ -70,7 +70,12 @@ _L2_MODULES = {
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers
     "transport",         # transport engines + results (Phase B.2)
-    "parsers",           # trajectory parsers
+    "parsers",           # trajectory parsers (legacy; being migrated to parse/)
+    "parse",             # unified parse module (Phase A+B+C+D shipped 2026-06-19;
+                         # composes engine/sidecar FileParsers + JobDirParser into
+                         # typed ParseResult outputs.  L2 because it composes the
+                         # legacy parsers + script_contract; will absorb them at
+                         # Phase H per docs/protocols/parse-module.md § 8.)
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader
     "diagnostics",       # capabilities snapshot

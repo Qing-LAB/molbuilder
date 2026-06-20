@@ -99,17 +99,34 @@ def test_popover_html_landed_in_template():
 
 
 def test_modify_template_loads_the_js_module():
-    """``modify.html`` wires in region-label-definitions.js + calls
-    ``init`` so the popover binds on DOMContentLoaded.
+    """``modify.html`` loads BOTH the library + the init script.
+
+    2026-06-19 JS-quality review lifted the init code out of the
+    inline ``<script>`` block (CSP-blocked in production) into its
+    own ``region-label-popover-init.js`` file; this test now
+    asserts both script tags are present + the init module exists.
     """
     html = MODIFY_HTML.read_text()
     assert "region-label-definitions.js" in html, (
         "modify.html does not load lib/region-label-definitions.js; "
         "the ⓘ button will be a no-op"
     )
-    assert "regionLabelDefinitions" in html, (
-        "modify.html does not call regionLabelDefinitions.init(); "
-        "the popover will never wire to the button"
+    assert "region-label-popover-init.js" in html, (
+        "modify.html does not load lib/region-label-popover-init.js; "
+        "the popover never wires to the workspace (the init code was "
+        "moved out of an inline <script> block per the CSP contract)"
+    )
+    # The init module must call regionLabelDefinitions.init() so the
+    # contract — "library binds via the namespace" — is honoured.
+    init_js = (REPO_ROOT / "molbuilder" / "web" / "static" / "lib"
+               / "region-label-popover-init.js").read_text()
+    assert "regionLabelDefinitions" in init_js, (
+        "region-label-popover-init.js does not reference "
+        "regionLabelDefinitions; the popover will never wire up"
+    )
+    assert "defs.init(" in init_js, (
+        "region-label-popover-init.js does not call defs.init(); "
+        "the popover library is loaded but never bound to a getter"
     )
 
 

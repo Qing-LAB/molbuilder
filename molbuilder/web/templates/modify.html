@@ -734,23 +734,11 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
-<script>
-{# Init the region-label-definitions popover.  Reads the current
-   structure's regions from the workspace at popover-open time so
-   the content reflects the live state of struct.regions (the user
-   may have just added a new electrode label in this session). #}
-document.addEventListener("DOMContentLoaded", function () {
-    var defs = window.molbuilder && window.molbuilder.regionLabelDefinitions;
-    if (!defs) return;
-    defs.init(function () {
-        var ws = window.molbuilder && window.molbuilder.workspace;
-        var s = ws && typeof ws.getStructure === "function"
-            ? ws.getStructure() : null;
-        var regions = (s && s.regions) || {};
-        return new Set(Object.keys(regions));
-    });
-});
-</script>
+{# Inline script for popover init lifted out to its own JS file
+   so the CSP `script-src 'self'` contract holds.  Pre-fix the
+   inline block was silently dropped in production and the
+   popover never wired up. #}
+<script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
