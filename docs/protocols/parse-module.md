@@ -437,19 +437,56 @@ ships in this order:
 | **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` (StructureResult with cell — closes the Phase 1 lattice-extraction gap) | ✓ shipped |
 | **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella as TextParsers) | ✓ shipped |
 | **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` (explicit-dispatch; not auto-registered, since it shares the .fdf claim with JobDirParser but expresses a different user intent) | ✓ shipped |
-| **H** | **Phase H prerequisite — absorb legacy logic into the new wrappers** so `parse/engines/*`, `parse/sidecars/*`, and `parse/dirs/*` no longer import from `molbuilder.parsers` / `molbuilder.script_contract`.  THEN delete the legacy `molbuilder/parsers/` package + `molbuilder/script_contract.py` + `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | pending |
+| **H** | The clean break — re-scoped into 4 sub-phases per the 2026-06-20 pre-Phase-H audit (see below) | broken into H1-H4, pending |
 
-Each phase is independently reviewable.  Phases C-G ship the
-wrappers but **continue to delegate to the legacy modules**;
-Phase H is the clean break and MUST also rewrite the per-engine
-parsers so the legacy code can be deleted without breaking
-imports.  Per the no-back-compat-shims convention, no transition
-window — Phase H ships in one commit family.
+**Phase H re-scope (2026-06-20 audit).**  The original Phase H
+"delete legacy + update 8 imports" undercounted the real cost.
+The audit found:
 
-**Status snapshot (2026-06-19):** Phases A + B + C + D shipped;
-8 import sites in `parse/` still reference legacy modules (audit
-via ``grep -rn "from molbuilder.parsers\|from molbuilder.script_contract" molbuilder/parse/``);
-Phase H planning must account for absorbing all 8.
+* 60 legacy symbols exported (≈42 load-bearing after filtering
+  stdlib/typing imports).
+* **114 import lines across 18 files** consume the legacy
+  modules (8 self-deps in `parse/` + 10 production files +
+  ~25 test files).
+* Critical gaps the new module has NO equivalent for:
+  - `trajectory_to_legacy_dict` — 159-line adapter feeding the
+    3Dmol.js frontend; deleting it = blank Results plots.
+  - Write-side script_contract `emit_*` family (used by
+    `siesta/input.py`, `pyscf/input.py`, `runwrap.py`,
+    `bench/__init__.py`) — Phase F only migrated read side.
+  - `write_bundle_as_handoff` — bundle materializer; Phase G
+    only migrated read side.
+  - `apply_inbody_atom_metadata` — mutates a Structure from
+    .fdf text; different pattern from immutable TextParsers.
+  - Sidecar write-side (`save`, `with_lock`, `sidecar_path_for`,
+    `sha256_of_file`, `to_dict`, `apply_to_structure`,
+    `MolstructJsonError`, `dump_spectra_json`,
+    `dump_transport_json`) — **22 callsites in selection.py
+    alone**.
+* 14 doc cross-references to legacy paths (`design.md`,
+  `roadmap.md`, `package-layout.md`, `job-decoder.md`,
+  `results-state-contract.md`, `save-flow.md`, `atom-selection.md`,
+  `web-api.md`, `test-strategy.md` and others).
+
+Total revised scope: **~6,000 LOC moved + ~40 consumer rewrites
++ 25 test files + 14 docs**.  This calls for a 4-phase split:
+
+| Sub-phase | Lands | Notes |
+|---|---|---|
+| **H1** | Absorb legacy READ-side into the new wrappers.  Each `parse/engines/*`, `parse/sidecars/*`, `parse/coords/*`, `parse/scripts/*` parser inlines its legacy body so the wrapper no longer imports from `molbuilder.parsers` / `molbuilder.script_contract`.  `parse/dirs/bundle.py` absorbs the read half of `assemble_from_run_dir`.  `parse/dirs/job.py` switches internal calls from `script_contract.extract_*` to `parse_text(text, parser=...TextParser)`. | ≈3,200 LOC moved |
+| **H2** | Rehome the WRITE side.  These don't belong in `parse/` (parse-module.md scopes parsing only).  Proposal: `molbuilder/sidecars/` (save / with_lock / sidecar_path_for / sha256 / to_dict / apply_to_structure / dump_* / exception families); `molbuilder/script_emit.py` (`emit_*` + `MARKER_RE` + `BLOCK_*` constants + `BenchField` + `SIESTA_BENCH_FIELDS` + `begin_marker` + `end_marker` + `merge_user_custom_from_target` + `molbuilder_git_sha` + `generated_at_now` + `apply_inbody_atom_metadata`); `BundleResult.materialize(dest_dir)` method (or `molbuilder/bundle_writer.py`).  Plus `trajectory_result_to_legacy_dict()` in `parse/engines/_helpers.py` for the 3Dmol.js adapter. | ≈1,200 LOC + 4 new modules |
+| **H3** | Update consumers.  10 production files (`web/blueprints/{watch,spectra,selection,_shared,files,results}.py`, `siesta/input.py`, `pyscf/input.py`, `runwrap.py`, `bench/__init__.py`) plus 25 test files plus the 8 `parse/` self-deps now resolved by H1.  Delete `tests/parse/test_round2_fixes.py::test_migration_legacy_parsers_detect_still_works` in the same commit family (the migration shim test only made sense pre-H). | ≈40 callsites |
+| **H4** | Delete `molbuilder/parsers/` (12 files) + `molbuilder/script_contract.py` (806 LOC) + `molbuilder/script_bundle.py` (507 LOC).  Doc redirects: `docs/types/parsers.md` → 20-line stub pointing here; `docs/protocols/script-contract.md` + `bundle-contract.md` keep their contracts but update code-pointer lines to point at the new homes.  Update the 14 cross-referencing docs.  Final test sweep + `grep -rn "from molbuilder.{parsers,script_contract,script_bundle}"` must return empty. | ≈14 docs touched |
+
+Per the no-back-compat-shims convention, each sub-phase still
+ships in a single commit family — no transition window between
+H3 and H4.
+
+**Status snapshot (2026-06-20):** Phases A-G + the half-Phase-H
+audit-gap closures shipped.  H1-H4 await a forcing function;
+the legacy modules are stable, tested, and cost nothing today.
+When H1-H4 ship, they ship in audit order, and each is a
+focused review-ready commit.
 
 ## 9. Forbidden patterns
 
@@ -482,19 +519,27 @@ These rules prevent the next round of parallel parse paths:
 
 ## 10. Test coverage
 
-| Test | Level | What it pins |
+Total **106 tests** across `tests/parse/` (collected 2026-06-20).
+Grouped by the file/area they exercise:
+
+| File | Tests | What it pins |
 |---|---|---|
-| `test_registry_dispatches_file` | L2 | `detect(path)` returns the right FileParser class for known fixtures (siesta.out → SiestaOutParser, etc.) |
-| `test_registry_dispatches_dir` | L2 | `detect(dir)` returns DirParser when the path is a project dir |
-| `test_registry_unknown_raises` | L2 | Unknown extension raises `UnknownFormatError` with hint list |
-| `test_registry_ambiguous_raises` | L2 | Two parsers claim the same path → `AmbiguousFormatError` |
-| `test_each_parser_returns_correct_result_kind` | L2 | Every registered parser's output matches its declared `output` Type |
-| `test_parse_result_subclasses_are_frozen` | L2 | dataclasses are frozen + cannot be mutated post-construction |
-| `test_dir_parser_uses_registry_only` | L2 | Lint test that DirParser module sources don't side-import file-level parsers; they go through `detect()`. |
-| `test_text_parser_no_io` | L2 | Lint test that TextParser modules don't import `open` / `pathlib` / `os.path` |
-| `test_migration_old_imports_still_work` | L2 | Until Phase H, the legacy `from molbuilder.parsers import detect_parser` still works.  Removed after Phase H. |
-| (per-engine, per-sidecar, per-coords) | L2 | Each parser's individual contract — reads the right fields, handles malformed input gracefully |
-| `test_job_dir_parser_smoke` | L3 | Full DirParser run on `TJ-BDT-Au111` and `BDT-withAuJunction` fixtures (the existing `tests/jobs/test_decoder.py` 16 tests; relocated). |
+| `test_registry.py` | 9 | Registry mechanics: engine + dir parsers registered, `detect(siesta.out)` routes, unknown extension raises `UnknownFormatError`, `parse_dir` dispatches to `JobDirParser`, non-directory raises, result-kind discriminators unique, every `ParseResult` subclass frozen. |
+| `test_coords.py` | 9 | Phase E coords parsers: `SiestaXVFileParser` claims `.XV` (uppercase) but not `.xml`, `PyscfGeomXyzFileParser` claims `*_optimized.xyz` but not plain `.xyz`, .XV round-trip carries cell + atomic-number→element mapping; `StructureResult` frozen. |
+| `test_sidecars.py` | 7 | Phase D sidecar parsers: registered, claim correct suffixes (`.molstruct.json`, `.spectra.json`), dispatch via `detect`, return `SidecarResult` with parsed payload; frozen. |
+| `test_scripts.py` | 10 | Phase F per-block TextParsers: HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM extract / return-None / surface schema_version; `ScriptSourceTextParser` umbrella composes all blocks + handles no-blocks; `ScriptResult` frozen + I/O lint. |
+| `dirs/test_job.py` | 20 | `JobDirParser` end-to-end on `TJ-BDT-Au111` + `BDT-withAuJunction` fixtures: typed `JobResult`, parse_dir dispatch, job-type classification (script-contract vs sniff vs ambiguous-raises), engine_input envelopes, engine_body_summary curated keys exact + raw string values + kgrid block extraction, multistage plot buckets, source_files index, geometry XYZ+cell, status shape, CG-step progress; frozen; `_no_direct_out_grep` source-level lint. |
+| `dirs/test_bundle.py` | 9 | Phase G `BundleDirParser`: NOT in dispatch registry (vs `JobDirParser` collision), `can_parse` mirrors legacy precondition, real-fixture parse returns `BundleResult` w/ structure + regions + frozen_atoms + notes, BundleError propagates on empty + ambiguous-engine dirs; frozen; parser_name is slug. |
+| `dirs/test_job_review_fixes.py` | 8 | Round-1 BLOCKER regressions: B2 LatticeConstant Å vs Bohr scaling + default-Bohr-when-unspecified, B3 `can_parse` rejects `.py`-only dir (claims fdf-only); I2 `engine_body_summary` case-insensitive + tab-separated + canonical keys unchanged. |
+| `test_round2_fixes.py` | 14 | Round-2 BLOCKERs: anchor stage tie-breaker, B2 LatticeConstant word boundary, I2 tab/multi-space normalisation, I1 bool-not-charted, slug parser_name, sidecar + engine source paths resolved absolute, ambiguous-raises, migration legacy `parsers.detect_parser` still works (removed at H4), spectra payload JSON-serialisable, frozen-dataclass invariant per result kind. |
+| `test_round3_fixes.py` | 5 | Round-3 BLOCKER: TrajectoryResult `frames` + `lattice` are copies not shared refs (frozen-invariant on inner mutables); I4 last-wins on duplicated fdf keys (SIESTA manual § 7.1) — single + duplicate + triple-override. |
+| `test_round4_fixes.py` | 6 | Round-4 IMPORTANTs: D2 BOM-prefixed fdf parses + round-trips through `decode_run_dir`; E1 kgrid extracts diagonal + tolerates blank lines + tolerates comments + falls to None on malformed. |
+| `test_audit_gaps.py` | 9 | **Half-Phase-H audit-gap closures (this commit family).** Public-surface coverage (`__all__` resolves), top-level re-exports identity-match sub-packages, `ParseWarning` constructible + frozen + None-tolerant, `parse_text` smoke via `ScriptSourceTextParser`, forbidden-pattern lints P2 (TextParsers no I/O), P3 (FileParsers no subprocess/network/threads), P6 (no engine names in core `types.py`/`base.py`/`registry.py`/`errors.py`). |
+
+Levels — Most are L2 (in-process, fixture-driven, ≤100 ms).
+The fixture-fed dirs/test_job.py + dirs/test_bundle.py +
+test_coords.py XV round-trip are L3 (real project directories
+under `projects/BDT/optimization/`).
 
 ## 11. Pinned references
 

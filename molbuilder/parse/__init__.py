@@ -35,6 +35,14 @@ from . import coords as _coords   # noqa: F401  -- side-effect import
 from . import sidecars as _sidecars   # noqa: F401  -- side-effect import
 from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
+# Convenience re-exports of the canonical entry-point classes
+# from each sub-package.  Callers who know exactly which parser
+# they want (the umbrella TextParser, or the explicit-dispatch
+# BundleDirParser) get them off the top-level namespace without
+# having to know the sub-package layout.
+from .dirs.bundle import BundleDirParser   # noqa: F401
+from .scripts.source import ScriptSourceTextParser   # noqa: F401
+
 __all__ = [
     # ABCs
     "FileParser", "TextParser", "DirParser",
@@ -46,4 +54,7 @@ __all__ = [
     "detect", "parse", "parse_dir", "parse_text", "register",
     # Exceptions
     "UnknownFormatError", "AmbiguousFormatError",
+    # Canonical entry-point classes (convenience re-exports)
+    "BundleDirParser",            # explicit-dispatch DirParser (Phase G)
+    "ScriptSourceTextParser",     # umbrella TextParser (Phase F)
 ]
