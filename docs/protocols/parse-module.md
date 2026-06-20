@@ -343,10 +343,10 @@ molbuilder/parse/
 │   ├── user_custom.py   # UserCustomTextParser
 │   └── source.py        # ScriptSourceTextParser (umbrella, composes all 5)
 │
-└── dirs/                # PARTIAL — JobDirParser shipped (Phase B); BundleDirParser pending (Phase G)
-    ├── __init__.py
-    ├── bundle.py        # was script_bundle.py  (PENDING)
-    └── job.py           # was jobs/decoder.py   (✓ shipped)
+└── dirs/                # ✓ shipped (Phases B + G) — DirParsers (composers)
+    ├── __init__.py      # JobDirParser auto-registers; BundleDirParser explicit-dispatch
+    ├── bundle.py        # ✓ BundleDirParser (Phase G; wraps script_bundle.assemble_from_run_dir)
+    └── job.py           # ✓ JobDirParser (Phase B; wraps decode_run_dir)
 ```
 
 ## 6. Plugin contracts
@@ -436,7 +436,7 @@ ships in this order:
 | **D** | Wrap `parsers/{molstruct,spectra,transport}_json.py` as `FileParser`s in `parse/sidecars/*` | ✓ shipped |
 | **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` (StructureResult with cell — closes the Phase 1 lattice-extraction gap) | ✓ shipped |
 | **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella as TextParsers) | ✓ shipped |
-| **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` | pending |
+| **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` (explicit-dispatch; not auto-registered, since it shares the .fdf claim with JobDirParser but expresses a different user intent) | ✓ shipped |
 | **H** | **Phase H prerequisite — absorb legacy logic into the new wrappers** so `parse/engines/*`, `parse/sidecars/*`, and `parse/dirs/*` no longer import from `molbuilder.parsers` / `molbuilder.script_contract`.  THEN delete the legacy `molbuilder/parsers/` package + `molbuilder/script_contract.py` + `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | pending |
 
 Each phase is independently reviewable.  Phases C-G ship the

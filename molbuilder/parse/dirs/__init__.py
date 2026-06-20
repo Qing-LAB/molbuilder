@@ -1,13 +1,21 @@
 """DirParsers — directory-level composers.
 
-Each module here defines one :class:`DirParser` subclass and
-registers it at import time.  Adding a new DirParser is two steps:
-new module here, import + ``register`` below.
+Most DirParsers register themselves at import so the dispatch
+registry can route ``parse_dir(path)`` to them automatically.
+The exception is :class:`BundleDirParser`: it shares the
+"directory with .fdf" claim with :class:`JobDirParser` but
+expresses a DIFFERENT user intent (bundle handoff vs job
+decoding) and would deadlock dispatch on ambiguity if both
+auto-registered.  Bundle callers invoke ``BundleDirParser.parse``
+directly.
 """
 
 from molbuilder.parse.registry import register
+from .bundle import BundleDirParser   # noqa: F401  -- re-export
 from .job import JobDirParser, decode_run_dir   # noqa: F401  -- re-export
 
+# Only JobDirParser auto-registers.  BundleDirParser is explicit-
+# dispatch (see its module docstring for the rationale).
 register(JobDirParser)
 
-__all__ = ["JobDirParser", "decode_run_dir"]
+__all__ = ["BundleDirParser", "JobDirParser", "decode_run_dir"]
