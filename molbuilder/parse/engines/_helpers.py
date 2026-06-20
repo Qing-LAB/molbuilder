@@ -50,13 +50,24 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
         )
         for w in (getattr(traj, "parse_warnings", None) or [])
     ]
+    # Round-3 BLOCKER fix: legacy Trajectory is NOT frozen; the
+    # caller can mutate its frames/lattice after parse.  Copy both
+    # so the returned TrajectoryResult's frozen contract holds end-
+    # to-end, not just on top-level attribute reassignment.
+    # ``frames`` is a list of Frame dataclasses — shallow list-copy
+    # is enough because each Frame is itself constructed once per
+    # parse and not mutated by downstream code.  ``lattice`` is a
+    # numpy ndarray; .copy() gives a fresh buffer the caller can
+    # later modify without surprising the consumer.
+    frames_copy = list(traj.frames)
+    lattice_copy = traj.lattice.copy() if traj.lattice is not None else None
     return TrajectoryResult(
         schema_version=1,
         parsed_at=_iso_z(),
         parser_name=parser_name,
         source=source_str,
-        frames=traj.frames,
-        lattice=traj.lattice,
+        frames=frames_copy,
+        lattice=lattice_copy,
         source_format=traj.source_format,
         run_state=traj.run_state or "unknown",
         error_message=traj.error_message,

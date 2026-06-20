@@ -306,12 +306,13 @@ def register(parser: Type[FileParser | TextParser | DirParser]) -> None:
 molbuilder/parse/
 ├── __init__.py          # public API: re-exports from below
 ├── base.py              # FileParser, TextParser, DirParser, ParseWarning
-├── types.py             # ParseResult + 6 subclasses
+├── types.py             # ParseResult base + 6 concrete subclasses
 ├── registry.py          # _REGISTRY, detect, parse, parse_text, parse_dir, register
 ├── errors.py            # UnknownFormatError, AmbiguousFormatError
 │
 ├── engines/             # FileParsers for engine .out / .log
 │   ├── __init__.py      # imports + registers each
+│   ├── _helpers.py      # wrap_trajectory() Trajectory -> TrajectoryResult
 │   ├── siesta.py        # was parsers/siesta.py
 │   ├── pyscf.py         # was parsers/pyscf.py
 │   └── molwatch.py      # was parsers/molwatch_log.py
@@ -325,6 +326,7 @@ molbuilder/parse/
 │
 ├── sidecars/            # FileParsers for molbuilder JSON sidecars
 │   ├── __init__.py
+│   ├── _helpers.py      # build_sidecar_result() envelope helper
 │   ├── molstruct.py     # was parsers/molstruct_json.py
 │   ├── spectra.py       # was parsers/spectra_json.py
 │   └── transport.py     # was parsers/transport_json.py
@@ -424,24 +426,28 @@ extract + how they shape the result.
 The current code stays working throughout migration. The package
 ships in this order:
 
-| Phase | Lands | Net change to repo |
+| Phase | Lands | Status (2026-06-19) |
 |---|---|---|
-| **A** | This doc + `parse/__init__.py`, `parse/base.py`, `parse/types.py`, `parse/registry.py`, `parse/errors.py` (skeleton only; no parsers yet) | additive |
-| **B** | Move `jobs/decoder.py` → `parse/dirs/job.py` as the first concrete `DirParser` example.  Update its 1 consumer (test file) | rename + update |
-| **C** | Wrap `parsers/{siesta,pyscf,molwatch_log}.py` as `FileParser`s in `parse/engines/*`.  Keep the existing functions working via re-export at the old path.  Update consumers to import from new path. | additive + import shift |
-| **D** | Wrap `parsers/{molstruct,spectra,transport}_json.py` as `FileParser`s in `parse/sidecars/*`. | additive + import shift |
-| **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*`. | additive + import shift |
-| **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella). | rename + update |
-| **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser`. | rename + update |
-| **H** | Delete the legacy `molbuilder/parsers/` package and `molbuilder/script_contract.py` and `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | break (pre-1.0; no shim per the no-back-compat-shims convention) |
+| **A** | This doc + `parse/__init__.py`, `parse/base.py`, `parse/types.py`, `parse/registry.py`, `parse/errors.py` (skeleton only; no parsers yet) | ✓ shipped |
+| **B** | Move `jobs/decoder.py` → `parse/dirs/job.py` as the first concrete `DirParser` example | ✓ shipped |
+| **C** | Wrap `parsers/{siesta,pyscf,molwatch_log}.py` as `FileParser`s in `parse/engines/*` | ✓ shipped |
+| **D** | Wrap `parsers/{molstruct,spectra,transport}_json.py` as `FileParser`s in `parse/sidecars/*` | ✓ shipped |
+| **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` | pending |
+| **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella) | pending |
+| **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` | pending |
+| **H** | **Phase H prerequisite — absorb legacy logic into the new wrappers** so `parse/engines/*`, `parse/sidecars/*`, and `parse/dirs/*` no longer import from `molbuilder.parsers` / `molbuilder.script_contract`.  THEN delete the legacy `molbuilder/parsers/` package + `molbuilder/script_contract.py` + `molbuilder/script_bundle.py`.  Update `parsers.md`, `script-contract.md`, `bundle-contract.md` to redirect at this doc. | pending |
 
-Each phase is independently reviewable.  Phases B-G are
-non-breaking via re-exports (the old import paths return the
-wrapped class's pure-function equivalent for one release).  Phase
-H is the clean break.
+Each phase is independently reviewable.  Phases C-G ship the
+wrappers but **continue to delegate to the legacy modules**;
+Phase H is the clean break and MUST also rewrite the per-engine
+parsers so the legacy code can be deleted without breaking
+imports.  Per the no-back-compat-shims convention, no transition
+window — Phase H ships in one commit family.
 
-Phase A + B land in this commit family.  Phases C-H follow as
-their own focused work.
+**Status snapshot (2026-06-19):** Phases A + B + C + D shipped;
+8 import sites in `parse/` still reference legacy modules (audit
+via ``grep -rn "from molbuilder.parsers\|from molbuilder.script_contract" molbuilder/parse/``);
+Phase H planning must account for absorbing all 8.
 
 ## 9. Forbidden patterns
 
@@ -509,4 +515,5 @@ These rules prevent the next round of parallel parse paths:
 
 | Date | Decision |
 |---|---|
-| 2026-06-19 | Initial draft. Three ABCs (File / Text / Dir).  Frozen-dataclass `ParseResult` hierarchy with 7 subclasses.  Phase A + B land in the first commit family; C-H follow incrementally. |
+| 2026-06-19 | Initial draft. Three ABCs (File / Text / Dir).  Frozen-dataclass `ParseResult` hierarchy with 6 concrete subclasses (TrajectoryResult / StructureResult / SidecarResult / ScriptResult / JobResult / BundleResult) atop the ParseResult base.  Phase A + B land in the first commit family; C-H follow incrementally. |
+| 2026-06-19 | Phases C + D shipped — engine wrappers + sidecar wrappers.  Round-3 review pass: `_helpers.py` modules added to package tree; Phase H description now explicitly requires absorbing legacy logic before the legacy-module deletion (8 import sites identified). |

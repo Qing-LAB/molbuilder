@@ -168,7 +168,13 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
         # (post-2026-06-19 round-2 fix for I2 tab-in-value).
         value = " ".join(parts[1].split())
         canonical = _lc_lookup.get(key.lower())
-        if canonical is not None and out[canonical] is None:
+        if canonical is not None:
+            # SIESTA uses last-wins for duplicated fdf keys (manual
+            # § 7.1).  A common pattern: a stub at the top of the
+            # file with a default, then an override later that the
+            # engine actually reads.  Match the engine's semantics
+            # so engine_body_summary reflects what SIESTA used, not
+            # the first occurrence (post-2026-06-19 round-3 fix I4).
             out[canonical] = value
 
     # kgrid_Monkhorst_Pack is a %block, not a directive.  Pull the

@@ -5,11 +5,12 @@ Spectrum and transport extensions follow the same envelope with
 engine-specific plot keys.
 
 **Modules** (to be added):
-[`molbuilder/jobs/decoder.py`](../../molbuilder/jobs/decoder.py),
-[`molbuilder/jobs/monitor.py`](../../molbuilder/jobs/monitor.py)
-&nbsp;·&nbsp; **Tests** (to be added):
-[`tests/jobs/test_decoder.py`](../../tests/jobs/test_decoder.py),
-[`tests/jobs/test_decoder_multistage.py`](../../tests/jobs/test_decoder_multistage.py)
+[`molbuilder/parse/dirs/job.py`](../../molbuilder/parse/dirs/job.py)
+&nbsp;·&nbsp; future: `molbuilder/jobs/monitor.py` (Phase 2 thread)
+&nbsp;·&nbsp; **Tests**:
+[`tests/parse/dirs/test_job.py`](../../tests/parse/dirs/test_job.py),
+[`tests/parse/dirs/test_job_review_fixes.py`](../../tests/parse/dirs/test_job_review_fixes.py),
+[`tests/parse/test_round2_fixes.py`](../../tests/parse/test_round2_fixes.py)
 
 ## 1. Position vs the existing parser stack
 
@@ -64,8 +65,8 @@ of `script-contract` versions; consumers gate on
 ```json
 {
   "schema_version": 1,
-  "decoded_at":     "2026-06-19T15:42:01.234Z",
-  "decoder_version": "git <sha>",
+  "parsed_at":      "2026-06-19T15:42:01.234Z",
+  "parser_name":    "job-dir",
 
   "job_type": "optimization",
   "engine":   "siesta",
@@ -398,7 +399,7 @@ State definitions:
 | **failed** | The most recent `.out` contains any of the failure markers in the curated list (`siesta: ERROR`, `propor: ERROR`, MPI abort, etc.). `last_iter_wall_s` may be `null`. |
 
 The end-of-run and failure marker lists are codified in
-`molbuilder/jobs/decoder.py::END_MARKERS` and `FAILURE_MARKERS`.
+`molbuilder/parse/dirs/job.py::END_MARKERS` and `FAILURE_MARKERS`.
 Adding markers requires a doc update + test.
 
 ## 6. Progress + ETA
