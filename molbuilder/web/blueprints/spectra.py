@@ -73,8 +73,8 @@ from .files import _PickerError, _resolve_within_roots
 
 from molbuilder.config.spectra import SpectraConfig
 from molbuilder.validation import validate as _validate
-from molbuilder.parsers import molstruct_json as _molstruct_json
-from molbuilder.parsers.spectra_json import (
+from molbuilder.sidecars import molstruct as _molstruct_json
+from molbuilder.sidecars.spectra import (
     SpectraJsonError,
     SpectraJsonFieldError,
     SpectraJsonMalformedError,

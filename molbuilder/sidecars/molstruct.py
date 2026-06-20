@@ -369,10 +369,23 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     struct.frozen_atoms = list(sidecar_data.get("frozen_atoms") or [])
 
 
+def load(sidecar_path):
+    """Read-side convenience re-export: delegates to
+    :func:`molbuilder.parse.sidecars.molstruct._load` so consumers
+    have a single ``molbuilder.sidecars.molstruct`` namespace that
+    carries the full sidecar surface (read + write).  Local import
+    avoids a module-load-time cycle: parse.sidecars.molstruct
+    imports MolstructJsonError + SCHEMA_VERSION from THIS module.
+    """
+    from molbuilder.parse.sidecars.molstruct import _load
+    return _load(sidecar_path)
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "MolstructJsonError",
     "apply_to_structure",
+    "load",
     "save",
     "sha256_of_file",
     "sidecar_path_for",

@@ -1046,7 +1046,7 @@ def apply_sidecar_if_possible(struct, structure_path):
     created an asymmetric cross-blueprint dependency.
     """
     from .files import _resolve_within_roots, _PickerError
-    from molbuilder.parsers import molstruct_json as _molstruct_json
+    from molbuilder.sidecars import molstruct as _molstruct_json
     if not structure_path:
         return None
     try:

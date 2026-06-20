@@ -153,6 +153,24 @@ def _parse_transport_json(
     return _validate_dict_to_results(d, repr(p))
 
 
+def _parse_transport_json_dict(d: Dict[str, Any]) -> TransportResults:
+    """In-memory variant of :func:`_parse_transport_json`.  Used when
+    JSON arrived over the wire (e.g. a multipart POST to
+    ``/api/transport/load``) and the caller already has the dict.
+
+    Same validation pipeline minus the filesystem + JSON-decode
+    layers.  NaN-rejection only fires at json.loads; the in-memory
+    path doesn't re-validate finiteness — caller's responsibility."""
+    if not isinstance(d, dict):
+        raise TransportJsonMalformedError(
+            f"expected a JSON object, got {type(d).__name__}"
+        )
+    if "schema_version" not in d:
+        raise TransportJsonSchemaError(SCHEMA_VERSION, None)
+    _validate_schema_version(d["schema_version"])
+    return _validate_dict_to_results(d, "input dict")
+
+
 # --------------------------------------------------------------------- #
 #  FileParser wrapper                                                    #
 # --------------------------------------------------------------------- #

@@ -45,10 +45,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
-from molbuilder.parsers import (
+from molbuilder.parse import (
     UnknownFormatError,
-    detect_parser,
-    trajectory_to_legacy_dict,
+    detect as detect_parser,
+)
+from molbuilder.parse.engines._helpers import (
+    trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
 )
 
 
@@ -601,7 +603,9 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     ``lattice`` and ``source_format`` come from the LATEST trajectory
     (it's the one the polling thread is watching for updates).
     """
-    from molbuilder.parsers.molwatch_log import MolwatchLogParser
+    from molbuilder.parse.engines.molwatch import (
+        MolwatchLogFileParser as MolwatchLogParser,
+    )
 
     merged: Dict[str, Any] = {
         "frames": [], "energies": [], "max_forces": [],

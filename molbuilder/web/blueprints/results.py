@@ -197,8 +197,11 @@ def api_results_bundle():
     # Defer the imports until the handler runs so the blueprint
     # import-time graph stays thin (results.py is loaded at startup
     # by every page; script_bundle pulls in parsers + structure).
-    from molbuilder.script_bundle import (
-        BundleError, assemble_from_run_dir, write_bundle_as_handoff,
+    from molbuilder.parse.dirs.bundle import (
+        BundleError, BundleDirParser,
+    )
+    from molbuilder.bundle_writer import (
+        BundleWriteError, write_bundle_as_handoff,
     )
     from .files import _resolve_within_roots, _PickerError
 
@@ -269,7 +272,7 @@ def api_results_bundle():
         }), 400
 
     try:
-        bundle = assemble_from_run_dir(run_path)
+        bundle = BundleDirParser.parse(run_path)
     except BundleError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -277,7 +280,7 @@ def api_results_bundle():
         xyz_path, sidecar_path = write_bundle_as_handoff(
             bundle, target_path, stem=stem, overwrite=overwrite,
         )
-    except BundleError as exc:
+    except (BundleError, BundleWriteError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except OSError as exc:
         # Disk full, permission denied, EROFS, broken symlink on

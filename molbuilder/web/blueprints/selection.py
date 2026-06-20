@@ -106,7 +106,7 @@ from typing import Any, Dict, Optional
 from flask import Blueprint, jsonify, request
 
 from molbuilder import selection
-from molbuilder.parsers import molstruct_json
+from molbuilder.sidecars import molstruct as molstruct_json
 from molbuilder.selection import (
     Rule, SelectionError, evaluate,
     from_json as rule_from_json,

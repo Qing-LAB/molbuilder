@@ -170,8 +170,27 @@ def dump_spectra_json(results: SpectraResults,
         raise
 
 
+def parse_spectra_json(path):
+    """Read-side convenience re-export — delegates to
+    :func:`molbuilder.parse.sidecars.spectra._parse_spectra_json`
+    so callers have a single ``molbuilder.sidecars.spectra``
+    namespace for both read + write.  Local import avoids module-
+    load-time cycle (parse module imports exceptions from here)."""
+    from molbuilder.parse.sidecars.spectra import _parse_spectra_json
+    return _parse_spectra_json(path)
+
+
+def parse_spectra_json_dict(d):
+    """In-memory variant of :func:`parse_spectra_json`.  Re-exports
+    :func:`molbuilder.parse.sidecars.spectra._parse_spectra_json_dict`."""
+    from molbuilder.parse.sidecars.spectra import _parse_spectra_json_dict
+    return _parse_spectra_json_dict(d)
+
+
 __all__ = [
     "dump_spectra_json",
+    "parse_spectra_json",
+    "parse_spectra_json_dict",
     "SpectraJsonError",
     "SpectraJsonNotFoundError",
     "SpectraJsonMalformedError",

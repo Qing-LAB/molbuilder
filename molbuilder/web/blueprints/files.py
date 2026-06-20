@@ -1343,7 +1343,7 @@ def api_files_write():
     # target) -- it returns the incoming text unchanged.  See
     # docs/protocols/script-contract.md.
     if expected_mtime is None:
-        from molbuilder.script_contract import (
+        from molbuilder.script_emit import (
             merge_user_custom_from_target as _mb_merge_user_custom
         )
         text = _mb_merge_user_custom(text, resolved)

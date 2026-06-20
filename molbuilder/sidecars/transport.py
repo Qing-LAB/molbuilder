@@ -148,8 +148,26 @@ def dump_transport_json(results: TransportResults,
         raise
 
 
+def parse_transport_json(path):
+    """Read-side convenience re-export — delegates to
+    :func:`molbuilder.parse.sidecars.transport._parse_transport_json`
+    so callers have a single ``molbuilder.sidecars.transport``
+    namespace for both read + write."""
+    from molbuilder.parse.sidecars.transport import _parse_transport_json
+    return _parse_transport_json(path)
+
+
+def parse_transport_json_dict(d):
+    """In-memory variant of :func:`parse_transport_json`.  Re-exports
+    :func:`molbuilder.parse.sidecars.transport._parse_transport_json_dict`."""
+    from molbuilder.parse.sidecars.transport import _parse_transport_json_dict
+    return _parse_transport_json_dict(d)
+
+
 __all__ = [
     "dump_transport_json",
+    "parse_transport_json",
+    "parse_transport_json_dict",
     "TransportJsonError",
     "TransportJsonNotFoundError",
     "TransportJsonMalformedError",
