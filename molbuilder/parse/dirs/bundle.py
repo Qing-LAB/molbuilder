@@ -513,6 +513,8 @@ class BundleDirParser(DirParser):
             frozen_atoms=list(bundle["frozen_atoms"] or []),
             notes=list(bundle["notes"] or []),
             block_schema_versions=block_schema_versions,
+            source_engine=bundle.get("source_engine"),
+            final_coords_from=bundle.get("final_coords_from"),
         )
 
 
