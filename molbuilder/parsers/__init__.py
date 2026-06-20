@@ -214,6 +214,12 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     this to keep returning the same JSON shape the existing 3Dmol.js
     client consumes.
 
+    H2 of parse-module.md migration: this function now delegates to
+    :func:`molbuilder.parse.engines._helpers.trajectory_result_to_legacy_dict`
+    (the canonical home).  Both produce identical bytes; both will be
+    deleted in H4 — this entry point sticks around until H3 migrates
+    the last consumer.
+
     Output shape:
 
       {
@@ -233,6 +239,45 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
       Trajectory.lattice = None ->  lattice     = null
       Frame.energy / max_force unset stays as None -> JSON null.
     """
+    # Delegate to the canonical adapter in parse/engines/_helpers.py.
+    # The new function takes a TrajectoryResult; we construct a
+    # minimal envelope (the adapter only reads frames/lattice/
+    # source_format/run_state/error_message/runtime_info/parse_warnings,
+    # so the envelope fields are placeholders).  ParseWarning vs
+    # legacy Warning is duck-typed on .line_no/.snippet/.error/
+    # .category so the warnings list flows through unchanged.
+    from molbuilder.parse.engines._helpers import (
+        trajectory_result_to_legacy_dict,
+    )
+    from molbuilder.parse.types import TrajectoryResult
+    return trajectory_result_to_legacy_dict(TrajectoryResult(
+        schema_version=1,
+        parsed_at="",
+        parser_name="legacy-adapter",
+        source="",
+        frames=list(traj.frames),
+        lattice=traj.lattice,
+        source_format=traj.source_format,
+        run_state=traj.run_state or "unknown",
+        error_message=traj.error_message,
+        runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
+        parse_warnings=list(getattr(traj, "parse_warnings", None) or []),
+    ))
+
+
+# Legacy body retained but unreachable -- kept for one release so a
+# code-search for the inlined logic still finds it; deleted in H4
+# along with the rest of molbuilder.parsers.  Wrapped in a no-op
+# function-body so module-import time doesn't try to evaluate the
+# free names (``traj``, ``f``) that only existed inside the original
+# function scope.
+def _legacy_inlined_trajectory_to_legacy_dict_body_DEAD_CODE(traj):  # pragma: no cover
+    """Replaced by delegation to
+    molbuilder.parse.engines._helpers.trajectory_result_to_legacy_dict
+    on 2026-06-20 (H2.adapter).  Kept around as dead code for one
+    release so a code-search for the inlined logic still finds the
+    semantics it pinned (Plotly null-as-gap, top-level [] collapses,
+    NaN sanitisation order).  Deleted in H4."""
     out_frames:     List[List[List[Any]]] = []
     out_energies:   List[Any] = []
     out_max_forces: List[Any] = []
