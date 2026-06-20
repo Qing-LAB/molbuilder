@@ -67,9 +67,11 @@ def test_b1_round3_trajectoryresult_lattice_is_a_copy_not_a_share():
     if result_a.lattice is None:
         pytest.skip("fixture has no lattice")
     result_b = parse(_need(SIESTA_OUT))
-    # Independent buffers.
-    assert result_a.lattice.base is not result_b.lattice.base \
-        or not np.shares_memory(result_a.lattice, result_b.lattice)
+    # Independent buffers — round-4 NIT cleanup: dropped the
+    # `base is not base` clause (both .base are None for fresh
+    # copies, so the OR short-circuit relied on the second
+    # term anyway).
+    assert not np.shares_memory(result_a.lattice, result_b.lattice)
 
 
 # ---- I4: last-wins for duplicated fdf keys ----------------------- #

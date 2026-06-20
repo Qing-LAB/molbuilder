@@ -310,28 +310,28 @@ molbuilder/parse/
 ├── registry.py          # _REGISTRY, detect, parse, parse_text, parse_dir, register
 ├── errors.py            # UnknownFormatError, AmbiguousFormatError
 │
-├── engines/             # FileParsers for engine .out / .log
+├── engines/             # ✓ shipped (Phase C) — engine .out / .log FileParsers
 │   ├── __init__.py      # imports + registers each
 │   ├── _helpers.py      # wrap_trajectory() Trajectory -> TrajectoryResult
 │   ├── siesta.py        # was parsers/siesta.py
 │   ├── pyscf.py         # was parsers/pyscf.py
 │   └── molwatch.py      # was parsers/molwatch_log.py
 │
-├── coords/              # FileParsers for geometry files
+├── coords/              # PENDING (Phase E) — geometry-file FileParsers
 │   ├── __init__.py
 │   ├── siesta_xv.py     # was parsers/siesta_struct.py::read_xv
 │   ├── siesta_fdf.py    # was read_fdf_initial_coords (TextParser-wrapped)
 │   ├── pyscf_geom.py    # was parsers/pyscf_struct.py
 │   └── xyz.py           # plain .xyz reader
 │
-├── sidecars/            # FileParsers for molbuilder JSON sidecars
+├── sidecars/            # ✓ shipped (Phase D) — molbuilder JSON sidecar FileParsers
 │   ├── __init__.py
 │   ├── _helpers.py      # build_sidecar_result() envelope helper
 │   ├── molstruct.py     # was parsers/molstruct_json.py
 │   ├── spectra.py       # was parsers/spectra_json.py
 │   └── transport.py     # was parsers/transport_json.py
 │
-├── scripts/             # TextParsers for the 6 fdf reserved blocks
+├── scripts/             # PENDING (Phase F) — TextParsers for the 6 fdf reserved blocks
 │   ├── __init__.py
 │   ├── markers.py       # MARKER_RE + block names (shared)
 │   ├── header.py        # was script_contract.py extract_header_text
@@ -341,10 +341,10 @@ molbuilder/parse/
 │   ├── user_custom.py   # was script_contract.py extract_user_custom_inner
 │   └── source.py        # umbrella -> ScriptResult (was extract_script_source)
 │
-└── dirs/                # DirParsers
+└── dirs/                # PARTIAL — JobDirParser shipped (Phase B); BundleDirParser pending (Phase G)
     ├── __init__.py
-    ├── bundle.py        # was script_bundle.py
-    └── job.py           # was jobs/decoder.py
+    ├── bundle.py        # was script_bundle.py  (PENDING)
+    └── job.py           # was jobs/decoder.py   (✓ shipped)
 ```
 
 ## 6. Plugin contracts

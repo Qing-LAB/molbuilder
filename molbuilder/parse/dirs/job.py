@@ -142,7 +142,14 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
     SIESTA key matching is case-insensitive (the engine itself
     treats fdf keys as case-insensitive); whitespace separators
     include tabs (post-2026-06-19 review fix I2).
+
+    Defense-in-depth: strip a leading UTF-8 BOM from the text so
+    a caller that bypasses the file-IO layer (or passes a string
+    that happens to retain the BOM) still gets correct extraction
+    (post-2026-06-19 round-4 fix D.2).
     """
+    if fdf_text.startswith("﻿"):
+        fdf_text = fdf_text[1:]
     out: Dict[str, Optional[str]] = {k: None for k in ENGINE_BODY_KEYS}
     # case-insensitive lookup: lowered key -> canonical key.
     _lc_lookup = {k.lower(): k for k in ENGINE_BODY_KEYS}
@@ -179,18 +186,34 @@ def _parse_engine_body_summary(fdf_text: str) -> Dict[str, Optional[str]]:
 
     # kgrid_Monkhorst_Pack is a %block, not a directive.  Pull the
     # 3x3 diagonal and reduce to "AxBxC".
+    #
+    # Round-4 fix (E.1): the previous pattern indexed by
+    # ``toks[len(rows)]`` which works only when every block-content
+    # line is itself a valid row.  A blank line or comment between
+    # rows would silently swallow the error + leave rows short.  We
+    # now scan ONLY valid rows (>= 3 numeric tokens), and we read
+    # the explicit diagonal element (row 0 col 0, row 1 col 1, row 2
+    # col 2) from the row's OWN position in the validated sequence.
     m = _KGRID_BLOCK_RE.search(fdf_text)
     if m:
-        rows = []
-        for raw in m.group(1).strip().splitlines():
-            toks = raw.split()
+        valid_rows: List[List[str]] = []
+        for raw in m.group(1).splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            toks = line.split()
             if len(toks) >= 3:
-                try:
-                    rows.append(int(toks[len(rows)]))
-                except (ValueError, IndexError):
-                    pass
-        if len(rows) == 3:
-            out["kgrid_Monkhorst_Pack"] = f"{rows[0]}x{rows[1]}x{rows[2]}"
+                valid_rows.append(toks)
+        if len(valid_rows) >= 3:
+            try:
+                diag = (
+                    int(valid_rows[0][0]),
+                    int(valid_rows[1][1]),
+                    int(valid_rows[2][2]),
+                )
+                out["kgrid_Monkhorst_Pack"] = f"{diag[0]}x{diag[1]}x{diag[2]}"
+            except (ValueError, IndexError):
+                pass
     return out
 
 
@@ -254,7 +277,7 @@ def _build_engine_input(fdf_path: Path) -> Dict[str, Any]:
         extract_header_text, extract_provenance_dict,
         extract_user_custom_inner,
     )
-    text = fdf_path.read_text(encoding="utf-8", errors="replace")
+    text = fdf_path.read_text(encoding="utf-8-sig", errors="replace")
 
     header = extract_header_text(text)
     provenance = extract_provenance_dict(text)
@@ -494,7 +517,7 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
     if structure is None and anchor_fdf is not None:
         try:
             structure = read_fdf_initial_coords(
-                anchor_fdf.read_text(encoding="utf-8", errors="replace"))
+                anchor_fdf.read_text(encoding="utf-8-sig", errors="replace"))
             coords_source = anchor_fdf.name
             coords_state = "initial"
         except SiestaFdfStructureError:
@@ -504,7 +527,7 @@ def _build_geometry(run_dir: Path, files: Dict[str, List[Path]]
     frozen: List[int] = []
     if anchor_fdf is not None:
         src = extract_script_source(
-            anchor_fdf.read_text(encoding="utf-8", errors="replace"))
+            anchor_fdf.read_text(encoding="utf-8-sig", errors="replace"))
         regions = src.regions or {}
         frozen = src.frozen_atoms or []
 
@@ -551,7 +574,7 @@ def _read_cell_from_fdf(fdf_path: Path) -> Optional[List[List[float]]]:
     ``LatticeConstant 5.43 Ang`` + identity vectors silently
     produced a 1Å unit cube (post-2026-06-19 review fix B2).
     """
-    text = fdf_path.read_text(encoding="utf-8", errors="replace")
+    text = fdf_path.read_text(encoding="utf-8-sig", errors="replace")
     m = _LATTICE_BLOCK_RE.search(text)
     if not m:
         return None
@@ -715,7 +738,7 @@ def decode_run_dir(run_dir: Path) -> JobResult:
     system_label: Optional[str] = None
     if files["fdf"]:
         active_fdf = sorted(files["fdf"], key=_anchor_sort_key)[-1]
-        text = active_fdf.read_text(encoding="utf-8", errors="replace")
+        text = active_fdf.read_text(encoding="utf-8-sig", errors="replace")
         job_type = _classify_job_type(text)
         # SIESTA fdf keys are case-insensitive (post-2026-06-19 fix I4).
         m = re.search(r"^\s*SystemLabel\s+(\S+)", text, re.M | re.I)
