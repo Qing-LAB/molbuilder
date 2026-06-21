@@ -567,7 +567,7 @@ def test_write_bundle_as_handoff_writes_both_files(tmp_path):
 
 
 def test_write_bundle_as_handoff_sidecar_carries_labels(tmp_path):
-    from molbuilder.parsers import molstruct_json as _msj
+    from molbuilder.sidecars import molstruct as _msj
     bundle = _h2_bundle()
     _, sidecar_path = sb.write_bundle_as_handoff(
         bundle, tmp_path, stem="h2",
@@ -624,7 +624,7 @@ def test_l3_roundtrip_siesta_labels_survive_handoff(tmp_path):
     canonical .xyz load path.  Labels survive intact.  Proves the
     in-body-wins-over-sidecar rule is end-to-end consistent: the
     new sidecar IS the only label source after handoff."""
-    from molbuilder.parsers import molstruct_json as _msj
+    from molbuilder.sidecars import molstruct as _msj
 
     # Source SIESTA dir.
     src_dir = tmp_path / "src"
@@ -658,7 +658,7 @@ def test_l3_roundtrip_siesta_labels_survive_handoff(tmp_path):
 
 def test_l3_roundtrip_pyscf_labels_survive_handoff(tmp_path):
     """Mirror of the SIESTA L3, for the PySCF assembler branch."""
-    from molbuilder.parsers import molstruct_json as _msj
+    from molbuilder.sidecars import molstruct as _msj
 
     src_dir = tmp_path / "src"
     src_dir.mkdir()

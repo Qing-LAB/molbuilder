@@ -389,7 +389,7 @@ class TestConvergenceTargetsAndPlotColors:
         """The hemeC stage-2 fixture's input echo carries
         MD.MaxForceTol=0.02 eV/Å (tightened from the default 0.04 for
         a stage-2 run).  Pin that the parser actually reads it."""
-        from molbuilder.parsers.siesta import SiestaParser
+        from molbuilder.parse.engines.siesta import SiestaParser
         path = (Path(__file__).resolve().parent
                 / "watch" / "fixtures" / "siesta_frozen"
                 / "hemeC-stage2-run3-finished-42fr.out")

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.parsers._rules import (
+from molbuilder.parse.engines._section_rules import (
     CONTINUE, END_SECTION, END_BUBBLE,
     SectionRule, any_of, contains_ci, starts_with_ci,
 )

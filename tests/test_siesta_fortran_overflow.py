@@ -43,7 +43,7 @@ import math
 
 import pytest
 
-from molbuilder.parsers.siesta import (
+from molbuilder.parse.engines.siesta import (
     _SCF_PREFIX_RE,
     _parse_fortran_float,
     _parse_scf_floats,
@@ -252,7 +252,7 @@ class TestParseSCFOverflowVariants:
         # The regex path resolves it for this case; that's the
         # documented behaviour.  But the column path is ALSO
         # exercised + tested directly:
-        from molbuilder.parsers.siesta import _parse_scf_floats_by_columns
+        from molbuilder.parse.engines.siesta import _parse_scf_floats_by_columns
         cols = _parse_scf_floats_by_columns(line, data_start)
         assert cols == pytest.approx([
             -660624.384691, -760090.911374, -760091.068034,
@@ -282,7 +282,7 @@ class TestTrajectoryDictNanSafe:
 
     def test_nan_to_none_pure_helper(self):
         import math
-        from molbuilder.parsers import _nan_to_none
+        from molbuilder.parse.engines._helpers import _nan_to_none
         assert _nan_to_none(1.0) == 1.0
         assert _nan_to_none(0) == 0
         assert _nan_to_none(None) is None
@@ -303,7 +303,7 @@ class TestTrajectoryDictNanSafe:
         out-of-spec too.  Sanitise to None alongside NaN so the
         browser's strict JSON parser doesn't reject."""
         import json
-        from molbuilder.parsers import _nan_to_none
+        from molbuilder.parse.engines._helpers import _nan_to_none
         assert _nan_to_none(float("inf")) is None
         assert _nan_to_none(float("-inf")) is None
         # Round-trip a structure with all three pathological values.
@@ -321,7 +321,7 @@ class TestTrajectoryDictNanSafe:
         duck-typing."""
         import json
         import numpy as np
-        from molbuilder.parsers import _nan_to_none
+        from molbuilder.parse.engines._helpers import _nan_to_none
         assert _nan_to_none(np.float64("nan")) is None
         assert _nan_to_none(np.float32("nan")) is None
         assert _nan_to_none(np.float64(2.5)) == 2.5
@@ -343,7 +343,7 @@ class TestTrajectoryDictNanSafe:
         ever forgets to call ``.tolist()`` before assigning."""
         import json
         import numpy as np
-        from molbuilder.parsers import _nan_to_none
+        from molbuilder.parse.engines._helpers import _nan_to_none
         arr = np.array([[1.0, float("nan")],
                         [float("inf"), 3.0]])
         cleaned = _nan_to_none(arr)
@@ -359,7 +359,7 @@ class TestTrajectoryDictNanSafe:
         import numpy as np
         from molbuilder.frame import Frame, Trajectory
         from molbuilder.structure import Structure
-        from molbuilder.parsers import trajectory_to_legacy_dict
+        from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 
         struct = Structure(
             elements=["H"],
@@ -393,7 +393,7 @@ class TestTrajectoryDictNanSafe:
         import numpy as np
         from molbuilder.frame import Frame, Trajectory
         from molbuilder.structure import Structure
-        from molbuilder.parsers import trajectory_to_legacy_dict
+        from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 
         struct = Structure(
             elements=["H"],

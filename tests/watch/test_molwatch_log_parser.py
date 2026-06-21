@@ -18,8 +18,11 @@ import math
 
 import pytest
 
-from molbuilder.parsers import trajectory_to_legacy_dict
-from molbuilder.parsers.molwatch_log import MolwatchLogParser
+from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+from molbuilder.parse.engines.molwatch import (
+    MolwatchLogFileParser,
+    MolwatchLogParser,
+)
 
 
 # A small, hand-written log with two complete blocks + one torn one.
@@ -243,8 +246,8 @@ def test_registry_dispatches_to_molwatch_parser(mw_path):
     """The registry must pick MolwatchLogParser for `.molwatch.log` files
     -- not the SIESTA or PySCF parser, which would either reject or
     misread our format."""
-    from molbuilder.parsers import detect_parser
-    assert detect_parser(mw_path) is MolwatchLogParser
+    from molbuilder.parse import detect as detect_parser
+    assert detect_parser(mw_path) is MolwatchLogFileParser
 
 
 def test_wall_time_field_round_trip(tmp_path):

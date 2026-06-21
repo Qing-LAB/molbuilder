@@ -454,6 +454,23 @@ def _parse_molwatch_log(path: str) -> Trajectory:
     )
 
 
+class MolwatchLogParser:
+    """Body parser for ``.molwatch.log`` files.  Returns legacy
+    :class:`Trajectory`; use :class:`MolwatchLogFileParser` for a
+    typed :class:`TrajectoryResult`.
+
+    Mirrors the legacy ``MolwatchLogParser`` API: ``can_parse(path)
+    -> bool`` + ``parse(path) -> Trajectory``."""
+
+    name = "molwatch"
+
+    @classmethod
+    def can_parse(cls, path):
+        return MolwatchLogFileParser.can_parse(Path(path))
+
+    parse = staticmethod(_parse_molwatch_log)
+
+
 class MolwatchLogFileParser(FileParser):
     """Parse a ``.molwatch.log`` unified trajectory file."""
 

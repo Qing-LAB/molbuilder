@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.parsers.pyscf_struct import (
+from molbuilder.parse.coords.pyscf_geom import (
     PyscfStructureError,
     extract_pyscf_job,
     read_optimized_xyz,

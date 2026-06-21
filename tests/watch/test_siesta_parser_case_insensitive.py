@@ -25,7 +25,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.siesta import SiestaParser
 
 
 def _parse(text: str):

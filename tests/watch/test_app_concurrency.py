@@ -16,7 +16,7 @@ import pytest
 
 from molbuilder.web.blueprints import watch as app_module
 from molbuilder.frame import Trajectory
-from molbuilder.parsers.base import TrajectoryParser
+from molbuilder.parse.base import FileParser as TrajectoryParser
 
 
 # ----------------------------------------------------------------- #

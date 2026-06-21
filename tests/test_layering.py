@@ -86,6 +86,15 @@ _L2_MODULES = {
                          # Structure to fuse run-dir artifacts into a portable
                          # .xyz + .molstruct.json pair.  L2 because it knows
                          # engine-specific final-coords sources (.XV, .opt.xyz).
+    "bundle_writer",     # write-side bundle materializer rehomed from
+                         # script_bundle in H2.bundle_writer; composes
+                         # BundleResult + Structure (same layering reason).
+    "script_emit",       # write-side emit_* helpers rehomed from script_contract
+                         # in H2.emit.  L2 because emitter helpers consume
+                         # parse.types (TrajectoryResult / ParseResult).
+    "sidecars",          # write-side .molstruct/.spectra/.transport JSON helpers
+                         # rehomed from parsers in H2.sidecars.  L2 because the
+                         # canonical dict builders consume parse.types.
     "bench",             # bench subcommand machinery -- consumes siesta config +
                          # runwrap; generates BENCH-MARKS-aware sweeps.
 }

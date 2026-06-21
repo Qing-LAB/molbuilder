@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from molbuilder.parsers import molstruct_json as msj
+from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
 
 

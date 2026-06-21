@@ -39,6 +39,24 @@ class FileParser(ABC):
     output: Type[ParseResult]
 
     @classmethod
+    def footgun_hint_for(cls, filename: str):
+        """Optional per-parser foot-gun nudge for ``UnknownFormatError``.
+
+        Called by the registry when no parser claims a file: each
+        registered :class:`FileParser` gets a chance to return a
+        short message of the form ``"X.log is the run-time log;
+        point molbuilder at X_geom_optim.xyz"``.  Returning ``None``
+        (the default) means "no nudge for this filename"; the
+        registry only includes non-None replies in the error.
+
+        Engine-specific knowledge (file-extension semantics,
+        common mistakes) belongs HERE — not in the registry — so
+        ``parse/registry.py`` stays engine-agnostic per
+        parse-module.md § 9 #7.
+        """
+        return None
+
+    @classmethod
     @abstractmethod
     def can_parse(cls, path: Path) -> bool:
         """Sniff the path's contents (cheaply) and return True iff

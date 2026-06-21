@@ -6,8 +6,6 @@ Pins:
     AND cell (no Frankenstein from multiple sources).
   * AmbiguousFormatError — exercised when two parsers claim the
     same path (doc § 10 promised test that didn't exist).
-  * Migration shim — legacy ``from molbuilder.parsers import
-    detect_parser`` still works for code that hasn't migrated.
   * Envelope-field consistency across phases B / C / D —
     parser_name is the slug, source is resolved.
   * Transport / Spectra sidecars produce JSON-serialisable
@@ -222,21 +220,6 @@ def test_registry_ambiguous_raises():
         # Cleanup so subsequent tests see the canonical registry.
         if _GreedyParser in _FILE_PARSERS:
             _FILE_PARSERS.remove(_GreedyParser)
-
-
-# ---- Migration shim — legacy imports still work ----------------- #
-
-
-def test_migration_legacy_parsers_detect_still_works():
-    """Doc § 10 promised this test.  Until Phase H ships, code that
-    hasn't migrated must keep working.  Exercises the legacy
-    ``from molbuilder.parsers import detect_parser`` path that
-    `parse/dirs/job.py` itself still uses internally."""
-    from molbuilder.parsers import detect_parser, UnknownFormatError as _LegacyUnk
-    cls = detect_parser(str(_need(SIESTA_OUT)))
-    # Should be the legacy SiestaParser, returning the legacy
-    # Trajectory class (NOT the new TrajectoryResult).
-    assert cls.__name__ == "SiestaParser"
 
 
 # ---- Transport / Spectra JSON-serialisable payloads ------------- #

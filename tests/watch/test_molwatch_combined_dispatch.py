@@ -39,8 +39,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.parsers.molwatch_log import MolwatchLogParser
-from molbuilder.parsers import trajectory_to_legacy_dict
+from molbuilder.parse.engines.molwatch import MolwatchLogParser
+from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 
 
 _FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "molwatch_frozen"

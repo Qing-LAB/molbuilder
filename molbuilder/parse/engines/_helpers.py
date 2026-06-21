@@ -312,7 +312,35 @@ def trajectory_result_to_legacy_dict(
     }
 
 
+def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
+    """Adapter overload for the legacy :class:`Trajectory` shape.
+
+    Convenience wrapper that lifts a legacy ``Trajectory`` into a
+    minimal :class:`TrajectoryResult` envelope and routes through
+    :func:`trajectory_result_to_legacy_dict`.  Used by tests that
+    build a :class:`Trajectory` directly (via
+    :class:`SiestaParser`/:class:`PySCFParser`/:class:`MolwatchLogParser`
+    body parsers) and need the JSON-friendly dict shape without
+    materialising a full :class:`TrajectoryResult`.
+    """
+    return trajectory_result_to_legacy_dict(TrajectoryResult(
+        schema_version=1,
+        parsed_at="",
+        parser_name="legacy-adapter",
+        source="",
+        frames=list(traj.frames),
+        lattice=traj.lattice,
+        source_format=traj.source_format,
+        run_state=traj.run_state or "unknown",
+        error_message=traj.error_message,
+        runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
+        parse_warnings=list(getattr(traj, "parse_warnings", None) or []),
+    ))
+
+
 __all__ = [
     "wrap_trajectory",
     "trajectory_result_to_legacy_dict",
+    "trajectory_to_legacy_dict",
+    "_nan_to_none",
 ]

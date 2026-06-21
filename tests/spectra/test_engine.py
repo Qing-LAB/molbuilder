@@ -721,7 +721,7 @@ class TestPySCFEngineParseOutput:
     parser cleanly."""
 
     def test_parse_output_round_trips(self, tmp_path):
-        from molbuilder.parsers.spectra_json import dump_spectra_json
+        from molbuilder.sidecars.spectra import dump_spectra_json
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         original = _make_results(complete=True)
         p = tmp_path / "x.spectra.json"
@@ -731,7 +731,7 @@ class TestPySCFEngineParseOutput:
         assert len(loaded.modes) == len(original.modes)
 
     def test_parse_output_propagates_missing_file_error(self, tmp_path):
-        from molbuilder.parsers.spectra_json import SpectraJsonNotFoundError
+        from molbuilder.sidecars.spectra import SpectraJsonNotFoundError
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         bad = tmp_path / "missing.spectra.json"
         with pytest.raises(SpectraJsonNotFoundError):

@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.parsers import (
-    PARSERS,
-    UnknownFormatError,
-    detect_parser,
-)
-from molbuilder.parsers.molwatch_log import MolwatchLogParser
-from molbuilder.parsers.siesta import SiestaParser
-from molbuilder.parsers.pyscf  import PySCFParser
+from molbuilder.parse import UnknownFormatError, detect as detect_parser
+from molbuilder.parse.registry import _registered_file_parsers as _list_file_parsers
+from molbuilder.parse.engines.molwatch import MolwatchLogFileParser
+from molbuilder.parse.engines.siesta import SiestaOutFileParser
+from molbuilder.parse.engines.pyscf import PySCFOutFileParser
+
+# Legacy aliases — detect_parser returns FileParser subclasses
+# (SiestaOutFileParser / PySCFOutFileParser / MolwatchLogFileParser);
+# tests below use the short names for readability.
+SiestaParser      = SiestaOutFileParser
+PySCFParser       = PySCFOutFileParser
+MolwatchLogParser = MolwatchLogFileParser
 
 
 _SIESTA_HEAD = (
@@ -113,7 +117,7 @@ def test_unknown_format_generic_hint_points_at_docs(tmp_path):
 
 
 def test_registry_lists_all_parsers():
-    names = [c.name for c in PARSERS]
+    names = [c.name for c in _list_file_parsers()]
     assert "siesta" in names
     assert "pyscf" in names
 

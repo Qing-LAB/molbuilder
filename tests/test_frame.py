@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 
 from molbuilder.frame import Frame, Trajectory
-from molbuilder.parsers.molwatch_log import MolwatchLogParser
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.molwatch import MolwatchLogParser
+from molbuilder.parse.engines.siesta import SiestaParser
 from molbuilder.structure import Structure
 
 
@@ -166,7 +166,7 @@ def test_pyscf_no_log_yields_scf_history_none(tmp_path):
     """A PySCF trajectory with no companion .log should mark every
     Frame's scf_history as None -- the parser has no SCF data
     source, not "scf data with no cycles"."""
-    from molbuilder.parsers.pyscf import PySCFParser
+    from molbuilder.parse.engines.pyscf import PySCFParser
     sample = (
         "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
         "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
@@ -181,8 +181,8 @@ def test_legacy_adapter_collapses_all_none_to_top_level_empty(tmp_path):
     """When every Frame's scf_history is None, trajectory_to_legacy_dict
     collapses the per-frame [[], [], ...] to a top-level [] -- the
     legacy JS client uses this signal to hide the SCF panel."""
-    from molbuilder.parsers import trajectory_to_legacy_dict
-    from molbuilder.parsers.pyscf import PySCFParser
+    from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+    from molbuilder.parse.engines.pyscf import PySCFParser
     sample = (
         "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
         "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
@@ -198,7 +198,7 @@ def test_legacy_adapter_keeps_per_frame_empty_lists(tmp_path):
     """Contrast: when frames legitimately carry empty scf_history (the
     preview block case), the adapter does NOT collapse -- per-frame
     `[]` entries are preserved."""
-    from molbuilder.parsers import trajectory_to_legacy_dict
+    from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
     p = tmp_path / "preview.molwatch.log"
     p.write_text(_PREVIEW_LOG)
     legacy = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))

@@ -21,8 +21,8 @@ import tempfile
 
 import pytest
 
-from molbuilder.parsers import trajectory_to_legacy_dict
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+from molbuilder.parse.engines.siesta import SiestaParser
 
 
 def _parse(text: str):

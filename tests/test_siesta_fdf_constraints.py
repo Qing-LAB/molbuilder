@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.parsers._sidecar import (
+from molbuilder.parse.engines._sidecar import (
     read_frozen_atoms_from_siesta_fdf,
     _siesta_fdf_path_for,
 )

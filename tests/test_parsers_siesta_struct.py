@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.parsers.siesta_struct import (
+from molbuilder.parse.coords.siesta_xv import (
     SiestaFdfStructureError,
     SiestaXVError,
     read_fdf_initial_coords,
@@ -192,17 +192,17 @@ def test_read_fdf_initial_coords_lattice_constant_default_unit_is_bohr():
 
 
 def test_extract_system_label_finds_canonical_directive():
-    from molbuilder.parsers.siesta_struct import extract_system_label
+    from molbuilder.parse.coords.siesta_xv import extract_system_label
     assert extract_system_label("SystemLabel h2\nBlockSize 64\n") == "h2"
 
 
 def test_extract_system_label_handles_indented_and_mixed_case():
-    from molbuilder.parsers.siesta_struct import extract_system_label
+    from molbuilder.parse.coords.siesta_xv import extract_system_label
     assert extract_system_label("   systemlabel  my-job\n") == "my-job"
 
 
 def test_extract_system_label_returns_none_when_absent():
-    from molbuilder.parsers.siesta_struct import extract_system_label
+    from molbuilder.parse.coords.siesta_xv import extract_system_label
     assert extract_system_label("# no SystemLabel here\n") is None
 
 
@@ -213,7 +213,7 @@ def test_extract_system_label_returns_none_when_absent():
 
 def test_check_xv_handedness_returns_none_for_right_handed_cell(tmp_path):
     """Identity cell has det = +1; no warning."""
-    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    from molbuilder.parse.coords.siesta_xv import check_xv_handedness
     p = tmp_path / "right.XV"
     p.write_text(_h2_xv())
     assert check_xv_handedness(p) is None
@@ -221,7 +221,7 @@ def test_check_xv_handedness_returns_none_for_right_handed_cell(tmp_path):
 
 def test_check_xv_handedness_warns_on_left_handed_cell(tmp_path):
     """Flip the third cell vector → det = -1."""
-    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    from molbuilder.parse.coords.siesta_xv import check_xv_handedness
     p = tmp_path / "left.XV"
     # Cell row 3 has z = -10 (negated) → det = -1000.
     p.write_text(
@@ -239,13 +239,13 @@ def test_check_xv_handedness_warns_on_left_handed_cell(tmp_path):
 
 
 def test_check_xv_handedness_returns_none_on_unreadable(tmp_path):
-    from molbuilder.parsers.siesta_struct import check_xv_handedness
+    from molbuilder.parse.coords.siesta_xv import check_xv_handedness
     # Path doesn't exist.
     assert check_xv_handedness(tmp_path / "nope.XV") is None
 
 
 def test_check_fdf_handedness_warns_on_left_handed_lattice():
-    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    from molbuilder.parse.coords.siesta_xv import check_fdf_handedness
     text = (
         "%block LatticeVectors\n"
         "  1.0 0.0 0.0\n"
@@ -262,12 +262,12 @@ def test_check_fdf_handedness_warns_on_left_handed_lattice():
 def test_check_fdf_handedness_returns_none_when_no_lattice_block():
     """No LatticeVectors block -> nothing to check.  Fractional coords
     would fail in read_fdf_initial_coords for a separate reason."""
-    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    from molbuilder.parse.coords.siesta_xv import check_fdf_handedness
     assert check_fdf_handedness("SystemLabel x\n") is None
 
 
 def test_check_fdf_handedness_returns_none_for_right_handed():
-    from molbuilder.parsers.siesta_struct import check_fdf_handedness
+    from molbuilder.parse.coords.siesta_xv import check_fdf_handedness
     text = (
         "%block LatticeVectors\n"
         "  1.0 0.0 0.0\n"

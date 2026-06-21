@@ -25,7 +25,7 @@ from textwrap import dedent
 
 import pytest
 
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.siesta import SiestaParser
 
 
 def _parse(out_body: str):

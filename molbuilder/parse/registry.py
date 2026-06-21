@@ -106,6 +106,29 @@ def _detect_one(path: Path,
             lines.append(f"  * {c.label}{hint}")
     else:
         lines.append(f"(no {kind_label} parsers registered)")
+    # Foot-gun nudges: each registered parser exposes its own
+    # ``footgun_hint_for(filename)`` (default returns ``None``),
+    # so engine-specific knowledge (".fdf is INPUT not OUTPUT")
+    # stays in the engine module per parse-module.md § 9 #7.
+    nudges = []
+    for c in pool:
+        hint_fn = getattr(c, "footgun_hint_for", None)
+        if hint_fn is None:
+            continue
+        try:
+            nudge = hint_fn(base)
+        except Exception:
+            nudge = None
+        if nudge:
+            nudges.append(nudge)
+    if nudges:
+        for n in nudges:
+            lines.append(f"\nHint: {n}")
+    else:
+        lines.append(
+            "\nHint: see README / docs/types/parsers.md for the "
+            "list of recognised file types."
+        )
     raise UnknownFormatError("\n".join(lines))
 
 

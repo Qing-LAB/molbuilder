@@ -463,7 +463,7 @@ def _build_cycle_dict_positional(
     return None
 
 
-class _SiestaImpl:
+class SiestaParser:
     name  = "siesta"
     label = "SIESTA .out / .log"
     hint  = "the main SIESTA run output (run.out, siesta.log, etc.)"
@@ -512,6 +512,14 @@ class _SiestaImpl:
 
     @classmethod
     def can_parse(cls, path: str) -> bool:
+        # ``.molwatch.log`` files have an unambiguous first-line
+        # header (``# molwatch trajectory log``) but can also carry
+        # legitimate ``siesta:`` / ``redata:`` lines inside step
+        # blocks (the engine echoes them).  Belongs strictly to
+        # MolwatchLogFileParser; reject by extension to keep the
+        # registry dispatch unambiguous.
+        if str(path).endswith(".molwatch.log"):
+            return False
         try:
             with open(path, "r", errors="replace") as fh:
                 head_lines = [next(fh, "") for _ in range(cls._SCAN_LINES)]
@@ -1687,15 +1695,29 @@ class SiestaOutFileParser(FileParser):
     per geometry step + per-step SCF history."""
 
     name   = "siesta"
-    label  = _SiestaImpl.label
-    hint   = _SiestaImpl.hint
+    label  = SiestaParser.label
+    hint   = SiestaParser.hint
+
+    @classmethod
+    def footgun_hint_for(cls, filename: str):
+        lower = filename.lower()
+        if not lower.endswith(".fdf"):
+            return None
+        stem = filename[:-len(".fdf")]
+        return (
+            f"{filename} is the SIESTA INPUT file, not its output. "
+            f"Point molbuilder at the .out file SIESTA wrote "
+            f"(typically {stem}.out / siesta.out / <label>.out), "
+            f"or at the unified {stem}.molwatch.log if the run "
+            f"was generated through molbuilder."
+        )
     output = TrajectoryResult
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return _SiestaImpl.can_parse(str(path))
+        return SiestaParser.can_parse(str(path))
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
-        traj = _SiestaImpl.parse(str(path))
+        traj = SiestaParser.parse(str(path))
         return wrap_trajectory(traj, cls.name, path)

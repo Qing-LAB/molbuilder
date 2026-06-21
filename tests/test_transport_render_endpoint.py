@@ -76,7 +76,7 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     given region map.  Uses the canonical sidecar shape per
     molstruct_json.py.
     """
-    from molbuilder.parsers.molstruct_json import (
+    from molbuilder.sidecars.molstruct import (
         sidecar_path_for, sha256_of_file, to_dict,
     )
     sidecar_path = sidecar_path_for(xyz_path)

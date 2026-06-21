@@ -22,7 +22,7 @@ from molbuilder.transport.results import (
     SCHEMA_VERSION,
     TransportResults,
 )
-from molbuilder.parsers.transport_json import (
+from molbuilder.sidecars.transport import (
     dump_transport_json,
     parse_transport_json,
     parse_transport_json_dict,

@@ -39,10 +39,10 @@ from textwrap import dedent
 
 import pytest
 
-from molbuilder.parsers._sidecar import (
+from molbuilder.parse.engines._sidecar import (
     read_frozen_atoms_from_siesta_out,
 )
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.siesta import SiestaParser
 
 
 # Real SIESTA v5 echo, verified verbatim against the BDT-stage-1

@@ -24,7 +24,7 @@ from textwrap import dedent
 
 import pytest
 
-from molbuilder.parsers.pyscf import PySCFParser
+from molbuilder.parse.engines.pyscf import PySCFParser
 
 
 # Minimal _initial.xyz fixture: 2 atoms, no energy in comment.

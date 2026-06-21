@@ -21,7 +21,7 @@ import pytest
 
 import molbuilder
 from molbuilder.trajectory_log import write_initial_preview
-from molbuilder.parsers import trajectory_to_legacy_dict
+from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.siesta import SiestaConfig, convert
 from molbuilder.structure import Structure
@@ -230,7 +230,7 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     molwatch's MolwatchLogParser, exposing the initial geometry as
     frame 0 with null energy and empty forces.  This is the cross-repo
     contract: molbuilder writes, molwatch reads."""
-    from molbuilder.parsers.molwatch_log import MolwatchLogParser
+    from molbuilder.parse.engines.molwatch import MolwatchLogParser
 
     s = Structure(
         elements=["H", "H"],

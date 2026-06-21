@@ -996,7 +996,7 @@ class TestSaveErrorPaths:
         })
         assert r.status_code == 200
         # Read back the sidecar JSON directly to verify the hash.
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         side = msj.sidecar_path_for(Path(_path(selection_root)))
         saved = msj.load(side)
         expected_hash = msj.sha256_of_file(
@@ -1014,7 +1014,7 @@ class TestRefreshHash:
     def test_no_op_when_sidecar_missing(self, web, selection_root):
         """No sidecar on disk -> ok=true, refreshed=false (so the
         client can fire-and-forget without a preflight check)."""
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         side = msj.sidecar_path_for(Path(_path(selection_root)))
         assert not side.exists()
         r = web.post("/api/selection/refresh-hash", json={
@@ -1031,7 +1031,7 @@ class TestRefreshHash:
         """After Save, the XYZ on disk has new bytes (new hash).
         refresh-hash must update the sidecar's hash + leave
         regions/frozen_atoms/rules unchanged."""
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         # Seed a sidecar with regions + frozen + a rule via the
         # selection_save path (so we test the integration, not a
         # hand-rolled sidecar).
@@ -1092,7 +1092,7 @@ class TestRefreshHash:
         the XYZ and update ``n_atoms_total`` so the sidecar stays
         coherent with the file it lives next to.
         """
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         xyz_path = Path(_path(selection_root))
         side = msj.sidecar_path_for(xyz_path)
         # Hand-craft a sidecar that claims 11 atoms (the original
@@ -1134,7 +1134,7 @@ class TestRefreshHash:
         than failing the rebuild.  The user's modifier op shrunk
         the structure; orphan labels can't reference atoms that
         aren't there."""
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         xyz_path = Path(_path(selection_root))
         side = msj.sidecar_path_for(xyz_path)
         msj.save(side, msj.to_dict(
@@ -1173,7 +1173,7 @@ class TestSaveSidecar:
     """
 
     def test_creates_sidecar_when_absent(self, web, selection_root):
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         side = msj.sidecar_path_for(Path(_path(selection_root)))
         assert not side.exists()
         r = web.post("/api/selection/save-sidecar", json={
@@ -1199,7 +1199,7 @@ class TestSaveSidecar:
         the difference from /api/selection/save which has REPLACE-
         per-target semantics.
         """
-        from molbuilder.parsers import molstruct_json as msj
+        from molbuilder.sidecars import molstruct as msj
         # Seed an existing sidecar with stale labels via the
         # per-target endpoint.
         web.post("/api/selection/save", json={

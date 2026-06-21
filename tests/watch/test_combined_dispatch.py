@@ -92,7 +92,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.siesta import SiestaParser
 
 # Local import via sys.path trick mirrored from test_section_rule.py
 sys.path.insert(0, os.path.dirname(__file__))

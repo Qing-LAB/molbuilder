@@ -21,7 +21,7 @@ import json
 
 import numpy as np
 
-from molbuilder.parsers.spectra_json import dump_spectra_json
+from molbuilder.sidecars.spectra import dump_spectra_json
 from molbuilder.spectra import (
     ModeData,
     SpectraResults,
@@ -362,7 +362,7 @@ class TestSpectraPage:
         new 'Load once' button does).  Regression check against a
         future blueprint change accidentally breaking the path-input
         mode of the load endpoint."""
-        from molbuilder.parsers.spectra_json import dump_spectra_json
+        from molbuilder.sidecars.spectra import dump_spectra_json
         results = _make_minimal_results()
         p = tmp_path / "live.spectra.json"
         dump_spectra_json(results, p)

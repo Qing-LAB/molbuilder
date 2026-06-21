@@ -26,7 +26,7 @@ from molbuilder.spectra.results import (
     PHASE_COMPLETE,
     PHASE_EMPTY,
 )
-from molbuilder.parsers.spectra_json import (
+from molbuilder.sidecars.spectra import (
     dump_spectra_json,
     parse_spectra_json,
     parse_spectra_json_dict,

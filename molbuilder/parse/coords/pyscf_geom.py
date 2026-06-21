@@ -77,4 +77,26 @@ class PySCFGeomFileParser(FileParser):
         )
 
 
-__all__ = ["PySCFGeomFileParser"]
+# --------------------------------------------------------------------- #
+#  Public-API re-exports                                                #
+# --------------------------------------------------------------------- #
+#
+# H4a (test-cleanup): the .py-initial-coords + JOB-extract helpers
+# live in ``parse/dirs/_assembler_helpers`` (the assembler composes
+# them); re-export here for the natural per-file-type import path.
+read_optimized_xyz = _read_optimized_xyz
+
+from molbuilder.parse.dirs._assembler_helpers import (   # noqa: E402
+    PyscfStructureError,
+    extract_pyscf_job,
+    read_py_initial_coords,
+)
+
+
+__all__ = [
+    "PySCFGeomFileParser",
+    "PyscfStructureError",
+    "read_optimized_xyz",
+    "read_py_initial_coords",
+    "extract_pyscf_job",
+]

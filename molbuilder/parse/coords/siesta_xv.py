@@ -208,4 +208,33 @@ class SiestaXVFileParser(FileParser):
         )
 
 
-__all__ = ["SiestaXVError", "SiestaXVFileParser"]
+# --------------------------------------------------------------------- #
+#  Public-API re-exports                                                #
+# --------------------------------------------------------------------- #
+#
+# H4a (test-cleanup): consumers reach for the publicly-named helpers
+# from the coords module by file-type association.  The richer .fdf
+# parsers live in ``parse/dirs/_assembler_helpers`` (the assembler
+# composes them); re-export here so tests + future callers have one
+# import path per file type.
+read_xv = _read_xv
+
+from molbuilder.parse.dirs._assembler_helpers import (   # noqa: E402
+    SiestaFdfStructureError,
+    check_fdf_handedness,
+    check_xv_handedness,
+    extract_system_label,
+    read_fdf_initial_coords,
+)
+
+
+__all__ = [
+    "SiestaXVError",
+    "SiestaXVFileParser",
+    "SiestaFdfStructureError",
+    "read_xv",
+    "read_fdf_initial_coords",
+    "extract_system_label",
+    "check_xv_handedness",
+    "check_fdf_handedness",
+]

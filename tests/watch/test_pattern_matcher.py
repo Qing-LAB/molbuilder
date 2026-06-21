@@ -16,7 +16,7 @@ import re
 
 import pytest
 
-from molbuilder.parsers._rules import (
+from molbuilder.parse.engines._section_rules import (
     SectionRule, _PatternMatcher,
     any_of, compile_rules, contains_ci, matches_regex_ci,
     starts_with_ci,

@@ -577,6 +577,24 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     )
 
 
+class PySCFParser:
+    """Body parser for PySCF + geomeTRIC ``*_optim.xyz`` trajectories.
+    Returns legacy :class:`Trajectory` (dict-shaped via the JSON
+    round-trip); use :class:`PySCFOutFileParser` for a typed
+    :class:`TrajectoryResult`.
+
+    Mirrors the legacy ``molbuilder.parsers.pyscf.PySCFParser`` API:
+    ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``."""
+
+    name = "pyscf"
+
+    @classmethod
+    def can_parse(cls, path):
+        return PySCFOutFileParser.can_parse(Path(path))
+
+    parse = staticmethod(_parse_pyscf_xyz)
+
+
 class PySCFOutFileParser(FileParser):
     """Parse a PySCF + geomeTRIC trajectory file
     (``<job>_geom_optim.xyz``).  Returns a :class:`TrajectoryResult`
@@ -584,6 +602,23 @@ class PySCFOutFileParser(FileParser):
     (extracted from the companion ``.log`` when present)."""
 
     name   = "pyscf"
+
+    @classmethod
+    def footgun_hint_for(cls, filename: str):
+        lower = filename.lower()
+        if not lower.endswith(".log") or "geom_optim" in lower:
+            return None
+        # Strip both ``.molwatch.log`` and bare ``.log``; molwatch is
+        # the MolwatchLogFileParser's filename, this hint is for the
+        # PySCF run-time .log foot-gun.
+        if lower.endswith(".molwatch.log"):
+            return None
+        stem = filename[:-len(".log")]
+        return (
+            f"PySCF runs write the run-time log to {filename} but "
+            f"the trajectory lives in {stem}_geom_optim.xyz. "
+            f"Point molbuilder at the _geom_optim.xyz file instead."
+        )
     label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
     hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
               "<job>_geom_optim.xyz (NOT the PySCF .log).  Generic XYZ "

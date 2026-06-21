@@ -41,7 +41,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from molbuilder.parsers.spectra_json import parse_spectra_json
+from molbuilder.sidecars.spectra import parse_spectra_json
 from molbuilder.spectra import SpectraConfig
 from molbuilder.spectra.pyscf_script import render_spectra_script
 from molbuilder.structure import Structure

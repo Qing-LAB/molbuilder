@@ -158,7 +158,7 @@ def test_sidecar_carries_correct_region_labels():
     """The .molstruct.json sidecar must contain L-electrode / bridge
     / R-electrode regions with the contiguous indices Brandbyge
     2002 § III + our preflight check require."""
-    from molbuilder.parsers.molstruct_json import load
+    from molbuilder.sidecars.molstruct import load
     data = load(_FIX_SIDECAR)   # returns a dict
     regions = data["regions"]
     assert regions["L-electrode"] == [0, 1, 2]
@@ -171,7 +171,7 @@ def test_fixture_sidecar_hash_matches_xyz():
     XYZ bytes.  Pin so a stray XYZ edit without regenerating the
     sidecar surfaces as a hash mismatch (stale-sidecar guard from
     the molstruct_json contract)."""
-    from molbuilder.parsers.molstruct_json import load, sha256_of_file
+    from molbuilder.sidecars.molstruct import load, sha256_of_file
     data = load(_FIX_SIDECAR)
     assert data["structure_hash"] == sha256_of_file(_FIX_XYZ)
 
@@ -185,7 +185,7 @@ def _struct_with_sidecar():
     """Load the XYZ and apply the sidecar regions to the Structure.
     Mirrors what the web blueprint does on /api/transport/render."""
     from molbuilder.structure import Structure
-    from molbuilder.parsers.molstruct_json import load, apply_to_structure
+    from molbuilder.sidecars.molstruct import load, apply_to_structure
     struct = Structure.from_xyz(_FIX_XYZ.read_text())
     data = load(_FIX_SIDECAR)
     # ``apply_to_structure`` mutates struct.regions + struct.frozen_atoms

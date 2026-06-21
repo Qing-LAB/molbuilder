@@ -33,7 +33,7 @@ from textwrap import dedent
 
 import pytest
 
-from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parse.engines.siesta import SiestaParser
 
 
 def _parse_synthetic(out_body: str) -> "Trajectory":

@@ -13,8 +13,8 @@ import math
 
 import pytest
 
-from molbuilder.parsers import trajectory_to_legacy_dict
-from molbuilder.parsers.pyscf import PySCFParser
+from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
+from molbuilder.parse.engines.pyscf import PySCFParser
 
 
 SAMPLE = """\

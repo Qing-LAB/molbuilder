@@ -127,7 +127,7 @@ class PySCFSpectraEngine:
         """
         # Lazy import to break the circular dep documented at the
         # top of this module.
-        from ..parsers.spectra_json import parse_spectra_json
+        from molbuilder.sidecars.spectra import parse_spectra_json
         return parse_spectra_json(path)
 
     # ------------------------------------------------------------------ #
