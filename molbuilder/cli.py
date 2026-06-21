@@ -1384,7 +1384,8 @@ def cmd_watch_parse(input_path, frames_only, pretty):
         molbuilder watch parse - < run.out --frames-only | grep error
     """
     import json
-    from .parsers import detect_parser, trajectory_to_legacy_dict, UnknownFormatError
+    from .parse import detect as detect_parser, UnknownFormatError
+    from .parse.engines._helpers import trajectory_to_legacy_dict
 
     with _resolve_input_path(input_path) as resolved:
         try:
@@ -1436,7 +1437,8 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     """
     import json
     import time
-    from .parsers import detect_parser, trajectory_to_legacy_dict, UnknownFormatError
+    from .parse import detect as detect_parser, UnknownFormatError
+    from .parse.engines._helpers import trajectory_to_legacy_dict
 
     if input_path == "-":
         click.echo("Error: stdin not supported for `watch tail` "

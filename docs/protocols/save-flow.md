@@ -219,7 +219,7 @@ label call fails.
 
 ### §4.4 The atomic-write contract
 
-`/api/files/write` (and every JSON parser in `molbuilder/parsers/`)
+`/api/files/write` (and every JSON sidecar writer in `molbuilder/sidecars/`)
 follows the atomic-write pattern:
 
 1. `tempfile.mkstemp(prefix=name + ".", suffix=".tmp", dir=parent)`

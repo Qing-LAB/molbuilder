@@ -154,19 +154,19 @@ rule in [`script-contract.md`](script-contract.md) § 4.4.
 
 Three sites carry the bundle-contract surface:
 
-- **`molbuilder.script_contract`** (existing) — file-format
+- **`molbuilder.script_emit`** (write-side) + **`molbuilder.parse.scripts.*`** (read-side, per-block extractors) — file-format
   extractors.  Pure, no I/O on bundle assembly path beyond the text
   passed in.
-- **`molbuilder.script_bundle`** (new) — workflow assembly.  Reads
+- **`molbuilder.parse.dirs.bundle`** (read-side, `BundleDirParser`) + **`molbuilder.bundle_writer`** (write-side, `write_bundle_as_handoff`) — workflow assembly.  Reads
   the run dir, fuses primitives, returns a `RunBundle`.
 - **`molbuilder.web.blueprints._shared`** — the web-layer wire-in
   (`apply_companion_labels_if_present`, § 5.3 below).  Lives there
   because it's the load-path consumer that calls
-  `script_contract.apply_inbody_atom_metadata`; the function is
+  `script_emit.apply_inbody_atom_metadata`; the function is
   documented as part of this contract even though its physical home
   is the web-layer shared module.
 
-### 5.1 `script_contract` extract primitives
+### 5.1 `script_emit` + `parse.scripts.*` extract primitives
 
 ```python
 @dataclass(frozen=True)
@@ -191,7 +191,7 @@ def extract_provenance_dict(text: str) -> Optional[Dict[str, str]]: ...
 Empty `[]` / `{}` = "block present, deliberately empty".  Distinct
 states, distinct downstream handling.
 
-### 5.2 `script_bundle` assembly
+### 5.2 `parse.dirs.bundle` + `bundle_writer` assembly
 
 ```python
 class BundleError(Exception): ...
@@ -333,7 +333,7 @@ the sidebar."  Manual navigation negates the promise.
 ### 7.6 Lock model
 
 ``write_bundle_as_handoff`` does NOT take a lock.  The sidecar
-``with_lock`` model (defined in `molbuilder/parsers/molstruct_json.py::with_lock`,
+``with_lock`` model (defined in `molbuilder/sidecars/molstruct.py::with_lock`,
 context discussion in `projects-sidebar.md § 8`) is for
 **read-modify-write** cycles on an existing sidecar.  Bundle
 materialization is a fresh write — there's no pre-existing
@@ -382,15 +382,15 @@ a bundle to a stem that already exists in the target.
 
 Test pyramid placement:
 
-- **L1** (`test_script_contract.py`):  `extract_script_source`
+- **L1** (`tests/test_script_emit.py`):  `extract_script_source`
   round-trip; empty / partial blocks; version mismatch; provenance
   k/v parse.
-- **L1** (`test_script_bundle.py`):  `RunBundle` field validation;
+- **L1** (`tests/parse/dirs/test_bundle.py`):  `RunBundle` field validation;
   `BundleError` paths that don't require I/O.
-- **L2** (`test_script_bundle.py`):  `assemble_from_run_dir` against
+- **L2** (`tests/parse/dirs/test_bundle.py`):  `assemble_from_run_dir` against
   canned run-dir fixtures (SIESTA + PySCF, with and without `.XV`
   / `.opt.xyz`).
-- **L3** (`test_script_bundle.py`):  full round-trip — emit script
+- **L3** (`tests/test_api_results_bundle.py`):  full round-trip — emit script
   → assemble → write_bundle_as_handoff → re-load via existing .xyz
   load path → labels recovered.  Verified for both SIESTA
   (`<JOB>_optimized.xyz` derived from the in-body SystemLabel,
@@ -410,11 +410,11 @@ Test pyramid placement:
 ## 12. Pinned references
 
 - Script format: [`script-contract.md`](script-contract.md) (§ 4.4 atom-metadata, § 4.6 user-custom).
-- Sidecar format: `molbuilder/parsers/molstruct_json.py` (schema v3).
+- Sidecar format: `molbuilder/sidecars/molstruct.py` (write-side, schema v3) + `molbuilder/parse/sidecars/molstruct.py` (read-side).
 - Sidecar contract: [`sidecar-contract.md`](sidecar-contract.md).
 - `Structure` model: `molbuilder/structure.py`.
-- SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parsers/siesta_struct.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
-- PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parsers/pyscf_struct.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
+- SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parse/coords/siesta_xv.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
+- PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parse/coords/pyscf_geom.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
 - HTTP-API entry (PR-E): `molbuilder/web/blueprints/results.py::api_results_bundle` (`POST /api/results/bundle`).  Wire shape documented in [`web-api.md`](web-api.md) § 13.  Frontend wiring: `molbuilder/web/static/lib/results/bundle-handoff.js`.
 

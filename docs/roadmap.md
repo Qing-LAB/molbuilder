@@ -301,7 +301,7 @@ dataclass).  Phase B.3 implements the first concrete engines.
 
 Both engines consume the SAME relaxed geometry + the SAME
 `.molstruct.json` sidecar (region labels assigned in the
-Molbuilder tab — see `molbuilder/parsers/molstruct_json.py`).
+Molbuilder tab — see `molbuilder/sidecars/molstruct.py` (write) / `molbuilder/parse/sidecars/molstruct.py` (read)).
 The two engines' `render_script` methods emit different inputs
 from the same TransportConfig + Structure pair.
 

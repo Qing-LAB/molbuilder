@@ -686,6 +686,6 @@ rendering, `pointer-events: none` so it doesn't block clicks.
 ## 10. Versioning
 
 Schema bumps to `.molstruct.json` (sidecar) are independent of the
-JS module boundary — see `molbuilder/parsers/molstruct_json.py` for
+JS module boundary — see `molbuilder/sidecars/molstruct.py` (write-side) / `molbuilder/parse/sidecars/molstruct.py` (read-side) for
 the on-disk schema version.  This doc describes the JS state shape;
 the store translates to/from sidecar at HTTP time.

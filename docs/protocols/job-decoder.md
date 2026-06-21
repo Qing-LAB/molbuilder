@@ -26,7 +26,7 @@ code for engine output — it composes:
 * [`script-contract.md`](script-contract.md) — the 6 reserved blocks
   in `.fdf` and `.py` (HEADER / PROVENANCE / BENCH-MARKS /
   ATOM-METADATA / ENGINE BODY / USER-CUSTOM).  The decoder reads via
-  `molbuilder.script_contract.extract_script_source(fdf_text)` —
+  `molbuilder.script_emit.extract_script_source(fdf_text)` —
   it does NOT re-grep for atom-metadata / user-custom / provenance
   text itself.
 * [`bundle-contract.md`](bundle-contract.md) — the

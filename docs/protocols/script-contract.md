@@ -169,7 +169,7 @@ Embeds the label/region metadata that `.molstruct.json` carries
 next to `.xyz` files, so a generated script that gets copied to an
 execution directory does not strand it. The block's JSON payload
 follows the **`.molstruct.json` schema** — the canonical definition
-lives in `molbuilder/parsers/molstruct_json.py` (current schema is
+lives in `molbuilder/sidecars/molstruct.py` (write) / `molbuilder/parse/sidecars/molstruct.py` (read) (current schema is
 v3). This document does NOT duplicate the schema; it cites it.
 
 ```
@@ -314,12 +314,12 @@ Given a file conforming to this contract:
 
 ## 8. Pinned references
 
-- `.molstruct.json` schema (v3): `molbuilder/parsers/molstruct_json.py`
+- `.molstruct.json` schema (v3): `molbuilder/sidecars/molstruct.py` (write) / `molbuilder/parse/sidecars/molstruct.py` (read)
 - `Structure.regions` / `Structure.frozen_atoms`: `molbuilder/structure.py`
 - Sidecar load/apply: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`
 - Generator entry points: `molbuilder/siesta/input.py::render_fdf`,
   `molbuilder/pyscf/input.py::render_script`,
   `molbuilder/runwrap.py::render_run_wrapper`
 - Bundle / load-side contract: [`bundle-contract.md`](bundle-contract.md);
-  extract primitives `molbuilder/script_contract.py::extract_script_source`
-  + assembler `molbuilder/script_bundle.py::assemble_from_run_dir`.
+  extract primitives `molbuilder/parse/dirs/bundle.py::_extract_script_source` (also re-exported as `molbuilder.script_emit.extract_script_source` for backward-compat callsites)
+  + assembler `molbuilder/parse/dirs/bundle.py::BundleDirParser.parse` (+ `molbuilder/bundle_writer.py::write_bundle_as_handoff` for materialisation).

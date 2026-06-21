@@ -496,7 +496,8 @@
 
     // Per-frame in-progress filter (contract § 4 Invariant 2).
     // The parser tags partial frames with in_progress=true
-    // (parsers/__init__.py emits a per-frame bool array; collapses
+    // (parse/engines/_helpers.py::trajectory_result_to_legacy_dict
+    // emits a per-frame bool array; collapses
     // to [] when no frame is in-progress).  Plot trace builders
     // call plottableFrames() to omit partial frames -- the energy
     // / max_force values for those frames are placeholders (the

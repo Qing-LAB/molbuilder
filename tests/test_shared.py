@@ -384,7 +384,7 @@ def _fdf_with_atom_metadata(regions, frozen, n_atoms_total):
     """Synthesize a minimal .fdf body carrying an ATOM-METADATA
     block via the canonical emitter so the test text always tracks
     the emitter's format."""
-    from molbuilder import script_contract as sc
+    from molbuilder import script_emit as sc
     block = sc.emit_atom_metadata(
         regions=regions,
         frozen_atoms=frozen,

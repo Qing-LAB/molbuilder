@@ -37,7 +37,7 @@ def _set_picker_root(monkeypatch, tmp_path):
 
 def _atom_md_block(*, regions, frozen, n_atoms_total):
     """Emit an ATOM-METADATA block via the canonical contract emitter."""
-    from molbuilder import script_contract as sc
+    from molbuilder import script_emit as sc
     block = sc.emit_atom_metadata(
         regions=regions or {},
         frozen_atoms=frozen or [],

@@ -245,7 +245,7 @@ already use stay valid via re-exports:
 | `from molbuilder.siesta import SiestaConfig, render_fdf, convert` | `molbuilder/siesta/__init__.py` |
 | `from molbuilder.pyscf  import PySCFConfig, render_script, convert` | `molbuilder/pyscf/__init__.py` |
 | `from molbuilder.molwatch_log import write_initial_preview` | `molbuilder/trajectory_log/__init__.py` (re-export) |
-| `from molbuilder.parsers import detect_parser, TrajectoryParser` | `molbuilder/parsers/__init__.py` |
+| `from molbuilder.parse import detect, FileParser` | `molbuilder/parse/__init__.py` |
 | `from molbuilder.backends import is_available, dispatch` | `molbuilder/backends/__init__.py` (shim → `builders.backends`) |
 
 The new canonical paths (`molbuilder.config.siesta`,

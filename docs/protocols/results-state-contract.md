@@ -736,7 +736,7 @@ tests for the actual reset-on-Refresh fix live in the existing
   `run_state == "finished"` ticks (matrix § 3, transition § 2).
 - **Parser blast radius (PR 4 prerequisite).** Before PR 4:
   audit consumers of `frame.energy` (CLI parser, sidecar
-  generator, `molbuilder/parsers/*`). Any reader that depended on
+  generator, `molbuilder/parse/{engines,sidecars,coords,scripts,dirs}/*`). Any reader that depended on
   the `step_initial_etot` fallback gets explicit `None` handling.
   Not a contract-design question.
 

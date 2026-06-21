@@ -437,7 +437,7 @@ ships in this order:
 | **E** | Wrap `parsers/{siesta,pyscf}_struct.py` as `FileParser`s in `parse/coords/*` (StructureResult with cell — closes the Phase 1 lattice-extraction gap) | ✓ shipped |
 | **F** | Split `script_contract.py` per-block → `parse/scripts/*` (HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM / source-umbrella as TextParsers) | ✓ shipped |
 | **G** | Move `script_bundle.py` → `parse/dirs/bundle.py` as `BundleDirParser` (explicit-dispatch; not auto-registered, since it shares the .fdf claim with JobDirParser but expresses a different user intent) | ✓ shipped |
-| **H** | The clean break — re-scoped into 4 sub-phases per the 2026-06-20 pre-Phase-H audit (see below) | broken into H1-H4, pending |
+| **H** | The clean break — re-scoped into 4 sub-phases per the 2026-06-20 pre-Phase-H audit (see below) | ✓ shipped (H1–H4 land 2026-06-20 → 2026-06-21) |
 
 **Phase H re-scope (2026-06-20 audit).**  The original Phase H
 "delete legacy + update 8 imports" undercounted the real cost.
@@ -471,22 +471,24 @@ The audit found:
 Total revised scope: **~6,000 LOC moved + ~40 consumer rewrites
 + 25 test files + 14 docs**.  This calls for a 4-phase split:
 
-| Sub-phase | Lands | Notes |
+| Sub-phase | Lands | Status |
 |---|---|---|
-| **H1** | Absorb legacy READ-side into the new wrappers.  Each `parse/engines/*`, `parse/sidecars/*`, `parse/coords/*`, `parse/scripts/*` parser inlines its legacy body so the wrapper no longer imports from `molbuilder.parsers` / `molbuilder.script_contract`.  `parse/dirs/bundle.py` absorbs the read half of `assemble_from_run_dir`.  `parse/dirs/job.py` switches internal calls from `script_contract.extract_*` to `parse_text(text, parser=...TextParser)`. | ≈3,200 LOC moved |
-| **H2** | Rehome the WRITE side.  These don't belong in `parse/` (parse-module.md scopes parsing only).  Proposal: `molbuilder/sidecars/` (save / with_lock / sidecar_path_for / sha256 / to_dict / apply_to_structure / dump_* / exception families); `molbuilder/script_emit.py` (`emit_*` + `MARKER_RE` + `BLOCK_*` constants + `BenchField` + `SIESTA_BENCH_FIELDS` + `begin_marker` + `end_marker` + `merge_user_custom_from_target` + `molbuilder_git_sha` + `generated_at_now` + `apply_inbody_atom_metadata`); `BundleResult.materialize(dest_dir)` method (or `molbuilder/bundle_writer.py`).  Plus `trajectory_result_to_legacy_dict()` in `parse/engines/_helpers.py` for the 3Dmol.js adapter. | ≈1,200 LOC + 4 new modules |
-| **H3** | Update consumers.  10 production files (`web/blueprints/{watch,spectra,selection,_shared,files,results}.py`, `siesta/input.py`, `pyscf/input.py`, `runwrap.py`, `bench/__init__.py`) plus 25 test files plus the 8 `parse/` self-deps now resolved by H1.  Delete `tests/parse/test_round2_fixes.py::test_migration_legacy_parsers_detect_still_works` in the same commit family (the migration shim test only made sense pre-H). | ≈40 callsites |
-| **H4** | Delete `molbuilder/parsers/` (12 files) + `molbuilder/script_contract.py` (806 LOC) + `molbuilder/script_bundle.py` (507 LOC).  Doc redirects: `docs/types/parsers.md` → 20-line stub pointing here; `docs/protocols/script-contract.md` + `bundle-contract.md` keep their contracts but update code-pointer lines to point at the new homes.  Update the 14 cross-referencing docs.  Final test sweep + `grep -rn "from molbuilder.{parsers,script_contract,script_bundle}"` must return empty. | ≈14 docs touched |
+| **H1** | Absorb legacy READ-side into the new wrappers.  Each `parse/engines/*`, `parse/sidecars/*`, `parse/coords/*`, `parse/scripts/*` parser inlines its legacy body so the wrapper no longer imports from `molbuilder.parsers` / `molbuilder.script_contract`.  `parse/dirs/bundle.py` absorbs the read half of `assemble_from_run_dir`.  `parse/dirs/job.py` switches internal calls from `script_contract.extract_*` to `parse_text(text, parser=...TextParser)`. | ✓ shipped 2026-06-20 (H1.engines/coords/sidecars/scripts/dirs commit family) |
+| **H2** | Rehome the WRITE side.  These don't belong in `parse/` (parse-module.md scopes parsing only).  Lands: `molbuilder/sidecars/` (save / with_lock / sidecar_path_for / sha256 / to_dict / apply_to_structure / dump_* / exception families); `molbuilder/script_emit.py` (`emit_*` + `MARKER_RE` + `BLOCK_*` constants + `BenchField` + `SIESTA_BENCH_FIELDS` + `begin_marker` + `end_marker` + `merge_user_custom_from_target` + `molbuilder_git_sha` + `generated_at_now` + `apply_inbody_atom_metadata`); `molbuilder/bundle_writer.py` for the materializer.  Plus `trajectory_result_to_legacy_dict()` in `parse/engines/_helpers.py` for the 3Dmol.js adapter. | ✓ shipped 2026-06-20 (H2.sidecars/emit/bundle_writer/adapter commit family) |
+| **H3** | Update consumers.  10 production files (`web/blueprints/{watch,spectra,selection,_shared,files,results}.py`, `siesta/input.py`, `pyscf/input.py`, `runwrap.py`, `bench/__init__.py`) plus the 8 `parse/` self-deps now resolved by H1.  Test-file migration deferred to H4a. | ✓ shipped 2026-06-20 (H3.generators + H3.blueprints) |
+| **H4a** | Migrate the remaining ~30 test files off legacy imports.  Engine modules grow public ``SiestaParser`` (renamed from `_SiestaImpl`) / ``PySCFParser`` / ``MolwatchLogParser`` wrappers around the absorbed bodies, and ``parse/engines/_helpers.py`` adds ``trajectory_to_legacy_dict`` (takes legacy `Trajectory`) alongside the existing ``trajectory_result_to_legacy_dict`` (takes typed `TrajectoryResult`).  Coords modules re-export the .fdf-side helpers (`SiestaFdfStructureError`, `read_fdf_initial_coords`, `extract_system_label`, `check_xv_handedness`, `check_fdf_handedness`, `PyscfStructureError`, `read_py_initial_coords`, `extract_pyscf_job`) from `parse/dirs/_assembler_helpers`.  Registry `UnknownFormatError` foot-gun hints restored via per-engine `footgun_hint_for(filename)` classmethods.  SIESTA parser rejects `.molwatch.log` extension to keep registry dispatch unambiguous. | ✓ shipped 2026-06-21 |
+| **H4b** | Delete `molbuilder/parsers/` (12 files) + `molbuilder/script_contract.py` (806 LOC) + `molbuilder/script_bundle.py` (507 LOC).  Net −8338 lines.  `script_emit.py` surfaces extract_* re-exports via module-level `__getattr__` (lazy to break the cycle with `parse/scripts/markers.py`).  `web/blueprints/_shared.py:apply_companion_labels_if_present` switched from `script_contract` to `script_emit`.  Test rename: `tests/test_script_contract.py` → `tests/test_script_emit.py`; `tests/test_script_bundle.py` deleted (covered by `tests/parse/dirs/test_bundle.py` + `tests/test_api_results_bundle.py`). | ✓ shipped 2026-06-21 |
+| **H4c** | Doc redirects: `docs/types/parsers.md` rewritten as a 20-line stub pointing here; the remaining 13 docs (`design.md`, `roadmap.md`, `package-layout.md`, `job-decoder.md`, `results-state-contract.md`, `save-flow.md`, `atom-selection.md`, `web-api.md`, `test-strategy.md`, `bundle-contract.md`, `script-contract.md`, `parse-module.md`, archive) get their code-pointer lines retargeted at the new homes.  Final sweep: `grep -rn "from molbuilder\.\(parsers\|script_contract\|script_bundle\)"` returns empty across `molbuilder/`, `tests/`, `docs/`. | ✓ shipped 2026-06-21 |
 
-Per the no-back-compat-shims convention, each sub-phase still
-ships in a single commit family — no transition window between
-H3 and H4.
+Per the no-back-compat-shims convention, each sub-phase ships in
+a single commit family — no transition window between H3 and H4.
 
-**Status snapshot (2026-06-20):** Phases A-G + the half-Phase-H
-audit-gap closures shipped.  H1-H4 await a forcing function;
-the legacy modules are stable, tested, and cost nothing today.
-When H1-H4 ship, they ship in audit order, and each is a
-focused review-ready commit.
+**Status snapshot (2026-06-21):** Phases A–G + the half-Phase-H
+audit-gap closures + H1–H4 shipped.  Legacy `molbuilder/parsers/`,
+`script_contract.py`, and `script_bundle.py` are gone; the
+unified parse stack under `molbuilder/parse/` is the sole source
+of truth for read-side and `molbuilder/{sidecars,script_emit,
+bundle_writer}` for the write side.
 
 ## 9. Forbidden patterns
 

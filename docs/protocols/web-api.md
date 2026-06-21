@@ -884,7 +884,7 @@ Server-side handling:
 3. Reject non-existent file with HTTP 404.
 4. `detect_parser(path)`; reject unsupported with HTTP 400 (the
    error body uses the multi-line message from
-   `molbuilder/parsers/__init__.py`).
+   `molbuilder/parse/registry.py`).
 5. Replace `_state` (path / parser) atomically; force a re-parse
    on the next refresh.
 

@@ -631,32 +631,34 @@ class TestInProgressFilter:
 
 
 class TestWireFormatInProgress:
-    """The server-side trajectory_to_legacy_dict adapter (PR 2 also
-    touched parsers/__init__.py) MUST emit ``in_progress`` in the
-    output dict.  Empty list when no frame is in-progress."""
+    """The server-side trajectory_result_to_legacy_dict adapter MUST
+    emit ``in_progress`` in the output dict.  Empty list when no
+    frame is in-progress.  Module rehomed in parse-module H2.adapter
+    (2026-06-20): legacy ``molbuilder/parsers/__init__.py`` →
+    ``molbuilder/parse/engines/_helpers.py``."""
+
+    _ADAPTER_PATH = (Path(__file__).resolve().parent.parent
+                     / "molbuilder" / "parse" / "engines"
+                     / "_helpers.py")
 
     def test_adapter_emits_in_progress(self):
-        path = (Path(__file__).resolve().parent.parent
-                / "molbuilder" / "parsers" / "__init__.py")
-        body = path.read_text()
+        body = self._ADAPTER_PATH.read_text()
         assert re.search(
             r"\"in_progress\"\s*:\s*out_in_progress",
             body,
-        ), ("parsers/__init__.py::trajectory_to_legacy_dict no "
-            "longer emits ``in_progress`` -- the JS filter has no "
+        ), ("parse/engines/_helpers.py::trajectory_result_to_legacy_dict "
+            "no longer emits ``in_progress`` -- the JS filter has no "
             "data to filter on.")
 
     def test_adapter_collapses_when_all_clean(self):
         """When no frame is in-progress, the array collapses to [] --
         matches the max_forces_constrained empty-list convention."""
-        path = (Path(__file__).resolve().parent.parent
-                / "molbuilder" / "parsers" / "__init__.py")
-        body = path.read_text()
+        body = self._ADAPTER_PATH.read_text()
         assert re.search(
             r"if\s+not\s+any\s*\(\s*out_in_progress\s*\)\s*:\s*"
             r"\n\s+out_in_progress\s*=\s*\[\]",
             body,
-        ), ("parsers/__init__.py no longer collapses all-clean "
+        ), ("parse/engines/_helpers.py no longer collapses all-clean "
             "in_progress to [].  Wire size bloats unnecessarily.")
 
     def test_merge_propagates_in_progress(self):

@@ -271,10 +271,11 @@ the molwatch implementation.
 
 Web layer / legacy adapter: the JS client still consumes the molwatch
 v1 dict shape, so
-`molbuilder/parsers/__init__.py:trajectory_to_legacy_dict` flattens a
-`Trajectory` back to the historical dict at the `/api/watch/load`
-boundary.  Phase 3 redesigns the JSON to surface Trajectory directly;
-the adapter goes away then.
+`molbuilder/parse/engines/_helpers.py:trajectory_to_legacy_dict` (also
+re-exported alongside `trajectory_result_to_legacy_dict` for the typed
+`TrajectoryResult` envelope) flattens a `Trajectory` back to the
+historical dict at the `/api/watch/load` boundary.  Phase 3 redesigns
+the JSON to surface Trajectory directly; the adapter goes away then.
 
 ### Domain verbs (L2)
 
@@ -294,7 +295,7 @@ the adapter goes away then.
 | Modify | `molbuilder/modify.py` | `Structure` | `Structure` (delete / add / orient / electrode ops) |
 | Generate | `molbuilder/siesta/input.py:render_fdf`, `molbuilder/pyscf/input.py:render_script` | `Structure` + `Config` | string (the .fdf or .py text) |
 | Spectra | `molbuilder/spectra/pyscf_script.py:render_script` | `Structure` + `SpectraConfig` | string (the PySCF spectra .py text) |
-| Parse | `molbuilder/parsers/molwatch_log.py`, `molbuilder/parsers/siesta.py`, `molbuilder/parsers/pyscf.py`, `molbuilder/parsers/molstruct_json.py` | trajectory or sidecar file path | `Trajectory` (or `Structure` for sidecar) |
+| Parse | `molbuilder/parse/engines/{siesta,pyscf,molwatch}.py`, `molbuilder/parse/sidecars/{molstruct,spectra,transport}.py`, `molbuilder/parse/coords/{siesta_xv,pyscf_geom}.py` | trajectory / sidecar / structure file path | typed `ParseResult` subclass (`TrajectoryResult`, `StructureResult`, `SidecarResult`, …) — see `docs/protocols/parse-module.md` |
 | Validate | `molbuilder/validation.py:validate_geometry` | `Structure`, `Config` | `List[Issue]` |
 | Write log | `molbuilder/trajectory_log/format.py` + `emitter.py` | `Frame` (or initial `Structure`) | appends a block to `.molwatch.log` |
 

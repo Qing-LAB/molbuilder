@@ -82,7 +82,7 @@ tests/
 │   └── test_aggregator.py            # L2 — validate() + report() entry
 ├── spectra/                          # mirrors molbuilder/spectra/
 ├── transport/                        # mirrors molbuilder/transport/ (planned)
-├── watch/                            # mirrors molbuilder/parsers/ (watch goldens)
+├── watch/                            # legacy mirror of molbuilder/parsers/ (parsers/ deleted in H4b; watch goldens kept here)
 ├── test_chemistry_analyzer.py        # L2 chemistry module
 ├── test_chemistry_adapters.py        # L3 adapter registry boundary
 ├── test_structure_analyze_endpoint.py # L4 HTTP boundary
