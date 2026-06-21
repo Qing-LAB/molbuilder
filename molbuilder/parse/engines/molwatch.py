@@ -460,9 +460,14 @@ class MolwatchLogParser:
     typed :class:`TrajectoryResult`.
 
     Mirrors the legacy ``MolwatchLogParser`` API: ``can_parse(path)
-    -> bool`` + ``parse(path) -> Trajectory``."""
+    -> bool`` + ``parse(path) -> Trajectory``, plus ``name`` /
+    ``label`` / ``hint`` class attributes so introspecting callers
+    see the same surface as the legacy class."""
 
-    name = "molwatch"
+    name  = "molwatch"
+    label = "molwatch unified log (.molwatch.log)"
+    hint  = ("the unified per-step log emitted by molbuilder-generated "
+             "PySCF scripts (e.g. <job>.molwatch.log)")
 
     @classmethod
     def can_parse(cls, path):

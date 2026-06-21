@@ -584,9 +584,18 @@ class PySCFParser:
     :class:`TrajectoryResult`.
 
     Mirrors the legacy ``molbuilder.parsers.pyscf.PySCFParser`` API:
-    ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``."""
+    ``can_parse(path) -> bool`` + ``parse(path) -> Trajectory``,
+    plus ``name`` / ``label`` / ``hint`` class attributes so
+    introspecting callers (registry diagnostics, tests) see the same
+    surface they did on the legacy class."""
 
-    name = "pyscf"
+    name  = "pyscf"
+    label = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
+    hint  = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
+             "<job>_geom_optim.xyz (NOT the PySCF .log).  Generic XYZ "
+             "with any comment-line format is also accepted; energies "
+             "are extracted only when the comment matches the geomeTRIC "
+             "`Iteration K Energy E` pattern.")
 
     @classmethod
     def can_parse(cls, path):

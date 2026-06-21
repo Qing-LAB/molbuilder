@@ -517,8 +517,10 @@ class SiestaParser:
         # legitimate ``siesta:`` / ``redata:`` lines inside step
         # blocks (the engine echoes them).  Belongs strictly to
         # MolwatchLogFileParser; reject by extension to keep the
-        # registry dispatch unambiguous.
-        if str(path).endswith(".molwatch.log"):
+        # registry dispatch unambiguous.  Case-insensitive guard
+        # against filesystem-case quirks (Windows / case-insensitive
+        # mounts may surface ``.MOLWATCH.LOG``).
+        if str(path).lower().endswith(".molwatch.log"):
             return False
         try:
             with open(path, "r", errors="replace") as fh:
