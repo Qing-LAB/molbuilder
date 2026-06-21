@@ -172,35 +172,33 @@ class TestTrajectoryInspectorPageshowRefresh:
             timeout=5000,
         )
 
-        # Intercept subsequent /api/watch/data requests.
-        watch_data_calls = []
-
-        def _on_request(req):
-            if "/api/watch/data" in req.url:
-                watch_data_calls.append(req.url)
-
-        page.on("request", _on_request)
-
-        # Dispatch the pageshow event.  In a real browser this fires
-        # on bfcache restore; we synthesise it for the test so we
-        # don't depend on Playwright's bfcache behaviour (which is
-        # off by default in headless Chromium).
-        page.evaluate("""() => {
-            window.dispatchEvent(new PageTransitionEvent("pageshow", {
-                persisted: true,
-            }));
-        }""")
-        # Give pollOnce a tick to fire its fetch.
-        page.wait_for_function(
-            "() => true", timeout=1500,
-        )
-        page.wait_for_timeout(500)
-
-        assert len(watch_data_calls) >= 1, (
-            "pageshow dispatch did not trigger /api/watch/data; "
-            "trajectory inspector's pollOnce handler is missing or "
-            "broken"
-        )
+        # Dispatch the pageshow event and wait for the resulting
+        # ``/api/watch/data`` fetch via ``expect_request``: the
+        # matcher is armed BEFORE the dispatch (no race window) and
+        # returns as soon as a matching request fires.  A fixed
+        # ``wait_for_timeout`` was previously flaky under CI load
+        # when the fetch landed just past the 500 ms wall.
+        #
+        # In a real browser pageshow fires on bfcache restore; we
+        # synthesise it here so the test doesn't depend on
+        # Playwright's bfcache behaviour (off by default in
+        # headless Chromium).
+        try:
+            with page.expect_request(
+                lambda req: "/api/watch/data" in req.url,
+                timeout=10_000,
+            ):
+                page.evaluate("""() => {
+                    window.dispatchEvent(new PageTransitionEvent("pageshow", {
+                        persisted: true,
+                    }));
+                }""")
+        except Exception as exc:                                  # pragma: no cover
+            raise AssertionError(
+                "pageshow dispatch did not trigger /api/watch/data "
+                "within 10 s; trajectory inspector's pollOnce handler "
+                "is missing or broken."
+            ) from exc
 
     def test_visibilitychange_triggers_watch_data_request(
             self, page, flask_server, project_with_trajectory):
@@ -221,23 +219,21 @@ class TestTrajectoryInspectorPageshowRefresh:
             timeout=5000,
         )
 
-        watch_data_calls = []
-
-        def _on_request(req):
-            if "/api/watch/data" in req.url:
-                watch_data_calls.append(req.url)
-
-        page.on("request", _on_request)
-
-        page.evaluate("""() => {
-            document.dispatchEvent(new Event("visibilitychange"));
-        }""")
-        page.wait_for_timeout(500)
-
-        assert len(watch_data_calls) >= 1, (
-            "visibilitychange dispatch did not trigger /api/watch/data; "
-            "trajectory inspector's pollOnce handler is missing or "
-            "broken"
-        )
+        # See the pageshow variant for why ``expect_request`` beats
+        # a fixed ``wait_for_timeout`` here.
+        try:
+            with page.expect_request(
+                lambda req: "/api/watch/data" in req.url,
+                timeout=10_000,
+            ):
+                page.evaluate("""() => {
+                    document.dispatchEvent(new Event("visibilitychange"));
+                }""")
+        except Exception as exc:                                  # pragma: no cover
+            raise AssertionError(
+                "visibilitychange dispatch did not trigger /api/watch/data "
+                "within 10 s; trajectory inspector's pollOnce handler "
+                "is missing or broken."
+            ) from exc
 
 
