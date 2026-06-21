@@ -3,7 +3,7 @@ docs/protocols/results-state-contract.md § 6 (PR 4).
 
 Two surfaces covered:
 
-1. **Parser surface** (parsers/siesta.py): in-progress + committed
+1. **Parser surface** (parse/engines/siesta.py): in-progress + committed
    frames whose SCF didn't report a finite energy MUST NOT fall
    back to ``step_initial_etot``.  The preamble Etot is preserved
    in ``runtime_info["initial_etot"]`` for display.
@@ -37,8 +37,13 @@ class TestSiestaParserNoEtotFallback:
 
     @pytest.fixture(scope="class")
     def parser_body(self):
+        # Module rehomed in parse-module H1.engines (2026-06-20):
+        # legacy ``molbuilder/parsers/siesta.py`` → ``molbuilder/
+        # parse/engines/siesta.py`` (absorbed body lives at the
+        # ``SiestaParser`` class — public surface for the body
+        # parser; see parse-module.md § 8).
         path = (Path(__file__).resolve().parent.parent
-                / "molbuilder" / "parsers" / "siesta.py")
+                / "molbuilder" / "parse" / "engines" / "siesta.py")
         return path.read_text()
 
     def test_committed_frame_no_etot_fallback(self, parser_body):
