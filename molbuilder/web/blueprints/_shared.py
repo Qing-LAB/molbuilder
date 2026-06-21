@@ -1119,7 +1119,7 @@ def apply_companion_labels_if_present(struct, structure_path):
         ``"applied:fdf"`` or ``"applied:py"`` — labels were applied
         from the named companion.  Caller skips the sidecar branch.
     """
-    from molbuilder import script_contract as _sc
+    from molbuilder import script_emit as _sc
     from pathlib import Path as _Path
     base = _Path(structure_path)
     # Iterate by priority: .fdf first (SIESTA / transport are the

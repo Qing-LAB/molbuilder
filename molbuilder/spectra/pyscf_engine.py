@@ -42,13 +42,12 @@ from .engine_base import register_engine
 from .results import ModeData, PHASE_COMPLETE, SpectraResults
 from .selection import validate_selection
 
-# parse_spectra_json is lazy-imported inside parse_output to break a
-# circular import: parsers.spectra_json imports from spectra.results,
+# parse_spectra_json is lazy-imported inside parse_output to break
+# the circular dep: sidecars.spectra imports from spectra.results,
 # which loads spectra.__init__, which imports this module.  If we
-# imported parse_spectra_json eagerly here, the dependency graph
-# `parsers.spectra_json -> spectra.results -> spectra.__init__ ->
-# pyscf_engine -> parsers.spectra_json` deadlocks during the very
-# first `from molbuilder.parsers.spectra_json import ...` call.
+# imported parse_spectra_json eagerly here the dependency graph
+# `sidecars.spectra -> spectra.results -> spectra.__init__ ->
+# pyscf_engine -> sidecars.spectra` deadlocks at first call.
 
 
 # Citation key markers used in the methods_fragment + the

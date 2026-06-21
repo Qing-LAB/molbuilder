@@ -1,4 +1,4 @@
-"""Unit tests for molbuilder.script_contract emitters.
+"""Unit tests for molbuilder.script_emit emitters.
 
 Pins the block shape so a future format change is loud.  Tests are
 pure: no rendering, no I/O.
@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 
-from molbuilder import script_contract as sc
+from molbuilder import script_emit as sc
 
 
 # --------------------------------------------------------------------- #
@@ -540,37 +540,37 @@ def _composed_script(*, with_atom_md: bool = True,
 def test_extract_script_source_full_round_trip():
     text = _composed_script()
     src = sc.extract_script_source(text)
-    assert src.regions == {"L-electrode": [1, 2], "R-electrode": [10, 11]}
-    assert src.frozen_atoms == [1, 11]
-    assert src.user_custom_lines is not None
-    assert any("preserve" in line for line in src.user_custom_lines)
-    assert src.provenance is not None
-    assert src.provenance["generator-version"] == "molbuilder git test"
-    assert src.schema_version == 3
-    assert src.notes == []
+    assert src["regions"] == {"L-electrode": [1, 2], "R-electrode": [10, 11]}
+    assert src["frozen_atoms"] == [1, 11]
+    assert src["user_custom_lines"] is not None
+    assert any("preserve" in line for line in src["user_custom_lines"])
+    assert src["provenance"] is not None
+    assert src["provenance"]["generator-version"] == "molbuilder git test"
+    assert src["schema_version"] == 3
+    assert src["notes"] == []
 
 
 def test_extract_script_source_no_atom_metadata():
     """Block absent -> regions / frozen are ``None`` (NOT empty)."""
     text = _composed_script(with_atom_md=False)
     src = sc.extract_script_source(text)
-    assert src.regions is None
-    assert src.frozen_atoms is None
-    assert src.schema_version is None
+    assert src["regions"] is None
+    assert src["frozen_atoms"] is None
+    assert src["schema_version"] is None
     # Other fields still extracted.
-    assert src.user_custom_lines is not None
-    assert src.provenance is not None
+    assert src["user_custom_lines"] is not None
+    assert src["provenance"] is not None
 
 
 def test_extract_script_source_returns_dataclass_with_notes_list():
     """``notes`` is never None (frozen dataclass invariant)."""
     src = sc.extract_script_source("SystemLabel only\n")
-    assert isinstance(src.notes, list)
-    assert src.regions is None
-    assert src.frozen_atoms is None
-    assert src.user_custom_lines is None
-    assert src.provenance is None
-    assert src.schema_version is None
+    assert isinstance(src["notes"], list)
+    assert src["regions"] is None
+    assert src["frozen_atoms"] is None
+    assert src["user_custom_lines"] is None
+    assert src["provenance"] is None
+    assert src["schema_version"] is None
 
 
 def test_extract_script_source_notes_on_future_schema_version():
@@ -583,10 +583,10 @@ def test_extract_script_source_notes_on_future_schema_version():
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
-    assert src.schema_version == 4
-    assert src.regions == {"r": [0]}
-    assert src.frozen_atoms == [0]
-    assert any("schema_version 4" in n for n in src.notes)
+    assert src["schema_version"] == 4
+    assert src["regions"] == {"r": [0]}
+    assert src["frozen_atoms"] == [0]
+    assert any("schema_version 4" in n for n in src["notes"])
 
 
 def test_extract_script_source_rejects_old_schema_version():
@@ -600,10 +600,10 @@ def test_extract_script_source_rejects_old_schema_version():
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
-    assert src.schema_version == 2
-    assert src.regions is None
-    assert src.frozen_atoms is None
-    assert any("older than v3" in n for n in src.notes)
+    assert src["schema_version"] == 2
+    assert src["regions"] is None
+    assert src["frozen_atoms"] is None
+    assert any("older than v3" in n for n in src["notes"])
 
 
 def test_extract_script_source_empty_blocks_present_but_empty():
@@ -622,6 +622,6 @@ def test_extract_script_source_empty_blocks_present_but_empty():
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
-    assert src.regions == {}        # present, empty
-    assert src.frozen_atoms == []   # present, empty
-    assert src.schema_version == 3
+    assert src["regions"] == {}        # present, empty
+    assert src["frozen_atoms"] == []   # present, empty
+    assert src["schema_version"] == 3

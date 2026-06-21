@@ -427,6 +427,61 @@ def generated_at_now() -> str:
     return datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+# --------------------------------------------------------------------- #
+#  Public re-exports of the per-block extractors                        #
+# --------------------------------------------------------------------- #
+#
+# The block extractors live next to their TextParser definitions in
+# ``molbuilder/parse/scripts/`` (Phase F per parse-module.md § 8) +
+# the umbrella ``extract_script_source`` in ``parse/dirs/bundle.py``
+# (Phase G).  Surface them here under their legacy unprefixed names
+# so the emit/extract pair is reachable from a single module —
+# write- and read-side of the same on-disk format.
+#
+# Resolved via module-level ``__getattr__`` so the imports happen
+# AFTER ``parse/scripts/markers.py`` finishes initialising; an
+# eager top-level import would deadlock because markers.py
+# re-exports BLOCK_* + MARKER_RE from this module.
+_LAZY_EXTRACTORS = {
+    "extract_atom_metadata_dict": (
+        "molbuilder.parse.scripts.atom_metadata",
+        "_extract_atom_metadata_dict",
+    ),
+    "extract_bench_marks_dict": (
+        "molbuilder.parse.scripts.bench_marks",
+        "_extract_bench_marks_dict",
+    ),
+    "extract_header_text": (
+        "molbuilder.parse.scripts.header",
+        "_extract_header_text",
+    ),
+    "extract_provenance_dict": (
+        "molbuilder.parse.scripts.provenance",
+        "_extract_provenance_dict",
+    ),
+    "extract_user_custom_inner": (
+        "molbuilder.parse.scripts.user_custom",
+        "_extract_user_custom_inner",
+    ),
+    "extract_script_source": (
+        "molbuilder.parse.dirs.bundle",
+        "_extract_script_source",
+    ),
+}
+
+
+def __getattr__(name):
+    target = _LAZY_EXTRACTORS.get(name)
+    if target is None:
+        raise AttributeError(
+            f"module 'molbuilder.script_emit' has no attribute {name!r}")
+    import importlib
+    mod_name, attr = target
+    value = getattr(importlib.import_module(mod_name), attr)
+    globals()[name] = value  # cache for next access
+    return value
+
+
 __all__ = [
     # Block names + markers
     "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
@@ -443,4 +498,8 @@ __all__ = [
     "replace_user_custom_inner", "merge_user_custom_from_target",
     # Git / time
     "molbuilder_git_sha", "generated_at_now",
+    # Per-block extractors (read-side; re-export from parse/scripts/)
+    "extract_atom_metadata_dict", "extract_bench_marks_dict",
+    "extract_header_text", "extract_provenance_dict",
+    "extract_user_custom_inner", "extract_script_source",
 ]
