@@ -44,7 +44,7 @@ from typing import Type
 
 class FileParser(ABC):
     """One file path → one ParseResult."""
-    name:   str          # short id ("siesta-out", "molstruct-json")
+    name:   str          # short id ("siesta", "molstruct-json")
     label:  str          # UI-friendly ("SIESTA stdout (.out / .log)")
     hint:   str          # what file to point at when can_parse returns False
     output: Type["ParseResult"]   # the concrete ParseResult subclass returned

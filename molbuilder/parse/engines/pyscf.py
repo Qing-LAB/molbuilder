@@ -583,7 +583,7 @@ class PySCFOutFileParser(FileParser):
     with one Frame per geomeTRIC step + per-step SCF history
     (extracted from the companion ``.log`` when present)."""
 
-    name   = "pyscf-out"
+    name   = "pyscf"
     label  = "XYZ trajectory (PySCF / geomeTRIC / generic multi-frame XYZ)"
     hint   = ("a multi-frame XYZ trajectory -- e.g., geomeTRIC's "
               "<job>_geom_optim.xyz (NOT the PySCF .log).  Generic XYZ "

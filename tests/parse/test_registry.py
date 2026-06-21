@@ -56,9 +56,9 @@ def test_engine_parsers_registered():
     registry at import time."""
     file_parsers = _registered_file_parsers()
     names = {p.name for p in file_parsers}
-    assert "siesta-out" in names
-    assert "pyscf-out" in names
-    assert "molwatch-log" in names
+    assert "siesta" in names
+    assert "pyscf" in names
+    assert "molwatch" in names
 
 
 def test_job_dir_parser_registered():
@@ -96,7 +96,7 @@ def test_parse_siesta_out_returns_trajectoryresult():
     assert isinstance(result, TrajectoryResult)
     assert result.result_kind == "trajectory"
     assert result.source_format == "siesta"
-    assert result.parser_name == "siesta-out"
+    assert result.parser_name == "siesta"
     # Frames carry over from the legacy parser.
     assert len(result.frames) > 0
 
@@ -125,7 +125,7 @@ def test_result_kinds_are_unique():
     by_output = {}
     for p in file_parsers:
         by_output.setdefault(p.output, []).append(p)
-    # Each output type may have multiple parsers (siesta-out + pyscf-out
+    # Each output type may have multiple parsers (siesta + pyscf
     # both return TrajectoryResult), but the result_kind on the
     # output class is the same — that's by design.  This test just
     # confirms the discriminator is set on every output type.

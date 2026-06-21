@@ -181,4 +181,5 @@ class BundleResult(ParseResult):
     block_schema_versions: Dict[str, int] = field(default_factory=dict)
     source_engine:     Optional[str] = None   # "siesta" | "pyscf"
     final_coords_from: Optional[str] = None   # "xv"/"fdf-initial"/"py-opt"/"py-initial"
+    source_script:     Optional[str] = None   # absolute path to the .fdf / .py that fed the run
     result_kind:  str = "bundle"

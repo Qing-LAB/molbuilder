@@ -502,6 +502,10 @@ class BundleDirParser(DirParser):
         sv = bundle.get("schema_version")
         if isinstance(sv, int):
             block_schema_versions["atom-metadata"] = sv
+        source_script = bundle.get("source_script")
+        source_script_str = (
+            str(source_script) if source_script is not None else None
+        )
         return BundleResult(
             schema_version=1,
             parsed_at=_iso_z(),
@@ -515,6 +519,7 @@ class BundleDirParser(DirParser):
             block_schema_versions=block_schema_versions,
             source_engine=bundle.get("source_engine"),
             final_coords_from=bundle.get("final_coords_from"),
+            source_script=source_script_str,
         )
 
 

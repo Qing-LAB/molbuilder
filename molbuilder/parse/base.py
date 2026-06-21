@@ -28,7 +28,7 @@ class FileParser(ABC):
 
     Concrete subclasses set these class attributes:
 
-    * ``name``   — short identifier (e.g. ``"siesta-out"``).
+    * ``name``   — short identifier (e.g. ``"siesta"``).
     * ``label``  — UI-friendly description.
     * ``hint``   — what file to point at when ``can_parse`` says no.
     * ``output`` — the concrete ``ParseResult`` subclass returned.

@@ -97,7 +97,15 @@ def write_bundle_as_handoff(bundle: BundleResult,
     # comment can trace the bundle back to its source.  Falls back to
     # the bare source path when source_engine / final_coords_from
     # weren't recorded (older BundleResults pre-H2).
-    src_label = Path(bundle.source).name if bundle.source else "<unknown>"
+    # Prefer the source-script basename (h2.fdf, opt.py) when the
+    # parser surfaced it; fall back to the run-dir name on older
+    # BundleResults that pre-date the source_script field.
+    if bundle.source_script:
+        src_label = Path(bundle.source_script).name
+    elif bundle.source:
+        src_label = Path(bundle.source).name
+    else:
+        src_label = "<unknown>"
     if bundle.source_engine and bundle.final_coords_from:
         comment = (
             f"bundled from {src_label} "

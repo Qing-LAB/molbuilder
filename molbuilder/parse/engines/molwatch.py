@@ -457,7 +457,7 @@ def _parse_molwatch_log(path: str) -> Trajectory:
 class MolwatchLogFileParser(FileParser):
     """Parse a ``.molwatch.log`` unified trajectory file."""
 
-    name   = "molwatch-log"
+    name   = "molwatch"
     label  = "molwatch unified log (.molwatch.log)"
     hint   = ("the unified per-step log emitted by molbuilder-generated "
               "PySCF scripts (e.g. <job>.molwatch.log)")

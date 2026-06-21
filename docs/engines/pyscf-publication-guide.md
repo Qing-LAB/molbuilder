@@ -25,9 +25,16 @@ mol = gto.M(
 
 # In your mf setup (where scf.RKS or scf.UKS is constructed):
 mf = scf.RKS(mol).density_fit(auxbasis="def2-universal-jfit")  # RI-J, 5–10× speedup, no accuracy loss
-mf.xc = "B3LYP-D3(BJ)"   # was "B3LYP" — Grimme dispersion correction
-mf.conv_tol = 1e-9        # already at publication standard
-mf.max_cycle = 100        # already plenty
+mf.xc   = "b3lyp"          # base functional
+mf.disp = "d3bj"           # Grimme-D3(BJ).  PySCF 2.13 REJECTS the merged-string
+                            # form "b3lyp-d3(bj)" — its `parse_dft()` splits on
+                            # '-' and `"d3(bj)"` (with parens) is not in
+                            # `DISP_VERSIONS`.  Use the split form (mf.xc +
+                            # mf.disp) for both CPU + GPU compatibility.
+                            # Equivalent alternative: mf.xc = "b3lyp-d3bj"
+                            # (no parens, no separate mf.disp).
+mf.conv_tol = 1e-9          # already at publication standard
+mf.max_cycle = 100          # already plenty
 # convergence_gmax = 4.5e-4 Ha/Bohr (geomeTRIC default) — already publication standard
 ```
 
@@ -39,14 +46,25 @@ expect.
 
 ## Parameter tiers (Gaussian convention, the de-facto standard)
 
-| Knob | Default (publishable) | TIGHT (vib/IR/NEB) | VERY-TIGHT (kinetics) |
+| Knob | Default (Gaussian OPT, publishable) | TIGHT (vib/IR/NEB) | VERY-TIGHT (kinetics) |
 |---|---|---|---|
-| `convergence_energy` (Ha) | 1e-6 | 1e-7 | 1e-8 |
+| `convergence_energy` (Ha) | 1e-6 | 1e-6 (matches GAU_TIGHT) | 1e-8 |
 | `convergence_gmax` (Ha/Bohr) | **4.5e-4** (≈ 0.023 eV/Å) | 1.5e-5 | 2e-6 |
 | `convergence_grms` (Ha/Bohr) | 3.0e-4 | 1.0e-5 | 1e-6 |
-| `convergence_dmax` (Bohr) | 1.8e-3 | 6.0e-5 | 6e-6 |
-| `convergence_drms` (Bohr) | 1.2e-3 | 4.0e-5 | 4e-6 |
+| `convergence_dmax` (**Å**) | 1.8e-3 | 6.0e-5 | 6e-6 |
+| `convergence_drms` (**Å**) | 1.2e-3 | 4.0e-5 | 4e-6 |
 | `mf.conv_tol` (Ha) | 1e-9 | 1e-10 | 1e-11 |
+
+(Unit-check: geomeTRIC's `convergence_dmax` / `convergence_drms` are in
+**Angstrom**, not Bohr — verified against `geometric/params.py`
+docstring "Convergence criteria in a.u. and Angstrom".  Gradient
+columns ARE in atomic units (Ha/Bohr).  The default-tier `1e-6 Ha`
+energy is geomeTRIC's `GAU` set; TIGHT keeps energy at the same
+decade per the official `GAU_TIGHT` set (gradients + displacements
+tighten 10× and 20× respectively; energy stays at 1e-6 Ha).  If
+you want to escalate energy tolerance further, do it manually — see
+the user's PDT script which uses 1e-7 Ha as an extra-conservative
+margin past GAU_TIGHT.)
 
 The "default" column = Gaussian's OPT default = geomeTRIC's default.
 >90% of published organic-chemistry structures use these.  Reviewers
@@ -83,14 +101,19 @@ production.
 ### Functional
 | Choice | When |
 |---|---|
-| **`B3LYP-D3(BJ)`** | most organic chemistry; the most-cited combo of the last decade |
-| `ωB97X-D` | when charge-transfer character is significant (donor–acceptor, charge transport, π-stacked complexes).  D included; no need for explicit -D3. |
-| `PBE0` | when you want a non-Becke alternative; common in solid-state work |
-| `M06-2X` | non-covalent interactions; thermochemistry benchmarks |
-| `r²SCAN-D3(BJ)` | newer choice; meta-GGA; ~B3LYP accuracy at GGA cost — emerging standard |
+| **`b3lyp` + `mf.disp = "d3bj"`** | most organic chemistry; the most-cited combo of the last decade.  In paper prose this is "B3LYP-D3(BJ)" — only the *code spelling* differs from convention; see the TL;DR section's caveat on PySCF's `parse_dft()` reject of the parenthesised form. |
+| `wb97m-v` | when charge-transfer character is significant (donor–acceptor, charge transport, π-stacked complexes).  Range-separated meta-GGA + VV10 nonlocal correlation; state-of-the-art for noncovalent interactions today.  **NOT** `ωB97X-D` — PySCF 2.13 has `wb97x-d` / `wb97x_d` in its `_black_list` (raises `NotImplementedError`); use `wb97m-v` or `wb97x-v` instead.  Both ship dispersion in the functional definition (no separate `mf.disp`). |
+| `pbe0` | when you want a non-Becke alternative; common in solid-state work |
+| `m06-2x` | non-covalent interactions; thermochemistry benchmarks |
+| `r²scan` + `mf.disp = "d3bj"` | newer choice; meta-GGA; ~B3LYP accuracy at GGA cost — emerging standard |
 
-Plain `B3LYP` (no dispersion) is no longer publishable for any
+Plain `b3lyp` (no dispersion) is no longer publishable for any
 molecule >10 atoms.  Reviewers will flag it.
+
+**Spelling-vs-prose convention:** these table entries are the exact
+strings PySCF 2.x accepts.  In your paper's methods section you
+write the conventional form ("B3LYP-D3(BJ)", "ωB97X-V"); in
+generated code you write the PySCF-accepted spelling.
 
 ### When you also need vibrational analysis
 - Re-optimize the final structure with TIGHT criteria above.
@@ -124,7 +147,8 @@ Paste-and-edit version for the paper:
 | D3(BJ) | Grimme, S. *et al.* "Effect of the damping function in dispersion corrected density functional theory." *J. Comp. Chem.* **32**, 1456 (2011). DOI: 10.1002/jcc.21759 |
 | def2-TZVP | Weigend, F. & Ahlrichs, R. *Phys. Chem. Chem. Phys.* **7**, 3297 (2005). DOI: 10.1039/B508541A |
 | RI-J auxiliary basis | Weigend, F. *Phys. Chem. Chem. Phys.* **8**, 1057 (2006). DOI: 10.1039/B515623H |
-| ωB97X-D (if used) | Chai, J.-D. & Head-Gordon, M. *Phys. Chem. Chem. Phys.* **10**, 6615 (2008). |
+| ωB97X-V (if used) | Mardirossian, N. & Head-Gordon, M. *Phys. Chem. Chem. Phys.* **16**, 9904 (2014). |
+| ωB97M-V (if used) | Mardirossian, N. & Head-Gordon, M. *J. Chem. Phys.* **144**, 214110 (2016). |
 
 ---
 
@@ -198,10 +222,18 @@ set any value per stage.
 ### Generated-script sketch
 
 ```python
+# All 5 geomeTRIC convergence knobs per stage (defined so the loop
+# below never KeyErrors).  Units: gmax/grms in Ha/Bohr; dmax/drms in
+# Angstrom; etol in Ha.  Default tier matches geomeTRIC's GAU set;
+# TIGHT keeps energy at GAU and tightens grads + displacements 10×
+# and 20× respectively (GAU_TIGHT).
 STAGES = [
-    {"name": "stage1", "enabled": True,  "conv_tol": 1e-7,  "gmax": 2.0e-3, "max_steps":  50},
-    {"name": "stage2", "enabled": True,  "conv_tol": 1e-9,  "gmax": 4.5e-4, "max_steps": 200},
-    {"name": "stage3", "enabled": False, "conv_tol": 1e-10, "gmax": 1.0e-4, "max_steps": 100},
+    {"name": "stage1", "enabled": True,
+     "conv_tol": 1e-7,  "gmax": 2.0e-3, "grms": 1.3e-3, "dmax": 7.2e-3, "drms": 4.8e-3, "etol": 1e-5, "max_steps":  50},
+    {"name": "stage2", "enabled": True,
+     "conv_tol": 1e-9,  "gmax": 4.5e-4, "grms": 3.0e-4, "dmax": 1.8e-3, "drms": 1.2e-3, "etol": 1e-6, "max_steps": 200},
+    {"name": "stage3", "enabled": False,
+     "conv_tol": 1e-10, "gmax": 1.5e-5, "grms": 1.0e-5, "dmax": 6.0e-5, "drms": 4.0e-5, "etol": 1e-6, "max_steps": 100},
 ]
 
 mol = gto.M(atom=..., basis=..., ...)
@@ -209,14 +241,22 @@ for stage in STAGES:
     if not stage["enabled"]:
         continue
     mf = scf.RKS(mol).density_fit(auxbasis="def2-universal-jfit")
-    mf.xc = "B3LYP-D3(BJ)"
+    mf.xc   = "b3lyp"
+    mf.disp = "d3bj"    # canonical PySCF spelling — see TL;DR
     mf.conv_tol = stage["conv_tol"]
     prefix = f"{JOB}_{stage['name']}"
     _molwatch = MolwatchEmitter(f"{prefix}.molwatch.log", prefix, mol,
-                                convergence_targets={...stage targets...})
+                                runtime_info=_RUNTIME_INFO,
+                                convergence_targets={
+                                    "max_force_tol_eV_per_A":
+                                        stage["gmax"] * 51.42208619,   # Ha/Bohr -> eV/A
+                                    "scf_energy_tol":  stage["conv_tol"],
+                                    "max_scf_iter":    100,
+                                    "max_geom_iter":   stage["max_steps"],
+                                })
     mol = optimize(mf, prefix=f"{prefix}_geom",
                    convergence_gmax=stage["gmax"],
-                   convergence_grms=stage["gmax"] * 0.67,
+                   convergence_grms=stage["grms"],
                    convergence_dmax=stage["dmax"],
                    convergence_drms=stage["drms"],
                    convergence_energy=stage["etol"],

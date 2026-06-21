@@ -1686,7 +1686,7 @@ class SiestaOutFileParser(FileParser):
     ``.log``).  Returns a :class:`TrajectoryResult` with one Frame
     per geometry step + per-step SCF history."""
 
-    name   = "siesta-out"
+    name   = "siesta"
     label  = _SiestaImpl.label
     hint   = _SiestaImpl.hint
     output = TrajectoryResult

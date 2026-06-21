@@ -544,7 +544,7 @@ def test_multi_stage_merge_survives_parse_exception(
     surviving stages and tag the failed stage with an ``error``
     field in its stages-metadata entry."""
     import os, time
-    from molbuilder.parsers.molwatch_log import MolwatchLogParser
+    from molbuilder.parse.engines.molwatch import MolwatchLogFileParser
     s1 = tmp_path / "my-job-stage1.molwatch.log"
     s2 = tmp_path / "my-job-stage2.molwatch.log"
     s3 = tmp_path / "my-job-stage3.molwatch.log"
@@ -555,14 +555,14 @@ def test_multi_stage_merge_survives_parse_exception(
     os.utime(s1, (base,      base))
     os.utime(s2, (base + 10, base + 10))
     os.utime(s3, (base + 20, base + 20))
-    real_parse = MolwatchLogParser.parse
+    real_parse = MolwatchLogFileParser.parse
 
     def fake_parse(cls, path):
         if str(path).endswith("stage2.molwatch.log"):
             raise RuntimeError("simulated mid-write tear")
         return real_parse(path)
 
-    monkeypatch.setattr(MolwatchLogParser, "parse",
+    monkeypatch.setattr(MolwatchLogFileParser, "parse",
                         classmethod(fake_parse))
     body = client.post("/api/watch/load",
                        json={"path": str(tmp_path)}).get_json()
