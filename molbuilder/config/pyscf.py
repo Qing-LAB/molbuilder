@@ -21,9 +21,142 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 from .siesta import _validate_basename     # shared with SiestaConfig
+
+
+# --------------------------------------------------------------------- #
+#  Staged optimization (task #534)                                      #
+# --------------------------------------------------------------------- #
+#
+# Per ``docs/engines/pyscf-publication-guide.md`` § "In-script staged
+# optimization", every PySCF script runs up to N stages internally
+# (default 3).  Each stage carries its own SCF tolerance + 5 geomeTRIC
+# convergence knobs + max-step cap; the generated script's main loop
+# walks ``STAGES`` and skips disabled entries, carrying ``mol``
+# forward between enabled stages.  This commit lands the DATA layer
+# only — the generator + form UI consume it in commit-family
+# follow-ups (parse-module H4 is done; #534 commit 2 = form schema,
+# commit 3 = generator rewrite).
+#
+# Naming convention: stages are addressed by their ``name`` field
+# (default ``stage1`` / ``stage2`` / ``stage3``) so per-stage output
+# files end up ``<JOB>_stage1_geom_optim.xyz``, etc.  Keep names
+# ``[A-Za-z0-9_]+`` (filesystem-safe; no dots, no whitespace).
+#
+# Units recap (geomeTRIC source-of-truth):
+#   * ``gmax`` / ``grms``  — Hartree / Bohr
+#   * ``dmax`` / ``drms``  — Angstrom (NOT Bohr — long-standing
+#                            geomeTRIC doc bug; the source uses Å)
+#   * ``etol``             — Hartree
+#   * ``conv_tol``         — Hartree (SCF energy convergence —
+#                            ``mf.conv_tol``, separate from geomeTRIC)
+
+
+@dataclass
+class StageSpec:
+    """One stage of the in-script PySCF optimization loop.
+
+    Defaults are the geomeTRIC GAU set (publication-quality middle
+    tier per the publication-guide table).  Override on construction
+    to build loose / TIGHT / etc. tiers; the publication-guide tier
+    table is the canonical reference.
+    """
+    name:      str = "stage1"
+    enabled:   bool = True
+    conv_tol:  float = 1.0e-9    # mf.conv_tol (SCF energy, Hartree)
+    gmax:      float = 4.5e-4    # geomeTRIC convergence_gmax  (Ha/Bohr)
+    grms:      float = 3.0e-4    # geomeTRIC convergence_grms  (Ha/Bohr)
+    dmax:      float = 1.8e-3    # geomeTRIC convergence_dmax  (Å)
+    drms:      float = 1.2e-3    # geomeTRIC convergence_drms  (Å)
+    etol:      float = 1.0e-6    # geomeTRIC convergence_energy (Hartree)
+    max_steps: int   = 200       # geomeTRIC maxsteps
+
+
+def _default_stages() -> List[StageSpec]:
+    """Three-stage publication-guide default.
+
+    Tier 1 = loose pre-opt (enabled; cheap structure cleanup).
+    Tier 2 = publishable GAU (enabled; what papers cite).
+    Tier 3 = TIGHT GAU_TIGHT (DISABLED by default; opt-in for vib/
+             IR/NEB where tight Hessians matter).
+
+    Most users tick 1 + 2 and leave 3 off.  Power users override any
+    knob per stage via the form (lands in #534 commit 2)."""
+    return [
+        StageSpec(name="stage1", enabled=True,
+                  conv_tol=1.0e-7,
+                  gmax=2.0e-3, grms=1.3e-3,
+                  dmax=7.2e-3, drms=4.8e-3,
+                  etol=1.0e-5,
+                  max_steps=50),
+        StageSpec(name="stage2", enabled=True,
+                  conv_tol=1.0e-9,
+                  gmax=4.5e-4, grms=3.0e-4,
+                  dmax=1.8e-3, drms=1.2e-3,
+                  etol=1.0e-6,
+                  max_steps=200),
+        StageSpec(name="stage3", enabled=False,
+                  conv_tol=1.0e-10,
+                  gmax=1.5e-5, grms=1.0e-5,
+                  dmax=6.0e-5, drms=4.0e-5,
+                  etol=1.0e-6,
+                  max_steps=100),
+    ]
+
+
+def validate_stages(stages: List[StageSpec]) -> List[str]:
+    """Return a list of error strings; empty == OK.
+
+    The validator is intentionally permissive on per-knob ranges
+    (publication-quality tiers span 5 orders of magnitude; clamping
+    locks out legitimate power-user choices).  It only rejects what
+    would corrupt the loop or produce a file-name collision:
+
+      * Must contain at least one enabled stage (an all-disabled
+        list is indistinguishable from ``optimize=False`` and would
+        emit a no-op script).
+      * Stage names must be filesystem-safe (``[A-Za-z0-9_]+``) and
+        unique within the list (otherwise per-stage output files
+        collide).
+      * Every numeric knob must be strictly positive (zero or
+        negative breaks geomeTRIC's convergence test).
+      * ``max_steps`` must be a positive integer.
+    """
+    import re as _re
+    errors: List[str] = []
+    if not stages:
+        errors.append("stages: list is empty; need at least 1 stage")
+        return errors
+    if not any(s.enabled for s in stages):
+        errors.append(
+            "stages: no stage is enabled; either enable one or set "
+            "optimize=False to skip the optimization loop entirely")
+    seen_names = set()
+    name_re = _re.compile(r"^[A-Za-z0-9_]+$")
+    for i, s in enumerate(stages):
+        prefix = f"stages[{i}]"
+        if not isinstance(s.name, str) or not name_re.match(s.name or ""):
+            errors.append(
+                f"{prefix}.name = {s.name!r}: must match [A-Za-z0-9_]+ "
+                f"(used as filename suffix)")
+        elif s.name in seen_names:
+            errors.append(
+                f"{prefix}.name = {s.name!r}: duplicate; per-stage "
+                f"output files would collide")
+        else:
+            seen_names.add(s.name)
+        for knob in ("conv_tol", "gmax", "grms", "dmax", "drms", "etol"):
+            v = getattr(s, knob)
+            if not isinstance(v, (int, float)) or v <= 0:
+                errors.append(
+                    f"{prefix}.{knob} = {v!r}: must be a positive number")
+        if not isinstance(s.max_steps, int) or s.max_steps <= 0:
+            errors.append(
+                f"{prefix}.max_steps = {s.max_steps!r}: "
+                f"must be a positive integer")
+    return errors
 
 
 @dataclass
@@ -373,6 +506,35 @@ class PySCFConfig:
         "tier":    "advanced",
         "help": "geomeTRIC max-gradient convergence (Ha/Bohr)",
     })
+
+    # 3-stage in-script optimization (task #534).  Data layer only in
+    # this commit: the field carries the publication-guide default
+    # (loose + publishable + TIGHT, with TIGHT off by default).  The
+    # generator still consumes the flat ``geom_conv_*`` scalars above
+    # — that switch lands in #534 commit 3.  Form UI lands in #534
+    # commit 2.  Until then this field is INVISIBLE in the form
+    # schema (no ``section`` metadata; ``dataclass_to_form_schema``
+    # skips fields without one).
+    stages: List[StageSpec] = field(
+        default_factory=_default_stages,
+        metadata={
+            # ``skip_cli`` keeps ``molbuilder.cli.add_dataclass_options``
+            # from trying to auto-generate a ``--stages`` Click option
+            # for a List[StageSpec] (cli.py:198 bails loudly on
+            # unsupported types).  CLI exposure lands in #534 commit 2
+            # alongside the form schema (probably as a JSON-string
+            # ``--stages-json`` plus a ``--stage-strategy`` preset).
+            "skip_cli":   True,
+            "engine_key": "STAGES = [...]; for stage in STAGES: optimize(...)",
+            "help": (
+                "List of optimization stages.  Each stage carries its "
+                "own SCF tolerance + 5 geomeTRIC convergence knobs + "
+                "max-step cap.  Generated-script loop walks STAGES "
+                "and skips disabled entries; mol carries forward "
+                "between enabled stages.  See pyscf-publication-"
+                "guide.md for the tier table."),
+        },
+    )
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = field(default=None, metadata={
