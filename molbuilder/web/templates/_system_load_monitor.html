@@ -14,48 +14,71 @@
     naturally show a 2-cell strip).  The toggle pill ("≡") collapses
     /expands the strip AND stops polling; persisted in sessionStorage
     so the user's choice survives intra-session navigation between
-    tabs. -#}
+    tabs.
+
+    2026-06-21 redesign: detailed metric breakdowns (load-avg, per-
+    socket %, per-GPU power/temp/clocks) used to live in browser
+    ``title=`` tooltips that re-positioned on every 1 Hz redraw and
+    were therefore unusable.  They now live in a ``[data-detail]``
+    block under each cell, always visible.  Toggle moved adjacent to
+    the title so it's reachable without scanning the header right
+    edge. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/system-load-monitor.css') }}">
 <aside id="system-load-monitor" aria-label="Server load monitor">
-  {# PR 5.1: header row with title + toggle.  Title makes the
-     in-flow card legible ("this is the server-load widget, not a
-     random row of numbers") and the toggle sits on the right where
-     it's reachable when the strip is collapsed. #}
+  {# Header row: toggle FIRST so it sits immediately next to the
+     title (user feedback 2026-06-21: right-aligned toggle was hard
+     to locate).  Title stays as a non-interactive label. #}
   <div class="system-load-header">
-    <span class="system-load-title">Server load</span>
     <button class="system-load-toggle" type="button"
             aria-pressed="false" title="Hide server load">≡</button>
+    <span class="system-load-title">Server load
+      <span class="system-load-timescale">— last 10 min</span></span>
   </div>
   <div class="system-load-strip">
-    <div class="system-load-cell" data-metric="cpu" title="Aggregate CPU utilization (psutil.cpu_percent)">
-      <span class="label">CPU</span>
-      <span class="value" data-value>—</span>
-      <canvas class="spark" width="120" height="32"
-              aria-label="CPU usage sparkline, last 60 seconds"></canvas>
+    <div class="system-load-cell" data-metric="cpu">
+      <div class="cell-summary">
+        <span class="label">CPU</span>
+        <span class="value" data-value>—</span>
+        <canvas class="spark" width="320" height="48"
+                aria-label="CPU usage sparkline, last 10 minutes"></canvas>
+      </div>
+      <div class="cell-detail" data-detail>—</div>
     </div>
-    <div class="system-load-cell" data-metric="ram" title="System memory used (psutil.virtual_memory)">
-      <span class="label">RAM</span>
-      <span class="value" data-value>—</span>
-      <canvas class="spark" width="120" height="32"
-              aria-label="RAM usage sparkline, last 60 seconds"></canvas>
+    <div class="system-load-cell" data-metric="ram">
+      <div class="cell-summary">
+        <span class="label">RAM</span>
+        <span class="value" data-value>—</span>
+        <canvas class="spark" width="320" height="48"
+                aria-label="RAM usage sparkline, last 10 minutes"></canvas>
+      </div>
+      <div class="cell-detail" data-detail>—</div>
     </div>
     <div class="system-load-cell" data-metric="gpu" hidden>
-      <span class="label">GPU</span>
-      <span class="value" data-value>—</span>
-      <canvas class="spark" width="120" height="32"
-              aria-label="GPU SM compute utilization sparkline, last 60 seconds"></canvas>
+      <div class="cell-summary">
+        <span class="label">GPU</span>
+        <span class="value" data-value>—</span>
+        <canvas class="spark" width="320" height="48"
+                aria-label="GPU SM compute utilization sparkline, last 10 minutes"></canvas>
+      </div>
+      <div class="cell-detail" data-detail>—</div>
     </div>
     <div class="system-load-cell" data-metric="gpubw" hidden>
-      <span class="label">GPU BW</span>
-      <span class="value" data-value>—</span>
-      <canvas class="spark" width="120" height="32"
-              aria-label="GPU memory bandwidth utilization sparkline, last 60 seconds"></canvas>
+      <div class="cell-summary">
+        <span class="label">GPU BW</span>
+        <span class="value" data-value>—</span>
+        <canvas class="spark" width="320" height="48"
+                aria-label="GPU memory bandwidth utilization sparkline, last 10 minutes"></canvas>
+      </div>
+      <div class="cell-detail" data-detail>—</div>
     </div>
     <div class="system-load-cell" data-metric="vram" hidden>
-      <span class="label">VRAM</span>
-      <span class="value" data-value>—</span>
-      <canvas class="spark" width="120" height="32"
-              aria-label="GPU memory usage sparkline, last 60 seconds"></canvas>
+      <div class="cell-summary">
+        <span class="label">VRAM</span>
+        <span class="value" data-value>—</span>
+        <canvas class="spark" width="320" height="48"
+                aria-label="GPU memory usage sparkline, last 10 minutes"></canvas>
+      </div>
+      <div class="cell-detail" data-detail>—</div>
     </div>
   </div>
 </aside>

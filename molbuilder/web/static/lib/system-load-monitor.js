@@ -24,9 +24,15 @@
 
     var ENDPOINT = "/api/system/load";
     var POLL_MS  = 1000;       // 1 Hz
-    var BUFFER_N = 60;         // 60 samples = 60 s of history
-    var SPARK_W  = 120;
-    var SPARK_H  = 32;
+    // 2026-06-21 user feedback: 60 s of history was too short to see
+    // SCF-cycle rhythm or warm/cool spikes on multi-minute jobs.
+    // 10 min @ 1 Hz = 600 samples, ~5 KB per metric.  Memory cost:
+    // negligible.  Sparkline still readable at 0.5 px/sample on a
+    // 320 px canvas (compresses ~25 s of detail into one pixel band;
+    // peaks remain visible as 1-2 px spikes).
+    var BUFFER_N = 600;        // 600 samples = 10 min of history
+    var SPARK_W  = 320;        // wider canvas: panel has room now
+    var SPARK_H  = 48;
 
     var STORAGE_KEY_COLLAPSED = "mb.system-load.collapsed";
 
@@ -114,6 +120,19 @@
             if (cEl) drawSparkline(cEl, buf.items());
         }
 
+        /* 2026-06-21 user feedback: detail text used to live in browser
+         * ``cell.title`` tooltips that re-positioned on every 1 Hz
+         * redraw -- never stable, never readable.  Write it directly
+         * into the cell's ``[data-detail]`` slot instead so it's
+         * always on-screen.  The strings preserve their pre-formatted
+         * ``\n``-separated layout; the CSS uses ``white-space:
+         * pre-line`` to render them as multi-line. */
+        function setDetail(cell, text) {
+            if (!cell) return;
+            var dEl = $$("[data-detail]", cell);
+            if (dEl) dEl.textContent = text;
+        }
+
         var aborter = null;
         var lastFetchOk = true;
 
@@ -165,23 +184,22 @@
                                  + nPhys + " cores";
                     }
                     updateCell(cellCpu, bufCpu, cpu, cpuText);
-                    // CPU tooltip: spell out the logical vs physical
+                    // CPU detail: spell out the logical vs physical
                     // distinction + the load-avg trio so the user can
                     // tell when the run queue is over-subscribed
                     // (load > cpu_count) even if cpu_pct is at 100.
-                    var cpuTip = "CPU: " + cpu.toFixed(1) + "% aggregate"
-                        + "\n" + nPhys + " physical cores"
+                    var cpuDetail = nPhys + " physical cores"
                         + (nLog && nLog !== nPhys
                            ? " (" + nLog + " logical with SMT)" : "")
                         + "\n~" + coresBusy.toFixed(1)
                         + " physical-core-equivalents busy";
                     if (typeof d.loadavg_1m === "number") {
-                        cpuTip += "\nload avg: " + d.loadavg_1m.toFixed(2)
+                        cpuDetail += "\nload avg: " + d.loadavg_1m.toFixed(2)
                                 + " (1m), "    + d.loadavg_5m.toFixed(2)
                                 + " (5m), "    + d.loadavg_15m.toFixed(2)
                                 + " (15m)";
                         if (d.loadavg_1m > nPhys) {
-                            cpuTip += "\n[over-subscribed: load > physical cores]";
+                            cpuDetail += "\n[over-subscribed: load > physical cores]";
                         }
                     }
                     // Per-socket breakdown -- empty list on single-
@@ -193,11 +211,11 @@
                     // "ranks spread, paying UPI penalty".
                     var perSock = d.per_socket_pct;
                     if (Array.isArray(perSock) && perSock.length >= 2) {
-                        cpuTip += "\nper socket:";
+                        cpuDetail += "\nper socket:";
                         var maxPct = 0, minPct = 100;
                         perSock.forEach(function(s) {
                             var p = (typeof s.pct === "number") ? s.pct : 0;
-                            cpuTip += "\n  socket " + s.socket
+                            cpuDetail += "\n  socket " + s.socket
                                 + ": "     + p.toFixed(1) + "%"
                                 + " ("     + s.cpu_count + " logical CPUs)";
                             if (p > maxPct) maxPct = p;
@@ -206,18 +224,18 @@
                         // Asymmetric load (one socket >70, another
                         // <20) is the NUMA-pin signature.
                         if (maxPct - minPct > 50 && maxPct > 70) {
-                            cpuTip += "\n[asymmetric: likely NUMA-pinned"
-                                   + " to one socket]";
+                            cpuDetail += "\n[asymmetric: likely NUMA-pinned"
+                                    + " to one socket]";
                         }
                     }
-                    cellCpu.title = cpuTip;
+                    setDetail(cellCpu, cpuDetail);
                     updateCell(cellRam, bufRam, ram,
                                ram.toFixed(0) + "%  "
                                + (d.ram_used_gb || 0).toFixed(1) + "/"
                                + (d.ram_total_gb || 0).toFixed(1) + " GB");
-                    cellRam.title = "RAM: " + ram.toFixed(1) + "% used\n"
-                        + (d.ram_used_gb || 0).toFixed(2) + " GB used of "
-                        + (d.ram_total_gb || 0).toFixed(2) + " GB total";
+                    setDetail(cellRam,
+                        (d.ram_used_gb || 0).toFixed(2) + " GB used of "
+                        + (d.ram_total_gb || 0).toFixed(2) + " GB total");
                     // GPU: server returns [] when NVML init failed (CPU-
                     // only host or driver missing).  Hide all three GPU
                     // cells entirely; widget collapses to 2 cells.
@@ -247,9 +265,8 @@
                                gMem.toFixed(0) + "%  "
                                + ((g0.mem_used_mb || 0) / 1024).toFixed(1) + "/"
                                + ((g0.mem_total_mb || 0) / 1024).toFixed(1) + " GB");
-                    // Tooltips: shared text-only summary across all 3
-                    // GPU cells.  Per-cell context line + per-GPU
-                    // device breakdown.  Surfaces power / temp / clocks
+                    // Details: shared text-only summary across all 3
+                    // GPU cells.  Surfaces power / temp / clocks
                     // which are NOT on the strip but matter for
                     // diagnosis: drops in power_w mid-run = thermal /
                     // power throttle; sm_clock_mhz drop at sustained
@@ -259,7 +276,7 @@
                     function _fmt(v, suffix) {
                         return (typeof v === "number") ? (v + suffix) : "—";
                     }
-                    var tip = gpus.map(function(g, i) {
+                    var gpuListDetail = gpus.map(function(g, i) {
                         var line = "GPU " + i + " " + (g.name || "?")
                             + "\n  SM compute   : " + _fmt(g.util_pct, "%")
                             + "\n  Memory BW    : " + _fmt(g.util_mem_pct, "%")
@@ -273,14 +290,14 @@
                             + "\n  Memory clock : " + _fmt(g.mem_clock_mhz, " MHz");
                         return line;
                     }).join("\n");
-                    // Per-cell tooltip headline so the hover reads
-                    // naturally on whichever cell the user is over.
-                    cellGpu.title   = "GPU compute (SM busy %)\n" + tip;
-                    cellGpuBw.title = "GPU memory-bandwidth %\n"
-                        + "high here + low GPU = memory-bandwidth bound\n"
+                    // Per-cell detail: a short context line per metric
+                    // followed by the shared per-device breakdown.
+                    setDetail(cellGpu,   "SM busy %\n" + gpuListDetail);
+                    setDetail(cellGpuBw,
+                        "high here + low GPU = memory-bandwidth bound\n"
                         + "(more ranks won't help; smaller BlockSize might)\n\n"
-                        + tip;
-                    cellVram.title  = "VRAM occupancy\n" + tip;
+                        + gpuListDetail);
+                    setDetail(cellVram,  "VRAM occupancy\n" + gpuListDetail);
                 })
                 .catch(function(err) {
                     if (err && err.name === "AbortError") return;

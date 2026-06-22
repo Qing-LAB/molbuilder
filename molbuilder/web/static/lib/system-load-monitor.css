@@ -60,11 +60,13 @@
     padding-block: 6px;
 }
 
-/* Header row: title + toggle.  Always visible. */
+/* Header row: toggle + title, both flush-left.  2026-06-21 user
+ * feedback: the right-aligned toggle was hard to spot — move it
+ * adjacent to the title so it's the first thing the eye lands on. */
 .system-load-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: var(--space-sm, 8px);
 }
 
@@ -74,6 +76,16 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     font-size: 11px;
+}
+
+/* 2026-06-21: in-title timescale annotation ("— last 10 min") so the
+ * user knows what window the sparklines cover without hovering. */
+.system-load-timescale {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-tertiary, #7c7c7c);
+    margin-left: 4px;
 }
 
 .system-load-toggle {
@@ -95,9 +107,15 @@
 }
 
 .system-load-strip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-md, 12px) var(--space-lg, 18px);
+    /* 2026-06-21 redesign: each cell now carries an always-visible
+     * detail block (load avg, per-socket %, per-GPU clocks/temp/etc).
+     * Cells are wider than the old single-row layout; use a
+     * responsive grid so 1-3 cells fit per row depending on the
+     * panel's actual width.  ``minmax(280px, 1fr)`` keeps a single
+     * cell from running narrower than its detail text. */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: var(--space-md, 12px);
 }
 
 .system-load-cell {
@@ -111,15 +129,26 @@
     --load-bad:  var(--bad,  #ef5b5b);
 
     display: flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--surface-deep, rgba(0, 0, 0, 0.18));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    border-radius: 6px;
 }
 
 .system-load-cell[hidden] {
     /* defensive against any future CSS rule that competes with the
      * [hidden] attribute -- same § 3.1 trap doc warns about. */
     display: none;
+}
+
+/* Summary row: label + value + sparkline, horizontal. */
+.system-load-cell .cell-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
 }
 
 .system-load-cell .label {
@@ -129,24 +158,23 @@
 }
 
 .system-load-cell .value {
-    /* Trimmed from 12em (PR 5.1).  The longest string we render is
-     * "100% 252.0/252.0 GB" (RAM) at ~9em in monospace.  9em fits
-     * with breathing room; below this the value text overlaps the
+    /* 9em fits "100%  252.0/252.0 GB" (RAM) in monospace with
+     * breathing room; below this the value text overlaps the
      * sparkline canvas border. */
+    flex: 1 1 auto;
     min-width: 9em;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-/* CPU/RAM: their value strings are the widest predictably; give them
- * a touch more so the strip doesn't reflow per tick. */
+/* CPU/RAM: their value strings are the widest predictably. */
 .system-load-cell[data-metric="cpu"] .value,
 .system-load-cell[data-metric="ram"] .value {
     min-width: 10em;
 }
 
 /* GPU / GPU BW: value is just "100%" so they don't need the full
- * width.  Tightens the strip when GPU is on. */
+ * width.  Tightens the row when GPU is on. */
 .system-load-cell[data-metric="gpu"] .value,
 .system-load-cell[data-metric="gpubw"] .value {
     min-width: 3.5em;
@@ -154,28 +182,60 @@
 
 .system-load-cell canvas.spark {
     display: block;
-    /* Bitmap dims come from the canvas HTML attributes (120 / 32);
-     * CSS rules only control DOM layout. */
+    /* Bitmap dims come from the canvas HTML attributes (320 / 48 —
+     * sized for 10 min of 1 Hz history); CSS rules only control DOM
+     * layout.  ``width: 100%`` lets the canvas scale with cell width
+     * for crispness on wider panels; the bitmap is upscaled by the
+     * browser when CSS width > bitmap width, which is fine for a
+     * trend sparkline. */
+    width: 100%;
+    height: 48px;
     border-left: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     padding-left: 6px;
+    flex: 1 1 100%;
+    min-width: 0;
 }
 
-/* Phone widths: drop the wider GPU-mem cell, shrink sparklines.  480
- * px matches the mobile breakpoint elsewhere in the app. */
+/* Summary stacks the canvas BELOW the label+value row so the wider
+ * sparkline gets the cell's full width.  2026-06-21: 320 px canvases
+ * don't fit beside the value text on cells wider than ~360 px. */
+.system-load-cell .cell-summary {
+    flex-wrap: wrap;
+}
+
+/* Detail block under each cell — the formerly-tooltip text.
+ * ``pre-line`` preserves the ``\n`` line breaks emitted by the JS
+ * (load-avg trio, per-socket rows, per-GPU clocks/temp/etc) without
+ * needing a separate HTML element per line. */
+.system-load-cell .cell-detail {
+    white-space: pre-line;
+    color: var(--text-secondary, #a4a4a4);
+    font-size: 11px;
+    line-height: 1.35;
+    padding-left: 4px;
+    border-top: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.06));
+    padding-top: 6px;
+}
+
+/* Phone widths: shrink sparklines + collapse cell padding.  480 px
+ * matches the mobile breakpoint elsewhere in the app.  Detail still
+ * shows — it's the whole point of the redesign — just compressed. */
 @media (max-width: 480px) {
     #system-load-monitor {
         font-size: 11px;
         padding: 6px 10px;
     }
     .system-load-strip {
-        gap: 8px 12px;
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .system-load-cell {
+        padding: 6px 8px;
     }
     .system-load-cell canvas.spark {
         width: 60px;
     }
-    .system-load-cell[data-metric="vram"],
-    .system-load-cell[data-metric="gpubw"] {
-        display: none;  /* hide on phones; covered by the GPU cell's
-                           per-device tooltip on hover anyway */
+    .system-load-cell .cell-detail {
+        font-size: 10px;
     }
 }
