@@ -174,16 +174,161 @@ def test_pyscfconfig_stages_is_per_instance_not_shared():
     assert b.stages[0].enabled is True
 
 
-def test_pyscfconfig_stages_invisible_in_form_schema_until_commit_2():
-    """The data-layer field carries no ``section`` metadata so the
-    form-schema generator skips it.  Pins the commit-1 contract:
-    the field exists in Python land + the CLI + the JSON envelope,
-    but the web form doesn't render per-stage rows yet (commit 2)."""
+def test_pyscfconfig_stages_visible_in_form_schema():
+    """Commit-2 contract flip: the ``stages`` field IS in the form
+    schema now, with ``kind: "stage-table"`` so the JS renderer
+    (commit 3) emits a per-stage row table.  Lives in the
+    ``Compute & budget`` section (alongside the flat geom_conv_*
+    knobs it'll replace in commit 4)."""
     from molbuilder.web.blueprints._shared import dataclass_to_form_schema
     schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
-    every_field = [
-        f["name"]
-        for section in schema["sections"]
-        for f in section["fields"]
+    found = None
+    for section in schema["sections"]:
+        for f in section["fields"]:
+            if f["name"] == "stages":
+                found = (section["name"], f)
+                break
+        if found:
+            break
+    assert found, "stages field is missing from PySCFConfig schema"
+    section_name, f = found
+    assert section_name == "Compute & budget"
+    assert f["kind"] == "stage-table"
+    assert f["workflow_group"] == "stage"
+    assert f["id"] == "test-stages"
+    assert f["tier"] == "advanced"
+
+
+def test_stages_schema_carries_default_three_stage_list_of_dicts():
+    """``default`` is the asdict-serialised publication-guide
+    default — JSON-friendly so the form can pre-populate without a
+    second round-trip."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
+    f = _find_field(schema, "stages")
+    default = f["default"]
+    assert isinstance(default, list) and len(default) == 3
+    assert default[0]["name"]    == "stage1"
+    assert default[0]["enabled"] is True
+    assert default[0]["conv_tol"] == pytest.approx(1.0e-7)
+    assert default[1]["name"]    == "stage2"
+    assert default[1]["conv_tol"] == pytest.approx(1.0e-9)
+    assert default[2]["name"]    == "stage3"
+    assert default[2]["enabled"] is False
+
+
+def test_stages_schema_carries_per_row_field_descriptors():
+    """``stage_fields`` is the per-column shape the JS table
+    renderer uses to label columns + pick widgets per cell.  9
+    fields in declaration order; types map to ``kind``."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
+    f = _find_field(schema, "stages")
+    stage_fields = f["stage_fields"]
+    assert [sf["name"] for sf in stage_fields] == [
+        "name", "enabled", "conv_tol", "gmax", "grms",
+        "dmax", "drms", "etol", "max_steps",
     ]
-    assert "stages" not in every_field
+    kinds = {sf["name"]: sf["kind"] for sf in stage_fields}
+    assert kinds["name"]      == "text"
+    assert kinds["enabled"]   == "checkbox"
+    assert kinds["conv_tol"]  == "number"
+    assert kinds["gmax"]      == "number"
+    assert kinds["max_steps"] == "int"
+    units = {sf["name"]: sf.get("unit") for sf in stage_fields}
+    assert units["conv_tol"] == "Hartree"
+    assert units["gmax"]     == "Ha/Bohr"
+    assert units["dmax"]     == "Å"
+
+
+def test_stages_coerce_round_trips_list_of_dicts_back_to_stagespec():
+    """Form payload arrives as list-of-dicts; coerce rebuilds
+    each row as a StageSpec."""
+    from dataclasses import fields as dc_fields
+    from molbuilder.web.blueprints._shared import (
+        coerce_to_field_type,
+    )
+    import typing
+    f = next(f for f in dc_fields(PySCFConfig) if f.name == "stages")
+    hints = typing.get_type_hints(PySCFConfig)
+    payload = [
+        {"name": "stage1", "enabled": True,  "conv_tol": 1.0e-7,
+         "gmax": 2.0e-3, "grms": 1.3e-3, "dmax": 7.2e-3,
+         "drms": 4.8e-3, "etol": 1.0e-5, "max_steps": 50},
+        {"name": "stage2", "enabled": False, "conv_tol": 1.0e-9,
+         "gmax": 4.5e-4, "grms": 3.0e-4, "dmax": 1.8e-3,
+         "drms": 1.2e-3, "etol": 1.0e-6, "max_steps": 200},
+    ]
+    coerced = coerce_to_field_type(f, payload, hints)
+    assert len(coerced) == 2
+    assert all(isinstance(s, StageSpec) for s in coerced)
+    assert coerced[0].name == "stage1"
+    assert coerced[0].enabled is True
+    assert coerced[1].enabled is False
+    assert coerced[1].max_steps == 200
+
+
+def test_stages_coerce_handles_string_typed_payload():
+    """Non-browser HTTP clients may send numerics as strings;
+    coerce must promote them per inner-field type."""
+    from dataclasses import fields as dc_fields
+    from molbuilder.web.blueprints._shared import (
+        coerce_to_field_type,
+    )
+    import typing
+    f = next(f for f in dc_fields(PySCFConfig) if f.name == "stages")
+    hints = typing.get_type_hints(PySCFConfig)
+    payload = [
+        {"name": "stage1", "enabled": "true", "conv_tol": "1e-7",
+         "gmax": "2e-3", "max_steps": "50"},
+    ]
+    coerced = coerce_to_field_type(f, payload, hints)
+    assert coerced[0].enabled is True
+    assert coerced[0].conv_tol == pytest.approx(1.0e-7)
+    assert coerced[0].gmax     == pytest.approx(2.0e-3)
+    assert coerced[0].max_steps == 50
+
+
+def test_stages_coerce_ignores_unknown_keys():
+    """Forward-compat: a payload with extra keys (older client +
+    newer server, or vice versa) doesn't TypeError on
+    ``StageSpec(**kwargs)``."""
+    from dataclasses import fields as dc_fields
+    from molbuilder.web.blueprints._shared import (
+        coerce_to_field_type,
+    )
+    import typing
+    f = next(f for f in dc_fields(PySCFConfig) if f.name == "stages")
+    hints = typing.get_type_hints(PySCFConfig)
+    payload = [
+        {"name": "stage1", "enabled": True, "future_knob": 42},
+    ]
+    coerced = coerce_to_field_type(f, payload, hints)
+    assert coerced[0].name == "stage1"
+    # Defaults kick in for unspecified knobs (no TypeError).
+    assert coerced[0].max_steps == 200
+
+
+def test_stages_coerce_passes_through_already_typed_items():
+    """If the caller already constructed StageSpec instances (Python
+    test path, or a non-web caller), the coerce path is a no-op."""
+    from dataclasses import fields as dc_fields
+    from molbuilder.web.blueprints._shared import (
+        coerce_to_field_type,
+    )
+    import typing
+    f = next(f for f in dc_fields(PySCFConfig) if f.name == "stages")
+    hints = typing.get_type_hints(PySCFConfig)
+    payload = [StageSpec(name="custom", enabled=False)]
+    coerced = coerce_to_field_type(f, payload, hints)
+    assert len(coerced) == 1
+    assert coerced[0] is payload[0]  # identity-preserving
+
+
+def _find_field(schema, name):
+    """Test helper: walk a form schema for the named field."""
+    for section in schema["sections"]:
+        for f in section["fields"]:
+            if f["name"] == name:
+                return f
+    raise AssertionError(f"field {name!r} not in schema")

@@ -2186,14 +2186,15 @@ def test_pyscf_form_schema_matches_documented_layout():
         ("Pre-optimization (optional)",  5),
         ("Solvent (optional)",           2),
         ("Frequencies / thermochemistry", 3),
-        # Compute & budget: 13 fields after the 2026-06-15 merge
-        # (mirrors the SIESTA same-day restructure).
+        # Compute & budget: 14 fields after the 2026-06-15 merge +
+        # 2026-06-21 #534 commit-2 (added ``stages`` stage-table).
         #   Optimization contributed 6 (optimize, optimizer,
         #   geom_max_steps, geom_conv_energy, geom_conv_grms,
-        #   geom_conv_gmax).
+        #   geom_conv_gmax) plus ``stages`` for the in-script staged
+        #   optimization (#534).
         #   Runtime & output contributed 7 (max_memory_mb, threads,
         #   use_gpu, verbose, chkfile, log_file, verbose_comments).
-        ("Compute & budget",            13),
+        ("Compute & budget",            14),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

@@ -62,16 +62,59 @@ class StageSpec:
     tier per the publication-guide table).  Override on construction
     to build loose / TIGHT / etc. tiers; the publication-guide tier
     table is the canonical reference.
+
+    Per-field ``metadata`` (label / unit / help / step / range) is
+    walked by ``web/blueprints/_shared.dataclass_to_form_schema``
+    when it emits the ``stage-table`` schema for
+    ``PySCFConfig.stages`` — the JS renderer (commit 3) uses it to
+    label table columns and pick input widget kinds.
     """
-    name:      str = "stage1"
-    enabled:   bool = True
-    conv_tol:  float = 1.0e-9    # mf.conv_tol (SCF energy, Hartree)
-    gmax:      float = 4.5e-4    # geomeTRIC convergence_gmax  (Ha/Bohr)
-    grms:      float = 3.0e-4    # geomeTRIC convergence_grms  (Ha/Bohr)
-    dmax:      float = 1.8e-3    # geomeTRIC convergence_dmax  (Å)
-    drms:      float = 1.2e-3    # geomeTRIC convergence_drms  (Å)
-    etol:      float = 1.0e-6    # geomeTRIC convergence_energy (Hartree)
-    max_steps: int   = 200       # geomeTRIC maxsteps
+    name:      str = field(default="stage1", metadata={
+        "label":      "Name",
+        "help":       "filename suffix (``<JOB>_<name>_geom_optim.xyz``); "
+                      "must match [A-Za-z0-9_]+",
+        "pattern":    r"^[A-Za-z0-9_]+$",
+    })
+    enabled:   bool = field(default=True, metadata={
+        "label":      "Run",
+        "help":       "run this stage; uncheck to skip + carry the prior "
+                      "stage's geometry forward",
+    })
+    conv_tol:  float = field(default=1.0e-9, metadata={
+        "label":      "SCF tol", "unit": "Hartree", "step": "any",
+        "engine_key": "mf.conv_tol",
+        "help":       "SCF energy convergence (Hartree)",
+    })
+    gmax:      float = field(default=4.5e-4, metadata={
+        "label":      "‖F‖∞", "unit": "Ha/Bohr", "step": "any",
+        "engine_key": "geomeTRIC convergence_gmax",
+        "help":       "max-gradient convergence (Ha/Bohr)",
+    })
+    grms:      float = field(default=3.0e-4, metadata={
+        "label":      "‖F‖RMS", "unit": "Ha/Bohr", "step": "any",
+        "engine_key": "geomeTRIC convergence_grms",
+        "help":       "RMS-gradient convergence (Ha/Bohr)",
+    })
+    dmax:      float = field(default=1.8e-3, metadata={
+        "label":      "Δx max", "unit": "Å", "step": "any",
+        "engine_key": "geomeTRIC convergence_dmax",
+        "help":       "max-displacement convergence (Å)",
+    })
+    drms:      float = field(default=1.2e-3, metadata={
+        "label":      "Δx RMS", "unit": "Å", "step": "any",
+        "engine_key": "geomeTRIC convergence_drms",
+        "help":       "RMS-displacement convergence (Å)",
+    })
+    etol:      float = field(default=1.0e-6, metadata={
+        "label":      "ΔE tol", "unit": "Hartree", "step": "any",
+        "engine_key": "geomeTRIC convergence_energy",
+        "help":       "energy-step convergence (Hartree)",
+    })
+    max_steps: int = field(default=200, metadata={
+        "label":      "Max steps", "range": (1, 10000),
+        "engine_key": "geomeTRIC maxsteps",
+        "help":       "max geomeTRIC iterations in this stage",
+    })
 
 
 def _default_stages() -> List[StageSpec]:
@@ -521,18 +564,33 @@ class PySCFConfig:
             # ``skip_cli`` keeps ``molbuilder.cli.add_dataclass_options``
             # from trying to auto-generate a ``--stages`` Click option
             # for a List[StageSpec] (cli.py:198 bails loudly on
-            # unsupported types).  CLI exposure lands in #534 commit 2
-            # alongside the form schema (probably as a JSON-string
-            # ``--stages-json`` plus a ``--stage-strategy`` preset).
+            # unsupported types).  CLI exposure (likely a JSON-string
+            # ``--stages-json`` plus a ``--stage-strategy`` preset)
+            # lands later in the #534 family.
             "skip_cli":   True,
-            "engine_key": "STAGES = [...]; for stage in STAGES: optimize(...)",
+            # Form layer (commit 2): visible in the schema as a
+            # ``kind: "stage-table"`` field.  Backend round-trips a
+            # list-of-dicts payload back to ``List[StageSpec]`` via
+            # ``coerce_to_field_type``'s dataclass-list branch.  JS
+            # renderer for the table + ``Stage strategy`` preset
+            # dropdown lands in commit 3.
+            "section":        "Compute & budget",
+            "workflow_group": "stage",
+            "id_suffix":      "stages",
+            "label":          "Optimization stages",
+            "tier":           "advanced",
+            "engine_key":     "STAGES = [...]; for stage in STAGES: optimize(...)",
             "help": (
-                "List of optimization stages.  Each stage carries its "
-                "own SCF tolerance + 5 geomeTRIC convergence knobs + "
-                "max-step cap.  Generated-script loop walks STAGES "
-                "and skips disabled entries; mol carries forward "
-                "between enabled stages.  See pyscf-publication-"
-                "guide.md for the tier table."),
+                "Per-stage optimization knobs.  Each row carries a "
+                "name (used as the per-stage output-file suffix), an "
+                "enable checkbox, an SCF tolerance, 5 geomeTRIC "
+                "convergence targets (max + RMS gradient, max + RMS "
+                "displacement, energy step), and a max-step cap.  "
+                "Generated-script loop walks the list and skips "
+                "disabled stages; ``mol`` carries forward between "
+                "enabled stages.  Defaults match the publication-"
+                "guide tier table (Stage 1 loose, Stage 2 "
+                "publishable, Stage 3 TIGHT-opt-in)."),
         },
     )
 
