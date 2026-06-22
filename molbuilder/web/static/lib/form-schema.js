@@ -35,6 +35,8 @@
  *                 (with null option if optional)
  *   tri-select  : <select> auto / true / false        (Optional[bool])
  *   int-triple  : three <input type=number step=1>    (Tuple[int,int,int], e.g. kgrid)
+ *   stage-table : per-stage rows table + preset dropdown
+ *                 (List[<dataclass>], e.g. PySCFConfig.stages)
  *
  * The renderer never invents a kind; if the server adds a new
  * one we fall through to a plain text input and log a warning so
@@ -202,6 +204,189 @@
         return el("input", attrs);
     }
 
+    /* ---------- stage-table (List[<dataclass>], e.g. stages) ---------- *
+     *
+     * Renders a table where ROWS are per-stage parameters (name,
+     * enabled, conv_tol, gmax, ...) and COLUMNS are the stages
+     * themselves (Stage 1 / 2 / 3 by default).  A "Stage strategy"
+     * preset dropdown above the table sets the per-stage enable
+     * checkboxes to the publication-guide tiers.
+     *
+     * Per-cell input ids: ``<f.id>-stage<index>-<param_name>``.
+     * collectField walks all stage_fields × stage indices and
+     * rebuilds the list-of-dicts that the server's
+     * ``coerce_to_field_type`` then rebuilds into List[<dataclass>].
+     */
+
+    // Preset → per-stage enable flags.  Custom is the no-op (the
+    // user has already set things; preset stays "Custom" until they
+    // pick another one).  Add new presets here AND in
+    // makeStageTable's <option> list below — keep in sync.
+    const STAGE_STRATEGY_PRESETS = {
+        "publishable": {
+            label:   "Publishable (stages 1+2)",
+            enables: [true,  true,  false],
+        },
+        "loose-only": {
+            label:   "Loose only (stage 1)",
+            enables: [true,  false, false],
+        },
+        "vib-quality": {
+            label:   "Vib quality (1+2+3)",
+            enables: [true,  true,  true],
+        },
+    };
+
+    function applyStagePreset(wrap, f, strategy) {
+        const preset = STAGE_STRATEGY_PRESETS[strategy];
+        if (!preset) return;
+        const enables = preset.enables;
+        const stages  = f.default || [];
+        stages.forEach((_, stageIdx) => {
+            if (stageIdx >= enables.length) return;
+            const cellId = `${f.id}-stage${stageIdx}-enabled`;
+            const cb = wrap.querySelector("#" + cssEsc(cellId));
+            if (cb) {
+                cb.checked = enables[stageIdx];
+                // Fire ``input`` event so dirty-tracking listeners
+                // observe the preset change just like a manual click.
+                cb.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        });
+    }
+
+    function makeStageCellInput(cellId, sf, value) {
+        if (sf.kind === "checkbox") {
+            return el("input", {
+                id: cellId, type: "checkbox",
+                checked: Boolean(value),
+            });
+        }
+        if (sf.kind === "int" || sf.kind === "number") {
+            const attrs = {
+                id: cellId, type: "number",
+                step: sf.kind === "int" ? "1" : (sf.step || "any"),
+                value: (value == null || value === "") ? "" : String(value),
+            };
+            const inp = el("input", attrs);
+            if (sf.min !== undefined) inp.min = sf.min;
+            if (sf.max !== undefined) inp.max = sf.max;
+            return inp;
+        }
+        // text fallback
+        const attrs = {
+            id: cellId, type: "text", autocomplete: "off",
+            value: (value == null) ? "" : String(value),
+        };
+        if (sf.pattern) attrs.pattern = sf.pattern;
+        return el("input", attrs);
+    }
+
+    function makeStageTable(f) {
+        const wrap = el("div", {
+            id: f.id, class: "schema-stage-table-wrap",
+        });
+        // Preset dropdown row.  Default to "custom" so the user's
+        // existing edits aren't squashed on first render; selecting
+        // a preset is an explicit opt-in to overwrite per-stage
+        // ``enabled`` flags.
+        const presetRow = el("div", { class: "schema-stage-presets" });
+        const presetLabel = el("label", {
+            class: "schema-stage-preset-label",
+            for:   f.id + "-preset",
+        }, "Stage strategy ");
+        presetRow.appendChild(presetLabel);
+        const presetSel = el("select", {
+            id: f.id + "-preset",
+            class: "schema-stage-preset-select",
+        });
+        presetSel.appendChild(el("option", { value: "custom" },
+            "Custom (manual)"));
+        Object.keys(STAGE_STRATEGY_PRESETS).forEach((k) => {
+            presetSel.appendChild(el("option", { value: k },
+                STAGE_STRATEGY_PRESETS[k].label));
+        });
+        presetRow.appendChild(presetSel);
+        wrap.appendChild(presetRow);
+
+        // Table
+        const stages = Array.isArray(f.default) ? f.default : [];
+        const stageFields = Array.isArray(f.stage_fields)
+            ? f.stage_fields : [];
+        const table = el("table", { class: "schema-stage-table" });
+
+        // Header row: per-stage column headers ("Stage 1" / "Stage 2"
+        // / "Stage 3" — derived from the stage index, NOT the
+        // stage's ``name`` field, since ``name`` is user-editable
+        // and the column header should be stable).
+        const thead = el("thead");
+        const headRow = el("tr");
+        headRow.appendChild(el("th",
+            { class: "stage-param-name-header" }, ""));
+        stages.forEach((_, stageIdx) => {
+            headRow.appendChild(el("th",
+                { class: "stage-col-header" },
+                "Stage " + (stageIdx + 1)));
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        // Body rows: one per stage_field.  ``name`` row first
+        // (filename suffix is the user-facing identity of the
+        // stage), ``enabled`` second (toggling it is the most-
+        // common action), then convergence knobs in declaration
+        // order.
+        const tbody = el("tbody");
+        stageFields.forEach((sf) => {
+            const tr = el("tr",
+                { class: "stage-row stage-row--" + sf.name });
+            const lbl = el("th", { class: "stage-param-name" });
+            const labelText = sf.unit
+                ? `${sf.label} (${sf.unit})` : sf.label;
+            lbl.appendChild(el("span",
+                { class: "stage-param-label" }, labelText));
+            if (sf.help) lbl.title = sf.help;
+            if (sf.engine_key) {
+                // Mirror the per-field engine-key badge so the user
+                // sees which keyword a row writes (e.g. ``mf.conv_tol``).
+                const badge = engineKeyBadge({
+                    label: sf.label,
+                    engine_key: sf.engine_key,
+                });
+                if (badge) lbl.appendChild(badge);
+            }
+            tr.appendChild(lbl);
+
+            stages.forEach((stage, stageIdx) => {
+                const cellId =
+                    `${f.id}-stage${stageIdx}-${sf.name}`;
+                const v = (stage && stage[sf.name] !== undefined)
+                    ? stage[sf.name] : sf.default;
+                const inp = makeStageCellInput(cellId, sf, v);
+                const td = el("td",
+                    { class: "stage-cell stage-cell--" + sf.kind });
+                td.appendChild(inp);
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+
+        // Preset-change handler.  ``Custom`` is the no-op so the
+        // user can return to manual editing without resetting their
+        // values.  All other presets call applyStagePreset which
+        // dispatches an ``input`` event per affected checkbox.
+        presetSel.addEventListener("change", function (e) {
+            const v = e.target.value;
+            if (v && v !== "custom") {
+                applyStagePreset(wrap, f, v);
+            }
+        });
+
+        return wrap;
+    }
+
     function makeIntTriple(f) {
         // Three labelled number inputs sharing one id prefix.  Each
         // cell carries its own sub-label so kgrid (Tuple[int,int,int])
@@ -263,6 +448,31 @@
         return det;
     }
 
+    /* Stage-table wrapper: standalone section (not a single
+     * input-in-a-label).  Renders a heading with the field's label
+     * + the parent engine-key badge + an expandable help paragraph,
+     * then the table widget itself.  Returned in place of the
+     * standard label so renderField doesn't try to wrap it. */
+    function makeStageTableSection(f) {
+        const section = el("div", {
+            class: "schema-field schema-field-stage-table",
+        });
+        if (f.tier === "advanced") section.classList.add("is-advanced");
+        const heading = el("div", { class: "schema-stage-heading" });
+        heading.appendChild(el("span",
+            { class: "schema-stage-heading-label" }, f.label || f.name));
+        const badge = engineKeyBadge(f);
+        if (badge) heading.appendChild(badge);
+        section.appendChild(heading);
+        if (f.help && helpIsLong(f.help)) {
+            section.appendChild(makeHelpDetails(f.help));
+        } else if (f.help) {
+            section.title = f.help;
+        }
+        section.appendChild(makeStageTable(f));
+        return section;
+    }
+
     function renderField(f) {
         // Build a single <label> wrapping the input.  Checkbox lays
         // out as "[x] Label" -- the checkbox comes BEFORE the label
@@ -285,6 +495,13 @@
             case "select":     input = makeSelect(f);    break;
             case "tri-select": input = makeTriSelect(f); break;
             case "int-triple": input = makeIntTriple(f); break;
+            case "stage-table":
+                // Per-stage row table (List[<dataclass>]).  The
+                // table includes its own label ("Stage strategy")
+                // and engine-key badges per row, so don't wrap in
+                // the standard label-text pattern below — return
+                // the table directly via early-out.
+                return makeStageTableSection(f);
             case "comma-floats":
                 // Variable-length List[float] field (Transport's
                 // bias_voltages_v).  Render as a plain text input with
@@ -552,6 +769,61 @@
                 const v = elx.value;
                 if (v === "auto" || v === "") return null;
                 return v === "true";
+            }
+            case "stage-table": {
+                // Walk all (stage, stage_field) pairs; rebuild a
+                // list-of-dicts matching the server-side
+                // ``coerce_to_field_type`` List[<dataclass>] branch's
+                // expected shape.  Missing inputs fall back to the
+                // schema's per-stage default so a stale DOM doesn't
+                // blank a knob.
+                const stages = Array.isArray(f.default) ? f.default : [];
+                const stageFields = Array.isArray(f.stage_fields)
+                    ? f.stage_fields : [];
+                const rows = [];
+                let anyMissing = false;
+                stages.forEach((defStage, stageIdx) => {
+                    const row = {};
+                    stageFields.forEach((sf) => {
+                        const cellId = `${f.id}-stage${stageIdx}-${sf.name}`;
+                        const inp = container.querySelector(
+                            "#" + cssEsc(cellId));
+                        if (!inp) {
+                            anyMissing = true;
+                            row[sf.name] = defStage[sf.name];
+                            return;
+                        }
+                        if (sf.kind === "checkbox") {
+                            row[sf.name] = !!inp.checked;
+                        } else if (sf.kind === "int") {
+                            const v = inp.value.trim();
+                            if (v === "") {
+                                row[sf.name] = defStage[sf.name];
+                            } else {
+                                const n = parseInt(v, 10);
+                                row[sf.name] = Number.isFinite(n)
+                                    ? n : defStage[sf.name];
+                            }
+                        } else if (sf.kind === "number") {
+                            const v = inp.value.trim();
+                            if (v === "") {
+                                row[sf.name] = defStage[sf.name];
+                            } else {
+                                const n = parseFloat(v);
+                                row[sf.name] = Number.isFinite(n)
+                                    ? n : defStage[sf.name];
+                            }
+                        } else {
+                            row[sf.name] = String(inp.value).trim();
+                        }
+                    });
+                    rows.push(row);
+                });
+                if (anyMissing) {
+                    _warnStale(f.name,
+                        "has missing stage-table cell(s)");
+                }
+                return rows;
             }
             case "int-triple": {
                 const labs = f.labels || ["x", "y", "z"];
