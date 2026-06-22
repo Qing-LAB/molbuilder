@@ -60,14 +60,12 @@ def test_default_render_compiles(h2o):
 
 
 def test_hf_render_omits_dft_import(h2o):
-    """Pure-HF runs (method=RHF/UHF, no preopt) don't touch the dft
-    module; the `from pyscf import ... dft` should drop out so the
-    script reads `from pyscf import gto, scf` instead.  Pre-opt always
-    uses DFT (cheap warm-up), so even an HF production run keeps the
-    dft import when preopt=True.
+    """Pure-HF runs (method=RHF/UHF) don't touch the dft module; the
+    ``from pyscf import ... dft`` should drop out so the script reads
+    ``from pyscf import gto, scf`` instead.
 
     Tier 2 #13 from the deep code review."""
-    text = render_script(h2o, PySCFConfig(method="RHF", preopt=False))
+    text = render_script(h2o, PySCFConfig(method="RHF"))
     compile(text, "<rendered>", "exec")
     assert "from pyscf import gto, scf" in text
     assert "from pyscf import gto, scf, dft" not in text
@@ -75,11 +73,6 @@ def test_hf_render_omits_dft_import(h2o):
     assert "dft." not in text or all(
         ln.lstrip().startswith("#") for ln in text.splitlines() if "dft." in ln
     ), "HF script should not reference dft.* in live code"
-
-    # With preopt=True the pre-opt block forces DFT regardless of the
-    # production method (preopt is always a cheap functional warm-up).
-    text2 = render_script(h2o, PySCFConfig(method="RHF", preopt=True))
-    assert "from pyscf import gto, scf, dft" in text2
 
 
 def test_atom_block_format(h2o):
@@ -170,97 +163,61 @@ def test_no_optimize_drops_geom_block(h2o):
     assert "_optimized.xyz" not in text
 
 
-def test_preopt_block_emitted_when_enabled(h2o):
-    text = render_script(h2o, PySCFConfig(preopt=True))
-    assert "Pre-optimization" in text or "pre-optimization" in text
-    assert "mol_pre" in text
-    assert "mf1 = dft.RKS(mol_pre)" in text
+def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
+    """Post-#534 commit 4: the generator emits a single
+    ``mol_eq = optimize(mf, ...)`` call inside a ``for STAGE in STAGES:``
+    loop with per-stage convergence keys read from the STAGE dict.
+    Pin the structural shape so a regression that loses the loop OR the
+    per-stage kwarg list surfaces immediately.
+    """
+    text = render_script(h2o, PySCFConfig())
+    # The driver loop is a single optimize() call -- not one per stage.
+    assert text.count("mol_eq = optimize(") == 1
+    # Loop header + per-stage kwargs.
+    assert "for STAGE in STAGES:" in text
+    assert "mf.conv_tol = STAGE['conv_tol']" in text
+    for kw in (
+        "maxsteps              = STAGE['max_steps']",
+        "convergence_energy    = STAGE['etol']",
+        "convergence_grms      = STAGE['grms']",
+        "convergence_gmax      = STAGE['gmax']",
+        "convergence_drms      = STAGE['drms']",
+        "convergence_dmax      = STAGE['dmax']",
+    ):
+        assert kw in text, f"missing per-stage kwarg: {kw}"
 
 
-def test_preopt_does_not_rebuild_mol_via_gto_M(h2o):
-    """Regression: pre-opt must NOT regenerate the production mol via
-    `gto.M(...)` because that opens <JOB>.log in 'w' mode and wipes the
-    pre-opt log entries.  We reuse mol_pre instead."""
-    text = render_script(h2o, PySCFConfig(preopt=True))
-    # The post-preopt rebuild block should NOT contain a fresh gto.M
-    # CALL (as opposed to a comment mentioning it) between pre-opt's
-    # optimize() and the production mf setup.
-    after_preopt = text.split("Pre-opt done")[1]
-    before_main_mf = after_preopt.split("mf = ")[0]
-    code_lines = [ln for ln in before_main_mf.splitlines()
-                  if not ln.lstrip().startswith("#")]
-    code_only = "\n".join(code_lines)
-    assert "gto.M(" not in code_only, (
-        "post-preopt rebuild uses gto.M(...) which truncates <JOB>.log; "
-        "should reuse mol_pre instead"
-    )
-    # And the mol = mol_pre line should be there.
-    assert "mol = mol_pre" in code_only
-
-
-def test_preopt_writes_its_own_trajectory_when_enabled(h2o):
-    """When write_trajectory + preopt + geometric, pre-opt's optimize()
-    must also pass prefix=JOB+'_preopt' so molwatch can watch the pre-
-    opt stage's streaming trajectory file."""
-    text = render_script(h2o,
-                         PySCFConfig(preopt=True, write_trajectory=True))
-    # 2026-05-27: prefix paths route through _mb_outfile() so they
-    # resolve against the script directory even if cwd shifts during
-    # the run.  Substring match preserves intent (JOB + "_preopt"
-    # still present); only the wrapping changes.
-    assert 'prefix            = _mb_outfile(JOB + "_preopt")' in text
-    # Production stage still uses _geom prefix.
-    assert 'prefix                = _mb_outfile(JOB + "_geom")' in text
-
-
-def test_molwatch_log_instantiated_before_preopt(h2o):
-    """Critical UX guarantee: with preopt=True the user shouldn't have
-    to wait for preopt to finish before .molwatch.log appears.  Preopt
-    can take hours on a real molecule; the Watch tab needs SOMETHING
-    to load from second one.
-
-    Pin the source ordering: `_molwatch = MolwatchEmitter(...)` must
-    appear BEFORE `mol_pre = optimize(mf1, ...)`.  Both callbacks
-    (mf1.callback for SCF, optimize(callback=...) for opt steps) must
-    also wire into the preopt stage so steps stream from the start."""
-    text = render_script(h2o, PySCFConfig(preopt=True))
-    # 2026-05-27: MolwatchEmitter path arg now wraps in _mb_outfile()
-    # so the .molwatch.log file lands next to the script regardless
-    # of process cwd.  The instantiation token stays unique enough
-    # for the source-ordering pin.
+def test_molwatch_log_instantiated_before_stages_loop(h2o):
+    """Critical UX guarantee: ``.molwatch.log`` exists from the moment
+    the script starts running, BEFORE any stage's optimize() can take
+    hours on a real molecule.  Pin the source ordering:
+    ``_molwatch = MolwatchEmitter(...)`` must appear before the
+    stages loop, ``mf.callback`` wiring before optimize() runs, and
+    the opt-step callback INSIDE the optimize() kwargs.
+    """
+    text = render_script(h2o, PySCFConfig())
     inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
-    preopt_at    = text.find("mol_pre = optimize(")
-    prod_at      = text.find("mol_eq = optimize(")
-    mf1_callback = text.find("mf1.callback = _molwatch.scf_cycle_hook")
+    loop_at      = text.find("for STAGE in STAGES:")
+    opt_at       = text.find("mol_eq = optimize(")
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
-    preopt_step  = text.find("callback          = _molwatch.opt_step_hook")
-    prod_step    = text.find("callback              = _molwatch.opt_step_hook")
-    # Every position must be present (>= 0) and in the right order.
+    step_cb      = text.find("callback              = _molwatch.opt_step_hook")
     for name, off in [
         ("_molwatch instantiation", inst_at),
-        ("mol_pre = optimize(",     preopt_at),
-        ("mol_eq = optimize(",      prod_at),
-        ("mf1.callback wiring",     mf1_callback),
+        ("for STAGE in STAGES:",    loop_at),
+        ("mol_eq = optimize(",      opt_at),
         ("mf.callback wiring",      mf_callback),
-        ("preopt opt_step callback", preopt_step),
-        ("production opt_step callback", prod_step),
+        ("opt_step callback",       step_cb),
     ]:
         assert off >= 0, f"missing in script: {name}"
-    # Order:
-    #   inst (creates .molwatch.log immediately)
-    #     < mf1.callback wiring (preopt SCF hook)
-    #       < preopt optimize( ... callback=opt_step_hook ... )
-    #         < mf.callback wiring (production SCF hook, post-rebind)
-    #           < production optimize( ... callback=opt_step_hook ... )
-    # `preopt_step` and `prod_step` lie INSIDE their respective
-    # optimize() argument lists, so they fall between the opening
-    # `optimize(` of one stage and the opening `optimize(` of the next.
-    assert inst_at < mf1_callback < preopt_at < preopt_step < mf_callback < prod_at < prod_step, (
-        "molwatch wiring is out of order; expected "
-        "inst < mf1_cb < preopt_at < preopt_step < mf_cb < prod_at < prod_step.  "
-        f"Got: inst={inst_at}, mf1_cb={mf1_callback}, preopt_at={preopt_at}, "
-        f"preopt_step={preopt_step}, mf_cb={mf_callback}, prod_at={prod_at}, "
-        f"prod_step={prod_step}"
+    # inst < mf_callback (sets the SCF-cycle hook on the prod mf)
+    #     < loop_at (the stages driver)
+    #         < opt_at (the per-stage optimize() call inside the loop)
+    #             < step_cb (the opt_step_hook kwarg INSIDE optimize)
+    assert inst_at < mf_callback < loop_at < opt_at < step_cb, (
+        "molwatch wiring out of order; expected "
+        "inst < mf_callback < loop < optimize < opt_step callback.  "
+        f"Got: inst={inst_at}, mf_cb={mf_callback}, "
+        f"loop={loop_at}, opt={opt_at}, step={step_cb}"
     )
 
 
@@ -289,25 +246,6 @@ def test_stability_analysis_skipped_for_closed_shell(h2o):
     )
 
 
-def test_preopt_basis_change_triggers_rebuild(h2o):
-    """If the production basis differs from the pre-opt basis, mol must
-    have its basis swapped and rebuilt; otherwise no rebuild needed."""
-    # Same basis -> no rebuild
-    same = render_script(h2o, PySCFConfig(preopt=True,
-                                          basis="def2-SVP",
-                                          preopt_basis="def2-SVP"))
-    after_same = same.split("mol = mol_pre")[1].split("mf = ")[0]
-    assert "mol.build" not in after_same
-
-    # Different basis -> rebuild
-    diff = render_script(h2o, PySCFConfig(preopt=True,
-                                          basis="def2-TZVP",
-                                          preopt_basis="def2-SVP"))
-    after_diff = diff.split("mol = mol_pre")[1].split("mf = ")[0]
-    assert 'mol.basis = "def2-TZVP"' in after_diff
-    assert "mol.build(dump_input=False)" in after_diff
-
-
 def test_dispersion_can_be_disabled(h2o):
     text = render_script(h2o, PySCFConfig(dispersion=None))
     assert "mf.disp" not in text
@@ -319,12 +257,6 @@ def test_dispersion_none_string_does_not_crash_pyscf(h2o):
     # are accepted).  Make sure the string sentinel is treated like None.
     text = render_script(h2o, PySCFConfig(dispersion="none"))
     assert "mf.disp" not in text
-
-
-def test_preopt_dispersion_none_string_does_not_crash_pyscf(h2o):
-    text = render_script(h2o,
-                        PySCFConfig(preopt=True, preopt_dispersion="none"))
-    assert "mf1.disp" not in text
 
 
 def test_solvent_emits_pcm_block(h2o):
@@ -494,39 +426,6 @@ def test_chkfile_disabled_skips_continuation_shim(h2o):
     text = render_script(h2o, PySCFConfig(chkfile=False))
     assert 'mf.chkfile = _mb_outfile(JOB + ".chk")' not in text
     assert "_chk_path = _mb_outfile(JOB" not in text
-
-
-def test_preopt_inherits_init_guess(h2o):
-    """When cfg.preopt=True, mf1 must get the production
-    init_guess so a stiff SCF that needed e.g. huckel to converge
-    actually has it during the warm-up too."""
-    text = render_script(
-        h2o,
-        PySCFConfig(preopt=True, scf_init_guess="huckel"),
-    )
-    assert 'mf1.init_guess = "huckel"' in text
-
-
-def test_preopt_inherits_level_shift_and_diis(h2o):
-    """level_shift, diis_space, and damp must be mirrored onto mf1."""
-    text = render_script(
-        h2o,
-        PySCFConfig(preopt=True,
-                    level_shift=0.2,
-                    diis_space=16,
-                    damp=0.3),
-    )
-    assert "mf1.level_shift = 0.2" in text
-    assert "mf1.diis_space = 16"   in text
-    assert "mf1.damp = 0.3"        in text
-
-
-def test_preopt_omits_default_diis_and_damp(h2o):
-    """At default cfg.diis_space=8 and cfg.damp=0.0 we keep the script
-    clean (no redundant ``mf1.diis_space = 8`` line)."""
-    text = render_script(h2o, PySCFConfig(preopt=True))
-    assert "mf1.diis_space" not in text
-    assert "mf1.damp"       not in text
 
 
 # --------------------------------------------------------------------- #

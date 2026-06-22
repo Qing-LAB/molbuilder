@@ -30,28 +30,29 @@ def small_struct():
 # --------------------------------------------------------------------- #
 
 
-def test_c1_initial_xyz_captured_before_preopt(small_struct):
-    """Spec: 'Capture the user's actual input geometry NOW, before
-    pre-opt has a chance to modify it.'  Without the fix, _initial.xyz
-    saves the post-pre-opt geometry because mol gets reassigned later.
+def test_c1_initial_xyz_captured_before_stages_loop(small_struct):
+    """Spec: capture the user's actual input geometry NOW, before any
+    stage in the optimization loop has a chance to modify it.
+    Otherwise _initial.xyz would save the post-stage-N geometry because
+    ``mol_eq`` shadows ``mol`` (and reset() rebinds mf.mol).
     """
-    text = render_script(small_struct, PySCFConfig(preopt=True))
+    text = render_script(small_struct, PySCFConfig())
 
-    # Find the position in the script where _initial.xyz is saved.
-    # 2026-05-27: _initial.xyz path routes through _mb_outfile()
-    # so it lands next to the script regardless of cwd at run time.
+    # 2026-05-27: _initial.xyz path routes through _mb_outfile() so it
+    # lands next to the script regardless of cwd at run time.
     save_pos = text.find('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz")')
     assert save_pos != -1, "no _initial.xyz save call found"
 
-    # Find the position of the pre-opt block (its banner print).
-    preopt_pos = text.find('"\\n=== Stage: pre-optimization ==="')
-    assert preopt_pos != -1, "no pre-opt banner found"
+    # The stages driver loop comes after the SCF setup.
+    loop_pos = text.find("for STAGE in STAGES:")
+    assert loop_pos != -1, "no stages-loop header found"
 
-    # The save MUST come before the pre-opt block.
-    assert save_pos < preopt_pos, (
-        "_initial.xyz is saved AFTER pre-opt runs; mol has been "
-        "reassigned to mol_pre by then, so the file would contain "
-        "the post-pre-opt geometry, not the user's input."
+    # The save MUST come before the loop.
+    assert save_pos < loop_pos, (
+        "_initial.xyz is saved AFTER the stages loop starts; mol "
+        "may have been rebound to mol_eq via mf.reset() by then so "
+        "the file would contain the post-relax geometry, not the "
+        "user's input."
     )
 
 
@@ -137,35 +138,25 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
 
 
 # --------------------------------------------------------------------- #
-#  C3 — pre-opt must set assert_convergence=False                       #
+#  C3 — stages loop must not silently swallow geomeTRIC errors          #
 # --------------------------------------------------------------------- #
 
 
-def test_c3_preopt_sets_assert_convergence_false(small_struct):
-    """Spec: 'pre-opt's optimize() must pass assert_convergence=False
-    so a partial pre-opt doesn't kill the production run.'"""
-    text = render_script(small_struct, PySCFConfig(preopt=True))
-
-    # Find the pre-opt's optimize() block.
-    after_preopt_banner = text.split('"\\n=== Stage: pre-optimization ==="')[1]
-    preopt_optimize_block = after_preopt_banner.split('"Pre-opt done')[0]
-
-    assert "assert_convergence = False" in preopt_optimize_block, (
-        "pre-opt's optimize() is missing assert_convergence=False; "
-        "if pre-opt fails to converge in N steps, RuntimeError will "
-        "kill the entire run before production starts."
-    )
-
-
-def test_c3_main_optimize_does_not_set_assert_convergence(small_struct):
-    """Production-stage optimize() should NOT pass assert_convergence,
-    so it defaults to True and we hear about real failures."""
-    text = render_script(small_struct, PySCFConfig(preopt=False))
-    main_block = text.split("=== Stage: production optimization")[1]
-    main_optimize = main_block.split("Final energy")[0]
-    assert "assert_convergence" not in main_optimize, (
-        "production optimize() is suppressing convergence assertion -- "
-        "that hides real production-run failures."
+def test_c3_stages_loop_does_not_set_assert_convergence(small_struct):
+    """The per-stage optimize() inside the stages loop should NOT
+    pass ``assert_convergence=False``; we want geomeTRIC's default
+    (True) so a stage that fails to converge in its max_steps raises
+    instead of silently moving on.  Earlier preopt-era runs needed
+    False on the cheap warm-up stage; the new design's looser early
+    stages still want hard failure on a max-steps exhaustion, since
+    that's the user's signal to add a looser stage or raise max_steps.
+    """
+    text = render_script(small_struct, PySCFConfig())
+    main_block = text.split("for STAGE in STAGES:")[1]
+    optimize_block = main_block.split("Final energy")[0]
+    assert "assert_convergence" not in optimize_block, (
+        "stages-loop optimize() is suppressing convergence assertion -- "
+        "that hides real failures users need to see."
     )
 
 
@@ -194,25 +185,6 @@ def test_c4_restricted_method_with_zero_spin_ok(small_struct):
     """Default RKS + spin=0 is the closed-shell case; must not raise."""
     text = render_script(small_struct, PySCFConfig(method="RKS", spin=0))
     assert "mf = dft.RKS(mol)" in text
-
-
-# --------------------------------------------------------------------- #
-#  Cosmetic: dump_input=False on rebuild paths                          #
-# --------------------------------------------------------------------- #
-
-
-def test_preopt_mol_pre_build_doesnt_double_dump(small_struct):
-    """mol_pre.build() should pass dump_input=False -- otherwise the
-    input file gets echoed into <JOB>.log a second time during
-    pre-opt setup."""
-    text = render_script(small_struct, PySCFConfig(preopt=True))
-    # The pre-opt block builds mol_pre right after copying.
-    pre_build = text.split("mol_pre = mol.copy()", 1)[1]
-    pre_build = pre_build.split("mol_pre = optimize(", 1)[0]
-    assert "mol_pre.build(dump_input=False)" in pre_build, (
-        "mol_pre.build() should pass dump_input=False to avoid "
-        "duplicating the input echo in the .log"
-    )
 
 
 # --------------------------------------------------------------------- #

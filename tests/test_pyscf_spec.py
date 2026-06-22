@@ -46,20 +46,16 @@ def _outputs_block(text: str) -> str:
 
 
 @pytest.mark.parametrize("cfg, must_list, must_not_list", [
-    # Default config: log + chk + initial + optimized + geom traj/log
+    # Default config: log + chk + initial + optimized + per-stage
+    # geom traj/log placeholders (post-#534 commit 4: stages
+    # generate one set per enabled stage).
     (
         PySCFConfig(),
         ["pyscf_relax.log", "pyscf_relax.chk",
          "pyscf_relax_initial.xyz", "pyscf_relax_optimized.xyz",
-         "pyscf_relax_geom_optim.xyz", "pyscf_relax_geom.log"],
+         "pyscf_relax_geom_<stage>_optim.xyz",
+         "pyscf_relax_geom_<stage>.log"],
         ["_preopt"],
-    ),
-    # With pre-opt: also list the pre-opt trajectory files
-    (
-        PySCFConfig(preopt=True),
-        ["pyscf_relax_preopt_optim.xyz", "pyscf_relax_preopt.log",
-         "pyscf_relax_geom_optim.xyz", "pyscf_relax_geom.log"],
-        [],
     ),
     # No optimization: no trajectory files, no _optimized.xyz
     (
@@ -92,8 +88,7 @@ def test_header_outputs_block_matches_spec(small_struct, cfg, must_list,
 
 
 # --------------------------------------------------------------------- #
-#  Logging contract: pre-opt -> production must NOT call gto.M(),       #
-#  and stages must share the same stdout file handle.                   #
+#  Logging contract: stages share the same stdout file handle.          #
 # --------------------------------------------------------------------- #
 
 
@@ -106,32 +101,16 @@ def _strip_comments(text: str) -> str:
     )
 
 
-def test_preopt_does_not_truncate_log(small_struct):
-    """Spec: 'It must NOT call gto.M(output=...) a second time -- that
-    call opens the file in 'w' mode and truncates pre-opt log entries.'
-    Test: between pre-opt's optimize() and the production mf=, no
-    gto.M() call may appear in real code lines (comments may mention it).
-    """
-    text = render_script(small_struct, PySCFConfig(preopt=True))
+def test_no_second_gto_M_call(small_struct):
+    """The script must call ``gto.M(...)`` exactly once: building the
+    initial mol.  Earlier preopt-era versions sometimes rebuilt via a
+    second ``gto.M(output=...)`` call which truncated <JOB>.log.  Post-
+    #534 commit 4 there's no preopt block, so any second gto.M() in the
+    final script is a regression."""
+    text = render_script(small_struct, PySCFConfig())
     code = _strip_comments(text)
-
-    # Slice between "Pre-opt done" print and the next "mf =" line.
-    after_preopt = code.split('print("Pre-opt done', 1)[1]
-    before_main_mf = after_preopt.split("mf = ", 1)[0]
-
-    assert "gto.M(" not in before_main_mf, (
-        "Forbidden by spec: post-preopt rebuild calls gto.M(...) which "
-        "truncates <job>.log when output=<job>.log is passed.  Reuse "
-        "mol_pre instead."
-    )
-
-
-def test_preopt_reuses_mol_pre(small_struct):
-    """Spec: 'The transition must reuse mol_pre... only call mol.build()
-    if the production basis differs from the pre-opt basis.'"""
-    text = render_script(small_struct, PySCFConfig(preopt=True))
-    code = _strip_comments(text)
-    assert "mol = mol_pre" in code
+    # Single gto.M(...) call -- the initial mol build.
+    assert code.count("gto.M(") == 1
 
 
 # --------------------------------------------------------------------- #
@@ -159,33 +138,24 @@ def _optimize_calls(text: str):
         yield m.group("body")
 
 
-@pytest.mark.parametrize("cfg, expected_prefixes", [
-    # 2026-05-27: every prefix= goes through _mb_outfile() so the
-    # trajectory XYZ lands next to the script regardless of cwd.
-    # The expected-prefix substring still contains the JOB + ".."
-    # token, so the test stays meaningful as a prefix-presence check.
-    # Default: just the production-stage optimize().
-    (PySCFConfig(),                   ['_mb_outfile(JOB + "_geom")']),
-    # Pre-opt enabled: BOTH optimize() calls must have prefix=.
-    (PySCFConfig(preopt=True),        ['_mb_outfile(JOB + "_preopt")',
-                                       '_mb_outfile(JOB + "_geom")']),
-])
-def test_every_optimize_call_has_prefix_when_traj_on(small_struct,
-                                                      cfg, expected_prefixes):
-    """Spec: 'every call to optimize(...) in the generated script must
-    include a prefix= kwarg' when write_trajectory=True."""
+def test_optimize_call_has_per_stage_prefix_when_traj_on(small_struct):
+    """Spec: when write_trajectory=True the single per-stage
+    ``optimize()`` call inside the stages loop must pass a per-stage
+    prefix= (the STAGE['name'] gets concatenated into the path) so
+    each enabled stage's geomeTRIC trajectory lands in its own file.
+    """
+    cfg = PySCFConfig()
     bodies = list(_optimize_calls(render_script(small_struct, cfg)))
-    assert len(bodies) == len(expected_prefixes), (
-        f"Expected {len(expected_prefixes)} optimize() calls, "
+    assert len(bodies) == 1, (
+        f"Expected exactly 1 optimize() call inside the stages loop, "
         f"found {len(bodies)}"
     )
-    for body, expected in zip(bodies, expected_prefixes):
-        assert "prefix" in body, (
-            f"optimize() block missing prefix= kwarg.  Body was:\n{body}"
-        )
-        assert expected in body, (
-            f"optimize() prefix= mismatch.  Expected {expected!r}, body:\n{body}"
-        )
+    body = bodies[0]
+    assert "prefix" in body
+    assert "_mb_outfile(JOB + '_geom_' + STAGE['name'])" in body, (
+        f"optimize() prefix must concat STAGE['name'] so each stage "
+        f"gets its own trajectory file.  Body was:\n{body}"
+    )
 
 
 def test_no_prefix_when_trajectory_off(small_struct):

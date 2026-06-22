@@ -179,13 +179,16 @@ def render_script(struct: Structure,
     out.append(f"Method    : {method_class} / "
                f"{cfg.functional if is_dft else 'HF'}")
     out.append(f"Basis     : {cfg.basis}")
-    if cfg.preopt:
-        out.append(f"Pre-opt   : {cfg.preopt_functional} / {cfg.preopt_basis} "
-                   f"({cfg.preopt_max_steps} steps max, looser tol)")
     if cfg.optimize:
+        _enabled_stages = [s for s in cfg.stages if s.enabled]
+        _stage_names = ", ".join(s.name for s in _enabled_stages) \
+            or "(none enabled)"
         out.append(f"Optimizer : {cfg.optimizer} "
-                   f"(maxsteps={cfg.geom_max_steps}, "
-                   f"grms={cfg.geom_conv_grms:.0e} Ha/Bohr)")
+                   f"({len(_enabled_stages)} stage(s): {_stage_names})")
+        for _s in _enabled_stages:
+            out.append(f"  {_s.name:<10s}: maxsteps={_s.max_steps}, "
+                       f"grms={_s.grms:.1e} Ha/Bohr, "
+                       f"gmax={_s.gmax:.1e}, conv_tol={_s.conv_tol:.1e}")
     if cfg.solvent:
         out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
                    f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
@@ -203,14 +206,12 @@ def render_script(struct: Structure,
     if cfg.save_optimized_xyz and cfg.optimize:
         out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
     if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
-        if cfg.preopt:
-            out.append(f"    {label}_preopt_optim.xyz -- pre-opt streaming trajectory")
-            out.append(f"    {label}_preopt.log       -- geomeTRIC's pre-opt log")
-        out.append(f"    {label}_geom_optim.xyz   -- main streaming trajectory")
-        out.append("                                  (multi-frame XYZ, one frame")
-        out.append("                                   per step; readable live by")
-        out.append("                                   molwatch).")
-        out.append(f"    {label}_geom.log         -- geomeTRIC's main-opt log")
+        out.append(f"    {label}_geom_<stage>_optim.xyz   -- per-stage streaming")
+        out.append("                                          trajectories (one set")
+        out.append("                                          per enabled stage;")
+        out.append("                                          multi-frame XYZ).")
+        out.append(f"    {label}_geom_<stage>.log         -- geomeTRIC's per-stage")
+        out.append("                                          opt log (one per stage).")
     if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append(f"    {label}.molwatch.log     -- unified per-step log: marker-")
         out.append("                                  delimited blocks containing")
@@ -234,10 +235,7 @@ def render_script(struct: Structure,
     # Only D4 still requires the separate pyscf-dispersion package, so
     # we only advertise that install line when D4 is actually requested
     # (production or pre-opt stage) -- otherwise the hint is misleading.
-    needs_dispersion_pkg = (
-        (cfg.dispersion or "").lower() == "d4"
-        or (cfg.preopt and (cfg.preopt_dispersion or "").lower() == "d4")
-    )
+    needs_dispersion_pkg = (cfg.dispersion or "").lower() == "d4"
     if needs_dispersion_pkg:
         out.append("    pip install pyscf-dispersion    # required for D4")
     out.append("")
@@ -268,10 +266,8 @@ def render_script(struct: Structure,
     out.append("import time")
     out.append("")
     # Import only what the script actually uses.  HF runs (method=RHF/UHF)
-    # never touch the dft module; DFT runs (RKS/UKS, the default) need it
-    # for both the production mf object and -- when preopt is enabled --
-    # the always-DFT pre-opt warm-up.
-    if is_dft or cfg.preopt:
+    # never touch the dft module; DFT runs (RKS/UKS, the default) need it.
+    if is_dft:
         out.append("from pyscf import gto, scf, dft")
     else:
         out.append("from pyscf import gto, scf")
@@ -425,16 +421,9 @@ def render_script(struct: Structure,
     if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out += _emit_molwatch_emitter(v, cfg)
 
-    # ------------------------------------------------------------- preopt
-    if cfg.preopt and cfg.optimize:
-        out += _emit_preopt_block(cfg, charge, v)
-
     # ------------------------------------------------------------- main scf
     out.append("# ============================================================")
-    if cfg.preopt and cfg.optimize:
-        out.append("#  Main run -- production functional / basis")
-    else:
-        out.append("#  SCF setup")
+    out.append("#  SCF setup")
     out.append("# ============================================================")
     if v:
         out.append("# DFT functional: B3LYP is the modern default for organic /")
@@ -559,7 +548,6 @@ def render_script(struct: Structure,
             out.append("#   grms   3e-4     Ha/Bohr  (~ 0.015 eV/Ang)")
             out.append("#   gmax   4.5e-4   Ha/Bohr  (~ 0.023 eV/Ang)")
             out.append("# Loosen by 3-10x for screening; tighten 10x for phonons.")
-        out.append('print("\\n=== Stage: production optimization ===")')
         # Frozen-atom constraints (three-stage contract carrier).  When
         # Structure.frozen_atoms is non-empty AND we're using the
         # geomeTRIC optimizer (only one with constraint support), write
@@ -594,68 +582,7 @@ def render_script(struct: Structure,
                 '#   optimizer supports frozen-atom constraints.  Switch to',
                 "#   ``cfg.optimizer = 'geometric'`` to honor the sidecar.",
             ]
-        out.append("mol_eq = optimize(")
-        out.append("    mf,")
-        out.append(f"    maxsteps              = {cfg.geom_max_steps},")
-        out.append(f"    convergence_energy    = {cfg.geom_conv_energy:.1e},")
-        out.append(f"    convergence_grms      = {cfg.geom_conv_grms:.1e},")
-        out.append(f"    convergence_gmax      = {cfg.geom_conv_gmax:.1e},")
-        if emit_constraints:
-            out.append("    constraints           = _FROZEN_CONSTRAINTS_PATH,")
-        if cfg.write_trajectory and cfg.optimizer == "geometric":
-            if v:
-                out.append("    # geomeTRIC writes a multi-frame XYZ to")
-                out.append("    #     <JOB>_geom_optim.xyz")
-                out.append("    # with one frame per accepted step.  molwatch")
-                out.append("    # tails this file live, frame-by-frame.")
-            out.append('    prefix                = _mb_outfile(JOB + "_geom"),')
-        if cfg.write_molwatch_log and cfg.optimizer == "geometric":
-            if v:
-                out.append("    # callback fires once per accepted opt step;")
-                out.append("    # _molwatch.opt_step_hook flushes one block to")
-                out.append("    # <JOB>.molwatch.log with coords/energy/forces +")
-                out.append("    # the SCF cycles captured since the previous step.")
-            out.append("    callback              = _molwatch.opt_step_hook,")
-        out.append(")")
-        # Re-evaluate at the relaxed geometry so the printed energy
-        # is unambiguously the converged SCF at mol_eq's coordinates
-        # (gap #9).  optimize() leaves mf with the LAST line-search
-        # SCF, which may not be at mol_eq exactly -- the difference
-        # is small (mHa) but matters when comparing reaction energies
-        # across runs.  One extra SCF, cheap relative to the opt.
-        #
-        # Three things going on here:
-        #   1. ``mf.make_rdm1()`` snapshots the converged density at
-        #      the previous (line-search) geometry from the cached MOs.
-        #      This lets kernel() warm-start from that DM instead of
-        #      cold-starting from MINAO -- saves ~10-30 SCF cycles
-        #      since the post-opt geometry is a tiny perturbation of
-        #      the line-search step (R1).
-        #   2. ``mf.reset(mol_eq)`` updates self.mol AND invalidates
-        #      cached integrals (_eri / with_df / _opt) bound to the
-        #      previous mol.  Without reset(), kernel() would reuse
-        #      stale integrals and the result would not be the SCF
-        #      at mol_eq (P3).
-        #   3. ``mf.kernel(dm0=dm_prev)`` rebuilds integrals at mol_eq
-        #      and converges from the warm-started DM.
-        if v:
-            out.append("# Re-evaluate at the relaxed geometry: optimize() leaves")
-            out.append("# mf bound to the last line-search SCF, not necessarily")
-            out.append("# the SCF AT mol_eq.  reset() drops cached integrals so")
-            out.append("# kernel() rebuilds them at mol_eq's coordinates;")
-            out.append("# dm0=dm_prev warm-starts from the converged DM when")
-            out.append("# the previous SCF state is intact.")
-        # ``mf.make_rdm1()`` errors with ``'>' not supported between
-        # 'NoneType' and 'int'`` when geomeTRIC's optimize() failed to
-        # converge or otherwise left mf without a valid ``mo_occ``.
-        # Guard the warm-start: if mf doesn't carry a usable density,
-        # fall back to mf.init_guess (MINAO) for the post-opt SCF.
-        out.append("dm_prev = (mf.make_rdm1() "
-                   "if mf.mo_coeff is not None and mf.mo_occ is not None "
-                   "else None)")
-        out.append("mf.reset(mol_eq)")
-        out.append("mf.kernel(dm0=dm_prev)")
-        out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
+        out += _emit_stages_loop(cfg, emit_constraints)
     else:
         if v:
             out.append("# ============================================================")
@@ -801,6 +728,102 @@ def render_script(struct: Structure,
         + _user_custom
         + "\n"
     )
+
+
+def _emit_stages_loop(cfg: PySCFConfig,
+                      emit_constraints: bool) -> List[str]:
+    """Emit the in-script staged-optimization driver.
+
+    Renders two things into the user script:
+
+    1. A ``STAGES = [...]`` literal -- one dict per **enabled** stage
+       from ``cfg.stages``, carrying the per-stage convergence knobs
+       geomeTRIC consumes via its ``optimize(...)`` kwargs.
+    2. A ``for STAGE in STAGES:`` loop that, per stage:
+
+       * sets ``mf.conv_tol`` to the stage's tighter SCF target,
+       * calls ``optimize(mf, ...)`` with the stage's geometry
+         convergence ladder (gmax/grms/dmax/drms/etol/max_steps),
+       * warm-starts the next iteration: snapshot the converged
+         density, ``mf.reset(mol_eq)`` to drop stale integrals at the
+         new geometry, then re-converge SCF from the warm density.
+         The final iteration's clean SCF is the answer printed below.
+
+    Disabled stages are filtered at generation time -- they don't
+    appear in the script.  An all-disabled configuration is rejected
+    by ``validate_stages`` upstream of script rendering.
+
+    Per-stage trajectory + log file prefix is ``<JOB>_geom_<stage>``
+    so each stage's geomeTRIC output lands in its own pair of files;
+    the unified ``.molwatch.log`` carries every step from every stage.
+    """
+    v = cfg.verbose_comments
+    enabled = [s for s in cfg.stages if s.enabled]
+    out: List[str] = []
+    if v:
+        out.append("# Stages: each row in STAGES is one geomeTRIC")
+        out.append("# optimize() call with its own convergence ladder.  Per-")
+        out.append("# stage we tighten mf.conv_tol (SCF energy tol) and the")
+        out.append("# six geomeTRIC criteria (gmax/grms/dmax/drms/etol/")
+        out.append("# max_steps).  Between stages we warm-start: snapshot the")
+        out.append("# converged density, mf.reset(mol_eq) at the new")
+        out.append("# geometry, re-converge SCF.  The last stage's SCF is the")
+        out.append("# final answer printed below.")
+    out.append("STAGES = [")
+    for s in enabled:
+        out.append("    {")
+        out.append(f"        'name':      {s.name!r},")
+        out.append(f"        'conv_tol':  {float(s.conv_tol)!r},")
+        out.append(f"        'gmax':      {float(s.gmax)!r},")
+        out.append(f"        'grms':      {float(s.grms)!r},")
+        out.append(f"        'dmax':      {float(s.dmax)!r},")
+        out.append(f"        'drms':      {float(s.drms)!r},")
+        out.append(f"        'etol':      {float(s.etol)!r},")
+        out.append(f"        'max_steps': {int(s.max_steps)!r},")
+        out.append("    },")
+    out.append("]")
+    out.append("")
+    out.append("for STAGE in STAGES:")
+    out.append('    print(f"\\n=== Stage: {STAGE[\'name\']} '
+               'optimization ===")')
+    out.append("    mf.conv_tol = STAGE['conv_tol']")
+    out.append("    mol_eq = optimize(")
+    out.append("        mf,")
+    out.append("        maxsteps              = STAGE['max_steps'],")
+    out.append("        convergence_energy    = STAGE['etol'],")
+    out.append("        convergence_grms      = STAGE['grms'],")
+    out.append("        convergence_gmax      = STAGE['gmax'],")
+    out.append("        convergence_drms      = STAGE['drms'],")
+    out.append("        convergence_dmax      = STAGE['dmax'],")
+    if emit_constraints:
+        out.append("        constraints           = _FROZEN_CONSTRAINTS_PATH,")
+    if cfg.write_trajectory and cfg.optimizer == "geometric":
+        out.append("        prefix                = _mb_outfile("
+                   "JOB + '_geom_' + STAGE['name']),")
+    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
+        out.append("        callback              = _molwatch.opt_step_hook,")
+    out.append("    )")
+    if v:
+        out.append("    # Warm-start next stage at the relaxed geometry:")
+        out.append("    # snapshot the converged DM from the last line-search")
+        out.append("    # SCF (so we don't restart from MINAO), reset() to drop")
+        out.append("    # stale integrals at the previous geometry, then")
+        out.append("    # converge SCF at mol_eq.  After the LAST iteration")
+        out.append("    # this leaves mf in the canonical 'converged at the")
+        out.append("    # final relaxed geometry' state -- the answer the user")
+        out.append("    # sees printed below.")
+    # mf.make_rdm1() raises ``'>' not supported between 'NoneType' and
+    # 'int'`` when geomeTRIC's optimize() failed to converge or
+    # otherwise left mf without a usable ``mo_occ``.  Guard the warm-
+    # start so a partial earlier stage doesn't poison the next one.
+    out.append("    dm_prev = (mf.make_rdm1()")
+    out.append("               if mf.mo_coeff is not None and "
+               "mf.mo_occ is not None")
+    out.append("               else None)")
+    out.append("    mf.reset(mol_eq)")
+    out.append("    mf.kernel(dm0=dm_prev)")
+    out.append('print(f"\\nFinal energy: {mf.e_tot:.8f} Hartree")')
+    return out
 
 
 def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
@@ -1076,18 +1099,29 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # Strip the placeholder; what's left is the suffix the generator
     # appends to ``JOB`` at runtime.
     _suffix = _resolved_for_X[len(_placeholder):]
-    # Convergence-targets dict for the molwatch header.  geomeTRIC's
-    # gmax is in Ha/Bohr; convert to eV/Å (the unit the Results-tab
-    # force plot uses) so the threshold line lands on the right
-    # y-value.  Conversion constant 51.42208619 = ASE / NIST historical
-    # convention (matches MolwatchEmitter's HARTREE_BOHR_TO_EV_ANG).
+    # Convergence-targets dict for the molwatch header (#534 commit 4
+    # nested-shape per stage).  One entry per ENABLED stage from
+    # cfg.stages; the molwatch parser keys them as
+    # ``runtime_info["convergence_targets"][<stage>][<leaf>]`` and the
+    # JS reader (web/static/lib/trajectory/core.js) flattens to the
+    # LAST stage as the tightest tier for the threshold-line render.
+    #
+    # geomeTRIC's gmax is in Ha/Bohr; convert to eV/Å (the unit the
+    # Results-tab force plot uses) so the threshold lines land on
+    # the right y-value.  Conversion constant 51.42208619 = ASE /
+    # NIST historical convention (matches MolwatchEmitter's
+    # HARTREE_BOHR_TO_EV_ANG).
     _ha_bohr_to_ev_ang = 51.42208619
-    _force_tol_ev_ang = float(cfg.geom_conv_gmax) * _ha_bohr_to_ev_ang
+    _enabled_stages = [s for s in cfg.stages if s.enabled]
     out.append("_CONVERGENCE_TARGETS = {")
-    out.append(f"    'max_force_tol_eV_per_A': {_force_tol_ev_ang!r},")
-    out.append(f"    'scf_energy_tol':         {float(cfg.scf_conv_tol)!r},")
-    out.append(f"    'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
-    out.append(f"    'max_geom_iter':          {int(cfg.geom_max_steps)!r},")
+    for _s in _enabled_stages:
+        _ftol = float(_s.gmax) * _ha_bohr_to_ev_ang
+        out.append(f"    {_s.name!r}: {{")
+        out.append(f"        'max_force_tol_eV_per_A': {_ftol!r},")
+        out.append(f"        'scf_energy_tol':         {float(_s.conv_tol)!r},")
+        out.append(f"        'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
+        out.append(f"        'max_geom_iter':          {int(_s.max_steps)!r},")
+        out.append("    },")
     out.append("}")
     out.append(f'_molwatch = MolwatchEmitter('
                f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
@@ -1185,8 +1219,11 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("#   * raise OMP_NUM_THREADS / MKL_NUM_THREADS")
     out.append("#")
     out.append("# Geometry optimization oscillates:")
-    out.append("#   * cfg.geom_max_steps += 100")
-    out.append("#   * cfg.geom_conv_grms = 1e-3     (looser)")
+    out.append("#   * Loosen the FINAL stage in cfg.stages "
+               "(higher gmax / grms)")
+    out.append("#   * Add a looser warm-up stage at the front of "
+               "cfg.stages")
+    out.append("#   * Raise the per-stage max_steps")
     out.append("#   * Switch optimizer 'geometric' -> 'berny' for stiff systems")
     out.append("#")
     out.append("# Charged / open-shell anions need diffuse functions:")

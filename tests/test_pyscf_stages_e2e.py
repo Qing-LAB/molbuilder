@@ -91,11 +91,11 @@ _PUBLISHABLE_STAGES = [
 class TestApiBuildPyscfAcceptsStages:
 
     def test_stages_payload_yields_ok_true(self, web_client):
-        """Smoke: POST stages, server returns 200 ok=True with a
-        non-empty script.  Today the generator ignores cfg.stages,
-        so the script body assertion is intentionally weak (commit 4
-        will tighten this to ``"STAGES = ["`` substring + per-stage
-        ``conv_tol`` literal).
+        """Generator (post-#534 commit 4) emits a ``STAGES = [...]``
+        literal followed by a ``for STAGE in STAGES:`` driver loop.
+        Pin the literal exists and carries the wire values verbatim
+        so a schema regression that silently drops a stage shows up
+        at the wire tier.
         """
         r = web_client.post(
             "/api/build/pyscf",
@@ -109,13 +109,23 @@ class TestApiBuildPyscfAcceptsStages:
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
         assert body.get("ok") is True, f"render failed: {body!r}"
-        assert body.get("script"), "rendered script is empty"
-        # Pre-cutover marker: when commit 4 lands and the generator
-        # starts emitting ``STAGES = [...]``, replace these with a
-        # positive assertion + per-stage value spot-checks.
-        # (Intentionally NOT asserting absence here -- a stricter
-        # assertion would flip on its own when commit 4 ships, which
-        # is what we want.)
+        script = body.get("script") or ""
+        assert script, "rendered script is empty"
+        # Generator emits STAGES literal + per-stage driver.
+        assert "STAGES = [" in script, "STAGES literal missing"
+        assert "for STAGE in STAGES:" in script, "stages loop missing"
+        assert "mol_eq = optimize(" in script
+        assert "convergence_grms      = STAGE['grms']" in script
+        # Only the two ENABLED rows from _PUBLISHABLE_STAGES land
+        # in the literal (stage3 has enabled=False).
+        assert "'name':      'stage1'" in script
+        assert "'name':      'stage2'" in script
+        assert "'name':      'stage3'" not in script, (
+            "disabled stage leaked into STAGES literal"
+        )
+        # Per-stage conv_tol literals: stage1 = 1e-07, stage2 = 1e-09.
+        assert "'conv_tol':  1e-07" in script
+        assert "'conv_tol':  1e-09" in script
 
     def test_stages_payload_passes_through_validator(self, web_client):
         """A stages payload doesn't trip the existing PySCF validator.
