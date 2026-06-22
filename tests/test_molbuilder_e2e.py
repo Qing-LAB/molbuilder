@@ -4957,23 +4957,21 @@ def test_build_form_renders_pyscf_sections_in_pinned_order(
     )
     # 2026-06-16 form restructure: "Optimization" + "Runtime &
     # output" sections folded into "Compute & budget".
-    # 2026-06-17 (commit 3159a2d): workflow_group metadata added
-    # to ``density_fit``, ``dispersion``, ``scf_init_guess``,
-    # ``level_shift``, ``preopt``, ``preopt_functional``,
-    # ``preopt_basis``, ``optimize``, ``optimizer``,
-    # ``temperature_K`` (all profile) and ``preopt_max_steps``
-    # (budget) — so the SCF + Pre-optimization sections appear
-    # under the Profile card instead of the untagged residual,
-    # matching the design intent of web-ui-coherence.md Rule 2.
+    # 2026-06-17 workflow_group metadata applied so SCF / opt knobs
+    # land in their right cards (profile / stage / budget).
+    # 2026-06-22 #534 commit 4b: "Pre-optimization (optional)"
+    # section retired -- preopt + flat geom_conv_* fields replaced
+    # by the cfg.stages ladder rendered as a stage-table widget
+    # inside Compute & budget's Stage card.
     assert legends == [
         # --- Profile card ---
-        'System', 'Method', 'SCF', 'Pre-optimization (optional)',
+        'System', 'Method', 'SCF',
         'Solvent (optional)', 'Frequencies / thermochemistry',
         'Compute & budget',
         # --- Stage card ---
-        'SCF', 'Pre-optimization (optional)', 'Compute & budget',
+        'SCF', 'Compute & budget',
         # --- Budget card ---
-        'SCF', 'Pre-optimization (optional)', 'Compute & budget',
+        'SCF', 'Compute & budget',
     ], legends
 
 

@@ -7,7 +7,7 @@ Subcommands:
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
     molbuilder fdf   in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
-    molbuilder pyscf in.xyz out.py --functional B3LYP --preopt
+    molbuilder pyscf in.xyz out.py --functional B3LYP
     molbuilder serve --port 8000
     molbuilder watch parse run.molwatch.log
     molbuilder watch tail run.molwatch.log
@@ -511,11 +511,10 @@ def cmd_pyscf(input_path, py_path, ecp, **fields):
     See ``molbuilder/config/pyscf.py`` for the authoritative parameter
     list and per-field help text.
 
-    Two minor coercions on top of the bridge: ``--dispersion`` /
-    ``--preopt-dispersion`` accept the literal ``none`` (case-
-    insensitive) or empty string as a way to spell ``None`` from the
-    shell; ``--ecp`` does the same with an additional state where
-    ``""`` means "explicitly disable auto-emit".
+    Two minor coercions on top of the bridge: ``--dispersion`` accepts
+    the literal ``none`` (case-insensitive) or empty string as a way to
+    spell ``None`` from the shell; ``--ecp`` does the same with an
+    additional state where ``""`` means "explicitly disable auto-emit".
     """
     from .pyscf import PySCFConfig, convert
 
@@ -523,8 +522,7 @@ def cmd_pyscf(input_path, py_path, ecp, **fields):
         if s is None:
             return None
         return None if s.strip().lower() in ("", "none") else s
-    fields["dispersion"]        = _none_if_empty(fields.get("dispersion"))
-    fields["preopt_dispersion"] = _none_if_empty(fields.get("preopt_dispersion"))
+    fields["dispersion"] = _none_if_empty(fields.get("dispersion"))
     if ecp is not None:
         ecp_val = ecp.strip().lower()
         fields["ecp"] = "" if ecp_val in ("", "none") else ecp

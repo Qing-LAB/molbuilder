@@ -220,21 +220,19 @@ class PySCFConfig:
     # I/O knobs on the other.  Keeping them split forced the user to
     # scroll past unrelated cards (Solvent, Frequencies) between two
     # semantically connected groups.  Merging keeps the physics axis
-    # (System -> Method -> SCF -> Pre-opt -> Solvent -> Frequencies)
-    # compact and gathers all the "execution strategy + resources"
-    # knobs in one section at the end.  Workflow-group cards inside
-    # the new section split the merged fields cleanly:
+    # (System -> Method -> SCF -> Solvent -> Frequencies) compact and
+    # gathers all the "execution strategy + resources" knobs in one
+    # section at the end.  Workflow-group cards inside the new
+    # section split the merged fields cleanly:
     #   * Profile card -- optimize toggle + optimizer choice
-    #   * Stage card   -- geom_conv_energy + geom_conv_grms +
-    #                     geom_conv_gmax (convergence targets)
-    #   * Budget card  -- geom_max_steps + max_memory_mb + threads +
-    #                     use_gpu + verbose + chkfile + log_file +
-    #                     verbose_comments
+    #   * Stage card   -- per-stage convergence ladder (cfg.stages,
+    #                     rendered as a stage-table widget)
+    #   * Budget card  -- max_memory_mb + threads + use_gpu + verbose
+    #                     + chkfile + log_file + verbose_comments
     _form_section_order = (
         "System",
         "Method",
         "SCF",
-        "Pre-optimization (optional)",
         "Solvent (optional)",
         "Frequencies / thermochemistry",
         "Compute & budget",
@@ -434,66 +432,6 @@ class PySCFConfig:
         "help":  "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough",
     })
 
-    # ---------------- Pre-optimization (optional warm-up) ----------------
-    preopt: bool = field(default=False, metadata={
-        "section": "Pre-optimization (optional)",
-        # Profile-level: gating the two-stage workflow is a run-
-        # shape identity choice (with-or-without warm-up).
-        "workflow_group": "profile",
-        "label":   "Enable pre-optimization",
-        "engine_key":  '(molbuilder: two-stage relax workflow)',
-        "help": "run a cheap PBE/def2-SVP pre-opt before main run",
-    })
-    preopt_functional: str = field(default="PBE", metadata={
-        "section": "Pre-optimization (optional)",
-        # Profile-level: same family as main ``functional`` which
-        # is profile.
-        "workflow_group": "profile",
-        "label":   "Pre-opt functional",
-        "engine_key":  'mf.xc  (in pre-opt stage)',
-        "help": "XC functional for the pre-opt stage",
-    })
-    preopt_basis: str = field(default="def2-SVP", metadata={
-        "section": "Pre-optimization (optional)",
-        # Profile-level: same family as main ``basis`` which is profile.
-        "workflow_group": "profile",
-        "label":   "Pre-opt basis",
-        "engine_key":  'gto.M(basis=...)  (in pre-opt stage)',
-        "help": "Gaussian basis for the pre-opt stage",
-    })
-    # preopt_density_fit / preopt_dispersion: kept off the form to
-    # avoid clutter; they default sensibly and power users tweak via API.
-    preopt_density_fit: bool = field(default=True, metadata={
-        "help": "density fitting on the pre-opt SCF",
-            "engine_key":  'mf.density_fit()  (in pre-opt stage)',
-    })
-    preopt_dispersion: Optional[str] = field(default=None, metadata={
-        # Same choice list as ``dispersion``; cmd_pyscf normalises
-        # ``none`` -> None.  (R4)
-        "choices": ("d3", "d3bj", "d4", "none"),
-        "help": "dispersion correction on pre-opt mf (d3 / d3bj / d4); default off",
-            "engine_key":  'mf.add_dispersion()  (in pre-opt stage)',
-    })
-    preopt_max_steps: int = field(default=50, metadata={
-        "section": "Pre-optimization (optional)",
-        # Budget-level: same shape as ``geom_max_steps`` (budget) --
-        # max-step caps are resource budgets, not convergence targets.
-        "workflow_group": "budget",
-        "label":   "Pre-opt max steps",
-        "engine_key":  'geomeTRIC max_steps  (in pre-opt stage)',
-        "range":   (1, 1000),
-        "tier":    "advanced",
-        "help": "max geomeTRIC steps in the pre-opt stage",
-    })
-    preopt_grms: float = field(default=1.0e-3, metadata={
-        "section": "Pre-optimization (optional)",
-        "workflow_group": "stage",
-        "label":   "Pre-opt grms", "unit": "Ha/Bohr",
-        "engine_key":  'geomeTRIC convergence_grms  (in pre-opt stage)',
-        "tier":    "advanced",
-        "help": "pre-opt grms convergence (Ha/Bohr); 3x looser than main",
-    })
-
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
         "section": "Compute & budget",
@@ -514,50 +452,14 @@ class PySCFConfig:
         "choices": ("geometric", "berny"),
         "help": "geomeTRIC or berny",
     })
-    geom_max_steps: int = field(default=200, metadata={
-        "section": "Compute & budget",
-        # Resource-budget cap — same logic as SIESTA's relax_steps.
-        # Scale with system size, not stage.
-        "workflow_group": "budget",
-        "label": "geom max steps",
-        "engine_key":  'optimizer.max_steps',
-        "range": (1, 10000),
-        "tier":  "advanced",
-        "help":  "max optimization steps",
-    })
-    geom_conv_energy: float = field(default=1.0e-6, metadata={
-        "section": "Compute & budget",
-        "workflow_group": "stage",
-        "label":   "geom_conv_energy", "unit": "Hartree",
-        "engine_key":  'geomeTRIC convergence_energy',
-        "tier":    "advanced",
-        "help": "geomeTRIC energy convergence (Hartree)",
-    })
-    geom_conv_grms: float = field(default=3.0e-4, metadata={
-        "section": "Compute & budget",
-        "workflow_group": "stage",
-        "label":   "geom_conv_grms", "unit": "Ha/Bohr",
-        "engine_key":  'geomeTRIC convergence_grms',
-        "tier":    "advanced",
-        "help": "geomeTRIC RMS gradient convergence (Ha/Bohr)",
-    })
-    geom_conv_gmax: float = field(default=4.5e-4, metadata={
-        "section": "Compute & budget",
-        "workflow_group": "stage",
-        "label":   "geom_conv_gmax", "unit": "Ha/Bohr",
-        "engine_key":  'geomeTRIC convergence_gmax',
-        "tier":    "advanced",
-        "help": "geomeTRIC max-gradient convergence (Ha/Bohr)",
-    })
-
-    # 3-stage in-script optimization (task #534).  Data layer only in
-    # this commit: the field carries the publication-guide default
-    # (loose + publishable + TIGHT, with TIGHT off by default).  The
-    # generator still consumes the flat ``geom_conv_*`` scalars above
-    # — that switch lands in #534 commit 3.  Form UI lands in #534
-    # commit 2.  Until then this field is INVISIBLE in the form
-    # schema (no ``section`` metadata; ``dataclass_to_form_schema``
-    # skips fields without one).
+    # 3-stage in-script optimization (task #534).  Per-stage SCF +
+    # geomeTRIC convergence ladder lives here; the generator's
+    # ``_emit_stages_loop`` walks the enabled stages, applies each
+    # row's knobs to ``mf.conv_tol`` + the six geomeTRIC convergence
+    # kwargs (gmax/grms/dmax/drms/etol/max_steps), and warm-starts
+    # the next iter at the relaxed geometry.  Defaults match the
+    # publication-guide tier table (stage 1 loose, stage 2
+    # publishable, stage 3 TIGHT opt-in).
     stages: List[StageSpec] = field(
         default_factory=_default_stages,
         metadata={

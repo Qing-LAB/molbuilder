@@ -70,10 +70,14 @@ class TestResolveWorkflowGroup:
         assert resolve_workflow_group(
             "config.scf_max_cycle", cfg) == "budget"
 
-    def test_pyscf_geom_conv_grms_resolves_to_stage(self):
+    def test_pyscf_stages_resolves_to_stage(self):
+        """Post-#534 commit 4b the per-stage convergence ladder is the
+        ``stages`` field (a stage-table widget) rather than the flat
+        geom_conv_* scalars.  The workflow-group resolver tags it
+        ``stage`` so it lands in the Stage card."""
         cfg = PySCFConfig()
         assert resolve_workflow_group(
-            "config.geom_conv_grms", cfg) == "stage"
+            "config.stages", cfg) == "stage"
 
     # ---- Non-config wheres (geometry / cell / polymer) -------------- #
 

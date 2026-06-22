@@ -510,12 +510,13 @@ def test_pyscf_choice_accepts_mixed_case(flag, value, monkeypatch, tmp_path):
 @pytest.mark.parametrize("flag,bad_val", [
     ("--dispersion",        "d3-bj"),
     ("--dispersion",        "Grimme-D4"),
-    ("--preopt-dispersion", "d4bj"),
 ])
 def test_pyscf_dispersion_typo_rejected_at_parse_time(
         flag, bad_val, tmp_path):
-    """R4: dispersion / preopt_dispersion now carry choices metadata
-    so a typo fails at CLI parse time instead of reaching PySCF."""
+    """R4: dispersion now carries choices metadata so a typo fails at
+    CLI parse time instead of reaching PySCF.  The former
+    ``--preopt-dispersion`` companion flag retired with the preopt
+    block in #534 commit 4b."""
     from molbuilder import cli as _cli
     in_xyz = tmp_path / "h2.xyz"
     in_xyz.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")

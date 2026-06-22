@@ -212,11 +212,12 @@ def test_pyscf_reads_xyz_from_stdin(monkeypatch, tmp_path):
 
 
 def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
-    """The cmd_pyscf subcommand surfaces 8 PySCFConfig fields that
+    """The cmd_pyscf subcommand surfaces 6 PySCFConfig fields that
     were silent CLI gaps before review-fix L:
         --diis-space, --damp, --ecp,
-        --no-preopt-density-fit, --preopt-dispersion,
         --no-write-molwatch-log, --no-save-initial-xyz, --no-save-optimized-xyz.
+    (Two former preopt-dispersion / preopt-density-fit flags retired
+    with the preopt block in #534 commit 4b.)
     Smoke-check by running with all of them on a real input + asserting
     the generated script reflects each non-default setting."""
     import io
@@ -229,7 +230,6 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
         "--diis-space", "16",
         "--damp",       "0.4",
         "--ecp",        "lanl2dz",
-        "--preopt-dispersion", "d3bj",
         "--no-write-molwatch-log",
         "--no-save-initial-xyz",
         "--no-save-optimized-xyz",
@@ -253,10 +253,18 @@ def test_pyscf_cli_help_lists_all_review_fix_l_options():
     res = runner.invoke(cli.cli, ["pyscf", "--help"])
     assert res.exit_code == 0
     for flag in ("--diis-space", "--damp", "--ecp",
-                 "--no-preopt-density-fit", "--preopt-dispersion",
                  "--no-write-molwatch-log",
                  "--no-save-initial-xyz", "--no-save-optimized-xyz"):
         assert flag in res.output, f"missing {flag} in pyscf --help"
+    # The preopt-* / geom-* flags are gone post-#534 commit 4b.
+    for retired in ("--preopt-functional", "--preopt-basis",
+                    "--preopt-max-steps", "--preopt-grms",
+                    "--preopt-dispersion", "--no-preopt-density-fit",
+                    "--geom-max-steps", "--geom-conv-energy",
+                    "--geom-conv-grms", "--geom-conv-gmax"):
+        assert retired not in res.output, (
+            f"retired flag {retired} still appears in pyscf --help"
+        )
 
 
 def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
@@ -669,15 +677,7 @@ def test_fdf_cli_bool_flags_round_trip(
     ("--level-shift",      "0.2",        "level_shift",       0.2),
     ("--diis-space",       "16",         "diis_space",        16),
     ("--damp",             "0.4",        "damp",              0.4),
-    ("--preopt-functional","BLYP",       "preopt_functional", "BLYP"),
-    ("--preopt-basis",     "def2-TZVP",  "preopt_basis",      "def2-TZVP"),
-    ("--preopt-max-steps", "30",         "preopt_max_steps",  30),
-    ("--preopt-grms",      "5e-4",       "preopt_grms",       5e-4),
     ("--optimizer",        "berny",      "optimizer",         "berny"),
-    ("--geom-max-steps",   "300",        "geom_max_steps",    300),
-    ("--geom-conv-energy", "1e-7",       "geom_conv_energy",  1e-7),
-    ("--geom-conv-grms",   "1e-4",       "geom_conv_grms",    1e-4),
-    ("--geom-conv-gmax",   "2e-4",       "geom_conv_gmax",    2e-4),
     ("--max-memory-mb",    "8000",       "max_memory_mb",     8000),
     ("--threads",          "4",          "threads",           4),
     ("--verbose",          "5",          "verbose",           5),
@@ -707,8 +707,6 @@ def test_pyscf_cli_override_propagates_to_pyscf_config(
     # passing --no-<flag> must flip to False.
     ("symmetry",            False, "--symmetry"),       # default False -> positive form sets True
     ("density_fit",         True,  "--no-density-fit"),
-    ("preopt",              False, "--preopt"),
-    ("preopt_density_fit",  True,  "--no-preopt-density-fit"),
     ("optimize",            True,  "--no-optimize"),
     ("chkfile",             True,  "--no-chkfile"),
     ("log_file",            True,  "--no-log-file"),

@@ -225,7 +225,6 @@ def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
 
 @pytest.mark.parametrize("cfg", [
     PySCFConfig(),
-    PySCFConfig(preopt=True),
     PySCFConfig(optimize=False),
     PySCFConfig(method="UKS", spin=1, charge=1),
     PySCFConfig(write_trajectory=False),
@@ -233,7 +232,7 @@ def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
     PySCFConfig(dispersion=None),
     PySCFConfig(threads=4),
     PySCFConfig(verbose_comments=False),
-    PySCFConfig(preopt=True, basis="def2-TZVP", preopt_basis="def2-SVP"),
+    PySCFConfig(basis="def2-TZVP"),
 ])
 def test_every_variant_compiles(small_struct, cfg):
     text = render_script(small_struct, cfg)

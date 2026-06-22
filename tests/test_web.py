@@ -2183,18 +2183,18 @@ def test_pyscf_form_schema_matches_documented_layout():
         ("System",                       4),
         ("Method",                       5),
         ("SCF",                          5),
-        ("Pre-optimization (optional)",  5),
         ("Solvent (optional)",           2),
         ("Frequencies / thermochemistry", 3),
-        # Compute & budget: 14 fields after the 2026-06-15 merge +
-        # 2026-06-21 #534 commit-2 (added ``stages`` stage-table).
-        #   Optimization contributed 6 (optimize, optimizer,
-        #   geom_max_steps, geom_conv_energy, geom_conv_grms,
-        #   geom_conv_gmax) plus ``stages`` for the in-script staged
-        #   optimization (#534).
-        #   Runtime & output contributed 7 (max_memory_mb, threads,
-        #   use_gpu, verbose, chkfile, log_file, verbose_comments).
-        ("Compute & budget",            14),
+        # Compute & budget after #534 commit 4b:
+        #   * 2 optimization knobs left (optimize, optimizer); the
+        #     four flat geom_conv_* / geom_max_steps scalars + the
+        #     5 preopt_* knobs they used to share this section with
+        #     are gone -- the cfg.stages stage-table is the
+        #     canonical convergence-ladder control.
+        #   * 1 stage-table widget (``stages``).
+        #   * 7 runtime + output knobs (max_memory_mb, threads,
+        #     use_gpu, verbose, chkfile, log_file, verbose_comments).
+        ("Compute & budget",            10),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

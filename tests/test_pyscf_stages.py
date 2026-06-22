@@ -175,11 +175,12 @@ def test_pyscfconfig_stages_is_per_instance_not_shared():
 
 
 def test_pyscfconfig_stages_visible_in_form_schema():
-    """Commit-2 contract flip: the ``stages`` field IS in the form
-    schema now, with ``kind: "stage-table"`` so the JS renderer
-    (commit 3) emits a per-stage row table.  Lives in the
-    ``Compute & budget`` section (alongside the flat geom_conv_*
-    knobs it'll replace in commit 4)."""
+    """The ``stages`` field IS in the form schema now, with
+    ``kind: "stage-table"`` so the JS renderer emits a per-stage
+    row table.  Lives in the ``Compute & budget`` section -- post-
+    #534 commit 4b the flat ``geom_conv_*`` + ``preopt_*`` knobs
+    that used to share this section are gone, so the stage-table
+    is the canonical convergence-ladder control."""
     from molbuilder.web.blueprints._shared import dataclass_to_form_schema
     schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
     found = None

@@ -155,7 +155,7 @@ def test_pyscf_generated_script_emits_preview_block_text():
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2",
     )
-    text = render_script(s, PySCFConfig(job_name="h2", preopt=False))
+    text = render_script(s, PySCFConfig(job_name="h2"))
     # The class definition must contain a method that writes a preview
     # block, AND the constructor must call it.
     assert "_write_initial_preview" in text
@@ -182,11 +182,13 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2",
     )
+    from molbuilder.config.pyscf import StageSpec
     cfg = PySCFConfig(
         job_name="prev_e2e",
-        preopt=False,
         log_file=False,
-        geom_max_steps=2,
+        # Tiny single-stage ladder so the e2e run doesn't burn cycles
+        # on the publication-guide three-stage default.
+        stages=[StageSpec(name="quick", enabled=True, max_steps=2)],
         basis="STO-3G",
         dispersion=None,
         density_fit=False,

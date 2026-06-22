@@ -417,31 +417,15 @@
             setLock("py-spin", null);
         }
 
-        // optimize=false -> entire optimization + pre-opt sections moot.
+        // optimize=false -> optimizer choice + per-stage ladder moot.
+        // The stage-table widget renders its own enabled-stage rows;
+        // we only need to lock the optimizer dropdown here, since the
+        // stage-table can still be edited (and a future ``optimize=
+        // true`` flip would carry those edits forward).
         const optimize = $("py-optimize") && $("py-optimize").checked;
         const optReason = optimize ? null
             : "Geometry optimization is disabled (set 'Optimize geometry' on).";
-        ["py-optimizer", "py-geom-max-steps",
-         "py-geom-conv-energy", "py-geom-conv-grms",
-         "py-geom-conv-gmax"].forEach(id => setLock(id, optReason));
-
-        // Pre-opt fields: depend on optimize=true AND preopt=true.
-        const preopt = $("py-preopt") && $("py-preopt").checked;
-        let preoptReason;
-        if (!optimize) {
-            preoptReason = "Geometry optimization is disabled.";
-        } else if (!preopt) {
-            preoptReason =
-                "Pre-optimization is disabled (tick 'Enable pre-optimization').";
-        } else {
-            preoptReason = null;
-        }
-        ["py-preopt-functional", "py-preopt-basis",
-         "py-preopt-max-steps", "py-preopt-grms"].forEach(id =>
-            setLock(id, preoptReason));
-        // The 'Enable pre-optimization' checkbox itself depends only on optimize.
-        setLock("py-preopt", optimize ? null
-                                       : "Geometry optimization is disabled.");
+        setLock("py-optimizer", optReason);
 
         // Solvent <-> solvent_method: method only meaningful when a
         // solvent is selected.
@@ -486,7 +470,7 @@
     // deferred.
     function wireCompatibilityListeners() {
         [
-            "py-method", "py-optimize", "py-preopt", "py-solvent",
+            "py-method", "py-optimize", "py-solvent",
             "p-spin-polarized", "p-relax",
         ].forEach(id => {
             const el = $(id);

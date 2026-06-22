@@ -411,13 +411,13 @@ def render_script(struct: Structure,
     out.append("")
 
     # ---------------- Unified molwatch log emitter (early, additive) ------
-    # Defined and instantiated NOW -- before preopt -- so the log file
-    # (header + initial-preview block) exists the moment the script
-    # starts running.  Preopt can take hours on a real molecule; we
-    # don't want the Watch tab staring at "no file to load" the whole
-    # time.  SCF cycle hooks are wired per-stage at each mf object
-    # below (mf1 for preopt, mf for production).  The opt-step hook
-    # is wired at each `optimize(...)` call.
+    # Defined and instantiated NOW -- before the stages loop -- so the
+    # log file (header + initial-preview block) exists the moment the
+    # script starts running.  A stage's optimize() can take hours on a
+    # real molecule; we don't want the Watch tab staring at "no file to
+    # load" the whole time.  SCF cycle hook is wired on the production
+    # mf below; the opt-step hook is wired inside the stages loop's
+    # ``optimize(...)`` call.
     if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out += _emit_molwatch_emitter(v, cfg)
 
@@ -524,10 +524,10 @@ def render_script(struct: Structure,
     # the same settings.
     out.append("mf = _mb_to_gpu_if_enabled(mf)")
 
-    # Wire the production-mf SCF callback so per-cycle SCF history
-    # is captured for production opt steps.  The emitter itself was
-    # instantiated earlier (before preopt); we just attach the hook
-    # here once mf is in its final form.
+    # Wire the production-mf SCF callback so per-cycle SCF history is
+    # captured for every opt step across the stages loop.  The emitter
+    # itself was instantiated earlier (above the SCF setup); we attach
+    # the hook here once mf is in its final form.
     if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append(_emit_molwatch_callback_wire("mf"))
     out.append("")
@@ -826,111 +826,6 @@ def _emit_stages_loop(cfg: PySCFConfig,
     return out
 
 
-def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
-    """Stage 1: cheap geometry warm-up before the production functional."""
-    out: List[str] = []
-    out.append("# ============================================================")
-    out.append("#  Pre-optimization  (cheap warm-up: PBE/def2-SVP)")
-    out.append("# ============================================================")
-    if v:
-        out.append("# Why pre-optimize: hybrid functionals (B3LYP, M06-2X) are")
-        out.append("# much more sensitive to bad starting geometry than pure GGAs")
-        out.append("# (PBE).  A handful of cheap PBE/def2-SVP geometry steps fix")
-        out.append("# the worst bond-length errors from the builder, so the main")
-        out.append("# stage starts from a clean structure.")
-        out.append("# This typically costs 5-15% of the production-stage time.")
-        out.append("#")
-        out.append("# We don't fully converge here -- the looser grms tolerance")
-        out.append("# (1e-3 Ha/Bohr vs 3e-4 in main) means we stop as soon as the")
-        out.append("# geometry is reasonable.")
-    out.append('print("\\n=== Stage: pre-optimization ===")')
-    out.append("mol_pre = mol.copy()")
-    out.append(f'mol_pre.basis = "{cfg.preopt_basis}"')
-    # dump_input=False: the original mol.build() already echoed the
-    # input file into <JOB>.log; we don't need a second copy.
-    out.append("mol_pre.build(dump_input=False)")
-    # Pre-opt always uses DFT (a cheap functional + small basis is the
-    # whole point of the warm-up).  We mirror the RESTRICTED-vs-
-    # UNRESTRICTED choice from the production method (RHF/RKS -> RKS,
-    # UHF/UKS -> UKS) but force the dft module regardless: even when
-    # the production run is plain HF, the pre-opt switches to a DFT
-    # functional (cfg.preopt_functional, default PBE) to clean up the
-    # geometry quickly.
-    out.append(f'mf1 = dft.{cfg.method.upper().replace("HF", "KS")}(mol_pre)')
-    out.append(f'mf1.xc = "{cfg.preopt_functional}"')
-    if cfg.preopt_density_fit:
-        out.append("mf1 = mf1.density_fit()")
-    if cfg.preopt_dispersion and cfg.preopt_dispersion.lower() != "none":
-        out.append(f'mf1.disp = "{cfg.preopt_dispersion}"')
-    out.append(f"mf1.conv_tol  = {cfg.scf_conv_tol:.0e}")
-    out.append(f"mf1.max_cycle = {cfg.scf_max_cycle}")
-    # Mirror the production-stage SCF tuning knobs onto the pre-opt
-    # mean-field (P2).  If the user needed level_shift / damp /
-    # diis_space / a non-default init_guess to make production
-    # converge, the pre-opt warm-up needs the same help -- otherwise
-    # pre-opt diverges silently before production runs.
-    out.append(f'mf1.init_guess = "{cfg.scf_init_guess}"')
-    if cfg.level_shift:
-        out.append(f"mf1.level_shift = {cfg.level_shift}")
-    if cfg.diis_space != 8:
-        out.append(f"mf1.diis_space = {cfg.diis_space}")
-    if cfg.damp:
-        out.append(f"mf1.damp = {cfg.damp}")
-    # GPU patch: same shape as the production-mf line above -- promote
-    # the preopt mf to gpu4pyscf when the runtime probe succeeded.
-    # Done AFTER density_fit / disp / convergence settings so .to_gpu()
-    # sees the complete CPU object.
-    out.append("mf1 = _mb_to_gpu_if_enabled(mf1)")
-    # Wire the preopt SCF callback so the molwatch log captures preopt
-    # SCF history too -- otherwise the user only sees a single block per
-    # preopt opt step with empty scf_history (and the "Watch tab can't
-    # see anything until preopt finishes" UX bug returns at SCF granularity).
-    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
-        out.append(_emit_molwatch_callback_wire("mf1"))
-    out.append("")
-    out.append("mol_pre = optimize(")
-    out.append("    mf1,")
-    out.append(f"    maxsteps          = {cfg.preopt_max_steps},")
-    out.append(f"    convergence_grms  = {cfg.preopt_grms:.1e},")
-    if v:
-        out.append("    # assert_convergence=False so a partial pre-opt (which is")
-        out.append("    # GOOD ENOUGH by design) doesn't kill the production run.")
-        out.append("    # Production-stage optimize() keeps assert_convergence=True")
-        out.append("    # because there we DO want to know if the run failed.")
-    out.append("    assert_convergence = False,")
-    if cfg.write_trajectory and cfg.optimizer == "geometric":
-        if v:
-            out.append("    # Pre-opt has its own trajectory file:")
-            out.append("    #   <JOB>_preopt_optim.xyz")
-            out.append("    # so molwatch can watch either stage live.")
-        out.append('    prefix            = _mb_outfile(JOB + "_preopt"),')
-    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
-        if v:
-            out.append("    # Stream preopt opt steps to <JOB>.molwatch.log so")
-            out.append("    # the Watch tab shows progress from frame 1 onwards")
-            out.append("    # rather than waiting for the (potentially long) preopt")
-            out.append("    # to finish before the first step is logged.")
-        out.append("    callback          = _molwatch.opt_step_hook,")
-    out.append(")")
-    out.append('print("Pre-opt done; carrying optimised geometry into the main run.")')
-    out.append("")
-    if v:
-        out.append("# Reuse mol_pre as the production-stage molecule.  This is")
-        out.append("# important: a fresh `gto.M(..., output=JOB+'.log')` call")
-        out.append("# would open the .log in 'w' mode and TRUNCATE the pre-opt")
-        out.append("# log entries we just wrote.  By reusing mol_pre we keep")
-        out.append("# the same open file handle (mol_pre.stdout) so production-")
-        out.append("# stage SCFs append cleanly to the existing log.")
-    out.append("mol = mol_pre")
-    if cfg.basis != cfg.preopt_basis:
-        if v:
-            out.append("# Production basis differs from pre-opt; rebuild internals.")
-            out.append("# dump_input=False so we don't echo the input file a 3rd time.")
-        out.append(f'mol.basis = "{cfg.basis}"')
-        out.append("mol.build(dump_input=False)")
-    out.append("")
-    return out
-
 
 def _emit_frequencies_block(cfg: PySCFConfig, v: bool) -> List[str]:
     """Analytic Hessian + RRHO thermochemistry block.
@@ -1013,7 +908,7 @@ def _emit_frequencies_block(cfg: PySCFConfig, v: bool) -> List[str]:
         out.append("        print(f\"WARN: {_mb_imag} imaginary mode(s) at the "
                    "relaxed geometry -- this is a saddle, not a minimum.  "
                    "Perturb along the imag coord and re-optimize, or tighten "
-                   "geom_conv_grms.\")")
+                   "the final stage's grms in cfg.stages.\")")
     out.append("except Exception as _mb_exc:")
     out.append("    print(f\"Frequency analysis FAILED: {_mb_exc}\\n\"")
     out.append("          f\"Converged energy + optimized geometry are still "
@@ -1025,19 +920,19 @@ def _emit_frequencies_block(cfg: PySCFConfig, v: bool) -> List[str]:
 def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     """Inline streaming writer for ``<JOB>.molwatch.log``.
 
-    The emitter is instantiated **early** -- BEFORE preopt -- so the
-    log file (header + initial-preview block) exists from the moment
-    the script starts running.  Preopt can take hours on a real
-    molecule; without this ordering the Watch tab would have no file
-    to load until preopt finishes, defeating the "live trajectory"
-    promise.
+    The emitter is instantiated **early** -- BEFORE the stages loop
+    -- so the log file (header + initial-preview block) exists from
+    the moment the script starts running.  A stage's optimize() can
+    take hours on a real molecule; without this ordering the Watch
+    tab would have no file to load until the first stage finishes,
+    defeating the "live trajectory" promise.
 
-    Hooks are wired separately at each stage:
+    Hooks are wired once on the production mf:
 
-      * ``mf1.callback = _molwatch.scf_cycle_hook``  (preopt SCF cycles)
-      * ``optimize(mf1, ..., callback=_molwatch.opt_step_hook)`` (preopt steps)
-      * ``mf.callback = _molwatch.scf_cycle_hook``   (production SCF cycles)
-      * ``optimize(mf,  ..., callback=_molwatch.opt_step_hook)`` (production steps)
+      * ``mf.callback = _molwatch.scf_cycle_hook``   (every SCF cycle
+        across the stages loop)
+      * ``optimize(mf, ..., callback=_molwatch.opt_step_hook)`` (every
+        accepted opt step, inside the stages loop)
 
     Block layout, parser tolerance, and other contract details are
     documented on the source class
@@ -1080,13 +975,12 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # which the methods reference at call time.
     out.append(inspect.getsource(MolwatchEmitter).rstrip())
     out.append("")
-    # Instantiate as early as possible (BEFORE preopt) so the log
-    # file -- with header + initial-preview block -- exists the
-    # moment the script starts running.  Otherwise a long preopt
-    # (which can take hours on a real molecule) would mean the user
-    # has nothing to load on the Watch tab until preopt finishes.
-    # The SCF callback is wired separately at each stage's mf object
-    # (see emit_scf_callback_wiring below).
+    # Instantiate as early as possible (BEFORE the stages loop) so
+    # the log file -- with header + initial-preview block -- exists
+    # the moment the script starts running.  Otherwise a long first
+    # stage (which can take hours on a real molecule) would mean the
+    # user has nothing to load on the Watch tab until that stage
+    # finishes.  The SCF callback is wired on the production mf below.
     # Stage-aware molwatch-log filename (job-layout v1).  Compute
     # via the L1 ``molwatch_log_basename`` helper so the rule has
     # ONE source of truth across SIESTA + PySCF emitters; the
@@ -1161,9 +1055,9 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
 
 def _emit_molwatch_callback_wire(mf_var: str) -> str:
     """One-line snippet that wires a per-cycle SCF callback to the
-    given mean-field object.  Used at both stages so the molwatch
-    log captures SCF iterations from preopt and production runs
-    alike."""
+    given mean-field object.  Called once on the production mf so
+    the molwatch log captures SCF iterations for every stage in
+    the stages loop."""
     return f"{mf_var}.callback = _molwatch.scf_cycle_hook"
 
 
