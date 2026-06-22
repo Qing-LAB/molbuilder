@@ -194,7 +194,6 @@ def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
         method="UKS",
         spin=1,                   # 2S = 1 (one unpaired electron)
         basis="STO-3G",
-        preopt=False,
         density_fit=False,
         dispersion=None,
     )
@@ -258,7 +257,7 @@ def test_gap_6_pyscf_emits_post_processing_hook(h2):
     so a user has a starting point for follow-ups."""
     script = render_script(
         h2,
-        PySCFConfig(job_name="h2", preopt=False, density_fit=False,
+        PySCFConfig(job_name="h2", density_fit=False,
                     dispersion=None),
     )
     assert (
@@ -319,7 +318,6 @@ def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
     cfg = PySCFConfig(
         job_name="pt",
         basis="cc-pVDZ",            # NOT def2-* -- needs explicit ECP
-        preopt=False,
         density_fit=False,
         dispersion=None,
     )
@@ -339,7 +337,7 @@ def test_gap_8_ecp_skipped_for_def2_basis():
         title="pt",
     )
     cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
-                      preopt=False, density_fit=False, dispersion=None)
+                      density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
     # The token "ecp" appears in user-facing comments / docstrings;
     # what we want to suppress is the kwarg line `    ecp        = "..."`,
@@ -358,7 +356,7 @@ def test_gap_8_ecp_skipped_for_light_atoms_only():
         title="h2o",
     )
     cfg = PySCFConfig(job_name="h2o", basis="cc-pVDZ",
-                      preopt=False, density_fit=False, dispersion=None)
+                      density_fit=False, dispersion=None)
     script = render_script(h2o, cfg)
     assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
         "Light-atom-only molecule on cc-pVDZ should not get an ECP"
@@ -375,7 +373,7 @@ def test_gap_8_ecp_user_override_disables():
         title="pt",
     )
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ", ecp="",
-                      preopt=False, density_fit=False, dispersion=None)
+                      density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
     assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
         "cfg.ecp = '' must suppress the auto-emit"
@@ -399,7 +397,7 @@ def test_gap_8_ecp_skipped_for_all_def2_spellings(basis):
         positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
     )
     cfg = PySCFConfig(job_name="pt", basis=basis,
-                      preopt=False, density_fit=False, dispersion=None)
+                      density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
     assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
         f"basis={basis!r} (a def2 family member) bundles its own ECP; "
@@ -420,7 +418,7 @@ def test_gap_8_dict_ecp_emits_as_python_dict_literal():
         positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
     )
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
-                      preopt=False, density_fit=False, dispersion=None)
+                      density_fit=False, dispersion=None)
     cfg.ecp = {"Pt": "lanl2dz", "Au": "stuttgart"}
     script = render_script(pt, cfg)
 
@@ -462,14 +460,17 @@ def test_gap_9_pyscf_reevaluates_energy_at_optimized_geom(h2):
     non-converged opt prints an energy that doesn't correspond to
     the saved coordinates."""
     cfg = PySCFConfig(
-        job_name="h2", preopt=False, density_fit=False, dispersion=None,
+        job_name="h2", density_fit=False, dispersion=None,
     )
     script = render_script(h2, cfg)
-    # The fix should run a single-point SCF at mol_eq's geometry
-    # before the print -- check for the typical `mf_eq.kernel()`
-    # / `mf.run(mol_eq)` pattern, or an explicit re-attach.
+    # The fix should re-evaluate mf at mol_eq's geometry before
+    # printing the final energy.  Post-#534 commit 4 the stages
+    # loop's warm-start (mf.reset(mol_eq) followed by mf.kernel(...))
+    # does this per iteration, so the last stage leaves mf converged
+    # at mol_eq.  Accept any of the canonical patterns.
     assert re.search(
-        r"mf.*=.*mol_eq|mol_eq.*kernel|re.?evaluate", script, re.IGNORECASE
+        r"mf.*=.*mol_eq|mol_eq.*kernel|re.?evaluate|mf\.reset\(mol_eq\)",
+        script, re.IGNORECASE,
     ), (
         "Script should re-evaluate mf at mol_eq's geometry before "
         "printing the final e_tot."
@@ -509,14 +510,14 @@ def test_gap_10_diis_damp_emitted_only_when_tuned(h2):
         return [ln for ln in text.splitlines()
                 if needle in ln and not ln.lstrip().startswith("#")]
 
-    cfg_default = PySCFConfig(job_name="h2", preopt=False,
+    cfg_default = PySCFConfig(job_name="h2",
                               density_fit=False, dispersion=None)
     s_default = render_script(h2, cfg_default)
     assert live_lines(s_default, "mf.diis_space") == []
     assert live_lines(s_default, "mf.damp")       == []
 
     # Hard-SCF case: both bumped to typical troubleshooting values
-    cfg_hard = PySCFConfig(job_name="h2", preopt=False,
+    cfg_hard = PySCFConfig(job_name="h2",
                            density_fit=False, dispersion=None,
                            diis_space=16, damp=0.4)
     s_hard = render_script(h2, cfg_hard)
