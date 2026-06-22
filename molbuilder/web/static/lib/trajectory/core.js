@@ -1492,12 +1492,52 @@
     // scripts).  Callers (plots + summary block) decide what to do
     // with absence; the most common is "hide the threshold line +
     // render the hint instead."
+    //
+    // Two header shapes are normalised to a single flat dict:
+    //
+    //   FLAT (legacy, single-stage):
+    //     {max_force_tol_eV_per_A: 0.023, scf_energy_tol: 1e-9, ...,
+    //      source: "molwatch_header"}
+    //     -> returned as-is.
+    //
+    //   NESTED (staged runs, task #534):
+    //     {stage1: {max_force_tol_eV_per_A: ..., ...},
+    //      stage2: {max_force_tol_eV_per_A: ..., ...}, ...,
+    //      source: "molwatch_header"}
+    //     -> flattened to the LAST stage's leaf dict (the tightest
+    //     tier — the run only stops when the last enabled stage's
+    //     targets are met, so that's the "what counts as converged"
+    //     reference the plot needs).  Future commit may wire per-
+    //     frame stage attribution so threshold lines per stage can
+    //     be drawn against the trajectory; today we collapse to the
+    //     run's terminal target.
     function _convergenceTargets() {
         const rt = state.data && state.data.runtime_info;
         if (!rt) return null;
         const ct = rt.convergence_targets;
         if (!ct || typeof ct !== "object") return null;
-        return ct;
+        // Detect nested shape: any top-level value is itself a
+        // (non-array) object, excluding the meta ``source`` key.
+        let stageNames = [];
+        for (const k of Object.keys(ct)) {
+            if (k === "source") continue;
+            const v = ct[k];
+            if (v && typeof v === "object" && !Array.isArray(v)) {
+                stageNames.push(k);
+            }
+        }
+        if (stageNames.length === 0) {
+            return ct;                 // flat shape — return verbatim
+        }
+        // Nested.  Pick the LAST stage in insertion order (Object.keys
+        // preserves it for non-integer string keys) as the run's
+        // tightest tier.  Copy ``source`` across so the summary block
+        // still reads "from molwatch header".
+        const last = stageNames[stageNames.length - 1];
+        const leaf = ct[last] || {};
+        const flat = Object.assign({}, leaf);
+        if (typeof ct.source === "string") flat.source = ct.source;
+        return flat;
     }
 
     // Render the convergence-summary section above the plots row.

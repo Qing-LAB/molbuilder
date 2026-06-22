@@ -97,13 +97,43 @@ class MolwatchEmitter:
             # parser tolerates absence and the inspector falls back to
             # a "targets not found in source" hint.
             if convergence_targets:
-                for k in ("max_force_tol_eV_per_A", "scf_energy_tol",
-                          "scf_grad_tol", "max_scf_iter", "max_geom_iter",
-                          "max_displ_ang"):
-                    if k in convergence_targets and convergence_targets[k] is not None:
-                        v = convergence_targets[k]
+                # Two header shapes share this format:
+                #
+                #   FLAT  (legacy, single-stage runs):
+                #     # convergence.max_force_tol_eV_per_A: 0.0231
+                #
+                #   NESTED  (staged runs, task #534):
+                #     # convergence.stage1.max_force_tol_eV_per_A: 0.103
+                #     # convergence.stage2.max_force_tol_eV_per_A: 0.0231
+                #
+                # Detection: any top-level value that's a dict tags
+                # the payload as nested-shape; otherwise flat.  Empty
+                # input falls through.  Stage names are constrained
+                # by the StageSpec validator to [A-Za-z0-9_]+ so they
+                # round-trip cleanly through the parser regex.
+                _LEAF_KEYS = ("max_force_tol_eV_per_A", "scf_energy_tol",
+                              "scf_grad_tol", "max_scf_iter",
+                              "max_geom_iter", "max_displ_ang")
+
+                def _is_nested(ct):
+                    return any(isinstance(v, dict)
+                               for v in ct.values())
+
+                def _write_flat(prefix, leaf_dict):
+                    for k in _LEAF_KEYS:
+                        v = leaf_dict.get(k)
+                        if v is None:
+                            continue
                         v_str = str(v).replace("\n", " ").replace("\r", " ")
-                        fh.write(f"# convergence.{k}: {v_str}\n")
+                        fh.write(f"# convergence.{prefix}{k}: {v_str}\n")
+
+                if _is_nested(convergence_targets):
+                    for stage_name, leaf in convergence_targets.items():
+                        if not isinstance(leaf, dict):
+                            continue
+                        _write_flat(f"{stage_name}.", leaf)
+                else:
+                    _write_flat("", convergence_targets)
             fh.write("\n")
         # Step 0: initial-state preview, written BEFORE any SCF runs.
         # Carries coordinates only; energy / forces / scf_history are

@@ -73,7 +73,12 @@ _HEADER_RE      = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
 _ENGINE_RE      = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
 _RUNTIME_RE     = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 _CONVERGENCE_RE = re.compile(
-    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+    # Two header shapes share this regex:
+    #   FLAT:   # convergence.<leaf>:        <val>      -- single-stage runs
+    #   NESTED: # convergence.<stage>.<leaf>: <val>     -- staged runs (#534)
+    # The capture group catches either bare ``<leaf>`` or
+    # ``<stage>.<leaf>``; ``_on_convergence`` splits the dotted form.
+    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?):\s*(.*)$")
 _CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
 _ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
 
@@ -161,30 +166,60 @@ def _parse_molwatch_log(path: str) -> Trajectory:
     def _on_convergence(line: str, line_no: int) -> None:
         """``# convergence.<key>: <value>`` populates
         ``runtime_info["convergence_targets"]``.  Stamps
-        ``source = "molwatch_header"`` on first hit."""
+        ``source = "molwatch_header"`` on first hit.
+
+        Two header shapes share this handler (#534):
+
+          * Flat (legacy / single-stage): ``# convergence.<leaf>:
+            <val>`` lands at ``convergence_targets[<leaf>] = val``.
+          * Nested (staged runs): ``# convergence.<stage>.<leaf>:
+            <val>`` lands at
+            ``convergence_targets[<stage>][<leaf>] = val``.
+
+        The two never mix on a single run — the emitter picks one
+        shape based on whether its input dict has nested-dict
+        values.  Reader-side: callers detect nested-shape by
+        checking ``any(isinstance(v, dict) for v in ct.values()
+        if k != "source")``.  The ``source`` key sits at top-level
+        in either shape.
+        """
         m = _CONVERGENCE_RE.match(line)
         if not m:
             return
-        key, val = m.group(1), m.group(2).strip()
+        full_key, val = m.group(1), m.group(2).strip()
         ct = runtime_info.setdefault("convergence_targets", {})
         ct.setdefault("source", "molwatch_header")
-        if val == "None" or val == "null":
-            ct[key] = None
+
+        def _coerce(s):
+            if s == "None" or s == "null":
+                return None
+            if s in ("True", "False"):
+                return s == "True"
+            try:
+                return int(s)
+            except ValueError:
+                pass
+            try:
+                return float(s)
+            except ValueError:
+                pass
+            return s
+
+        # Nested form: stage_name + dot + leaf_key.  Split on the
+        # first ``.`` (leaf names themselves never contain ``.``;
+        # they're the closed set in _LEAF_KEYS on the emitter side).
+        if "." in full_key:
+            stage_name, leaf_key = full_key.split(".", 1)
+            stage_bucket = ct.setdefault(stage_name, {})
+            if not isinstance(stage_bucket, dict):
+                # Defensive: if a flat-shape run reused a stage-name
+                # as a leaf key (shouldn't happen, but molwatch.log
+                # files can be hand-edited), don't silently clobber.
+                return
+            stage_bucket[leaf_key] = _coerce(val)
             return
-        if val in ("True", "False"):
-            ct[key] = (val == "True")
-            return
-        try:
-            ct[key] = int(val)
-            return
-        except ValueError:
-            pass
-        try:
-            ct[key] = float(val)
-            return
-        except ValueError:
-            pass
-        ct[key] = val
+        # Flat form: bare leaf key.
+        ct[full_key] = _coerce(val)
 
     # ---- block boundary on_start callbacks ----
 
@@ -354,9 +389,16 @@ def _parse_molwatch_log(path: str) -> Trajectory:
         ),
         SectionRule(
             name="convergence",
-            aliases=["# convergence.<key>: ..."],
+            aliases=["# convergence.<key>: ...",
+                     "# convergence.<stage>.<key>: ..."],
+            # Accept both flat (``# convergence.<leaf>:``) and nested
+            # (``# convergence.<stage>.<leaf>:``) shapes per #534
+            # commit 3b.  The handler (`_on_convergence`) re-applies
+            # the full _CONVERGENCE_RE and splits the dotted form.
             start=matches_regex_ci(
-                r"^#\s*convergence\.[a-zA-Z_][a-zA-Z0-9_]*:"),
+                r"^#\s*convergence\."
+                r"[a-zA-Z_][a-zA-Z0-9_]*"
+                r"(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?:"),
             on_start=_on_convergence,
         ),
         block_begin_rule,
