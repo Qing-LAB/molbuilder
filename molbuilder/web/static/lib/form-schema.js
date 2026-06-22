@@ -960,6 +960,54 @@
                     }
                     continue;
                 }
+                if (f.kind === "stage-table") {
+                    // Walk the per-stage row list and write each
+                    // cell input.  Per the schema contract ``v`` is a
+                    // list-of-dicts whose order matches ``f.default``
+                    // (== STAGE_FIELD_INDEX_BY_NAME); cells are
+                    // ``<f.id>-stage<i>-<param>`` (set by
+                    // ``makeStageTable``).  Same pattern as
+                    // int-triple: dispatch input + change after
+                    // each write so dirty-trackers + live previews
+                    // observe.  Items shorter than f.default skip
+                    // tail rows; extras (forward-compat payload
+                    // with a 4th stage on a 3-stage form) are
+                    // silently dropped.
+                    if (!Array.isArray(v)) continue;
+                    const stageFields = Array.isArray(f.stage_fields)
+                        ? f.stage_fields : [];
+                    const nStages = Array.isArray(f.default)
+                        ? f.default.length : 0;
+                    const limit = Math.min(v.length, nStages);
+                    for (let si = 0; si < limit; si++) {
+                        const stageVals = v[si];
+                        if (!stageVals || typeof stageVals !== "object") {
+                            continue;
+                        }
+                        for (const sf of stageFields) {
+                            if (!(sf.name in stageVals)) continue;
+                            const cell = container.querySelector(
+                                "#" + cssEsc(
+                                    f.id + "-stage" + si + "-" + sf.name));
+                            if (!cell) continue;
+                            const cellVal = stageVals[sf.name];
+                            if (sf.kind === "checkbox") {
+                                cell.checked = Boolean(cellVal);
+                            } else {
+                                cell.value =
+                                    cellVal === null || cellVal === undefined
+                                        ? "" : String(cellVal);
+                            }
+                            try {
+                                cell.dispatchEvent(new Event("input",
+                                    { bubbles: true }));
+                                cell.dispatchEvent(new Event("change",
+                                    { bubbles: true }));
+                            } catch (_) { /* legacy browser */ }
+                        }
+                    }
+                    continue;
+                }
                 const elx = container.querySelector("#" + cssEsc(f.id));
                 if (!elx) continue;
                 if (f.kind === "checkbox") {

@@ -1969,6 +1969,26 @@
                         for (const lab of f.labels) {
                             ids.push(f.id + "-" + lab);
                         }
+                    } else if (f.kind === "stage-table") {
+                        // Stage-table renders one input per cell
+                        // (stages × stage_fields) plus the preset
+                        // dropdown.  Each has its own id; without
+                        // listing them here ``saveFormState`` /
+                        // ``restoreFormState`` would skip the
+                        // user's per-stage edits and they'd revert
+                        // to schema defaults on page reload.
+                        const stages = Array.isArray(f.default)
+                            ? f.default : [];
+                        const stageFields = Array.isArray(f.stage_fields)
+                            ? f.stage_fields : [];
+                        ids.push(f.id + "-preset");
+                        stages.forEach(function (_, stageIdx) {
+                            stageFields.forEach(function (sf) {
+                                ids.push(
+                                    f.id + "-stage" + stageIdx
+                                    + "-" + sf.name);
+                            });
+                        });
                     } else {
                         ids.push(f.id);
                     }

@@ -271,3 +271,77 @@ def test_stage_preset_custom_is_no_op(page, flask_server):
     page.check("#p-stages-stage2-enabled")
     page.select_option("#p-stages-preset", "custom")
     assert page.locator("#p-stages-stage2-enabled").is_checked()
+
+
+# --------------------------------------------------------------------- #
+#  setValues round-trip                                                 #
+# --------------------------------------------------------------------- #
+
+
+def test_setvalues_writes_stage_table_cells(page, flask_server):
+    """``setValues`` accepts the same list-of-dicts shape collectForm
+    returns.  Round-trip: render → setValues(custom) → collectForm
+    sees the new values."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    new_values = {
+        "stages": [
+            {"name": "stage1", "enabled": False,
+             "conv_tol": 5e-7, "gmax": 3e-3, "grms": 2e-3,
+             "dmax": 8e-3, "drms": 5e-3, "etol": 2e-5,
+             "max_steps": 75},
+            {"name": "stage2", "enabled": True,
+             "conv_tol": 1e-9, "gmax": 4.5e-4, "grms": 3e-4,
+             "dmax": 1.8e-3, "drms": 1.2e-3, "etol": 1e-6,
+             "max_steps": 200},
+            {"name": "stage3", "enabled": True,
+             "conv_tol": 1e-10, "gmax": 1.5e-5, "grms": 1e-5,
+             "dmax": 6e-5, "drms": 4e-5, "etol": 1e-6,
+             "max_steps": 100},
+        ],
+    }
+    page.evaluate(
+        "(vals) => window.molbuilder.formSchema.setValues("
+        "  document.getElementById('container'),"
+        "  window.__schema_for_test, vals)",
+        new_values,
+    )
+    vals = _collect(page)
+    assert vals["stages"][0]["enabled"] is False
+    assert vals["stages"][0]["conv_tol"] == pytest.approx(5e-7)
+    assert vals["stages"][0]["max_steps"] == 75
+    assert vals["stages"][2]["enabled"] is True
+
+
+def test_setvalues_tolerates_partial_payload(page, flask_server):
+    """Partial payload — only Stage 1 fields, only ``enabled``
+    flipped — leaves other stages + other cells untouched."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    page.evaluate(
+        "() => window.molbuilder.formSchema.setValues("
+        "  document.getElementById('container'),"
+        "  window.__schema_for_test, "
+        "  {stages: [{enabled: false}]})"
+    )
+    vals = _collect(page)
+    assert vals["stages"][0]["enabled"] is False
+    # Stage 1's conv_tol untouched
+    assert vals["stages"][0]["conv_tol"] == pytest.approx(1e-7)
+    # Stage 2 + 3 untouched
+    assert vals["stages"][1]["enabled"] is True
+    assert vals["stages"][2]["enabled"] is False
+
+
+def test_setvalues_ignores_extra_stages_beyond_schema(page, flask_server):
+    """A 4-stage payload on a 3-stage form drops the extra (forward-
+    compat with future schemas that add stages)."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    page.evaluate(
+        "() => window.molbuilder.formSchema.setValues("
+        "  document.getElementById('container'),"
+        "  window.__schema_for_test, "
+        "  {stages: [{}, {}, {enabled: true},"
+        "           {name: 'phantom', enabled: true}]})"
+    )
+    vals = _collect(page)
+    assert len(vals["stages"]) == 3   # unchanged
+    assert vals["stages"][2]["enabled"] is True
