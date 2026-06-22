@@ -35,7 +35,10 @@ mf.disp = "d3bj"           # Grimme-D3(BJ).  PySCF 2.13 REJECTS the merged-strin
                             # (no parens, no separate mf.disp).
 mf.conv_tol = 1e-9          # already at publication standard
 mf.max_cycle = 100          # already plenty
-# convergence_gmax = 4.5e-4 Ha/Bohr (geomeTRIC default) — already publication standard
+# Per-stage geomeTRIC convergence is already publication standard:
+# the default 3-stage ladder (cfg.stages) has stage 2 at the
+# Gaussian-OPT defaults (gmax=4.5e-4, grms=3.0e-4, etc.).  See the
+# "In-script staged optimization" section below.
 ```
 
 That's the minimum-viable change.  Convergence thresholds in the
@@ -177,20 +180,31 @@ generally tighter than a SIESTA "converged" one.
 
 ---
 
-## In-script staged optimization — design plan (task #534)
+## In-script staged optimization (task #534 — SHIPPED 2026-06-22)
 
 PySCF has an architectural advantage over SIESTA: we generate the
 runnable script, so we can put a multi-stage loop INSIDE it.  No
 manual "run stage1, then stage2" cycles.
 
-### Design agreed with user (2026-06-20)
+**Status: shipped** via the #534 commit family (4a generator
+rewrite, 4b dead-field deletion, 4c docs).  The new `cfg.stages`
+field on `PySCFConfig` is the sole source of truth for the
+convergence ladder; the legacy `preopt_*` and flat `geom_conv_*`
+fields are gone.
+
+### Shipped design
 
 * Each PySCF script generates **3 stages** internally.
-* Each stage can be **enabled / skipped** independently from the UI.
-* Per-stage outputs use `<JOB>_stageN_*` suffix so the Results-tab
-  file picker shows them as discrete files.
-* Geometry from stage N feeds stage N+1 via in-Python `mol` carry-
-  over (no disk roundtrip; no manual file rename).
+* Each stage can be **enabled / skipped** independently from the
+  UI (`cfg.stages[i].enabled`).
+* Per-stage geomeTRIC output uses `<JOB>_geom_<stage>_*` suffix so
+  each enabled stage gets its own `_optim.xyz` + `.log` files.
+* The unified `<JOB>.molwatch.log` carries every step from every
+  stage in a single file (per-stage entries in the
+  `# convergence.<stage>.<leaf>:` header).
+* Geometry from stage N feeds stage N+1 via in-Python `mol_eq`
+  carry-over with `mf.reset(mol_eq); mf.kernel(dm0=dm_prev)` warm-
+  start — no disk roundtrip, no manual file rename.
 
 ### Parameter defaults (3-stage, simple organic molecules)
 
@@ -198,86 +212,94 @@ manual "run stage1, then stage2" cycles.
 |---|---|---|---|---|---|
 | 1 (loose pre-opt) | True | 1e-7 | 2.0e-3 | 50 | Get the structure roughly right cheaply |
 | 2 (**publishable**, Gaussian default) | True | 1e-9 | 4.5e-4 | 200 | What papers cite |
-| 3 (TIGHT, vib/IR/NEB) | False (opt-in) | 1e-10 | 1.0e-4 | 100 | Only when you need accurate Hessians |
+| 3 (TIGHT, vib/IR/NEB) | False (opt-in) | 1e-10 | 1.5e-5 | 100 | Only when you need accurate Hessians |
 
 Stage 3's `grms`/`dmax`/`drms`/`etol` scale together at 10× tighter
 than Stage 2 per Gaussian-TIGHT convention.
 
 ### UI shape
 
-Per-parameter inline stage controls with a "Stage strategy" preset
-dropdown that fills sensible defaults; "Custom" mode for full
-control.  Example:
+Per-parameter inline stage controls (a `kind: "stage-table"` field
+in the Build form's `Compute & budget` section, Stage card) with a
+"Stage strategy" preset dropdown that fills sensible defaults;
+"Custom" mode for full control.  Example:
 
 ```
 Force tolerance (Ha/Bohr)
   Stage 1  [☑]  2.0e-3   (loose pre-opt)
   Stage 2  [☑]  4.5e-4   (publishable)   ← Gaussian default
-  Stage 3  [☐]  1.0e-4   (tight, vib/IR)
+  Stage 3  [☐]  1.0e-5   (tight, vib/IR)
 ```
 
 Most users tick stages 1+2, leave 3 disabled.  Power users custom-
 set any value per stage.
 
-### Generated-script sketch
+### Generated-script shape (what `render_script()` emits today)
 
 ```python
-# All 5 geomeTRIC convergence knobs per stage (defined so the loop
-# below never KeyErrors).  Units: gmax/grms in Ha/Bohr; dmax/drms in
-# Angstrom; etol in Ha.  Default tier matches geomeTRIC's GAU set;
-# TIGHT keeps energy at GAU and tightens grads + displacements 10×
-# and 20× respectively (GAU_TIGHT).
+# molbuilder/pyscf/input.py::_emit_stages_loop emits this verbatim.
+# All 6 geomeTRIC convergence knobs per enabled stage (units:
+# gmax/grms in Ha/Bohr; dmax/drms in Angstrom; etol in Ha; conv_tol
+# = SCF energy tol in Ha).  Disabled stages are filtered at
+# generation time (don't appear in the literal).
 STAGES = [
-    {"name": "stage1", "enabled": True,
-     "conv_tol": 1e-7,  "gmax": 2.0e-3, "grms": 1.3e-3, "dmax": 7.2e-3, "drms": 4.8e-3, "etol": 1e-5, "max_steps":  50},
-    {"name": "stage2", "enabled": True,
-     "conv_tol": 1e-9,  "gmax": 4.5e-4, "grms": 3.0e-4, "dmax": 1.8e-3, "drms": 1.2e-3, "etol": 1e-6, "max_steps": 200},
-    {"name": "stage3", "enabled": False,
-     "conv_tol": 1e-10, "gmax": 1.5e-5, "grms": 1.0e-5, "dmax": 6.0e-5, "drms": 4.0e-5, "etol": 1e-6, "max_steps": 100},
+    {
+        'name':      'stage1',
+        'conv_tol':  1e-07,
+        'gmax':      0.002,
+        'grms':      0.0013,
+        'dmax':      0.0072,
+        'drms':      0.0048,
+        'etol':      1e-05,
+        'max_steps': 50,
+    },
+    {
+        'name':      'stage2',
+        'conv_tol':  1e-09,
+        'gmax':      0.00045,
+        'grms':      0.0003,
+        'dmax':      0.0018,
+        'drms':      0.0012,
+        'etol':      1e-06,
+        'max_steps': 200,
+    },
 ]
 
 mol = gto.M(atom=..., basis=..., ...)
-for stage in STAGES:
-    if not stage["enabled"]:
-        continue
-    mf = scf.RKS(mol).density_fit(auxbasis="def2-universal-jfit")
-    mf.xc   = "b3lyp"
-    mf.disp = "d3bj"    # canonical PySCF spelling — see TL;DR
-    mf.conv_tol = stage["conv_tol"]
-    prefix = f"{JOB}_{stage['name']}"
-    _molwatch = MolwatchEmitter(f"{prefix}.molwatch.log", prefix, mol,
-                                runtime_info=_RUNTIME_INFO,
-                                convergence_targets={
-                                    "max_force_tol_eV_per_A":
-                                        stage["gmax"] * 51.42208619,   # Ha/Bohr -> eV/A
-                                    "scf_energy_tol":  stage["conv_tol"],
-                                    "max_scf_iter":    100,
-                                    "max_geom_iter":   stage["max_steps"],
-                                })
-    mol = optimize(mf, prefix=f"{prefix}_geom",
-                   convergence_gmax=stage["gmax"],
-                   convergence_grms=stage["grms"],
-                   convergence_dmax=stage["dmax"],
-                   convergence_drms=stage["drms"],
-                   convergence_energy=stage["etol"],
-                   maxsteps=stage["max_steps"])
-    # mol updated in place by optimize(); carries forward to next stage
+mf  = dft.RKS(mol)
+mf.xc   = "b3lyp"
+mf.disp = "d3bj"
+# ... full SCF setup once, before the stages loop
+
+for STAGE in STAGES:
+    print(f"\n=== Stage: {STAGE['name']} optimization ===")
+    mf.conv_tol = STAGE['conv_tol']
+    mol_eq = optimize(
+        mf,
+        maxsteps              = STAGE['max_steps'],
+        convergence_energy    = STAGE['etol'],
+        convergence_grms      = STAGE['grms'],
+        convergence_gmax      = STAGE['gmax'],
+        convergence_drms      = STAGE['drms'],
+        convergence_dmax      = STAGE['dmax'],
+        prefix                = _mb_outfile(JOB + '_geom_' + STAGE['name']),
+        callback              = _molwatch.opt_step_hook,
+    )
+    # Warm-start next stage at the relaxed geometry: snapshot the
+    # converged DM, reset() to drop stale integrals, re-converge SCF.
+    dm_prev = (mf.make_rdm1()
+               if mf.mo_coeff is not None and mf.mo_occ is not None
+               else None)
+    mf.reset(mol_eq)
+    mf.kernel(dm0=dm_prev)
+print(f"\nFinal energy: {mf.e_tot:.8f} Hartree")
 ```
 
-### Implementation touches
-
-* `molbuilder/pyscf/input.py` — generator loops over enabled stages,
-  threads `mol` forward, names outputs `<JOB>_stageN_*`
-* `molbuilder/config/pyscf.py` (or equivalent) —
-  `PySCFConfig.stages: List[StageSpec]` dataclass
-* Web blueprint + form schema for per-stage controls
-* JS for "Stage strategy" preset dropdown + per-stage enable/value rows
-* `MolwatchEmitter` usage updated to take per-stage
-  `convergence_targets` (the header carrying stage-specific values)
-* L2 tests for per-stage script rendering, "skip stage" semantics,
-  carry-over geometry
-* Doc update: this file + `docs/engines/pyscf.md` for the per-stage
-  output filename rule
+The molwatch emitter receives a NESTED `convergence_targets` dict
+(one `{stage_name: {leaves}}` entry per enabled stage) — the
+parser flattens to the LAST stage as the tightest tier for the
+threshold-line render.  See
+`docs/protocols/results-tab.md § "Convergence targets"`.
 
 ### Why molbuilder needs this
 

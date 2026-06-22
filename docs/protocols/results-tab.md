@@ -366,12 +366,12 @@ dashed horizontal threshold line at the target value.
 
 | Key | Units | Read by which parser |
 |---|---|---|
-| `max_force_tol_eV_per_A` | eV/Å | SIESTA (`redata: Force tolerance`); molwatch (`# convergence.*`); PySCF emitter passes from `cfg.geom_conv_gmax` after Ha/Bohr→eV/Å conversion |
+| `max_force_tol_eV_per_A` | eV/Å | SIESTA (`redata: Force tolerance`); molwatch (`# convergence.*`); PySCF emitter passes each enabled stage's `gmax` after Ha/Bohr→eV/Å conversion |
 | `dm_tolerance` | dimensionless | SIESTA (`redata: DM tolerance for SCF`); molwatch |
-| `scf_energy_tol` | Hartree | molwatch (PySCF runs); not in SIESTA echo |
+| `scf_energy_tol` | Hartree | molwatch (PySCF runs, from each enabled stage's `conv_tol`); not in SIESTA echo |
 | `scf_grad_tol` | eV/Å | molwatch (geomeTRIC gmax-style); not in SIESTA |
 | `max_scf_iter` | integer | SIESTA (`redata: Max. number of SCF Iter`); molwatch |
-| `max_geom_iter` | integer | molwatch (from `cfg.geom_max_steps`) |
+| `max_geom_iter` | integer | molwatch (PySCF: each enabled stage's `max_steps`) |
 | `max_displ_ang` | Å | SIESTA (`redata: Max atomic displ per move`); molwatch |
 | `source` | string | One of `"siesta_input_echo"`, `"molwatch_header"`, `"geomeTRIC_log"` — drives the italic provenance label in the UI |
 

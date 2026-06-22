@@ -22,14 +22,12 @@ File presence depends on the cfg flags listed in the second column.
 
 | file | enabled when | contents |
 | --- | --- | --- |
-| `<job>.log` | `cfg.log_file` (default `True`) | the verbose PySCF log for **all stages** (pre-opt + production); appended, never truncated mid-run |
+| `<job>.log` | `cfg.log_file` (default `True`) | the verbose PySCF log for **every enabled stage** in the optimization ladder; appended, never truncated mid-run |
 | `<job>.chk` | `cfg.chkfile` (default `True`) | PySCF checkpoint (DM, mol, energies) |
 | `<job>_initial.xyz` | `cfg.save_initial_xyz` (default `True`) | the user's actual input geometry, snapshotted **immediately after** `gto.M(...)` builds the original molecule — *before* any optimization runs. |
 | `<job>_optimized.xyz` | `cfg.save_optimized_xyz` AND `cfg.optimize` | final relaxed geometry, written at end of script |
-| `<job>_geom_optim.xyz` | `cfg.optimize` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming production-stage trajectory, multi-frame XYZ with `Iteration K Energy E` comment lines, **one frame per accepted geometry step** |
-| `<job>_geom.log` | same as above | geomeTRIC's own log for the production stage |
-| `<job>_preopt_optim.xyz` | `cfg.preopt` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming pre-opt-stage trajectory, same format |
-| `<job>_preopt.log` | same as above | geomeTRIC's own log for the pre-opt stage |
+| `<job>_geom_<stage>_optim.xyz` | `cfg.optimize` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming per-stage trajectory (one set of files per enabled `cfg.stages[i]` row, suffixed with the stage's `name`); multi-frame XYZ with `Iteration K Energy E` comment lines, **one frame per accepted geometry step** |
+| `<job>_geom_<stage>.log` | same as above | geomeTRIC's own log for each enabled stage |
 | `<job>.molwatch.log` (or `<job>-stage<N>.molwatch.log` when `cfg.stage` is set) | `cfg.molwatch_log` (default `True`) AND `cfg.optimize` AND `cfg.optimizer == "geometric"` | unified per-step trajectory log written **alongside** the standard outputs (additive). One marker-delimited block per accepted opt step containing coordinates, total energy (eV), per-atom forces (eV/Å), max force (eV/Å), and the SCF cycle history for that step. Single-file input for the Results-tab trajectory inspector. |
 | `<job>.thermo.txt` | `cfg.compute_frequencies` (default `False`) | post-relax harmonic analysis + RRHO thermochemistry. Header recording (T, P, method/basis), `[frequencies]` block with one `mode N  wavenumber (cm^-1)` line per vibrational mode (imaginary modes tagged `(imag)`), and `[thermochemistry]` block with the full `pyscf.hessian.thermo.thermo()` dict (ZPE, U/H/G/S/Cv/Cp at the configured temperature_K and pressure_atm). The block runs at the converged `mf` at `mol_eq` and is wrapped in try/except so a Hessian failure does NOT lose the converged energy or `<job>_optimized.xyz`. |
 
@@ -60,52 +58,56 @@ geometry-step summaries) goes to `<job>.log`.  Specifically:
 
 - The original `gto.M(..., output=JOB+".log", ...)` call opens
   `<job>.log` in append-friendly mode.
-- The pre-opt stage runs on `mol_pre = mol.copy()`, which inherits
-  the open file handle.  Pre-opt SCFs and gradients land in `<job>.log`.
-- After pre-opt completes, the script transitions to the production
-  stage.  **It must NOT call `gto.M(output=JOB+".log", ...)` a second
-  time** — that call opens the file in `'w'` mode and truncates the
-  pre-opt log entries.
-- The transition must reuse `mol_pre` (which has the right `stdout`)
-  and only call `mol.build()` if the production basis differs from
-  the pre-opt basis.  This keeps the same open file handle alive.
-- The production stage's `mf = dft.RKS(mol)` therefore inherits the
-  same `stdout`, and its SCFs land in the same `<job>.log`.
+- The stages loop runs `optimize(mf, ...)` once per enabled
+  `cfg.stages[i]` row.  Each call inherits the open file handle
+  via `mf.mol.stdout`, so every stage's SCFs and gradients append
+  to the same `<job>.log` -- no truncation between stages.
+- Between stages the script warm-starts via
+  `mf.reset(mol_eq); mf.kernel(dm0=dm_prev)` -- this updates
+  `mf.mol` and invalidates cached integrals but never reopens
+  `<job>.log`.  The same file handle stays alive across the whole
+  run.
 
-The `print(...)` statements that announce stage banners (`"=== Stage:
-pre-optimization ==="`, etc.) go to the user's terminal (stdout) by
-design — they're for the user watching the run, not for the log.
+The `print(...)` statements that announce per-stage banners (e.g.
+`"=== Stage: stage1 optimization ==="`) go to the user's terminal
+(stdout) by design — they're for the user watching the run, not
+for the log.
 
 ### Forbidden patterns in the generated script
 
 The following code shapes break the logging contract and MUST NOT
 appear in any generated script:
 
-1. A `gto.M(...)` call between pre-opt's `optimize(mf1, ...)` and
-   the production `mf = ` line.  Reason: truncates `<job>.log`.
+1. A **second** `gto.M(...)` call anywhere after the initial mol
+   build.  Reason: truncates `<job>.log`.  The stages loop must
+   reuse `mf.reset(mol_eq)` instead.
 2. A bare `mol.basis = "..."; mol.build()` without `dump_input=False`
    — it would re-echo the input file into `<job>.log` redundantly.
-3. Any explicit reassignment of `mol_pre.stdout` or `mol.stdout`.
-   Reason: PySCF's internal logging routes through that handle and
-   relies on it staying open.
+   (Note: `cfg.basis` does not change between stages today; this
+   guard is here in case a future revision adds per-stage basis
+   switching.)
+3. Any explicit reassignment of `mol.stdout`.  Reason: PySCF's
+   internal logging routes through that handle and relies on it
+   staying open across stages.
 
 ---
 
 ## Trajectory contract
 
 When `cfg.write_trajectory=True` and `cfg.optimizer=="geometric"`,
-**every** call to geomeTRIC's `optimize(...)` in the generated script
-must include a `prefix=` kwarg, so geomeTRIC streams a trajectory
-file the user can tail in molwatch.
+the single `optimize(...)` call inside the stages loop must include
+a `prefix=` kwarg, so geomeTRIC streams a per-stage trajectory file
+the user can tail in molwatch.
 
 The naming convention is per-stage:
 
-- pre-opt: `prefix=JOB + "_preopt"` → streams `<job>_preopt_optim.xyz`
-- production: `prefix=JOB + "_geom"` → streams `<job>_geom_optim.xyz`
+- `prefix=JOB + "_geom_" + STAGE['name']` → streams
+  `<job>_geom_<stage>_optim.xyz` (one set of files per enabled stage)
 
-This guarantees each stage's trajectory is separately watchable, and
-the user can pick which stage to follow by which file they point
-molwatch at.
+This guarantees each enabled stage's trajectory lands in its own
+file pair, and the user can pick which stage to follow by which
+file they point molwatch at.  The unified `<job>.molwatch.log`
+(below) carries every step from every stage in a single file.
 
 ---
 
@@ -120,22 +122,18 @@ molwatch at.
 - `cfg.optimize=False` produces a single-point script: `mf.kernel()`
   is called, no `optimize(...)`, no trajectory files.
 
-### Pre-opt failure must not kill the production run
+### Stages-loop failure must surface
 
-The pre-opt stage exists to clean up obvious geometry sins before
-the expensive functional starts.  By design it doesn't have to
-fully converge — its convergence threshold is intentionally looser
-than the production stage.
-
-The pre-opt `optimize(mf1, ...)` call therefore **MUST** pass
-`assert_convergence=False`.  Without it, PySCF raises
-`RuntimeError` if pre-opt hits its `maxsteps` without converging,
-and the production stage never runs.
-
-The production-stage `optimize(mf, ...)` call **MUST NOT** set
-`assert_convergence` (so the default True applies).  We DO want to
-hear about real production-run failures — those affect the data the
-user is trusting.
+The per-stage `optimize(mf, ...)` call inside the stages loop
+**MUST NOT** set `assert_convergence`, so geomeTRIC's default
+`True` applies.  A stage that exhausts its `max_steps` without
+converging then raises — which is the user's signal to add a
+looser warm-up stage at the front of `cfg.stages`, raise the
+per-stage `max_steps`, or relax the per-stage `grms`/`gmax`
+targets.  The publication-guide three-stage default already
+includes a loose stage 1 specifically to absorb bad starting
+geometries, so the production stages can keep their tight
+convergence targets.
 
 ## Spin / method compatibility
 

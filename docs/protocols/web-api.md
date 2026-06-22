@@ -1603,8 +1603,7 @@ field gets `disabled` + a `.lock-reason` hint span.
 | Trigger | Dependent | Lock |
 |---|---|---|
 | `method ∈ {RKS, RHF}` | `spin` | force `spin = 0` |
-| `optimize = false` | optimizer, geom_*, preopt | lock entire Optimization + Pre-opt sections |
-| `optimize = true` AND `preopt = false` | preopt_* | lock with "Pre-opt is disabled" |
+| `optimize = false` | `optimizer` | lock with "Geometry optimization is disabled" (the `stages` stage-table is left editable so a future `optimize=true` flip carries the user's edits forward) |
 | `solvent = ""` | solvent_method | lock with "No solvent selected (gas phase)" |
 
 **SIESTA tab:**
