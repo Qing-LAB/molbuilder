@@ -136,6 +136,24 @@ def _validate_pyscf(struct: Structure, cfg,
                 "config.method",
             ))
 
+    # Stages ladder (task #534).  When cfg.optimize is True the
+    # generator's _emit_stages_loop walks cfg.stages and emits one
+    # optimize() call per enabled row.  ``validate_stages`` enforces
+    # the structural invariants the generator can't recover from --
+    # empty list, all-disabled, duplicate names, bogus name chars,
+    # non-positive numeric knobs, non-int / non-positive max_steps.
+    # WITHOUT this check, an empty-or-all-disabled stages list
+    # silently emits ``STAGES = []`` + an empty for-loop, which
+    # leaves ``mol_eq`` unbound and the downstream
+    # ``_save_xyz(mol_eq, ...)`` / frequencies block raises
+    # NameError at runtime.  Surface as ``"error"`` so the Build
+    # tab blocks the Generate POST instead of shipping a broken
+    # script.
+    if bool(getattr(cfg, "optimize", False)):
+        from ..config.pyscf import validate_stages
+        for _msg in validate_stages(getattr(cfg, "stages", []) or []):
+            issues.append(Issue("error", _msg, "config.stages"))
+
     # Peptide protonation: PeptideBuilder + AddHs builds the gas-phase
     # NEUTRAL form (Asp / Glu protonated, Lys / Arg neutral, etc.).
     # For sequences containing charged side chains, the physiological

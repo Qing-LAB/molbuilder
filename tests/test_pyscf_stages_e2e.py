@@ -286,6 +286,121 @@ class TestApiBuildPyscfRejectsBadStages:
 
 
 # --------------------------------------------------------------------- #
+#  Validator wires validate_stages: structural invariants that the      #
+#  generator can't recover from must surface as a typed config.stages   #
+#  error, NOT a runtime NameError on `mol_eq` from an empty STAGES      #
+#  literal.  Validation errors travel via render_script's               #
+#  ValidationError path, which returns HTTP 200 + ok=false + issues     #
+#  (per web-api.md § 1.6).                                              #
+# --------------------------------------------------------------------- #
+
+
+class TestApiBuildPyscfRejectsBrokenStages:
+
+    @staticmethod
+    def _stages_issue(body):
+        """Pull the first issue whose ``where`` is ``config.stages``."""
+        for i in body.get("issues") or []:
+            if (i.get("where") or "") == "config.stages":
+                return i
+        return None
+
+    def test_empty_stages_list_surfaces_stages_error(self, web_client):
+        """``cfg.stages = []`` -> generator would emit ``STAGES = []``
+        + an empty for-loop -> ``mol_eq`` never bound -> downstream
+        ``_save_xyz(mol_eq, ...)`` raises NameError at runtime.
+        The validator must catch this at the API tier."""
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={"xyz": _H2O_XYZ, "params": {"stages": []},
+                  "frozen_atoms": [], "regions": {}},
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body.get("ok") is False, f"expected ok=false; got {body!r}"
+        issue = self._stages_issue(body)
+        assert issue is not None, (
+            f"missing config.stages issue.  Body: {body!r}"
+        )
+        assert issue["severity"] == "error"
+        assert "empty" in issue["message"].lower() \
+            or "at least one" in issue["message"].lower()
+
+    def test_all_disabled_stages_surfaces_stages_error(self, web_client):
+        """Same trap as empty list: every stage disabled means the
+        enabled-filter produces ``[]`` at generation time."""
+        all_off = [
+            {"name": "stage1", "enabled": False},
+            {"name": "stage2", "enabled": False},
+        ]
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={"xyz": _H2O_XYZ, "params": {"stages": all_off},
+                  "frozen_atoms": [], "regions": {}},
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is False
+        issue = self._stages_issue(body)
+        assert issue is not None and issue["severity"] == "error"
+
+    def test_duplicate_stage_names_surfaces_stages_error(self, web_client):
+        """Per-stage geomeTRIC trajectory files are named
+        ``<JOB>_geom_<stage>``; duplicate names would collide on disk
+        AND duplicate-key the nested convergence_targets header."""
+        dups = [
+            {"name": "stage1", "enabled": True},
+            {"name": "stage1", "enabled": True},
+        ]
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={"xyz": _H2O_XYZ, "params": {"stages": dups},
+                  "frozen_atoms": [], "regions": {}},
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is False
+        issue = self._stages_issue(body)
+        assert issue is not None and "duplicate" in issue["message"].lower()
+
+    def test_bad_stage_name_charset_surfaces_stages_error(self, web_client):
+        """Stage names land in filesystem paths (``_geom_<stage>``);
+        bogus chars would either break filename sanitisation or
+        produce surprising path traversal."""
+        bad = [{"name": "stage 1!", "enabled": True}]
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={"xyz": _H2O_XYZ, "params": {"stages": bad},
+                  "frozen_atoms": [], "regions": {}},
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is False
+        issue = self._stages_issue(body)
+        assert issue is not None
+
+    def test_optimize_false_skips_stages_validation(self, web_client):
+        """Single-point runs (``cfg.optimize = False``) don't emit a
+        stages loop -- the structural invariants don't apply.  Pin
+        that the validator doesn't surface a stages issue on an
+        otherwise-empty stages list when optimize is off."""
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={
+                "xyz": _H2O_XYZ,
+                "params": {"optimize": False, "stages": []},
+                "frozen_atoms": [], "regions": {},
+            },
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is True, (
+            f"single-point with empty stages should NOT trip "
+            f"validate_stages; got: {body!r}"
+        )
+
+
+# --------------------------------------------------------------------- #
 #  PySCFConfig default-factory regression                                #
 # --------------------------------------------------------------------- #
 
