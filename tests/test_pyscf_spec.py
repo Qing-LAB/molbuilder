@@ -120,7 +120,11 @@ def test_no_second_gto_M_call(small_struct):
 
 
 _OPTIMIZE_BLOCK_RE = re.compile(
-    r"^\s*\w+\s*=\s*optimize\s*\(\s*\n"   # x = optimize(
+    # Match either ``x = optimize(`` (loop body) or ``return
+    # optimize(`` (inside the _mb_run_stage_opt helper introduced
+    # in #534 6c).  Both shapes have the same multi-line arg list
+    # we want to inspect.
+    r"^\s*(?:\w+\s*=|return)\s*optimize\s*\(\s*\n"
     # Body lines: anything that ISN'T a bare ``)`` line.  Negative
     # lookahead lets body lines contain balanced parens (e.g. the
     # 2026-05-27 ``prefix = _mb_outfile(JOB + ".."),`` wrapping)

@@ -53,7 +53,11 @@ def test_default_render_compiles(h2o):
         'mf.xc = "B3LYP"',
         "mf = mf.density_fit()",
         'mf.disp = "d3bj"',
-        "mol_eq = optimize(",
+        # 6c: optimize() now lives inside the _mb_run_stage_opt
+        # helper (factored out of the loop body so the 3-policy
+        # dispatch stays readable); both anchors must be present.
+        "def _mb_run_stage_opt(",
+        "    return optimize(",
         "_save_xyz(",
     ):
         assert needle in text, f"missing {needle!r}"
@@ -197,17 +201,27 @@ def test_no_optimize_drops_geom_block(h2o):
 
 def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
     """Post-#534 commit 4: the generator emits a single
-    ``mol_eq = optimize(mf, ...)`` call inside a ``for STAGE in STAGES:``
-    loop with per-stage convergence keys read from the STAGE dict.
-    Pin the structural shape so a regression that loses the loop OR the
-    per-stage kwarg list surfaces immediately.
+    ``optimize(mf, ...)`` call -- factored into the
+    ``_mb_run_stage_opt`` helper since 6c -- driven by a
+    ``for STAGE in STAGES:`` policy dispatch.  Pin the kwarg list
+    on the helper so a regression that loses any per-stage knob
+    surfaces immediately.
     """
     text = render_script(h2o, PySCFConfig())
-    # The driver loop is a single optimize() call -- not one per stage.
-    assert text.count("mol_eq = optimize(") == 1
-    # Loop header + per-stage kwargs.
+    # Exactly one optimize() call site -- inside the helper.
+    assert text.count("return optimize(") == 1, (
+        f"expected exactly 1 optimize() call inside _mb_run_stage_opt; "
+        f"got {text.count('return optimize(')}"
+    )
+    assert text.count("mol_eq = optimize(") == 0, (
+        "loop body should call helper, not optimize() directly"
+    )
+    # Loop header + helper definition + per-stage SCF tol re-set.
     assert "for STAGE in STAGES:" in text
+    assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in text
     assert "mf.conv_tol = STAGE['conv_tol']" in text
+    # Per-stage kwargs that geomeTRIC consumes via OptParams +
+    # kernel; all 7 must be threaded from STAGE on every call.
     for kw in (
         "maxsteps              = STAGE['max_steps']",
         "convergence_energy    = STAGE['etol']",
@@ -215,13 +229,22 @@ def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
         "convergence_gmax      = STAGE['gmax']",
         "convergence_drms      = STAGE['drms']",
         "convergence_dmax      = STAGE['dmax']",
-        # 5b: per-stage assert_convergence -- False on warm-up
-        # stages, True on the final enabled stage.  See
-        # test_c3_stages_loop_threads_assert_convergence_per_stage
-        # in test_output_correctness.py for the directional pin.
-        "assert_convergence    = STAGE['assert_convergence']",
+        # 6c: assert_convergence is now ``_hard_fail`` parameter of
+        # the helper, set by the per-policy dispatch in the loop.
+        # See test_c3_stages_loop_threads_per_stage_policy in
+        # test_output_correctness.py for the directional pin.
+        "assert_convergence    = _hard_fail",
     ):
         assert kw in text, f"missing per-stage kwarg: {kw}"
+    # 6c: the 3-policy dispatch.  All three branches present so
+    # generated scripts handle proceed / continue / halt correctly
+    # at runtime.
+    assert "if _policy == 'proceed':" in text
+    assert "elif _policy == 'halt':" in text
+    assert "else:  # 'continue'" in text
+    # The final-stage override is in the loop body (last stage is
+    # always 'halt' regardless of declared policy).
+    assert "_policy = ('halt' if STAGE['is_final']" in text
 
 
 def test_molwatch_log_instantiated_before_stages_loop(h2o):
@@ -234,27 +257,31 @@ def test_molwatch_log_instantiated_before_stages_loop(h2o):
     """
     text = render_script(h2o, PySCFConfig())
     inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
-    loop_at      = text.find("for STAGE in STAGES:")
-    opt_at       = text.find("mol_eq = optimize(")
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
+    helper_def   = text.find("def _mb_run_stage_opt(STAGE, _hard_fail):")
+    opt_at       = text.find("    return optimize(")
     step_cb      = text.find("callback              = _molwatch.opt_step_hook")
+    loop_at      = text.find("for STAGE in STAGES:")
     for name, off in [
         ("_molwatch instantiation", inst_at),
-        ("for STAGE in STAGES:",    loop_at),
-        ("mol_eq = optimize(",      opt_at),
         ("mf.callback wiring",      mf_callback),
+        ("_mb_run_stage_opt def",   helper_def),
+        ("return optimize(",        opt_at),
         ("opt_step callback",       step_cb),
+        ("for STAGE in STAGES:",    loop_at),
     ]:
         assert off >= 0, f"missing in script: {name}"
     # inst < mf_callback (sets the SCF-cycle hook on the prod mf)
-    #     < loop_at (the stages driver)
-    #         < opt_at (the per-stage optimize() call inside the loop)
-    #             < step_cb (the opt_step_hook kwarg INSIDE optimize)
-    assert inst_at < mf_callback < loop_at < opt_at < step_cb, (
-        "molwatch wiring out of order; expected "
-        "inst < mf_callback < loop < optimize < opt_step callback.  "
+    #     < helper_def (closes over mf + _molwatch, must follow them)
+    #         < opt_at (inside helper body)
+    #             < step_cb (opt_step_hook kwarg inside optimize)
+    #                 < loop_at (the stages driver that calls helper)
+    assert inst_at < mf_callback < helper_def < opt_at < step_cb < loop_at, (
+        "molwatch wiring out of order; expected inst < mf_callback < "
+        "helper_def < optimize < step_cb < loop.  "
         f"Got: inst={inst_at}, mf_cb={mf_callback}, "
-        f"loop={loop_at}, opt={opt_at}, step={step_cb}"
+        f"helper={helper_def}, opt={opt_at}, step={step_cb}, "
+        f"loop={loop_at}"
     )
 
 

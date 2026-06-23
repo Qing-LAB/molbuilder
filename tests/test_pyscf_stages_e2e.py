@@ -114,7 +114,11 @@ class TestApiBuildPyscfAcceptsStages:
         # Generator emits STAGES literal + per-stage driver.
         assert "STAGES = [" in script, "STAGES literal missing"
         assert "for STAGE in STAGES:" in script, "stages loop missing"
-        assert "mol_eq = optimize(" in script
+        # 6c: optimize() now lives inside the _mb_run_stage_opt
+        # helper (factored out of the loop body so the 3-policy
+        # dispatch reads cleanly).
+        assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in script
+        assert "return optimize(" in script
         # Per-stage kwarg keyed on the STAGE dict (not a hardcoded
         # value that would defeat per-stage control).
         assert "convergence_grms      = STAGE['grms']" in script
@@ -139,11 +143,16 @@ class TestApiBuildPyscfAcceptsStages:
         assert parsed[0]["max_steps"] == 50
         assert parsed[1]["conv_tol"] == 1.0e-9
         assert parsed[1]["max_steps"] == 200
-        # Per-stage assert_convergence: warm-up (stage1) False, final
-        # (stage2) True so geomeTRIC's hard-failure semantics apply
-        # only to the production tier.
-        assert parsed[0]["assert_convergence"] is False
-        assert parsed[1]["assert_convergence"] is True
+        # 6c: per-stage non-convergence policy fields.  The user
+        # payload didn't pass on_nonconvergence so defaults from
+        # StageSpec apply: ``halt`` for un-customised rows.  The
+        # is_final flag is derived from position at generation time
+        # (last enabled = True).  These replace 5b's assert_convergence.
+        assert "on_nonconvergence" in parsed[0]
+        assert parsed[0]["is_final"] is False
+        assert parsed[1]["is_final"] is True
+        # continue_retries: integer in [1, 5], default 1.
+        assert parsed[0]["continue_retries"] == 1
 
     def test_stages_payload_passes_through_validator(self, web_client):
         """A stages payload doesn't trip the existing PySCF validator.

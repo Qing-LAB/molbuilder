@@ -142,42 +142,58 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_c3_stages_loop_threads_assert_convergence_per_stage(small_struct):
-    """Per-stage ``assert_convergence``: False on every enabled stage
-    EXCEPT the last, which keeps geomeTRIC's default (True).
+def test_c3_stages_loop_threads_per_stage_policy(small_struct):
+    """Per-stage ``on_nonconvergence`` policy with three branches
+    (proceed / continue / halt), plus the final-stage override that
+    forces 'halt' regardless of the declared value.
 
-    Rationale: earlier stages are warm-up tiers (intentionally loose
-    -- stage1 default is gmax=2e-3 Ha/Bohr + max_steps=50).  Without
-    the False override, PySCF's ``pyscf.geomopt.geometric_solver.
-    kernel`` defaults assert_convergence to True, so a stage1 that
-    exhausts max_steps without hitting its gmax raises RuntimeError
-    and kills the whole run before stage2 (publishable tier) gets to
-    refine.  The final stage keeps True so a real production-tier
-    non-convergence DOES surface.
+    Rationale: this is the #534 commit 6c generalisation of 5b's
+    hardcoded True/False assert_convergence.  The user (not
+    molbuilder) picks per-stage what should happen when geomeTRIC
+    exhausts max_steps without converging.  The script's final-
+    stage contract (must produce a converged answer) is enforced
+    at render time AND re-enforced at runtime via the ``is_final``
+    override.
     """
     text = render_script(small_struct, PySCFConfig())
-    main_block = text.split("for STAGE in STAGES:")[1]
-    optimize_block = main_block.split("dm_prev =")[0]
-
-    # The optimize() call MUST pass assert_convergence keyed on STAGE
-    # (not a hard-coded literal that would defeat per-stage control).
-    assert "assert_convergence    = STAGE['assert_convergence']" in optimize_block, (
-        "stages-loop optimize() must thread assert_convergence per-"
-        f"stage.  optimize block was:\n{optimize_block}"
+    # The optimize() call (now factored into _mb_run_stage_opt
+    # helper) passes assert_convergence keyed on the helper's
+    # ``_hard_fail`` parameter, not a hardcoded value.
+    helper_block = text.split("def _mb_run_stage_opt(")[1].split(
+        "for STAGE in STAGES:")[0]
+    assert "assert_convergence    = _hard_fail" in helper_block, (
+        f"helper must thread assert_convergence via _hard_fail "
+        f"param.  helper body:\n{helper_block}"
     )
-    # The STAGES literal at the top must mark only the LAST enabled
-    # stage as ``'assert_convergence': True``.  For the default
-    # 3-stage config (stage1 ☑, stage2 ☑, stage3 ☐) the two enabled
-    # stages are stage1 (False) + stage2 (True).
+    # Loop body: the 3-policy dispatch with the final-stage override.
+    loop_block = text.split("for STAGE in STAGES:")[1]
+    loop_block = loop_block.split("\nprint(f")[0]
+    assert "_policy = ('halt' if STAGE['is_final']" in loop_block, (
+        "loop must override declared policy to 'halt' on the "
+        "final stage -- the script's contract is that the final "
+        "tier must converge"
+    )
+    for branch in ("if _policy == 'proceed':",
+                   "elif _policy == 'halt':",
+                   "else:  # 'continue'"):
+        assert branch in loop_block, (
+            f"missing policy branch: {branch!r}.  loop:\n{loop_block}"
+        )
+    # The STAGES literal must carry per-stage policy + retries +
+    # is_final fields (replaces 5b's assert_convergence bool).
     stages_block = text.split("STAGES = [")[1].split("\n]")[0]
-    assert stages_block.count("'assert_convergence': True") == 1, (
-        f"exactly ONE stage should have assert_convergence=True "
-        f"(the last enabled).  STAGES literal:\n{stages_block}"
+    assert "'on_nonconvergence':" in stages_block
+    assert "'continue_retries':" in stages_block
+    # is_final: exactly one True (the last enabled), >=1 False.
+    assert stages_block.count("'is_final':          True") == 1, (
+        f"exactly ONE stage should be marked is_final=True (the "
+        f"last enabled).  STAGES literal:\n{stages_block}"
     )
-    assert stages_block.count("'assert_convergence': False") >= 1, (
-        f"at least one warm-up stage should carry "
-        f"assert_convergence=False.  STAGES literal:\n{stages_block}"
-    )
+    assert stages_block.count("'is_final':          False") >= 1
+    # Default per-tier policy from _default_stages: stage1=proceed,
+    # stage2=halt (last enabled in the default 2-tier config).
+    assert "'on_nonconvergence': 'proceed'" in stages_block
+    assert "'on_nonconvergence': 'halt'" in stages_block
 
 
 # --------------------------------------------------------------------- #
