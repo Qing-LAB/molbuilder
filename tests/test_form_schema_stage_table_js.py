@@ -51,13 +51,16 @@ STAGE_TABLE_SCHEMA = {
             "default": [
                 {"name": "stage1", "enabled": True,  "conv_tol": 1e-7,
                  "gmax": 2e-3, "grms": 1.3e-3, "dmax": 7.2e-3,
-                 "drms": 4.8e-3, "etol": 1e-5, "max_steps": 50},
+                 "drms": 4.8e-3, "etol": 1e-5, "max_steps": 50,
+                 "on_nonconvergence": "proceed", "continue_retries": 1},
                 {"name": "stage2", "enabled": True,  "conv_tol": 1e-9,
                  "gmax": 4.5e-4, "grms": 3e-4, "dmax": 1.8e-3,
-                 "drms": 1.2e-3, "etol": 1e-6, "max_steps": 200},
+                 "drms": 1.2e-3, "etol": 1e-6, "max_steps": 200,
+                 "on_nonconvergence": "halt", "continue_retries": 1},
                 {"name": "stage3", "enabled": False, "conv_tol": 1e-10,
                  "gmax": 1.5e-5, "grms": 1e-5, "dmax": 6e-5,
-                 "drms": 4e-5, "etol": 1e-6, "max_steps": 100},
+                 "drms": 4e-5, "etol": 1e-6, "max_steps": 100,
+                 "on_nonconvergence": "halt", "continue_retries": 1},
             ],
             "stage_fields": [
                 {"name": "name",      "label": "Name",     "kind": "text",
@@ -78,6 +81,19 @@ STAGE_TABLE_SCHEMA = {
                  "unit": "Hartree",  "step": "any", "default": 1e-6},
                 {"name": "max_steps", "label": "Max steps", "kind": "int",
                  "min": 1, "max": 10000, "default": 200},
+                # 6b: choice cell for the per-stage non-convergence
+                # policy.  JS dispatches on ``kind: "choice"`` to a
+                # <select> populated from ``choices``.
+                {"name": "on_nonconvergence",
+                 "label": "If max_steps runs out",
+                 "kind": "choice",
+                 "choices": ["proceed", "continue", "halt"],
+                 "default": "halt"},
+                {"name": "continue_retries",
+                 "label": "Continue retries",
+                 "kind": "int",
+                 "min": 1, "max": 5,
+                 "default": 1},
             ],
         }],
     }],
@@ -167,10 +183,11 @@ def test_stage_table_renders_three_columns(page, flask_server):
 
 
 def test_stage_table_renders_one_row_per_param(page, flask_server):
-    """One <tr> per stage_field (9 rows)."""
+    """One <tr> per stage_field.  11 rows = 9 convergence knobs +
+    2 added in #534 commit 6b (on_nonconvergence + continue_retries)."""
     _mount(page, flask_server, STAGE_TABLE_SCHEMA)
     rows = page.locator(".schema-stage-table tbody tr").count()
-    assert rows == 9
+    assert rows == 11
 
 
 def test_stage_table_cells_pre_populated_from_defaults(page, flask_server):
@@ -345,3 +362,73 @@ def test_setvalues_ignores_extra_stages_beyond_schema(page, flask_server):
     vals = _collect(page)
     assert len(vals["stages"]) == 3   # unchanged
     assert vals["stages"][2]["enabled"] is True
+
+
+# --------------------------------------------------------------------- #
+#  6b: choice cell-kind (per-stage on_nonconvergence dropdown)          #
+# --------------------------------------------------------------------- #
+
+
+def test_choice_cell_renders_as_select_with_options(page, flask_server):
+    """The new ``kind: "choice"`` widget renders a ``<select>`` with
+    one ``<option>`` per entry in ``sf.choices``.  Per-cell id keeps
+    the standard ``<f.id>-stage<idx>-<param>`` shape so collect/set
+    round-trip works without special-casing."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    sel = page.locator("#p-stages-stage0-on_nonconvergence")
+    assert sel.count() == 1
+    # Tag name is <select>.
+    tag = sel.evaluate("el => el.tagName")
+    assert tag == "SELECT", tag
+    # Three options, in order.
+    opts = sel.locator("option").all_text_contents()
+    assert opts == ["proceed", "continue", "halt"], opts
+
+
+def test_choice_cell_pre_populated_from_default(page, flask_server):
+    """Each stage's row pre-selects the value carried by its default
+    dict.  Stage 1 default = 'proceed'; Stage 2 + 3 default = 'halt'."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    for idx, expected in enumerate(["proceed", "halt", "halt"]):
+        v = page.evaluate(
+            f"document.getElementById("
+            f"'p-stages-stage{idx}-on_nonconvergence').value"
+        )
+        assert v == expected, (
+            f"stage{idx}.on_nonconvergence pre-selected = {v!r}; "
+            f"expected {expected!r}"
+        )
+
+
+def test_choice_cell_collect_round_trips_user_edit(page, flask_server):
+    """User flips stage1 dropdown 'proceed' -> 'continue'; collectForm
+    returns the new value (verifies the choice cell goes through the
+    same .value path as text/number cells, no special case needed)."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    page.select_option("#p-stages-stage0-on_nonconvergence", "continue")
+    vals = _collect(page)
+    assert vals["stages"][0]["on_nonconvergence"] == "continue"
+    # Sibling continue_retries cell still defaults to 1 (untouched).
+    assert vals["stages"][0]["continue_retries"] == 1
+
+
+def test_choice_cell_setvalues_round_trip(page, flask_server):
+    """setValues writes the dropdown via ``elx.value = ...``;
+    a subsequent collectForm reads the new selection back."""
+    _mount(page, flask_server, STAGE_TABLE_SCHEMA)
+    page.evaluate(
+        "() => window.molbuilder.formSchema.setValues("
+        "  document.getElementById('container'),"
+        "  window.__schema_for_test, "
+        "  {stages: [{on_nonconvergence: 'halt', continue_retries: 3},"
+        "           {on_nonconvergence: 'continue', continue_retries: 2},"
+        "           {}]})"
+    )
+    vals = _collect(page)
+    assert vals["stages"][0]["on_nonconvergence"] == "halt"
+    assert vals["stages"][0]["continue_retries"] == 3
+    assert vals["stages"][1]["on_nonconvergence"] == "continue"
+    assert vals["stages"][1]["continue_retries"] == 2
+    # Stage 3 untouched ({} payload) -> defaults preserved.
+    assert vals["stages"][2]["on_nonconvergence"] == "halt"
+    assert vals["stages"][2]["continue_retries"] == 1

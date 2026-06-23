@@ -273,6 +273,22 @@
             if (sf.max !== undefined) inp.max = sf.max;
             return inp;
         }
+        if (sf.kind === "choice") {
+            // <select> dropdown for str fields with a ``choices``
+            // enum (#534 commit 6b — first user: stages-table
+            // ``on_nonconvergence`` policy).  The list comes from
+            // sf.choices, which the Python schema layer copies
+            // verbatim from the dataclass field metadata.
+            const sel = el("select", { id: cellId });
+            (sf.choices || []).forEach(function (opt) {
+                const o = el("option", { value: String(opt) }, String(opt));
+                if (String(value) === String(opt)) {
+                    o.selected = true;
+                }
+                sel.appendChild(o);
+            });
+            return sel;
+        }
         // text fallback
         const attrs = {
             id: cellId, type: "text", autocomplete: "off",
