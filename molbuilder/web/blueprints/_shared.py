@@ -773,7 +773,17 @@ def _stagespec_to_field_schemas(elem_cls) -> List[Dict[str, Any]]:
             row["kind"] = "number"
             row.setdefault("step", "any")
         elif t is str:
-            row["kind"] = "text"
+            # `str` with a ``choices`` enum -> dropdown widget; the
+            # plain string variant stays as a text input.  #534 6a
+            # introduced the first stage-table choice field
+            # (``on_nonconvergence``); the JS renderer dispatches on
+            # ``kind: "choice"`` to render a ``<select>`` with the
+            # provided ``choices`` tuple.
+            if "choices" in md:
+                row["kind"] = "choice"
+                row["choices"] = list(md["choices"])
+            else:
+                row["kind"] = "text"
         else:
             raise TypeError(
                 f"_stagespec_to_field_schemas: field {elem_cls.__name__}."

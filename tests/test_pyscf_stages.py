@@ -151,6 +151,58 @@ def test_validate_stages_non_int_max_steps_rejected():
 
 
 # --------------------------------------------------------------------- #
+#  validate_stages — per-stage non-convergence policy (#534 commit 6a)  #
+# --------------------------------------------------------------------- #
+
+
+def test_validate_stages_on_nonconvergence_enum_rejected():
+    """Only 3 values are valid: proceed / continue / halt.  Anything
+    else (typo, missing, wrong shape) must be caught at the
+    validator tier before reaching the generator (which would emit
+    a string literal that the script's runtime policy dispatch
+    wouldn't recognise)."""
+    for bad in ("PROCEED", "skip", "", None, 0, True):
+        s = StageSpec(name="s", on_nonconvergence=bad)  # type: ignore[arg-type]
+        errs = validate_stages([s])
+        assert any("on_nonconvergence" in e for e in errs), (
+            f"validator should reject on_nonconvergence={bad!r}; "
+            f"got errors {errs!r}"
+        )
+
+
+def test_validate_stages_continue_retries_range_rejected():
+    """continue_retries must be a positive int in [1, 5].  A
+    user accidentally typing 0 or a huge number is the load-
+    bearing case — unbounded retries would let one bad
+    structure run forever."""
+    for bad in (0, -1, 6, 100, 2.5, None, "two"):
+        s = StageSpec(name="s", continue_retries=bad)  # type: ignore[arg-type]
+        errs = validate_stages([s])
+        assert any("continue_retries" in e for e in errs), (
+            f"validator should reject continue_retries={bad!r}"
+        )
+
+
+def test_validate_stages_default_carries_per_tier_policy():
+    """Pin the per-tier defaults so a regression that resets all 3
+    rows to the StageSpec class default (``halt``) surfaces.  The
+    publication-quality workflow depends on stage1='proceed' so
+    a loose warm-up that doesn't fully converge in 50 steps
+    still hands off to stage2 instead of killing the whole run.
+    """
+    s1, s2, s3 = _default_stages()
+    assert s1.on_nonconvergence == "proceed"
+    assert s2.on_nonconvergence == "halt"
+    assert s3.on_nonconvergence == "halt"
+    # continue_retries defaults to 1 on every tier (only meaningful
+    # when on_nonconvergence=='continue', but always set so the
+    # form has a sensible value if the user flips the dropdown).
+    assert s1.continue_retries == 1
+    assert s2.continue_retries == 1
+    assert s3.continue_retries == 1
+
+
+# --------------------------------------------------------------------- #
 #  PySCFConfig.stages — wiring                                          #
 # --------------------------------------------------------------------- #
 
@@ -220,8 +272,9 @@ def test_stages_schema_carries_default_three_stage_list_of_dicts():
 
 def test_stages_schema_carries_per_row_field_descriptors():
     """``stage_fields`` is the per-column shape the JS table
-    renderer uses to label columns + pick widgets per cell.  9
-    fields in declaration order; types map to ``kind``."""
+    renderer uses to label columns + pick widgets per cell.  11
+    fields in declaration order (9 numeric/text + the 2 added in
+    #534 commit 6a for the per-stage non-convergence policy)."""
     from molbuilder.web.blueprints._shared import dataclass_to_form_schema
     schema = dataclass_to_form_schema(PySCFConfig, id_prefix="test")
     f = _find_field(schema, "stages")
@@ -229,17 +282,27 @@ def test_stages_schema_carries_per_row_field_descriptors():
     assert [sf["name"] for sf in stage_fields] == [
         "name", "enabled", "conv_tol", "gmax", "grms",
         "dmax", "drms", "etol", "max_steps",
+        # #534 6a: per-stage non-convergence policy
+        "on_nonconvergence", "continue_retries",
     ]
     kinds = {sf["name"]: sf["kind"] for sf in stage_fields}
-    assert kinds["name"]      == "text"
-    assert kinds["enabled"]   == "checkbox"
-    assert kinds["conv_tol"]  == "number"
-    assert kinds["gmax"]      == "number"
-    assert kinds["max_steps"] == "int"
+    assert kinds["name"]              == "text"
+    assert kinds["enabled"]           == "checkbox"
+    assert kinds["conv_tol"]          == "number"
+    assert kinds["gmax"]              == "number"
+    assert kinds["max_steps"]         == "int"
+    assert kinds["on_nonconvergence"] == "choice"
+    assert kinds["continue_retries"]  == "int"
     units = {sf["name"]: sf.get("unit") for sf in stage_fields}
     assert units["conv_tol"] == "Hartree"
     assert units["gmax"]     == "Ha/Bohr"
     assert units["dmax"]     == "Å"
+    # 6a: on_nonconvergence must carry the 3-value enum the JS
+    # dropdown renders.
+    by_name = {sf["name"]: sf for sf in stage_fields}
+    assert tuple(by_name["on_nonconvergence"]["choices"]) == (
+        "proceed", "continue", "halt",
+    )
 
 
 def test_stages_coerce_round_trips_list_of_dicts_back_to_stagespec():

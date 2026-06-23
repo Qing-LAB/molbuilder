@@ -115,6 +115,58 @@ class StageSpec:
         "engine_key": "geomeTRIC maxsteps",
         "help":       "max geomeTRIC iterations in this stage",
     })
+    # Per-stage non-convergence policy (task #534 commit 6).
+    # Three choices for what to do if ``max_steps`` runs out
+    # without geomeTRIC's 5 convergence criteria all being met:
+    #
+    #   "proceed"  — take the partial mol_eq and hand off to the
+    #                next stage anyway.  Emits a WARN line to
+    #                stdout + .molwatch.log.  Sensible for loose
+    #                warm-up stages where the next tier can
+    #                refine from "not bad" geometry.
+    #
+    #   "continue" — re-enter optimize() on THIS stage's same
+    #                convergence targets, warm-started from the
+    #                current geometry.  Repeat up to
+    #                ``continue_retries`` times; if still not
+    #                converged, fall through to "halt".  Useful
+    #                for cheap stages where you have budget to
+    #                give and suspect the optimizer was almost
+    #                there but ran out of steps.
+    #
+    #   "halt"     — raise RuntimeError + stop the whole script.
+    #                Right for publishable / TIGHT tiers where
+    #                failure is a real signal (SCF instability,
+    #                wrong functional/basis, or quasi-flat PES).
+    #                Silent proceed risks shipping wrong physics.
+    #
+    # The LAST enabled stage's value is IGNORED at script-render
+    # time and forced to "halt" -- the script's contract is to
+    # produce a converged answer, so the final tier must succeed
+    # or raise.  Setting "halt" explicitly on a non-final stage
+    # AND on the next-tier's expected failure mode is the
+    # publication-defensible default.
+    on_nonconvergence: str = field(default="halt", metadata={
+        "label":      "If max_steps runs out",
+        "choices":    ("proceed", "continue", "halt"),
+        "engine_key": "(molbuilder: per-stage non-convergence policy)",
+        "help":       "what to do if geomeTRIC's 5 criteria aren't all "
+                      "met when max_steps runs out: proceed (move on to "
+                      "next stage with the partial geometry), continue "
+                      "(extend this stage with more iterations), halt "
+                      "(raise + stop the whole script).  The LAST "
+                      "enabled stage's value is ignored; the final tier "
+                      "always halts on failure.",
+    })
+    continue_retries: int = field(default=1, metadata={
+        "label":      "Continue retries", "range": (1, 5),
+        "engine_key": "(molbuilder: max optimize() re-entries when "
+                      "on_nonconvergence=continue)",
+        "help":       "only meaningful when on_nonconvergence='continue': "
+                      "how many additional max_steps batches to spend "
+                      "before falling through to halt.  Total step "
+                      "budget = max_steps * (1 + continue_retries).",
+    })
 
 
 def _default_stages() -> List[StageSpec]:
@@ -127,25 +179,42 @@ def _default_stages() -> List[StageSpec]:
 
     Most users tick 1 + 2 and leave 3 off.  Power users override any
     knob per stage via the form (lands in #534 commit 2)."""
+    # Per-stage non-convergence defaults (#534 commit 6a):
+    #
+    #   stage1 = proceed   — loose warm-up; "good enough" geometry
+    #                        is the goal, hand off to publishable.
+    #   stage2 = halt      — publishable tier; failure here is a
+    #                        real signal (don't silently move to
+    #                        tighter tols, which won't help).
+    #   stage3 = halt      — TIGHT tier; final stage anyway, the
+    #                        value is force-ignored at render time
+    #                        (last stage always halts).
+    #
+    # The user can override any of these in the form's stage-table
+    # widget; the LAST enabled stage's value is shown disabled +
+    # labelled "halt (final)" so the contract stays explicit.
     return [
         StageSpec(name="stage1", enabled=True,
                   conv_tol=1.0e-7,
                   gmax=2.0e-3, grms=1.3e-3,
                   dmax=7.2e-3, drms=4.8e-3,
                   etol=1.0e-5,
-                  max_steps=50),
+                  max_steps=50,
+                  on_nonconvergence="proceed"),
         StageSpec(name="stage2", enabled=True,
                   conv_tol=1.0e-9,
                   gmax=4.5e-4, grms=3.0e-4,
                   dmax=1.8e-3, drms=1.2e-3,
                   etol=1.0e-6,
-                  max_steps=200),
+                  max_steps=200,
+                  on_nonconvergence="halt"),
         StageSpec(name="stage3", enabled=False,
                   conv_tol=1.0e-10,
                   gmax=1.5e-5, grms=1.0e-5,
                   dmax=6.0e-5, drms=4.0e-5,
                   etol=1.0e-6,
-                  max_steps=100),
+                  max_steps=100,
+                  on_nonconvergence="halt"),
     ]
 
 
@@ -199,6 +268,16 @@ def validate_stages(stages: List[StageSpec]) -> List[str]:
             errors.append(
                 f"{prefix}.max_steps = {s.max_steps!r}: "
                 f"must be a positive integer")
+        # 6a: per-stage non-convergence policy + retries
+        if s.on_nonconvergence not in ("proceed", "continue", "halt"):
+            errors.append(
+                f"{prefix}.on_nonconvergence = {s.on_nonconvergence!r}: "
+                f"must be one of 'proceed' / 'continue' / 'halt'")
+        if (not isinstance(s.continue_retries, int)
+                or s.continue_retries < 1 or s.continue_retries > 5):
+            errors.append(
+                f"{prefix}.continue_retries = {s.continue_retries!r}: "
+                f"must be an integer in [1, 5]")
     return errors
 
 
