@@ -543,11 +543,16 @@ def render_script(struct: Structure,
             out.append("# steps).  Berny is built into PySCF, fewer dependencies,")
             out.append("# but less robust on flexible biomolecules.")
             out.append("#")
-            out.append("# Convergence thresholds (Ha, Ha/Bohr):")
-            out.append("#   energy 1e-6     standard")
-            out.append("#   grms   3e-4     Ha/Bohr  (~ 0.015 eV/Ang)")
-            out.append("#   gmax   4.5e-4   Ha/Bohr  (~ 0.023 eV/Ang)")
-            out.append("# Loosen by 3-10x for screening; tighten 10x for phonons.")
+            out.append("# Per-tier convergence (Gaussian-OPT family):")
+            out.append("#   screening    gmax 2.0e-3 Ha/Bohr  conv_tol 1e-7  max_steps 30")
+            out.append("#   loose preopt gmax 2.0e-3 Ha/Bohr  conv_tol 1e-7  max_steps 50")
+            out.append("#   publishable  gmax 4.5e-4 Ha/Bohr  conv_tol 1e-9  max_steps 200")
+            out.append("#                (this is the Gaussian-OPT default and what reviewers expect)")
+            out.append("#   tight        gmax 1.5e-5 Ha/Bohr  conv_tol 1e-10 max_steps 100")
+            out.append("#                (vib / IR / NEB barriers)")
+            out.append("# The cfg.stages ladder ships these as default rows.  See")
+            out.append("# docs/engines/optimization-tuning.md sect. 4 for the full preset")
+            out.append("# table + SIESTA <-> PySCF crosswalk + citations.")
         # Frozen-atom constraints (three-stage contract carrier).  When
         # Structure.frozen_atoms is non-empty AND we're using the
         # geomeTRIC optimizer (only one with constraint support), write

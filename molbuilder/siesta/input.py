@@ -607,10 +607,19 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # Basis & grid
     out.append("# --- Basis & grid ---")
     if v: out += [
-        "# MeshCutoff: real-space mesh cutoff (Ry).  Range 200-500.",
-        "#   Higher = more accurate forces, slower (cost cubic in cutoff).",
-        "#   Increase if forces look noisy or your pseudo has a hard core",
-        "#   (transition metals, oxides typically need 400+).",
+        "# MeshCutoff: real-space integration grid (Ry).  Sets the",
+        "# spacing of the 3D mesh SIESTA uses for Hartree + XC",
+        "# potentials, via the plane-wave-equivalent kinetic-energy",
+        "# cutoff.  Per-tier:",
+        "#   150     screening (sanity-check only)",
+        "#   200-250 loose preopt",
+        "#   350     publishable (forces stable to < 0.01 eV/Ang on",
+        "#           organic + Au systems)",
+        "#   500+    tight / vibrational (egg-box noise below 0.001",
+        "#           eV/Ang; 600 for first-row elements)",
+        "# Below 150 Ry the forces / energies are noticeably wrong on",
+        "# organic + biomolecule systems.  Test by varying +-50 Ry.",
+        "# See docs/engines/optimization-tuning.md sect. 2.6.",
     ]
     out.append(f"MeshCutoff {cfg.mesh_cutoff} Ry")
     if v: out += [
@@ -702,11 +711,17 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     if v: out += [
         "",
-        "# DM.Tolerance: density-matrix convergence threshold.",
-        "# Range 1e-6 - 1e-4.  Tighter = more accurate + slower.",
-        "#   1e-5    standard for relaxation",
-        "#   1e-6    band structure / accurate forces",
-        "#   1e-4    quick screening",
+        "# DM.Tolerance: density-matrix element convergence threshold",
+        "# for the inner SCF loop.  Forces are derived from the",
+        "# converged density -- sloppy SCF -> noisy forces -> optimiser",
+        "# thrashes.  Per-tier:",
+        "#   1e-3    screening (sanity-check only)",
+        "#   1e-4    loose preopt / publishable",
+        "#   1e-5    tight (vib / IR / accurate forces)",
+        "#   1e-6    very-tight (band structure, phonons)",
+        "# Rule of thumb: keep SCF tol ~10x tighter than the force-",
+        "# precision target you want at convergence.  See",
+        "# docs/engines/optimization-tuning.md sect. 2.5.",
     ]
     out.append(f"DM.Tolerance      {cfg.dm_tolerance:.0e}")
 
@@ -1005,12 +1020,24 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
         out.append("# --- Geometry optimisation / dynamics ---")
         if v: out += [
-            "# MD.TypeOfRun valid values:",
-            "#   CG       Conjugate Gradients geometry optimisation (robust default)",
-            "#   Broyden  Broyden (BFGS-like), often faster on flat energy surfaces",
-            "#   FIRE     Fast Inertial Relaxation Engine, good for large systems",
-            "#   Verlet   velocity-Verlet NVE molecular dynamics (constant energy)",
-            "#   Nose     Nose-Hoover NVT molecular dynamics (constant temperature)",
+            "# MD.TypeOfRun -- algorithm tier guidance:",
+            "#   CG       Conjugate Gradients.  Best for loose warm-up",
+            "#            stages (far from minimum, large forces).  No",
+            "#            memory.  OSCILLATES near a minimum on stiff /",
+            "#            coupled systems (metals, organic-on-metal,",
+            "#            vdW stacks) -- if max-force fluctuates instead",
+            "#            of descending, switch to Broyden.",
+            "#   Broyden  Quasi-Newton (BFGS-like).  Best for publishable",
+            "#            / tight stages, especially where CG oscillates.",
+            "#            Memory: keeps ~5 history vectors.",
+            "#   FIRE     Fast Inertial Relaxation Engine.  Robust on",
+            "#            rough energy landscapes (random-built initial",
+            "#            geometries).  Slower than Broyden near a minimum.",
+            "#   Verlet   NVE molecular dynamics (NOT relax).",
+            "#   Nose     Nose-Hoover NVT molecular dynamics (NOT relax).",
+            "# Recipe: stage 1 CG -> stage 2 Broyden (refine).  See",
+            "# docs/engines/optimization-tuning.md sect. 2.1 for full",
+            "# algorithm comparison + citations.",
         ]
         out.append(f"MD.TypeOfRun {cfg.relax_type}")
 
@@ -1029,19 +1056,30 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             # Verlet / Nose dynamics.
             if v: out += [
                 "",
-                "# MD.MaxForceTol: convergence threshold on max atomic force.",
-                "# Range 0.005 - 0.05 eV/Ang.",
-                "#   0.04    SIESTA default (loose)",
-                "#   0.02    typical production",
-                "#   0.01    accurate properties",
-                "#   0.005   vibrational analysis / phonons",
+                "# MD.MaxForceTol: max-atomic-force convergence threshold.",
+                "# Per-tier (eV/Ang):",
+                "#   0.10    screening (sanity-check only)",
+                "#   0.05    loose preopt",
+                "#   0.04    publishable (Gaussian-OPT default)",
+                "#   0.01    tight (vibrational analysis / phonons)",
+                "#   0.001   very-tight (NEB barrier heights to ~1 kcal/mol)",
+                "# SIESTA only checks max force; geomeTRIC / Gaussian check 5",
+                "# criteria.  See docs/engines/optimization-tuning.md sect. 2.3.",
             ]
             out.append(f"MD.MaxForceTol {cfg.relax_force_tol} eV/Ang")
             if v: out += [
                 "",
-                f"# {displ_kw}: maximum atom displacement per step (Ang).",
-                "# Smaller = cautious + stable.  0.05 is safe for nearly-converged",
-                "# structures; 0.10-0.20 is fine far from the minimum.",
+                f"# {displ_kw}: maximum atom displacement per optimiser step (Ang).",
+                "# Hard ceiling that catches line-search over-shoot.",
+                "# Per-tier (Ang):",
+                "#   0.30    screening",
+                "#   0.20    loose preopt (SIESTA default)",
+                "#   0.05    publishable",
+                "#   0.02    tight (vib/IR)",
+                "# Symptom of too-large cap: max-force oscillates instead of",
+                "# descending (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...).",
+                "# Halve the cap and continue.  See docs/engines/optimization-",
+                "# tuning.md sect. 2.2.",
             ]
             out.append(f"{displ_kw} {cfg.relax_max_displ} Ang")
         else:
