@@ -115,17 +115,35 @@ class TestApiBuildPyscfAcceptsStages:
         assert "STAGES = [" in script, "STAGES literal missing"
         assert "for STAGE in STAGES:" in script, "stages loop missing"
         assert "mol_eq = optimize(" in script
+        # Per-stage kwarg keyed on the STAGE dict (not a hardcoded
+        # value that would defeat per-stage control).
         assert "convergence_grms      = STAGE['grms']" in script
-        # Only the two ENABLED rows from _PUBLISHABLE_STAGES land
-        # in the literal (stage3 has enabled=False).
-        assert "'name':      'stage1'" in script
-        assert "'name':      'stage2'" in script
-        assert "'name':      'stage3'" not in script, (
-            "disabled stage leaked into STAGES literal"
+        assert "convergence_gmax      = STAGE['gmax']" in script
+        assert "mf.conv_tol = STAGE['conv_tol']" in script
+
+        # The STAGES literal must round-trip via ast.literal_eval to
+        # the EXACT enabled-stage payload (not a substring check that
+        # could pass with hardcoded defaults inside the loop body).
+        import ast
+        stages_text = script.split("STAGES = ")[1].split("\n]")[0] + "\n]"
+        parsed = ast.literal_eval(stages_text)
+        assert isinstance(parsed, list) and len(parsed) == 2, (
+            f"expected 2 enabled stages in STAGES literal; got "
+            f"{len(parsed) if isinstance(parsed, list) else type(parsed)}"
         )
-        # Per-stage conv_tol literals: stage1 = 1e-07, stage2 = 1e-09.
-        assert "'conv_tol':  1e-07" in script
-        assert "'conv_tol':  1e-09" in script
+        # Disabled stage3 must NOT leak through.
+        names = [row["name"] for row in parsed]
+        assert names == ["stage1", "stage2"], names
+        # Values match _PUBLISHABLE_STAGES exactly.
+        assert parsed[0]["conv_tol"] == 1.0e-7
+        assert parsed[0]["max_steps"] == 50
+        assert parsed[1]["conv_tol"] == 1.0e-9
+        assert parsed[1]["max_steps"] == 200
+        # Per-stage assert_convergence: warm-up (stage1) False, final
+        # (stage2) True so geomeTRIC's hard-failure semantics apply
+        # only to the production tier.
+        assert parsed[0]["assert_convergence"] is False
+        assert parsed[1]["assert_convergence"] is True
 
     def test_stages_payload_passes_through_validator(self, web_client):
         """A stages payload doesn't trip the existing PySCF validator.

@@ -122,18 +122,28 @@ file they point molwatch at.  The unified `<job>.molwatch.log`
 - `cfg.optimize=False` produces a single-point script: `mf.kernel()`
   is called, no `optimize(...)`, no trajectory files.
 
-### Stages-loop failure must surface
+### Per-stage assert_convergence
 
-The per-stage `optimize(mf, ...)` call inside the stages loop
-**MUST NOT** set `assert_convergence`, so geomeTRIC's default
-`True` applies.  A stage that exhausts its `max_steps` without
-converging then raises — which is the user's signal to add a
-looser warm-up stage at the front of `cfg.stages`, raise the
-per-stage `max_steps`, or relax the per-stage `grms`/`gmax`
-targets.  The publication-guide three-stage default already
-includes a loose stage 1 specifically to absorb bad starting
-geometries, so the production stages can keep their tight
-convergence targets.
+The per-stage `optimize(mf, ...)` call **MUST** pass
+`assert_convergence` as a per-stage field on the STAGE dict:
+- `False` on every enabled stage **EXCEPT the last**.  Warm-up
+  stages are intentionally loose (stage 1 default: `gmax =
+  2 × 10⁻³ Ha/Bohr`, `max_steps = 50`); a stage that exhausts
+  its `max_steps` without hitting `gmax` should hand off to the
+  next stage rather than raise `RuntimeError` and kill the whole
+  run.
+- `True` on the **last enabled stage** (the production tier).  A
+  real non-convergence here is the user's signal that the SCF is
+  wrong or the geometry needs an extra looser-stage prefix —
+  surfacing it as a hard failure is the right call.
+
+Without the per-stage override, PySCF's
+`pyscf.geomopt.geometric_solver.kernel` defaults
+`assert_convergence` to `True`, so the first warm-up stage's
+intentionally-loose tolerance would `RuntimeError` before the
+publishable tier ever ran.  The publication-guide three-stage
+default is designed around this: stage 1 (loose, ☑) → stage 2
+(publishable, ☑, asserts) → stage 3 (TIGHT, ☐ by default).
 
 ## Spin / method compatibility
 

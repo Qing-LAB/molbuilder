@@ -183,6 +183,11 @@ def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
         "convergence_gmax      = STAGE['gmax']",
         "convergence_drms      = STAGE['drms']",
         "convergence_dmax      = STAGE['dmax']",
+        # 5b: per-stage assert_convergence -- False on warm-up
+        # stages, True on the final enabled stage.  See
+        # test_c3_stages_loop_threads_assert_convergence_per_stage
+        # in test_output_correctness.py for the directional pin.
+        "assert_convergence    = STAGE['assert_convergence']",
     ):
         assert kw in text, f"missing per-stage kwarg: {kw}"
 

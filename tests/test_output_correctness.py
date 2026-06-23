@@ -138,25 +138,45 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
 
 
 # --------------------------------------------------------------------- #
-#  C3 — stages loop must not silently swallow geomeTRIC errors          #
+#  C3 — stages loop: assert_convergence is per-stage                    #
 # --------------------------------------------------------------------- #
 
 
-def test_c3_stages_loop_does_not_set_assert_convergence(small_struct):
-    """The per-stage optimize() inside the stages loop should NOT
-    pass ``assert_convergence=False``; we want geomeTRIC's default
-    (True) so a stage that fails to converge in its max_steps raises
-    instead of silently moving on.  Earlier preopt-era runs needed
-    False on the cheap warm-up stage; the new design's looser early
-    stages still want hard failure on a max-steps exhaustion, since
-    that's the user's signal to add a looser stage or raise max_steps.
+def test_c3_stages_loop_threads_assert_convergence_per_stage(small_struct):
+    """Per-stage ``assert_convergence``: False on every enabled stage
+    EXCEPT the last, which keeps geomeTRIC's default (True).
+
+    Rationale: earlier stages are warm-up tiers (intentionally loose
+    -- stage1 default is gmax=2e-3 Ha/Bohr + max_steps=50).  Without
+    the False override, PySCF's ``pyscf.geomopt.geometric_solver.
+    kernel`` defaults assert_convergence to True, so a stage1 that
+    exhausts max_steps without hitting its gmax raises RuntimeError
+    and kills the whole run before stage2 (publishable tier) gets to
+    refine.  The final stage keeps True so a real production-tier
+    non-convergence DOES surface.
     """
     text = render_script(small_struct, PySCFConfig())
     main_block = text.split("for STAGE in STAGES:")[1]
-    optimize_block = main_block.split("Final energy")[0]
-    assert "assert_convergence" not in optimize_block, (
-        "stages-loop optimize() is suppressing convergence assertion -- "
-        "that hides real failures users need to see."
+    optimize_block = main_block.split("dm_prev =")[0]
+
+    # The optimize() call MUST pass assert_convergence keyed on STAGE
+    # (not a hard-coded literal that would defeat per-stage control).
+    assert "assert_convergence    = STAGE['assert_convergence']" in optimize_block, (
+        "stages-loop optimize() must thread assert_convergence per-"
+        f"stage.  optimize block was:\n{optimize_block}"
+    )
+    # The STAGES literal at the top must mark only the LAST enabled
+    # stage as ``'assert_convergence': True``.  For the default
+    # 3-stage config (stage1 ☑, stage2 ☑, stage3 ☐) the two enabled
+    # stages are stage1 (False) + stage2 (True).
+    stages_block = text.split("STAGES = [")[1].split("\n]")[0]
+    assert stages_block.count("'assert_convergence': True") == 1, (
+        f"exactly ONE stage should have assert_convergence=True "
+        f"(the last enabled).  STAGES literal:\n{stages_block}"
+    )
+    assert stages_block.count("'assert_convergence': False") >= 1, (
+        f"at least one warm-up stage should carry "
+        f"assert_convergence=False.  STAGES literal:\n{stages_block}"
     )
 
 
