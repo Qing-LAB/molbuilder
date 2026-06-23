@@ -803,3 +803,96 @@ class TestCliStagesEscapeHatch:
         )
         assert result.exit_code != 0
         assert "Invalid value for '--stage-strategy'" in result.output
+
+
+class TestStageStrategyJsPythonParity:
+    """The Stage-strategy preset table is duplicated across two
+    surfaces: CLI (--stage-strategy + STAGE_STRATEGY_PRESETS in
+    config/pyscf.py) and web (Stage-strategy dropdown + the same-named
+    object in static/lib/form-schema.js).  Both source files carry
+    "keep in sync" comments.  This test enforces that contract by
+    parsing form-schema.js at test time and asserting key set + enable
+    tuples are identical.
+
+    Layer: L3 cross-surface invariant.  Per design.md decision-log
+    2026-06-22, the staged ladder is the sole entry point to PySCF
+    optimization, and a CLI/web preset divergence here means the
+    same workflow choice produces different stages depending on
+    which surface invoked it -- a three-stage-contract violation
+    in spirit (UI -> config -> script, no silent absorption: where
+    "UI" here covers BOTH the form and the CLI).
+    """
+
+    def test_js_and_python_presets_match(self):
+        """Parse STAGE_STRATEGY_PRESETS out of form-schema.js with a
+        small regex and compare against the Python dict.  Keys +
+        enable tuples must match exactly; labels are JS-only
+        (Python's CLI surfaces them inline in --help text instead)
+        and are NOT cross-validated here -- compare only the
+        load-bearing data: preset NAMES and the per-stage enable
+        booleans those names resolve to."""
+        import re
+        from pathlib import Path
+        from molbuilder.config.pyscf import STAGE_STRATEGY_PRESETS
+
+        js_path = (Path(__file__).parent.parent
+                   / "molbuilder" / "web" / "static" / "lib"
+                   / "form-schema.js")
+        assert js_path.exists(), f"form-schema.js not found at {js_path}"
+        js_text = js_path.read_text()
+
+        # Locate the object literal.  Anchor on the const declaration
+        # to avoid false hits elsewhere in the file.
+        m = re.search(
+            r"const\s+STAGE_STRATEGY_PRESETS\s*=\s*\{(.+?)\};",
+            js_text, re.DOTALL,
+        )
+        assert m is not None, (
+            "form-schema.js no longer declares "
+            "`const STAGE_STRATEGY_PRESETS = { ... };` -- if the "
+            "declaration shape changed, update this test's regex AND "
+            "the parity contract")
+        body = m.group(1)
+
+        # Each preset entry has shape:
+        #   "publishable": {
+        #       label:   "Publishable (stages 1+2)",
+        #       enables: [true,  true,  false],
+        #   },
+        # Extract NAME + enables-tuple per entry.
+        entry_re = re.compile(
+            r'"(?P<name>[a-z\-]+)"\s*:\s*\{[^{}]*?'
+            r'enables\s*:\s*\[(?P<enables>[^\]]+)\]',
+            re.DOTALL,
+        )
+        js_presets = {}
+        for em in entry_re.finditer(body):
+            name = em.group("name")
+            raw  = em.group("enables")
+            flags = tuple(
+                t.strip().lower() == "true"
+                for t in raw.split(",")
+                if t.strip()
+            )
+            js_presets[name] = flags
+
+        assert js_presets, (
+            "regex extracted zero presets from form-schema.js; the "
+            "object literal shape changed and this test cannot do "
+            "its job until the regex is updated")
+
+        # Names must match exactly.  If JS adds a preset (e.g.,
+        # "screening") without a Python counterpart, the user can
+        # pick it in the form but the CLI will reject the same
+        # name -- silent surface divergence.
+        assert set(js_presets) == set(STAGE_STRATEGY_PRESETS), (
+            f"preset name sets diverge: "
+            f"js={sorted(js_presets)}, "
+            f"python={sorted(STAGE_STRATEGY_PRESETS)}")
+
+        # Enable tuples must match per preset name.
+        for name in js_presets:
+            assert js_presets[name] == STAGE_STRATEGY_PRESETS[name], (
+                f"preset '{name}' enable tuple diverges: "
+                f"js={js_presets[name]}, "
+                f"python={STAGE_STRATEGY_PRESETS[name]}")

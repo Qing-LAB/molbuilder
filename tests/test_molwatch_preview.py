@@ -294,23 +294,36 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
 # --------------------------------------------------------------------- #
 #  L4 e2e: inter-stage warm-start (#534 commit 7b)                       #
 #                                                                       #
-#  The riskiest new code in the staged-opt loop is the per-iter         #
-#  warm-start:                                                          #
-#    dm_prev = (mf.make_rdm1()                                          #
-#               if mf.mo_coeff is not None and mf.mo_occ is not None    #
-#               else None)                                              #
-#    mf.reset(mol_eq)                                                   #
-#    mf.kernel(dm0=dm_prev)                                             #
+#  Layer split with the L3 render-shape gate:                            #
 #                                                                       #
-#  This runs BETWEEN stages.  Pre-7b the L4 test was reduced to a       #
-#  single stage during 4b cleanup, so the inter-stage transition was    #
-#  not exercised end-to-end -- a regression that broke mf.reset() vs    #
-#  PCM/GPU/DF state, or that lost the converged DM between stages,     #
-#  would ship green.                                                    #
+#    L3 (render-only) -- tests/test_pyscf.py::                          #
+#      test_staged_opt_warm_starts_inside_stage_loop                    #
+#      Asserts the GENERATED SCRIPT contains, inside the for-STAGE      #
+#      loop body: mf.reset(mol_eq) + mf.kernel(dm0=dm_prev), and        #
+#      NO bare mf.kernel().  Per decision-log 2026-06-22 this is the    #
+#      load-bearing warm-start guarantee for the staged ladder.  A      #
+#      regression that emits cold-init between stages fails THIS test   #
+#      at script-render time, before L4 even runs.                      #
 #                                                                       #
-#  This test exercises the path on real H2: two stages, each capped at #
-#  2 max_steps so total runtime stays under ~30s on the molbuilder-    #
-#  pySCF env's stock python.                                            #
+#    L4 (this file) -- verifies the rendered script RUNS to             #
+#      convergence end-to-end on a real molbuilder-pySCF subprocess.    #
+#      Two stages, each capped at 2 max_steps so total runtime stays    #
+#      under ~30s.                                                      #
+#                                                                       #
+#  Why L4 alone CANNOT gate warm-start: H2/STO-3G converges from        #
+#  MINAO in ~4-5 cycles -- well within typical stage budgets.  A        #
+#  regression that swapped dm0=dm_prev for bare mf.kernel() would       #
+#  burn ~5 extra SCF cycles per stage transition but the test's        #
+#  energy / banner / log-block assertions would still pass.  Gating    #
+#  warm-start at the cycle-count level here would require the          #
+#  emitter to surface inter-stage SCF counts that the existing         #
+#  molwatch log shape doesn't carry (the warm-start mf.kernel()        #
+#  cycles land in _scf_buf but are overwritten by geomeTRIC's first    #
+#  cycle==0 before any opt_step_hook flushes them).  Inventing API     #
+#  surface just to make a test green would violate the design-doc      #
+#  layering principle (no patching to fit a test).  The right place    #
+#  to assert "did the generator emit warm-start code?" is the render   #
+#  layer, which the L3 test above already covers.                     #
 # --------------------------------------------------------------------- #
 
 
@@ -320,6 +333,10 @@ def test_pyscf_staged_opt_warm_start_runs_two_stages(tmp_path):
     reasonable for H2/STO-3G; and the script's stage banner is
     printed twice (proving the loop body executed twice, not just
     the first stage).
+
+    Warm-start CODE-SHAPE is gated at L3 (see header comment above);
+    this L4 gates "the rendered script runs end-to-end without
+    crashing on the real pyscf+geomeTRIC stack".
 
     Subprocess dispatches into molbuilder-pySCF env per
     [[feedback_pyscf_env_isolation]] -- the generated script needs

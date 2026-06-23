@@ -556,6 +556,24 @@ field metadata (label, unit, range, engine_key, …) is delivered
 to the form via `/api/build/schema/<engine>` and is not
 re-submitted on Generate.
 
+**Stage-strategy presets (PySCF, asymmetric across surfaces — by
+design).** The JS form's Stage-strategy dropdown resolves the
+preset CLIENT-SIDE (`web/static/lib/form-schema.js::applyStagePreset`
+writes the per-row `enabled` checkboxes), so the
+`params.stages` list arriving at `/api/build/pyscf` always
+carries fully-resolved enable flags — the server never sees a
+`stage_strategy` field. The CLI's mirror (`molbuilder pyscf
+--stage-strategy {publishable, loose-only, vib-quality}`) does
+the resolution server-side instead. Both paths converge on the
+same `cfg.stages` value before the generator runs; the preset
+table is defined twice (JS `STAGE_STRATEGY_PRESETS` in
+form-schema.js, Python `STAGE_STRATEGY_PRESETS` in
+`molbuilder/config/pyscf.py`) and the two are pinned identical
+by `tests/test_pyscf_stages_e2e.py::TestStageStrategyJsPythonParity`.
+A non-browser HTTP client that wants to apply a preset must
+pre-resolve the enable flags itself; the `/api/build/pyscf`
+endpoint does NOT accept a bare `stage_strategy` parameter.
+
 Response on success: SIESTA returns `fdf` (text) + `system_label`
 (basename); PySCF returns `script` (text) + `job_name`. Both
 return `issues` (a list of validation warnings; empty on a

@@ -530,6 +530,59 @@ def test_post_opt_warm_starts_from_converged_dm(h2o):
     assert "mf.kernel()" not in rest
 
 
+def test_staged_opt_warm_starts_inside_stage_loop(h2o):
+    """Decision log 2026-06-22: warm-start between stages via
+    ``mf.reset(mol_eq); mf.kernel(dm0=dm_prev)`` is the load-bearing
+    scientific guarantee for #534's staged-opt ladder.  The prior
+    test (``test_post_opt_warm_starts_from_converged_dm``) happens
+    to cover this because the staged loop puts the two lines
+    adjacent, but it slices the script by FIRST ``mf.reset()``
+    occurrence -- not by the staged loop's body.  This test gates
+    the loop body explicitly: a regression that moves the warm-
+    start out of the loop, or replaces ``dm0=dm_prev`` with cold
+    init INSIDE the loop, would fail here while the prior test
+    might still pass.
+
+    Layer: L3 (render-only).  L4 e2e (``test_pyscf_staged_opt_
+    warm_start_runs_two_stages`` in tests/test_molwatch_preview.py)
+    verifies the rendered script RUNS to convergence end-to-end --
+    those two layers together gate the warm-start guarantee.  H2/
+    STO-3G is too forgiving for the L4 to gate warm-start on cycle
+    counts alone; the render-shape gate at L3 is the right layer
+    for "did the generator emit the right code?"
+    """
+    # Default 3-stage ladder, stages 1+2 enabled (stage 3 disabled by
+    # default; the loop iterates twice).
+    text = render_script(h2o, PySCFConfig(optimize=True))
+    # Scope to the staged-loop body: from "for STAGE in STAGES:" up
+    # to the post-loop banner.  Anything outside the slice (e.g., the
+    # single-point ``e = mf.kernel()`` path for optimize=False) does
+    # not interfere.
+    loop_start = text.index("for STAGE in STAGES:")
+    final_banner_idx = text.index('print(f"\\nFinal energy:', loop_start)
+    loop_body = text[loop_start:final_banner_idx]
+    # The warm-start pair must be inside the loop body -- ONCE
+    # lexically (loop iterates the same lines per stage at runtime).
+    assert "mf.reset(mol_eq)" in loop_body, (
+        "staged-loop body must call mf.reset(mol_eq) to drop stale "
+        "integrals at the previous-stage geometry")
+    assert "mf.kernel(dm0=dm_prev)" in loop_body, (
+        "staged-loop body must warm-start the next stage's SCF from "
+        "the converged DM at the previous geometry "
+        "(per decision-log 2026-06-22, this is the scientific "
+        "guarantee that makes the staged ladder publication-defensible)")
+    # The bare ``mf.kernel()`` form must NOT appear in the loop body
+    # -- it would discard the converged DM and restart from MINAO,
+    # burning 5-30 SCF cycles per stage transition.
+    assert "mf.kernel()" not in loop_body, (
+        "staged-loop body must NOT call bare mf.kernel() -- always "
+        "pass dm0=dm_prev so the converged DM carries forward")
+    # Belt-and-braces: the deprecated ``mf.mol = mol_eq`` assignment
+    # (which leaves cached integrals stale) must not have crept back
+    # in alongside the proper mf.reset() call.
+    assert "mf.mol = mol_eq" not in loop_body
+
+
 # --------------------------------------------------------------------- #
 #  Bridge: choices accept any case via the bridge (R2)                  #
 # --------------------------------------------------------------------- #
