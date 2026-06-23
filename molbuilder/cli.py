@@ -501,8 +501,31 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, **fields):
               help="effective core potential (e.g. 'lanl2dz'); "
                    "default = auto for heavy atoms on non-def2 bases; "
                    "pass 'none' to disable auto-emit")
+# --stages-json + --stage-strategy: power-user escape hatches for the
+# staged-optimization ladder (cfg.stages).  The everyday UI is the
+# web form's stage-table widget; CLI users can paste a JSON payload
+# or pick a named preset.  Applied in order: --stages-json replaces
+# the entire ladder, then --stage-strategy overlays enable flags.
+@click.option("--stages-json", "stages_json", default=None,
+              metavar="JSON_OR_PATH",
+              help="override the per-stage convergence ladder with a "
+                   "JSON list-of-dicts (one entry per stage, keys = "
+                   "StageSpec fields).  Accepts either a literal JSON "
+                   "string or a path to a .json file.  Unknown keys "
+                   "are ignored.  Applied BEFORE --stage-strategy so "
+                   "you can combine them (custom knobs + preset enable "
+                   "flags).  Power-user escape hatch; the form's "
+                   "stage-table is the everyday UI.")
+@click.option("--stage-strategy",
+              type=click.Choice(["publishable", "loose-only", "vib-quality"]),
+              default=None,
+              help="override stage enable flags with a named preset: "
+                   "'publishable' = stages 1+2 (default), 'loose-only' "
+                   "= stage 1 only (cheap warm-up), 'vib-quality' = "
+                   "1+2+3 (TIGHT tier for vib/IR/NEB Hessians).  "
+                   "Mirrors the form's Stage strategy dropdown.")
 @_make_pyscf_options_decorator()
-def cmd_pyscf(input_path, py_path, ecp, **fields):
+def cmd_pyscf(input_path, py_path, ecp, stages_json, stage_strategy, **fields):
     """Convert an XYZ or PDB structure into a runnable PySCF script.
 
     Every PySCFConfig field is exposed as a CLI option (auto-generated
@@ -530,6 +553,52 @@ def cmd_pyscf(input_path, py_path, ecp, **fields):
         fields["ecp"] = None
 
     cfg = PySCFConfig(**fields)
+
+    # Apply stage overrides (7c).  --stages-json wins on knob values;
+    # --stage-strategy then overlays enable flags on top.  Either may
+    # be omitted; both omitted leaves cfg.stages at its default.
+    if stages_json is not None:
+        import json as _json
+        from pathlib import Path as _Path
+        from .config.pyscf import stages_from_dicts
+        s = stages_json.strip()
+        # Heuristic: starts with '[' = literal JSON; otherwise treat
+        # as a path.  Keeps the common "paste a JSON literal on the
+        # shell" case clean without forcing a wrapper sentinel.
+        if s.startswith("["):
+            try:
+                payload = _json.loads(s)
+            except _json.JSONDecodeError as e:
+                raise click.BadParameter(
+                    f"--stages-json: not valid JSON ({e.msg} at "
+                    f"line {e.lineno}, column {e.colno})",
+                    param_hint="--stages-json",
+                )
+        else:
+            p = _Path(s)
+            if not p.exists():
+                raise click.BadParameter(
+                    f"--stages-json: file not found: {p}",
+                    param_hint="--stages-json",
+                )
+            try:
+                payload = _json.loads(p.read_text())
+            except _json.JSONDecodeError as e:
+                raise click.BadParameter(
+                    f"--stages-json: not valid JSON in {p} "
+                    f"({e.msg} at line {e.lineno}, column {e.colno})",
+                    param_hint="--stages-json",
+                )
+        try:
+            cfg.stages = stages_from_dicts(payload)
+        except (TypeError, ValueError) as e:
+            raise click.BadParameter(
+                f"--stages-json: {e}", param_hint="--stages-json")
+
+    if stage_strategy is not None:
+        from .config.pyscf import apply_stage_strategy
+        cfg.stages = apply_stage_strategy(cfg.stages, stage_strategy)
+
     with _resolve_input_path(input_path) as resolved_input:
         summary = convert(resolved_input, py_path, cfg)
     click.echo(

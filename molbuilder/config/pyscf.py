@@ -20,8 +20,9 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .siesta import _validate_basename     # shared with SiestaConfig
 
@@ -279,6 +280,93 @@ def validate_stages(stages: List[StageSpec]) -> List[str]:
                 f"{prefix}.continue_retries = {s.continue_retries!r}: "
                 f"must be an integer in [1, 5]")
     return errors
+
+
+# Stage-strategy presets — toggle the ``enabled`` flag on the default
+# three-stage ladder.  Mirrored in the JS form-schema (web/static/lib/
+# form-schema.js ``STAGE_STRATEGY_PRESETS``); keep the two in sync.
+# CLI (``--stage-strategy``) and web (preset dropdown) both apply
+# these to the canonical _default_stages() ladder so the user gets the
+# same behavior across surfaces.  The values are 0-indexed booleans
+# aligned to stages[0..N-1]; a stage index past the end is ignored.
+STAGE_STRATEGY_PRESETS: Dict[str, Tuple[bool, ...]] = {
+    "publishable": (True,  True,  False),   # stage1 loose + stage2 publishable
+    "loose-only":  (True,  False, False),   # stage1 only (cheap warm-up)
+    "vib-quality": (True,  True,  True),    # all three (TIGHT for vib/IR/NEB)
+}
+
+
+def apply_stage_strategy(
+    stages: List[StageSpec], strategy: str
+) -> List[StageSpec]:
+    """Return a copy of *stages* with ``enabled`` flags overlaid from
+    the named preset in :data:`STAGE_STRATEGY_PRESETS`.
+
+    Raises ``ValueError`` on an unknown strategy.  Non-enabled fields
+    (convergence targets, max_steps, on_nonconvergence, ...) are
+    preserved verbatim from the input list -- the preset only chooses
+    which stages run, not how they're tuned.  A stage index past the
+    preset's length is left at its current ``enabled`` value.
+    """
+    import dataclasses as _dc
+    if strategy not in STAGE_STRATEGY_PRESETS:
+        valid = ", ".join(sorted(STAGE_STRATEGY_PRESETS))
+        raise ValueError(
+            f"unknown stage strategy {strategy!r}; choose from: {valid}")
+    enables = STAGE_STRATEGY_PRESETS[strategy]
+    out: List[StageSpec] = []
+    for i, s in enumerate(stages):
+        if i < len(enables):
+            out.append(_dc.replace(s, enabled=enables[i]))
+        else:
+            out.append(_dc.replace(s))
+    return out
+
+
+def stages_from_dicts(payload: Any) -> List[StageSpec]:
+    """Coerce a list-of-dicts (e.g. parsed from ``--stages-json``) into
+    a ``List[StageSpec]``.
+
+    Unknown keys are silently ignored (matches the web layer's
+    ``_shared._coerce_dataclass_list`` behavior, which lets users
+    paste a payload from one PySCFConfig version into another that
+    has slightly different per-stage fields).  Missing keys fall
+    back to ``StageSpec``'s field defaults.  Type coercion is
+    intentionally permissive (``"true"`` -> True, ``"1e-4"`` -> 1e-4)
+    so JSON-from-shell payloads round-trip cleanly.
+
+    Raises ``TypeError`` if *payload* is not a list, or if any item
+    is not a dict.
+    """
+    if not isinstance(payload, list):
+        raise TypeError(
+            f"stages payload must be a list of dicts, got "
+            f"{type(payload).__name__}")
+    spec_fields = {f.name: f for f in dataclasses.fields(StageSpec)}
+    out: List[StageSpec] = []
+    for i, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise TypeError(
+                f"stages[{i}]: expected dict, got {type(item).__name__}")
+        kwargs: Dict[str, Any] = {}
+        for k, v in item.items():
+            f = spec_fields.get(k)
+            if f is None:
+                continue
+            t = f.type
+            if t is bool or t == "bool":
+                if isinstance(v, str):
+                    kwargs[k] = v.strip().lower() in ("true", "1", "yes", "on")
+                else:
+                    kwargs[k] = bool(v)
+            elif t is int or t == "int":
+                kwargs[k] = int(v)
+            elif t is float or t == "float":
+                kwargs[k] = float(v)
+            else:
+                kwargs[k] = v
+        out.append(StageSpec(**kwargs))
+    return out
 
 
 @dataclass

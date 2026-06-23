@@ -547,3 +547,259 @@ class TestMolwatchConvergenceTargetsCarriesAllSixKnobs:
         # Geom-iter cap: stage1 50, stage2 200
         assert s1["max_geom_iter"] == 50
         assert s2["max_geom_iter"] == 200
+
+
+# --------------------------------------------------------------------- #
+#  Task #534 commit 7c — CLI escape hatch for stages                    #
+# --------------------------------------------------------------------- #
+
+class TestStageStrategyPresets:
+    """``apply_stage_strategy()`` overlays enable flags on the default
+    ladder; this pins the three named presets land where their JS
+    counterparts (``web/static/lib/form-schema.js``
+    ``STAGE_STRATEGY_PRESETS``) say they should.  CLI ``--stage-
+    strategy`` and the form's Stage-strategy dropdown share these
+    flags, so a divergence here means the two UIs disagree."""
+
+    def test_publishable_enables_stages_1_and_2(self):
+        from molbuilder.config.pyscf import (
+            _default_stages, apply_stage_strategy,
+        )
+        out = apply_stage_strategy(_default_stages(), "publishable")
+        assert [s.enabled for s in out] == [True, True, False]
+
+    def test_loose_only_enables_stage_1_alone(self):
+        from molbuilder.config.pyscf import (
+            _default_stages, apply_stage_strategy,
+        )
+        out = apply_stage_strategy(_default_stages(), "loose-only")
+        assert [s.enabled for s in out] == [True, False, False]
+
+    def test_vib_quality_enables_all_three(self):
+        from molbuilder.config.pyscf import (
+            _default_stages, apply_stage_strategy,
+        )
+        out = apply_stage_strategy(_default_stages(), "vib-quality")
+        assert [s.enabled for s in out] == [True, True, True]
+
+    def test_strategy_preserves_non_enabled_knobs(self):
+        """The preset only flips ``enabled``; convergence targets,
+        max_steps, on_nonconvergence must round-trip verbatim from
+        the input ladder.  A regression that uses _default_stages()
+        as the base of the overlay (instead of replacing flags on
+        the caller's list) would silently throw away any --stages-
+        json knob customizations."""
+        import dataclasses as dc
+        from molbuilder.config.pyscf import (
+            _default_stages, apply_stage_strategy, StageSpec,
+        )
+        custom = [
+            dc.replace(_default_stages()[0], gmax=7.7e-3, max_steps=99),
+            dc.replace(_default_stages()[1], conv_tol=2.5e-8),
+            dc.replace(_default_stages()[2]),
+        ]
+        out = apply_stage_strategy(custom, "vib-quality")
+        assert out[0].gmax == 7.7e-3
+        assert out[0].max_steps == 99
+        assert out[1].conv_tol == 2.5e-8
+
+    def test_unknown_strategy_raises_value_error(self):
+        from molbuilder.config.pyscf import (
+            _default_stages, apply_stage_strategy,
+        )
+        with pytest.raises(ValueError, match="unknown stage strategy"):
+            apply_stage_strategy(_default_stages(), "nope")
+
+
+class TestStagesFromDicts:
+    """``stages_from_dicts()`` is the CLI's --stages-json parser.
+    Mirrors the web layer's _shared._coerce_dataclass_list but
+    stays inside ``config.pyscf`` so the CLI doesn't import from
+    web/blueprints."""
+
+    def test_round_trips_full_payload(self):
+        from molbuilder.config.pyscf import stages_from_dicts
+        payload = [
+            {"name": "warm", "enabled": True, "conv_tol": 1e-7,
+             "gmax": 2e-3, "grms": 1e-3, "dmax": 5e-3, "drms": 3e-3,
+             "etol": 1e-5, "max_steps": 50,
+             "on_nonconvergence": "proceed", "continue_retries": 1},
+            {"name": "publish", "enabled": True, "conv_tol": 1e-9,
+             "gmax": 4.5e-4, "grms": 3e-4, "dmax": 1.8e-3, "drms": 1.2e-3,
+             "etol": 1e-6, "max_steps": 200,
+             "on_nonconvergence": "halt", "continue_retries": 1},
+        ]
+        out = stages_from_dicts(payload)
+        assert len(out) == 2
+        assert out[0].name == "warm"
+        assert out[0].gmax == 2e-3
+        assert out[1].on_nonconvergence == "halt"
+
+    def test_string_scalars_coerce_to_typed_fields(self):
+        """JSON-via-shell + shell-quoting horror often turns numbers
+        into strings (`"1e-4"` instead of `1e-4`).  The coercer must
+        accept the stringy form rather than store it raw and blow up
+        downstream at script-render time."""
+        from molbuilder.config.pyscf import stages_from_dicts
+        out = stages_from_dicts([{
+            "name": "s", "enabled": "true", "gmax": "1e-4",
+            "grms": "5e-5", "dmax": "1e-3", "drms": "5e-4",
+            "etol": "1e-6", "conv_tol": "1e-9", "max_steps": "42",
+            "on_nonconvergence": "halt", "continue_retries": "1",
+        }])
+        assert out[0].enabled is True
+        assert out[0].gmax == 1e-4
+        assert out[0].max_steps == 42
+
+    def test_unknown_keys_ignored(self):
+        from molbuilder.config.pyscf import stages_from_dicts
+        out = stages_from_dicts([{
+            "name": "s", "enabled": True, "gmax": 1e-3, "grms": 5e-4,
+            "dmax": 5e-3, "drms": 3e-3, "etol": 1e-5, "conv_tol": 1e-7,
+            "max_steps": 30, "on_nonconvergence": "proceed",
+            "continue_retries": 1, "fictional_future_field": 99,
+        }])
+        assert out[0].name == "s"
+
+    def test_non_list_payload_raises_type_error(self):
+        from molbuilder.config.pyscf import stages_from_dicts
+        with pytest.raises(TypeError, match="must be a list"):
+            stages_from_dicts({"name": "s"})
+
+    def test_non_dict_item_raises_type_error(self):
+        from molbuilder.config.pyscf import stages_from_dicts
+        with pytest.raises(TypeError, match="expected dict"):
+            stages_from_dicts([{"name": "s"}, "not-a-dict"])
+
+
+class TestCliStagesEscapeHatch:
+    """End-to-end: ``molbuilder pyscf`` accepts --stages-json and
+    --stage-strategy, both override cfg.stages BEFORE the generator
+    runs, and the rendered script's STAGES literal reflects the
+    overrides.  This is the CLI's mirror of the web form's stage-
+    table widget + preset dropdown."""
+
+    H2_XYZ = "2\n\nH 0 0 0\nH 0 0 0.74\n"
+
+    def _run_cli(self, tmp_path, *extra_args):
+        from click.testing import CliRunner
+        from molbuilder.cli import cli
+        inp = tmp_path / "h2.xyz"
+        inp.write_text(self.H2_XYZ)
+        out = tmp_path / "h2.py"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["pyscf", str(inp), str(out), *extra_args],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        return out.read_text()
+
+    def test_stage_strategy_loose_only_disables_stages_2_and_3(self, tmp_path):
+        script = self._run_cli(tmp_path, "--stage-strategy", "loose-only")
+        # The script header prints "N stage(s): <names>"; loose-only
+        # means 1 stage running, named stage1 (from the default ladder).
+        # The generator's STAGES literal only carries enabled rows --
+        # disabled stages are dropped, not kept as enabled=False --
+        # so checking the header banner is the right shape for this
+        # assertion.
+        assert "1 stage(s): stage1" in script
+        # The STAGES literal must carry exactly one row (stage1).
+        # Count 'name':' lines inside STAGES = [ ... ] -- since the
+        # only other 'name' key in the script is in PROVENANCE, we
+        # can scope by looking for the StageSpec-shaped header line.
+        assert script.count("'name':              'stage1'") == 1
+        assert "'name':              'stage2'" not in script
+        assert "'name':              'stage3'" not in script
+
+    def test_stage_strategy_vib_quality_enables_all_three(self, tmp_path):
+        script = self._run_cli(tmp_path, "--stage-strategy", "vib-quality")
+        assert "3 stage(s): stage1, stage2, stage3" in script
+
+    def test_stages_json_literal_replaces_ladder(self, tmp_path):
+        script = self._run_cli(
+            tmp_path, "--stages-json",
+            '[{"name":"cheap","enabled":true,"gmax":1e-3,"grms":5e-4,'
+            '"dmax":5e-3,"drms":3e-3,"etol":1e-5,"conv_tol":1e-7,'
+            '"max_steps":42,"on_nonconvergence":"halt","continue_retries":1}]',
+        )
+        assert "1 stage(s): cheap" in script
+        assert "maxsteps=42" in script
+
+    def test_stages_json_file_path(self, tmp_path):
+        import json
+        path = tmp_path / "stages.json"
+        path.write_text(json.dumps([{
+            "name": "frompath", "enabled": True, "gmax": 1e-3,
+            "grms": 5e-4, "dmax": 5e-3, "drms": 3e-3, "etol": 1e-5,
+            "conv_tol": 1e-7, "max_steps": 17,
+            "on_nonconvergence": "halt", "continue_retries": 1,
+        }]))
+        script = self._run_cli(tmp_path, "--stages-json", str(path))
+        assert "1 stage(s): frompath" in script
+        assert "maxsteps=17" in script
+
+    def test_stages_json_plus_strategy_compose(self, tmp_path):
+        """--stages-json sets knob values; --stage-strategy overlays
+        enable flags.  Test that combining them keeps the custom
+        knobs (from json) but flips only the requested stages on."""
+        import json
+        path = tmp_path / "stages.json"
+        # Three custom stages, all enabled in the payload, with
+        # uniquely identifiable max_steps so we can confirm the
+        # knob values aren't being thrown away by the strategy
+        # overlay.
+        path.write_text(json.dumps([
+            {"name": "a", "enabled": True, "gmax": 1e-3, "grms": 5e-4,
+             "dmax": 5e-3, "drms": 3e-3, "etol": 1e-5, "conv_tol": 1e-7,
+             "max_steps": 11, "on_nonconvergence": "proceed",
+             "continue_retries": 1},
+            {"name": "b", "enabled": True, "gmax": 5e-4, "grms": 3e-4,
+             "dmax": 2e-3, "drms": 1e-3, "etol": 1e-6, "conv_tol": 1e-9,
+             "max_steps": 22, "on_nonconvergence": "halt",
+             "continue_retries": 1},
+            {"name": "c", "enabled": True, "gmax": 1e-5, "grms": 5e-6,
+             "dmax": 5e-5, "drms": 3e-5, "etol": 1e-6, "conv_tol": 1e-10,
+             "max_steps": 33, "on_nonconvergence": "halt",
+             "continue_retries": 1},
+        ]))
+        script = self._run_cli(
+            tmp_path,
+            "--stages-json", str(path),
+            "--stage-strategy", "loose-only",
+        )
+        # loose-only overlays enables=(True, False, False) on the
+        # ladder we just sent in -- so stage 'a' alone runs, with its
+        # knob (max_steps=11) preserved verbatim from the json payload.
+        # The generator drops disabled stages from STAGES entirely;
+        # 'b' and 'c' must not appear in the header banner.
+        assert "1 stage(s): a" in script
+        assert "maxsteps=11" in script
+        assert "stage(s): a, b" not in script
+        assert "stage(s): a, b, c" not in script
+
+    def test_invalid_json_string_yields_bad_parameter(self, tmp_path):
+        from click.testing import CliRunner
+        from molbuilder.cli import cli
+        inp = tmp_path / "h2.xyz"
+        inp.write_text(self.H2_XYZ)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["pyscf", str(inp), str(tmp_path / "x.py"),
+                  "--stages-json", "[not valid"],
+        )
+        assert result.exit_code != 0
+        assert "not valid JSON" in result.output
+
+    def test_unknown_strategy_rejected_by_click(self, tmp_path):
+        from click.testing import CliRunner
+        from molbuilder.cli import cli
+        inp = tmp_path / "h2.xyz"
+        inp.write_text(self.H2_XYZ)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["pyscf", str(inp), str(tmp_path / "x.py"),
+                  "--stage-strategy", "nope"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid value for '--stage-strategy'" in result.output
