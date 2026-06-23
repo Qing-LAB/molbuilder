@@ -111,9 +111,33 @@ class MolwatchEmitter:
                 # input falls through.  Stage names are constrained
                 # by the StageSpec validator to [A-Za-z0-9_]+ so they
                 # round-trip cleanly through the parser regex.
-                _LEAF_KEYS = ("max_force_tol_eV_per_A", "scf_energy_tol",
-                              "scf_grad_tol", "max_scf_iter",
-                              "max_geom_iter", "max_displ_ang")
+                # Per-stage / per-engine convergence-target leaves.
+                # Names are stable cross-engine (PySCF + SIESTA both
+                # populate the subset that's meaningful for their
+                # own convergence-criteria scheme).  Post #534 7a:
+                # geomeTRIC's full 5-criteria set is plumbed end-to-end
+                # for PySCF staged-opt: max + RMS grad, max + RMS
+                # displ, energy-step + the legacy SCF / iter caps.
+                _LEAF_KEYS = (
+                    # Force / gradient thresholds (eV/Å convention)
+                    "max_force_tol_eV_per_A",
+                    "rms_force_tol_eV_per_A",
+                    # Displacement thresholds (Å convention)
+                    "max_displ_ang",
+                    "rms_displ_ang",
+                    # Energy-step + SCF self-consistency
+                    "energy_step_tol_eV",
+                    "scf_energy_tol",
+                    # Iter caps (integers, surfaced for the UI)
+                    "max_scf_iter",
+                    "max_geom_iter",
+                    # Legacy alias (SIESTA-side parser writes
+                    # ``scf_grad_tol`` for the gradient norm; keep
+                    # accepting it on the emitter for round-trip
+                    # symmetry with the parser, even though
+                    # ``rms_force_tol_eV_per_A`` is the canonical key).
+                    "scf_grad_tol",
+                )
 
                 def _is_nested(ct):
                     return any(isinstance(v, dict)

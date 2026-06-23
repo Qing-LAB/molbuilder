@@ -446,3 +446,104 @@ def test_default_factory_matches_wire_default_payload():
         assert code_default.conv_tol  == pytest.approx(wire["conv_tol"])
         assert code_default.gmax      == pytest.approx(wire["gmax"])
         assert code_default.max_steps == wire["max_steps"]
+
+
+# --------------------------------------------------------------------- #
+#  7a (#534 closure): per-stage geomeTRIC criteria reach molwatch       #
+#  convergence_targets header end-to-end.                                #
+#                                                                       #
+#  Previously only max-grad + scf-energy + 2 iter caps were emitted     #
+#  per stage; user-set grms / dmax / drms / etol were silently lost.    #
+#  Now the Results-tab inspector can draw threshold lines for ANY of    #
+#  the 5 geomeTRIC convergence checks.                                  #
+# --------------------------------------------------------------------- #
+
+
+class TestMolwatchConvergenceTargetsCarriesAllSixKnobs:
+
+    HA_BOHR_TO_EV_ANG = 51.42208619
+    HARTREE_TO_EV     = 27.211386245988
+
+    def _render(self, web_client):
+        r = web_client.post(
+            "/api/build/pyscf",
+            json={"xyz": _H2O_XYZ, "params": {},
+                  "frozen_atoms": [], "regions": {}},
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body.get("ok") is True
+        return body["script"]
+
+    def _parse_conv_targets(self, script):
+        import ast, re
+        m = re.search(r"_CONVERGENCE_TARGETS = (\{.*?\n\})",
+                      script, re.DOTALL)
+        assert m, "missing _CONVERGENCE_TARGETS literal in script"
+        return ast.literal_eval(m.group(1))
+
+    def test_each_enabled_stage_emits_all_six_leaves(self, web_client):
+        """Every enabled stage's dict must carry all 6 geomeTRIC
+        criteria converted to the molwatch unit convention (eV/Å for
+        forces, Å for displacements, eV for energy step) PLUS the
+        SCF-energy + iter caps.  8 leaves total per stage."""
+        targets = self._parse_conv_targets(self._render(web_client))
+        # Two stages enabled by default (stage1 + stage2).
+        assert set(targets.keys()) == {"stage1", "stage2"}
+        REQUIRED = {
+            "max_force_tol_eV_per_A",
+            "rms_force_tol_eV_per_A",
+            "max_displ_ang",
+            "rms_displ_ang",
+            "energy_step_tol_eV",
+            "scf_energy_tol",
+            "max_scf_iter",
+            "max_geom_iter",
+        }
+        for stage_name, leaves in targets.items():
+            missing = REQUIRED - set(leaves.keys())
+            assert not missing, (
+                f"{stage_name} missing leaves: {missing}.  "
+                f"Got: {sorted(leaves.keys())}"
+            )
+
+    def test_unit_conversion_matches_emitter_constants(self, web_client):
+        """The generator's Ha/Bohr -> eV/Å and Ha -> eV conversions
+        must round-trip to the same constants MolwatchEmitter uses
+        for the per-step force / energy emission, so threshold lines
+        and plotted values are on the same axis."""
+        targets = self._parse_conv_targets(self._render(web_client))
+        # stage2 = publishable, the Gaussian-OPT defaults.
+        s2 = targets["stage2"]
+        # gmax = 4.5e-4 Ha/Bohr  -> 4.5e-4 * 51.42208619 eV/Å
+        assert s2["max_force_tol_eV_per_A"] == pytest.approx(
+            4.5e-4 * self.HA_BOHR_TO_EV_ANG)
+        # grms = 3.0e-4 Ha/Bohr  -> 3.0e-4 * 51.42208619 eV/Å
+        assert s2["rms_force_tol_eV_per_A"] == pytest.approx(
+            3.0e-4 * self.HA_BOHR_TO_EV_ANG)
+        # dmax / drms already in Å -- carried verbatim
+        assert s2["max_displ_ang"] == pytest.approx(1.8e-3)
+        assert s2["rms_displ_ang"] == pytest.approx(1.2e-3)
+        # etol = 1e-6 Ha -> 1e-6 * 27.211386245988 eV
+        assert s2["energy_step_tol_eV"] == pytest.approx(
+            1.0e-6 * self.HARTREE_TO_EV)
+        # SCF energy tol stays in Hartree (parser tags the unit)
+        assert s2["scf_energy_tol"] == pytest.approx(1.0e-9)
+
+    def test_per_stage_values_differ_between_tiers(self, web_client):
+        """A regression that silently uses stage1's values for stage2
+        (or vice versa) would slip through if we only checked
+        existence.  Pin that the per-tier numbers ACTUALLY differ
+        per stage -- the whole point of the staged ladder."""
+        targets = self._parse_conv_targets(self._render(web_client))
+        s1, s2 = targets["stage1"], targets["stage2"]
+        # stage1 is loose preopt (gmax 2e-3), stage2 publishable
+        # (gmax 4.5e-4).  Their force-tol-eV-per-A values must
+        # differ by the same ~4.4x factor.
+        assert s1["max_force_tol_eV_per_A"] > s2["max_force_tol_eV_per_A"]
+        assert s1["rms_force_tol_eV_per_A"] > s2["rms_force_tol_eV_per_A"]
+        # SCF energy tol: stage1 1e-7, stage2 1e-9 (100x tighter)
+        assert s1["scf_energy_tol"] > s2["scf_energy_tol"]
+        # Geom-iter cap: stage1 50, stage2 200
+        assert s1["max_geom_iter"] == 50
+        assert s2["max_geom_iter"] == 200

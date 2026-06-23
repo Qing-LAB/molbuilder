@@ -174,6 +174,17 @@ The publishable set is geomeTRIC's `GAU` preset; `Tight` is
 `GAU_TIGHT` (gradients tighten 10×, displacements 20×, energy
 stays at the same decade). [^6]
 
+**All five criteria flow end-to-end through molbuilder's PySCF
+staged-opt** (since #534 commit 7a, 2026-06-23).  Per-stage values
+of `gmax`/`grms`/`dmax`/`drms`/`etol` reach the rendered script's
+`STAGES = [...]` literal (geomeTRIC consumes them via
+`optimize(...)` kwargs) AND the generated `.molwatch.log` header's
+`_CONVERGENCE_TARGETS` nested dict.  The Results-tab trajectory
+inspector reads the nested dict and draws per-stage threshold
+lines on the force / RMS-force / max-displ / RMS-displ / energy-
+step plots; no value the user sets in the stage table is silently
+dropped before reaching the visualization.
+
 [^6]: Wang, L.-P. & Song, C. "Geometry optimization made simple with translation and rotation coordinates." *J. Chem. Phys.* **144**, 214108 (2016).
 
 ---

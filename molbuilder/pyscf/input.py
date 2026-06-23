@@ -1084,11 +1084,29 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # HARTREE_BOHR_TO_EV_ANG).
     _ha_bohr_to_ev_ang = 51.42208619
     _enabled_stages = [s for s in cfg.stages if s.enabled]
+    # 7a (#534 closure): emit ALL 6 per-stage geomeTRIC criteria into
+    # the nested convergence_targets dict so the Results-tab inspector
+    # can draw threshold lines for ANY of the 5 geomeTRIC convergence
+    # checks (max-grad, RMS-grad, max-displ, RMS-displ, energy-step) +
+    # the SCF / iter caps.  Previously only max-grad + scf-energy + 2
+    # iter caps reached the header; user-set per-stage grms / dmax /
+    # drms were silently lost between StageSpec and the molwatch.log.
     out.append("_CONVERGENCE_TARGETS = {")
     for _s in _enabled_stages:
-        _ftol = float(_s.gmax) * _ha_bohr_to_ev_ang
+        # Unit conversions match MolwatchEmitter.HARTREE_BOHR_TO_EV_ANG
+        # / HARTREE_TO_EV so the threshold lines land on the same
+        # y-axis the Results-tab force / energy plots already use.
+        _max_force_eV = float(_s.gmax) * _ha_bohr_to_ev_ang
+        _rms_force_eV = float(_s.grms) * _ha_bohr_to_ev_ang
+        # dmax / drms are already in Angstrom per StageSpec contract.
+        # etol is in Hartree -> eV for symmetry with the force plot.
+        _energy_tol_eV = float(_s.etol) * 27.211386245988
         out.append(f"    {_s.name!r}: {{")
-        out.append(f"        'max_force_tol_eV_per_A': {_ftol!r},")
+        out.append(f"        'max_force_tol_eV_per_A': {_max_force_eV!r},")
+        out.append(f"        'rms_force_tol_eV_per_A': {_rms_force_eV!r},")
+        out.append(f"        'max_displ_ang':          {float(_s.dmax)!r},")
+        out.append(f"        'rms_displ_ang':          {float(_s.drms)!r},")
+        out.append(f"        'energy_step_tol_eV':     {_energy_tol_eV!r},")
         out.append(f"        'scf_energy_tol':         {float(_s.conv_tol)!r},")
         out.append(f"        'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
         out.append(f"        'max_geom_iter':          {int(_s.max_steps)!r},")
