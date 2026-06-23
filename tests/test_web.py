@@ -772,7 +772,10 @@ def test_pyscf_default_params(web_client, peptide_xyz):
     assert body["ok"] is True
     assert "from pyscf import gto, scf, dft" in body["script"]
     assert 'mf.xc = "B3LYP"' in body["script"]
-    assert "mol_eq = optimize(" in body["script"]
+    # #534 6c: optimize() is now inside the _mb_run_stage_opt helper;
+    # the loop body calls the helper.  Anchor on both pieces.
+    assert "def _mb_run_stage_opt(STAGE, _hard_fail):" in body["script"]
+    assert "for STAGE in STAGES:" in body["script"]
     compile(body["script"], "<api/pyscf default>", "exec")
 
 
@@ -786,7 +789,6 @@ def test_pyscf_custom_params(web_client, peptide_xyz):
             "charge":           -1,
             "functional":       "PBE0",
             "basis":            "def2-TZVP",
-            "preopt":           True,
             "optimize":         False,
             "dispersion":       "d4",
             "solvent":          "water",
@@ -802,7 +804,10 @@ def test_pyscf_custom_params(web_client, peptide_xyz):
     assert "charge     = -1"  in script
     assert 'mf.xc = "PBE0"'   in script
     assert 'basis      = "def2-TZVP"' in script
-    assert "mol_eq = optimize(" not in script   # optimize off
+    # optimize=False -> no stages loop emitted at all (neither
+    # the helper definition nor the for-loop driver).
+    assert "def _mb_run_stage_opt(" not in script
+    assert "for STAGE in STAGES:" not in script
     assert 'mf.disp = "d4"' in script
     assert "mf = mf.PCM()" in script   # PySCF 2.x SCF-method form (P1)
     assert "TROUBLESHOOTING" not in script      # verbose off

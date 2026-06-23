@@ -163,7 +163,10 @@ def test_pyscf_generated_script_emits_preview_block_text():
     # The preview block is emitted before optimize() is called -- the
     # class instantiation line must appear before the optimize(...) call.
     inst_pos = text.index("MolwatchEmitter(")
-    opt_pos = text.index("mol_eq = optimize(")
+    # #534 6c: optimize() lives inside _mb_run_stage_opt helper now;
+    # the loop body calls the helper rather than calling optimize()
+    # directly.  Anchor on the helper definition.
+    opt_pos = text.index("def _mb_run_stage_opt(")
     assert inst_pos < opt_pos
 
 

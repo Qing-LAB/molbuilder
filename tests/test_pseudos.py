@@ -655,7 +655,7 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.pyscf.input import render_script
         from molbuilder.config.pyscf import PySCFConfig
         text = render_script(self._fe(), PySCFConfig(
-            method="UKS", spin=2, optimize=False, preopt=False,
+            method="UKS", spin=2, optimize=False,
         ))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
         assert "# mf.level_shift = 0.2" in text   # commented template
@@ -666,7 +666,7 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.pyscf.input import render_script
         from molbuilder.config.pyscf import PySCFConfig
         text = render_script(self._water(), PySCFConfig(
-            method="RKS", spin=0, optimize=False, preopt=False,
+            method="RKS", spin=0, optimize=False,
         ))
         assert "Hard SCF (typical for open-shell metals" not in text
 
