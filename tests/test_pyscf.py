@@ -86,52 +86,84 @@ def test_atom_block_format(h2o):
 def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
     """Pin the PySCF/geomeTRIC API contract that the generator depends on.
 
-    The generated script calls::
+    The post-#534 generated script calls::
 
         optimize(mf,
-                 convergence_energy = 1e-6,
-                 convergence_grms   = 3e-4,
-                 convergence_gmax   = 4.5e-4,
-                 maxsteps           = N,
-                 callback           = ...)
+                 maxsteps              = STAGE['max_steps'],
+                 convergence_energy    = STAGE['etol'],
+                 convergence_grms      = STAGE['grms'],
+                 convergence_gmax      = STAGE['gmax'],
+                 convergence_drms      = STAGE['drms'],
+                 convergence_dmax      = STAGE['dmax'],
+                 assert_convergence    = STAGE['assert_convergence'],
+                 ...)
 
-    PySCF's ``geometric_solver.optimize(method, **kwargs)`` forwards
-    ``**kwargs`` into geomeTRIC's ``OptParams(**kwargs)`` constructor,
-    which accepts the lowercase ``convergence_*`` keys and stores them
-    on the instance as ``Convergence_*`` (capital C).  TIER 2 #8 of
-    the 2026-05-05 review claimed the kwargs raise ``TypeError`` --
-    they don't, but the only way to be sure (and stay sure across
-    PySCF / geomeTRIC version bumps) is to introspect the actual API.
+    PySCF's ``geometric_solver.kernel(method, **kwargs)`` consumes
+    ``assert_convergence`` + ``maxsteps`` directly and forwards the
+    rest into geomeTRIC's ``OptParams(**kwargs)``, which accepts the
+    lowercase ``convergence_*`` keys and stores them on the instance
+    as ``Convergence_*`` (capital C).
 
-    Probe ``OptParams`` directly with our exact key names + sentinel
-    values, then read the canonical attributes back.  No subprocess,
-    no dependency on PySCF -- if either side renames or rejects the
-    keys, this fails at unit-test time with a clean message rather
-    than letting a generated script crash at user runtime.
+    Probe BOTH surfaces with our exact key names + sentinel values:
+    OptParams for the 5 convergence_* kwargs, ``kernel``'s
+    inspect.signature for the 2 direct kwargs (assert_convergence,
+    maxsteps).  No subprocess, no run of optimize() itself -- if
+    either side renames or rejects a key, this fails at unit-test
+    time rather than letting a generated script crash at user
+    runtime.
 
     ``importorskip`` makes this skip cleanly in any env that doesn't
-    have geomeTRIC (the host env, typically).  To actually run it,
-    invoke pytest from a Python that has geomeTRIC importable
-    (``conda run -n molbuilder-pySCF python -m pytest -k geometric``).
-    No env mutation required; this is the standard pytest pattern.
+    have geomeTRIC (the molbuilder host env, per
+    [feedback_pyscf_env_isolation]).  To actually run it, invoke
+    pytest from molbuilder-pySCF:
+    ``conda run -n molbuilder-pySCF python -m pytest -k geometric``.
     """
     pytest.importorskip("geometric")
+    pytest.importorskip("pyscf")
     from geometric.optimize import OptParams
 
+    # --- All 5 convergence_* kwargs forwarded into OptParams.
     # Sentinel values picked to be unmistakable in error messages.
     p = OptParams(convergence_energy=1.234e-6,
                   convergence_grms  =5.678e-4,
-                  convergence_gmax  =9.012e-4)
+                  convergence_gmax  =9.012e-4,
+                  convergence_drms  =1.111e-3,
+                  convergence_dmax  =2.222e-3)
     assert p.Convergence_energy == 1.234e-6, (
-        "geomeTRIC OptParams stopped honouring `convergence_energy`; "
-        "molbuilder's generated script will silently use the default "
-        "or crash at runtime"
+        "geomeTRIC OptParams stopped honouring `convergence_energy`"
     )
     assert p.Convergence_grms == 5.678e-4, (
         "geomeTRIC OptParams stopped honouring `convergence_grms`"
     )
     assert p.Convergence_gmax == 9.012e-4, (
         "geomeTRIC OptParams stopped honouring `convergence_gmax`"
+    )
+    # 5c additions: convergence_drms / convergence_dmax cover the
+    # displacement criteria the post-#534 staged loop ALSO passes.
+    # A regression that loses either silently uses geomeTRIC's
+    # default tier (GAU) instead of the per-stage target.
+    assert p.Convergence_drms == 1.111e-3, (
+        "geomeTRIC OptParams stopped honouring `convergence_drms`"
+    )
+    assert p.Convergence_dmax == 2.222e-3, (
+        "geomeTRIC OptParams stopped honouring `convergence_dmax`"
+    )
+
+    # --- assert_convergence + maxsteps are consumed by PySCF's
+    # geomopt kernel directly (NOT OptParams).  Pin via signature
+    # introspection.  Without this check a future PySCF rename
+    # would silently inactivate our 5b per-stage hard-fail control.
+    import inspect
+    from pyscf.geomopt.geometric_solver import kernel
+    sig = inspect.signature(kernel)
+    assert "assert_convergence" in sig.parameters, (
+        "pyscf.geomopt.geometric_solver.kernel renamed / removed "
+        "`assert_convergence`; the per-stage warm-up False/True "
+        "control from #534 commit 5b is now dead surface"
+    )
+    assert "maxsteps" in sig.parameters, (
+        "pyscf.geomopt.geometric_solver.kernel renamed / removed "
+        "`maxsteps`; the per-stage max-step cap is now dead surface"
     )
 
 

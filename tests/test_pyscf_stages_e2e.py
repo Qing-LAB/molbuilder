@@ -264,17 +264,16 @@ class TestCoerceStagesFromParams:
         with pytest.raises(TypeError, match="cannot coerce"):
             _pyscf_config_from_params({"stages": ["not a dict"]})
 
-    def test_coerce_passes_non_list_payload_through(self):
-        """The List[<dataclass>] branch only kicks in on list/tuple
-        input -- a non-list value passes through unchanged and ends
-        up on cfg.stages as-is.  This documents the boundary: the
-        coerce path doesn't itself reject non-list payloads, so the
-        upstream consumer (commit 4's generator + a future validator
-        check) is responsible for surfacing a typed error.
-        """
-        # A bare dict passes through.  The dataclass stores it as-is.
-        cfg = _pyscf_config_from_params({"stages": {"not": "a list"}})
-        assert cfg.stages == {"not": "a list"}
+    def test_coerce_rejects_non_list_payload(self):
+        """The List[<dataclass>] branch REJECTS non-list values at
+        the boundary (#534 commit 5c).  Previously a dict-on-stages
+        silently passed through to cfg.stages, where validate_stages
+        would crash with AttributeError on ``s.enabled``.  Now the
+        coerce raises TypeError -- the API path translates this to
+        a clean 400 via the existing "bad parameters" branch in
+        web/blueprints/build.py."""
+        with pytest.raises(TypeError, match="expected list"):
+            _pyscf_config_from_params({"stages": {"not": "a list"}})
 
 
 # --------------------------------------------------------------------- #

@@ -882,7 +882,17 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
             and dataclasses.is_dataclass(args[0])):
         elem_cls = args[0]
         if not isinstance(value, (list, tuple)):
-            return value
+            # Non-list payloads on a List[<dataclass>] field are a
+            # wire-format error (a dict on cfg.stages would silently
+            # crash validate_stages with AttributeError on
+            # ``s.enabled``; #534 commit 5c).  Reject at the
+            # boundary so the API surfaces a clean 400 instead of a
+            # 500 / corrupt downstream state.
+            raise TypeError(
+                f"cannot coerce {type(value).__name__} to "
+                f"list of {elem_cls.__name__}: expected list, got "
+                f"{value!r}"
+            )
         # ``from __future__ import annotations`` makes
         # ``sf.type`` arrive as a string; resolve via
         # ``typing.get_type_hints`` for the per-field coerce
