@@ -28,6 +28,68 @@ from molbuilder.structure import Structure
 
 
 # --------------------------------------------------------------------- #
+#  L4 env-isolation helper (#534 commit 7b)                              #
+#                                                                       #
+#  Per [[feedback_pyscf_env_isolation]]: pyscf + geomeTRIC live in the  #
+#  molbuilder-pySCF env, NEVER in the host molbuilder env.  The L4     #
+#  tests below need both: molbuilder (to render the script) AND pyscf  #
+#  (to execute it).  Two-env split: pytest runs in molbuilder host;    #
+#  subprocess for the generated script uses the pySCF env's python.    #
+# --------------------------------------------------------------------- #
+
+
+def _pyscf_env_python():
+    """Return the path to the molbuilder-pySCF env's python, or None
+    if the env isn't installed on this machine."""
+    from molbuilder.diagnostics import get_capabilities
+    caps = get_capabilities()
+    if not caps.env_available("molbuilder-pySCF"):
+        return None
+    # Standard conda layout: $CONDA_PREFIX/envs/<name>/bin/python
+    import os
+    candidate = Path(
+        os.environ.get("CONDA_PREFIX", "/home/qqing/miniconda3")
+    ).parent / "envs" / "molbuilder-pySCF" / "bin" / "python"
+    if not candidate.exists():
+        # Fallback: ask conda for the env's prefix
+        from molbuilder.envs import run_in_env
+        try:
+            r = run_in_env(
+                "molbuilder-pySCF",
+                ["python", "-c", "import sys; print(sys.executable)"],
+                capture_output=True, text=True, check=True,
+            )
+            return Path(r.stdout.strip())
+        except Exception:
+            return None
+    return candidate
+
+
+def _require_pyscf_env():
+    """pytest skip helper: skip if molbuilder-pySCF env isn't set up
+    OR if it doesn't have pyscf + geometric importable."""
+    py = _pyscf_env_python()
+    if py is None:
+        pytest.skip(
+            "molbuilder-pySCF env not installed; "
+            "install via `molbuilder envs install pySCF`."
+        )
+    # Quick probe -- if the env exists but is missing pyscf or
+    # geometric, skip with a clear message instead of letting the
+    # main subprocess fail with an opaque ImportError.
+    probe = subprocess.run(
+        [str(py), "-c", "import pyscf, geometric; print('ok')"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if probe.returncode != 0:
+        pytest.skip(
+            f"molbuilder-pySCF env exists but missing pyscf/geometric: "
+            f"{probe.stderr.strip()}"
+        )
+    return py
+
+
+# --------------------------------------------------------------------- #
 #  _molwatch_log.write_initial_preview                                  #
 # --------------------------------------------------------------------- #
 
@@ -175,10 +237,14 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     starts with a step 0 preview block (energy=None, no forces) BEFORE
     any opt steps run.
 
-    Skipped if PySCF or geomeTRIC isn't installed in the test env.
+    Architectural note (#534 commit 7b): pytest itself runs in the
+    molbuilder host env (which renders the script).  The generated
+    script needs pyscf + geomeTRIC, which live ONLY in the
+    molbuilder-pySCF env per [[feedback_pyscf_env_isolation]].
+    Subprocess is dispatched into that env via run_in_env, not the
+    test's own ``sys.executable``.
     """
-    pytest.importorskip("pyscf")
-    pytest.importorskip("geometric")
+    pyscf_py = _require_pyscf_env()
 
     s = Structure(
         elements=["H", "H"],
@@ -200,7 +266,7 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     text = render_script(s, cfg)
     script = tmp_path / "prev_e2e.py"
     script.write_text(text)
-    subprocess.run([sys.executable, str(script)],
+    subprocess.run([str(pyscf_py), str(script)],
                    cwd=str(tmp_path), check=True,
                    capture_output=True, timeout=120)
     mw = tmp_path / "prev_e2e.molwatch.log"
@@ -223,6 +289,147 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     second = second.split("==== molwatch step 1 end ====", 1)[0]
     assert "energy (eV): None" not in second
     assert re.search(r"energy \(eV\):\s*-?\d+\.\d+", second)
+
+
+# --------------------------------------------------------------------- #
+#  L4 e2e: inter-stage warm-start (#534 commit 7b)                       #
+#                                                                       #
+#  The riskiest new code in the staged-opt loop is the per-iter         #
+#  warm-start:                                                          #
+#    dm_prev = (mf.make_rdm1()                                          #
+#               if mf.mo_coeff is not None and mf.mo_occ is not None    #
+#               else None)                                              #
+#    mf.reset(mol_eq)                                                   #
+#    mf.kernel(dm0=dm_prev)                                             #
+#                                                                       #
+#  This runs BETWEEN stages.  Pre-7b the L4 test was reduced to a       #
+#  single stage during 4b cleanup, so the inter-stage transition was    #
+#  not exercised end-to-end -- a regression that broke mf.reset() vs    #
+#  PCM/GPU/DF state, or that lost the converged DM between stages,     #
+#  would ship green.                                                    #
+#                                                                       #
+#  This test exercises the path on real H2: two stages, each capped at #
+#  2 max_steps so total runtime stays under ~30s on the molbuilder-    #
+#  pySCF env's stock python.                                            #
+# --------------------------------------------------------------------- #
+
+
+def test_pyscf_staged_opt_warm_start_runs_two_stages(tmp_path):
+    """End-to-end: two-stage cfg runs to completion; .molwatch.log
+    contains opt-step blocks from BOTH stages; final energy is
+    reasonable for H2/STO-3G; and the script's stage banner is
+    printed twice (proving the loop body executed twice, not just
+    the first stage).
+
+    Subprocess dispatches into molbuilder-pySCF env per
+    [[feedback_pyscf_env_isolation]] -- the generated script needs
+    pyscf + geomeTRIC, both of which live there, not in the host
+    env where pytest itself runs.
+    """
+    pyscf_py = _require_pyscf_env()
+
+    s = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+    from molbuilder.config.pyscf import StageSpec
+    cfg = PySCFConfig(
+        job_name="warm_start_e2e",
+        log_file=False,
+        # Two enabled stages -- the FIRST exercises the warm-start
+        # handoff at the loop boundary; the SECOND is forced to halt
+        # on non-convergence (script contract for the final stage).
+        # max_steps=2 each keeps total runtime tiny while still
+        # forcing the loop to take the inter-stage transition.
+        stages=[
+            StageSpec(name="warmup",
+                      enabled=True, max_steps=2,
+                      conv_tol=1.0e-7,
+                      on_nonconvergence="proceed"),
+            StageSpec(name="refine",
+                      enabled=True, max_steps=2,
+                      conv_tol=1.0e-9,
+                      on_nonconvergence="proceed"),
+        ],
+        basis="STO-3G",
+        dispersion=None,
+        density_fit=False,
+        write_trajectory=False,
+    )
+    text = render_script(s, cfg)
+    script_path = tmp_path / "warm_start_e2e.py"
+    script_path.write_text(text)
+    proc = subprocess.run(
+        [str(pyscf_py), str(script_path)],
+        cwd=str(tmp_path), check=True,
+        capture_output=True, text=True, timeout=180,
+    )
+    stdout = proc.stdout
+
+    # 1. Stage banner printed twice -- the loop took the inter-
+    #    stage handoff (not just the first stage).
+    assert stdout.count("=== Stage: warmup optimization ===") == 1, (
+        f"warmup stage banner missing/duplicated in stdout:\n{stdout}"
+    )
+    assert stdout.count("=== Stage: refine optimization ===") == 1, (
+        f"refine stage banner missing/duplicated in stdout:\n{stdout}"
+    )
+    # 2. Final energy printed once at the end -- not raised, not lost.
+    assert "Final energy:" in stdout, (
+        f"missing 'Final energy:' line in stdout:\n{stdout}"
+    )
+    final_match = re.search(r"Final energy:\s*(-?\d+\.\d+)\s*Hartree",
+                            stdout)
+    assert final_match, f"can't parse final energy from:\n{stdout}"
+    e_tot = float(final_match.group(1))
+    # H2/STO-3G total energy is around -1.12 Ha; allow a generous
+    # window (the run is only 2+2 steps, geometry isn't fully
+    # relaxed, but we should be in the right basin).
+    assert -1.3 < e_tot < -0.9, (
+        f"H2/STO-3G final energy {e_tot} Ha is not in the expected "
+        f"range -- something is wrong with the SCF or the warm-start"
+    )
+
+    # 3. .molwatch.log carries opt-step blocks from BOTH stages.
+    #    Per-stage prefix on geomeTRIC trajectory files = each stage
+    #    writes its own _geom_<stage>_optim.xyz; the unified log
+    #    accumulates ALL steps across stages.
+    mw = tmp_path / "warm_start_e2e.molwatch.log"
+    assert mw.exists()
+    log_text = mw.read_text()
+    # Should have at least 3 marker-delimited blocks total: step 0
+    # (initial preview) + at least 1 step from each of 2 stages.
+    step_count = log_text.count("==== molwatch step ")
+    # Each step has begin + end -> 2 markers; we counted "begin "
+    # plus "end ====" so divide by 2.
+    n_steps = step_count // 2
+    assert n_steps >= 3, (
+        f"expected at least 3 molwatch step blocks (initial + 1 per "
+        f"stage); got {n_steps}.  Log:\n{log_text[-2000:]}"
+    )
+
+    # 4. Per-stage geomeTRIC trajectory files exist (write_trajectory
+    #    was False so they should NOT appear -- this is the negative
+    #    half of the per-stage prefix contract; flip to assert
+    #    presence when write_trajectory=True).
+    assert not list(tmp_path.glob("warm_start_e2e_geom_*_optim.xyz"))
+
+    # 5. The nested-shape convergence_targets reached the molwatch
+    #    header (7a contract): one entry per enabled stage with the
+    #    8 leaves the post-7a generator emits.
+    from molbuilder.parse.engines.molwatch import MolwatchLogParser
+    traj = MolwatchLogParser.parse(str(mw))
+    ct = traj.runtime_info.get("convergence_targets") or {}
+    # Two enabled stages -> nested shape with two top-level entries.
+    assert set(ct.keys()) - {"source"} == {"warmup", "refine"}, (
+        f"convergence_targets keys: {sorted(ct.keys())}"
+    )
+    warmup = ct["warmup"]
+    assert "max_force_tol_eV_per_A" in warmup
+    assert "rms_force_tol_eV_per_A" in warmup
+    assert "max_displ_ang" in warmup
+    assert "rms_displ_ang" in warmup
 
 
 # --------------------------------------------------------------------- #
