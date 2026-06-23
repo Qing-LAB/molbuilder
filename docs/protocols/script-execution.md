@@ -63,15 +63,22 @@ its `--cold` glob entry MUST land in the same commit.**
 | Warm-restart file | What it carries | Read by |
 |---|---|---|
 | `<JOB>.chk` | SCF DM (init guess) | `if exists → mf.init_guess = "chkfile"` in script |
-| `<JOB>_optimized.xyz` | latest converged geometry | (after #539 lands) `gto.M(atom=...)` literal-override block in script |
+| `<JOB>_optimized.xyz` | latest converged geometry | `_atom_block` override before `gto.M(atom=_atom_block, ...)` in the generated script (landed #539, 2026-06-23) |
 | `<JOB>_geom_optim.xyz` | geomeTRIC trajectory (frames) | geomeTRIC append-mode hazard if present |
 | `<JOB>_geom_optim.tmp` | geomeTRIC temp | geomeTRIC may resume from temp on certain failures |
 | `<JOB>_geom.tmp` | geomeTRIC temp | same |
 
-**Today (pre-#539):** the `--cold` glob only catches `<JOB>.chk`.
-The other 4 files are NOT moved aside — same class of state-leak
-bug as the 2026-06-14 SIESTA gap.  Task #539 closes this once the
-geometry-warm-restart hook (item 2 below) lands.
+**Landed 2026-06-23 (#539):** the PySCF `--cold` glob now covers
+all 5 files in the inventory above (suffix-keyed, with braced
+`${_warm_label}` expansion to handle underscore-prefixed
+suffixes safely).  Pinned by
+`tests/test_runwrap.py::test_pyscf_cold_aside_block_covers_full_warm_restart_inventory`
++ an end-to-end bash test that plants all 5 files and confirms
+`--cold` moves every one of them into the dated aside dir.  Going
+forward, **any new PySCF warm-restart hook MUST add its suffix to
+the inventory table above AND to `_PYSCF_WARM_RESTART_INVENTORY`
+in the test file** — the parity test catches a hook that lands
+the read-side but forgets the `--cold` glob entry.
 
 ### TranSIESTA / transport engines
 
@@ -212,14 +219,31 @@ PySCF to understand the banner.
 
 ---
 
-## Open implementation gaps (as of 2026-06-20)
+## Open implementation gaps (as of 2026-06-23)
 
 | Gap | Task | Severity |
 |---|---|---|
-| PySCF `--cold` glob misses `_optimized.xyz`, `_geom_optim.xyz`, `_geom*.tmp` | #539 | State-leak (same shape as SIESTA's 2026-06-14 HSX/WFSX gap, task #438) |
-| PySCF generator doesn't emit the geometry-warm-restart hook by default (user has to add it manually) | #539 | Asymmetry vs SIESTA; PDT user hit this 2026-06-20 |
-| PySCF generator doesn't include basis-tier / functional-tier / convergence-tier guidance comments | #539 | Discoverability — users default to def2-SVP and don't realize it's screening-only |
-| PySCF doesn't have staged auto-optimization (loose → publishable → TIGHT in a single script) | #534 | Major feature; matches SIESTA's multi-stage convention but in one script |
+| PySCF generator doesn't include basis-tier / functional-tier / convergence-tier guidance comments | _spinoff (not yet assigned)_ | Discoverability — users default to def2-SVP and don't realize it's screening-only.  The convergence-tier guidance now lives in [`engines/optimization-tuning.md`](../engines/optimization-tuning.md); the gap is wiring it into the generator's verbose-comment block. |
+
+**Closed 2026-06-23**:
+
+* **#539 (PySCF `--cold` glob + geometry warm-restart hook).**  Two
+  pieces shipped in one commit per the rule above: the generator
+  emits the `_atom_block` literal-override block before `gto.M()`
+  (auto-resumes from `<JOB>_optimized.xyz` when present), and the
+  runwrap `_cold_restart_aside_block` covers the full 5-file
+  inventory.  Pinned by 6 new tests across `test_pyscf.py`
+  (generator) and `test_runwrap.py` (runwrap) including an
+  end-to-end bash test that plants all 5 files and verifies the
+  move-aside.  See `_PYSCF_WARM_RESTART_INVENTORY` in
+  `tests/test_runwrap.py` for the authoritative inventory tuple.
+
+* **#534 (PySCF staged auto-optimization).**  Per-stage convergence
+  ladder shipped via the `cfg.stages: List[StageSpec]` data model,
+  emitted as `STAGES = [...]` + `for STAGE in STAGES:` in the
+  generated script with inter-stage warm-start via `mf.reset(mol_eq);
+  mf.kernel(dm0=dm_prev)`.  See decision-log 2026-06-22 in
+  [`design.md`](../design.md) for the full design rationale.
 
 ---
 

@@ -264,6 +264,13 @@ def render_script(struct: Structure,
         max_memory_mb=int(getattr(cfg, "max_memory_mb", 0)) or None,
     )
     out.append("import time")
+    # ``_os`` is used by the warm-restart blocks (geometry override
+    # at gto.M() time + chkfile SCF init-guess after mf is built).
+    # Hoisted out of the chkfile-conditional emission so the geometry
+    # warm-restart, which runs unconditionally before mol is built,
+    # can call ``_os.path.exists`` without depending on a downstream
+    # conditional import landing in the script.
+    out.append("import os as _os")
     out.append("")
     # Import only what the script actually uses.  HF runs (method=RHF/UHF)
     # never touch the dft module; DFT runs (RKS/UKS, the default) need it.
@@ -374,10 +381,53 @@ def render_script(struct: Structure,
             f'# `ecp = "{ecp_chosen}"` for scalar-relativistic core',
             "# replacement.  Override via cfg.ecp = '<name>' or '' to disable.",
         ]
-    out.append("mol = gto.M(")
-    out.append("    atom = '''")
+    # Geometry warm-restart hook (task #539).  The atom literal is
+    # bound to ``_atom_block`` so the if-exists block below can
+    # override it from a prior run's ``<JOB>_optimized.xyz``.  The
+    # runwrap's ``--cold`` glob moves ``_optimized.xyz`` aside when
+    # the user wants a fresh start; otherwise the script auto-resumes
+    # from the relaxed geometry on the next ``--continue`` invocation
+    # (analog to SIESTA's automatic ``.XV`` read, per script-execution.md
+    # "Cross-engine equivalence table").
+    #
+    # Two guards: ``os.path.exists`` AND ``getsize > 0`` so a stale
+    # 0-byte file from a crashed prior run doesn't trigger a parse on
+    # an empty file.  A parse failure (malformed XYZ) falls through to
+    # the literal -- we never silently feed garbage to gto.M().
+    out.append("_atom_block = '''")
     out.append(_atoms_block(struct))
-    out.append("    ''',")
+    out.append("'''")
+    out.append('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
+    out.append("if _os.path.exists(_opt_path) "
+               "and _os.path.getsize(_opt_path) > 0:")
+    out.append("    try:")
+    out.append("        with open(_opt_path) as _mb_xyz_fh:")
+    out.append("            _xyz_lines = _mb_xyz_fh.read().splitlines()")
+    # XYZ format: line 0 = atom count, line 1 = comment, lines 2..N+1
+    # = "ELEM  X  Y  Z" rows.  We rebuild _atom_block as PySCF expects
+    # (4 cols, whitespace-separated, Ang) and re-prefix every row with
+    # the same 4-space indent the literal uses so a downstream reader
+    # sees a uniform block shape.
+    out.append("        _n_xyz = int(_xyz_lines[0].strip())")
+    out.append("        _rows = []")
+    out.append("        for _row in _xyz_lines[2:2 + _n_xyz]:")
+    out.append("            _parts = _row.split()")
+    out.append("            if len(_parts) < 4:")
+    out.append("                raise ValueError("
+               "f\"malformed XYZ row: {_row!r}\")")
+    out.append("            _el = _parts[0]")
+    out.append("            _x, _y, _z = (float(_parts[1]), "
+               "float(_parts[2]), float(_parts[3]))")
+    out.append("            _rows.append("
+               "f\"    {_el:<2s}  {_x:14.8f}  {_y:14.8f}  {_z:14.8f}\")")
+    out.append("        _atom_block = \"\\n\".join(_rows)")
+    out.append('        print(f"[molbuilder] continuation: loaded '
+               'geometry from {_opt_path} ({_n_xyz} atoms)")')
+    out.append("    except (OSError, ValueError, IndexError) as _mb_e:")
+    out.append('        print(f"[molbuilder] warning: could not parse '
+               '{_opt_path} ({_mb_e}); using literal geometry from script")')
+    out.append("mol = gto.M(")
+    out.append("    atom       = _atom_block,")
     out.append(f'    basis      = "{cfg.basis}",')
     if ecp_chosen:
         # ECP can be either a string ("lanl2dz") or a per-element dict
@@ -508,7 +558,9 @@ def render_script(struct: Structure,
         # re-converge cost on a resumed run from "full SCF from scratch"
         # to "small refine on top of converged DM".  Gated on a
         # non-empty file so a stale 0-byte chkfile doesn't trigger.
-        out.append("import os as _os")
+        # ``_os`` is imported at the top of the script (alongside the
+        # geometry warm-restart block at gto.M() time, which also
+        # needs it).
         out.append("_chk_path = _mb_outfile(JOB + \".chk\")")
         out.append("if _os.path.exists(_chk_path) and "
                    "_os.path.getsize(_chk_path) > 0:")

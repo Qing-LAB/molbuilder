@@ -903,3 +903,173 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
         f"SIESTA wrapper failed bash -n syntax check.  bash stderr:\n"
         f"{cp.stderr}"
     )
+
+
+# --------------------------------------------------------------------- #
+#  Task #539: PySCF --cold glob covers the full warm-restart inventory  #
+#                                                                       #
+#  Per docs/protocols/script-execution.md "Required tests" table, every #
+#  engine must have a test that pins ``--cold`` aside-glob coverage     #
+#  against the warm-restart inventory.  SIESTA's equivalent shipped     #
+#  2026-06-14 (task #438).  This file pairs with the generator-side    #
+#  geometry warm-restart hook in tests/test_pyscf.py.                  #
+# --------------------------------------------------------------------- #
+
+
+# Authoritative inventory: docs/protocols/script-execution.md § PySCF
+# warm-restart file table.  Update BOTH the doc + this tuple in the
+# same commit when a new warm-restart hook lands -- the parity is the
+# whole point of pinning it here.
+_PYSCF_WARM_RESTART_INVENTORY = (
+    ".chk",                # SCF DM init guess
+    "_optimized.xyz",      # geometry warm-restart hook (#539 generator)
+    "_geom_optim.xyz",     # geomeTRIC trajectory (append-mode hazard)
+    "_geom_optim.tmp",     # geomeTRIC checkpoint
+    "_geom.tmp",           # geomeTRIC checkpoint
+)
+
+
+def test_pyscf_cold_aside_block_covers_full_warm_restart_inventory():
+    """The PySCF ``--cold`` glob must move EVERY file in the
+    warm-restart inventory aside (per script-execution.md "Required
+    tests" item 2).  A future warm-restart hook added in the
+    generator without a matching glob entry here would silently
+    state-leak: the user runs ``--cold`` expecting a fresh start but
+    geomeTRIC's append-mode (or the script's _atom_block override)
+    picks up the prior run's file.
+
+    Pinned per-suffix in BOTH the JOB-keyed (``$_warm_label``) form
+    and the wrapper-basename-keyed fallback so a JOB-vs-basename
+    mismatch can't slip a file past the move-aside step.
+    """
+    from molbuilder.runwrap import _cold_restart_aside_block
+    basename = "myjob"
+    block = _cold_restart_aside_block(basename, engine="pyscf")
+    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
+        # JOB-keyed form: ``"${_warm_label}.chk"`` etc.  Braces are
+        # load-bearing for suffixes starting with ``_`` (bash would
+        # otherwise absorb the suffix into the variable name and
+        # trip ``set -u``).  Quoted so a JOB string with whitespace
+        # doesn't word-split.
+        assert f'"${{_warm_label}}{suffix}"' in block, (
+            f"PySCF --cold glob is missing JOB-keyed entry "
+            f"${{_warm_label}}{suffix}; design.md "
+            f'"Generator-side warm-restart contract" requires every '
+            f"warm-restart hook ship its --cold glob entry in the "
+            f"same commit (with braced ${{...}} expansion to handle "
+            f"underscore-prefixed suffixes safely)")
+        # Wrapper-basename fallback: ``myjob.chk`` etc.  Catches the
+        # case where the script's JOB string equals the wrapper
+        # basename and the SystemLabel/JOB extract returned the
+        # default.
+        assert f"{basename}{suffix}" in block, (
+            f"PySCF --cold glob is missing basename-keyed entry "
+            f"{basename}{suffix}; covers the JOB=='basename' case")
+
+
+def test_pyscf_cold_aside_block_does_not_glob_unrelated_files():
+    """Defense in depth: the PySCF cold block must not accidentally
+    glob files that aren't in the warm-restart inventory.  Catches
+    a copy-paste regression where the SIESTA extensions (.DM, .XV,
+    .CG, .HSX, .WFSX, ...) get pasted into the PySCF branch and the
+    runwrap would happily delete unrelated SIESTA artifacts in a
+    mixed-engine project directory."""
+    from molbuilder.runwrap import _cold_restart_aside_block
+    block = _cold_restart_aside_block("myjob", engine="pyscf")
+    # SIESTA-only extensions must NOT appear in the PySCF block.
+    for ext in ("DM", "XV", "CG", "LWF", "HSX", "WFSX", "TSHS"):
+        assert f"myjob.{ext}" not in block, (
+            f"PySCF cold-restart block contains SIESTA-only "
+            f"extension .{ext}; cross-engine leak risk")
+
+
+def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
+    """End-to-end syntax check: the rendered PySCF wrapper, with
+    the expanded inventory glob, must still pass ``bash -n``.  A
+    quoting / interpolation bug in the multi-suffix expansion would
+    fail bash parse + we'd never want to ship that wrapper.
+    Catches the pre-2026-06-20 PySCF SQ-escape malformed pattern
+    class (where awk's char class shipped unterminated DQ)."""
+    _bind()
+    import subprocess
+    script = tmp_path / "myjob.py"
+    script.write_text('JOB = "myjob"\nimport pyscf\n')
+    wrapper_path = write_run_wrapper(script)
+    cp = subprocess.run(
+        ["bash", "-n", str(wrapper_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert cp.returncode == 0, (
+        f"PySCF wrapper with full warm-restart inventory failed "
+        f"bash -n syntax check.  bash stderr:\n{cp.stderr}"
+    )
+
+
+def test_pyscf_cold_actually_moves_optimized_xyz_aside(tmp_path):
+    """End-to-end behavior: extract the cold-restart bash block from
+    the runwrap emitter, plant ALL five warm-restart files (each
+    with a distinct sentinel), run the block with ``_cold=1`` under
+    bash, and assert every file got moved into the dated aside dir.
+
+    Runs the actual bash block, not a model of it -- catches a bug
+    where the glob entries are present but the move-aside loop has
+    a typo that causes the actual ``mv`` to skip a file (the
+    "branch present but never fires" class from design.md Required
+    tests table).
+
+    Uses bash subprocess directly (not the truncated wrapper helper
+    -- that cuts at the run-index resolver, BEFORE the cold block
+    runs in the rendered wrapper, so it can't exercise this path).
+    """
+    from molbuilder.runwrap import _cold_restart_aside_block
+    job = "myjob"
+    block = _cold_restart_aside_block(job, engine="pyscf")
+
+    # The block reads JOB= from the .py script to populate
+    # _warm_label.  Plant a minimal script alongside the warm-
+    # restart files.
+    (tmp_path / f"{job}.py").write_text(f'JOB = "{job}"\n')
+
+    # Plant the warm-restart inventory.
+    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
+        (tmp_path / f"{job}{suffix}").write_text(f"sentinel-{suffix}")
+
+    # Wrap the block with the minimal harness it expects: ``_cold=1``
+    # to trigger the move + the same ``set -euo pipefail`` shape the
+    # real wrapper uses.  The block uses ``shopt -s nullglob``
+    # internally so non-matching globs don't trip ``set -e``.
+    harness = (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "_cold=1\n"
+        f"{block}\n"
+    )
+    script_path = tmp_path / "cold_block.sh"
+    script_path.write_text(harness)
+    script_path.chmod(0o755)
+
+    bash = shutil.which("bash") or "/bin/bash"
+    proc = subprocess.run(
+        [bash, str(script_path)],
+        cwd=str(tmp_path),
+        capture_output=True, text=True, timeout=15,
+    )
+    assert proc.returncode == 0, (
+        f"cold-restart block exited non-zero;\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+
+    # No warm-restart files remain in cwd.
+    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
+        assert not (tmp_path / f"{job}{suffix}").exists(), (
+            f"--cold did not move {job}{suffix} aside; design.md "
+            f"warm-restart contract violated")
+
+    # Aside dir exists (dated), contains every planted file.
+    aside_dirs = list(tmp_path.glob(f"{job}-restart-aside-*"))
+    assert len(aside_dirs) == 1, (
+        f"expected exactly one aside dir; got {aside_dirs}")
+    moved = sorted(p.name for p in aside_dirs[0].iterdir())
+    expected = sorted(f"{job}{s}" for s in _PYSCF_WARM_RESTART_INVENTORY)
+    assert moved == expected, (
+        f"aside dir contents diverge from planted inventory; "
+        f"got {moved}, expected {expected}")

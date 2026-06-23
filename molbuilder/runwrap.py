@@ -205,8 +205,11 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
         family auto-loads).  We move them all so a partial set
         can't trigger a half-warm-start.
-      * ``pyscf``: ``.chk`` (PySCF's chkfile + the geomeTRIC
-        chkpoint when present).
+      * ``pyscf``: ``.chk`` (SCF DM init guess), ``_optimized.xyz``
+        (geometry warm-restart hook, task #539), ``_geom_optim.xyz``
+        / ``_geom_optim.tmp`` / ``_geom.tmp`` (geomeTRIC trajectory
+        + checkpoints).  Anything the generator's auto-resume
+        branches (or geomeTRIC's own append mode) would pick up.
 
     Backups land in
     ``<basename>-restart-aside-<UTC-timestamp>/`` so the user can
@@ -253,7 +256,47 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             "TSHS", "TSDE",
         )
     elif engine == "pyscf":
-        exts = ("chk",)
+        # PySCF warm-start file SUFFIXES (NOT bare extensions -- the
+        # generator names per-stage trajectory files
+        # ``<JOB>_geom_optim.xyz`` and the optimized-geometry hook
+        # ``<JOB>_optimized.xyz``, neither of which a plain
+        # ``{ext}`` glob would catch).  The runwrap must move ALL of
+        # these aside on ``--cold`` so a fresh run can't silently
+        # warm-restart from a partial prior state.
+        #
+        # Inventory (synced with docs/protocols/script-execution.md
+        # § "Warm-restart file inventory" -> PySCF table):
+        #
+        #   .chk              -- SCF density matrix.  Auto-loaded by
+        #                        the ``mf.chkfile`` + ``if exists ->
+        #                        init_guess="chkfile"`` block in the
+        #                        generated script.
+        #   _optimized.xyz    -- last converged geometry.  Auto-loaded
+        #                        by the ``_atom_block`` warm-restart
+        #                        hook in the generated script (task
+        #                        #539 generator side).
+        #   _geom_optim.xyz   -- geomeTRIC trajectory frames.  Not
+        #                        auto-loaded by molbuilder but
+        #                        geomeTRIC's own append mode picks
+        #                        them up if present + can corrupt the
+        #                        new trajectory.
+        #   _geom_optim.tmp,
+        #   _geom.tmp         -- geomeTRIC checkpoints.  geomeTRIC
+        #                        resumes from these on certain failure
+        #                        modes; leaving them in place defeats
+        #                        ``--cold``.
+        #
+        # Suffix-keyed, not extension-keyed: ``.chk`` is just
+        # "``.chk``" but the others end in ``_optimized.xyz`` etc.
+        # The glob template below interpolates each suffix verbatim
+        # against ``$_warm_label`` + the wrapper basename.
+        suffixes = (
+            ".chk",
+            "_optimized.xyz",
+            "_geom_optim.xyz",
+            "_geom_optim.tmp",
+            "_geom.tmp",
+        )
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
     # 2026-06-14 fix: SIESTA names its warm-start files after the
@@ -348,9 +391,26 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             '        ;;\n'
             'esac\n'
         )
+        # Suffix-based glob template: each entry expands to BOTH the
+        # JOB-keyed name (from inside the .py) AND the wrapper-
+        # basename-keyed fallback (for users whose JOB happens to
+        # match the wrapper basename).  Both forms are emitted so a
+        # mismatch between JOB and basename can't slip a warm-start
+        # file past the move-aside step.
+        #
+        # CRITICAL: brace the var expansion as ``${_warm_label}``,
+        # NOT bare ``$_warm_label``.  Suffixes here START with ``_``
+        # (e.g. ``_optimized.xyz``), and bash absorbs trailing
+        # ``[A-Za-z0-9_]+`` into the variable name -- so
+        # ``"$_warm_label_optimized.xyz"`` would dereference the
+        # variable ``_warm_label_optimized`` (unset -> trips
+        # ``set -u``) instead of the intended concatenation.  Braces
+        # terminate the variable name explicitly.  The pre-#539 glob
+        # template happened to be safe because every suffix started
+        # with ``.`` which terminates the var name naturally.
         glob_pieces = " ".join(
-            f'"$_warm_label.{ext}" {basename}.{ext}'
-            for ext in exts
+            f'"${{_warm_label}}{suffix}" {basename}{suffix}'
+            for suffix in suffixes
         )
     return (
         f"# --- Cold-restart: move engine warm-start files aside ---\n"

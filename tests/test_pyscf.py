@@ -196,7 +196,14 @@ def test_no_optimize_drops_geom_block(h2o):
     text = render_script(h2o, PySCFConfig(optimize=False, verbose_comments=False))
     assert "mol_eq = optimize(" not in text
     assert "e = mf.kernel()" in text
-    assert "_optimized.xyz" not in text
+    # The _save_xyz call that WRITES <JOB>_optimized.xyz must not
+    # appear -- there's no optimized geometry to save.  The
+    # geometry-warm-restart hook at gto.M() time (task #539) still
+    # references the file (auto-resume from a prior optimize=True
+    # run with the same JOB), so don't assert ``_optimized.xyz``
+    # is absent globally; assert only the WRITE site is gone.
+    assert "_save_xyz(mol_eq" not in text
+    assert 'JOB + "_optimized.xyz"), "Final optimized geometry"' not in text
 
 
 def test_stages_loop_emits_per_stage_optimize_kwargs(h2o):
@@ -490,6 +497,173 @@ def test_chkfile_disabled_skips_continuation_shim(h2o):
     text = render_script(h2o, PySCFConfig(chkfile=False))
     assert 'mf.chkfile = _mb_outfile(JOB + ".chk")' not in text
     assert "_chk_path = _mb_outfile(JOB" not in text
+
+
+# --------------------------------------------------------------------- #
+#  Task #539: geometry warm-restart hook at gto.M() time                #
+# --------------------------------------------------------------------- #
+
+
+def test_geometry_warm_restart_block_emitted(h2o):
+    """Task #539 / decision-log 2026-06-22+: every PySCF script
+    must auto-resume from ``<JOB>_optimized.xyz`` when present
+    (analog to SIESTA's automatic ``.XV`` read).  This is the
+    geometry side of the warm-restart contract documented in
+    docs/protocols/script-execution.md § "Generator-side warm-
+    restart contract" item 2.
+
+    Without this hook, a ``bash job.run.sh --continue`` after a
+    converged run would re-start from the script's literal
+    coordinates -- discarding the optimization the user just paid
+    for.
+    """
+    text = render_script(h2o, PySCFConfig())
+    # The literal coordinates land in ``_atom_block``, not directly
+    # as ``atom='...'`` -- so the warm-restart block can override
+    # the variable before gto.M() consumes it.
+    assert "_atom_block = '''" in text
+    assert "atom       = _atom_block," in text
+    # The auto-detect shim: file existence + non-empty guard, XYZ
+    # parse, _atom_block override, continuation print.
+    assert '_opt_path = _mb_outfile(JOB + "_optimized.xyz")' in text
+    assert ("_os.path.exists(_opt_path) and "
+            "_os.path.getsize(_opt_path) > 0") in text
+    assert 'continuation: loaded geometry from' in text
+    # Fall-through guard: a parse failure prints a warning and the
+    # literal _atom_block is used.  Without this, a malformed XYZ
+    # would silently feed garbage to gto.M().
+    assert "except (OSError, ValueError, IndexError)" in text
+    assert "could not parse" in text
+
+
+def test_geometry_warm_restart_block_precedes_gto_M(h2o):
+    """The warm-restart override MUST run before gto.M() reads
+    ``_atom_block`` -- otherwise the literal is consumed and the
+    override is dead code.  Pins the lexical order in the rendered
+    script."""
+    text = render_script(h2o, PySCFConfig())
+    opt_block_ix = text.index('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
+    gto_call_ix  = text.index("mol = gto.M(")
+    assert opt_block_ix < gto_call_ix, (
+        "warm-restart override must precede gto.M() so the literal "
+        "_atom_block has been overridden by the time PySCF builds mol")
+
+
+def test_geometry_warm_restart_compiles(h2o):
+    """The generated script must compile to bytecode (no syntax
+    errors) -- the warm-restart block uses try/except/with/for which
+    are easy to mis-emit at the join.  Pins script-render correctness
+    end-to-end so a regression that breaks the template surfaces
+    immediately (rather than at PySCF launch time)."""
+    text = render_script(h2o, PySCFConfig())
+    compile(text, "<rendered-script>", "exec")
+
+
+def test_geometry_warm_restart_overrides_literal_when_xyz_exists(h2o, tmp_path):
+    """End-to-end behavior of the warm-restart block, exercised
+    WITHOUT launching PySCF.  We render the script, save it, write
+    a fake ``<JOB>_optimized.xyz`` with deliberately-distinct
+    coordinates, then execute ONLY the warm-restart block in
+    isolation (stripped down to its dependencies) and confirm
+    ``_atom_block`` has been overridden with the fake-file
+    contents.
+
+    Catches the "branch present but never fires" class of bug
+    from the design.md "Required tests" table.
+    """
+    text = render_script(h2o, PySCFConfig())
+
+    # Extract just the warm-restart slice we want to exercise.  We
+    # want everything from the _atom_block initial assignment up to
+    # (but not including) the gto.M() call -- that's the literal +
+    # override block.  We then prepend the JOB literal and a fake
+    # _mb_outfile so the slice runs standalone.
+    block_start = text.index("_atom_block = '''")
+    block_end   = text.index("mol = gto.M(")
+    slice_text  = text[block_start:block_end]
+
+    # Write a fake _optimized.xyz with He instead of O/H/H so we can
+    # tell from the override result whether the warm-restart fired.
+    job = "test_job"
+    opt_xyz = tmp_path / f"{job}_optimized.xyz"
+    opt_xyz.write_text(
+        "1\n"
+        "fake geometry\n"
+        "He   1.23000000   4.56000000   7.89000000\n"
+    )
+
+    # Stub the helpers the slice depends on.
+    ns = {
+        "_os": __import__("os"),
+        "JOB": job,
+        "_mb_outfile": lambda name: str(tmp_path / name),
+    }
+    exec(slice_text, ns)
+
+    # The override fired: _atom_block now contains the He literal,
+    # not the original H2O literal.
+    assert "He" in ns["_atom_block"]
+    assert "1.23" in ns["_atom_block"]
+    assert "4.56" in ns["_atom_block"]
+    # And the original O/H literal is gone.
+    assert "O " not in ns["_atom_block"]
+
+
+def test_geometry_warm_restart_falls_through_when_xyz_absent(h2o, tmp_path):
+    """Symmetric end-to-end: when no ``<JOB>_optimized.xyz`` exists,
+    the warm-restart block falls through cleanly and ``_atom_block``
+    keeps the literal value the generator wrote into the script.
+    This is the cold-start path; a regression that always-triggers
+    the override (e.g., bad ``if`` predicate) would silently break
+    cold runs."""
+    text = render_script(h2o, PySCFConfig())
+    block_start = text.index("_atom_block = '''")
+    block_end   = text.index("mol = gto.M(")
+    slice_text  = text[block_start:block_end]
+
+    ns = {
+        "_os": __import__("os"),
+        "JOB": "no_such_job",
+        "_mb_outfile": lambda name: str(tmp_path / name),
+    }
+    exec(slice_text, ns)
+    # Literal H2O survives -- no override fired.
+    assert " O " in ns["_atom_block"]
+    assert " H " in ns["_atom_block"]
+    assert "He" not in ns["_atom_block"]
+
+
+def test_geometry_warm_restart_falls_through_on_malformed_xyz(h2o, tmp_path):
+    """Defense in depth: a malformed XYZ (bad atom count, missing
+    columns) MUST not crash the script -- the try/except keeps the
+    literal block intact and prints a warning.  Without this guard,
+    a corrupted file from a crashed prior run would block re-runs
+    until manually deleted."""
+    text = render_script(h2o, PySCFConfig())
+    block_start = text.index("_atom_block = '''")
+    block_end   = text.index("mol = gto.M(")
+    slice_text  = text[block_start:block_end]
+
+    job = "broken_job"
+    opt_xyz = tmp_path / f"{job}_optimized.xyz"
+    # Missing coordinate columns: parser should raise + we fall
+    # through to the literal.
+    opt_xyz.write_text(
+        "2\n"
+        "malformed (missing columns)\n"
+        "H\n"
+        "H\n"
+    )
+
+    ns = {
+        "_os": __import__("os"),
+        "JOB": job,
+        "_mb_outfile": lambda name: str(tmp_path / name),
+    }
+    exec(slice_text, ns)
+    # Literal survives despite the malformed file.
+    assert " O " in ns["_atom_block"]
+    assert " H " in ns["_atom_block"]
 
 
 # --------------------------------------------------------------------- #
