@@ -266,12 +266,19 @@ class SiestaConfig:
         # picking a low-but-not-tiny value see a soft nudge.
         "range": (100.0, 1000.0),
         "tier":  "basic",
-        "help":  "real-space integration grid (Ry).  200-300 is "
-                 "production-typical; 400+ for tight basis (TZP) or "
-                 "vibrational work.  Below 150 Ry the forces / "
-                 "energies are noticeably wrong on organic / "
-                 "biomolecule systems; the validation pass warns "
-                 "below that floor.",
+        "help":  (
+            "Real-space integration grid (Ry).  Sets the spacing of "
+            "the 3D mesh SIESTA uses for Hartree + XC potentials, via "
+            "the plane-wave-equivalent kinetic-energy cutoff.\n"
+            "Per-tier: screening 150, loose preopt 200-250, "
+            "publishable 350, tight (vib/phonons) 500 (600 for "
+            "first-row elements).\n"
+            "Below 150 Ry the forces / energies are noticeably wrong "
+            "on organic / biomolecule systems; the validator warns "
+            "below that floor.  Egg-box noise sets the floor for "
+            "vibrational work — test by varying ±50 Ry.  See "
+            "docs/engines/optimization-tuning.md § 2.6."
+        ),
     })
 
     # XC
@@ -361,7 +368,17 @@ class SiestaConfig:
         "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
-        "help":  "DM-element SCF convergence threshold",
+        "help":  (
+            "Density-matrix element convergence threshold for the "
+            "inner SCF loop.  Forces are derived from the converged "
+            "density -- sloppy SCF -> noisy forces -> optimizer "
+            "thrashes.\n"
+            "Per-tier (dimensionless): screening 1e-3, loose preopt "
+            "1e-4, publishable 1e-4, tight (vib/IR) 1e-5.\n"
+            "Rule of thumb: keep SCF tol ~10x tighter than the "
+            "force-precision target you want at convergence.  See "
+            "docs/engines/optimization-tuning.md § 2.5."
+        ),
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "section": "SCF",
@@ -454,7 +471,23 @@ class SiestaConfig:
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
-        "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
+        "help": (
+            "MD/relax algorithm.  Per-tier guidance:\n"
+            "  • CG       — robust for loose warm-up stages (far from "
+            "minimum, large forces).  No memory cost.  Oscillates near "
+            "a minimum on stiff / coupled systems (metals, interfaces, "
+            "vdW stacks).\n"
+            "  • Broyden  — quasi-Newton; best for publishable / tight "
+            "stages on organic-on-metal interfaces, surfaces, "
+            "anything where CG oscillates.\n"
+            "  • FIRE     — MD-inspired; robust on rough landscapes "
+            "(random builder guesses).\n"
+            "  • Verlet/Nose — NOT geometry relax; finite-T MD only.\n"
+            "  • none     — single-point (skip MD block entirely).\n"
+            "Recommended workflow: stage 1 CG (warm-up) → stage 2 "
+            "Broyden (refine).  See docs/engines/optimization-tuning.md "
+            "§ 2.1 for full algorithm comparison + citations."
+        ),
     })
     relax_steps: int = field(default=200, metadata={
         "section": "Compute & budget",
@@ -468,15 +501,17 @@ class SiestaConfig:
         "engine_key":  'MD.NumCGsteps / MD.NumBroydenSteps / MD.NumFIRESteps (per relax_type)',
         "range": (1, 10000),
         "tier":  "advanced",
-        "help":  "OUTER loop: max geometry steps the optimiser is "
-                 "allowed (each step runs a full SCF and computes "
-                 "forces, then moves atoms).  Maps to the SIESTA "
-                 "keyword that matches relax_type: "
-                 "MD.NumCGsteps for CG, MD.NumBroydenSteps for "
-                 "Broyden, MD.NumFIRESteps for FIRE, "
-                 "MD.FinalTimeStep for Verlet/Nose dynamics.  "
-                 "Tight final stages need MORE steps (small "
-                 "displacement cap = slow descent), not fewer.",
+        "help":  (
+            "OUTER loop: max geometry steps the optimiser is allowed "
+            "(each step = full SCF + forces + atom move).  Maps to "
+            "the SIESTA keyword matching relax_type: MD.NumCGsteps for "
+            "CG, MD.NumBroydenSteps for Broyden, MD.NumFIRESteps for "
+            "FIRE, MD.FinalTimeStep for Verlet/Nose.\n"
+            "Per-tier: loose warm-up ~50, publishable ~200, tight "
+            "(vib/IR) ~100 (small displacement cap = slow but few "
+            "steps from a publishable-converged starting geometry).  "
+            "See docs/engines/optimization-tuning.md § 2.10."
+        ),
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "section": "Compute & budget",
@@ -486,7 +521,17 @@ class SiestaConfig:
         "id_suffix": "force-tol",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  "force-tol stop criterion (CG/Broyden/FIRE only; ignored in Verlet/Nose)",
+        "help":  (
+            "Force-tol stop criterion: max unconstrained atomic force "
+            "below which the relaxation declares success.  Ignored by "
+            "Verlet/Nose (those are MD, not relax).\n"
+            "Per-tier (eV/Å): screening 0.10, loose preopt 0.05, "
+            "publishable 0.04 (Gaussian-OPT default), tight (vib/IR) "
+            "0.01, very-tight (NEB barrier) 0.001.\n"
+            "SIESTA only checks max force.  See docs/engines/"
+            "optimization-tuning.md § 2.3 for the 5-criteria "
+            "geomeTRIC/Gaussian convention + citations."
+        ),
     })
     relax_max_displ: float = field(default=0.05, metadata={
         "section": "Compute & budget",
@@ -496,7 +541,17 @@ class SiestaConfig:
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  "displacement cap per step (MD.MaxCGDispl for CG, MD.MaxDispl otherwise)",
+        "help":  (
+            "Displacement cap per optimiser step (MD.MaxCGDispl for "
+            "CG, MD.MaxDispl for Broyden/FIRE).  Hard ceiling that "
+            "catches line-search over-shoot.\n"
+            "Per-tier (Å): screening 0.30, loose preopt 0.20, "
+            "publishable 0.05, tight (vib/IR) 0.02.\n"
+            "Symptom of too-large cap: max-force oscillates rather "
+            "than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  "
+            "Halve the cap.  See docs/engines/optimization-tuning.md "
+            "§ 2.2 + the BDT/Au worked example in § 6."
+        ),
     })
 
     # ---- Verlet / Nose dynamics (only emitted when relax_type is in

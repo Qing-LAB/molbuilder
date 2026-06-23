@@ -383,7 +383,19 @@ class PySCFConfig:
         "workflow_group": "profile",
         "label":   "Basis set",
         "engine_key":  'gto.M(basis=...)',
-        "help": "Gaussian basis set (e.g. def2-SVP / def2-TZVP / cc-pVDZ)",
+        "help": (
+            "Gaussian basis set.  This is NOT a per-stage knob -- "
+            "the convergence ladder (cfg.stages) varies tolerances, "
+            "not the level of theory.  Pick once based on the chemistry.\n"
+            "Per-tier:\n"
+            "  • screening / loose preopt: def2-SVP (current default; "
+            "30% bond-length error in conjugated systems -- NEVER publish)\n"
+            "  • publishable:               def2-TZVP "
+            "(modern standard for organic chemistry; ECPs bundled to Rn)\n"
+            "  • tight (vib/IR/energy):    def2-TZVPP or def2-QZVP\n"
+            "Reference: Weigend & Ahlrichs PCCP 2005.  See "
+            "docs/engines/optimization-tuning.md § 2.8."
+        ),
     })
     # auxbasis: Python-API knob; rarely set from the form (auto-pick
     # from density_fit() is the right default).  No section -> not on form.
@@ -529,7 +541,21 @@ class PySCFConfig:
         "label":   "Optimizer",
         "engine_key":  'geomeTRIC / berny  (driver selection)',
         "choices": ("geometric", "berny"),
-        "help": "geomeTRIC or berny",
+        "help": (
+            "Geometry optimizer driver.\n"
+            "  • geometric (default)  — translation-rotation-invariant "
+            "internal coords (Wang & Song JCP 2016); BFGS quasi-Newton "
+            "under the hood.  Robust on large flexible molecules, "
+            "transition states, surface-anchored systems.  REQUIRED "
+            "for the staged-opt loop (#534) — only geometric accepts "
+            "the per-stage convergence_drms / convergence_dmax kwargs.\n"
+            "  • berny  — Cartesian + redundant internals; ships with "
+            "PySCF (no extra dep).  Less robust on biomolecules; "
+            "DOES NOT work with the staged-opt loop (incompatible "
+            "kwarg set).  Use only for single-stage runs.\n"
+            "Both are quasi-Newton; both converge tightly near a "
+            "minimum.  See docs/engines/optimization-tuning.md § 2.1."
+        ),
     })
     # 3-stage in-script optimization (task #534).  Per-stage SCF +
     # geomeTRIC convergence ladder lives here; the generator's
@@ -566,12 +592,16 @@ class PySCFConfig:
                 "name (used as the per-stage output-file suffix), an "
                 "enable checkbox, an SCF tolerance, 5 geomeTRIC "
                 "convergence targets (max + RMS gradient, max + RMS "
-                "displacement, energy step), and a max-step cap.  "
+                "displacement, energy step), a max-step cap, and a "
+                "non-convergence policy (proceed / continue / halt). "
                 "Generated-script loop walks the list and skips "
                 "disabled stages; ``mol`` carries forward between "
                 "enabled stages.  Defaults match the publication-"
-                "guide tier table (Stage 1 loose, Stage 2 "
-                "publishable, Stage 3 TIGHT-opt-in)."),
+                "guide tier table (Stage 1 loose preopt, Stage 2 "
+                "publishable, Stage 3 TIGHT vib/IR opt-in).\n"
+                "Full per-tier values + scientific rationale + "
+                "citations in docs/engines/optimization-tuning.md "
+                "§ 2 (per-parameter) + § 4 (preset summary table)."),
         },
     )
 
