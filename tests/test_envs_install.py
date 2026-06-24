@@ -609,6 +609,9 @@ def test_shim_forwards_args_verbatim(tmp_path):
     --clean, with --check, with --dry-run, plus list/doctor.  All
     flags must reach the Python layer; nothing dropped, nothing
     rewritten."""
+    # Every case includes --yes so the env-manager confirmation
+    # prompt (added 2026-06-24) skips and the subprocess can run
+    # non-interactively under pytest.
     cases = [
         (["install", "molbuilder-siesta", "--yes"],
          "install molbuilder-siesta --yes"),
@@ -618,12 +621,12 @@ def test_shim_forwards_args_verbatim(tmp_path):
          "--rebuild=siesta --yes --skip-network-check"),
         (["install", "molbuilder-siesta-gpu", "--clean", "--yes"],
          "install molbuilder-siesta-gpu --clean --yes"),
-        (["install", "molbuilder-siesta", "--check"],
-         "install molbuilder-siesta --check"),
-        (["install", "molbuilder-siesta", "--dry-run"],
-         "install molbuilder-siesta --dry-run"),
-        (["list"], "list"),
-        (["doctor"], "doctor"),
+        (["install", "molbuilder-siesta", "--check", "--yes"],
+         "install molbuilder-siesta --check --yes"),
+        (["install", "molbuilder-siesta", "--dry-run", "--yes"],
+         "install molbuilder-siesta --dry-run --yes"),
+        (["list", "--yes"], "list --yes"),
+        (["doctor", "--yes"], "doctor --yes"),
     ]
     for args, expected_tail in cases:
         r = _run_install_env_sh(args, tmp_path=tmp_path)
@@ -639,9 +642,10 @@ def test_shim_runnable_from_any_cwd(tmp_path):
     to the repo root regardless of the caller's CWD -- otherwise a
     fresh-machine deployment (``cd ~ && bash repo/scripts/install-env.sh
     ...``) fails with ModuleNotFoundError on the very first dispatch."""
-    # Run from tmp_path -- NOT the repo root.
+    # Run from tmp_path -- NOT the repo root.  --yes skips the
+    # env-manager confirmation prompt.
     r = _run_install_env_sh(
-        ["list"], tmp_path=tmp_path, cwd=tmp_path,
+        ["list", "--yes"], tmp_path=tmp_path, cwd=tmp_path,
     )
     assert r.returncode == 0, r.stderr
     assert f"PYTHONPATH={_REPO_ROOT}" in r.stdout, (
@@ -667,7 +671,7 @@ def test_non_bootstrap_without_host_env_points_at_bootstrap(tmp_path):
     error and point at the bootstrap command.  Auto-create only happens
     in the bootstrap path (deliberate state-machine constraint)."""
     r = _run_install_env_sh(
-        ["install", "molbuilder-siesta"],
+        ["install", "molbuilder-siesta", "--yes"],
         tmp_path=tmp_path, host_env_present=False,
     )
     assert r.returncode == 2
@@ -761,7 +765,8 @@ def test_unknown_subcommand_forwards_to_python(tmp_path):
     locks the thin-shim invariant: bash has no recipe-shape
     knowledge."""
     r = _run_install_env_sh(
-        ["some-future-subcommand", "--with-flag"], tmp_path=tmp_path,
+        ["some-future-subcommand", "--with-flag", "--yes"],
+        tmp_path=tmp_path,
     )
     # The shim forwards to Python; whether Python rejects an unknown
     # subcommand is Python's concern -- the shim's job is only to

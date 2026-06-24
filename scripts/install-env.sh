@@ -10,9 +10,11 @@
 #   (``molbuilder envs <subcommand>``).
 #
 #   The script's role:
-#     1. Detect conda / mamba on PATH.
-#     2. Ensure the host env exists (auto-create from the inlined
-#        HOST_*_PACKAGES list if missing).
+#     1. Locate conda / mamba (PATH, MAMBA_EXE/CONDA_EXE, CONDA_PREFIX
+#        walk, common install prefixes on disk).  Report what it
+#        found and ask the user to confirm (unless --yes is passed).
+#     2. On ``bootstrap``: ensure the host env exists (auto-create
+#        from the inlined HOST_*_PACKAGES list if missing).
 #     3. Forward "$@" verbatim to `python -m molbuilder envs ...`
 #        inside the host env.
 #
@@ -25,10 +27,18 @@
 #
 # BASE-SYSTEM ASSUMPTION:
 #
-#   ONLY `conda` or `mamba` is on PATH.  No python, no pip, no
-#   pre-activated env.  The script bootstraps everything on top of
-#   that.  This matches HPC / fresh-cluster reality where the OS
-#   image carries a conda installer and nothing else.
+#   The system provides ``conda`` OR ``mamba``.  No other tools
+#   required.  The script does not install conda for you -- that
+#   is the OS / cluster admin's job (Miniforge / Miniconda).
+#
+#   Detection is robust: PATH first, then activation-hook env vars
+#   (MAMBA_EXE / CONDA_EXE), then a walk up CONDA_PREFIX (when an
+#   env is active), then a search of common install prefixes on
+#   disk (handles the very common case where ``conda`` is a shell
+#   function loaded in interactive shells but the binary in
+#   ``~/miniconda3/bin/`` isn't on PATH for sub-shells / scripts).
+#   If all four fail, the script tells the user where it looked
+#   and exits 2 -- it does NOT silently install anything.
 #
 # COMMAND SHAPE (1:1 with `molbuilder envs <subcommand>`):
 #
@@ -45,14 +55,12 @@
 #     bash scripts/install-env.sh install molbuilder-siesta --check
 #     bash scripts/install-env.sh install molbuilder-siesta --dry-run
 #
-#   Equivalently, after running ``bootstrap`` once:
-#
-#     conda activate molbuilder
-#     molbuilder envs list
-#     molbuilder envs install molbuilder-siesta-gpu --rebuild=siesta --yes
-#     ...
-#
-#   The shim and the activated-env path produce identical results.
+#   This shim is the canonical entry point.  molbuilder is not
+#   pip-installed into the host env, so after ``conda activate
+#   molbuilder`` the bare ``molbuilder`` command does NOT exist on
+#   PATH -- you'd need ``python -m molbuilder ...`` with PYTHONPATH
+#   pointed at the repo root.  Sticking with the shim avoids that
+#   footgun.
 #
 # EXIT CODES:
 #   0 = OK
@@ -74,12 +82,23 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"
 
+# AUTO_YES is set by the main case below when any arg is ``--yes``
+# / ``-y``.  The env-manager confirmation prompt and any other
+# interactive prompt the script owns skip when this is set.  CI /
+# HPC batch always passes --yes anyway.
+AUTO_YES=0
+ORIGINAL_ARGS=("$@")
+
 # ---- usage ---------------------------------------------------------------
 
 usage() {
     cat <<'EOF'
 molbuilder env installer -- thin shim over `molbuilder envs ...`.
-Base-system requirement: conda OR mamba on PATH.
+Base-system requirement: conda OR mamba installed on the system
+(the script probes PATH, MAMBA_EXE / CONDA_EXE, CONDA_PREFIX, and
+common install prefixes -- you don't need to set anything if it's
+in a standard location).  Asks you to confirm the detected env
+manager unless you pass --yes / -y.
 
 ==============================================================
 FIRST TIME on a fresh machine?  Run this:
@@ -129,10 +148,12 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
         --dry-run                print the plan; do not install
         --yes / -y               non-interactive (CI / HPC batch)
 
-After bootstrap, an equivalent shortcut is:
-
-    conda activate molbuilder
-    molbuilder envs <subcommand>          # identical behavior
+Note: this shim is the canonical entry point.  molbuilder is not
+pip-installed into the host env (intentional convention), so after
+``conda activate molbuilder`` the bare ``molbuilder`` command does
+NOT exist on PATH -- you'd need ``python -m molbuilder ...`` with
+PYTHONPATH set to the repo root.  Sticking with the shim avoids
+that footgun.
 
 Environment variables:
   MOLBUILDER_HOST_ENV            host env name (default: molbuilder).
@@ -168,40 +189,148 @@ EOF
 # ---- env-manager autodetect (mamba > conda) ------------------------------
 
 ENV_MGR=""
+# Common install-prefix list, searched in order.  Covers Miniforge
+# (recommended), Mambaforge (legacy), Miniconda, Anaconda, and a
+# few generic /opt layouts seen on HPC.  Picked up here so the
+# script Just Works without the user having to set MAMBA_EXE /
+# CONDA_EXE by hand -- many setups install conda as a SHELL FUNCTION
+# via .bashrc (so ``command -v conda`` only sees it in interactive
+# shells) while the underlying ``~/miniconda3/bin/conda`` binary
+# is NOT on PATH for sub-shells / non-interactive scripts.
+_CONDA_PREFIX_CANDIDATES=(
+    "$HOME/miniforge3"
+    "$HOME/miniforge"
+    "$HOME/mambaforge"
+    "$HOME/miniconda3"
+    "$HOME/anaconda3"
+    "$HOME/conda"
+    "/opt/miniforge3"
+    "/opt/miniforge"
+    "/opt/mambaforge"
+    "/opt/miniconda3"
+    "/opt/anaconda3"
+    "/opt/conda"
+    "/usr/local/miniforge3"
+    "/usr/local/miniconda3"
+)
+
+_CONDA_PROBE_LOG=()
+
+_record_probe() {
+    _CONDA_PROBE_LOG+=("$1")
+}
+
 detect_env_mgr() {
     [[ -n "${ENV_MGR}" ]] && return 0
+    # 1. Already on PATH? -- works when the user runs the script
+    #    from inside a shell where conda init has injected PATH.
     for candidate in mamba conda; do
         if command -v "${candidate}" >/dev/null 2>&1; then
-            ENV_MGR="${candidate}"
+            ENV_MGR="$(command -v "${candidate}")"
+            _record_probe "PATH: found ${candidate} at ${ENV_MGR}"
             return 0
         fi
+        _record_probe "PATH: ${candidate} not found"
     done
-    # Fall back to env vars set by mamba's / conda's activation hooks.
-    if [[ -n "${MAMBA_EXE:-}" && -x "${MAMBA_EXE}" ]]; then
-        ENV_MGR="${MAMBA_EXE}"
-        return 0
+    # 2. Activation-hook env vars (set by ``conda activate`` or by
+    #    sourcing conda.sh).  Available even when conda is exposed
+    #    only as a shell function in the parent shell.
+    for var in MAMBA_EXE CONDA_EXE; do
+        local v="${!var:-}"
+        if [[ -n "${v}" && -x "${v}" ]]; then
+            ENV_MGR="${v}"
+            _record_probe "env: \$${var} -> ${v}"
+            return 0
+        fi
+        _record_probe "env: \$${var} = ${v:-(unset)} (not executable)"
+    done
+    # 3. CONDA_PREFIX -- set when an env (any env, including base)
+    #    is currently activated.  Walk up to find the install root
+    #    (CONDA_PREFIX of a non-base env is ``<root>/envs/<name>``;
+    #    of base it's ``<root>``).
+    if [[ -n "${CONDA_PREFIX:-}" ]]; then
+        # Bounded walk so a deeply-nested CONDA_PREFIX can't run forever.
+        # 6 levels is enough to cover ``<root>/envs/<name>/<subdir>...``
+        # plus whatever the user nests above the install root.
+        local p="${CONDA_PREFIX}"
+        local _i
+        for _i in 1 2 3 4 5 6; do
+            for mgr in mamba conda; do
+                if [[ -x "${p}/bin/${mgr}" ]]; then
+                    ENV_MGR="${p}/bin/${mgr}"
+                    _record_probe "CONDA_PREFIX walk: found ${ENV_MGR}"
+                    return 0
+                fi
+            done
+            [[ "${p}" == "/" ]] && break
+            p="$(dirname "${p}")"
+        done
+        _record_probe "CONDA_PREFIX=${CONDA_PREFIX}: no mamba/conda found above"
     fi
-    if [[ -n "${CONDA_EXE:-}" && -x "${CONDA_EXE}" ]]; then
-        ENV_MGR="${CONDA_EXE}"
-        return 0
-    fi
+    # 4. Probe common install locations on disk.  This catches the
+    #    very common "``conda`` is a shell function in .bashrc but
+    #    ``~/miniconda3/bin/`` isn't on PATH for sub-shells" setup.
+    for prefix in "${_CONDA_PREFIX_CANDIDATES[@]}"; do
+        for mgr in mamba conda; do
+            if [[ -x "${prefix}/bin/${mgr}" ]]; then
+                ENV_MGR="${prefix}/bin/${mgr}"
+                _record_probe "disk: found ${ENV_MGR}"
+                return 0
+            fi
+        done
+    done
+    _record_probe "disk: checked ${#_CONDA_PREFIX_CANDIDATES[@]} common prefixes, none had a mamba or conda binary"
     return 1
 }
 
 require_conda() {
     if ! detect_env_mgr; then
         cat >&2 <<EOF
-Error: no conda-compatible env manager found on PATH.
-Looked for: mamba, conda.  Looked at:
-  \$MAMBA_EXE = ${MAMBA_EXE:-(unset)}
-  \$CONDA_EXE = ${CONDA_EXE:-(unset)}
-Install one (Miniforge is the recommended distribution; it ships
-mamba + conda-forge as defaults).  See docs/README_install.md.
+Error: no conda-compatible env manager found.
+
+molbuilder expects ``conda`` or ``mamba`` to be installed on the
+system already.  Installing one is the OS / cluster admin's job,
+not this script's.
+
+What the script checked, in order:
+
+EOF
+        for line in "${_CONDA_PROBE_LOG[@]}"; do
+            echo "  - ${line}" >&2
+        done
+        cat >&2 <<EOF
+
+If conda/mamba lives somewhere not in that list, point the script
+at it explicitly:
+
+    CONDA_EXE=/path/to/conda bash scripts/install-env.sh ${ORIGINAL_ARGS[*]}
+
+If conda/mamba is not installed at all, install Miniforge,
+Miniconda, or your site's conda distribution by hand first, then
+re-run.  See docs/README_install.md for links.
 EOF
         exit 2
     fi
     if [[ -z "${_ENV_MGR_BANNERED:-}" ]]; then
-        echo "[molbuilder] env manager: ${ENV_MGR}" >&2
+        echo "[molbuilder] env manager detected: ${ENV_MGR}" >&2
+        if [[ "${AUTO_YES}" -eq 0 ]]; then
+            # User-facing confirmation.  Lets the user catch the case
+            # where the script picked a different mamba/conda than
+            # they intended (e.g. an old Anaconda install lingering
+            # in ~/anaconda3 alongside a newer Miniforge they meant
+            # to use).  --yes / -y in ORIGINAL_ARGS skips this prompt.
+            read -r -p "[molbuilder] use this env manager? [Y/n] " _ans </dev/tty \
+                || { echo "[molbuilder] no TTY for confirmation; pass --yes to skip." >&2; exit 2; }
+            case "${_ans}" in
+                ""|y|Y|yes|YES|Yes) ;;
+                *)
+                    echo "[molbuilder] aborted by user." >&2
+                    echo "[molbuilder] tip: set CONDA_EXE or MAMBA_EXE to pin the env manager:" >&2
+                    echo "    CONDA_EXE=/path/to/conda bash scripts/install-env.sh ${ORIGINAL_ARGS[*]}" >&2
+                    exit 0
+                    ;;
+            esac
+        fi
         _ENV_MGR_BANNERED=1
     fi
 }
@@ -340,7 +469,9 @@ dispatch() {
 #                       │   ENTRY (any subcommand)    │
 #                       └────────────┬────────────────┘
 #                                    │
-#                          require_conda  ── fails → exit 2
+#                          require_conda
+#                          (probe → confirm unless --yes;
+#                           fail → exit 2 with probe log)
 #                                    │
 #               ┌────────────────────┴────────────────────┐
 #               │                                         │
@@ -368,6 +499,16 @@ EOF
     usage >&2
     exit 2
 fi
+
+# Scan args for --yes / -y so the env-manager confirm in require_conda
+# (and any other prompt the shim owns) skips when CI / HPC batch is
+# already passing the flag.  We don't strip it -- it forwards verbatim
+# to the Python layer too.
+for _a in "$@"; do
+    case "${_a}" in
+        --yes|-y) AUTO_YES=1; break ;;
+    esac
+done
 
 case "$1" in
     -h|--help|help)
