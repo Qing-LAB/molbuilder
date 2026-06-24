@@ -407,8 +407,11 @@ loop.  Per-stage budget for the INNER (SCF) loop.
 
 **Engine keywords:**
 
-- SIESTA: `MD.NumCGsteps` / `MD.NumBroydenSteps` / `MD.NumFIRESteps`
-  per `MD.TypeOfRun`; `MaxSCFIterations` for inner loop.
+- SIESTA: `MD.NumCGsteps` is the universal step-count keyword for
+  CG, Broyden, AND FIRE in SIESTA 5.4.2 (the `MD.NumBroydenSteps` /
+  `MD.NumFIRESteps` per-type aliases are NOT recognised — see § 2.3.1
+  design considerations).  `MaxSCFIterations` controls the inner SCF
+  loop.
 - PySCF: `STAGE['max_steps']` in the per-stage table; `mf.max_cycle`
   for inner SCF.
 
@@ -425,9 +428,9 @@ For users who know one engine and want the equivalent in the other.
 | RMS-grad convergence | *(not checked by default)* | `convergence_grms` | Ha/Bohr |
 | Disp convergence | *(implicit via MaxCGDispl)* | `convergence_dmax` / `convergence_drms` | Å |
 | Energy-step convergence | *(implicit via SCF tol)* | `convergence_energy` | Hartree |
-| Max step | `MD.MaxCGDispl` / `MD.MaxDispl` | *(geomeTRIC-internal line search)* | Å |
+| Max step | `MD.MaxCGDispl` (universal for CG / Broyden / FIRE) | *(geomeTRIC-internal line search)* | Å |
 | SCF tolerance | `DM.Tolerance` | `mf.conv_tol` | dimensionless / Hartree |
-| Max geom steps | `MD.NumCGsteps` etc. | `STAGE['max_steps']` (or geomeTRIC `maxsteps`) | integer |
+| Max geom steps | `MD.NumCGsteps` (universal for CG / Broyden / FIRE) | `STAGE['max_steps']` (or geomeTRIC `maxsteps`) | integer |
 | Max SCF cycles | `MaxSCFIterations` | `mf.max_cycle` | integer |
 | Discretisation | `MeshCutoff` (Ry) | *(basis-determined)* | Ry / N/A |
 | Basis | NAO via `PAO.Basis` (default DZP) | `cfg.basis` (Gaussian) | string |

@@ -90,22 +90,27 @@ copy_pseudopotentials(species, lib, dest_dir) -> List[str]    # missing
 9. **NetCharge**: emitted iff resolved charge != 0 (see "Charge
    contract" below).
 10. **k-grid**: Monkhorst-Pack mesh from `cfg.kgrid`.
-11. **Geometry optimisation / dynamics**: `MD.TypeOfRun`, per-engine
-    step-count keyword (`MD.NumCGsteps` for CG, `MD.NumBroydenSteps`
-    for Broyden, `MD.NumFIRESteps` for FIRE; `MD.FinalTimeStep` for
-    Verlet/Nose dynamics).  Relaxation modes (CG/Broyden/FIRE) also
-    emit `MD.MaxForceTol` and the displacement cap (`MD.MaxCGDispl`
-    for CG, `MD.MaxDispl` for Broyden/FIRE).  Dynamics modes
-    (Verlet/Nose) instead emit `MD.InitialTemperature` and
-    `MD.LengthTimeStep`; Nose-Hoover NVT additionally emits
-    `MD.TargetTemperature` (defaulting to `md_initial_temperature`
-    when `md_target_temperature is None`) — without it SIESTA's
-    thermostat target falls back to 0 K and the run quenches
-    instead of equilibrating.  All modes optionally emit
-    `MD.UseSaveCG` / `MD.UseSaveXV`.  Skipped entirely when
-    `cfg.relax_type.lower() == "none"`.
+11. **Geometry optimisation / dynamics**: `MD.TypeOfRun` plus the
+    universal step-count keyword `MD.NumCGsteps` for every
+    relaxation mode (CG, Broyden, AND FIRE) in SIESTA 5.4.2 — the
+    `MD.NumBroydenSteps` / `MD.NumFIRESteps` per-type aliases listed
+    in some older references are NOT recognised by 5.4.2 and are
+    silently dropped (see decision-log 2026-06-23 in `design.md`).
+    Verlet/Nose dynamics use `MD.FinalTimeStep` instead.
+    Relaxation modes (CG/Broyden/FIRE) also emit `MD.MaxForceTol`
+    and the universal displacement cap `MD.MaxCGDispl` (despite the
+    CG-prefixed name).  Dynamics modes (Verlet/Nose) emit
+    `MD.InitialTemperature` and `MD.LengthTimeStep`; Nose-Hoover NVT
+    additionally emits `MD.TargetTemperature` (defaulting to
+    `md_initial_temperature` when `md_target_temperature is None`)
+    — without it SIESTA's thermostat target falls back to 0 K and
+    the run quenches instead of equilibrating.  All modes
+    optionally emit `MD.UseSaveCG` / `MD.UseSaveXV`.  Skipped
+    entirely when `cfg.relax_type.lower() == "none"`.
 12. **Output flags**: `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`,
-    `WriteMDhistory`, optional `WriteHS`.
+    `WriteMDhistory`, and `SaveHS` (always emitted; the older
+    `WriteHS` keyword is silently dropped by SIESTA 5.4.2 and was
+    replaced 2026-06-23).
 13. **Troubleshooting block** (when `cfg.verbose_comments=True`):
     inline tuning hints for SCF / forces / speed, plus relaxation
     hints when an MD block is present.
