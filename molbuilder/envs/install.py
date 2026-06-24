@@ -512,6 +512,7 @@ def run_install(
     build_on_warnings: Optional["_builds.ConfirmWarningsCallback"] = None,
     build_on_progress: Optional["_builds.ProgressCallback"] = None,
     build_skip_network_check: bool = False,
+    force_resume: bool = False,
 ) -> InstallResult:
     """Execute the install plan, stopping at the first failed step.
 
@@ -603,17 +604,25 @@ def run_install(
             # whose two "independent" live probes both delegated to
             # ``_env_prefix`` and so were not independent at all.
             state = probe_env_state(effective, caps.conda_binary)
-            if state.can_resume:
+            # ``--force-resume`` (user has knowledge the env IS usable
+            # despite the state probe reporting GHOST/ORPHAN/BROKEN --
+            # typically because they're mid-source-build and the env
+            # directory exists but conda-meta hasn't been finalised
+            # yet, or the registry probe missed it).  Treat as PRESENT
+            # so conda create is SKIPPED and downstream phases run.
+            if state.can_resume or force_resume:
+                why = (
+                    "already exists" if state.can_resume
+                    else f"--force-resume; state was {state.state_label}"
+                )
                 executed.append(InstallStep(
                     label=step.label, argv=step.argv,
                     returncode=0,
-                    output=f"env `{effective}` already exists; "
-                           f"skipping create",
+                    output=f"env `{effective}` {why}; skipping create",
                 ))
                 sys.stderr.write(
                     f"[{i}/{total_pre}] {step.label}: "
-                    f"SKIPPED (env `{effective}` already exists -- "
-                    f"if you want a fresh env, re-run with --clean)\n"
+                    f"SKIPPED (env `{effective}` {why})\n"
                 )
                 sys.stderr.flush()
                 continue

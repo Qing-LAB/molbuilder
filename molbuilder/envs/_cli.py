@@ -630,11 +630,24 @@ def _shell_join(argv: Iterable[str]) -> str:
               help="skip the git ls-remote reachability check.  Use "
                    "when running behind a firewall that blocks "
                    "ls-remote but allows clone.")
+@click.option("--force-resume", is_flag=True,
+              help="ignore the env-state probe's GHOST / ORPHAN / "
+                   "BROKEN hard-stop and try to resume the build "
+                   "anyway.  Use when you KNOW the env is partly "
+                   "built and just needs the next phase to finish "
+                   "(e.g. an in-progress source build that hit a "
+                   "transient error).  Source-build recipes only.  "
+                   "Skips conda create + sentinel-resume picks up "
+                   "where it left off; the per-step retry in "
+                   "build_argv (cmake --build || retry || retry-j1) "
+                   "absorbs transient parallel-build races like the "
+                   "flook lua.h ordering issue.")
 def cmd_install(name: str, dry_run: bool, check: bool,
                 rebuild: Optional[str],
                 clean: bool,
                 auto_yes: bool,
-                skip_network_check: bool) -> None:
+                skip_network_check: bool,
+                force_resume: bool) -> None:
     """Run a recipe's install plan against the local conda.
 
     NAME is the recipe's canonical name (e.g., ``molbuilder-pySCF``).
@@ -768,10 +781,20 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     click.echo("Conda env state check:")
     state = _install.probe_env_state(effective, caps.conda_binary)
     click.echo(state.describe())
-    if state.needs_cleanup and not clean:
+    if state.needs_cleanup and not clean and not force_resume:
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
         click.echo(f"recover from on its own ({state.state_label}).")
+        click.echo("")
+        click.echo(
+            "If you know the env directory IS usable (e.g. mid-source-"
+            "build), bypass this check with --force-resume:"
+        )
+        click.echo("")
+        click.echo(
+            f"    bash scripts/install-env.sh install {name} "
+            f"--force-resume --yes"
+        )
         click.echo("")
         click.echo("Copy-paste to fix (wipes + reinstalls):")
         click.echo("")
@@ -1012,6 +1035,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             build_on_warnings=on_warnings,
             build_on_progress=on_progress,
             build_skip_network_check=skip_network_check,
+            force_resume=force_resume,
         )
 
         # If the build_spec executor short-circuited on preflight errors,
