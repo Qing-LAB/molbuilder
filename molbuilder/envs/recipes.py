@@ -1109,7 +1109,7 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # _recipe.py argv-template gate enforces this at test time
         # via _apply_template + ``bash -n``.
         #
-        # Pre-build patch: lua-5.3.5 in flook/aotus needs
+        # Pre-build patch 1 of 2: lua-5.3.5 in flook/aotus needs
         # ``MYCFLAGS=-fPIC`` to produce object files that can link
         # into a PIE binary.  Without this, the final ``Src/siesta``
         # link fails with
@@ -1132,6 +1132,37 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         "  echo '[molbuilder] patching flook/lua Makefile: "
         "MYCFLAGS=-fPIC (PIE link requirement)' >&2; "
         "  sed -i 's|^MYCFLAGS=$|MYCFLAGS=-fPIC|' \"$_lua_mk\"; "
+        "fi; "
+        # Pre-build patch 2 of 2: SIESTA's Util/MPI_test build target
+        # ``blacs_prb`` calls BLACS routines (blacs_pinfo, blacs_get,
+        # blacs_gridinit, blacs_gridinfo, blacs_pcoord, blacs_pnum,
+        # blacs_exit, igesd2d, igerv2d, blacs_setup) but its
+        # target_link_libraries is missing scalapack.  On modern
+        # conda-forge scalapack the BLACS symbols are folded into
+        # libscalapack.so -- without it on the link line, every
+        # blacs_* call is unresolved at link time and Util/MPI_test
+        # fails to build.  Upstream bug in
+        # ``Util/MPI_test/CMakeLists.txt``.
+        #
+        # blacs_prb is a test utility -- a probe that verifies the
+        # build's BLACS layer is functional.  Nothing at RUNTIME
+        # depends on it (Src/siesta, TranSIESTA, TBtrans don't link
+        # blacs_prb).  Disabling it via commenting out the
+        # ``add_subdirectory(MPI_test)`` line in Util/CMakeLists.txt
+        # makes the cmake target disappear entirely -- the build
+        # proceeds without it, the main siesta binary still gets
+        # the BLACS-via-scalapack symbols it actually needs at
+        # link time.
+        "_util_cmake={src}/Util/CMakeLists.txt; "
+        "if [ -f \"$_util_cmake\" ] "
+        "&& grep -qE 'add_subdirectory\\s*\\(\\s*MPI_test\\s*\\)' \"$_util_cmake\"; "
+        "then "
+        "  echo '[molbuilder] disabling Util/MPI_test "
+        "(blacs_prb cmake link missing scalapack)' >&2; "
+        "  sed -i -E 's|^([[:space:]]*)add_subdirectory[[:space:]]*"
+        "\\([[:space:]]*MPI_test[[:space:]]*\\)|\\1# &  # "
+        "molbuilder: disabled, blacs_prb link missing scalapack|' "
+        "\"$_util_cmake\"; "
         "fi; "
         # Build with two retries.  attempt 1 may hit flook's lua.h
         # make-order race (aotus compiles ``wrap_lua_dump.c`` before
