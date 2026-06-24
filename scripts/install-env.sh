@@ -311,7 +311,7 @@ EOF
 If conda/mamba lives somewhere not in that list, point the script
 at it explicitly:
 
-    CONDA_EXE=/path/to/conda bash $0 ${ORIGINAL_ARGS[*]:-bootstrap --yes}
+    CONDA_EXE=/path/to/conda bash ${SCRIPT_DIR}/install-env.sh ${ORIGINAL_ARGS[*]:-bootstrap --yes}
 
 If conda/mamba is not installed at all, install Miniforge,
 Miniconda, or your site's conda distribution by hand first, then
@@ -444,34 +444,111 @@ resolve_host_env_channels() {
     HOST_ENV_CHANNEL_ARGS=(-c conda-forge)
 }
 
+_resolve_env_python() {
+    # Resolve the env's python binary by asking the env manager
+    # where envs live ("envs_dirs" in conda info --json), then
+    # checking each candidate for the named env.  Falls back to
+    # ``<install root>/envs/<name>/bin/python`` derived from
+    # ENV_MGR's own path -- works for the standard Miniforge /
+    # Miniconda layout where ENV_MGR is at ``<root>/bin/mamba``.
+    local _name="$1"
+    # Probe via the env mgr's JSON output first (handles custom
+    # envs_dirs configured in ~/.condarc).
+    local _envs_dirs
+    _envs_dirs="$("${ENV_MGR}" info --json 2>/dev/null \
+        | awk '/"envs_dirs":/{flag=1;next} flag && /]/{flag=0} flag' \
+        | tr -d '",' \
+        | tr -s ' ')"
+    local _dir
+    for _dir in ${_envs_dirs}; do
+        if [[ -x "${_dir}/${_name}/bin/python" ]]; then
+            echo "${_dir}/${_name}/bin/python"
+            return 0
+        fi
+    done
+    # Fallback: derive from ENV_MGR's path (Miniforge layout).
+    local _root="${ENV_MGR%/bin/*}"
+    if [[ -x "${_root}/envs/${_name}/bin/python" ]]; then
+        echo "${_root}/envs/${_name}/bin/python"
+        return 0
+    fi
+    return 1
+}
+
 create_host_env() {
     resolve_host_env_channels
     echo "[molbuilder] creating host env '${HOST_ENV}' (~2 min)" >&2
     "${ENV_MGR}" create -n "${HOST_ENV}" "${HOST_ENV_CHANNEL_ARGS[@]}" \
         --yes "${HOST_CONDA_PACKAGES[@]}"
     if [[ ${#HOST_PIP_PACKAGES[@]} -gt 0 ]]; then
-        # pip's own config (~/.pip/pip.conf, ~/.config/pip/pip.conf)
-        # is respected automatically -- the env manager doesn't get
-        # in pip's way here, so internal PyPI mirrors / index-url
-        # overrides set in the user's pip config apply transparently.
+        # Call the env's python directly instead of ``mamba run``.
+        # mamba 1.x's ``run`` implementation generates a shell stub
+        # that uses ``exec -- "$@"`` which fails on shells where
+        # ``exec`` doesn't accept ``--`` (most bash, dash); the user
+        # sees ``line 5: exec: --: invalid option`` and the pip step
+        # aborts.  Direct invocation bypasses the buggy stub and
+        # writes to the env's own site-packages.  pip's user config
+        # (~/.pip/pip.conf, ~/.config/pip/pip.conf) is respected
+        # transparently -- internal PyPI mirrors / index-url
+        # overrides apply unchanged.
+        local _py
+        if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
+            echo "Error: cannot find python in env '${HOST_ENV}' after create." >&2
+            echo "Expected at <env prefix>/bin/python.  Probed via:" >&2
+            echo "  ${ENV_MGR} info --json | jq .envs_dirs" >&2
+            echo "  ${ENV_MGR%/bin/*}/envs/${HOST_ENV}/bin/python" >&2
+            exit 1
+        fi
         echo "[molbuilder] pip-installing host-env extras: ${HOST_PIP_PACKAGES[*]}" >&2
-        "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
-            python -m pip install "${HOST_PIP_PACKAGES[@]}"
+        echo "[molbuilder] using ${_py}" >&2
+        # ``|| true`` plus an explicit-rc check so a pip failure on
+        # OPTIONAL extras doesn't kill the bootstrap.  Both
+        # PeptideBuilder and pubchempy are UI-only conveniences;
+        # the env is usable without them.
+        if "${_py}" -m pip install "${HOST_PIP_PACKAGES[@]}"; then
+            : # ok
+        else
+            echo "" >&2
+            echo "[molbuilder] WARNING: pip install failed for the optional" >&2
+            echo "[molbuilder] extras (${HOST_PIP_PACKAGES[*]}).  The host env" >&2
+            echo "[molbuilder] is usable; you'll lose only the UI's peptide-" >&2
+            echo "[molbuilder] builder + PubChem-lookup features until you" >&2
+            echo "[molbuilder] install them manually:" >&2
+            echo "[molbuilder]   ${_py} -m pip install ${HOST_PIP_PACKAGES[*]}" >&2
+            echo "[molbuilder] continuing bootstrap..." >&2
+        fi
     fi
     echo "[molbuilder] host env '${HOST_ENV}' ready" >&2
 }
 
 # ---- dispatch (1:1 with `molbuilder envs ...`) ---------------------------
 #
-# Sets PYTHONPATH=$REPO_ROOT so ``python -m molbuilder`` can find
-# the package regardless of the user's CWD.  mamba / conda ``run``
-# inherits the env var.  See REPO_ROOT comment above.
+# Bypasses ``mamba run`` and calls the host env's python directly.
+# Why: mamba 1.x's ``run`` generates a shell stub that uses
+# ``exec -- "$@"`` -- bash's exec builtin rejects ``--`` with
+# ``line 5: exec: --: invalid option`` and the whole dispatch dies.
+# Calling the env's python directly avoids the buggy stub and works
+# the same way as a ``conda activate molbuilder && python ...``
+# without needing activate.d hooks (which only set up shell PATH /
+# LD_LIBRARY_PATH that this python invocation doesn't need).
+#
+# PYTHONPATH=$REPO_ROOT so ``python -m molbuilder`` finds the package
+# regardless of the user's CWD (molbuilder is intentionally not
+# pip-installed into the host env).
 
 dispatch() {
+    local _py
+    if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
+        echo "Error: cannot find python in env '${HOST_ENV}'." >&2
+        echo "The host env exists but has no usable python at" >&2
+        echo "<env prefix>/bin/python.  This shouldn't happen --" >&2
+        echo "consider re-running:" >&2
+        echo "    bash $0 bootstrap --yes --no-skip-existing" >&2
+        exit 1
+    fi
     PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
     MOLBUILDER_REPO_ROOT="${REPO_ROOT}" \
-        "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
-        python -m molbuilder envs "$@"
+        "${_py}" -m molbuilder envs "$@"
 }
 
 # ---- main ----------------------------------------------------------------

@@ -538,18 +538,24 @@ _INSTALL_ENV_SH = _REPO_ROOT / "scripts" / "install-env.sh"
 
 def _make_stub_mamba(bin_dir, *, host_env_present=True,
                      configured_channels=()):
-    """Create a stub ``mamba`` binary at ``bin_dir/mamba``.
+    """Create a stub ``mamba`` binary at ``bin_dir/mamba`` PLUS a
+    stub env-python at the path the shim's _resolve_env_python
+    fallback derives (``<dirname(dirname(bin_dir))>/envs/molbuilder/
+    bin/python``).
 
-    The stub fakes:
+    The stubs fake:
       * ``mamba env list`` -> output that either includes or omits
         the host env (controlled by ``host_env_present``).
       * ``mamba config --get channels`` -> ``--add channels '<name>'``
-        lines for each configured channel (controlled by
-        ``configured_channels``).  Empty tuple = no channels (fresh
-        conda, no .condarc).
-      * any other invocation -> echo ``[stub-dispatch] $*`` and
-        ``[stub-env] PYTHONPATH=$PYTHONPATH MOLBUILDER_REPO_ROOT=...``
-        so tests can assert what got forwarded.
+        lines per configured channel (empty tuple = fresh conda).
+      * ``mamba info --json`` -> empty (forces _resolve_env_python's
+        fallback path; simpler than emitting valid JSON for awk).
+      * ``mamba create`` -> echo ``[stub-create] $*``.
+      * The env's python -> echo ``[stub-dispatch] python $*`` and
+        ``[stub-env] PYTHONPATH=$PYTHONPATH ...`` so tests can assert
+        what got forwarded.  Replaces the old ``mamba run``-driven
+        dispatch (the shim now bypasses mamba run to dodge the
+        mamba 1.x ``exec --`` bug).
     """
     bin_dir.mkdir(parents=True, exist_ok=True)
     mamba = bin_dir / "mamba"
@@ -569,16 +575,33 @@ def _make_stub_mamba(bin_dir, *, host_env_present=True,
         f"  cat <<'EOF'\n{config_output}EOF\n"
         "  exit 0\n"
         "fi\n"
+        'if [[ "$1" == "info" && "$2" == "--json" ]]; then\n'
+        '  exit 0\n'  # empty stdout -> forces fallback path
+        "fi\n"
         'if [[ "$1" == "create" ]]; then\n'
         '  echo "[stub-create] $*"\n'
         "  exit 0\n"
         "fi\n"
-        'echo "[stub-dispatch] $*"\n'
+        'echo "[stub-mamba] $*"\n'
+        "exit 0\n"
+    )
+    mamba.chmod(0o755)
+    # The shim's _resolve_env_python fallback derives the env's
+    # python from ``${ENV_MGR%/bin/*}/envs/<name>/bin/python``.
+    # ENV_MGR is bin_dir/mamba, so the install-root strip lands at
+    # bin_dir.parent; the python goes at
+    # ``<bin_dir.parent>/envs/molbuilder/bin/python``.
+    env_python_dir = bin_dir.parent / "envs" / "molbuilder" / "bin"
+    env_python_dir.mkdir(parents=True, exist_ok=True)
+    env_python = env_python_dir / "python"
+    env_python.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "[stub-dispatch] python $*"\n'
         'echo "[stub-env] PYTHONPATH=${PYTHONPATH:-} '
         'MOLBUILDER_REPO_ROOT=${MOLBUILDER_REPO_ROOT:-}"\n'
         "exit 0\n"
     )
-    mamba.chmod(0o755)
+    env_python.chmod(0o755)
     return mamba
 
 
