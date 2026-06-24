@@ -406,7 +406,8 @@ Plus a small set of un-namespaced top-level routes (`/api/backends`,
 
 ### Field metadata as the unifier
 
-Every L1 config field carries:
+Every L1 config field carries some subset of (only `label` and
+`help` are universal; the others are present when they apply):
 
 ```python
 metadata = {
@@ -419,6 +420,26 @@ metadata = {
     "validate": lambda v: None or Issue(...)   # optional callable
 }
 ```
+
+**Which keys are required.** `label` and `help` are universal --
+every visible field has both, since the form renderer + the CLI
+`--help` text both depend on them.  The rest are present when
+they apply:
+
+* `unit` -- physical-quantity fields (mesh cutoff, force tol).
+* `range` -- numeric fields with a sensible bound.
+* `choices` -- enum fields (relax_type, optimizer, basis).
+* `tier` -- visibility hint for fields the form's basic-tier
+  filter hides by default; absence means "always visible".
+* `validate` -- per-field validator; absence means range / choices
+  already cover the constraint, or no constraint applies.
+
+The "always visible" default for missing `tier` is deliberate: a
+bool flag (e.g. `use_save_dm`, `verbose_comments`) or an identity
+field (`system_label`) doesn't need a tier hint because the form
+shows it regardless.  A future audit that wants to force every
+field into one tier or the other should land that decision here
+first + then backfill.
 
 One source feeds:
 

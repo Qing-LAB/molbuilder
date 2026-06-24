@@ -101,3 +101,35 @@ def web_client():
     # limiter enabled to exercise the module directly.
     app = create_app(config={"rate_limit": {"enabled": False}})
     return app.test_client()
+
+
+# --------------------------------------------------------------------- #
+#  Marker auto-application by file pattern (2026-06-24)                 #
+#  Implements the marker discipline documented in                       #
+#  docs/protocols/test-strategy.md § 2.  Tests can override at the     #
+#  function level by carrying an explicit @pytest.mark.<X>.            #
+# --------------------------------------------------------------------- #
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` to
+    files that subprocess-run a real engine binary (siesta /
+    transiesta / pyscf).
+
+    The pyproject.toml markers list registered ``unit / module /
+    interface / integration / smoke / e2e / slow`` but as of the
+    2026-06-24 audit zero tests carried any of them, so
+    ``pytest -m integration`` returned nothing.  This hook gives
+    every existing test file the right baseline marker so the doc-
+    promised selectors work, without requiring per-test annotation.
+    File-name pattern is a coarse pre-classifier; finer-grained
+    decisions still belong on individual tests via explicit
+    decorators.
+    """
+    import pytest as _pt
+    for item in items:
+        fn = item.fspath.basename
+        if fn.endswith("_e2e.py") or "_e2e_" in fn:
+            item.add_marker(_pt.mark.e2e)
+        if "_smoke" in fn or "_smoke_l4" in fn:
+            item.add_marker(_pt.mark.integration)
+            item.add_marker(_pt.mark.smoke)
