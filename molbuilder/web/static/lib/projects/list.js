@@ -59,6 +59,25 @@ function _isDeletableEntry(entry, currentPath) {
   return true;
 }
 
+/**
+ * Whether this entry would produce a non-empty kebab menu.
+ *
+ * The kebab menu items in _openKebab are gated:
+ *   - View / Download / Move / Copy : file-only
+ *   - Rename / Delete               : _isDeletableEntry
+ * For a depth-0 project dir or a depth-1 canonical-topic dir, ALL
+ * gates fail and the menu is empty.  Use this predicate to skip
+ * rendering the kebab button entirely so the user never sees an
+ * empty "tiny box".  Keep in sync with the menu-item gates in
+ * _openKebab; a future menu item that doesn't match either gate
+ * (e.g. directory-applicable action) must extend this predicate.
+ */
+function _kebabHasActions(entry, currentPath) {
+  if (entry.kind === "file") return true;
+  if (_isDeletableEntry(entry, currentPath)) return true;
+  return false;
+}
+
 function _humanSize(n) {
   if (n < 1024) return n + " B";
   if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " K";
@@ -514,8 +533,19 @@ function _renderList(entries, currentPath) {
     // had; ineligible items are omitted from the menu rather than
     // shown disabled (avoids confusing the user with greyed-out
     // options that wouldn't work).
-    const kebab = _buildEntryKebab(e, fullPath, currentPath);
-    li.appendChild(kebab);
+    //
+    // 2026-06-24 fix: skip the kebab entirely when zero actions
+    // would apply.  Previously the kebab still rendered even when
+    // every action was gated out -- clicking it opened an empty
+    // "tiny box with nothing in it".  This hits canonical-topic
+    // directories (structure / optimization / spectrum / transport
+    // dirs inside a project) and projects/ root entries -- both
+    // routed false through _isDeletableEntry AND aren't files, so
+    // every _addItem branch in _openKebab skipped.
+    if (_kebabHasActions(e, currentPath)) {
+      const kebab = _buildEntryKebab(e, fullPath, currentPath);
+      li.appendChild(kebab);
+    }
 
     li.addEventListener("click", () => {
       if (e.kind === "directory") {

@@ -5229,3 +5229,87 @@ class TestModifySecondVisitExternalChange:
             ".atoms.length === 5",
             timeout=5000,
         )
+
+
+def test_kebab_hidden_when_no_actions_apply(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-24 regression: the ⋯ kebab button must NOT render on
+    entries where every menu item is gated out.  Otherwise clicking
+    it opens an empty menu -- a "tiny box with nothing in it" that
+    confuses the user.
+
+    Two cases where every action gates out:
+      (a) Depth 0 (projects/ root): every entry is a project dir;
+          ``_isDeletableEntry`` returns false, and projects aren't
+          files so View/Download/Move/Copy skip.  All branches in
+          ``_openKebab`` are skipped.
+      (b) Depth 1 (inside a project): canonical-topic dirs
+          (``structure``, ``optimization``, ``spectrum``,
+          ``transport``, etc.) are also non-deletable + non-file.
+
+    This test pins both cases by creating a fresh project with the
+    canonical topic dirs and asserting the kebab DOM element is
+    absent on each.  Sibling test below pins that files DO get
+    the kebab (so this fix does not over-correct).
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    # Build: <tmp>/proj/structure/, <tmp>/proj/optimization/
+    (tmp_path / "proj" / "structure").mkdir(parents=True)
+    (tmp_path / "proj" / "optimization").mkdir(parents=True)
+
+    _open_modify(page, flask_server)
+
+    # Case (a): depth 0 -- inside projects/ root, every entry is a
+    # project dir.
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(tmp_path)
+    )
+    page.wait_for_selector('.ps-entry[data-path$="proj"]', timeout=5000)
+    proj_entry = page.locator('.ps-entry[data-path$="proj"]').first
+    assert proj_entry.locator('.ps-entry-kebab').count() == 0, (
+        "Depth-0 project dir should NOT show a kebab (every menu "
+        "item is gated out; rendering the kebab opens an empty box)."
+    )
+
+    # Case (b): depth 1 -- canonical-topic dirs are off-limits to
+    # rename / delete + aren't files.
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)",
+        str(tmp_path / "proj"),
+    )
+    page.wait_for_selector(
+        '.ps-entry[data-path$="proj/structure"]', timeout=5000)
+    for topic in ("structure", "optimization"):
+        topic_entry = page.locator(
+            f'.ps-entry[data-path$="proj/{topic}"]').first
+        assert topic_entry.locator('.ps-entry-kebab').count() == 0, (
+            f"Canonical-topic dir '{topic}' should NOT show a kebab "
+            f"(_isDeletableEntry returns false; not a file).  "
+            f"Rendering the kebab gives an empty menu."
+        )
+
+
+def test_kebab_visible_when_actions_apply(
+        page, flask_server, tmp_path, monkeypatch):
+    """Sibling to the test above: files DO get the kebab.
+
+    Catches the over-correction failure mode -- a future change to
+    ``_kebabHasActions`` that flips the file branch to false would
+    hide the menu from EVERY entry, breaking the entire feature.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj" / "structure"
+    proj.mkdir(parents=True)
+    (proj / "input.fdf").write_text("# placeholder\n")
+
+    _open_modify(page, flask_server)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
+    )
+    page.wait_for_selector(
+        '.ps-entry[data-path$="input.fdf"]', timeout=5000)
+    file_entry = page.locator('.ps-entry[data-path$="input.fdf"]').first
+    assert file_entry.locator('.ps-entry-kebab').count() == 1, (
+        "File entry should show the kebab (View / Download / "
+        "Rename / Move / Copy / Delete all available)."
+    )
