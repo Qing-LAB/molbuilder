@@ -1099,13 +1099,20 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
     # only redoes what's still pending; no wasted work.
     build_argv=(
         "sh", "-c",
+        # Subshell ``( ... )`` grouping (NOT ``{ ...; }``) so the
+        # literal ``{`` / ``}`` don't collide with the Python
+        # ``str.format_map`` template substitution that ``_apply_
+        # template`` does on ``{build}`` / ``{jobs}`` here.  The
+        # subshell semantics are correct for our use case (echo + a
+        # single cmake invocation -- no state we need to keep in the
+        # parent shell).
         "cmake --build {build} -j {jobs} "
-        "|| { echo '[molbuilder] build attempt 1 failed (likely "
-        "flook race); retrying parallel'; "
-        "cmake --build {build} -j {jobs}; } "
-        "|| { echo '[molbuilder] build attempt 2 failed; final "
-        "retry serial -j1'; "
-        "cmake --build {build} -j 1; }",
+        "|| ( echo '[molbuilder] build attempt 1 failed; retrying "
+        "parallel (absorbs flook lua.h race)' >&2 "
+        "&& cmake --build {build} -j {jobs} ) "
+        "|| ( echo '[molbuilder] build attempt 2 failed; final "
+        "retry serial -j1' >&2 "
+        "&& cmake --build {build} -j 1 )",
     ),
     install_argv=("cmake", "--install", "{build}"),
     verify_argv=("{install}/bin/siesta", "--version"),
