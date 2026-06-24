@@ -530,6 +530,26 @@ def run_install(
         )
     effective = _effective_name(recipe, caps)
     planned = _plan(recipe, effective, caps.conda_binary)
+
+    sys.stderr.write(
+        f"[install] recipe `{recipe.name}` -> env `{effective}`\n"
+    )
+    sys.stderr.write(
+        f"[install] env manager: {caps.conda_binary}\n"
+    )
+    sys.stderr.flush()
+
+    # Cache the env prefix once -- recomputing per step would call
+    # ``<mgr> env list / info --json`` 3-5 times PER RECIPE on mamba 2.x,
+    # which can stretch a multi-recipe bootstrap into several minutes
+    # of silent probing.  We re-resolve only AFTER conda create runs
+    # (in case the env is brand new).
+    cached_prefix: Optional[str] = _env_prefix(effective, caps.conda_binary)
+    if cached_prefix is not None:
+        sys.stderr.write(
+            f"[install] env prefix: {cached_prefix}\n"
+        )
+        sys.stderr.flush()
     # NOTE: we DELIBERATELY do not pre-compute ``env_exists`` from caps
     # here.  The conda-create skip decision below uses ``probe_env_state``
     # live -- the cached caps view can be stale (notably right after
@@ -614,7 +634,23 @@ def run_install(
         run_argv: List[str] = list(step.argv)
         run_env: Optional[Dict[str, str]] = None
         if step.label != "conda create":
-            prefix = _env_prefix(effective, caps.conda_binary)
+            # Use the cached prefix from the top of run_install.  If it
+            # was missing then (env didn't exist), re-resolve now that
+            # conda create has run AND update the cache for the rest
+            # of the recipe's steps.
+            if cached_prefix is None:
+                sys.stderr.write(
+                    f"[install] resolving env prefix for `{effective}` "
+                    f"(post-create probe)...\n"
+                )
+                sys.stderr.flush()
+                cached_prefix = _env_prefix(effective, caps.conda_binary)
+                if cached_prefix is not None:
+                    sys.stderr.write(
+                        f"[install] env prefix: {cached_prefix}\n"
+                    )
+                    sys.stderr.flush()
+            prefix = cached_prefix
             if prefix is None:
                 executed.append(InstallStep(
                     label=step.label, argv=step.argv,
@@ -726,14 +762,17 @@ def run_install(
 
     if succeeded and verify_steps:
         for step in verify_steps:
-            # Bypass ``<mgr> run`` for verify (mamba 1.x exec bug +
-            # activate.d-required PATH for source-built recipes).
-            # If we can't resolve the env prefix, FAIL LOUD instead of
-            # silently falling back to the buggy ``conda run`` argv --
-            # that path produces a confusing ``exec: --: invalid
-            # option`` error that masks the real problem (env
-            # detection failure post-install).
-            prefix = _env_prefix(effective, caps.conda_binary)
+            # Bypass ``<mgr> run`` for verify (activate.d-required
+            # PATH for source-built recipes + universal mamba/conda
+            # ``run`` quirks).  If we can't resolve the env prefix,
+            # FAIL LOUD instead of silently falling back to the
+            # original argv -- that path produces confusing errors
+            # that mask the real problem (env detection failure
+            # post-install).  Re-use the cached prefix unless this
+            # is somehow the first call.
+            if cached_prefix is None:
+                cached_prefix = _env_prefix(effective, caps.conda_binary)
+            prefix = cached_prefix
             if prefix is None:
                 executed.append(InstallStep(
                     label=step.label, argv=step.argv,

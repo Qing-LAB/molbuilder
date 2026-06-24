@@ -879,6 +879,19 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     conda_only   = [r for r in BUILTIN_RECIPES if r.build_spec is None]
     source_builds = [r for r in BUILTIN_RECIPES if r.build_spec is not None]
 
+    # Progress visibility: the steps from here through ``run_install``
+    # do multiple ``<mgr> env list`` / ``<mgr> info --json`` probes (env
+    # presence, env-prefix resolution, env-state classification).  On
+    # mamba 2.x with a populated registry these can each take several
+    # seconds.  Print before EACH probe so the user can see exactly
+    # what we're waiting on, not a silent multi-minute hang.
+    click.echo(f"[bootstrap] env manager: {caps.conda_binary}", err=True)
+    click.echo(
+        f"[bootstrap] registered recipes: "
+        f"{len(conda_only)} conda-only + {len(source_builds)} source-build",
+        err=True,
+    )
+
     plan: list = list(conda_only)
     if include_source_builds:
         plan.extend(source_builds)
@@ -898,16 +911,27 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
 
     # Filter out present envs by default.
     if skip_existing:
+        click.echo("[bootstrap] checking which envs are already "
+                   "present...", err=True)
         before = len(plan)
-        plan = [r for r in plan
-                if not caps.env_available(
-                    caps.env_for_category(r.category) or r.name
-                )]
+        new_plan: list = []
+        for r in plan:
+            env_name = caps.env_for_category(r.category) or r.name
+            present = caps.env_available(env_name)
+            click.echo(
+                f"[bootstrap]   {env_name:<30}  "
+                f"{'present (will skip + validate at end)' if present else 'missing (will install)'}",
+                err=True,
+            )
+            if not present:
+                new_plan.append(r)
+        plan = new_plan
         skipped = before - len(plan)
         if skipped:
             click.echo(
-                f"(skipping {skipped} env(s) already present; pass "
-                f"--no-skip-existing to re-run install on them)",
+                f"[bootstrap] skipping {skipped} env(s) already present; "
+                f"doctor at the end will verify them.  Pass "
+                f"--no-skip-existing to re-run install on them.",
                 err=True,
             )
 
