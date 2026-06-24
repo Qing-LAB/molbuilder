@@ -913,33 +913,60 @@ Method + full result tables:
 
 ## Documentation
 
-| Document | What it covers |
+The full documentation tree is under [`docs/`](docs/).  Key entry
+points, grouped by topic:
+
+**Architecture and design**
+
+| Document | Covers |
 |---|---|
-| [`docs/design.md`](docs/design.md) | **Master design** — mission, three-layer architecture, four core types, principles, anti-patterns, decisions log (chronological) |
-| [`docs/README_install.md`](docs/README_install.md) | Install recipes (host + 5 backend envs) + `molbuilder envs` CLI |
-| [`docs/deployment.md`](docs/deployment.md) | **Deployment** — localhost / LAN / internet, built-in sign-in vs reverse-proxy auth, TLS, config reference, security headers |
-| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | **Config template** — every supported section with inline `_comment_*` annotations |
-| [`docs/tabs/architecture.md`](docs/tabs/architecture.md) | Tab inventory + canonical routes + cross-tab workflow model |
-| [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md) | Molbuilder tab (interactive workspace) — Sources / Atom / Pose / Geom / Junction / Save |
-| [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md) | Structure-optimization tab — SIESTA `.fdf` + PySCF `.py` form |
-| [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectrum-calculation tab — schema, layers, atom-fixing semantics; end-to-end Raman validation in § 12.1 |
-| [`docs/tabs/results.md`](docs/tabs/results.md) | Results tab (stub pointing at protocols/) |
-| [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) | Results tab dispatch architecture |
-| [`docs/protocols/inspector-registry.md`](docs/protocols/inspector-registry.md) | Inspector contract — `mount(host, file, ctx) → {dispose}`, trajectory inspector internals |
-| [`docs/protocols/projects-sidebar.md`](docs/protocols/projects-sidebar.md) | Sidebar architecture + API + sidecar-pairing semantics |
-| [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol |
-| [`docs/protocols/sidecar-contract.md`](docs/protocols/sidecar-contract.md) | `.molstruct.json` sidecar — schema + atomic-move/copy rules |
-| [`docs/protocols/web-api.md`](docs/protocols/web-api.md) | HTTP API reference for every blueprint |
-| [`docs/protocols/web-ui-coherence.md`](docs/protocols/web-ui-coherence.md) | Cross-surface coherence rules (analyzer / chip / validator / palette must agree) |
-| [`docs/protocols/scientific-validation.md`](docs/protocols/scientific-validation.md) | External validation fixtures + reference results |
-| [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |
-| [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract |
-| [`docs/engines/transport.md`](docs/engines/transport.md) | TranSIESTA generator + transport roadmap |
-| [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md) | **GPU SIESTA env** — source-build recipe, BuildSpec executor, sentinel-resume model, three-layer isolation |
-| [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend behaviour (peptide / DNA / RNA / SMILES / name) |
-| [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass + readers / writers |
-| [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry + auto-detect |
-| [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, contact distances, …) |
+| [`docs/design.md`](docs/design.md) | Mission, three-layer architecture, four core types, principles, anti-patterns, decisions log. |
+| [`docs/package-layout.md`](docs/package-layout.md) | Project file layout and the layering rule. |
+| [`docs/tabs/architecture.md`](docs/tabs/architecture.md) | Tab inventory, routes, and the cross-tab workflow model. |
+
+**Install and deployment**
+
+| Document | Covers |
+|---|---|
+| [`docs/README_install.md`](docs/README_install.md) | Install recipes for the host env and the five backend envs; `molbuilder envs` CLI. |
+| [`docs/deployment.md`](docs/deployment.md) | Localhost, LAN, and internet deployment; built-in auth vs reverse-proxy auth; TLS; config reference; security headers. |
+| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | Config template with inline `_comment_*` annotations for every supported section. |
+
+**Per-tab specs**
+
+| Document | Covers |
+|---|---|
+| [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md) | Molbuilder tab — Sources, Atom, Pose, Geom, Junction, Save. |
+| [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md) | Structure-optimization tab — SIESTA `.fdf` and PySCF `.py` form. |
+| [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectrum-calculation tab — schema, layers, atom-fixing semantics; Raman validation in § 12.1. |
+| [`docs/tabs/results.md`](docs/tabs/results.md) | Results tab — overview pointing at protocol docs below. |
+
+**Protocols (cross-cutting contracts)**
+
+| Document | Covers |
+|---|---|
+| [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) | Results-tab dispatch architecture. |
+| [`docs/protocols/inspector-registry.md`](docs/protocols/inspector-registry.md) | Inspector contract `mount(host, file, ctx) → {dispose}`; trajectory inspector internals. |
+| [`docs/protocols/projects-sidebar.md`](docs/protocols/projects-sidebar.md) | Sidebar architecture, API, and sidecar-pairing semantics. |
+| [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Run-directory and filename protocol. |
+| [`docs/protocols/sidecar-contract.md`](docs/protocols/sidecar-contract.md) | `.molstruct.json` sidecar schema and atomic-move/copy rules. |
+| [`docs/protocols/web-api.md`](docs/protocols/web-api.md) | HTTP API reference for every blueprint. |
+| [`docs/protocols/web-ui-coherence.md`](docs/protocols/web-ui-coherence.md) | Cross-surface coherence rules (analyzer, chip, validator, palette must agree). |
+| [`docs/protocols/scientific-validation.md`](docs/protocols/scientific-validation.md) | External validation fixtures and reference results. |
+
+**Engines and types**
+
+| Document | Covers |
+|---|---|
+| [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract. |
+| [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract. |
+| [`docs/engines/transport.md`](docs/engines/transport.md) | TranSIESTA generator and transport roadmap. |
+| [`docs/engines/optimization-tuning.md`](docs/engines/optimization-tuning.md) | Cross-engine optimisation tier framework and design considerations (system-type-aware thresholds). |
+| [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md) | GPU SIESTA env — source-build recipe, BuildSpec executor, sentinel-resume model, three-layer isolation. |
+| [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend builder behaviour (peptide, DNA, RNA, SMILES, name). |
+| [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass; readers and writers. |
+| [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry and auto-detect. |
+| [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, contact distances, …). |
 
 ---
 
