@@ -1130,6 +1130,17 @@ _SIESTA_GPU = Recipe(
         f"gxx_linux-64={_GCC_VERSION}",
         f"gfortran_linux-64={_GCC_VERSION}",
         "cmake>=3.30", "ninja", "make", "git", "m4",
+        # ``curl`` (not just libcurl).  builds.py's ELPA clone phase
+        # downloads the tarball via curl; on HPC nodes the system
+        # ``/usr/bin/curl`` is sometimes built without TLS / HTTPS
+        # support (``curl: (4) A requested feature ... not built-in``),
+        # which kills the install at step 1/10.  conda-forge's curl is
+        # HTTPS-capable on every architecture we support, and the
+        # build wrapper puts ``<env>/bin`` first on PATH so the env's
+        # curl shadows the system one.  Bundling it explicitly also
+        # avoids relying on git's transitive libcurl being CLI-shaped
+        # (libcurl alone is a library, not the CLI binary).
+        "curl",
         "pkg-config",
         # NUMA control tool.  Critical for GPU mode on multi-socket
         # boxes: the run-wrapper's _gpu_runtime_defaults_block wraps
