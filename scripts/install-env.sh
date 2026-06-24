@@ -32,6 +32,17 @@ usage() {
 Usage: bash scripts/install-env.sh [--list | --check] <recipe-name>
        bash scripts/install-env.sh --list           # show all recipes
        bash scripts/install-env.sh --doctor         # full health report
+       bash scripts/install-env.sh --bootstrap [--yes]
+                                                    # install EVERY conda-only
+                                                    # recipe + run doctor; the
+                                                    # one-command first-run path
+                                                    # for HPC / fresh-machine
+                                                    # deployment.  Use --yes
+                                                    # for non-interactive (CI,
+                                                    # batch jobs).  Append
+                                                    # --include-source-builds
+                                                    # to also build SIESTA-GPU
+                                                    # (~45 min, opt-in).
        bash scripts/install-env.sh --dry-run <recipe-name>
        bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
                                                     # source-build recipes only
@@ -56,16 +67,55 @@ Environment variables:
 EOF
 }
 
+# Conda-compatible env manager autodetect (mamba > micromamba > conda).
+# Mamba / micromamba are drop-in replacements for ``conda create``,
+# ``conda run``, ``conda env list`` and other commands this script + the
+# Python layer issue.  Mamba is ~5-10x faster on HPC clusters with slow
+# filesystems; micromamba is the only option on systems where the user
+# lacks admin rights to install Miniconda.  All three accept the same
+# CLI surface for our use case, so detection is transparent downstream.
+ENV_MGR=""
+detect_env_mgr() {
+    if [[ -n "${ENV_MGR}" ]]; then
+        return 0
+    fi
+    for candidate in mamba micromamba conda; do
+        if command -v "${candidate}" >/dev/null 2>&1; then
+            ENV_MGR="${candidate}"
+            return 0
+        fi
+    done
+    # Fall back to env vars set by mamba's / conda's activation hooks.
+    if [[ -n "${MAMBA_EXE:-}" && -x "${MAMBA_EXE}" ]]; then
+        ENV_MGR="${MAMBA_EXE}"
+        return 0
+    fi
+    if [[ -n "${CONDA_EXE:-}" && -x "${CONDA_EXE}" ]]; then
+        ENV_MGR="${CONDA_EXE}"
+        return 0
+    fi
+    return 1
+}
+
 require_conda() {
-    if ! command -v conda >/dev/null 2>&1; then
-        echo "Error: conda CLI not found on PATH." >&2
-        echo "Install conda first; see docs/README_install.md." >&2
+    if ! detect_env_mgr; then
+        echo "Error: no conda-compatible env manager found on PATH." >&2
+        echo "Looked for: mamba, micromamba, conda.  Looked at:" >&2
+        echo "  \$MAMBA_EXE = ${MAMBA_EXE:-(unset)}" >&2
+        echo "  \$CONDA_EXE = ${CONDA_EXE:-(unset)}" >&2
+        echo "Install one (Miniconda / Miniforge / micromamba); see" >&2
+        echo "docs/README_install.md." >&2
         exit 2
+    fi
+    # First-run banner: which manager we'll use.  Only print once.
+    if [[ -z "${_ENV_MGR_BANNERED:-}" ]]; then
+        echo "[molbuilder] env manager: ${ENV_MGR}" >&2
+        _ENV_MGR_BANNERED=1
     fi
 }
 
 require_host_env() {
-    if ! conda env list 2>/dev/null \
+    if ! "${ENV_MGR}" env list 2>/dev/null \
             | awk 'NR>2 {print $1}' \
             | grep -qx "${HOST_ENV}"; then
         echo "Error: host env '${HOST_ENV}' does not exist." >&2
@@ -79,8 +129,9 @@ require_host_env() {
 }
 
 dispatch() {
-    # `--no-capture-output` so the user sees conda's progress in real time.
-    conda run -n "${HOST_ENV}" --no-capture-output \
+    # ``--no-capture-output`` so the user sees the inner process's
+    # progress in real time.  Mamba / micromamba accept the same flag.
+    "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
         python -m molbuilder envs "$@"
 }
 
@@ -98,6 +149,18 @@ case "${1:-}" in
         require_conda
         require_host_env
         dispatch doctor
+        ;;
+    --bootstrap)
+        # --bootstrap [extra args...]: install every conda-only recipe
+        # in one pass + run doctor at the end.  Extra args (--yes,
+        # --include-source-builds, --dry-run, --no-skip-existing) are
+        # forwarded to the python layer.  Designed for HPC first-run
+        # deploy where the user wants one command to get every env set
+        # up.  Idempotent (already-present envs are skipped by default).
+        shift
+        require_conda
+        require_host_env
+        dispatch bootstrap "$@"
         ;;
     --check)
         if [[ $# -lt 2 ]]; then

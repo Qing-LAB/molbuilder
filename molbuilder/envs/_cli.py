@@ -812,4 +812,155 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         sys.exit(1)
 
 
+# --------------------------------------------------------------------- #
+#  bootstrap -- install every conda-only recipe + run doctor             #
+# --------------------------------------------------------------------- #
+
+
+@envs_group.command(
+    "bootstrap",
+    short_help="install every conda-only recipe + run doctor at the end")
+@click.option("--dry-run", is_flag=True,
+              help="print the plan; do not install anything.")
+@click.option("--skip-existing", is_flag=True, default=True,
+              help="default: skip recipes whose env already exists.  "
+                   "Pass ``--no-skip-existing`` to re-run install on "
+                   "envs that are already present (idempotent re-pass).")
+@click.option("--no-skip-existing", "skip_existing", flag_value=False,
+              help="re-run install on envs that are already present.")
+@click.option("--include-source-builds", is_flag=True,
+              help="also bootstrap recipes that build from source (e.g. "
+                   "``molbuilder-siesta-gpu``).  Default excludes them "
+                   "because each takes ~30-45 minutes and a fresh "
+                   "bootstrap usually doesn't want to commit to that "
+                   "up front.  When --include-source-builds is passed, "
+                   "the user is asked to confirm before each source "
+                   "build starts unless --yes is also given.")
+@click.option("--yes", "-y", "auto_yes", is_flag=True,
+              help="proceed without interactive confirmation.  Required "
+                   "for headless / CI / HPC-batch use.")
+def cmd_bootstrap(dry_run: bool, skip_existing: bool,
+                  include_source_builds: bool, auto_yes: bool) -> None:
+    """Install every registered recipe, then run ``doctor`` for the
+    summary.
+
+    The bootstrap path is intended for first-run deployment on an
+    HPC / supercomputer cluster (or any fresh machine) where the user
+    wants the full molbuilder env stack present in one command.
+    Existing envs are skipped by default so the command is idempotent
+    and safe to re-run.
+
+    Source-build recipes (e.g. ``molbuilder-siesta-gpu``) are NOT
+    included by default because each takes 30-45 minutes.  Use
+    ``--include-source-builds`` to opt in.
+
+    At the end runs ``molbuilder envs doctor`` so the user sees the
+    health of every env in one report.
+    """
+    caps = get_capabilities()
+
+    # Pick recipes to install.  Order: conda-only first (cheap, fast),
+    # then source-builds last (slow) only when opted in.
+    conda_only   = [r for r in BUILTIN_RECIPES if r.build_spec is None]
+    source_builds = [r for r in BUILTIN_RECIPES if r.build_spec is not None]
+
+    plan: list = list(conda_only)
+    if include_source_builds:
+        plan.extend(source_builds)
+    else:
+        # Tell the user explicitly what's being skipped.
+        if source_builds:
+            names = ", ".join(r.name for r in source_builds)
+            click.echo(
+                f"(skipping source-build recipes: {names}; "
+                f"pass --include-source-builds to opt in)",
+                err=True,
+            )
+
+    if not plan:
+        click.echo("(no recipes registered)")
+        return
+
+    # Filter out present envs by default.
+    if skip_existing:
+        before = len(plan)
+        plan = [r for r in plan
+                if not caps.env_available(
+                    caps.env_for_category(r.category) or r.name
+                )]
+        skipped = before - len(plan)
+        if skipped:
+            click.echo(
+                f"(skipping {skipped} env(s) already present; pass "
+                f"--no-skip-existing to re-run install on them)",
+                err=True,
+            )
+
+    if not plan:
+        click.echo("All registered envs are already present.  "
+                   "Running doctor to verify.")
+    else:
+        # Per-recipe banner.
+        click.echo(f"bootstrap plan: {len(plan)} env(s)")
+        for r in plan:
+            click.echo(
+                f"  - {r.name:<30}  {r.description}")
+        if dry_run:
+            click.echo("(dry-run: no install executed.)")
+            return
+        if not auto_yes and not click.confirm(
+                f"Proceed with bootstrap of {len(plan)} env(s)?",
+                default=True):
+            click.echo("aborted.")
+            sys.exit(0)
+        # Run installs sequentially.  Failures are recorded but
+        # bootstrap continues so the user gets a full report at the
+        # end.
+        failures: list = []
+        for i, recipe in enumerate(plan, 1):
+            click.echo("")
+            click.echo("=" * 70)
+            click.echo(f"[{i}/{len(plan)}] {recipe.name}")
+            click.echo("=" * 70)
+            log_path = _resolve_install_log_path(recipe.name)
+            with _tee_console_to(log_path):
+                try:
+                    result = _install.run_install(recipe, caps=caps)
+                except RuntimeError as e:
+                    click.echo(f"  ERROR: {e}", err=True)
+                    failures.append(
+                        (recipe.name, "run_install raised", str(e)))
+                    continue
+            click.echo(f"  log: {log_path}")
+            if not result.succeeded:
+                failures.append((recipe.name, "install step failed",
+                                 f"see {log_path}"))
+
+        # Final summary banner.
+        click.echo("")
+        click.echo("=" * 70)
+        if failures:
+            click.echo(f"bootstrap finished with {len(failures)} failure(s):",
+                       err=True)
+            for name, why, hint in failures:
+                click.echo(f"  - {name}: {why} -- {hint}", err=True)
+        else:
+            click.echo("bootstrap complete; every recipe installed.")
+
+    # Refresh capabilities so doctor sees newly-created envs.
+    from .. import diagnostics as _diag
+    caps_after = _diag.detect()
+    _diag.set_capabilities(caps_after)
+    click.echo("")
+    click.echo("=" * 70)
+    click.echo("doctor (post-bootstrap smoke check):")
+    click.echo("=" * 70)
+    reports = _doctor.report_all(caps_after, run_verify=True)
+    exit_code = _render_doctor(reports)
+    if 'failures' in dir() and failures:
+        # Already had install failures -- exit non-zero to signal CI.
+        sys.exit(1)
+    sys.exit(exit_code)
+
+
 __all__ = ["envs_group"]

@@ -191,8 +191,46 @@ class Capabilities:
 
 
 def _find_conda_binary() -> Optional[str]:
-    """Locate the conda CLI: ``shutil.which`` first, then ``$CONDA_EXE``."""
-    return shutil.which("conda") or os.environ.get("CONDA_EXE") or None
+    """Locate a conda-compatible env-manager CLI.
+
+    Search order (each step probes ``PATH`` via ``shutil.which``):
+
+      1. ``mamba``     -- conda-compatible CLI with a much faster
+                          (libmamba/libsolv) solver.  Drop-in replacement
+                          for every ``conda create / run / env list``
+                          command molbuilder issues.  Preferred when
+                          present because env creation is ~5-10x faster
+                          on HPC clusters with slow filesystems / many
+                          packages, and the lockstep with conda's
+                          API means everything else (subprocess
+                          dispatch via ``conda run -n <env>``) works
+                          identically.
+      2. ``micromamba`` -- statically-linked single-binary mamba.
+                          Same CLI surface for the molbuilder use
+                          case.  Often the only env manager available
+                          on ASU / general HPC clusters where the user
+                          doesn't have admin rights to install
+                          Miniconda.
+      3. ``conda``     -- the reference implementation; always works
+                          if installed.  Slowest solver of the three
+                          but the universal fallback.
+
+    After PATH probes, fall back to environment variables:
+      * ``$MAMBA_EXE``  (set by mamba's activation hook)
+      * ``$CONDA_EXE``  (set by conda's activation hook)
+
+    Returns the absolute path to the chosen binary, or ``None`` if
+    no manager is reachable.  Callers that need to know WHICH manager
+    was picked can compare ``os.path.basename(path)`` against the
+    candidate names; for the dispatch layer ``conda run -n <env>``
+    and ``mamba run -n <env>`` are identical so the choice is
+    transparent.
+    """
+    for candidate in ("mamba", "micromamba", "conda"):
+        path = shutil.which(candidate)
+        if path:
+            return path
+    return os.environ.get("MAMBA_EXE") or os.environ.get("CONDA_EXE") or None
 
 
 def _list_conda_envs(conda: str) -> frozenset:

@@ -25,6 +25,30 @@ python -m molbuilder serve
 
 Open <http://127.0.0.1:5000>.
 
+### Conda, mamba, or micromamba — molbuilder accepts any of the three
+
+Every command above that says `conda` also works with `mamba` (faster
+solver, especially useful on HPC clusters with slow filesystems) or
+`micromamba` (statically-linked single binary, no Miniconda install
+required — the only realistic option on locked-down clusters where you
+lack admin rights).  molbuilder autodetects the available manager and
+uses whichever is on PATH; the preference order is
+**mamba > micromamba > conda**.  Detection falls back to `$MAMBA_EXE`
+and `$CONDA_EXE` if PATH search fails.
+
+For one-command first-run on a fresh machine (HPC cluster, new
+workstation), use the bootstrap script:
+
+```bash
+bash scripts/install-env.sh --bootstrap --yes
+```
+
+This creates every conda-only env (host + pyscf + siesta + MDtools +
+tests) in one pass, then runs `molbuilder envs doctor` for a smoke
+check.  Pass `--include-source-builds` to also build the GPU-enabled
+SIESTA stack (~30-45 min).  Idempotent: re-running skips envs that
+are already present.
+
 `authlib` and `python-cas` are only loaded when `molbuilder.json`
 has an `auth` section configured.  `authlib` powers the OAuth/OIDC
 backends (Google, GitHub, Microsoft, ORCID); `python-cas` powers

@@ -284,3 +284,74 @@ def test_set_capabilities_injects():
     injected = _caps(conda_binary="/injected/conda")
     set_capabilities(injected)
     assert get_capabilities() is injected
+
+
+# --------------------------------------------------------------------- #
+#  Env-manager autodetect (2026-06-23): mamba > micromamba > conda      #
+# --------------------------------------------------------------------- #
+#
+# ASU supercomputer deployment + general HPC use need transparent support
+# for mamba (faster solver) and micromamba (static single-binary).
+# Both are drop-in replacements for ``conda create/run/env list``;
+# the only thing molbuilder needs to do is pick whichever is available.
+#
+# Detection rule: prefer mamba > micromamba > conda on PATH; fall
+# back to ``$MAMBA_EXE`` / ``$CONDA_EXE`` env vars.  Once detected,
+# the chosen binary is used uniformly via ``caps.conda_binary``.
+
+
+class TestEnvManagerAutodetect:
+
+    def _set_which(self, monkeypatch, mapping):
+        """Stub shutil.which: returns mapping[name] or None."""
+        monkeypatch.setattr(
+            diagnostics.shutil, "which",
+            lambda t: mapping.get(t),
+        )
+
+    def test_mamba_preferred_when_all_three_present(self, monkeypatch):
+        monkeypatch.delenv("MAMBA_EXE", raising=False)
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {
+            "mamba":      "/opt/mamba/bin/mamba",
+            "micromamba": "/opt/mm/bin/micromamba",
+            "conda":      "/opt/conda/bin/conda",
+        })
+        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+
+    def test_micromamba_preferred_over_conda(self, monkeypatch):
+        monkeypatch.delenv("MAMBA_EXE", raising=False)
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {
+            "micromamba": "/opt/mm/bin/micromamba",
+            "conda":      "/opt/conda/bin/conda",
+        })
+        assert diagnostics._find_conda_binary() == "/opt/mm/bin/micromamba"
+
+    def test_conda_only_works_as_fallback(self, monkeypatch):
+        monkeypatch.delenv("MAMBA_EXE", raising=False)
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {"conda": "/opt/conda/bin/conda"})
+        assert diagnostics._find_conda_binary() == "/opt/conda/bin/conda"
+
+    def test_falls_back_to_mamba_exe_env_var(self, monkeypatch):
+        """When nothing is on PATH but ``$MAMBA_EXE`` is set (mamba's
+        activation hook does this), use it."""
+        monkeypatch.setenv("MAMBA_EXE", "/opt/mamba/bin/mamba")
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+
+    def test_mamba_exe_wins_over_conda_exe(self, monkeypatch):
+        """Both env vars set -- ``$MAMBA_EXE`` wins (faster manager,
+        consistent with the PATH preference order)."""
+        monkeypatch.setenv("MAMBA_EXE", "/opt/mamba/bin/mamba")
+        monkeypatch.setenv("CONDA_EXE", "/opt/conda/bin/conda")
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() == "/opt/mamba/bin/mamba"
+
+    def test_no_manager_returns_none(self, monkeypatch):
+        monkeypatch.delenv("MAMBA_EXE", raising=False)
+        monkeypatch.delenv("CONDA_EXE", raising=False)
+        self._set_which(monkeypatch, {})
+        assert diagnostics._find_conda_binary() is None
