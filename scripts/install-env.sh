@@ -109,10 +109,24 @@ That creates the host env, installs every conda-only backend
 (SIESTA / PySCF / MDtools / tests), and runs a health check.
 Idempotent: re-running skips envs already present.
 
-Want GPU SIESTA too (~45 min extra)?  Add the opt-in flag:
+Adding GPU SIESTA (source-built, ~45 min, ~12 GB disk).  Either
+way works -- pick whichever fits your workflow:
 
+    # As part of bootstrap (installs everything missing in one go):
     bash scripts/install-env.sh bootstrap --yes \
         --include-source-builds
+
+    # As a standalone install (host env must already exist):
+    bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
+
+Iterating on a GPU SIESTA component:
+
+    bash scripts/install-env.sh install molbuilder-siesta-gpu \
+        --rebuild=siesta --yes        # rebuild SIESTA only, keep ELPA
+    bash scripts/install-env.sh install molbuilder-siesta-gpu \
+        --rebuild=elpa --yes          # rebuild ELPA + SIESTA
+    bash scripts/install-env.sh install molbuilder-siesta-gpu \
+        --rebuild=all --yes           # rebuild everything from scratch
 ==============================================================
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
@@ -148,12 +162,20 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
         --dry-run                print the plan; do not install
         --yes / -y               non-interactive (CI / HPC batch)
 
-Note: this shim is the canonical entry point.  molbuilder is not
-pip-installed into the host env (intentional convention), so after
-``conda activate molbuilder`` the bare ``molbuilder`` command does
-NOT exist on PATH -- you'd need ``python -m molbuilder ...`` with
-PYTHONPATH set to the repo root.  Sticking with the shim avoids
-that footgun.
+Two equivalent entry points (use whichever you prefer):
+
+  (a) This shim:
+        bash scripts/install-env.sh <subcommand> [flags]
+
+  (b) The Python CLI, after activating the host env:
+        conda activate molbuilder
+        python -m molbuilder envs <subcommand> [flags]
+
+  (Note: molbuilder is intentionally NOT pip-installed into the
+  host env, so the bare ``molbuilder`` command does NOT exist on
+  PATH after activation -- ``python -m molbuilder`` is the form,
+  and PYTHONPATH must point at the repo root.  The shim sets
+  PYTHONPATH for you, which is why it Just Works from any CWD.)
 
 Environment variables:
   MOLBUILDER_HOST_ENV            host env name (default: molbuilder).

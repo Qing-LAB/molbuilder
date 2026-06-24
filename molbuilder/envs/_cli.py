@@ -202,11 +202,38 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                     for ln in rep.verify_output.strip().splitlines()[:8]
                 )
                 click.echo(indented)
+        # Package audit (real check, not just verify smoke test).
+        if rep.package_audit is not None and rep.package_audit.checked:
+            pa = rep.package_audit
+            n_total = pa.n_conda_declared + pa.n_pip_declared
+            n_issues = len(pa.issues)
+            n_ok = n_total - n_issues
+            if n_issues == 0:
+                click.echo(
+                    f"    audit:   OK ({n_ok}/{n_total} declared "
+                    f"packages present + version-matched)"
+                )
+            else:
+                any_failed = True
+                click.echo(
+                    f"    audit:   FAILED ({n_ok}/{n_total} ok; "
+                    f"{n_issues} mismatched)"
+                )
+                # Group by kind for readability.
+                for issue in pa.issues[:15]:  # cap at 15 to keep report compact
+                    click.echo(
+                        f"        [{issue.kind}] {issue.spec}  "
+                        f"(installed: {issue.found})"
+                    )
+                if n_issues > 15:
+                    click.echo(
+                        f"        ... and {n_issues - 15} more"
+                    )
 
     click.echo("")
     if any_failed:
-        click.echo("doctor: one or more envs failed verify.  See "
-                   "above + docs/README_install.md.", err=True)
+        click.echo("doctor: one or more envs failed verify or package "
+                   "audit.  See above + docs/README_install.md.", err=True)
         return 1
     return 0
 

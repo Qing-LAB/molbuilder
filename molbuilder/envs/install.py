@@ -267,11 +267,14 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     import json as _json
     # Strategy 1: registry.  ``Path(prefix).name == env_name`` so
     # envs at custom locations still match if the basename is right.
-    cp = subprocess.run(
-        [conda_binary, "env", "list", "--json"],
-        capture_output=True, text=True, timeout=30,
-    )
-    if cp.returncode == 0:
+    try:
+        cp = subprocess.run(
+            [conda_binary, "env", "list", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        cp = None
+    if cp is not None and cp.returncode == 0:
         try:
             envs = _json.loads(cp.stdout).get("envs", [])
         except (ValueError, KeyError):
