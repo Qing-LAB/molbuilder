@@ -445,29 +445,56 @@ resolve_host_env_channels() {
 }
 
 _resolve_env_python() {
-    # Resolve the env's python binary by asking the env manager
-    # where envs live ("envs_dirs" in conda info --json), then
-    # checking each candidate for the named env.  Falls back to
-    # ``<install root>/envs/<name>/bin/python`` derived from
-    # ENV_MGR's own path -- works for the standard Miniforge /
-    # Miniconda layout where ENV_MGR is at ``<root>/bin/mamba``.
+    # Resolve the env's python binary.  Three strategies, in order:
+    #
+    #   1. Parse ``<mgr> env list`` -- the same registry call
+    #      ``host_env_exists`` already uses.  Picks up the named env
+    #      regardless of where conda stores it (custom ``envs_dirs``,
+    #      mamba ``--prefix`` installs, etc.).
+    #   2. Parse ``<mgr> info --json``'s ``envs`` array (FULL env
+    #      paths, not the ``envs_dirs`` search list).  Catches cases
+    #      where ``env list`` output got mangled by mamba 2.x's
+    #      different table layout.
+    #   3. Derive from ENV_MGR's own path.  Handles both the
+    #      ``<root>/bin/conda`` layout (Miniforge, Miniconda) AND
+    #      the ``<root>/condabin/conda`` layout (which is what
+    #      ``conda init`` adds to PATH on most systems).
+    #
+    # ``<root>/condabin`` is the load-bearing detail that the prior
+    # version missed: ``${ENV_MGR%/bin/*}`` only strips ``/bin/X``,
+    # so a condabin/conda ENV_MGR fell through unchanged and the
+    # fallback python path was junk.
     local _name="$1"
-    # Probe via the env mgr's JSON output first (handles custom
-    # envs_dirs configured in ~/.condarc).
-    local _envs_dirs
-    _envs_dirs="$("${ENV_MGR}" info --json 2>/dev/null \
-        | awk '/"envs_dirs":/{flag=1;next} flag && /]/{flag=0} flag' \
+    local _prefix
+    # Strategy 1: env list.  Last column is the prefix path; name is
+    # column 1 (active env's ``*`` marker is column 2 -- awk's $1
+    # still gets the name).
+    _prefix="$("${ENV_MGR}" env list 2>/dev/null \
+        | awk -v name="${_name}" 'NF && $1 == name {print $NF}' \
+        | head -n 1)"
+    if [[ -n "${_prefix}" && -x "${_prefix}/bin/python" ]]; then
+        echo "${_prefix}/bin/python"
+        return 0
+    fi
+    # Strategy 2: info --json -> envs array (full paths).  Match by
+    # basename so a customised env layout still resolves.
+    _prefix="$("${ENV_MGR}" info --json 2>/dev/null \
+        | awk '/"envs":/{flag=1;next} flag && /]/{flag=0} flag' \
         | tr -d '",' \
-        | tr -s ' ')"
-    local _dir
-    for _dir in ${_envs_dirs}; do
-        if [[ -x "${_dir}/${_name}/bin/python" ]]; then
-            echo "${_dir}/${_name}/bin/python"
-            return 0
-        fi
-    done
-    # Fallback: derive from ENV_MGR's path (Miniforge layout).
-    local _root="${ENV_MGR%/bin/*}"
+        | awk -v name="${_name}" '{
+            n = split($1, parts, "/");
+            if (parts[n] == name) { print $1; exit }
+        }')"
+    if [[ -n "${_prefix}" && -x "${_prefix}/bin/python" ]]; then
+        echo "${_prefix}/bin/python"
+        return 0
+    fi
+    # Strategy 3: derive from ENV_MGR's path.  Strip ``/condabin/...``
+    # OR ``/bin/...`` depending on layout.
+    local _root="${ENV_MGR%/condabin/*}"
+    if [[ "${_root}" == "${ENV_MGR}" ]]; then
+        _root="${ENV_MGR%/bin/*}"
+    fi
     if [[ -x "${_root}/envs/${_name}/bin/python" ]]; then
         echo "${_root}/envs/${_name}/bin/python"
         return 0
@@ -494,9 +521,12 @@ create_host_env() {
         local _py
         if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
             echo "Error: cannot find python in env '${HOST_ENV}' after create." >&2
-            echo "Expected at <env prefix>/bin/python.  Probed via:" >&2
-            echo "  ${ENV_MGR} info --json | jq .envs_dirs" >&2
-            echo "  ${ENV_MGR%/bin/*}/envs/${HOST_ENV}/bin/python" >&2
+            echo "Probed three ways, none worked:" >&2
+            echo "  1. ${ENV_MGR} env list  (match by name)" >&2
+            echo "  2. ${ENV_MGR} info --json -> envs[]" >&2
+            echo "  3. <ENV_MGR's install root>/envs/${HOST_ENV}/bin/python" >&2
+            echo "Run '${ENV_MGR} env list' yourself to see what env paths" >&2
+            echo "are registered; if molbuilder is there, file an issue." >&2
             exit 1
         fi
         echo "[molbuilder] pip-installing host-env extras: ${HOST_PIP_PACKAGES[*]}" >&2
@@ -540,10 +570,15 @@ dispatch() {
     local _py
     if ! _py="$(_resolve_env_python "${HOST_ENV}")"; then
         echo "Error: cannot find python in env '${HOST_ENV}'." >&2
-        echo "The host env exists but has no usable python at" >&2
-        echo "<env prefix>/bin/python.  This shouldn't happen --" >&2
-        echo "consider re-running:" >&2
-        echo "    bash $0 bootstrap --yes --no-skip-existing" >&2
+        echo "Probed three ways, none worked:" >&2
+        echo "  1. ${ENV_MGR} env list  (match by name)" >&2
+        echo "  2. ${ENV_MGR} info --json -> envs[]" >&2
+        echo "  3. <ENV_MGR's install root>/envs/${HOST_ENV}/bin/python" >&2
+        echo "Confirm the env is healthy with '${ENV_MGR} env list' --" >&2
+        echo "if molbuilder is listed but the path's python is missing," >&2
+        echo "remove + reinstall the env:" >&2
+        echo "    ${ENV_MGR} env remove -n ${HOST_ENV} -y" >&2
+        echo "    bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
         exit 1
     fi
     PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
