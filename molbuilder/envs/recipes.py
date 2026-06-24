@@ -1102,10 +1102,44 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # Subshell ``( ... )`` grouping (NOT ``{ ...; }``) so the
         # literal ``{`` / ``}`` don't collide with the Python
         # ``str.format_map`` template substitution that ``_apply_
-        # template`` does on ``{build}`` / ``{jobs}`` here.  The
-        # subshell semantics are correct for our use case (echo + a
-        # single cmake invocation -- no state we need to keep in the
-        # parent shell).
+        # template`` does on ``{build}`` / ``{jobs}`` here.  Bash
+        # variable expansion uses ``$NAME`` form (NOT ``${NAME}``)
+        # for the same reason -- ``${`` would be parsed as the
+        # opening of a format placeholder.  The test_envs_siesta_gpu
+        # _recipe.py argv-template gate enforces this at test time
+        # via _apply_template + ``bash -n``.
+        #
+        # Pre-build patch: lua-5.3.5 in flook/aotus needs
+        # ``MYCFLAGS=-fPIC`` to produce object files that can link
+        # into a PIE binary.  Without this, the final ``Src/siesta``
+        # link fails with
+        #
+        #   relocation R_X86_64_32 against hidden symbol
+        #   ``luaO_nilobject_'' can not be used when making a PIE
+        #   object
+        #
+        # The fix: edit lua's source Makefile to set MYCFLAGS=-fPIC
+        # BEFORE the first build run.  conda-forge's gcc wrapper
+        # produces PIE executables by default (security hardening),
+        # but lua's bundled Makefile uses BARE ``gcc`` (bypasses the
+        # wrapper's auto-injected -fPIC) and explicitly sets
+        # ``CFLAGS=`` (override, not ``+=``).  Patching the source
+        # Makefile means aotus's copy operation propagates the fix
+        # to the build tree on every build.
+        "_lua_mk={src}/External/Lua-Engine/flook/aotus/external/lua-5.3.5/src/Makefile; "
+        "if [ -f \"$_lua_mk\" ] && grep -q '^MYCFLAGS=$' \"$_lua_mk\"; "
+        "then "
+        "  echo '[molbuilder] patching flook/lua Makefile: "
+        "MYCFLAGS=-fPIC (PIE link requirement)' >&2; "
+        "  sed -i 's|^MYCFLAGS=$|MYCFLAGS=-fPIC|' \"$_lua_mk\"; "
+        "fi; "
+        # Build with two retries.  attempt 1 may hit flook's lua.h
+        # make-order race (aotus compiles ``wrap_lua_dump.c`` before
+        # the bundled lua-5.3.5 is built).  attempt 2 succeeds
+        # because attempt 1's recovery already populated lua.h.
+        # attempt 3 falls back to ``-j1`` for any other parallel-
+        # ordering quirk.  cmake --build is incremental; each retry
+        # only re-runs pending targets.
         "cmake --build {build} -j {jobs} "
         "|| ( echo '[molbuilder] build attempt 1 failed; retrying "
         "parallel (absorbs flook lua.h race)' >&2 "
