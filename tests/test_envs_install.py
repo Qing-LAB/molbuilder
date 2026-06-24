@@ -99,6 +99,14 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     # env list queries) -- return empty JSON so the probe sees "FRESH".
     monkeypatch.setattr(install.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    # The verify step now requires the env prefix to be resolvable so
+    # the bypass code path can fire.  Patch ``_env_prefix`` to return
+    # a fake prefix once the env has been "created".  Pre-fix, the
+    # verify step would silently fall back to the buggy ``conda run``
+    # argv when prefix resolution failed -- now it fails loud, which
+    # matches real-world behaviour where _env_prefix is rock-solid.
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     # run_streaming carries the actual step execution: conda create + verify.
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "siesta 5.4.2"),
@@ -265,6 +273,8 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     recipe = recipe_by_name("molbuilder-siesta")
     monkeypatch.setattr(install.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "solving..."),
                                              (0, "oops wrong binary")))
@@ -281,6 +291,8 @@ def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
     recipe = recipe_by_name("molbuilder-MDtools")
     monkeypatch.setattr(install.subprocess, "run",
                         lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "solving..."),
                                              (1, "Welcome to LEaP!")))

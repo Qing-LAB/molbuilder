@@ -224,21 +224,34 @@ def plan_install(
 def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found.
 
-    Two fallback paths so a partly-broken install still resolves a
-    sane prefix:
+    Four-tier resolution mirrors ``install-env.sh``'s bash
+    ``_resolve_env_python``.  Multiple fallbacks because a single
+    failure here cascades into the verify step running through
+    ``<mgr> run`` (the buggy path we're trying to bypass) -- the
+    user then sees ``exec: --: invalid option`` and the install
+    "succeeds" but actually fails:
 
-    1. ``conda env list --json`` -- the canonical registry.  Works
-       when conda properly tracks the env.
-    2. ``conda info --json``'s ``envs_dirs`` + filesystem check --
-       catches the case where conda's registry forgot the env (e.g.
-       a previous ``conda env remove`` was interrupted, or
-       ``conda create`` failed mid-flight leaving an orphan dir).
-       Without this fallback, the build phase would error out with
-       "could not resolve $CONDA_PREFIX; conda may have failed
-       silently" even when the env directory IS on disk.
+    1. ``<mgr> env list --json`` -- the canonical registry.
+       Match by basename so envs in custom envs_dirs are caught.
+    2. ``<mgr> info --json``'s ``envs`` array (FULL prefix paths).
+       Distinct from envs_dirs (the search list) -- ``envs`` holds
+       the actual prefixes the env manager has recorded, which
+       catches envs at non-standard locations (mamba's
+       ``~/.conda/envs/<name>`` default vs conda's
+       ``<conda_root>/envs/<name>``).
+    3. ``<mgr> info --json``'s ``envs_dirs`` + filesystem check --
+       catches the case where the registry forgot the env (e.g. a
+       prior ``conda env remove`` was interrupted, ``conda create``
+       failed mid-flight leaving an orphan dir) but the directory IS
+       on disk under a known envs_dir.
+    4. Direct disk probe of common envs_dir locations -- mamba's
+       ``~/.conda/envs`` is the load-bearing fallback here because
+       it's the default mamba writes to even when the conda binary
+       being asked is from a different install root.
     """
     import json as _json
-    # Fallback 1: registry
+    # Strategy 1: registry.  ``Path(prefix).name == env_name`` so
+    # envs at custom locations still match if the basename is right.
     cp = subprocess.run(
         [conda_binary, "env", "list", "--json"],
         capture_output=True, text=True, timeout=30,
@@ -251,24 +264,52 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
         for prefix in envs:
             if Path(prefix).name == env_name:
                 return prefix
-    # Fallback 2: filesystem search in conda's envs_dirs
+    # Strategies 2 + 3: info --json.
     try:
         info_cp = subprocess.run(
             [conda_binary, "info", "--json"],
             capture_output=True, text=True, timeout=30,
         )
+        info: dict = {}
+        if info_cp.returncode == 0:
+            try:
+                info = _json.loads(info_cp.stdout) or {}
+            except ValueError:
+                info = {}
+        # Strategy 2: envs (full paths, not the search list).
+        for prefix in info.get("envs", []) or []:
+            if Path(prefix).name == env_name and Path(prefix).is_dir():
+                return prefix
+        # Strategy 3: envs_dirs (search list) -- look for the env
+        # under each configured envs_dir.
+        for envs_dir in info.get("envs_dirs", []) or []:
+            candidate = Path(envs_dir) / env_name
+            if candidate.is_dir():
+                return str(candidate)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return None
-    if info_cp.returncode != 0:
-        return None
-    try:
-        info = _json.loads(info_cp.stdout)
-    except (ValueError, KeyError):
-        return None
-    for envs_dir in info.get("envs_dirs", []):
-        candidate = Path(envs_dir) / env_name
-        if candidate.is_dir():
-            return str(candidate)
+        pass
+    # Strategy 4: disk probe.  mamba init's default envs_dir is
+    # ``~/.conda/envs``, even when the conda binary lives elsewhere
+    # (e.g. ``conda_binary = ~/miniconda3/condabin/conda`` and envs
+    # end up under ``~/.conda/envs`` because mamba's defaults differ
+    # from conda's).  Plus the conda binary's own install-root envs
+    # dir as a secondary guess.
+    home = Path.home()
+    candidates = [home / ".conda" / "envs" / env_name]
+    # Derive ``<install root>/envs/<name>`` from the conda binary's
+    # path -- strip ``/condabin/...`` OR ``/bin/...`` to get root.
+    conda_path = Path(conda_binary)
+    for marker in ("condabin", "bin"):
+        try:
+            idx = conda_path.parts.index(marker)
+        except ValueError:
+            continue
+        root = Path(*conda_path.parts[:idx])
+        candidates.append(root / "envs" / env_name)
+        break
+    for cand in candidates:
+        if cand.is_dir():
+            return str(cand)
     return None
 
 
@@ -566,17 +607,36 @@ def run_install(
         # compatible (mamba 1.x + 2.x + conda) AND handles
         # source-built recipes (siesta-gpu binaries live in
         # ``<env>/opt/...`` not ``<env>/bin``).  ``conda create``
-        # uses no inner shell stub so it stays as-is.
+        # uses no inner shell stub so it stays as-is.  If env
+        # prefix can't be resolved, FAIL LOUD -- the silent
+        # fallback to the original argv would hit the exec bug
+        # and give a confusing error.
         run_argv: List[str] = list(step.argv)
         run_env: Optional[Dict[str, str]] = None
         if step.label != "conda create":
             prefix = _env_prefix(effective, caps.conda_binary)
-            if prefix is not None:
-                try:
-                    new_argv, _ = _bypass_conda_run(step.argv, prefix)
-                    run_argv = list(new_argv)
-                except ValueError:
-                    pass
+            if prefix is None:
+                executed.append(InstallStep(
+                    label=step.label, argv=step.argv,
+                    returncode=None,
+                    output=(
+                        f"could not resolve env prefix for `{effective}` "
+                        f"after create -- skipping {step.label}.  Run "
+                        f"`{caps.conda_binary} env list` to confirm."
+                    ),
+                ))
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: SKIPPED "
+                    f"(env prefix not resolvable)\n"
+                )
+                sys.stderr.flush()
+                succeeded = False
+                break
+            try:
+                new_argv, _ = _bypass_conda_run(step.argv, prefix)
+                run_argv = list(new_argv)
+            except ValueError:
+                pass
         sys.stderr.write(
             f"[{i}/{total_pre}] {step.label}: starting "
             f"(streaming output below; this may take 5-15 min for "
@@ -668,14 +728,36 @@ def run_install(
         for step in verify_steps:
             # Bypass ``<mgr> run`` for verify (mamba 1.x exec bug +
             # activate.d-required PATH for source-built recipes).
-            verify_argv: List[str] = list(step.argv)
+            # If we can't resolve the env prefix, FAIL LOUD instead of
+            # silently falling back to the buggy ``conda run`` argv --
+            # that path produces a confusing ``exec: --: invalid
+            # option`` error that masks the real problem (env
+            # detection failure post-install).
             prefix = _env_prefix(effective, caps.conda_binary)
-            if prefix is not None:
-                try:
-                    new_argv, _ = _bypass_conda_run(step.argv, prefix)
-                    verify_argv = list(new_argv)
-                except ValueError:
-                    pass
+            if prefix is None:
+                executed.append(InstallStep(
+                    label=step.label, argv=step.argv,
+                    returncode=None,
+                    output=(
+                        f"could not resolve env prefix for `{effective}` "
+                        f"after install -- skipping verify.  Run "
+                        f"`{caps.conda_binary} env list` to confirm the "
+                        f"env was created; if it's there but we can't "
+                        f"find it, file an issue with that output."
+                    ),
+                ))
+                sys.stderr.write(
+                    f"[verify] {step.label}: SKIPPED (env prefix not "
+                    f"resolvable; see message above)\n"
+                )
+                sys.stderr.flush()
+                succeeded = False
+                break
+            try:
+                new_argv, _ = _bypass_conda_run(step.argv, prefix)
+                verify_argv: List[str] = list(new_argv)
+            except ValueError:
+                verify_argv = list(step.argv)
             sys.stderr.write(f"[verify] {step.label}: starting\n")
             sys.stderr.flush()
             rc, combined = _builds.run_streaming(
