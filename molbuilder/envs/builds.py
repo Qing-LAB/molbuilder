@@ -887,18 +887,28 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
     info: List[str] = []
 
     # NVIDIA driver (host).  Kernel-module-coupled; can't be a conda
-    # package.  Both the build (compute_cap detection) and runtime use
-    # nvidia-smi via this driver.
+    # package.  Used at build time for compute-cap detection and at
+    # runtime for the GPU-acceleration path.  Missing driver is a
+    # WARNING, not an error: ELPA built with ``--enable-nvidia-gpu``
+    # still runs correctly on CPU-only hosts (the GPU path is selected
+    # at runtime via ``Diag.ELPA.GPU``; with no GPU available ELPA's
+    # CPU kernels are used).  This lets users on a no-GPU node install
+    # ``molbuilder-siesta-gpu`` purely for ELPA's CPU eigensolver
+    # support, without having to install + maintain a parallel non-
+    # GPU SIESTA env.
     driver_ver = detect_nvidia_driver()
     if driver_ver:
         info.append(f"NVIDIA driver      {driver_ver:<10s}  (host; provides nvidia-smi)")
     elif spec.cuda_required:
         info.append("NVIDIA driver      not detected (no nvidia-smi on host)")
-        errors.append(
-            "NVIDIA driver not detected via nvidia-smi.  Install via "
-            "the host package manager (apt/yum/dnf nvidia-driver-*).  "
-            "The driver is kernel-module-coupled and cannot be a conda "
-            "package."
+        warnings.append(
+            "NVIDIA driver not detected via nvidia-smi.  The build will "
+            "still complete -- ELPA + SIESTA compile against the conda "
+            "CUDA toolkit and the resulting binary runs CPU-only on hosts "
+            "without a GPU.  To enable the GPU path at runtime, install "
+            "the NVIDIA driver via your host package manager "
+            "(apt/yum/dnf nvidia-driver-*; kernel-module-coupled so "
+            "cannot be a conda package)."
         )
 
     # CUDA toolkit (env).  Installed via conda-forge into this env's

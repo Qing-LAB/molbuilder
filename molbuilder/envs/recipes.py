@@ -1176,8 +1176,16 @@ _SIESTA_GPU = Recipe(
     ),
     verify_expect_contains="siesta",
     system_preconditions=(
-        "NVIDIA driver + nvidia-smi on the host (toolkit ships in env)",
-        "NVIDIA driver supporting CUDA runtime 13.x (driver-side compat)",
+        "(GPU runtime, OPTIONAL) NVIDIA driver + nvidia-smi on the "
+        "host -- required ONLY to enable the GPU path at runtime via "
+        "``Diag.ELPA.GPU .true.``.  ELPA + SIESTA build and run "
+        "fine without the driver; the binary will operate CPU-only "
+        "on no-GPU hosts (ELPA's CPU eigensolver path is selected "
+        "transparently at runtime).  Driver is kernel-module-coupled "
+        "and cannot be a conda package; install via the host package "
+        "manager when GPU acceleration is wanted.",
+        "(GPU runtime, OPTIONAL) NVIDIA driver supporting CUDA "
+        "runtime 13.x (driver-side compat).  Same OPTIONAL caveat.",
         "Internet access for the ELPA tarball download "
         "(elpa.mpcdf.mpg.de) + the SIESTA git clone "
         "(gitlab.com/siesta-project), which recursively pulls "
