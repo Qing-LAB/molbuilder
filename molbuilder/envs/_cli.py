@@ -781,7 +781,10 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         click.echo("")
         click.echo("Or the manual equivalent:")
         click.echo("")
-        click.echo(f"    mamba env remove -n {name} -y")
+        # Use the detected env-manager binary, not a hardcoded ``mamba``.
+        # User might have only conda installed; ``mamba env remove``
+        # would fail with "mamba: command not found" in that case.
+        click.echo(f"    {caps.conda_binary} env remove -n {name} -y")
         click.echo(
             f"    bash scripts/install-env.sh install {name} --yes"
         )
