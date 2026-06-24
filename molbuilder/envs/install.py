@@ -31,6 +31,7 @@ besides :mod:`molbuilder.envs.builds`.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -56,12 +57,20 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
     install-env.sh shim and was fixed there by calling the env's
     binary directly; we mirror the cure here.
 
-    Returns ``(new_argv, env_overrides)``.  ``env_overrides`` should
-    be merged on top of ``os.environ`` before passing as
-    :func:`subprocess.run`'s ``env=`` kwarg, so child processes find
-    the env's binaries on PATH.  Conda packages bake rpath into
-    their shared libs, so LD_LIBRARY_PATH isn't required for the
-    common case.
+    Implementation: build a bash wrapper that sets the same
+    environment ``conda activate <env>`` would (PATH,
+    LD_LIBRARY_PATH, CONDA_PREFIX, CONDA_DEFAULT_ENV) AND sources
+    every ``<env>/etc/conda/activate.d/*.sh`` script, then execs
+    the inner command.  Sourcing activate.d is load-bearing for
+    source-built recipes (siesta-gpu installs binaries to
+    ``<env>/opt/siesta-gpu-stack/siesta/bin``, NOT ``<env>/bin``;
+    only the activate.d hook adds that path) plus any conda
+    package that registers post-activate env mutations
+    (cuda-version, openmpi, etc.).
+
+    Returns ``(new_argv, env_overrides)``.  The wrapper handles
+    env setup internally; ``env_overrides`` is therefore an empty
+    dict and exists only to preserve the existing caller contract.
     """
     # Expected shape (from _plan):
     #     argv[0] = conda binary
@@ -73,29 +82,42 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
     # builds.py uses --prefix + "--" separator, install.py uses -n.
     if len(argv) < 6 or argv[1] != "run":
         raise ValueError(f"_bypass_conda_run: unexpected shape {argv!r}")
-    # Skip optional ``--`` separator (builds.py passes it).
     start = 5
     if start < len(argv) and argv[start] == "--":
         start += 1
-    cmd: Tuple[str, ...] = tuple(argv[start:])
+    cmd: Tuple[str, ...] = tuple(str(a) for a in argv[start:])
     if not cmd:
         raise ValueError(f"_bypass_conda_run: empty inner cmd in {argv!r}")
-    env_overrides: Dict[str, str] = {
-        "PATH": f"{env_prefix}/bin:" + os.environ.get("PATH", ""),
-        "CONDA_PREFIX": env_prefix,
-        "CONDA_DEFAULT_ENV": Path(env_prefix).name,
-    }
-    binary_name = cmd[0]
-    env_binary = Path(env_prefix) / "bin" / binary_name
-    if env_binary.is_file() and os.access(env_binary, os.X_OK):
-        # First arg is an env-resident binary (python, pip, siesta,
-        # playwright, ...).  Call it directly.
-        return ((str(env_binary), *cmd[1:]), env_overrides)
-    # First arg is NOT in the env (typical case: ``bash`` for
-    # MDtools verify).  Use the system binary; env vars above put
-    # the env's bin/ on PATH so subprocess lookups inside the
-    # command find env-resident tools.
-    return (cmd, env_overrides)
+    env_q = shlex.quote(env_prefix)
+    env_name = shlex.quote(Path(env_prefix).name)
+    activate_d = shlex.quote(f"{env_prefix}/etc/conda/activate.d")
+    cmd_q = " ".join(shlex.quote(a) for a in cmd)
+    # HPC strictness: constrain temp + cache dirs to the env prefix.
+    # Many strict systems have small /tmp, restricted /var, or
+    # per-user write quotas on $HOME.  Keeping pip's wheel cache,
+    # tar/cmake/make's temp files, and ccache's compilation cache
+    # under the env prefix means a single ``conda env remove`` truly
+    # cleans up after this install -- nothing dangles in $HOME.
+    wrapper = (
+        f"export CONDA_PREFIX={env_q}; "
+        f"export CONDA_DEFAULT_ENV={env_name}; "
+        f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
+        f'export LD_LIBRARY_PATH={env_q}/lib"${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"; '
+        f"mkdir -p {env_q}/var/tmp {env_q}/var/cache/pip; "
+        f"export TMPDIR={env_q}/var/tmp; "
+        f"export PIP_CACHE_DIR={env_q}/var/cache/pip; "
+        f"if [ -d {activate_d} ]; then "
+        f'for _f in {activate_d}/*.sh; do '
+        f'[ -f "$_f" ] && . "$_f"; '
+        f"done; "
+        f"fi; "
+        f"exec {cmd_q}"
+    )
+    # ``bash -c`` (no -l): we don't want the user's login files
+    # sourced -- the activate.d sourcing above is the only env
+    # setup we want.  System ``/bin/bash`` is universally present;
+    # we don't depend on the env's bash being installed yet.
+    return (("bash", "-c", wrapper), {})
 from .recipes import Recipe
 
 
@@ -539,9 +561,11 @@ def run_install(
                 break
         # Bypass ``<mgr> run`` for post-create steps: pip / extra /
         # verify.  mamba 1.x's ``run`` generates a shell stub that
-        # uses ``exec --`` (rejected by bash).  Calling the env's
-        # binary directly is universally compatible (mamba 1.x +
-        # 2.x + conda) and dodges the bug.  ``conda create`` itself
+        # uses ``exec --`` (rejected by bash).  Going through our
+        # own bash wrapper that sources activate.d is universally
+        # compatible (mamba 1.x + 2.x + conda) AND handles
+        # source-built recipes (siesta-gpu binaries live in
+        # ``<env>/opt/...`` not ``<env>/bin``).  ``conda create``
         # uses no inner shell stub so it stays as-is.
         run_argv: List[str] = list(step.argv)
         run_env: Optional[Dict[str, str]] = None
@@ -549,17 +573,9 @@ def run_install(
             prefix = _env_prefix(effective, caps.conda_binary)
             if prefix is not None:
                 try:
-                    new_argv, env_overrides = _bypass_conda_run(
-                        step.argv, prefix,
-                    )
+                    new_argv, _ = _bypass_conda_run(step.argv, prefix)
                     run_argv = list(new_argv)
-                    run_env = dict(os.environ)
-                    run_env.update(env_overrides)
                 except ValueError:
-                    # Step doesn't match the ``conda run -n ...`` shape
-                    # (no longer the case after _plan, but defensive
-                    # against future shape changes).  Fall through to
-                    # the original argv.
                     pass
         sys.stderr.write(
             f"[{i}/{total_pre}] {step.label}: starting "
@@ -650,25 +666,20 @@ def run_install(
 
     if succeeded and verify_steps:
         for step in verify_steps:
-            # Bypass ``<mgr> run`` for verify (mamba 1.x exec bug).
+            # Bypass ``<mgr> run`` for verify (mamba 1.x exec bug +
+            # activate.d-required PATH for source-built recipes).
             verify_argv: List[str] = list(step.argv)
-            verify_env: Optional[Dict[str, str]] = None
             prefix = _env_prefix(effective, caps.conda_binary)
             if prefix is not None:
                 try:
-                    new_argv, env_overrides = _bypass_conda_run(
-                        step.argv, prefix,
-                    )
+                    new_argv, _ = _bypass_conda_run(step.argv, prefix)
                     verify_argv = list(new_argv)
-                    verify_env = dict(os.environ)
-                    verify_env.update(env_overrides)
                 except ValueError:
                     pass
             sys.stderr.write(f"[verify] {step.label}: starting\n")
             sys.stderr.flush()
             rc, combined = _builds.run_streaming(
                 verify_argv,
-                env=verify_env,
                 sink=sys.stderr,
                 timeout=3600,
             )

@@ -1489,31 +1489,65 @@ def _run_phase(step: BuildStep,
     still written to ``step.log_file`` for post-hoc inspection.
     """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
-    # Bypass ``<mgr> run`` and call build tools directly.  mamba 1.x's
-    # ``run`` generates a shell stub that uses ``exec --`` (rejected by
-    # bash with ``exec: --: invalid option``); fixed in mamba 2.x but
-    # many HPC sites still ship 1.x.  Setting PATH +
-    # LD_LIBRARY_PATH + CONDA_PREFIX manually here mirrors what
-    # ``conda activate <env>`` would do for build tools (cmake, ninja,
-    # make, the source-tree configure script).  conda packages bake
-    # rpath into their shared libs, but build-time tools like ``ld``
-    # still want LD_LIBRARY_PATH for linker probes -- we set it.
-    cmd_argv = step.argv
-    # If the first arg names a binary in the env, call it directly so
-    # we don't depend on PATH lookup at all.
-    first = Path(env_prefix) / "bin" / cmd_argv[0]
-    if first.is_file() and os.access(first, os.X_OK):
-        cmd_argv = (str(first), *cmd_argv[1:])
-    build_env = build_subprocess_env()
-    build_env["PATH"] = f"{env_prefix}/bin:" + build_env.get("PATH", "")
-    build_env["LD_LIBRARY_PATH"] = (
-        f"{env_prefix}/lib:" + build_env.get("LD_LIBRARY_PATH", "")
+    # Bypass ``<mgr> run`` and call build tools through a bash
+    # wrapper that sets ``conda activate``'s env vars and sources
+    # the env's activate.d/*.sh hooks.  Three problems this solves:
+    #
+    #   (1) mamba 1.x's ``run`` generates ``exec --`` which bash
+    #       rejects -- the entire build phase fails on line 5 of
+    #       mamba's stub.  Fixed in mamba 2.x but still common.
+    #   (2) ``conda activate`` is what cmake/ninja/make would
+    #       normally see for PATH + LD_LIBRARY_PATH + CONDA_PREFIX
+    #       + CONDA_DEFAULT_ENV.  We replicate it inline.
+    #   (3) Earlier components of the build (ELPA installs to
+    #       ``<env>/opt/<artifact>/elpa``) register their own
+    #       activate.d hook so the next component (SIESTA) sees
+    #       libelpa on the link path.  Sourcing activate.d makes
+    #       that work without re-emitting the per-component
+    #       LD_LIBRARY_PATH glue in this Python.
+    import shlex as _shlex
+    cmd_q = " ".join(_shlex.quote(str(a)) for a in step.argv)
+    env_q = _shlex.quote(env_prefix)
+    env_name = _shlex.quote(Path(env_prefix).name)
+    activate_d = _shlex.quote(f"{env_prefix}/etc/conda/activate.d")
+    # HPC strictness: every temp + cache dir the build tools touch
+    # must live under the artifact root (which is under
+    # $CONDA_PREFIX/opt/<artifact_subdir>).  Otherwise cmake's
+    # temp probes go to /tmp (size-limited on most clusters),
+    # ccache (if gcc is wrapped) writes to ~/.ccache (escapes env),
+    # python tooling like meson scribbles in ~/.cache.  Pinning
+    # them here means the env is the single dir an admin needs to
+    # clean up.  Derive the artifact root from the step's log path
+    # (every log file is ``<root>/logs/<comp>.<phase>.log`` per the
+    # ``paths`` layout in plan_build_spec).
+    paths_root = _shlex.quote(str(step.log_file.parent.parent))
+    wrapper = (
+        f"export CONDA_PREFIX={env_q}; "
+        f"export CONDA_DEFAULT_ENV={env_name}; "
+        f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
+        f'export LD_LIBRARY_PATH={env_q}/lib"${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"; '
+        f"mkdir -p {paths_root}/.tmp {paths_root}/.ccache "
+        f"{paths_root}/.cache/pip; "
+        f"export TMPDIR={paths_root}/.tmp; "
+        f"export TMP={paths_root}/.tmp; "
+        f"export TEMP={paths_root}/.tmp; "
+        f"export CCACHE_DIR={paths_root}/.ccache; "
+        f"export PIP_CACHE_DIR={paths_root}/.cache/pip; "
+        f"export XDG_CACHE_HOME={paths_root}/.cache; "
+        f"if [ -d {activate_d} ]; then "
+        f'for _f in {activate_d}/*.sh; do '
+        f'[ -f "$_f" ] && . "$_f"; '
+        f"done; "
+        f"fi; "
+        f"exec {cmd_q}"
     )
-    build_env["CONDA_PREFIX"] = env_prefix
-    build_env["CONDA_DEFAULT_ENV"] = Path(env_prefix).name
     rc, combined = run_streaming(
-        cmd_argv,
-        env=build_env,
+        ("bash", "-c", wrapper),
+        # Strip leakage vectors (CPATH / CFLAGS / MPI_HOME / OMPI_*
+        # / ...) so user-shell vars can't pull system MPI/CUDA into
+        # the build.  PATH / LD_LIBRARY_PATH / CONDA_PREFIX are set
+        # explicitly by the wrapper above on top of this slate.
+        env=build_subprocess_env(),
         log_file=step.log_file,
         timeout=timeout,
     )
