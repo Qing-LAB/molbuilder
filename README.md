@@ -6,6 +6,8 @@ generate input for **SIESTA**, **TranSIESTA**, or **PySCF**, and
 inspect the resulting trajectories, spectra, and transmission curves
 from a single Flask application.
 
+![Molbuilder home: projects sidebar on the left, five-tab nav at the top, Au–BDT–Au junction loaded in the 3Dmol viewer, foldable commands stack on the right](docs/img/hero-molbuilder.png)
+
 The Au–BDT–Au junction is used as the running example throughout
 this README: builder → optimisation → spectrum → transport →
 results.
@@ -209,6 +211,8 @@ The web app is organised as five tabs and a persistent Projects
 sidebar.  Each tab handles one phase of the workflow; URLs match
 the tab labels.
 
+![Five-tab nav strip: Molbuilder, Structure optimization, Spectrum calculation, Transport calculation, Results](docs/img/tab-bar.png)
+
 | Tab | Route | Role |
 |---|---|---|
 | **Molbuilder** | `/molbuilder` (bare `/` redirects) | Interactive workspace — load / build / edit / assemble |
@@ -222,7 +226,11 @@ a file; double-click commits it as the workspace cursor.  Structure
 files render with their `.molstruct.json` sidecars paired so
 per-atom labels never orphan.
 
+![Projects sidebar showing the BDT project expanded; the structure/ folder is open and BDT-AuJunction_siestaStage1_optimized.xyz is selected with its .molstruct.json sidecar paired](docs/img/sidebar-projects.png)
+
 ### 1. The Molbuilder tab — interactive workspace
+
+![Molbuilder workspace: Au–BDT–Au junction in the 3Dmol viewer at centre, atom-list and selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right](docs/img/molbuilder-workspace.png)
 
 The Molbuilder tab is the only tab that holds in-memory canvas
 state.  Every other tab reads from disk.  All commands are reachable
@@ -274,6 +282,8 @@ Spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
 ### 2. Structure optimization — SIESTA `.fdf` + PySCF `.py`
 
+![Structure-optimization form for the BDT Au junction: engine selector at top, three workflow-group cards (Profile, Stage, Budget), 3Dmol viewer rendering the input geometry, inline detection chip and per-card issues panel](docs/img/structure-optimization-form.png)
+
 A file-driven task tab.  The user picks an `.xyz` or `.pdb` from
 the sidebar, configures the form, and Generate emits a self-contained
 `<name>.fdf` (or `.py`) plus a `<name>.run.sh` wrapper that knows
@@ -315,6 +325,8 @@ tuning reference: [`docs/engines/optimization-tuning.md`](docs/engines/optimizat
 
 ### 3. Spectrum calculation — PySCF Raman / IR
 
+![Spectrum-calculation form: vertical workflow-group cards for Profile, Stage, and Budget, with defaults suitable for a small-molecule Raman run](docs/img/spectrum-form.png)
+
 A file-driven task tab that generates `<job>.spectra.py` PySCF
 scripts for harmonic vibrational analysis: frequencies, Raman
 activities, optional per-mode electronic-structure probes, and a
@@ -342,6 +354,8 @@ Spec + bibliography:
 [`docs/tabs/spectra/references.bib`](docs/tabs/spectra/references.bib).
 
 ### 4. Transport calculation — TranSIESTA scripts
+
+![Transport-calculation form for the Au–BDT–Au junction: left-electrode / bridge / right-electrode region labels flow in from the .molstruct.json sidecar; the viewer renders the junction with region-coloured atoms](docs/img/transport-form.png)
 
 A file-driven task tab that emits TranSIESTA `.fdf` for zero-bias
 transmission.  Bias-scan and electrode `.TSHS` generation wizards
@@ -371,15 +385,21 @@ Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
 ### 5. Results — unified inspector
 
+![Trajectory inspector pointed at a BDT multi-stage optimisation directory: stage molwatch logs merged into one continuous trajectory with stage-boundary markers on the energy / force / SCF-residual plots](docs/img/results-trajectory.png)
+
 For vibrational data, the spectra inspector renders a
 Lorentzian-broadened spectrum, the modes table, and a 3-D
 animation per mode on click.
+
+![Spectra inspector: Lorentzian-broadened spectrum chart, modes table with frequencies and Raman activities, 3-D viewer animating the selected mode's eigenvector](docs/img/results-spectra.png)
 
 Once a run is finished, the **Bundle for next stage** card at the
 bottom of the Results tab combines the final structure (from `.XV`
 or `_optimized.xyz`) with the labels the originating script carried
 (an in-body ATOM-METADATA block) and writes a portable `.xyz` plus
 `.molstruct.json` pair the next workflow tab can load directly.
+
+![Bundle for next stage card: text inputs for run dir / target dir / stem, overwrite checkbox, Bundle button, and a result panel that turns green for converged geometries or amber for fallback cases](docs/img/results-bundle-card.png)
 
 Bundle contract:
 [`docs/protocols/bundle-contract.md`](docs/protocols/bundle-contract.md).
