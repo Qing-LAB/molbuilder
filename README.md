@@ -230,42 +230,43 @@ from a single screen via foldable panels.
 
 **Panels:**
 
-- **Sources** — load `.xyz` / `.pdb` from the sidebar selection;
-  generate from a SMILES string (RDKit), a peptide / DNA / RNA
-  sequence, a compound name (PubChem), or a canonical B / A / Z DNA
-  helix (3DNA, optional).
-- **Atom** — click atoms in the viewer (or atom list) to select;
-  Shift-click extends the selection; picked atoms wear a bright
-  orange wireframe halo visible from any angle.  Delete selected
-  atoms (strip H caps to expose S anchors), or insert a new atom at
-  `(dx, dy, dz)` with a live distance readout.
-- **Pose** — orient an anchor pair onto the z-axis (with a tilt
-  slider) so the S–S vector points along z, or rotate the whole
-  structure around x / y / z with a centroid / origin pivot.
+- **Sources** — load `.xyz` / `.pdb` from the sidebar, or generate
+  from a SMILES string (RDKit), a peptide / DNA / RNA sequence, a
+  compound name (PubChem), or a canonical B / A / Z DNA helix
+  (3DNA, optional).
+- **Atom** — click atoms in the viewer or atom list to select;
+  Shift-click extends the selection.  Selected atoms render with
+  an orange wireframe halo visible from any camera angle.  Delete
+  removes selected atoms (e.g. strip H caps to expose S anchors);
+  Add inserts a new atom at `(dx, dy, dz)` with a live distance
+  readout.
+- **Pose** — orient an anchor pair onto the z-axis with a tilt
+  slider, or rotate the structure around x / y / z with a
+  centroid or origin pivot.
 - **Geom** — centre the geometric centroid at the origin or apply
-  an explicit `(Δx, Δy, Δz)` shift.  Used to clean up after chained
-  ops or to recover an off-origin xyz.
-- **Junction** — add FCC electrode slabs (Au / Ag / Cu / Ni / Pt /
-  Pd; 100 / 110 / 111) at a chosen gap.  **Anchorless mode**
-  (default): slabs land at `z = ±gap/2` around the world origin —
-  no atom selection needed.  **Anchor-pair mode** (legacy): slabs
-  placed so the midpoint of two selected anchor atoms becomes the
-  slab midpoint.
-- **Save** — write `<project>/<name>.xyz` + a `.molstruct.json`
-  sidecar with per-atom labels.  File-driven task tabs pick it up.
+  an explicit `(Δx, Δy, Δz)` shift.  Useful for cleanup after
+  chained ops or for recovering an off-origin xyz.
+- **Junction** — add FCC electrode slabs (Au, Ag, Cu, Ni, Pt, Pd
+  on 100 / 110 / 111) at a chosen gap.  In *anchorless* mode
+  (default) slabs land at `z = ±gap/2` around the world origin.
+  In *anchor-pair* mode (legacy) slabs are placed so the midpoint
+  of two selected anchor atoms becomes the slab midpoint.
+- **Save** — write `<project>/<name>.xyz` and a `.molstruct.json`
+  sidecar carrying per-atom labels; file-driven task tabs pick
+  them up.
 
 **Notable details:**
 
-- 20-deep **slab-only Undo** lets you sweep `gap` values
+- A 20-deep slab-only Undo lets you sweep `gap` values
   exploratorily without losing your atom-edit history.
 - Element-aware contact distances ship as defaults (2.40 Å Au–S,
   2.50 Å Ag–S, 2.30 Å Cu–S / Pd–S, 2.20 Å Ni–S, 2.05 Å Pt–N) with
   citations in
   [`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json).
-- **Focus molecule** button anchors the camera on the molecule
-  (ignoring the bulky slabs) when interaction feels off-centre
-  after adding electrodes.
-- Auto-detection chip identifies the chemistry (e.g.
+- *Focus molecule* anchors the camera on the molecule (ignoring
+  the bulky slabs) when interaction feels off-centre after adding
+  electrodes.
+- The auto-detection chip identifies the chemistry (e.g.
   "Au-thiol-Au junction; closed-shell singlet") and surfaces
   validator warnings inline.
 
@@ -714,13 +715,13 @@ Full engineering documentation:
 
 ### Performance benchmarking (siesta-gpu)
 
-Every molbuilder-generated SIESTA `.fdf` carries a `BENCH-MARKS`
-annotation block declaring the parameter anchors a benchmark sweep
-can override (`MaxSCFIterations`, `BlockSize`, MPI rank count, OpenMP
-threads, NUMA pin, ELPA solver stage).  `molbuilder bench siesta-gpu`
+Every generated SIESTA `.fdf` carries a `BENCH-MARKS` annotation
+block declaring which parameters a benchmark sweep can override:
+`MaxSCFIterations`, `BlockSize`, MPI rank count, OpenMP threads,
+NUMA pin, and ELPA solver stage.  `molbuilder bench siesta-gpu`
 reads that block and runs a small sweep over `(np, omp, BlockSize)`
-combinations on the project, recording per-iter wall time so you can
-pick a production point with evidence rather than guess.
+combinations, recording per-iteration wall time so a production
+point can be chosen from measurement rather than from a guess.
 
 ```bash
 # Default: 18-point sweep (9 shapes × ELPA-1/2STAGE).  Each point
@@ -742,10 +743,11 @@ Output lands under `<basename>.bench/`:
 * A top-level `results.csv` summarising every point's requested
   + effective parameter values and wall time per SCF iteration.
 
-The sweep is non-destructive: the original `.fdf` and run wrapper
-are unchanged.  Suitable for HPC node validation (verify the env's
-ELPA + MPI stack hits expected throughput) and for tuning a new
-geometry before committing to a long production run.
+The sweep is non-destructive: the project's original `.fdf` and
+run wrapper are unchanged.  Typical uses are HPC node validation
+(confirming the env's ELPA + MPI stack reaches expected
+throughput) and tuning a new geometry before committing to a long
+production run.
 
 Reference: [`docs/protocols/script-contract.md`](docs/protocols/script-contract.md)
 documents the BENCH-MARKS block format and the bench's parameter
@@ -753,17 +755,16 @@ semantics.
 
 ### Optional: 3DNA for canonical helices
 
-The **3DNA** `fiber` backend produces true B / A / Z DNA — the
-only thing the bundled `rdkit` / `amber` backends don't.  3DNA is
-distributed by the Olson lab (Columbia, x3dna.org) behind a
-**registration + non-commercial license**.  molbuilder cannot
-fetch it for you; download from http://x3dna.org/ and either
-in-tree extract (auto-detected) or set `$X3DNA`.  Full install +
-license contract: [`docs/design.md`](docs/design.md) § "3DNA
-(canonical helix builder)".
-
-Full install recipe:
-[`docs/README_install.md`](docs/README_install.md).
+The 3DNA `fiber` backend produces true B / A / Z DNA — the only
+helix shape the bundled `rdkit` and `amber` backends do not
+produce.  3DNA is distributed by the Olson lab (Columbia,
+[x3dna.org](http://x3dna.org/)) under a registration plus
+non-commercial license; molbuilder cannot fetch it on the user's
+behalf.  Download it manually and either extract it inside the
+repository tree (auto-detected) or point `$X3DNA` at the install
+location.  Full install steps and the license contract live in
+[`docs/design.md`](docs/design.md) § "3DNA (canonical helix
+builder)" and in [`docs/README_install.md`](docs/README_install.md).
 
 ---
 
