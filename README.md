@@ -585,13 +585,32 @@ identically under any of the three.
 
 ### Bootstrap — one command for the full env stack
 
-The bootstrap installs every conda-only recipe, then runs the
-doctor health check.  Idempotent: re-running skips envs already
-present.
+On a truly fresh machine (no `molbuilder` host env, only the
+conda-compatible package manager present) the bootstrap creates
+the host env automatically and then installs every backend
+recipe.  No manual conda-block copy-paste, no chicken-and-egg.
 
 ```bash
 bash scripts/install-env.sh --bootstrap --yes
 ```
+
+What it does in order:
+
+1. Detects the env manager (mamba > micromamba > conda).
+2. Creates the host env (`molbuilder`) if missing using the
+   package list inlined in the bash script — same packages the
+   Python recipe at `molbuilder/envs/recipes.py` declares
+   (drift-guarded by a test).
+3. Dispatches into the host env to install every conda-only
+   backend recipe (`molbuilder-siesta`, `molbuilder-pySCF`,
+   `molbuilder-MDtools`, `molbuilder-tests`).
+4. Runs `molbuilder envs doctor` for a smoke check; non-zero exit
+   means at least one env failed verification (the per-env
+   transcript at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log`
+   points at the failure).
+
+Idempotent: re-running skips envs already present.  Source-build
+envs are opt-in.
 
 Flags:
 
@@ -601,13 +620,6 @@ Flags:
 * `--no-skip-existing` — re-run install on envs that are already
   present (idempotent refresh).
 * `--dry-run` — print the plan; install nothing.
-
-At the end the script invokes `python -m molbuilder envs doctor`,
-which verifies every env can dispatch its primary tool (SIESTA's
-`siesta --version`, PySCF's `import pyscf`, AmberTools' `tleap`,
-etc.).  A non-zero exit means at least one env failed verification;
-the per-env transcript at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log`
-points at the failure.
 
 ### The envs that bootstrap installs
 

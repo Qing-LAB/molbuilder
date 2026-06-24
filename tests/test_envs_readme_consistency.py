@@ -126,3 +126,91 @@ def test_default_env_names_match_registry_names():
             f"category `{cat}` -> DEFAULT_ENV_NAMES says `{name}` "
             f"but recipe says `{matching[0].name}`"
         )
+
+
+# --------------------------------------------------------------------- #
+#  install-env.sh ↔ recipes.py host-env package list parity (2026-06-24)
+#                                                                       #
+#  The bootstrap path needs the host-env package list AVAILABLE FROM    #
+#  BASH (cannot dispatch into the host env to read the Python recipe   #
+#  before the host env exists).  install-env.sh therefore inlines      #
+#  ``HOST_CONDA_PACKAGES`` + ``HOST_PIP_PACKAGES`` arrays.  This test  #
+#  asserts those bash arrays match the Python source-of-truth recipe  #
+#  at molbuilder/envs/recipes.py byte-for-byte so the two cannot       #
+#  drift silently.                                                     #
+# --------------------------------------------------------------------- #
+
+
+def _parse_bash_array(text: str, name: str) -> list[str]:
+    """Extract a bash array literal of the form ``NAME=( ... )``.
+
+    Returns the tokens with version specifiers preserved (e.g.
+    ``python=3.12``).  Comments + whitespace are stripped.
+    """
+    import re
+    m = re.search(
+        rf'^{re.escape(name)}=\(\s*(.*?)\s*\)\s*$',
+        text, re.DOTALL | re.MULTILINE,
+    )
+    if m is None:
+        raise AssertionError(
+            f"could not find bash array {name}=(...) in install-env.sh; "
+            f"the test depends on this declaration shape.  Verify the "
+            f"script still defines the array literally as expected."
+        )
+    body = m.group(1)
+    # Strip line comments (``# ...`` up to end-of-line); split on
+    # whitespace; drop empties.
+    cleaned = re.sub(r"#[^\n]*", "", body)
+    return [tok for tok in cleaned.split() if tok]
+
+
+def test_install_env_sh_host_conda_packages_match_recipe():
+    """install-env.sh::HOST_CONDA_PACKAGES bash array must match
+    Python ``BUILTIN_RECIPES.molbuilder.conda_packages`` exactly.
+
+    The bash array is what the bootstrap uses to create the host env
+    on a fresh machine.  A drift between bash and Python means a
+    fresh-machine bootstrap creates a different package set from
+    what every other entry point + the doctor expects.
+    """
+    from molbuilder.envs.recipes import recipe_by_name
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    sh_text = (repo_root / "scripts" / "install-env.sh").read_text()
+    bash_pkgs = _parse_bash_array(sh_text, "HOST_CONDA_PACKAGES")
+
+    host = recipe_by_name("molbuilder")
+    py_pkgs = list(host.conda_packages)
+
+    assert bash_pkgs == py_pkgs, (
+        f"install-env.sh::HOST_CONDA_PACKAGES drifted from "
+        f"recipes.py::_HOST.conda_packages.\n"
+        f"  bash:   {bash_pkgs}\n"
+        f"  python: {py_pkgs}\n"
+        f"Update both lists in the same commit so a fresh-machine "
+        f"bootstrap gets the same packages every other entry point "
+        f"sees."
+    )
+
+
+def test_install_env_sh_host_pip_packages_match_recipe():
+    """Same parity check for the pip-installable packages."""
+    from molbuilder.envs.recipes import recipe_by_name
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    sh_text = (repo_root / "scripts" / "install-env.sh").read_text()
+    bash_pkgs = _parse_bash_array(sh_text, "HOST_PIP_PACKAGES")
+
+    host = recipe_by_name("molbuilder")
+    py_pkgs = list(host.pip_packages or ())
+
+    assert bash_pkgs == py_pkgs, (
+        f"install-env.sh::HOST_PIP_PACKAGES drifted from "
+        f"recipes.py::_HOST.pip_packages.\n"
+        f"  bash:   {bash_pkgs}\n"
+        f"  python: {py_pkgs}\n"
+        f"Update both lists in the same commit."
+    )

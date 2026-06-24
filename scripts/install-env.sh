@@ -114,15 +114,83 @@ require_conda() {
     fi
 }
 
-require_host_env() {
-    if ! "${ENV_MGR}" env list 2>/dev/null \
+# Package list for the host env -- KEEP IN SYNC with
+# molbuilder/envs/recipes.py::_HOST.conda_packages +
+# _HOST.pip_packages.  Drift-guard test at
+# tests/test_envs_readme_consistency.py asserts the two lists
+# match.  Inlined here so the bash script can create the host env
+# on a truly fresh machine -- it cannot read the Python recipe
+# without Python, and we cannot dispatch into the host env until
+# the host env exists.  Chicken-and-egg: this is the egg.
+HOST_CONDA_PACKAGES=(
+    python=3.12 pip
+    numpy ase sisl
+    rdkit openbabel biopython
+    flask click plotly
+    authlib python-cas
+    pytest pyflakes
+    numactl
+)
+HOST_PIP_PACKAGES=(
+    PeptideBuilder pubchempy
+)
+
+host_env_exists() {
+    "${ENV_MGR}" env list 2>/dev/null \
             | awk 'NR>2 {print $1}' \
-            | grep -qx "${HOST_ENV}"; then
+            | grep -qx "${HOST_ENV}"
+}
+
+create_host_env() {
+    # Create the host env using the env manager that
+    # detect_env_mgr already picked.  --yes so we don't block on
+    # the conda confirmation prompt; HOST_CONDA_PACKAGES is the
+    # single source of truth for what lands inside.
+    echo "[molbuilder] creating host env '${HOST_ENV}' (~2 min)" >&2
+    "${ENV_MGR}" create -n "${HOST_ENV}" -c conda-forge --yes \
+        "${HOST_CONDA_PACKAGES[@]}"
+    # Pip-installable packages that aren't on conda-forge.  Run
+    # via the freshly-created env's python so we don't depend on a
+    # global pip.
+    if [[ ${#HOST_PIP_PACKAGES[@]} -gt 0 ]]; then
+        echo "[molbuilder] pip-installing host-env extras: ${HOST_PIP_PACKAGES[*]}" >&2
+        "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
+            python -m pip install "${HOST_PIP_PACKAGES[@]}"
+    fi
+    echo "[molbuilder] host env '${HOST_ENV}' ready" >&2
+}
+
+ensure_host_env() {
+    # Bootstrap-friendly: create the host env if missing instead
+    # of erroring out.  Used by --bootstrap so a truly fresh
+    # machine works in one command.  ``require_host_env`` below
+    # is the strict variant used by per-recipe subcommands where
+    # the user is expected to have set up the host env already.
+    if ! host_env_exists; then
+        create_host_env
+    fi
+}
+
+require_host_env() {
+    # Strict: error out if the host env doesn't exist.  Used by
+    # the per-recipe subcommands (``--list``, ``--doctor``,
+    # ``--check``, ``--dry-run``, etc.) where dispatching into a
+    # missing host env would be a confusing error rather than the
+    # user's intent.  The --bootstrap path uses ``ensure_host_env``
+    # which auto-creates.
+    if ! host_env_exists; then
         echo "Error: host env '${HOST_ENV}' does not exist." >&2
         echo "" >&2
-        echo "Create it with the conda block from" >&2
-        echo "  docs/README_install.md § 'Host env (required)'" >&2
-        echo "or set MOLBUILDER_HOST_ENV to point at an existing env" >&2
+        echo "Run the bootstrap to create it + every backend env:" >&2
+        echo "  bash scripts/install-env.sh --bootstrap --yes" >&2
+        echo "" >&2
+        echo "Or, to create JUST the host env (without backends):" >&2
+        echo "  ${ENV_MGR} create -n ${HOST_ENV} -c conda-forge --yes \\" >&2
+        echo "      ${HOST_CONDA_PACKAGES[*]}" >&2
+        echo "  ${ENV_MGR} run -n ${HOST_ENV} python -m pip install \\" >&2
+        echo "      ${HOST_PIP_PACKAGES[*]}" >&2
+        echo "" >&2
+        echo "Or set MOLBUILDER_HOST_ENV to point at an existing env" >&2
         echo "that has molbuilder's host-side packages." >&2
         exit 2
     fi
@@ -151,15 +219,25 @@ case "${1:-}" in
         dispatch doctor
         ;;
     --bootstrap)
-        # --bootstrap [extra args...]: install every conda-only recipe
-        # in one pass + run doctor at the end.  Extra args (--yes,
+        # --bootstrap [extra args...]: full base-system -> every-env
+        # path.  Creates the host env if missing (auto, no manual
+        # conda block), then dispatches into it to install every
+        # backend recipe and run doctor.  Extra args (--yes,
         # --include-source-builds, --dry-run, --no-skip-existing) are
-        # forwarded to the python layer.  Designed for HPC first-run
-        # deploy where the user wants one command to get every env set
-        # up.  Idempotent (already-present envs are skipped by default).
+        # forwarded to the python layer.  Idempotent (already-present
+        # envs are skipped by default).
+        #
+        # 2026-06-24 UX fix: pre-fix this called ``require_host_env``
+        # which ERRORED OUT when the host env was missing and pointed
+        # the user at a doc-section conda-block.  That contradicted
+        # the whole bootstrap promise -- a bootstrap creates
+        # everything from nothing.  ``ensure_host_env`` now creates
+        # the host env if missing (using HOST_CONDA_PACKAGES +
+        # HOST_PIP_PACKAGES above) before dispatching the Python
+        # layer.
         shift
         require_conda
-        require_host_env
+        ensure_host_env
         dispatch bootstrap "$@"
         ;;
     --check)
