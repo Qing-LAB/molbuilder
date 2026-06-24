@@ -199,12 +199,21 @@ def _prepare_capture_cwd(td_path: Path) -> Path:
 def _capture_each(page, base_url: str) -> None:
     """Capture the 10 README screenshots.
 
-    Each shot maps to a row in ``docs/img/SCREENSHOTS.md``.  Element-
-    level captures use ``locator.screenshot()`` for an exact bounding
-    box; full-page captures use ``page.screenshot()`` with
-    ``full_page=False`` to clip at the viewport.  Locators fall back
-    to a fixed clip box when the selector misses, so a UI rename does
-    not silently zero out a shot.
+    Each shot maps to a row in ``docs/img/SCREENSHOTS.md``.  Three
+    capture modes:
+
+      * ``locator.screenshot()`` -- exact element bounding box, for
+        targeted slices (tab strip, sidebar column).
+      * ``page.screenshot(clip=...)`` -- fixed-rectangle fallback
+        when the locator misses (UI rename safety net).
+      * ``page.screenshot(full_page=True)`` -- captures the entire
+        scrollable document height beyond the viewport.  Used for
+        the form-heavy tabs (Structure-optimization / Spectrum /
+        Transport) so all workflow-group cards + the viewer + the
+        issues panel fit in one image even when they stack past the
+        viewport edge.  Per user 2026-06-24: "see if you can allow
+        the web page to extend its vertical size such that you can
+        include all the contents inside that frame."
     """
     def goto(path: str) -> None:
         page.goto(f"{base_url}{path}",
@@ -212,14 +221,16 @@ def _capture_each(page, base_url: str) -> None:
         time.sleep(IDLE_AFTER_NAV_S)
 
     def shot(filename: str, locator=None,
-             clip: dict | None = None) -> None:
+             clip: dict | None = None,
+             full_page: bool = False) -> None:
         out = IMG_DIR / filename
         if locator is not None and locator.count():
             locator.screenshot(path=str(out), type="png")
         elif clip is not None:
             page.screenshot(path=str(out), type="png", clip=clip)
         else:
-            page.screenshot(path=str(out), type="png", full_page=False)
+            page.screenshot(path=str(out), type="png",
+                            full_page=full_page)
         size_kb = out.stat().st_size / 1024
         print(f"  wrote {out.relative_to(REPO_ROOT)} ({size_kb:.0f} KB)")
 
@@ -234,7 +245,10 @@ def _capture_each(page, base_url: str) -> None:
          clip={"x": 0, "y": 0, "width": VIEWPORT_W, "height": 80})
 
     print("[3/10] sidebar-projects.png")
-    goto(f"/molbuilder?project={DEMO_PROJECT}")
+    # Show the BDT project with its structure/ subdir expanded so the
+    # sidebar carries real content (post-cleanup state).
+    goto(f"/molbuilder?project={DEMO_PROJECT}&"
+         f"path=structure")
     sidebar = page.locator(
         ".projects-sidebar, #projects-sidebar, aside.sidebar, "
         "[data-projects-sidebar]"
@@ -243,37 +257,47 @@ def _capture_each(page, base_url: str) -> None:
          clip={"x": 0, "y": 0, "width": 360, "height": VIEWPORT_H})
 
     print("[4/10] molbuilder-workspace.png")
+    # Workspace tab with the Au-BDT-Au junction loaded from BDT/
+    # structure/.  Full-page so the right-hand commands stack
+    # (Sources / Atom / Pose / Geom / Junction / Save) renders end-
+    # to-end even when it overflows the viewport.
     goto(f"/molbuilder?project={DEMO_PROJECT}&file={DEMO_STRUCTURE}")
-    workspace = page.locator(
-        ".workspace, .main-content, main, [data-workspace]"
-    ).first
-    shot("molbuilder-workspace.png", locator=workspace)
+    shot("molbuilder-workspace.png", full_page=True)
 
     print("[5/10] structure-optimization-form.png")
+    # Structure-optimization tab loaded with the BDT/structure/
+    # geometry.  Full-page captures the workflow-group cards
+    # (Profile / Stage / Budget) all the way down past viewport.
     goto(f"/structure-optimization?project={DEMO_PROJECT}&"
          f"file={DEMO_STRUCTURE}")
-    shot("structure-optimization-form.png")
+    shot("structure-optimization-form.png", full_page=True)
 
     print("[6/10] spectrum-form.png")
-    goto("/spectrum-calculation")
-    form = page.locator(
-        "form, .form-panel, .build-form, [data-build-form]"
-    ).first
-    shot("spectrum-form.png", locator=form)
+    # Spectrum tab loaded from BDT/spectrum/BDT-only/ -- a real
+    # spectra.spectra.py example.  Full-page so the form's vertical
+    # stack (Profile / Stage / Budget) is fully visible.
+    goto(f"/spectrum-calculation?project={DEMO_PROJECT}&"
+         f"path=spectrum/BDT-only/spectra.spectra.py")
+    shot("spectrum-form.png", full_page=True)
 
     print("[7/10] transport-form.png")
+    # Transport tab loaded with the Au-BDT-Au junction.  Full-page
+    # so electrode region labels + the form + the viewer all fit.
     goto(f"/transport-calculation?project={DEMO_PROJECT}&"
          f"file={DEMO_STRUCTURE}")
-    shot("transport-form.png")
+    shot("transport-form.png", full_page=True)
 
     print("[8/10] results-trajectory.png")
+    # Results-tab trajectory inspector pointed at TJ-BDT-Au111
+    # (the real multi-stage optimization in the cleaned-up project).
     goto(f"/results?project={DEMO_PROJECT}&"
-         f"path=optimization/BDT-withAuJunction")
-    shot("results-trajectory.png")
+         f"path=optimization/TJ-BDT-Au111")
+    shot("results-trajectory.png", full_page=True)
 
     print("[9/10] results-spectra.png")
-    goto(f"/results?project={DEMO_PROJECT}&path=spectrum/BDT-only")
-    shot("results-spectra.png")
+    goto(f"/results?project={DEMO_PROJECT}&"
+         f"path=spectrum/BDT-only/spectra.spectra.json")
+    shot("results-spectra.png", full_page=True)
 
     print("[10/10] results-bundle-card.png")
     goto(f"/results?project={DEMO_PROJECT}&"
