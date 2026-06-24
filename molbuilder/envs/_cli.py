@@ -267,6 +267,186 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
     return 0
 
 
+@envs_group.command("repair",
+                    short_help="install missing packages flagged by audit")
+@click.argument("name")
+@click.option("--include-optional", is_flag=True,
+              help="also retry installing optional packages (e.g. GPU "
+                   "wheels for molbuilder-pySCF).  Default: skip.")
+@click.option("--include-version-fix", is_flag=True,
+              help="also attempt to install specs whose version / build "
+                   "doesn't match the recipe pin.  Default: skip "
+                   "(destructive; may rebuild many dependent packages).")
+def cmd_repair(name: str, include_optional: bool,
+               include_version_fix: bool) -> None:
+    """Install missing packages reported by ``doctor``'s audit.
+
+    Designed for non-interactive use on remote HPC nodes: no prompts,
+    streams per-package progress to stderr, returns exit code 0 iff
+    all REQUIRED missing packages got installed.
+
+    What it does:
+      * Runs the same audit doctor uses on the named recipe's env.
+      * For ``conda-missing``: ``<mgr> install -n <env> <spec> -y``.
+      * For ``pip-missing``: ``<env>/bin/python -m pip install <spec>``
+        (through the same bypass wrapper used elsewhere, so PIP_CACHE_DIR
+        + activate.d hooks apply).
+      * Skips ``*-optional`` issues unless ``--include-optional``.
+      * Skips ``conda-version`` / ``conda-build`` issues unless
+        ``--include-version-fix`` (those rebuilds can take a long time
+        on slow HPC filesystems, so they're opt-in).
+
+    What it does NOT do:
+      * Recreate the env (use ``install <recipe> --clean`` for that).
+      * Run the recipe's verify_argv (use ``doctor`` for that).
+      * Touch packages not declared in the recipe.
+
+    Re-running is safe: if everything is already installed, repair
+    exits 0 with "nothing to do".
+    """
+    caps = get_capabilities()
+    recipe = recipe_by_name(name)
+    if recipe is None:
+        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        raise click.UsageError(
+            f"unknown recipe `{name}`.  Registered: {registered}"
+        )
+    if caps.conda_binary is None:
+        raise click.UsageError(
+            "conda/mamba not found; cannot run repair.  See "
+            "docs/README_install.md."
+        )
+    effective = _effective_name(recipe, caps)
+    if not caps.env_available(effective):
+        click.echo(
+            f"env `{effective}` does not exist.  Install it first:",
+            err=True,
+        )
+        click.echo(
+            f"    bash scripts/install-env.sh install {recipe.name} --yes",
+            err=True,
+        )
+        sys.exit(2)
+    prefix_str = _install._env_prefix(effective, caps.conda_binary)
+    if prefix_str is None:
+        click.echo(
+            f"could not resolve env prefix for `{effective}`.  Run "
+            f"`{caps.conda_binary} env list` to check.",
+            err=True,
+        )
+        sys.exit(2)
+    prefix = Path(prefix_str)
+    click.echo(f"[repair] {effective}", err=True)
+    click.echo(f"[repair]   env prefix: {prefix}", err=True)
+    audit = _doctor.audit_packages(prefix, recipe)
+    # Partition issues by what we'll act on.
+    to_install_conda: list = []
+    to_install_pip: list = []
+    skipped_optional: list = []
+    skipped_version: list = []
+    for issue in audit.issues:
+        if issue.kind.endswith("-optional"):
+            if include_optional:
+                if issue.kind.startswith("conda-"):
+                    to_install_conda.append(issue.spec)
+                else:
+                    to_install_pip.append(issue.spec)
+            else:
+                skipped_optional.append(issue)
+            continue
+        if issue.kind in ("conda-version", "conda-build"):
+            if include_version_fix:
+                to_install_conda.append(issue.spec)
+            else:
+                skipped_version.append(issue)
+            continue
+        if issue.kind == "conda-missing":
+            to_install_conda.append(issue.spec)
+        elif issue.kind == "pip-missing":
+            to_install_pip.append(issue.spec)
+    if not to_install_conda and not to_install_pip:
+        if skipped_optional or skipped_version:
+            click.echo(
+                f"[repair]   nothing to fix among REQUIRED packages.  "
+                f"{len(skipped_optional)} optional skipped (pass "
+                f"--include-optional to retry), "
+                f"{len(skipped_version)} version/build mismatches skipped "
+                f"(pass --include-version-fix to address).",
+                err=True,
+            )
+        else:
+            click.echo("[repair]   audit clean -- nothing to do.", err=True)
+        sys.exit(0)
+    failures: list = []
+    successes: list = []
+    if to_install_conda:
+        click.echo(
+            f"[repair]   {len(to_install_conda)} conda package(s) "
+            f"to install: {' '.join(to_install_conda)}", err=True,
+        )
+        argv = [
+            caps.conda_binary, "install", "-n", effective, "-y",
+            *to_install_conda,
+        ]
+        for ch in recipe.channels:
+            argv.extend(["-c", ch])
+        rc, _ = _builds.run_streaming(argv, sink=sys.stderr, timeout=1800)
+        if rc == 0:
+            successes.extend(to_install_conda)
+            click.echo("[repair]   conda install: OK", err=True)
+        else:
+            failures.extend(to_install_conda)
+            click.echo(f"[repair]   conda install: FAILED (rc={rc})", err=True)
+    if to_install_pip:
+        click.echo(
+            f"[repair]   {len(to_install_pip)} pip package(s) "
+            f"to install: {' '.join(to_install_pip)}", err=True,
+        )
+        # Reuse install.py's pip-step pattern via the bypass wrapper so
+        # PIP_CACHE_DIR + activate.d sourcing apply consistently.
+        raw_argv = (
+            caps.conda_binary, "run", "-n", effective,
+            "--no-capture-output",
+            "python", "-m", "pip", "install", *to_install_pip,
+        )
+        try:
+            new_argv, _ = _install._bypass_conda_run(raw_argv, prefix_str)
+            rc, _ = _builds.run_streaming(
+                list(new_argv), sink=sys.stderr, timeout=1800,
+            )
+        except ValueError as exc:
+            rc = None
+            click.echo(f"[repair]   pip install: failed to set up "
+                       f"wrapper ({exc})", err=True)
+        if rc == 0:
+            successes.extend(to_install_pip)
+            click.echo("[repair]   pip install: OK", err=True)
+        else:
+            failures.extend(to_install_pip)
+            click.echo(f"[repair]   pip install: FAILED (rc={rc})", err=True)
+    # Re-audit so the user sees the new state.
+    click.echo("[repair]   re-running audit...", err=True)
+    audit2 = _doctor.audit_packages(prefix, recipe)
+    remaining = [i for i in audit2.issues
+                 if not i.kind.endswith("-optional")
+                 and i.kind not in ("conda-version", "conda-build")]
+    if remaining:
+        for issue in remaining[:10]:
+            click.echo(
+                f"[repair]   still missing: {issue.spec} ({issue.kind})",
+                err=True,
+            )
+    click.echo("", err=True)
+    click.echo(
+        f"[repair] summary: {len(successes)} installed, "
+        f"{len(failures)} failed, "
+        f"{len(skipped_optional)} optional skipped, "
+        f"{len(skipped_version)} version-fix skipped.",
+        err=True,
+    )
+    sys.exit(0 if not remaining else 1)
+
+
 @envs_group.command("doctor",
                     short_help="report installed / missing / verified envs")
 @click.option("--no-verify", is_flag=True,
