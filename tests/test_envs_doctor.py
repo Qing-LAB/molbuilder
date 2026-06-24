@@ -95,6 +95,12 @@ def _stub_completed(stdout="", stderr="", returncode=0):
 
 def test_verify_ok_when_returncode_zero_and_substring_matches(monkeypatch):
     _bind(conda_envs=("molbuilder-siesta",))
+    # doctor.py now bypasses ``<mgr> run`` via install._bypass_conda_run
+    # (mamba 2.x ``exec --`` workaround); patch _env_prefix so the
+    # bypass code path runs.
+    import molbuilder.envs.install as _install
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(
         doctor.subprocess, "run",
         lambda *a, **kw: _stub_completed(stdout="siesta 5.4.2",
@@ -107,6 +113,9 @@ def test_verify_ok_when_returncode_zero_and_substring_matches(monkeypatch):
 
 def test_verify_fails_when_returncode_nonzero(monkeypatch):
     _bind(conda_envs=("molbuilder-siesta",))
+    import molbuilder.envs.install as _install
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(
         doctor.subprocess, "run",
         lambda *a, **kw: _stub_completed(stdout="siesta 5.4.2",
@@ -119,6 +128,9 @@ def test_verify_fails_when_returncode_nonzero(monkeypatch):
 
 def test_verify_fails_when_substring_missing(monkeypatch):
     _bind(conda_envs=("molbuilder-siesta",))
+    import molbuilder.envs.install as _install
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(
         doctor.subprocess, "run",
         lambda *a, **kw: _stub_completed(stdout="unrelated text",
@@ -134,6 +146,9 @@ def test_verify_ignore_exit_code_only_checks_substring(monkeypatch):
     a non-zero exit must still report OK when the substring is
     present (mirrors tleap's real behaviour)."""
     _bind(conda_envs=("molbuilder-MDtools",))
+    import molbuilder.envs.install as _install
+    monkeypatch.setattr(_install, "_env_prefix",
+                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(
         doctor.subprocess, "run",
         lambda *a, **kw: _stub_completed(stdout="Welcome to LEaP!",

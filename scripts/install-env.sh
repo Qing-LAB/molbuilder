@@ -327,13 +327,19 @@ EOF
             # they intended (e.g. an old Anaconda install lingering
             # in ~/anaconda3 alongside a newer Miniforge they meant
             # to use).  --yes / -y in ORIGINAL_ARGS skips this prompt.
-            # ``read ... </dev/tty 2>/dev/null`` -- suppress bash's
-            # own redirect error ("/dev/tty: No such device or
-            # address") when there's no TTY (nohup, container without
-            # a tty alloc, CI runner).  Our own handler prints a
-            # clearer message right after.
-            read -r -p "[molbuilder] use this env manager? [Y/n] " _ans </dev/tty 2>/dev/null \
-                || { echo "[molbuilder] no TTY for confirmation; pass --yes to skip." >&2; exit 2; }
+            # Probe /dev/tty BEFORE attempting read.  Don't put
+            # 2>/dev/null on the read itself: bash's ``read -p
+            # PROMPT`` writes the prompt to STDERR, so the redirect
+            # silences the prompt too -- the user then sees nothing
+            # and waits forever, with no idea the script is asking
+            # for input.  (User-confirmed 2026-06-24: "running
+            # without the --yes end up with stucking for ever and
+            # no fucking message at all".)
+            if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+                echo "[molbuilder] no TTY for confirmation; pass --yes to skip." >&2
+                exit 2
+            fi
+            read -r -p "[molbuilder] use this env manager? [Y/n] " _ans </dev/tty
             case "${_ans}" in
                 ""|y|Y|yes|YES|Yes) ;;
                 *)

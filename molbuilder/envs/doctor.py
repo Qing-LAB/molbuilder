@@ -88,13 +88,30 @@ def _run_verify(
     """
     if not recipe.verify_argv:
         return None, ""
-    argv = (
+    # Bypass ``conda run`` -- on mamba 2.x it generates a temp shell
+    # stub (``/tmp/mamba*``) that uses ``exec --`` which bash rejects
+    # with ``exec: --: invalid option``.  Use the same wrapper-script
+    # bypass as install.py's _bypass_conda_run: resolve env prefix,
+    # set conda activate's env vars manually, source activate.d, exec.
+    from .install import _env_prefix, _bypass_conda_run
+    prefix = _env_prefix(env_name, conda_binary)
+    if prefix is None:
+        return False, (
+            f"verify could not resolve env prefix for `{env_name}`.  "
+            f"Run `{conda_binary} env list` to confirm the env exists; "
+            f"if it's there but we can't find it, file an issue."
+        )
+    raw_argv = (
         conda_binary, "run", "-n", env_name,
         "--no-capture-output", *recipe.verify_argv,
     )
     try:
+        new_argv, _ = _bypass_conda_run(raw_argv, prefix)
+    except ValueError:
+        new_argv = raw_argv
+    try:
         cp = subprocess.run(
-            argv, capture_output=True, text=True, timeout=30,
+            list(new_argv), capture_output=True, text=True, timeout=60,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         return False, f"verify failed to launch: {exc}"
