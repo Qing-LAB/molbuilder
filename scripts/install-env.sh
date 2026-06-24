@@ -1,113 +1,176 @@
 #!/usr/bin/env bash
 #
-# scripts/install-env.sh -- entry point for env install + bootstrap.
+# scripts/install-env.sh -- thin bootstrap shim for `molbuilder envs`.
 #
-# What this script does in one command:
+# DESIGN INVARIANT (read this before editing):
 #
-#     bash scripts/install-env.sh --bootstrap --yes
+#   This script does ONE thing -- solve the chicken-and-egg of
+#   "you can't run `molbuilder envs ...` until the molbuilder host
+#   env exists."  Everything else lives in the Python CLI
+#   (``molbuilder envs <subcommand>``).
 #
-# On a truly fresh machine -- where only conda / mamba / micromamba
-# is installed and nothing else -- this command:
+#   The script's role:
+#     1. Detect conda / mamba on PATH.
+#     2. Ensure the host env exists (auto-create from the inlined
+#        HOST_*_PACKAGES list if missing).
+#     3. Forward "$@" verbatim to `python -m molbuilder envs ...`
+#        inside the host env.
 #
-#   1. Auto-detects the env manager (mamba > micromamba > conda).
-#   2. Creates the molbuilder host env (the `molbuilder` env) if
-#      missing.  The host-env package list is inlined below as
-#      HOST_CONDA_PACKAGES + HOST_PIP_PACKAGES; a drift-guard test
-#      (tests/test_envs_readme_consistency.py) asserts the bash
-#      lists match the Python recipe at molbuilder/envs/recipes.py.
-#   3. Dispatches into the host env to install every conda-only
-#      backend recipe (molbuilder-siesta, molbuilder-pySCF,
-#      molbuilder-MDtools, molbuilder-tests).
-#   4. Runs `molbuilder envs doctor` for a smoke check.
+#   Everything else -- recipe-name validation, --rebuild component
+#   lookup, --check / --dry-run semantics, the elsi→siesta alias,
+#   per-component preflight, doctor reports -- lives in Python where
+#   the Recipe / BuildSpec data lives.  See docs/design.md
+#   (2026-06-24 decision-log: thin-shim rewrite) for the architectural
+#   rationale and the drift-bug history that motivated it.
 #
-# The bootstrap is the ONE path users on a fresh machine should
-# take.  It is idempotent: re-running skips envs already present.
-# Source-build envs (GPU SIESTA) stay opt-in via
-# --include-source-builds because they take ~30-45 min.
+# BASE-SYSTEM ASSUMPTION:
 #
-# Per-recipe entry points for users who already have the host env:
+#   ONLY `conda` or `mamba` is on PATH.  No python, no pip, no
+#   pre-activated env.  The script bootstraps everything on top of
+#   that.  This matches HPC / fresh-cluster reality where the OS
+#   image carries a conda installer and nothing else.
 #
-#     bash scripts/install-env.sh <recipe-name>
-#     bash scripts/install-env.sh --list
-#     bash scripts/install-env.sh --doctor
-#     bash scripts/install-env.sh --check <recipe-name>
-#     bash scripts/install-env.sh --dry-run <recipe-name>
-#     bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
-#     bash scripts/install-env.sh --clean <recipe-name>
+# COMMAND SHAPE (1:1 with `molbuilder envs <subcommand>`):
 #
-# These dispatch into the host env and call `python -m molbuilder
-# envs install <recipe>` per the Python install machinery.  If the
-# host env is missing they error with a pointer back to
-# --bootstrap (the right next step is to bootstrap, not to copy a
-# conda block out of the README).
+#     # First-time install on a fresh machine:
+#     bash scripts/install-env.sh bootstrap --yes
+#     bash scripts/install-env.sh bootstrap --include-source-builds --yes
 #
-# Out of scope (explicit non-goals):
-#   - Installing conda itself.  conda / mamba / micromamba is the
-#     base-system prerequisite; the script reports a clear error
-#     if none is on PATH.
-#   - Installing OS-level CUDA / NVIDIA drivers (system layer).
-#   - Picking env names: recipe names are canonical from
-#     molbuilder/envs/recipes.py.  molbuilder.json overrides apply
-#     automatically.
+#     # Post-bootstrap operations (same as `molbuilder envs ...`):
+#     bash scripts/install-env.sh list
+#     bash scripts/install-env.sh doctor
+#     bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
+#     bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=siesta --yes
+#     bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
+#     bash scripts/install-env.sh install molbuilder-siesta --check
+#     bash scripts/install-env.sh install molbuilder-siesta --dry-run
 #
-# Exit codes: 0 = OK; 1 = step failed; 2 = usage error / no conda.
+#   Equivalently, after running ``bootstrap`` once:
+#
+#     conda activate molbuilder
+#     molbuilder envs list
+#     molbuilder envs install molbuilder-siesta-gpu --rebuild=siesta --yes
+#     ...
+#
+#   The shim and the activated-env path produce identical results.
+#
+# EXIT CODES:
+#   0 = OK
+#   1 = step failed inside the Python layer
+#   2 = usage error / no conda manager / host env missing for non-bootstrap
+
 set -euo pipefail
+
+# ---- repo root resolution ------------------------------------------------
+#
+# molbuilder is NOT pip-installed (intentional convention -- the
+# host env's site-packages does not contain ``molbuilder``).  So
+# ``python -m molbuilder`` needs the repo on PYTHONPATH.  Resolving
+# the repo root from the script's own location lets us call the
+# shim from any CWD; the user's CWD is preserved so ./molbuilder.json
+# overrides (which are read from CWD) still apply.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"
 
-usage() {
-    cat <<EOF
-Usage: bash scripts/install-env.sh [--list | --check] <recipe-name>
-       bash scripts/install-env.sh --list           # show all recipes
-       bash scripts/install-env.sh --doctor         # full health report
-       bash scripts/install-env.sh --bootstrap [--yes]
-                                                    # install EVERY conda-only
-                                                    # recipe + run doctor; the
-                                                    # one-command first-run path
-                                                    # for HPC / fresh-machine
-                                                    # deployment.  Use --yes
-                                                    # for non-interactive (CI,
-                                                    # batch jobs).  Append
-                                                    # --include-source-builds
-                                                    # to also build SIESTA-GPU
-                                                    # (~45 min, opt-in).
-       bash scripts/install-env.sh --dry-run <recipe-name>
-       bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
-                                                    # source-build recipes only
-                                                    # (e.g. molbuilder-siesta-gpu)
-       bash scripts/install-env.sh --clean <recipe-name>
-                                                    # WIPE artifact dir
-                                                    # (source-build recipes only;
-                                                    # confirmation required)
+# ---- usage ---------------------------------------------------------------
 
-Recipe names are the canonical defaults from
-molbuilder/envs/recipes.py (e.g. molbuilder-siesta).
-Per-machine overrides from molbuilder.json apply automatically.
+usage() {
+    cat <<'EOF'
+molbuilder env installer -- thin shim over `molbuilder envs ...`.
+Base-system requirement: conda OR mamba on PATH.
+
+==============================================================
+FIRST TIME on a fresh machine?  Run this:
+
+    bash scripts/install-env.sh bootstrap --yes
+
+That creates the host env, installs every conda-only backend
+(SIESTA / PySCF / MDtools / tests), and runs a health check.
+Idempotent: re-running skips envs already present.
+
+Want GPU SIESTA too (~45 min extra)?  Add the opt-in flag:
+
+    bash scripts/install-env.sh bootstrap --yes \
+        --include-source-builds
+==============================================================
+
+Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
+
+  bash scripts/install-env.sh list
+      Show every recipe + whether the env exists.
+
+  bash scripts/install-env.sh doctor
+      Health report: which envs exist, which verify, which need help.
+
+  bash scripts/install-env.sh install <recipe> [flags]
+      Install (or repair) one recipe.  Flags forwarded to Python:
+        --dry-run                print the install plan; do not run
+        --check                  report present/verify; do not install
+        --rebuild=<component>    source-build recipes only (e.g.
+                                 --rebuild=siesta, --rebuild=elpa,
+                                 --rebuild=all on molbuilder-siesta-gpu)
+        --clean                  wipe conda env + artifact dir, then
+                                 reinstall (source-build recipes only)
+        --yes / -y               proceed without confirmation prompts
+        --skip-network-check     for firewalled hosts
+
+  bash scripts/install-env.sh advise <recipe>
+      Recommend mpi_np / omp / mps for the recipe + this host.
+
+  bash scripts/install-env.sh validate <recipe>
+      Run post-install correctness probes.
+
+  bash scripts/install-env.sh bootstrap [flags]
+      Install every conda-only recipe + run doctor.  Flags:
+        --include-source-builds  also build GPU SIESTA (~45 min)
+        --no-skip-existing       re-run install on envs already present
+        --dry-run                print the plan; do not install
+        --yes / -y               non-interactive (CI / HPC batch)
+
+After bootstrap, an equivalent shortcut is:
+
+    conda activate molbuilder
+    molbuilder envs <subcommand>          # identical behavior
 
 Environment variables:
-  MOLBUILDER_HOST_ENV   conda env that has molbuilder's host stack
-                        installed (default: molbuilder).  The script
-                        dispatches into this env to invoke the CLI.
-  MOLBUILDER_BUILD_JOBS for source-build recipes: cap build concurrency
-                        (default: min(nproc, 8)).
-  MOLBUILDER_CUDA_CC    for siesta-gpu: force compute capability
-                        (e.g. 8.0) when nvidia-smi is unavailable.
+  MOLBUILDER_HOST_ENV            host env name (default: molbuilder).
+  MOLBUILDER_HOST_ENV_CHANNELS   comma-separated channels to pass when
+                                 creating the host env, overriding
+                                 .condarc.  Leave unset to respect
+                                 ~/.condarc (recommended on HPC nodes
+                                 with site-configured mirrors).
+                                 Falls back to "conda-forge" only when
+                                 .condarc has NO channels configured.
+  MOLBUILDER_DEBUG_CHANNELS      when set, echo the raw output of
+                                 ``<mgr> config --get channels`` so you
+                                 can verify how the bootstrap probed
+                                 your .condarc.  Useful when a host-env
+                                 create silently fell back to
+                                 ``-c conda-forge``.
+  MOLBUILDER_BUILD_JOBS          source-build recipes: cap build
+                                 concurrency (default: min(nproc, 8)).
+  MOLBUILDER_CUDA_CC             siesta-gpu: force CUDA compute
+                                 capability (e.g. 8.0) when nvidia-smi
+                                 is unavailable.
+
+.condarc / pip config:
+  The host-env create step respects ~/.condarc by default -- if you
+  have channels configured (likely via Miniforge defaults or
+  ``conda config --add channels ...``), no ``-c`` flag is added.
+  pip's user config (~/.pip/pip.conf) is always respected (the env
+  manager doesn't intercept pip).  See "Environment variables" above
+  for explicit overrides.
 EOF
 }
 
-# Conda-compatible env manager autodetect (mamba > micromamba > conda).
-# Mamba / micromamba are drop-in replacements for ``conda create``,
-# ``conda run``, ``conda env list`` and other commands this script + the
-# Python layer issue.  Mamba is ~5-10x faster on HPC clusters with slow
-# filesystems; micromamba is the only option on systems where the user
-# lacks admin rights to install Miniconda.  All three accept the same
-# CLI surface for our use case, so detection is transparent downstream.
+# ---- env-manager autodetect (mamba > conda) ------------------------------
+
 ENV_MGR=""
 detect_env_mgr() {
-    if [[ -n "${ENV_MGR}" ]]; then
-        return 0
-    fi
-    for candidate in mamba micromamba conda; do
+    [[ -n "${ENV_MGR}" ]] && return 0
+    for candidate in mamba conda; do
         if command -v "${candidate}" >/dev/null 2>&1; then
             ENV_MGR="${candidate}"
             return 0
@@ -127,29 +190,31 @@ detect_env_mgr() {
 
 require_conda() {
     if ! detect_env_mgr; then
-        echo "Error: no conda-compatible env manager found on PATH." >&2
-        echo "Looked for: mamba, micromamba, conda.  Looked at:" >&2
-        echo "  \$MAMBA_EXE = ${MAMBA_EXE:-(unset)}" >&2
-        echo "  \$CONDA_EXE = ${CONDA_EXE:-(unset)}" >&2
-        echo "Install one (Miniconda / Miniforge / micromamba); see" >&2
-        echo "docs/README_install.md." >&2
+        cat >&2 <<EOF
+Error: no conda-compatible env manager found on PATH.
+Looked for: mamba, conda.  Looked at:
+  \$MAMBA_EXE = ${MAMBA_EXE:-(unset)}
+  \$CONDA_EXE = ${CONDA_EXE:-(unset)}
+Install one (Miniforge is the recommended distribution; it ships
+mamba + conda-forge as defaults).  See docs/README_install.md.
+EOF
         exit 2
     fi
-    # First-run banner: which manager we'll use.  Only print once.
     if [[ -z "${_ENV_MGR_BANNERED:-}" ]]; then
         echo "[molbuilder] env manager: ${ENV_MGR}" >&2
         _ENV_MGR_BANNERED=1
     fi
 }
 
-# Package list for the host env -- KEEP IN SYNC with
-# molbuilder/envs/recipes.py::_HOST.conda_packages +
-# _HOST.pip_packages.  Drift-guard test at
-# tests/test_envs_readme_consistency.py asserts the two lists
-# match.  Inlined here so the bash script can create the host env
-# on a truly fresh machine -- it cannot read the Python recipe
-# without Python, and we cannot dispatch into the host env until
-# the host env exists.  Chicken-and-egg: this is the egg.
+# ---- host-env package list (chicken-and-egg solver) ----------------------
+#
+# This list MUST match molbuilder/envs/recipes.py::_HOST.conda_packages +
+# _HOST.pip_packages.  A drift-guard test
+# (tests/test_envs_readme_consistency.py) asserts the two lists
+# stay in sync.  The bash duplication is intentional: bash cannot
+# read the Python recipe without first having Python, and Python
+# isn't available until the host env exists.
+
 HOST_CONDA_PACKAGES=(
     python=3.12 pip
     numpy ase sisl
@@ -164,23 +229,89 @@ HOST_PIP_PACKAGES=(
 )
 
 host_env_exists() {
+    # Parse ``<mgr> env list`` robustly across conda / mamba (2 header
+    # lines starting with ``#``) and micromamba (3 header lines: a
+    # column header + a ─-rule separator).  Filter:
+    #   * skip blank lines (NF == 0)
+    #   * skip column-header / separator lines
+    #   * print column 1 (the env name)
     "${ENV_MGR}" env list 2>/dev/null \
-            | awk 'NR>2 {print $1}' \
+            | awk 'NF && $1 !~ /^(#|─|Name$)/ {print $1}' \
             | grep -qx "${HOST_ENV}"
 }
 
+resolve_host_env_channels() {
+    # Respect the user's ~/.condarc.  On HPC nodes the user (or the
+    # site admin) typically has channels + channel_priority configured
+    # already -- often pointing at an internal mirror or pinning a
+    # specific channel order for license/security reasons.  Our pre-
+    # 2026-06-25 behavior always prepended ``-c conda-forge`` to the
+    # create command, which overrode that order silently.
+    #
+    # Resolution order (first hit wins):
+    #   1. MOLBUILDER_HOST_ENV_CHANNELS env var (explicit user
+    #      override; comma-separated, e.g. "site-mirror,conda-forge").
+    #   2. ~/.condarc-configured channels (probed via
+    #      ``<mgr> config --get channels``).  If the user has any
+    #      channel listed, we pass NO ``-c`` flag and let .condarc
+    #      drive the resolve.
+    #   3. Fallback: ``-c conda-forge`` (covers bare-conda installs
+    #      with no .condarc, where the default ``defaults`` channel
+    #      doesn't carry our scientific stack).
+    HOST_ENV_CHANNEL_ARGS=()
+    if [[ -n "${MOLBUILDER_HOST_ENV_CHANNELS:-}" ]]; then
+        local _chs
+        IFS=',' read -r -a _chs <<< "${MOLBUILDER_HOST_ENV_CHANNELS}"
+        for _ch in "${_chs[@]}"; do
+            HOST_ENV_CHANNEL_ARGS+=(-c "${_ch}")
+        done
+        echo "[molbuilder] channels from MOLBUILDER_HOST_ENV_CHANNELS:" \
+             "${_chs[*]}" >&2
+        return 0
+    fi
+    local _raw _configured
+    _raw="$("${ENV_MGR}" config --get channels 2>/dev/null || true)"
+    if [[ -n "${MOLBUILDER_DEBUG_CHANNELS:-}" ]]; then
+        # Surface the raw probe output so HPC users can verify what
+        # ``<mgr> config --get channels`` actually emitted -- mamba's
+        # and conda's formats have varied across versions, and a
+        # silently-wrong probe would fall back to ``-c conda-forge``
+        # (the safe default) without telling the user their
+        # ``.condarc`` was misread.
+        echo "[molbuilder] DEBUG: raw '<${ENV_MGR}> config --get channels' output:" >&2
+        if [[ -z "${_raw}" ]]; then
+            echo "[molbuilder] DEBUG: (empty)" >&2
+        else
+            printf '[molbuilder] DEBUG: | %s\n' "${_raw}" >&2 \
+                || true  # printf can fail on weird input; don't abort
+        fi
+    fi
+    _configured="$(echo "${_raw}" \
+                  | awk '/--add channels/ {print $NF}' \
+                  | tr -d "'\"" \
+                  | tr '\n' ' ')"
+    if [[ -n "${_configured// /}" ]]; then
+        echo "[molbuilder] respecting user's .condarc channels:" \
+             "${_configured}" >&2
+        # Leave HOST_ENV_CHANNEL_ARGS empty -- let .condarc + the env
+        # manager's channel_priority setting handle ordering.
+        return 0
+    fi
+    echo "[molbuilder] no channels configured in .condarc;" \
+         "falling back to -c conda-forge" >&2
+    HOST_ENV_CHANNEL_ARGS=(-c conda-forge)
+}
+
 create_host_env() {
-    # Create the host env using the env manager that
-    # detect_env_mgr already picked.  --yes so we don't block on
-    # the conda confirmation prompt; HOST_CONDA_PACKAGES is the
-    # single source of truth for what lands inside.
+    resolve_host_env_channels
     echo "[molbuilder] creating host env '${HOST_ENV}' (~2 min)" >&2
-    "${ENV_MGR}" create -n "${HOST_ENV}" -c conda-forge --yes \
-        "${HOST_CONDA_PACKAGES[@]}"
-    # Pip-installable packages that aren't on conda-forge.  Run
-    # via the freshly-created env's python so we don't depend on a
-    # global pip.
+    "${ENV_MGR}" create -n "${HOST_ENV}" "${HOST_ENV_CHANNEL_ARGS[@]}" \
+        --yes "${HOST_CONDA_PACKAGES[@]}"
     if [[ ${#HOST_PIP_PACKAGES[@]} -gt 0 ]]; then
+        # pip's own config (~/.pip/pip.conf, ~/.config/pip/pip.conf)
+        # is respected automatically -- the env manager doesn't get
+        # in pip's way here, so internal PyPI mirrors / index-url
+        # overrides set in the user's pip config apply transparently.
         echo "[molbuilder] pip-installing host-env extras: ${HOST_PIP_PACKAGES[*]}" >&2
         "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
             python -m pip install "${HOST_PIP_PACKAGES[@]}"
@@ -188,136 +319,90 @@ create_host_env() {
     echo "[molbuilder] host env '${HOST_ENV}' ready" >&2
 }
 
-ensure_host_env() {
-    # Bootstrap-friendly: create the host env if missing instead
-    # of erroring out.  Used by --bootstrap so a truly fresh
-    # machine works in one command.  ``require_host_env`` below
-    # is the strict variant used by per-recipe subcommands where
-    # the user is expected to have set up the host env already.
-    if ! host_env_exists; then
-        create_host_env
-    fi
-}
-
-require_host_env() {
-    # Strict: error out if the host env doesn't exist.  Used by
-    # the per-recipe subcommands (``--list``, ``--doctor``,
-    # ``--check``, ``--dry-run``, etc.) where dispatching into a
-    # missing host env would be a confusing error rather than the
-    # user's intent.  The --bootstrap path uses ``ensure_host_env``
-    # which auto-creates.
-    if ! host_env_exists; then
-        echo "Error: host env '${HOST_ENV}' does not exist." >&2
-        echo "" >&2
-        echo "Run the bootstrap to create it + every backend env:" >&2
-        echo "  bash scripts/install-env.sh --bootstrap --yes" >&2
-        echo "" >&2
-        echo "Or, to create JUST the host env (without backends):" >&2
-        echo "  ${ENV_MGR} create -n ${HOST_ENV} -c conda-forge --yes \\" >&2
-        echo "      ${HOST_CONDA_PACKAGES[*]}" >&2
-        echo "  ${ENV_MGR} run -n ${HOST_ENV} python -m pip install \\" >&2
-        echo "      ${HOST_PIP_PACKAGES[*]}" >&2
-        echo "" >&2
-        echo "Or set MOLBUILDER_HOST_ENV to point at an existing env" >&2
-        echo "that has molbuilder's host-side packages." >&2
-        exit 2
-    fi
-}
+# ---- dispatch (1:1 with `molbuilder envs ...`) ---------------------------
+#
+# Sets PYTHONPATH=$REPO_ROOT so ``python -m molbuilder`` can find
+# the package regardless of the user's CWD.  mamba / conda ``run``
+# inherits the env var.  See REPO_ROOT comment above.
 
 dispatch() {
-    # ``--no-capture-output`` so the user sees the inner process's
-    # progress in real time.  Mamba / micromamba accept the same flag.
-    "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
+    PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
+    MOLBUILDER_REPO_ROOT="${REPO_ROOT}" \
+        "${ENV_MGR}" run -n "${HOST_ENV}" --no-capture-output \
         python -m molbuilder envs "$@"
 }
 
-case "${1:-}" in
-    ""|-h|--help)
+# ---- main ----------------------------------------------------------------
+
+# State machine, encoded in this dispatcher:
+#
+#                       ┌─────────────────────────────┐
+#                       │   ENTRY (any subcommand)    │
+#                       └────────────┬────────────────┘
+#                                    │
+#                          require_conda  ── fails → exit 2
+#                                    │
+#               ┌────────────────────┴────────────────────┐
+#               │                                         │
+#         subcmd = "bootstrap"                  any other subcmd
+#               │                                         │
+#       host env missing? ───── yes ──→ create        host env missing?
+#               │ no                       │              │ yes
+#               ▼                          ▼              ▼
+#                              dispatch "$@"     error: run bootstrap first
+#                              (PYTHONPATH set)
+#
+# The only auto-creation point is bootstrap.  Every other subcommand
+# expects the host env to already exist -- if it doesn't, the user's
+# next step is bootstrap, not "copy this conda block."
+
+if [[ $# -eq 0 ]]; then
+    cat <<'EOF' >&2
+No subcommand given.  First-time install on a fresh machine?
+
+    bash scripts/install-env.sh bootstrap --yes
+
+Full usage below.
+EOF
+    echo "" >&2
+    usage >&2
+    exit 2
+fi
+
+case "$1" in
+    -h|--help|help)
         usage
         exit 0
         ;;
-    --list)
+    bootstrap)
+        # The one auto-create path.  Any flags after ``bootstrap``
+        # (--yes, --include-source-builds, --dry-run, ...) forward
+        # verbatim to the Python ``cmd_bootstrap`` handler.
         require_conda
-        require_host_env
-        dispatch list
-        ;;
-    --doctor)
-        require_conda
-        require_host_env
-        dispatch doctor
-        ;;
-    --bootstrap)
-        # --bootstrap [extra args...]: full base-system -> every-env
-        # path.  Creates the host env if missing (auto, no manual
-        # conda block), then dispatches into it to install every
-        # backend recipe and run doctor.  Extra args (--yes,
-        # --include-source-builds, --dry-run, --no-skip-existing) are
-        # forwarded to the python layer.  Idempotent (already-present
-        # envs are skipped by default).
-        #
-        # 2026-06-24 UX fix: pre-fix this called ``require_host_env``
-        # which ERRORED OUT when the host env was missing and pointed
-        # the user at a doc-section conda-block.  That contradicted
-        # the whole bootstrap promise -- a bootstrap creates
-        # everything from nothing.  ``ensure_host_env`` now creates
-        # the host env if missing (using HOST_CONDA_PACKAGES +
-        # HOST_PIP_PACKAGES above) before dispatching the Python
-        # layer.
-        shift
-        require_conda
-        ensure_host_env
-        dispatch bootstrap "$@"
-        ;;
-    --check)
-        if [[ $# -lt 2 ]]; then
-            echo "Error: --check requires a recipe name." >&2
-            usage
-            exit 2
+        if ! host_env_exists; then
+            create_host_env
         fi
-        require_conda
-        require_host_env
-        dispatch install --check "$2"
-        ;;
-    --dry-run)
-        if [[ $# -lt 2 ]]; then
-            echo "Error: --dry-run requires a recipe name." >&2
-            usage
-            exit 2
-        fi
-        require_conda
-        require_host_env
-        dispatch install --dry-run "$2"
-        ;;
-    --rebuild=*)
-        # --rebuild=<comp> <recipe-name>: for source-build recipes only
-        # (e.g. siesta-gpu).  Component must be one of the recipe's
-        # build_spec.components, or `all` to wipe everything.
-        REBUILD_ARG="${1#--rebuild=}"
-        if [[ -z "$REBUILD_ARG" || $# -lt 2 ]]; then
-            echo "Error: --rebuild=<component> requires a recipe name." >&2
-            usage
-            exit 2
-        fi
-        require_conda
-        require_host_env
-        dispatch install --rebuild "$REBUILD_ARG" "$2"
-        ;;
-    --clean)
-        # --clean <recipe-name>: WIPE the artifact directory under
-        # $CONDA_PREFIX/opt/<artifact_subdir>/ before installing.
-        # Destructive; the Python layer asks for confirmation.
-        if [[ $# -lt 2 ]]; then
-            echo "Error: --clean requires a recipe name." >&2
-            usage
-            exit 2
-        fi
-        require_conda
-        require_host_env
-        dispatch install --clean "$2"
+        dispatch "$@"
         ;;
     *)
+        # Every other subcommand needs the host env up.  No
+        # auto-create here -- if the host env is missing the user
+        # wants ``bootstrap``, not a silently-created skeleton env
+        # that then errors halfway through their non-bootstrap
+        # invocation.
         require_conda
-        require_host_env
-        dispatch install "$1"
+        if ! host_env_exists; then
+            cat >&2 <<EOF
+Error: host env '${HOST_ENV}' does not exist.
+
+Run this first:
+    bash scripts/install-env.sh bootstrap --yes
+
+Or, to override the host env name:
+    MOLBUILDER_HOST_ENV=<name> bash scripts/install-env.sh bootstrap --yes
+EOF
+            exit 2
+        fi
+        dispatch "$@"
         ;;
 esac

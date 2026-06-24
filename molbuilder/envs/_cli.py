@@ -429,6 +429,21 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         valid = ("all", "none") + tuple(
             c.name for c in recipe.build_spec.components
         )
+        # ELSI is a SIESTA submodule (built inside SIESTA's cmake, not
+        # as a separately-listable component) -- accept the alias and
+        # remap so users coming from the old siesta-gpu-rebuild.sh
+        # wrapper or SIESTA 5.4 INSTALL.md vocabulary don't trip.
+        # The pre-2026-06-24 shell-side remap is gone; this is the
+        # single source of truth for the rename.
+        if (rebuild == "elsi"
+                and name == "molbuilder-siesta-gpu"
+                and "siesta" in valid):
+            click.echo(
+                "Note: ELSI is a SIESTA submodule -- rebuilding 'siesta' "
+                "(which compiles ELSI as part of SIESTA's cmake).",
+                err=True,
+            )
+            rebuild = "siesta"
         if rebuild not in valid:
             raise click.UsageError(
                 f"--rebuild={rebuild!r} unknown; choices: {', '.join(valid)}"
@@ -521,7 +536,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
         click.echo("recover from on its own.  Re-run with --clean to wipe")
-        click.echo(f"  bash scripts/install-env.sh --clean {name}")
+        click.echo(f"  bash scripts/install-env.sh install --clean {name}")
         click.echo("or do the manual fix described above.")
         sys.exit(2)
     if state.state_label == "PRESENT" and not clean:

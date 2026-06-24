@@ -40,7 +40,7 @@ For one-command first-run on a fresh machine (HPC cluster, new
 workstation), use the bootstrap script:
 
 ```bash
-bash scripts/install-env.sh --bootstrap --yes
+bash scripts/install-env.sh bootstrap --yes
 ```
 
 This creates every conda-only env (host + pyscf + siesta + MDtools +
@@ -48,6 +48,34 @@ tests) in one pass, then runs `molbuilder envs doctor` for a smoke
 check.  Pass `--include-source-builds` to also build the GPU-enabled
 SIESTA stack (~30-45 min).  Idempotent: re-running skips envs that
 are already present.
+
+### Site configuration: `.condarc`, mirrors, channel aliases
+
+The bootstrap respects your `~/.condarc` for the host env: if your
+`.condarc` has channels configured (Miniforge default, or anything
+you've added via `conda config --add channels …`), the host-env
+create passes no `-c` flag and lets your config rule.  Only a truly
+empty channel list falls back to `-c conda-forge`.  See `bash
+scripts/install-env.sh --help` for the `MOLBUILDER_HOST_ENV_CHANNELS`
+override and the `MOLBUILDER_DEBUG_CHANNELS` debug flag.
+
+Backend envs (`molbuilder-siesta`, `molbuilder-pySCF`,
+`molbuilder-MDtools`, `molbuilder-tests`) are created by the Python
+install layer using **per-recipe channels** declared in
+`molbuilder/envs/recipes.py` (e.g. `molbuilder-MDtools` requires the
+`dacase` channel for AmberTools; `molbuilder-siesta` requires
+`conda-forge` for the precompiled binary).  These channel names are
+load-bearing for correctness, so the recipes always pass them via
+`-c`.
+
+If you need to route those names through an internal mirror, the
+right knob is `conda`'s `channels_alias` / `custom_channels` (set in
+your `.condarc`), which transparently redirects the URLs for any
+channel name we pass.  Example: `channels_alias:
+https://internal-mirror.example.edu/conda-forge` resolves our
+`-c conda-forge` against your mirror automatically, with no recipe
+changes.  Pip's `~/.pip/pip.conf` (`index-url`,
+`extra-index-url`) is respected unchanged.
 
 `authlib` and `python-cas` are only loaded when `molbuilder.json`
 has an `auth` section configured.  `authlib` powers the OAuth/OIDC
@@ -146,9 +174,9 @@ the CLI (single entry point + machine-readable recipe registry):
 
 ```bash
 # From any shell with conda available:
-bash scripts/install-env.sh --list                  # show all recipes
-bash scripts/install-env.sh --doctor                # full health report
-bash scripts/install-env.sh --dry-run molbuilder-siesta   # print the plan
+bash scripts/install-env.sh list                  # show all recipes
+bash scripts/install-env.sh doctor                # full health report
+bash scripts/install-env.sh install molbuilder-siesta --dry-run   # print the plan
 bash scripts/install-env.sh molbuilder-siesta             # install it
 
 # From inside the activated host env:
@@ -325,11 +353,15 @@ conda-forge alongside gcc + cmake + openmpi (mirrors the
 Install:
 
 ```bash
-# Single-entrypoint:
-bash scripts/siesta-gpu-bootstrap.sh
-# or
+# Fresh machine -- one command, includes host env auto-create.
+# Also installs the conda-only backend recipes if they aren't
+# already there (idempotent: skips existing envs).
+bash scripts/install-env.sh bootstrap --include-source-builds --yes
+
+# Already-bootstrapped host env, just add GPU SIESTA:
 bash scripts/install-env.sh molbuilder-siesta-gpu
-# or, from inside the host env:
+
+# Or from inside the activated host env:
 python -m molbuilder envs install molbuilder-siesta-gpu
 ```
 
@@ -343,7 +375,7 @@ your firewall blocks `git ls-remote` but allows `clone`.
 Preview without committing:
 
 ```bash
-bash scripts/siesta-gpu-bootstrap.sh --dry-run
+bash scripts/install-env.sh install molbuilder-siesta-gpu --dry-run
 python -m molbuilder envs install --dry-run molbuilder-siesta-gpu
 ```
 
@@ -351,16 +383,17 @@ Rebuild a single component (after fixing a patch or bumping a tag via
 `MOLBUILDER_SIESTA_TAG=<new-tag>`):
 
 ```bash
-bash scripts/siesta-gpu-rebuild.sh siesta   # SIESTA only
-bash scripts/siesta-gpu-rebuild.sh elsi     # ELSI + SIESTA
-bash scripts/siesta-gpu-rebuild.sh elpa     # everything (ELPA->ELSI->SIESTA)
-bash scripts/siesta-gpu-rebuild.sh all      # wipe + rebuild from scratch
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=siesta  # SIESTA only
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=elpa    # ELPA + SIESTA
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=all     # all components
 ```
 
 `--rebuild=<comp>` wipes sentinels + the build dir + the install dir
 for the named component and everything downstream of it.  The `src/`
 clones are preserved to skip the re-fetch on slow networks; pass
-`all` to wipe those too.
+`all` to wipe those too.  ELSI / libfdf / libpsml / xmlf90 / libgridxc
+are SIESTA submodules and are rebuilt as part of `--rebuild=siesta`;
+they are not separately listable components.
 
 **Toolchain overrides** (all participate in the sentinel fingerprint
 so changing any one triggers the relevant rebuild):

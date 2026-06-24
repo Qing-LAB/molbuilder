@@ -84,10 +84,10 @@ workflows.  Specific capabilities:
 ## Quick start
 
 The only prerequisite on the base system is a conda-compatible
-package manager — **conda**, **mamba**, or **micromamba**.  molbuilder
-autodetects whichever is installed (preference: mamba > micromamba >
-conda) and uses it for every env operation.  Everything else — host
-env, backend envs, smoke tests — is handled by one bootstrap script.
+package manager — **conda** or **mamba**.  molbuilder autodetects
+whichever is installed (preference: mamba > conda) and uses it for
+every env operation.  Everything else — host env, backend envs,
+smoke tests — is handled by one bootstrap script.
 
 ```bash
 git clone https://github.com/Qing-LAB/molbuilder.git
@@ -95,7 +95,7 @@ cd molbuilder
 
 # One command creates every conda-only env (host + SIESTA + PySCF +
 # AmberTools + tests) and runs a doctor smoke check at the end.
-bash scripts/install-env.sh --bootstrap --yes
+bash scripts/install-env.sh bootstrap --yes
 
 # Start the web app from the host env.
 conda activate molbuilder
@@ -107,6 +107,14 @@ The bootstrap is idempotent: re-running skips envs that are already
 present.  Source-build envs (GPU SIESTA, ~45 min) are opt-in via
 `--include-source-builds`.  Per-env install commands and the full
 manual recipe are in [§ Install + multi-env model](#install--multi-env-model).
+
+The bootstrap **respects your `~/.condarc`**: if you have channels
+configured (Miniforge default, or `conda config --add channels …`
+for a site mirror), the host-env create uses those.  Only a fresh
+conda install with no channels triggers the `-c conda-forge`
+fallback.  Set `MOLBUILDER_HOST_ENV_CHANNELS=<comma,list>` to
+override explicitly.  `pip` config (`~/.pip/pip.conf`) is always
+respected — internal PyPI mirrors work out of the box.
 
 For LAN or internet exposure (TLS, OAuth sign-in, reverse-proxy
 auth), see [§ Deployment](#deployment) and
@@ -591,19 +599,22 @@ the host env automatically and then installs every backend
 recipe.  No manual conda-block copy-paste, no chicken-and-egg.
 
 ```bash
-bash scripts/install-env.sh --bootstrap --yes
+bash scripts/install-env.sh bootstrap --yes
 ```
 
 What it does in order:
 
-1. Detects the env manager (mamba > micromamba > conda).
+1. Detects the env manager (mamba > conda).
 2. Creates the host env (`molbuilder`) if missing using the
    package list inlined in the bash script — same packages the
    Python recipe at `molbuilder/envs/recipes.py` declares
    (drift-guarded by a test).
-3. Dispatches into the host env to install every conda-only
-   backend recipe (`molbuilder-siesta`, `molbuilder-pySCF`,
-   `molbuilder-MDtools`, `molbuilder-tests`).
+3. Sets `PYTHONPATH=$REPO_ROOT` and dispatches into the host env to
+   call `python -m molbuilder envs bootstrap`, which installs every
+   conda-only backend recipe (`molbuilder-siesta`, `molbuilder-pySCF`,
+   `molbuilder-MDtools`, `molbuilder-tests`).  PYTHONPATH is the
+   load-bearing detail that makes the bootstrap CWD-independent
+   (molbuilder is intentionally not pip-installed).
 4. Runs `molbuilder envs doctor` for a smoke check; non-zero exit
    means at least one env failed verification (the per-env
    transcript at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log`
@@ -617,6 +628,20 @@ Flags:
 * `--yes` — non-interactive (required for CI / headless / HPC batch).
 * `--include-source-builds` — also build GPU SIESTA from source
   (`molbuilder-siesta-gpu`, ~30-45 min commitment).  Opt-in.
+
+Site-config hooks:
+
+* **`~/.condarc`** — channels + `channel_priority` from the user's
+  config drive the host-env create.  The bootstrap probes
+  `<mgr> config --get channels`; on any non-empty result it adds
+  no `-c` flag and lets `.condarc` rule.  Only an empty channel
+  list triggers the `-c conda-forge` fallback.
+* **`MOLBUILDER_HOST_ENV_CHANNELS=<comma,list>`** — explicit
+  override; useful when the admin wants to pin host-env channels
+  without modifying `.condarc`.
+* **`~/.pip/pip.conf`** — pip's user config is respected for the
+  `pip install` step (PeptideBuilder, pubchempy).  Internal PyPI
+  mirrors via `index-url` work transparently.
 * `--no-skip-existing` — re-run install on envs that are already
   present (idempotent refresh).
 * `--dry-run` — print the plan; install nothing.
@@ -647,7 +672,7 @@ python -m molbuilder envs install <name> --clean     # wipe + reinstall from scr
 python -m molbuilder envs install <name> --rebuild=<component>  # source-build envs only
 python -m molbuilder envs validate molbuilder-siesta-gpu        # post-install probes
 # From any shell, no host env activation needed:
-bash scripts/install-env.sh <name>
+bash scripts/install-env.sh install <name>
 ```
 
 Every install drops a full transcript at
@@ -794,11 +819,11 @@ system + the repo clone.
 
 | Script | Use when | What it does |
 |---|---|---|
-| `install-env.sh --bootstrap --yes` | First-time install on a fresh machine. | Auto-detects conda/mamba/micromamba, creates the host env if missing, installs every conda-only backend recipe, runs `molbuilder envs doctor`. |
-| `install-env.sh --doctor` | Verifying env health. | Dispatches into the host env and runs the doctor smoke check across every recipe. |
-| `install-env.sh <recipe-name>` | Installing one specific env. | Per-recipe install via `molbuilder envs install`.  Requires the host env (run `--bootstrap` first if absent). |
-| `siesta-gpu-bootstrap.sh --yes` | First-time GPU SIESTA install. | Equivalent to `install-env.sh --bootstrap --include-source-builds --yes`.  Same one-command fresh-machine path; adds the source-built GPU SIESTA env on top. |
-| `siesta-gpu-rebuild.sh <component>` | Iterating on a GPU SIESTA component (ELPA / SIESTA / all). | Wipes per-component build dirs + sentinels and re-runs the build phase only.  Conda env preserved.  Requires an already-bootstrapped GPU SIESTA env. |
+| `install-env.sh bootstrap --yes` | First-time install on a fresh machine. | Auto-detects conda/mamba, creates the host env if missing, installs every conda-only backend recipe, runs `molbuilder envs doctor`. |
+| `install-env.sh doctor` | Verifying env health. | Dispatches into the host env and runs the doctor smoke check across every recipe. |
+| `install-env.sh install <recipe>` | Installing one specific env. | Per-recipe install via `molbuilder envs install`.  Requires the host env (run `bootstrap` first if absent). |
+| `install-env.sh bootstrap --include-source-builds --yes` | First-time GPU SIESTA install. | Same one-command fresh-machine path as plain `bootstrap`, plus the source-built GPU SIESTA env on top (~45 min extra). |
+| `install-env.sh install molbuilder-siesta-gpu --rebuild=<component>` | Iterating on a GPU SIESTA component (`elpa` / `siesta` / `all`; `elsi` remaps to `siesta` since ELSI is a SIESTA submodule). | Wipes per-component build dirs + sentinels and re-runs the build phase only.  Conda env preserved.  Requires an already-bootstrapped GPU SIESTA env. |
 | `bench-siesta-blocksize.sh <project-dir>` | Tuning SIESTA `BlockSize` on a real project. | Standalone bash; sweeps BlockSize values and reports wall-time per SCF iter.  Independent of the env stack — runs from any shell that has the project's `.run.sh` reachable. |
 | `capture-readme-screenshots.py` | Refreshing the 10 README screenshots after a UI change. | Spawns `molbuilder serve` in a temp dir (no auth, no TLS), drives Chromium via Playwright through every BDT-project demo route, writes PNGs to `docs/img/`.  Runs in the host env (Playwright is already there). |
 
@@ -833,7 +858,7 @@ there the deploy is two steps:
 
 ```bash
 # 1. Bootstrap every env in one command.  Idempotent + non-interactive.
-bash scripts/install-env.sh --bootstrap --yes
+bash scripts/install-env.sh bootstrap --yes
 
 # 2. Edit the deployment config + start the server.
 cp docs/molbuilder.json.example molbuilder.json

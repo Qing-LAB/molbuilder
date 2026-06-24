@@ -504,3 +504,307 @@ def test_bootstrap_runs_doctor_at_end(monkeypatch):
     assert doctor_called, (
         "bootstrap must call doctor at the end so the user sees a "
         "smoke check of every env it just installed.")
+
+
+# --------------------------------------------------------------------- #
+#  install-env.sh thin-shim contract (2026-06-24 architectural rewrite) #
+# --------------------------------------------------------------------- #
+#
+#  The shell script is a thin shim: it solves the chicken-and-egg
+#  of "you can't run `molbuilder envs ...` until the host env
+#  exists" and forwards ``"$@"`` verbatim to ``molbuilder envs``.
+#  Every recipe-shape concern (recipe lookup, --rebuild component
+#  validation, elsi→siesta alias, --check / --dry-run semantics)
+#  lives in the Python ``_cli.py`` cmd_install handler.
+#
+#  These tests pin the shim's contract:
+#    * No args -> exit 2 with a first-time-? hint
+#    * Non-bootstrap subcommand with no host env -> exit 2, pointing
+#      at bootstrap
+#    * bootstrap with no host env -> auto-create + dispatch (idempotent)
+#    * Any subcommand with host env present -> dispatch verbatim,
+#      passing ``"$@"`` (all flags including trailing ones)
+#    * PYTHONPATH=$REPO_ROOT set so ``python -m molbuilder`` works
+#      regardless of the caller's CWD
+
+import os
+import subprocess
+from pathlib import Path
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_INSTALL_ENV_SH = _REPO_ROOT / "scripts" / "install-env.sh"
+
+
+def _make_stub_mamba(bin_dir, *, host_env_present=True,
+                     configured_channels=()):
+    """Create a stub ``mamba`` binary at ``bin_dir/mamba``.
+
+    The stub fakes:
+      * ``mamba env list`` -> output that either includes or omits
+        the host env (controlled by ``host_env_present``).
+      * ``mamba config --get channels`` -> ``--add channels '<name>'``
+        lines for each configured channel (controlled by
+        ``configured_channels``).  Empty tuple = no channels (fresh
+        conda, no .condarc).
+      * any other invocation -> echo ``[stub-dispatch] $*`` and
+        ``[stub-env] PYTHONPATH=$PYTHONPATH MOLBUILDER_REPO_ROOT=...``
+        so tests can assert what got forwarded.
+    """
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    mamba = bin_dir / "mamba"
+    env_list_lines = ["# conda environments:", "#", "base    /root"]
+    if host_env_present:
+        env_list_lines.append("molbuilder    /root/molbuilder")
+    env_list_output = "\n".join(env_list_lines) + "\n"
+    config_lines = [f"--add channels '{ch}'" for ch in configured_channels]
+    config_output = ("\n".join(config_lines) + "\n") if config_lines else ""
+    mamba.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [[ "$1" == "env" && "$2" == "list" ]]; then\n'
+        f"  cat <<'EOF'\n{env_list_output}EOF\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$1" == "config" && "$2" == "--get" && "$3" == "channels" ]]; then\n'
+        f"  cat <<'EOF'\n{config_output}EOF\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$1" == "create" ]]; then\n'
+        '  echo "[stub-create] $*"\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "[stub-dispatch] $*"\n'
+        'echo "[stub-env] PYTHONPATH=${PYTHONPATH:-} '
+        'MOLBUILDER_REPO_ROOT=${MOLBUILDER_REPO_ROOT:-}"\n'
+        "exit 0\n"
+    )
+    mamba.chmod(0o755)
+    return mamba
+
+
+def _run_install_env_sh(args, *, tmp_path, host_env_present=True,
+                        cwd=None, configured_channels=(), extra_env=None):
+    """Run ``install-env.sh`` with a stubbed ``mamba`` on PATH."""
+    bin_dir = tmp_path / "bin"
+    _make_stub_mamba(bin_dir, host_env_present=host_env_present,
+                     configured_channels=configured_channels)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env.pop("MAMBA_EXE", None)
+    env.pop("CONDA_EXE", None)
+    env.pop("MOLBUILDER_HOST_ENV_CHANNELS", None)
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        ["bash", str(_INSTALL_ENV_SH), *args],
+        env=env, capture_output=True, text=True,
+        cwd=str(cwd) if cwd is not None else None,
+    )
+
+
+def test_shim_forwards_args_verbatim(tmp_path):
+    """The shim forwards ``$@`` 1:1 to ``molbuilder envs ...``.
+
+    Tests every subcommand shape: install with --rebuild=, with
+    --clean, with --check, with --dry-run, plus list/doctor.  All
+    flags must reach the Python layer; nothing dropped, nothing
+    rewritten."""
+    cases = [
+        (["install", "molbuilder-siesta", "--yes"],
+         "install molbuilder-siesta --yes"),
+        (["install", "molbuilder-siesta-gpu",
+          "--rebuild=siesta", "--yes", "--skip-network-check"],
+         "install molbuilder-siesta-gpu "
+         "--rebuild=siesta --yes --skip-network-check"),
+        (["install", "molbuilder-siesta-gpu", "--clean", "--yes"],
+         "install molbuilder-siesta-gpu --clean --yes"),
+        (["install", "molbuilder-siesta", "--check"],
+         "install molbuilder-siesta --check"),
+        (["install", "molbuilder-siesta", "--dry-run"],
+         "install molbuilder-siesta --dry-run"),
+        (["list"], "list"),
+        (["doctor"], "doctor"),
+    ]
+    for args, expected_tail in cases:
+        r = _run_install_env_sh(args, tmp_path=tmp_path)
+        assert r.returncode == 0, f"args={args}: {r.stderr}"
+        assert f"python -m molbuilder envs {expected_tail}" in r.stdout, (
+            f"args={args}: shim must forward verbatim; got stdout:\n"
+            f"{r.stdout}")
+
+
+def test_shim_runnable_from_any_cwd(tmp_path):
+    """``python -m molbuilder`` requires the package on PYTHONPATH
+    (molbuilder is not pip-installed).  The shim must set PYTHONPATH
+    to the repo root regardless of the caller's CWD -- otherwise a
+    fresh-machine deployment (``cd ~ && bash repo/scripts/install-env.sh
+    ...``) fails with ModuleNotFoundError on the very first dispatch."""
+    # Run from tmp_path -- NOT the repo root.
+    r = _run_install_env_sh(
+        ["list"], tmp_path=tmp_path, cwd=tmp_path,
+    )
+    assert r.returncode == 0, r.stderr
+    assert f"PYTHONPATH={_REPO_ROOT}" in r.stdout, (
+        f"shim must set PYTHONPATH={_REPO_ROOT} so molbuilder is "
+        f"importable from any CWD; got stdout:\n{r.stdout}")
+    assert f"MOLBUILDER_REPO_ROOT={_REPO_ROOT}" in r.stdout
+
+
+def test_no_args_suggests_bootstrap(tmp_path):
+    """A first-time user running ``bash install-env.sh`` with no
+    args should see a 'first-time? type this' hint that names the
+    bootstrap command, then the full usage.  Exit code is 2 so
+    accidental empty invocations don't pass CI silently."""
+    r = _run_install_env_sh([], tmp_path=tmp_path)
+    assert r.returncode == 2
+    assert "bootstrap --yes" in r.stderr
+    assert "First-time install" in r.stderr
+
+
+def test_non_bootstrap_without_host_env_points_at_bootstrap(tmp_path):
+    """If the host env doesn't exist and the user runs a non-bootstrap
+    subcommand, the shim should NOT silently auto-create -- it should
+    error and point at the bootstrap command.  Auto-create only happens
+    in the bootstrap path (deliberate state-machine constraint)."""
+    r = _run_install_env_sh(
+        ["install", "molbuilder-siesta"],
+        tmp_path=tmp_path, host_env_present=False,
+    )
+    assert r.returncode == 2
+    assert "host env 'molbuilder' does not exist" in r.stderr
+    assert "bootstrap --yes" in r.stderr
+
+
+def test_bootstrap_auto_creates_host_env_when_missing(tmp_path):
+    """The one path that auto-creates the host env: bootstrap.
+    Without this the chicken-and-egg of 'install Python before
+    Python is available' has no resolution."""
+    r = _run_install_env_sh(
+        ["bootstrap", "--yes"],
+        tmp_path=tmp_path, host_env_present=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "creating host env 'molbuilder'" in r.stderr
+    assert "python -m molbuilder envs bootstrap --yes" in r.stdout
+
+
+# --------------------------------------------------------------------- #
+#  Respect ~/.condarc on bootstrap host-env create                       #
+# --------------------------------------------------------------------- #
+
+
+def test_bootstrap_respects_condarc_when_channels_configured(tmp_path):
+    """When the user has channels in .condarc (e.g. an HPC site with a
+    private mirror or strict channel_priority), the host-env create
+    must NOT prepend ``-c conda-forge`` -- that would override the
+    user's intent.  The script probes ``mamba config --get channels``
+    and, on any non-empty result, passes NO ``-c`` flag."""
+    r = _run_install_env_sh(
+        ["bootstrap", "--yes"],
+        tmp_path=tmp_path, host_env_present=False,
+        configured_channels=("site-internal", "conda-forge"),
+    )
+    assert r.returncode == 0, r.stderr
+    assert "respecting user's .condarc channels" in r.stderr
+    # The stub-create line shows the exact args passed to ``mamba
+    # create``.  Must NOT contain ``-c conda-forge`` (the script's
+    # fallback) when .condarc already lists channels.
+    create_lines = [ln for ln in r.stdout.splitlines()
+                    if ln.startswith("[stub-create]")]
+    assert create_lines, f"no create line; got:\n{r.stdout}"
+    assert "-c conda-forge" not in create_lines[0], (
+        f"script must not override .condarc; got:\n{create_lines[0]}")
+
+
+def test_bootstrap_falls_back_to_conda_forge_when_no_channels(tmp_path):
+    """When .condarc has no channels configured (fresh conda, default
+    ``defaults`` channel only), the script falls back to
+    ``-c conda-forge`` so the bootstrap can resolve the scientific
+    stack (numpy, ase, sisl, rdkit) that isn't in ``defaults``."""
+    r = _run_install_env_sh(
+        ["bootstrap", "--yes"],
+        tmp_path=tmp_path, host_env_present=False,
+        configured_channels=(),
+    )
+    assert r.returncode == 0, r.stderr
+    assert "no channels configured in .condarc" in r.stderr
+    create_lines = [ln for ln in r.stdout.splitlines()
+                    if ln.startswith("[stub-create]")]
+    assert create_lines, f"no create line; got:\n{r.stdout}"
+    assert "-c conda-forge" in create_lines[0]
+
+
+def test_bootstrap_honors_molbuilder_host_env_channels_override(tmp_path):
+    """Explicit override via env var beats both .condarc probing and
+    the conda-forge fallback.  Lets an admin pin the host-env
+    channels deterministically without modifying .condarc."""
+    r = _run_install_env_sh(
+        ["bootstrap", "--yes"],
+        tmp_path=tmp_path, host_env_present=False,
+        configured_channels=("conda-forge",),  # would otherwise skip -c
+        extra_env={"MOLBUILDER_HOST_ENV_CHANNELS":
+                   "site-mirror,conda-forge"},
+    )
+    assert r.returncode == 0, r.stderr
+    assert "channels from MOLBUILDER_HOST_ENV_CHANNELS" in r.stderr
+    create_lines = [ln for ln in r.stdout.splitlines()
+                    if ln.startswith("[stub-create]")]
+    assert create_lines, f"no create line; got:\n{r.stdout}"
+    assert "-c site-mirror" in create_lines[0]
+    assert "-c conda-forge" in create_lines[0]
+
+
+def test_unknown_subcommand_forwards_to_python(tmp_path):
+    """The shim has no allow-list of subcommands -- new Python
+    subcommands (e.g. an upcoming ``molbuilder envs purge``) become
+    reachable through the shim with zero bash-side changes.  This
+    locks the thin-shim invariant: bash has no recipe-shape
+    knowledge."""
+    r = _run_install_env_sh(
+        ["some-future-subcommand", "--with-flag"], tmp_path=tmp_path,
+    )
+    # The shim forwards to Python; whether Python rejects an unknown
+    # subcommand is Python's concern -- the shim's job is only to
+    # forward.  Stub returns 0 here so we can verify forwarding.
+    assert r.returncode == 0
+    assert "envs some-future-subcommand --with-flag" in r.stdout
+
+
+# --------------------------------------------------------------------- #
+#  Python-side: elsi → siesta alias for --rebuild on siesta-gpu          #
+# --------------------------------------------------------------------- #
+
+
+def test_rebuild_elsi_remaps_to_siesta_in_python():
+    """The elsi→siesta alias for ``--rebuild`` on the GPU recipe used
+    to live in the bash wrapper; it moved into ``_cli.cmd_install``
+    so the recipe-shape knowledge lives next to the recipe (single
+    source of truth).  This test pins the alias behavior."""
+    from click.testing import CliRunner
+    from molbuilder.envs import _cli
+    from molbuilder import diagnostics
+    # Provide a minimal Capabilities so cmd_install can run far enough
+    # to hit the rebuild validation block (before any subprocess work).
+    diagnostics.set_capabilities(diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None,
+        conda_envs=frozenset(),
+    ))
+    runner = CliRunner()
+    # --dry-run short-circuits before any real install; we only want
+    # to confirm the alias surfaces the "ELSI is a SIESTA submodule"
+    # note and doesn't error with "unknown choice".
+    result = runner.invoke(
+        _cli.envs_group,
+        ["install", "molbuilder-siesta-gpu",
+         "--rebuild=elsi", "--dry-run"],
+        catch_exceptions=False,
+    )
+    # The note is emitted to stderr; CliRunner mixes them by default
+    # unless mix_stderr=False.  Either output captures it.
+    assert ("ELSI is a SIESTA submodule" in result.output
+            or "ELSI is a SIESTA submodule" in (result.stderr_bytes or b"")
+                .decode()), (
+        f"expected the elsi→siesta alias note; got:\n{result.output}")
+    # Must NOT report "unknown choice" -- the alias must remap before
+    # the unknown-choice validator runs.
+    assert "unknown" not in result.output.lower(), result.output
