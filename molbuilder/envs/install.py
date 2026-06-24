@@ -98,7 +98,15 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
     # tar/cmake/make's temp files, and ccache's compilation cache
     # under the env prefix means a single ``conda env remove`` truly
     # cleans up after this install -- nothing dangles in $HOME.
+    # Wrapper diagnostics: echo every load-bearing detail to stderr
+    # BEFORE the exec.  We cannot debug what we cannot see -- a
+    # silent ``exec: --: invalid option`` failure with no other
+    # context (which is what the user just hit) wastes everyone's
+    # time.  Each line tagged ``[bypass]`` so it's filterable.
+    debug_cmd_repr = " ".join(cmd)
     wrapper = (
+        f'echo "[bypass] env_prefix={env_q}" >&2; '
+        f'echo "[bypass] cmd={shlex.quote(debug_cmd_repr)}" >&2; '
         f"export CONDA_PREFIX={env_q}; "
         f"export CONDA_DEFAULT_ENV={env_name}; "
         f'export PATH={env_q}/bin"${{PATH:+:$PATH}}"; '
@@ -107,10 +115,17 @@ def _bypass_conda_run(argv: Sequence[str], env_prefix: str
         f"export TMPDIR={env_q}/var/tmp; "
         f"export PIP_CACHE_DIR={env_q}/var/cache/pip; "
         f"if [ -d {activate_d} ]; then "
+        f'echo "[bypass] sourcing activate.d/*.sh in {activate_d}" >&2; '
         f'for _f in {activate_d}/*.sh; do '
-        f'[ -f "$_f" ] && . "$_f"; '
+        f'[ -f "$_f" ] || continue; '
+        f'echo "[bypass]   . $_f" >&2; '
+        f'. "$_f"; '
         f"done; "
+        f"else "
+        f'echo "[bypass] (no activate.d directory)" >&2; '
         f"fi; "
+        f'echo "[bypass] final PATH=$PATH" >&2; '
+        f'echo "[bypass] exec: {shlex.quote(debug_cmd_repr)}" >&2; '
         f"exec {cmd_q}"
     )
     # ``bash -c`` (no -l): we don't want the user's login files
