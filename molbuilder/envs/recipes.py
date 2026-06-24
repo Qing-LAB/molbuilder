@@ -1078,6 +1078,23 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         "-DSIESTA_WITH_LIBXC=ON",
         "-DSIESTA_WITH_NETCDF=ON",
         "-DSIESTA_WITH_OPENMP=ON",
+        # Disable flook (SIESTA's runtime Lua-scripting bridge).
+        # 2026-06-24 user-confirmed build failure on HPC node:
+        # External/Lua-Engine/flook has a make-dependency race --
+        # ``aotus/LuaFortran/wrap_lua_dump.c`` does ``#include
+        # "lua.h"`` before the bundled lua-5.3.5 (which flook's
+        # Makefile builds via a separate target) has been
+        # configured + copied + built.  Under ``ninja -j8`` the C
+        # compile races ahead of the lua build and dies on missing
+        # lua.h.  Upstream flook + aotus makefile bug, not fixable
+        # in our recipe without patching flook's source tree.
+        # flook is an OPTIONAL Lua-scripting hook for SIESTA -- it
+        # lets users embed Lua callbacks for custom MD/relaxation
+        # control; core DFT, TranSIESTA, and TBtrans don't need it.
+        # Turning it off is the pragmatic fix that unblocks every
+        # workflow molbuilder generates today.  Re-enable when the
+        # user wants Lua scripting AND upstream fixes the makefile.
+        "-DSIESTA_WITH_FLOOK=OFF",
     ),
     build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
     install_argv=("cmake", "--install", "{build}"),
