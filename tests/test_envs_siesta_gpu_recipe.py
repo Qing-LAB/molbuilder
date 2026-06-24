@@ -483,3 +483,73 @@ def test_siesta_rpath_finds_elpa_and_env_lib(recipe):
     assert "$ORIGIN/../../../../lib" in flags
     # No ELSI lib dir -- ELSI is built into the siesta binary itself.
     assert "elsi/lib" not in flags
+
+
+# --------------------------------------------------------------------- #
+#  Argv-template gate -- catches the class of bug shipped in f46a9a3:    #
+#                                                                        #
+#  Recipe build_argv / configure_argv / install_argv strings get run     #
+#  through ``str.format_map`` to substitute ``{build}`` / ``{install}``  #
+#  / ``{jobs}`` etc.  When the bash payload uses literal ``{`` / ``}``   #
+#  (e.g. ``{ echo X; cmd; }`` for command grouping) those collide with   #
+#  the substitution and either render incorrectly OR raise               #
+#  ``KeyError: 'echo X; cmd; '`` / ``ValueError: missing { in field      #
+#  name`` AT RUNTIME -- only when the actual install runs, after the     #
+#  user has waited for ELPA to build.                                    #
+#                                                                        #
+#  These tests render every BuildComponent's argv with stub              #
+#  substitutions and assert:                                             #
+#    (1) the template applies cleanly (no KeyError / ValueError)         #
+#    (2) for ``sh -c`` / ``bash -c`` arms, ``bash -n`` accepts the       #
+#        resulting script (catches shell syntax errors at test time)    #
+# --------------------------------------------------------------------- #
+import subprocess as _subprocess
+from molbuilder.envs.builds import _apply_template as _apply_template_fn
+
+_STUB_TEMPLATE_SUBS = {
+    "src": "/stub/src",
+    "build": "/stub/build",
+    "install": "/stub/install",
+    "env_prefix": "/stub/env",
+    "jobs": "8",
+    "dep_elpa": "/stub/elpa",
+    "cuda_cc_numeric": "80",
+    "cuda_cc_sm": "sm_80",
+}
+
+
+@pytest.mark.parametrize("phase", ["clone", "configure", "build", "install"])
+def test_every_component_argv_renders_through_template(recipe, phase):
+    """Render each phase's argv through _apply_template with stub
+    subs.  If a literal ``{`` from bash command-group syntax leaked
+    in, format_map fails here -- catches the class of bug that
+    f46a9a3 fixed in production AFTER the user hit it during a real
+    install.
+
+    Skips when the phase has no argv (e.g. clone phase for git-based
+    components -- handled by builds.py with a default git clone).
+    """
+    spec = recipe.build_spec
+    assert spec is not None
+    for comp in spec.components:
+        argv_attr = f"{phase}_argv"
+        argv = getattr(comp, argv_attr, None)
+        if not argv:
+            continue
+        rendered = _apply_template_fn(argv, _STUB_TEMPLATE_SUBS)
+        assert isinstance(rendered, tuple)
+        assert len(rendered) == len(argv)
+        # If we got here without KeyError / ValueError, the template
+        # applied cleanly.  Now check the resulting shell payload
+        # parses if argv[0] is ``sh`` or ``bash``.
+        if argv[0] in ("sh", "bash") and len(rendered) >= 3 and argv[1] == "-c":
+            payload = rendered[2]
+            r = _subprocess.run(
+                ["bash", "-n", "/dev/stdin"], input=payload,
+                capture_output=True, text=True,
+            )
+            assert r.returncode == 0, (
+                f"{comp.name}.{phase}_argv: bash -n rejected "
+                f"the rendered payload:\n{r.stderr}\n"
+                f"payload was:\n{payload}"
+            )
