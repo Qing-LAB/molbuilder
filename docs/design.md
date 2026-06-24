@@ -78,15 +78,28 @@ subsystem-specific decisions land in the subsystem doc.
 | [`selection.md`](protocols/selection.md) | Python selection rule grammar (`by_element`, `by_index_range`, …) |
 | [`sidecar-contract.md`](protocols/sidecar-contract.md) | Three-stage UI → config → script contract for sidecar-driven boundary conditions |
 | [`script-contract.md`](protocols/script-contract.md) | Generated-script in-body block contract: HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM |
+| [`script-execution.md`](protocols/script-execution.md) | Runwrap + warm-restart + cold-restart inventories per engine; ``--cold`` glob coverage rule (must ship with every warm-restart hook) |
 | [`bundle-contract.md`](protocols/bundle-contract.md) | Workflow-handoff RunBundle: fuses final structure + labels + user-custom from a finished run into a portable `.xyz` + `.molstruct.json` pair for the next stage |
 | [`scientific-validation.md`](protocols/scientific-validation.md) | Runtime machinery for scientific validation: `ChemistryAnalysis` analyzer + per-engine `EngineParameterAdapter` registry + validation-pass call graph + Pattern-B handling.  Implements the principles in [`science.md`](science.md). |
-| [`workspace-state.md`](protocols/workspace-state.md) | Unified workspace contract — single client-side dispatcher + single server-side `WorkspacePayload`.  Supersedes the current four parallel client stores + four parallel server response shapes for "the workspace structure".  **Design proposal as of 2026-06-07**; migration plan in § 6 of that doc. |
+| [`web-ui-coherence.md`](protocols/web-ui-coherence.md) | Cross-surface coherence rules (analyzer / chip / validator / palette must agree); five-rule contract per the 2026-06-13 audit |
+| [`chemistry-correctness.md`](protocols/chemistry-correctness.md) | Open-shell-metals set + closed-shell cluster carve-outs |
+| [`region-labels.md`](protocols/region-labels.md) | Region-label vocabulary used across sidebar + transport + sidecar |
+| [`workspace-contract.md`](protocols/workspace-contract.md) | Workspace-state contract (post-Phase-10).  Supersedes the older `workspace-state.md` design proposal; `ws.*` public API + sole-source-of-truth doc. |
+| [`workspace-state.md`](protocols/workspace-state.md) | Earlier workspace design proposal (2026-06-07); superseded by `workspace-contract.md` after Phase 10 shipped. |
 | [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
+| [`results-state-contract.md`](protocols/results-state-contract.md) | Results-tab state machine, refresh policy, monitor-panel layout invariant, per-inspector mapping; PR-by-PR migration plan in § 10. |
+| [`job-decoder.md`](protocols/job-decoder.md) | Directory-level job decoder (`JobDirParser`) — composes parse-module + script_emit into a single `decoded.json` per run dir.  v1 SIESTA-optimization; spectrum + transport extensions follow. |
+| [`parse-module.md`](protocols/parse-module.md) | Unified parse stack at `molbuilder/parse/` — ABCs, registry, dispatch, A-H migration plan (all phases shipped 2026-06-20 → 21).  Sole read-side source of truth; supersedes `types/parsers.md`. |
 | [`runtime-registry.md`](protocols/runtime-registry.md) | `molbuilder-runtime.js` register/whenReady contract |
 | [`inspector-registry.md`](protocols/inspector-registry.md) | Inspector `mount(host, file, ctx) → {dispose}` contract |
 | [`embedded-viewer.md`](protocols/embedded-viewer.md) | Standard embeddable 3D viewer — `viewer.embed(host, opts) → handle` contract |
-| [`playwright-tests.md`](protocols/playwright-tests.md) | Test design patterns + anti-patterns |
+| [`save-flow.md`](protocols/save-flow.md) | Save dialog state machine + sidecar pairing rules |
+| [`mobile-layout.md`](protocols/mobile-layout.md) | Responsive-grid pattern (the `minmax(min(<N>px, 100%), 1fr)` floor); narrow-viewport overflow rules |
+| [`code-audit.md`](protocols/code-audit.md) | Audit playbook (multi-agent fan-out, common traps, doc-claim verification) |
+| [`rate-limit.md`](protocols/rate-limit.md) | Auth-side rate-limit shape for built-in OAuth backends |
 | [`job-layout.md`](protocols/job-layout.md) | On-disk basename + `*-runN.out` convention |
+| [`test-strategy.md`](protocols/test-strategy.md) | 5-layer test pyramid (L1 unit / L2 module / L3 interface / L4 integration / L5 e2e) + marker convention |
+| [`playwright-tests.md`](protocols/playwright-tests.md) | Test design patterns + anti-patterns |
 | [`cli.md`](protocols/cli.md) | click-based CLI conventions |
 
 `/api/watch/*` endpoints are documented in
@@ -106,7 +119,14 @@ archived).
 
 ### Engines (`docs/engines/`)
 
-[`siesta.md`](engines/siesta.md) · [`pyscf.md`](engines/pyscf.md) · [`builders.md`](engines/builders.md)
+[`siesta.md`](engines/siesta.md) ·
+[`pyscf.md`](engines/pyscf.md) ·
+[`transport.md`](engines/transport.md) ·
+[`optimization-tuning.md`](engines/optimization-tuning.md)
+(cross-engine tier framework + design considerations) ·
+[`siesta-gpu.md`](engines/siesta-gpu.md)
+(GPU SIESTA source-build recipe) ·
+[`builders.md`](engines/builders.md)
 
 ### Types — L1 data contracts (`docs/types/`)
 
@@ -158,22 +178,39 @@ principles live here in `design.md` with backlinks.
 of imports and responsibility; the types describe the data that flows
 between layers.
 
+```mermaid
+flowchart TB
+    subgraph L3["L3 — Surfaces"]
+        L3a["cli.py (Click)"]
+        L3b["web/app.py (Flask + Blueprints)"]
+        L3note["Convert UI gestures → L2 calls.<br/>No business logic."]
+    end
+    subgraph L2["L2 — Domain verbs"]
+        L2a["builders/"]
+        L2b["siesta/ , pyscf/ , spectra/ , transport/"]
+        L2c["parse/ (engines / coords / sidecars / scripts / dirs)"]
+        L2d["validation/ (geometry / chemistry / siesta / pyscf / ...)"]
+        L2note["Each verb is a focused module<br/>operating on L1 types."]
+    end
+    subgraph L1["L1 — Core types (nouns)"]
+        L1a["structure.py , frame.py"]
+        L1b["config/ (siesta.py , pyscf.py , transport.py , spectra.py)"]
+        L1c["issues.py , chemistry , residues , trajectory_log/"]
+        L1note["Pure data + serialization.<br/>Field metadata lives here."]
+    end
+    L3 --> L2
+    L2 --> L1
 ```
-┌──────────────────────────────────────────────────────────┐
-│  L3 — Surfaces                                            │
-│  cli.py (click), web/app.py (Flask + Blueprints)          │
-│  Convert UI gestures → L2 calls.  No business logic.      │
-├──────────────────────────────────────────────────────────┤
-│  L2 — Domain verbs                                        │
-│  builders/, generators/, parsers/, validation.py          │
-│  Each verb is a focused module operating on L1 types.     │
-├──────────────────────────────────────────────────────────┤
-│  L1 — Core types (nouns)                                  │
-│  structure.py, frame.py, config/, issues.py               │
-│  + chemistry, residues, trajectory_log/                   │
-│  Pure data + minimal serialization.  Field metadata here. │
-└──────────────────────────────────────────────────────────┘
-```
+
+The L2 dirs above are the engine-emitter modules (`siesta/`,
+`pyscf/`, `spectra/`, `transport/`) plus the unified parse stack
+(`parse/`, sole read-side source of truth since the 2026-06-20→21
+parse-module Phase H landed) and the seven-module validation
+package (`validation/`).  The earlier flat names `generators/`,
+`parsers/`, `validation.py` no longer exist on disk — what shipped
+absorbed them into the engine dirs + the `parse/`/`validation/`
+packages.  See [`package-layout.md`](package-layout.md) for the
+full file-level map.
 
 **Layering rule (load-bearing):** higher layers may import any lower
 layer; lower layers must never import higher ones. L1 modules cannot
