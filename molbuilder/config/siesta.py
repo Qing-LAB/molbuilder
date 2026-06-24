@@ -1089,6 +1089,17 @@ Config = SiestaConfig
 # workflow per the optimization-tuning.md sect. 2.1 algorithm comparison
 # table: CG only for stage 1 (no memory / robust far from minimum),
 # Broyden for any production-tier work (quasi-Newton + best near minimum).
+#
+# RELATIONSHIP TO #542 (SIESTA staged-opt full data model):
+# This overlay is the minimum-viable precursor.  When ``SiestaStageSpec``
+# lands as the parallel to PySCFConfig.stages, it should inherit these
+# same per-stage tier values as its defaults.  The CLI overlay below
+# REMAINS USEFUL after #542 as a one-flag fast path for users who want
+# a single-stage fdf (the common case for hand-edited stage1/stage2/
+# stage3 fdfs from one command, as opposed to the per-stage ladder
+# emitted by #542's full multi-stage script).  Do NOT delete the
+# overlay during the #542 refactor; instead use these values as the
+# SiestaStageSpec defaults so the two paths stay aligned.
 SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
     1: {
         "relax_type":      "CG",
@@ -1128,6 +1139,15 @@ def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
     first then their per-knob override last.  The CLI handler at
     ``cli.py::cmd_siesta`` enforces this ordering by applying the
     stage overlay AFTER constructing the cfg from ``--relax-*`` flags.
+
+    Note: this function overlays the FOUR fields above only.  The CLI
+    handler at ``cli.py::cmd_siesta`` ALSO sets ``cfg.stage`` (the
+    molwatch-log filename suffix marker) when the user passes
+    ``--stage N`` -- so the user-facing semantics of the flag are
+    "overlay tier knobs AND mark the stage in the filename".  Calling
+    this helper directly from Python gives only the four-field
+    overlay; set ``cfg.stage`` separately if you want the filename
+    behavior too.
 
     Raises ``ValueError`` for stages outside {1, 2, 3}.
     """

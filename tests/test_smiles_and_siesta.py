@@ -1020,11 +1020,101 @@ class TestSiestaStageOverlay:
         with _p.raises(ValueError, match="unknown SIESTA stage"):
             apply_siesta_stage(SiestaConfig(), 99)
 
+    def test_siesta_stage_presets_match_optim_tuning_doc(self):
+        """The SIESTA tier values are duplicated across three surfaces:
+
+          (1) ``SIESTA_STAGE_PRESETS`` in molbuilder/config/siesta.py
+          (2) The numeric assertions in the per-stage tests above
+          (3) The doc table in docs/engines/optimization-tuning.md
+              sect. 2.3 ("Per-tier" rows for MD.MaxForceTol + the
+              displacement-cap subsection)
+
+        PySCF has a parity test that catches drift between (1) and
+        the wire fixture; SIESTA had no equivalent.  This test adds
+        the missing gate: assert the constant values in (1) match
+        the numeric claims in the doc (3).
+
+        The reference values come straight from
+        ``docs/engines/optimization-tuning.md`` sect. 2.3.1 (system-
+        type-aware tier framework):
+
+          - publishable: 0.04 eV/A force, 0.05 A displacement
+          - tight (crystal/surface): 0.01 eV/A, 0.02 A
+            (VASP EDIFFG=-0.01 standard; Au(111) production
+            convention).
+
+        Stage 1 (loose preopt) uses 0.05 eV/A + 0.20 A which is the
+        SIESTA-default-MaxForceTol class anchored at sect. 2.3 row 2
+        (loose preopt).
+
+        A change to these values in either surface that is NOT
+        applied to the other fails this test.  Per the doc-as-sole-
+        source-of-truth rule (feedback_design_doc_first memory): if
+        a value mismatch surfaces here, FIRST decide which is right
+        per design considerations, THEN update the failing surface.
+        """
+        from molbuilder.config.siesta import SIESTA_STAGE_PRESETS
+
+        # Stage 1: CG warm-up (loose preopt tier).
+        s1 = SIESTA_STAGE_PRESETS[1]
+        assert s1["relax_type"]      == "CG", (
+            f"stage 1 must be CG per the recipe in doc 2.1; "
+            f"got {s1['relax_type']!r}")
+        assert s1["relax_force_tol"] == 0.05, (
+            f"stage 1 force_tol must be 0.05 eV/A (loose preopt tier "
+            f"per optim-tuning.md sect. 2.3); got {s1['relax_force_tol']}")
+        assert s1["relax_max_displ"] == 0.20, (
+            f"stage 1 max_displ must be 0.20 A (loose preopt per "
+            f"optim-tuning.md sect. 2.2); got {s1['relax_max_displ']}")
+
+        # Stage 2: Broyden publishable (Gaussian-OPT default).
+        s2 = SIESTA_STAGE_PRESETS[2]
+        assert s2["relax_type"]      == "Broyden", (
+            f"stage 2 must be Broyden per the recipe in doc 2.1; "
+            f"got {s2['relax_type']!r}")
+        assert s2["relax_force_tol"] == 0.04, (
+            f"stage 2 force_tol must be 0.04 eV/A (publishable per "
+            f"optim-tuning.md sect. 2.3; Gaussian-OPT default); "
+            f"got {s2['relax_force_tol']}")
+        assert s2["relax_max_displ"] == 0.05, (
+            f"stage 2 max_displ must be 0.05 A (publishable per "
+            f"optim-tuning.md sect. 2.2); got {s2['relax_max_displ']}")
+
+        # Stage 3: Broyden tight (crystal/surface production).
+        s3 = SIESTA_STAGE_PRESETS[3]
+        assert s3["relax_type"]      == "Broyden", (
+            f"stage 3 must be Broyden (do NOT switch back to CG); "
+            f"got {s3['relax_type']!r}")
+        assert s3["relax_force_tol"] == 0.01, (
+            f"stage 3 force_tol must be 0.01 eV/A (crystal/surface "
+            f"production per optim-tuning.md sect. 2.3.1; matches "
+            f"VASP EDIFFG=-0.01).  Pre-realignment was 0.001 eV/A "
+            f"which is GAU_TIGHT and chases SCF noise on 100+ atom "
+            f"metals.  Got {s3['relax_force_tol']}")
+        assert s3["relax_max_displ"] == 0.02, (
+            f"stage 3 max_displ must be 0.02 A (crystal-tight per "
+            f"optim-tuning.md sect. 2.2); got {s3['relax_max_displ']}")
+
     def test_cli_stage_flag_emits_broyden_for_stage_2_and_3(self, tmp_path):
-        """End-to-end: ``molbuilder fdf --stage 2`` and ``--stage 3``
-        both emit ``MD.TypeOfRun Broyden`` in the rendered .fdf.
-        Catches a regression where the CLI overlay drops the
-        relax_type field while preserving the tolerances."""
+        """End-to-end: ``molbuilder fdf --stage N`` does THREE things
+        in one flag (per the contract documented at
+        ``cmd_siesta`` in cli.py):
+
+          (a) Overlays the per-stage tier values via
+              ``apply_siesta_stage`` -- ``MD.TypeOfRun``, force tol,
+              max displ, max steps.
+          (b) Sets ``cfg.stage = N`` so the molwatch-log filename
+              gets the ``-stageN`` suffix.
+          (c) Emits the ``# Stage N of a staged relaxation`` header
+              comment.
+
+        The test gates ALL THREE.  A regression that only honors (a)
+        (e.g. drops the ``_dc.replace(cfg, stage=int(stage))`` line at
+        cli.py around line 510) silently loses the filename suffix
+        and the header comment -- without breaking the algorithm
+        choice -- and is exactly the failure mode this test exists
+        to catch.
+        """
         from click.testing import CliRunner
         from molbuilder.cli import cli
         xyz = tmp_path / "h2.xyz"
@@ -1038,6 +1128,8 @@ class TestSiestaStageOverlay:
             )
             assert result.exit_code == 0, result.output
             text = out_fdf.read_text()
+
+            # (a) Algorithm choice: stage 1 -> CG, stage 2/3 -> Broyden.
             if stage == "1":
                 assert "MD.TypeOfRun CG" in text, (
                     f"Stage 1 must emit CG; got:\n"
@@ -1046,3 +1138,23 @@ class TestSiestaStageOverlay:
                 assert "MD.TypeOfRun Broyden" in text, (
                     f"Stage {stage} must emit Broyden; got:\n"
                     f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")
+
+            # (b) cfg.stage was set: filename-suffix downstream (the
+            # generator embeds the suffix in molwatch-log naming +
+            # output XYZ paths).  Probe for the ``-stage{N}`` token
+            # appearing in any emitted path / comment.
+            assert f"-stage{stage}" in text, (
+                f"--stage {stage} must propagate cfg.stage = {stage} "
+                f"into the rendered fdf so the molwatch / output "
+                f"filenames carry the -stage{stage} suffix.  Missing "
+                f"in:\n"
+                f"{[ln for ln in text.splitlines() if 'stage' in ln.lower()][:5]}")
+
+            # (c) Stage header comment: catches a regression that
+            # drops the ``# Stage N of a staged relaxation`` line
+            # without losing the algorithm choice.
+            assert f"Stage {stage} of a staged relaxation" in text, (
+                f"--stage {stage} must emit the ``# Stage {stage} "
+                f"of a staged relaxation`` header comment.  Missing "
+                f"in:\n"
+                f"{[ln for ln in text.splitlines() if 'Stage' in ln][:5]}")

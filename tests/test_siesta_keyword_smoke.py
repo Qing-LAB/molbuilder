@@ -281,10 +281,17 @@ def test_savehs_value_lands_in_fdf_echo(tmp_path):
         f"{echo}"
     )
     # The user value (F) lands without the # default value annotation.
-    assert any(
-        "F" in line and "# default value" not in line
+    # Match SIESTA's fdf-echo column shape exactly: ``SaveHS  F``
+    # (the substring ``F in line`` would falsely match
+    # ``SaveHS .false.`` lowercase string echoes too -- pin the
+    # actual SIESTA T/F single-char column with a regex).
+    import re
+    saved_user_value = any(
+        re.match(r"^\s*SaveHS\s+F\b", line)
+        and "# default value" not in line
         for line in save_hs_lines
-    ), (
+    )
+    assert saved_user_value, (
         f"SaveHS in fdf-echo is the default value, not the user "
         f"override.  This means SIESTA did not pick up cfg.write_hs="
         f"False from the rendered fdf -- the WriteHS-style silent "

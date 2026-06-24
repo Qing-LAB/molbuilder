@@ -6,10 +6,18 @@ Usage:
     conda run -n molbuilder --no-capture-output \\
         python scripts/capture-readme-screenshots.py
 
-The script reads the manifest at ``docs/img/SCREENSHOTS.md``, drives
-Chromium via Playwright against a fresh ``molbuilder serve`` process,
-and writes the PNGs to ``docs/img/``.  Demo data is the BDT project
-under ``projects/``.  Re-runnable; PNGs are overwritten in place.
+The script drives Chromium via Playwright against a fresh
+``molbuilder serve`` process and writes the 10 PNGs to ``docs/img/``.
+Demo data is the BDT project under ``projects/``.  Re-runnable; PNGs
+are overwritten in place.
+
+The 10 filenames + intended routes are hardcoded in ``_capture_each``
+below.  ``docs/img/SCREENSHOTS.md`` carries the human-facing capture
+guide (URL, viewport, zoom region per shot) for manual re-shoots when
+Playwright is unavailable; that doc and this script are two
+independent paths to the same 10-PNG set.  Any time a route is added,
+renamed, or split, BOTH this script and ``SCREENSHOTS.md`` must be
+updated.
 
 The script obeys three load-bearing constraints documented in the
 molbuilder code; each is cited inline at the implementation site:
