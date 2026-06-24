@@ -106,29 +106,46 @@ def _require_siesta_binary():
 
 
 def _run_siesta_on_fdf(binary: Path, fdf_path: Path, *, work_dir: Path,
-                      timeout_s: float = 60.0) -> str:
-    """Run SIESTA against ``fdf_path`` and return the captured stdout.
+                      timeout_s: float = 60.0
+                      ) -> "subprocess.CompletedProcess":
+    """Run SIESTA against ``fdf_path`` and return the full
+    ``CompletedProcess`` so the caller can inspect ``returncode``
+    along with stdout.
 
     Runs in ``work_dir`` so SIESTA's per-run side files (`.BASIS`,
     `.bib`, MESSAGES, …) land in the temp dir, not in cwd.  No MPI
     -- single-process; the test only needs the redata banner, not
     parallel execution.
+
+    Audit fix 2026-06-24: previously this helper returned just
+    stdout, so a mid-init SIESTA crash (return code != 0) would
+    surface to the caller as a clean string with no banner.  The
+    caller's "redata banner X not in stdout" assertion would then
+    fire a misleading "phantom keyword regressed" message when the
+    actual cause was an environment-level crash.  Returning the
+    full CompletedProcess lets the caller distinguish.
     """
-    proc = subprocess.run(
+    return subprocess.run(
         [str(binary), str(fdf_path.name)],
         cwd=str(work_dir),
         capture_output=True, text=True, timeout=timeout_s,
     )
-    return proc.stdout
 
 
 def _minimal_h2_fdf(tmp_path: Path, relax_type: str,
-                     n_steps: int = 1) -> Path:
+                     n_steps: int = 1,
+                     write_hs: bool = True) -> Path:
     """Render a minimal H2 .fdf for the given relax type.
 
     Uses molbuilder's actual generator so the test exercises the
     same emission code path as production.  Returns the path to the
     rendered .fdf.
+
+    ``write_hs`` lets the caller force the generator's
+    ``SaveHS .true./.false.`` emission so the SaveHS-recognition
+    test can pin that the GENERATOR emits the override -- not
+    that the test happens to have appended it.  Default True
+    matches SiestaConfig's default.
     """
     from molbuilder.siesta import SiestaConfig, render_fdf
     from molbuilder.structure import Structure
@@ -152,6 +169,8 @@ def _minimal_h2_fdf(tmp_path: Path, relax_type: str,
         dm_tolerance=1e-2,
         # No psml_lib lookup -- H.psml lives in cwd next to the fdf.
         psml_lib=None,
+        # SaveHS override controlled by caller.
+        write_hs=write_hs,
         # Skip auth probes
         system_label="probe",
         # Single-atom cell big enough for a stand-alone H2 molecule.
@@ -195,7 +214,29 @@ def test_relax_type_lands_in_redata_dynamics_option(relax_type, tmp_path):
     """
     binary = _require_siesta_binary()
     fdf_path = _minimal_h2_fdf(tmp_path, relax_type)
-    stdout = _run_siesta_on_fdf(binary, fdf_path, work_dir=tmp_path)
+    proc = _run_siesta_on_fdf(binary, fdf_path, work_dir=tmp_path)
+    stdout = proc.stdout
+
+    # Pre-condition: SIESTA actually ran far enough to print the
+    # redata block.  A non-zero return code BEFORE the redata point
+    # would falsely fail the "phantom keyword regressed" assertion
+    # with a misleading message -- distinguish the crash case
+    # explicitly.  Heuristic: redata always prints its first line
+    # ("redata: " appears in stdout) shortly after input parse +
+    # before any heavy compute, so requiring it BEFORE the dynamics
+    # assertion correctly classifies env crashes vs keyword
+    # regressions.
+    if "redata:" not in stdout:
+        pytest.fail(
+            f"SIESTA did not print the redata banner -- the run "
+            f"crashed before reaching the input-echo step.  "
+            f"return code = {proc.returncode}.  This is an "
+            f"environment-level failure, NOT the 2026-06-23 "
+            f"silent-failure class.  Inspect:\n"
+            f"--- stderr ---\n{proc.stderr}\n"
+            f"--- last stdout lines ---\n"
+            + "\n".join(stdout.splitlines()[-15:])
+        )
 
     expected = _DYNAMICS_BANNER[relax_type]
     expected_line = f"redata: Dynamics option                             = {expected}"
@@ -244,15 +285,29 @@ def test_savehs_value_lands_in_fdf_echo(tmp_path):
     """
     binary = _require_siesta_binary()
 
-    # Build a config with write_hs=False -- the case that broke pre-fix.
-    fdf_path = _minimal_h2_fdf(tmp_path, "CG")
-    # Append SaveHS .false. explicitly (the generator should also emit
-    # this, but the test pins SIESTA's behavior, not just the renderer).
+    # Build a config with write_hs=False (the case that broke pre-fix)
+    # so the GENERATOR is forced to emit ``SaveHS .false.`` -- not the
+    # test.  Audit fix 2026-06-24: previously this test appended
+    # ``SaveHS .false.`` itself when missing from the rendered fdf,
+    # which would make the test pass for the wrong reason if the
+    # generator regressed to ``WriteHS`` (the test would notice
+    # SaveHS missing, append it, and SIESTA would see the appended
+    # line).  Now: if the generator regresses, ``SaveHS`` is absent
+    # from the rendered fdf, the fdf-echo shows it as ``# default
+    # value``, and the assertion at the bottom of this test fails
+    # cleanly.
+    fdf_path = _minimal_h2_fdf(tmp_path, "CG", write_hs=False)
     text = fdf_path.read_text()
-    # Sanity: the generator should already emit SaveHS .false.; if it
-    # does, the test still passes (idempotent).
-    if "SaveHS" not in text:
-        fdf_path.write_text(text + "\nSaveHS             .false.\n")
+    assert "SaveHS             .false." in text, (
+        f"Generator must emit ``SaveHS .false.`` for cfg.write_hs="
+        f"False, but the rendered fdf does not contain it.  This is "
+        f"the 2026-06-23 WriteHS->SaveHS regression returning.  "
+        f"Snippet of rendered fdf:\n"
+        + "\n".join(
+            ln for ln in text.splitlines()
+            if "Save" in ln or "Write" in ln
+        )
+    )
 
     _run_siesta_on_fdf(binary, fdf_path, work_dir=tmp_path)
 
