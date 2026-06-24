@@ -537,6 +537,46 @@ Machine-consumable subcommands emit JSON / NDJSON on stdout. Human
 subcommands emit text. Status / progress / warnings always go to
 stderr so they don't pollute the pipe.
 
+#### 2a. The `scripts/` directory follows the same discipline
+
+Every file under `scripts/` is named after a single concrete user
+action.  These are the rules each script must obey; they keep
+discoverability honest and stop the "the script's name says X but
+it actually needs Y, Z, and a manual conda block first" failure
+mode (see decisions-log 2026-06-24 for the bootstrap UX bug that
+forced this principle into a written rule):
+
+1. **Name = job.**  A script called `install-env.sh --bootstrap`
+   installs envs and bootstraps them.  A script called
+   `siesta-gpu-bootstrap.sh` bootstraps GPU SIESTA.  No script
+   takes a name that promises one thing and then errors out
+   demanding the user do the bootstrap step manually first.
+2. **End-to-end from base system.**  Each script (or its primary
+   `--bootstrap` flag) must run from a fresh machine with only
+   the system-level prerequisite (conda / mamba / micromamba +
+   the repo clone) and produce the promised result.  Anything
+   the script needs that the base system doesn't have, the
+   script creates.
+3. **No script is a prerequisite to another.**  If two scripts
+   would have to be run in sequence on a fresh machine, fold the
+   first into the second (or route through the unified bootstrap).
+   The user should never read a script's `--help` and discover a
+   "run X first" line.
+4. **Error messages point at the right next step, not at a doc.**
+   If a script can't do its job, the message says what command
+   to run.  If the right next step is `--bootstrap`, say so;
+   don't tell the user to open the README and copy a conda block.
+5. **Inventoried in the README.**  Every script appears in the
+   README's "Scripts inventory" table with the column "Use when"
+   so the user picks by intent, not by guess.
+
+A user-visible side effect (e.g. installing a 5-GB env) belongs
+under a script whose name + `--help` describe that effect plainly.
+A script whose name says "bootstrap" must bootstrap; if the user
+hits any error message that contains the word "bootstrap", that's
+a contradiction and the script needs to be rewritten, not its
+docstring tweaked.
+
 ### 3. The web UI is a portal, not a separate product
 
 The UI calls the same Python API the CLI calls.  It contains no logic

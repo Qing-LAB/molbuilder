@@ -107,4 +107,14 @@ See docs/engines/siesta-gpu.md for the engineering reference.
 EOF
 echo
 
-exec bash "${SCRIPT_DIR}/install-env.sh" "$@" molbuilder-siesta-gpu
+# 2026-06-24: route through the unified ``--bootstrap`` path with
+# ``--include-source-builds`` so a fresh machine works in one
+# command (no chicken-and-egg with the host env).  Pre-fix this
+# script execed ``install-env.sh ... molbuilder-siesta-gpu`` which
+# went through the per-recipe path -- that path errors out if the
+# host env doesn't exist (since it needs the host env to dispatch
+# the Python install).  --bootstrap path auto-creates the host
+# env, then installs every conda-only recipe (idempotent: skips
+# already-present envs), then installs GPU SIESTA from source.
+exec bash "${SCRIPT_DIR}/install-env.sh" --bootstrap \
+    --include-source-builds "$@"

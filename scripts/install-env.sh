@@ -1,28 +1,56 @@
 #!/usr/bin/env bash
 #
-# scripts/install-env.sh -- thin wrapper around `molbuilder envs install`.
+# scripts/install-env.sh -- entry point for env install + bootstrap.
 #
-# Why this exists: a user setting up molbuilder on a fresh machine does
-# NOT yet have the host env created; the bootstrap step ("create the
-# host env from the README's conda block") is the first thing they need
-# to do.  Once the host env exists, every other env is installed by
-# delegating to `molbuilder envs install`.  This script automates that
-# delegation so users have a single entry point:
+# What this script does in one command:
+#
+#     bash scripts/install-env.sh --bootstrap --yes
+#
+# On a truly fresh machine -- where only conda / mamba / micromamba
+# is installed and nothing else -- this command:
+#
+#   1. Auto-detects the env manager (mamba > micromamba > conda).
+#   2. Creates the molbuilder host env (the `molbuilder` env) if
+#      missing.  The host-env package list is inlined below as
+#      HOST_CONDA_PACKAGES + HOST_PIP_PACKAGES; a drift-guard test
+#      (tests/test_envs_readme_consistency.py) asserts the bash
+#      lists match the Python recipe at molbuilder/envs/recipes.py.
+#   3. Dispatches into the host env to install every conda-only
+#      backend recipe (molbuilder-siesta, molbuilder-pySCF,
+#      molbuilder-MDtools, molbuilder-tests).
+#   4. Runs `molbuilder envs doctor` for a smoke check.
+#
+# The bootstrap is the ONE path users on a fresh machine should
+# take.  It is idempotent: re-running skips envs already present.
+# Source-build envs (GPU SIESTA) stay opt-in via
+# --include-source-builds because they take ~30-45 min.
+#
+# Per-recipe entry points for users who already have the host env:
 #
 #     bash scripts/install-env.sh <recipe-name>
 #     bash scripts/install-env.sh --list
+#     bash scripts/install-env.sh --doctor
 #     bash scripts/install-env.sh --check <recipe-name>
+#     bash scripts/install-env.sh --dry-run <recipe-name>
+#     bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
+#     bash scripts/install-env.sh --clean <recipe-name>
 #
-# What the script does NOT do:
-#   - Install conda itself (out of scope; conda is a hard precondition).
-#   - Install OS-level CUDA / NVIDIA drivers (system layer; see the
-#     2026-06-14 design discussion).
-#   - Pick env names; recipe names are the canonical names from
-#     molbuilder/envs/recipes.py.  `molbuilder.json` overrides apply
-#     automatically inside the python layer.
+# These dispatch into the host env and call `python -m molbuilder
+# envs install <recipe>` per the Python install machinery.  If the
+# host env is missing they error with a pointer back to
+# --bootstrap (the right next step is to bootstrap, not to copy a
+# conda block out of the README).
 #
-# Exit codes mirror `molbuilder envs install` (0 = OK; 1 = step failed;
-# 2 = usage error / no conda).
+# Out of scope (explicit non-goals):
+#   - Installing conda itself.  conda / mamba / micromamba is the
+#     base-system prerequisite; the script reports a clear error
+#     if none is on PATH.
+#   - Installing OS-level CUDA / NVIDIA drivers (system layer).
+#   - Picking env names: recipe names are canonical from
+#     molbuilder/envs/recipes.py.  molbuilder.json overrides apply
+#     automatically.
+#
+# Exit codes: 0 = OK; 1 = step failed; 2 = usage error / no conda.
 set -euo pipefail
 
 HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"

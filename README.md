@@ -785,6 +785,23 @@ Reference: [`docs/protocols/script-contract.md`](docs/protocols/script-contract.
 documents the BENCH-MARKS block format and the bench's parameter
 semantics.
 
+### Scripts inventory
+
+Every shell + Python script under `scripts/` is named after a
+single concrete user action.  No script is required as a
+prerequisite to another; each one runs end-to-end from a base
+system + the repo clone.
+
+| Script | Use when | What it does |
+|---|---|---|
+| `install-env.sh --bootstrap --yes` | First-time install on a fresh machine. | Auto-detects conda/mamba/micromamba, creates the host env if missing, installs every conda-only backend recipe, runs `molbuilder envs doctor`. |
+| `install-env.sh --doctor` | Verifying env health. | Dispatches into the host env and runs the doctor smoke check across every recipe. |
+| `install-env.sh <recipe-name>` | Installing one specific env. | Per-recipe install via `molbuilder envs install`.  Requires the host env (run `--bootstrap` first if absent). |
+| `siesta-gpu-bootstrap.sh --yes` | First-time GPU SIESTA install. | Equivalent to `install-env.sh --bootstrap --include-source-builds --yes`.  Same one-command fresh-machine path; adds the source-built GPU SIESTA env on top. |
+| `siesta-gpu-rebuild.sh <component>` | Iterating on a GPU SIESTA component (ELPA / SIESTA / all). | Wipes per-component build dirs + sentinels and re-runs the build phase only.  Conda env preserved.  Requires an already-bootstrapped GPU SIESTA env. |
+| `bench-siesta-blocksize.sh <project-dir>` | Tuning SIESTA `BlockSize` on a real project. | Standalone bash; sweeps BlockSize values and reports wall-time per SCF iter.  Independent of the env stack — runs from any shell that has the project's `.run.sh` reachable. |
+| `capture-readme-screenshots.py` | Refreshing the 10 README screenshots after a UI change. | Spawns `molbuilder serve` in a temp dir (no auth, no TLS), drives Chromium via Playwright through every BDT-project demo route, writes PNGs to `docs/img/`.  Runs in the host env (Playwright is already there). |
+
 ### Optional: 3DNA for canonical helices
 
 The 3DNA `fiber` backend produces true B / A / Z DNA — the only
