@@ -316,7 +316,7 @@ def cmd_repair(name: str, include_optional: bool,
             "conda/mamba not found; cannot run repair.  See "
             "docs/README_install.md."
         )
-    effective = _effective_name(recipe, caps)
+    effective = _doctor._effective_name(recipe, caps)
     if not caps.env_available(effective):
         click.echo(
             f"env `{effective}` does not exist.  Install it first:",
