@@ -1,97 +1,83 @@
 # molbuilder
 
-> **An end-to-end toolkit for molecular-electronics simulations.**
-> Build a molecule, assemble it into a metal–molecule–metal
-> nanojunction, generate DFT/transport input for **SIESTA**,
-> **TranSIESTA**, or **PySCF**, and inspect the resulting
-> trajectories, spectra, and transmission curves — all from one
-> Flask app, all driven by one codebase.
+A workflow tool for molecular-electronics DFT calculations.  Build
+a molecule, assemble it into a metal–molecule–metal nanojunction,
+generate input for **SIESTA**, **TranSIESTA**, or **PySCF**, and
+inspect the resulting trajectories, spectra, and transmission curves
+from a single Flask application.
 
 ![Molbuilder home — projects sidebar on the left, 5-tab nav at the top (Molbuilder · Structure optimization · Spectrum calculation · Transport calculation · Results), Au–BDT–Au junction loaded in the 3Dmol viewer, foldable commands stack on the right](docs/img/hero-molbuilder.png)
 
-> *The same Au–BDT–Au junction shown above carries through every
-> example in this README: builder → optimisation → spectrum →
-> transport → results.*
+The same Au–BDT–Au junction shown above carries through every example
+in this README: builder → optimisation → spectrum → transport →
+results.
 
-> **Status:** active development, pre-1.0.  Used in production for
-> Au–thiol–Au transport studies in the Qing lab.  Raman pipeline
-> bit-for-bit validated against an independent reference
-> implementation; Au-BDT-Au transport cross-checked vs Reed 2006 /
-> Stokbro 2003 within factor-of-2.  MIT licensed.
-
----
-
-## Who is this for?
-
-You are doing molecular-electronics or single-molecule-DFT research,
-and you have at least one of these problems:
-
-| The problem | What molbuilder does about it |
-|---|---|
-| **"I need a Au–thiol–Au junction from a SMILES, by Tuesday."** | Build → orient → add slab → save, all in one tab, no file editing. |
-| **"My SIESTA `.fdf` is 200 lines of pasted boilerplate that nobody on the team understands."** | The Generate step emits a fresh `.fdf` with every parameter tooltipped + a methods-paragraph that reads as plain English. |
-| **"My optimisation has been running for 6 hours and I have no idea if it's converging."** | Open the run dir in the Results tab; trajectory + energy + force + SCF residual plots refresh every minute on file mtime. |
-| **"I want Raman spectra but writing the PySCF script + parsing the output is half a day each time."** | Configure a form, hit Generate, run the script, open `.spectra.json` in Results — modes table + per-mode 3-D animation. |
-| **"My group has 5 different installs of SIESTA / PySCF / AmberTools that all conflict."** | `python -m molbuilder envs install <name>` for each backend; isolated conda envs; one CLI manages them all. |
-| **"I want my collaborators to use this without me sitting next to them at a terminal."** | `molbuilder serve` on your workstation; built-in OAuth (Google / GitHub / Microsoft / ORCID / institutional CAS); they get the web UI in their browser. |
-
-If you also want the heavy machinery underneath (GPU SIESTA from
-source, schema-driven UI generation, sole-source-of-truth doc rule,
-end-to-end validation against external references) it's all there —
-see [§ Highlights](#highlights) — but you don't have to opt in.
+**Status.** Pre-1.0.  Active development.  Used by the Qing lab for
+Au–thiol–Au transport studies.  Raman pipeline bit-for-bit validated
+against an independent hand-written PySCF reference.  Au–BDT–Au
+transport validation against Reed 2006 / Stokbro 2003 is set up as
+a fixture (geometry, sidecar labels, `.fdf` emission, preflight, atom
+ordering) but the end-to-end T(E_F) numerical comparison is pending
+the full optimisation + electrode `.TSHS` step.  MIT licensed.
 
 ---
 
-## Highlights
+## Scope and capabilities
 
-- **Full nanojunction pipeline in one app** — peptide / DNA / RNA /
-  SMILES / PubChem compound builders → atom-level editor → orient
-  anchors → add crystallographic FCC slabs (Au / Ag / Cu / Ni / Pt /
-  Pd on 100 / 110 / 111) → transport-ready geometry → SIESTA `.fdf` /
-  TranSIESTA / PySCF.  Most tools do one step; molbuilder does all of
-  them.
-- **Five backends, isolated by design** — `molbuilder-siesta`
-  (CPU), `molbuilder-siesta-gpu` (source-built CUDA), `molbuilder-pySCF`
-  (CPU + optional GPU via gpu4pyscf), `molbuilder-MDtools` (AmberTools),
-  `molbuilder-tests` (Playwright).  Each env pins its own native stack;
-  no numpy 1.x vs 2.x or libnetcdf-version conflicts.  All managed
-  through one `molbuilder envs {list,doctor,install}` CLI.
-- **Optional GPU SIESTA, source-built** — ELPA (CUDA) + ELSI +
-  SIESTA 5.4.2 compiled from source against the env's pinned
-  toolchain.  Sentinel-resume build (re-running is safe), interactive
-  preflight (CUDA / GPU compute capability / disk / git
-  reachability), and three layers of build-env isolation from system
-  MPI / CUDA / compilers.
-- **Schema-driven UI + CLI** — every parameter on a SIESTA / PySCF /
-  Transport config is `@dataclass` field metadata.  Add a new
-  parameter to the dataclass and you get: a CLI flag, a web form
-  input with tooltip + validator, a methods-text mention, and form
-  schema introspection.  No parallel HTML / JS / fixture edits.
-- **Live inspection that refreshes on file mtime** — the Results
-  tab's trajectory inspector polls running calculations: new frames
-  stream into the 3Dmol viewer, new energy / force / SCF-residual
-  data lights up the Plotly charts.  Truncation-tolerant parser
-  handles half-written final blocks.
-- **Built-in OAuth without nginx** — Google / GitHub / Microsoft /
-  ORCID / Apereo CAS (e.g. ASURITE) for internet-exposed deployments.
-  Per-provider `allowed_users` lists.  Or put molbuilder behind your
-  existing reverse-proxy auth — both shapes documented.
-- **Project organization out of the box** — JupyterLab-style
-  sidebar at `projects/`, single-click preview, double-click commit,
-  atomic move / copy / rename that pairs structure files with their
-  `.molstruct.json` sidecars (per-atom labels never orphan).
-- **Validated science** — Raman pipeline (build → relax → Hessian →
-  finite-diff Raman) bit-for-bit identical to a hand-written
-  raw-PySCF reference at B3LYP/def2-SVP water.  Au-BDT-Au transport
-  T(E_F) within factor-of-2 of Reed 2006 / Stokbro 2003 (~0.01 G₀).
-- **Sole-source-of-truth documentation** — every UI feature has a
-  spec in [`docs/`](docs/); tests are derived from the spec, code
-  reviews verify code-matches-spec (not code-matches-itself).  No
-  doc-vs-code drift.
+molbuilder targets molecular-electronics and single-molecule DFT
+workflows.  Specific capabilities:
 
-> Generated structures are **starting points for a geometry
-> optimisation**, not equilibrium geometries.  Always relax in your
-> DFT code before computing properties.
+- **Structure assembly.** Peptide, DNA, RNA, SMILES, and PubChem
+  compound builders feed into an atom-level editor.  Crystallographic
+  FCC slabs (Au, Ag, Cu, Ni, Pt, Pd on the 100 / 110 / 111 surfaces)
+  are added with a single command to produce transport-ready
+  geometries.
+- **Input-file generation.** SIESTA `.fdf`, TranSIESTA, and PySCF
+  scripts are emitted from a schema-driven form.  Each generated file
+  carries inline parameter tooltips and a draft methods paragraph.
+- **Live inspection.** The Results tab parses running calculations
+  on file `mtime`, streaming new frames into the 3Dmol viewer and
+  new convergence data into Plotly charts.  The parser tolerates
+  half-written trailing blocks.
+- **Isolated backend environments.** Five conda envs
+  (`molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`,
+  `molbuilder-MDtools`, `molbuilder-tests`) pin their own native
+  stacks; one `molbuilder envs` CLI installs and manages them.
+- **Optional source-built GPU SIESTA.** ELPA (CUDA) + ELSI +
+  SIESTA 5.4.2 from source against the env's pinned toolchain, with
+  sentinel-based resume, interactive preflight, and build-env
+  isolation from system MPI / CUDA / compilers.
+- **Multi-user deployment.** Built-in OAuth (Google, GitHub,
+  Microsoft, ORCID, Apereo CAS such as ASURITE) with per-provider
+  `allowed_users` lists, or operation behind an existing reverse-
+  proxy auth gateway.
+- **Schema as the single source of truth.** Every config parameter
+  is `@dataclass` field metadata.  Adding a parameter to the
+  dataclass produces a CLI flag, a form input with tooltip and
+  validator, a methods-text mention, and form-schema introspection
+  without parallel HTML / JS / fixture edits.
+- **Documented contracts.** UI features have specs in [`docs/`](docs/);
+  tests are derived from the specs.
+
+> Generated structures are starting points for a geometry
+> optimisation, not equilibrium geometries.  Always relax in the
+> chosen DFT code before computing properties.
+
+### Validation summary
+
+- **Raman pipeline** (build → relax → Hessian → finite-difference
+  Raman) is bit-for-bit identical to a hand-written raw-PySCF
+  reference at B3LYP/def2-SVP for water.  Frequencies max Δ <
+  10⁻³ cm⁻¹; Raman activities max Δ < 10⁻⁶ Å⁴/amu.
+- **Au–BDT–Au transport.** Reference targets: Reed et al. 2006
+  (*J. Phys. Chem. B* **110**, 20671) — experimental
+  G(E_F) ≈ 0.01 G₀; Stokbro et al. 2003 (*Comp. Mat. Sci.* **27**,
+  151) — TranSIESTA G(E_F) ≈ 0.005–0.015 G₀.  Today's fixture pins
+  the `.fdf` emission, region labels, preflight, and atom-ordering
+  contract for an 18-atom test geometry.  The end-to-end T(E_F)
+  numerical cross-check is pending the full Au(111)-slab
+  optimisation + electrode `.TSHS` generation; tracked alongside
+  the planned electrode-`.TSHS` wizard.
 
 ---
 
@@ -130,11 +116,10 @@ auth), see [§ Deployment](#deployment) and
 
 ## Common tasks
 
-Concrete recipes that cover ~90 % of what users do day-to-day.
-Each is a same-screen workflow inside the web app; the keyboard
-arrow ↓ between steps is just a tab switch or a panel scroll.
+Each of the recipes below is a same-screen workflow in the web app.
+The downward arrows mark a tab switch or a panel scroll.
 
-### "I have a SMILES — give me an Au–S–molecule–S–Au junction"
+### Build an Au–S–molecule–S–Au junction from a SMILES
 
 ```
 Molbuilder tab → Sources panel
@@ -150,10 +135,10 @@ Save panel
    ↓ "Save to project"  →  BDT-Au.xyz  +  BDT-Au.molstruct.json
 ```
 
-You now have a transport-ready Au-BDT-Au geometry.  Total: ~2 min,
-zero file editing.
+The result is a transport-ready Au–BDT–Au geometry along with its
+`.molstruct.json` sidecar.
 
-### "Generate a SIESTA `.fdf` for this geometry"
+### Generate a SIESTA `.fdf` for this geometry
 
 ```
 Structure-optimization tab
@@ -162,11 +147,11 @@ Structure-optimization tab
    ↓ "Generate"  →  BDT-Au.fdf + BDT-Au.run.sh + .psml files
 ```
 
-The generated `.fdf` is annotated with tooltips-as-comments so it
-reads as a tutorial.  Drop the directory on your cluster, run
-`bash BDT-Au.run.sh`, done.
+The generated `.fdf` includes inline parameter comments.  The run
+wrapper handles MPI launch and warm-restart / cold-restart flags;
+copy the directory to a cluster and run `bash BDT-Au.run.sh`.
 
-### "Watch the optimization converge in real time"
+### Watch the optimization converge in real time
 
 ```
 Results tab
@@ -179,10 +164,10 @@ Inspector renders:
    ↓ auto-refreshes every ~1 min on file mtime change
 ```
 
-You see new frames stream in while the job is still running on the
-cluster.  No file copying, no offline plotting.
+Frames stream in while the job is still running on the cluster; no
+file copying or offline plotting is required.
 
-### "Run Raman on a small molecule"
+### Run Raman on a small molecule
 
 ```
 Molbuilder tab → Sources panel
@@ -203,7 +188,7 @@ Results tab
 The Raman pipeline is bit-for-bit validated against an independent
 hand-written reference (see § [Scientific validation](#scientific-validation)).
 
-### "Bias-scan a finished transport calc"
+### Bias-scan a finished transport calculation
 
 ```
 Transport-calculation tab
@@ -216,17 +201,20 @@ Results tab
    ↓ T(E) + I-V Plotly charts (planned; today shows the file metadata)
 ```
 
-The Au-BDT-Au transport pipeline is cross-checked against Reed 2006 /
-Stokbro 2003 to within factor-of-2 (~0.01 G₀).
+The Au–BDT–Au transport pipeline targets a T(E_F) comparison with
+Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
+(*Comp. Mat. Sci.* **27**, 151) at ~0.01 G₀.  The fixture pins
+`.fdf` emission + region labels + preflight; the numerical
+comparison is pending the slab optimisation + electrode `.TSHS`
+generation step.
 
 ---
 
 ## Feature tour
 
-molbuilder is a Flask app with **five canonical tabs** plus a
-persistent Projects sidebar.  Each tab has one role; tab switches
-happen only when the workflow phase changes (build → configure →
-review).  Routes match the visible tab labels exactly.
+The web app is organised as five tabs and a persistent Projects
+sidebar.  Each tab handles one phase of the workflow; URLs match
+the tab labels.
 
 ![The five-tab nav strip: Molbuilder · Structure optimization · Spectrum calculation · Transport calculation · Results](docs/img/tab-bar.png)
 
@@ -250,12 +238,11 @@ orphan:
 
 ![Molbuilder workspace — Au–BDT–Au junction in the 3Dmol viewer at centre, atom-list + selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right; one atom selected showing the orange halo synced to the atom list](docs/img/molbuilder-workspace.png)
 
-> *The Molbuilder tab is the only tab that holds in-memory canvas
-> state.  Every other tab reads from disk.  Foldable panels — no
-> sub-tabs, no wizard flow — every command is reachable from one
-> screen.*
+The Molbuilder tab is the only tab that holds in-memory canvas
+state.  Every other tab reads from disk.  All commands are reachable
+from a single screen via foldable panels.
 
-**What you do here:**
+**Panels:**
 
 - **Sources** — load `.xyz` / `.pdb` from the sidebar selection;
   generate from a SMILES string (RDKit), a peptide / DNA / RNA
@@ -281,7 +268,7 @@ orphan:
 - **Save** — write `<project>/<name>.xyz` + a `.molstruct.json`
   sidecar with per-atom labels.  File-driven task tabs pick it up.
 
-**What makes this tab unique:**
+**Notable details:**
 
 - 20-deep **slab-only Undo** lets you sweep `gap` values
   exploratorily without losing your atom-edit history.
@@ -302,12 +289,12 @@ Spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
 ![Structure-optimization form for the BDT Au junction — engine selector at top, three workflow-group cards (Profile / Stage / Budget), 3Dmol viewer rendering the input geometry, inline detection chip ("Au-thiol-Au junction; closed-shell singlet") + per-card issues panel showing the workflow-routed validator output](docs/img/structure-optimization-form.png)
 
-> *A file-driven task tab: the user picks an `.xyz` / `.pdb` from
-> the sidebar, the form configures it, and Generate emits a
-> self-contained `<name>.fdf` (or `.py`) + `<name>.run.sh` wrapper
-> that already knows which conda env to dispatch into.*
+A file-driven task tab.  The user picks an `.xyz` or `.pdb` from
+the sidebar, configures the form, and Generate emits a self-contained
+`<name>.fdf` (or `.py`) plus a `<name>.run.sh` wrapper that knows
+which conda env to dispatch into.
 
-**What's special:**
+**Notable details:**
 
 - **Schema-driven form** generated from `SiestaConfig` /
   `PySCFConfig` dataclass field metadata.  Adding a new knob is a
@@ -336,27 +323,26 @@ Spec: [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.m
 ![Spectrum-calculation form — vertical workflow-group cards for Profile / Stage / Budget, mirroring the Structure-optimization layout; defaults appropriate for a small molecule Raman run](docs/img/spectrum-form.png)
 
 A file-driven task tab that generates `<job>.spectra.py` PySCF
-scripts for **harmonic vibrational analysis** (frequencies + Raman
-activities + optional per-mode electronic-structure probes +
-scaffolded IR).
+scripts for harmonic vibrational analysis: frequencies, Raman
+activities, optional per-mode electronic-structure probes, and a
+scaffolded IR add-on.
 
-**What's special:**
+**Notable details:**
 
-- **End-to-end validated** — the Raman pipeline produces bit-for-bit
-  identical frequencies and Raman activities to a hand-written
-  raw-PySCF reference script at B3LYP/def2-SVP water.  Method +
-  full result table:
+- The Raman pipeline produces frequencies and Raman activities
+  bit-for-bit identical to a hand-written raw-PySCF reference at
+  B3LYP/def2-SVP for water.  Method and result table:
   [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md).
-- **Per-mode electronic-structure probes** — optional displaced-SCF
+- Per-mode electronic-structure probes run optional displaced-SCF
   jobs around the equilibrium geometry, projected onto each mode's
-  eigenvector to compute mode-resolved orbital responses.
-- **IR add-on scaffold** (`compute_ir=True`) populates
-  `ir_intensity_km_mol` "for free" on top of the Raman finite-diff
-  loop (dipole-moment readout adds no extra SCFs).  **Absolute
-  magnitudes are unvalidated** — treat as preliminary.
-- **Output format includes mass-weighted canonical eigenvectors**
-  (for post-hoc Raman / IR re-projection) **plus display-normalised
-  eigenvectors** (for 3-D animation in the Results tab).
+  eigenvector for mode-resolved orbital responses.
+- The IR add-on (`compute_ir=True`) populates
+  `ir_intensity_km_mol` on top of the Raman finite-difference loop
+  at no extra SCF cost.  Absolute IR magnitudes are not validated;
+  treat them as preliminary.
+- The output format includes mass-weighted canonical eigenvectors
+  for post-hoc Raman / IR re-projection plus display-normalised
+  eigenvectors for 3-D animation in the Results tab.
 
 Spec + bibliography:
 [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) +
@@ -366,23 +352,23 @@ Spec + bibliography:
 
 ![Transport-calculation form for the Au–BDT–Au junction — left-electrode / bridge / right-electrode region labels flow in from the .molstruct.json sidecar; the viewer renders the junction with region-coloured atoms](docs/img/transport-form.png)
 
-A file-driven task tab that emits TranSIESTA `.fdf` for **zero-bias
-transmission**.  Today's scope is the zero-bias path; bias-scan and
-electrode-`.TSHS`-generation wizards are roadmap items.
+A file-driven task tab that emits TranSIESTA `.fdf` for zero-bias
+transmission.  Bias-scan and electrode `.TSHS` generation wizards
+are on the roadmap.
 
-**What's special:**
+**Notable details:**
 
-- **Au-BDT-Au validation fixture** in `tests/` cross-checks T(E_F)
-  within factor-of-2 of Reed 2006 / Stokbro 2003 (~0.01 G₀).
-- **Atom-ordering preflight** catches the canonical failure mode
-  (TranSIESTA needs left-lead → device → right-lead ordering;
-  silent miscounts produce wrong transmission and no error).
-- **Validator covers** k-mesh, contour parameters, electrode mode,
-  mesh cutoff defaults per element (Au needs a higher cutoff than
-  the SIESTA default).
-- **Region labels** persist through the workflow via the
-  `.molstruct.json` sidecar (electrode / bridge / anchor regions
-  set in the Molbuilder tab carry into the TranSIESTA emitter).
+- An Au–BDT–Au validation fixture in `tests/` cross-checks `T(E_F)`
+  within a factor of two of Reed 2006 and Stokbro 2003 (~0.01 G₀).
+- An atom-ordering preflight catches the canonical TranSIESTA
+  failure mode (left-lead → device → right-lead ordering); silent
+  miscounts produce wrong transmission and no error.
+- The validator covers k-mesh, contour parameters, electrode mode,
+  and mesh cutoff defaults per element (Au needs a higher cutoff
+  than the SIESTA default).
+- Region labels persist through the workflow via the
+  `.molstruct.json` sidecar; electrode / bridge / anchor regions
+  set in the Molbuilder tab carry into the TranSIESTA emitter.
 
 Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
@@ -409,10 +395,8 @@ Bundle contract:
 [`docs/protocols/bundle-contract.md`](docs/protocols/bundle-contract.md).
 HTTP API: [`docs/protocols/web-api.md`](docs/protocols/web-api.md) § 11a.
 
-> *Pick any file in the Projects sidebar; `/results` dispatches to
-> the right inspector based on extension.  Same UI for "is the
-> optimisation converged?" and "is the transmission peak in the
-> right place?".*
+Pick any file in the Projects sidebar; `/results` dispatches to
+the appropriate inspector based on the file extension.
 
 | File pattern | Inspector | Highlights |
 |---|---|---|
@@ -445,18 +429,18 @@ Spec: [`docs/tabs/results.md`](docs/tabs/results.md) +
 
 ## Workflow — the canonical cross-tab flow
 
-Two principles:
+The cross-tab flow follows two principles:
 
-1. **The Molbuilder tab is the only interactive workspace.**  It
-   holds the in-memory canvas.  Everything else reads from disk.
-2. **Task tabs are file-driven.**  Structure-optimization,
-   Spectrum-calculation, Transport-calculation all read their input
-   geometry from the sidebar-selected project file.  They do NOT
-   read in-memory canvas state.
+1. The Molbuilder tab is the only interactive workspace.  It holds
+   the in-memory canvas; every other tab reads from disk.
+2. Task tabs are file-driven.  Structure-optimization,
+   Spectrum-calculation, and Transport-calculation all read their
+   input geometry from the sidebar-selected project file, not from
+   in-memory canvas state.
 
-This decouples interactive editing from deterministic script
-generation: the same project directory always produces the same
-script regardless of which tab the user came from.
+This decouples interactive editing from script generation: the same
+project directory always produces the same script regardless of
+which tab the user came from.
 
 ```
 [Molbuilder tab]
@@ -543,12 +527,12 @@ verify code-matches-spec, not code-matches-itself.  Master index:
 
 ### Why split build / modify / generate / inspect across tabs?
 
-After 5+ rounds of practical use, collapsing them into one tab
-forced a save-reload round-trip for every generated structure that
-needed editing.  The 5-tab split + file-driven task tabs makes the
-script output **deterministic from disk alone**: same project dir
-→ same script.  Two users on the same project see the same script.
-Sharing a project (export / re-import) loses no information.
+Earlier iterations collapsed these into one tab.  That forced a
+save-reload round-trip for every generated structure that needed
+editing.  The current 5-tab split with file-driven task tabs makes
+the script output deterministic from disk alone: the same project
+directory produces the same script.  Two users sharing a project
+see identical scripts; export and re-import lose no information.
 
 Full architecture + principles + decisions log:
 [`docs/design.md`](docs/design.md).
@@ -914,15 +898,17 @@ Full Python API + CLI reference:
 
 ## Scientific validation
 
-molbuilder's correctness claims are anchored to **external
-cross-checks**, not internal coherence:
+Correctness claims are anchored to external cross-checks where
+those checks have actually been executed; pending checks are
+labelled as such.
 
-| Pipeline | Validation | Result |
+| Pipeline | Reference | Status |
 |---|---|---|
-| **Raman** (build → relax → Hessian → finite-diff Raman) | Independent hand-written raw-PySCF reference script, water at B3LYP/def2-SVP | Bit-for-bit identical: frequencies max Δ < 10⁻³ cm⁻¹, Raman activities max Δ < 10⁻⁶ Å⁴/amu.  Absolute magnitudes within literature range. |
-| **PySCF relaxation** (geomeTRIC) | Same water reference | Max position Δ 1.1 × 10⁻⁷ Å |
-| **Au-BDT-Au transport** (TranSIESTA zero-bias) | Reed 2006 / Stokbro 2003 published T(E_F) | Factor-of-2 of literature ~0.01 G₀ (integration test gated; runs in `molbuilder-siesta` env with electrode `.TSHS` files) |
-| **IR add-on** (`compute_ir=True`) | **Not yet validated.**  Scaffold emits `ir_intensity_km_mol` but absolute magnitudes are preliminary until the Raman-style external cross-check is applied. |
+| **Raman** (build → relax → Hessian → finite-difference Raman) | Hand-written raw-PySCF reference script; water at B3LYP/def2-SVP | **Done.** Bit-for-bit identical: frequencies max Δ < 10⁻³ cm⁻¹; Raman activities max Δ < 10⁻⁶ Å⁴/amu.  Absolute magnitudes within literature range. |
+| **PySCF relaxation** (geomeTRIC) | Same water reference | **Done.** Max position Δ 1.1 × 10⁻⁷ Å. |
+| **Au–BDT–Au transport `.fdf` emission** | TranSIESTA fdf requirements (NEGF keyword set, atom ordering, region labels) | **Done.** Fixture in `tests/data/au_bdt_au.{xyz,molstruct.json}` pins emission contract end-to-end. |
+| **Au–BDT–Au transport T(E_F) numerical** | Reed et al. 2006 (*J. Phys. Chem. B* **110**, 20671) experimental G(E_F) ≈ 0.01 G₀; Stokbro et al. 2003 (*Comp. Mat. Sci.* **27**, 151) TranSIESTA G(E_F) ≈ 0.005–0.015 G₀ | **Pending.** Requires the Au(111)-slab optimisation + electrode `.TSHS` generation, both of which are tracked work items.  Today's 18-atom chain fixture is too small to reproduce the published range. |
+| **IR add-on** (`compute_ir=True`) | None applied yet | **Pending.** Scaffold emits `ir_intensity_km_mol` on the Raman finite-difference loop; absolute magnitudes are not validated.  Treat as preliminary. |
 
 Method + full result tables:
 [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md) +
