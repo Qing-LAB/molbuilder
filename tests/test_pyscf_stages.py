@@ -78,13 +78,23 @@ def test_default_stages_stage2_publishable_enabled():
 
 
 def test_default_stages_stage3_tight_disabled_by_default():
-    """Publication-guide TIGHT tier is opt-in; most users tick 1+2,
-    leave 3 off.  This pins that default so a future change is loud."""
+    """Stage 3 is the crystal-practical TIGHT tier; opt-in (disabled
+    by default) since most users tick 1+2 only.
+
+    Per the 2026-06-23 realignment (see design.md decision-log +
+    docs/engines/optimization-tuning.md sect. 2.3.1), stage 3 carries
+    crystal/surface production thresholds (gmax 2e-4 Ha/Bohr ~= 0.01
+    eV/A; matches VASP EDIFFG=-0.01).  Pre-realignment this was
+    geomeTRIC GAU_TIGHT (1.5e-5 Ha/Bohr) which chases SCF noise on
+    100+ atom metal systems.  GAU_TIGHT remains reachable via form
+    override / --stages-json for molecule vib/IR work, but the
+    default is crystal-practical.
+    """
     s3 = _default_stages()[2]
     assert s3.name == "stage3"
     assert s3.enabled is False
     assert s3.conv_tol  == pytest.approx(1.0e-10)
-    assert s3.gmax      == pytest.approx(1.5e-5)
+    assert s3.gmax      == pytest.approx(2.0e-4)
     assert s3.max_steps == 100
 
 
