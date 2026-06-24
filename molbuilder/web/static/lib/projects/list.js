@@ -60,21 +60,74 @@ function _isDeletableEntry(entry, currentPath) {
 }
 
 /**
+ * Whether this entry is a depth-0 project dir (directly under
+ * projects/ root).
+ *
+ * Used by the kebab menu to offer a SEPARATE single-item shape
+ * "Delete project" for whole-project removal -- distinct from the
+ * regular file menu + from the topic-dir menu (different scope,
+ * different blast radius, hence different menu).  Backend wires
+ * via the same ``force=true`` override at /api/files/delete that
+ * topic-dir delete uses.
+ */
+function _isProjectDirAtDepth0(entry, currentPath) {
+  const projectsRoot = getProjectsRoot();
+  if (!projectsRoot) return false;
+  const rootNormalized = projectsRoot.replace(/\/$/, "");
+  const curNormalized = currentPath.replace(/\/$/, "");
+  if (curNormalized !== rootNormalized) return false;
+  return entry.kind === "directory";
+}
+
+/**
+ * Whether this entry is a canonical-topic dir at depth 1.
+ *
+ * Used by the kebab menu to switch to a SEPARATE menu shape (one
+ * item: "Delete directory") for these entries -- the regular
+ * file-oriented actions don't apply, and the regular Delete is
+ * gated out by _isDeletableEntry's depth-1 carve-out.  Keep in
+ * sync with the backend's _UNDELETABLE_AT_DEPTH_1 set + the
+ * server's depth-2 canonical-topic refusal in
+ * web/blueprints/files.py.
+ */
+function _isCanonicalTopicDirAtDepth1(entry, currentPath) {
+  const projectsRoot = getProjectsRoot();
+  if (!projectsRoot) return false;
+  const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
+  const depth = rel.split("/").filter(Boolean).length;
+  return depth === 1
+      && entry.kind === "directory"
+      && _UNDELETABLE_AT_DEPTH_1.has(entry.name);
+}
+
+/**
  * Whether this entry would produce a non-empty kebab menu.
  *
- * The kebab menu items in _openKebab are gated:
- *   - View / Download / Move / Copy : file-only
- *   - Rename / Delete               : _isDeletableEntry
- * For a depth-0 project dir or a depth-1 canonical-topic dir, ALL
- * gates fail and the menu is empty.  Use this predicate to skip
- * rendering the kebab button entirely so the user never sees an
- * empty "tiny box".  Keep in sync with the menu-item gates in
- * _openKebab; a future menu item that doesn't match either gate
- * (e.g. directory-applicable action) must extend this predicate.
+ * Four menu shapes today:
+ *   - Regular menu (View / Download / Rename / Move / Copy / Delete)
+ *     for files + non-canonical dirs that pass _isDeletableEntry.
+ *   - Topic-dir menu (Delete directory only) for canonical-topic
+ *     dirs at depth 1 inside a project (structure, optimization,
+ *     spectrum, transport, ...).  Added 2026-06-24 per user
+ *     request: lets the user wipe a whole topic subtree from the
+ *     UI behind a strong confirmation prompt.
+ *   - Project-dir menu (Delete project only) for depth-0 dirs
+ *     directly under projects/ root.  Added 2026-06-24 per user
+ *     request: lets the user remove a whole project from the UI
+ *     behind a name-typing confirmation.
+ *   - No menu at all when none of the above match.  Predicate
+ *     returns false so the kebab button is not rendered (avoids
+ *     the empty-box bug class).
+ *
+ * Keep in sync with _openKebab's branches.  A future menu item
+ * that doesn't match any of these shapes must extend this
+ * predicate AND _openKebab together.
  */
 function _kebabHasActions(entry, currentPath) {
   if (entry.kind === "file") return true;
   if (_isDeletableEntry(entry, currentPath)) return true;
+  if (_isCanonicalTopicDirAtDepth1(entry, currentPath)) return true;
+  if (_isProjectDirAtDepth0(entry, currentPath)) return true;
   return false;
 }
 
@@ -312,6 +365,93 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       }
     });
     menu.appendChild(it);
+  }
+
+  // Depth-0 project directory: a SEPARATE single-item menu shape
+  // "Delete project…" for whole-project removal.  Distinct from the
+  // topic-dir menu (different scope: this wipes EVERY topic under
+  // the project, plus any user/ + auxiliary files).  Added
+  // 2026-06-24 per user request.  Strong confirmation: the user
+  // must type the full project name to acknowledge.  Routes
+  // through ``apiDelete`` with both ``recursive`` AND ``force``
+  // (the depth-0 path is special-cased in the backend too).  No
+  // other items in this branch.
+  if (_isProjectDirAtDepth0(entry, currentPath)) {
+    _addItem("Delete project…", async () => {
+      const phrase = entry.name;
+      const typed = window.prompt(
+        "Delete the entire project \"" + entry.name + "\"?\n\n"
+        + "This removes EVERY file under this project: structure, "
+        + "optimization, spectrum, transport, and user-supplied "
+        + "files.  It cannot be undone.\n\n"
+        + "Type the project name (\"" + phrase + "\") to confirm:"
+      );
+      if (typed === null) return;                  // user cancelled
+      if (typed.trim() !== phrase) {
+        window.alert(
+          "Typed name did not match.  Nothing was deleted."
+        );
+        return;
+      }
+      const r = await apiDelete(fullPath, true, { force: true });
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Delete failed.");
+        return;
+      }
+      if (elList) {
+        await openDir(currentPath);
+      }
+    }, { destructive: true });
+    // No ``return;`` -- the remaining branches gate themselves out
+    // for a depth-0 directory entry (View / Download / Move / Copy
+    // are file-only; Rename / Delete are blocked by
+    // _isDeletableEntry).  Flow falls through to the menu-attach
+    // code below.
+  }
+
+  // Canonical-topic directory at depth 1: a SEPARATE menu shape
+  // with just one item ("Delete directory") so the menu visibly
+  // expresses that this is a different (destructive) action class
+  // from the regular file menu.  Added 2026-06-24 per user
+  // request.  Routes through ``apiDelete`` with both ``recursive``
+  // (the dir may contain files) AND ``force`` (bypass the backend's
+  // canonical-topic refusal at depth 2).  Strong confirmation
+  // prompt explicitly warns about losing all contents -- the user
+  // must type the topic name to acknowledge, mirroring git's
+  // hard-delete pattern.  No other items in this branch -- the
+  // regular file actions don't apply to a topic dir.
+  if (_isCanonicalTopicDirAtDepth1(entry, currentPath)) {
+    _addItem("Delete directory…", async () => {
+      const phrase = entry.name;
+      const typed = window.prompt(
+        "Delete the entire \"" + entry.name + "\" subdirectory of "
+        + "this project?\n\n"
+        + "This removes all files inside (xyz, fdf, sidecars, run "
+        + "outputs).  It cannot be undone.\n\n"
+        + "Type the directory name (\"" + phrase + "\") to confirm:"
+      );
+      if (typed === null) return;                  // user cancelled
+      if (typed.trim() !== phrase) {
+        window.alert(
+          "Typed name did not match.  Nothing was deleted."
+        );
+        return;
+      }
+      const r = await apiDelete(fullPath, true, { force: true });
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Delete failed.");
+        return;
+      }
+      if (elList) {
+        await openDir(currentPath);
+      }
+    }, { destructive: true });
+    // No ``return;`` -- same reasoning as the project-dir branch
+    // above: the remaining branches gate themselves out for a
+    // canonical-topic directory entry at depth 1.  Flow falls
+    // through to the menu-attach code below.
   }
 
   // View: file-only.  Returns the showPreview promise so the

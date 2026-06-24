@@ -5231,61 +5231,110 @@ class TestModifySecondVisitExternalChange:
         )
 
 
-def test_kebab_hidden_when_no_actions_apply(
+def test_kebab_on_project_dirs_offers_delete_project(
         page, flask_server, tmp_path, monkeypatch):
-    """2026-06-24 regression: the ⋯ kebab button must NOT render on
-    entries where every menu item is gated out.  Otherwise clicking
-    it opens an empty menu -- a "tiny box with nothing in it" that
-    confuses the user.
+    """2026-06-24 feature: depth-0 project dirs (entries directly under
+    projects/ root) now show a SEPARATE single-item kebab menu:
+    "Delete project…".
 
-    Two cases where every action gates out:
-      (a) Depth 0 (projects/ root): every entry is a project dir;
-          ``_isDeletableEntry`` returns false, and projects aren't
-          files so View/Download/Move/Copy skip.  All branches in
-          ``_openKebab`` are skipped.
-      (b) Depth 1 (inside a project): canonical-topic dirs
-          (``structure``, ``optimization``, ``spectrum``,
-          ``transport``, etc.) are also non-deletable + non-file.
+    Per the user request: "for a whole project directory, we can
+    provide a button to delete the whole project with confirmation."
 
-    This test pins both cases by creating a fresh project with the
-    canonical topic dirs and asserting the kebab DOM element is
-    absent on each.  Sibling test below pins that files DO get
-    the kebab (so this fix does not over-correct).
+    Pins three behaviors:
+      (a) The kebab DOES render on a depth-0 project entry.
+      (b) The dropped menu has exactly ONE item, labeled
+          "Delete project…".
+      (c) Regular file-actions are NOT in this menu.
     """
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    # Build: <tmp>/proj/structure/, <tmp>/proj/optimization/
     (tmp_path / "proj" / "structure").mkdir(parents=True)
-    (tmp_path / "proj" / "optimization").mkdir(parents=True)
-
     _open_modify(page, flask_server)
-
-    # Case (a): depth 0 -- inside projects/ root, every entry is a
-    # project dir.
     page.evaluate(
         "(p) => window.molbuilder.projects.navigateTo(p)", str(tmp_path)
     )
     page.wait_for_selector('.ps-entry[data-path$="proj"]', timeout=5000)
     proj_entry = page.locator('.ps-entry[data-path$="proj"]').first
-    assert proj_entry.locator('.ps-entry-kebab').count() == 0, (
-        "Depth-0 project dir should NOT show a kebab (every menu "
-        "item is gated out; rendering the kebab opens an empty box)."
+    # (a) kebab rendered.
+    assert proj_entry.locator('.ps-entry-kebab').count() == 1, (
+        "Depth-0 project dir should show a kebab (the new "
+        "Delete-project menu shape)."
     )
+    # Open the menu.
+    proj_entry.locator('.ps-entry-kebab').first.click(force=True)
+    page.wait_for_selector('.ps-entry-menu .ps-entry-menu-item',
+                           timeout=2000)
+    items = page.locator('.ps-entry-menu .ps-entry-menu-item').all()
+    labels = [it.text_content().strip() for it in items]
+    # (b) exactly one item.
+    assert len(items) == 1, (
+        f"Project-dir kebab should have exactly one item; got: {labels}")
+    assert "Delete project" in labels[0], (
+        f"Project-dir kebab item should be 'Delete project…'; "
+        f"got: {labels[0]!r}")
+    # (c) regular file-menu labels absent.
+    for forbidden in ("View", "Download", "Rename", "Move", "Copy"):
+        assert forbidden not in labels[0], (
+            f"Project-dir kebab must NOT carry file-menu '{forbidden}' "
+            f"item; this is a SEPARATE menu shape."
+        )
 
-    # Case (b): depth 1 -- canonical-topic dirs are off-limits to
-    # rename / delete + aren't files.
+
+def test_kebab_on_topic_dirs_offers_delete_directory(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-24 feature: canonical-topic dirs (structure, optimization,
+    spectrum, transport, ...) at depth 1 inside a project now show a
+    SEPARATE single-item kebab menu: "Delete directory…".
+
+    Per the user request: "we should add kebab to allow user to delete
+    the whole subdir, but this could be a separate menu that only
+    appear for these subdirectory."
+
+    Pins three behaviors:
+      (a) The kebab DOES render on a topic-dir entry.
+      (b) The dropped menu has exactly ONE item with the expected
+          label.
+      (c) The regular file-actions ("View", "Download", "Rename…",
+          "Move to…", "Copy to…") are NOT in this menu -- they don't
+          apply to a topic dir.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj"
+    (proj / "structure").mkdir(parents=True)
+    (proj / "structure" / "demo.xyz").write_text("1\n\nH 0 0 0\n")
+    _open_modify(page, flask_server)
     page.evaluate(
-        "(p) => window.molbuilder.projects.navigateTo(p)",
-        str(tmp_path / "proj"),
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
     )
     page.wait_for_selector(
         '.ps-entry[data-path$="proj/structure"]', timeout=5000)
-    for topic in ("structure", "optimization"):
-        topic_entry = page.locator(
-            f'.ps-entry[data-path$="proj/{topic}"]').first
-        assert topic_entry.locator('.ps-entry-kebab').count() == 0, (
-            f"Canonical-topic dir '{topic}' should NOT show a kebab "
-            f"(_isDeletableEntry returns false; not a file).  "
-            f"Rendering the kebab gives an empty menu."
+
+    topic_entry = page.locator(
+        '.ps-entry[data-path$="proj/structure"]').first
+    # (a) kebab rendered.
+    assert topic_entry.locator('.ps-entry-kebab').count() == 1, (
+        "Canonical-topic dir 'structure' should show a kebab "
+        "(the new Delete-directory menu shape, separate from "
+        "the regular file menu)."
+    )
+    # Open the menu.
+    topic_entry.locator('.ps-entry-kebab').first.click(force=True)
+    page.wait_for_selector('.ps-entry-menu .ps-entry-menu-item',
+                           timeout=2000)
+    items = page.locator('.ps-entry-menu .ps-entry-menu-item').all()
+    labels = [it.text_content().strip() for it in items]
+    # (b) exactly one item.
+    assert len(items) == 1, (
+        f"Topic-dir kebab should have exactly one item; got: {labels}")
+    # The item's label includes "Delete directory" (trailing ellipsis
+    # is incidental).
+    assert "Delete directory" in labels[0], (
+        f"Topic-dir kebab item should be 'Delete directory…'; "
+        f"got: {labels[0]!r}")
+    # (c) regular file-menu labels absent.
+    for forbidden in ("View", "Download", "Rename", "Move", "Copy"):
+        assert forbidden not in labels[0], (
+            f"Topic-dir kebab must NOT carry the file-menu '{forbidden}' "
+            f"item; this is a SEPARATE menu shape."
         )
 
 

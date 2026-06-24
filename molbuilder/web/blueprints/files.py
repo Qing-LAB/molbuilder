@@ -2034,6 +2034,14 @@ def api_files_delete():
     body = request.get_json(silent=True) or {}
     raw_path  = body.get("path", "")
     recursive = bool(body.get("recursive", False))
+    # 2026-06-24: ``force=true`` bypasses the canonical-topic
+    # refusal at depth 2.  Used by the sidebar's topic-dir kebab
+    # menu where the user has been shown an explicit confirmation
+    # warning that the entire subdirectory (with all contents) will
+    # be removed.  Without ``force``, depth-2 canonical-topic dirs
+    # still hard-refuse (preserves the layout-orphan guard for any
+    # caller that doesn't intend to wipe a topic dir).
+    force = bool(body.get("force", False))
 
     if not isinstance(raw_path, str) or not raw_path.strip():
         return jsonify({
@@ -2086,16 +2094,22 @@ def api_files_delete():
         }), 400
 
     # Depth 2 = directly under a project.  If the leaf name is a
-    # canonical topic AND it's a directory, refuse: deleting the
-    # spectrum/ or struct/ subdir orphans the project layout.  Files
-    # at depth 2 (e.g. projects/<proj>/README.md) are fine to delete.
-    if depth == 2 and resolved.is_dir() and rel_parts[1] in CANONICAL_TOPICS:
+    # canonical topic AND it's a directory, refuse by default:
+    # deleting the spectrum/ or struct/ subdir orphans the project
+    # layout.  Files at depth 2 (e.g. projects/<proj>/README.md) are
+    # fine to delete.  The ``force=true`` override lets the sidebar's
+    # topic-dir kebab menu (added 2026-06-24) bypass this after the
+    # user has acknowledged a strong confirmation prompt.
+    if (depth == 2 and resolved.is_dir()
+            and rel_parts[1] in CANONICAL_TOPICS
+            and not force):
         return jsonify({
             "ok":   False,
             "error": (f"refusing to delete canonical-topic directory "
                       f"{rel_parts[1]!r} via the UI (would orphan the "
-                      f"project layout).  Use your shell + recreate "
-                      f"the project via + New project if needed."),
+                      f"project layout).  Pass force=true to override "
+                      f"after warning the user; the sidebar topic-dir "
+                      f"kebab takes this path."),
         }), 400
 
     # Non-empty dir requires explicit recursive flag.  Empty dirs

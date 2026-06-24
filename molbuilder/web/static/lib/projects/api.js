@@ -199,10 +199,20 @@ export async function apiUpload(targetDir, file, opts) {
 
 export async function apiDelete(path, recursive, opts) {
   opts = opts || {};
+  // ``opts.force`` (2026-06-24): bypass the backend's canonical-
+  // topic refusal at depth 2.  Callers that pass true MUST have
+  // shown the user a confirmation prompt that explicitly warns
+  // about wiping the whole subdirectory (sidebar topic-dir kebab
+  // does this).  Default false so non-aware callers keep the
+  // safety guard.
   return await _fetchEnvelope("/api/files/delete", {
     method:  "DELETE",
     headers: {"Content-Type": "application/json"},
-    body:    JSON.stringify({path: path, recursive: !!recursive}),
+    body:    JSON.stringify({
+      path:      path,
+      recursive: !!recursive,
+      force:     !!opts.force,
+    }),
     signal:  opts.signal,
   });
 }
