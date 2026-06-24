@@ -78,8 +78,12 @@ def _stage_payload(name, enabled, conv_tol, gmax, max_steps,
 _PUBLISHABLE_STAGES = [
     _stage_payload("stage1", True,  1.0e-7, 2.0e-3,  50),
     _stage_payload("stage2", True,  1.0e-9, 4.5e-4, 200),
-    _stage_payload("stage3", False, 1.0e-10, 1.5e-5, 100,
-                   grms=1.0e-5, dmax=6.0e-5, drms=4.0e-5, etol=1.0e-7),
+    # stage3 = TIGHT crystal-practical (2026-06-23 realignment).
+    # gmax 2e-4 Ha/Bohr ~= 0.01 eV/A (VASP EDIFFG=-0.01 standard);
+    # pre-realignment used GAU_TIGHT (1.5e-5 Ha/Bohr ~= 0.001 eV/A)
+    # which never converges on 100+ atom metal systems.
+    _stage_payload("stage3", False, 1.0e-10, 2.0e-4, 100,
+                   grms=1.0e-4, dmax=1.0e-3, drms=5.0e-4, etol=1.0e-6),
 ]
 
 

@@ -995,28 +995,52 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append("Diag.ELPA.GPU      .true.")
     out.append("")
 
-    # Relaxation / dynamics.  SIESTA uses different step-count and
-    # displacement-cap keywords per MD.TypeOfRun -- emitting the wrong
-    # one is silently ignored, so we branch here on relax_kind.
-    #   CG      -> MD.NumCGsteps      + MD.MaxCGDispl
-    #   Broyden -> MD.NumBroydenSteps + MD.MaxDispl
-    #   FIRE    -> MD.NumFIRESteps    + MD.MaxDispl
-    #   Verlet  -> MD.FinalTimeStep   + MD.InitialTemperature  (NVE)
-    #   Nose    -> MD.FinalTimeStep   + MD.InitialTemperature  (NVT)
+    # Relaxation / dynamics.  In SIESTA 5.4.2 the step-count and
+    # displacement-cap fdf keywords are UNIVERSAL across relax types
+    # despite the CG-prefixed names -- ``MD.NumCGsteps`` and
+    # ``MD.MaxCGDispl`` are recognized for CG, Broyden, AND FIRE.
+    #
+    # HISTORY: pre-2026-06-23, this branch emitted made-up per-
+    # algorithm keywords (``MD.NumBroydenSteps``, ``MD.MaxDispl``)
+    # which SIESTA 5.4.2 silently dropped -- with NO warning -- so a
+    # Broyden / FIRE relaxation ran as a Single-point calculation.
+    # The user surfaced the bug in TJ-BDT-Au111 when stage 2 (Broyden)
+    # "finished in one step" with max-force 0.18 vs threshold 0.02 --
+    # SIESTA never took a Broyden step at all.  See decision-log
+    # 2026-06-23 in design.md for the full failure analysis.
+    #
+    # Empirical proof of the universal mapping (small H2 against
+    # SIESTA 5.4.2 with ``MD.TypeOfRun Broyden`` + ``MD.NumCGsteps 5``
+    # + ``MD.MaxCGDispl 0.1 Ang``):
+    #   redata: Dynamics option        = Broyden coord. optimization
+    #   redata: Maximum number of optimization moves = 5
+    #   redata: Max atomic displ per move = 0.1000 Ang
+    # Identical echo lines stage1 (CG) already produces in real jobs.
+    #
+    # Verlet / Nose (NVE / NVT dynamics, not relaxation) use distinct
+    # step-control keywords -- ``MD.FinalTimeStep`` + the temperature
+    # block.  They never reached this branch with the broken mapping
+    # because no test ever ran them; today they're handled below too
+    # for completeness, with the universal MD.NumCGsteps NOT emitted
+    # (it would be a no-op + visual noise in the fdf).
     if cfg.relax_type and cfg.relax_type.lower() != "none":
         relax_kind = cfg.relax_type.strip().upper()
         is_md = relax_kind in ("VERLET", "NOSE")
+        # Universal step-count keyword for CG / Broyden / FIRE.
+        # Verlet / Nose use MD.FinalTimeStep instead (the loop is
+        # time-based, not step-count-based) -- handled below.
         _STEP_KW = {
             "CG":      "MD.NumCGsteps",
-            "BROYDEN": "MD.NumBroydenSteps",
-            "FIRE":    "MD.NumFIRESteps",
+            "BROYDEN": "MD.NumCGsteps",
+            "FIRE":    "MD.NumCGsteps",
             "VERLET":  "MD.FinalTimeStep",
             "NOSE":    "MD.FinalTimeStep",
         }
         step_kw = _STEP_KW.get(relax_kind, "MD.NumCGsteps")
-        # Displacement-cap keyword: CG uses its own; Broyden / FIRE
-        # share MD.MaxDispl.  Not applicable to Verlet / Nose dynamics.
-        displ_kw = "MD.MaxCGDispl" if relax_kind == "CG" else "MD.MaxDispl"
+        # Universal displacement-cap keyword for CG / Broyden / FIRE;
+        # Verlet / Nose have no per-step displacement cap (forces +
+        # masses drive the timestep instead).
+        displ_kw = "MD.MaxCGDispl" if not is_md else None
 
         out.append("# --- Geometry optimisation / dynamics ---")
         if v: out += [
@@ -1057,29 +1081,34 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             if v: out += [
                 "",
                 "# MD.MaxForceTol: max-atomic-force convergence threshold.",
-                "# Per-tier (eV/Ang):",
-                "#   0.10    screening (sanity-check only)",
-                "#   0.05    loose preopt",
-                "#   0.04    publishable (Gaussian-OPT default)",
-                "#   0.01    tight (vibrational analysis / phonons)",
-                "#   0.001   very-tight (NEB barrier heights to ~1 kcal/mol)",
+                "# Per-tier (eV/Ang) -- 2026-06-23 realignment:",
+                "#   0.10     screening (sanity-check only)",
+                "#   0.05     loose preopt",
+                "#   0.04     publishable (Gaussian-OPT default, molecule + bulk)",
+                "#   0.01     tight (CRYSTAL/SURFACE production -- VASP",
+                "#            EDIFFG=-0.01 standard; safe for 100+ atom metals)",
+                "#   0.001    very-tight (MOLECULE vib/IR/TS/NEB only --",
+                "#            Gaussian GAU_TIGHT; DO NOT use on 100+ atom",
+                "#            metal systems, chases SCF noise + never converges)",
                 "# SIESTA only checks max force; geomeTRIC / Gaussian check 5",
-                "# criteria.  See docs/engines/optimization-tuning.md sect. 2.3.",
+                "# criteria.  See docs/engines/optimization-tuning.md sect. 2.3",
+                "# for the cross-engine + system-type-aware tier framework.",
             ]
             out.append(f"MD.MaxForceTol {cfg.relax_force_tol} eV/Ang")
             if v: out += [
                 "",
                 f"# {displ_kw}: maximum atom displacement per optimiser step (Ang).",
                 "# Hard ceiling that catches line-search over-shoot.",
-                "# Per-tier (Ang):",
-                "#   0.30    screening",
-                "#   0.20    loose preopt (SIESTA default)",
-                "#   0.05    publishable",
-                "#   0.02    tight (vib/IR)",
+                "# Per-tier (Ang) -- 2026-06-23 realignment:",
+                "#   0.30     screening",
+                "#   0.20     loose preopt (SIESTA default)",
+                "#   0.05     publishable",
+                "#   0.02     tight (crystal/surface production)",
+                "#   0.01     very-tight (molecule vib/IR only)",
                 "# Symptom of too-large cap: max-force oscillates instead of",
                 "# descending (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...).",
                 "# Halve the cap and continue.  See docs/engines/optimization-",
-                "# tuning.md sect. 2.2.",
+                "# tuning.md sect. 2.2 + sect. 2.3 design considerations.",
             ]
             out.append(f"{displ_kw} {cfg.relax_max_displ} Ang")
         else:
@@ -1138,14 +1167,26 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# WriteCoorStep    coords at every MD step in main .out",
         "# WriteCoorXmol    .xyz at every step (movie viewer)",
         "# WriteMDhistory   trajectory to .ANI (xcrysden / vmd / OVITO)",
-        "# WriteHS          H + S matrices, needed for TranSIESTA / DOS",
+        "# SaveHS           H + S matrices to .HSX (needed for TranSIESTA",
+        "#                  electrode reuse + DOS post-processing).  In",
+        "#                  SIESTA 5.4.2 the keyword is SaveHS; the older",
+        "#                  WriteHS is silently dropped (no warning) so a",
+        "#                  pre-2026-06-23 generator that emitted WriteHS",
+        "#                  always got the default (SaveHS = T) regardless",
+        "#                  of cfg.write_hs.  See decision-log 2026-06-23.",
     ]
     out.append(f"WriteForces        {'.true.' if cfg.write_forces else '.false.'}")
     out.append(f"WriteCoorStep      {'.true.' if cfg.write_coor_step else '.false.'}")
     out.append(f"WriteCoorXmol      {'.true.' if cfg.write_coor_xmol else '.false.'}")
     out.append(f"WriteMDhistory     {'.true.' if cfg.write_md_history else '.false.'}")
-    if cfg.write_hs:
-        out.append("WriteHS            .true.")
+    # Always emit SaveHS so user choice (T or F) is explicit + auditable.
+    # Pre-2026-06-23: only emitted when cfg.write_hs=True (and as the
+    # wrong keyword ``WriteHS``).  The default-T behavior masked the bug
+    # whenever the user wanted T anyway; the day someone sets
+    # cfg.write_hs=False to skip the .HSX overhead, the override silently
+    # did nothing.  Emit unconditionally now so the fdf-echo shows the
+    # user's actual choice + this generator's intent.
+    out.append(f"SaveHS             {'.true.' if cfg.write_hs else '.false.'}")
 
     # Troubleshooting block at the end (verbose mode only).  We only
     # emit the relaxation-specific tips when an MD block is actually
@@ -1245,9 +1286,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # See docs/protocols/script-contract.md.  Per-emission rules:
     #   - PROVENANCE: always emitted (cheap, always meaningful).
     #   - BENCH-MARKS: always emitted for .fdf.  The MD.NumCGsteps
-    #     anchor is only valid for relax_type=CG; other choices
-    #     emit a different keyword (MD.NumBroydenSteps, ...).  Bench
-    #     tooling refuses anchor-not-found cases cleanly.
+    #     anchor is UNIVERSAL across CG / Broyden / FIRE (post
+    #     2026-06-23 SIESTA keyword fix); the bench picks it up
+    #     regardless of cfg.relax_type.
     #   - ATOM-METADATA: emit_atom_metadata returns None when both
     #     regions and frozen_atoms are empty -- per the contract's
     #     emission rule, absence is the honest signal.

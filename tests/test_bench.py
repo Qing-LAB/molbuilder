@@ -215,10 +215,25 @@ def test_disable_md_zeros_cg_steps():
     assert "MD.NumCGsteps          0" in out
 
 
-def test_disable_md_handles_alternate_relax_keyword():
-    text = "MD.NumBroydenSteps  100\nBlockSize 64\n"
+def test_disable_md_handles_broyden_relax_type():
+    """The generator emits ``MD.NumCGsteps`` regardless of
+    ``MD.TypeOfRun`` (CG / Broyden / FIRE) -- it's the universal
+    SIESTA 5.4.2 step-count keyword.  Confirm disable_md zeroes it
+    in a fdf that selects Broyden as the relax algorithm.
+
+    Pre-2026-06-23 disable_md also walked ``MD.NumBroydenSteps`` /
+    ``MD.NumFIRESteps`` aliases which DO NOT EXIST in SIESTA 5.4.2.
+    The old test was pinning a phantom keyword as something
+    disable_md must handle; this test pins the real shape.
+    """
+    text = "MD.TypeOfRun Broyden\nMD.NumCGsteps  100\nBlockSize 64\n"
     out = disable_md(text)
-    assert "MD.NumBroydenSteps          0" in out
+    assert "MD.NumCGsteps          0" in out
+    # Belt-and-braces: the phantom NumBroydenSteps keyword must not
+    # appear in disable_md output (the generator never emits it; if
+    # this test ever sees it, something is regressing toward the
+    # 2026-06-23 silent-failure shape).
+    assert "MD.NumBroydenSteps" not in out
 
 
 def test_strip_numa_pin_clobbers_exact_literal():

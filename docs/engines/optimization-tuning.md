@@ -117,7 +117,12 @@ Gaussian's `OPT` defaults `MaxStep` to 0.30 Bohr (≈ 0.16 Å); the
 
 **Engine keywords:**
 
-- SIESTA: `MD.MaxCGDispl` for CG; `MD.MaxDispl` for Broyden / FIRE.
+- SIESTA: `MD.MaxCGDispl` — **universal across CG / Broyden / FIRE
+  in SIESTA 5.4.2** despite the CG-prefixed name.  The phantom
+  variants `MD.MaxDispl` (for Broyden/FIRE) listed in some older
+  references are NOT applied to Broyden's per-step cap (recognized
+  as a fdf key but silently mis-applied) — see decision-log
+  2026-06-23 in `design.md`.
 - PySCF / geomeTRIC: not exposed as a direct cap — controlled via
   `convergence_dmax` (max displacement at convergence) + the
   optimizer's own line search.  See §2.4.
@@ -132,13 +137,79 @@ Gaussian's `OPT` defaults `MaxStep` to 0.30 Bohr (≈ 0.16 Å); the
 absolute force on any atom (constrained atoms are excluded
 automatically).
 
+#### 2.3.1 Design considerations (system-type-aware tier framework)
+
+**The 2026-06-23 realignment.**  Pre-2026-06-23 the molbuilder
+"tight" tier carried geomeTRIC's `GAU_TIGHT` preset
+(`gmax = 1.5 × 10⁻⁵ Ha/Bohr ≈ 0.00077 eV/Å`).  That is Gaussian's
+*very-tight* setting — designed for small-molecule vibrational
+analysis / IR intensities / transition-state search / NEB barrier
+heights to chemical accuracy.  **For any system with more than
+~50 metal atoms it chases SCF noise and never converges.**  This
+surfaced concretely during BDT-on-Au(111) junction debugging when
+the user asked "is this practical for large crystal systems?".
+
+**The framework now in use** acknowledges that "tight" means
+something different across system types:
+
+| System type | Tight = | Reason | Reference |
+|---|---|---|---|
+| **Crystal / surface / interface (≥ 50 atoms)** | **0.01 eV/Å max-force** | SCF noise floor on extended systems grows with system size; chasing < 0.005 eV/Å is futile.  The community-accepted production threshold for surface DFT is 0.01 eV/Å. | VASP default `EDIFFG = -0.01`; QE tight `forc_conv_thr 2 × 10⁻⁴ Ry/Bohr ≈ 0.005 eV/Å`; broad surface-DFT literature [^4a]. |
+| **Molecule (≤ 50 atoms) for vib/IR/TS/NEB** | **0.001 eV/Å max-force** | Vibrational analysis needs forces below the lowest physical mode's noise floor (~1 cm⁻¹); IR intensities need stable Hessian eigenvectors. | Gaussian `OPT=Tight` / geomeTRIC `GAU_TIGHT` [^4b]. |
+| **Molecule production (≤ 50 atoms, energetics + geometry only)** | **0.04 eV/Å max-force (SIESTA) / 0.023 eV/Å (PySCF)** | The "publishable" tier — what Gaussian's `OPT` default gives + what reviewers expect for non-vib papers. | Gaussian-OPT default [^4]. |
+
+**Why two tiers under one name was the bug.**  The old single
+"tight" label conflated two regimes that need different numbers.
+A 444-atom Au junction "tight" at 0.001 eV/Å is wrong (won't
+converge); a small-molecule "tight" at 0.01 eV/Å is also wrong
+(insufficient for vib).  Splitting the tier explicitly and
+labeling the system-type axis fixes this.
+
+**Cross-engine caveat (per the §2.3 footnote below).**  PySCF /
+geomeTRIC checks all 5 convergence criteria (gmax / grms / dmax /
+drms / etol — AND).  SIESTA checks only `MD.MaxForceTol`.  At the
+same numerical max-force threshold, a PySCF "converged" geometry
+is generally tighter than a SIESTA "converged" one.  When picking
+matching thresholds across engines for a cross-validation, expect
+PySCF to take more iterations to declare success.
+
+**Default-value implementation.**  molbuilder PySCF #534 stage3
+(the disabled-by-default "tight" tier in `_default_stages()`)
+carries the crystal/surface production values as of 2026-06-23:
+`gmax 2 × 10⁻⁴`, `grms 1 × 10⁻⁴` (Ha/Bohr), `dmax 1 × 10⁻³`,
+`drms 5 × 10⁻⁴` (Å), `etol 1 × 10⁻⁶` (Hartree).  Users targeting
+molecule vib/IR work override these explicitly via the form's
+stage-table widget or `--stages-json`; see §2.4 for the full per-
+knob value table including the molecule-vib (very-tight) column.
+
+The SIESTA generator emits the same tier guidance in the FDF's
+verbose comments (`siesta/input.py::_emit_md_block`).  When SIESTA
+staged-opt lands (#542), per-stage `SiestaStageSpec` defaults will
+mirror this same framework — stage1 = CG loose, stage2 = Broyden
+publishable, stage3 = Broyden tight (crystal-practical).
+
+---
+
+
 | Tier | Value | Rationale |
 |---|---|---|
 | screening | 0.10 eV/Å | Within 1% of a typical bond force; geometry "looks right." |
 | loose preopt | 0.05 eV/Å | Default SIESTA `MD.MaxForceTol` is 0.04 — close enough. |
 | publishable | **0.04 eV/Å (SIESTA) / 4.5 × 10⁻⁴ Ha/Bohr ≈ 0.023 eV/Å (PySCF)** | Gaussian-OPT default; what papers cite without explanation.  [^4] |
-| tight | **0.01 eV/Å / 1.5 × 10⁻⁵ Ha/Bohr** | Hessian eigenvalues stable to ~1 cm⁻¹; vibrations + IR intensities defensible. |
-| very-tight (NEB barrier) | 0.001 eV/Å / 2 × 10⁻⁶ Ha/Bohr | Barrier heights to chemical accuracy (~1 kcal/mol). |
+| **tight (crystal/surface production)** | **0.01 eV/Å / ≈ 2 × 10⁻⁴ Ha/Bohr** | **Community-standard production threshold for metals / interfaces / large unit cells.  Matches VASP `EDIFFG = -0.01` (the de-facto solid-state convention) and Quantum ESPRESSO's tight `forc_conv_thr 2e-4 Ry/Bohr ≈ 0.005 eV/Å`.  Safe for 100s-of-atoms systems where Gaussian's GAU_TIGHT would chase SCF noise.** [^4a] |
+| very-tight (molecule vib/IR/TS/NEB) | 0.001 eV/Å / 1.5 × 10⁻⁵ Ha/Bohr | **Gaussian's `GAU_TIGHT` preset.  Defensible Hessian eigenvalues + IR intensities on small molecules; NEB barrier heights to chemical accuracy.  DO NOT use for crystal/surface systems — for 100+ atom metals this never reaches the SCF noise floor and the run never converges.** [^4b] |
+
+[^4a]: VASP documentation, "EDIFFG" tag — default negative-value
+    convention is force tolerance in eV/Å.  For Au(111) surface +
+    adsorbate studies the canonical practice is EDIFFG = -0.01
+    (max-force ≤ 0.01 eV/Å); see e.g. Hammer + Nørskov,
+    *Adv. Catal.* **45**, 71 (2000) and the broad surface-DFT
+    literature.  Quantum ESPRESSO's tight `forc_conv_thr =
+    2 × 10⁻⁴ Ry/Bohr` converts to ≈ 0.005 eV/Å.
+[^4b]: Schlegel, "Geometry optimization" *WIREs* **1**, 790 (2011)
+    §3 documents the Gaussian `OPT=Tight` (`GAU_TIGHT`) criteria as
+    a vibrational-analysis prerequisite; the multi-100-atom crystal
+    case is explicitly out of scope.
 
 **Engine keywords:**
 
@@ -163,16 +234,30 @@ one, PySCF checks five).
 The five-criteria check from §2.3 has these supplementary
 companions to `gmax`.  Default values mirror Gaussian's `OPT` set.
 
-| Knob | Default (publishable) | `Tight` | Units |
-|---|---|---|---|
-| `convergence_grms` | 3.0 × 10⁻⁴ | 1.0 × 10⁻⁵ | Ha/Bohr |
-| `convergence_dmax` | 1.8 × 10⁻³ | 6.0 × 10⁻⁵ | Å |
-| `convergence_drms` | 1.2 × 10⁻³ | 4.0 × 10⁻⁵ | Å |
-| `convergence_energy` | 1.0 × 10⁻⁶ | 1.0 × 10⁻⁶ | Hartree |
+| Knob | Default (publishable) | **Tight (crystal/surface, molbuilder #534 stage3)** | Very-tight (molecule vib/IR — opt-in via override) | Units |
+|---|---|---|---|---|
+| `convergence_gmax` | 4.5 × 10⁻⁴ | **2.0 × 10⁻⁴** | 1.5 × 10⁻⁵ | Ha/Bohr |
+| `convergence_grms` | 3.0 × 10⁻⁴ | **1.0 × 10⁻⁴** | 1.0 × 10⁻⁵ | Ha/Bohr |
+| `convergence_dmax` | 1.8 × 10⁻³ | **1.0 × 10⁻³** | 6.0 × 10⁻⁵ | Å |
+| `convergence_drms` | 1.2 × 10⁻³ | **5.0 × 10⁻⁴** | 4.0 × 10⁻⁵ | Å |
+| `convergence_energy` | 1.0 × 10⁻⁶ | 1.0 × 10⁻⁶ | 1.0 × 10⁻⁶ | Hartree |
 
-The publishable set is geomeTRIC's `GAU` preset; `Tight` is
-`GAU_TIGHT` (gradients tighten 10×, displacements 20×, energy
-stays at the same decade). [^6]
+The publishable set is geomeTRIC's `GAU` preset (Gaussian-OPT
+default).  The **Tight column is the molbuilder #534 stage3 default
+as of 2026-06-23** — community-standard production thresholds for
+crystal / surface / interface DFT (max-force ≈ 0.01 eV/Å, matching
+VASP `EDIFFG=-0.01`).  The Very-tight column is geomeTRIC's
+`GAU_TIGHT` preset (gradients tighten 10×, displacements 20×) and
+is **molecule-only** territory — opt in explicitly via the form's
+stage-table or `--stages-json` for vib/IR/TS/NEB work on small
+molecules.  Using GAU_TIGHT on a 100+ atom metal system reliably
+chases SCF noise and never converges. [^6]
+
+Pre-2026-06-23 stage3 carried the GAU_TIGHT values — surfaced as a
+real bug during BDT/Au(111) junction debugging when the user asked
+"is this practical for large crystal systems?".  The realignment
+keeps GAU_TIGHT reachable (via user override) but no longer ships
+as the default tight tier.
 
 **All five criteria flow end-to-end through molbuilder's PySCF
 staged-opt** (since #534 commit 7a, 2026-06-23).  Per-stage values

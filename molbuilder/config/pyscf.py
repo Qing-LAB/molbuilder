@@ -209,10 +209,32 @@ def _default_stages() -> List[StageSpec]:
                   etol=1.0e-6,
                   max_steps=200,
                   on_nonconvergence="halt"),
+        # stage3 = TIGHT (crystal-practical), 2026-06-23 realignment:
+        # Pre-2026-06-23 stage3 carried geomeTRIC's GAU_TIGHT preset
+        # (gmax 1.5e-5 Ha/Bohr ~= 0.00077 eV/Å, dmax 6e-5 Å).  Those
+        # are Gaussian's *very-tight* values intended for small-
+        # molecule vibrational analysis / IR intensities / TS search
+        # / NEB barriers -- they CHASE SCF NOISE on any system with
+        # >50 metal atoms and effectively never converge for surfaces
+        # or interfaces.  The 2026-06-23 BDT-Au junction debugging
+        # surfaced this when the user asked "is this practical for
+        # large crystal systems?".
+        #
+        # Realigned to community-standard tight thresholds for
+        # production crystal / surface / interface work:
+        #   gmax 2e-4 Ha/Bohr  ~= 0.01  eV/Å   (VASP EDIFFG=-0.01)
+        #   grms 1e-4 Ha/Bohr  ~= 0.005 eV/Å
+        #   dmax 1e-3 Å        (~10x looser than GAU_TIGHT)
+        #   drms 5e-4 Å
+        #   etol 1e-6 Ha       (unchanged; SCF noise floor)
+        # For molecule-scale vib/IR/TS work the user can override via
+        # the form's stage-table or --stages-json -- the tier doc
+        # (docs/engines/optimization-tuning.md § 2.3) carries the
+        # very-tight (0.001 eV/Å) values for that regime explicitly.
         StageSpec(name="stage3", enabled=False,
                   conv_tol=1.0e-10,
-                  gmax=1.5e-5, grms=1.0e-5,
-                  dmax=6.0e-5, drms=4.0e-5,
+                  gmax=2.0e-4, grms=1.0e-4,
+                  dmax=1.0e-3, drms=5.0e-4,
                   etol=1.0e-6,
                   max_steps=100,
                   on_nonconvergence="halt"),

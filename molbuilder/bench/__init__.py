@@ -288,11 +288,21 @@ def force_max_scf_iters(fdf_text: str, n: int) -> str:
 
 
 def disable_md(fdf_text: str) -> str:
-    """Zero out MD.NumCGsteps / NumBroydenSteps so the bench runs SCF
-    only (no relaxation).  Leaves the relaxer keyword intact."""
-    for kw in ("MD.NumCGsteps", "MD.NumBroydenSteps", "MD.NumFIRESteps"):
-        if re.search(rf"^\s*{re.escape(kw)}\s+", fdf_text, re.MULTILINE):
-            fdf_text = override_field_value(fdf_text, kw, "0")
+    """Zero out MD.NumCGsteps so the bench runs SCF only (no
+    relaxation).  Leaves the relaxer keyword intact.
+
+    ``MD.NumCGsteps`` is the universal SIESTA 5.4.2 step-count
+    keyword for CG / Broyden / FIRE despite the CG-prefixed name --
+    see decision-log 2026-06-23.  Pre-fix this function also walked
+    ``MD.NumBroydenSteps`` / ``MD.NumFIRESteps`` aliases which DO NOT
+    EXIST in SIESTA 5.4.2 (silently dropped); those branches were
+    dead code that could only match a hand-edited fdf with phantom
+    keywords, and zeroing them did nothing because the keyword had
+    no effect in the first place.
+    """
+    kw = "MD.NumCGsteps"
+    if re.search(rf"^\s*{re.escape(kw)}\s+", fdf_text, re.MULTILINE):
+        fdf_text = override_field_value(fdf_text, kw, "0")
     return fdf_text
 
 

@@ -454,13 +454,16 @@ class SiestaConfig:
     })
 
     # Relaxation; relax_type="none" disables the MD block entirely.
-    # The actual SIESTA keyword for step count and max-displacement
-    # depends on relax_type -- see siesta/input.py:render_fdf for the
-    # full mapping (CG -> MD.NumCGsteps + MD.MaxCGDispl;
-    # Broyden / FIRE -> MD.NumBroydenSteps / MD.NumFIRESteps + MD.MaxDispl;
-    # Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature).  The
-    # labels below are therefore generic; per-engine help text lives
-    # in the FDF's verbose comments.
+    # SIESTA 5.4.2 step-count + max-displacement mapping (see
+    # siesta/input.py:render_fdf for the full emission code):
+    #   CG / Broyden / FIRE -> MD.NumCGsteps + MD.MaxCGDispl
+    #     (UNIVERSAL despite CG-prefixed names -- pre-2026-06-23 we
+    #      wrongly emitted MD.NumBroydenSteps + MD.MaxDispl, which
+    #      SIESTA silently dropped + ran as Single-point; see
+    #      decision-log 2026-06-23 in design.md)
+    #   Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature
+    # The labels below are generic; per-engine help text lives in the
+    # FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "section": "Compute & budget",
         # Profile-level: relax/MD algorithm family (CG / Broyden /
@@ -497,16 +500,16 @@ class SiestaConfig:
         # For ~230-atom Au junctions bump to 500+; the cluster-context
         # closed-shell argument doesn't help convergence speed.
         "workflow_group": "budget",
-        "label": "MD.Num*Steps (max geometry-optimisation steps)",
-        "engine_key":  'MD.NumCGsteps / MD.NumBroydenSteps / MD.NumFIRESteps (per relax_type)',
+        "label": "MD.NumCGsteps (max geometry-optimisation steps)",
+        "engine_key":  'MD.NumCGsteps (universal for CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)',
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  (
             "OUTER loop: max geometry steps the optimiser is allowed "
-            "(each step = full SCF + forces + atom move).  Maps to "
-            "the SIESTA keyword matching relax_type: MD.NumCGsteps for "
-            "CG, MD.NumBroydenSteps for Broyden, MD.NumFIRESteps for "
-            "FIRE, MD.FinalTimeStep for Verlet/Nose.\n"
+            "(each step = full SCF + forces + atom move).  In SIESTA "
+            "5.4.2 ``MD.NumCGsteps`` is the universal step-count "
+            "keyword for CG, Broyden, AND FIRE despite the CG-prefixed "
+            "name; Verlet/Nose use MD.FinalTimeStep instead.\n"
             "Per-tier: loose warm-up ~50, publishable ~200, tight "
             "(vib/IR) ~100 (small displacement cap = slow but few "
             "steps from a publishable-converged starting geometry).  "
@@ -536,15 +539,16 @@ class SiestaConfig:
     relax_max_displ: float = field(default=0.05, metadata={
         "section": "Compute & budget",
         "workflow_group": "stage",
-        "label": "MD max-displ", "unit": "Å",
-        "engine_key":  'MD.MaxCGDispl / MD.MaxDispl (per relax_type)',
+        "label": "MD.MaxCGDispl", "unit": "Å",
+        "engine_key":  'MD.MaxCGDispl (universal for CG / Broyden / FIRE)',
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  (
-            "Displacement cap per optimiser step (MD.MaxCGDispl for "
-            "CG, MD.MaxDispl for Broyden/FIRE).  Hard ceiling that "
-            "catches line-search over-shoot.\n"
+            "Displacement cap per optimiser step (Å).  In SIESTA 5.4.2 "
+            "``MD.MaxCGDispl`` is the universal displacement-cap keyword "
+            "across CG, Broyden, AND FIRE despite the CG-prefixed name.  "
+            "Hard ceiling that catches line-search over-shoot.\n"
             "Per-tier (Å): screening 0.30, loose preopt 0.20, "
             "publishable 0.05, tight (vib/IR) 0.02.\n"
             "Symptom of too-large cap: max-force oscillates rather "
@@ -717,7 +721,7 @@ class SiestaConfig:
         "section": "Output & positioning",
         "workflow_group": "profile",
         "label": "Write H+S matrices",
-        "engine_key":  'SaveHS / WriteHS',
+        "engine_key":  'SaveHS',
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
     })
     write_molwatch_log: bool = field(default=True, metadata={

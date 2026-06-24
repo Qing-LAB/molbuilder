@@ -807,3 +807,138 @@ def test_pyscf_frozen_atoms_with_non_geometric_optimizer_emits_warning_comment()
     assert "_FROZEN_CONSTRAINTS_PATH" not in script
     assert "WARNING" in script and "frozen_atoms" in script
     assert "geometric" in script  # the suggested fix
+
+
+# --------------------------------------------------------------------- #
+#  SIESTA 5.4.2 universal MD keyword gate (2026-06-23 silent-failure)   #
+# --------------------------------------------------------------------- #
+#
+# The 2026-06-23 incident: the generator emitted ``MD.NumBroydenSteps``
+# / ``MD.NumFIRESteps`` + ``MD.MaxDispl`` when ``cfg.relax_type`` was
+# Broyden or FIRE, assuming SIESTA had per-algorithm keyword aliases.
+# SIESTA 5.4.2 does NOT recognize those names + emits NO warning -- a
+# Broyden / FIRE relax silently fell back to Single-point calculation,
+# wasting CPU on a 444-atom Au-junction run.
+#
+# Empirical proof (against SIESTA 5.4.2):
+#   MD.TypeOfRun Broyden + MD.NumCGsteps N + MD.MaxCGDispl X Ang
+#     -> redata: Dynamics option = Broyden coord. optimization
+#     -> redata: Maximum number of optimization moves = N
+#
+# These tests pin the universal-keyword emission so the bug class
+# cannot return.  Layer: L3 render-shape (no SIESTA binary needed);
+# the L4 binary-smoke test in test_siesta_keyword_smoke.py exercises
+# the same path end-to-end against SIESTA 5.4.2.
+
+
+import pytest as _pytest_md
+
+
+@_pytest_md.mark.parametrize("relax_type", ["CG", "Broyden", "FIRE"])
+def test_relaxation_emits_universal_md_step_count(relax_type):
+    """``MD.NumCGsteps`` is the universal SIESTA 5.4.2 step-count
+    keyword across CG, Broyden, AND FIRE despite the CG-prefixed
+    name.  The generator must emit it for every relax type; the
+    phantom per-algorithm aliases must never be emitted (SIESTA
+    drops them silently)."""
+    from molbuilder.siesta import render_fdf, SiestaConfig
+    from molbuilder.structure import Structure
+    import numpy as _np_md
+    s = Structure(
+        elements=["H", "H"],
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
+    )
+    cfg = SiestaConfig(relax_type=relax_type, relax_steps=42,
+                       psml_lib=None)
+    text = render_fdf(s, cfg)
+    # The recognized keyword IS emitted with the user value.
+    assert "MD.NumCGsteps 42" in text, (
+        f"relax_type={relax_type}: generator must emit "
+        f"MD.NumCGsteps (universal in SIESTA 5.4.2 -- silent "
+        f"single-point fallback if missing)")
+    # The phantom per-algorithm aliases are NOT emitted.  If either
+    # of these reappears, SIESTA 5.4.2 will silently drop it and
+    # the run will degenerate to Single-point -- exactly the
+    # 2026-06-23 incident.
+    assert "MD.NumBroydenSteps" not in text, (
+        f"relax_type={relax_type}: MD.NumBroydenSteps is a phantom "
+        f"keyword in SIESTA 5.4.2 (not recognized, silently dropped). "
+        f"Use MD.NumCGsteps universally.")
+    assert "MD.NumFIRESteps" not in text, (
+        f"relax_type={relax_type}: MD.NumFIRESteps is a phantom "
+        f"keyword in SIESTA 5.4.2 (not recognized, silently dropped). "
+        f"Use MD.NumCGsteps universally.")
+
+
+@_pytest_md.mark.parametrize("relax_type", ["CG", "Broyden", "FIRE"])
+def test_relaxation_emits_universal_md_displ_cap(relax_type):
+    """``MD.MaxCGDispl`` is the universal SIESTA 5.4.2 displacement-
+    cap keyword across CG, Broyden, AND FIRE.  ``MD.MaxDispl`` is a
+    real SIESTA keyword too BUT it does NOT control the Broyden
+    integrator's per-step displacement -- it's silently misapplied
+    (recognized + parsed but never used by Broyden).  Emit the
+    universal MD.MaxCGDispl form only."""
+    from molbuilder.siesta import render_fdf, SiestaConfig
+    from molbuilder.structure import Structure
+    import numpy as _np_md
+    s = Structure(
+        elements=["H", "H"],
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
+    )
+    cfg = SiestaConfig(relax_type=relax_type, relax_max_displ=0.07,
+                       psml_lib=None)
+    text = render_fdf(s, cfg)
+    assert "MD.MaxCGDispl 0.07 Ang" in text, (
+        f"relax_type={relax_type}: generator must emit "
+        f"MD.MaxCGDispl (universal in SIESTA 5.4.2; the only key "
+        f"Broyden's integrator actually honors)")
+    # Phantom keyword check: MD.MaxDispl is recognized by SIESTA but
+    # silently mis-applied for Broyden; never emit it.
+    assert "MD.MaxDispl" not in text, (
+        f"relax_type={relax_type}: MD.MaxDispl is silently "
+        f"mis-applied by Broyden in SIESTA 5.4.2 (recognized + "
+        f"parsed but never used).  Emit MD.MaxCGDispl only.")
+
+
+def test_savehs_keyword_emitted_always():
+    """``SaveHS`` is the SIESTA 5.4.2 keyword to control H+S matrix
+    writing to .HSX.  ``WriteHS`` (which we emitted pre-2026-06-23)
+    is a phantom keyword silently dropped by SIESTA; the default-T
+    behavior of SaveHS masked the bug whenever cfg.write_hs=True.
+
+    Emit ``SaveHS`` UNCONDITIONALLY so the user's choice (T or F)
+    lands in the .HSX file as intended + the fdf-echo proves it.
+    """
+    from molbuilder.siesta import render_fdf, SiestaConfig
+    from molbuilder.structure import Structure
+    import numpy as _np_md
+    s = Structure(
+        elements=["H", "H"],
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
+    )
+    def _has_active_writehs(text):
+        """Return True if any non-comment line carries a ``WriteHS``
+        directive (i.e. an actual keyword emission, not a historical-
+        context comment).  SIESTA's fdf comment char is ``#``."""
+        import re as _re_md
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            if _re_md.match(r"^\s*WriteHS\b", line):
+                return True
+        return False
+
+    # write_hs=True: SaveHS .true. lands.
+    text_on = render_fdf(s, SiestaConfig(write_hs=True, psml_lib=None))
+    assert "SaveHS             .true." in text_on
+    assert not _has_active_writehs(text_on), (
+        "WriteHS is a phantom keyword in SIESTA 5.4.2 (silently "
+        "dropped, no warning).  Emit SaveHS only as an ACTIVE "
+        "directive; the keyword string may still appear in "
+        "historical-context comments.")
+    # write_hs=False: SaveHS .false. lands -- proves the override
+    # actually reaches SIESTA (pre-fix this was silently no-op).
+    text_off = render_fdf(s, SiestaConfig(write_hs=False, psml_lib=None))
+    assert "SaveHS             .false." in text_off
+    assert not _has_active_writehs(text_off)
