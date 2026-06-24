@@ -217,11 +217,10 @@ the tab labels.
 | **Transport calculation** | `/transport-calculation` | File-driven TranSIESTA `.fdf` generator |
 | **Results** | `/results` | Unified file-dispatched inspector — trajectory, spectra, structure, source, and a "Bundle for next stage" handoff card |
 
-The persistent sidebar at the left of every tab is the project
-explorer — single-click previews a file, double-click commits it
-as the workspace cursor, and structure files always render with
-their `.molstruct.json` sidecars paired so per-atom labels never
-orphan:
+The Projects sidebar persists on every tab.  Single-click previews
+a file; double-click commits it as the workspace cursor.  Structure
+files render with their `.molstruct.json` sidecars paired so
+per-atom labels never orphan.
 
 ### 1. The Molbuilder tab — interactive workspace
 
@@ -373,14 +372,13 @@ Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
 For vibrational data, the spectra inspector renders a
 Lorentzian-broadened spectrum, the modes table, and a 3-D
-animation per mode on click:
+animation per mode on click.
 
-Once the run is done, the **Bundle for next stage** card at the
-bottom of the Results tab fuses the final structure (from `.XV`
-or `_optimized.xyz`) with the labels the originating script
-carried (in-body ATOM-METADATA block) and writes a portable
-`.xyz` + `.molstruct.json` pair the next workflow tab can load
-directly — no copy/paste, no path-hunting:
+Once a run is finished, the **Bundle for next stage** card at the
+bottom of the Results tab combines the final structure (from `.XV`
+or `_optimized.xyz`) with the labels the originating script carried
+(an in-body ATOM-METADATA block) and writes a portable `.xyz` plus
+`.molstruct.json` pair the next workflow tab can load directly.
 
 Bundle contract:
 [`docs/protocols/bundle-contract.md`](docs/protocols/bundle-contract.md).
@@ -398,19 +396,20 @@ the appropriate inspector based on the file extension.
 | `*.transport.json` | Transport | T(E) + I-V Plotly charts (planned) |
 | (any file in a finished run dir) | **Bundle for next stage** card | Sibling section below the inspector — assembles `<stem>.xyz` + `<stem>.molstruct.json` from the run's final coords + in-body labels for the next workflow tab |
 
-**Architecture:**
+**Architecture notes:**
 
-- **Inspector Registry** at `lib/inspectors/registry.js` — each
-  inspector self-registers; the dispatcher knows nothing about
+- The Inspector Registry at `lib/inspectors/registry.js`
+  self-registers each inspector; the dispatcher does not know about
   specific file types.
-- Adding a new file type = one new `lib/inspectors/<name>.js` +
-  one `<script>` tag in `results.html`.  No edit to the dispatcher.
-- **Explicit mount lifecycle** — each inspector returns a `dispose()`
-  handle so file-swap cleanly tears down 3Dmol viewers, Plotly
-  charts, and polling timers.
-- **Live polling on `mtime` change** — streams new frames into an
-  open inspector while a calculation is still running.  Parser
-  drops half-written final blocks and picks them up next refresh.
+- Adding a new file type is one new `lib/inspectors/<name>.js` plus
+  one `<script>` tag in `results.html`; no edit to the dispatcher.
+- Each inspector returns a `dispose()` handle so a file swap tears
+  down its 3Dmol viewers, Plotly charts, and polling timers
+  cleanly.
+- Polling watches `mtime` and streams new frames into an open
+  inspector while the calculation is still running.  The parser
+  drops half-written trailing blocks and picks them up on the next
+  refresh.
 
 Spec: [`docs/tabs/results.md`](docs/tabs/results.md) +
 [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) +
@@ -501,7 +500,7 @@ flowchart TB
     L2 --> L1
 ```
 
-The layering rule is load-bearing: higher layers may import lower;
+The layering rule is strict: higher layers may import lower;
 lower layers never import higher.  Field metadata (label, range,
 validator, units, tooltip) lives on the dataclass field itself,
 and the CLI options and web form schemas are both generated from
@@ -825,31 +824,33 @@ The template has inline `_comment_*` keys explaining every field
 (JSON doesn't support comments; molbuilder's parser silently
 ignores `_comment_*` — they ride along as inline documentation).
 
-### What molbuilder does on its own
+### Server-enforced safeguards
 
-For any non-default deployment, the server enforces:
+For any non-default (non-loopback) deployment, the server enforces:
 
-- TLS-or-loopback guard at startup (binding non-loopback without TLS
-  is a hard error)
-- Content-Security-Policy + X-Frame-Options + X-Content-Type-Options
-  + Referrer-Policy headers
-- Self-hosted 3Dmol (no CDN trust)
-- Path validation on every file-ops endpoint (no `..` escape)
-- Filename validation on upload, 50 MB upload cap
+- TLS-or-loopback guard at startup: binding non-loopback without TLS
+  is a hard error.
+- Content-Security-Policy, X-Frame-Options, X-Content-Type-Options,
+  and Referrer-Policy headers.
+- A self-hosted 3Dmol bundle (no CDN dependency).
+- Path validation on every file-ops endpoint (no `..` escape).
+- Filename validation on upload, with a 50 MB upload cap.
 
-### What molbuilder explicitly does NOT do
+### Out of scope (delegated to the deployment layer)
 
-Delegate to the deployment layer:
+These are delegated to the deployment layer (reverse proxy, single-
+sign-on gateway, or operating-system controls) rather than handled
+by molbuilder itself:
 
-- Account management (user CRUD, password resets)
-- CSRF tokens
-- Rate limiting
-- Audit logging
-- Per-user `projects/` isolation
+- Account management (user CRUD, password resets).
+- CSRF tokens.
+- Rate limiting.
+- Audit logging.
+- Per-user `projects/` isolation.
 
-[`docs/deployment.md`](docs/deployment.md) explains which
-deployment shape covers which of these — and why the split is the
-way it is.
+[`docs/deployment.md`](docs/deployment.md) describes which
+deployment shape covers which of these and why the split is drawn
+here.
 
 ---
 
