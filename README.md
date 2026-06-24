@@ -6,10 +6,8 @@ generate input for **SIESTA**, **TranSIESTA**, or **PySCF**, and
 inspect the resulting trajectories, spectra, and transmission curves
 from a single Flask application.
 
-![Molbuilder home — projects sidebar on the left, 5-tab nav at the top (Molbuilder · Structure optimization · Spectrum calculation · Transport calculation · Results), Au–BDT–Au junction loaded in the 3Dmol viewer, foldable commands stack on the right](docs/img/hero-molbuilder.png)
-
-The same Au–BDT–Au junction shown above carries through every example
-in this README: builder → optimisation → spectrum → transport →
+The Au–BDT–Au junction is used as the running example throughout
+this README: builder → optimisation → spectrum → transport →
 results.
 
 **Status.** Pre-1.0.  Active development.  Used by the Qing lab for
@@ -116,90 +114,85 @@ auth), see [§ Deployment](#deployment) and
 
 ## Common tasks
 
-Each of the recipes below is a same-screen workflow in the web app.
-The downward arrows mark a tab switch or a panel scroll.
+Each recipe below is a same-screen workflow inside the web app.
+Each numbered step is a panel scroll or click; tab switches are
+called out where they happen.
 
 ### Build an Au–S–molecule–S–Au junction from a SMILES
 
-```
-Molbuilder tab → Sources panel
-   ↓ Type SMILES: Sc1ccc(S)cc1   (1,4-benzenedithiol)
-   ↓ Click "Build"
-Atom panel
-   ↓ Click each thiol H, hit Delete (exposes the two S atoms)
-Pose panel
-   ↓ Shift-click the two S atoms, axis=z, center=midpoint, "Apply orient"
-Junction panel
-   ↓ Element=Au, plane=111, m×n×layers=3×3×2, gap=12 Å, "Apply Add Electrode"
-Save panel
-   ↓ "Save to project"  →  BDT-Au.xyz  +  BDT-Au.molstruct.json
-```
+1. **Molbuilder tab → Sources panel.** Type the SMILES
+   `Sc1ccc(S)cc1` (1,4-benzenedithiol) and click *Build*.
+2. **Atom panel.** Click each thiol H and press *Delete* to expose
+   the two S atoms.
+3. **Pose panel.** Shift-click the two S atoms, set *axis = z* and
+   *center = midpoint*, and click *Apply orient*.
+4. **Junction panel.** Set *Element = Au*, *plane = 111*,
+   *m×n×layers = 3×3×2*, *gap = 12 Å*, and click *Apply add
+   electrode*.
+5. **Save panel.** Click *Save to project* → `BDT-Au.xyz` plus its
+   `BDT-Au.molstruct.json` sidecar.
 
 The result is a transport-ready Au–BDT–Au geometry along with its
-`.molstruct.json` sidecar.
+sidecar carrying region labels.
 
 ### Generate a SIESTA `.fdf` for this geometry
 
-```
-Structure-optimization tab
-   ↓ In the Projects sidebar, double-click BDT-Au.xyz   (commits the selection)
-   ↓ Engine: SIESTA.  Pick the relaxation stage, k-grid, basis, mesh.
-   ↓ "Generate"  →  BDT-Au.fdf + BDT-Au.run.sh + .psml files
-```
+1. **Structure-optimization tab.** Double-click `BDT-Au.xyz` in the
+   Projects sidebar to commit the selection.
+2. Set *Engine = SIESTA*; pick the relaxation stage (`--stage`),
+   k-grid, basis, and mesh.
+3. Click *Generate* → `BDT-Au.fdf`, `BDT-Au.run.sh`, and the
+   per-element `.psml` files.
 
 The generated `.fdf` includes inline parameter comments.  The run
 wrapper handles MPI launch and warm-restart / cold-restart flags;
 copy the directory to a cluster and run `bash BDT-Au.run.sh`.
 
-### Watch the optimization converge in real time
+### Watch an optimization converge in real time
 
-```
-Results tab
-   ↓ Single-click your run directory's .molwatch.log in the sidebar
-Inspector renders:
-   * 3Dmol frame-by-frame animation of the geometry
-   * Energy vs step (Plotly)
-   * Max atomic force vs step
-   * Per-cycle SCF residual on log scale
-   ↓ auto-refreshes every ~1 min on file mtime change
-```
+1. **Results tab.** Single-click the run directory's
+   `.molwatch.log` in the sidebar.
+2. The inspector renders the 3Dmol frame animation, energy vs
+   step, max atomic force vs step, and per-cycle SCF residual on
+   a log scale.
+3. The inspector auto-refreshes when the log's `mtime` changes
+   (about once per minute by default).
 
-Frames stream in while the job is still running on the cluster; no
-file copying or offline plotting is required.
+Frames stream in while the job is still running on the cluster;
+no file copying or offline plotting is required.
 
 ### Run Raman on a small molecule
 
-```
-Molbuilder tab → Sources panel
-   ↓ Type compound name: aspirin  (PubChem lookup)
-   ↓ Save to project as aspirin.xyz
-Structure-optimization tab
-   ↓ Engine: PySCF, method: B3LYP/def2-SVP, "Generate"  →  aspirin.py
-   ↓ (run on cluster)
-Spectrum-calculation tab
-   ↓ Pick aspirin_optimized.xyz from the sidebar
-   ↓ compute_raman = True, compute_frequencies = True, "Generate"
-   ↓ (run on cluster)  →  aspirin.spectra.json
-Results tab
-   ↓ Pick aspirin.spectra.json
-   ↓ See Lorentzian-broadened spectrum + modes table + per-mode 3-D animation
-```
+1. **Molbuilder tab → Sources panel.** Type the compound name
+   `aspirin` for a PubChem lookup; save to the project as
+   `aspirin.xyz`.
+2. **Structure-optimization tab.** Set *Engine = PySCF*,
+   *method = B3LYP/def2-SVP*, and *Generate* → `aspirin.py`.
+   Run on a cluster.
+3. **Spectrum-calculation tab.** Pick `aspirin_optimized.xyz`
+   from the sidebar; enable `compute_raman` and
+   `compute_frequencies`; *Generate* → `aspirin.spectra.py`.  Run
+   on a cluster.
+4. **Results tab.** Pick `aspirin.spectra.json` to see the
+   Lorentzian-broadened spectrum, the modes table, and per-mode
+   3-D animation.
 
-The Raman pipeline is bit-for-bit validated against an independent
-hand-written reference (see § [Scientific validation](#scientific-validation)).
+The Raman pipeline is bit-for-bit validated against an
+independent hand-written PySCF reference; see
+[§ Scientific validation](#scientific-validation).
 
-### Bias-scan a finished transport calculation
+### Set up a transport calculation
 
-```
-Transport-calculation tab
-   ↓ Pick BDT-Au.xyz from the sidebar
-   ↓ Configure: electrode mode, k-mesh, contour, lead orientation
-   ↓ "Generate"  →  BDT-Au-transport.fdf
-   ↓ (run on cluster, requires electrode .TSHS — manual today; wizard planned)
-Results tab
-   ↓ Pick BDT-Au.transport.json
-   ↓ T(E) + I-V Plotly charts (planned; today shows the file metadata)
-```
+1. **Transport-calculation tab.** Pick `BDT-Au.xyz` from the
+   sidebar.
+2. Configure electrode mode, k-mesh, contour, and lead
+   orientation.
+3. Click *Generate* → `BDT-Au-transport.fdf`.  Running the
+   resulting `.fdf` on a cluster also requires the electrode
+   `.TSHS` files; their generation is a manual step today, with
+   an "electrode wizard" planned.
+4. **Results tab.** Pick `BDT-Au.transport.json` to view the
+   metadata (T(E) and I-V Plotly charts are planned).
 
 The Au–BDT–Au transport pipeline targets a T(E_F) comparison with
 Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
@@ -216,8 +209,6 @@ The web app is organised as five tabs and a persistent Projects
 sidebar.  Each tab handles one phase of the workflow; URLs match
 the tab labels.
 
-![The five-tab nav strip: Molbuilder · Structure optimization · Spectrum calculation · Transport calculation · Results](docs/img/tab-bar.png)
-
 | Tab | Route | Role |
 |---|---|---|
 | **Molbuilder** | `/molbuilder` (bare `/` redirects) | Interactive workspace — load / build / edit / assemble |
@@ -232,11 +223,7 @@ as the workspace cursor, and structure files always render with
 their `.molstruct.json` sidecars paired so per-atom labels never
 orphan:
 
-![Projects sidebar showing the BDT project expanded, with the structure/ folder open and BDT-AuJunction_siestaStage1_optimized.xyz selected — its .molstruct.json sidecar pairs in the listing](docs/img/sidebar-projects.png)
-
 ### 1. The Molbuilder tab — interactive workspace
-
-![Molbuilder workspace — Au–BDT–Au junction in the 3Dmol viewer at centre, atom-list + selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right; one atom selected showing the orange halo synced to the atom list](docs/img/molbuilder-workspace.png)
 
 The Molbuilder tab is the only tab that holds in-memory canvas
 state.  Every other tab reads from disk.  All commands are reachable
@@ -287,8 +274,6 @@ Spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
 ### 2. Structure optimization — SIESTA `.fdf` + PySCF `.py`
 
-![Structure-optimization form for the BDT Au junction — engine selector at top, three workflow-group cards (Profile / Stage / Budget), 3Dmol viewer rendering the input geometry, inline detection chip ("Au-thiol-Au junction; closed-shell singlet") + per-card issues panel showing the workflow-routed validator output](docs/img/structure-optimization-form.png)
-
 A file-driven task tab.  The user picks an `.xyz` or `.pdb` from
 the sidebar, configures the form, and Generate emits a self-contained
 `<name>.fdf` (or `.py`) plus a `<name>.run.sh` wrapper that knows
@@ -296,31 +281,39 @@ which conda env to dispatch into.
 
 **Notable details:**
 
-- **Schema-driven form** generated from `SiestaConfig` /
-  `PySCFConfig` dataclass field metadata.  Adding a new knob is a
-  one-line edit; CLI flag + form input + tooltip + validator all
-  follow automatically.
-- **Three workflow-group cards** — Profile / Stage / Budget —
-  group fields by life-cycle phase (what the system is, what stage
-  you're at, what computational budget you have).  Not alphabetical;
-  not by FDF block.  Pinned by per-card e2e tests.
-- **Methods-text preview** writes manuscript-ready prose for the
-  methods section of a paper, kept in sync with the form state.
-- **Issues panel** routed through the shared `analyze_structure`
-  pipeline.  The chip, the validator, and the preflight all agree
-  on chemistry (e.g. Au-BDT-Au is correctly identified as a
-  noble-metal cluster — the open-shell-spin warning is suppressed).
-- **Staged relaxation** (coarse → medium → tight) — each stage
-  writes a distinct `<basename>-stage<N>.molwatch.log`; pointing
-  the Results inspector at the directory **merges stages into one
-  trajectory** with stage-boundary markers on the energy / force
-  plots.
+- The form is generated from `SiestaConfig` / `PySCFConfig`
+  dataclass field metadata.  Adding a parameter is a single
+  dataclass field edit; the CLI flag, form input, tooltip, and
+  validator follow automatically.
+- Fields are grouped into three workflow cards — Profile, Stage,
+  and Budget — by life-cycle phase (what the system is, what
+  stage of relaxation you are at, what compute budget you have)
+  rather than alphabetically or by FDF block.  Card grouping is
+  pinned by per-card e2e tests.
+- A methods-text preview composes a draft methods paragraph that
+  stays in sync with the form state.  Useful as a starting point
+  for a manuscript; not a substitute for proof-reading.
+- The issues panel is routed through the shared
+  `analyze_structure` pipeline so the detection chip, validator,
+  and preflight always agree.  For example, Au–BDT–Au is identified
+  as a noble-metal cluster and the open-shell-spin warning is
+  suppressed.
+- Staged relaxation is supported on both engines.  PySCF runs the
+  full per-stage convergence ladder in a single script
+  (`cfg.stages: List[StageSpec]`).  SIESTA exposes `--stage {1,2,3}`
+  on the CLI as a tier-aligned overlay (stage 1 CG warm-up, stage
+  2 Broyden publishable, stage 3 Broyden crystal-tight per
+  [`docs/engines/optimization-tuning.md`](docs/engines/optimization-tuning.md));
+  a per-stage data model parallel to PySCF's is planned.
+- Each stage writes a distinct `<basename>-stage<N>.molwatch.log`.
+  Pointing the Results inspector at the run directory merges the
+  stages into one continuous trajectory with stage-boundary markers
+  on the energy and force plots.
 
-Spec: [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md).
+Spec: [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md);
+tuning reference: [`docs/engines/optimization-tuning.md`](docs/engines/optimization-tuning.md).
 
 ### 3. Spectrum calculation — PySCF Raman / IR
-
-![Spectrum-calculation form — vertical workflow-group cards for Profile / Stage / Budget, mirroring the Structure-optimization layout; defaults appropriate for a small molecule Raman run](docs/img/spectrum-form.png)
 
 A file-driven task tab that generates `<job>.spectra.py` PySCF
 scripts for harmonic vibrational analysis: frequencies, Raman
@@ -350,37 +343,37 @@ Spec + bibliography:
 
 ### 4. Transport calculation — TranSIESTA scripts
 
-![Transport-calculation form for the Au–BDT–Au junction — left-electrode / bridge / right-electrode region labels flow in from the .molstruct.json sidecar; the viewer renders the junction with region-coloured atoms](docs/img/transport-form.png)
-
 A file-driven task tab that emits TranSIESTA `.fdf` for zero-bias
 transmission.  Bias-scan and electrode `.TSHS` generation wizards
 are on the roadmap.
 
 **Notable details:**
 
-- An Au–BDT–Au validation fixture in `tests/` cross-checks `T(E_F)`
-  within a factor of two of Reed 2006 and Stokbro 2003 (~0.01 G₀).
-- An atom-ordering preflight catches the canonical TranSIESTA
-  failure mode (left-lead → device → right-lead ordering); silent
-  miscounts produce wrong transmission and no error.
+- An Au–BDT–Au fixture in `tests/data/` pins the `.fdf` emission
+  contract end-to-end (NEGF keyword set, region labels,
+  atom-ordering preflight, chemistry analyzer).  The numerical
+  T(E_F) comparison against Reed 2006 / Stokbro 2003 is a planned
+  follow-up; see [§ Scientific validation](#scientific-validation)
+  for the current status.
+- The atom-ordering preflight catches the canonical TranSIESTA
+  failure mode (the structure must be contiguous left-lead →
+  device → right-lead; silent miscounts produce wrong
+  transmission with no error).
 - The validator covers k-mesh, contour parameters, electrode mode,
-  and mesh cutoff defaults per element (Au needs a higher cutoff
+  and per-element mesh-cutoff defaults (Au needs a higher cutoff
   than the SIESTA default).
 - Region labels persist through the workflow via the
-  `.molstruct.json` sidecar; electrode / bridge / anchor regions
-  set in the Molbuilder tab carry into the TranSIESTA emitter.
+  `.molstruct.json` sidecar.  Electrode / bridge / anchor regions
+  set in the Molbuilder tab carry into the TranSIESTA emitter
+  without re-labelling.
 
 Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
 ### 5. Results — unified inspector
 
-![Trajectory inspector pointed at the BDT multi-stage optimisation directory — three stage `.molwatch.log` files are merged into one continuous trajectory with stage-boundary markers on the energy / force / SCF-residual plots; viewer movie, frame strip + scrub slider below, Plotly charts stacked on the right](docs/img/results-trajectory.png)
-
 For vibrational data, the spectra inspector renders a
 Lorentzian-broadened spectrum, the modes table, and a 3-D
 animation per mode on click:
-
-![Spectra inspector — Lorentzian-broadened spectrum chart at top, modes table with frequencies + Raman activities below, 3D viewer animating the selected mode's normalised eigenvector](docs/img/results-spectra.png)
 
 Once the run is done, the **Bundle for next stage** card at the
 bottom of the Results tab fuses the final structure (from `.XV`
@@ -388,8 +381,6 @@ or `_optimized.xyz`) with the labels the originating script
 carried (in-body ATOM-METADATA block) and writes a portable
 `.xyz` + `.molstruct.json` pair the next workflow tab can load
 directly — no copy/paste, no path-hunting:
-
-![Bundle for next stage card — three text inputs (run dir / target dir / stem), overwrite checkbox, Bundle button, and a status spinner that turns the result panel green for converged geometries or amber for "NOT converged geometry" fallbacks](docs/img/results-bundle-card.png)
 
 Bundle contract:
 [`docs/protocols/bundle-contract.md`](docs/protocols/bundle-contract.md).
@@ -442,34 +433,34 @@ This decouples interactive editing from script generation: the same
 project directory always produces the same script regardless of
 which tab the user came from.
 
-```
-[Molbuilder tab]
-   ↓ load file OR generate (SMILES / peptide / DNA / name / 3DNA)
-   ↓ edit (delete, add, orient, rotate, translate)
-   ↓ assemble (anchorless or anchor-pair slab)
-   ↓ Save to project  ────► <proj>/<name>.xyz  +  .molstruct.json
-                                                 │
-   [Structure optimization tab]                  │
-      sidebar pick ◄───────────────────── pick the saved file
-      configure form                             │
-      Generate ──────────► <proj>/<name>.fdf  +  .run.sh  +  .psml
-                                                 │
-   [Run on cluster, results land back]           │
-                                                 │
-   [Results tab]                                 │
-      sidebar pick ◄───────────────────── pick <name>.out  /  .molwatch.log
-      trajectory inspector renders
-                                                 │
-   (optional) [Spectrum calculation tab]         │
-      sidebar pick ◄───────────────────── pick the optimised geometry
-      configure form
-      Generate ──────────► <proj>/<name>.spectra.py
-                                                 │
-   [Run on cluster, results land back]           │
-                                                 │
-   [Results tab]                                 │
-      sidebar pick ◄───────────────────── pick <name>.spectra.json
-      spectra inspector renders (modes + chart + 3-D animation)
+```mermaid
+flowchart TD
+    M["Molbuilder tab<br/>(interactive workspace)"]
+    M --> M1[build or load structure]
+    M1 --> M2[edit + assemble]
+    M2 --> SAVE[Save to project]
+    SAVE --> XYZ[(name.xyz<br/>name.molstruct.json)]
+
+    XYZ --> SO["Structure optimization tab"]
+    SO --> SOG[configure form + Generate]
+    SOG --> FDF[(name.fdf<br/>name.run.sh<br/>.psml)]
+
+    FDF --> R1[Run on cluster]
+    R1 --> OUT[(name.out<br/>name.molwatch.log)]
+
+    OUT --> RES1["Results tab<br/>trajectory inspector"]
+
+    XYZ --> SP["Spectrum calculation tab<br/>(optional)"]
+    SP --> SPG[configure form + Generate]
+    SPG --> SPY[(name.spectra.py)]
+
+    SPY --> R2[Run on cluster]
+    R2 --> SJ[(name.spectra.json)]
+
+    SJ --> RES2["Results tab<br/>spectra inspector"]
+
+    classDef disk fill:#f7f7f7,stroke:#999,stroke-width:1px;
+    class XYZ,FDF,OUT,SPY,SJ disk;
 ```
 
 Every arrow except "Save to project" and the cluster round-trip is
@@ -485,28 +476,36 @@ Cross-tab architecture spec:
 
 ### Three-layer architecture
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  L3 — Surfaces                                            │
-│  cli.py (click), web/app.py (Flask + Blueprints)          │
-│  Convert UI gestures → L2 calls.  No business logic.      │
-├──────────────────────────────────────────────────────────┤
-│  L2 — Domain verbs                                        │
-│  builders/, generators/, parsers/, validation/            │
-│  Each verb is a focused module operating on L1 types.     │
-├──────────────────────────────────────────────────────────┤
-│  L1 — Core types (nouns)                                  │
-│  structure.py, frame.py, config/, issues.py               │
-│  + chemistry, residues, trajectory_log/                   │
-│  Pure data + minimal serialization.  Field metadata here. │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph L3["L3 — Surfaces"]
+        L3a["cli.py (Click)"]
+        L3b["web/app.py (Flask + Blueprints)"]
+        L3note["Convert UI gestures → L2 calls.  No business logic."]
+    end
+    subgraph L2["L2 — Domain verbs"]
+        L2a["builders/"]
+        L2b["generators/"]
+        L2c["parsers/"]
+        L2d["validation/"]
+        L2note["Each verb is a focused module operating on L1 types."]
+    end
+    subgraph L1["L1 — Core types (nouns)"]
+        L1a["structure.py"]
+        L1b["frame.py"]
+        L1c["config/"]
+        L1d["issues.py"]
+        L1note["Pure data + serialization.  Field metadata lives here."]
+    end
+    L3 --> L2
+    L2 --> L1
 ```
 
-**Layering rule (load-bearing):** higher layers may import lower;
-lower layers never import higher.  Field metadata (label / range /
-validator / units / tooltip) lives **on the dataclass field** —
-CLI options and web form schemas are both generated from
-`dataclasses.fields(Config)`, not maintained in parallel.
+The layering rule is load-bearing: higher layers may import lower;
+lower layers never import higher.  Field metadata (label, range,
+validator, units, tooltip) lives on the dataclass field itself,
+and the CLI options and web form schemas are both generated from
+`dataclasses.fields(Config)` — not maintained in parallel.
 
 ### Four core types
 
@@ -630,11 +629,12 @@ code cannot drift silently.
 
 ### GPU SIESTA from source
 
-`molbuilder-siesta-gpu` builds **ELPA + SIESTA 5.4.2** from source
-against the env's pinned toolchain, with ELPA's CUDA back-end on (the
-conda-forge ELPA package isn't built with CUDA, which is why the
-source build exists).  The install runs ~45 min on 8 cores and
-consumes ~12 GB under `$CONDA_PREFIX`.  Same CLI as every other env:
+`molbuilder-siesta-gpu` builds ELPA + SIESTA 5.4.2 from source
+against the env's pinned toolchain, with ELPA's CUDA back-end
+enabled.  The conda-forge ELPA package does not ship with CUDA
+support, which is why the source build exists.  The install runs
+roughly 45 minutes on 8 cores and consumes about 12 GB under
+`$CONDA_PREFIX`.  Same CLI as every other env:
 
 ```bash
 python -m molbuilder envs install molbuilder-siesta-gpu          # interactive (confirms before the 45-min commitment)
@@ -645,78 +645,72 @@ python -m molbuilder envs install molbuilder-siesta-gpu --clean  # wipe env + ar
 python -m molbuilder envs validate molbuilder-siesta-gpu         # post-install probes (~2 min)
 ```
 
-**What's notable:**
+**Notable details:**
 
-- **Env-state probe at install start.**  Before touching anything,
+- **Env-state probe at install start.** Before touching anything,
   the install reports which of five states the env is in
-  (`FRESH` / `PRESENT` / `ORPHAN` / `GHOST` / `BROKEN`) so a
-  partly-broken env doesn't fail 10 minutes into `conda create`.
-  ORPHAN / GHOST / BROKEN block the install with a clear "re-run
-  with `--clean`" message rather than a cryptic conda error.
-
-- **Artifact-presence resume model** (replaces the older fingerprint
-  scheme).  At install start, each component is probed by running
-  its `verify_argv`; ones that pass are fast-forwarded.  So editing a
-  SIESTA cmake flag and re-running takes ~5 seconds, not 30 minutes —
+  (`FRESH`, `PRESENT`, `ORPHAN`, `GHOST`, `BROKEN`) so a partly-
+  broken env does not fail ten minutes into `conda create`.
+  `ORPHAN` / `GHOST` / `BROKEN` block the install with a clear
+  message recommending `--clean` rather than a cryptic conda error.
+- **Artifact-presence resume model.** At install start, each
+  component is probed by running its `verify_argv`; components
+  that pass are fast-forwarded.  Editing a SIESTA cmake flag and
+  re-running takes about five seconds, not thirty minutes —
   ELPA is left alone because its `libelpa_openmp.so` still passes
   verify.  `--rebuild=siesta` wipes only SIESTA; ELPA survives.
-
 - **CUDA toolkit lives in the env** (`cuda-version=13.*`,
-  `cuda-nvcc`, `cuda-cudart-dev`, `libcublas-dev`) — the host
-  provides only the NVIDIA driver + `nvidia-smi`.  Mirrors the
-  `molbuilder-pySCF` env pattern.
-
+  `cuda-nvcc`, `cuda-cudart-dev`, `libcublas-dev`).  The host
+  provides only the NVIDIA driver and `nvidia-smi`.  This mirrors
+  the `molbuilder-pySCF` env pattern.
 - **Two-component source build** (per SIESTA 5.4 INSTALL.md): ELPA
-  built externally via autotools (tarball from MPCDF, SHA256-pinned),
-  and SIESTA cloned `--recurse-submodules` so the four required ESL
-  libraries (`libfdf`, `libpsml`, `xmlf90`, `libgridxc`) + ELSI +
-  libxc come along as `External/` submodules and SIESTA's cmake
-  compiles them on the fly.  All other deps (gcc, MPI, BLAS,
-  ScaLAPACK, NetCDF, HDF5, FFTW, CUDA toolkit, libxc) are conda-forge
-  packages.
-
-- **All version pins exposed as env-var overrides** for
-  customisation; defaults are the investigated stable values matching
-  the precompiled CPU env where applicable:
-  - `MOLBUILDER_ELPA_TAG` (default `2021.11.001` — MPCDF tarball,
-    SHA256-verified)
-  - `MOLBUILDER_SIESTA_TAG` (default `5.4.2` — pinned release tag,
-    NOT a branch, matches what `molbuilder-siesta` ships so `.fdf` /
-    TranSiesta output format stays identical across CPU vs GPU)
-  - `MOLBUILDER_CUDA_VERSION` (default `13.*`)
-  - `MOLBUILDER_GCC` (default `14`)
-  - `MOLBUILDER_LIBXC_VERSION`
-  - `MOLBUILDER_CUDA_CC` (auto-detect via `nvidia-smi`)
-  - `MOLBUILDER_BUILD_JOBS` (default `min(nproc, 8)`)
-  - Plus `MOLBUILDER_*_REPO` / `MOLBUILDER_*_TARBALL_BASE` /
+  is built externally via autotools (tarball from MPCDF,
+  SHA256-pinned); SIESTA is cloned `--recurse-submodules` so the
+  four required ESL libraries (`libfdf`, `libpsml`, `xmlf90`,
+  `libgridxc`), ELSI, and libxc come along as `External/`
+  submodules and SIESTA's cmake compiles them on the fly.  All
+  other dependencies (gcc, MPI, BLAS, ScaLAPACK, NetCDF, HDF5,
+  FFTW, CUDA toolkit, libxc) come from conda-forge.
+- **Every version pin is exposed as an environment-variable
+  override.** Defaults are the stable values matching the
+  precompiled CPU env where applicable:
+  - `MOLBUILDER_ELPA_TAG` — default `2021.11.001` (MPCDF tarball,
+    SHA256-verified).
+  - `MOLBUILDER_SIESTA_TAG` — default `5.4.2`; pinned release tag,
+    matches `molbuilder-siesta` so `.fdf` and TranSIESTA output
+    formats stay identical across CPU vs GPU.
+  - `MOLBUILDER_CUDA_VERSION` — default `13.*`.
+  - `MOLBUILDER_GCC` — default `14`.
+  - `MOLBUILDER_LIBXC_VERSION`.
+  - `MOLBUILDER_CUDA_CC` — auto-detected via `nvidia-smi`.
+  - `MOLBUILDER_BUILD_JOBS` — default `min(nproc, 8)`.
+  - `MOLBUILDER_*_REPO`, `MOLBUILDER_*_TARBALL_BASE`,
     `MOLBUILDER_ELPA_SHA256` for institutional mirrors and
-    bumped-but-unknown-SHA scenarios.
-
-- **Interactive preflight** detects + reports CUDA version, GPU
-  compute capability + name, gcc + OpenMPI + disk free + git
-  reachability of every component upstream.  Errors block the
-  install before a single subprocess runs.
-
+    unknown-SHA bumps.
+- **Interactive preflight** detects and reports CUDA version,
+  GPU compute capability and name, gcc, OpenMPI, free disk, and
+  git reachability of every component upstream.  Errors block
+  the install before any subprocess runs.
 - **Three layers of build-env isolation** prevent the build from
   silently linking against system MPI / CUDA / compilers when the
-  user has `apt install libopenmpi-dev`:
+  host has `apt install libopenmpi-dev`:
 
   | Layer | What it does |
   |---|---|
-  | L1 — subprocess env sanitizer | Strips ~60 vars + 7 prefix families (`LD_LIBRARY_PATH`, `CPATH`, `CFLAGS`, `LDFLAGS`, `MPI_HOME`, `CUDA_HOME`, `OMPI_*`, `MPICH_*`, …) before every `conda run` |
-  | L2 — explicit cmake compiler pins | `-DCMAKE_PREFIX_PATH={env};{dep_elpa}` + `-DMPI_C_COMPILER={env}/bin/mpicc` + `-DCMAKE_IGNORE_PATH=/usr/local;...` make FindMPI / find_package unable to wander into the host system |
-  | L3 — `$ORIGIN`-relative install rpath | Baked into every binary so the runtime loader finds env libs even without `LD_LIBRARY_PATH`; env stays movable (rename, clone, copy) |
+  | L1 — subprocess env sanitizer | Strips ~60 environment variables and seven prefix families (`LD_LIBRARY_PATH`, `CPATH`, `CFLAGS`, `LDFLAGS`, `MPI_HOME`, `CUDA_HOME`, `OMPI_*`, `MPICH_*`, …) before every `conda run`. |
+  | L2 — explicit cmake compiler pins | `-DCMAKE_PREFIX_PATH={env};{dep_elpa}`, `-DMPI_C_COMPILER={env}/bin/mpicc`, and `-DCMAKE_IGNORE_PATH=/usr/local;…` keep FindMPI / `find_package` out of the host system. |
+  | L3 — `$ORIGIN`-relative install rpath | Baked into every binary so the runtime loader finds env libraries without `LD_LIBRARY_PATH`; the env remains movable across rename, clone, and copy. |
 
 - **Post-install validation.** `python -m molbuilder envs validate
-  molbuilder-siesta-gpu` runs four probes (~2 min) for the failure
-  modes `siesta --version` cannot catch:
-  binary-link sanity, CUDA stack (`nvidia-smi` + `libcuda.so.1`
-  dlopen), the **load-bearing ELPA GPU-codepath probe** (greps for
-  the silent CPU-fallback warning that `nvidia-smi` cannot see —
-  catches `elpa#15` on sm_80 builds), and SIESTA `ctest -L simple`
-  (~90 upstream tests).  Exit 0 = production-ready.
+  molbuilder-siesta-gpu` runs four probes (~2 min) for failure
+  modes that `siesta --version` cannot catch: binary-link sanity,
+  the CUDA stack (`nvidia-smi` plus `libcuda.so.1` `dlopen`), an
+  ELPA GPU-codepath probe (greps for the silent CPU-fallback
+  warning that `nvidia-smi` cannot see — catches `elpa#15` on
+  sm_80 builds), and SIESTA `ctest -L simple` (~90 upstream
+  tests).  Exit code 0 indicates production-ready.
 
-Full engineering doc:
+Full engineering documentation:
 [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
 
 ### Performance benchmarking (siesta-gpu)
@@ -861,8 +855,8 @@ way it is.
 
 ## Python API + CLI (for scripting)
 
-molbuilder is also a Python library and a CLI you can pipe through.
-Quick examples:
+molbuilder is also a Python library and a Unix-pipeable CLI.
+Examples:
 
 ```python
 import molbuilder
@@ -950,58 +944,57 @@ Method + full result tables:
 
 ## Tips & FAQ
 
-A handful of things that come up often:
+**Why are there so many conda envs?**  Mixing SIESTA-MPI,
+AmberTools, Playwright, and cupy in one env produces three
+independent unresolvable conflicts: numpy 1.x vs 2.x, libnetcdf
+4.10 vs 4.9.3, and icu vs nodejs.  One env per backend is the only
+way to keep each one production-stable.  Install the ones you
+need; skip the others.
 
-**"Why are there so many conda envs?"**  Mixing SIESTA-MPI +
-AmberTools + Playwright + cupy in one env produces three independent
-unresolvable conflicts (numpy 1.x vs 2.x, libnetcdf 4.10 vs 4.9.3,
-icu vs nodejs).  One env per backend is the only way to keep each
-one production-stable.  You only install the ones you need.
+**Do I have to install every env?**  No.  Install only the
+backends you use.  A common minimal pair is `molbuilder-pySCF` +
+`molbuilder-siesta`.  GPU SIESTA and AmberTools are opt-in.
 
-**"Do I have to run the install for every env?"**  No — only for the
-backends you actually use.  Most users just need `molbuilder-pySCF`
-+ `molbuilder-siesta`.  GPU SIESTA and AmberTools are opt-in.
+**What if I just want to use the UI without running calculations?**
+The host env alone is enough.  Build geometries in the Molbuilder
+tab, save to disk, and generate `.fdf` / `.py` scripts.  Running
+the calculations requires the relevant backend env.
 
-**"What if I just want to play with the UI?"**  The host env alone
-is enough.  Build geometries in the Molbuilder tab, save to disk,
-generate `.fdf` / `.py` scripts — no backend env needed.  You can't
-actually run the calculations without the backend envs, but you can
-get all the way through script generation.
-
-**"My SIESTA / PySCF script crashed — where do I look?"**  The
-generated `<job>.run.sh` writes stderr + stdout to
+**My SIESTA or PySCF script crashed — where are the logs?**  The
+generated `<job>.run.sh` writes stderr and stdout to
 `<job>.<engine>.log` next to the inputs.  The Results tab's Source
-inspector renders it.
+inspector renders the file in place.
 
-**"Can I run more than one user on one machine?"**  Yes — but
-launch a separate `molbuilder serve` process per user (different
-port), each with its own `projects/` directory.  The Flask app holds
-one global lock and isn't multi-tenant.
+**Can multiple users share one machine?**  Yes.  Launch a separate
+`molbuilder serve` process per user on different ports, each with
+its own `projects/` directory.  The Flask app holds one global lock
+and is not multi-tenant within a single process.
 
-**"How do I update / change a backend version?"**  For conda-backed
-backends (`molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools`),
-just `python -m molbuilder envs install <name>` again — it's
-idempotent.  For source-built GPU SIESTA, override the relevant pin
-via env var and re-install, e.g.
+**How do I update or change a backend version?**  For the
+conda-backed envs (`molbuilder-siesta`, `molbuilder-pySCF`,
+`molbuilder-MDtools`), re-run `python -m molbuilder envs install
+<name>`; it is idempotent.  For source-built GPU SIESTA, override
+the relevant pin via env var and re-install — for example,
 `MOLBUILDER_SIESTA_TAG=5.4.1 python -m molbuilder envs install
-molbuilder-siesta-gpu --rebuild=siesta` to rebuild just SIESTA on a
-different tag while keeping ELPA, or `--clean` for a guaranteed-fresh
+molbuilder-siesta-gpu --rebuild=siesta` rebuilds just SIESTA on a
+different tag while keeping ELPA.  Use `--clean` for a fresh
 start.
 
-**"The install errored — what should I do?"**  First check the
-log at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log` — the
-CLI prints the path at the start of each run.  For a clean reinstall:
-`python -m molbuilder envs install <name> --clean --yes`.  For the
-GPU SIESTA env this removes the conda env entirely and wipes the
-source-build artifact dir; you start over from a known-clean state.
-The env-state probe at install step 0 reports driver / disk / network
-state up front so you can spot the issue before the build commits.
+**The install errored — what should I do?**  Read the install log
+at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log` first; the
+CLI prints the path at the start of each run.  For a clean
+reinstall: `python -m molbuilder envs install <name> --clean --yes`.
+For the GPU SIESTA env this removes the conda env entirely and wipes
+the source-build artifact directory.  The env-state probe at the
+start of every install reports driver, disk, and network state so
+configuration issues surface before the build begins.
 
-**"My structure rendered wrong in the viewer."**  3Dmol guesses
-bonds from distances; for unusual geometries that guess can be off.
-The PDB writer doesn't emit CONECT records, so PDB-input downstream
-tools re-guess too.  If you need explicit bonds, use XYZ + the
-sidecar (`.molstruct.json`) for atom labels.
+**My structure rendered with wrong bonds in the viewer.**  3Dmol
+guesses bonds from interatomic distances; the guess can be off for
+unusual geometries.  The PDB writer does not emit CONECT records,
+so downstream tools reading the PDB re-guess as well.  If you need
+explicit bonds, prefer XYZ plus the `.molstruct.json` sidecar for
+atom labels.
 
 ---
 
