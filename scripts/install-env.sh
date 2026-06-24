@@ -224,9 +224,17 @@ detect_env_mgr() {
     [[ -n "${ENV_MGR}" ]] && return 0
     # 1. Already on PATH? -- works when the user runs the script
     #    from inside a shell where conda init has injected PATH.
+    #    Use ``type -P`` rather than ``command -v``: -P matches only
+    #    executable FILES on PATH, never shell functions or aliases.
+    #    Defends against the case where the user has ``conda`` /
+    #    ``mamba`` defined as exported shell functions but no binary
+    #    on PATH -- ``command -v`` would return the function body
+    #    string and downstream calls would fail with bizarre errors.
+    local _p
     for candidate in mamba conda; do
-        if command -v "${candidate}" >/dev/null 2>&1; then
-            ENV_MGR="$(command -v "${candidate}")"
+        _p="$(type -P "${candidate}" 2>/dev/null || true)"
+        if [[ -n "${_p}" && -x "${_p}" ]]; then
+            ENV_MGR="${_p}"
             _record_probe "PATH: found ${candidate} at ${ENV_MGR}"
             return 0
         fi
@@ -303,7 +311,7 @@ EOF
 If conda/mamba lives somewhere not in that list, point the script
 at it explicitly:
 
-    CONDA_EXE=/path/to/conda bash scripts/install-env.sh ${ORIGINAL_ARGS[*]}
+    CONDA_EXE=/path/to/conda bash $0 ${ORIGINAL_ARGS[*]:-bootstrap --yes}
 
 If conda/mamba is not installed at all, install Miniforge,
 Miniconda, or your site's conda distribution by hand first, then
@@ -319,14 +327,19 @@ EOF
             # they intended (e.g. an old Anaconda install lingering
             # in ~/anaconda3 alongside a newer Miniforge they meant
             # to use).  --yes / -y in ORIGINAL_ARGS skips this prompt.
-            read -r -p "[molbuilder] use this env manager? [Y/n] " _ans </dev/tty \
+            # ``read ... </dev/tty 2>/dev/null`` -- suppress bash's
+            # own redirect error ("/dev/tty: No such device or
+            # address") when there's no TTY (nohup, container without
+            # a tty alloc, CI runner).  Our own handler prints a
+            # clearer message right after.
+            read -r -p "[molbuilder] use this env manager? [Y/n] " _ans </dev/tty 2>/dev/null \
                 || { echo "[molbuilder] no TTY for confirmation; pass --yes to skip." >&2; exit 2; }
             case "${_ans}" in
                 ""|y|Y|yes|YES|Yes) ;;
                 *)
                     echo "[molbuilder] aborted by user." >&2
                     echo "[molbuilder] tip: set CONDA_EXE or MAMBA_EXE to pin the env manager:" >&2
-                    echo "    CONDA_EXE=/path/to/conda bash scripts/install-env.sh ${ORIGINAL_ARGS[*]}" >&2
+                    echo "    CONDA_EXE=/path/to/conda bash $0 ${ORIGINAL_ARGS[*]:-bootstrap --yes}" >&2
                     exit 0
                     ;;
             esac
