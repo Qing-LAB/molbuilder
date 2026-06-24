@@ -771,9 +771,20 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if state.needs_cleanup and not clean:
         click.echo("")
         click.echo("HARD STOP: env is in a state that conda create cannot")
-        click.echo("recover from on its own.  Re-run with --clean to wipe")
-        click.echo(f"  bash scripts/install-env.sh install --clean {name}")
-        click.echo("or do the manual fix described above.")
+        click.echo(f"recover from on its own ({state.state_label}).")
+        click.echo("")
+        click.echo("Copy-paste to fix (wipes + reinstalls):")
+        click.echo("")
+        click.echo(
+            f"    bash scripts/install-env.sh install {name} --clean --yes"
+        )
+        click.echo("")
+        click.echo("Or the manual equivalent:")
+        click.echo("")
+        click.echo(f"    mamba env remove -n {name} -y")
+        click.echo(
+            f"    bash scripts/install-env.sh install {name} --yes"
+        )
         sys.exit(2)
     if state.state_label == "PRESENT" and not clean:
         click.echo("")
