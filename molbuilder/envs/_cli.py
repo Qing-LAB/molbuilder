@@ -1232,6 +1232,36 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo("=" * 70)
     reports = _doctor.report_all(caps_after, run_verify=True)
     exit_code = _render_doctor(reports)
+
+    # "What now?" -- show the most common next-step commands so the
+    # user knows how to proceed once bootstrap finishes.  Includes
+    # the GPU SIESTA install (commonly missed because source builds
+    # are opt-in) + ``repair`` for any package gaps doctor's audit
+    # surfaced + ``doctor`` itself for re-verification.  Always shown
+    # at the end of bootstrap, even on success, so the GPU path is
+    # discoverable from the bootstrap output alone.
+    click.echo("")
+    click.echo("=" * 70)
+    click.echo("NEXT STEPS (copy-paste any of these):")
+    click.echo("=" * 70)
+    if not include_source_builds:
+        click.echo("")
+        click.echo("# Install GPU SIESTA (source-built, ~45 min, ~12 GB disk;")
+        click.echo("# host env from this bootstrap is the prerequisite):")
+        click.echo(
+            "bash scripts/install-env.sh install molbuilder-siesta-gpu --yes"
+        )
+    click.echo("")
+    click.echo("# Repair any REQUIRED package gaps doctor's audit surfaced:")
+    click.echo("bash scripts/install-env.sh repair <recipe-name>")
+    click.echo("")
+    click.echo("# Re-verify env health after any change:")
+    click.echo("bash scripts/install-env.sh doctor")
+    click.echo("")
+    click.echo("# Full --help:")
+    click.echo("bash scripts/install-env.sh --help")
+    click.echo("")
+
     if 'failures' in dir() and failures:
         # Already had install failures -- exit non-zero to signal CI.
         sys.exit(1)
