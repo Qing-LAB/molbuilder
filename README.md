@@ -97,28 +97,30 @@ see [§ Highlights](#highlights) — but you don't have to opt in.
 
 ## Quick start
 
+The only prerequisite on the base system is a conda-compatible
+package manager — **conda**, **mamba**, or **micromamba**.  molbuilder
+autodetects whichever is installed (preference: mamba > micromamba >
+conda) and uses it for every env operation.  Everything else — host
+env, backend envs, smoke tests — is handled by one bootstrap script.
+
 ```bash
-# 1. One-time host env (any name; we suggest "molbuilder")
-conda create -n molbuilder -c conda-forge -y python=3.12 pip \
-    numpy ase sisl rdkit openbabel biopython \
-    flask click plotly authlib python-cas pytest pyflakes
-conda run -n molbuilder python -m pip install PeptideBuilder pubchempy
+git clone https://github.com/Qing-LAB/molbuilder.git
+cd molbuilder
 
-# 2. From inside the host env:
+# One command creates every conda-only env (host + SIESTA + PySCF +
+# AmberTools + tests) and runs a doctor smoke check at the end.
+bash scripts/install-env.sh --bootstrap --yes
+
+# Start the web app from the host env.
 conda activate molbuilder
-cd /path/to/molbuilder
-
-# 3. Add the backend envs you need (each ~3 GB; each is one CLI call)
-python -m molbuilder envs install molbuilder-siesta      # CPU SIESTA
-python -m molbuilder envs install molbuilder-pySCF       # PySCF + geomeTRIC
-python -m molbuilder envs install molbuilder-MDtools     # AmberTools
-# Optional GPU SIESTA (~45-min source build; gated by preflight + confirm):
-python -m molbuilder envs install molbuilder-siesta-gpu --yes
-
-# 4. Start the web app
 python -m molbuilder serve --port 8000
 # Browser: http://localhost:8000/  → redirects to /molbuilder
 ```
+
+The bootstrap is idempotent: re-running skips envs that are already
+present.  Source-build envs (GPU SIESTA, ~45 min) are opt-in via
+`--include-source-builds`.  Per-env install commands and the full
+manual recipe are in [§ Install + multi-env model](#install--multi-env-model).
 
 For LAN or internet exposure (TLS, OAuth sign-in, reverse-proxy
 auth), see [§ Deployment](#deployment) and
@@ -555,49 +557,92 @@ Full architecture + principles + decisions log:
 
 ## Install + multi-env model
 
-molbuilder runs from a **user-named host env** (any name; we
-suggest `molbuilder`) and dispatches into named backend envs via
-`conda run -n <env> ...`.  This model exists because collapsing
-AmberTools + siesta-mpi + cupy + playwright into one env produces
-three independent unresolvable dep conflicts.  Keeping them
-separate lets each backend pin its own native stack.
+molbuilder runs from a **user-named host env** and dispatches into
+named backend envs via `<env-manager> run -n <env> ...`.  This split
+exists because collapsing AmberTools + siesta-mpi + cupy + playwright
+into one env produces three independent unresolvable dependency
+conflicts; keeping them separate lets each backend pin its own native
+stack.
 
-### The envs
+### Base-system prerequisite
 
-| Env | Contents | When you need it |
+The host system needs one conda-compatible package manager.  Any of
+the three works:
+
+| Manager | When it's the right choice |
+|---|---|
+| **mamba** | Preferred when available — same CLI surface as conda but a much faster libmamba/libsolv solver.  Useful on HPC clusters with slow shared filesystems. |
+| **micromamba** | Statically-linked single binary; no Miniconda install required.  The realistic option on locked-down clusters where you cannot install Miniconda yourself. |
+| **conda** | The reference implementation.  Slower solver than mamba; always works. |
+
+molbuilder autodetects whichever is on `PATH` (preference order
+above), falling back to `$MAMBA_EXE` or `$CONDA_EXE` if PATH search
+fails.  The autodetection is transparent: the same scripts work
+identically under any of the three.
+
+### Bootstrap — one command for the full env stack
+
+The bootstrap installs every conda-only recipe, then runs the
+doctor health check.  Idempotent: re-running skips envs already
+present.
+
+```bash
+bash scripts/install-env.sh --bootstrap --yes
+```
+
+Flags:
+
+* `--yes` — non-interactive (required for CI / headless / HPC batch).
+* `--include-source-builds` — also build GPU SIESTA from source
+  (`molbuilder-siesta-gpu`, ~30-45 min commitment).  Opt-in.
+* `--no-skip-existing` — re-run install on envs that are already
+  present (idempotent refresh).
+* `--dry-run` — print the plan; install nothing.
+
+At the end the script invokes `python -m molbuilder envs doctor`,
+which verifies every env can dispatch its primary tool (SIESTA's
+`siesta --version`, PySCF's `import pyscf`, AmberTools' `tleap`,
+etc.).  A non-zero exit means at least one env failed verification;
+the per-env transcript at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log`
+points at the failure.
+
+### The envs that bootstrap installs
+
+| Env | Contents | Bootstrap default |
 |---|---|---|
-| **host env** | flask + click + numpy + ase + sisl + rdkit + openbabel + biopython + plotly | always — runs `python -m molbuilder ...`, build-time chemistry, the web UI |
-| `molbuilder-siesta` | precompiled `siesta=5.4.2=mpi_openmpi_*` | CPU SIESTA / TranSIESTA jobs |
-| `molbuilder-siesta-gpu` *(optional)* | source-built ELPA + ELSI + SIESTA 5.4.2 with CUDA-enabled ELPA | GPU-accelerated SIESTA / TranSIESTA |
-| `molbuilder-pySCF` | pyscf + geometric + (optional) gpu4pyscf + CUDA 13 | PySCF / Spectra / Spectrum-calculation jobs |
-| `molbuilder-MDtools` | ambertools-dac=26 (dacase channel) | tleap / parmchk2 / RESP / antechamber |
-| `molbuilder-tests` | playwright + pytest-playwright + Chromium | browser E2E suite |
+| **host env** (`molbuilder`) | flask + click + numpy + ase + sisl + rdkit + openbabel + biopython + plotly | always |
+| `molbuilder-siesta` | precompiled `siesta=5.4.2=mpi_openmpi_*` | always |
+| `molbuilder-pySCF` | pyscf + geometric + (optional) gpu4pyscf + CUDA 13 | always |
+| `molbuilder-MDtools` | ambertools-dac=26 (dacase channel) | always |
+| `molbuilder-tests` | playwright + pytest-playwright + Chromium | always |
+| `molbuilder-siesta-gpu` *(optional)* | source-built ELPA + ELSI + SIESTA 5.4.2 with CUDA-enabled ELPA | only with `--include-source-builds` |
 
-### One CLI manages every env
+### Per-recipe CLI (advanced / manual)
+
+Equivalent commands for users who want fine-grained control:
 
 ```bash
 python -m molbuilder envs list                       # one-line status per recipe
-python -m molbuilder envs doctor                     # full health report (runs verify per env)
-python -m molbuilder envs install molbuilder-siesta  # idempotent install
+python -m molbuilder envs doctor                     # full health report
+python -m molbuilder envs install molbuilder-siesta  # install one recipe
 python -m molbuilder envs install <name> --dry-run   # preview the plan
 python -m molbuilder envs install <name> --check     # report present + verified
-python -m molbuilder envs install <name> --yes       # skip the confirmation speed-bumps (CI)
+python -m molbuilder envs install <name> --yes       # skip confirmation prompts
 python -m molbuilder envs install <name> --clean     # wipe + reinstall from scratch
 python -m molbuilder envs install <name> --rebuild=<component>  # source-build envs only
-python -m molbuilder envs validate molbuilder-siesta-gpu        # post-install correctness probes
-# Or from any shell (no host env activation needed):
+python -m molbuilder envs validate molbuilder-siesta-gpu        # post-install probes
+# From any shell, no host env activation needed:
 bash scripts/install-env.sh <name>
 ```
 
 Every install drops a full transcript at
-`~/.molbuilder/logs/install-<recipe>-<timestamp>.log` so you can
-grep or share a build session without rerunning it.  The CLI prints
-the log path at the start of the install and again at the end.
+`~/.molbuilder/logs/install-<recipe>-<timestamp>.log`.  The CLI
+prints the log path at install start and end.
 
 Recipes are declared in
 [`molbuilder/envs/recipes.py`](molbuilder/envs/recipes.py); a
-consistency test asserts the README ↔ registry pairing so the doc
-and code can't drift silently.
+consistency test asserts the README ↔ registry pairing so doc and
+code cannot drift silently.
 
 ### GPU SIESTA from source
 
@@ -690,6 +735,45 @@ python -m molbuilder envs validate molbuilder-siesta-gpu         # post-install 
 Full engineering doc:
 [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
 
+### Performance benchmarking (siesta-gpu)
+
+Every molbuilder-generated SIESTA `.fdf` carries a `BENCH-MARKS`
+annotation block declaring the parameter anchors a benchmark sweep
+can override (`MaxSCFIterations`, `BlockSize`, MPI rank count, OpenMP
+threads, NUMA pin, ELPA solver stage).  `molbuilder bench siesta-gpu`
+reads that block and runs a small sweep over `(np, omp, BlockSize)`
+combinations on the project, recording per-iter wall time so you can
+pick a production point with evidence rather than guess.
+
+```bash
+# Default: 18-point sweep (9 shapes × ELPA-1/2STAGE).  Each point
+# runs at most --iters SCF cycles (default 5) so the sweep finishes
+# in minutes, not hours.
+python -m molbuilder bench siesta-gpu projects/BDT/optimization/BDT-withAuJunction-siesta-gpu
+
+# Custom sweep — space-separated "np,omp,bs[,diag[,pin]]" tuples:
+python -m molbuilder bench siesta-gpu <project> \
+    --points "4,2,64 8,2,64 16,1,64,1s,nopin"
+
+# Cold (don't carry over .DM/.CG/.XV warm-start from prior runs):
+python -m molbuilder bench siesta-gpu <project> --cold
+```
+
+Output lands under `<basename>.bench/`:
+* Per-point subdirectories with the modified `.fdf`, the per-run
+  `.out`, and the parsed timing.
+* A top-level `results.csv` summarising every point's requested
+  + effective parameter values and wall time per SCF iteration.
+
+The sweep is non-destructive: the original `.fdf` and run wrapper
+are unchanged.  Suitable for HPC node validation (verify the env's
+ELPA + MPI stack hits expected throughput) and for tuning a new
+geometry before committing to a long production run.
+
+Reference: [`docs/protocols/script-contract.md`](docs/protocols/script-contract.md)
+documents the BENCH-MARKS block format and the bench's parameter
+semantics.
+
 ### Optional: 3DNA for canonical helices
 
 The **3DNA** `fiber` backend produces true B / A / Z DNA — the
@@ -708,13 +792,35 @@ Full install recipe:
 
 ## Deployment
 
-> **Target deployment: a workstation (laptop, lab server, or HPC
-> node) with multi-CPU and optional NVIDIA GPU.**  molbuilder is
-> **not** designed for and does not target cloud / AWS /
-> containerised deployment.  MPI is used for **intra-workstation
-> parallelism** (e.g. `mpirun -np 8` across the local cores or NUMA
-> nodes); the molbuilder app, the conda envs, and every backend run
-> on the same physical machine.
+> **Target deployment: a workstation, lab server, or HPC node with
+> multi-CPU and optional NVIDIA GPU.**  molbuilder is not designed
+> for cloud / containerised deployment.  MPI is used for
+> intra-workstation parallelism (e.g. `mpirun -np 8` across local
+> cores or NUMA nodes); the molbuilder app, the conda envs, and
+> every backend run on the same physical machine.
+
+### Deployment workflow
+
+The base system needs one conda-compatible package manager.  From
+there the deploy is two steps:
+
+```bash
+# 1. Bootstrap every env in one command.  Idempotent + non-interactive.
+bash scripts/install-env.sh --bootstrap --yes
+
+# 2. Edit the deployment config + start the server.
+cp docs/molbuilder.json.example molbuilder.json
+$EDITOR molbuilder.json         # delete sections you don't need
+conda activate molbuilder
+python -m molbuilder serve --host 0.0.0.0 --port 443
+```
+
+The bootstrap step covers every workstation and HPC scenario the
+project targets: ASU's supercomputer cluster, lab servers without
+admin rights to install Miniconda (use micromamba), single-user
+laptops, and multi-user lab workstations.  No manual env wrangling.
+
+### Default vs exposed deployments
 
 The default `python -m molbuilder serve` binds `127.0.0.1` —
 reachable only from the same machine.  No auth, no TLS.  Right
