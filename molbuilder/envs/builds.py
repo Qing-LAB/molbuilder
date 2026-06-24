@@ -1489,21 +1489,31 @@ def _run_phase(step: BuildStep,
     still written to ``step.log_file`` for post-hoc inspection.
     """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
-    # Resolve the env's prefix to a name for `conda run`.  ``conda run``
-    # accepts a prefix too, which avoids ambiguity when the env name
-    # differs from the prefix's basename.
-    argv = (
-        conda_binary, "run", "--prefix", env_prefix,
-        "--no-capture-output", "--",
-        *step.argv,
+    # Bypass ``<mgr> run`` and call build tools directly.  mamba 1.x's
+    # ``run`` generates a shell stub that uses ``exec --`` (rejected by
+    # bash with ``exec: --: invalid option``); fixed in mamba 2.x but
+    # many HPC sites still ship 1.x.  Setting PATH +
+    # LD_LIBRARY_PATH + CONDA_PREFIX manually here mirrors what
+    # ``conda activate <env>`` would do for build tools (cmake, ninja,
+    # make, the source-tree configure script).  conda packages bake
+    # rpath into their shared libs, but build-time tools like ``ld``
+    # still want LD_LIBRARY_PATH for linker probes -- we set it.
+    cmd_argv = step.argv
+    # If the first arg names a binary in the env, call it directly so
+    # we don't depend on PATH lookup at all.
+    first = Path(env_prefix) / "bin" / cmd_argv[0]
+    if first.is_file() and os.access(first, os.X_OK):
+        cmd_argv = (str(first), *cmd_argv[1:])
+    build_env = build_subprocess_env()
+    build_env["PATH"] = f"{env_prefix}/bin:" + build_env.get("PATH", "")
+    build_env["LD_LIBRARY_PATH"] = (
+        f"{env_prefix}/lib:" + build_env.get("LD_LIBRARY_PATH", "")
     )
+    build_env["CONDA_PREFIX"] = env_prefix
+    build_env["CONDA_DEFAULT_ENV"] = Path(env_prefix).name
     rc, combined = run_streaming(
-        argv,
-        # Strip leakage vectors (LD_LIBRARY_PATH / CPATH / CFLAGS /
-        # MPI_HOME / CUDA_HOME / OMPI_* / ...) so user-shell vars
-        # can't pull system MPI/CUDA into the conda build.  Conda's
-        # activate.d sets the env-pinned values on top of this slate.
-        env=build_subprocess_env(),
+        cmd_argv,
+        env=build_env,
         log_file=step.log_file,
         timeout=timeout,
     )

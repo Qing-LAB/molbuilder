@@ -617,7 +617,12 @@ _MDTOOLS = Recipe(
     # tleap -f /dev/null prints its banner and exits 1 (no script to
     # source); the banner "Welcome to LEaP!" is the proof the binary
     # in this env launched.  See `verify_ignore_exit_code` docstring.
-    verify_argv=("bash", "-lc", "tleap -f /dev/null < /dev/null"),
+    # ``bash -c`` (no -l) -- we don't need a LOGIN shell here.  -l would
+    # source ~/.bash_profile / ~/.profile and pull in user-shell state
+    # that can shadow the env's tools (module loads, PATH munging, etc.)
+    # The env's bin/ is on PATH via _bypass_conda_run's env overrides,
+    # which is the only setup tleap needs.
+    verify_argv=("bash", "-c", "tleap -f /dev/null < /dev/null"),
     verify_expect_contains="LEaP",
     verify_ignore_exit_code=True,
 )
@@ -1162,9 +1167,11 @@ _SIESTA_GPU = Recipe(
     ),
     build_spec=_SIESTA_GPU_BUILD,
     verify_argv=(
-        "bash", "-lc",
-        # The activate.d hook puts siesta on PATH; --version exits 0 with
-        # the version banner.
+        "bash", "-c",
+        # _bypass_conda_run puts <env>/bin on PATH for the verify call;
+        # the activate.d hook's PATH munging is duplicated by our
+        # env_overrides so siesta is reachable.  ``--version`` exits 0
+        # with the version banner.
         "siesta --version",
     ),
     verify_expect_contains="siesta",

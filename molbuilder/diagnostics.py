@@ -222,9 +222,18 @@ def _find_conda_binary() -> Optional[str]:
     Returns the absolute path to the chosen binary, or ``None`` if
     no manager is reachable.  Callers that need to know WHICH manager
     was picked can compare ``os.path.basename(path)`` against the
-    candidate names; for the dispatch layer ``conda run -n <env>``
-    and ``mamba run -n <env>`` are identical so the choice is
-    transparent.
+    candidate names.
+
+    IMPORTANT: ``conda run -n <env>`` and ``mamba run -n <env>`` are
+    NOT interchangeable on mamba 1.x.  mamba 1.x's ``run`` generates
+    a shell stub that uses ``exec --`` which bash rejects with
+    ``exec: --: invalid option`` -- every pip / extra-step / verify
+    / build step fails.  ``molbuilder.envs.install._bypass_conda_run``
+    and ``builds._run_one_step`` therefore bypass ``<mgr> run``
+    entirely and call the env's binaries directly (setting PATH +
+    LD_LIBRARY_PATH + CONDA_PREFIX as ``conda activate`` would).
+    Don't reintroduce ``<mgr> run`` in this codebase without first
+    verifying the install path works on mamba 1.x.
     """
     for candidate in ("mamba", "micromamba", "conda"):
         path = shutil.which(candidate)

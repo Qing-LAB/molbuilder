@@ -489,16 +489,32 @@ _resolve_env_python() {
         echo "${_prefix}/bin/python"
         return 0
     fi
-    # Strategy 3: derive from ENV_MGR's path.  Strip ``/condabin/...``
-    # OR ``/bin/...`` depending on layout.
+    # Strategy 3: derive from ENV_MGR's path AND probe mamba's
+    # default envs_dir (``$HOME/.conda/envs``).  Most users never
+    # change ``envs_dirs`` in .condarc, but mamba's default differs
+    # from conda's:
+    #   * conda init  -> envs live at ``<conda root>/envs/<name>``
+    #   * mamba init  -> envs live at ``~/.conda/envs/<name>``
+    # If the user runs ``mamba create -n molbuilder`` after mamba
+    # init, the env lands at ``~/.conda/envs/molbuilder`` even
+    # though the env manager binary is at ``<conda root>/bin/mamba``.
+    # Both layouts checked.  Strategy 1 (env list) catches both
+    # already; this is just a fallback for the case where env list
+    # output got mangled or the registry got out of sync.
     local _root="${ENV_MGR%/condabin/*}"
     if [[ "${_root}" == "${ENV_MGR}" ]]; then
         _root="${ENV_MGR%/bin/*}"
     fi
-    if [[ -x "${_root}/envs/${_name}/bin/python" ]]; then
-        echo "${_root}/envs/${_name}/bin/python"
-        return 0
-    fi
+    local _candidate
+    for _candidate in \
+        "${_root}/envs/${_name}/bin/python" \
+        "${HOME}/.conda/envs/${_name}/bin/python" \
+    ; do
+        if [[ -x "${_candidate}" ]]; then
+            echo "${_candidate}"
+            return 0
+        fi
+    done
     return 1
 }
 
