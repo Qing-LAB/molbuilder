@@ -1238,7 +1238,20 @@ _SIESTA_GPU = Recipe(
         # Math libs.  OpenBLAS (NOT MKL) keeps libgomp the only OpenMP
         # runtime; mixing libiomp5 + libgomp blows up at runtime.
         "openblas",
-        "scalapack",
+        # scalapack MUST be the OpenMPI build variant.  conda-forge
+        # ships multiple build strings per scalapack version --
+        # ``*_openmpi_*`` (we want this), ``*_mpich_*`` (alt MPI),
+        # in some versions also a serial variant.  The non-openmpi
+        # variants either lack the OpenMPI symbol set or don't
+        # export BLACS routines in a form ld can resolve at
+        # SIESTA's Util/MPI_test/blacs_prb link step.  Pre-fix this
+        # was unpinned: the SAT solver could land on any variant
+        # given the rest of the recipe, and a non-openmpi resolve
+        # surfaces as ``undefined reference to `blacs_pinfo_''`` (and
+        # nine more BLACS symbols) at link time.  Matches the pin
+        # shape we already use for fftw / hdf5 / netcdf-fortran
+        # below.
+        "scalapack=*=*_openmpi_*",
         # File I/O (parallel HDF5 + netcdf for SIESTA's NetCDF backend).
         # NOTE: conda-forge's netcdf-c is built with S3 backend support
         # enabled by default, so this transitively pulls a handful of
