@@ -203,31 +203,60 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                 )
                 click.echo(indented)
         # Package audit (real check, not just verify smoke test).
+        # Required-missing -> FAILED + exits 1; optional-missing
+        # (e.g. GPU-only cupy + gpu4pyscf) -> info-only, env still
+        # usable for the non-optional code paths.
         if rep.package_audit is not None and rep.package_audit.checked:
             pa = rep.package_audit
             n_total = pa.n_conda_declared + pa.n_pip_declared
-            n_issues = len(pa.issues)
-            n_ok = n_total - n_issues
-            if n_issues == 0:
+            required_issues = [i for i in pa.issues
+                               if not i.kind.endswith("-optional")]
+            optional_issues = [i for i in pa.issues
+                               if i.kind.endswith("-optional")]
+            n_required = len(required_issues)
+            n_optional = len(optional_issues)
+            n_ok = n_total - n_required - n_optional
+            if n_required == 0 and n_optional == 0:
                 click.echo(
                     f"    audit:   OK ({n_ok}/{n_total} declared "
                     f"packages present + version-matched)"
                 )
-            else:
-                any_failed = True
+            elif n_required == 0:
+                # Only optional packages missing: env is usable; the
+                # specific features those packages gate (GPU,
+                # peptide builder, etc.) will be non-functional.
                 click.echo(
-                    f"    audit:   FAILED ({n_ok}/{n_total} ok; "
-                    f"{n_issues} mismatched)"
+                    f"    audit:   OK ({n_ok}/{n_total} ok; "
+                    f"{n_optional} optional unavailable -- gated "
+                    f"features will be disabled)"
                 )
-                # Group by kind for readability.
-                for issue in pa.issues[:15]:  # cap at 15 to keep report compact
+                for issue in optional_issues[:15]:
                     click.echo(
                         f"        [{issue.kind}] {issue.spec}  "
                         f"(installed: {issue.found})"
                     )
-                if n_issues > 15:
+            else:
+                any_failed = True
+                click.echo(
+                    f"    audit:   FAILED ({n_ok}/{n_total} ok; "
+                    f"{n_required} REQUIRED missing"
+                    + (f", {n_optional} optional unavailable"
+                       if n_optional else "")
+                    + ")"
+                )
+                for issue in required_issues[:15]:
                     click.echo(
-                        f"        ... and {n_issues - 15} more"
+                        f"        [{issue.kind}] {issue.spec}  "
+                        f"(installed: {issue.found})"
+                    )
+                if optional_issues:
+                    click.echo(
+                        f"        ({n_optional} additional optional "
+                        f"unavailable -- not counted as failure)"
+                    )
+                if n_required > 15:
+                    click.echo(
+                        f"        ... and {n_required - 15} more required"
                     )
 
     click.echo("")

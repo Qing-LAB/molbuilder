@@ -222,6 +222,18 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     issues: List[PackageAuditIssue] = []
     conda_specs = list(recipe.conda_packages)
     pip_specs = list(recipe.pip_packages)
+    # Build name-sets for optional packages so we can classify
+    # missing ones as info-only (kind suffixed with ``-optional``).
+    # Optional packages typically gate a non-default feature (GPU,
+    # OAuth provider, etc.) -- the env still functions without them.
+    optional_conda = {
+        _parse_conda_spec(s)[0]
+        for s in recipe.optional_conda_packages
+        if _parse_conda_spec(s) is not None
+    }
+    optional_pip = {
+        _normalize_pip_name(s) for s in recipe.optional_pip_packages
+    }
     if not env_prefix.is_dir():
         return PackageAudit(
             checked=False,
@@ -238,8 +250,10 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
             continue
         name, comparator, version_pat, build_pat = parsed
         if name not in installed_conda:
+            kind = ("conda-missing-optional"
+                    if name in optional_conda else "conda-missing")
             issues.append(PackageAuditIssue(
-                kind="conda-missing", spec=spec, found="(not found)",
+                kind=kind, spec=spec, found="(not found)",
             ))
             continue
         installed_version, installed_build = installed_conda[name]
@@ -273,8 +287,10 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     for spec in pip_specs:
         norm = _normalize_pip_name(spec)
         if norm not in installed_pip:
+            kind = ("pip-missing-optional"
+                    if norm in optional_pip else "pip-missing")
             issues.append(PackageAuditIssue(
-                kind="pip-missing", spec=spec, found="(not found)",
+                kind=kind, spec=spec, found="(not found)",
             ))
     return PackageAudit(
         checked=True,

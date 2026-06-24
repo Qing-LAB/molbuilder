@@ -497,6 +497,17 @@ class Recipe:
     channels: Tuple[str, ...]
     conda_packages: Tuple[str, ...]
     pip_packages: Tuple[str, ...] = ()
+    # Packages whose ABSENCE at audit time is informational rather than
+    # an error.  Use case: GPU-only deps like ``cupy-cuda13x[ctk]`` and
+    # ``gpu4pyscf-*`` -- the recipe install attempts them, but a no-GPU
+    # host (or one where the wheel fails to install) is still a usable
+    # CPU env.  Doctor reports them as "optional unavailable; GPU
+    # features disabled" instead of "FAILED".  Names should match
+    # entries in ``conda_packages`` / ``pip_packages`` (the install
+    # path still tries to install them; only the audit treats them
+    # leniently).
+    optional_conda_packages: Tuple[str, ...] = ()
+    optional_pip_packages: Tuple[str, ...] = ()
     extra_steps: Tuple[Tuple[str, ...], ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
@@ -574,6 +585,14 @@ _PYSCF = Recipe(
     # branch on every run).
     pip_packages=(
         "pyscf-properties",
+        f"cupy-{_CUDA_WHEEL_TAG}[ctk]",
+        f"gpu4pyscf-{_CUDA_WHEEL_TAG}",
+    ),
+    # cupy + gpu4pyscf are GPU-only.  On a no-GPU host (or when the wheel
+    # fails to install for any reason) the env is still fully usable for
+    # CPU PySCF -- only the ``use_gpu=True`` form toggle becomes a no-op.
+    # Doctor marks these as "optional unavailable" rather than "FAILED".
+    optional_pip_packages=(
         f"cupy-{_CUDA_WHEEL_TAG}[ctk]",
         f"gpu4pyscf-{_CUDA_WHEEL_TAG}",
     ),
