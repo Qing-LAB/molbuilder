@@ -451,8 +451,24 @@ def _make_pyscf_options_decorator():
 @click.option("--species-order", default=None,
               help="comma-separated species order, e.g. 'C,H,S,Au' "
                    "(default: auto from elements present)")
+# --stage: minimum-viable per-stage overlay.  Picks tier-appropriate
+# values for relax_type / relax_steps / relax_force_tol / relax_max_displ
+# in one flag instead of remembering 4 separate --relax-* overrides.
+# Applied AFTER the auto-generated --relax-* options so the user's
+# explicit overrides ride through if they come after --stage in the
+# command line -- Click parses left-to-right, all values land in
+# ``fields`` first, then the stage overlay is applied last.
+@click.option("--stage", type=click.Choice(["1", "2", "3"]), default=None,
+              help="overlay per-stage tier defaults for relax_type / "
+                   "relax_steps / relax_force_tol / relax_max_displ.  "
+                   "Stage 1: CG warm-up (0.05 eV/A, 0.20 A); Stage 2: "
+                   "Broyden publishable (0.04 eV/A, 0.05 A); Stage 3: "
+                   "Broyden crystal-tight (0.01 eV/A, 0.02 A -- VASP "
+                   "EDIFFG=-0.01 standard).  Anchored in docs/engines/"
+                   "optimization-tuning.md sect. 2.3.1.")
 @_make_siesta_options_decorator()
-def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, **fields):
+def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
+            **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
     Every SiestaConfig field is exposed as a CLI option (auto-generated
@@ -460,8 +476,16 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, **fields):
     ``--foo / --no-foo`` pair; numeric and string fields take a value.
     See ``molbuilder/config/siesta.py`` for the authoritative parameter
     list and per-field help text.
+
+    ``--stage {1,2,3}`` overlays tier-appropriate defaults for the
+    relaxation algorithm + convergence thresholds.  Recommended workflow:
+    ``--stage 1`` for an initial loose preopt, ``--stage 2`` for the
+    publishable refine, ``--stage 3`` for a crystal-practical tight
+    final stage.  Anchors the system-type-aware tier framework
+    documented in ``docs/engines/optimization-tuning.md`` sect. 2.3.1.
     """
     from .siesta import SiestaConfig, convert
+    from .config.siesta import apply_siesta_stage
     species_seq = species_order.split(",") if species_order else None
     cfg = SiestaConfig(
         kgrid=kgrid,
@@ -469,6 +493,21 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, **fields):
         species_order=species_seq,
         **fields,
     )
+    # Apply stage overlay AFTER cfg is built so the user's per-knob
+    # --relax-* overrides land in cfg first, then the stage values
+    # overlay them.  Documented contract: stage wins on the 4
+    # overlay knobs (relax_type / steps / force_tol / max_displ) AND
+    # sets cfg.stage for the filename suffix + "Stage N" comment in
+    # the emitted fdf; everything else (basis, mesh_cutoff, psml_lib,
+    # ...) rides through.
+    if stage is not None:
+        import dataclasses as _dc
+        cfg = apply_siesta_stage(cfg, int(stage))
+        # cfg.stage drives the molwatch-log filename suffix and the
+        # "# Stage N of a staged relaxation" header comment.  Setting
+        # it here (in addition to the overlay) makes ``--stage N``
+        # the one-flag way to produce a coherent stage-N fdf.
+        cfg = _dc.replace(cfg, stage=int(stage))
     with _resolve_input_path(input_path) as resolved_input:
         summary = convert(resolved_input, fdf_path, cfg)
     click.echo(

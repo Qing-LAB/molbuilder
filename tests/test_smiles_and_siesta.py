@@ -942,3 +942,107 @@ def test_savehs_keyword_emitted_always():
     text_off = render_fdf(s, SiestaConfig(write_hs=False, psml_lib=None))
     assert "SaveHS             .false." in text_off
     assert not _has_active_writehs(text_off)
+
+
+# --------------------------------------------------------------------- #
+#  SIESTA --stage {1,2,3} per-stage overlay (2026-06-23)                #
+#                                                                       #
+#  Minimum-viable per-stage defaults so the user can generate           #
+#  stage1.fdf / stage2.fdf / stage3.fdf in one flag instead of four     #
+#  separate --relax-* overrides.  The CLI overlay is the precursor to  #
+#  #542 (full SIESTA staged-opt with per-stage SiestaStageSpec).        #
+# --------------------------------------------------------------------- #
+
+
+class TestSiestaStageOverlay:
+    """Stage overlay: --stage {1,2,3} populates relax_type +
+    relax_steps + relax_force_tol + relax_max_displ to tier-aligned
+    values per docs/engines/optimization-tuning.md sect. 2.3.1.
+    """
+
+    def test_stage_1_is_cg_warmup(self):
+        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
+        out = apply_siesta_stage(SiestaConfig(), 1)
+        assert out.relax_type == "CG"
+        assert out.relax_steps == 600
+        assert out.relax_force_tol == 0.05
+        assert out.relax_max_displ == 0.20
+
+    def test_stage_2_is_broyden_publishable(self):
+        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
+        out = apply_siesta_stage(SiestaConfig(), 2)
+        # Broyden -- not CG -- is the load-bearing choice for stage 2+
+        # (per docs/engines/optimization-tuning.md sect. 2.1 "stage 2
+        # Broyden refine").  Pre-2026-06-23 the SIESTA generator
+        # defaulted to CG and the user had to hand-edit stage2.fdf.
+        assert out.relax_type == "Broyden"
+        assert out.relax_steps == 200
+        # Gaussian-OPT default (0.04 eV/A == "publishable").
+        assert out.relax_force_tol == 0.04
+        assert out.relax_max_displ == 0.05
+
+    def test_stage_3_is_broyden_tight_crystal_practical(self):
+        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
+        out = apply_siesta_stage(SiestaConfig(), 3)
+        assert out.relax_type == "Broyden"
+        assert out.relax_steps == 100
+        # VASP EDIFFG=-0.01 standard (crystal/surface production).
+        # NOT Gaussian GAU_TIGHT (0.001 eV/A) -- that's molecule-only
+        # vib/IR territory; chases SCF noise on 100+ atom metals.
+        assert out.relax_force_tol == 0.01
+        assert out.relax_max_displ == 0.02
+
+    def test_stage_overlay_preserves_other_user_choices(self):
+        """The overlay is intentionally narrow: only the 4 tier
+        knobs are overlaid.  basis_size, mesh_cutoff, psml_lib,
+        spin, k-grid etc. ride through verbatim from the input cfg.
+        Catches a regression that broadens the overlay to clobber
+        user-tuned compute knobs."""
+        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
+        cfg = SiestaConfig(
+            basis_size="DZP",
+            mesh_cutoff=500,
+            kgrid=(4, 4, 1),
+            spin_polarized=True,
+        )
+        out = apply_siesta_stage(cfg, 3)
+        assert out.basis_size == "DZP"
+        assert out.mesh_cutoff == 500
+        assert out.kgrid == (4, 4, 1)
+        assert out.spin_polarized is True
+        # Stage 3 values overlaid as expected.
+        assert out.relax_type == "Broyden"
+        assert out.relax_force_tol == 0.01
+
+    def test_unknown_stage_raises_value_error(self):
+        from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
+        import pytest as _p
+        with _p.raises(ValueError, match="unknown SIESTA stage"):
+            apply_siesta_stage(SiestaConfig(), 99)
+
+    def test_cli_stage_flag_emits_broyden_for_stage_2_and_3(self, tmp_path):
+        """End-to-end: ``molbuilder fdf --stage 2`` and ``--stage 3``
+        both emit ``MD.TypeOfRun Broyden`` in the rendered .fdf.
+        Catches a regression where the CLI overlay drops the
+        relax_type field while preserving the tolerances."""
+        from click.testing import CliRunner
+        from molbuilder.cli import cli
+        xyz = tmp_path / "h2.xyz"
+        xyz.write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+        for stage in ("1", "2", "3"):
+            out_fdf = tmp_path / f"h2_stage{stage}.fdf"
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["fdf", str(xyz), str(out_fdf), "--stage", stage],
+                catch_exceptions=False,
+            )
+            assert result.exit_code == 0, result.output
+            text = out_fdf.read_text()
+            if stage == "1":
+                assert "MD.TypeOfRun CG" in text, (
+                    f"Stage 1 must emit CG; got:\n"
+                    f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")
+            else:
+                assert "MD.TypeOfRun Broyden" in text, (
+                    f"Stage {stage} must emit Broyden; got:\n"
+                    f"{[ln for ln in text.splitlines() if 'TypeOfRun' in ln]}")

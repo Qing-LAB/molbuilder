@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 # Job-layout v1 protocol (docs/protocols/job-layout.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
@@ -692,6 +692,13 @@ class SiestaConfig:
         "help":  "stage marker (1/2/3) for the preview .molwatch.log "
                  "filename; None keeps the unsuffixed name",
         "range": (1, 3),
+        # skip_cli: the CLI's ``--stage`` flag (cli.py::cmd_fdf) is
+        # the richer entry point -- it sets cfg.stage AND applies the
+        # tier-aligned overlay (relax_type / steps / force_tol /
+        # max_displ) via apply_siesta_stage().  Auto-generating a
+        # CLI option from this field would collide with that.  Python
+        # API + form still set cfg.stage directly.
+        "skip_cli":   True,
     })
 
     # Output flags
@@ -1047,4 +1054,95 @@ class SiestaConfig:
 Config = SiestaConfig
 
 
-__all__ = ["SiestaConfig", "Config"]
+# --------------------------------------------------------------------- #
+#  SIESTA stage presets (minimum-viable per-stage defaults)             #
+#                                                                       #
+#  Anchors the 3-stage workflow ("stage1 CG warm-up -> stage2 Broyden   #
+#  publishable -> stage3 Broyden tight crystal-practical") into a       #
+#  single overlay applied via ``--stage {1,2,3}`` on the CLI.  Tier     #
+#  values match docs/engines/optimization-tuning.md sect. 2.3.1's      #
+#  system-type-aware framework.                                         #
+#                                                                       #
+#  This is the precursor to #542 SIESTA staged-opt (full staged ladder #
+#  + per-stage SiestaStageSpec dataclass + form widget); for now it    #
+#  ships as a CLI-only overlay so the user can generate stage2 /       #
+#  stage3 fdfs with one flag instead of remembering 4 separate         #
+#  --relax-* overrides.                                                 #
+# --------------------------------------------------------------------- #
+
+
+# Per-stage value overlay.  Each entry is a partial dict of SiestaConfig
+# field overrides; the overlay leaves other fields (basis, mesh_cutoff,
+# psml_lib, etc.) untouched so the user's other choices ride through.
+#
+# Stage rationale (per optimization-tuning.md sect. 2.3.1):
+#   stage1 = loose preopt:    CG, ~0.05 eV/A, 0.2 A displacement cap
+#   stage2 = publishable:     Broyden, ~0.04 eV/A (Gaussian-OPT default),
+#                                      0.05 A displacement cap
+#   stage3 = tight crystal:   Broyden, ~0.01 eV/A (VASP EDIFFG=-0.01),
+#                                      0.02 A displacement cap, fewer
+#                                      max-steps (publishable->tight on
+#                                      the same warm-started geom needs
+#                                      fewer outer iters)
+#
+# All three preset CG/Broyden choices align with SIESTA's recommended
+# workflow per the optimization-tuning.md sect. 2.1 algorithm comparison
+# table: CG only for stage 1 (no memory / robust far from minimum),
+# Broyden for any production-tier work (quasi-Newton + best near minimum).
+SIESTA_STAGE_PRESETS: Dict[int, Dict[str, Any]] = {
+    1: {
+        "relax_type":      "CG",
+        "relax_steps":     600,
+        "relax_force_tol": 0.05,
+        "relax_max_displ": 0.20,
+    },
+    2: {
+        "relax_type":      "Broyden",
+        "relax_steps":     200,
+        "relax_force_tol": 0.04,
+        "relax_max_displ": 0.05,
+    },
+    3: {
+        "relax_type":      "Broyden",
+        "relax_steps":     100,
+        "relax_force_tol": 0.01,
+        "relax_max_displ": 0.02,
+    },
+}
+
+
+def apply_siesta_stage(cfg: SiestaConfig, stage: int) -> SiestaConfig:
+    """Return a copy of *cfg* with the per-stage tier-aligned values
+    overlaid for ``stage`` (1, 2, or 3).
+
+    Values overlaid: ``relax_type``, ``relax_steps``, ``relax_force_tol``,
+    ``relax_max_displ``.  Every other field is preserved verbatim from
+    the input config -- the overlay is intentionally narrow so user
+    choices on basis / mesh_cutoff / psml_lib / spin / k-grid ride
+    through unchanged.
+
+    The overlay is applied AFTER the user's explicit CLI / form values,
+    NOT before.  An explicit ``--relax-force-tol 0.003`` followed by
+    ``--stage 3`` would still get the stage-3 value (0.01); if the
+    user wants their override to win they should pass ``--stage 3``
+    first then their per-knob override last.  The CLI handler at
+    ``cli.py::cmd_siesta`` enforces this ordering by applying the
+    stage overlay AFTER constructing the cfg from ``--relax-*`` flags.
+
+    Raises ``ValueError`` for stages outside {1, 2, 3}.
+    """
+    import dataclasses as _dc
+    if stage not in SIESTA_STAGE_PRESETS:
+        valid = ", ".join(map(str, sorted(SIESTA_STAGE_PRESETS)))
+        raise ValueError(
+            f"unknown SIESTA stage {stage!r}; choose from: {valid}")
+    overlay = SIESTA_STAGE_PRESETS[stage]
+    return _dc.replace(cfg, **overlay)
+
+
+__all__ = [
+    "SiestaConfig",
+    "Config",
+    "SIESTA_STAGE_PRESETS",
+    "apply_siesta_stage",
+]
