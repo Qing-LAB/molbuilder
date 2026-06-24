@@ -101,32 +101,29 @@ in a standard location).  Asks you to confirm the detected env
 manager unless you pass --yes / -y.
 
 ==============================================================
-FIRST TIME on a fresh machine?  Run this:
+COMMON TASKS (copy-paste any of these):
 
-    bash scripts/install-env.sh bootstrap --yes
+# 1. First-time setup -- creates host env + every conda backend:
+bash scripts/install-env.sh bootstrap --yes
 
-That creates the host env, installs every conda-only backend
-(SIESTA / PySCF / MDtools / tests), and runs a health check.
-Idempotent: re-running skips envs already present.
+# 2. Install GPU SIESTA (source-built, ~45 min, ~12 GB disk).
+#    HOST ENV MUST ALREADY EXIST (run #1 first if it doesn't):
+bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
 
-Adding GPU SIESTA (source-built, ~45 min, ~12 GB disk).  Either
-way works -- pick whichever fits your workflow:
+# 3. Do #1 + #2 in one shot:
+bash scripts/install-env.sh bootstrap --yes --include-source-builds
 
-    # As part of bootstrap (installs everything missing in one go):
-    bash scripts/install-env.sh bootstrap --yes \
-        --include-source-builds
+# 4. Rebuild a GPU SIESTA component after iterating on a patch:
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=siesta --yes
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=elpa --yes
+bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=all --yes
 
-    # As a standalone install (host env must already exist):
-    bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
+# 5. Repair missing packages flagged by doctor's audit:
+bash scripts/install-env.sh repair molbuilder-pySCF
+bash scripts/install-env.sh repair <recipe> --include-optional
 
-Iterating on a GPU SIESTA component:
-
-    bash scripts/install-env.sh install molbuilder-siesta-gpu \
-        --rebuild=siesta --yes        # rebuild SIESTA only, keep ELPA
-    bash scripts/install-env.sh install molbuilder-siesta-gpu \
-        --rebuild=elpa --yes          # rebuild ELPA + SIESTA
-    bash scripts/install-env.sh install molbuilder-siesta-gpu \
-        --rebuild=all --yes           # rebuild everything from scratch
+# 6. Health check / verify everything:
+bash scripts/install-env.sh doctor
 ==============================================================
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
