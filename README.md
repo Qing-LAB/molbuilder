@@ -211,6 +211,18 @@ Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
 comparison is pending the slab optimisation + electrode `.TSHS`
 generation step.
 
+### Benchmark a SIESTA-GPU project
+
+`molbuilder bench siesta-gpu <project_dir>` sweeps over
+`(np, omp, BlockSize, ELPA-stage, NUMA-pin, GPU/CPU)` test points
+and reports per-iter wall time so you can pick a production point
+from measurement instead of guessing.  Default sweep is 22 points
+(11 shapes × ELPA-1/2STAGE); custom sweeps via `--points "p1 p2
+..."` with `np,omp,bs[,diag[,pin[,gpu]]]` tuples.  Full reference
+(point-string syntax, output layout, defaults) in
+[§ Performance benchmarking](#performance-benchmarking--molbuilder-bench-siesta-gpu)
+below.
+
 ---
 
 ## Feature tour
@@ -770,35 +782,71 @@ python -m molbuilder envs validate molbuilder-siesta-gpu         # post-install 
 Full engineering documentation:
 [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
 
-### Performance benchmarking (siesta-gpu)
+### Performance benchmarking — `molbuilder bench siesta-gpu`
 
 Every generated SIESTA `.fdf` carries a `BENCH-MARKS` annotation
 block declaring which parameters a benchmark sweep can override:
 `MaxSCFIterations`, `BlockSize`, MPI rank count, OpenMP threads,
-NUMA pin, and ELPA solver stage.  `molbuilder bench siesta-gpu`
-reads that block and runs a small sweep over `(np, omp, BlockSize)`
-combinations, recording per-iteration wall time so a production
-point can be chosen from measurement rather than from a guess.
+NUMA pin, ELPA solver stage, and CPU-vs-GPU diag.  The
+`molbuilder bench siesta-gpu` subcommand reads that block and
+runs a sweep over `(np, omp, BlockSize, diag, pin, gpu)` test
+points, recording per-iteration wall time so a production point
+can be chosen from measurement rather than from a guess.
 
 ```bash
-# Default: 18-point sweep (9 shapes × ELPA-1/2STAGE).  Each point
-# runs at most --iters SCF cycles (default 5) so the sweep finishes
-# in minutes, not hours.
-python -m molbuilder bench siesta-gpu projects/BDT/optimization/BDT-withAuJunction-siesta-gpu
+# Default sweep: 22 points (11 shapes × ELPA-1/2STAGE).  Each
+# point runs at most --iters SCF cycles (default 5) so the sweep
+# finishes in minutes, not hours.
+python -m molbuilder bench siesta-gpu <project_dir>
 
-# Custom sweep — space-separated "np,omp,bs[,diag[,pin]]" tuples:
-python -m molbuilder bench siesta-gpu <project> \
-    --points "4,2,64 8,2,64 16,1,64,1s,nopin"
+# Cold (don't carry over .DM/.CG/.XV warm-start between points):
+python -m molbuilder bench siesta-gpu <project_dir> --cold
 
-# Cold (don't carry over .DM/.CG/.XV warm-start from prior runs):
-python -m molbuilder bench siesta-gpu <project> --cold
+# Custom sweep — see "Point string" below for the full syntax.
+python -m molbuilder bench siesta-gpu <project_dir> \
+    --points "20,1,256,2s,nopin,gpu  10,1,128,1s,pin,gpu  20,1,64,1s,nopin,cpu"
+
+# More SCF cycles per point (steadier averages):
+python -m molbuilder bench siesta-gpu <project_dir> --iters 8
+
+# Stream SIESTA stdout/stderr per point (debug a failing run):
+python -m molbuilder bench siesta-gpu <project_dir> -v
 ```
 
-Output lands under `<basename>.bench/`:
-* Per-point subdirectories with the modified `.fdf`, the per-run
-  `.out`, and the parsed timing.
-* A top-level `results.csv` summarising every point's requested
-  + effective parameter values and wall time per SCF iteration.
+**Project dir contract.**  The `<project_dir>` must hold one
+`*.fdf` plus its matching `<basename>.run.sh` wrapper next to it
+(the web UI's "Generate Script" emits both; `molbuilder run
+<fdf>` does too).  The bench reads the BENCH-MARKS block from
+the `.fdf` to know which parameters it may override.
+
+**Point string** (`--points "p1 p2 ..."`).  Each point is a 3-to-
+6-token comma-separated tuple:
+
+```
+np,omp,bs[,diag[,pin[,gpu]]]
+```
+
+| token | required | values | default |
+|---|---|---|---|
+| `np`   | yes | int | — | MPI ranks |
+| `omp`  | yes | int | — | OpenMP threads per rank |
+| `bs`   | yes | int | — | SIESTA `BlockSize` |
+| `diag` | no  | `1s` / `2s` / `1stage` / `2stage` / `ELPA-1STAGE` / `ELPA-2STAGE` | `ELPA-1STAGE` |
+| `pin`  | no  | `pin` / `nopin` (also `p1`/`p0`, `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `pin` (bind to GPU-proximate NUMA node; `nopin` strips the `numactl --cpunodebind` wrap so ranks span sockets) |
+| `gpu`  | no  | `gpu` / `cpu` (also `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `gpu` (sets `Diag.ELPA.GPU .true.`; `cpu` is the same-algorithm CPU baseline) |
+
+Keyed form also accepted, e.g.
+`np=20,omp=1,bs=256,diag=ELPA-2STAGE,pin=false,gpu=true`.  Mix
+keyed and positional tokens within one point string if you want.
+
+**Output.**  Lands under `<project_dir>/`:
+
+* One `bench-<point_slug>/` directory per point, containing the
+  modified `.fdf`, the per-run `.out`, and the parsed timing.
+  Slug shape: `np<N>_omp<M>_bz<B>_<diag>_<pin>_<gpu>`.
+* A top-level `bench-results-<YYYYMMDD-HHMMSS>.csv` summarising
+  every point's requested + effective parameter values and wall
+  time per SCF iteration.
 
 The sweep is non-destructive: the project's original `.fdf` and
 run wrapper are unchanged.  Typical uses are HPC node validation
@@ -806,9 +854,23 @@ run wrapper are unchanged.  Typical uses are HPC node validation
 throughput) and tuning a new geometry before committing to a long
 production run.
 
-Reference: [`docs/protocols/script-contract.md`](docs/protocols/script-contract.md)
-documents the BENCH-MARKS block format and the bench's parameter
-semantics.
+References:
+* [`docs/protocols/script-contract.md`](docs/protocols/script-contract.md)
+  — BENCH-MARKS block format + parameter semantics.
+* `molbuilder/bench/__init__.py` — `DEFAULT_POINTS` (the 22-point
+  default sweep) + the `Point.parse` parser are the authoritative
+  source of truth if the table above ever drifts.
+
+### `scripts/bench-siesta-blocksize.sh` (legacy, BlockSize-only)
+
+The `scripts/` directory carries a smaller bash benchmarker that
+predates `molbuilder bench`: it sweeps only `BlockSize` (no
+np/omp/diag/pin/gpu axes), uses the project's existing run wrapper
+verbatim, and emits a similar CSV.  Use it when you want a
+deliberate single-axis BlockSize comparison without the broader
+sweep, or when the project doesn't carry a BENCH-MARKS block
+(older generators).  Usage: `bash scripts/bench-siesta-blocksize.sh <project_dir> [bs1 bs2 ...] [--iters N] [--cold]`.  Otherwise prefer
+`molbuilder bench siesta-gpu` above.
 
 ### Scripts inventory
 
