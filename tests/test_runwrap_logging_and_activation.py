@@ -62,32 +62,32 @@ def bound():
 
 
 def test_per_run_log_file_has_timestamped_name(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # Filename pattern is the basename + ``.runwrap-`` + date format.
     assert '_runwrap_log="JOB.runwrap-$(date +%Y%m%d-%H%M%S).log"' in text
 
 
 def test_stdout_and_stderr_are_both_tee_d_to_log_file(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     assert 'exec > >(tee -a "$_runwrap_log")' in text
     assert '2> >(tee -a "$_runwrap_log" >&2)' in text
 
 
 def test_log_helper_uses_structured_HHMMSS_TAG_format(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # The printf format string must produce [HH:MM:SS] [TAG  ] msg
     # so a future log scraper has a stable shape to parse.
     assert "[%s] [%-5s] %s" in text
 
 
 def test_initial_state_dump_includes_hostname_user_cwd_argv(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     for needle in ('hostname:', 'user:', 'cwd:', 'argv:', 'log file:'):
         assert needle in text, f"missing `{needle}` from initial-state dump"
 
 
 def test_scheduler_vars_are_logged_only_when_set(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # SLURM + PBS env-var names appear in the for-loop that emits
     # them; the loop guards on ``-n "$_v_val"`` so unset vars stay
     # out of the log (no "SLURM_JOB_ID=<unset>" noise).
@@ -103,7 +103,7 @@ def test_scheduler_vars_are_logged_only_when_set(bound):
 
 
 def test_preactivate_hook_runs_before_any_conda_detection(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     hook_ix = text.find("MOLBUILDER_PREACTIVATE_CMDS")
     locate_ix = text.find("# --- Locate conda + activate")
     assert hook_ix >= 0 and locate_ix >= 0
@@ -115,7 +115,7 @@ def test_preactivate_hook_runs_before_any_conda_detection(bound):
 
 
 def test_preactivate_hook_warns_but_does_not_abort_on_nonzero(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # The hook may legitimately return non-zero (e.g. ``module load``
     # for an already-loaded module).  The wrapper logs WARN but keeps
     # going so the later detection paths can still succeed.
@@ -129,7 +129,7 @@ def test_preactivate_hook_warns_but_does_not_abort_on_nonzero(bound):
 
 
 def test_paths_are_tried_in_documented_order(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     indices = [text.find(f"path {i}:") for i in range(1, 7)]
     assert all(i > 0 for i in indices), \
         f"missing path tags: {indices}"
@@ -151,7 +151,7 @@ def test_mamba_is_tried_before_conda_at_every_layer(bound):
     layers keeps the detection deterministic and avoids the case
     where a stale ``conda`` shim (e.g. a wrapper script) gets picked
     over a working mamba install."""
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # Path 3 uses mamba; path 4 uses conda.
     p3_ix = text.find("path 3: ``mamba info --base``")
     p4_ix = text.find("path 4: ``conda info --base``")
@@ -168,7 +168,7 @@ def test_both_conda_and_mamba_info_base_branches_present(bound):
     """Sanity: both branches must exist (no regression to a
     mamba-only or conda-only wrapper).  The wrapper has to cope
     with sites that ship one but not the other."""
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     assert "mamba info --base" in text
     assert "conda info --base" in text
 
@@ -176,7 +176,7 @@ def test_both_conda_and_mamba_info_base_branches_present(bound):
 def test_path_5_attempts_module_load_for_module_gated_clusters(bound):
     """ASU sc002 needs ``module load mamba`` before mamba is on PATH.
     Path 5 probes a list of conventional module names."""
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     assert "command -v module" in text
     assert "module load" in text
     # The canonical names that cover most HPC sites.
@@ -185,7 +185,7 @@ def test_path_5_attempts_module_load_for_module_gated_clusters(bound):
 
 
 def test_path_6_probes_common_filesystem_locations(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     for cand in ("$HOME/miniforge3", "$HOME/miniconda3",
                  "/opt/miniconda3", "/opt/miniforge3"):
         assert cand in text, f"missing filesystem-probe path `{cand}`"
@@ -197,7 +197,7 @@ def test_path_6_probes_common_filesystem_locations(bound):
 
 
 def test_exhausted_paths_emit_actionable_error_message(bound):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     # Every path failure is mentioned so the user can tell which one
     # to fix.
     for path_ref in ("(1) CONDA_DEFAULT_ENV",
@@ -220,7 +220,7 @@ def test_rendered_wrapper_passes_bash_n(bound, tmp_path):
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash unavailable")
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4, autodetect_override=True)
     p = tmp_path / "JOB.run.sh"
     p.write_text(text)
     r = subprocess.run([bash, "-n", str(p)],
@@ -237,7 +237,7 @@ def test_pyscf_wrapper_also_renders_with_logging(bound, tmp_path):
     # PySCF wrapper goes through the same env_activation path.
     fdf = tmp_path / "spectra.py"
     fdf.write_text("# pyscf script\n")
-    wrapper = write_run_wrapper(fdf)
+    wrapper = write_run_wrapper(fdf, autodetect_override=True)
     text = wrapper.read_text()
     assert "_runwrap_log=" in text
     assert "path 1:" in text and "path 6:" in text
@@ -262,7 +262,7 @@ def test_running_path_1_writes_log_file_with_skip_marker(bound, tmp_path):
         pytest.skip("bash unavailable")
     fdf = tmp_path / "JOB.fdf"
     fdf.write_text("SystemLabel JOB\n")
-    wrapper = write_run_wrapper(fdf, mpi_np=2)
+    wrapper = write_run_wrapper(fdf, mpi_np=2, autodetect_override=True)
     text = wrapper.read_text()
     # Insert an exit 0 right after the post-activate ``which python``
     # log line so we don't try to launch SIESTA in this test.
@@ -324,5 +324,5 @@ def test_baked_in_conda_base_is_embedded_into_rendered_wrapper(bound,
     # then checks for conda.sh; absent that we get None.  This test
     # just confirms the WRAPPER carries _baked_conda_base= prefix
     # whatever the value resolves to (empty or real).
-    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=2)
+    text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=2, autodetect_override=True)
     assert "_baked_conda_base=" in text

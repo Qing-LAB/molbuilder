@@ -79,7 +79,13 @@ def test_render_siesta_always_uses_mpirun():
     assert "exec " not in text or "exec {" not in text, (
         "no top-level exec — the wrapper traps SIESTA's exit code"
     )
-    assert "conda activate molbuilder-siesta" in text
+    # Post-2026-06-24: ``conda activate`` uses the ``_target_env`` var
+    # rather than a hardcoded env name (so the same activation line
+    # works in both autodetect=true and autodetect=false branches).
+    # Pin both the var assignment AND the var-form activate call to
+    # equate to the pre-2026-06-24 ``conda activate molbuilder-siesta``.
+    assert '_target_env="molbuilder-siesta"' in text
+    assert 'conda activate "$_target_env"' in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
@@ -391,9 +397,13 @@ def test_render_conda_activation_six_paths_and_logging():
     failure can be diagnosed without re-submitting.
 
     Pins the 2026-06-24 upgrade from the older 3-path block to the
-    6-path scheduler-aware block + per-run log file."""
+    6-path scheduler-aware block + per-run log file.  The full
+    6-path block is opt-in via ``script_generation.autodetect_conda``
+    (docs/config.md § 3.6) -- this test exercises the autodetect=True
+    shape; the autodetect=False default shape is pinned separately."""
     _bind()
-    text = render_run_wrapper(Path("/x/job.fdf"), mpi_np=4)
+    text = render_run_wrapper(Path("/x/job.fdf"), mpi_np=4,
+                                autodetect_override=True)
     # Per-run log file + tee.
     assert "_runwrap_log=" in text
     assert ".runwrap-$(date" in text
@@ -416,7 +426,7 @@ def test_render_conda_activation_six_paths_and_logging():
     # isn't ready when SIESTA launches).  Post-2026-05-28 the launch
     # is no longer ``exec`` (so the propor diagnostic can run after);
     # check against the ``$_launch_cmd ... > ... .out`` line.
-    activate_ix = text.find("conda activate molbuilder-siesta")
+    activate_ix = text.find('conda activate "$_target_env"')
     # 2026-05-30: launch line uses $_out_file (dynamic per-run name).
     launch_ix   = text.find("$_launch_cmd job.fdf > $_out_file")
     assert 0 <= activate_ix < launch_ix, (
@@ -458,7 +468,8 @@ def test_render_pyscf():
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.py"))
     assert "python my-job.py" in text
-    assert "conda activate molbuilder-pySCF" in text
+    assert '_target_env="molbuilder-pySCF"' in text
+    assert 'conda activate "$_target_env"' in text
     # PySCF scripts handle their own logging; no stdout redirect.
     assert "> my-job" not in text
 
@@ -488,14 +499,16 @@ def test_render_multidot_basename_preserved():
 def test_render_explicit_env_override():
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta")
-    assert "conda activate my-custom-siesta" in text
+    assert '_target_env="my-custom-siesta"' in text
+    assert 'conda activate "$_target_env"' in text
 
 
 def test_render_picks_up_config_env_override():
     """Per-machine envs overrides flow through Capabilities -> wrapper."""
     _bind({"siesta": "siesta-ng-v54"})
     text = render_run_wrapper(Path("/x/y.fdf"))
-    assert "conda activate siesta-ng-v54" in text
+    assert '_target_env="siesta-ng-v54"' in text
+    assert 'conda activate "$_target_env"' in text
 
 
 # --------------------------------------------------------------------- #
@@ -738,7 +751,11 @@ def test_help_flag_lists_continue_and_force(tmp_path):
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script)
+    # autodetect_override=True so the wrapper sources conda.sh before
+    # ``conda activate`` -- otherwise the subprocess shell only has
+    # conda as a binary on PATH and ``conda activate`` errors with
+    # "Run 'conda init' before 'conda activate'".
+    wrapper_path = write_run_wrapper(script, autodetect_override=True)
     bash = shutil.which("bash") or "/bin/bash"
     proc = subprocess.run(
         [bash, str(wrapper_path), "-h"],

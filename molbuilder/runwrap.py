@@ -34,6 +34,181 @@ from typing import Optional
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 
 
+def _build_locate_and_activate_block(target_env: str,
+                                       autodetect: bool) -> str:
+    """Return the ``Locate conda + activate`` portion of the wrapper.
+
+    Two distinct shapes, gated by ``script_generation.autodetect_conda``
+    in the effective config (docs/config.md § 3.6):
+
+      * autodetect=False (the DEFAULT): trust that ``preactivate`` and
+        ``MOLBUILDER_PREACTIVATE_CMDS`` arranged the env -- emit only
+        path 1 (already-in-env skip) + a direct ``conda activate``.
+        Failure prints the actionable hint + the available envs +
+        exits 1.  No silent fallback discovery, no source step the
+        wrapper has to guess at.  Fail loud.
+
+      * autodetect=True: emit the full 6-path discovery + the source
+        step + ``conda activate`` -- the permissive shape suitable
+        for laptop dev, debugging an unknown machine, or sites where
+        the operator doesn't want to mandate ``preactivate`` setup.
+
+    Both branches log every step to the per-run log file so a
+    failure on the cluster yields a self-contained diagnostic.
+    """
+    head = (
+        f"# --- Locate conda + activate ({target_env}) ------------\n"
+        f'_target_env="{target_env}"\n'
+        f"# Path 1: already in the right env -- nothing to do.\n"
+        f'if [ "${{CONDA_DEFAULT_ENV:-}}" = "$_target_env" ]; then\n'
+        f"    _log STAGE \"path 1: already in '$_target_env'; "
+        f"skipping activation\"\n"
+        f"else\n"
+    )
+    activate_call = (
+        f'    _log STAGE  "conda activate $_target_env"\n'
+        f"    if ! conda activate \"$_target_env\" 2>&1; then\n"
+        f"        _log ERROR  \"conda activate failed -- is conda "
+        f"on PATH?  Is the env installed?\"\n"
+        f"        _log INFO   \"available envs: $(conda env list "
+        f"2>/dev/null | tail -n +3 | awk '{{print $1}}' | "
+        f"tr '\\n' ' ')\"\n"
+        f"        exit 1\n"
+        f"    fi\n"
+        f"fi\n"
+    )
+    if not autodetect:
+        # Fail-loud mode (the default).  ``preactivate`` is expected
+        # to have put conda on PATH and made ``conda activate`` a
+        # valid command (modern ``module load mamba`` does both via
+        # the conda-init shell hooks the module ships).  If it didn't,
+        # the bare ``conda activate`` call will fail with a clear
+        # error -- which is the documented intent of autodetect=false.
+        body = (
+            f"    # script_generation.autodetect_conda is FALSE\n"
+            f"    # (the default).  The wrapper trusts that the\n"
+            f"    # preactivate block above (or MOLBUILDER_PREACTIVATE_CMDS)\n"
+            f"    # arranged the env.  No 6-path fallback emitted.\n"
+            f"    _log STAGE  \"autodetect_conda=false; trusting "
+            f"preactivate to have put conda on PATH\"\n"
+        )
+        return head + body + activate_call
+    # Autodetect=True: 6-path discovery + source step + activate.
+    body = (
+        f'    _baked_conda_base=\'{_BAKED_PLACEHOLDER}\'\n'
+        f"    _conda_base=\"\"   # filled in by whichever path succeeds\n"
+        f"    # Path 2: baked-in generator-time conda base.\n"
+        f'    if [ -n "$_baked_conda_base" ] \\\n'
+        f'         && [ -f "$_baked_conda_base/etc/profile.d/'
+        f'conda.sh" ]; then\n'
+        f'        _conda_base="$_baked_conda_base"\n'
+        f'        _log STAGE  "path 2: using baked-in conda base"\n'
+        f'        _log INFO   "_conda_base=$_conda_base"\n'
+        f"    fi\n"
+        f"    # Path 3: mamba on PATH -- preferred over conda.\n"
+        f'    if [ -z "$_conda_base" ] && '
+        f'command -v mamba >/dev/null 2>&1; then\n'
+        f'        _cb="$(mamba info --base 2>/dev/null)" || true\n'
+        f'        if [ -n "$_cb" ] && '
+        f'[ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
+        f'            _conda_base="$_cb"\n'
+        f'            _log STAGE  "path 3: ``mamba info --base`` '
+        f'-> $_conda_base"\n'
+        f"        fi\n"
+        f"    fi\n"
+        f"    # Path 4: conda on PATH -- fallback.\n"
+        f'    if [ -z "$_conda_base" ] && '
+        f'command -v conda >/dev/null 2>&1; then\n'
+        f'        _cb="$(conda info --base 2>/dev/null)" || true\n'
+        f'        if [ -n "$_cb" ] && '
+        f'[ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
+        f'            _conda_base="$_cb"\n'
+        f'            _log STAGE  "path 4: ``conda info --base`` '
+        f'-> $_conda_base"\n'
+        f"        fi\n"
+        f"    fi\n"
+        f"    # Path 5: ``module load`` then re-probe.\n"
+        f'    if [ -z "$_conda_base" ] && '
+        f'command -v module >/dev/null 2>&1; then\n'
+        f"        for _mod in mamba miniforge3 miniforge mambaforge"
+        f" \\\n"
+        f"                    miniconda3 miniconda anaconda3 "
+        f"anaconda; do\n"
+        f'            _log INFO   "trying ``module load $_mod``"\n'
+        f'            if module load "$_mod" 2>/dev/null; then\n'
+        f"                for _bin in mamba conda; do\n"
+        f"                    command -v $_bin >/dev/null 2>&1 "
+        f"|| continue\n"
+        f'                    _cb="$($_bin info --base 2>/dev/null)"'
+        f' || true\n'
+        f'                    if [ -n "$_cb" ] \\\n'
+        f'                         && [ -f "$_cb/etc/profile.d/'
+        f'conda.sh" ]; then\n'
+        f'                        _conda_base="$_cb"\n'
+        f'                        _log STAGE  "path 5: module '
+        f'load $_mod -> $_conda_base"\n'
+        f"                        break 2\n"
+        f"                    fi\n"
+        f"                done\n"
+        f"            fi\n"
+        f"        done\n"
+        f"    fi\n"
+        f"    # Path 6: common-location filesystem probe.\n"
+        f'    if [ -z "$_conda_base" ]; then\n'
+        f"        for _cb in \"$HOME/miniforge3\" \"$HOME/mambaforge\""
+        f" \\\n"
+        f"                   \"$HOME/miniconda3\" \"$HOME/anaconda3\""
+        f" \\\n"
+        f"                   /opt/miniforge3 /opt/mambaforge \\\n"
+        f"                   /opt/miniconda3 /opt/anaconda3; do\n"
+        f'            if [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
+        f'                _conda_base="$_cb"\n'
+        f'                _log STAGE  "path 6: filesystem '
+        f'probe -> $_conda_base"\n'
+        f"                break\n"
+        f"            fi\n"
+        f"        done\n"
+        f"    fi\n"
+        f"    # All six paths failed: error with actionable advice.\n"
+        f'    if [ -z "$_conda_base" ]; then\n'
+        f'        _log ERROR  "could not locate conda/mamba on '
+        f'this system"\n'
+        f"        cat >&2 <<EOM\n"
+        f"\n"
+        f"ERROR: this wrapper needs the '$_target_env' conda env, but no\n"
+        f"conda / mamba installation was found.  Tried (in order):\n"
+        f"  (1) CONDA_DEFAULT_ENV already == '$_target_env'\n"
+        f"  (2) baked-in generator-time conda base: "
+        f"${{_baked_conda_base:-<unset>}}\n"
+        f"  (3) ``mamba info --base`` (mamba on PATH -- preferred)\n"
+        f"  (4) ``conda info --base`` (conda on PATH -- fallback)\n"
+        f"  (5) ``module load {{mamba,miniforge,...}}`` then re-probe\n"
+        f"  (6) common locations: \\$HOME/miniforge3 etc.\n"
+        f"\n"
+        f"Fix one of:\n"
+        f"  * install conda / mamba (docs/README_install.md)\n"
+        f"  * populate script_generation.preactivate in molbuilder.json\n"
+        f"    (docs/config.md § 3.6)\n"
+        f"  * set MOLBUILDER_PREACTIVATE_CMDS in your shell config\n"
+        f"\n"
+        f"See $_runwrap_log for the full per-path trace.\n"
+        f"EOM\n"
+        f"        exit 1\n"
+        f"    fi\n"
+        f"    # Source + activate.\n"
+        f'    _log STAGE  "sourcing $_conda_base/etc/profile.d/'
+        f'conda.sh"\n'
+        f"    # shellcheck disable=SC1091\n"
+        f'    source "$_conda_base/etc/profile.d/conda.sh"\n'
+    )
+    return head + body + activate_call
+
+
+# Placeholder for the baked-in conda base; replaced at wrapper-render
+# time via str.replace so the helper doesn't need to thread the path.
+_BAKED_PLACEHOLDER = "__MOLBUILDER_BAKED_CONDA_BASE__"
+
+
 def _detect_generate_time_conda_base() -> Optional[str]:
     """Return the conda root visible to the generator process, or None.
 
@@ -1076,7 +1251,8 @@ def render_run_wrapper(script_path: Path, *,
                         mpi_np: Optional[int] = None,
                         omp_threads: Optional[int] = None,
                         max_memory_mb: Optional[int] = None,
-                        n_atoms: Optional[int] = None) -> str:
+                        n_atoms: Optional[int] = None,
+                        autodetect_override: Optional[bool] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -1825,22 +2001,77 @@ def render_run_wrapper(script_path: Path, *,
     # Build a self-contained activation block + per-run log file.
     # The wrapper must run as a fully standalone job script under
     # SLURM/PBS, with NO requirement that the caller has conda on
-    # PATH or has activated anything.  Six-path detection in order
-    # of reliability + vigorous logging of every step to
-    # ``<basename>.runwrap-<timestamp>.log`` so a broken HPC run can
-    # be diagnosed without re-submitting.
+    # PATH or has activated anything.
     #
-    # The baked-in generate-time conda base path is the load-bearing
-    # piece for the common case where the user generates the wrapper
-    # on the same cluster they'll run it on (e.g. ssh into HPC,
-    # ``conda activate molbuilder``, ``molbuilder run X.fdf``,
-    # ``sbatch X.run.sh``).  It also degrades cleanly: if the path
-    # doesn't exist on the target machine (cross-cluster rsync), the
-    # later paths take over.
+    # Per docs/config.md (the unified configuration design), the
+    # wrapper is composed of THREE env-handling layers in this order:
+    #
+    #   1. Baked-in ``preactivate`` from script_generation.preactivate
+    #      in the effective config (server-wide ∪ project, both files
+    #      under docs/config.md § 2).  Each block emitted with a
+    #      sentinel comment naming its source scope so a user reading
+    #      the wrapper sees exactly where each line came from.
+    #   2. ``MOLBUILDER_PREACTIVATE_CMDS`` env var (runtime escape).
+    #   3. 6-path conda detection -- ONLY when
+    #      script_generation.autodetect_conda is true (opt-in;
+    #      defaults to false so a typo in ``preactivate`` fails loud
+    #      instead of being silently rescued by the fallback).
+    #
+    # Then: ``conda activate <target_env>``.  Failure is logged with
+    # the available-envs list and exits 1 (no silent fall-through).
+    #
+    # ``project_dir`` for the config read is ``script_path.parent``,
+    # matching the convention every other subsystem already uses for
+    # project context.
+    from . import runtime_config as _rc
+    _project_dir = script_path.parent if script_path.parent.exists() else None
+    _sg = _rc.get_script_generation(project_dir=_project_dir)
+    _preactivate_text = _sg["preactivate"]
+    _preactivate_scopes = _sg.get("_preactivate_scopes", [])
+    # autodetect_override is the explicit test/programmatic override;
+    # otherwise honour the effective config (default false per
+    # docs/config.md § 3.6 -- fail-loud-by-default).
+    _autodetect = (autodetect_override
+                    if autodetect_override is not None
+                    else bool(_sg["autodetect_conda"]))
+
     _baked_conda_base = _detect_generate_time_conda_base() or ""
     # Quote for safe bash embedding -- conda base paths usually have
     # no spaces / quotes, but we shouldn't assume.
     _baked_q = _baked_conda_base.replace("'", "'\\''")
+
+    # Render the baked-in preactivate block with per-scope sentinels.
+    # ``_preactivate_scopes`` carries scope labels in concatenation
+    # order; split _preactivate_text back into per-scope chunks for
+    # the sentinel-comment header.  Each chunk separated by "\n\n"
+    # (see get_script_generation in runtime_config.py).
+    _preactivate_block = ""
+    if _preactivate_text:
+        _scope_labels = {
+            "server":  "SERVER-WIDE PREACTIVATION (from molbuilder.json)",
+            "project": "PROJECT PREACTIVATION (from .molbuilder.json)",
+        }
+        _chunks = _preactivate_text.split("\n\n")
+        _rendered_chunks = []
+        for label, chunk in zip(_preactivate_scopes, _chunks):
+            header = _scope_labels.get(label, label.upper())
+            _rendered_chunks.append(
+                f"# === {header} ===\n{chunk}\n"
+            )
+        _preactivate_block = (
+            "# --- Baked-in preactivate block (see "
+            "docs/config.md § 3.6) ---\n"
+            "_log STAGE \"running baked-in preactivate block\"\n"
+            + "\n".join(_rendered_chunks)
+            + "\n"
+        )
+    else:
+        _preactivate_block = (
+            "# --- Baked-in preactivate block (empty -- see "
+            "docs/config.md § 3.6 to populate) ---\n"
+            "# (no script_generation.preactivate configured)\n"
+            "\n"
+        )
     env_activation = (
         f"# --- Per-run log file (vigorous logging of all wrapper steps) -\n"
         f"# Captured: pre-activation hooks, conda detection paths tried,\n"
@@ -1884,134 +2115,28 @@ def render_run_wrapper(script_path: Path, *,
         f'    [ -n "$_v_val" ] && _log INFO  "$_v=$_v_val"\n'
         f"done\n"
         f"\n"
-        f"# --- Pre-activation hook ------------------------------------\n"
-        f"# Set ``MOLBUILDER_PREACTIVATE_CMDS=\"module load mamba\"`` in\n"
-        f"# your .bashrc (or SLURM job preamble) for clusters that gate\n"
-        f"# conda behind the environment-modules system.  ASU sc002 is\n"
-        f"# the canonical example: ``mamba`` is not on PATH until you\n"
-        f"# ``module load mamba``.  The var is just bash -- you can\n"
-        f"# chain commands with ``;`` if you need several.\n"
+        f"{_preactivate_block}"
+        f"# --- Runtime pre-activation hook ----------------------------\n"
+        f"# The env var below is the runtime escape hatch for the\n"
+        f"# baked-in preactivate block above.  Use it for one-off\n"
+        f"# overrides (a different module name on a fresh cluster, a\n"
+        f"# temporary debug ``set -x``).  Permanent cluster setup\n"
+        f"# belongs in molbuilder.json's script_generation.preactivate\n"
+        f"# (docs/config.md § 3.6) so it ships with every generated\n"
+        f"# wrapper instead of relying on .bashrc state.\n"
         f'if [ -n "${{MOLBUILDER_PREACTIVATE_CMDS:-}}" ]; then\n'
         f"    _log STAGE \"running MOLBUILDER_PREACTIVATE_CMDS\"\n"
         f'    _log_run "$MOLBUILDER_PREACTIVATE_CMDS" \\\n'
         f"        || _log WARN  \"preactivate cmds returned non-zero (continuing)\"\n"
         f"fi\n"
         f"\n"
-        f"# --- Locate conda + activate ({target_env}) ------------\n"
-        f'_target_env="{target_env}"\n'
-        f'_baked_conda_base=\'{_baked_q}\'\n'
-        f"_conda_base=\"\"   # filled in by whichever path succeeds\n"
-        f"\n"
-        f"# Path 1: already in the right env -- nothing to do.\n"
-        f'if [ "${{CONDA_DEFAULT_ENV:-}}" = "$_target_env" ]; then\n'
-        f"    _log STAGE \"path 1: already in '$_target_env'; skipping activation\"\n"
-        f"else\n"
-        f"    # Path 2: baked-in generator-time conda base.\n"
-        f'    if [ -n "$_baked_conda_base" ] \\\n'
-        f'         && [ -f "$_baked_conda_base/etc/profile.d/conda.sh" ]; then\n'
-        f'        _conda_base="$_baked_conda_base"\n'
-        f'        _log STAGE  "path 2: using baked-in conda base"\n'
-        f'        _log INFO   "_conda_base=$_conda_base"\n'
-        f"    fi\n"
-        f"    # Path 3: mamba on PATH -- preferred over conda (faster, and\n"
-        f"    # many modern installs (mambaforge, miniforge3) ship only\n"
-        f"    # mamba on PATH after activation).  HPC sites like ASU sc002\n"
-        f"    # provide only mamba via ``module load mamba``.\n"
-        f'    if [ -z "$_conda_base" ] && command -v mamba >/dev/null 2>&1; then\n'
-        f'        _cb="$(mamba info --base 2>/dev/null)" || true\n'
-        f'        if [ -n "$_cb" ] && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
-        f'            _conda_base="$_cb"\n'
-        f'            _log STAGE  "path 3: ``mamba info --base`` -> $_conda_base"\n'
-        f"        fi\n"
-        f"    fi\n"
-        f"    # Path 4: conda on PATH -- fallback for conda-only installs\n"
-        f"    # (older miniconda, anaconda) where mamba isn't shipped.\n"
-        f'    if [ -z "$_conda_base" ] && command -v conda >/dev/null 2>&1; then\n'
-        f'        _cb="$(conda info --base 2>/dev/null)" || true\n'
-        f'        if [ -n "$_cb" ] && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
-        f'            _conda_base="$_cb"\n'
-        f'            _log STAGE  "path 4: ``conda info --base`` -> $_conda_base"\n'
-        f"        fi\n"
-        f"    fi\n"
-        f"    # Path 5: try ``module load`` for clusters with module-gated\n"
-        f"    # conda (ASU sc002, many other HPC sites).  Each name is\n"
-        f"    # tried in turn; the first one that puts conda or mamba on\n"
-        f"    # PATH wins.  Silent if the module command itself is absent.\n"
-        f'    if [ -z "$_conda_base" ] && command -v module >/dev/null 2>&1; then\n'
-        f"        for _mod in mamba miniforge3 miniforge mambaforge \\\n"
-        f"                    miniconda3 miniconda anaconda3 anaconda; do\n"
-        f'            _log INFO   "trying ``module load $_mod``"\n'
-        f'            if module load "$_mod" 2>/dev/null; then\n'
-        f"                for _bin in mamba conda; do\n"
-        f"                    command -v $_bin >/dev/null 2>&1 || continue\n"
-        f'                    _cb="$($_bin info --base 2>/dev/null)" || true\n'
-        f'                    if [ -n "$_cb" ] \\\n'
-        f'                         && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
-        f'                        _conda_base="$_cb"\n'
-        f'                        _log STAGE  "path 5: module load $_mod -> $_conda_base"\n'
-        f"                        break 2\n"
-        f"                    fi\n"
-        f"                done\n"
-        f"            fi\n"
-        f"        done\n"
-        f"    fi\n"
-        f"    # Path 6: common-location filesystem probe.\n"
-        f'    if [ -z "$_conda_base" ]; then\n'
-        f"        for _cb in \"$HOME/miniforge3\" \"$HOME/mambaforge\" \\\n"
-        f"                   \"$HOME/miniconda3\" \"$HOME/anaconda3\" \\\n"
-        f"                   /opt/miniforge3 /opt/mambaforge \\\n"
-        f"                   /opt/miniconda3 /opt/anaconda3; do\n"
-        f'            if [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
-        f'                _conda_base="$_cb"\n'
-        f'                _log STAGE  "path 6: filesystem probe -> $_conda_base"\n'
-        f"                break\n"
-        f"            fi\n"
-        f"        done\n"
-        f"    fi\n"
-        f"    # All six paths failed: error with actionable advice.\n"
-        f'    if [ -z "$_conda_base" ]; then\n'
-        f'        _log ERROR  "could not locate conda/mamba on this system"\n'
-        f"        cat >&2 <<EOM\n"
-        f"\n"
-        f"ERROR: this wrapper needs the '$_target_env' conda env, but no\n"
-        f"conda / mamba installation was found.  Tried (in order):\n"
-        f"  (1) CONDA_DEFAULT_ENV already == '$_target_env'\n"
-        f"  (2) baked-in generator-time conda base: ${{_baked_conda_base:-<unset>}}\n"
-        f"  (3) ``mamba info --base`` (mamba on PATH -- preferred)\n"
-        f"  (4) ``conda info --base`` (conda on PATH -- fallback)\n"
-        f"  (5) ``module load {{mamba,miniforge,...}}`` then re-probe\n"
-        f"  (6) common locations: \\$HOME/miniforge3 etc.\n"
-        f"\n"
-        f"Fix one of:\n"
-        f"  * install conda / mamba (docs/README_install.md)\n"
-        f"  * pre-activate before invoking this wrapper:\n"
-        f"        conda activate {target_env} && bash $0\n"
-        f"  * set MOLBUILDER_PREACTIVATE_CMDS in your shell config:\n"
-        f"        export MOLBUILDER_PREACTIVATE_CMDS='module load mamba'\n"
-        f"    then re-run.\n"
-        f"\n"
-        f"See $_runwrap_log for the full per-path trace.\n"
-        f"EOM\n"
-        f"        exit 1\n"
-        f"    fi\n"
-        f"    # Source + activate.  Trace the activation so the log\n"
-        f"    # captures any non-zero from a broken env (e.g. corrupted\n"
-        f"    # activate.d/*.sh hook).\n"
-        f'    _log STAGE  "sourcing $_conda_base/etc/profile.d/conda.sh"\n'
-        f"    # shellcheck disable=SC1091\n"
-        f'    source "$_conda_base/etc/profile.d/conda.sh"\n'
-        f'    _log STAGE  "conda activate $_target_env"\n'
-        f"    if ! conda activate \"$_target_env\" 2>&1; then\n"
-        f"        _log ERROR  \"conda activate failed -- is the env installed?\"\n"
-        f"        _log INFO   \"available envs: $(conda env list 2>/dev/null | tail -n +3 | awk '{{print $1}}' | tr '\\n' ' ')\"\n"
-        f"        exit 1\n"
-        f"    fi\n"
-        f"fi\n"
-        f"\n"
-        f'_log INFO   "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
-        f'_log INFO   "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
-        f'_log INFO   "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
-        f"\n"
+        + _build_locate_and_activate_block(target_env, _autodetect)
+              .replace(_BAKED_PLACEHOLDER, _baked_q)
+        + f"\n"
+        + f'_log INFO   "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
+        + f'_log INFO   "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
+        + f'_log INFO   "which python: $(command -v python 2>/dev/null || echo \'(not on PATH)\')"\n'
+        + f"\n"
     )
 
     # Launch + diagnostics.  For SIESTA we run the command (not
@@ -2165,7 +2290,8 @@ def write_run_wrapper(script_path: Path, *,
                        env: Optional[str] = None,
                        mpi_np: Optional[int] = None,
                        omp_threads: Optional[int] = None,
-                       max_memory_mb: Optional[int] = None) -> Path:
+                       max_memory_mb: Optional[int] = None,
+                       autodetect_override: Optional[bool] = None) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
@@ -2190,6 +2316,7 @@ def write_run_wrapper(script_path: Path, *,
         omp_threads=omp_threads,
         max_memory_mb=max_memory_mb,
         n_atoms=n_atoms,
+        autodetect_override=autodetect_override,
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
     # (parse-only, no execution) before we hand it back.  Catches the

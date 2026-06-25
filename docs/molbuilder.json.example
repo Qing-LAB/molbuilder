@@ -111,5 +111,22 @@
 
   "_comment_secret_key_file":
     "Path to the Flask session-signing key.  Auto-generated on first run (32 random bytes, mode 0600).  Required when 'auth' is set; quietly ignored otherwise.  If omitted while auth is on, molbuilder generates an ephemeral per-process key and warns -- sessions then invalidate on every restart, which is annoying but safe.",
-  "secret_key_file": "~/.molbuilder/secret.key"
+  "secret_key_file": "~/.molbuilder/secret.key",
+
+  "_comment_script_generation":
+    "Settings that flow into every generated run wrapper (.run.sh).  Per docs/config.md § 3.6.  These keys are valid in both server-wide molbuilder.json AND project-scope .molbuilder.json -- ``preactivate`` concatenates across the two scopes (server first, then project), other keys use the standard replace rule (project overrides server).",
+  "script_generation": {
+
+    "_comment_preactivate":
+      "Multi-line bash run at the top of every generated .run.sh, BEFORE the wrapper's conda detection + activation.  Use for cluster setup that has to happen once before conda is reachable.  Canonical example for ASU sc002 (where 'mamba' is gated by Lmod): \"module load mamba\".  Lines are copied verbatim; chain multiple commands with \\n or ; as you'd type them in bash.",
+    "preactivate": "module load mamba",
+
+    "_comment_preactivate_format":
+      "Reserved for future module-list / Lmod-spec formats.  Today only 'shell' is supported.",
+    "preactivate_format": "shell",
+
+    "_comment_autodetect_conda":
+      "Opt-in safety net.  Default false -- the wrapper trusts that ``preactivate`` above (or MOLBUILDER_PREACTIVATE_CMDS at runtime) put conda/mamba on PATH; if it didn't, the bare ``conda activate`` fails loudly and you fix the config.  Set true to enable a 6-path discovery fallback (baked-in conda base -> mamba info --base -> conda info --base -> module load <name> -> $HOME/{miniforge3,mambaforge,...} filesystem probe).  Useful on laptop dev or unfamiliar clusters; risky in production because it can mask a typo in preactivate by silently rescuing the run from an unrelated install.",
+    "autodetect_conda": false
+  }
 }

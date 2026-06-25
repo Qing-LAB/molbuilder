@@ -46,12 +46,19 @@ no hidden state.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
 CONFIG_FILENAME = "molbuilder.json"
+# Per-project config sidecar.  Per docs/config.md § 2: hidden file in
+# the project directory, same schema as the server-wide molbuilder.json.
+PROJECT_CONFIG_FILENAME = ".molbuilder.json"
+# XDG fallback for the server-wide config when one isn't present in cwd.
+# Matches the convention auth-setup uses (see molbuilder/auth_setup.py).
+_XDG_FALLBACK_RELATIVE = Path(".config") / "molbuilder" / CONFIG_FILENAME
 
 
 class RuntimeConfigError(Exception):
@@ -458,6 +465,11 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         out["secret_key_file"] = secret_key_file
 
+    # --- script_generation section (docs/config.md § 3.6) ----------- #
+    if "script_generation" in raw:
+        out["script_generation"] = _validate_script_generation(
+            raw["script_generation"])
+
     return out
 
 
@@ -516,14 +528,287 @@ def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
     return dict(cfg.get("rate_limit", {}))
 
 
+# --------------------------------------------------------------------- #
+#  script_generation section (docs/config.md § 3.6)                     #
+# --------------------------------------------------------------------- #
+
+
+_SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
+    "preactivate":        "",
+    "preactivate_format": "shell",
+    "autodetect_conda":   False,
+}
+
+# Allowed values for ``preactivate_format`` (reserved for future Lmod /
+# module-list expansion; only ``"shell"`` is wired today).
+_PREACTIVATE_FORMATS = ("shell",)
+
+
+def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """Validate one scope's ``script_generation`` section.
+
+    Returns a normalised copy with defaults filled in.  Raises
+    :class:`RuntimeConfigError` on shape errors.
+    """
+    if not isinstance(raw, Mapping):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'script_generation' must be an "
+            f"object; got {type(raw).__name__}."
+        )
+    out = dict(_SCRIPT_GENERATION_DEFAULTS)
+    if "preactivate" in raw:
+        v = raw["preactivate"]
+        if not isinstance(v, str):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'script_generation.preactivate' "
+                f"must be a string (multi-line bash); got "
+                f"{type(v).__name__}."
+            )
+        out["preactivate"] = v
+    if "preactivate_format" in raw:
+        v = raw["preactivate_format"]
+        if v not in _PREACTIVATE_FORMATS:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'script_generation."
+                f"preactivate_format' must be one of "
+                f"{_PREACTIVATE_FORMATS!r}; got {v!r}."
+            )
+        out["preactivate_format"] = v
+    if "autodetect_conda" in raw:
+        v = raw["autodetect_conda"]
+        if not isinstance(v, bool):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'script_generation."
+                f"autodetect_conda' must be a JSON boolean "
+                f"(true / false); got {type(v).__name__}."
+            )
+        out["autodetect_conda"] = v
+    return out
+
+
+# --------------------------------------------------------------------- #
+#  Multi-scope read/write API (docs/config.md § 4)                      #
+# --------------------------------------------------------------------- #
+
+
+def _per_user_fallback_path() -> Path:
+    """``~/.config/molbuilder/molbuilder.json``, honouring XDG.
+
+    Mirrors :func:`molbuilder.auth_setup.default_secret_dir`'s
+    convention so the auth-setup wizard and config reader land in the
+    same per-user directory.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "molbuilder" / CONFIG_FILENAME
+    return Path.home() / _XDG_FALLBACK_RELATIVE
+
+
+def _read_scope(path: Path) -> Dict[str, Any]:
+    """Read one scope's JSON file; ``{}`` if absent.
+
+    Reuses :func:`read_config` for the parse + normalise path; this
+    wrapper just hides the missing-file vs read-error distinction
+    so the caller can short-circuit on empty.
+    """
+    if not path.is_file():
+        return {}
+    return read_config(path)
+
+
+def _read_server_wide() -> Dict[str, Any]:
+    """Server-wide config: cwd ``./molbuilder.json`` first, XDG
+    fallback ``~/.config/molbuilder/molbuilder.json`` second.
+
+    The cwd-first preference matches existing behaviour (every test +
+    deployment path written before 2026-06-24 reads from cwd).  XDG is
+    a fallback for users who'd rather not litter their project dirs
+    with config files.
+    """
+    cwd_path = Path(CONFIG_FILENAME)
+    if cwd_path.is_file():
+        return _read_scope(cwd_path)
+    return _read_scope(_per_user_fallback_path())
+
+
+def _read_project(project_dir: Path) -> Dict[str, Any]:
+    return _read_scope(Path(project_dir) / PROJECT_CONFIG_FILENAME)
+
+
+def _deep_merge(base: Dict[str, Any],
+                 overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Per docs/config.md § 2:
+       * scalars: overlay replaces base
+       * objects: recurse
+       * arrays:  overlay replaces base (no element-wise merge)
+
+    Side-effect-free: returns a new dict; neither input is mutated.
+    """
+    out = dict(base)
+    for k, v in overlay.items():
+        if (k in out and isinstance(out[k], dict)
+                and isinstance(v, dict)):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def read_effective_config(
+    project_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Return the merged effective configuration.
+
+    When ``project_dir`` is None: returns the server-wide layer alone.
+    When provided: deep-merges server-wide ← project (project wins per
+    the rules in :func:`_deep_merge`).
+
+    NOTE: the merge here is the GENERIC merge.  Subsystems with
+    field-specific merge rules (like ``script_generation.preactivate``,
+    which concatenates rather than replaces) must use their dedicated
+    getter -- e.g. :func:`get_script_generation` reads both raw scopes
+    and concatenates ``preactivate``, ignoring the generic merge.
+    Other ``script_generation`` fields (``autodetect_conda``,
+    ``preactivate_format``) use the standard replace rule.
+    """
+    server = _read_server_wide()
+    if project_dir is None:
+        return server
+    project = _read_project(Path(project_dir))
+    return _deep_merge(server, project)
+
+
+def get_script_generation(
+    project_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Return the effective ``script_generation`` section.
+
+    Per docs/config.md § 3.6, ``preactivate`` uses string
+    concatenation (server-wide first, then project) rather than the
+    generic replace-merge.  ``preactivate_format`` and
+    ``autodetect_conda`` use the standard "project replaces server"
+    semantics.
+
+    Returns a dict with all defaults filled in:
+
+        {
+            "preactivate":        "<server>\\n\\n<project>" (or one alone),
+            "preactivate_format": "shell",
+            "autodetect_conda":   False,
+        }
+    """
+    server_raw = _read_server_wide().get("script_generation") or {}
+    project_raw: Dict[str, Any] = {}
+    if project_dir is not None:
+        project_raw = _read_project(Path(project_dir)).get(
+            "script_generation") or {}
+
+    # Concatenate preactivate, server first.  Empty strings drop out so
+    # we don't emit blank sections in the rendered wrapper.
+    parts: List[Tuple[str, str]] = []
+    for label, src in (("server", server_raw), ("project", project_raw)):
+        text = (src.get("preactivate") or "").rstrip("\n")
+        if text:
+            parts.append((label, text))
+    # The joiner is two newlines so each block reads as a separate
+    # paragraph in the rendered wrapper; runwrap.py adds sentinel
+    # comments around each block when emitting.
+    preactivate = "\n\n".join(p[1] for p in parts)
+
+    # Other fields: project wins, else server, else default.
+    def _pick(key: str) -> Any:
+        if key in project_raw:
+            return project_raw[key]
+        if key in server_raw:
+            return server_raw[key]
+        return _SCRIPT_GENERATION_DEFAULTS[key]
+
+    return {
+        "preactivate":        preactivate,
+        "preactivate_format": _pick("preactivate_format"),
+        "autodetect_conda":   bool(_pick("autodetect_conda")),
+        # Provenance hint for the UI: which scopes contributed lines
+        # to ``preactivate``, in order.  Empty list when both scopes
+        # are silent.  Not part of the contract for non-UI callers.
+        "_preactivate_scopes": [p[0] for p in parts],
+    }
+
+
+def write_config_scope(
+    project_dir: Optional[Path],
+    patch: Mapping[str, Any],
+) -> Path:
+    """Write a partial config patch into one scope.
+
+    ``project_dir`` selects:
+      * ``None``: server-wide file at the highest-precedence existing
+        location (cwd if present, else the XDG path).  When neither
+        exists, the XDG path is created.
+      * a path: ``<project_dir>/.molbuilder.json``.
+
+    The patch is deep-merged ONTO the existing file's contents (per
+    :func:`_deep_merge`), preserving keys outside the patch.  Files
+    are written mode 0600 to match :mod:`molbuilder.auth_setup`'s
+    precedent -- a config file may carry secret-file PATHS, deploy
+    context, or per-cluster setup commands that aren't meant for
+    casual inspection.
+
+    Returns the resolved target path.
+    """
+    if project_dir is None:
+        cwd_path = Path(CONFIG_FILENAME).resolve()
+        target = cwd_path if cwd_path.is_file() else _per_user_fallback_path()
+    else:
+        target = Path(project_dir) / PROJECT_CONFIG_FILENAME
+
+    existing: Dict[str, Any] = {}
+    if target.is_file():
+        try:
+            existing = json.loads(target.read_text())
+            if not isinstance(existing, dict):
+                existing = {}
+        except (OSError, json.JSONDecodeError):
+            # Corrupt file -- log nothing, overwrite.  Callers that
+            # want to preserve it should make a backup before calling.
+            existing = {}
+
+    merged = _deep_merge(existing, dict(patch))
+    # Round-trip through the validator BEFORE writing so we never
+    # produce a file that ``read_config`` would reject.
+    try:
+        _normalise(merged)
+    except RuntimeConfigError:
+        # The PATCH was invalid; surface the error untouched.
+        raise
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    rendered = json.dumps(merged, indent=2, sort_keys=False) + "\n"
+    # Atomic create with 0600 perms (same trick as auth_setup).
+    fd = os.open(
+        str(target),
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        0o600,
+    )
+    try:
+        os.write(fd, rendered.encode("utf-8"))
+    finally:
+        os.close(fd)
+    os.chmod(target, 0o600)
+    return target
+
+
 __all__ = [
     "CONFIG_FILENAME",
+    "PROJECT_CONFIG_FILENAME",
     "RuntimeConfigError",
     "read_config",
+    "read_effective_config",
+    "write_config_scope",
     "get_tls",
     "get_envs",
     "get_auth",
     "get_providers",
     "get_secret_key_file",
     "get_rate_limit",
+    "get_script_generation",
 ]
