@@ -13,46 +13,48 @@
 ## 1. The wrapper contract
 
 The generated `<basename>.run.sh` is a **self-contained shell script**.
-Given the `.fdf` (or `.py`) input sitting next to it and the env it was
-generated for, it runs the job under SLURM (or directly).
+Given the `.fdf` (or `.py`) input sitting next to it and the env it
+was generated for, it runs the job under SLURM (or directly).
 
 **What the wrapper does at runtime, in this order:**
 
 1. Open a log file in the **current working directory** named
-   `<basename>.runwrap-<YYYYMMDD-HHMMSS>.log`.  Tees stdout + stderr
-   to that file while keeping them on the original streams.
+   `<basename>.runwrap-<YYYYMMDD-HHMMSS>.log`.  Tees stdout +
+   stderr to that file while keeping them on the original streams.
 2. Run the **server preamble** verbatim (e.g. `module load mamba`).
    Baked at generate time from `molbuilder.json`.
 3. Run **project additions** verbatim (env vars, extra setup).
    Baked at generate time from `.molbuilder.json` if present.
 4. Run the **activation command** verbatim (e.g.
    `source activate molbuilder-siesta-gpu`).  Baked at generate
-   time; both the form (`source activate` vs `conda activate` vs
-   `mamba activate`) and the env name are decided by the generator.
-5. Launch the engine: `mpirun -np $_mpi_np siesta < <basename>.fdf >
-   <basename>-runN.out` (or the PySCF equivalent).
+   time; both the form (`source activate` or `conda activate`) and
+   the env name are decided by the generator.
+5. Launch the engine: `mpirun -np $_mpi_np siesta < <basename>.fdf
+   > <basename>-runN.out` (SIESTA) or the PySCF equivalent.
 
 **What the wrapper does NOT do:**
 
 * **Does not change cwd.**  SLURM lands the job in `SLURM_SUBMIT_DIR`
   by default; direct users `cd` to the project dir before
-  invocation.  The caller's cwd is the contract.  Outputs (log,
-  `-runN.out`, etc.) land where the wrapper was invoked.
+  invocation.  The caller's cwd is the contract.  Outputs land where
+  the wrapper was invoked.
 * **Does not read any external file** other than the engine input
   (`<basename>.fdf` / `<basename>.py`).  No config files, no
-  `~/.bashrc`-style sourcing, no module discovery.
-* **Does not read any environment variable to alter behaviour.**
-  No `MOLBUILDER_PREACTIVATE_CMDS`, no autodetect toggle.  The
-  scheduler vars it reads (`SLURM_NTASKS`, `SLURM_GPUS`) only
-  inform the launch command, never change which conda env or which
-  preamble runs.
+  `~/.bashrc`-style sourcing.
+* **Does not read environment variables to alter activation or
+  preamble behaviour.**  Specifically: there is no
+  `MOLBUILDER_PREACTIVATE_CMDS` hook, no autodetect toggle, no
+  way to swap the activation form at runtime.  See § 1.5 for the
+  narrow set of vars the wrapper DOES read (scheduler vars for
+  launch tuning — that's the scheduler's published contract, not
+  user configuration).
 * **Does not probe.**  No `conda info --base`, no `mamba info --base`,
   no `module avail`, no filesystem walks, no PATH searching.
   Everything is baked.
 * **Does not have a fallback path.**  If `module load mamba` fails,
-  if the env doesn't exist, if `source activate` errors — the
-  wrapper aborts (`set -euo pipefail`) with the real bash error in
-  the log.  No silent rescue, no alternative path.
+  if the env doesn't exist, if activation errors — the wrapper
+  aborts (`set -euo pipefail`) with the real bash error in the
+  log.  No silent rescue, no alternative path.
 
 **What the wrapper assumes about its environment:**
 
@@ -62,25 +64,58 @@ generated for, it runs the job under SLURM (or directly).
   `molbuilder envs install` machinery guarantees this.
 * The `.fdf` (or `.py`) is in the caller's cwd.
 
+### 1.5 What the wrapper additionally does (allowed exceptions)
+
+A small set of behaviours are NOT runtime discovery / config reads
+but interact with externalities in a bounded way.  All four are
+permitted by the contract:
+
+| behaviour | what it reads | why consistent with the contract |
+|---|---|---|
+| **Run-index resolution** (picks `-run0`, `-run1`, ... for `.out` files) | sibling `<basename>-runN.out` files in cwd | reading the caller's cwd to choose its own output filename; not external config, not detection of tools |
+| **Argument parsing** (`--continue` / `-c`, `--force` / `-f`, `-np N` / `--np N`, `-omp N`, `-h`) | the wrapper's own argv | explicit user input to a single invocation; not external state |
+| **Scheduler-var read** (`SLURM_NTASKS`, `SLURM_GPUS_ON_NODE`, etc.) | env vars set by SLURM/PBS at job start | the scheduler's published contract for handing the job its rank count + GPU allocation; informs `mpirun -np`, never changes activation or preamble |
+| **SIESTA propor post-mortem** (after SIESTA crashes, grep its `.out` for `propor: ERROR: IMAX = 0` and print a known retry-with-different-np hint) | the engine's own output file | post-mortem text-analysis on the engine's output; not a fallback path, not a retry, just a hint printed before exiting with SIESTA's exit code |
+
+None of these read configuration files, probe for tools, or change
+which env / preamble runs.  They are bounded reads of (a) the
+caller's cwd contents, (b) the wrapper's own argv, (c) the
+scheduler's documented env vars, (d) the engine's own output after
+it ran.
+
+### 1.6 Multi-stage SIESTA wrappers
+
+A multi-stage SIESTA run emits N per-stage `.fdf`s plus an
+orchestrator `<basename>.run.sh` that loops over them.
+
+* Each per-stage `<basename>-stage<i>.run.sh`, if generated, is a
+  single-engine wrapper conforming to this contract.
+* The orchestrator `<basename>.run.sh` is a thin bash loop: it
+  invokes each per-stage wrapper in turn under the same activated
+  env (preamble + activation done once at the top of the
+  orchestrator, then a loop).  It does not re-activate per stage.
+
+Both shapes obey §§ 1 / 1.5: no config reads, no detection, no
+fallback, no cd.
+
 ---
 
 ## 2. The generator contract
 
 The generator is `molbuilder.runwrap.render_run_wrapper` plus the
 config-reading helpers it calls.  At generate time it can read
-anything it needs.  Its job is to produce a wrapper that satisfies §1.
+anything it needs.  Its job is to produce a wrapper that satisfies
+§§ 1 / 1.5 / 1.6.
 
 **What the generator reads at generate time:**
 
 * The target env name (from the recipe / capabilities snapshot).
 * `script_generation.preamble` from `molbuilder.json` (server-wide).
-  Lines copied verbatim to step 2 of the wrapper above.
 * `script_generation.activation` from `molbuilder.json` (server-wide).
-  Names the activation command form (`source activate` /
-  `conda activate` / `mamba activate`).
 * `script_generation.preamble` from `.molbuilder.json` (project-scope,
-  if present).  Lines copied verbatim to step 3.
-* Engine-specific knobs (mpi_np, omp, BlockSize) — same as today.
+  if present).
+* Engine-specific knobs (mpi_np, omp, BlockSize) — unchanged from
+  the existing implementation.
 
 **What the generator emits:**
 
@@ -88,33 +123,67 @@ A `.run.sh` whose content is the result of substituting the read
 values into a fixed template.  No conditionals at runtime, no
 detection blocks, no fallback branches.
 
-**Failure mode at generate time:**
+**Failure mode at generate time (refuse-to-emit on missing
+essentials):**
 
-If `script_generation.preamble` is empty AND no project-scope file
-exists, the generator emits a wrapper with an empty preamble.  That
-wrapper will fail at activation time on any cluster that needs
-`module load`.  The fix is on the operator: populate
-`molbuilder.json`.  The generator does NOT bake a guess.
+The generator REFUSES to emit a wrapper if essential config is
+missing.  Specifically:
+
+* `script_generation.activation` is not set in either scope →
+  generator prints a clear error naming the missing key + the doc
+  reference (`docs/config.md § 4`) and exits non-zero.  No wrapper
+  is written.
+* `script_generation.preamble` is empty in BOTH scopes AND the
+  generator detects it's being asked to produce a wrapper for an
+  HPC-target env (siesta-gpu, siesta) → same: print error, point
+  at docs, exit non-zero.  Pure CPU envs without HPC association
+  (e.g. molbuilder host env runs locally) may proceed with an
+  empty preamble.
+
+The principle: a configuration mistake produces an error at GENERATE
+time when the operator is still at a terminal in front of the
+project — not at SUBMIT time when the job is queued on a remote
+cluster.  "Broken on first run" is impossible by construction.
 
 ---
 
 ## 3. Where config lives
 
-| scope | file | lookup |
+| scope | file | when read |
 |---|---|---|
-| **server-wide** | `molbuilder.json` | cwd of `molbuilder run` / `molbuilder serve`, OR `~/.config/molbuilder/molbuilder.json` (XDG fallback) |
-| **project** (optional) | `.molbuilder.json` | in the project directory (the dir holding the `.fdf` / `.py`) |
+| **server-wide** | `molbuilder.json` | generate time only |
+| **project** (optional) | `.molbuilder.json` | generate time only |
 
-Both files share the same JSON schema.  The generator reads both,
-merges them (project wins on scalar conflicts; `preamble` strings
-concatenate server-then-project), bakes the result into the wrapper.
+Both files share the same JSON schema.  Neither is read at wrapper
+runtime.
 
-**The wrapper never reads either file.**  Once generated, the wrapper
-is independent of both.
+### Lookup order
+
+**Server-wide** (in priority order; first match wins, no merging
+across):
+
+1. `./molbuilder.json` (cwd of the `molbuilder run` invocation).
+2. `~/.config/molbuilder/molbuilder.json` (XDG fallback; honours
+   `$XDG_CONFIG_HOME` when set, else `$HOME/.config/`).
+
+**Project** (single location, optional):
+
+* `<project_dir>/.molbuilder.json`, where `<project_dir>` is the
+  directory holding the `.fdf` / `.py` being generated.
+
+**Merge across scopes** (project + server-wide):
+
+* `preamble` strings concatenate: server-wide first, then project,
+  joined by `"\n"`.  Either may be empty.
+* `activation`: project value wins if set; else server-wide value.
+  At least one scope must set it (per § 2's refuse-to-emit rule).
+
+No section-level merging between the two server-wide candidates
+(cwd file vs XDG file).  Only ONE of those is read.
 
 ---
 
-## 4. Schema — the bits the generator needs
+## 4. Schema — the keys the generator needs
 
 ```json
 {
@@ -125,19 +194,32 @@ is independent of both.
 }
 ```
 
-| key | type | required | meaning |
+| key | type | default | meaning |
 |---|---|---|---|
-| `preamble` | string (multi-line bash) | no (empty default) | Verbatim lines run at the top of the wrapper, before activation.  Typically `module load mamba` on Sol; can include `export FOO=bar` lines for env vars. |
-| `activation` | one of `"source activate"`, `"conda activate"`, `"mamba activate"` | no (default: `"source activate"`) | How the wrapper activates the env.  `source activate` is the form Sol uses; other clusters may need a different form. |
+| `preamble` | string (multi-line bash) | empty | Verbatim lines run at the top of the wrapper, before activation.  Typically `module load mamba` on HPC sites that gate the conda toolchain behind environment-modules; can include `export FOO=bar` lines for env vars. |
+| `activation` | one of `"source activate"`, `"conda activate"` | **no default — must be explicitly set in at least one scope** | How the wrapper activates the env.  `source activate` is the legacy form that works whenever the `activate` script is on PATH (typical after `module load mamba`).  `conda activate` is the modern shell-function form that requires `conda.sh` to have been sourced. |
 
-**Both keys are valid in either scope.**  Merge rules:
+Both keys are valid in either scope.
 
-* `preamble`: server-wide string + `"\n"` + project string (server first, project after).  Either may be empty.
-* `activation`: project value wins if set; else server value; else default `source activate`.
+There are no other keys under `script_generation`.  No
+`autodetect_conda`, no `preactivate_format`, no `preactivate`.  Those
+existed in a prior version of this doc and were removed.
 
-There are no other keys under `script_generation`.  No `autodetect_conda`,
-no `preactivate_format`, no `preactivate`.  Those existed in a prior
-version of this doc and were removed.
+**Why `activation` has no default:** picking one silently smuggles a
+target-cluster assumption into every fresh deployment.  Sol uses
+`source activate`; modern conda installs use `conda activate`.  The
+operator picks during initial setup — once — and the generator
+refuses to operate without it.  See § 2's refuse-to-emit rule.
+
+**Why the enum is two values, not three (no `mamba activate`):**
+on modern mamba + conda, `mamba activate <env>` and
+`conda activate <env>` resolve to the same shell function loaded
+from the same conda hook — the distinction is just which binary
+appears on PATH, not a different activation mechanism.  If the
+operator's binary is named `mamba`, use `source activate` (legacy,
+binary-agnostic) or `conda activate` (modern shell-function form,
+provided the conda hook is sourced).  No need for a third value
+that would behave identically to one of the other two.
 
 ---
 
@@ -159,11 +241,11 @@ The previous draft of this doc designed a config-driven wrapper.
 Everything below was deleted because the wrapper now does no runtime
 discovery:
 
-* `script_generation.preactivate` (renamed to `preamble`, but more
-  importantly: the wrapper used to "respect" this at runtime via a
+* `script_generation.preactivate` (renamed to `preamble`; semantics
+  also changed — the wrapper used to "respect" preactivate via a
   baked-in block + a runtime env-var hook; the env-var hook is gone)
 * `script_generation.preactivate_format` (only one format existed
-  anyway; remove)
+  anyway)
 * `script_generation.autodetect_conda` (the 6-path detection is
   gone; this knob has no meaning anymore)
 * `MOLBUILDER_PREACTIVATE_CMDS` runtime env var (gone)
@@ -171,9 +253,11 @@ discovery:
 * The "fail loud vs autodetect" decision (irrelevant under the new
   contract — the wrapper always does exactly what was baked)
 * The per-run log "preactivate trace via `set -x`" idiom (gone; the
-  baked preamble is plain lines, traced by the log file's stderr
-  capture only if the operator explicitly opted in via xtrace in
-  their preamble)
+  baked preamble is plain lines)
+* The cd at the wrapper top (gone)
+* The multi-line activation-failed help heredoc (gone — `set -euo
+  pipefail` aborts with the real bash error, which is more useful
+  than a generic hint)
 
 The wrapper itself shrinks substantially as a result.
 
@@ -181,16 +265,23 @@ The wrapper itself shrinks substantially as a result.
 
 ## 7. Migration
 
-Existing `molbuilder.json` files with `script_generation.preactivate`
-should be renamed to `preamble`.  The config reader emits a warning
-on the old key but treats it as `preamble` for one release, then
-drops the alias.
+* `script_generation.preactivate` → rename to `preamble`.  The
+  config reader emits a one-time warning when it sees the old key
+  and treats it as `preamble` for one release, then drops the
+  alias.
+* `script_generation.autodetect_conda` → drop entirely.  The
+  reader silently ignores unknown keys, so this isn't load-bearing
+  on the user side.
+* `script_generation.preactivate_format` → drop entirely.
+* `MOLBUILDER_PREACTIVATE_CMDS` → users who set this in shell init
+  files should remove it.  The reader code does not consume it; the
+  wrapper code does not consume it.  It's a no-op as of this rewrite.
+* Fresh installs on HPC (e.g. ASU Sol): set
+  `script_generation.activation: "source activate"` + a `preamble`
+  appropriate to the cluster.  Without `activation` set, the
+  generator refuses to emit a wrapper.
 
-Existing `molbuilder.json` files with `script_generation.autodetect_conda`
-should drop the key — it has no meaning.  The reader silently ignores
-unknown keys, so this isn't load-bearing.
-
-The example file `docs/molbuilder.json.example` needs to be rewritten
+The example file `docs/molbuilder.json.example` will be rewritten
 against this schema in the same commit as the code change.
 
 ---
@@ -203,8 +294,9 @@ against this schema in the same commit as the code change.
    verbatim preamble (server then project) + verbatim activation +
    engine launch.  Tests pinning the new shape; old tests pinning
    the discarded behaviours get deleted, not patched.
-2. **`runtime_config.py`** — replace `get_script_generation` with the
-   new schema (preamble + activation, that's it).  Keep
+2. **`runtime_config.py`** — replace `get_script_generation` with
+   the new schema (`preamble` + `activation`).  Add the
+   refuse-to-emit guard described in § 2.  Keep
    `read_effective_config` / `write_config_scope` — they're sound.
 3. **`docs/molbuilder.json.example`** — rewritten `script_generation`
    block matching the new schema.
