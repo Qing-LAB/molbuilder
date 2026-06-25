@@ -266,7 +266,7 @@ def test_running_path_1_writes_log_file_with_skip_marker(bound, tmp_path):
     text = wrapper.read_text()
     # Insert an exit 0 right after the post-activate ``which python``
     # log line so we don't try to launch SIESTA in this test.
-    needle = '_log INFO   "which python:'
+    needle = '_log INFO "which python:'
     ix = text.find(needle)
     assert ix >= 0
     eol = text.find("\n", ix)

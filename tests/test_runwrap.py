@@ -613,7 +613,7 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     )
     # The block ends with the post-activate ``which python:`` log line;
     # cut at the start of the next blank line after it.
-    end_marker = '_log INFO   "which python:'
+    end_marker = '_log INFO "which python:'
     end_ix = text.find(end_marker, log_start)
     assert end_ix >= 0, "post-activate ``which python:`` log line not found"
     # Cut at the newline AFTER the ``which python:`` line.
