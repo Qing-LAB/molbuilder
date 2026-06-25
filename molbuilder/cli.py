@@ -465,10 +465,42 @@ def _make_pyscf_options_decorator():
                    "Broyden publishable (0.04 eV/A, 0.05 A); Stage 3: "
                    "Broyden crystal-tight (0.01 eV/A, 0.02 A -- VASP "
                    "EDIFFG=-0.01 standard).  Anchored in docs/engines/"
-                   "optimization-tuning.md sect. 2.3.1.")
+                   "optimization-tuning.md sect. 2.3.1.  Mutually "
+                   "exclusive with --stages-json / --stage-strategy "
+                   "(those drive the multi-stage pipeline; --stage is "
+                   "for a single-stage one-shot fdf).")
+# --stages-json + --stage-strategy: power-user escape hatches for the
+# multi-stage SIESTA pipeline (cfg.stages).  The everyday UI is the
+# web form's stage-table widget; CLI users can paste a JSON payload
+# or pick a named preset.  Applied in order: --stages-json replaces
+# the entire ladder, then --stage-strategy overlays enable flags.
+# When either flag is set, cmd_fdf switches into multi-stage mode and
+# emits one ``<basename>_<stage>.fdf`` per enabled stage plus a
+# ``<basename>.run.sh`` bash runner instead of the single one-shot fdf.
+@click.option("--stages-json", "stages_json", default=None,
+              metavar="JSON_OR_PATH",
+              help="override the per-stage convergence ladder with a "
+                   "JSON list-of-dicts (one entry per stage, keys = "
+                   "SiestaStageSpec fields: name / enabled / relax_type / "
+                   "relax_steps / relax_force_tol / relax_max_displ / "
+                   "on_nonconvergence).  Accepts a literal JSON string "
+                   "or a path to a .json file.  Unknown keys ignored.  "
+                   "Applied BEFORE --stage-strategy so you can combine "
+                   "them.  Sets multi-stage mode (one fdf per enabled "
+                   "stage + a .run.sh runner).")
+@click.option("--stage-strategy",
+              type=click.Choice(["publishable", "loose-only", "vib-quality"]),
+              default=None,
+              help="override stage enable flags with a named preset: "
+                   "'publishable' = stages 1+2 (default), 'loose-only' "
+                   "= stage 1 only (cheap warm-up), 'vib-quality' = "
+                   "1+2+3 (TIGHT tier for vib/IR/NEB Hessians).  "
+                   "Mirrors the form's Stage strategy dropdown.  Sets "
+                   "multi-stage mode (one fdf per enabled stage + a "
+                   ".run.sh runner).")
 @_make_siesta_options_decorator()
 def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
-            **fields):
+            stages_json, stage_strategy, **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
     Every SiestaConfig field is exposed as a CLI option (auto-generated
@@ -493,7 +525,23 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         species_order=species_seq,
         **fields,
     )
-    # Apply stage overlay AFTER cfg is built so the user's per-knob
+
+    # --stage (single-stage overlay) and --stages-json / --stage-strategy
+    # (multi-stage pipeline) describe two different workflows; mixing
+    # them is almost always user confusion (e.g. "I want stage 2 of a
+    # 3-stage strategy" -- which means stage_strategy='vib-quality' +
+    # picking the second entry, NOT --stage 2).  Reject the combination
+    # loud rather than silently picking one.
+    multi_stage = (stages_json is not None) or (stage_strategy is not None)
+    if stage is not None and multi_stage:
+        raise click.UsageError(
+            "--stage is for a single-stage one-shot .fdf; "
+            "--stages-json / --stage-strategy drive the multi-stage "
+            "pipeline (one .fdf per enabled stage + a .run.sh runner).  "
+            "Pick one path -- they're mutually exclusive."
+        )
+
+    # Apply --stage overlay AFTER cfg is built so the user's per-knob
     # --relax-* overrides land in cfg first, then the stage values
     # overlay them.  Documented contract: stage wins on the 4
     # overlay knobs (relax_type / steps / force_tol / max_displ) AND
@@ -508,6 +556,23 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         # it here (in addition to the overlay) makes ``--stage N``
         # the one-flag way to produce a coherent stage-N fdf.
         cfg = _dc.replace(cfg, stage=int(stage))
+
+    # Multi-stage branch: apply --stages-json + --stage-strategy to
+    # cfg.stages, then emit one fdf per enabled stage + a bash runner.
+    # cfg.system_label is force-aligned to ``Path(fdf_path).stem`` so
+    # the per-stage filenames and the SystemLabel inside each fdf
+    # never drift apart -- that's the contract the .XV auto-warmstart
+    # relies on.
+    if multi_stage:
+        _emit_siesta_multi_stage(
+            cfg=cfg,
+            input_path=input_path,
+            fdf_path=fdf_path,
+            stages_json=stages_json,
+            stage_strategy=stage_strategy,
+        )
+        return
+
     with _resolve_input_path(input_path) as resolved_input:
         summary = convert(resolved_input, fdf_path, cfg)
     click.echo(
@@ -523,6 +588,124 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             err=True,
         )
         sys.exit(2)
+
+
+def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
+                              stages_json, stage_strategy):
+    """Helper for cmd_fdf's multi-stage branch.
+
+    Pulled out of cmd_fdf so the logic is unit-testable independent
+    of Click's runner state, and so cmd_fdf's body stays readable.
+
+    Side effects:
+      * Writes ``{stem}_{stage}.fdf`` for each enabled stage.
+      * Writes ``{stem}.run.sh`` (chmod +x) bash runner.
+      * Optionally copies psml files + writes molwatch preview log
+        next to the LAST enabled stage's fdf.
+      * Prints a one-line summary per emitted file to stderr.
+    """
+    import dataclasses as _dc
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+
+    from .config.siesta import (
+        apply_siesta_stage_strategy,
+        siesta_stages_from_dicts,
+    )
+    from .siesta import (
+        render_siesta_stage_fdfs,
+        render_siesta_stages_runner,
+    )
+    from .siesta.input import _struct_from_file
+
+    # --stages-json: replace cfg.stages wholesale.
+    if stages_json is not None:
+        s = stages_json.strip()
+        if s.startswith("["):
+            try:
+                payload = _json.loads(s)
+            except _json.JSONDecodeError as e:
+                raise click.BadParameter(
+                    f"--stages-json: not valid JSON ({e.msg} at "
+                    f"line {e.lineno}, column {e.colno})",
+                    param_hint="--stages-json",
+                )
+        else:
+            p = _Path(s)
+            if not p.exists():
+                raise click.BadParameter(
+                    f"--stages-json: file not found: {p}",
+                    param_hint="--stages-json",
+                )
+            try:
+                payload = _json.loads(p.read_text())
+            except _json.JSONDecodeError as e:
+                raise click.BadParameter(
+                    f"--stages-json: not valid JSON in {p} "
+                    f"({e.msg} at line {e.lineno}, column {e.colno})",
+                    param_hint="--stages-json",
+                )
+        try:
+            cfg.stages = siesta_stages_from_dicts(payload)
+        except (TypeError, ValueError) as e:
+            raise click.BadParameter(
+                f"--stages-json: {e}", param_hint="--stages-json")
+
+    # --stage-strategy: overlay enable flags onto cfg.stages.
+    if stage_strategy is not None:
+        cfg.stages = apply_siesta_stage_strategy(cfg.stages, stage_strategy)
+
+    fdf_p = _Path(fdf_path)
+    out_dir = fdf_p.parent if str(fdf_p.parent) else _Path(".")
+    basename = fdf_p.stem
+    # Force-align the SystemLabel to the on-disk filename stem.  This
+    # is the single point where the multi-stage filename convention
+    # (<stem>_<stage>.fdf) is wired to the SIESTA SystemLabel that
+    # drives .XV / .DM auto-restart between stages.
+    cfg = _dc.replace(cfg, system_label=basename)
+
+    with _resolve_input_path(input_path) as resolved_input:
+        struct, cell = _struct_from_file(resolved_input)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fdfs = render_siesta_stage_fdfs(struct, cfg, cell=cell)
+
+    # Pick siesta_cmd here so the runner is self-contained even before
+    # runwrap composes the conda + MPI layers around it.  Defaults to
+    # the bare ``siesta`` binary; runwrap will substitute as needed.
+    runner = render_siesta_stages_runner(cfg, siesta_cmd="siesta")
+    runner_path = out_dir / f"{basename}.run.sh"
+
+    written: list = []
+    for name, body in fdfs.items():
+        p = out_dir / name
+        p.write_text(body)
+        written.append(p)
+    runner_path.write_text(runner)
+    _os.chmod(runner_path, 0o755)
+    written.append(runner_path)
+
+    # Optional psml copy + molwatch preview log, mirroring convert()'s
+    # behaviour but driven once for the whole bundle (not per-stage).
+    if cfg.psml_lib and cfg.copy_psml:
+        from .siesta.input import copy_pseudopotentials, _detect_species
+        from pathlib import Path as _P
+        species = (list(cfg.species_order) if cfg.species_order
+                   else _detect_species(struct.elements))
+        lib = _P(cfg.psml_lib).expanduser()
+        if lib.is_dir():
+            copy_pseudopotentials(species, lib, out_dir)
+
+    click.echo(
+        f"Wrote {len(fdfs)} stage fdf(s) + 1 runner to "
+        f"{out_dir}: {', '.join(p.name for p in written)}",
+        err=True,
+    )
+    click.echo(
+        f"Run with: cd {out_dir} && ./{runner_path.name}",
+        err=True,
+    )
 
 
 # --------------------------------------------------------------------- #
