@@ -76,10 +76,24 @@ def _build_locate_and_activate_block(target_env: str,
     # facing help text.  Pre-expanding ``target_env`` in Python keeps
     # the literal env name in the message without re-introducing the
     # bash-expansion footgun.
+    #
+    # Activation: try ``source activate`` FIRST (works whenever the
+    # ``activate`` legacy-compat script is on PATH -- the common case
+    # after ``module load mamba`` on HPC sites), then fall back to
+    # ``conda activate`` (the modern shell-function form, which
+    # requires conda.sh to have been sourced).  The fallback covers
+    # newer conda installs that may have dropped the legacy
+    # ``activate`` script.  Stderr is swallowed on the first try so
+    # the user only sees the SECOND failure's diagnostic.
     activate_call = (
-        f'    _log STAGE "conda activate {target_env}"\n'
-        f"    if ! conda activate \"$_target_env\" 2>&1; then\n"
-        f"        _log ERROR \"conda activate failed\"\n"
+        f'    _log STAGE "activating $_target_env (try: source activate)"\n'
+        f"    if source activate \"$_target_env\" 2>/dev/null; then\n"
+        f"        _log STAGE \"activated via ``source activate``\"\n"
+        f"    elif command -v conda >/dev/null 2>&1 \\\n"
+        f"            && conda activate \"$_target_env\" 2>/dev/null; then\n"
+        f"        _log STAGE \"activated via ``conda activate``\"\n"
+        f"    else\n"
+        f"        _log ERROR \"activation failed (tried both ``source activate`` and ``conda activate``)\"\n"
         f"        cat >&2 <<'EOM'\n"
         f"\n"
         f"ERROR: ``conda activate {target_env}`` failed.  Three common causes:\n"
@@ -2344,7 +2358,22 @@ def render_run_wrapper(script_path: Path, *,
         f"# write into the wrong place if you chdir to elsewhere.\n"
         f"#\n"
         f"set -euo pipefail\n"
-        f"cd \"$(dirname \"$0\")\"\n"
+        f"# Resolve the working directory.  SLURM copies the submitted\n"
+        f"# script body into ``/var/spool/slurmd/.../slurm_script`` and\n"
+        f"# runs THAT copy -- so ``$(dirname \"$0\")`` lands in SLURM's\n"
+        f"# spool dir, which the user can't write to, and the runwrap\n"
+        f"# log file create then fails with EACCES.  Honour the\n"
+        f"# scheduler's submission-dir env var when set (SLURM_SUBMIT_DIR\n"
+        f"# / PBS_O_WORKDIR are the canonical names), else fall back to\n"
+        f"# the script's parent dir.  This lands log + outputs in the\n"
+        f"# directory the user actually submitted from.\n"
+        f"if [ -n \"${{SLURM_SUBMIT_DIR:-}}\" ]; then\n"
+        f"    cd \"$SLURM_SUBMIT_DIR\"\n"
+        f"elif [ -n \"${{PBS_O_WORKDIR:-}}\" ]; then\n"
+        f"    cd \"$PBS_O_WORKDIR\"\n"
+        f"else\n"
+        f"    cd \"$(dirname \"$0\")\"\n"
+        f"fi\n"
         f"\n"
         f"{env_activation}"
         f"{env_prefix}"
