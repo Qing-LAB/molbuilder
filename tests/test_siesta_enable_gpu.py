@@ -16,6 +16,7 @@ loudly.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,25 @@ from molbuilder import runwrap as _runwrap
 # --------------------------------------------------------------------- #
 #  Fixtures                                                              #
 # --------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def _autosetup_minimal_config(tmp_path, monkeypatch):
+    """Wrapper rendering requires ``script_generation.activation``
+    (docs/config.md § 2 refuse-to-emit rule).  Drop a minimal cwd
+    ``molbuilder.json`` so every test in this file satisfies the
+    guard without coupling to deployment-specific defaults."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {
+            "preamble":   "module load mamba",
+            "activation": "source activate",
+        }
+    }))
+    yield tmp_path
 
 
 def _mk_struct() -> Structure:
