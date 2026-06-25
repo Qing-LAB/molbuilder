@@ -16,10 +16,12 @@
  *
  * Backend: file upload reuses ``POST /api/build/load``; edit ops
  * use ``POST /api/modify/{load,delete,add_atom,orient,rotate}``.
- * State is persisted across tab navigation via sessionStorage
- * (key: ``modify-state``) so a Modify -> Watch -> Modify round
- * trip preserves the loaded structure, the selection, and the
- * 3Dmol camera.
+ * State is persisted across tab navigation by the workspace
+ * dispatcher under ``sessionStorage["molbuilder.workspace.v1"]``
+ * (workspace-contract.md §4.1); this module restores from that
+ * snapshot on DOMContentLoaded so a Modify -> Watch -> Modify
+ * round trip preserves the loaded structure, the selection,
+ * and the 3Dmol camera.
  *
  * Spec: docs/tabs/molbuilder.md (M2-M4 + Phase 1 cross-tab
  * persistence as of 2026-05-09).
@@ -1395,146 +1397,22 @@
         // save on pagehide so the user's latest state survives a
         // click on /, /watch, or anywhere else.
         restoreModifyState();
-        window.addEventListener("pagehide", saveModifyState);
     });
 
-    // ----- State persistence across tab navigation -------------------- //
-    // Build, Watch, and Modify are separate Flask routes (full page
-    // reloads on every nav).  JS closure state -- the loaded
-    // structure, the selection, the 3Dmol camera -- gets destroyed
-    // when the user clicks /watch and again when they come back.
-    // sessionStorage survives same-tab navigation so we use it as the
-    // bridge.  This mirrors the pattern Build's viewer.js already
-    // uses for form values (saveFormState / restoreFormState).
-    //
-    // Stored payload shape (key MODIFY_STATE_KEY):
-    //   {
-    //     v: 1,
-    //     saved_at: <iso8601>,
-    //     xyz, elements, atom_names, residue_ids, residue_names,
-    //     chain_ids, title, n_atoms,
-    //     selected: [...],   // sorted atom indices
-    //     camera: viewer.getView(),
-    //     show_axes:    bool,
-    //     show_indices: bool,
-    //     rep:          string,
-    //   }
-    //
-    // We don't expire by saved_at -- sessionStorage already clears
-    // on browser close, which is the right "fresh start" boundary.
+    // State persistence across tab navigation is owned by the
+    // workspace dispatcher under sessionStorage["molbuilder.workspace.v1"]
+    // (workspace-contract.md §4.1 — sole persistence key).  This
+    // module's role is restore-only: translate the dispatcher snapshot
+    // into the shape applyStructure + adoptSession consume.
 
-    const MODIFY_STATE_KEY = "modify-state";
     const STATE_SCHEMA_VERSION = 1;
-
-    function saveModifyState() {
-        if (!state.xyz) return;     // nothing to save
-        // Phase 8 follow-through (2026-06-08): when the workspace
-        // dispatcher is mounted it owns the unified
-        // ``molbuilder.workspace.v1`` mirror — which contains every
-        // field this legacy mirror would store (xyz + metadata via
-        // structure.atoms[], selected via selection.indices, camera
-        // + chrome via view.getState).  Skipping the legacy write
-        // here retires the triple-mirror overhead.
-        if (window.molbuilder && window.molbuilder.workspace) return;
-        // #235 follow-up: getCamera returns the documented opaque
-        // CameraState {_viewer, _version, data} per § 3.13.
-        // Round-trips cleanly through sessionStorage; restoreModifyState
-        // hands it back via setCamera which no-ops on a future
-        // _version bump (forward-compat).
-        const camera = _handle.getCamera();
-        const _s = _selStore();
-        const sourceFile = _s ? (_s.getState().sourceFile || null) : null;
-        // Persist atoms ONLY when canvas-state is dirty (the user did
-        // modifier ops since the last load/save) OR when there's no
-        // source file at all (generator output — in-memory IS the
-        // source of truth, no disk to read from).  Clean + sourceFile
-        // means disk == memory at save time, AND an external editor
-        // could have replaced the file while the user was away — so
-        // on restore the user wants the LATEST disk bytes, not the
-        // stale in-memory snapshot.  Test pin:
-        // TestModifySecondVisitExternalChange::test_external_xyz_
-        // replacement_reloads_atom_list_on_revisit.
-        let canvasDirty = false;
-        try {
-            // Phase 10 — dirty bit via ws.* (contract §2).
-            const cs = window.molbuilder
-                    && window.molbuilder.workspace;
-            if (cs && typeof cs.isDirty === "function") {
-                canvasDirty = !!cs.isDirty();
-            }
-        } catch (_) { /* default false */ }
-        const shouldPersistAtoms = canvasDirty || !sourceFile;
-        const payload = {
-            v: STATE_SCHEMA_VERSION,
-            saved_at: new Date().toISOString(),
-            // Source-file path is what the selection store keys off;
-            // saving it lets restoreModifyState rehydrate the store
-            // (via adoptSession) so the panel + atom list re-sync to
-            // the same structure the viewer is showing.  Without this
-            // the post-restore store would have sourceFile=null and
-            // atoms=[] while the 3D viewer renders the restored
-            // structure -- a UI desync the user sees as "empty panel,
-            // populated viewer".
-            source_file:   sourceFile,
-            xyz:           state.xyz,
-            elements:      state.elements,
-            atom_names:    state.atom_names,
-            residue_ids:   state.residue_ids,
-            residue_names: state.residue_names,
-            chain_ids:     state.chain_ids,
-            title:         state.title,
-            n_atoms:       state.n_atoms,
-            selected:      selectedIndices(),
-            // BOMB-0 follow-up (2026-06-07): snapshot the selection
-            // store's atoms list — the post-op shape with regions +
-            // is_frozen + atom_name + residue_name + chain_id.  The
-            // restore path adopts this directly instead of re-fetching
-            // from disk via adoptSession's /api/selection/atoms call,
-            // which would return the pre-op file contents (the disk
-            // hasn't been re-saved after the modifier op, so the disk
-            // atoms are stale relative to state.xyz).
-            //
-            // Conditional persistence (2026-06-07 audit): only carry
-            // atoms forward when memory is more authoritative than
-            // disk.  See ``shouldPersistAtoms`` above.  When omitted,
-            // the restore path falls back to ``adoptSession``'s
-            // disk-fetch branch and picks up any external file
-            // change that happened while the user was away.
-            atoms:         shouldPersistAtoms && _s
-                              ? _s.getState().atoms
-                              : undefined,
-            camera:        camera,
-            // Read the current chrome state via the embed's getters
-            // (D3 — added 2026-06-04).  show_axes is "axes are
-            // enabled" which on the handle = getAxes() returning a
-            // truthy normalised object; show_indices is the same
-            // shape for getLabels().  rep is the current
-            // representation per getStyle().
-            show_axes:     _handle.getAxes() !== null,
-            show_indices:  _handle.getLabels() !== null,
-            rep:           (_handle.getStyle() || {}).rep || "stick",
-        };
-        try {
-            sessionStorage.setItem(
-                MODIFY_STATE_KEY,
-                JSON.stringify(payload),
-            );
-        } catch (e) {
-            // QuotaExceededError on a >5 MB structure, or storage
-            // disabled (private mode in some browsers).  Skip without
-            // crashing -- the user simply loses persistence.
-            console.warn("modify: could not save state:", e && e.message);
-        }
-    }
 
     /**
      * Translate the workspace dispatcher's canonical snapshot
-     * (``ws.readPersistedSnapshot()``) into the legacy modify-state
-     * shape ``restoreModifyState`` consumes.  Phase 8 follow-through:
-     * lets the dispatcher own persistence while
-     * ``restoreModifyState`` keeps its existing applyStructure +
-     * adoptSession + applyState pipeline unchanged.  Returns null
-     * if the snapshot doesn't carry enough data to restore.
+     * (``ws.readPersistedSnapshot()``) into the shape
+     * ``restoreModifyState`` consumes (applyStructure +
+     * adoptSession + applyState pipeline).  Returns null if the
+     * snapshot doesn't carry enough data to restore.
      */
     function _modifyShapeFromDispatcherSnapshot(snap) {
         if (!snap || !snap.state) return null;
@@ -1579,27 +1457,13 @@
     }
 
     function restoreModifyState() {
-        let saved = null;
-        // Phase 8 follow-through (2026-06-08): prefer the workspace
-        // dispatcher's unified snapshot under
-        // ``molbuilder.workspace.v1``.  Fall back to the legacy
-        // modify-state key for users still mid-session when this
-        // rolled out (single session boundary; no longer-term
-        // back-compat needed once browser tabs close).
+        // Read the workspace dispatcher's unified snapshot under
+        // ``molbuilder.workspace.v1`` (workspace-contract.md §4.1 —
+        // the sole persistence key).
         const ws = window.molbuilder && window.molbuilder.workspace;
-        if (ws && typeof ws.readPersistedSnapshot === "function") {
-            const snap = ws.readPersistedSnapshot();
-            saved = _modifyShapeFromDispatcherSnapshot(snap);
-        }
-        if (!saved) {
-            try {
-                saved = JSON.parse(sessionStorage.getItem(MODIFY_STATE_KEY) || "null");
-            } catch (_e) {
-                return;
-            }
-        }
-        if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
-        if (!saved.xyz) return;
+        if (!ws || typeof ws.readPersistedSnapshot !== "function") return;
+        const saved = _modifyShapeFromDispatcherSnapshot(ws.readPersistedSnapshot());
+        if (!saved || saved.v !== STATE_SCHEMA_VERSION || !saved.xyz) return;
         // Restore the chrome state via the embed batch runner
         // (D4 — applyState canonical-order restore; D3 getX/setX
         // round-trip pattern).  Only the fields the snapshot
@@ -1635,29 +1499,11 @@
         // Save reports "No structure to save" and Load doesn't
         // fire the warning modal even after the user makes edits.
         //
-        // Skip the setStructure call when canvas-state's bytes
-        // already match the restored xyz (BOMB-2 invariant).
-        // Post-Phase-8 (2026-06-08), both canvas-state and this
-        // function read from the dispatcher's single
-        // ``molbuilder.workspace.v1`` snapshot — bytes always
-        // match on /molbuilder when the dispatcher is mounted,
-        // so this branch is normally a no-op.  The check is
-        // still load-bearing for:
-        //   * test isolation contexts where canvas-state restored
-        //     from its legacy structure_canvas key.
-        //   * mid-Phase-8-rollout users with stale legacy keys.
-        //   * future bfcache restore paths.
-        // Calling setStructure unconditionally would reset
-        // canvas-state's dirty bit — a user with unsaved
-        // modifier-op edits would silently see them marked
-        // clean, and the next Load wouldn't fire the warning
-        // modal.  The matrix:
-        //   * canvas empty                    → setStructure.
-        //   * canvas text matches saved.xyz   → DO NOT touch.
-        //   * canvas text differs             → setStructure
-        //     (modify-state-shaped saved is authoritative on
-        //     a divergence; this shouldn't happen with the
-        //     unified mirror but the branch is defensive).
+        // Skip setStructure when canvas-state's bytes already match the
+        // restored xyz (BOMB-2 invariant): unconditional setStructure
+        // would clear the dirty bit, silently marking unsaved modifier
+        // edits as clean.  Defensive against future bfcache paths
+        // where the dispatcher snapshot and canvas-state diverge.
         try {
             // Phase 10 — install via ws.* (contract §3).  Routes
             // through the same canvas-state internally; consumer

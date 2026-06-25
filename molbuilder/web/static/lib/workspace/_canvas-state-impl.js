@@ -35,14 +35,12 @@
  *
  * Storage:
  *   - Live source of truth: this module's private ``_state`` variable.
- *   - Persistence mirror: ``sessionStorage["molbuilder.structure_canvas"]``
- *     re-written on every state change.
- *   - Refresh: on module init, if sessionStorage has a canvas, restore
- *     it; else start empty.
+ *   - Persistence: the workspace dispatcher writes the unified snapshot
+ *     under ``sessionStorage["molbuilder.workspace.v1"]``
+ *     (workspace-contract.md §4.1 — sole persistence key); this module
+ *     reads from it via ``ws.readPersistedSnapshot()`` on init.
  *   - Tab close: sessionStorage is cleared by the browser (default
- *     per-tab semantics).  The Structure tab installs a beforeunload
- *     handler when ``dirty`` is true (see structure-tab UI module,
- *     not this primitive).
+ *     per-tab semantics).
  *
  * Subscribers:
  *   - ``onChange(cb)`` fires the callback after every state change with
@@ -68,9 +66,6 @@
 (function (root) {
     "use strict";
 
-    var STORAGE_KEY = "molbuilder.structure_canvas";
-    var STORAGE_SIZE_WARN_BYTES = 4 * 1024 * 1024;  // 4 MB
-
     // Empty canvas — the initial state and the post-clear() state.
     function _emptyState() {
         return {
@@ -92,43 +87,12 @@
     var _subscribers = [];
 
     function _restoreFromSession() {
-        // Phase 8 follow-through (2026-06-08): prefer the workspace
-        // dispatcher's unified snapshot when it's mounted.  Fall
-        // back to the legacy ``molbuilder.structure_canvas`` key
-        // for users still mid-session when this rolled out, and
-        // for test contexts that drive canvas-state in isolation
-        // (no dispatcher = no unified mirror).
+        // Read the workspace dispatcher's unified snapshot under
+        // ``molbuilder.workspace.v1`` (workspace-contract.md §4.1 —
+        // the sole persistence key).  Empty state when the dispatcher
+        // hasn't persisted anything yet.
         var fromDispatcher = _restoreFromDispatcherSnapshot();
-        if (fromDispatcher) { _state = fromDispatcher; return; }
-
-        var raw = null;
-        try {
-            raw = root.sessionStorage
-                ? root.sessionStorage.getItem(STORAGE_KEY)
-                : null;
-        } catch (_) {
-            // sessionStorage can throw on some embedded contexts;
-            // fall through to empty state.
-        }
-        if (!raw) { _state = _emptyState(); return; }
-        try {
-            var parsed = JSON.parse(raw);
-            // Light schema validation — every required field must exist.
-            // Older serialisations missing a field get the default.
-            var empty = _emptyState();
-            _state = {
-                source_format: parsed.source_format || null,
-                text:          typeof parsed.text === "string"
-                                ? parsed.text : null,
-                source:        Object.assign({},
-                                empty.source,
-                                parsed.source || {}),
-                dirty:         !!parsed.dirty,
-                last_save_to:  parsed.last_save_to || null,
-            };
-        } catch (_) {
-            _state = _emptyState();
-        }
+        _state = fromDispatcher || _emptyState();
     }
 
     /**
@@ -158,41 +122,6 @@
             dirty:         !!st.dirty,
             last_save_to:  st.last_save_to || null,
         };
-    }
-
-    function _persistToSession() {
-        if (!root.sessionStorage) return;
-        // Phase 8 follow-through (2026-06-08): when the workspace
-        // dispatcher is mounted, it owns the unified
-        // ``molbuilder.workspace.v1`` mirror — which contains every
-        // field this legacy mirror would store (text + source +
-        // dirty + last_save_to all flow through getStructure /
-        // getSource / isDirty / last_save_to in the dispatcher's
-        // serialiser).  Skipping the legacy write here retires the
-        // triple-mirror overhead the migration's "ONE key" goal
-        // forbids.  Tests that load canvas-state in isolation
-        // (without the dispatcher) keep the legacy mirror so their
-        // persistence contracts stay valid.
-        if (root.molbuilder && root.molbuilder.workspace) return;
-        var serialised;
-        try { serialised = JSON.stringify(_state); }
-        catch (_) { return; }
-        // Size guard — sessionStorage limit is ~5 MB per origin in
-        // most browsers.  Warn (console only) above 4 MB so a large-
-        // structure user gets early notice before the setItem throws.
-        if (serialised.length > STORAGE_SIZE_WARN_BYTES
-            && root.console && root.console.warn) {
-            root.console.warn(
-                "molbuilder canvas state at "
-              + (serialised.length >> 10) + " KB is approaching the "
-              + "sessionStorage limit; saving to project recommended.");
-        }
-        try { root.sessionStorage.setItem(STORAGE_KEY, serialised); }
-        catch (_) {
-            // QuotaExceededError or similar — drop silently; the
-            // in-memory state is still correct, the refresh path
-            // is what degrades.
-        }
     }
 
     function _notify() {
@@ -259,7 +188,6 @@
             dirty:        false,
             last_save_to: null,
         };
-        _persistToSession();
         _notify();
     }
 
@@ -282,7 +210,6 @@
         }
         _state.text  = text;
         _state.dirty = true;
-        _persistToSession();
         _notify();
     }
 
@@ -295,7 +222,6 @@
         if (_state.text == null) return;  // empty canvas — nothing to dirty
         if (_state.dirty) return;          // already dirty — no-op + no notify
         _state.dirty = true;
-        _persistToSession();
         _notify();
     }
 
@@ -313,7 +239,6 @@
         }
         _state.dirty = false;
         _state.last_save_to = path;
-        _persistToSession();
         _notify();
     }
 
@@ -325,7 +250,6 @@
     function clear() {
         _ensureInit();
         _state = _emptyState();
-        _persistToSession();
         _notify();
     }
 
@@ -382,7 +306,6 @@
         getLastSavedTo:    getLastSavedTo,
         onChange:          onChange,
         reloadFromStorage: reloadFromStorage,
-        STORAGE_KEY:       STORAGE_KEY,
     };
 
     // UMD-ish export.  In Node test contexts (canvas-state-only

@@ -82,6 +82,12 @@ def _run_node(snippet: str) -> object:
     header = """
         const _events = {};
         global.window = global;
+        global.window.addEventListener = (evt, cb) => {
+            (_events[evt] = _events[evt] || []).push(cb);
+        };
+        global.window.__fireEvent = (evt) => {
+            (_events[evt] || []).forEach((cb) => cb({}));
+        };
         global.document = {
             readyState: "complete",
             addEventListener: () => {},
@@ -431,9 +437,8 @@ class TestPersistRoundtrip:
 
     def test_readPersistedSnapshot_returns_null_on_schema_mismatch(self):
         """Future schema bumps (v=2, v=3, …) invalidate older
-        saves cleanly — same back-compat policy as modify-state's
-        STATE_SCHEMA_VERSION check.  Pins that the dispatcher
-        rejects v=99 rather than silently passing it through."""
+        saves cleanly.  Pins that the dispatcher rejects v=99
+        rather than silently passing it through."""
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"
             "sessionStorage.setItem(ws.STORAGE_KEY, JSON.stringify({\n"
@@ -442,6 +447,85 @@ class TestPersistRoundtrip:
             "console.log(JSON.stringify(ws.readPersistedSnapshot()));"
         )
         assert out is None
+
+    def test_persisted_snapshot_carries_structure_text_and_source(self):
+        """workspace-contract.md §4.1: the unified snapshot is the
+        sole persistence path.  Structure text + source must
+        round-trip so the modify viewer can rehydrate the canvas
+        on revisit."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.installStructure(\n"
+            "  {source_format: 'xyz', text: '2\\nH2\\nH 0 0 0\\nH 0 0 0.74\\n'},\n"
+            "  {kind: 'file', file: '/tmp/h2.xyz', generator_input: null}\n"
+            ");\n"
+            "setTimeout(() => {\n"
+            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const parsed = JSON.parse(raw);\n"
+            "  console.log(JSON.stringify({\n"
+            "    text:   parsed.state.structure.text,\n"
+            "    source: parsed.state.source.kind,\n"
+            "    file:   parsed.state.source.file,\n"
+            "  }));\n"
+            "}, 150);"
+        )
+        assert out["text"].startswith("2\nH2\nH 0 0 0")
+        assert out["source"] == "file"
+        assert out["file"] == "/tmp/h2.xyz"
+
+    def test_persisted_snapshot_shape_carries_documented_fields(self):
+        """The snapshot must include the full state set the contract
+        names (workspace-contract.md §4.1): structure + source +
+        dirty + last_save_to + selection.  view is environmental
+        (depends on whether a view module is mounted)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.installStructure(\n"
+            "  {source_format: 'xyz', text: '1\\n\\nH 0 0 0\\n'},\n"
+            "  {kind: 'smiles', file: null, generator_input: '[H]'}\n"
+            ");\n"
+            "setTimeout(() => {\n"
+            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const p = JSON.parse(raw);\n"
+            "  console.log(JSON.stringify({\n"
+            "    hasStructure:   !!p.state.structure,\n"
+            "    hasSource:      !!p.state.source,\n"
+            "    hasDirty:       typeof p.state.dirty === 'boolean',\n"
+            "    hasLastSaveTo:  ('last_save_to' in p.state),\n"
+            "    hasSelection:   !!p.state.selection,\n"
+            "  }));\n"
+            "}, 150);"
+        )
+        for k, present in out.items():
+            assert present is True, f"snapshot field {k!r} missing"
+
+    def test_pagehide_flushes_pending_debounce(self):
+        """workspace-contract.md §4.2: the dispatcher's pagehide
+        listener flushes any pending debounced write before the
+        page unloads.  A user who navigates within 100ms of their
+        last edit must not lose it.
+
+        Verifies by making a state change, firing pagehide BEFORE
+        the 100ms debounce timer would have fired, and confirming
+        sessionStorage already has the snapshot."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.installStructure(\n"
+            "  {source_format: 'xyz', text: '1\\nflush_test\\nH 0 0 0\\n'},\n"
+            "  {kind: 'load', file: null, generator_input: null}\n"
+            ");\n"
+            "// Fire pagehide SYNCHRONOUSLY before the 100ms timer.\n"
+            "window.__fireEvent('pagehide');\n"
+            "const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "const parsed = JSON.parse(raw);\n"
+            "console.log(JSON.stringify({\n"
+            "  written: !!parsed,\n"
+            "  text:    parsed && parsed.state.structure.text,\n"
+            "}));"
+        )
+        assert out["written"] is True, \
+            "pagehide did not flush the pending debounced write"
+        assert "flush_test" in out["text"]
 
 
 # --------------------------------------------------------------------- #

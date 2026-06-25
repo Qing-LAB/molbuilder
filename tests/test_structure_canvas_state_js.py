@@ -1,26 +1,23 @@
 """Unit tests for the Structure-tab canvas-state primitive.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
-canvas-state.js`` -- the single source of truth for what's loaded
-in the Structure tab canvas.
+Pins the public API of ``molbuilder/web/static/lib/workspace/
+_canvas-state-impl.js`` -- the in-memory state of "what's loaded
+in the Structure tab canvas."
 
-The primitive is the foundation Structure-tab generators, modifier
-panels, save buttons, and dirty badges all subscribe to.  Breakage
-here cascades into every panel; the tests cover:
+Persistence is the workspace dispatcher's concern
+(workspace-contract.md §4.1, sole key ``molbuilder.workspace.v1``);
+this file tests only the in-memory state-mutation contract.  The
+dispatcher's persistence round-trip lives at
+``tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip``.
 
+Covered:
   * Initial state (empty canvas).
-  * ``setStructure`` validates input + replaces wholesale + resets
-    ``dirty``.
-  * ``markDirty`` flips the dirty bit, but only once (no spurious
-    notifies on repeat calls); empty canvas is a no-op.
+  * ``setStructure`` validates + replaces wholesale + resets ``dirty``.
+  * ``markDirty`` flips the dirty bit, but only once.
   * ``markSaved`` clears ``dirty`` and records ``last_save_to``.
   * ``clear`` wipes back to empty.
-  * ``onChange`` subscribers fire after every state mutation and
-    unsubscribe cleanly.
-  * sessionStorage mirror survives a fresh module import (the
-    refresh-survival contract).
-  * sessionStorage parse errors fall back to empty state instead of
-    throwing module init.
+  * ``onChange`` subscribers fire on every mutation and unsubscribe.
+  * Snapshot immutability (returned dicts are copies).
 """
 from __future__ import annotations
 
@@ -120,23 +117,12 @@ class TestSurfacePresence:
                 getLastSavedTo:    typeof canvas.getLastSavedTo,
                 onChange:          typeof canvas.onChange,
                 reloadFromStorage: typeof canvas.reloadFromStorage,
-                STORAGE_KEY:       typeof canvas.STORAGE_KEY,
             }));
         ''')
         for fn in ("setStructure", "markDirty", "markSaved", "clear",
                    "isEmpty", "isDirty", "getSource", "getStructure",
                    "getLastSavedTo", "onChange", "reloadFromStorage"):
             assert out[fn] == "function", f"missing: {fn}"
-        assert out["STORAGE_KEY"] == "string"
-
-    def test_storage_key_is_namespaced(self):
-        """The key MUST live under the ``molbuilder.`` prefix so it
-        doesn't collide with other libraries' sessionStorage usage."""
-        out = _run_node('''
-            console.log(JSON.stringify(canvas.STORAGE_KEY));
-        ''')
-        assert out.startswith("molbuilder.")
-        assert "structure_canvas" in out
 
 
 # ----- Initial state --------------------------------------------- #
@@ -473,160 +459,9 @@ class TestSnapshotImmutability:
         assert out["generator_input"]["smiles"] == "CCO"
 
 
-# ----- sessionStorage mirror ------------------------------------- #
-
-
-class TestSessionStorageMirror:
-
-    def test_state_persisted_to_sessionstorage(self):
-        out = _run_node('''
-            canvas.setStructure(
-                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n" },
-                { kind: "file", file: "/p/a.xyz" }
-            );
-            const raw = sessionStorage.getItem(canvas.STORAGE_KEY);
-            console.log(JSON.stringify(JSON.parse(raw)));
-        ''')
-        assert out["source_format"] == "xyz"
-        assert out["text"].startswith("1\n")
-        assert out["source"]["file"] == "/p/a.xyz"
-        assert out["dirty"] is False
-
-    def test_dirty_flag_persisted(self):
-        out = _run_node('''
-            canvas.setStructure(
-                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n" },
-                { kind: "file" }
-            );
-            canvas.markDirty();
-            const raw = sessionStorage.getItem(canvas.STORAGE_KEY);
-            console.log(JSON.stringify(JSON.parse(raw).dirty));
-        ''')
-        assert out is True
-
-    def test_clear_persists_empty_state(self):
-        out = _run_node('''
-            canvas.setStructure(
-                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n" },
-                { kind: "file" }
-            );
-            canvas.clear();
-            const raw = sessionStorage.getItem(canvas.STORAGE_KEY);
-            console.log(JSON.stringify(JSON.parse(raw)));
-        ''')
-        assert out["text"] is None
-        assert out["source"]["kind"] == "blank"
-
-    def test_restores_from_sessionstorage_on_init(self):
-        """The refresh-survival contract -- a primed sessionStorage
-        is picked up on the FIRST public-API call after require()."""
-        # Prime sessionStorage BEFORE the require call.  The module
-        # restores lazily on the first method that needs state.
-        primed = json.dumps({
-            "source_format": "pdb",
-            "text": "HETATM 1 ...",
-            "source": {
-                "kind": "smiles",
-                "file": None,
-                "generator_input": {"smiles": "CCO"},
-            },
-            "dirty": True,
-            "last_save_to": "/p/saved.pdb",
-        })
-        out = _run_node(
-            '''
-            console.log(JSON.stringify({
-                isEmpty:        canvas.isEmpty(),
-                isDirty:        canvas.isDirty(),
-                getStructure:   canvas.getStructure(),
-                getLastSavedTo: canvas.getLastSavedTo(),
-                getSource:      canvas.getSource(),
-            }));
-            ''',
-            prelude=f'_store.set("molbuilder.structure_canvas", {json.dumps(primed)});',
-        )
-        assert out["isEmpty"] is False
-        assert out["isDirty"] is True
-        assert out["getStructure"] == {
-            "source_format": "pdb", "text": "HETATM 1 ...",
-        }
-        assert out["getLastSavedTo"] == "/p/saved.pdb"
-        assert out["getSource"]["kind"] == "smiles"
-
-    def test_corrupt_sessionstorage_falls_back_to_empty(self):
-        """A garbage payload (truncated JSON, manual tampering) MUST
-        NOT crash the module -- the canvas just starts empty."""
-        out = _run_node(
-            '''
-            console.log(JSON.stringify({
-                isEmpty: canvas.isEmpty(),
-                isDirty: canvas.isDirty(),
-            }));
-            ''',
-            prelude='_store.set("molbuilder.structure_canvas", "not-valid-json{");',
-        )
-        assert out == {"isEmpty": True, "isDirty": False}
-
-    def test_partial_sessionstorage_payload_picks_up_defaults(self):
-        """An older serialisation that's missing newer fields
-        (e.g. ``last_save_to``) MUST NOT crash -- missing fields
-        get default values."""
-        primed = json.dumps({
-            "source_format": "xyz",
-            "text": "1\nC\nC 0 0 0\n",
-            # Missing source + dirty + last_save_to.
-        })
-        out = _run_node(
-            '''
-            console.log(JSON.stringify({
-                isEmpty:        canvas.isEmpty(),
-                isDirty:        canvas.isDirty(),
-                getLastSavedTo: canvas.getLastSavedTo(),
-                getSource:      canvas.getSource(),
-            }));
-            ''',
-            prelude=f'_store.set("molbuilder.structure_canvas", {json.dumps(primed)});',
-        )
-        assert out["isEmpty"] is False
-        assert out["isDirty"] is False
-        assert out["getLastSavedTo"] is None
-        assert out["getSource"]["kind"] == "blank"
-
-
-# ----- reloadFromStorage ----------------------------------------- #
-
-
-class TestReloadFromStorage:
-    """Useful when external code (another tab, manual tampering)
-    has updated sessionStorage and the in-memory state is stale."""
-
-    def test_reload_picks_up_external_writes(self):
-        out = _run_node('''
-            // Establish initial state.
-            canvas.setStructure(
-                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n" },
-                { kind: "file" }
-            );
-            // Simulate an external writer (other tab, dev console)
-            // overwriting the cell directly.
-            sessionStorage.setItem(canvas.STORAGE_KEY, JSON.stringify({
-                source_format: "pdb",
-                text: "EXTERNAL",
-                source: { kind: "smiles", file: null, generator_input: null },
-                dirty: false,
-                last_save_to: null,
-            }));
-            const beforeReload = canvas.getStructure();
-            canvas.reloadFromStorage();
-            const afterReload = canvas.getStructure();
-            console.log(JSON.stringify({
-                beforeReload: beforeReload,
-                afterReload:  afterReload,
-            }));
-        ''')
-        # Before reload, the in-memory state is still the XYZ.
-        assert out["beforeReload"]["source_format"] == "xyz"
-        # After reload, it picks up the PDB.
-        assert out["afterReload"] == {
-            "source_format": "pdb", "text": "EXTERNAL",
-        }
+# Persistence is the workspace dispatcher's concern, not canvas-state's
+# (workspace-contract.md §4.1 — sole persistence key
+# ``molbuilder.workspace.v1``).  The dispatcher's round-trip tests
+# (tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip) cover
+# what the legacy ``molbuilder.structure_canvas`` mirror tests used
+# to cover; this file scopes to the in-memory state-mutation contract.
