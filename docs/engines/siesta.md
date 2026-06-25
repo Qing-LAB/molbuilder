@@ -52,6 +52,126 @@ The format spec for `.molwatch.log` is documented in
 [`pyscf.md`](pyscf.md) (the format itself is engine-agnostic;
 the `# engine:` header line distinguishes who wrote it).
 
+## Staged optimization (#542)
+
+SIESTA mirrors the PySCF staged-opt design: a single CLI invocation
+emits one `.fdf` per enabled stage plus one `<basename>.run.sh`
+runner that walks the ladder.  Three surfaces drive it.
+
+**Data model — `SiestaStageSpec`** (`molbuilder/config/siesta.py`).
+Each stage is a dataclass with:
+
+* `name` (regex `^[A-Za-z0-9_]+$` — surfaces as the filename suffix
+  `<basename>_<name>.fdf` and the runner's `STAGES=(...)` array),
+* `enabled: bool`,
+* `relax_type: {"CG","Broyden","FIRE"}`,
+* `relax_steps: int` (1..10000 — emitted as `MD.NumCGsteps`, the
+  universal step keyword per decision-log 2026-06-23),
+* `relax_force_tol: float` (eV/Å — emitted as `MD.MaxForceTol`),
+* `relax_max_displ: float` (Bohr — emitted as `MD.MaxCGDispl`),
+* `on_nonconvergence: {"proceed","continue","halt"}` (runner
+  policy: proceed to next stage, continue THIS stage with
+  `continue_retries` more passes, or halt the ladder),
+* `continue_retries: int` (≥1).
+
+`SiestaConfig.stages: List[SiestaStageSpec]` is the source of truth;
+defaults come from `_default_siesta_stages()` — the 3-stage ladder
+established by decision-log 2026-06-23 (stage1 CG warm-up 0.05 eV/Å,
+stage2 Broyden publishable 0.04 eV/Å, stage3 Broyden crystal-tight
+0.01 eV/Å).
+
+**Strategy presets** (`SIESTA_STAGE_STRATEGY_PRESETS`).  Overlay
+enable-flag patterns onto whatever stage knobs are in `cfg.stages`:
+
+| Preset        | Enables                | Use case |
+|---|---|---|
+| `publishable` | stage1 + stage2        | default; one warm-up + one publishable relax |
+| `loose-only`  | stage1                 | quick preopt; geometry sanity only |
+| `vib-quality` | stage1 + stage2 + stage3 | tight final for vibrational / IR work |
+
+The same preset names and enable masks live in
+`molbuilder/config/pyscf.py::STAGE_STRATEGY_PRESETS` and in
+`molbuilder/web/static/lib/form-schema.js::STAGE_STRATEGY_PRESETS`.
+All three are kept in lock-step by
+`tests/test_siesta_stage_strategy_presets_drift.py` — a regex-parse
+gate over the JS file, mirroring the PySCF #534 drift gate.
+
+**CLI surface** (`molbuilder fdf ...`):
+
+* `--stage-strategy {publishable,loose-only,vib-quality}` — overlay
+  the preset's enable mask onto `cfg.stages` and emit a stage bundle.
+* `--stages-json '<literal JSON>'` *or* `--stages-json path/to.json`
+  — replace `cfg.stages` wholesale with a list of
+  `SiestaStageSpec`-shaped dicts.  Combinable with `--stage-strategy`
+  (knob values from JSON, enable mask from preset).
+* Mutually exclusive with the single-stage `--stage {1,2,3}` overlay
+  inherited from decision-log 2026-06-23 (that overlay remains as
+  the minimum-viable single-fdf path).
+* Bad JSON → clean Click error (`"--stages-json: not valid JSON"`);
+  missing path → `"--stages-json: file not found"`.
+
+Without either flag the CLI takes the single-fdf path; the
+`<basename>.run.sh` runner and per-stage fdfs are not emitted.
+
+**Form-schema stage-table widget**.  `SiestaConfig.stages` is
+annotated `List[SiestaStageSpec]`, so the type-driven schema helper
+(`molbuilder/web/blueprints/_shared.py::dataclass_to_form_schema`)
+emits `{kind: "stage-table"}` automatically — no SIESTA-specific
+form code.  The widget surfaces one row per stage with
+`name`/`enabled`/`relax_type`/`relax_steps`/`relax_force_tol`/
+`relax_max_displ`/`on_nonconvergence`/`continue_retries` columns;
+the JS round-trips a list-of-dicts payload back through
+`coerce_to_field_type` into `List[SiestaStageSpec]`.  Shape pinned by
+`tests/test_siesta_form_schema_stage_table.py` (15 cases covering
+field set, choice lists, defaults, section assignment, round-trip).
+
+**Stage-bundle output layout** (per `molbuilder fdf JOB.fdf
+--stage-strategy publishable`):
+
+```
+JOB_stage1.fdf              SystemLabel JOB  (one per enabled stage)
+JOB_stage2.fdf              SystemLabel JOB  (same label across stages
+                                              so .XV / .DM / .CG warm-restart
+                                              between stages with no
+                                              user copy)
+JOB.run.sh                  STAGES=(stage1 stage2)  ON_NONCONV=(...)
+JOB-stage1.molwatch.log     # stage: stage1   # convergence.max_force_ev_per_ang: 0.05
+JOB-stage2.molwatch.log     # stage: stage2   # convergence.max_force_ev_per_ang: 0.04
+```
+
+**Per-stage molwatch headers**.  Each per-stage `.molwatch.log`
+carries `# stage: <name>` plus `# convergence.<key>: <value>`
+headers (currently `max_force_ev_per_ang` + `max_steps`) so the
+Watch / Results inspector renders the right horizontal threshold +
+progress indicator for the stage that's currently running.  Format
+pinned by `tests/test_trajectory_log_stage_targets.py`.  Header
+emission is in `molbuilder/trajectory_log/format.py::write_initial_preview`
+(`stage_name` + `convergence_targets` kwargs); whitespace in a
+convergence-target key raises `ValueError` at write time rather
+than producing a malformed log.
+
+**Runner contract**.  `JOB.run.sh` is bash, executable, passes
+`bash -n` syntax check, and:
+
+* declares `BASENAME='<stem>'`, `STAGES=(...)`, `ON_NONCONV=(...)`,
+* applies the "force-halt-last" rule (the final stage's policy is
+  always rewritten to `halt` so the ladder never overshoots its
+  last fdf),
+* loops over stages, calling `mpirun -np <N> siesta <
+  ${BASENAME}_${STAGE}.fdf > ${BASENAME}_${STAGE}.out` per stage,
+* respects `MB_NP` / `SLURM_NTASKS` / `PBS_NP` for process count
+  (per `docs/config.md` v2 wrapper-independence contract).
+
+CLI surface pinned by `tests/test_cli_siesta_stages.py`; runner
+behaviour by the same module (`test_runner_*`).
+
+**Cross-engine equivalence**.  See `docs/protocols/script-execution.md`
+§ "Cross-engine equivalence table" — the SIESTA staged-opt surface
+(`StageSpec` data model, `_emit_*_multi_stage` generator,
+`convergence_targets` molwatch header, `STAGE_STRATEGY_PRESETS`
+preset table, `--stages-json` / `--stage-strategy` CLI flags, form
+stage-table widget) is the engine-by-engine parallel to the PySCF
+implementation shipped under #534.
 
 The emitter takes a `Structure` (or an XYZ/PDB file path) and writes
 a SIESTA-runnable `.fdf` text.  It also optionally copies matching
