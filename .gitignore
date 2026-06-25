@@ -59,7 +59,10 @@ htmlcov/
 # docs/design.md § "3DNA (canonical helix builder)".
 x3dna-*.tar.gz
 x3dna-*.zip
-x3dna-v*/
+# Match the in-tree detector's permissive glob (see
+# molbuilder/builders/backends/_threedna.py::_find_in_tree).
+# Catches x3dna/, x3dna-v2.4/, x3dna-2.5/, x3dna-sep2025/ etc.
+x3dna*/
 
 .claude/
 **/.claude/

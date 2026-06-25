@@ -936,10 +936,11 @@ DNA* / *Build RNA* panels or the `molbuilder dna` / `molbuilder
 rna` CLI), the backend walks three locations in order and uses
 the first complete install it finds:
 
-1. **In-tree** — `<repo_root>/x3dna-v*/` next to the `molbuilder`
-   package directory.  This is the simplest path: drop the
-   extracted tarball at the repo root and it's auto-detected with
-   zero further configuration.  The `x3dna-v*/` directory is
+1. **In-tree** — `<repo_root>/x3dna*/` next to the `molbuilder`
+   package directory.  The glob is version-agnostic: `x3dna`,
+   `x3dna-v2.4`, `x3dna-2.5`, `x3dna-sep2025` all match.  Drop
+   the extracted tarball at the repo root and it's auto-detected
+   with zero further configuration.  The `x3dna*/` directory is
    gitignored.
 2. **`$X3DNA` env var** — the canonical 3DNA convention.  Set
    `export X3DNA=/path/to/x3dna-v2.4` in `~/.bashrc` (or
@@ -961,7 +962,7 @@ Once you have downloaded the appropriate tarball from
 # Option A (simplest): in-tree install -- no config required
 cd ~/molbuilder
 tar xzf /path/to/x3dna-v2.4-linux-64bit.tar.gz
-ls -d x3dna-v*/        # expected: x3dna-v2.4/
+ls -d x3dna*/          # expected: x3dna-v2.4/ (or whatever you extracted)
 
 # Option B: install to a shared location + export $X3DNA
 mkdir -p ~/opt && cd ~/opt
@@ -991,7 +992,7 @@ sanity check on either install path:
 
 ```bash
 ls $X3DNA/bin/fiber $X3DNA/config/ | head -3       # for Option B
-ls ~/molbuilder/x3dna-v*/bin/fiber ~/molbuilder/x3dna-v*/config/ | head -3   # for Option A
+ls ~/molbuilder/x3dna*/bin/fiber ~/molbuilder/x3dna*/config/ | head -3       # for Option A
 ```
 
 If `config/` is missing, re-extract the tarball: `tar tzf
@@ -1033,6 +1034,85 @@ The bootstrap step covers every workstation and HPC scenario the
 project targets: ASU's supercomputer cluster, lab servers without
 admin rights to install Miniconda (use micromamba), single-user
 laptops, and multi-user lab workstations.  No manual env wrangling.
+
+### HPC environment preflight (`script_generation`)
+
+For HPC clusters where `conda` / `mamba` is gated behind
+environment-modules (e.g. ASU's Sol cluster, where `mamba` is
+provided as a module), add a `script_generation.preactivate` block
+to `molbuilder.json`.  Lines in this block are baked into the top
+of every generated `.run.sh` wrapper — they run BEFORE conda
+detection + activation:
+
+```json
+{
+  "script_generation": {
+    "preactivate": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
+    "autodetect_conda": false
+  }
+}
+```
+
+The two lines above solve two distinct problems documented in
+`docs/config.md` § 3.6:
+
+- **`module load mamba`** — makes `mamba` / `conda` available on
+  PATH so the wrapper's `conda activate <env>` call succeeds in
+  the non-interactive shell SLURM hands out to `sbatch` jobs.
+- **`export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"`** — routes
+  OpenMPI's shared-memory backing files off the NFS-mounted env
+  prefix onto node-local fast storage.  Without this, every
+  `mpirun` under from-source SIESTA emits OpenMPI's "shared
+  memory backing file on a network filesystem" warning AND shmem
+  traffic becomes silent NFS round-trips (a real performance cliff).
+
+`autodetect_conda` is opt-in.  With `false` (the default), the
+wrapper trusts `preactivate` to have arranged the env — if it
+didn't, the bare `conda activate` call fails loud with a multi-
+line error message naming the three real causes and the fix for
+each.  Set to `true` for laptop dev or unfamiliar clusters where
+you want a permissive 6-path conda discovery fallback.
+
+### Per-run diagnostics log
+
+Every generated `.run.sh` writes a vigorous diagnostic log next
+to itself:
+
+```
+<basename>.runwrap-<YYYYMMDD-HHMMSS>.log
+```
+
+Format: `[HH:MM:SS+TZ] [TAG  ] message`, with one log file per
+invocation (timestamped so multiple runs don't trample).  Captures:
+
+- run header (hostname, user, cwd, full argv)
+- scheduler context (SLURM_JOB_ID, SLURM_NTASKS,
+  SLURM_CPUS_PER_TASK, SLURM_JOB_NODELIST, SLURM_GPUS,
+  SLURM_JOB_GPUS, PBS_*) — only emitted if set, no unset-noise
+- baked-in preactivate: each command traced via `set -x` so the
+  exact line that ran (or failed) is visible
+- runtime `MOLBUILDER_PREACTIVATE_CMDS` hook execution
+- the conda detection path that succeeded (or every path tried
+  and rejected, when `autodetect_conda: true`)
+- post-activation env state (CONDA_DEFAULT_ENV, CONDA_PREFIX,
+  `which python`)
+- engine launch line + exit code
+- SIESTA propor-error retry hints if it crashed
+
+When an HPC job fails:
+
+```bash
+tail -50 <project>/<basename>.runwrap-*.log | head -100
+```
+
+…and the cause is in front of you without re-submitting.  Stdout
+AND stderr are tee'd to both the calling shell's streams AND the
+log file, so `sbatch`'s stdout capture still works alongside the
+standalone diagnostic file.
+
+Reference: [`docs/config.md`](docs/config.md) § 3.6 covers the
+full `script_generation` schema + the scope-merge rules
+(server-wide `molbuilder.json` ∪ project `.molbuilder.json`).
 
 ### Default vs exposed deployments
 

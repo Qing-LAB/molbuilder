@@ -45,12 +45,14 @@ will hit:
 Detection chain (first hit wins)
 --------------------------------
 
-  1. **In-tree** -- look for ``<repo_root>/x3dna-v*/`` next to the
+  1. **In-tree** -- look for ``<repo_root>/x3dna*/`` next to the
      molbuilder package.  This is the easiest path for a dev install:
      just unpack the 3DNA tarball at the repo root and the backend
-     finds it automatically.  The ``x3dna-v*/`` directory is
-     gitignored (see ``.gitignore`` -- both for hygiene and to make
-     it structurally hard to redistribute 3DNA accidentally).
+     finds it automatically.  The glob is version-agnostic
+     (``x3dna``, ``x3dna-v2.4``, ``x3dna-2.5``, ``x3dna-sep2025`` all
+     match).  The ``x3dna*/`` directory is gitignored (see
+     ``.gitignore`` -- both for hygiene and to make it structurally
+     hard to redistribute 3DNA accidentally).
 
   2. **$X3DNA env var** -- the canonical 3DNA install convention.
      Set ``export X3DNA=$HOME/opt/x3dna-v2.4`` and we use it.
@@ -133,13 +135,25 @@ def _looks_complete(root: str) -> bool:
 
 
 def _find_in_tree() -> Optional[_Threedna]:
-    """Look for an x3dna-v*/ directory at the repo root (one level
+    """Look for an ``x3dna*/`` directory at the repo root (one level
     above the molbuilder package).  Works for dev / editable installs
-    where the user has unpacked the tarball next to the source."""
+    where the user has unpacked the tarball next to the source.
+
+    The glob is intentionally PERMISSIVE about the suffix -- the
+    upstream tarball name convention (``x3dna-v2.4``) is one of
+    several shapes a user might end up with: ``x3dna-v2.4`` (current),
+    ``x3dna-v2.5`` (future), ``x3dna-2.4`` (no ``v`` prefix variant),
+    ``x3dna`` (user renamed), ``x3dna-sep2025`` (date stamp), etc.
+    The version-agnostic ``x3dna*`` glob plus the
+    :func:`_looks_complete` filter (requires ``bin/fiber`` AND
+    ``config/``) rejects spurious matches like
+    ``x3dna-v2.4-linux-64bit.tar.gz`` (file, not dir) or
+    ``x3dna_notes/`` (dir, but missing bin/fiber + config/).
+    """
     # _threedna.py -> repo_root/molbuilder/builders/backends/_threedna.py
     # parent.parent.parent.parent = repo_root
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    for candidate in sorted(repo_root.glob("x3dna-v*")):
+    for candidate in sorted(repo_root.glob("x3dna*")):
         if candidate.is_dir() and _looks_complete(str(candidate)):
             return _Threedna(
                 fiber  = str(candidate / "bin" / "fiber"),

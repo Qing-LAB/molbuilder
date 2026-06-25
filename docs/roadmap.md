@@ -58,7 +58,7 @@ First hit wins; `is_available()` returns True iff any source
 resolves to a *complete* install (i.e. both `bin/fiber` executable
 AND `config/` directory present).  The chain is:
 
-1. **In-tree** — glob `<repo_root>/x3dna-v*/`, where
+1. **In-tree** — glob `<repo_root>/x3dna*/`, where
    `<repo_root>` is one level above the molbuilder package.  The
    user can simply unpack the 3DNA tarball at the repo root
    (gitignored — see `.gitignore`) and the backend lights up
@@ -114,7 +114,7 @@ this contract in sync):
 
 ```
 3DNA is not available.  Tried, in order:
-  1. in-tree   : no match for /path/to/repo/x3dna-v*
+  1. in-tree   : no match for /path/to/repo/x3dna*
                  (unpack the 3DNA tarball at the repo root and this
                  lights up automatically)
   2. $X3DNA    : (unset)
@@ -174,7 +174,7 @@ molbuilder.
 
 **Option A — in-tree (recommended for dev / editable installs).**
 Unpack the tarball at the molbuilder repo root.  The detection
-chain's first step globs `<repo_root>/x3dna-v*/` and verifies
+chain's first step globs `<repo_root>/x3dna*/` and verifies
 completeness, so no shell config or env var is needed:
 
 ```bash
@@ -186,7 +186,7 @@ python -c "from molbuilder.backends import available_backends; \
 # expected: {'threedna': True, 'amber': ..., 'rdkit': ...}
 ```
 
-The `x3dna-v*/` directory is gitignored (see `.gitignore`) — both
+The `x3dna*/` directory is gitignored (see `.gitignore`) — both
 for hygiene and to make it structurally hard for someone to
 accidentally commit the 3DNA archive into a public-facing
 molbuilder release.
