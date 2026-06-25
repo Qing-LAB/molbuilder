@@ -1035,44 +1035,191 @@ project targets: ASU's supercomputer cluster, lab servers without
 admin rights to install Miniconda (use micromamba), single-user
 laptops, and multi-user lab workstations.  No manual env wrangling.
 
-### HPC environment preflight (`script_generation`)
+### Setting up `molbuilder.json` so generated wrappers run standalone
 
 The generated `.run.sh` is a self-contained shell script — no
 runtime config-file reads, no detection chains, no fallbacks.
-At generate time the generator reads `script_generation` from
-`molbuilder.json` (server-wide) and `.molbuilder.json` (project,
-optional) and bakes the result verbatim into the wrapper.  See
-[`docs/config.md`](docs/config.md) for the full contract.
+The script generator reads two keys from `molbuilder.json` AT
+GENERATE TIME and bakes the values **verbatim** into the wrapper.
+You configure once per deployment; every generated `.run.sh`
+thereafter runs standalone (no env vars, no config files, no
+manual setup steps).
 
-Two keys, both required (the generator refuses to emit a wrapper
-without `activation` set):
+Full contract: [`docs/config.md`](docs/config.md).  Below is the
+fastest path to a working setup.
+
+#### Step 1 — pick a config file location
+
+The generator reads, in priority order:
+
+1. `./molbuilder.json` in the cwd of `molbuilder run` (handy for
+   per-deployment configs alongside the repo)
+2. `~/.config/molbuilder/molbuilder.json` (XDG fallback; honors
+   `$XDG_CONFIG_HOME`).
+
+Only ONE of these is read (the first match wins, no merging).
+Pick the one that matches how you invoke `molbuilder run`:
+
+- **You always run `molbuilder run` from the molbuilder repo
+  checkout** → put `molbuilder.json` at the repo root.
+- **You run `molbuilder run` from arbitrary project dirs** → put
+  it at `~/.config/molbuilder/molbuilder.json` (CWD-independent).
+
+For HPC deployments use the XDG path — it persists across `git
+pull`s and survives moving the checkout.
+
+#### Step 2 — write the two required keys
 
 ```json
 {
   "script_generation": {
-    "preamble": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
+    "preamble":   "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
     "activation": "source activate"
   }
 }
 ```
 
-- **`preamble`** — verbatim multi-line bash run at the top of every
-  generated `.run.sh`, before the activation line.  For ASU Sol the
-  two verified lines are `module load mamba` (puts the conda
-  toolchain on PATH) and `export OMPI_MCA_orte_tmpdir_base=
-  "${TMPDIR:-/tmp}"` (routes OpenMPI's shared-memory off NFS onto
-  node-local fast storage; without it every `mpirun` emits the
-  "shared memory backing file on a network filesystem" warning and
-  takes a silent NFS perf cliff).
-- **`activation`** — one of `"source activate"` (legacy form, works
-  whenever the `activate` script is on PATH; right for Sol after
-  `module load mamba`) or `"conda activate"` (modern shell-function
-  form; requires `conda.sh` to have been sourced — right for local
-  dev installs where `conda init` was run in your shell rc).
+Both keys must be set in at least one scope.  If `activation` is
+missing the generator **refuses to emit a wrapper** at generate
+time (clearer than emitting one that can't activate its env).
 
-The wrapper at runtime then does the bare minimum: open a log
-file, run the baked preamble lines, run `source activate <env>`,
-launch the engine.  No detection, no probing, no fallback.
+##### `preamble` — verbatim bash at the top of the wrapper
+
+A multi-line string.  Each line is copied as-is into the generated
+`.run.sh` BEFORE the activation line.  Use it for cluster setup
+that has to happen once before the conda toolchain is reachable.
+
+For ASU's Sol cluster, the two verified lines are:
+
+```bash
+module load mamba
+export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"
+```
+
+- `module load mamba` — Sol provides mamba as an environment
+  module; this is the canonical incantation that puts `mamba`,
+  `conda`, and the `activate` script on PATH for the SLURM-spawned
+  non-interactive shell.
+- `export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"` — routes
+  OpenMPI's shared-memory backing files off the NFS-mounted env
+  prefix onto node-local fast storage.  Without it every `mpirun`
+  takes a silent NFS-shmem performance cliff.  Honors SLURM's
+  per-job `$TMPDIR`; falls back to `/tmp`.
+
+For a laptop / local dev install (where conda is already on PATH
+via your `.bashrc`'s `conda init` block), `preamble` can be empty:
+
+```json
+"preamble": ""
+```
+
+##### `activation` — exactly one of two values
+
+| value | use when |
+|---|---|
+| `"source activate"` | The `activate` script is on PATH (legacy form, binary-agnostic).  **This is the right choice for ASU Sol after `module load mamba`** — it works whether the toolchain binary is `mamba` or `conda`. |
+| `"conda activate"` | The conda shell function is already loaded (modern hook-sourced form).  Right for laptop / local dev where `conda init` was run in your shell rc and the wrapper inherits the loaded function. |
+
+There is no default.  Picking one bakes that exact line into every
+generated wrapper.  No third value — `mamba activate` and
+`conda activate` resolve to the same shell function on modern
+mamba+conda installs.
+
+#### Step 3 — verify the setup
+
+After writing the config, regenerate a wrapper and check the
+preamble + activation lines landed:
+
+```bash
+cd path/to/your-project
+python -m molbuilder run JOB.fdf
+
+# Inspect the wrapper -- expected to see your preamble + activation
+# baked literally at the top:
+grep -A6 'SERVER PREAMBLE' JOB.run.sh
+# Should print:
+# # === SERVER PREAMBLE (from molbuilder.json) ===
+# module load mamba
+# export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"
+#
+# # --- Activation (verbatim from script_generation.activation) ---
+# _log STAGE "source activate <env>"
+# source activate <env>
+```
+
+If `script_generation.activation` is missing, the generator
+prints a refuse-to-emit error like:
+
+```
+script_generation.activation is not set in molbuilder.json
+(or .molbuilder.json).  The wrapper generator refuses to
+emit a script that can't activate its conda env.
+
+Fix: add to molbuilder.json (server-wide):
+    {
+      "script_generation": {
+        "preamble": "module load mamba",
+        "activation": "source activate"
+      }
+    }
+```
+
+#### Step 4 — submit and confirm
+
+Once the wrapper carries your preamble + activation, submitting
+to SLURM is the normal flow:
+
+```bash
+sbatch --ntasks=8 --time=01:00:00 JOB.run.sh
+```
+
+The wrapper at runtime does only this:
+1. Open `JOB.runwrap-<timestamp>.log` in `SLURM_SUBMIT_DIR`
+2. Run the baked preamble (your `module load mamba` etc.)
+3. Run the baked `source activate <env>`
+4. Launch SIESTA / PySCF
+5. Exit with the engine's exit code
+
+No discovery, no probing, no config-file reads.  Everything the
+job needs is in the script.
+
+#### Optional: per-project additions in `.molbuilder.json`
+
+You can put a `.molbuilder.json` (hidden) next to a project's
+`.fdf` to ADD project-specific preamble lines on top of the
+server-wide ones.  Schema is the same; the generator concatenates
+server-then-project for `preamble`, project wins for `activation`.
+
+Example use: a project needs an extra env var:
+
+```json
+{
+  "script_generation": {
+    "preamble": "export PROJECT_SCRATCH=/scratch/$USER/this-project"
+  }
+}
+```
+
+Drop in `path/to/your-project/.molbuilder.json`.  The next
+`molbuilder run` generates a wrapper with both blocks visible
+under their own scope sentinel comments.
+
+#### Migrating from the old schema
+
+If your existing `molbuilder.json` uses the old keys
+(`preactivate`, `autodetect_conda`, `preactivate_format`), the
+parser warns once and accepts:
+
+- `preactivate` → renamed to `preamble`; the alias is honored for
+  one release.
+- `autodetect_conda` → silently dropped (runtime detection is
+  gone).
+- `preactivate_format` → silently dropped.
+- `MOLBUILDER_PREACTIVATE_CMDS` env var → unused (the wrapper
+  doesn't read env vars to alter behavior anymore).
+
+Update your config to the new key names at your convenience; one
+release after the warning the aliases are removed.
 
 ### Per-run diagnostics log
 
