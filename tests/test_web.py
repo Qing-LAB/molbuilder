@@ -2095,6 +2095,11 @@ def test_siesta_form_schema_matches_documented_layout():
         #   parallel_block_size, parallel_over_k, omp_threads,
         #   max_memory_mb, enable_gpu, elpa_algorithm).
         ("Compute & budget",        14),
+        # Optimization: the SIESTA staged-opt stage-table widget
+        # shipped 2026-06-25 (#542 C1.5) as a single dataclass-typed
+        # field (List[SiestaStageSpec]) — one field, rendered as a
+        # multi-row stage-table by the JS form-schema renderer.
+        ("Optimization",             1),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

@@ -553,6 +553,19 @@
         // ALWAYS send the full metadata bundle so the new structure
         // returned by the server preserves it (xyz alone would lose
         // atom_names / residue_ids -- per spec § 5).
+        const _s = _selStore();
+        const _atoms = _s ? (_s.getState().atoms || []) : [];
+        const frozen_atoms = [];
+        const regions = {};
+        for (let i = 0; i < _atoms.length; i++) {
+            const a = _atoms[i] || {};
+            if (a.is_frozen) frozen_atoms.push(i);
+            const labels = a.regions || [];
+            for (const label of labels) {
+                if (!regions[label]) regions[label] = [];
+                regions[label].push(i);
+            }
+        }
         return {
             xyz:           state.xyz || "",
             atom_names:    state.atom_names,
@@ -560,6 +573,8 @@
             residue_names: state.residue_names,
             chain_ids:     state.chain_ids,
             title:         state.title,
+            frozen_atoms:  frozen_atoms,
+            regions:       regions,
         };
     }
 

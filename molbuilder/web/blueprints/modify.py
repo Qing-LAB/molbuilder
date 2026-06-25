@@ -85,6 +85,7 @@ from ._shared import (
     finite_float as _finite_float,
     ok_structure_response as _ok_response,
     struct_from_body as _struct_from_body,
+    apply_labels_to_struct as _apply_labels_to_struct,
 )
 
 from molbuilder.modify import (
@@ -164,6 +165,9 @@ def api_modify_delete():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     indices = body.get("indices")
     if not isinstance(indices, list):
         return _err("missing or non-list 'indices'", 400)
@@ -212,6 +216,9 @@ def api_modify_add_atom():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     element = body.get("element")
     if not isinstance(element, str) or not element.strip():
         return _err("missing or empty 'element'", 400)
@@ -285,6 +292,9 @@ def api_modify_orient():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     anchors = body.get("anchors")
     if (not isinstance(anchors, list)) or len(anchors) != 2:
         return _err(
@@ -346,6 +356,9 @@ def api_modify_rotate():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     axis = (body.get("axis") or "").strip().lower()
     if axis not in ("x", "y", "z"):
         return _err(f"axis must be 'x', 'y', or 'z'; got {axis!r}", 400)
@@ -397,6 +410,9 @@ def api_modify_translate():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     if bool(body.get("recenter", False)):
         try:
             new_struct = struct.centered()
@@ -496,6 +512,9 @@ def api_modify_electrode():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     try:
         element, plane, size, orthogonal, offset, lat_a = \
             _parse_electrode_common(body)
@@ -586,6 +605,9 @@ def api_modify_symmetric_electrodes():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
     try:
         element, plane, size, orthogonal, offset, lat_a = \
             _parse_electrode_common(body)

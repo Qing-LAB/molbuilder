@@ -725,7 +725,8 @@ adding a metal in Python reaches the UI automatically.
 ### 5.3 Common request body
 
 All `/api/modify/op` endpoints accept the same per-atom metadata
-fields alongside the op-specific parameters:
+fields and boundary-condition labels alongside the op-specific
+parameters:
 
 ```json
 {
@@ -733,9 +734,19 @@ fields alongside the op-specific parameters:
   "atom_names":    [...],         // optional; defaults rebuild from elements
   "residue_ids":   [...],
   "residue_names": [...],
-  "chain_ids":     [...]
+  "chain_ids":     [...],
+  "frozen_atoms":  [...],         // boundary conditions (sidecar-contract.md)
+  "regions":       {"label": [...]}
 }
 ```
+
+`frozen_atoms` and `regions` are applied to the input Structure
+via `_shared.apply_labels_to_struct` before the op runs. L1
+modify functions then preserve and remap them per § 5.5. Omitting
+either key falls back to the sidecar lookup if the body carries
+`structure_path`; otherwise no labels are applied. Invalid label
+shapes (out-of-range indices, malformed region keys) return HTTP
+400 with the validator's notice. Test pin: `tests/test_blueprint_label_adoption.py`.
 
 ### 5.4 Response shape
 
