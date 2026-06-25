@@ -625,6 +625,17 @@ _SIESTA = Recipe(
     # See molbuilder.runwrap._gpu_runtime_defaults_block for the
     # full policy + cross-check against the host advisor's
     # HostProbe.can_numa_pin.
+    #
+    # Diagonalizer: this env is intentionally ScaLAPACK-only.  The
+    # conda-forge ``siesta=5.4.2=mpi_openmpi_*`` build is NOT linked
+    # against ELPA (declared deps: libblas/liblapack/scalapack/netcdf/
+    # libxc/lua/openmpi; no elpa).  Bundling ``elpa`` here would be
+    # cosmetic: SIESTA would still diagonalize via ScaLAPACK because
+    # the binary has no ELPA symbols.  ELPA lives only in
+    # ``molbuilder-siesta-gpu`` (source build, ``--enable-nvidia-gpu``).
+    # The web UI's ``enable_gpu`` toggle is the script-input contract;
+    # ``runwrap.write_run_wrapper`` gates env presence at script-
+    # generation time so a missing GPU env is caught before run time.
     conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",

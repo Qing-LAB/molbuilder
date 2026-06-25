@@ -280,6 +280,29 @@ def test_write_run_wrapper_routes_to_gpu_env_when_keyword_set(
     assert "molbuilder-siesta-gpu" in wrapper_text
 
 
+def test_write_run_wrapper_refuses_gpu_when_env_absent(tmp_path):
+    """Script-generation-time gate: enable_gpu=True with no
+    ``molbuilder-siesta-gpu`` env installed must raise a WrapperError
+    pointing at ``molbuilder envs install`` (not a cryptic conda failure
+    at run time)."""
+    set_capabilities(Capabilities(
+        runtime_config={},
+        conda_binary="/usr/bin/conda",
+        # CPU env present, GPU env missing.
+        conda_envs=frozenset({"molbuilder-siesta"}),
+    ))
+    try:
+        cfg = SiestaConfig(enable_gpu=True)
+        fdf_text = render_fdf(_mk_struct(), cfg)
+        fdf = tmp_path / "job.fdf"
+        fdf.write_text(fdf_text, encoding="utf-8")
+        with pytest.raises(_runwrap.WrapperError,
+                           match=r"molbuilder-siesta-gpu.*not installed"):
+            _runwrap.write_run_wrapper(fdf)
+    finally:
+        set_capabilities(Capabilities(runtime_config={}))
+
+
 def test_write_run_wrapper_routes_to_cpu_env_by_default(
         tmp_path, caps_with_gpu_env):
     """Symmetric: enable_gpu=False -> file without keyword ->

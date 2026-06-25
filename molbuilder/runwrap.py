@@ -1102,6 +1102,29 @@ def render_run_wrapper(script_path: Path, *,
             f"molbuilder.diagnostics.DEFAULT_ENV_NAMES."
         )
 
+    # GPU-env presence gate.  When the .fdf opted into GPU diagonalization
+    # at generate time but ``molbuilder-siesta-gpu`` isn't installed,
+    # ``source activate molbuilder-siesta-gpu`` would fail at run time
+    # with a conda-side error -- the user-facing message would not point
+    # at the real fix (install the env or turn the toggle off).  Raise
+    # here with the install hint so the wrong env is caught at script-
+    # generation time.  Only fires when we AUTO-routed (env not user-
+    # passed) AND the host snapshot lists at least one env (an empty
+    # snapshot means the conda probe never ran -- can't gate on that).
+    if (env is None
+            and env_lookup_category == "siesta-gpu"
+            and caps.conda_envs
+            and not caps.env_available(target_env)):
+        raise WrapperError(
+            f"`{script_path.name}` requests GPU diagonalization "
+            f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env "
+            f"is not installed.  Install it with "
+            f"``python -m molbuilder envs install {target_env}`` "
+            f"(source build, takes ~10 minutes), or turn off the "
+            f"SIESTA ``Use GPU`` toggle and regenerate the .fdf to "
+            f"run on the precompiled CPU SIESTA."
+        )
+
     basename = script_path.stem
     script_name = script_path.name
     # Shell-safety: both basename and script_name are interpolated

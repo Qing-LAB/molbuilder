@@ -231,7 +231,25 @@ copy_pseudopotentials(species, lib, dest_dir) -> List[str]    # missing
     `WriteMDhistory`, and `SaveHS` (always emitted; the older
     `WriteHS` keyword is silently dropped by SIESTA 5.4.2 and was
     replaced 2026-06-23).
-13. **Troubleshooting block** (when `cfg.verbose_comments=True`):
+13. **Diagonalizer** (only when `cfg.enable_gpu=True`):
+    `Diag.Algorithm <cfg.elpa_algorithm>` plus `Diag.ELPA.GPU .true.`.
+    The two keywords together are load-bearing — `Diag.ELPA.GPU`
+    alone is silently ignored when SIESTA's default Divide-and-Conquer
+    ScaLAPACK path is still active (Src/diag_option.F90:213-225).
+    When `enable_gpu=False` (the CPU default) nothing is emitted and
+    SIESTA uses ScaLAPACK.  The precompiled conda-forge
+    `siesta=5.4.2=mpi_openmpi_*` build (env `molbuilder-siesta`) is
+    NOT linked against ELPA, so there is no "CPU-ELPA" option here;
+    ELPA-CUDA lives only in the source-built `molbuilder-siesta-gpu`
+    env (see [`siesta-gpu.md`](siesta-gpu.md)).  The web UI's
+    `enable_gpu` toggle is the script-input contract — it never
+    queries env presence.  `runwrap.write_run_wrapper` inspects the
+    rendered .fdf for `Diag.ELPA.GPU`, routes the job to
+    `molbuilder-siesta-gpu`, AND gates env presence at script-
+    generation time: if the GPU env isn't installed,
+    `WrapperError` fires with the install hint instead of letting
+    `source activate` fail cryptically at run time.
+14. **Troubleshooting block** (when `cfg.verbose_comments=True`):
     inline tuning hints for SCF / forces / speed, plus relaxation
     hints when an MD block is present.
 
