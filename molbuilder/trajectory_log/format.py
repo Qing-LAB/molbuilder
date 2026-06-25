@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Mapping, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..structure import Structure
@@ -51,6 +51,8 @@ def write_initial_preview(
     job: str,
     engine: str,
     generator: str = "molbuilder",
+    stage_name: Optional[str] = None,
+    convergence_targets: Optional[Mapping[str, float]] = None,
 ) -> None:
     """Write a ``<path>.molwatch.log`` containing exactly one preview
     block: step 0 with the structure's coordinates, no energy, no
@@ -76,6 +78,18 @@ def write_initial_preview(
     generator : str
         Tool that wrote the file; goes into the ``# generator:``
         header.  Default ``"molbuilder"``.
+    stage_name : str, optional
+        Stage label for multi-stage SIESTA / PySCF runs (e.g.
+        ``"stage1"``, ``"stage2"``).  Emitted as ``# stage: <name>``
+        when set; absent header line means "single-stage run".
+    convergence_targets : Mapping[str, float], optional
+        Per-target thresholds for the stage's convergence (e.g.
+        ``{"max_force_ev_per_ang": 0.05, "max_steps": 600}``).  Each
+        entry is emitted as ``# convergence.<key>: <value>``.  When
+        absent, no convergence-target header lines are emitted (the
+        molwatch inspector renders only the engine's defaults).
+        Used by the watch-tab live plot to draw the right horizontal
+        threshold line per stage on the max-force-vs-step trace.
     """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +106,28 @@ def write_initial_preview(
         f"# job: {job}",
         "# units: energy=eV, force=eV/Ang, coords=Ang",
         f"# created: {timestamp}",
+    ]
+    # Optional stage label (multi-stage runs).  Absent header line
+    # means "single-stage run"; the inspector reads this to title
+    # the watch-tab panel correctly.
+    if stage_name:
+        lines.append(f"# stage: {stage_name}")
+    # Optional convergence-target dict.  One header line per key
+    # under the ``convergence.`` namespace so the inspector can
+    # consume them generically without an engine switch.
+    if convergence_targets:
+        for k, v in convergence_targets.items():
+            # Reject keys with whitespace / newlines that would break
+            # the line-oriented parser the watch tab uses.  ``str(k)``
+            # tolerates non-str types (rare).
+            key = str(k).strip()
+            if not key or any(c.isspace() for c in key):
+                raise ValueError(
+                    f"convergence_targets key {k!r} cannot contain "
+                    f"whitespace; got {key!r}"
+                )
+            lines.append(f"# convergence.{key}: {v}")
+    lines += [
         "",
         "==== molwatch step 0 begin ====",
         "step_index: 0",

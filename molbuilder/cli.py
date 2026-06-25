@@ -687,8 +687,7 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     _os.chmod(runner_path, 0o755)
     written.append(runner_path)
 
-    # Optional psml copy + molwatch preview log, mirroring convert()'s
-    # behaviour but driven once for the whole bundle (not per-stage).
+    # Optional psml copy, mirroring convert()'s behaviour.
     if cfg.psml_lib and cfg.copy_psml:
         from .siesta.input import copy_pseudopotentials, _detect_species
         from pathlib import Path as _P
@@ -697,6 +696,27 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         lib = _P(cfg.psml_lib).expanduser()
         if lib.is_dir():
             copy_pseudopotentials(species, lib, out_dir)
+
+    # Per-stage molwatch preview log, one per enabled stage.  Each
+    # log carries the stage's own convergence targets so the watch-
+    # tab live plot draws the correct horizontal threshold for the
+    # currently-running stage (per #542 / C1.4).
+    if cfg.write_molwatch_log:
+        from .trajectory_log import write_initial_preview
+        from .siesta.input import _enabled_stages
+        for stage in _enabled_stages(cfg):
+            mw_path = out_dir / f"{basename}-{stage.name}.molwatch.log"
+            write_initial_preview(
+                struct, mw_path,
+                job=basename,
+                engine="siesta",
+                stage_name=stage.name,
+                convergence_targets={
+                    "max_force_ev_per_ang": stage.relax_force_tol,
+                    "max_steps":            stage.relax_steps,
+                },
+            )
+            written.append(mw_path)
 
     click.echo(
         f"Wrote {len(fdfs)} stage fdf(s) + 1 runner to "

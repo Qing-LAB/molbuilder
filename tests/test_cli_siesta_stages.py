@@ -56,7 +56,7 @@ def test_stage_strategy_publishable_emits_two_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     assert files == ["JOB.run.sh", "JOB_stage1.fdf", "JOB_stage2.fdf"]
 
 
@@ -65,7 +65,7 @@ def test_stage_strategy_loose_only_emits_one_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     assert files == ["JOB.run.sh", "JOB_stage1.fdf"]
 
 
@@ -74,7 +74,7 @@ def test_stage_strategy_vib_quality_emits_three_stage_bundle(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stage-strategy", "vib-quality")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     assert files == ["JOB.run.sh",
                      "JOB_stage1.fdf",
                      "JOB_stage2.fdf",
@@ -111,7 +111,7 @@ def test_stages_json_literal_overrides_ladder(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", json.dumps(_TWO_STAGE_PAYLOAD))
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Stage names from the payload, not defaults.
     assert files == ["JOB.run.sh",
                      "JOB_stage1.fdf",
@@ -130,7 +130,7 @@ def test_stages_json_file_path_overrides_ladder(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf),
                 "--stages-json", str(payload_path))
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     assert "JOB_stage_final.fdf" in files
 
 
@@ -264,7 +264,7 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
                 "--stages-json", json.dumps(_TWO_STAGE_PAYLOAD),
                 "--stage-strategy", "loose-only")
     assert r.exit_code == 0, r.output
-    files = sorted(p.name for p in tmp_path.glob("JOB*"))
+    files = sorted(p.name for p in tmp_path.glob("JOB*") if not p.name.endswith(".molwatch.log"))
     # Only stage1's fdf survives the enable-flag overlay.
     assert files == ["JOB.run.sh", "JOB_stage1.fdf"]
     # And its MD block reflects the payload's stage1 knobs, not the
