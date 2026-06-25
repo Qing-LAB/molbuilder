@@ -124,10 +124,19 @@ def test_stage_name_and_convergence_can_be_combined(h2, tmp_path):
     assert 0 < stage_ix < step_ix
 
 
-def test_step_block_unchanged_by_new_kwargs(h2, tmp_path):
+def test_step_block_unchanged_by_new_kwargs(h2, tmp_path, monkeypatch):
     """The step-0 preview body (coords, energy=None, scf_history)
     must be byte-equivalent whether or not the new kwargs are set --
-    they only add HEADER lines, not body content."""
+    they only add HEADER lines, not body content.
+
+    Mock ``time.time`` so the two writes get the same wall_time
+    (without the mock the two calls land in different milliseconds
+    and the body's wall_time line diverges by microseconds when the
+    test runs as part of a larger suite)."""
+    monkeypatch.setattr(
+        "molbuilder.trajectory_log.format.time.time",
+        lambda: 1735000000.123,
+    )
     p1 = tmp_path / "without.log"
     p2 = tmp_path / "with.log"
     write_initial_preview(h2, p1, job="J", engine="siesta")
