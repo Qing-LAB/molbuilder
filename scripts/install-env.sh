@@ -389,6 +389,7 @@ HOST_CONDA_PACKAGES=(
     flask click plotly
     authlib python-cas
     pytest pyflakes
+    "psutil>=5.9"
     numactl
 )
 HOST_PIP_PACKAGES=(

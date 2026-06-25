@@ -160,9 +160,20 @@ def _parse_bash_array(text: str, name: str) -> list[str]:
         )
     body = m.group(1)
     # Strip line comments (``# ...`` up to end-of-line); split on
-    # whitespace; drop empties.
+    # whitespace; drop empties; strip a surrounding pair of single or
+    # double quotes (the bash array MUST quote entries containing
+    # shell metachars like ``>=`` to avoid them being parsed as
+    # redirections -- but logically those quotes are not part of the
+    # package spec).
     cleaned = re.sub(r"#[^\n]*", "", body)
-    return [tok for tok in cleaned.split() if tok]
+    out = []
+    for tok in cleaned.split():
+        if not tok:
+            continue
+        if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in ('"', "'"):
+            tok = tok[1:-1]
+        out.append(tok)
+    return out
 
 
 def test_install_env_sh_host_conda_packages_match_recipe():

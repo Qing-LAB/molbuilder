@@ -539,6 +539,12 @@ _HOST = Recipe(
         "flask", "click", "plotly",
         "authlib", "python-cas",
         "pytest", "pyflakes",
+        # System metrics for the web UI's system-load blueprint.
+        # ``molbuilder serve`` imports the blueprint at startup; without
+        # psutil the import (and the whole server) hard-fails with
+        # ModuleNotFoundError.  Declared in pyproject.toml's runtime
+        # deps; mirrored here so the conda-create path also picks it up.
+        "psutil>=5.9",
         # NUMA control tool.  Used by the host-side advisor
         # (``molbuilder envs advise siesta-gpu``) to detect whether
         # NUMA pinning is possible: its can_numa_pin property only
@@ -715,6 +721,20 @@ _mbsg_prepend_libpath  "$CONDA_PREFIX/lib"
 
 export MOLBUILDER_SIESTA_GPU_PREFIX="$CONDA_PREFIX/opt/siesta-gpu-stack"
 
+# OpenMPI shared-memory backing files MUST live on node-local fast
+# storage -- NEVER on the NFS-mounted conda env prefix or $HOME.
+# Putting MPI shmem on NFS triggers OpenMPI's ``shared_mem_cuda_pool``
+# / ``shared_mem_cuda_btl_module`` warnings and silently tanks
+# performance (every shmem write becomes a network round-trip).
+# Honour the resource manager's per-job $TMPDIR (SLURM/PBS set this
+# to a node-local scratch dir per job); fall back to /tmp which is
+# node-local on every HPC node we've seen.  No-op on personal Linux
+# boxes where $TMPDIR is unset and /tmp is already tmpfs.
+if [ -z "${OMPI_MCA_orte_tmpdir_base:-}" ]; then
+    export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"
+    export _MOLBUILDER_SIESTA_GPU_SET_OMPI_TMPDIR=1
+fi
+
 unset -f _mbsg_prepend_path _mbsg_prepend_libpath
 """
 
@@ -738,6 +758,13 @@ _mbsg_drop_from_path_var() {
 _mbsg_drop_from_path_var PATH            "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/lib"
+
+# Only unset OMPI_MCA_orte_tmpdir_base if WE set it -- never trample
+# a value the user / scheduler set themselves.
+if [ "${_MOLBUILDER_SIESTA_GPU_SET_OMPI_TMPDIR:-0}" = "1" ]; then
+    unset OMPI_MCA_orte_tmpdir_base
+    unset _MOLBUILDER_SIESTA_GPU_SET_OMPI_TMPDIR
+fi
 
 unset MOLBUILDER_SIESTA_GPU_PREFIX
 unset -f _mbsg_drop_from_path_var

@@ -1544,6 +1544,16 @@ def _run_phase(step: BuildStep,
         f"export CCACHE_DIR={paths_root}/.ccache; "
         f"export PIP_CACHE_DIR={paths_root}/.cache/pip; "
         f"export XDG_CACHE_HOME={paths_root}/.cache; "
+        # cmake / ccache / pip are fine on NFS (latency-tolerant), but
+        # the siesta-gpu build's ``.verify`` phase invokes ``siesta
+        # --version`` which initialises OpenMPI -- and OpenMPI walks
+        # $TMPDIR to place its shared-memory pool, which is the ONE
+        # thing that MUST NOT live on NFS.  Pin MPI's shmem dir
+        # specifically at /tmp (node-local on every HPC node, tmpfs
+        # on personal Linux) so the verify-phase MPI init doesn't
+        # warn about NFS-mounted shmem.  /tmp is small but the
+        # verify call exits in milliseconds -- no real shmem traffic.
+        f"export OMPI_MCA_orte_tmpdir_base=/tmp; "
         f"if [ -d {activate_d} ]; then "
         f'for _f in {activate_d}/*.sh; do '
         f'[ -f "$_f" ] && . "$_f"; '
