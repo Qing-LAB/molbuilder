@@ -887,7 +887,17 @@ For anything beyond localhost:
 | **Internet — your auth already exists** (campus SSO, Cloudflare Access, etc.) | Put molbuilder behind your existing auth gateway (reverse proxy) | [`docs/deployment.md`](docs/deployment.md) § 2b |
 
 Configuration lives in **one file** at the repo root:
-`molbuilder.json` (gitignored).  Copy the template:
+`molbuilder.json` (gitignored).  For the common case (ASU CAS,
+Google OAuth, or both), the wizard generates it for you with
+secrets in 0600 out-of-band files:
+
+```bash
+python -m molbuilder auth-setup            # interactive
+python -m molbuilder auth-setup --provider asu  # ASURITE = current user
+```
+
+For everything else (multi-provider tuning, TLS, reverse-proxy
+auth), copy the template and hand-edit:
 
 ```bash
 cp docs/molbuilder.json.example molbuilder.json

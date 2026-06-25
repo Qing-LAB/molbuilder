@@ -24,6 +24,7 @@ patch the package attribute, so we re-resolve at call time.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import sys
 import tempfile
@@ -1616,6 +1617,241 @@ def _check_tls_readable(cert, key) -> None:
           "that owns the key + ``chmod g+r``.  Survives renewal "
           "iff the system installer preserves group + mode."
     )
+
+
+@cli.command("auth-setup",
+              short_help="generate molbuilder.json's auth block for "
+                         "ASU CAS and/or Google OAuth (interactive)")
+@click.option("--provider", type=click.Choice(["asu", "google", "both"]),
+              default=None,
+              help="which provider(s) to wire up.  Default: prompt.")
+@click.option("--asurite", default=None,
+              help="ASU username for the CAS allowlist.  Default: the "
+                   "current system user (``getpass.getuser()``).")
+@click.option("--google-email", default=None, multiple=True,
+              metavar="EMAIL",
+              help="Google-account email allowed to sign in via OAuth.  "
+                   "May be passed multiple times.  Default: prompt.")
+@click.option("--hosted-domain", default=None, multiple=True,
+              metavar="DOMAIN",
+              help="restrict Google sign-in to Workspace accounts in "
+                   "DOMAIN (e.g. 'asu.edu').  May be passed multiple "
+                   "times.  Default: no restriction.")
+@click.option("--output", type=click.Path(dir_okay=False), default=None,
+              help="where to write the molbuilder.json.  Default: "
+                   "``./molbuilder.json`` in the current directory.")
+@click.option("--force", is_flag=True,
+              help="overwrite an existing molbuilder.json's auth block.  "
+                   "Other top-level sections (envs, tls, ...) survive.")
+def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
+                    output, force):
+    """Interactive wizard to wire up sign-in for ``molbuilder serve``.
+
+    Generates a ``molbuilder.json`` carrying one or both of:
+
+    \b
+      - ASU CAS    (https://weblogin.asu.edu/cas)
+      - Google OAuth (your Google Cloud project's client_id + secret)
+
+    Hard-coded into the wizard:
+
+    \b
+      * The CAS principal (== the ASU username) defaults to the
+        SYSTEM USER ACCOUNT (``getpass.getuser()``).  No other
+        identifier is assumed anywhere in molbuilder; the username
+        you log in to the server with is the username CAS will
+        authenticate against.
+      * The Flask session signing key is generated locally with
+        ``secrets.token_urlsafe(32)`` and written to a 0600 file under
+        ``~/.config/molbuilder/secret_key``.  It is NEVER printed,
+        NEVER logged, and NEVER placed into molbuilder.json -- the
+        config file holds only the PATH.
+      * The Google OAuth client secret is prompted via ``getpass``
+        (hidden input, no echo, no shell history) and written to
+        ``~/.config/molbuilder/google_client_secret`` with mode 0600.
+        Same path-not-literal rule applies.
+      * molbuilder.json itself is written mode 0600.
+
+    Re-running with the same arguments is idempotent EXCEPT for the
+    Flask session key + Google client secret, which are re-generated /
+    re-prompted each run.  Use ``--force`` to acknowledge replacing an
+    existing molbuilder.json's auth block.
+
+    Where the file lives: ``molbuilder serve`` looks for
+    ``./molbuilder.json`` in the directory it was launched from.  Drop
+    this file there (the wizard's default), or pass --output to write
+    somewhere else.
+    """
+    import getpass
+    from pathlib import Path as _Path
+
+    from . import auth_setup as _as
+    from .runtime_config import _validate_provider as _validate
+
+    # 1. Pick providers ------------------------------------------------
+    if provider is None:
+        click.echo("Pick provider(s):", err=True)
+        click.echo("  1) ASU CAS only", err=True)
+        click.echo("  2) Google OAuth only", err=True)
+        click.echo("  3) Both", err=True)
+        choice = click.prompt("Choice [1/2/3]",
+                              type=click.Choice(["1", "2", "3"]),
+                              show_choices=False)
+        provider = {"1": "asu", "2": "google", "3": "both"}[choice]
+    want_asu = provider in ("asu", "both")
+    want_google = provider in ("google", "both")
+
+    # 2. Resolve target paths -----------------------------------------
+    output_path = _Path(output or "molbuilder.json").resolve()
+    secret_dir = _as.default_secret_dir()
+    secret_key_file = _as.secret_key_path()
+    google_secret_file = _as.google_client_secret_path()
+
+    # 3. Bail early on clobber unless --force --------------------------
+    if output_path.exists() and not force:
+        click.echo(
+            f"Error: {output_path} already exists.  Re-run with "
+            f"--force to overwrite, or pass --output PATH.",
+            err=True,
+        )
+        sys.exit(2)
+
+    # 4. ASU CAS entry -------------------------------------------------
+    providers: list = []
+    if want_asu:
+        sys_user = getpass.getuser()
+        if asurite is None:
+            asurite = click.prompt(
+                f"ASURITE (ASU username) for the CAS allowlist",
+                default=sys_user,
+            )
+        entry = _as.build_asu_cas_entry(asurite)
+        # Round-trip through the canonical validator so a future
+        # schema change can't let the wizard emit something the
+        # server then rejects at startup.
+        _validate(entry, idx=len(providers))
+        providers.append(entry)
+        click.echo(
+            f"  + ASU CAS configured for "
+            f"{entry['allowed_users'][0]}",
+            err=True,
+        )
+
+    # 5. Google OAuth entry --------------------------------------------
+    if want_google:
+        click.echo("", err=True)
+        click.echo(
+            "Google OAuth setup -- you'll need the OAuth client you "
+            "created at https://console.cloud.google.com/apis/credentials",
+            err=True,
+        )
+        client_id = click.prompt("  Google OAuth client_id")
+        # getpass.getpass: no terminal echo, no shell history.
+        client_secret = getpass.getpass(
+            prompt="  Google OAuth client_secret (input hidden): ",
+        )
+        if not client_secret.strip():
+            click.echo(
+                "Error: client_secret is empty.  Aborting; nothing "
+                "written.",
+                err=True,
+            )
+            sys.exit(2)
+        # Allowed emails: --google-email overrides; otherwise prompt.
+        if google_email:
+            emails = list(google_email)
+        else:
+            click.echo(
+                "  Allowed Google-account email(s).  Press Enter on "
+                "an empty line to finish.",
+                err=True,
+            )
+            emails = []
+            while True:
+                e = click.prompt(
+                    f"    email {len(emails)+1}",
+                    default="", show_default=False,
+                )
+                if not e:
+                    if not emails:
+                        click.echo(
+                            "    (need at least one)", err=True,
+                        )
+                        continue
+                    break
+                emails.append(e)
+        # Save the secret out-of-band BEFORE building the entry so we
+        # have a clean file path to reference in molbuilder.json.
+        _as.write_secret_file(google_secret_file, client_secret.strip())
+        entry = _as.build_google_entry(
+            client_id=client_id,
+            client_secret_file=google_secret_file,
+            allowed_users=emails,
+            hosted_domain=list(hosted_domain) if hosted_domain else None,
+        )
+        _validate(entry, idx=len(providers))
+        providers.append(entry)
+        click.echo(
+            f"  + Google OAuth configured for {len(emails)} "
+            f"allowed email(s); secret stored at {google_secret_file}",
+            err=True,
+        )
+
+    # 6. Flask session signing key ------------------------------------
+    session_secret = _as.generate_session_secret()
+    _as.write_secret_file(secret_key_file, session_secret)
+    # Wipe the in-memory copy promptly; the file is the source of truth.
+    del session_secret
+    click.echo(
+        f"  + Flask session key generated; stored at {secret_key_file}",
+        err=True,
+    )
+
+    # 7. Merge auth block into existing molbuilder.json (if any) -------
+    existing = None
+    if output_path.exists():
+        try:
+            existing = json.loads(output_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            click.echo(
+                f"Warning: could not parse existing {output_path} "
+                f"({exc}).  --force is set, replacing it whole.",
+                err=True,
+            )
+            existing = None
+    auth_block = _as.build_auth_block(
+        providers=providers,
+        secret_key_file=secret_key_file,
+    )
+    _as.emit_molbuilder_json(
+        output_path, auth_block,
+        force=force, existing=existing,
+    )
+
+    click.echo("", err=True)
+    click.echo(f"Wrote {output_path} (mode 0600)", err=True)
+    click.echo("", err=True)
+    click.echo("Next steps:", err=True)
+    click.echo(
+        f"  cd {output_path.parent}", err=True,
+    )
+    click.echo(
+        f"  python -m molbuilder serve --port 8888 --host 127.0.0.1",
+        err=True,
+    )
+    if want_google:
+        click.echo("", err=True)
+        click.echo(
+            "Add this callback URL to your Google OAuth client's "
+            "'Authorized redirect URIs':", err=True,
+        )
+        click.echo(
+            "  http://localhost:8888/oauth-callback/google", err=True,
+        )
+        click.echo(
+            "  (adjust host/port to match your tunnel + --port).",
+            err=True,
+        )
 
 
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")

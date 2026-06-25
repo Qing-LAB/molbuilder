@@ -15,6 +15,46 @@ This doc covers the **two non-default cases**:
 
 ---
 
+## Fastest path: ``molbuilder auth-setup``
+
+For the common case (ASU CAS, Google OAuth, or both), the wizard
+generates everything correctly with zero hand-editing:
+
+```bash
+# After ``conda activate molbuilder``:
+python -m molbuilder auth-setup
+# or, non-interactively:
+python -m molbuilder auth-setup --provider asu             # ASURITE = current user
+python -m molbuilder auth-setup --provider google          # prompts for client id+secret
+python -m molbuilder auth-setup --provider both --asurite <asurite>
+```
+
+What the wizard does:
+
+  * Generates the Flask session signing key locally
+    (``secrets.token_urlsafe(32)``) and writes it to
+    ``~/.config/molbuilder/secret_key`` mode 0600.  Never echoed,
+    never logged, never placed into ``molbuilder.json`` -- the
+    config holds only the PATH.
+  * For Google OAuth, prompts for the OAuth ``client_id`` (visible
+    input) and ``client_secret`` (hidden via ``getpass`` -- no
+    terminal echo, no shell history).  The secret is stored at
+    ``~/.config/molbuilder/google_client_secret`` mode 0600.
+  * Defaults the ASU CAS ``allowed_users`` entry to
+    ``<system_user>@asu.edu`` -- the OS-level account name is the
+    only identifier the wizard assumes.  Override with ``--asurite``
+    if the asurite differs from the local username.
+  * Writes ``./molbuilder.json`` mode 0600.  Refuses to clobber an
+    existing one unless ``--force`` is passed (and even then
+    preserves every non-auth top-level key like ``envs`` or
+    ``tls``).
+
+The rest of this doc covers the hand-edit + advanced cases (multi-
+provider tuning, `hosted_domain`, CAS `email_attribute`, TLS
+provisioning, reverse-proxy setups, secret rotation).
+
+---
+
 ## Quick start: the config file
 
 Every non-default deployment is driven by a single config file:
@@ -382,7 +422,7 @@ established by registering the CAS endpoint URLs.
 |---|---|
 | Console | None — CAS uses fixed URLs published by your institution.  ASU's CAS endpoints are public knowledge (the table below). |
 | Callback URL | `https://<your-host>/cas-callback/<provider_id>` — auto-registered via the `service_url` parameter on each request (no pre-declaration in any console) |
-| Identity returned | The CAS principal (e.g. an ASURITE like `qqing`) plus optional attributes.  ASU CAS releases **only the principal** (no email attribute), so molbuilder synthesises `{principal}@{email_domain}` |
+| Identity returned | The CAS principal (the ASURITE username, e.g. `<asurite>`) plus optional attributes.  ASU CAS releases **only the principal** (no email attribute), so molbuilder synthesises `{principal}@{email_domain}` |
 
 ```json
 {
