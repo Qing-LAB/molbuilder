@@ -179,10 +179,12 @@ def test_results_roundtrip_with_boundary_conditions():
     assert r2.frozen_atoms == r.frozen_atoms
 
 
-def test_v1_sidecar_reads_as_empty_boundary():
-    """Back-compat: a pre-2026-06-25 .transport.json with schema_version
-    == '1' must decode without exception; missing boundary fields
-    default to empty (NOT raise)."""
+def test_v1_sidecar_is_rejected():
+    """User directive 2026-06-25: v1 sidecars MUST be rejected because
+    they omit regions + frozen_atoms, which are load-bearing for a
+    transport calculation.  Accepting them would silently produce an
+    empty-boundary record that downstream code can't distinguish from
+    a valid run."""
     v1_payload = {
         "schema_version":     "1",
         "metadata":           {"engine": "transiesta"},
@@ -197,17 +199,13 @@ def test_v1_sidecar_reads_as_empty_boundary():
         "bibliography_keys":  ["transiesta_brandbyge_2002"],
         "complete":           True,
     }
-    r = TransportResults.from_dict(v1_payload)
-    assert r.regions      == {}
-    assert r.frozen_atoms == []
-    assert r.complete is True
-    # Re-emitting bumps to v2.
-    assert r.to_dict()["schema_version"] == "2"
+    with pytest.raises(ValueError, match=r"v1 sidecars.*omit regions"):
+        TransportResults.from_dict(v1_payload)
 
 
 def test_unknown_schema_version_still_raises():
     """Forward-compat: a future v3+ payload must NOT silently degrade."""
-    with pytest.raises(ValueError, match="unknown schema_version"):
+    with pytest.raises(ValueError, match="not supported"):
         TransportResults.from_dict({"schema_version": "999"})
 
 

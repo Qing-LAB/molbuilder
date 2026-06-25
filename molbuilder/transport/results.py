@@ -184,22 +184,28 @@ class TransportResults:
     def from_dict(cls, d: Dict[str, Any]) -> "TransportResults":
         """Decode a dict produced by :meth:`to_dict`.
 
-        Back-compat: schema_version ``"1"`` is read transparently --
-        the v1 -> v2 delta is purely additive (regions + frozen_atoms),
-        so a v1 file decodes as a v2 record with empty boundary-
-        condition fields.  This matters because pre-2026-06-25 runs
-        wrote v1 sidecars and shouldn't break on re-read.
+        v2 ONLY (2026-06-25 user directive).  v1 sidecars are
+        rejected: they omit ``regions`` and ``frozen_atoms``, which
+        are load-bearing for any transport calculation -- the device
+        geometry has no meaning without L/M/R region assignment, and
+        electrode atoms must be marked frozen for the .TSHS self-
+        energy match.  A v1 sidecar is a sidecar with no boundary
+        conditions; we refuse rather than silently producing an
+        empty-boundary record that downstream code mistakes for a
+        valid run.
 
-        Forward-compat: any other ``schema_version`` raises
-        :class:`ValueError`.  A future v3+ writer is expected to add
-        explicit migration here.
+        Forward-compat: any future schema_version raises
+        :class:`ValueError` so the caller decides on migration.
         """
         version = d.get("schema_version", SCHEMA_VERSION)
-        if version not in (SCHEMA_VERSION, "1"):
+        if version != SCHEMA_VERSION:
             raise ValueError(
-                f"TransportResults: unknown schema_version "
-                f"{version!r}; this molbuilder build understands "
-                f"{SCHEMA_VERSION!r} and back-compat reads {'1'!r}"
+                f"TransportResults: schema_version {version!r} is "
+                f"not supported; this molbuilder build requires "
+                f"{SCHEMA_VERSION!r}.  v1 sidecars (pre-2026-06-25) "
+                f"omit regions + frozen_atoms which are load-bearing "
+                f"for transport; re-emit from molbuilder.transport "
+                f"with the labeled structure to upgrade."
             )
         return cls(
             metadata=dict(d.get("metadata", {})),

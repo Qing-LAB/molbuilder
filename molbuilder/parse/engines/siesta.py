@@ -601,6 +601,12 @@ class SiestaParser:
 
     @classmethod
     def parse(cls, path: str) -> Trajectory:
+        from molbuilder.parse._log import ParseLogger
+        with ParseLogger(path, parser_name="siesta") as _scan_log:
+            return cls._parse_impl(path, _scan_log)
+
+    @classmethod
+    def _parse_impl(cls, path: str, _scan_log) -> Trajectory:
         frames: List[Frame] = []
         lattice: Optional[List[List[float]]] = None
         pending_lattice: Optional[List[List[float]]] = None
@@ -644,6 +650,9 @@ class SiestaParser:
                 error=error,
                 category=category,
             ))
+            _scan_log.warn(error, line_no=line_no,
+                           snippet=line.rstrip()[:120],
+                           category=category)
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
@@ -1798,6 +1807,11 @@ class SiestaParser:
                 and math.isfinite(step_initial_etot)):
             runtime_info["initial_etot"] = float(step_initial_etot)
 
+        _scan_log.info(
+            f"parsed {len(frames)} frames, run_state={run_state}, "
+            f"{len(parse_warnings)} warnings")
+        if error_message:
+            _scan_log.error(error_message)
         return Trajectory(
             source_format  = cls.name,
             frames         = frames,

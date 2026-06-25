@@ -69,13 +69,16 @@ def _strict_finite_float(s: str) -> float:
     return v
 
 
-# Schema versions this parser can read.  The current writer always
-# emits ``SCHEMA_VERSION`` from :mod:`molbuilder.transport.results`;
-# older versions are accepted on read so previously-saved JSONs still
-# load.  v2 (2026-06-25) added regions + frozen_atoms; v1 sidecars
-# still decode (regions/frozen default to empty in TransportResults.
-# from_dict).
-_READABLE_SCHEMA_VERSIONS = {"1", "2"}
+# Schema versions this parser can read.  v2 ONLY (2026-06-25 user
+# directive): v1 sidecars omit regions + frozen_atoms, which are
+# load-bearing for a transport calculation -- the device geometry has
+# no meaning without the L/M/R region assignment, and the electrode
+# atoms must be marked frozen for the .TSHS self-energy match.  A
+# v1 sidecar is a sidecar with no boundary conditions; that's not
+# something Transport can work with, so we refuse to decode it
+# rather than silently producing an empty-boundary record that
+# downstream code mistakes for a "free-electron sanity check."
+_READABLE_SCHEMA_VERSIONS = {"2"}
 
 
 def _validate_schema_version(actual: Any) -> None:
@@ -112,47 +115,64 @@ def _parse_transport_json(
         path: Union[str, "os.PathLike[str]"]) -> TransportResults:
     """Read a ``<job>.transport.json`` file and return a typed
     :class:`TransportResults`."""
+    from molbuilder.parse._log import ParseLogger
     p = os.fspath(path)
+    with ParseLogger(p, parser_name="transport-sidecar") as _scan_log:
+        if not os.path.exists(p):
+            _scan_log.error(f"transport.json not found at {p}")
+            raise TransportJsonNotFoundError(
+                f"transport.json not found at {p!r} (engine hasn't "
+                f"written its result yet, or the path is wrong)"
+            )
 
-    if not os.path.exists(p):
-        raise TransportJsonNotFoundError(
-            f"transport.json not found at {p!r} (engine hasn't "
-            f"written its result yet, or the path is wrong)"
-        )
+        try:
+            with open(p, "r", encoding="utf-8-sig") as fh:
+                raw = fh.read()
+        except UnicodeDecodeError as e:
+            _scan_log.error(f"not valid UTF-8: {e.reason} at byte {e.start}")
+            raise TransportJsonMalformedError(
+                f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
+            ) from e
+        except OSError as e:
+            _scan_log.error(f"read failed: {e}")
+            raise TransportJsonError(f"failed to read {p!r}: {e}") from e
 
-    try:
-        with open(p, "r", encoding="utf-8-sig") as fh:
-            raw = fh.read()
-    except UnicodeDecodeError as e:
-        raise TransportJsonMalformedError(
-            f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
-        ) from e
-    except OSError as e:
-        raise TransportJsonError(f"failed to read {p!r}: {e}") from e
+        try:
+            d = json.loads(
+                raw,
+                parse_constant=_reject_nonfinite_constant,
+                parse_float=_strict_finite_float,
+            )
+        except json.JSONDecodeError as e:
+            _scan_log.error(
+                f"not valid JSON: {e.msg} at line {e.lineno} col {e.colno}")
+            raise TransportJsonMalformedError(
+                f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
+                f"col {e.colno})"
+            ) from e
 
-    try:
-        d = json.loads(
-            raw,
-            parse_constant=_reject_nonfinite_constant,
-            parse_float=_strict_finite_float,
-        )
-    except json.JSONDecodeError as e:
-        raise TransportJsonMalformedError(
-            f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
-            f"col {e.colno})"
-        ) from e
+        if not isinstance(d, dict):
+            _scan_log.error(
+                f"top-level JSON value is {type(d).__name__}, expected object")
+            raise TransportJsonMalformedError(
+                f"{p!r} top-level JSON value must be an object, got "
+                f"{type(d).__name__}"
+            )
 
-    if not isinstance(d, dict):
-        raise TransportJsonMalformedError(
-            f"{p!r} top-level JSON value must be an object, got "
-            f"{type(d).__name__}"
-        )
+        if "schema_version" not in d:
+            _scan_log.error("schema_version field missing")
+            raise TransportJsonSchemaError(SCHEMA_VERSION, None)
+        version = d["schema_version"]
+        _scan_log.info(f"schema_version={version!r}")
+        _validate_schema_version(version)
 
-    if "schema_version" not in d:
-        raise TransportJsonSchemaError(SCHEMA_VERSION, None)
-    _validate_schema_version(d["schema_version"])
-
-    return _validate_dict_to_results(d, repr(p))
+        result = _validate_dict_to_results(d, repr(p))
+        _scan_log.info(
+            f"parsed: {len(result.energy_grid_eV)} energy points, "
+            f"{len(result.regions)} regions, "
+            f"{len(result.frozen_atoms)} frozen atoms, "
+            f"complete={result.complete}")
+        return result
 
 
 def _parse_transport_json_dict(d: Dict[str, Any]) -> TransportResults:

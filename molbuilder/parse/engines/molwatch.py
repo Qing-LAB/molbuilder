@@ -100,6 +100,12 @@ def _parse_molwatch_log(path: str) -> Trajectory:
     and flips between them on block_begin / block_end transitions.
     See module docstring for the file format.
     """
+    from molbuilder.parse._log import ParseLogger
+    with ParseLogger(path, parser_name="molwatch") as _scan_log:
+        return _parse_molwatch_log_impl(path, _scan_log)
+
+
+def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
     engine = "molwatch"
     frames: List[Frame] = []
     run_state: str = "ongoing"
@@ -486,6 +492,10 @@ def _parse_molwatch_log(path: str) -> Trajectory:
     if frozen:
         runtime_info["frozen_atoms"] = frozen
 
+    _scan_log.info(
+        f"parsed {len(frames)} frames, run_state={run_state}")
+    if error_message:
+        _scan_log.error(error_message)
     return Trajectory(
         source_format = engine,
         frames        = frames,

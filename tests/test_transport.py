@@ -118,7 +118,7 @@ class TestTransportResultsRoundTrip:
         r = self._fixture()
         d = r.to_dict()
         d["schema_version"] = "999"
-        with pytest.raises(ValueError, match="unknown schema_version"):
+        with pytest.raises(ValueError, match="not supported"):
             TransportResults.from_dict(d)
 
 
