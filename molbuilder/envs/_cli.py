@@ -447,6 +447,225 @@ def cmd_repair(name: str, include_optional: bool,
     sys.exit(0 if not remaining else 1)
 
 
+@envs_group.command("clean",
+                    short_help="delete build-only directories from a "
+                               "source-build env (frees disk; keeps "
+                               "installed binaries)")
+@click.argument("name")
+@click.option("--yes", "-y", "auto_yes", is_flag=True,
+              help="skip the confirmation prompt (use in batch / cron).")
+@click.option("--dry-run", is_flag=True,
+              help="show what would be deleted + sizes; delete nothing.")
+@click.option("--keep-src", is_flag=True,
+              help="keep ``src/`` (source clones).  Useful if you plan "
+                   "to run ``install --rebuild=<component>`` later -- "
+                   "rebuilding without sources triggers a fresh re-clone.")
+def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
+              keep_src: bool) -> None:
+    """Delete build-only directories from a source-build env's
+    artifact root, freeing disk space on $HOME-mounted conda envs.
+
+    Source-build envs (``molbuilder-siesta-gpu`` today) accumulate
+    cmake build trees, source clones, ccache, and pip caches under
+    ``$CONDA_PREFIX/opt/<artifact_subdir>/``.  The build phase needs
+    them; at runtime they are dead weight (typically 3-5 GB combined).
+    This command identifies + removes the build-only set, leaving the
+    installed binaries (``elpa/``, ``siesta/``), sentinels, logs, and
+    toolchain fingerprint intact.
+
+    Safe to re-run: skipped dirs that don't exist anymore are a no-op.
+    Safe to interrupt: each dir is independent; partial deletion leaves
+    the rest untouched.
+
+    To do a fresh install with the same env, use
+    ``install <recipe> --clean`` instead -- that wipes the whole env.
+    To rebuild a single component without losing the conda env, use
+    ``install <recipe> --rebuild=<component>``.
+    """
+    import shutil as _shutil
+    caps = get_capabilities()
+    recipe = recipe_by_name(name)
+    if recipe is None:
+        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        raise click.UsageError(
+            f"unknown recipe `{name}`.  Registered: {registered}"
+        )
+    if recipe.build_spec is None:
+        raise click.UsageError(
+            f"recipe `{recipe.name}` is conda-only (no build_spec); "
+            f"there are no build directories to clean.  ``clean`` is "
+            f"meaningful only for source-build envs like "
+            f"`molbuilder-siesta-gpu`."
+        )
+    if caps.conda_binary is None:
+        raise click.UsageError(
+            "conda/mamba not found; cannot resolve env prefix."
+        )
+    effective = _doctor._effective_name(recipe, caps)
+    if not caps.env_available(effective):
+        click.echo(
+            f"env `{effective}` does not exist -- nothing to clean.",
+            err=True,
+        )
+        return
+    prefix_str = _install._env_prefix(effective, caps.conda_binary)
+    if prefix_str is None:
+        click.echo(
+            f"could not resolve env prefix for `{effective}`.  Run "
+            f"`{caps.conda_binary} env list` to check.",
+            err=True,
+        )
+        sys.exit(2)
+    from .builds import resolve_paths
+    paths = resolve_paths(recipe.build_spec, prefix_str)
+
+    # Build-only set: present in build phase, dead weight at runtime.
+    # Order matters only for the report; deletion is independent.
+    candidates: list = [
+        ("build/", paths.build,
+         "cmake build trees + object files (usually the biggest)"),
+        ("src/", paths.src,
+         "source clones (re-cloned by --rebuild=<component>)"),
+        (".ccache/", paths.root / ".ccache",
+         "compiler cache (speeds up rebuilds; safe to drop)"),
+        (".cache/", paths.root / ".cache",
+         "pip + XDG cache (re-downloaded on next install)"),
+        (".tmp/", paths.root / ".tmp",
+         "cmake / openmpi tmp (always safe to drop)"),
+    ]
+    if keep_src:
+        candidates = [c for c in candidates if c[0] != "src/"]
+
+    # Anything in this list, do NOT touch.  Listed for the user-facing
+    # report so they understand what survives.
+    kept = [
+        ("logs/", paths.logs, "install logs (useful for debugging)"),
+        (".sentinels/", paths.sentinels,
+         "resume markers (small; --force-resume reads them)"),
+        (".toolchain-fingerprint", paths.fingerprint_file,
+         "toolchain hash (used by --clean / --force-resume)"),
+    ]
+    # Per-component install dirs (elpa/, siesta/) -- the load-bearing
+    # artifacts the activate hook publishes on PATH + LD_LIBRARY_PATH.
+    for comp in recipe.build_spec.components:
+        kept.append((
+            f"{comp.name}/",
+            paths.component_install(comp.name),
+            "INSTALLED binary -- runtime needs this",
+        ))
+
+    def _du(p: Path) -> int:
+        """Bytes used by a directory tree.  Returns 0 for missing /
+        unreadable paths instead of raising."""
+        if not p.exists():
+            return 0
+        total = 0
+        try:
+            for entry in p.rglob("*"):
+                try:
+                    if entry.is_file() and not entry.is_symlink():
+                        total += entry.stat().st_size
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return total
+
+    def _human(n: int) -> str:
+        for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+            if n < 1024:
+                return f"{n:.1f} {unit}"
+            n /= 1024  # type: ignore[assignment]
+        return f"{n:.1f} PiB"
+
+    click.echo(f"[clean] {effective}", err=True)
+    click.echo(f"[clean]   artifact root: {paths.root}", err=True)
+    if not paths.root.exists():
+        click.echo(
+            f"[clean] artifact root does not exist -- nothing to clean.",
+            err=True,
+        )
+        return
+    click.echo("", err=True)
+    click.echo("Build-only directories (CANDIDATES FOR DELETION):", err=True)
+    total_bytes = 0
+    present: list = []
+    for label, path, desc in candidates:
+        size = _du(path)
+        total_bytes += size
+        marker = "  " if path.exists() else "--"
+        size_s = _human(size) if path.exists() else "absent"
+        click.echo(
+            f"  {marker} {label:<26} {size_s:>12}   {desc}",
+            err=True,
+        )
+        if path.exists():
+            present.append((label, path))
+    click.echo("", err=True)
+    click.echo(
+        f"  TOTAL reclaimable: {_human(total_bytes)} "
+        f"({len(present)} dirs present)",
+        err=True,
+    )
+    click.echo("", err=True)
+    click.echo("Will NOT touch (load-bearing or small):", err=True)
+    for label, path, desc in kept:
+        size = _du(path) if path.exists() else 0
+        size_s = _human(size) if path.exists() else "absent"
+        click.echo(
+            f"     {label:<26} {size_s:>12}   {desc}",
+            err=True,
+        )
+
+    if dry_run:
+        click.echo("", err=True)
+        click.echo("[clean] --dry-run: no files deleted.", err=True)
+        return
+    if not present:
+        click.echo("", err=True)
+        click.echo("[clean] nothing to delete (build dirs already absent).",
+                   err=True)
+        return
+    if not auto_yes:
+        click.echo("", err=True)
+        if not click.confirm(
+            f"Delete {len(present)} build-only "
+            f"director{'y' if len(present) == 1 else 'ies'} "
+            f"({_human(total_bytes)})?",
+            default=False, err=True,
+        ):
+            click.echo("[clean] aborted by user.", err=True)
+            sys.exit(2)
+
+    click.echo("", err=True)
+    failed: list = []
+    for label, path in present:
+        click.echo(f"[clean] rm -rf {path}", err=True)
+        try:
+            _shutil.rmtree(path)
+        except OSError as exc:
+            failed.append((label, exc))
+            click.echo(f"[clean]   FAILED: {exc}", err=True)
+    click.echo("", err=True)
+    if failed:
+        click.echo(
+            f"[clean] {len(present) - len(failed)}/{len(present)} ok, "
+            f"{len(failed)} failed.  Re-run with sudo or check perms.",
+            err=True,
+        )
+        sys.exit(1)
+    click.echo(
+        f"[clean] freed ~{_human(total_bytes)} "
+        f"({len(present)} dirs removed).",
+        err=True,
+    )
+    click.echo(
+        f"[clean] runtime binaries intact: `siesta --version` should "
+        f"still work after ``conda activate {effective}``.",
+        err=True,
+    )
+
+
 @envs_group.command("doctor",
                     short_help="report installed / missing / verified envs")
 @click.option("--no-verify", is_flag=True,

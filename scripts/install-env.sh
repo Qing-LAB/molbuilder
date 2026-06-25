@@ -122,7 +122,13 @@ bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=all --yes
 bash scripts/install-env.sh repair molbuilder-pySCF
 bash scripts/install-env.sh repair <recipe> --include-optional
 
-# 6. Health check / verify everything:
+# 6. Free disk space: delete build-only dirs (cmake build trees, ccache,
+#    src/, pip cache) from a source-build env; keep installed binaries.
+#    Typically reclaims 3-5 GB on molbuilder-siesta-gpu.
+bash scripts/install-env.sh clean molbuilder-siesta-gpu --dry-run
+bash scripts/install-env.sh clean molbuilder-siesta-gpu --yes
+
+# 7. Health check / verify everything:
 bash scripts/install-env.sh doctor
 ==============================================================
 
@@ -151,6 +157,14 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
 
   bash scripts/install-env.sh validate <recipe>
       Run post-install correctness probes.
+
+  bash scripts/install-env.sh clean <recipe> [flags]
+      Delete build-only dirs (cmake build trees, ccache, src/, pip
+      cache) from a source-build env to free disk.  Keeps installed
+      binaries (elpa/, siesta/) -- SIESTA still runs after.  Flags:
+        --dry-run                show what would be deleted + sizes
+        --keep-src               keep src/ (for ``--rebuild=`` later)
+        --yes / -y               skip the confirmation prompt
 
   bash scripts/install-env.sh bootstrap [flags]
       Install every conda-only recipe + run doctor.  Flags:
