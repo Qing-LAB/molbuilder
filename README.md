@@ -899,8 +899,8 @@ non-commercial license; molbuilder cannot fetch it on the user's
 behalf.  Download it manually and either extract it inside the
 repository tree (auto-detected) or point `$X3DNA` at the install
 location.  Full install steps and the license contract live in
-[`docs/design.md`](docs/design.md) § "3DNA (canonical helix
-builder)" and in [`docs/README_install.md`](docs/README_install.md).
+[`docs/README_install.md`](docs/README_install.md) §
+"3DNA (canonical DNA helix builder)".
 
 ---
 
@@ -964,7 +964,8 @@ auth), copy the template and hand-edit:
 ```bash
 cp docs/molbuilder.json.example molbuilder.json
 $EDITOR molbuilder.json         # delete sections you don't need
-molbuilder serve --host 0.0.0.0 --port 443
+conda activate molbuilder
+python -m molbuilder serve --host 0.0.0.0 --port 443
 ```
 
 The template has inline `_comment_*` keys explaining every field
@@ -1212,7 +1213,7 @@ Running the tests:
 ```bash
 pytest tests/ -q                            # full suite (~45 min with E2E)
 pytest tests/test_envs_*.py -q              # env recipes + builds executor (fast)
-pytest tests/test_modify_e2e.py -q          # Playwright + live Flask (needs molbuilder-tests env)
+pytest tests/test_molbuilder_e2e.py -q      # Playwright + live Flask (needs molbuilder-tests env)
 ```
 
 ---
