@@ -49,9 +49,9 @@ def _detect_generate_time_conda_base() -> Optional[str]:
 
     Resolution order:
       1. ``$CONDA_PREFIX`` walked to its base (strip ``/envs/<name>``).
-      2. ``conda info --base`` (subprocess; cheap, ~50 ms).
-      3. ``mamba info --base`` (some HPCs ship only mamba, e.g. ASU
-         sc002 via ``module load mamba``).
+      2. ``mamba info --base`` (preferred -- faster, and many HPCs
+         ship only mamba, e.g. ASU sc002 via ``module load mamba``).
+      3. ``conda info --base`` (fallback for conda-only installs).
       4. None -- the wrapper's runtime probe is the only remaining
          path.
     """
@@ -63,7 +63,7 @@ def _detect_generate_time_conda_base() -> Optional[str]:
             cp_path = cp_path.parent.parent
         if (cp_path / "etc" / "profile.d" / "conda.sh").is_file():
             return str(cp_path)
-    for binary in ("conda", "mamba"):
+    for binary in ("mamba", "conda"):
         if not shutil.which(binary):
             continue
         try:
@@ -1913,20 +1913,24 @@ def render_run_wrapper(script_path: Path, *,
         f'        _log STAGE  "path 2: using baked-in conda base"\n'
         f'        _log INFO   "_conda_base=$_conda_base"\n'
         f"    fi\n"
-        f"    # Path 3: conda already on PATH -- ask it directly.\n"
-        f'    if [ -z "$_conda_base" ] && command -v conda >/dev/null 2>&1; then\n'
-        f'        _cb="$(conda info --base 2>/dev/null)" || true\n'
-        f'        if [ -n "$_cb" ] && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
-        f'            _conda_base="$_cb"\n'
-        f'            _log STAGE  "path 3: ``conda info --base`` -> $_conda_base"\n'
-        f"        fi\n"
-        f"    fi\n"
-        f"    # Path 4: mamba on PATH but not conda (e.g. mamba-only HPC).\n"
+        f"    # Path 3: mamba on PATH -- preferred over conda (faster, and\n"
+        f"    # many modern installs (mambaforge, miniforge3) ship only\n"
+        f"    # mamba on PATH after activation).  HPC sites like ASU sc002\n"
+        f"    # provide only mamba via ``module load mamba``.\n"
         f'    if [ -z "$_conda_base" ] && command -v mamba >/dev/null 2>&1; then\n'
         f'        _cb="$(mamba info --base 2>/dev/null)" || true\n'
         f'        if [ -n "$_cb" ] && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
         f'            _conda_base="$_cb"\n'
-        f'            _log STAGE  "path 4: ``mamba info --base`` -> $_conda_base"\n'
+        f'            _log STAGE  "path 3: ``mamba info --base`` -> $_conda_base"\n'
+        f"        fi\n"
+        f"    fi\n"
+        f"    # Path 4: conda on PATH -- fallback for conda-only installs\n"
+        f"    # (older miniconda, anaconda) where mamba isn't shipped.\n"
+        f'    if [ -z "$_conda_base" ] && command -v conda >/dev/null 2>&1; then\n'
+        f'        _cb="$(conda info --base 2>/dev/null)" || true\n'
+        f'        if [ -n "$_cb" ] && [ -f "$_cb/etc/profile.d/conda.sh" ]; then\n'
+        f'            _conda_base="$_cb"\n'
+        f'            _log STAGE  "path 4: ``conda info --base`` -> $_conda_base"\n'
         f"        fi\n"
         f"    fi\n"
         f"    # Path 5: try ``module load`` for clusters with module-gated\n"
@@ -1938,7 +1942,7 @@ def render_run_wrapper(script_path: Path, *,
         f"                    miniconda3 miniconda anaconda3 anaconda; do\n"
         f'            _log INFO   "trying ``module load $_mod``"\n'
         f'            if module load "$_mod" 2>/dev/null; then\n'
-        f"                for _bin in conda mamba; do\n"
+        f"                for _bin in mamba conda; do\n"
         f"                    command -v $_bin >/dev/null 2>&1 || continue\n"
         f'                    _cb="$($_bin info --base 2>/dev/null)" || true\n'
         f'                    if [ -n "$_cb" ] \\\n'
@@ -1973,8 +1977,8 @@ def render_run_wrapper(script_path: Path, *,
         f"conda / mamba installation was found.  Tried (in order):\n"
         f"  (1) CONDA_DEFAULT_ENV already == '$_target_env'\n"
         f"  (2) baked-in generator-time conda base: ${{_baked_conda_base:-<unset>}}\n"
-        f"  (3) ``conda info --base`` (conda on PATH)\n"
-        f"  (4) ``mamba info --base`` (mamba on PATH)\n"
+        f"  (3) ``mamba info --base`` (mamba on PATH -- preferred)\n"
+        f"  (4) ``conda info --base`` (conda on PATH -- fallback)\n"
         f"  (5) ``module load {{mamba,miniforge,...}}`` then re-probe\n"
         f"  (6) common locations: \\$HOME/miniforge3 etc.\n"
         f"\n"

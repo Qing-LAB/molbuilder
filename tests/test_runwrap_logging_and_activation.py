@@ -137,16 +137,40 @@ def test_paths_are_tried_in_documented_order(bound):
         "detection paths must appear in 1..6 order, got: " + str(indices)
 
 
-def test_path_3_uses_conda_info_base(bound):
+def test_mamba_is_tried_before_conda_at_every_layer(bound):
+    """Mamba is preferred over conda at every detection layer:
+      * baked-in helper tries mamba info --base before conda info --base
+      * path 3 (mamba) appears before path 4 (conda) in the wrapper text
+      * inside path 5's ``module load`` loop, the inner ``$_bin`` check
+        is ``for _bin in mamba conda``, not ``for _bin in conda mamba``
+
+    Rationale: ASU sc002 (the canonical HPC target) ships mamba via
+    ``module load mamba`` and does NOT provide conda by default.  Many
+    modern installs (mambaforge / miniforge3) similarly ship only
+    mamba on PATH after activation.  Putting mamba first across all
+    layers keeps the detection deterministic and avoids the case
+    where a stale ``conda`` shim (e.g. a wrapper script) gets picked
+    over a working mamba install."""
     text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
-    assert "conda info --base" in text
+    # Path 3 uses mamba; path 4 uses conda.
+    p3_ix = text.find("path 3: ``mamba info --base``")
+    p4_ix = text.find("path 4: ``conda info --base``")
+    assert p3_ix > 0, "path 3 must use mamba info --base"
+    assert p4_ix > 0, "path 4 must use conda info --base"
+    assert p3_ix < p4_ix, "mamba must be tried before conda"
+    # Path 5 inner loop: mamba first.
+    assert "for _bin in mamba conda" in text, (
+        "path 5's binary-probe loop must put mamba before conda"
+    )
 
 
-def test_path_4_uses_mamba_info_base_for_mamba_only_hpcs(bound):
-    """ASU sc002 and many other HPC sites ship mamba without conda
-    (or via ``module load mamba``).  Path 4 catches that case."""
+def test_both_conda_and_mamba_info_base_branches_present(bound):
+    """Sanity: both branches must exist (no regression to a
+    mamba-only or conda-only wrapper).  The wrapper has to cope
+    with sites that ship one but not the other."""
     text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
     assert "mamba info --base" in text
+    assert "conda info --base" in text
 
 
 def test_path_5_attempts_module_load_for_module_gated_clusters(bound):
@@ -178,8 +202,8 @@ def test_exhausted_paths_emit_actionable_error_message(bound):
     # to fix.
     for path_ref in ("(1) CONDA_DEFAULT_ENV",
                      "(2) baked-in",
-                     "(3) ``conda info --base``",
-                     "(4) ``mamba info --base``",
+                     "(3) ``mamba info --base``",
+                     "(4) ``conda info --base``",
                      "(5) ``module load",
                      "(6) common locations"):
         assert path_ref in text, f"missing `{path_ref}` from error help"
