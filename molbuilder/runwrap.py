@@ -66,13 +66,23 @@ def _build_locate_and_activate_block(target_env: str,
         f"skipping activation\"\n"
         f"else\n"
     )
+    # Note: the env name is pre-expanded into the heredoc here (Python
+    # side) and the delimiter is QUOTED (``<<'EOM'``).  Quoted heredocs
+    # disable bash command substitution + variable expansion, which is
+    # what we want -- otherwise ``$(mamba info --base)`` in the hint
+    # below would execute at error time, and (since the wrapper hit
+    # this error precisely because mamba isn't reachable) print a
+    # spurious ``mamba: command not found`` interleaved with the user-
+    # facing help text.  Pre-expanding ``target_env`` in Python keeps
+    # the literal env name in the message without re-introducing the
+    # bash-expansion footgun.
     activate_call = (
-        f'    _log STAGE "conda activate $_target_env"\n'
+        f'    _log STAGE "conda activate {target_env}"\n'
         f"    if ! conda activate \"$_target_env\" 2>&1; then\n"
         f"        _log ERROR \"conda activate failed\"\n"
-        f"        cat >&2 <<EOM\n"
+        f"        cat >&2 <<'EOM'\n"
         f"\n"
-        f"ERROR: ``conda activate $_target_env`` failed.  Three common causes:\n"
+        f"ERROR: ``conda activate {target_env}`` failed.  Three common causes:\n"
         f"  * conda / mamba not on PATH      -> put ``module load mamba`` (or\n"
         f"                                     the equivalent for your site)\n"
         f"                                     in script_generation.preactivate\n"
@@ -86,14 +96,17 @@ def _build_locate_and_activate_block(target_env: str,
         f"                                     OR set\n"
         f"                                       script_generation.autodetect_conda: true\n"
         f"                                     for the permissive 6-path discovery mode.\n"
-        f"  * env ``$_target_env`` missing   -> install it:\n"
-        f"                                       bash scripts/install-env.sh install $_target_env\n"
+        f"  * env ``{target_env}`` missing   -> install it:\n"
+        f"                                       bash scripts/install-env.sh install {target_env}\n"
         f"\n"
         f"Available envs visible to this shell:\n"
         f"EOM\n"
-        f"        conda env list 2>/dev/null | tail -n +3 \\\n"
-        f"            | awk '{{print \"  \" $1}}' >&2 \\\n"
-        f"            || echo \"  (conda env list unavailable)\" >&2\n"
+        f"        if command -v conda >/dev/null 2>&1; then\n"
+        f"            conda env list 2>/dev/null | tail -n +3 \\\n"
+        f"                | awk '{{print \"  \" $1}}' >&2\n"
+        f"        else\n"
+        f"            echo \"  (conda not on PATH)\" >&2\n"
+        f"        fi\n"
         f"        exit 1\n"
         f"    fi\n"
         f"fi\n"
