@@ -1874,6 +1874,77 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain,
         )
 
 
+@cli.command("runtime-info",
+             short_help="dump runtime_info as JSON sidecar from a SIESTA / PySCF output")
+@click.argument("input_path", metavar="input")
+@click.option("--out", "out_path", default=None,
+              type=click.Path(dir_okay=False),
+              help="Output JSON path.  Default: ``<input-stem>.runtime_info.json`` "
+                   "next to the input.  Use ``-`` for stdout.")
+@click.option("--pretty/--no-pretty", default=True, show_default=True,
+              help="Indent the JSON output.")
+def cmd_runtime_info(input_path, out_path, pretty):
+    """Parse a SIESTA / PySCF / .molwatch.log file and write its
+    ``runtime_info`` dict to a JSON sidecar for offline / CLI consumers.
+
+    The same dict the watcher streams to the Results tab -- includes
+    ``siesta_build`` (version, parallelisations, ELPA linkage, ...),
+    ``siesta_diag`` (algorithm, GPU device, ...), ``convergence_targets``,
+    ``frozen_atoms``, etc.  Useful for post-processing scripts that
+    want to verify what build / diagonalizer a run actually used
+    without running the full live watcher.
+
+    Examples::
+
+        molbuilder runtime-info job.out
+        # -> writes job.runtime_info.json next to job.out
+
+        molbuilder runtime-info job.out --out - | jq '.siesta_diag'
+        # -> stream to jq for inspection
+
+        molbuilder runtime-info job.out --out /tmp/x.json --no-pretty
+        # -> compact single-line JSON to a specific path
+    """
+    import json
+    from .parse import detect as detect_parser, UnknownFormatError
+
+    with _resolve_input_path(input_path) as resolved:
+        try:
+            parser = detect_parser(resolved)
+        except UnknownFormatError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(2)
+        traj = parser.parse(resolved)
+
+    # frozen_atoms is a Python set in-memory; convert to a sorted list
+    # for JSON.  Any other non-JSON-native types should fail loudly so
+    # we notice the schema drift -- don't paper over with default=str.
+    runtime_info = dict(traj.runtime_info or {})
+    if "frozen_atoms" in runtime_info and isinstance(
+            runtime_info["frozen_atoms"], (set, frozenset)):
+        runtime_info["frozen_atoms"] = sorted(runtime_info["frozen_atoms"])
+
+    payload = json.dumps(runtime_info, indent=2 if pretty else None,
+                         sort_keys=True)
+
+    if out_path == "-":
+        click.echo(payload)
+        return
+
+    if out_path is None:
+        # Default: <stem>.runtime_info.json next to the input.  For
+        # ``job.out`` this writes ``job.runtime_info.json``; for
+        # ``job.molwatch.log`` it writes ``job.molwatch.runtime_info.json``
+        # (stem strip is intentionally single-suffix -- matches
+        # transport.json + molstruct.json conventions).
+        in_path = Path(input_path)
+        out_path = str(in_path.with_suffix("")) + ".runtime_info.json"
+
+    out = Path(out_path)
+    out.write_text(payload + "\n", encoding="utf-8")
+    click.echo(f"wrote {out}", err=True)
+
+
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
 @click.option("--host",  default="127.0.0.1", show_default=True)
 @click.option("--port",  type=int, default=8000, show_default=True)
