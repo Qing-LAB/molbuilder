@@ -56,7 +56,18 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
+# Schema history:
+#   v1 (initial): metadata, energy_grid_eV, transmission, fermi_energy_eV,
+#                 conductance_G0, pdos, bias_grid_V, current_uA,
+#                 methods_text, bibliography_keys, complete.
+#   v2 (2026-06-25): added regions + frozen_atoms so the sidecar carries
+#                    the boundary conditions the calculation used --
+#                    downstream comparators / manuscript generators can
+#                    correlate results to input geometry without needing
+#                    the sibling .molstruct.json.  Reader stays back-
+#                    compat for v1 files (regions/frozen_atoms default
+#                    to empty).
 
 
 @dataclass
@@ -77,6 +88,15 @@ class TransportResults:
     methods_text: str = ""
     bibliography_keys: List[str] = field(default_factory=list)
     complete: bool = False
+    # Boundary conditions the calculation used.  Schema v2 (2026-06-25).
+    # Populated from struct.regions / struct.frozen_atoms at write time
+    # so a parsed .transport.json can answer "which atoms were the
+    # bridge / electrodes / frozen?" without needing the .molstruct.json
+    # sibling.  Empty dict / empty list = no boundary conditions
+    # declared on the input (legal for a free-electron sanity check
+    # but unusual for a real device).
+    regions: Dict[str, List[int]] = field(default_factory=dict)
+    frozen_atoms: List[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # Coerce array fields so callers don't have to fight dtype
@@ -155,22 +175,31 @@ class TransportResults:
             "methods_text": self.methods_text,
             "bibliography_keys": list(self.bibliography_keys),
             "complete": bool(self.complete),
+            "regions": {k: sorted(int(i) for i in v)
+                        for k, v in self.regions.items()},
+            "frozen_atoms": sorted(int(i) for i in self.frozen_atoms),
         }
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "TransportResults":
         """Decode a dict produced by :meth:`to_dict`.
 
-        Forward-compat: unknown ``schema_version`` raises
-        :class:`ValueError` so the caller can decide whether to
-        attempt a degraded read.  Today only ``"1"`` exists.
+        Back-compat: schema_version ``"1"`` is read transparently --
+        the v1 -> v2 delta is purely additive (regions + frozen_atoms),
+        so a v1 file decodes as a v2 record with empty boundary-
+        condition fields.  This matters because pre-2026-06-25 runs
+        wrote v1 sidecars and shouldn't break on re-read.
+
+        Forward-compat: any other ``schema_version`` raises
+        :class:`ValueError`.  A future v3+ writer is expected to add
+        explicit migration here.
         """
         version = d.get("schema_version", SCHEMA_VERSION)
-        if version != SCHEMA_VERSION:
+        if version not in (SCHEMA_VERSION, "1"):
             raise ValueError(
                 f"TransportResults: unknown schema_version "
                 f"{version!r}; this molbuilder build understands "
-                f"{SCHEMA_VERSION!r}"
+                f"{SCHEMA_VERSION!r} and back-compat reads {'1'!r}"
             )
         return cls(
             metadata=dict(d.get("metadata", {})),
@@ -191,6 +220,10 @@ class TransportResults:
             methods_text=str(d.get("methods_text", "")),
             bibliography_keys=list(d.get("bibliography_keys", [])),
             complete=bool(d.get("complete", False)),
+            # v2 fields -- back-compat: missing => empty (v1 sidecars).
+            regions={k: [int(i) for i in v]
+                     for k, v in (d.get("regions") or {}).items()},
+            frozen_atoms=[int(i) for i in (d.get("frozen_atoms") or [])],
         )
 
 

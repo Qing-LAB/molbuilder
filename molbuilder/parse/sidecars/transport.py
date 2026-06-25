@@ -72,8 +72,10 @@ def _strict_finite_float(s: str) -> float:
 # Schema versions this parser can read.  The current writer always
 # emits ``SCHEMA_VERSION`` from :mod:`molbuilder.transport.results`;
 # older versions are accepted on read so previously-saved JSONs still
-# load.
-_READABLE_SCHEMA_VERSIONS = {"1"}
+# load.  v2 (2026-06-25) added regions + frozen_atoms; v1 sidecars
+# still decode (regions/frozen default to empty in TransportResults.
+# from_dict).
+_READABLE_SCHEMA_VERSIONS = {"1", "2"}
 
 
 def _validate_schema_version(actual: Any) -> None:
