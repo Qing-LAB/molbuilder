@@ -45,8 +45,18 @@ seconds:
    path the UI shows.  What the user sees in the preflight card is
    what lands in the wrapper, deterministically.
 
-These five together produce the property the user asked for:
-**no fragmented info, one data structure, one source, one API**.
+6. **Auto-detection is opt-in.**  The 6-path conda-detection
+   fallback (`mamba info --base`, `conda info --base`, `module load`,
+   filesystem probes) stays in the wrapper code but is **silent by
+   default**.  Enable explicitly via
+   `script_generation.autodetect_conda: true` for sites that want a
+   permissive safety net.  Default off makes a typo in `preactivate`
+   fail loudly instead of being silently rescued.
+
+These bullets together produce the property the user asked for:
+**no fragmented info, one data structure, one source, one API**, with
+**fail-loud-by-default semantics** so configuration mistakes can't
+hide behind silent fallbacks.
 
 ---
 
@@ -219,6 +229,7 @@ SLURM preamble, default job-script header comments).
 |---|---|---|---|
 | `preactivate` | string (multi-line bash) | `""` | shell commands run at the top of every generated `.run.sh`, BEFORE conda detection, BEFORE the env activation step.  Each line is copied verbatim. |
 | `preactivate_format` | enum: `"shell"` | `"shell"` | reserved for future expansion (e.g. Lmod `module-load` lists); today only `shell` is supported. |
+| `autodetect_conda` | bool | `false` | controls the 6-path conda-detection fallback that runs AFTER the `preactivate` block.  Default `false` -- the wrapper trusts that `preactivate` arranged the env correctly and errors out fast if it didn't.  Set to `true` for sites where the operator wants a permissive safety net (laptop dev, unfamiliar cluster, debugging an unknown machine).  Rationale: with autodetect on by default a typo in `preactivate` (e.g. `mod load mamba` instead of `module load mamba`) succeeds silently via the fallback and masks the configuration error.  Opt-in keeps that silent-success class out of the default behavior. |
 
 **Both scopes merge by string concatenation, in the order
 server-wide → project**.  Rationale: the operator-set lines (cluster
@@ -249,17 +260,31 @@ The generator (`molbuilder.runwrap`) calls
 text via the same sentinel-comment template regardless of source.
 
 The runtime activation block (the 6-path detection added 2026-06-24)
-remains as a safety net for anything `preactivate` didn't arrange.  The
-order at runtime is:
+remains in the code as an OPT-IN safety net.  The order at runtime is:
 
 1. **Baked-in `preactivate` block** (operator + project, from this section)
 2. **`MOLBUILDER_PREACTIVATE_CMDS` env var** (runtime escape hatch,
    for rsync'd wrappers and one-off overrides)
-3. **6-path conda detection** (auto-discovery fallback)
-4. **`conda activate <target_env>`**
+3. **6-path conda detection** -- runs ONLY when
+   `script_generation.autodetect_conda` is `true`.  When `false`
+   (the default), step 3 is skipped and the wrapper proceeds straight
+   to step 4 expecting `preactivate` to have put conda on PATH already.
+4. **`conda activate <target_env>`** -- if it fails (env missing,
+   activate hook broken), the wrapper logs the failure with the list
+   of available envs + exits 1.
 
-If `preactivate` already put conda on PATH (e.g. via `module load
-mamba`), step 3 succeeds immediately on path 3 (`mamba info --base`).
+**Why opt-in.**  With autodetect on by default, a typo in
+`preactivate` (e.g. `mod load mamba` instead of `module load mamba`)
+succeeds silently via the fallback path and masks the configuration
+error -- the user assumes their `preactivate` worked when it didn't.
+Default off means a broken `preactivate` fails loudly, prompting the
+user to fix it.  Sites that genuinely want the safety net opt in
+once in their `molbuilder.json` and forget about it.
+
+If autodetect is `true` AND `preactivate` already put conda on PATH
+(e.g. via `module load mamba`), step 3 succeeds immediately on path 3
+(`mamba info --base`) -- the fallback is a no-op on the happy path,
+not extra work.
 
 ---
 
