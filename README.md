@@ -894,11 +894,111 @@ system + the repo clone.
 The 3DNA `fiber` backend produces true B / A / Z DNA — the only
 helix shape the bundled `rdkit` and `amber` backends do not
 produce.  3DNA is distributed by the Olson lab (Columbia,
-[x3dna.org](http://x3dna.org/)) under a registration plus
-non-commercial license; molbuilder cannot fetch it on the user's
-behalf.  Download it manually and either extract it inside the
-repository tree (auto-detected) or point `$X3DNA` at the install
-location.  Full install steps and the license contract live in
+[x3dna.org](http://x3dna.org/)).
+
+#### Why 3DNA must be installed separately by the user
+
+3DNA's license terms are the reason this is **not** bundled into
+any conda recipe or auto-downloaded by the bootstrap.  Per
+[x3dna.org](http://x3dna.org/)'s distribution policy:
+
+* **Registration-gated download.**  The tarballs are only
+  available after the user completes a registration form on
+  x3dna.org.  There is no public download URL molbuilder can
+  fetch programmatically.
+* **Non-commercial use only.**  3DNA's license restricts use to
+  non-commercial purposes (research, academic).  Commercial use
+  requires a separate license from the Olson lab.
+* **No redistribution.**  Anyone who receives 3DNA is the person
+  who registered for it.  We may not mirror, re-host, or include
+  the binaries in any package downstream users install.
+
+molbuilder is MIT-licensed.  Including 3DNA in any conda recipe,
+pip package, or container image we ship would constitute
+redistribution under a license molbuilder cannot honour on the
+end-user's behalf.  Each user must accept the 3DNA terms,
+register, and download the tarball themselves — molbuilder then
+detects whatever the user dropped into a known location and uses
+it locally.  No telemetry, no upload, no mirror.
+
+If you don't need DNA / RNA canonical helices in your work,
+ignore this section entirely — the rest of molbuilder
+functions identically without 3DNA, and the DNA / RNA build
+panels surface a clear "BackendUnavailable: download 3DNA from
+x3dna.org" error rather than silently falling back.
+
+#### Auto-detection (no configuration needed)
+
+**The detection chain runs automatically** — there is no
+`enable_x3dna` flag and no `molbuilder.json` entry to set.
+Whenever a DNA / RNA build is requested (via the web UI's *Build
+DNA* / *Build RNA* panels or the `molbuilder dna` / `molbuilder
+rna` CLI), the backend walks three locations in order and uses
+the first complete install it finds:
+
+1. **In-tree** — `<repo_root>/x3dna-v*/` next to the `molbuilder`
+   package directory.  This is the simplest path: drop the
+   extracted tarball at the repo root and it's auto-detected with
+   zero further configuration.  The `x3dna-v*/` directory is
+   gitignored.
+2. **`$X3DNA` env var** — the canonical 3DNA convention.  Set
+   `export X3DNA=/path/to/x3dna-v2.4` in `~/.bashrc` (or
+   `~/.bash_profile` if you'll use it from `sbatch` shells) and
+   the backend picks it up.
+3. **`fiber` on PATH** — last resort; derives the X3DNA root as
+   the parent of `bin/`.
+
+A candidate counts as "complete" only when BOTH `<root>/bin/fiber`
+(executable) AND `<root>/config/` (the per-base PDB templates
+fiber reads at runtime) are present.
+
+#### Setup steps
+
+Once you have downloaded the appropriate tarball from
+[x3dna.org](http://x3dna.org/) under their registration form:
+
+```bash
+# Option A (simplest): in-tree install -- no config required
+cd ~/molbuilder
+tar xzf /path/to/x3dna-v2.4-linux-64bit.tar.gz
+ls -d x3dna-v*/        # expected: x3dna-v2.4/
+
+# Option B: install to a shared location + export $X3DNA
+mkdir -p ~/opt && cd ~/opt
+tar xzf /path/to/x3dna-v2.4-linux-64bit.tar.gz
+echo 'export X3DNA=$HOME/opt/x3dna-v2.4' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Verify the detector finds the install (run from the host env):
+
+```bash
+conda activate molbuilder
+python -c "from molbuilder.builders.backends._threedna import _resolve; print(_resolve())"
+# Expected: _Threedna(fiber='.../bin/fiber', root='...', source='in-tree' OR 'env')
+# If it prints None, see the troubleshooting note below.
+```
+
+`source='in-tree'` means Option A fired; `source='env'` means
+Option B fired; `source='path'` means `fiber` was on `PATH`
+already (Option 3).
+
+#### When detection returns `None`
+
+The most common cause is an incomplete extract — the directory
+exists but doesn't contain BOTH `bin/fiber` AND `config/`.  Quick
+sanity check on either install path:
+
+```bash
+ls $X3DNA/bin/fiber $X3DNA/config/ | head -3       # for Option B
+ls ~/molbuilder/x3dna-v*/bin/fiber ~/molbuilder/x3dna-v*/config/ | head -3   # for Option A
+```
+
+If `config/` is missing, re-extract the tarball: `tar tzf
+x3dna-v2.4-*.tar.gz | head -5` should list both `bin/` and
+`config/` directories at the top level.
+
+Full install steps + the license contract:
 [`docs/README_install.md`](docs/README_install.md) §
 "3DNA (canonical DNA helix builder)".
 
