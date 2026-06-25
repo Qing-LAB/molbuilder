@@ -95,6 +95,62 @@ _SIESTA_MAX_OPT_RE = re.compile(
     r"^\s*redata:\s+Maximum number of optimization moves\s+=\s+(\d+)",
     re.IGNORECASE)
 
+# SIESTA header probes -- read the binary's self-report at the top of the
+# .out file (same shape as ``siesta --version``; the runwrap CLI probe
+# at molbuilder/runwrap.py:1587 uses the same field names).  Captured
+# into ``runtime_info['siesta_build']`` so the Results tab can show
+# what SIESTA actually ran with, not what the user requested.
+#
+# The header layout is stable across SIESTA 4.x and 5.x:
+#
+#     Siesta Version  : 5.4.2                  (or "Version : 5.4.2")
+#     Architecture    : x86_64-linux-gnu
+#     Compiler version: GNU Fortran ... 13.3.0
+#     PP flags        : -DMPI -DCDF ...
+#     Parallelisations: MPI                     (or "MPI, OPENMP")
+#     NetCDF support                            (presence = compiled in)
+#     NetCDF-4 support
+#     Lua support
+#     ELPA support                              (when --enable-elpa)
+#     ELSI support
+#
+_SIESTA_VERSION_RE = re.compile(
+    r"^\s*(?:Siesta\s+)?Version\s*:\s*(\S+)", re.IGNORECASE)
+_SIESTA_ARCH_RE = re.compile(
+    r"^\s*Architecture\s*:\s*(.+?)\s*$", re.IGNORECASE)
+_SIESTA_COMPILER_RE = re.compile(
+    r"^\s*Compiler version\s*:\s*(.+?)\s*$", re.IGNORECASE)
+_SIESTA_PARALLEL_RE = re.compile(
+    r"^\s*Parallelisations?\s*:\s*(.+?)\s*$", re.IGNORECASE)
+# Feature-presence lines.  SIESTA prints exactly one of these per
+# compiled-in optional component -- the BARE name on its own line.
+# (When the component is disabled the line is just absent; SIESTA
+# does NOT emit a "NetCDF support: no" form.)
+_SIESTA_FEATURE_RE = re.compile(
+    r"^\s*(NetCDF|NetCDF-4|Lua|ELPA|ELSI|PEXSI|FLOOK)\s+support\s*$",
+    re.IGNORECASE)
+
+# Diagonalizer echoes from the redata: block.  SIESTA echoes every
+# diagonalization-affecting input the binary actually consumed -- this
+# is the ground truth for which solver path the run took, NOT what the
+# user wrote in the .fdf (those can drift when SIESTA's parser
+# normalises or rejects).  Used to populate
+# ``runtime_info['siesta_diag']``.
+_SIESTA_DIAG_ALGO_RE = re.compile(
+    r"^\s*redata:\s+(?:Diagonalization\s+algorithm|Diag\.Algorithm)"
+    r"\s*=\s*(\S+)", re.IGNORECASE)
+_SIESTA_DIAG_ELPA_GPU_RE = re.compile(
+    r"^\s*redata:\s+(?:ELPA[.\s]?GPU|Diag\.ELPA\.GPU)\s*=\s*([TF]|\.?true\.?|\.?false\.?)",
+    re.IGNORECASE)
+# SIESTA's ELPA-CUDA runtime banner (printed once per run on the first
+# diagonalization).  Format observed on ELPA 2024.05 + SIESTA 5.4.2:
+#     ELPA: NVIDIA GPU detected: NVIDIA A100-SXM4-40GB (sm_80)
+# We capture device name + compute capability when present; degrade
+# gracefully if the build prints a shorter form.
+_SIESTA_GPU_DEVICE_RE = re.compile(
+    r"^\s*ELPA:\s+(?:NVIDIA\s+)?GPU\s+(?:detected|in use)\s*:\s*(.+?)"
+    r"(?:\s+\((sm_\d+)\))?\s*$", re.IGNORECASE)
+
 # Lightweight prefix match for any SIESTA SCF iteration line.  We
 # capture iscf + the rest of the line as a single string; the actual
 # float columns are parsed separately by ``_parse_scf_floats`` below.
@@ -1454,6 +1510,68 @@ class SiestaParser:
                     _set_conv_target("max_geom_iter", int(m.group(1)))
                 except ValueError:
                     pass
+                return True
+            # ---- SIESTA build-header probes ----------------------- #
+            # Populate runtime_info["siesta_build"] -- what the binary
+            # self-reports about its compiled-in capabilities.  The
+            # Results tab uses this to show "what actually ran" vs the
+            # user's requested params.
+            m = _SIESTA_VERSION_RE.match(line)
+            if m:
+                runtime_info.setdefault("siesta_build", {})["version"] = (
+                    m.group(1).strip())
+                return True
+            m = _SIESTA_ARCH_RE.match(line)
+            if m:
+                runtime_info.setdefault("siesta_build", {})["architecture"] = (
+                    m.group(1).strip())
+                return True
+            m = _SIESTA_COMPILER_RE.match(line)
+            if m:
+                runtime_info.setdefault("siesta_build", {})["compiler"] = (
+                    m.group(1).strip())
+                return True
+            m = _SIESTA_PARALLEL_RE.match(line)
+            if m:
+                # Split on comma/whitespace so "MPI, OPENMP" becomes
+                # ["MPI", "OPENMP"] and "MPI" stays ["MPI"].
+                tokens = [t.strip().upper() for t in
+                          re.split(r"[,\s]+", m.group(1)) if t.strip()]
+                runtime_info.setdefault(
+                    "siesta_build", {})["parallelisations"] = tokens
+                return True
+            m = _SIESTA_FEATURE_RE.match(line)
+            if m:
+                # Feature presence -- the line "ELPA support" by itself
+                # means ELPA was compiled in.  Lowercase the key for the
+                # dict; hyphen-to-underscore for "NetCDF-4" -> "netcdf4".
+                name = m.group(1).lower().replace("-", "")
+                if name == "netcdf4":
+                    pass  # canonical key
+                runtime_info.setdefault("siesta_build", {})[name] = True
+                return True
+            # ---- SIESTA diagonalizer probes ----------------------- #
+            # Populate runtime_info["siesta_diag"] -- which solver path
+            # the run actually took (ground truth from redata: echo,
+            # which is what SIESTA's own input parser consumed; the user's
+            # .fdf may not match if SIESTA normalised/rejected a value).
+            m = _SIESTA_DIAG_ALGO_RE.match(line)
+            if m:
+                runtime_info.setdefault("siesta_diag", {})["algorithm"] = (
+                    m.group(1).strip().upper())
+                return True
+            m = _SIESTA_DIAG_ELPA_GPU_RE.match(line)
+            if m:
+                raw = m.group(1).strip().lower().strip(".")
+                runtime_info.setdefault("siesta_diag", {})["elpa_gpu"] = (
+                    raw in ("t", "true"))
+                return True
+            m = _SIESTA_GPU_DEVICE_RE.match(line)
+            if m:
+                diag = runtime_info.setdefault("siesta_diag", {})
+                diag["gpu_device"] = m.group(1).strip()
+                if m.group(2):
+                    diag["gpu_compute_capability"] = m.group(2).strip()
                 return True
             return False
 

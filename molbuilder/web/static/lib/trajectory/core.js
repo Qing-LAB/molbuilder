@@ -2593,6 +2593,32 @@
                 : mb + " MB");
         }
         if (rt.hostname) parts.push(rt.hostname);
+        // SIESTA-specific build + diagonalizer info (populated by the
+        // parse/engines/siesta.py header probes; absent on PySCF runs
+        // and on truncated SIESTA outputs that didn't reach the
+        // redata: echo).  See tests/test_siesta_runtime_info_build.py
+        // for the schema.
+        const sb = rt.siesta_build;
+        if (sb && sb.version) {
+            let s = "SIESTA " + sb.version;
+            if (Array.isArray(sb.parallelisations) && sb.parallelisations.length) {
+                s += " · " + sb.parallelisations.join("+");
+            }
+            parts.push(s);
+        }
+        const sd = rt.siesta_diag;
+        if (sd && sd.algorithm) {
+            let s = sd.algorithm;
+            if (sd.elpa_gpu === true) s += " GPU";
+            parts.push(s);
+        }
+        if (sd && sd.gpu_device) {
+            let g = String(sd.gpu_device)
+                .replace(/^NVIDIA GeForce /, "")
+                .replace(/^NVIDIA /, "");
+            if (sd.gpu_compute_capability) g += " " + sd.gpu_compute_capability;
+            parts.push(g);
+        }
         el.textContent = parts.join(" · ");
     }
 
