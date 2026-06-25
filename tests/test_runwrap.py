@@ -373,27 +373,44 @@ def test_render_siesta_mpi_np_one_pins_blas_too():
     assert "export OMP_NUM_THREADS=" in text
 
 
-def test_render_conda_activation_hybrid_three_paths():
-    """The wrapper handles three conda-env scenarios robustly:
+def test_render_conda_activation_six_paths_and_logging():
+    """The wrapper handles six conda-env detection scenarios in order
+    of reliability so it runs as a fully standalone job script under
+    SLURM/PBS without any pre-activation by the caller:
       1. CONDA_DEFAULT_ENV == target -> skip activation (idempotent).
-      2. conda on PATH -> source profile.d/conda.sh + activate.
-      3. conda not on PATH -> clear error message + exit 1.
+      2. baked-in generator-time conda base (fast path on same machine).
+      3. ``conda info --base`` (conda already on PATH).
+      4. ``mamba info --base`` (mamba-only HPCs, e.g. ASU sc002).
+      5. ``module load <name>`` then re-probe (module-gated HPCs).
+      6. Common-location filesystem probe ($HOME/miniforge3 etc.).
+    Falling through all six is an explicit error with actionable advice.
 
-    All three paths must be present in the emitted script (the
-    bash if/elif/else picks the right one at run time).  This pins
-    the 2026-05-23 upgrade from ``conda run -n`` to the hybrid
-    pattern."""
+    Also: every wrapper invocation writes a vigorous per-run log
+    (``<basename>.runwrap-<timestamp>.log``) with the path taken,
+    activation state, and key env vars -- so a remote-scheduler
+    failure can be diagnosed without re-submitting.
+
+    Pins the 2026-06-24 upgrade from the older 3-path block to the
+    6-path scheduler-aware block + per-run log file."""
     _bind()
     text = render_run_wrapper(Path("/x/job.fdf"), mpi_np=4)
-    # Path 1: idempotency check.
-    assert 'CONDA_DEFAULT_ENV:-' in text
-    assert 'already in the target env' in text
-    # Path 2: source + activate.
-    assert "conda info --base" in text
-    assert "conda activate molbuilder-siesta" in text
+    # Per-run log file + tee.
+    assert "_runwrap_log=" in text
+    assert ".runwrap-$(date" in text
+    assert 'exec > >(tee -a "$_runwrap_log")' in text
+    # Pre-activation hook.
+    assert "MOLBUILDER_PREACTIVATE_CMDS" in text
+    # Each of the six paths must appear by its inline tag.
+    for tag in ("path 1:", "path 2:", "path 3:", "path 4:",
+                "path 5:", "path 6:"):
+        assert tag in text, f"missing `{tag}` in rendered activation block"
+    # Engine-specific knobs that must NOT regress.
+    assert "conda activate" in text
+    assert "molbuilder-siesta" in text
     assert "etc/profile.d/conda.sh" in text
-    # Path 3: clear error message.
-    assert "conda not on PATH" in text
+    # Error message + actionable advice.
+    assert "could not locate conda/mamba" in text
+    assert "MOLBUILDER_PREACTIVATE_CMDS" in text
     assert "exit 1" in text
     # Activation block runs BEFORE the launch line (otherwise the env
     # isn't ready when SIESTA launches).  Post-2026-05-28 the launch
@@ -568,19 +585,36 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     script.write_text("# fake\n")
     wrapper_path = write_run_wrapper(script)
     text = wrapper_path.read_text()
-    # Strip the conda activation block in-place (preserving line
-    # numbers downstream).  Range: from ``# --- Activate conda env``
-    # comment to the closing ``fi`` of that block.
-    conda_start = text.find("# --- Activate conda env")
-    assert conda_start >= 0, "conda activation block not found"
-    # The conda block ends with ``fi\n\n``; find that line.
-    conda_end = text.find("\nfi\n\n", conda_start)
-    assert conda_end >= 0, "conda activation block end not found"
+    # Strip the per-run logging + conda activation block in-place
+    # (preserving line numbers downstream).  Range: from the
+    # ``# --- Per-run log file`` comment that opens the logging
+    # preamble through the trailing ``which python:`` log line that
+    # closes the post-activation state dump.  Post 2026-06-24's
+    # rewrite, the activation block emits 6 detection paths + per-run
+    # log file + tee'd output, all of which we strip together so the
+    # downstream tests can exercise just the run-index resolver.
+    log_start = text.find("# --- Per-run log file")
+    assert log_start >= 0, (
+        "per-run-log + activation block not found "
+        "(post-2026-06-24 marker missing)"
+    )
+    # The block ends with the post-activate ``which python:`` log line;
+    # cut at the start of the next blank line after it.
+    end_marker = '_log INFO   "which python:'
+    end_ix = text.find(end_marker, log_start)
+    assert end_ix >= 0, "post-activate ``which python:`` log line not found"
+    # Cut at the newline AFTER the ``which python:`` line.
+    end_eol = text.find("\n", end_ix)
+    assert end_eol >= 0
+    # Plus the blank line that separates blocks.
+    cut_end = end_eol + 1
+    if text[cut_end:cut_end + 1] == "\n":
+        cut_end += 1
     text = (
-        text[:conda_start]
-        + "# Conda activation stripped for the truncated test wrapper.\n"
+        text[:log_start]
+        + "# Conda activation + logging stripped for the truncated test wrapper.\n"
         + ": # no-op\n\n"
-        + text[conda_end + len("\nfi\n\n"):]
+        + text[cut_end:]
     )
     # Cut at the line right AFTER the resolver's echo to keep that
     # line in the wrapper -- it prints "[molbuilder] run index: N ...".
