@@ -1037,46 +1037,48 @@ laptops, and multi-user lab workstations.  No manual env wrangling.
 
 ### HPC environment preflight (`script_generation`)
 
-For HPC clusters where `conda` / `mamba` is gated behind
-environment-modules (e.g. ASU's Sol cluster, where `mamba` is
-provided as a module), add a `script_generation.preactivate` block
-to `molbuilder.json`.  Lines in this block are baked into the top
-of every generated `.run.sh` wrapper — they run BEFORE conda
-detection + activation:
+The generated `.run.sh` is a self-contained shell script — no
+runtime config-file reads, no detection chains, no fallbacks.
+At generate time the generator reads `script_generation` from
+`molbuilder.json` (server-wide) and `.molbuilder.json` (project,
+optional) and bakes the result verbatim into the wrapper.  See
+[`docs/config.md`](docs/config.md) for the full contract.
+
+Two keys, both required (the generator refuses to emit a wrapper
+without `activation` set):
 
 ```json
 {
   "script_generation": {
-    "preactivate": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
-    "autodetect_conda": false
+    "preamble": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
+    "activation": "source activate"
   }
 }
 ```
 
-The two lines above solve two distinct problems documented in
-`docs/config.md` § 3.6:
+- **`preamble`** — verbatim multi-line bash run at the top of every
+  generated `.run.sh`, before the activation line.  For ASU Sol the
+  two verified lines are `module load mamba` (puts the conda
+  toolchain on PATH) and `export OMPI_MCA_orte_tmpdir_base=
+  "${TMPDIR:-/tmp}"` (routes OpenMPI's shared-memory off NFS onto
+  node-local fast storage; without it every `mpirun` emits the
+  "shared memory backing file on a network filesystem" warning and
+  takes a silent NFS perf cliff).
+- **`activation`** — one of `"source activate"` (legacy form, works
+  whenever the `activate` script is on PATH; right for Sol after
+  `module load mamba`) or `"conda activate"` (modern shell-function
+  form; requires `conda.sh` to have been sourced — right for local
+  dev installs where `conda init` was run in your shell rc).
 
-- **`module load mamba`** — makes `mamba` / `conda` available on
-  PATH so the wrapper's `conda activate <env>` call succeeds in
-  the non-interactive shell SLURM hands out to `sbatch` jobs.
-- **`export OMPI_MCA_orte_tmpdir_base="${TMPDIR:-/tmp}"`** — routes
-  OpenMPI's shared-memory backing files off the NFS-mounted env
-  prefix onto node-local fast storage.  Without this, every
-  `mpirun` under from-source SIESTA emits OpenMPI's "shared
-  memory backing file on a network filesystem" warning AND shmem
-  traffic becomes silent NFS round-trips (a real performance cliff).
-
-`autodetect_conda` is opt-in.  With `false` (the default), the
-wrapper trusts `preactivate` to have arranged the env — if it
-didn't, the bare `conda activate` call fails loud with a multi-
-line error message naming the three real causes and the fix for
-each.  Set to `true` for laptop dev or unfamiliar clusters where
-you want a permissive 6-path conda discovery fallback.
+The wrapper at runtime then does the bare minimum: open a log
+file, run the baked preamble lines, run `source activate <env>`,
+launch the engine.  No detection, no probing, no fallback.
 
 ### Per-run diagnostics log
 
-Every generated `.run.sh` writes a vigorous diagnostic log next
-to itself:
+Every generated `.run.sh` writes a log next to itself (in the cwd
+where the wrapper was invoked — SLURM's `SLURM_SUBMIT_DIR` by
+default):
 
 ```
 <basename>.runwrap-<YYYYMMDD-HHMMSS>.log
@@ -1087,13 +1089,11 @@ invocation (timestamped so multiple runs don't trample).  Captures:
 
 - run header (hostname, user, cwd, full argv)
 - scheduler context (SLURM_JOB_ID, SLURM_NTASKS,
-  SLURM_CPUS_PER_TASK, SLURM_JOB_NODELIST, SLURM_GPUS,
-  SLURM_JOB_GPUS, PBS_*) — only emitted if set, no unset-noise
-- baked-in preactivate: each command traced via `set -x` so the
-  exact line that ran (or failed) is visible
-- runtime `MOLBUILDER_PREACTIVATE_CMDS` hook execution
-- the conda detection path that succeeded (or every path tried
-  and rejected, when `autodetect_conda: true`)
+  SLURM_CPUS_PER_TASK, SLURM_JOB_NODELIST, SLURM_GPUS, PBS_*) —
+  only emitted if set, no unset-noise
+- the baked preamble running (you see each `module load` /
+  `export` as it runs because stdout/stderr is tee'd to the log)
+- the activation line (`source activate <env>`)
 - post-activation env state (CONDA_DEFAULT_ENV, CONDA_PREFIX,
   `which python`)
 - engine launch line + exit code
@@ -1102,10 +1102,10 @@ invocation (timestamped so multiple runs don't trample).  Captures:
 When an HPC job fails:
 
 ```bash
-tail -50 <project>/<basename>.runwrap-*.log | head -100
+tail -50 <basename>.runwrap-*.log
 ```
 
-…and the cause is in front of you without re-submitting.  Stdout
+— and the cause is in front of you without re-submitting.  Stdout
 AND stderr are tee'd to both the calling shell's streams AND the
 log file, so `sbatch`'s stdout capture still works alongside the
 standalone diagnostic file.

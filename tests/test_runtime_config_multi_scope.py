@@ -159,71 +159,72 @@ def test_project_dir_none_returns_server_layer_unchanged(sandbox):
 
 
 # --------------------------------------------------------------------- #
-#  get_script_generation -- preactivate concatenation                   #
+#  get_script_generation -- new v2 schema (preamble + activation)        #
 # --------------------------------------------------------------------- #
 
 
 def test_get_script_generation_defaults_when_all_empty(sandbox):
     sg = get_script_generation()
-    assert sg["preactivate"] == ""
-    assert sg["preactivate_format"] == "shell"
-    assert sg["autodetect_conda"] is False
-    assert sg["_preactivate_scopes"] == []
+    assert sg["preamble"] == ""
+    assert sg["activation"] is None
+    assert sg["preamble_chunks"] == []
 
 
-def test_preactivate_concatenates_across_scopes(sandbox):
-    """Per docs/config.md § 3.6, preactivate is the ONE field that
-    uses concatenation (server-wide first, then project) rather than
-    the generic replace rule."""
+def test_preamble_concatenates_across_scopes(sandbox):
+    """Per docs/config.md § 3 / § 4: preamble concatenates server-then-
+    project (server first, project after), joined by ``\\n``."""
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preactivate": "module load mamba"},
+        "script_generation": {
+            "preamble":   "module load mamba",
+            "activation": "source activate",
+        },
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "script_generation": {"preactivate": "export FOO=bar"},
+        "script_generation": {"preamble": "export FOO=bar"},
     }))
     sg = get_script_generation(project_dir=proj)
-    assert "module load mamba" in sg["preactivate"]
-    assert "export FOO=bar" in sg["preactivate"]
-    # Server first, project second -- order matters for the rendered
-    # wrapper (cluster setup before project-specific tweaks).
-    server_ix = sg["preactivate"].find("module load mamba")
-    project_ix = sg["preactivate"].find("export FOO=bar")
+    assert "module load mamba" in sg["preamble"]
+    assert "export FOO=bar" in sg["preamble"]
+    server_ix = sg["preamble"].find("module load mamba")
+    project_ix = sg["preamble"].find("export FOO=bar")
     assert server_ix < project_ix
-    assert sg["_preactivate_scopes"] == ["server", "project"]
+    assert [c[0] for c in sg["preamble_chunks"]] == ["server", "project"]
 
 
-def test_preactivate_format_uses_replace_rule(sandbox):
-    """Other script_generation fields use the standard "project
-    wins" replace rule, not concatenation."""
+def test_activation_uses_replace_rule_project_wins(sandbox):
+    """activation: project wins; else server-wide; else None."""
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preactivate_format": "shell"},
-    }))
-    sg = get_script_generation()
-    assert sg["preactivate_format"] == "shell"
-
-
-def test_autodetect_conda_uses_replace_rule(sandbox):
-    """Project autodetect_conda overrides server-wide."""
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"autodetect_conda": False},
+        "script_generation": {"activation": "source activate"},
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "script_generation": {"autodetect_conda": True},
+        "script_generation": {"activation": "conda activate"},
     }))
     sg = get_script_generation(project_dir=proj)
-    assert sg["autodetect_conda"] is True
+    assert sg["activation"] == "conda activate"
 
 
-def test_autodetect_conda_default_is_false(sandbox):
-    """Per docs/config.md § 0 decision 6 + § 3.6: autodetect_conda
-    is opt-in -- the default for fresh installs is False (fail loud
-    when preactivate is misconfigured rather than masking it)."""
+def test_activation_falls_back_to_server_when_project_silent(sandbox):
+    (sandbox / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {"activation": "source activate"},
+    }))
+    proj = sandbox / "myproject"
+    proj.mkdir()
+    (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
+        "script_generation": {"preamble": "export X=1"},
+    }))
+    sg = get_script_generation(project_dir=proj)
+    assert sg["activation"] == "source activate"
+
+
+def test_activation_default_is_none(sandbox):
+    """Per docs/config.md § 4: activation has NO default; the generator
+    refuses to emit a wrapper when it isn't set in either scope."""
     sg = get_script_generation()
-    assert sg["autodetect_conda"] is False
+    assert sg["activation"] is None
 
 
 # --------------------------------------------------------------------- #
@@ -231,28 +232,62 @@ def test_autodetect_conda_default_is_false(sandbox):
 # --------------------------------------------------------------------- #
 
 
-def test_invalid_preactivate_type_rejected(sandbox):
+def test_invalid_preamble_type_rejected(sandbox):
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preactivate": 123},
+        "script_generation": {"preamble": 123},
     }))
-    with pytest.raises(RuntimeConfigError, match="preactivate.*string"):
+    with pytest.raises(RuntimeConfigError, match="preamble.*string"):
         read_effective_config()
 
 
-def test_invalid_autodetect_conda_type_rejected(sandbox):
+def test_invalid_activation_value_rejected(sandbox):
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"autodetect_conda": "yes"},
+        "script_generation": {"activation": "mamba activate"},
     }))
-    with pytest.raises(RuntimeConfigError, match="autodetect_conda"):
+    with pytest.raises(RuntimeConfigError, match="activation"):
         read_effective_config()
 
 
-def test_invalid_preactivate_format_rejected(sandbox):
+def test_legacy_preactivate_key_warns_and_aliases_to_preamble(sandbox):
+    """Per docs/config.md § 7: the legacy key ``preactivate`` is
+    treated as ``preamble`` for one release with a deprecation
+    warning."""
+    import warnings
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preactivate_format": "yaml"},
+        "script_generation": {
+            "preactivate": "module load mamba",
+            "activation":  "source activate",
+        },
     }))
-    with pytest.raises(RuntimeConfigError, match="preactivate_format"):
-        read_effective_config()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sg = get_script_generation()
+    assert sg["preamble"] == "module load mamba"
+    assert any("preactivate" in str(w.message) and
+                "preamble" in str(w.message)
+                for w in caught), [str(w.message) for w in caught]
+
+
+def test_dropped_keys_warn_but_dont_fail(sandbox):
+    """Per docs/config.md § 7: ``autodetect_conda`` /
+    ``preactivate_format`` are silently ignored (with a warning)."""
+    import warnings
+    (sandbox / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {
+            "preamble":           "module load mamba",
+            "activation":         "source activate",
+            "autodetect_conda":   True,
+            "preactivate_format": "shell",
+        },
+    }))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sg = get_script_generation()
+    assert sg["preamble"] == "module load mamba"
+    assert "autodetect_conda" not in sg
+    warned = [str(w.message) for w in caught]
+    assert any("autodetect_conda" in m for m in warned)
+    assert any("preactivate_format" in m for m in warned)
 
 
 # --------------------------------------------------------------------- #
@@ -266,24 +301,24 @@ def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
     EXISTING location)."""
     (sandbox / "molbuilder.json").write_text("{}\n")
     target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preactivate": "module load mamba"},
+        "script_generation": {"preamble": "module load mamba"},
     })
     assert target == sandbox / "molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preactivate"] == "module load mamba"
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
 def test_write_server_wide_creates_xdg_when_cwd_absent(sandbox):
     """When NO server-wide file exists, the write lands at the XDG
     path (per docs/config.md § 4.2 last sentence)."""
     target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preactivate": "module load mamba"},
+        "script_generation": {"preamble": "module load mamba"},
     })
     assert target == sandbox / "home" / ".config" / "molbuilder" / "molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preactivate"] == "module load mamba"
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
 def test_write_project_scope_creates_hidden_file(sandbox):
@@ -306,21 +341,21 @@ def test_write_preserves_existing_unrelated_keys(sandbox):
         "secret_key_file": "~/.config/molbuilder/secret_key",
     }))
     write_config_scope(project_dir=None, patch={
-        "script_generation": {"preactivate": "module load mamba"},
+        "script_generation": {"preamble": "module load mamba"},
     })
     cfg = json.loads((sandbox / "molbuilder.json").read_text())
     assert cfg["envs"]["siesta"] == "molbuilder-siesta"
     assert cfg["secret_key_file"] == "~/.config/molbuilder/secret_key"
-    assert cfg["script_generation"]["preactivate"] == "module load mamba"
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
 
 
 def test_write_validates_before_writing(sandbox):
     """A patch with an invalid value is rejected -- the file is NOT
     written.  Otherwise the next read_effective_config call would fail
     even though the user thought their write succeeded."""
-    with pytest.raises(RuntimeConfigError, match="autodetect_conda"):
+    with pytest.raises(RuntimeConfigError, match="activation"):
         write_config_scope(project_dir=None, patch={
-            "script_generation": {"autodetect_conda": "yes"},
+            "script_generation": {"activation": "wrong-form"},
         })
     # File never created.
     assert not (sandbox / "molbuilder.json").exists()
@@ -332,7 +367,7 @@ def test_write_overwriting_existing_corrupt_file(sandbox):
     than refusing to write.  Documented behaviour in the docstring."""
     (sandbox / "molbuilder.json").write_text("not valid json {{{")
     target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preactivate": "module load mamba"},
+        "script_generation": {"preamble": "module load mamba"},
     })
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preactivate"] == "module load mamba"
+    assert cfg["script_generation"]["preamble"] == "module load mamba"

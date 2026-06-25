@@ -8,6 +8,7 @@ confirm chmod and the resulting filename.
 
 from __future__ import annotations
 
+import json
 import stat
 from pathlib import Path
 
@@ -17,6 +18,26 @@ from molbuilder.diagnostics import (Capabilities, EXTENSION_TO_CATEGORY,
                                       set_capabilities)
 from molbuilder.runwrap import (WrapperError, render_run_wrapper,
                                   write_run_wrapper)
+
+
+@pytest.fixture(autouse=True)
+def _autosetup_minimal_config(tmp_path, monkeypatch):
+    """Every render in this file needs at least a minimal
+    ``script_generation.activation`` so the generator's refuse-to-emit
+    guard (docs/config.md § 2) is satisfied.  Give each test a cwd
+    molbuilder.json with the canonical Sol defaults; tests that want
+    different config can rewrite the file."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {
+            "preamble":   "module load mamba",
+            "activation": "source activate",
+        }
+    }))
+    yield tmp_path
 
 
 def _bind(envs_overrides=None):
@@ -84,8 +105,7 @@ def test_render_siesta_always_uses_mpirun():
     # works in both autodetect=true and autodetect=false branches).
     # Pin both the var assignment AND the var-form activate call to
     # equate to the pre-2026-06-24 ``conda activate molbuilder-siesta``.
-    assert '_target_env="molbuilder-siesta"' in text
-    assert 'conda activate "$_target_env"' in text
+    assert 'source activate molbuilder-siesta' in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
@@ -379,62 +399,6 @@ def test_render_siesta_mpi_np_one_pins_blas_too():
     assert "export OMP_NUM_THREADS=" in text
 
 
-def test_render_conda_activation_six_paths_and_logging():
-    """The wrapper handles six conda-env detection scenarios in order
-    of reliability so it runs as a fully standalone job script under
-    SLURM/PBS without any pre-activation by the caller:
-      1. CONDA_DEFAULT_ENV == target -> skip activation (idempotent).
-      2. baked-in generator-time conda base (fast path on same machine).
-      3. ``conda info --base`` (conda already on PATH).
-      4. ``mamba info --base`` (mamba-only HPCs, e.g. ASU sc002).
-      5. ``module load <name>`` then re-probe (module-gated HPCs).
-      6. Common-location filesystem probe ($HOME/miniforge3 etc.).
-    Falling through all six is an explicit error with actionable advice.
-
-    Also: every wrapper invocation writes a vigorous per-run log
-    (``<basename>.runwrap-<timestamp>.log``) with the path taken,
-    activation state, and key env vars -- so a remote-scheduler
-    failure can be diagnosed without re-submitting.
-
-    Pins the 2026-06-24 upgrade from the older 3-path block to the
-    6-path scheduler-aware block + per-run log file.  The full
-    6-path block is opt-in via ``script_generation.autodetect_conda``
-    (docs/config.md § 3.6) -- this test exercises the autodetect=True
-    shape; the autodetect=False default shape is pinned separately."""
-    _bind()
-    text = render_run_wrapper(Path("/x/job.fdf"), mpi_np=4,
-                                autodetect_override=True)
-    # Per-run log file + tee.
-    assert "_runwrap_log=" in text
-    assert ".runwrap-$(date" in text
-    assert 'exec > >(tee -a "$_runwrap_log")' in text
-    # Pre-activation hook.
-    assert "MOLBUILDER_PREACTIVATE_CMDS" in text
-    # Each of the six paths must appear by its inline tag.
-    for tag in ("path 1:", "path 2:", "path 3:", "path 4:",
-                "path 5:", "path 6:"):
-        assert tag in text, f"missing `{tag}` in rendered activation block"
-    # Engine-specific knobs that must NOT regress.
-    assert "conda activate" in text
-    assert "molbuilder-siesta" in text
-    assert "etc/profile.d/conda.sh" in text
-    # Error message + actionable advice.
-    assert "could not locate conda/mamba" in text
-    assert "MOLBUILDER_PREACTIVATE_CMDS" in text
-    assert "exit 1" in text
-    # Activation block runs BEFORE the launch line (otherwise the env
-    # isn't ready when SIESTA launches).  Post-2026-05-28 the launch
-    # is no longer ``exec`` (so the propor diagnostic can run after);
-    # check against the ``$_launch_cmd ... > ... .out`` line.
-    activate_ix = text.find('conda activate "$_target_env"')
-    # 2026-05-30: launch line uses $_out_file (dynamic per-run name).
-    launch_ix   = text.find("$_launch_cmd job.fdf > $_out_file")
-    assert 0 <= activate_ix < launch_ix, (
-        "conda activation must precede the launch line; otherwise "
-        "the subshell SIESTA runs in wouldn't have the env."
-    )
-
-
 def test_render_siesta_max_memory_emits_ulimit():
     """max_memory_mb kwarg becomes a ``ulimit -v`` soft cap so a
     runaway SIESTA process can't OOM the host."""
@@ -468,8 +432,7 @@ def test_render_pyscf():
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.py"))
     assert "python my-job.py" in text
-    assert '_target_env="molbuilder-pySCF"' in text
-    assert 'conda activate "$_target_env"' in text
+    assert 'source activate molbuilder-pySCF' in text
     # PySCF scripts handle their own logging; no stdout redirect.
     assert "> my-job" not in text
 
@@ -499,16 +462,14 @@ def test_render_multidot_basename_preserved():
 def test_render_explicit_env_override():
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta")
-    assert '_target_env="my-custom-siesta"' in text
-    assert 'conda activate "$_target_env"' in text
+    assert 'source activate my-custom-siesta' in text
 
 
 def test_render_picks_up_config_env_override():
     """Per-machine envs overrides flow through Capabilities -> wrapper."""
     _bind({"siesta": "siesta-ng-v54"})
     text = render_run_wrapper(Path("/x/y.fdf"))
-    assert '_target_env="siesta-ng-v54"' in text
-    assert 'conda activate "$_target_env"' in text
+    assert 'source activate siesta-ng-v54' in text
 
 
 # --------------------------------------------------------------------- #
@@ -746,23 +707,49 @@ def test_continue_combines_with_np_for_siesta(tmp_path):
     assert "_out_file=myjob-run0.out" in stdout
 
 
-def test_help_flag_lists_continue_and_force(tmp_path):
-    """``-h`` lists the new --continue / --force flags."""
+def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config):
+    """``-h`` lists the new --continue / --force flags.
+
+    This test runs the wrapper as a subprocess to verify the argv
+    parser actually fires.  Replace the autouse-fixture's preamble
+    with empty + use a conda-activate form that works in the test
+    bash (we don't have ``module load`` or a real env, so the wrapper
+    would abort before reaching the arg parser otherwise)."""
+    import json as _json
+    # Override the autouse fixture's preamble to nothing + use the
+    # ``conda activate`` form (the test bash has a stub ``conda`` we
+    # can mock OR the wrapper aborts before the argv parser runs --
+    # which is the point this test was originally written to verify
+    # didn't happen).
+    (_autosetup_minimal_config / "molbuilder.json").write_text(_json.dumps({
+        "script_generation": {
+            "preamble":   "",
+            "activation": "conda activate",
+        }
+    }))
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("# fake\n")
-    # autodetect_override=True so the wrapper sources conda.sh before
-    # ``conda activate`` -- otherwise the subprocess shell only has
-    # conda as a binary on PATH and ``conda activate`` errors with
-    # "Run 'conda init' before 'conda activate'".
-    wrapper_path = write_run_wrapper(script, autodetect_override=True)
+    wrapper_path = write_run_wrapper(script)
+    # Stub conda so ``conda activate <env>`` returns 0 immediately --
+    # the wrapper proceeds to the argv parser, where ``-h`` short-
+    # circuits with the help message.
     bash = shutil.which("bash") or "/bin/bash"
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "conda"
+    stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+    stub.chmod(0o755)
+    env = {**dict(__import__("os").environ),
+            "PATH": f"{stub_dir}:" + __import__("os").environ.get("PATH", "")}
     proc = subprocess.run(
         [bash, str(wrapper_path), "-h"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, timeout=10, env=env,
     )
     # -h prints to stdout per the cat<<USAGE redirect.
-    assert "--continue" in proc.stdout
+    assert "--continue" in proc.stdout, (
+        f"stdout: {proc.stdout!r}\nstderr: {proc.stderr!r}"
+    )
     assert "--force" in proc.stdout
 
 

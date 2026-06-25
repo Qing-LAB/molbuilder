@@ -533,56 +533,93 @@ def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 
 
+# Two and only two keys -- see docs/config.md § 4.
+#
+# ``preamble``:   verbatim multi-line bash, default empty.
+# ``activation``: how to activate the env.  NO DEFAULT -- the operator
+#                 must set it explicitly in at least one scope, OR the
+#                 generator refuses to emit a wrapper (per § 2).
+_ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
 _SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
-    "preactivate":        "",
-    "preactivate_format": "shell",
-    "autodetect_conda":   False,
+    "preamble":   "",
+    "activation": None,  # explicit-only; no smuggled default
 }
 
-# Allowed values for ``preactivate_format`` (reserved for future Lmod /
-# module-list expansion; only ``"shell"`` is wired today).
-_PREACTIVATE_FORMATS = ("shell",)
+# Keys silently dropped at read time (formerly load-bearing; now no-ops
+# per the v2 rewrite of docs/config.md).  A one-time WARNING is logged
+# when seen so the operator knows to clean up their config.
+_DROPPED_KEYS = ("preactivate_format", "autodetect_conda")
+# Keys aliased to the new schema for one release (warning emitted).
+_RENAMED_KEYS = {"preactivate": "preamble"}
 
 
 def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """Validate one scope's ``script_generation`` section.
 
     Returns a normalised copy with defaults filled in.  Raises
-    :class:`RuntimeConfigError` on shape errors.
+    :class:`RuntimeConfigError` on shape errors.  Emits a warning to
+    stderr for legacy keys (renamed or dropped) but accepts the file.
     """
+    import warnings as _warnings
     if not isinstance(raw, Mapping):
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: 'script_generation' must be an "
             f"object; got {type(raw).__name__}."
         )
     out = dict(_SCRIPT_GENERATION_DEFAULTS)
-    if "preactivate" in raw:
-        v = raw["preactivate"]
+    # preamble (new name)
+    if "preamble" in raw:
+        v = raw["preamble"]
         if not isinstance(v, str):
             raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'script_generation.preactivate' "
+                f"{CONFIG_FILENAME}: 'script_generation.preamble' "
                 f"must be a string (multi-line bash); got "
                 f"{type(v).__name__}."
             )
-        out["preactivate"] = v
-    if "preactivate_format" in raw:
-        v = raw["preactivate_format"]
-        if v not in _PREACTIVATE_FORMATS:
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'script_generation."
-                f"preactivate_format' must be one of "
-                f"{_PREACTIVATE_FORMATS!r}; got {v!r}."
+        out["preamble"] = v
+    # preactivate (legacy alias) -- warn + accept
+    for legacy, current in _RENAMED_KEYS.items():
+        if legacy in raw:
+            _warnings.warn(
+                f"{CONFIG_FILENAME}: 'script_generation.{legacy}' is "
+                f"renamed to '{current}' (docs/config.md § 7).  "
+                f"Treating as '{current}' for backward compatibility; "
+                f"please update your config.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        out["preactivate_format"] = v
-    if "autodetect_conda" in raw:
-        v = raw["autodetect_conda"]
-        if not isinstance(v, bool):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'script_generation."
-                f"autodetect_conda' must be a JSON boolean "
-                f"(true / false); got {type(v).__name__}."
+            v = raw[legacy]
+            if not isinstance(v, str):
+                raise RuntimeConfigError(
+                    f"{CONFIG_FILENAME}: 'script_generation.{legacy}' "
+                    f"must be a string; got {type(v).__name__}."
+                )
+            # Honour the renamed value only if the NEW key wasn't also set.
+            if current not in raw:
+                out[current] = v
+    # Dropped keys -- warn + silently ignore (no behaviour attached).
+    for dropped in _DROPPED_KEYS:
+        if dropped in raw:
+            _warnings.warn(
+                f"{CONFIG_FILENAME}: 'script_generation.{dropped}' is "
+                f"no longer used and will be ignored "
+                f"(docs/config.md § 6/§ 7).  Please remove it.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        out["autodetect_conda"] = v
+    # activation -- no default; ``None`` is the "not set" sentinel.
+    # Only reject genuine bad values, not the sentinel (so this
+    # validator is idempotent -- the read pipeline normalises the
+    # raw file, then get_script_generation may call us again on the
+    # already-normalised dict which carries None).
+    if "activation" in raw and raw["activation"] is not None:
+        v = raw["activation"]
+        if v not in _ACTIVATION_FORMS:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'script_generation.activation' "
+                f"must be one of {_ACTIVATION_FORMS!r}; got {v!r}."
+            )
+        out["activation"] = v
     return out
 
 
@@ -683,18 +720,19 @@ def get_script_generation(
 ) -> Dict[str, Any]:
     """Return the effective ``script_generation`` section.
 
-    Per docs/config.md § 3.6, ``preactivate`` uses string
-    concatenation (server-wide first, then project) rather than the
-    generic replace-merge.  ``preactivate_format`` and
-    ``autodetect_conda`` use the standard "project replaces server"
-    semantics.
+    Per docs/config.md § 3 + § 4:
+      * ``preamble``: server-wide + project concatenated (server
+        first), joined by ``"\\n"``.
+      * ``activation``: project wins if set; else server-wide if set;
+        else None.  The generator is responsible for refusing to emit
+        a wrapper when ``activation`` is None
+        (:func:`require_activation`).
 
-    Returns a dict with all defaults filled in:
-
+    Returns:
         {
-            "preactivate":        "<server>\\n\\n<project>" (or one alone),
-            "preactivate_format": "shell",
-            "autodetect_conda":   False,
+            "preamble":    "<concatenated lines>",  # may be empty
+            "activation":  "source activate" | "conda activate" | None,
+            "_preamble_scopes": ["server", "project"] subset,
         }
     """
     server_raw = _read_server_wide().get("script_generation") or {}
@@ -703,35 +741,71 @@ def get_script_generation(
         project_raw = _read_project(Path(project_dir)).get(
             "script_generation") or {}
 
-    # Concatenate preactivate, server first.  Empty strings drop out so
-    # we don't emit blank sections in the rendered wrapper.
-    parts: List[Tuple[str, str]] = []
-    for label, src in (("server", server_raw), ("project", project_raw)):
-        text = (src.get("preactivate") or "").rstrip("\n")
-        if text:
-            parts.append((label, text))
-    # The joiner is two newlines so each block reads as a separate
-    # paragraph in the rendered wrapper; runwrap.py adds sentinel
-    # comments around each block when emitting.
-    preactivate = "\n\n".join(p[1] for p in parts)
+    # Normalise both scopes through the validator (catches type errors
+    # and applies the preactivate -> preamble alias).
+    server   = _validate_script_generation(server_raw) if server_raw else dict(
+        _SCRIPT_GENERATION_DEFAULTS)
+    project  = _validate_script_generation(project_raw) if project_raw else dict(
+        _SCRIPT_GENERATION_DEFAULTS)
 
-    # Other fields: project wins, else server, else default.
-    def _pick(key: str) -> Any:
-        if key in project_raw:
-            return project_raw[key]
-        if key in server_raw:
-            return server_raw[key]
-        return _SCRIPT_GENERATION_DEFAULTS[key]
+    # Per-scope preamble chunks (server first, then project).  Empty
+    # strings drop out so the renderer can emit per-scope sentinel
+    # blocks without conditional logic.  ``preamble_chunks`` is the
+    # API the renderer uses; ``preamble`` (joined) is the
+    # convenience field for callers that just want the merged text.
+    chunks: List[Tuple[str, str]] = []
+    for label, src in (("server", server), ("project", project)):
+        text = (src.get("preamble") or "").rstrip("\n")
+        if text:
+            chunks.append((label, text))
+    preamble = "\n".join(c[1] for c in chunks)
+
+    # activation: project wins; else server; else None (no default).
+    activation: Optional[str] = (
+        project.get("activation")
+        if project.get("activation") is not None
+        else server.get("activation")
+    )
 
     return {
-        "preactivate":        preactivate,
-        "preactivate_format": _pick("preactivate_format"),
-        "autodetect_conda":   bool(_pick("autodetect_conda")),
-        # Provenance hint for the UI: which scopes contributed lines
-        # to ``preactivate``, in order.  Empty list when both scopes
-        # are silent.  Not part of the contract for non-UI callers.
-        "_preactivate_scopes": [p[0] for p in parts],
+        "preamble":         preamble,
+        "preamble_chunks":  chunks,        # list of (scope, text)
+        "activation":       activation,
     }
+
+
+def require_activation(project_dir: Optional[Path] = None) -> str:
+    """Return the effective ``activation`` value, or raise.
+
+    Per docs/config.md § 2 (refuse-to-emit rule): the generator must
+    refuse to emit a wrapper if ``script_generation.activation`` isn't
+    set in either scope.  Use this helper at every wrapper-render
+    entry point so the error message + doc reference are consistent.
+
+    Raises :class:`RuntimeConfigError` with an operator-facing message
+    when the key is missing.
+    """
+    sg = get_script_generation(project_dir=project_dir)
+    if sg["activation"] is None:
+        raise RuntimeConfigError(
+            "script_generation.activation is not set in molbuilder.json "
+            "(or .molbuilder.json).  The wrapper generator refuses to "
+            "emit a script that can't activate its conda env.\n"
+            "\n"
+            "Fix: add to molbuilder.json (server-wide):\n"
+            '    {\n'
+            '      "script_generation": {\n'
+            '        "preamble": "module load mamba",\n'
+            '        "activation": "source activate"\n'
+            '      }\n'
+            '    }\n'
+            "\n"
+            "Use ``conda activate`` if your conda hook is sourced "
+            "(typical for local dev installs).  Use ``source "
+            "activate`` for HPC clusters where ``module load mamba`` "
+            "is the toolchain.  See docs/config.md § 4."
+        )
+    return sg["activation"]
 
 
 def write_config_scope(
@@ -811,4 +885,5 @@ __all__ = [
     "get_secret_key_file",
     "get_rate_limit",
     "get_script_generation",
+    "require_activation",
 ]
