@@ -137,7 +137,13 @@ def test_render_siesta_emits_np_arg_parser():
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=15)
     # Default fallback chain: arg -> env -> generation-time value.
-    assert '_mpi_np="${MB_NP:-$_mpi_np_default}"' in text
+    # Precedence chain: -np flag > MB_NP env > SLURM_NTASKS >
+    # PBS_NP > generation-time default.  Honoring SLURM_NTASKS means
+    # ``sbatch -n 16 JOB.run.sh`` actually gets 16 ranks instead of
+    # the baked-in default (which would otherwise silently downgrade
+    # the user's resource reservation).
+    assert ('_mpi_np="${MB_NP:-${SLURM_NTASKS:-${PBS_NP:-$_mpi_np_default}}}"'
+            in text)
     # Arg parser handles -np / --np / -h / unknown.
     assert "-np|--np)" in text
     assert "-h|--help)" in text
