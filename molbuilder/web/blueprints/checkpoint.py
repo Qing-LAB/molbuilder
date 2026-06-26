@@ -211,17 +211,8 @@ def api_checkpoint_diff():
         if not repo.initialized:
             return _protocol_error(
                 "not a checkpoint repo; run init first", code=409)
-        # Pre-resolve both refs so an unknown ref maps to a clean
-        # HTTP 404 rather than a 500 from the git diff invocation.
-        repo._resolve_ref(ref_a)
-        repo._resolve_ref(ref_b)
-        from molbuilder.checkpoint import _run_git
-        argv = ["diff", f"{ref_a}..{ref_b}", "--"] + pathspec
-        result = _run_git(argv, cwd=str(path))
-        return jsonify({
-            "ok":   True,
-            "diff": result.stdout,
-        })
+        diff_text = repo.diff(ref_a, ref_b, pathspec=pathspec)
+        return jsonify({"ok": True, "diff": diff_text})
     except NoSuchRefError as exc:
         return _protocol_error(str(exc), code=404)
     except CheckpointError as exc:

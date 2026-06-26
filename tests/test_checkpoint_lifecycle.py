@@ -214,6 +214,54 @@ def test_list_decorates_with_tags(tmp_path):
     assert any("baseline" in r for r in head.refs)
 
 
+def test_resolve_ref_public_method(tmp_path):
+    """Public ``Repo.resolve_ref`` (added 2026-06-26 to keep blueprints
+    out of underscore-prefixed methods).  Returns the commit SHA on
+    success, raises NoSuchRefError on a bogus ref."""
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("baseline", message="first")
+    sha = repo.resolve_ref("baseline")
+    assert len(sha) == 40
+    # Annotated-tag peel: the public method returns the commit SHA,
+    # not the tag-object SHA.
+    assert sha == repo._head_sha()
+    with pytest.raises(NoSuchRefError):
+        repo.resolve_ref("nope")
+
+
+def test_diff_public_method_with_pathspec(tmp_path):
+    """Public ``Repo.diff`` returns unified-diff text; both refs are
+    validated before invoking git diff, so an unknown ref surfaces as
+    NoSuchRefError rather than a CheckpointError wrapping git's
+    error string."""
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("baseline", message="first")
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel v2\n")
+    repo.checkpoint(message="iter 2")
+    out = repo.diff("baseline", "HEAD", pathspec=["*.fdf"])
+    assert "SystemLabel test" in out
+    assert "SystemLabel v2" in out
+    # Unknown ref -> NoSuchRefError, not a generic CheckpointError.
+    with pytest.raises(NoSuchRefError):
+        repo.diff("baseline", "ghost")
+
+
+def test_diff_public_method_without_pathspec(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("baseline", message="first")
+    (tmp_path / "siesta-test.fdf").write_text("changed\n")
+    repo.checkpoint(message="iter 2")
+    # No pathspec -- whole repo.
+    out = repo.diff("baseline", "HEAD")
+    assert "SystemLabel test" in out
+
+
 def test_default_gitignore_excludes_big_binaries(tmp_path):
     _seed_working_dir(tmp_path)
     repo = Repo(str(tmp_path))

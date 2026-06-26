@@ -783,6 +783,32 @@ class Repo:
             archive_total_bytes=total,
         )
 
+    # -- public ref + diff surface (callers shouldn't touch _-prefixed) #
+
+    def resolve_ref(self, ref: str) -> str:
+        """Resolve ``ref`` to a commit SHA.  Raises
+        :class:`NoSuchRefError` when the ref doesn't exist.  Use this
+        from blueprints / external consumers instead of reaching at
+        ``_resolve_ref``."""
+        self._require_init()
+        return self._resolve_ref(ref)
+
+    def diff(self, ref_a: str, ref_b: str,
+             pathspec: Optional[List[str]] = None) -> str:
+        """Unified-diff text between two refs, optionally restricted to
+        ``pathspec`` (a list of git pathspec globs).  Both refs are
+        validated up-front so an unknown ref surfaces as
+        :class:`NoSuchRefError` rather than a generic git-failure
+        string."""
+        self._require_init()
+        self._resolve_ref(ref_a)
+        self._resolve_ref(ref_b)
+        argv = ["diff", f"{ref_a}..{ref_b}"]
+        if pathspec:
+            argv.append("--")
+            argv.extend(pathspec)
+        return _run_git(argv, cwd=self.path).stdout
+
     def list_checkpoints(self, limit: int = 50) -> List[Checkpoint]:
         self._require_init()
         # Format: SHA|short|author_iso|subject|refnames (split by |||)
