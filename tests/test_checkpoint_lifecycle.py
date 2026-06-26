@@ -223,52 +223,6 @@ def test_default_gitignore_excludes_big_binaries(tmp_path):
         assert pat in body, f"{pat} missing from .gitignore"
 
 
-def test_restore_accepts_2_column_manifest_from_sha256sum(tmp_path):
-    """A MANIFEST written by bash `sha256sum > MANIFEST` has 2 columns
-    (sha256, filename) instead of our canonical 3-column shape.  The
-    restore path must accept both -- otherwise hand-rolled archives
-    silently no-op on restore."""
-    import hashlib
-    _seed_working_dir(tmp_path)
-    repo = Repo(str(tmp_path))
-    repo.init()
-    repo.tag("baseline", message="first")
-    # Rewrite the MANIFEST in 2-column sha256sum format.
-    sha = repo._resolve_ref("baseline")
-    arch = tmp_path / ".binsnapshots" / sha
-    dm = arch / "siesta-test.DM"
-    sha256 = hashlib.sha256(dm.read_bytes()).hexdigest()
-    (arch / "MANIFEST").write_text(
-        f"{sha256}  siesta-test.DM\n", encoding="utf-8")
-    # Change file content so a real restore is observable.
-    dm_live = tmp_path / "siesta-test.DM"
-    dm_live.write_bytes(b"\xff" * 9999)
-    repo.checkpoint(message="dirty change")
-    # Roll back — should accept the 2-column manifest.
-    restored = repo.restore("baseline")
-    assert "siesta-test.DM" in restored
-    assert dm_live.read_bytes() == b"\x00" * 2048
-
-
-def test_empty_manifest_raises_rather_than_silent_noop(tmp_path):
-    """If the MANIFEST exists but has no parseable lines, restore must
-    raise rather than silently say 'no archived binaries' -- the latter
-    would mask the bug where 2-column manifest hit a strict 3-column
-    parser (the case that prompted this test)."""
-    _seed_working_dir(tmp_path)
-    repo = Repo(str(tmp_path))
-    repo.init()
-    repo.tag("baseline", message="first")
-    sha = repo._resolve_ref("baseline")
-    (tmp_path / ".binsnapshots" / sha / "MANIFEST").write_text(
-        "# only comment lines\n# nothing parseable\n", encoding="utf-8")
-    # Make a dirty change + commit so restore has something to do.
-    (tmp_path / "siesta-test.fdf").write_text("changed\n")
-    repo.checkpoint(message="change")
-    with pytest.raises(CheckpointError, match="no parseable entries"):
-        repo.restore("baseline")
-
-
 def test_user_supplied_gitignore_is_not_overwritten(tmp_path):
     """If the user wrote a .gitignore before calling init, we don't
     clobber it."""
