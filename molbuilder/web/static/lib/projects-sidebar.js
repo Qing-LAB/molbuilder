@@ -28,6 +28,7 @@ import {
 } from "./projects/list.js";
 import { initForms } from "./projects/mutation-bar.js";
 import { initPreview } from "./projects/preview.js";
+import { initCheckpointPanel } from "./projects/checkpoint.js";
 
 window.molbuilder = window.molbuilder || {};
 window.molbuilder.projects = projects;
@@ -338,6 +339,9 @@ async function init() {
   initList();
   initForms();
   initPreview();
+  // Run-history panel (PR-B Phase 2/3).  Idempotent; no-ops on pages
+  // that don't include the projects sidebar template.
+  initCheckpointPanel();
 
   // Navigate to the previously-visited dir if it's still inside
   // projects/, else start at the root.

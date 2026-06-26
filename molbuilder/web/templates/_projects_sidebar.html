@@ -179,7 +179,9 @@
       </button>
     </div>
 
-    <!-- Action bar: shown when initialised.  Three primary actions. -->
+    <!-- Action bar: shown when initialised.  Primary actions + view
+         toggle (List / Graph -- defaults to List in Phase 2, Graph
+         becomes available once @gitgraph/js loads in Phase 3). -->
     <div class="ps-checkpoint-actions" id="ps-checkpoint-actions" hidden>
       <button type="button" id="ps-checkpoint-commit-btn"
               class="ps-checkpoint-action"
@@ -196,6 +198,22 @@
               title="Refresh the list">
         ↻
       </button>
+      <span class="ps-checkpoint-view-toggle"
+            role="tablist"
+            aria-label="Run history view">
+        <button type="button" id="ps-checkpoint-view-list"
+                class="ps-checkpoint-view-btn is-active"
+                data-view="list"
+                role="tab"
+                aria-selected="true"
+                title="Show checkpoint list">List</button>
+        <button type="button" id="ps-checkpoint-view-graph"
+                class="ps-checkpoint-view-btn"
+                data-view="graph"
+                role="tab"
+                aria-selected="false"
+                title="Show commit graph">Graph</button>
+      </span>
     </div>
 
     <!-- List view: scrollable column of checkpoints, most recent
@@ -203,6 +221,13 @@
          message, refs (tag/branch chips), and archive size. -->
     <ul class="ps-checkpoint-list" id="ps-checkpoint-list" hidden>
     </ul>
+
+    <!-- Graph view: SVG commit DAG rendered by @gitgraph/js.
+         checkpoint.js mounts the renderer here lazily when the user
+         toggles to Graph (see lib/projects/checkpoint.js
+         _renderGraph). -->
+    <div class="ps-checkpoint-graph" id="ps-checkpoint-graph" hidden>
+    </div>
 
     <!-- Inline error/advisory surface.  Renders bucket-B advisories
          from the routes (dirty tree, legacy MANIFEST, etc.) so the

@@ -37,7 +37,17 @@ const _state = {
 
 // DOM handles, populated by _attach().
 let elPanel, elSensor, elCollapse, elEmpty, elInitBtn, elActions,
-    elCommitBtn, elTagBtn, elRefreshBtn, elList, elAdvisory;
+    elCommitBtn, elTagBtn, elRefreshBtn, elList, elGraph, elAdvisory,
+    elViewListBtn, elViewGraphBtn;
+
+// Current view mode: "list" (default) or "graph".  Persisted in
+// sessionStorage so a refresh keeps the user's preference.
+let _viewMode = "list";
+
+// Lazy-loaded @gitgraph/js global.  Loaded on first switch to graph
+// view -- avoids a 96 KB blocking download for users who never use
+// the graph.
+let _gitgraphPromise = null;
 
 /* ---------- DOM bootstrap ---------- */
 
@@ -51,10 +61,20 @@ function _attach() {
     elCommitBtn  = document.getElementById("ps-checkpoint-commit-btn");
     elTagBtn     = document.getElementById("ps-checkpoint-tag-btn");
     elRefreshBtn = document.getElementById("ps-checkpoint-refresh-btn");
-    elList       = document.getElementById("ps-checkpoint-list");
-    elAdvisory   = document.getElementById("ps-checkpoint-advisory");
+    elList         = document.getElementById("ps-checkpoint-list");
+    elGraph        = document.getElementById("ps-checkpoint-graph");
+    elAdvisory     = document.getElementById("ps-checkpoint-advisory");
+    elViewListBtn  = document.getElementById("ps-checkpoint-view-list");
+    elViewGraphBtn = document.getElementById("ps-checkpoint-view-graph");
 
     if (!elPanel) return false;   // template not loaded; skip wiring
+
+    // Restore view-mode preference from sessionStorage.
+    try {
+        const saved = sessionStorage.getItem("ws.ui.checkpoint.view");
+        if (saved === "graph" || saved === "list") _viewMode = saved;
+    } catch (_) { /* sessionStorage disabled — fall through to default */ }
+    _updateViewButtons();
 
     // Restore collapse state from sessionStorage (per workspace-
     // contract.md § 4.1; ws.ui.checkpoint.collapsed is the key).
@@ -75,6 +95,10 @@ function _attach() {
     elRefreshBtn.addEventListener("click", _refresh);
     elSensor.addEventListener("click", _refresh);
     elList.addEventListener("click", _onListClick);
+    if (elViewListBtn)  elViewListBtn.addEventListener("click",
+        () => _setViewMode("list"));
+    if (elViewGraphBtn) elViewGraphBtn.addEventListener("click",
+        () => _setViewMode("graph"));
 
     // Suspend polling when the document is hidden -- the user isn't
     // looking; saves a request per cadence interval per tab.
@@ -122,6 +146,7 @@ function _renderCollapsedHeader() {
     elEmpty.hidden    = true;
     elActions.hidden  = true;
     elList.hidden     = true;
+    if (elGraph) elGraph.hidden = true;
     elAdvisory.hidden = true;
 }
 
@@ -133,6 +158,7 @@ function _renderState(repoState) {
         elEmpty.hidden    = false;
         elActions.hidden  = true;
         elList.hidden     = true;
+        if (elGraph) elGraph.hidden = true;
         return;
     }
     if (repoState.dirty) {
@@ -155,11 +181,7 @@ function _renderError(message) {
 
 function _renderCheckpoints(checkpoints) {
     _state.checkpoints = checkpoints || [];
-    elList.innerHTML = "";
-    elList.hidden    = false;
-    for (const cp of _state.checkpoints) {
-        elList.appendChild(_buildRow(cp));
-    }
+    _renderActiveView(_state.checkpoints);
 }
 
 function _buildRow(cp) {
@@ -222,6 +244,194 @@ function _buildRow(cp) {
     return li;
 }
 
+/* ---------- View mode swap (List <-> Graph) ---------- */
+
+function _updateViewButtons() {
+    if (!elViewListBtn || !elViewGraphBtn) return;
+    elViewListBtn.classList.toggle("is-active",  _viewMode === "list");
+    elViewGraphBtn.classList.toggle("is-active", _viewMode === "graph");
+    elViewListBtn.setAttribute("aria-selected",
+        _viewMode === "list" ? "true" : "false");
+    elViewGraphBtn.setAttribute("aria-selected",
+        _viewMode === "graph" ? "true" : "false");
+}
+
+function _setViewMode(mode) {
+    if (mode !== "list" && mode !== "graph") return;
+    _viewMode = mode;
+    try { sessionStorage.setItem("ws.ui.checkpoint.view", mode); }
+    catch (_) { /* sessionStorage disabled */ }
+    _updateViewButtons();
+    _renderActiveView(_state.checkpoints);
+}
+
+function _renderActiveView(checkpoints) {
+    // Hide both, then show the active one (single source of layout
+    // truth -- no race between toggles).
+    if (elList)  elList.hidden  = true;
+    if (elGraph) elGraph.hidden = true;
+    if (_viewMode === "graph") {
+        if (elGraph) elGraph.hidden = false;
+        _renderGraph(checkpoints);
+    } else {
+        if (elList)  elList.hidden  = false;
+        _renderListRows(checkpoints);
+    }
+}
+
+/* ---------- Lazy @gitgraph/js loader ---------- */
+
+function _loadGitGraph() {
+    // Cached promise — one network fetch + one global mount per page.
+    if (_gitgraphPromise) return _gitgraphPromise;
+    _gitgraphPromise = new Promise((resolve, reject) => {
+        if (window.GitgraphJS) { resolve(window.GitgraphJS); return; }
+        const tag = document.createElement("script");
+        tag.src   = "/static/vendor/gitgraph/gitgraph.umd.js";
+        tag.async = true;
+        tag.onload  = () => {
+            if (window.GitgraphJS) {
+                resolve(window.GitgraphJS);
+            } else {
+                reject(new Error(
+                    "gitgraph.umd.js loaded but window.GitgraphJS is "
+                    + "missing -- vendor file may be stale or wrong."));
+            }
+        };
+        tag.onerror = () =>
+            reject(new Error("failed to load gitgraph.umd.js"));
+        document.head.appendChild(tag);
+    });
+    return _gitgraphPromise;
+}
+
+/* ---------- Graph view rendering ---------- */
+
+async function _renderGraph(checkpoints) {
+    if (!elGraph) return;
+    elGraph.innerHTML = "";
+    if (!checkpoints || !checkpoints.length) {
+        const empty = document.createElement("p");
+        empty.className   = "ps-checkpoint-graph-empty";
+        empty.textContent = "(no checkpoints to graph)";
+        elGraph.appendChild(empty);
+        return;
+    }
+    let GitgraphJS;
+    try {
+        GitgraphJS = await _loadGitGraph();
+    } catch (e) {
+        _showAdvisory("Graph viewer unavailable: " +
+            String(e?.message || e));
+        return;
+    }
+
+    // The @gitgraph/js renderer needs a tag <svg> in our container.
+    const svg = document.createElementNS(
+        "http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", "100%");
+    elGraph.appendChild(svg);
+
+    // Tie the graph palette to the sidebar's CSS variables so a
+    // future palette change in projects-sidebar.css propagates
+    // without touching this file.
+    const cssVar = (name, fallback) => {
+        const v = getComputedStyle(document.documentElement)
+                      .getPropertyValue(name).trim();
+        return v || fallback;
+    };
+    const template = GitgraphJS.templateExtend(
+        GitgraphJS.TemplateName.Metro, {
+        colors:  [
+            cssVar("--ps-accent",   "#4a7aa7"),
+            cssVar("--ps-accent-2", "#7a5b2d"),
+            cssVar("--ps-accent-3", "#2d4a5a"),
+            "#2d4a2d",
+            "#4a2d4a",
+        ],
+        branch:  { spacing: 24, lineWidth: 2 },
+        commit:  {
+            spacing: 36,
+            dot: { size: 6 },
+            message: {
+                color:    cssVar("--ps-fg", "#dcdcdc"),
+                font:     "11px system-ui, sans-serif",
+                displayAuthor: false,
+                displayHash:   true,
+            },
+        },
+    });
+
+    const gitgraph = GitgraphJS.createGitgraph(svg, {
+        template,
+        orientation: "vertical",
+    });
+
+    // @gitgraph/js wants commits in chronological order (oldest first).
+    // Our /api/checkpoint/list returns newest-first, so reverse.
+    const ordered = checkpoints.slice().reverse();
+
+    // Build per-branch hashes-known map so we can wire merges if any.
+    // PR-A's CLI is single-branch by default; this is a no-op for
+    // linear histories, but ready for the day branches appear.
+    const branches = new Map();
+    let mainBranch = null;
+    for (const cp of ordered) {
+        // Determine the branch this commit lives on (best-effort
+        // from ref decorations).  Default to "main".
+        let branchName = "main";
+        for (const r of (cp.refs || [])) {
+            const m = r.trim().match(/^([^:>\s]+)$/);
+            if (m && m[1] !== "HEAD" && m[1] !== "tag") {
+                branchName = m[1];
+                break;
+            }
+        }
+        if (!branches.has(branchName)) {
+            const b = gitgraph.branch(branchName);
+            branches.set(branchName, b);
+            if (!mainBranch) mainBranch = b;
+        }
+        const b = branches.get(branchName);
+        b.commit({
+            subject: cp.summary || cp.short_sha,
+            hash:    cp.short_sha,
+            onClick: () => _showCommitDetail(cp),
+        });
+        // Decorate with tag chips inline.
+        for (const r of (cp.refs || [])) {
+            const t = r.trim();
+            if (t.startsWith("tag:")) {
+                b.tag(t.slice(4).trim());
+            }
+        }
+    }
+}
+
+function _showCommitDetail(cp) {
+    // Click on a graph node = inline advisory line with the full
+    // commit info.  Keeps the panel chrome minimal (no popover
+    // library); user can then act via the list view or sidebar
+    // context menu in future Phase 4 work.
+    const refs = (cp.refs || []).join(", ");
+    const arch = cp.has_archive
+        ? `${_fmtBytes(cp.archive_bytes)} archived`
+        : "no binaries archived";
+    _showAdvisory(
+        `${cp.short_sha} — ${cp.summary || "(no message)"} ` +
+        `[${refs || "no refs"}] · ${arch}`);
+}
+
+/* ---------- List view extraction (so View toggle can call it) ---------- */
+
+function _renderListRows(checkpoints) {
+    if (!elList) return;
+    elList.innerHTML = "";
+    for (const cp of (checkpoints || [])) {
+        elList.appendChild(_buildRow(cp));
+    }
+}
+
 function _fmtBytes(n) {
     if (n == null) return "";
     if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
@@ -265,6 +475,7 @@ async function _refresh() {
             }
         } else {
             elList.hidden = true;
+            if (elGraph) elGraph.hidden = true;
         }
     } catch (e) {
         _renderError(String(e && e.message || e));
