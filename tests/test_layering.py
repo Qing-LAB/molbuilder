@@ -60,6 +60,9 @@ _L1_MODULES = {
     "script_contract",   # generated-script format I/O (emit + extract); pure
                          # functions, no domain deps -- siesta/pyscf/runwrap/
                          # bench all use it.  Same layering reason as runtime_info.
+    "checkpoint",        # run-dir checkpoint/restart helpers; L1 because the
+                         # L1 ``config`` dataclasses (siesta/pyscf) import it,
+                         # so it must sit at or below L1 (no domain deps).
 }
 
 _L2_MODULES = {
@@ -83,6 +86,9 @@ _L2_MODULES = {
     "runwrap",           # bash-wrapper emitter
     "monitor",           # background job-monitor + notifier hooks (PoC,
                          # § 11.0b); stdlib-only, parses run artifacts
+    "auth_setup",        # interactive auth/secret bootstrap wizard; L2 --
+                         # imported only by runtime_config (L2) + cli (L3),
+                         # imports no molbuilder domain modules
     "data",              # bundled JSON tables
     "script_bundle",     # workflow-handoff RunBundle: consumes script_contract +
                          # Structure to fuse run-dir artifacts into a portable
