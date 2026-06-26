@@ -117,13 +117,40 @@ parentheses.  All items are file:line-traceable in the source reports.
 | 1 | `TransportResults.from_dict` silently accepts v1 sidecars as v2 (empty regions / frozen_atoms) | BLOCKER | T1 BLOCKER 1 | P2 |
 | 2 | Checkpoint blueprint advisory envelope diverges from `web-api.md` § 1.1 (`errors_only:True` + `errors:[]`) | BLOCKER | T1 BLOCKER 2 | P1 |
 | 3 | Missing JS tests `test_checkpoint_sensor_js.py` + `test_checkpoint_graph_e2e.py` (named in design doc § 12) | BLOCKER | T4 BLOCKER 1 | P1 |
-| 4 | "Warn on unknown label" gate missing for SIESTA + Transport engines (PySCF only) | BLOCKER | T4 BLOCKER 2 | P2 |
+| 4 | ~~"Warn on unknown label" gate missing for SIESTA + Transport engines (PySCF only)~~ — **VERIFIED FALSE (2026-06-26)**, see note below | ~~BLOCKER~~ | T4 BLOCKER 2 | P2 |
 | 5 | SIESTA build/diag probes accept any regex match without validating the captured token | BLOCKER | T1 BLOCKER 3 | P2 |
 | 6 | 7 undefined CSS tokens silently fall back to literals | IMPORTANT | T3 IMPORTANT 1 | P3 |
 | 7 | Run-history panel (today's commit) introduces 11 untokenised state colours | IMPORTANT | T3 IMPORTANT 2 | P1+P3 |
 | 8 | `ws.ui.checkpoint.collapsed` read but never written; `ws.ui.checkpoint.view` uses raw `sessionStorage` | IMPORTANT | T1 IMPORTANT 2-3 | P1 |
 | 9 | `Repo.state()` walks `.binsnapshots/` recursively at every 5 s sidebar poll | IMPORTANT | T1 IMPORTANT 4 | P1 |
 | 10 | 113 sites use bare `assert r.status_code == 200` without `body["ok"]` check | IMPORTANT | T4 IMPORTANT 2 | P4 |
+
+### Finding #4 — verified FALSE on impl-state check (2026-06-26)
+
+T4 BLOCKER 2 claimed the "warn on unknown label" gate is implemented
+"only for the PySCF spectra engine."  Tracing the actual code refuted
+this:
+
+* **Pattern B (warn on a label-type the engine doesn't consume —
+  regions):** implemented AND tested for the SIESTA build path
+  (`build.py:716` → `_shared.regions_pattern_b_notice`; test
+  `test_web.py::test_fdf_surfaces_info_when_structure_carries_regions`),
+  the PySCF build path (`build.py:789`; `test_web.py::test_pyscf_...`),
+  and spectra (`spectra/test_blueprint.py`).  In-body label path also
+  gated (`test_in_body_labels_xhr.py:210`).
+* **Frozen-atom index not in range:** validated for both build paths in
+  the shared carrier `apply_labels_to_struct` (`_shared.py`).
+* **Transport** deliberately omits Pattern B because it *is* the region
+  consumer — documented at `transport.py:134` (post-review 2026-06-10).
+
+So the gate is NOT PySCF-only; the BLOCKER framing does not survive
+verification (consistent with the audit-claim-verification pattern in
+prior rounds).  The **one** genuine residue — TranSIESTA preflight
+warned on *missing* expected regions but silently ignored *extra/unknown*
+region labels — was a NIT, now fixed: `TransiestaEngine.preflight`
+emits a warn naming any region label outside the canonical 2-terminal
+set (`transiesta.py`; test
+`test_transport_transiesta.py::test_preflight_warns_on_unknown_region_label`).
 
 ---
 

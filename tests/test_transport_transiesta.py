@@ -221,6 +221,22 @@ def test_preflight_clean_structure_no_errors(labeled_device, default_cfg):
     assert errs == []
 
 
+def test_preflight_warns_on_unknown_region_label(labeled_device, default_cfg):
+    """No silent absorption (sidecar-contract.md § 6): a region label
+    TranSIESTA does NOT consume (anything beyond L-electrode /
+    R-electrode / bridge) is ignored for the calculation, so preflight
+    must WARN rather than drop it silently -- and the unknown label
+    must not block generation."""
+    labeled_device.regions["scatterer-core"] = [3]
+    issues = get_engine("transiesta").preflight(labeled_device, default_cfg)
+    warns = [i for i in issues if i.severity == "warn"]
+    assert any("scatterer-core" in w.message for w in warns), (
+        "unknown region label must surface a warn-severity notice"
+    )
+    errs = [i for i in issues if i.severity == "error"]
+    assert errs == [], "an unknown region label must not block generation"
+
+
 def test_preflight_missing_regions_blocks_generation(default_cfg):
     """No region labels at all → error.  The user must label the
     structure on the Molbuilder tab first."""

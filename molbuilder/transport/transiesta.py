@@ -627,6 +627,28 @@ class TransiestaEngine:
         issues: List[Issue] = []
         regions = struct.regions or {}
 
+        # No silent absorption (sidecar-contract.md § 6): TranSIESTA
+        # consumes only the canonical 2-terminal region labels.  A
+        # structure carrying any OTHER region label has it silently
+        # ignored unless we say so -- warn (don't drop quietly) so the
+        # user knows that label plays no part in this calculation.
+        # Emitted before the missing-region early return so it surfaces
+        # even on an otherwise-incomplete region set.
+        unknown_regions = [r for r in regions
+                           if r not in EXPECTED_REGIONS_2T]
+        if unknown_regions:
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    f"TranSIESTA preflight: structure carries region "
+                    f"label(s) {sorted(unknown_regions)} that TranSIESTA "
+                    f"does not consume (it uses only "
+                    f"{list(EXPECTED_REGIONS_2T)}).  They are ignored "
+                    f"for this calculation."
+                ),
+                where="struct.regions",
+            ))
+
         # Required region labels for a 2-terminal calculation.
         missing = [r for r in EXPECTED_REGIONS_2T if r not in regions]
         if missing:
