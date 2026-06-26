@@ -26,7 +26,18 @@
       "source": "siesta_input_echo"
     },
     "initial_etot": -12878.348992,
-    "n_mpi_processes": 8
+    "n_mpi_processes": 8,
+    "siesta_build": {
+      "architecture": "x86_64",
+      "compiler": "GNU-14.3.0",
+      "lua": true,
+      "netcdf": true,
+      "netcdf4": true,
+      "parallelisations": [
+        "MPI"
+      ],
+      "version": "5.4.2"
+    }
   },
   "source_format": "siesta"
 }

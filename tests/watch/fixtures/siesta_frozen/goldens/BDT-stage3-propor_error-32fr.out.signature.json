@@ -336,7 +336,16 @@
       "source": "siesta_input_echo"
     },
     "initial_etot": -1725.68434,
-    "n_mpi_processes": 2
+    "n_mpi_processes": 2,
+    "siesta_build": {
+      "architecture": "x86_64",
+      "compiler": "GNU-13.3.0",
+      "lua": true,
+      "parallelisations": [
+        "MPI"
+      ],
+      "version": "5.4.2-11-g4e9a46060"
+    }
   },
   "source_format": "siesta"
 }
