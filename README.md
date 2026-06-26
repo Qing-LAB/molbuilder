@@ -211,6 +211,33 @@ Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
 comparison is pending the slab optimisation + electrode `.TSHS`
 generation step.
 
+### Snapshot a run before risky changes
+
+`molbuilder snapshot` turns each working directory into its own tiny
+git repository so you can roll back to any prior state after a
+parameter sweep, basis swap, or stage refinement gone wrong.
+
+```
+cd projects/BDT/optimization/TJ-BDT-Au111
+
+# One-time setup of the working dir as a checkpoint repo:
+molbuilder snapshot init
+
+# Save the current state before changing anything:
+molbuilder snapshot checkpoint -m "stage 3 converged"
+molbuilder snapshot tag stage3-converged -m "ready for transport"
+
+# ...edit the .fdf, run a new stage, etc.  When something breaks:
+molbuilder snapshot list           # show every saved state
+molbuilder snapshot restore stage3-converged   # rewinds everything
+```
+
+The big binaries (`.DM`, `.HSX`, `.TSHS`, `.TBT.AVTRANS_*`) are
+archived by commit SHA in `.binsnapshots/<sha>/` rather than committed
+into git (which would balloon the repo); `restore` rewinds the text
+files **and** copies the binaries back in one command.  Full design
+in [`docs/protocols/run-checkpoints.md`](docs/protocols/run-checkpoints.md).
+
 ### Benchmark a SIESTA-GPU project
 
 `molbuilder bench siesta-gpu <project_dir>` sweeps over

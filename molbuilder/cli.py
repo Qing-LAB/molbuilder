@@ -2173,8 +2173,9 @@ def cmd_snapshot_restore(ref, no_binaries, path):
         click.echo(f"Error: {e}", err=True)
         click.echo(
             "  hint: `molbuilder snapshot checkpoint -m \"WIP\"` "
-            "to save current state first, OR `git restore .` to "
-            "discard it.", err=True)
+            "to save current state first, OR "
+            "`git restore --staged --worktree .` to discard it.",
+            err=True)
         sys.exit(2)
     except NoSuchRefError as e:
         click.echo(f"Error: {e}", err=True)

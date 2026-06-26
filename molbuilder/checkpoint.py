@@ -460,7 +460,8 @@ class Repo:
         total = 0
         if snaps.is_dir():
             for sub in snaps.rglob("*"):
-                if sub.is_file():
+                if sub.is_file() and sub.name not in (
+                        "MANIFEST", ".gitkeep"):
                     total += sub.stat().st_size
         return RepoState(
             path=self.path, initialized=True,
