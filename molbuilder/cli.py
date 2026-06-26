@@ -2192,6 +2192,52 @@ def cmd_snapshot_restore(ref, no_binaries, path):
         click.echo("  (no archived binaries for this ref)")
 
 
+@cmd_snapshot.command("migrate-manifest",
+                      short_help="convert legacy 2-column MANIFEST to "
+                                 "canonical 3-column form (§ 10.4)")
+@click.argument("ref")
+@click.option("-p", "--path", default=None, type=click.Path(),
+              help="Working dir.  Default: cwd.")
+def cmd_snapshot_migrate_manifest(ref, path):
+    """One-shot conversion of a legacy ``sha256sum``-style 2-column
+    MANIFEST in the archive for REF to canonical 3-column form.
+
+    Behaviour (per run-checkpoints.md § 10.4):
+
+      1. Resolves REF to a commit SHA.
+      2. Reads .binsnapshots/<sha>/MANIFEST.
+      3. If already canonical -> no-op, exits 0 with "already canonical".
+      4. If 2-column legacy: parses sha + name, re-hashes each archived
+         file's content, verifies against the recorded sha256, stat()s
+         for the size column, writes canonical MANIFEST atomically.
+      5. Any other shape -> error, no auto-fix; original MANIFEST is
+         left untouched.
+
+    REF can be a tag, branch, or short SHA.
+    """
+    from molbuilder.checkpoint import (
+        Repo, CheckpointError, NoSuchRefError,
+    )
+    repo = Repo(_resolve_repo_path(path))
+    if not repo.initialized:
+        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
+                   err=True)
+        sys.exit(2)
+    try:
+        entries = repo.migrate_manifest(ref)
+    except NoSuchRefError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
+    except CheckpointError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    click.echo(f"migrated MANIFEST for {ref}: "
+               f"{len(entries)} archived file"
+               f"{'s' if len(entries) != 1 else ''}")
+    for name, (sha256, size) in sorted(entries.items()):
+        click.echo(f"  {sha256[:12]}…  {size:>12} bytes  {name}")
+
+
 # --------------------------------------------------------------------- #
 #  Watch group (live trajectory viewer)                                #
 # --------------------------------------------------------------------- #

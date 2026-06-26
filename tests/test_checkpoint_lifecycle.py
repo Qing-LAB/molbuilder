@@ -177,7 +177,7 @@ def test_archive_integrity_check_catches_corruption(tmp_path):
     # Reset working-tree change so restore can proceed past the dirty check.
     # (No working-tree dirty here.)
     with pytest.raises(CheckpointError,
-                       match="archive integrity check failed"):
+                       match="integrity check failed"):
         repo.restore("baseline")
 
 

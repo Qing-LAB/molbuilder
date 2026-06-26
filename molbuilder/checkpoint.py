@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 # Big binary patterns (gitignored, archived by SHA on each checkpoint).
@@ -220,65 +221,358 @@ def _archive_dir(path: Path, sha: str) -> Path:
     return path / ".binsnapshots" / sha
 
 
+# --------------------------------------------------------------------- #
+#  MANIFEST format -- canonical lockdown per § 10 of                    #
+#  docs/protocols/run-checkpoints.md.                                   #
+#                                                                       #
+#  Exactly one format.  Strict parser raises on any deviation -- no     #
+#  silent skip, no fallback, no field-count tolerance.  Legacy 2-col    #
+#  sha256sum-style MANIFESTs are migrated via                           #
+#  ``Repo.migrate_manifest(ref)`` -- never transparently accepted.      #
+# --------------------------------------------------------------------- #
+
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_SIZE_INT_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
+_FILENAME_RE   = re.compile(r"^[!-~]+$")    # ASCII printable, no spaces
+_MANIFEST_NAME = "MANIFEST"
+_MANIFEST_TMP  = "MANIFEST.tmp"
+_SHA_DIR_RE    = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _format_canonical_manifest(entries: List[Tuple[str, int, str]]) -> str:
+    """Render entries as canonical-format text.
+
+    Entries are tuples ``(sha256_hex, size_bytes, filename)``.
+    Sorted by filename; one entry per line; ``\\n`` terminator; final
+    newline; no header / comments / blank lines.
+    """
+    sorted_entries = sorted(entries, key=lambda e: e[2])
+    return "".join(
+        f"{sha256}  {int(size)}  {name}\n"
+        for sha256, size, name in sorted_entries
+    )
+
+
+def _parse_canonical_manifest(raw: bytes,
+                              where: str) -> Dict[str, Tuple[str, int]]:
+    """Strict canonical MANIFEST parser.
+
+    Returns a dict ``{filename: (sha256_hex, size_bytes)}``.  Raises
+    :class:`CheckpointError` with a specific reason on ANY deviation
+    from § 10.2 -- no field-count fallback, no header skip, no comment
+    skip, no BOM tolerance.
+
+    The 2-column legacy ``sha256sum > MANIFEST`` shape is detected
+    explicitly and raises with a pointer to the migrate-manifest CLI.
+
+    ``where`` is included in error messages so the user knows which
+    archive directory to look at.
+    """
+    # BOM rejection (before utf-8 decode so the message names the bytes).
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: file starts with a UTF-8 "
+            f"BOM; canonical MANIFEST must be plain ASCII (§ 10.2).")
+    # CRLF rejection -- the design pins LF-only.
+    if b"\r" in raw:
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: contains CR bytes; "
+            f"canonical MANIFEST uses LF line terminators only "
+            f"(§ 10.2).")
+    # Final newline required.
+    if not raw.endswith(b"\n"):
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: missing final newline "
+            f"(§ 10.2 requires a trailing LF).")
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError as e:
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: non-ASCII byte at "
+            f"offset {e.start} (§ 10.2 requires ASCII-only)."
+        ) from e
+    lines = text.split("\n")
+    # split("\n") on a trailing-newline text gives a "" final element.
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines:
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: file is empty "
+            f"(§ 10.2 requires at least one entry per archive).")
+    out: Dict[str, Tuple[str, int]] = {}
+    seen_order: List[str] = []
+    for idx, line in enumerate(lines, start=1):
+        if line == "":
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} is blank "
+                f"(§ 10.2 forbids blank lines).")
+        # Legacy 2-column sha256sum default form -- detect explicitly so
+        # the user gets a useful error rather than "wrong field count".
+        # Pattern: ``<64-hex-sha>  <name>`` (exactly two-space separator
+        # is sha256sum's default).
+        if (len(line) >= 66
+                and line[0:64].count(" ") == 0
+                and _SHA256_HEX_RE.match(line[:64])
+                and line[64:66] == "  "
+                and " " not in line[66:]
+                and line[66:]):
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} is the "
+                f"legacy 2-column sha256sum format (sha + name).  "
+                f"Canonical MANIFEST is 3-column "
+                f"(sha + bytes + name; § 10.2).  Run "
+                f"`molbuilder snapshot migrate-manifest <ref>` to "
+                f"convert this archive in-place (§ 10.4).")
+        # Canonical 3-column shape: <sha>__<size>__<name>, exactly two
+        # ASCII spaces between fields.  Strict split on the literal
+        # double-space separator.  Embedded whitespace in filename is
+        # forbidden so "  " is unambiguous as the field separator.
+        parts = line.split("  ")
+        if len(parts) != 3:
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} has "
+                f"{len(parts)} fields (separated by '  '); canonical "
+                f"requires exactly 3 (§ 10.2).")
+        sha256, size_s, name = parts
+        if not _SHA256_HEX_RE.match(sha256):
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} sha256 "
+                f"field {sha256!r} is not 64 lowercase hex chars "
+                f"(§ 10.2).")
+        if not _SIZE_INT_RE.match(size_s):
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} size "
+                f"field {size_s!r} is not a non-negative decimal "
+                f"integer without leading zeros (§ 10.2).")
+        if not _FILENAME_RE.match(name):
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} filename "
+                f"{name!r} contains non-printable or whitespace "
+                f"characters (§ 10.2 requires ASCII printable, no "
+                f"spaces).")
+        if "/" in name or name == "..":
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} filename "
+                f"{name!r} contains a path separator or parent "
+                f"reference (§ 10.2 requires bare basename only).")
+        if name.startswith("."):
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} filename "
+                f"{name!r} starts with a dot; canonical archive does "
+                f"not contain dotfiles (§ 10.1).")
+        if name == _MANIFEST_NAME:
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: line {idx} lists the "
+                f"MANIFEST file itself; canonical MANIFEST must not "
+                f"self-reference (§ 10.2).")
+        if name in out:
+            raise CheckpointError(
+                f"malformed MANIFEST in {where}: filename {name!r} "
+                f"appears more than once (§ 10.2).")
+        out[name] = (sha256, int(size_s))
+        seen_order.append(name)
+    # Sort-order check (§ 10.2: lines are alphabetical by filename).
+    if seen_order != sorted(seen_order):
+        raise CheckpointError(
+            f"malformed MANIFEST in {where}: entries are not sorted "
+            f"alphabetically by filename (§ 10.2).")
+    return out
+
+
+def _atomic_write_text(target: Path, text: str) -> None:
+    """Write ``text`` to ``target`` atomically via .tmp + os.replace.
+
+    The body is fully flushed + fsync'd before the rename, so any
+    crash mid-write leaves either the prior file intact or the new
+    file fully written -- never a half-MANIFEST.
+    """
+    tmp = target.parent / (target.name + ".tmp")
+    with open(tmp, "w", encoding="ascii", newline="\n") as fh:
+        fh.write(text)
+        fh.flush()
+        try:
+            os.fsync(fh.fileno())
+        except OSError:
+            pass        # tmpfs / some FS lack fsync; replace will still atom-swap
+    os.replace(tmp, target)
+
+
 def _archive_binaries(path: Path, sha: str) -> int:
     """Copy big binaries from working dir into ``.binsnapshots/<sha>/``;
-    write MANIFEST.  Returns total bytes archived (0 if no binaries)."""
+    write MANIFEST in canonical format (§ 10.2).  Returns total bytes
+    archived (0 if no binaries)."""
     binaries = _list_big_binaries(path)
     if not binaries:
         return 0
+    if not _SHA_DIR_RE.match(sha):
+        raise CheckpointError(
+            f"_archive_binaries: SHA dir name {sha!r} is not 40 "
+            f"lowercase hex chars (§ 10.1).")
     target = _archive_dir(path, sha)
     target.mkdir(parents=True, exist_ok=True)
+    entries: List[Tuple[str, int, str]] = []
     total = 0
-    manifest_lines: List[str] = []
     for src in binaries:
         dst = target / src.name
         shutil.copy2(src, dst)
         size = dst.stat().st_size
         sha256 = hashlib.sha256(dst.read_bytes()).hexdigest()
-        manifest_lines.append(f"{sha256}  {size}  {src.name}")
+        entries.append((sha256, size, src.name))
         total += size
-    (target / "MANIFEST").write_text(
-        "\n".join(manifest_lines) + "\n", encoding="utf-8")
+    _atomic_write_text(target / _MANIFEST_NAME,
+                       _format_canonical_manifest(entries))
     return total
 
 
 def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
-    """Copy archived binaries for ``sha`` back into ``path``.  Verifies
-    each file's sha256 against MANIFEST before copying; raises if any
-    mismatch.  Returns list of restored file names."""
+    """Copy archived binaries for ``sha`` back into ``path``.  MANIFEST
+    is parsed strictly (§ 10.2 / § 10.3) and each file's sha256 is
+    re-verified against the recorded value BEFORE any byte hits the
+    working tree.  Returns list of restored file names."""
     arch = _archive_dir(path, sha)
-    manifest = arch / "MANIFEST"
+    manifest = arch / _MANIFEST_NAME
     if not arch.is_dir():
         return []
     if not manifest.is_file():
-        # Archive exists but no manifest -- treat as if no binaries.
+        # No archive present for this checkpoint -- not an error per
+        # § 4.6 (an empty checkpoint with no big binaries is legal).
         return []
-    restored: List[str] = []
-    expected = {}
-    for line in manifest.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split(None, 2)
-        if len(parts) != 3:
-            continue
-        sha256, _bytes, name = parts
-        expected[name] = sha256
-    for name, want_sha256 in expected.items():
+    raw = manifest.read_bytes()
+    expected = _parse_canonical_manifest(raw, where=str(arch))
+    if not expected:
+        raise CheckpointError(
+            f"archive at {arch}: canonical MANIFEST is present but "
+            f"contained zero entries (§ 10.2).")
+    # First pass: verify every file's sha256 against MANIFEST.  Any
+    # mismatch aborts BEFORE we touch the working tree (§ 10.3).
+    for name, (want_sha256, want_size) in expected.items():
         src = arch / name
         if not src.is_file():
             raise CheckpointError(
-                f"archive manifest references {name!r} but the file is "
-                f"missing from {arch}; refusing to restore.")
-        actual = hashlib.sha256(src.read_bytes()).hexdigest()
-        if actual != want_sha256:
+                f"archive at {arch}: MANIFEST lists {name!r} but the "
+                f"file is missing; refusing to restore (§ 10.3).")
+        actual_size = src.stat().st_size
+        if actual_size != want_size:
             raise CheckpointError(
-                f"archive integrity check failed for {name!r} "
-                f"(expected sha256 {want_sha256!r}, got {actual!r}); "
-                f"refusing to restore.")
-        shutil.copy2(src, path / name)
+                f"archive at {arch}: integrity check failed for "
+                f"{name!r} -- expected {want_size} bytes, got "
+                f"{actual_size} (§ 10.3).")
+        actual_sha256 = hashlib.sha256(src.read_bytes()).hexdigest()
+        if actual_sha256 != want_sha256:
+            raise CheckpointError(
+                f"archive at {arch}: integrity check failed for "
+                f"{name!r} -- expected sha256 {want_sha256!r}, got "
+                f"{actual_sha256!r}; refusing to restore (§ 10.3).")
+    # Second pass: copy.  Sorted order = deterministic restore log.
+    restored: List[str] = []
+    for name in sorted(expected.keys()):
+        shutil.copy2(arch / name, path / name)
         restored.append(name)
     return restored
+
+
+def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
+    """Convert a 2-column ``sha256sum`` MANIFEST in ``arch`` to the
+    canonical 3-column form (§ 10.4).
+
+    Behaviour:
+      1. Reads existing MANIFEST.  If it already parses as canonical,
+         no-ops and returns the parsed contents.
+      2. If 2-column legacy: parses sha + name, re-hashes each file
+         against the recorded sha, stat()s for the size column, writes
+         canonical MANIFEST atomically.
+      3. Any other shape: raises -- no auto-fix.
+
+    Verification step (3) is load-bearing: if a recorded sha doesn't
+    match the file on disk, the migration aborts before writing
+    anything, leaving the legacy MANIFEST untouched.
+
+    Returns the parsed canonical contents.
+    """
+    manifest = arch / _MANIFEST_NAME
+    if not manifest.is_file():
+        raise CheckpointError(
+            f"migrate-manifest: {arch}: no MANIFEST file present.")
+    raw = manifest.read_bytes()
+    # Try canonical first -- short-circuits already-migrated archives.
+    try:
+        canon = _parse_canonical_manifest(raw, where=str(arch))
+        return canon
+    except CheckpointError as canon_err:
+        canon_msg = str(canon_err)
+    # Try legacy 2-column shape.  This must not silently accept anything
+    # the canonical parser rejected for reasons OTHER than format.
+    if not raw.endswith(b"\n"):
+        raise CheckpointError(
+            f"migrate-manifest: {arch}: MANIFEST missing final "
+            f"newline; refusing to guess at the format.")
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError as e:
+        raise CheckpointError(
+            f"migrate-manifest: {arch}: MANIFEST has non-ASCII bytes "
+            f"at offset {e.start}; refusing."
+        ) from e
+    parsed: Dict[str, Tuple[str, int]] = {}
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    for idx, line in enumerate(lines, start=1):
+        # sha256sum default output: "<64-hex-sha>  <name>" (two spaces).
+        if not (len(line) >= 66 and _SHA256_HEX_RE.match(line[:64])
+                and line[64:66] == "  "):
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: line {idx} is neither "
+                f"canonical 3-column nor legacy 2-column "
+                f"sha256sum.  Original parser error was: "
+                f"{canon_msg}.  Refusing to guess.")
+        sha256_hex = line[:64]
+        name = line[66:]
+        if not _FILENAME_RE.match(name):
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: line {idx} filename "
+                f"{name!r} contains non-printable or whitespace "
+                f"characters; refusing.")
+        if "/" in name or name == ".." or name.startswith("."):
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: line {idx} filename "
+                f"{name!r} is not a bare basename; refusing.")
+        if name == _MANIFEST_NAME:
+            # sha256sum * includes MANIFEST itself; skip it -- the
+            # canonical form must not self-reference.
+            continue
+        if name in parsed:
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: filename {name!r} "
+                f"appears more than once; refusing.")
+        parsed[name] = (sha256_hex, -1)   # size filled in below
+    if not parsed:
+        raise CheckpointError(
+            f"migrate-manifest: {arch}: legacy MANIFEST has no "
+            f"payload entries (only MANIFEST self-reference?); "
+            f"refusing.")
+    # Re-hash + size every file BEFORE writing anything.  Any mismatch
+    # aborts and leaves the original MANIFEST untouched (§ 10.4).
+    verified: Dict[str, Tuple[str, int]] = {}
+    for name, (want_sha256, _) in parsed.items():
+        src = arch / name
+        if not src.is_file():
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: MANIFEST references "
+                f"{name!r} but the file is missing.")
+        actual_sha256 = hashlib.sha256(src.read_bytes()).hexdigest()
+        if actual_sha256 != want_sha256:
+            raise CheckpointError(
+                f"migrate-manifest: {arch}: integrity check failed "
+                f"for {name!r} -- expected sha256 {want_sha256!r}, "
+                f"got {actual_sha256!r}.  Refusing to migrate; "
+                f"original MANIFEST left untouched.")
+        verified[name] = (actual_sha256, src.stat().st_size)
+    # All entries verified; write canonical MANIFEST atomically.
+    entries = [(sha, size, name) for name, (sha, size) in verified.items()]
+    _atomic_write_text(arch / _MANIFEST_NAME,
+                       _format_canonical_manifest(entries))
+    return verified
 
 
 # --------------------------------------------------------------------- #
@@ -439,6 +733,25 @@ class Repo:
         if not include_binaries:
             return []
         return _restore_archived_binaries(Path(self.path), sha)
+
+    # -- § 10.4 migrate-manifest ---------------------------------- #
+
+    def migrate_manifest(self, ref: str) -> Dict[str, Tuple[str, int]]:
+        """Convert a legacy 2-column ``sha256sum`` MANIFEST in the
+        archive for ``ref`` to canonical 3-column form (§ 10.4).
+        No-op (returns the parsed contents) if already canonical.
+
+        Raises :class:`CheckpointError` with a specific reason on any
+        other shape (or on hash mismatch); the original MANIFEST is
+        left untouched in that case.
+        """
+        self._require_init()
+        sha = self._resolve_ref(ref)
+        arch = _archive_dir(Path(self.path), sha)
+        if not arch.is_dir():
+            raise CheckpointError(
+                f"migrate-manifest: no archive directory at {arch}.")
+        return _migrate_legacy_manifest(arch)
 
     # -- introspection -------------------------------------------- #
 
