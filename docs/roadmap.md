@@ -33,29 +33,31 @@ the user's actual target system.
 directives. `script_generation.{preamble,activation}` already matches
 ASU's `module load mamba/latest` + `source activate` pattern.
 
-**ASU Sol facts (verified 2026-06-26, RC Confluence)**:
-- Header (CPU): `#SBATCH -N/-n/-c/-t D-HH:MM:SS/-p general/-q public
-  /-o slurm.%j.out/-e slurm.%j.err/--mail-type/--mail-user="%u@asu.edu"
-  /--export=NONE`.
-- Env: `module load mamba/latest` → `source activate <env>` (with
-  `--export=NONE`, the script MUST re-load mamba — matches our preamble).
-- GPU: `--gres=gpu:a100:1` / `--gres=gpu:a30:1` (Sol has A30 / A100-80GB
-  / H100); GPU jobs run on `-p general -q public`, no separate GPU
-  partition on Sol.
-- MPI: ASU prefers `srun -n N --mpi=pmix` over `mpirun` (decision point —
-  our wrapper currently emits `mpirun -np`).
-- Partitions: public/general/htc(4h)/highmem(48h)/lightwork/fpga/arm;
-  QoS: public(default)/debug(15m)/private/grp_*/long(14d)/class.
+**Full design + verified facts now live in
+[`docs/protocols/slurm-integration.md`](protocols/slurm-integration.md)**
+(authoritative; this is just the priority pointer). Key resolutions
+(verified live on Sol 2026-06-26, superseding ASU's stale wiki):
+- **Partition `public`** (NOT `general` — Sol made `general` private in
+  May 2026; live `srun -p general` is rejected). Public GPU nodes are
+  in `public` too.
+- **MPI: the env's own `mpirun`, NEVER `srun --mpi=pmix`** — the
+  from-source SIESTA-GPU is ABI-linked to the conda OpenMPI 5.0.10 +
+  internal PMIx (which carries `ras:slurm`/`plm:slurm`); `srun --mpi=
+  pmix` would cross-wire to Sol's slurmd PMIx. (Corrects the earlier
+  "ASU prefers srun" framing.)
+- **CUDA**: env toolkit 13.3 vs Sol driver max 13.2 (live) → same major,
+  minor-version compat expected to cover it; confirm via the benchmark.
+- **Submission is mandatory** (login nodes can't run GPU jobs).
+- **Benchmark/validation mode** (built on `molbuilder bench siesta-gpu`
+  + the `siesta_diag.elpa_gpu` correctness gate) is the first job to
+  submit — validates MPI+CUDA+resource sizing in one short batch run.
 
-**Design direction (to confirm before coding)**: a new `scheduler`
-config block (sibling to `script_generation`) holding the stable site
-`#SBATCH` defaults + a shipped **`asu-sol` site preset**; a thin
-`<basename>.sbatch` emitter that wraps the unchanged `.run.sh`; per-job
-knobs (time, gpu, ntasks) derived from the `.fdf`/CLI where possible,
-site defaults otherwise. Keep the `.run.sh` launcher untouched
-(separation preserved). Source: `docs/protocols/script-execution.md`,
-`docs/config.md`. **Status: investigated; awaiting user sign-off on the
-strategy below before implementation.**
+**Design shape**: `scheduler` config block + `asu-sol` preset + a thin
+`<basename>.sbatch` wrapping the unchanged `.run.sh`; per-job knobs
+derived from `.fdf`/CLI. **Status: design doc drafted + Sol-verified;
+awaiting sign-off on the doc before implementation.** Open items: D7
+(CUDA build-target), and final point-by-point review of
+`slurm-integration.md`.
 
 ### 0.2 Test-suite follow-ups (from the 2026-06-26 red-tests pass)
 
