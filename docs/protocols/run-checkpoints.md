@@ -509,23 +509,22 @@ Each archive carries a `MANIFEST` file with `<file>  <sha256>  <bytes>` per line
 
 ---
 
-## 11. Open questions for review
+## 11. Design decisions (resolved 2026-06-25)
 
-1. **Git user identity** — local (`molbuilder@<hostname>`) vs. inherit from the user's global git config. Local-only by default to avoid surprising HPC users whose `~/.gitconfig` may not exist.
+The 8 questions in this section were answered by the user on 2026-06-25. Recorded here as the spec.
 
-2. **Branch deletion via UI** — should the sidebar offer branch deletion? Footgun risk vs. clutter. Recommendation: hide deletion behind a small "advanced" disclosure; double-confirm with a dialog naming the branch + last-commit SHA.
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | **Git identity = local `molbuilder@<hostname>`** | Set via `git config` (no `--global`). Works without `~/.gitconfig`. Single-user dirs make user-identity attribution redundant. |
+| 2 | **Branch deletion hidden behind "Advanced" disclosure + double-confirm dialog** naming the branch and its last-commit short SHA. | Branch deletion is a footgun if accidental; explicit second confirm closes the class. |
+| 3 | **Restore = `git restore --source=<ref> .`** (overwrites working tree, HEAD stays on current branch). The same menu also exposes a separate **"Branch from here"** item for users who want to start a new branch at the checkpoint. | Matches "make my files look like that snapshot." Avoids the detached-HEAD-confusion of `git checkout <tag>`. |
+| 4 | **Archive hash-verify on restore only.** Not on every sidebar poll. | Hashing 43 MB binaries every 2–5 s is unsustainable; restore is the only moment correctness matters. |
+| 5 | **Outer-repo nesting = detect + warn, proceed.** Phase 1 runs `git rev-parse --show-superproject-working-tree`; non-empty result emits one warning line + a doc link, then continues. | Cheap insurance; silent surprise weeks later is the bad outcome. |
+| 6 | **Default checkpoint message = `"checkpoint <ISO_TS>"`** when the user submits an empty message. | Low friction encourages frequent checkpointing; tags add meaning after the fact. |
+| 7 | **Sensor poll cadence = 5 seconds** when sidebar is visible and a project is selected; suspended otherwise. | Halves the polling load vs. 2 s; up-to-5-s lag after a checkpoint is acceptable. |
+| 8 | **No `molbuilder snapshot status` CLI subcommand.** Users run `git status` directly inside the working dir. | Don't duplicate git. The user-facing surfaces (sidebar sensor + sidebar list view) cover the GUI case; plain `git status` covers the CLI case. CLI surface shrinks accordingly. |
 
-3. **Restore semantics** — `git restore --source=<ref> .` overwrites; `git checkout <tag>` detaches HEAD. Which does the UI "Restore to here" button use? Proposed: `git restore` plus an option in the menu to "Branch from here" if the user wants to keep working from that point.
-
-4. **Archive integrity check** — should every UI load of the run-history panel hash-verify the archives, or only on restore? Proposed: only on restore (hashing 43 MB per archive on every poll is wasteful).
-
-5. **Outer-repo nesting detection** — for the case where a user has their own outer git tracking `projects/` (against the convention), our `.git` becomes a nested submodule-like artefact. Detect this (`git rev-parse --show-superproject-working-tree`) and warn during Phase 1, or silently proceed?
-
-6. **Default checkpoint message** — when the user clicks "Checkpoint now" without typing a message, do we default to `"checkpoint <ISO_TS>"`, or refuse and prompt? Proposed: default to ISO timestamp (low friction; user can always tag a meaningful checkpoint after the fact).
-
-7. **Sensor poll cadence** — 2 s when sidebar visible. Or slower? 5 s is plenty for human reaction time; 2 s feels responsive but adds load. Pick one for the spec.
-
-8. **CLI subcommand for "what would I commit?"** — should `molbuilder snapshot status` exist as a thin wrapper around `git status`, or do we tell the user to just run `git status`? Proposed: yes, ship it — keeps the CLI mental model unified, no need to switch tools.
+The CLI surface declared in § 14 (item 2) drops `status` accordingly: `molbuilder snapshot {init, checkpoint, list, tag, branch, diff, restore, prune}`.
 
 ---
 
@@ -560,7 +559,7 @@ Each archive carries a `MANIFEST` file with `<file>  <sha256>  <bytes>` per line
 | # | Item | Effort | Depends on |
 |---|---|---|---|
 | 1 | `molbuilder/checkpoint.py` — L1 types + L2 `Repo` (init / checkpoint / state / list / tag / branch / restore / prune / diff) | ~4 hours | — |
-| 2 | `molbuilder/cli.py::snapshot` CLI group: `init`, `checkpoint`, `status`, `list`, `tag`, `branch`, `diff`, `restore`, `prune` | ~2 hours | 1 |
+| 2 | `molbuilder/cli.py::snapshot` CLI group: `init`, `checkpoint`, `list`, `tag`, `branch`, `diff`, `restore`, `prune` (per § 11 decision 8 — no `status` subcommand; users run `git status` directly) | ~2 hours | 1 |
 | 3 | `web/blueprints/checkpoint.py` — HTTP routes per § 8 | ~2 hours | 1 |
 | 4 | `static/lib/projects/checkpoint.js` — sensor badge + list view + detail panel + action menus | ~3 hours | 3 |
 | 5 | Graph viewer (list view's "Graph" toggle) | ~4 hours | 4 |
