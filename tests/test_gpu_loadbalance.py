@@ -191,3 +191,37 @@ def test_omp_honors_slurm_cpus_per_task(tmp_path):
     t = _gpu(tmp_path)
     assert ('_omp_threads="${OMP_NUM_THREADS:-'
             '${SLURM_CPUS_PER_TASK:-$_omp_threads_default}}"' in t)
+
+
+# --------------------------------------------------------------------- #
+#  SCF per-iteration timing instrument (§ 11.0b, item D)               #
+# --------------------------------------------------------------------- #
+
+
+def test_scf_timing_instrument_present(tmp_path):
+    """Both CPU and GPU SIESTA wrappers carry the per-iteration timing
+    instrument: the _mb_scf_tee filter, a per-run .scf-timing.log paired
+    with the .out, the piped launch + PIPESTATUS, and a wall-time log."""
+    for t in (_gpu(tmp_path), _cpu(tmp_path)):
+        assert "_mb_scf_tee() {" in t
+        assert '/^[ \\t]*scf:[ \\t]*[0-9]/' in t      # iteration-line match
+        assert '_scf_timing_log="${_out_file%.out}.scf-timing.log"' in t
+        assert '| _mb_scf_tee "$_out_file" "$_scf_timing_log"' in t
+        # PIPESTATUS so awk never masks SIESTA's exit code
+        assert "_siesta_exit=${PIPESTATUS[0]}" in t
+        assert 'SIESTA wall time:' in t
+
+
+def test_propor_diagnostic_still_reads_out_after_timing(tmp_path):
+    """The timing pipe still writes the .out, so the propor-error
+    diagnostic that greps $_out_file keeps working."""
+    t = _gpu(tmp_path)
+    assert 'grep -aq "propor: ERROR" "$_out_file"' in t
+
+
+def test_pyscf_has_no_scf_timing(tmp_path):
+    p = tmp_path / "q.py"
+    p.write_text("# fake\n")
+    t = runwrap.render_run_wrapper(p)
+    assert "_mb_scf_tee" not in t
+    assert "scf-timing.log" not in t

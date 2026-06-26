@@ -991,6 +991,50 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     )
 
 
+def _siesta_scf_timing_func() -> str:
+    """Bash defining ``_mb_scf_tee`` — the SCF per-iteration timing
+    instrument (slurm-integration.md § 11.0b).
+
+    GOAL: SIESTA emits **no usable per-iteration wall time** (the ``scf:``
+    lines carry energies + dDmax but no time; ``timer: IterSCF`` is
+    cumulative). This filter IS the benchmark's measurement instrument:
+    it tees SIESTA stdout to the ``.out`` AND timestamps every ``scf:``
+    iteration line into a per-run ``.scf-timing.log`` as
+    ``<epoch.ns> <iter#> <full scf line>``, so per-iteration wall time =
+    consecutive-stamp delta (report mean of iters 3–5, § 11.0).
+
+    EXPECTED OUTPUT: `<basename>-runN.scf-timing.log`, one line per SCF
+    iteration; subtracting adjacent epochs gives the steady-state
+    per-iteration time — the number the CPU-vs-GPU / K-sweep comparison
+    ranks on.
+
+    WHY this shape: a single ``awk`` process copies every line at C speed
+    (``fflush(out)`` keeps the ``.out`` live for ``tail -f``); ``date
+    +%s.%N`` is spawned only on the infrequent ``scf:`` lines. Portable
+    across gawk/mawk (getline-from-command + close + fflush). The caller
+    pipes ``$_launch_cmd … | _mb_scf_tee "$_out_file" "$_scf_timing_log"``
+    and reads ``${PIPESTATUS[0]}`` for SIESTA's exit (awk never masks it).
+    """
+    return (
+        "# --- SCF per-iteration timing instrument "
+        "(slurm-integration.md § 11.0b) ---\n"
+        "# Tees SIESTA stdout to the .out AND stamps each scf: iteration\n"
+        "# line into the per-run .scf-timing.log so per-iter wall time =\n"
+        "# consecutive-epoch delta (SIESTA prints no per-iter time).\n"
+        "_mb_scf_tee() {\n"
+        "    awk -v out=\"$1\" -v tlog=\"$2\" '\n"
+        "        { print > out; fflush(out) }\n"
+        "        /^[ \\t]*scf:[ \\t]*[0-9]/ {\n"
+        "            _cmd=\"date +%s.%N\"; _cmd | getline _ts; close(_cmd)\n"
+        "            _l=$0; sub(/^[ \\t]*scf:[ \\t]*/, \"\", _l)\n"
+        "            split(_l, _f, /[ \\t]+/)\n"
+        "            print _ts, _f[1], $0 > tlog; fflush(tlog)\n"
+        "        }\n"
+        "    '\n"
+        "}\n"
+    )
+
+
 def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
@@ -2252,14 +2296,29 @@ def render_run_wrapper(script_path: Path, *,
         launch_block = (
             _siesta_resolved_log_block(script_name, gpu_mode)
             + _siesta_dry_run_block(script_name, gpu_mode)
+            + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
             f"# `set +e` lets us inspect the exit code; the diagnostic\n"
             f"# below reads the .out for ``propor: ERROR`` and prints a\n"
             f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
+            f"# stdout is piped through _mb_scf_tee, which writes the .out\n"
+            f"# AND the per-iteration .scf-timing.log (§ 11.0b); SIESTA's\n"
+            f"# stderr stays on the wrapper's stderr (runwrap log).  We read\n"
+            f"# ${{PIPESTATUS[0]}} so awk never masks SIESTA's exit code.\n"
+            f'_scf_timing_log="${{_out_file%.out}}.scf-timing.log"\n'
+            f'_log INFO "scf timing  : per-iteration stamps -> '
+            f'$_scf_timing_log"\n'
+            f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
-            f"$_launch_cmd {script_name} > $_out_file\n"
-            f"_siesta_exit=$?\n"
+            f'$_launch_cmd {script_name} | _mb_scf_tee "$_out_file" '
+            f'"$_scf_timing_log"\n'
+            f"_siesta_exit=${{PIPESTATUS[0]}}\n"
             f"set -e\n"
+            f"_t_end=$(date +%s.%N)\n"
+            f'_siesta_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
+            f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
+            f'_log INFO "SIESTA wall time: ${{_siesta_wall}}s '
+            f'(per-iteration deltas in $_scf_timing_log)"\n'
             f"\n"
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"

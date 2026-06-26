@@ -158,9 +158,11 @@ def test_render_siesta_emits_propor_diagnostic():
     so a regression doesn't silently drop the diagnostic."""
     _bind()
     text = render_run_wrapper(Path("/x/hemeC.fdf"), mpi_np=15)
-    # Captured run, not exec.
+    # Captured run, not exec.  2026-06-26: the launch is piped through
+    # the _mb_scf_tee timing filter (§ 11.0b), so the exit code is read
+    # from ${PIPESTATUS[0]} (awk must not mask SIESTA's exit), not $?.
     assert "set +e" in text
-    assert "_siesta_exit=$?" in text
+    assert "_siesta_exit=${PIPESTATUS[0]}" in text
     # Propor detection.  2026-05-30: stdout filename is dynamic
     # (``$_out_file`` so --continue can write -runN.out); the grep
     # reads from that variable, not the baked basename.

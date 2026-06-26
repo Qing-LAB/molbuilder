@@ -765,11 +765,13 @@ except the GPU/timing blocks.
   dry-run; single unified `_mb_cleanup` EXIT trap. 14 tests. **Note**:
   the original "`numactl --cpunodebind`/`-c 12`/socket-map" sketch was
   REPLACED by P1 (trust SLURM cpuset) after the NPS4 review (§ 7.5.1.b).
-- **D. `.scf-timing.log`** — ⏳ PENDING. In the launch block, tee SIESTA
-  stdout through a timestamping filter that appends `<epoch> <iter#>
-  <dDmax>` for each `scf:` line to `<basename>.scf-timing.log` (§ 11.0b).
-  Portable bash (`date +%s.%N` + awk). (`status.json`/notifier is a
-  follow-up, not v1.)
+- **D. `.scf-timing.log`** — ✅ DONE (`_siesta_scf_timing_func` →
+  `_mb_scf_tee`; 4 tests + a standalone filter validation). The launch
+  pipes SIESTA stdout through an awk filter that writes the `.out` AND
+  stamps each `scf:` iteration line into a per-run
+  `<basename>-runN.scf-timing.log` as `<epoch.ns> <iter#> <scf line>`;
+  `${PIPESTATUS[0]}` preserves SIESTA's exit; total SIESTA wall time is
+  logged. (`status.json`/notifier is a follow-up — see F below.)
 - **E. Test-bundle generation** — ⏳ PENDING. Generate § 16 through the
   framework (A–D) into a temp project: one CPU `.fdf`
   (`Diag.ELPA.GPU .false.`) + one GPU `.fdf` (`.true.`), each with its
