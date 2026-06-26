@@ -12,6 +12,68 @@
 
 ---
 
+## 0. Active high-priority work (2026-06-26)
+
+### 0.1 Script generator — SLURM/sbatch submission for ASU Sol  **[ELEVATED]**
+
+**Goal**: emit a standalone, immediately-runnable SLURM submission
+script for the ASU Sol cluster so a user from a *fresh login* (mamba
+not yet on PATH) can `sbatch` a generated job that activates the right
+env and allocates GPU/CPU resources correctly — without hand-writing
+`#SBATCH` headers.
+
+**Why elevated**: the run-wrapper design (`runwrap.py` +
+`docs/config.md` + `docs/protocols/script-execution.md`) is verified
+sound and immediately usable; the only missing layer is the SLURM
+submission header. Closing it makes the generator end-to-end usable on
+the user's actual target system.
+
+**Current state**: `<basename>.run.sh` is scheduler-agnostic — it reads
+`SLURM_NTASKS`/`SLURM_GPUS_*` at runtime but emits NO `#SBATCH`
+directives. `script_generation.{preamble,activation}` already matches
+ASU's `module load mamba/latest` + `source activate` pattern.
+
+**ASU Sol facts (verified 2026-06-26, RC Confluence)**:
+- Header (CPU): `#SBATCH -N/-n/-c/-t D-HH:MM:SS/-p general/-q public
+  /-o slurm.%j.out/-e slurm.%j.err/--mail-type/--mail-user="%u@asu.edu"
+  /--export=NONE`.
+- Env: `module load mamba/latest` → `source activate <env>` (with
+  `--export=NONE`, the script MUST re-load mamba — matches our preamble).
+- GPU: `--gres=gpu:a100:1` / `--gres=gpu:a30:1` (Sol has A30 / A100-80GB
+  / H100); GPU jobs run on `-p general -q public`, no separate GPU
+  partition on Sol.
+- MPI: ASU prefers `srun -n N --mpi=pmix` over `mpirun` (decision point —
+  our wrapper currently emits `mpirun -np`).
+- Partitions: public/general/htc(4h)/highmem(48h)/lightwork/fpga/arm;
+  QoS: public(default)/debug(15m)/private/grp_*/long(14d)/class.
+
+**Design direction (to confirm before coding)**: a new `scheduler`
+config block (sibling to `script_generation`) holding the stable site
+`#SBATCH` defaults + a shipped **`asu-sol` site preset**; a thin
+`<basename>.sbatch` emitter that wraps the unchanged `.run.sh`; per-job
+knobs (time, gpu, ntasks) derived from the `.fdf`/CLI where possible,
+site defaults otherwise. Keep the `.run.sh` launcher untouched
+(separation preserved). Source: `docs/protocols/script-execution.md`,
+`docs/config.md`. **Status: investigated; awaiting user sign-off on the
+strategy below before implementation.**
+
+### 0.2 Test-suite follow-ups (from the 2026-06-26 red-tests pass)
+
+- **E2E tests collectable in the unit env.** `test_molbuilder_e2e.py`
+  (Playwright/Chromium, `importorskip("playwright.sync_api")`) fails
+  rather than skips when swept into a `molbuilder`-env run, because it
+  needs the `molbuilder-tests` env + a live `molbuilder serve`. It is
+  NOT a product failure. Decide a clean exclusion: a pytest marker
+  (e.g. `@pytest.mark.e2e`) + `-m "not e2e"` default for unit runs, or
+  a stronger guard than `importorskip`. Pin: a unit-env collection
+  must show E2E tests as *deselected/skipped*, never *failed*.
+- **Skipped-test census** (already queued in
+  `docs/audit-2026-06-26/README.md`): catalogue every skip with a
+  disposition (env-gated / placeholder / stale), fold the E2E-routing
+  item above into it.
+
+---
+
 ## 1. 3DNA (canonical helix builder)
 
 3DNA's `fiber` command produces true B-form / A-form / Z-form
