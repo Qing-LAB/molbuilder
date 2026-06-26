@@ -151,6 +151,34 @@ _SIESTA_GPU_DEVICE_RE = re.compile(
     r"^\s*ELPA:\s+(?:NVIDIA\s+)?GPU\s+(?:detected|in use)\s*:\s*(.+?)"
     r"(?:\s+\((sm_\d+)\))?\s*$", re.IGNORECASE)
 
+# Validation vocabularies for the loose-capture build/diag probes.  We
+# still record whatever SIESTA printed, but a token OUTSIDE these sets
+# is flagged as a ParseWarning rather than silently becoming "what the
+# binary ran with" -- a future SIESTA print shape we don't understand
+# must surface, not masquerade as ground truth (sidecar-contract.md
+# "no silent absorption"; audit-2026-06-26 T1 BLOCKER 3).
+#
+# Parallelisation modes SIESTA prints on its ``Parallelisations:`` line.
+_SIESTA_PARALLELISATIONS = frozenset({"MPI", "OPENMP"})
+# Diag.Algorithm vocabulary -- the COMPLETE case-insensitive alias set
+# SIESTA accepts (uppercased here), transcribed from the binary's own
+# parser at Src/diag_option.F90 (read_diag).  SIESTA ``die()``s on any
+# value outside this set, so a real run can only echo one of these; an
+# out-of-set value means a future SIESTA added an alias we don't track.
+_SIESTA_DIAG_ALGORITHMS = frozenset({
+    "D&C", "DIVIDE-AND-CONQUER", "DANDC", "VD",
+    "D&C-2", "D&C-2STAGE", "DIVIDE-AND-CONQUER-2STAGE",
+    "DANDC-2STAGE", "DANDC-2", "VD_2STAGE",
+    "ELPA-1", "ELPA-1STAGE",
+    "ELPA", "ELPA-2STAGE", "ELPA-2",
+    "MRRR", "RRR", "VR",
+    "MRRR-2STAGE", "RRR-2STAGE", "MRRR-2", "RRR-2", "VR_2STAGE",
+    "EXPERT", "VX",
+    "EXPERT-2STAGE", "EXPERT-2", "VX_2STAGE",
+    "NOEXPERT", "QR", "V",
+    "NOEXPERT-2STAGE", "NOEXPERT-2", "QR-2STAGE", "QR-2", "V_2STAGE",
+})
+
 # Lightweight prefix match for any SIESTA SCF iteration line.  We
 # capture iscf + the rest of the line as a single string; the actual
 # float columns are parsed separately by ``_parse_scf_floats`` below.
@@ -1453,11 +1481,17 @@ class SiestaParser:
             ct[key] = value
             ct.setdefault("source", "siesta_input_echo")
 
-        def _scan_runtime_info(line: str) -> bool:
+        def _scan_runtime_info(line: str, line_no: int) -> bool:
             """Orthogonal runtime-info regex probes.  Not section
             boundaries -- just free-form key/value lines that may
             appear anywhere in scan state.  Returns True if the line
-            was consumed (caller should skip rule dispatch)."""
+            was consumed (caller should skip rule dispatch).
+
+            Loose-capture probes (parallelisations, diag algorithm)
+            validate the captured token against a known vocabulary and
+            emit a ParseWarning on a miss -- the value is still
+            recorded, but an unrecognised token surfaces instead of
+            silently becoming ground truth (no silent absorption)."""
             m = _SIESTA_NODES_RE.match(line)
             if m:
                 try:
@@ -1548,6 +1582,15 @@ class SiestaParser:
                           re.split(r"[,\s]+", m.group(1)) if t.strip()]
                 runtime_info.setdefault(
                     "siesta_build", {})["parallelisations"] = tokens
+                unknown = [t for t in tokens
+                           if t not in _SIESTA_PARALLELISATIONS]
+                if unknown:
+                    _warn(line_no, line,
+                          f"unrecognised SIESTA parallelisation "
+                          f"token(s) {unknown}; recorded as-is but not "
+                          f"in the known set "
+                          f"{sorted(_SIESTA_PARALLELISATIONS)}",
+                          category="runtime_info")
                 return True
             m = _SIESTA_FEATURE_RE.match(line)
             if m:
@@ -1566,8 +1609,17 @@ class SiestaParser:
             # .fdf may not match if SIESTA normalised/rejected a value).
             m = _SIESTA_DIAG_ALGO_RE.match(line)
             if m:
-                runtime_info.setdefault("siesta_diag", {})["algorithm"] = (
-                    m.group(1).strip().upper())
+                algo = m.group(1).strip().upper()
+                runtime_info.setdefault(
+                    "siesta_diag", {})["algorithm"] = algo
+                if algo not in _SIESTA_DIAG_ALGORITHMS:
+                    _warn(line_no, line,
+                          f"unrecognised SIESTA Diag.Algorithm "
+                          f"{algo!r}; recorded as-is but not in the "
+                          f"known vocabulary (Src/diag_option.F90) -- "
+                          f"likely a newer SIESTA than this parser "
+                          f"tracks",
+                          category="runtime_info")
                 return True
             m = _SIESTA_DIAG_ELPA_GPU_RE.match(line)
             if m:
@@ -1614,7 +1666,7 @@ class SiestaParser:
                 # the section state machine (free-form key/value
                 # lines that can appear anywhere); try them first
                 # because they're frequent in a SIESTA preamble.
-                if _scan_runtime_info(line):
+                if _scan_runtime_info(line, line_no):
                     continue
 
                 # Section dispatch: first rule whose matcher fires

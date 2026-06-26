@@ -214,3 +214,85 @@ def test_no_header_yields_no_build_dict(tmp_path):
     traj = SiestaParser.parse(str(out))
     assert "siesta_build" not in traj.runtime_info
     assert "siesta_diag"  not in traj.runtime_info
+
+
+# ----------------------------------------------------------------- #
+#  Loose-capture probe validation (audit-2026-06-26 T1 BLOCKER 3)   #
+# ----------------------------------------------------------------- #
+#  The parallelisations + diag-algorithm probes capture free-form
+#  tokens.  An unrecognised token MUST still be recorded (so the
+#  Results tab shows what SIESTA printed) but ALSO raise a
+#  ParseWarning -- a future SIESTA shape we don't understand must
+#  surface rather than silently masquerade as ground truth.
+
+
+def _runtime_warnings(traj):
+    return [w for w in traj.parse_warnings
+            if w.category == "runtime_info"]
+
+
+def test_known_parallelisations_and_algo_emit_no_warning(tmp_path):
+    """The realistic GPU + CPU headers use only known tokens
+    (MPI/OPENMP, ELPA-1STAGE, divide-and-conquer) -- no runtime_info
+    warning should fire for them."""
+    for header in (_SAMPLE_HEADER_GPU, _SAMPLE_HEADER_CPU):
+        traj = _parse_minimal(tmp_path, header)
+        assert _runtime_warnings(traj) == []
+
+
+def test_unknown_parallelisation_token_warns_but_records(tmp_path):
+    """A future ``Parallelisations: hybrid(MPI:8)`` shape is recorded
+    verbatim AND flagged -- the audit's headline example."""
+    header = (
+        "Version : 5.9.0\n"
+        "Parallelisations: HYBRID(MPI:8)\n"
+        "\n"
+        "siesta: System type = molecule\n"
+    )
+    traj = _parse_minimal(tmp_path, header)
+    # Recorded as-is (not dropped, not mangled away).
+    assert (traj.runtime_info["siesta_build"]["parallelisations"]
+            == ["HYBRID(MPI:8)"])
+    # And flagged.
+    warns = _runtime_warnings(traj)
+    assert warns, "unknown parallelisation token must raise a warning"
+    assert "parallelisation" in warns[0].error.lower()
+    assert "HYBRID(MPI:8)" in warns[0].error
+
+
+def test_unknown_diag_algorithm_warns_but_records(tmp_path):
+    """A diag-algorithm token outside SIESTA's vocabulary is recorded
+    AND flagged (a real SIESTA die()s on unknown algos, so this only
+    happens when a newer SIESTA adds an alias we don't track)."""
+    header = (
+        "Version : 5.9.0\n"
+        "Parallelisations: MPI\n"
+        "redata: Diagonalization algorithm = quantum-magic\n"
+        "\n"
+        "siesta: System type = molecule\n"
+    )
+    traj = _parse_minimal(tmp_path, header)
+    assert (traj.runtime_info["siesta_diag"]["algorithm"]
+            == "QUANTUM-MAGIC")
+    warns = _runtime_warnings(traj)
+    assert warns, "unknown diag algorithm must raise a warning"
+    assert "diag.algorithm" in warns[0].error.lower()
+    assert "QUANTUM-MAGIC" in warns[0].error
+
+
+def test_uncommon_but_valid_algo_alias_does_not_warn(tmp_path):
+    """A legitimate-but-unusual SIESTA alias (e.g. ``vd`` for
+    divide-and-conquer, ``vr`` for MRRR) must NOT warn -- the
+    vocabulary is the full alias set from diag_option.F90, not just
+    the canonical names."""
+    for alias in ("vd", "RRR", "elpa-1", "noexpert"):
+        header = (
+            "Version : 5.4.2\n"
+            "Parallelisations: MPI\n"
+            f"redata: Diagonalization algorithm = {alias}\n"
+            "\n"
+            "siesta: System type = molecule\n"
+        )
+        traj = _parse_minimal(tmp_path, header)
+        assert _runtime_warnings(traj) == [], (
+            f"valid alias {alias!r} should not warn")

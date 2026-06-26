@@ -71,7 +71,22 @@ then picks which findings to act on.
 | T4 — test-depth audit | in progress | today |
 | T2 — per-subsystem deep dives | queued | after T1 findings rank them |
 | T5 — architecture cleanup plan | queued | after T1 + T3 inform it |
+| **Skipped-test census** | **queued** | **after the Pattern-2 BLOCKER fixes (#1, #5, #4)** |
 
 After today, the queue becomes: act on T1+T3+T4 findings (separate
 fix commits) → revisit whether T2 is needed for any subsystem the
 findings flagged → write T5 once we have enough signal.
+
+### Skipped-test census (added 2026-06-26, user-requested)
+
+After the Pattern-2 BLOCKER fixes land, do a dedicated pass over every
+`pytest`-skipped test: catalogue **what** is skipped, **why** (env-gated
+vs. placeholder-for-future-work vs. genuinely-stale), and **how/when**
+we get back to clean each one up. The fix work surfaced several skip
+classes worth distinguishing — e.g. env-gated skips (`pyscf` absent,
+`molbuilder-siesta` env needed) that are legitimate on the host env, vs.
+placeholder markers like `test_transport_au_bdt_au_validation`
+(follow-up integration test that needs the SIESTA env + electrode
+`.TSHS`), vs. `test_layering` `__init__`-shim skips. Output: a table of
+every skip with a disposition (keep-as-env-gate / convert-to-real-test /
+delete) and an owner action.
