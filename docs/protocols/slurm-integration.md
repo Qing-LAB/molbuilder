@@ -321,6 +321,47 @@ inside the SLURM-allocated cpuset; `plm:slurm` isn't even exercised.
 **Compatible — and `srun --mpi=pmix` is the *incorrect* path for this
 build.**
 
+#### 7.5.1 Multi-GPU binding — RUNTIME per-rank, never a hardcoded socket
+**Mapping: 1 MPI rank ↔ 1 GPU** (ELPA-CUDA is a distributed eigensolver;
+one rank drives each GPU). The non-obvious correctness point:
+
+> **GPU→socket placement is NOT guaranteed.** Requesting `--gres=gpu:a100:N`
+> on a SHARED node gives you N of the 4 GPUs *by availability* — they may
+> be same-socket, split, or any combination. So a static `--map-by
+> ppr:2:socket` binding is FRAGILE: if SLURM hands you socket-1 GPUs but
+> the binding pins ranks to socket 0, every OMP thread is the far
+> (distance-32) side of the NUMA divide.
+
+**The binding must therefore be decided at RUN time, per rank**, from the
+*actual* allocation. Each rank: (1) takes its GPU via
+`CUDA_VISIBLE_DEVICES=$OMPI_COMM_WORLD_LOCAL_RANK`, (2) reads that GPU's
+NUMA node from `/sys/bus/pci/devices/<busid>/numa_node`, (3) binds itself
+to that node with `numactl --cpunodebind=$numa --membind=$numa`, then
+execs SIESTA. Robust to same-socket OR split allocations.
+
+```bash
+# per-rank launcher (emitted by the wrapper for a GPU job)
+_lr=$OMPI_COMM_WORLD_LOCAL_RANK
+export CUDA_VISIBLE_DEVICES=$_lr
+_bus=$(nvidia-smi --id=$_lr --query-gpu=pci.bus_id --format=csv,noheader)
+_numa=$(cat /sys/bus/pci/devices/${_bus,,}/numa_node 2>/dev/null)
+[ "${_numa:--1}" -ge 0 ] && _bind="numactl --cpunodebind=$_numa --membind=$_numa" || _bind=""
+exec $_bind siesta < in.fdf
+```
+Outer launch: `OMP_NUM_THREADS=<c> mpirun -np N ... <per-rank launcher>`.
+
+**Cores/rank**: one socket's worth per (ngpus/socket). On the A100 node
+(2 sockets × 24 cores, **8 NUMA nodes** of 6 cores; within-socket NUMA
+distance 12, cross-socket 32): **`-c 12`/rank**, 12 OMP threads. NEVER
+exceed the GPU's socket — spilling OMP threads to the far socket
+(distance 32) is slower than not having them. So for 2 GPUs → `-c 12`
+(24 cores = one socket) is both the recommendation **and the ceiling**.
+Add **`--gres-flags=enforce-binding`** to nudge SLURM toward co-locating
+CPU+GPU. **The wrapper MUST log each rank's GPU + NUMA node** into the
+timing header so a slow run is diagnosable (bad binding vs. bad config).
+The existing `_gpu_runtime_defaults_block` is single-GPU/generate-time;
+this per-rank/runtime probe is NEW logic.
+
 ### 7.6 Working directory / outputs
 `SLURM_SUBMIT_DIR` = the dir you `sbatch` from = the project dir. The
 launcher never `cd`s (`config.md` § 1), so outputs land beside inputs.
@@ -396,26 +437,32 @@ generated on a laptop or login node, then `sbatch`'d. **Compatible.**
 Request syntax: `-G N` (any type) or `--gres=gpu:a100:N` (specific);
 memory `--mem=120G`, whole node `--exclusive --mem=0`.
 
-**Recommended SIESTA-GPU mapping (the efficient shape)**: ELPA-CUDA is a
-*distributed* eigensolver — one MPI rank drives one GPU. So **1 rank ↔ 1
-GPU**; cores split evenly (`-c = node_cores / ngpus`), `OMP_NUM_THREADS`
-per rank for the ELPA-OpenMP CPU work. Whole-A100-node example (a slow
-single-GPU relax → 4× A100):
+**A100 node topology (live-probed `sg0NN`, 2026-06-26)**: 2× AMD EPYC
+7413 = **48 cores, NO hyperthreading**; **8 NUMA nodes** (NPS4: 4/socket,
+6 cores + ~64 GiB each); socket 0 = NUMA 0–3 / cores 0–23, socket 1 =
+NUMA 4–7 / cores 24–47; within-socket NUMA distance **12**, cross-socket
+**32**; GPUs NVLink-connected; **`TMPDIR=/tmp` (node-local → no OpenMPI
+NFS-shmem fix needed)**.
+
+**Mapping**: 1 rank ↔ 1 GPU; `-c 12`/rank (12 OMP threads for ELPA's
+OpenMP host work); **binding decided per-rank at RUNTIME** (§ 7.5.1) —
+NOT a static socket map, because GPU placement isn't guaranteed. 2-GPU
+example (24 cores = one socket's worth):
 
 ```bash
-#SBATCH -N 1 -n 4 -c 12 --gres=gpu:a100:4 --mem=0 --exclusive
-#SBATCH -t 1-00:00:00 -p public -q public
+#SBATCH -N 1 -n 2 -c 12 --gres=gpu:a100:2 --gres-flags=enforce-binding
+#SBATCH -t 0-04:00:00 -p htc -q public
+# launch: OMP_NUM_THREADS=12 mpirun -np 2 <per-rank NUMA launcher, § 7.5.1>
 ```
 
-Prefer **A100 over A30** (80 vs 24 GiB GPU memory; 4 vs 3 per node).
-Notes from the live probe (§ 7.0): GPU nodes are **shared** by default
-— `--exclusive` for a clean production run; **MIG** is enabled on some
-A100s, so confirm the benchmark gets full 80 GiB GPUs (not 20 GiB
-slices); for the short benchmark itself, **`-p htc`** (≤ 4 h) may
-schedule faster than `public`.
-**Validate scaling before the long run** (§ 11) — SIESTA-GPU scaling is
-sublinear and system-size-dependent; over-requesting GPUs both wastes
-allocation and lengthens the queue.
+Prefer **A100 over A30** (80 vs 24 GiB), and **a100 over a100.40gb /
+a100.20gb** (full 80 GiB vs MIG slice). **Never `l40`** (Ada, crippled
+FP64 ~1.4 TFLOPS — same trap as a consumer card; § 11). Live-probe notes
+(§ 7.0): nodes are **shared** (use `--exclusive` for a clean production
+run); **MIG** is on some A100s (confirm full 80 GiB, not a 20 GiB slice);
+**htc has the GPU fleet** (~47 `sg0NN` 4×A100 nodes) — short benchmark
+jobs schedule there fastest. **Validate scaling before the long run**
+(§ 11): SIESTA-GPU scaling is sublinear + system-size-dependent.
 
 ---
 
@@ -451,10 +498,49 @@ allocation and lengthens the queue.
 ## 11. Benchmark / validation mode
 
 The first thing to submit on Sol — it proves the whole stack and sizes
-resources in one short batch job, so we never guess Sol's driver or
-scaling. **Built on the existing `molbuilder bench siesta-gpu`** (sweeps
-`np/omp/BlockSize`, reports per-iter wall time) plus a correctness gate
-and a resource sweep.
+resources, so we never guess the driver or scaling. **Built on the
+existing `molbuilder bench siesta-gpu`** plus a correctness gate and a
+**CPU-vs-GPU head-to-head**.
+
+**CPU vs GPU is an OPEN question — do NOT assume GPU wins.** Empirically
+the user saw **CPU (np=20) beat single-GPU** on their workstation — but
+that was an **RTX 3060 Ti**, a consumer card with **crippled FP64
+(~0.25 TFLOPS)**; SIESTA/ELPA diagonalization is FP64-heavy and Sol's
+**A100 does ~9.7 TFLOPS FP64 (40–80× more)**. So the local result does
+NOT predict Sol — the benchmark must measure both, head-to-head, on Sol
+hardware. (Also: **avoid `l40`** GPUs — Ada, crippled FP64 like a
+consumer card.)
+
+**Jobs are independent + parallel, NOT sequential.** A SLURM job has one
+allocation, so CPU-only and GPU configs are *separate* `.sbatch` files
+(they also differ in the `.fdf`'s `Diag.ELPA.GPU` flag → different env:
+`molbuilder-siesta` vs `molbuilder-siesta-gpu`). Submit them all; SLURM
+runs the CPU job on a CPU node and the GPU job on a GPU node concurrently.
+Collect each job's `.scf-timing.log` and compare.
+
+### 11.0 Iteration-count methodology (why a few, but not 1–2)
+The ranking metric is **steady-state wall-time per SCF iteration**
+(dominated by the fixed-size O(N³) eigensolve — identical every
+iteration, convergence-independent). But **iteration 1–2 is one-time
+warmup** (pseudo/basis/mesh setup; on GPU: CUDA context + cuBLAS/ELPA
+handle + memory-pool alloc + first-kernel JIT — bigger for GPU, would
+*penalize* it unfairly). So cap at **`MaxSCFIterations 5`**, single-point
+(no relax), and **report the mean of iters 3–5** (the parser's
+per-iteration delta cancels the one-time setup). 1–2 iters is wrong; ~5
+is enough and bounds wall-time.
+
+### 11.0b Per-iteration timing instrument — `.scf-timing.log`
+SIESTA emits **no usable per-iteration wall time** (the `scf:` lines
+carry energies + dDmax but no time; `timer: IterSCF` is cumulative). So
+the wrapper MUST measure it: pipe SIESTA stdout through a filter that
+**timestamps each `scf:` line** into a persistent
+**`<basename>.scf-timing.log`** (`<epoch> <iter#> <dDmax>`); per-iter
+time = consecutive-stamp delta. This is the benchmark's measurement
+instrument and is **non-optional**. Forward-looking: the same filter
+maintains a `<basename>.status.json` (current iter / per-iter time / ETA
+/ config) — the machine-readable status a future **notifier** pushes
+(webhook/email) so the user needn't log in to grep; this is the
+front-end of the job-monitor/watcher surface.
 
 ### 11.1 Correctness gate ("is the GPU actually doing the work?")
 After a short capped run, assert from the parser's `runtime_info`
@@ -468,11 +554,19 @@ After a short capped run, assert from the parser's `runtime_info`
 `elpa_gpu == False` ⇒ **fail loudly** — otherwise the job runs
 slow-on-CPU while looking successful.
 
-### 11.2 Resource sweep (find the right CPU/GPU/mem)
-Emit a **short, capped** job (small `MaxSCFIterations` or a few relax
-steps) as an **sbatch array** over a small grid: `{1, 2, 4}× A100`, OMP
-threads, BlockSize. Each array task is one `.sbatch`, run through the
-batch system. Matches ASU's own "test a small job first" advice.
+### 11.2 The configs to compare (locked for the first Sol run)
+Independent `.sbatch` jobs, all `MaxSCFIterations 5` single-point on the
+test system (§ 16), all `-p htc -q public` (the GPU fleet + fast
+scheduling for short jobs):
+
+| Config | `.fdf` flag | env | resources |
+|---|---|---|---|
+| **CPU np=20** | `Diag.ELPA.GPU .false.` | `molbuilder-siesta` | `-n 20` (no gres) — the user's baseline |
+| **CPU np=64** | `.false.` | `molbuilder-siesta` | `-n 64` (no gres) — confirmed schedules immediately |
+| **GPU 2×A100** | `Diag.ELPA.GPU .true.` | `molbuilder-siesta-gpu` | `-n 2 -c 12 --gres=gpu:a100:2 --gres-flags=enforce-binding`, runtime NUMA bind (§ 7.5.1) |
+
+(Skip CPU np=128 for the first pass — a full 128-core node waits;
+`--test-only` showed 64 immediate. 4×A100 is a later scaling point.)
 
 ### 11.3 Report + recommend
 Fuse `seff <jobid>` (GPU/CPU/mem utilization) with the parser's
@@ -529,3 +623,72 @@ resource sizing — before committing the long production run.
   [Sol Partitions and QoS](https://asurc.atlassian.net/wiki/spaces/RC/pages/1908867081/),
   [Sol Hardware - How to Request](https://asurc.atlassian.net/wiki/spaces/RC/pages/1908998178/),
   [Managing Python Modules through mamba](https://asurc.atlassian.net/wiki/spaces/RC/pages/1905328428/).
+
+---
+
+## 15. Implementation plan (the build — pin-pointed)
+
+Build order; each is a scoped commit with host-env tests
+(`conda run -n molbuilder python -m pytest`). Generation stays offline
+(no cluster needed); the `.run.sh` launcher internals are unchanged
+except the GPU/timing blocks.
+
+- **A. `scheduler` config reader** — `runtime_config.py::get_scheduler(project_dir)`
+  mirroring `get_script_generation`: reads the `scheduler` block (server
+  + project merge), validates, **refuse-to-emit** if `kind=="slurm"` and
+  `directives.partition`/`qos` missing (§ 10). Returns the resolved
+  directives + gpu + defaults.
+- **B. `.sbatch` emitter** — `render_sbatch(script_path, scheduler, ...)`
+  producing the § 5 header (conditional `--gres`/`--mem`) + body
+  `bash <basename>.run.sh "$@"`. Wire into `write_run_wrapper` (the path
+  both CLI `molbuilder run` and the web build blueprint already call), so
+  it writes `<basename>.sbatch` (chmod 644) whenever `scheduler` is
+  configured. `bash -n` validate like the wrapper. Refuse/skip per § 10.
+- **C. Multi-GPU runtime NUMA block** — replace the single-GPU
+  `_gpu_runtime_defaults_block` GPU-mode launch with the **per-rank
+  runtime binding** of § 7.5.1: `CUDA_VISIBLE_DEVICES=$local_rank` +
+  sysfs `numa_node` read + `numactl --cpunodebind/--membind`, `-c 12`/rank,
+  `OMP_NUM_THREADS` per rank, and **log each rank's GPU+NUMA** into the
+  timing header. Works for N GPUs; no hardcoded socket.
+- **D. `.scf-timing.log`** — in the launch block, tee SIESTA stdout
+  through a timestamping filter that appends `<epoch> <iter#> <dDmax>`
+  for each `scf:` line to `<basename>.scf-timing.log` (§ 11.0b). Keep it
+  to portable bash (`date +%s.%N` + awk). (`status.json`/notifier is a
+  follow-up, not v1.)
+- **E. Test-bundle generation** — generate § 16 through the framework
+  (A–D) into a temp project: one CPU `.fdf` (`Diag.ELPA.GPU .false.`) +
+  one GPU `.fdf` (`.true.`), each with its `.run.sh`, and the three
+  `.sbatch` of § 11.2.
+
+**Tests** (host env): scheduler parse/merge + refuse-to-emit; `.sbatch`
+golden (asu-sol preset → `-p public`/`-q public`, conditional `--gres`,
+`bash -n` clean); GPU `.fdf` → `--gres` + per-rank-NUMA launch present,
+CPU `.fdf` → none; `.scf-timing.log` emitter shape.
+
+---
+
+## 16. Test-bundle spec (first Sol validation, do NOT touch the live run)
+
+System: **444-atom BDT–Au(111) thiol junction** = `stage4` ("phase 4") of
+`projects/BDT/optimization/TJ-BDT-Au111/` — that dir is the LIVE run,
+**strictly read-only**. Build the test in a TEMP project
+(`projects/test_runs/sol-bench-BDT-Au111/`).
+
+Inputs (copy/reuse, framework-generated `.fdf`/`.run.sh`/`.sbatch`):
+- Geometry: latest 444-atom coords (the dir's `.xyz` / `.XV`, updated last).
+- Labels: `projects/BDT/structure/BDT_Au111_6_6_6_unoptimized.molstruct.json`
+  — regions `L-electrode`/`bridge`/`R-electrode`/`BDT` + **216 frozen
+  atoms** (atom indices stable → apply to current geometry). The SIESTA
+  optimization consumes the frozen atoms (constraints) and warns on the
+  region labels (pattern B, sidecar-contract).
+- Pseudos: reuse the dir's `Au/C/H/S.psml`.
+- Engine config: `SolutionMethod diagon`, `ELPA-1STAGE`, `MeshCutoff 400 Ry`,
+  **`MaxSCFIterations 5`**, single-point (no relax / `MD.NumCGsteps 0`),
+  `DM.UseSaveDM .false.`. GPU variant adds `Diag.ELPA.GPU .true.`.
+
+Prerequisite gate (run-time, on Sol): the conda envs
+(`molbuilder-siesta-gpu`, `molbuilder-siesta`) must be installed on Sol —
+verify `module load mamba/latest && mamba env list | grep molbuilder`
+before submitting. If absent, install them first (step zero). Then:
+`cd <tempproj>; sbatch cpu-np20.sbatch; sbatch cpu-np64.sbatch;
+sbatch gpu-2a100.sbatch` → compare each `.scf-timing.log` (mean iters 3–5).
