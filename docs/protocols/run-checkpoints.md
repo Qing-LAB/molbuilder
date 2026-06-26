@@ -80,7 +80,7 @@ The current model (rolling overwrites, manual file-shuffling) loses scientific w
 |---|---|---|
 | **L1**: data model | `molbuilder/checkpoint.py` (new) | `Checkpoint`, `Branch`, `Tag` dataclasses; pure git-state representation. |
 | **L2**: orchestration | `molbuilder/checkpoint.py::Repo` | Init (Path A), user-invoked checkpoint, binary archive write/read. Wraps `subprocess.run(["git", ...])`. |
-| **L2**: CLI | `molbuilder/cli.py::cmd_snapshot_group` (new) | `molbuilder snapshot {init,checkpoint,status,list,tag,diff,restore,branch,prune}` |
+| **L2**: CLI | `molbuilder/cli.py::cmd_snapshot_group` (new) | `molbuilder snapshot {init,checkpoint,list,tag,branch,diff,restore,prune,migrate-manifest}` |
 | **L2**: wrapper bootstrap prologue | `molbuilder/runwrap.py` (small addition) | Emits the `if [ ! -d .git ]; then ...` block at the top of every generated `.run.sh`. Idempotent shell-side check. |
 | **L2**: snippet library | `molbuilder/snippets/git/*.sh` (new) | User-pasteable git fragments (pre-run-checkpoint, post-run-checkpoint, tag-on-converged, branch-on-experiment). |
 | **L3**: HTTP routes | `molbuilder/web/blueprints/checkpoint.py` (new) | Read-only endpoints + checkpoint/tag/branch/restore POST endpoints + GET snippet library. |
@@ -174,7 +174,7 @@ This is informational — records what state the run started from, never alters 
 4. `NEW_SHA = git rev-parse HEAD`.
 5. Identify big binaries present (`.DM`, `.HSX`, `.TSHS`, `.TBT.AVTRANS_*`).
 6. `mkdir -p .binsnapshots/$NEW_SHA && cp -a <binaries> .binsnapshots/$NEW_SHA/`.
-7. Write `.binsnapshots/$NEW_SHA/MANIFEST` with `<file>  <sha256>  <bytes>` per line.
+7. Write `.binsnapshots/$NEW_SHA/MANIFEST` per § 10.2 (canonical 3-column format `<sha256> <bytes> <name>`, sorted by filename, atomic rename).
 
 That is the entire commit lifecycle. There is no Phase 3.
 
@@ -543,23 +543,86 @@ Note `.XV` and `.CG` are tracked: they're small (< 100 KB on this 444-atom syste
 
 ---
 
-## 10. Binary archive layout
+## 10. Binary archive layout (canonical, locked 2026-06-25)
+
+**One format only.** No alternative formats are accepted, on read or on write. If on-disk data does not match this spec, the parser raises `CheckpointError` with a clear message — no silent skip, no fallback. Legacy on-disk archives in a different format are migrated explicitly via `molbuilder snapshot migrate-manifest <ref>` (§ 10.4); they are not transparently accepted by the canonical parser.
+
+The lockdown reason: any "accept both formats" code path is an unbounded design that drifts the moment a third variant shows up. Spec the format; code matches the spec; legacy is migrated, not forked.
+
+### 10.1 Directory layout
 
 ```
 <working_dir>/
-├── siesta-foo.DM                              ← current state, gitignored
-├── siesta-foo.TSHS                            ← current state, gitignored
+├── siesta-foo.DM                              ← live, gitignored
+├── siesta-foo.TSHS                            ← live, gitignored
 └── .binsnapshots/
-    ├── .gitkeep
-    ├── 8b22e07c.../                           ← SHA-keyed per checkpoint
-    │   ├── siesta-foo.DM                      ← 43 MB
-    │   ├── siesta-foo.TSHS                    ← 32 MB
-    │   └── MANIFEST                           ← list + sha256
-    └── d3f1a92e.../
-        └── ...
+    ├── .gitkeep                               ← keeps the dir tracked
+    ├── 8b22e07c…<40-char SHA>…/               ← one per checkpoint
+    │   ├── MANIFEST
+    │   ├── siesta-foo.DM
+    │   └── siesta-foo.TSHS
+    └── d3f1a92e…/
+        ├── MANIFEST
+        └── …
 ```
 
-Each archive carries a `MANIFEST` file with `<file>  <sha256>  <bytes>` per line. The MANIFEST is regenerated at archive time; mismatch on restore triggers a hard refusal with the bad file's name.
+Rules:
+- **SHA directory name MUST be the full 40-character lowercase hexadecimal commit SHA.** No short SHA. No alternative tag-name or branch-name aliases.
+- Each SHA directory MUST contain exactly: a `MANIFEST` file (format § 10.2) **plus** one file per archived binary. No other files; no nested directories.
+- The MANIFEST file MUST NOT list itself.
+
+### 10.2 MANIFEST format
+
+```
+<sha256_hex>  <size_bytes>  <filename>\n
+```
+
+Per line:
+- `sha256_hex`: exactly 64 lowercase hex characters.
+- Two ASCII spaces (`\x20\x20`).
+- `size_bytes`: decimal non-negative integer, no leading zeros, no thousands separator, no unit suffix.
+- Two ASCII spaces.
+- `filename`: bare basename relative to the SHA directory (no `/`, no `..`, no leading dot-prefix outside the canonical layout). ASCII-only. No tabs, no embedded whitespace.
+- One `\n` line terminator (no CRLF). File MUST end with a final `\n`.
+
+Whole-file rules:
+- One entry per archived file. No comments. No blank lines. No header line.
+- Order is alphabetical by filename (deterministic — diff-friendly across machines).
+- UTF-8 BOM rejected.
+
+A MANIFEST that fails any of these rules is malformed. The parser raises `CheckpointError(f"malformed MANIFEST in {archive_path}: <specific reason>")`. No silent skip, no field-count fallback.
+
+### 10.3 Read + write contract
+
+- **Write** (called from `Repo.checkpoint()` and `Repo.init()`): always emits the format above, generated from a `sha256sum` of each file's full bytes + `Path.stat().st_size`. Atomic write: write to `MANIFEST.tmp`, rename to `MANIFEST` only after the body is fully flushed.
+- **Read** (called from `Repo.restore()` and `Repo.list_checkpoints()`): single canonical parser. The 2-column `sha256sum` default output is **not** accepted here — see § 10.4 for the migration path.
+- **Verify on restore**: each archived file's sha256 is recomputed and matched against the MANIFEST's value before it overwrites a working-tree file. Any mismatch raises and aborts the restore before any byte hits the working tree.
+
+### 10.4 Legacy migration
+
+Some `.binsnapshots/<sha>/MANIFEST` files were hand-rolled with bash `sha256sum > MANIFEST`, producing a 2-column format (`<sha256> <filename>`). These are **legacy** and not supported by the canonical parser. They are migrated to the canonical 3-column format via a one-shot CLI:
+
+```
+molbuilder snapshot migrate-manifest <ref>
+```
+
+Behaviour:
+1. Resolves `<ref>` to a 40-char commit SHA via `git rev-parse <ref>^{commit}`.
+2. Reads the existing `MANIFEST` in `.binsnapshots/<sha>/`. If it already parses as canonical → exit 0 with "already canonical."
+3. If it's the 2-column legacy form: parses sha256 + filename, then `stat`s each file for the bytes column, AND **re-hashes each file's content and verifies against the recorded sha256**. Any mismatch aborts with the bad file named.
+4. Writes the canonical 3-column MANIFEST atomically (`MANIFEST.tmp` → rename).
+5. Any other format → error, no auto-fix.
+
+The migration touches only the MANIFEST file; the archived binaries themselves are never modified.
+
+### 10.5 Test coverage required
+
+The following tests must exist alongside the format (gate the lockdown):
+- Canonical write produces a MANIFEST that round-trips through the canonical parser.
+- Canonical read accepts a hand-authored canonical MANIFEST and rejects every malformed variant: 2-column, 4-column, missing `\n`, CRLF, BOM, uppercase hex, decimal SHA, negative size, unsorted lines.
+- `migrate-manifest` converts a 2-column MANIFEST to canonical and the result round-trips.
+- `migrate-manifest` aborts and leaves the original MANIFEST untouched when an archived file's sha256 fails verification.
+- `restore` against a legacy 2-column MANIFEST raises `CheckpointError` pointing at the migration command (no silent fallback).
 
 ---
 
@@ -578,7 +641,7 @@ The 8 questions in this section were answered by the user on 2026-06-25. Recorde
 | 7 | **Sensor poll cadence = 5 seconds** when sidebar is visible and a project is selected; suspended otherwise. | Halves the polling load vs. 2 s; up-to-5-s lag after a checkpoint is acceptable. |
 | 8 | **No `molbuilder snapshot status` CLI subcommand.** Users run `git status` directly inside the working dir. | Don't duplicate git. The user-facing surfaces (sidebar sensor + sidebar list view) cover the GUI case; plain `git status` covers the CLI case. CLI surface shrinks accordingly. |
 
-The CLI surface declared in § 14 (item 2) drops `status` accordingly: `molbuilder snapshot {init, checkpoint, list, tag, branch, diff, restore, prune}`.
+The CLI surface declared in § 14 (item 2) drops `status` accordingly and adds `migrate-manifest` (introduced by § 10.4): `molbuilder snapshot {init, checkpoint, list, tag, branch, diff, restore, prune, migrate-manifest}`.
 
 ---
 

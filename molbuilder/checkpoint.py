@@ -259,11 +259,26 @@ def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        # Two formats accepted on read:
+        #   "<sha256>  <bytes>  <name>"  -- canonical 3-column (this module's writer)
+        #   "<sha256>  <name>"            -- 2-column (sha256sum default output;
+        #                                   bash-created archives, hand-rolled)
         parts = line.split(None, 2)
-        if len(parts) != 3:
+        if len(parts) == 3:
+            sha256, _bytes, name = parts
+        elif len(parts) == 2:
+            sha256, name = parts
+        else:
             continue
-        sha256, _bytes, name = parts
+        # MANIFEST often lists itself (sha256sum * picks up everything);
+        # skip that entry -- it's not a payload we'd ever restore.
+        if name == "MANIFEST":
+            continue
         expected[name] = sha256
+    if not expected:
+        raise CheckpointError(
+            f"archive at {arch}: MANIFEST is present but contained "
+            f"no parseable entries.  Refusing to silently no-op.")
     for name, want_sha256 in expected.items():
         src = arch / name
         if not src.is_file():
