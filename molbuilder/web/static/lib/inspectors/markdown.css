@@ -1,0 +1,191 @@
+/* Markdown inspector — split-pane editor (CodeMirror) + live preview (marked).
+ *
+ * Mounted inside the /results tab's #inspector-host.  See
+ * lib/inspectors/markdown.js (task #32, 2026-06-26).
+ *
+ * Layout: fixed-height shell with toolbar + 50/50 split + status line.
+ * The CodeMirror editor and the rendered HTML pane scroll independently.
+ */
+
+.md-inspector {
+    display:           flex;
+    flex-direction:    column;
+    height:            100%;
+    min-height:        60vh;
+    background:        var(--ps-bg, #181818);
+    color:             var(--ps-fg, #ddd);
+    font:              0.9rem system-ui, -apple-system, sans-serif;
+}
+
+.md-toolbar {
+    display:           flex;
+    align-items:       center;
+    gap:               0.6rem;
+    padding:           0.5rem 0.75rem;
+    border-bottom:     1px solid var(--ps-border, #2a2a2a);
+    background:        var(--ps-bg-tile, #1c1c1c);
+    flex-shrink:       0;
+}
+
+.md-toolbar-title {
+    font-weight:       600;
+    font-size:         0.85rem;
+    color:             var(--ps-fg, #ddd);
+}
+
+.md-toolbar-spacer { flex: 1; }
+
+.md-dirty-flag {
+    color:             #e0a868;
+    font-size:         0.8rem;
+    font-style:        italic;
+}
+
+.md-save-btn {
+    background:        var(--ps-accent, #4f7ab8);
+    color:             #fff;
+    border:            none;
+    padding:           0.3rem 0.75rem;
+    border-radius:     3px;
+    font-size:         0.8rem;
+    cursor:            pointer;
+}
+.md-save-btn:disabled {
+    background:        var(--ps-bg-tile, #2a2a2a);
+    color:             var(--ps-fg-muted, #999);
+    cursor:            not-allowed;
+}
+.md-save-btn:not(:disabled):hover {
+    filter:            brightness(1.1);
+}
+
+/* The split itself.  Equal halves; resize is via CSS only for now
+ * (the JS side may add a draggable divider in a follow-up). */
+.md-split {
+    display:           flex;
+    flex:              1;
+    min-height:        0;        /* let children's overflow scroll */
+    overflow:          hidden;
+}
+
+.md-edit-pane,
+.md-render-pane {
+    flex:              1;
+    min-width:         0;
+    overflow:          auto;
+}
+
+.md-edit-pane {
+    border-right:      1px solid var(--ps-border, #2a2a2a);
+}
+
+/* CodeMirror sits inside the edit pane.  Match the surrounding font
+ * size + give it a height so it doesn't collapse to 0. */
+.md-edit-pane .CodeMirror {
+    height:            100%;
+    font-size:         0.85rem;
+    line-height:       1.4;
+    background:        var(--ps-bg, #181818);
+    color:             var(--ps-fg, #ddd);
+}
+
+/* Rendered Markdown styling — minimal, readable, matches the dark
+ * theme.  No exotic CSS; the same rules work for printed export. */
+.md-render-pane {
+    padding:           1rem 1.25rem;
+    line-height:       1.6;
+}
+
+.md-render-pane h1,
+.md-render-pane h2,
+.md-render-pane h3,
+.md-render-pane h4 {
+    margin-top:        1.4em;
+    margin-bottom:     0.5em;
+    color:             var(--ps-fg, #fff);
+}
+.md-render-pane h1 { font-size: 1.5rem; border-bottom: 1px solid var(--ps-border, #2a2a2a); padding-bottom: 0.3rem; }
+.md-render-pane h2 { font-size: 1.25rem; }
+.md-render-pane h3 { font-size: 1.05rem; }
+
+.md-render-pane p { margin: 0.8em 0; }
+
+.md-render-pane code {
+    background:        var(--ps-bg-tile, #1c1c1c);
+    color:             #e0c898;
+    padding:           0.1em 0.3em;
+    border-radius:     3px;
+    font-family:       ui-monospace, "SF Mono", Menlo, monospace;
+    font-size:         0.85em;
+}
+.md-render-pane pre {
+    background:        var(--ps-bg-tile, #1c1c1c);
+    border:            1px solid var(--ps-border, #2a2a2a);
+    border-radius:     4px;
+    padding:           0.75rem;
+    overflow-x:        auto;
+}
+.md-render-pane pre code {
+    background:        transparent;
+    padding:           0;
+    color:             var(--ps-fg, #ddd);
+}
+
+.md-render-pane table {
+    border-collapse:   collapse;
+    margin:            1em 0;
+    width:             100%;
+}
+.md-render-pane th,
+.md-render-pane td {
+    border:            1px solid var(--ps-border, #2a2a2a);
+    padding:           0.4rem 0.6rem;
+    text-align:        left;
+}
+.md-render-pane th {
+    background:        var(--ps-bg-tile, #1c1c1c);
+}
+
+.md-render-pane blockquote {
+    border-left:       4px solid var(--ps-accent, #4f7ab8);
+    margin:            0.8em 0;
+    padding-left:      0.8em;
+    color:             var(--ps-fg-muted, #999);
+}
+
+.md-render-pane a {
+    color:             var(--ps-accent, #4f7ab8);
+}
+
+.md-render-pane ul,
+.md-render-pane ol {
+    margin:            0.6em 0;
+    padding-left:      1.6em;
+}
+.md-render-pane li { margin: 0.25em 0; }
+
+.md-render-pane hr {
+    border:            none;
+    border-top:        1px solid var(--ps-border, #2a2a2a);
+    margin:            1.5em 0;
+}
+
+.md-status {
+    padding:           0.4rem 0.75rem;
+    border-top:        1px solid var(--ps-border, #2a2a2a);
+    background:        var(--ps-bg-tile, #1c1c1c);
+    color:             var(--ps-fg-muted, #999);
+    font-size:         0.75rem;
+    flex-shrink:       0;
+}
+
+/* Narrow-screen fallback: stack the two panes instead of side-by-side. */
+@media (max-width: 768px) {
+    .md-split { flex-direction: column; }
+    .md-edit-pane,
+    .md-render-pane {
+        flex:        none;
+        height:      40vh;
+    }
+    .md-edit-pane { border-right: none; border-bottom: 1px solid var(--ps-border, #2a2a2a); }
+}

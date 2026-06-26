@@ -18,6 +18,7 @@
    the cost is small + the alternative (lazy-loading the CSS on
    inspector mount) introduces a FOUC. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory-inspector.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/markdown.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
 {# Spectra inspector styles.  When the spectra-inspector lift lands
@@ -200,6 +201,10 @@
 <script src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
 {# ...then specific-but-not-compound (.xyz/.pdb)... #}
 <script src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
+{# Markdown inspector (.md) -- split-pane editor + live preview.
+   Registered BEFORE source.js so .md files dispatch to the rich
+   editor rather than the read-only paginated viewer.  See task #32. #}
+<script src="{{ url_for('static', filename='lib/inspectors/markdown.js') }}"></script>
 {# ...then the catch-all source inspector (matches .log / .json /
    .py / .fdf / .out / .txt / .md -- LAST so the specific inspectors
    above get first crack at compound extensions). #}
