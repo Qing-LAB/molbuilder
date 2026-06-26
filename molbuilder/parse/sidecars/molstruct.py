@@ -243,7 +243,9 @@ class MolstructSidecarFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
         payload = _load(path)
-        sv = payload.get("schema_version", SCHEMA_VERSION)
+        # _load() has already validated schema_version against the
+        # readable set; read it strictly rather than defaulting.
+        sv = payload["schema_version"]
         return build_sidecar_result(
             payload=payload,
             schema=f"molstruct/v{sv}",

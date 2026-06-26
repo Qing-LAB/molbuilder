@@ -672,6 +672,18 @@ class SpectraResults:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "SpectraResults":
+        # Strict version gate (2026-06-26): the decoder self-enforces
+        # the schema version rather than trusting the outer sidecar
+        # reader.  Missing or non-current versions raise instead of
+        # being silently reconstituted at whatever version the payload
+        # claims.
+        sv = d.get("schema_version")
+        if sv is None or int(sv) != SCHEMA_VERSION:
+            raise ValueError(
+                f"SpectraResults: schema_version {sv!r} is not "
+                f"supported; this molbuilder build requires "
+                f"{SCHEMA_VERSION}."
+            )
         eq = d["equilibrium"]
         return cls(
             schema_version       = int(d["schema_version"]),

@@ -209,6 +209,51 @@ def test_unknown_schema_version_still_raises():
         TransportResults.from_dict({"schema_version": "999"})
 
 
+def test_missing_schema_version_is_rejected():
+    """STRICT v2 (2026-06-26): a payload with NO schema_version key (the
+    true v1 shape -- v1 sidecars omit the field entirely) must raise,
+    NOT default to the current version and slip through as an empty-
+    boundary v2.  This is the silent-default bug the audit flagged."""
+    with pytest.raises(ValueError, match="not supported"):
+        TransportResults.from_dict({})
+    # A full v1 body that simply lacks the key -- same outcome.
+    body = {
+        "metadata": {}, "energy_grid_eV": [-1.0, 0.0, 1.0],
+        "transmission": [0.1, 0.5, 0.9], "fermi_energy_eV": 0.0,
+        "conductance_G0": 0.5, "pdos": {}, "complete": True,
+    }
+    with pytest.raises(ValueError, match="not supported"):
+        TransportResults.from_dict(body)
+
+
+def test_v2_with_empty_regions_is_rejected():
+    """STRICT v2: a correctly-versioned record whose regions are empty
+    is geometrically meaningless (no L/M/R assignment) and is refused
+    rather than reconstituted as a valid-looking empty-boundary run."""
+    body = {
+        "schema_version": "2", "metadata": {},
+        "energy_grid_eV": [-1.0, 0.0, 1.0], "transmission": [0.1, 0.5, 0.9],
+        "fermi_energy_eV": 0.0, "conductance_G0": 0.5, "pdos": {},
+        "complete": True, "regions": {}, "frozen_atoms": [],
+    }
+    with pytest.raises(ValueError, match="empty regions"):
+        TransportResults.from_dict(body)
+
+
+def test_v2_missing_boundary_keys_is_rejected():
+    """STRICT v2: regions / frozen_atoms keys MUST be present -- a
+    missing key is silent absorption of absent boundary conditions."""
+    body = {
+        "schema_version": "2", "metadata": {},
+        "energy_grid_eV": [-1.0], "transmission": [0.1],
+        "fermi_energy_eV": 0.0, "conductance_G0": 0.5, "pdos": {},
+        "complete": True,
+        # regions + frozen_atoms intentionally absent.
+    }
+    with pytest.raises(ValueError, match="missing regions"):
+        TransportResults.from_dict(body)
+
+
 def test_regions_serialise_sorted_for_determinism():
     r = TransportResults(
         regions={"L-electrode": [3, 1, 2], "R-electrode": [9, 7]},

@@ -56,6 +56,10 @@ def _make_minimal_results() -> TransportResults:
         methods_text="Transport calculations were performed with TranSIESTA.",
         bibliography_keys=["transiesta_brandbyge_2002"],
         complete=True,
+        # Strict v2 (2026-06-26): boundary conditions are required for a
+        # round-trippable record; from_dict refuses empty regions.
+        regions={"L-electrode": [0], "M-bridge": [1], "R-electrode": [2]},
+        frozen_atoms=[0, 2],
     )
 
 

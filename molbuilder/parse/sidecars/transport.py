@@ -221,7 +221,9 @@ class TransportSidecarFileParser(FileParser):
         # leaked through asdict would break json.dumps at webhook
         # delivery + cache pickle.
         payload = results.to_dict()
-        sv = payload.get("schema_version", "1")
+        # to_dict() always emits the current schema_version; read it
+        # strictly rather than defaulting (no silent absorption).
+        sv = payload["schema_version"]
         return build_sidecar_result(
             payload=payload,
             schema=f"transport/v{sv}",

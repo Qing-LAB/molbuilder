@@ -92,6 +92,12 @@ class TestTransportResultsRoundTrip:
             methods_text="Mock methods paragraph.",
             bibliography_keys=["Datta1995"],
             complete=True,
+            # Strict v2 (2026-06-26): a complete transport result must
+            # carry L/M/R region assignment + frozen electrode atoms;
+            # from_dict refuses an empty-regions record.
+            regions={"L-electrode": [0, 1], "M-bridge": [2, 3],
+                     "R-electrode": [4, 5]},
+            frozen_atoms=[0, 1, 4, 5],
         )
 
     def test_round_trip(self):

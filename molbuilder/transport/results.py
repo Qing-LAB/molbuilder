@@ -196,8 +196,18 @@ class TransportResults:
 
         Forward-compat: any future schema_version raises
         :class:`ValueError` so the caller decides on migration.
+
+        STRICT v2 (2026-06-26 user directive -- "results only receives
+        v2, period"): ``schema_version`` MUST be present and exactly
+        ``SCHEMA_VERSION``.  A missing key is NOT silently treated as
+        the current version -- that is the v1-slips-through-as-v2 bug.
+        Both ``regions`` and ``frozen_atoms`` MUST be present (no
+        silent absorption of absent boundary conditions), and
+        ``regions`` MUST be non-empty: a v2 record with no L/M/R
+        region assignment is geometrically meaningless for transport,
+        so we refuse rather than emit an empty-boundary record.
         """
-        version = d.get("schema_version", SCHEMA_VERSION)
+        version = d.get("schema_version")
         if version != SCHEMA_VERSION:
             raise ValueError(
                 f"TransportResults: schema_version {version!r} is "
@@ -207,6 +217,21 @@ class TransportResults:
                 f"for transport; re-emit from molbuilder.transport "
                 f"with the labeled structure to upgrade."
             )
+        if "regions" not in d or "frozen_atoms" not in d:
+            raise ValueError(
+                "TransportResults: v2 record is missing regions / "
+                "frozen_atoms; boundary conditions are required and "
+                "must not be silently defaulted (no silent absorption)."
+            )
+        regions = {k: [int(i) for i in v]
+                   for k, v in (d["regions"] or {}).items()}
+        if not regions:
+            raise ValueError(
+                "TransportResults: v2 record has empty regions; L/M/R "
+                "region assignment is load-bearing for transport -- "
+                "refuse rather than emit an empty-boundary record."
+            )
+        frozen_atoms = [int(i) for i in (d["frozen_atoms"] or [])]
         return cls(
             metadata=dict(d.get("metadata", {})),
             energy_grid_eV=np.asarray(d.get("energy_grid_eV", []),
@@ -226,10 +251,10 @@ class TransportResults:
             methods_text=str(d.get("methods_text", "")),
             bibliography_keys=list(d.get("bibliography_keys", [])),
             complete=bool(d.get("complete", False)),
-            # v2 fields -- back-compat: missing => empty (v1 sidecars).
-            regions={k: [int(i) for i in v]
-                     for k, v in (d.get("regions") or {}).items()},
-            frozen_atoms=[int(i) for i in (d.get("frozen_atoms") or [])],
+            # v2 boundary conditions -- validated strict above (regions
+            # present + non-empty, frozen_atoms present).
+            regions=regions,
+            frozen_atoms=frozen_atoms,
         )
 
 

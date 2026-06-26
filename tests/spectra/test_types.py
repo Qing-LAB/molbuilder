@@ -235,6 +235,25 @@ class TestSpectraResults:
         assert r.phase_raman       == PHASE_EMPTY
         assert r.phase_es          == PHASE_EMPTY
 
+    def test_from_dict_rejects_missing_or_wrong_schema_version(self):
+        """STRICT (2026-06-26): the decoder self-enforces the schema
+        version -- a missing or non-current schema_version raises
+        rather than reconstituting at whatever version the payload
+        claims (the outer sidecar reader is no longer the only gate)."""
+        base = {
+            "engine": "pyscf", "engine_version": "2.6.0",
+            "molbuilder_version": "1.2.0", "timestamp": "t",
+            "structure_hash": "h", "n_atoms_total": 1,
+            "free_atom_idxs": [0], "frozen_atom_idxs": [],
+            "equilibrium": {"scf_energy_eh": -1.0,
+                            "mo_energies_eh": [-0.5, 0.5], "homo_idx": 0},
+            "modes": [], "config": {},
+        }
+        with pytest.raises(ValueError, match="not supported"):
+            SpectraResults.from_dict(dict(base))            # no version key
+        with pytest.raises(ValueError, match="not supported"):
+            SpectraResults.from_dict({**base, "schema_version": 999})
+
     def test_schema_version_pinned(self):
         """Pin the current on-disk schema version.  A stray edit to
         SCHEMA_VERSION should fail this test and prompt the author
