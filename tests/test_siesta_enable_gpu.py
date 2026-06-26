@@ -471,7 +471,7 @@ def test_gpu_runtime_defaults_block_wraps_mpirun_in_numactl(
             '--membind=$_gpu_numa"' in wrapper_text)
     # The launch_cmd interpolates it (both MPI branches).
     assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
-            '$_mpirun_bind siesta"' in wrapper_text)
+            '$_mpirun_bind $_siesta_target"' in wrapper_text)
     # And the launch logic gives it a defensive default for CPU mode.
     assert '_numa_wrap_gpu="${_numa_wrap_gpu:-}"' in wrapper_text
 

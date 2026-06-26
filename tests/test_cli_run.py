@@ -97,7 +97,7 @@ def test_run_passes_mpi_np_for_siesta(tmp_path):
     # so GPU+dual-socket+numactl combos can NUMA-pin all ranks to the
     # GPU-proximate socket.  CPU mode leaves it empty.
     assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
-            '$_mpirun_bind siesta"' in text)
+            '$_mpirun_bind $_siesta_target"' in text)
 
 
 def test_run_env_override(tmp_path):

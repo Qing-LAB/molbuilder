@@ -350,7 +350,89 @@ exec $_bind siesta < in.fdf
 ```
 Outer launch: `OMP_NUM_THREADS=<c> mpirun -np N ... <per-rank launcher>`.
 
-**Cores/rank**: one socket's worth per (ngpus/socket). On the A100 node
+#### 7.5.1.a One generalized model — `K` ranks per GPU (D10)
+The "1 rank ↔ 1 GPU" framing was too narrow. The A100 is **heavily
+under-utilized at 1 rank/GPU** (the 444-atom job uses <6 GiB of 80 GiB
+and a fraction of the 108 SMs), and the user's *local* box already found
+**4 ranks/GPU + MPS** to be the ELPA no-NCCL throughput optimum on a far
+weaker card. So the real model is **`K` ranks per GPU**, with `K` an
+empirical knob the benchmark sizes (§ 11.2) — exactly as `K=4` was found
+locally. The old "shared-GPU/MPS" path and the "1-rank-per-GPU" path are
+just `K>1, n_gpus=1` and `K=1, n_gpus≥2` special cases of it.
+
+**Rank→GPU mapping (block-distributed, handles every case):**
+```bash
+_gpu=$(( OMPI_COMM_WORLD_LOCAL_RANK * _ngpu / OMPI_COMM_WORLD_LOCAL_SIZE ))
+export CUDA_VISIBLE_DEVICES=$_gpu        # ranks 0..K-1 -> GPU 0, K..2K-1 -> GPU 1, ...
+```
+`n_gpus=1` ⇒ every rank → GPU 0 (the existing local behavior falls out).
+`n_gpus=2, K=4` ⇒ 8 ranks, ranks 0-3 → GPU 0, 4-7 → GPU 1.
+
+**MPS** is enabled per node whenever `ranks_per_gpu = mpi_np / n_gpus ≥ 2`
+(one control daemon serves all GPUs on the node; each rank's
+`CUDA_VISIBLE_DEVICES` selects its target). `K=1` ⇒ MPS suppressed (no
+Hyper-Q sharing needed).
+
+**Runtime fork** (topology, not SLURM presence): the generalized
+per-rank path engages only for **genuine multi-GPU** (`n_gpus ≥ 2`); a
+**single GPU always keeps the existing, battle-tested launch** (local OR
+Sol — a 1-GPU job has no multi-GPU placement problem):
+```bash
+_ngpu=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)
+if [ "${_ngpu:-0}" -ge 2 ] && [ "$_mpi_np" -ge "$_ngpu" ]; then
+    _multi_gpu=1   # generalized K-ranks/GPU per-rank launch (Sol)
+else
+    _multi_gpu=0   # single-GPU OR shared-1-GPU/MPS: existing path, unchanged
+fi
+```
+
+**Mechanism**: the per-rank logic can't be a word-split `_launch_cmd`
+string (the `bash -c` quoting won't survive). The wrapper writes a tiny
+per-rank helper (`.mb-rank-launch-$$.sh`) that maps rank→GPU, exports
+`CUDA_VISIBLE_DEVICES`, logs placement, then `exec siesta "$@"`; launch
+is `mpirun -np N bash <helper> <fdf>`. Implementation specifics that the
+fresh-eyes review pinned (2026-06-26):
+
+- **Allocated-GPU set from `CUDA_VISIBLE_DEVICES`, not `nvidia-smi -L`.**
+  SLURM sets `CUDA_VISIBLE_DEVICES` to the *allocated* GPUs; `nvidia-smi
+  -L` over-counts on a shared node without device-cgroup isolation (it
+  would list GPUs we don't own). The helper splits CVD into a list and
+  indexes `list[ local_rank*ngpu/localsize ]`; it falls back to
+  `nvidia-smi -L` only when CVD is unset (local / no scheduler). The
+  parent's `_ranks_per_gpu` count uses the same CVD-first rule so the
+  MPS gate agrees.
+- **One unified `EXIT` trap.** A second `trap … EXIT` *replaces* the
+  first in bash, so all teardown (per-rank helper file **and** the MPS
+  daemon + its `/tmp` dirs) routes through a single `_mb_cleanup`
+  function set once near the top; the MPS block only sets a
+  `_mps_started=1` flag. (The earlier two-trap shape silently leaked the
+  MPS daemon.)
+- **`--dry-run`.** Every wrapper accepts `--dry-run`: it resolves +
+  **logs** the launch command and (GPU mode) prints the per-rank
+  rank→GPU/NUMA mapping for the current allocation, then `exit 0`
+  WITHOUT launching SIESTA (and without starting MPS). This is the cheap
+  pre-flight: `sbatch job.sbatch --dry-run` → read the log → confirm the
+  command matches the SLURM allocation before spending a real run.
+
+#### 7.5.1.b CPU-bind policy — P1 (trust SLURM) for v1, bench-gated (D11)
+CPU/memory placement is left to **SLURM's cgroup cpuset**
+(`--gres-flags=enforce-binding` + `-c`), NOT manual `numactl`. Reasons:
+(1) on Sol's **NPS4** layout a GPU's sysfs `numa_node` is only **6
+cores**, so a naive per-rank `numactl --cpunodebind=<that node>` would
+crush a `-c 12` rank onto 6 cores; (2) at `K=4` the allocation already
+lands one rank per 6-core NPS4 node anyway; (3) SLURM under
+enforce-binding already cpusets each task to GPU-proximate cores +
+local memory. So the helper does **not** bind CPU — it only sets
+`CUDA_VISIBLE_DEVICES` and **logs each rank's GPU + NUMA node + actual
+`Cpus_allowed_list`** so the benchmark REVEALS SLURM's placement. If the
+bench shows SLURM is *not* binding near the GPU, the fallback is P2
+(bind to the GPU's whole socket); we do not commit kernel-level
+`numactl` speculatively. **OMP width per rank** honors
+`SLURM_CPUS_PER_TASK` (the `-c` value) ahead of the local-probe default,
+so the Sol allocation drives `OMP_NUM_THREADS` automatically.
+
+**Cores/rank**: set by the chosen `K` (§ 11.2). On the 48-core / 2×A100
+node
 (2 sockets × 24 cores, **8 NUMA nodes** of 6 cores; within-socket NUMA
 distance 12, cross-socket 32): **`-c 12`/rank**, 12 OMP threads. NEVER
 exceed the GPU's socket — spilling OMP threads to the far socket
@@ -554,19 +636,45 @@ After a short capped run, assert from the parser's `runtime_info`
 `elpa_gpu == False` ⇒ **fail loudly** — otherwise the job runs
 slow-on-CPU while looking successful.
 
-### 11.2 The configs to compare (locked for the first Sol run)
-Independent `.sbatch` jobs, all `MaxSCFIterations 5` single-point on the
-test system (§ 16), all `-p htc -q public` (the GPU fleet + fast
-scheduling for short jobs):
+### 11.1b Live local-GPU utilization probe (2026-06-26) — the extrapolation basis
+Before sizing K we measured the LIVE phase-4 job (RTX 3060 Ti, np=4 +
+MPS) for 5 min (observation only; the run dir is read-only):
 
-| Config | `.fdf` flag | env | resources |
-|---|---|---|---|
-| **CPU np=20** | `Diag.ELPA.GPU .false.` | `molbuilder-siesta` | `-n 20` (no gres) — the user's baseline |
-| **CPU np=64** | `.false.` | `molbuilder-siesta` | `-n 64` (no gres) — confirmed schedules immediately |
-| **GPU 2×A100** | `Diag.ELPA.GPU .true.` | `molbuilder-siesta-gpu` | `-n 2 -c 12 --gres=gpu:a100:2 --gres-flags=enforce-binding`, runtime NUMA bind (§ 7.5.1) |
+| Metric | Value | Reading |
+|---|---|---|
+| GPU util | **mean 55 %, bursty 0↔100** | **compute-bound DURING the eigensolve** (hard 100 % spikes), idle between (CPU-side SCF phases) — NOT steady |
+| VRAM | mean 2.8 GB, **peak 6.7 / 8 GB** | comfortable; memory is **not** the limit |
+| mem-bw util | **~7 %** | nowhere near memory-bandwidth-bound |
+| CPU | 4 ranks ≈ 4.4 cores | — |
 
-(Skip CPU np=128 for the first pass — a full 128-core node waits;
-`--test-only` showed 64 immediate. 4×A100 is a later scaling point.)
+**Extrapolation:** the bottleneck during the eigensolve is FP64 compute
+(the weak card pegs at 100 %), but only ~55 % of the time. The A100's
+~40× FP64 collapses each eigensolve burst to a blip and its 80 GB dwarfs
+the 6.7 GB footprint, so a **single A100 is wildly under-fed at K=4** —
+the ceiling shifts to **GPU compute throughput + CPU cores**, not VRAM.
+This is why we push K **up** and **never test K=1**.
+
+### 11.2 The configs to compare (single A100, swept high→low; K=1 excluded)
+**Sequenced** (user 2026-06-26): run CPU baseline first, then the GPU
+max-K, then one step down, and judge production sizing from the relation
+between the three. All `MaxSCFIterations 5` single-point on the test
+system (§ 16), all `-p htc -q public` (GPU fleet + fast scheduling).
+**One GPU** (not two) for fast, predictable scheduling; ranks share it
+via MPS (per-rank CVD map + `_ranks_per_gpu`-gated MPS, § 7.5.1); cores
+kept on the GPU's 24-core socket.
+
+| # | Config | `.fdf` flag | env | resources |
+|---|---|---|---|---|
+| 1 | **CPU np=64** | `Diag.ELPA.GPU .false.` | `molbuilder-siesta` | `-n 64` (no gres) — schedules immediately; the CPU reference |
+| 2 | **GPU 1×A100, K=8 (max)** | `.true.` | `molbuilder-siesta-gpu` | `-n 8 -c 3 --gres=gpu:a100:1 --gres-flags=enforce-binding`, MPS |
+| 3 | **GPU 1×A100, K=4 (down one)** | `.true.` | `molbuilder-siesta-gpu` | `-n 4 -c 6 --gres=gpu:a100:1 --gres-flags=enforce-binding`, MPS |
+
+K=8 (c=3) and K=4 (c=6) both fit one 24-core socket; 8 MPS clients is
+well within the A100's Hyper-Q limit. **K=1 is deliberately excluded**
+(under-feeds the A100; § 11.1b). If K=8 ≫ K=4 the A100 wants even more
+ranks (extrapolate to 2+ GPUs for production); if they tie, K=4 suffices.
+The framework's general load-balance model (§ 7.5.1) already handles 2+
+GPUs, so scaling out is a config change, not new code.
 
 ### 11.3 Report + recommend
 Fuse `seff <jobid>` (GPU/CPU/mem utilization) with the parser's
@@ -633,37 +741,46 @@ Build order; each is a scoped commit with host-env tests
 (no cluster needed); the `.run.sh` launcher internals are unchanged
 except the GPU/timing blocks.
 
-- **A. `scheduler` config reader** — `runtime_config.py::get_scheduler(project_dir)`
-  mirroring `get_script_generation`: reads the `scheduler` block (server
-  + project merge), validates, **refuse-to-emit** if `kind=="slurm"` and
-  `directives.partition`/`qos` missing (§ 10). Returns the resolved
-  directives + gpu + defaults.
-- **B. `.sbatch` emitter** — `render_sbatch(script_path, scheduler, ...)`
-  producing the § 5 header (conditional `--gres`/`--mem`) + body
-  `bash <basename>.run.sh "$@"`. Wire into `write_run_wrapper` (the path
-  both CLI `molbuilder run` and the web build blueprint already call), so
-  it writes `<basename>.sbatch` (chmod 644) whenever `scheduler` is
-  configured. `bash -n` validate like the wrapper. Refuse/skip per § 10.
-- **C. Multi-GPU runtime NUMA block** — replace the single-GPU
-  `_gpu_runtime_defaults_block` GPU-mode launch with the **per-rank
-  runtime binding** of § 7.5.1: `CUDA_VISIBLE_DEVICES=$local_rank` +
-  sysfs `numa_node` read + `numactl --cpunodebind/--membind`, `-c 12`/rank,
-  `OMP_NUM_THREADS` per rank, and **log each rank's GPU+NUMA** into the
-  timing header. Works for N GPUs; no hardcoded socket.
-- **D. `.scf-timing.log`** — in the launch block, tee SIESTA stdout
-  through a timestamping filter that appends `<epoch> <iter#> <dDmax>`
-  for each `scf:` line to `<basename>.scf-timing.log` (§ 11.0b). Keep it
-  to portable bash (`date +%s.%N` + awk). (`status.json`/notifier is a
-  follow-up, not v1.)
-- **E. Test-bundle generation** — generate § 16 through the framework
-  (A–D) into a temp project: one CPU `.fdf` (`Diag.ELPA.GPU .false.`) +
-  one GPU `.fdf` (`.true.`), each with its `.run.sh`, and the three
-  `.sbatch` of § 11.2.
+**Status (2026-06-26): A, B, C DONE; D, E pending.**
 
-**Tests** (host env): scheduler parse/merge + refuse-to-emit; `.sbatch`
-golden (asu-sol preset → `-p public`/`-q public`, conditional `--gres`,
-`bash -n` clean); GPU `.fdf` → `--gres` + per-rank-NUMA launch present,
-CPU `.fdf` → none; `.scf-timing.log` emitter shape.
+- **A. `scheduler` config reader** — ✅ DONE (`get_scheduler` +
+  `_validate_scheduler` + `_normalise` passthrough; 15 tests). Reads the
+  `scheduler` block (server + project deep-merge), validates,
+  **refuse-to-emit** if `kind=="slurm"` and `directives.partition`/`qos`
+  missing (§ 10). Returns `None` when no block (emit only `.run.sh`).
+- **B. `.sbatch` emitter** — ✅ DONE (`render_sbatch` + `write_sbatch` +
+  `_parse_gres` + `_maybe_write_sbatch` wired into `write_run_wrapper`;
+  23 tests). Produces the § 5 header (conditional
+  `--gres`/`--gres-flags`/`--exclusive`/`--mem`) + body
+  `bash <basename>.run.sh "$@"`, chmod 644, `bash -n` validated, emitted
+  only when `scheduler` is configured (§ 10).
+- **C. GPU load-balance + per-rank launcher + `--dry-run`** — ✅ DONE
+  (the model GENERALIZED from "multi-GPU NUMA" to the load-balance model
+  of § 7.5.1, per the 2026-06-26 design thread). Extracted, documented
+  block-emitters: `_gpu_loadbalance_block` (ranks-per-GPU),
+  `_gpu_per_rank_launcher_block` (CVD-derived rank→GPU map + SLURM-trust
+  P1 binding), `_siesta_resolved_log_block` (always-on launch audit),
+  `_siesta_dry_run_block`, `_bash_numa_from_gpu` (shared sysfs lookup).
+  OMP honors `SLURM_CPUS_PER_TASK`; MPS gates on `_ranks_per_gpu` + not
+  dry-run; single unified `_mb_cleanup` EXIT trap. 14 tests. **Note**:
+  the original "`numactl --cpunodebind`/`-c 12`/socket-map" sketch was
+  REPLACED by P1 (trust SLURM cpuset) after the NPS4 review (§ 7.5.1.b).
+- **D. `.scf-timing.log`** — ⏳ PENDING. In the launch block, tee SIESTA
+  stdout through a timestamping filter that appends `<epoch> <iter#>
+  <dDmax>` for each `scf:` line to `<basename>.scf-timing.log` (§ 11.0b).
+  Portable bash (`date +%s.%N` + awk). (`status.json`/notifier is a
+  follow-up, not v1.)
+- **E. Test-bundle generation** — ⏳ PENDING. Generate § 16 through the
+  framework (A–D) into a temp project: one CPU `.fdf`
+  (`Diag.ELPA.GPU .false.`) + one GPU `.fdf` (`.true.`), each with its
+  `.run.sh`, and the three `.sbatch` of § 11.2 (CPU np=64, GPU K=8,
+  GPU K=4). Gated on the conda envs existing on Sol.
+
+**Tests** (host env): ✅ scheduler parse/merge + refuse-to-emit; ✅
+`.sbatch` golden (asu-sol → `-p public`/`-q public`, conditional `--gres`,
+`bash -n` clean); ✅ GPU `.fdf` → per-rank launcher + load-balance +
+dry-run present, CPU `.fdf` → none; ✅ single-EXIT-trap; ⏳
+`.scf-timing.log` emitter shape (with D).
 
 ---
 

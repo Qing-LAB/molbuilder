@@ -84,11 +84,11 @@ def test_render_siesta_always_uses_mpirun():
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
     # The MPI branch sets ``_launch_cmd="$_numa_wrap_gpu mpirun
-    # -np $_mpi_np $_mpirun_bind siesta"`` -- the ``$_numa_wrap_gpu``
+    # -np $_mpi_np $_mpirun_bind $_siesta_target"`` -- the ``$_numa_wrap_gpu``
     # slot is empty for CPU mode (defensive default) and populated
     # by ``_gpu_runtime_defaults_block`` for GPU mode.
     assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
-            '$_mpirun_bind siesta"' in text)
+            '$_mpirun_bind $_siesta_target"' in text)
     # The launcher call uses the probe-resolved cmd + the fdf;
     # `exec` was replaced by a captured invocation so the diagnostic
     # block can run after a crash.
@@ -117,7 +117,7 @@ def test_render_siesta_with_mpi_ranks():
     # Generation-time default baked into a shell variable.
     assert "_mpi_np_default=4" in text
     # Probe block's MPI branch uses the runtime variable.
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "molbuilder-siesta" in text
 
 
@@ -127,7 +127,7 @@ def test_render_siesta_mpi_np_one_still_uses_mpirun():
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
     assert "_mpi_np_default=1" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
 
 
 def test_render_siesta_emits_np_arg_parser():
@@ -251,7 +251,7 @@ def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
         "but 30 atoms = max usable rank count)"
     )
     assert "_mpi_np_default=64" not in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     # The clamp note must be visible in the wrapper.
     assert "auto-mpi clamped from 64" in text
     assert "to 30 (n_atoms)" in text
@@ -265,7 +265,7 @@ def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
                         lambda: 8)
     text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200)
     assert "_mpi_np_default=8" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "clamped" not in text
 
 
@@ -279,7 +279,7 @@ def test_render_siesta_user_mpi_over_atoms_emits_warning(monkeypatch):
     )
     # Honoured verbatim (we do NOT silently override user input).
     assert "_mpi_np_default=20" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     # But the warning is unmistakable.
     assert "WARNING: user-set mpi_np=20 > n_atoms=10" in text
     assert "propor IMAX=0" in text
@@ -310,7 +310,7 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
         "expected wrapper to auto-clamp default to n_atoms=12 parsed "
         "from .fdf (not 32 = physical cores)"
     )
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "auto-mpi clamped from 32" in text
 
 
@@ -329,7 +329,7 @@ def test_write_run_wrapper_unparseable_fdf_falls_back(tmp_path,
     text = wrapper_path.read_text()
     # Falls back to physical_cores (4) without clamping.
     assert "_mpi_np_default=4" in text
-    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "clamped" not in text
 
 

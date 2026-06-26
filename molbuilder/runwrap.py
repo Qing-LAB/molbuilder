@@ -733,6 +733,264 @@ def _baked_numa_literal_line() -> str:
     return f'_gpu_numa="${{MOLBUILDER_GPU_NUMA:-{value}}}"\n'
 
 
+def _bash_numa_from_gpu(gpu_expr: str, out_var: str,
+                        bus_var: str = "_bus", indent: str = "") -> str:
+    """Emit bash that resolves the NUMA node of the GPU at index
+    ``gpu_expr`` into ``out_var`` (``-1`` when unknown).
+
+    Single source for the sysfs lookup so the per-rank launcher (§ 7.5.1)
+    and the ``--dry-run`` placement report don't each carry their own
+    copy of the subtle bit: ``nvidia-smi`` prints an **8-hex-digit** PCI
+    domain (``00000000:02:00.0``) but the kernel sysfs path uses **4**
+    (``0000:02:00.0``), so we strip the leading 4 chars with
+    ``${bus:4}``.  Lowercased + space-stripped because sysfs is
+    lowercase.  Any read failure leaves ``out_var=-1``.  ``indent`` is a
+    leading-whitespace string applied to every line so the snippet lands
+    aligned inside an indented block (e.g. the dry-run loop).
+    """
+    return (
+        f'{indent}{bus_var}=$(nvidia-smi --id={gpu_expr} '
+        f'--query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null '
+        f"| tr 'A-Z' 'a-z' | tr -d ' ')\n"
+        f'{indent}{out_var}=-1\n'
+        f'{indent}[ -n "${bus_var}" ] && {out_var}=$(cat '
+        f'/sys/bus/pci/devices/${{{bus_var}:4}}/numa_node 2>/dev/null '
+        f'|| echo -1)\n'
+    )
+
+
+def _gpu_loadbalance_block() -> str:
+    """Bash that derives the rank<->GPU load balance at RUN time.
+
+    GOAL: turn the resolved rank count into a ranks-per-GPU figure so the
+    rest of the wrapper can (a) gate MPS on actual GPU sharing and (b)
+    let the per-rank launcher block-distribute ranks across GPUs.
+
+    READS  ``$_mpi_np``  (rank count; set by the args block).
+    SETS   ``$_ngpu``           -- visible GPU count (0 if none),
+           ``$_ranks_per_gpu``  -- ``mpi_np / ngpu`` (clamped >= 1).
+    EMITS  one stderr line ``molbuilder: GPU load-balance -- N ranks over
+           G GPU(s) = K rank(s)/GPU`` -- the human-checkable confirmation
+           that K matches the allocation (validation pinpoint for the
+           § 11 benchmark sweep).
+    WHY: K is the knob the benchmark sizes; it must come from the ACTUAL
+    runtime allocation (SLURM may grant a different GPU count than
+    generation assumed).  1 GPU degenerates to all-ranks-on-GPU0 (the
+    existing single-GPU behavior) with no code fork.
+
+    ORDERING: emit AFTER ``$_mpi_np`` resolves and BEFORE the MPS block
+    (which reads ``$_ranks_per_gpu``).  slurm-integration.md § 7.5.1.
+    """
+    return (
+        "# --- GPU load-balance: rank <-> GPU matching "
+        "(slurm-integration.md § 7.5.1) ---\n"
+        "# Count ALLOCATED GPUs now and split ranks across them.  The\n"
+        "# per-rank launcher maps rank -> GPU as\n"
+        "# local_rank*ngpu/localsize, so K=mpi_np/ngpu ranks share\n"
+        "# each GPU via MPS.  1 GPU -> all ranks on GPU0 (the existing\n"
+        "# behavior); N GPUs -> block-distributed, no code fork.\n"
+        "# Prefer CUDA_VISIBLE_DEVICES (SLURM's allocated set) over\n"
+        "# nvidia-smi -L (which over-counts on a shared node without\n"
+        "# device-cgroup isolation) -- must agree with the per-rank\n"
+        "# launcher's own count.\n"
+        'if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then\n'
+        '    _ngpu=$(printf %s "$CUDA_VISIBLE_DEVICES" '
+        '| tr , "\\n" | grep -c .)\n'
+        'else\n'
+        '    _ngpu=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU " || true)\n'
+        'fi\n'
+        'case "$_ngpu" in ""|*[!0-9]*) _ngpu=0 ;; esac\n'
+        'if [ "$_ngpu" -ge 1 ]; then\n'
+        '    _ranks_per_gpu=$(( _mpi_np / _ngpu ))\n'
+        '    [ "$_ranks_per_gpu" -lt 1 ] && _ranks_per_gpu=1\n'
+        'else\n'
+        '    _ranks_per_gpu=$_mpi_np\n'
+        'fi\n'
+        'echo "molbuilder: GPU load-balance -- $_mpi_np ranks over '
+        '$_ngpu GPU(s) = $_ranks_per_gpu rank(s)/GPU '
+        '(MPS when >=2)" >&2\n'
+        "\n"
+    )
+
+
+def _gpu_per_rank_launcher_block() -> str:
+    """Bash that writes the per-rank GPU launcher + picks the CPU-bind
+    policy.  Emit ONLY in GPU mode.
+
+    GOAL: give every MPI rank its own GPU and (under SLURM) defer CPU/mem
+    placement to the scheduler.  Implements the general load-balance
+    model -- 1 GPU degenerates to "all ranks on GPU0", N GPUs
+    block-distribute -- with no code fork on GPU count (§ 7.5.1).
+
+    WRITES a runtime helper ``.mb-rank-launch-$$.sh`` (``trap``-removed on
+    EXIT) in which each rank computes ``gpu = local_rank*ngpu/localsize``,
+    resolves that GPU's NUMA node, sets ``CUDA_VISIBLE_DEVICES``, logs its
+    GPU+NUMA+cpuset, then ``exec``s SIESTA.  The heredoc is QUOTED
+    (``'HELPEREOF'``) so the rank-time variables resolve when the rank
+    runs, not when the wrapper writes the file.
+    SETS  ``$_siesta_target="bash $_rank_helper"`` (the launch target the
+          ``_launch_cmd`` assembly interpolates in place of bare siesta).
+    UNDER SLURM (``$SLURM_JOB_ID`` set): clears ``$_numa_wrap_gpu`` and
+          ``$_mpirun_bind`` so we do NOT double-bind against SLURM's
+          cgroup cpuset (P1 in § 7.5.1.b; the benchmark logs the actual
+          cpuset to confirm SLURM bound near the GPU).
+    WHY a helper FILE (not ``bash -c``): the per-rank logic can't survive
+    as a word-split ``_launch_cmd`` string -- the ``bash -c`` quoting
+    breaks under the later unquoted expansion -- so a tiny temp script is
+    the robust idiom.
+    """
+    return (
+        '_rank_helper=".mb-rank-launch-$$.sh"\n'
+        "cat > \"$_rank_helper\" <<'HELPEREOF'\n"
+        '#!/bin/bash\n'
+        '_lr=${OMPI_COMM_WORLD_LOCAL_RANK:-${PMIX_RANK:-0}}\n'
+        '_ls=${OMPI_COMM_WORLD_LOCAL_SIZE:-${SLURM_NTASKS:-1}}\n'
+        '[ "${_ls:-0}" -lt 1 ] && _ls=1\n'
+        '# Allocated GPU list: prefer CUDA_VISIBLE_DEVICES (SLURM sets it\n'
+        '# to the allocated set -- robust whether or not device-cgroups\n'
+        '# isolate the node, and it carries the real physical indices);\n'
+        '# fall back to all visible GPUs only when unset (local / no\n'
+        '# scheduler).  nvidia-smi -L alone would over-count on a shared\n'
+        '# node without cgroup isolation.\n'
+        'if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then\n'
+        '    IFS=, read -ra _gpus <<< "$CUDA_VISIBLE_DEVICES"\n'
+        'else\n'
+        '    _n=$(nvidia-smi -L 2>/dev/null | grep -c "^GPU " || true)\n'
+        '    case "$_n" in ""|*[!0-9]*) _n=1 ;; esac\n'
+        '    [ "$_n" -lt 1 ] && _n=1\n'
+        '    _gpus=(); _i=0\n'
+        '    while [ "$_i" -lt "$_n" ]; do _gpus+=("$_i"); _i=$((_i+1)); done\n'
+        'fi\n'
+        '_ngpu=${#_gpus[@]}\n'
+        '[ "$_ngpu" -lt 1 ] && { _gpus=(0); _ngpu=1; }\n'
+        '_idx=$(( _lr * _ngpu / _ls ))\n'
+        '_gpu=${_gpus[$_idx]}\n'
+        # Resolve NUMA from the chosen GPU index BEFORE narrowing
+        # CUDA_VISIBLE_DEVICES (keeps the sysfs lookup unambiguous).
+        + _bash_numa_from_gpu("$_gpu", "_numa")
+        + 'export CUDA_VISIBLE_DEVICES=$_gpu\n'
+        "_cpus=$(awk '/Cpus_allowed_list/{print $2}' "
+        '/proc/self/status 2>/dev/null)\n'
+        'echo "molbuilder[rank ${_lr}/${_ls}]: '
+        'CUDA_VISIBLE_DEVICES=$_gpu (numa=$_numa) '
+        'cpus=${_cpus:-?}" >&2\n'
+        'exec siesta "$@"\n'
+        'HELPEREOF\n'
+        'chmod +x "$_rank_helper"\n'
+        # Cleanup is handled by the single unified EXIT trap (_mb_cleanup,
+        # set near the top): it rm's $_rank_helper.  A local ``trap ...
+        # EXIT`` here would CLOBBER the MPS cleanup trap (bash keeps only
+        # the last EXIT trap) -- hence the centralised function.
+        '_siesta_target="bash $_rank_helper"\n'
+        # Under SLURM, the scheduler's cgroup cpuset (--gres-flags=
+        # enforce-binding + -c) governs CPU/memory placement.  Do NOT
+        # also numactl-wrap / --map-by -- that double-binds and can fight
+        # SLURM.  P1 in slurm-integration.md § 7.5.1.b.
+        'if [ -n "${SLURM_JOB_ID:-}" ]; then\n'
+        '    _numa_wrap_gpu=""\n'
+        '    _mpirun_bind=""\n'
+        '    echo "molbuilder: under SLURM (job $SLURM_JOB_ID) -- '
+        'trusting scheduler cpuset for CPU/mem binding '
+        '(no manual numactl)" >&2\n'
+        'fi\n'
+    )
+
+
+def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
+    """Bash that records the fully-resolved launch command + placement
+    into the wrapper log -- ALWAYS, on every run.
+
+    GOAL (user request 2026-06-26): the log must carry the exact command
+    that ran and the GPU/NUMA context, so a post-mortem never has to
+    guess what was launched.  These ``_log INFO`` lines ARE the audit
+    trail that pins what the run did -- the validation anchor when a run
+    is slow or wrong.
+
+    READS ``$_launch_cmd`` / ``$_launch_note`` / ``$_mpi_np`` /
+    ``$_omp_threads`` and (GPU mode) ``$_ngpu`` / ``$_ranks_per_gpu`` /
+    ``$_numa_wrap_gpu``.
+    EMITS ``_log INFO`` lines (resolved launch / launch mode / ranks-omp /
+    [gpu placement]).
+    """
+    return (
+        f'# --- Record resolved launch command + placement (log) ---\n'
+        f'_log INFO "resolved launch : $_launch_cmd {script_name} '
+        f'> $_out_file"\n'
+        f'_log INFO "launch mode     : $_launch_note"\n'
+        f'_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads '
+        f'OMP threads"\n'
+        + (
+            f'_log INFO "gpu placement   : ${{_ngpu:-0}} GPU(s), '
+            f'${{_ranks_per_gpu:-?}} rank(s)/GPU, '
+            f'numa-wrap=\'${{_numa_wrap_gpu:-none}}\'"\n'
+            if gpu_mode else ""
+        )
+    )
+
+
+def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
+    """Bash implementing ``--dry-run``: print the resolved command and,
+    in GPU mode, the per-rank GPU/NUMA mapping that WOULD be used, then
+    ``exit 0`` WITHOUT launching SIESTA.
+
+    GOAL (user request 2026-06-26): let a user ``sbatch job.sbatch
+    --dry-run`` (or run locally) and read the log to confirm the
+    generated command matches the SLURM-allocated resources, WITHOUT
+    spending a real run.  This is the cheap pre-flight validation of the
+    whole resolution chain.
+
+    READS the same resolved vars as the launch.  In GPU mode it loops
+    ranks ``0..mpi_np-1`` and prints ``rank R -> GPU G (numa=N)`` -- the
+    block-distribution the per-rank launcher will apply (divisor is
+    ``$_mpi_np`` here since LOCAL_SIZE isn't set without mpirun; equal on
+    single-node v1).
+    SIDE-EFFECT-FREE: the MPS daemon start is separately gated on
+    ``_dry_run != 1`` so a dry run touches no GPU state.
+    EXPECTED OUTCOME: a ``DRY RUN`` banner + mapping table on stdout/log,
+    then ``exit 0`` -- nothing else runs.
+    """
+    return (
+        f'if [ "$_dry_run" = 1 ]; then\n'
+        f'    echo ""\n'
+        f'    echo "===== molbuilder DRY RUN (no SIESTA launch) ====="\n'
+        f'    echo "  Resolved cmd : $_launch_cmd {script_name} '
+        f'> $_out_file"\n'
+        f'    echo "  Launch mode  : $_launch_note"\n'
+        f'    echo "  MPI ranks    : $_mpi_np"\n'
+        f'    echo "  OMP threads  : $_omp_threads"\n'
+        f'    echo "  SLURM        : job=${{SLURM_JOB_ID:-<none>}} '
+        f'ntasks=${{SLURM_NTASKS:-?}} cpus/task=${{SLURM_CPUS_PER_TASK:-?}} '
+        f'gpus=${{SLURM_JOB_GPUS:-${{SLURM_GPUS:-?}}}}"\n'
+        + (
+            f'    echo "  Visible GPUs : ${{_ngpu:-0}}"\n'
+            f'    echo "  Ranks/GPU    : ${{_ranks_per_gpu:-?}} '
+            f'(MPS ${{_use_mps_str:-?}})"\n'
+            f'    echo "  Rank -> GPU mapping (block-distributed):"\n'
+            f'    _dr_ng=${{_ngpu:-0}}\n'
+            f'    if [ "$_dr_ng" -lt 1 ]; then\n'
+            f'        echo "      (no GPUs visible here -- on the '
+            f'compute node each rank maps as rank*ngpu/ntasks)"\n'
+            f'    else\n'
+            f'        _dr_r=0\n'
+            f'        while [ "$_dr_r" -lt "$_mpi_np" ]; do\n'
+            f'            _dr_g=$(( _dr_r * _dr_ng / _mpi_np ))\n'
+            + _bash_numa_from_gpu("$_dr_g", "_dr_numa",
+                                  bus_var="_dr_bus", indent="            ")
+            + f'            echo "      rank $_dr_r -> GPU $_dr_g '
+            f'(numa=$_dr_numa)"\n'
+            f'            _dr_r=$(( _dr_r + 1 ))\n'
+            f'        done\n'
+            f'    fi\n'
+            if gpu_mode else ""
+        )
+        + f'    echo "================================================"\n'
+        f'    _log INFO "dry-run complete; no SIESTA launched"\n'
+        f'    exit 0\n'
+        f'fi\n'
+        f"\n"
+    )
+
+
 def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
@@ -1365,12 +1623,20 @@ def render_run_wrapper(script_path: Path, *,
             f"# launch tuning is part of the wrapper contract -- the user\n"
             f"# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
             f'_mpi_np="${{MB_NP:-${{SLURM_NTASKS:-${{PBS_NP:-$_mpi_np_default}}}}}}"\n'
-            # OMP precedence: -omp flag > OMP_NUM_THREADS env > policy
+            # OMP precedence: -omp flag > OMP_NUM_THREADS env >
+            # SLURM_CPUS_PER_TASK (the sbatch ``-c`` allocation) > policy
             # default.  Honoring a user-set OMP_NUM_THREADS matches the
             # standard OMP-toolchain convention; the prior wrapper
             # unconditionally clobbered it, which surprised users
-            # benching with ``OMP_NUM_THREADS=8 ./run.sh``.
-            f'_omp_threads="${{OMP_NUM_THREADS:-$_omp_threads_default}}"\n'
+            # benching with ``OMP_NUM_THREADS=8 ./run.sh``.  Under sbatch
+            # the scheduler reserved ``-c`` cores/rank (the OMP width per
+            # the slurm-integration.md § 7.5.1 sizing) -- honor it so the
+            # Sol allocation drives OMP automatically without a manual
+            # -omp (config.md § 1.5: reading scheduler env for launch
+            # tuning is part of the wrapper contract).
+            f'_omp_threads="${{OMP_NUM_THREADS:-'
+            f'${{SLURM_CPUS_PER_TASK:-$_omp_threads_default}}}}"\n'
+            f'_dry_run=0\n'
             f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
             f"        -np|--np)\n"
@@ -1385,6 +1651,13 @@ def render_run_wrapper(script_path: Path, *,
             f"                exit 1\n"
             f"            fi\n"
             f'            _omp_threads="$2"; shift 2 ;;\n'
+            f"        --dry-run|--dryrun)\n"
+            f"            # Resolve + LOG the launch command and the\n"
+            f"            # rank<->GPU/NUMA placement, then exit WITHOUT\n"
+            f"            # running SIESTA.  Lets you sbatch a preview and\n"
+            f"            # read the log to confirm the command matches\n"
+            f"            # the allocation (slurm-integration.md § 7.5.1).\n"
+            f'            _dry_run=1; shift ;;\n'
             # MPS toggle.  Default state is decided in the GPU runtime
             # defaults block based on (a) ``nvidia-cuda-mps-control``
             # binary presence and (b) the MOLBUILDER_USE_MPS env var.
@@ -1429,6 +1702,11 @@ def render_run_wrapper(script_path: Path, *,
             f"                   (For SIESTA: pure MPI w/ OMP=1 is the\n"
             f"                   typical CPU recipe; GPU mode auto-picks\n"
             f"                   half-the-cores-per-package, even.)\n"
+            f"  --dry-run        resolve + log the launch command and the\n"
+            f"                   rank->GPU/NUMA placement for the current\n"
+            f"                   allocation, then exit WITHOUT running\n"
+            f"                   SIESTA.  Use to preview/validate a job\n"
+            f"                   (e.g. ``sbatch job.sbatch --dry-run``).\n"
             f"  -h               this help.\n"
             f"\n"
             f"Environment variables:\n"
@@ -1472,6 +1750,12 @@ def render_run_wrapper(script_path: Path, *,
         env_prefix = (
             (_gpu_runtime_defaults_block(n_atoms) if gpu_mode else "")
             + siesta_args_block
+            # GPU load-balance: derive ranks-per-GPU from the resolved
+            # rank count so MPS gates on real sharing + the per-rank
+            # launcher can block-distribute.  Must sit AFTER the args
+            # block (needs $_mpi_np) and BEFORE the MPS block (reads
+            # $_ranks_per_gpu).  See _gpu_loadbalance_block.__doc__.
+            + (_gpu_loadbalance_block() if gpu_mode else "")
             + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
             f"source: {mpi_source})\n"
             f"{clamp_note}"
@@ -1510,8 +1794,12 @@ def render_run_wrapper(script_path: Path, *,
             # molbuilder runs don't trample each other's MPS daemon.
             # Trap on EXIT cleans up after siesta returns.
             + (
+                # ``_dry_run != 1`` guard: a --dry-run must not start the
+                # MPS daemon (a real GPU side-effect).  The dry-run report
+                # still shows the would-be MPS state from _use_mps_str.
                 'if [ "$_use_mps_default" = "1" ] '
-                '&& [ "$_mpi_np" -ge 2 ]; then\n'
+                '&& [ "$_ranks_per_gpu" -ge 2 ] '
+                '&& [ "${_dry_run:-0}" != "1" ]; then\n'
                 '    export CUDA_MPS_PIPE_DIRECTORY="/tmp/mb-mps-$$"\n'
                 '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'
                 '    mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" '
@@ -1550,15 +1838,15 @@ def render_run_wrapper(script_path: Path, *,
                 '            fi\n'
                 '        done\n'
                 '    fi\n'
-                '    # Cleanup: stop daemon + remove per-job dirs on\n'
-                '    # ANY exit (success, error, signal).  Trap is\n'
-                '    # armed regardless of whether the daemon actually\n'
-                '    # bound -- a partially-started daemon still wants\n'
-                '    # the directories cleaned.\n'
-                '    trap \'echo quit | nvidia-cuda-mps-control '
-                '>/dev/null 2>&1; '
-                'rm -rf "$CUDA_MPS_PIPE_DIRECTORY" '
-                '"$CUDA_MPS_LOG_DIRECTORY"\' EXIT\n'
+                '    # Mark MPS as started so the SINGLE unified EXIT trap\n'
+                '    # (_mb_cleanup, set near the top) stops the daemon +\n'
+                '    # removes the per-job dirs on ANY exit (success, error,\n'
+                '    # signal).  Set regardless of whether the daemon bound\n'
+                '    # -- a partially-started daemon still wants cleanup.\n'
+                '    # NB: a local ``trap ... EXIT`` here would be CLOBBERED\n'
+                '    # by the per-rank launcher trap; the unified function\n'
+                '    # is why teardown is centralised.\n'
+                '    _mps_started=1\n'
                 # Gate the "MPS enabled" message on the daemon-bind
                 # result.  Before this gate the readiness-poll fallback
                 # at the loop above would print "MPS daemon failed to
@@ -1572,9 +1860,9 @@ def render_run_wrapper(script_path: Path, *,
                 '    fi\n'
                 'else\n'
                 '    if [ "$_use_mps_default" = "1" ] '
-                '&& [ "$_mpi_np" -lt 2 ]; then\n'
+                '&& [ "$_ranks_per_gpu" -lt 2 ]; then\n'
                 '        echo "molbuilder: MPS auto-disabled '
-                '(single-rank run; MPS adds overhead with no '
+                '(1 rank/GPU; MPS adds overhead with no '
                 'concurrency benefit)" >&2\n'
                 '    fi\n'
                 'fi\n'
@@ -1696,8 +1984,13 @@ def render_run_wrapper(script_path: Path, *,
             # boxes / boxes where numactl isn't installed -- the block
             # leaves the var empty in those cases.
             + '_numa_wrap_gpu="${_numa_wrap_gpu:-}"\n'
+            # Default launch target is the bare binary; GPU mode swaps in
+            # the per-rank launcher (assigns each rank its GPU + picks the
+            # CPU-bind policy).  See _gpu_per_rank_launcher_block.__doc__.
+            + '_siesta_target="siesta"\n'
+            + (_gpu_per_rank_launcher_block() if gpu_mode else "")
             + f'if [ "$_has_mpi" = 1 ]; then\n'
-            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
+            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'
             f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
             f'    else\n'
@@ -1707,7 +2000,7 @@ def render_run_wrapper(script_path: Path, *,
             f'    _launch_cmd="siesta"\n'
             f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
-            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
+            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
             f'else\n'
             f'    _launch_cmd="siesta"\n'
@@ -1780,8 +2073,11 @@ def render_run_wrapper(script_path: Path, *,
         pyscf_args_block = (
             _continue_force_args_parser("PySCF wrapper")
             + f"# --- PySCF wrapper argument parsing -------------\n"
+            f'_dry_run=0\n'
             f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
+            f"        --dry-run|--dryrun)\n"
+            f'            _dry_run=1; shift ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
             f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [-h]\n'
@@ -1898,6 +2194,21 @@ def render_run_wrapper(script_path: Path, *,
         f"    printf '[%s] [%-5s] %s\\n' \"$(date '+%H:%M:%S%z')\" \"$1\" \"$2\" >&2\n"
         f"}}\n"
         f"\n"
+        f"# Single unified EXIT cleanup (one trap -- a second ``trap ...\n"
+        f"# EXIT`` would REPLACE the first, so all teardown lives here).\n"
+        f"# No-ops unless the relevant vars were set, so it is safe for\n"
+        f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
+        f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
+        f"_mb_cleanup() {{\n"
+        f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" 2>/dev/null\n'
+        f'    if [ "${{_mps_started:-0}}" = "1" ]; then\n'
+        f"        echo quit | nvidia-cuda-mps-control >/dev/null 2>&1\n"
+        f'        rm -rf "${{CUDA_MPS_PIPE_DIRECTORY:-}}" '
+        f'"${{CUDA_MPS_LOG_DIRECTORY:-}}" 2>/dev/null\n'
+        f"    fi\n"
+        f"}}\n"
+        f"trap _mb_cleanup EXIT\n"
+        f"\n"
         f"_log STAGE \"===== molbuilder wrapper start =====\"\n"
         f'_log INFO "timestamp:  $(date \'+%Y-%m-%d %H:%M:%S %Z\')"\n'
         f'_log INFO "hostname:   $(hostname)"\n'
@@ -1934,8 +2245,14 @@ def render_run_wrapper(script_path: Path, *,
     # For PySCF the original exec is preserved -- no diagnostic
     # surface there yet.
     if category == "siesta":
+        # Always-on launch-command audit log + the --dry-run preview, both
+        # extracted into named block-emitters (see their docstrings for
+        # the goal/contract).  Order: log the resolved command, then the
+        # dry-run guard (exits before launch), then the real launch.
         launch_block = (
-            f"# --- Launch SIESTA + capture exit -----------------------\n"
+            _siesta_resolved_log_block(script_name, gpu_mode)
+            + _siesta_dry_run_block(script_name, gpu_mode)
+            + f"# --- Launch SIESTA + capture exit -----------------------\n"
             f"# `set +e` lets us inspect the exit code; the diagnostic\n"
             f"# below reads the .out for ``propor: ERROR`` and prints a\n"
             f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
@@ -1985,7 +2302,19 @@ def render_run_wrapper(script_path: Path, *,
             f'$_out_file"\n'
         )
     else:
-        launch_block = f"exec {inner}\n"
+        launch_block = (
+            f'_log INFO "resolved launch : {inner}"\n'
+            f'if [ "$_dry_run" = 1 ]; then\n'
+            f'    echo ""\n'
+            f'    echo "===== molbuilder DRY RUN (no PySCF launch) ====="\n'
+            f'    echo "  Resolved cmd : {inner}"\n'
+            f'    echo "  Conda env    : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            f'    echo "==============================================="\n'
+            f'    _log INFO "dry-run complete; no PySCF launched"\n'
+            f'    exit 0\n'
+            f'fi\n'
+            f"exec {inner}\n"
+        )
 
     # Engine-specific output suffix.  SIESTA's wrapper writes
     # ``-runN.out``; PySCF's writes ``-runN.pyscf.log`` (Phase C

@@ -448,6 +448,14 @@ class TestPseudosEndpoint:
         + mpirun line + executable bits."""
         fdf = tmp_path / "test.fdf"
         fdf.write_text("# minimal fdf\nSystemLabel test\n")
+        # The wrapper generator refuses to emit without
+        # ``script_generation.activation`` (the activation contract,
+        # 2026-06-25) -- a correct standalone script MUST know how to
+        # activate its env.  Provide it at project scope next to the .fdf.
+        import json as _json
+        (tmp_path / ".molbuilder.json").write_text(_json.dumps({
+            "script_generation": {"activation": "source activate"}
+        }))
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
         r = c.post("/api/run/install-wrapper", json={
@@ -485,7 +493,7 @@ class TestPseudosEndpoint:
         # with the requested rank count + the siesta binary — and
         # leave room for future binding-policy tweaks.
         assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
-                '$_mpirun_bind siesta"' in text), (
+                '$_mpirun_bind $_siesta_target"' in text), (
             "wrapper does not contain the canonical MPI launch line"
         )
         assert "$_launch_cmd test.fdf > $_out_file" in text
