@@ -555,6 +555,14 @@ _HOST = Recipe(
         # advisor's reading matches what the GPU env's wrapper will
         # actually do at runtime.
         "numactl",
+        # Git is required by the run-checkpoints subsystem
+        # (docs/protocols/run-checkpoints.md § 3.3).  Declared in
+        # EVERY env so the wrapper bootstrap prologue ("if no .git,
+        # git init + commit initial state") works regardless of which
+        # env activates the script.  HPC sites have inconsistent
+        # system git versions; the conda env's git takes precedence
+        # via PATH ordering and is the only version we control.
+        "git",
     ),
     pip_packages=("PeptideBuilder", "pubchempy"),
     verify_argv=("python", "-c",
@@ -579,6 +587,8 @@ _PYSCF = Recipe(
         # Python invocation cleanly.  Not yet auto-wired by molbuilder
         # for PySCF jobs but present so future tuning has the tool.
         "numactl",
+        # run-checkpoints subsystem -- see _HOST recipe for the rationale.
+        "git",
     ),
     # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
     # current versions).  Wheel suffix derived from _CUDA_VERSION via
@@ -636,7 +646,9 @@ _SIESTA = Recipe(
     # The web UI's ``enable_gpu`` toggle is the script-input contract;
     # ``runwrap.write_run_wrapper`` gates env presence at script-
     # generation time so a missing GPU env is caught before run time.
-    conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl"),
+    conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl",
+                    # run-checkpoints subsystem -- see _HOST recipe.
+                    "git"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
 )

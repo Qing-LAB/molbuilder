@@ -405,6 +405,11 @@ HOST_CONDA_PACKAGES=(
     pytest pyflakes
     "psutil>=5.9"
     numactl
+    # run-checkpoints subsystem (docs/protocols/run-checkpoints.md § 3.3):
+    # git provided by every molbuilder env so the wrapper bootstrap
+    # prologue + `molbuilder snapshot ...` operate from a known git
+    # version, not the system's.
+    git
 )
 HOST_PIP_PACKAGES=(
     PeptideBuilder pubchempy
