@@ -1300,14 +1300,52 @@ def render_run_wrapper(script_path: Path, *,
         # form choices.
         user_set_mpi = mpi_np is not None
         user_set_omp = omp_threads is not None
-        if gpu_mode and not user_set_mpi:
-            _mpi_np_default_expr = "$_gpu_mpi_np_default"
+        # CPU-branch defaults: resolved_mpi already reflects user choice
+        # or auto-MPI clamp -- bake it verbatim (preserves the existing
+        # CPU-mode contract).
+        cpu_mpi_default = str(resolved_mpi)
+        cpu_omp_default = str(resolved_omp)
+        # GPU-branch defaults: honour an explicit user-set choice, else
+        # use the runtime-probed GPU policy variables emitted by
+        # _gpu_runtime_defaults_block.  When the wrapper is generated
+        # in CPU mode (no GPU defaults block emitted) but the user
+        # later toggles Diag.ELPA.GPU .true. in the .fdf, those vars
+        # don't exist -- fall back to safe hardcoded 4 ranks / 1 OMP
+        # (the ELPA 2024.05 no-NCCL throughput optimum on 1 GPU).
+        if user_set_mpi:
+            gpu_mpi_default = str(resolved_mpi)
+        elif gpu_mode:
+            gpu_mpi_default = "$_gpu_mpi_np_default"
         else:
-            _mpi_np_default_expr = str(resolved_mpi)
-        if gpu_mode and not user_set_omp:
-            _omp_threads_default_expr = "$_omp_default"
+            gpu_mpi_default = "4"
+        if user_set_omp:
+            gpu_omp_default = str(resolved_omp)
+        elif gpu_mode:
+            gpu_omp_default = "$_omp_default"
         else:
-            _omp_threads_default_expr = str(resolved_omp)
+            gpu_omp_default = "1"
+        # Runtime selector: re-read the .fdf at LAUNCH (not at
+        # generation) so a user who manually toggles ``Diag.ELPA.GPU``
+        # in the .fdf after the wrapper is emitted gets the right
+        # rank count automatically.  Before this (2026-06-26 fix),
+        # gpu_mode was baked at gen time -- a CPU-mode bake left
+        # _mpi_np_default=20 in place, which OOM'd the GPU when the
+        # user later set Diag.ELPA.GPU .true.  See task #36.
+        _mpi_np_default_assignment = (
+            f'# Default mpi_np / omp_threads -- re-evaluated at LAUNCH\n'
+            f'# from the current .fdf so toggling Diag.ELPA.GPU after\n'
+            f'# generation picks up the right rank count (task #36 fix).\n'
+            f'if grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU[[:space:]]+'
+            f'\\.true\\.\' "{script_name}" 2>/dev/null; then\n'
+            f'    _mpi_np_default={gpu_mpi_default}\n'
+            f'    _omp_threads_default={gpu_omp_default}\n'
+            f'    echo "molbuilder: .fdf has Diag.ELPA.GPU .true. -> '
+            f'default mpi_np=$_mpi_np_default, omp=$_omp_threads_default" >&2\n'
+            f'else\n'
+            f'    _mpi_np_default={cpu_mpi_default}\n'
+            f'    _omp_threads_default={cpu_omp_default}\n'
+            f'fi\n'
+        )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
             + f"# --- SIESTA-specific argument parsing -----------\n"
@@ -1316,9 +1354,8 @@ def render_run_wrapper(script_path: Path, *,
             f"# vars.  Useful for retrying after a propor crash (see the\n"
             f"# diagnostic at the bottom of this wrapper) or for bench\n"
             f"# sweeps WITHOUT regenerating the .fdf / wrapper.\n"
-            f"_mpi_np_default={_mpi_np_default_expr}\n"
-            f"_omp_threads_default={_omp_threads_default_expr}\n"
-            f"# MPI rank-count precedence (highest first):\n"
+            + _mpi_np_default_assignment
+            + f"# MPI rank-count precedence (highest first):\n"
             f"#   1. ``-np N`` flag on the wrapper invocation\n"
             f"#   2. ``MB_NP`` env var (manual override)\n"
             f"#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"

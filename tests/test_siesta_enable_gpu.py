@@ -573,3 +573,72 @@ def test_gpu_runtime_defaults_block_probes_gpu_numa(
     # The old runtime nvidia-smi probe is gone.
     assert "nvidia-smi topo -m" not in wrapper_text
     assert "NUMA Affinity" not in wrapper_text
+
+
+# --------------------------------------------------------------------- #
+#  Task #36: .fdf-aware mpi_np/omp default selection                    #
+# --------------------------------------------------------------------- #
+
+
+def test_wrapper_emits_fdf_aware_rank_default_selector(
+        tmp_path, caps_with_gpu_env):
+    """Task #36 fix: the wrapper template must re-read Diag.ELPA.GPU
+    from the .fdf at LAUNCH time -- not bake the gpu_mode decision at
+    generation time -- so a user who toggles GPU on after the .fdf
+    has been generated picks up the correct rank-count default.
+
+    Before this fix, a wrapper generated against a CPU .fdf shipped
+    ``_mpi_np_default=20``.  When the user later edited the .fdf to
+    set ``Diag.ELPA.GPU .true.``, the wrapper still launched 20 ranks
+    on a single GPU -- 20 × ELPA-CUDA workspace easily exceeds the
+    A100's 80 GB and hits ``cudaMalloc: out of memory`` (the exact
+    user-reported failure 2026-06-26 on TJ-BDT-Au111 stage 4).
+    """
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    # The runtime selector must be emitted -- a literal
+    # ``_mpi_np_default=<int>`` at top level would be the pre-fix
+    # shape.  After the fix the assignment lives inside an if/else.
+    assert 'grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU' in wrapper_text
+    assert "default mpi_np=$_mpi_np_default" in wrapper_text
+    # GPU branch references the runtime-probed default; CPU branch
+    # references the bake.  Both branches MUST be present.
+    assert "_mpi_np_default=$_gpu_mpi_np_default" in wrapper_text
+    # CPU-branch literal (gpu_mode=True default = physical_cores).
+    # Match a bash ``_mpi_np_default=`` followed by a positive integer
+    # -- value is host-dependent, just confirm a literal int is there.
+    import re
+    assert re.search(
+        r'_mpi_np_default=\d+\b', wrapper_text
+    ), ("CPU-branch literal _mpi_np_default=<int> not found in "
+        "the if/else block")
+
+
+def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
+        tmp_path):
+    """Task #36 fix, CPU-mode generation edge case: when the wrapper
+    is generated for a CPU .fdf (no _gpu_runtime_defaults_block) but
+    the user later toggles GPU in the .fdf, the GPU branch can't
+    reference ``$_gpu_mpi_np_default`` (undefined).  Falls back to
+    a safe hardcoded 4 ranks / 1 OMP."""
+    set_capabilities(Capabilities(
+        runtime_config={},
+        conda_binary="/usr/bin/conda",
+        conda_envs=frozenset({"molbuilder-siesta"}),
+    ))
+    try:
+        cfg = SiestaConfig()  # CPU mode (enable_gpu=False)
+        fdf = tmp_path / "job.fdf"
+        fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
+        wrapper_text = _runwrap.write_run_wrapper(
+            fdf).read_text(encoding="utf-8")
+        # The grep selector is still emitted (so toggling GPU works).
+        assert 'grep -qiE \'^[[:space:]]*Diag\\.ELPA\\.GPU' in wrapper_text
+        # GPU branch uses the safe hardcoded 4 / 1 -- no reference to
+        # _gpu_mpi_np_default because that variable wasn't emitted.
+        assert "_mpi_np_default=$_gpu_mpi_np_default" not in wrapper_text
+        assert "_mpi_np_default=4" in wrapper_text
+    finally:
+        set_capabilities(Capabilities(runtime_config={}))
