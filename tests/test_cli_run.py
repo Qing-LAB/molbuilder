@@ -8,6 +8,7 @@ real filesystem (the wrapper-emit step IS the unit being tested).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -18,13 +19,26 @@ from molbuilder.diagnostics import Capabilities
 
 
 @pytest.fixture(autouse=True)
-def _inject_caps():
-    """Bind a synthetic Capabilities for every test in this file.
+def _inject_caps(tmp_path, monkeypatch):
+    """Bind a synthetic Capabilities + minimal script_generation config
+    for every test in this file.
 
     Avoids running the real ``detect()`` (which spawns ``conda env
-    list``) on every test.  The conftest-level autouse fixture resets
-    the singleton afterwards.
+    list``).  The cwd ``molbuilder.json`` satisfies the v2 wrapper-
+    independence contract's refuse-to-emit guard
+    (``script_generation.activation``, landed 2026-06-25); we use
+    ``conda activate`` because the wrapper-content assertions below pin
+    that form.  Without this the wrapper-emitting tests fail with
+    RuntimeConfigError ("activation is not set").  The conftest-level
+    autouse fixture resets the capabilities singleton afterwards.
     """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {"activation": "conda activate"}
+    }))
     diagnostics.set_capabilities(Capabilities(
         runtime_config = {},
         conda_binary   = "/usr/bin/conda",
