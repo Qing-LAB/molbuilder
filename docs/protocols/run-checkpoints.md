@@ -84,7 +84,8 @@ The current model (rolling overwrites, manual file-shuffling) loses scientific w
 | **L2**: wrapper bootstrap prologue | `molbuilder/runwrap.py` (small addition) | Emits the `if [ ! -d .git ]; then ...` block at the top of every generated `.run.sh`. Idempotent shell-side check. |
 | **L2**: snippet library | `molbuilder/snippets/git/*.sh` (new) | User-pasteable git fragments (pre-run-checkpoint, post-run-checkpoint, tag-on-converged, branch-on-experiment). |
 | **L3**: HTTP routes | `molbuilder/web/blueprints/checkpoint.py` (new) | Read-only endpoints + checkpoint/tag/branch/restore POST endpoints + GET snippet library. |
-| **L3**: sidebar UI | `molbuilder/web/static/lib/projects/checkpoint.js` (new) | The graph viewer, sensor badge, action menus. |
+| **L3**: sidebar UI | `molbuilder/web/static/lib/projects/checkpoint.js` (new) | The graph viewer, sensor badge, action menus, vertical-split layout management. |
+| **L3**: graph rendering library | `molbuilder/web/static/vendor/gitgraph/gitgraph.umd.min.js` (vendored) | `@gitgraph/js` (MIT). SVG git-graph rendering. Loaded via `<script>` tag like the existing CodeMirror vendor. |
 | **L3**: form UI | `molbuilder/web/static/lib/build/snippet-menu.js` (new) | "Insert snippet ▸ Git checkpoint …" menu integrated with the USER-CUSTOM CodeMirror editor. |
 
 **The wrapper prologue is the ONE place runwrap.py touches git**, and it does so at script-generation time (emits the bash test) — not at Python execution time. `runwrap.py` itself never invokes git via `subprocess`.
@@ -275,10 +276,37 @@ This is the structure the sidebar sensor reads from on every poll.
 
 ### 6.1 Where it lives
 
-Inside the existing Projects Sidebar (see [`projects-sidebar.md`](projects-sidebar.md)), a new collapsible panel **"Run history"** mounts below the file tree for the currently-selected project. The panel is hidden when:
-- The selected node is a file (only meaningful for directories).
-- The selected directory has no `.git/`.
-- The user has explicitly collapsed it (state in `sessionStorage` per [`workspace-contract.md`](workspace-contract.md) § 4.1, keyed under `ws.ui.checkpoint.collapsed`).
+The Projects Sidebar (see [`projects-sidebar.md`](projects-sidebar.md)) **splits vertically** the moment the selected directory contains a `.git/`. Two panes inside the same sidebar column:
+
+```
+┌─────────────────────────┐
+│ Projects file tree      │   ← top pane (existing surface, unchanged)
+│ ├ BDT                   │
+│ │ ├ optimization        │
+│ │ │ ├ TJ-BDT-Au111 ●    │   ← selected; has .git
+│ │ │ └ BDT-only          │
+│                         │
+├─────────────────────────┤   ← draggable horizontal divider
+│ Run history             │   ← bottom pane (new)
+│ [List ▾] [Graph ▴]      │
+│                         │
+│   ● d3f1a92 HEAD, main  │
+│   │                     │
+│   ● 8b22e07 stage3-conv │
+│   │                     │
+│   ● 2c19fa1 initial     │
+└─────────────────────────┘
+```
+
+The split appears when:
+- A directory is selected in the file tree, AND
+- That directory contains `.git/` (= has been initialised; the sensor confirms with a single `git rev-parse --is-inside-work-tree`).
+
+When the user clicks a file (not a dir), or clicks a dir without `.git/`, the bottom pane collapses and the file tree fills the column — same as today. Sidebar sensor pill (§ 6.2) lives in the bottom pane's header even when collapsed.
+
+**Divider behaviour**: a 4-px horizontal drag handle between the two panes mirrors the existing right-edge resize handle on `.projects-sidebar` ([`projects-sidebar.md`](projects-sidebar.md) § "Drag-resize handle"). User-resized height persists in `sessionStorage` (per [`workspace-contract.md`](workspace-contract.md) § 4.1, key `ws.ui.checkpoint.height_px`). Default split: top pane gets 60 % of the column height; bottom pane gets 40 %. Double-click the handle to reset to default.
+
+**Hidden state**: a small chevron in the bottom-pane header collapses just the bottom pane (file tree fills column) without changing the selection. Collapse state persists per session, also under `ws.ui.checkpoint.collapsed`.
 
 ### 6.2 Sensor (always-visible badge)
 
@@ -312,29 +340,55 @@ Per row:
 - Tag chips (`stage3-converged`) are clickable: filter the list to commits with tags only.
 - Branch chip (`main`) is clickable: switches to that branch's view.
 
-### 6.4 Graph viewer (alternative view)
+### 6.4 Graph viewer (default view)
 
-Toggle button in the panel header: **"List" / "Graph"**.
+The bottom pane defaults to the graph view. A `[List ▾] [Graph ▴]` toggle in the header lets the user fall back to the list view (§ 6.3) if they prefer textual.
 
-The graph view renders a vertical commit DAG with branches as parallel lanes (the gitk / GitLens / @gitgraph metaphor):
+**Library: `@gitgraph/js`** (MIT, [nicoespeon/gitgraph.js](https://github.com/nicoespeon/gitgraph.js)). Vendored to `web/static/vendor/gitgraph/gitgraph.umd.min.js` (~30 KB), loaded via `<script>` tag on first mount — same pattern as the existing CodeMirror vendor under `web/static/vendor/codemirror/`. No bundler step.
+
+**Why this library**:
+- Purpose-built for git-graph rendering. API is `gitgraph.branch(name).commit({subject, hash, onClick})`.
+- Built-in support for branches as parallel lanes, merge arcs, tag rendering, custom dot styling, click handlers.
+- SVG output, themeable via custom templates → integrates with the sidebar's CSS-variable palette ([`projects-sidebar.md`](projects-sidebar.md) § 10).
+- 30 KB minified — small enough to vendor without thinking; small enough that lazy-loading is unnecessary (it's always mounted once the pane is visible).
+
+**Rendered shape** (illustrative; the real output is SVG):
 
 ```
-* d3f1a92  stage3-run1                                        [HEAD]
+● d3f1a92  stage3-run1                                        [HEAD, main]
 │
-│ * e441b2c  stage4-tzp-run0: converged, Etot=-1743311.05    [stage4-tzp]
+│ ● e441b2c  stage4-tzp-run0: converged, Etot=-1743311.05    [stage4-tzp]
 │ │
 │/
-*  8b22e07  stage3-run0                                       [stage3-converged]
+●  8b22e07  stage3-run0                                       [stage3-converged]
 │
-*  2c19fa1  initial state
+●  2c19fa1  initial state
 ```
 
-- Vertical axis is time.
-- Each commit is a node; lanes are branches; merge points draw the natural fork.
-- Click a node = select it (highlights, shows details panel on the right).
-- Right-click a node = same context menu as the list view.
-- Drag a node onto another? **Out of scope** — too easy to fat-finger a `git reset`. Operations are explicit menu items only.
-- Library: vendored `@gitgraph/js` (MIT, ~30 KB) or a hand-rolled SVG renderer. Decision deferred to implementation; the rendered shape is fixed by this spec either way.
+**Interactions**:
+- Vertical axis is time (newest at top, matching git log default).
+- Each commit is an SVG dot in its branch's lane; merge points draw an arc.
+- Tags render as labelled chips next to their commit.
+- HEAD is highlighted via a custom dot stroke colour from the existing sidebar palette.
+- Left-click a commit → selects it; the detail panel (§ 6.6) appears below or to the right of the graph (whichever fits the current sidebar width).
+- Right-click a commit → context menu (same actions as list view: Tag here, Branch here, Restore to here, Diff vs. HEAD, Diff vs. working tree).
+- Tag chips are clickable: same as right-click → Restore to this tag.
+
+**Out of scope**:
+- Drag-and-drop operations (e.g. drag commit onto another to rebase). Too easy to fat-finger a destructive `git reset`. All operations are explicit menu items.
+- Lazy-loading older commits. Default `limit=50` from the HTTP route covers most working dirs; if a user accumulates more, they can `git log` from the CLI.
+
+**Style binding**: `@gitgraph/js`'s `templateExtend` API takes a base template and overrides colours / fonts / spacing. We pass:
+```js
+const template = templateExtend(TemplateName.Metro, {
+    colors:  [getCssVar('--projects-sidebar-accent'),
+              getCssVar('--projects-sidebar-accent-2'),
+              ...],
+    branch:  { spacing: 24, lineWidth: 2 },
+    commit:  { spacing: 36, dot: { size: 10 } },
+});
+```
+so a future palette change in `projects-sidebar.css` propagates without code change.
 
 ### 6.5 Live activity overlay
 
@@ -561,15 +615,16 @@ The CLI surface declared in § 14 (item 2) drops `status` accordingly: `molbuild
 | 1 | `molbuilder/checkpoint.py` — L1 types + L2 `Repo` (init / checkpoint / state / list / tag / branch / restore / prune / diff) | ~4 hours | — |
 | 2 | `molbuilder/cli.py::snapshot` CLI group: `init`, `checkpoint`, `list`, `tag`, `branch`, `diff`, `restore`, `prune` (per § 11 decision 8 — no `status` subcommand; users run `git status` directly) | ~2 hours | 1 |
 | 3 | `web/blueprints/checkpoint.py` — HTTP routes per § 8 | ~2 hours | 1 |
-| 4 | `static/lib/projects/checkpoint.js` — sensor badge + list view + detail panel + action menus | ~3 hours | 3 |
-| 5 | Graph viewer (list view's "Graph" toggle) | ~4 hours | 4 |
-| 6 | `envs/recipes.py` — add `git` to **every** env's `conda_packages`: `molbuilder-host`, `molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`, `molbuilder-MDtools`, `molbuilder-tests`. No matter which env the wrapper activates, `git` is on PATH. | ~30 min | — |
-| 7 | Bootstrap preflight (`git --version` + path under env prefix check; refuses to advance if git is missing or shadowed by system git pointing outside the env) | ~30 min | 6 |
-| 8 | Doc update — `design.md` index + decision-log entry on landing | ~30 min | all |
-| 9 | Test suite (§ 12) | ~3 hours | 1–5 |
-| **Total** | | **~1 day + 1 day** | |
+| 4 | Vendor `@gitgraph/js` to `static/vendor/gitgraph/` (download + LICENSE + integrity SHA) | ~30 min | — |
+| 5 | `static/lib/projects/checkpoint.js` — sensor badge + vertical-split layout management + list view + detail panel + action menus | ~3 hours | 3 |
+| 6 | Graph viewer mount (default view in bottom pane), template-extend tied to projects-sidebar.css palette | ~3 hours | 4, 5 |
+| 7 | `envs/recipes.py` — add `git` to **every** env's `conda_packages`: `molbuilder-host`, `molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`, `molbuilder-MDtools`, `molbuilder-tests`. No matter which env the wrapper activates, `git` is on PATH. | ~30 min | — |
+| 8 | Bootstrap preflight (`git --version` + path under env prefix check; refuses to advance if git is missing or shadowed by system git pointing outside the env) | ~30 min | 7 |
+| 9 | Doc update — `design.md` index + decision-log entry on landing | ~30 min | all |
+| 10 | Test suite (§ 12) | ~3 hours | 1–6 |
+| **Total** | | **~1 day + 1.5 days** | |
 
-≈ **2 days end-to-end** for the full feature. Can be broken into two PRs: (a) Python module + CLI + tests (~1 day), (b) HTTP routes + sidebar UI (sensor + list + graph) + tests (~1 day).
+≈ **2.5 days end-to-end** for the full feature. Can be broken into two PRs: (a) Python module + CLI + tests (~1 day), (b) HTTP routes + sidebar UI (sensor + vertical-split layout + graph viewer with `@gitgraph/js` + tests, ~1.5 days).
 
 **Explicitly NOT in the plan**: any modification to `runwrap.py`. The wrapper stays git-agnostic per P4.
 
@@ -583,6 +638,7 @@ The CLI surface declared in § 14 (item 2) drops `status` accordingly: `molbuild
 - [`workspace-contract.md`](workspace-contract.md) § 4.1 — sole-persistence-key rule the sidebar collapsed state respects.
 - Pro Git book § 3 (branches), § 7.6 (rewriting history), § 7.10 (refs) — the underlying git operations.
 - `git(1)` man pages: `git-init`, `git-add`, `git-commit`, `git-tag`, `git-branch`, `git-restore`, `git-log`, `git-diff`, `git-rev-parse`.
+- [`@gitgraph/js`](https://github.com/nicoespeon/gitgraph.js) — the SVG git-graph rendering library vendored in `web/static/vendor/gitgraph/`. MIT license. Source kept verbatim alongside the LICENSE file per the existing CodeMirror vendor pattern.
 
 ---
 
