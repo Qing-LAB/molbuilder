@@ -5,10 +5,12 @@ See docs/protocols/run-checkpoints.md § 8 for the full contract.
 
 Envelope per web-api.md § 1.6 (four-bucket rule):
   * success                            -> HTTP 2xx + ok:true + data
-  * scientific advisory (dirty tree,
-    nested-repo refusal, legacy
-    MANIFEST refusal)                  -> HTTP 200 + ok:false +
-                                          errors[].message + .where
+  * scientific advisory -- state-shaped
+    refusal (dirty tree, nested-repo
+    refusal, legacy MANIFEST refusal)  -> HTTP 200 + ok:false +
+                                          error + issues[] +
+                                          errors_only[]
+                                          (§ 1.1 canonical shape)
   * protocol error (bad path, missing
     param, unknown ref)                -> HTTP 4xx + ok:false +
                                           error: "..."
@@ -93,13 +95,19 @@ def _serialise_state(st: RepoState) -> Dict[str, Any]:
 
 
 def _advisory(message: str, where: str = "") -> tuple:
-    """Bucket-B response: scientific advisory, HTTP 200 + ok:false."""
+    """Bucket-B response: scientific advisory, HTTP 200 + ok:false.
+
+    Canonical shape per web-api.md § 1.1: a single error-severity
+    Issue carried in both ``issues`` and the filtered ``errors_only``
+    list, with a short ``error`` banner matching the issue message
+    so a generic envelope reader has something to show.
+    """
+    issue = {"severity": "error", "message": message, "where": where}
     body = {
         "ok":          False,
-        "errors_only": True,
-        "errors":      [{"severity": "advisory",
-                         "message":  message,
-                         "where":    where}],
+        "error":       message,
+        "issues":      [issue],
+        "errors_only": [issue],
     }
     return jsonify(body), 200
 
@@ -130,8 +138,12 @@ def _get_body() -> Dict[str, Any]:
 def api_checkpoint_state():
     """Cheap snapshot of the working dir's checkpoint state.
 
-    Called by the sidebar sensor every 5 s (per § 11 decision 7) so
-    the badge can show clean / dirty / N changes / archive size.
+    Called by the sidebar sensor on directory-enter and manual Refresh
+    (run-checkpoints.md § 6.2, § 11 decision 7 -- no background
+    polling) so the badge can show clean / dirty / N changes.  Cheap
+    by contract: a single ``git status`` + ``rev-parse``, with NO walk
+    of ``.binsnapshots/`` (archive size is the list/detail surface's
+    job, § 6.3 / § 6.6).
     """
     try:
         path = _resolve_path(request.args.get("path"))

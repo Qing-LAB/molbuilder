@@ -72,7 +72,13 @@ def test_state_after_init_reports_head_and_clean(client, tmp_path):
     assert body["state"]["initialized"] is True
     assert body["state"]["head"]
     assert body["state"]["dirty"] is False
-    assert body["state"]["archive_total_bytes"] == 2048
+    # archive_total_bytes is NOT computed on the refresh-path state()
+    # call (run-checkpoints.md § 5.2, § 6.2): walking .binsnapshots/ on
+    # every directory-enter is the cost the explicit-refresh model
+    # removed.  It stays at its 0 default even though a 2048-byte .DM
+    # is archived on disk; archive size is surfaced by the list/detail
+    # route instead.  Pinned harder in test_checkpoint_sensor_js.py.
+    assert body["state"]["archive_total_bytes"] == 0
 
 
 def test_state_missing_path_param_is_400(client):
@@ -143,7 +149,13 @@ def test_init_creates_repo_and_archives_binaries(client, tmp_path):
     body = r.get_json()
     assert body["ok"] is True
     assert body["state"]["initialized"] is True
-    assert body["state"]["archive_total_bytes"] == 2048
+    # The init route's state() no longer reports archive size (it's off
+    # the refresh path -- run-checkpoints.md § 5.2).  Verify the archive
+    # directly on disk instead: the 2048-byte .DM must be copied into
+    # .binsnapshots/<sha>/.
+    archived = list((tmp_path / ".binsnapshots").rglob("siesta-test.DM"))
+    assert archived, "init() must archive the .DM into .binsnapshots/"
+    assert sum(p.stat().st_size for p in archived) == 2048
 
 
 def test_init_idempotent_returns_already_initialised(client, tmp_path):
@@ -170,9 +182,14 @@ def test_init_refuses_nested_working_dirs_as_advisory(client, tmp_path):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False
-    assert body["errors_only"] is True
-    msg = body["errors"][0]["message"]
-    assert "nested working dirs" in msg
+    # Canonical bucket-B envelope per web-api.md § 1.1: ``errors_only``
+    # is a list (subset of ``issues`` with severity="error"), NOT a
+    # boolean flag; the per-issue detail lives under ``issues``.
+    assert isinstance(body["errors_only"], list) and body["errors_only"]
+    assert isinstance(body["issues"], list) and body["issues"]
+    assert body["errors_only"][0]["severity"] == "error"
+    assert "nested working dirs" in body["errors_only"][0]["message"]
+    assert body["errors_only"][0]["where"] == "path"
 
 
 # ----------------------------------------------------------------- #
@@ -289,8 +306,10 @@ def test_restore_on_dirty_tree_returns_advisory(client, tmp_path):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False
-    assert body["errors_only"] is True
-    assert "uncommitted changes" in body["errors"][0]["message"]
+    assert isinstance(body["errors_only"], list) and body["errors_only"]
+    assert body["errors_only"][0]["severity"] == "error"
+    assert "uncommitted changes" in body["errors_only"][0]["message"]
+    assert body["errors_only"][0]["where"] == "working-tree"
 
 
 def test_restore_unknown_ref_is_404(client, tmp_path):
@@ -327,7 +346,10 @@ def test_restore_on_legacy_manifest_returns_advisory_with_hint(
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is False
-    assert "migrate-manifest" in body["errors"][0]["message"]
+    assert isinstance(body["errors_only"], list) and body["errors_only"]
+    assert body["errors_only"][0]["severity"] == "error"
+    assert "migrate-manifest" in body["errors_only"][0]["message"]
+    assert body["errors_only"][0]["where"] == ".binsnapshots"
 
 
 # ----------------------------------------------------------------- #
@@ -408,3 +430,81 @@ def test_diff_unknown_ref_is_404(client, tmp_path):
                                  "a": "HEAD",
                                  "b": "no-such-ref"})
     assert r.status_code == 404
+
+
+# ----------------------------------------------------------------- #
+#  Envelope round-trip — bucket-B shape (web-api.md § 1.1, § 1.6)    #
+# ----------------------------------------------------------------- #
+
+
+def _assert_bucket_b(body):
+    """Generic bucket-B advisory shape gate per web-api.md § 1.1.
+
+    Every checkpoint advisory must satisfy: ok:false, a short ``error``
+    banner, ``issues`` as a non-empty list, and ``errors_only`` as the
+    filtered subset (also a list, also non-empty for a refusal).  Each
+    Issue carries severity/message/where.
+    """
+    assert body["ok"] is False
+    assert isinstance(body.get("error"), str) and body["error"]
+    assert isinstance(body.get("issues"), list) and body["issues"]
+    assert isinstance(body.get("errors_only"), list) and body["errors_only"]
+    # ``errors_only`` is filter(severity=="error", issues).
+    for it in body["errors_only"]:
+        assert it["severity"] == "error"
+        assert isinstance(it["message"], str) and it["message"]
+        assert isinstance(it["where"], str)
+    # Every errors_only entry must appear in issues.
+    issue_keys = {(it["message"], it["where"]) for it in body["issues"]}
+    for it in body["errors_only"]:
+        assert (it["message"], it["where"]) in issue_keys
+    # No legacy fields.
+    assert "errors" not in body, (
+        "legacy key 'errors' must not appear (use 'issues' per § 1.1)"
+    )
+
+
+def test_envelope_bucket_b_init_nested_working_dirs(client, tmp_path):
+    """Gate the canonical bucket-B shape on /api/checkpoint/init."""
+    _seed(tmp_path)
+    (tmp_path / "child").mkdir()
+    (tmp_path / "child" / "inner.fdf").write_text("SystemLabel inner\n")
+    r = client.post("/api/checkpoint/init",
+                    json={"path": str(tmp_path)})
+    assert r.status_code == 200
+    _assert_bucket_b(r.get_json())
+
+
+def test_envelope_bucket_b_restore_dirty_tree(client, tmp_path):
+    """Gate the canonical bucket-B shape on /api/checkpoint/restore."""
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("baseline", message="first")
+    (tmp_path / "siesta-test.fdf").write_text("dirty\n")
+    r = client.post("/api/checkpoint/restore",
+                    json={"path": str(tmp_path), "ref": "baseline"})
+    assert r.status_code == 200
+    _assert_bucket_b(r.get_json())
+
+
+def test_envelope_bucket_b_restore_legacy_manifest(client, tmp_path):
+    """Gate the canonical bucket-B shape on the legacy-MANIFEST
+    refusal path of /api/checkpoint/restore."""
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("baseline", message="first")
+    sha = repo._resolve_ref("baseline")
+    arch = tmp_path / ".binsnapshots" / sha
+    dm_sha = hashlib.sha256((arch / "siesta-test.DM").read_bytes()).hexdigest()
+    (arch / "MANIFEST").write_text(
+        f"{dm_sha}  siesta-test.DM\n", encoding="ascii")
+    (tmp_path / "siesta-test.fdf").write_text("v2\n")
+    repo.checkpoint(message="iter 2")
+    r = client.post("/api/checkpoint/restore",
+                    json={"path": str(tmp_path), "ref": "baseline"})
+    assert r.status_code == 200
+    _assert_bucket_b(r.get_json())

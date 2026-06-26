@@ -11,8 +11,15 @@
  *   5. POST /api/checkpoint/tag      -> "Tag HEAD…" button
  *   6. POST /api/checkpoint/restore  -> per-row "Restore" button
  *
- * Sensor poll cadence: 5 s (per design § 11.7), only when document is
- * visible AND the panel is expanded AND a directory is selected.
+ * Activation gate (run-checkpoints.md § 6.1): the panel only appears
+ * for a *run directory* -- a dir at projects rel-depth 3, in the
+ * canonical layout projects/PROJECT/CATEGORY/RUNNING_DIR.  Selecting
+ * anything shallower (or a file) hides the panel entirely.
+ *
+ * Refresh model (run-checkpoints.md § 6.2, § 11.7): explicit only --
+ * NO background polling.  State refreshes on (a) directory-enter into
+ * such a run dir, and (b) the manual Refresh control.  There is no
+ * setInterval and no visibility-driven timer.
  *
  * No graph viewer in Phase 2 -- that's PR-B Phase 3 with @gitgraph/js.
  *
@@ -20,17 +27,17 @@
  * HTTP contract: web/blueprints/checkpoint.py + § 8 of run-checkpoints.md.
  */
 
-const POLL_MS = 5000;          // § 11.7 sensor cadence
+// projects rel-depth of a canonical run dir:
+// projects/PROJECT_NAME/CATEGORY/RUNNING_DIR_NAME  (§ 6.1).
+const RUN_DIR_DEPTH = 3;
 const _state = {
     /** Currently selected directory path (relative to projects root,
      *  resolved to absolute by the API).  null when no dir selected. */
     currentDir:    null,
     /** Latest /api/checkpoint/state snapshot (or null on init). */
     repoState:     null,
-    /** Cached checkpoints list to avoid re-rendering on every poll. */
+    /** Cached checkpoints list to avoid re-rendering on every refresh. */
     checkpoints:   [],
-    /** Poll handle (setInterval id) for the sensor. */
-    pollHandle:    null,
     /** True if the user has collapsed the panel via the chevron. */
     userCollapsed: false,
 };
@@ -100,11 +107,28 @@ function _attach() {
     if (elViewGraphBtn) elViewGraphBtn.addEventListener("click",
         () => _setViewMode("graph"));
 
-    // Suspend polling when the document is hidden -- the user isn't
-    // looking; saves a request per cadence interval per tab.
-    document.addEventListener("visibilitychange", _maybePoll);
-
     return true;
+}
+
+/**
+ * Whether ``dirPath`` is a canonical run directory -- projects
+ * rel-depth 3 (projects/PROJECT/CATEGORY/RUNNING_DIR), the only place
+ * a checkpoint viewer activates (run-checkpoints.md § 6.1).  The
+ * ``.git/`` presence is confirmed separately by /api/checkpoint/state;
+ * this is the cheap structural gate that runs before any fetch.
+ */
+function _isRunDir(dirPath) {
+    if (!dirPath) return false;
+    const projects = window.molbuilder && window.molbuilder.projects;
+    const root = projects && typeof projects.getProjectsRoot === "function"
+        ? projects.getProjectsRoot() : "";
+    if (!root) return false;
+    const norm = (p) => p.replace(/\/+$/, "");
+    const dir = norm(dirPath);
+    const base = norm(root);
+    if (dir === base || !dir.startsWith(base + "/")) return false;
+    const rel = dir.slice(base.length + 1);
+    return rel.split("/").filter(Boolean).length === RUN_DIR_DEPTH;
 }
 
 /* ---------- Public API ---------- */
@@ -117,11 +141,16 @@ function _attach() {
  *                                or null when no directory is current.
  */
 export function onDirectoryChange(dirPath) {
-    _state.currentDir = dirPath;
-    if (!dirPath) {
+    // Activation gate: the viewer exists ONLY for a canonical run dir
+    // (rel-depth 3).  Anywhere else -- a project dir, a category dir,
+    // the projects root, or a file -- the panel is hidden entirely
+    // (run-checkpoints.md § 6.1).
+    if (!_isRunDir(dirPath)) {
+        _state.currentDir = null;
         _hide();
         return;
     }
+    _state.currentDir = dirPath;
     if (_state.userCollapsed) {
         elPanel.hidden = false;
         _renderCollapsedHeader();
@@ -129,7 +158,6 @@ export function onDirectoryChange(dirPath) {
     }
     elPanel.hidden = false;
     _refresh();
-    _maybePoll();
 }
 
 /* ---------- Internal: state-driven rendering ---------- */
@@ -137,7 +165,6 @@ export function onDirectoryChange(dirPath) {
 function _hide() {
     if (!elPanel) return;
     elPanel.hidden = true;
-    _stopPoll();
 }
 
 function _renderCollapsedHeader() {
@@ -482,23 +509,6 @@ async function _refresh() {
     }
 }
 
-/* ---------- Polling ---------- */
-
-function _maybePoll() {
-    _stopPoll();
-    if (document.hidden) return;
-    if (!_state.currentDir) return;
-    if (_state.userCollapsed) return;
-    _state.pollHandle = setInterval(_refresh, POLL_MS);
-}
-
-function _stopPoll() {
-    if (_state.pollHandle != null) {
-        clearInterval(_state.pollHandle);
-        _state.pollHandle = null;
-    }
-}
-
 /* ---------- Action handlers ---------- */
 
 function _onCollapseClick() {
@@ -507,10 +517,8 @@ function _onCollapseClick() {
     elCollapse.setAttribute("aria-expanded", String(!_state.userCollapsed));
     if (_state.userCollapsed) {
         _renderCollapsedHeader();
-        _stopPoll();
     } else {
         _refresh();
-        _maybePoll();
     }
 }
 
@@ -523,9 +531,10 @@ async function _onInitClick() {
             { path: _state.currentDir });
         if (res.body && res.body.ok) {
             await _refresh();
-        } else if (res.body && res.body.errors_only) {
-            // Bucket B advisory: surface inline.
-            _showAdvisory(res.body.errors[0].message);
+        } else if (res.body && Array.isArray(res.body.errors_only)
+                   && res.body.errors_only.length) {
+            // Bucket B advisory (web-api.md § 1.6): surface inline.
+            _showAdvisory(res.body.errors_only[0].message);
         } else {
             _showAdvisory("Init failed: " +
                 (res.body?.error || "HTTP " + res.http));
@@ -640,8 +649,9 @@ async function _onRestoreClick(sha) {
                 (res.body.restored && res.body.restored.length
                     ? `Binaries: ${res.body.restored.join(", ")}.`
                     : "Text only (no archived binaries for this ref)."));
-        } else if (res.body && res.body.errors_only) {
-            _showAdvisory(res.body.errors[0].message);
+        } else if (res.body && Array.isArray(res.body.errors_only)
+                   && res.body.errors_only.length) {
+            _showAdvisory(res.body.errors_only[0].message);
         } else {
             _showAdvisory("Restore failed: " +
                 (res.body?.error || "HTTP " + res.http));

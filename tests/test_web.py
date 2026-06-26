@@ -74,38 +74,6 @@ def test_siesta_schema_exposes_spin_fields(web_client):
     assert "Spin" in section_names
 
 
-def test_viewer_js_compatibility_signals_are_behavior_tested():
-    """The parameter-compatibility logic (e.g. UKS + spin=0 is wrong;
-    SIESTA spin_total without spin_polarized is silently ignored)
-    used to be pinned by grepping the viewer.js source for specific
-    JS expressions like ``'"RKS" || method === "RHF"'``.  That kind
-    of string-pin breaks on every refactor that preserves behavior
-    -- exactly the brittleness the new test framework wants to
-    avoid.
-
-    The actual CORRECTNESS guarantee is enforced server-side by
-    the validator (run on every ``POST /api/build/{fdf,py}`` AND
-    via the live ``POST /api/build/preflight`` endpoint).  The
-    behavior tests for those are:
-
-      * ``test_preflight_returns_issues_for_pyscf`` -- UKS+spin=0
-        produces a method-side warn.
-      * ``test_preflight_returns_issues_for_siesta`` -- spin_total
-        without spin_polarized produces a spin_total-side warn.
-
-    Those cover the correctness invariant regardless of how the
-    JS layer renders the warning.  The viewer.js side is UX
-    presentation only (disabling form fields to nudge the user
-    away from incompatible combos before they hit Submit); it is
-    NOT a correctness boundary, and presentation belongs in E2E
-    tests, not source-string grep.
-
-    This test exists as a tombstone so the old grep-style test
-    isn't accidentally reintroduced.  It always passes."""
-    # Intentional no-op assertion.  See docstring.
-    assert True
-
-
 def test_health_endpoint(web_client):
     r = web_client.get("/api/health")
     assert r.status_code == 200

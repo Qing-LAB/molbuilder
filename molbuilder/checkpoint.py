@@ -769,19 +769,36 @@ class Repo:
         lines = [ln for ln in st.stdout.splitlines() if ln.strip()]
         dirty = bool(lines)
         untracked = sum(1 for ln in lines if ln.startswith("?"))
-        snaps = p / ".binsnapshots"
-        total = 0
-        if snaps.is_dir():
-            for sub in snaps.rglob("*"):
-                if sub.is_file() and sub.name not in (
-                        "MANIFEST", ".gitkeep"):
-                    total += sub.stat().st_size
+        # NOTE: archive_total_bytes is deliberately left at its default
+        # (0). This snapshot is the refresh-path read (run-checkpoints.md
+        # § 5.2, § 6.2) hit on every directory-enter; walking
+        # .binsnapshots/ here would charge an O(archive) stat sweep on
+        # each enter for a number the sensor never displays. Archive size
+        # is computed only by the list/detail surfaces that show it
+        # (list_checkpoints()).
         return RepoState(
             path=self.path, initialized=True,
             head=head, current_branch=branch,
             dirty=dirty, untracked=untracked,
-            archive_total_bytes=total,
         )
+
+    def archive_total_bytes(self) -> int:
+        """Total size of all archived binaries under ``.binsnapshots/``.
+
+        Walks the archive -- an O(archived files) stat sweep -- so this
+        is deliberately NOT part of ``state()`` (the refresh-path read,
+        § 6.2).  Call it only from one-shot surfaces that actually
+        display archive size: the CLI ``snapshot init`` confirmation and
+        the list/detail route.
+        """
+        snaps = Path(self.path) / ".binsnapshots"
+        if not snaps.is_dir():
+            return 0
+        total = 0
+        for sub in snaps.rglob("*"):
+            if sub.is_file() and sub.name not in ("MANIFEST", ".gitkeep"):
+                total += sub.stat().st_size
+        return total
 
     # -- public ref + diff surface (callers shouldn't touch _-prefixed) #
 

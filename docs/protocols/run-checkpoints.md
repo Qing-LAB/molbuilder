@@ -268,7 +268,15 @@ class RepoState:
     archive_used_shas: List[str]   # SHAs that still have an archive
 ```
 
-This is the structure the sidebar sensor reads from on every poll.
+This is the structure the sidebar sensor reads on **directory-enter
+and manual refresh** (§ 6.2) — there is no background polling.
+
+`archive_total_bytes` / `archive_used_shas` are **not** populated by
+the refresh-path `state()` call (they default to `0` / `[]`); computing
+them requires a walk of `.binsnapshots/`, which is reserved for the
+list/detail surfaces (§ 6.3, § 6.6) that actually display archive
+size. Keeping `state()` cheap matters because it now runs on every
+directory-enter, not just a timer.
 
 ---
 
@@ -276,7 +284,7 @@ This is the structure the sidebar sensor reads from on every poll.
 
 ### 6.1 Where it lives
 
-The Projects Sidebar (see [`projects-sidebar.md`](projects-sidebar.md)) **splits vertically** the moment the selected directory contains a `.git/`. Two panes inside the same sidebar column:
+The Projects Sidebar (see [`projects-sidebar.md`](projects-sidebar.md)) **splits vertically** the moment the selected directory is a **run directory that contains a `.git/`**. Two panes inside the same sidebar column:
 
 ```
 ┌─────────────────────────┐
@@ -298,11 +306,36 @@ The Projects Sidebar (see [`projects-sidebar.md`](projects-sidebar.md)) **splits
 └─────────────────────────┘
 ```
 
-The split appears when:
-- A directory is selected in the file tree, AND
-- That directory contains `.git/` (= has been initialised; the sensor confirms with a single `git rev-parse --is-inside-work-tree`).
+The split appears when **both** hold:
+- The selected `current_dir` is a **run directory** — i.e. it sits at
+  **projects rel-depth 3**, in the canonical layout
+  `projects/PROJECT_NAME/CATEGORY/RUNNING_DIR_NAME`, AND
+- That directory contains `.git/` (= has been initialised; confirmed
+  with a single `git rev-parse --is-inside-work-tree`).
 
-When the user clicks a file (not a dir), or clicks a dir without `.git/`, the bottom pane collapses and the file tree fills the column — same as today. Sidebar sensor pill (§ 6.2) lives in the bottom pane's header even when collapsed.
+**Why rel-depth 3 is the only place a viewer appears.** The projects
+tree is a fixed three-level layout (mirrors the sidebar depth model in
+[`projects-sidebar.md`](projects-sidebar.md) § 4.1 + `list.js`):
+
+| Path | rel-depth | Origin |
+|---|---|---|
+| `projects/` | 0 | resolved root (§ 4.2 of projects-sidebar) |
+| `projects/PROJECT_NAME/` | 1 | created by the sidebar **New project** button |
+| `projects/PROJECT/CATEGORY/` | 2 | auto-scaffolded canonical topic (`molbuilder.projects.CANONICAL_TOPICS`) |
+| `projects/PROJECT/CATEGORY/RUNNING_DIR/` | **3** | the run dir — where `.fdf` / `.py` / `.run.sh` + `.git/` live |
+
+A checkpoint repo is, by the lowest-directory rule (§ 1), always the
+run dir. So the viewer is gated on rel-depth 3 explicitly: at depth 0,
+1, or 2 (and at any depth ≠ 3, even if a stray `.git/` exists there),
+the bottom pane stays blank. The flat-storage topics `structure` /
+`pseudopotential` hold files, not run dirs, so the `.git/` check
+already excludes them; the depth-3 gate is the structural backstop.
+
+When the user selects anything that is not a depth-3 run dir with
+`.git/` — a file, a shallower dir, a depth-3 dir not yet initialised —
+the bottom pane collapses and the file tree fills the column. Sidebar
+sensor pill (§ 6.2) lives in the bottom pane's header even when
+collapsed.
 
 **Divider behaviour**: a 4-px horizontal drag handle between the two panes mirrors the existing right-edge resize handle on `.projects-sidebar` ([`projects-sidebar.md`](projects-sidebar.md) § "Drag-resize handle"). User-resized height persists in `sessionStorage` (per [`workspace-contract.md`](workspace-contract.md) § 4.1, key `ws.ui.checkpoint.height_px`). Default split: top pane gets 60 % of the column height; bottom pane gets 40 %. Double-click the handle to reset to default.
 
@@ -316,11 +349,33 @@ A small status pill in the sidebar header for the current project directory:
 |---|---|
 | 🟢 `clean · stage3-converged` | Repo present, working tree clean, last tag shown. |
 | 🟡 `N changes` | Uncommitted changes since HEAD. Tooltip: "auto-committed on next run." |
-| 🔵 `running` | A wrapper is currently executing in this dir (file lock present). |
+| 🔵 `running` | A wrapper was executing in this dir (file lock present) **as of the last refresh** — see § 6.5. |
 | ⚪ `no checkpoints` | Directory has no `.git/` — not yet a tracked working dir. |
 | 🔴 `error: <one-line>` | Git command failed; pill is clickable → shows last error. |
 
-Polling: 2 s when the sidebar is visible and the project is selected; suspended otherwise. The endpoint is cheap (single `git status --porcelain` + `git rev-parse HEAD`) so polling cost is bounded.
+**Refresh model — explicit, never polled.** The sensor reads
+`/api/checkpoint/state` (cheap: `git status --porcelain` +
+`git rev-parse HEAD`, no archive walk) on exactly two triggers:
+
+1. **Directory-enter** — when the cursor moves to a depth-3 run dir
+   with `.git/` (the `onChange` from the projects-sidebar cursor
+   mutator, [`projects-sidebar.md`](projects-sidebar.md) § 4.1). One
+   fetch per enter. Leaving the dir tears the viewer down.
+2. **Manual Refresh** — a Refresh control (↻) in the bottom-pane
+   header re-fetches state + the history list on demand. The user
+   hits it after any operation that changes repo state (checkpoint,
+   tag, branch, restore, prune) and after a wrapper run completes.
+
+There is **no `setInterval`**, no visibility-driven resume/suspend,
+and no background timer. This is a deliberate departure from the
+earlier polling design (resolved 2026-06-26): polling charged every
+open sidebar a `git status` every few seconds for state that only
+changes on explicit user action; explicit refresh removes that
+standing browser + subprocess cost entirely. The cost is that
+state which changes *outside* the UI (a wrapper starting/finishing in
+the background) is not reflected until the next enter or manual
+refresh — accepted, because checkpoint capture is already
+user-explicit (§ 6.5).
 
 ### 6.3 Run-history list view (default)
 
@@ -392,13 +447,22 @@ so a future palette change in `projects-sidebar.css` propagates without code cha
 
 ### 6.5 Live activity overlay
 
-When a wrapper is running in this dir (detected from the existing run-lock or PID file — not from any git state, since the wrapper does not touch git), an extra row at the top of the list:
+When a wrapper was running in this dir **as of the last refresh**
+(detected from the existing run-lock or PID file — not from any git
+state, since the wrapper does not touch git), an extra row at the top
+of the list:
 
 ```
-⟳  wrapper running                17:03      [running for 3 min]
+⟳  wrapper running (as of last refresh)      17:03      [Refresh ↻]
 ```
 
-Pulses subtly. Disappears the moment the wrapper exits. **Does not** create a commit; the user must explicitly checkpoint if they want the post-run state captured.
+Because there is no polling (§ 6.2), this row reflects the lock state
+captured at the last directory-enter or manual refresh — it does
+**not** live-update or auto-disappear when the wrapper exits. The user
+hits Refresh to re-read the lock and clear the row once the run is
+done. This is acceptable precisely because the overlay is advisory:
+it **does not** create a commit, and the user must explicitly
+checkpoint if they want the post-run state captured.
 
 ### 6.6 Detail panel (right of the list/graph)
 
@@ -638,7 +702,7 @@ The 8 questions in this section were answered by the user on 2026-06-25. Recorde
 | 4 | **Archive hash-verify on restore only.** Not on every sidebar poll. | Hashing 43 MB binaries every 2–5 s is unsustainable; restore is the only moment correctness matters. |
 | 5 | **Outer-repo nesting = detect + warn, proceed.** Phase 1 runs `git rev-parse --show-superproject-working-tree`; non-empty result emits one warning line + a doc link, then continues. | Cheap insurance; silent surprise weeks later is the bad outcome. |
 | 6 | **Default checkpoint message = `"checkpoint <ISO_TS>"`** when the user submits an empty message. | Low friction encourages frequent checkpointing; tags add meaning after the fact. |
-| 7 | **Sensor poll cadence = 5 seconds** when sidebar is visible and a project is selected; suspended otherwise. | Halves the polling load vs. 2 s; up-to-5-s lag after a checkpoint is acceptable. |
+| 7 | **No background polling — explicit refresh only** (revised 2026-06-26; supersedes the original 5 s cadence). The sensor + viewer refresh on (a) directory-enter into a depth-3 run dir with `.git/`, and (b) a manual Refresh control. | A `git status` every few seconds per open sidebar is standing cost for state that only changes on explicit user action; explicit refresh removes the browser + subprocess load entirely. State changing outside the UI (background wrapper start/stop) lags until the next refresh — accepted, because capture is already user-explicit. |
 | 8 | **No `molbuilder snapshot status` CLI subcommand.** Users run `git status` directly inside the working dir. | Don't duplicate git. The user-facing surfaces (sidebar sensor + sidebar list view) cover the GUI case; plain `git status` covers the CLI case. CLI surface shrinks accordingly. |
 
 The CLI surface declared in § 14 (item 2) drops `status` accordingly and adds `migrate-manifest` (introduced by § 10.4): `molbuilder snapshot {init, checkpoint, list, tag, branch, diff, restore, prune, migrate-manifest}`.
@@ -656,7 +720,7 @@ The CLI surface declared in § 14 (item 2) drops `status` accordingly and adds `
 | L2 | Binary archive: a .DM is correctly archived + restored bit-for-bit (SHA256 round-trip). Pinned by `test_checkpoint_binary_archive.py`. |
 | L2 | Empty checkpoint: clicking "Checkpoint now" on a clean tree returns `checkpoint=None` and does not create a commit. Pinned by `test_checkpoint_clean_tree.py`. |
 | L3 | HTTP routes: each endpoint returns the documented envelope; restore on dirty tree returns `ok:false`. Pinned by `test_checkpoint_routes.py`. |
-| L3 | Sidebar sensor: polling shape, suspends when sidebar hidden, retries on transient git error. Pinned by `test_checkpoint_sensor_js.py`. |
+| L3 | Sidebar sensor refresh contract: `/api/checkpoint/state` returns the cheap shape and does **not** walk `.binsnapshots/` (archive fields stay at `0`/`[]` even when archives exist on disk); a git failure returns a structured `{ok:false, error}` envelope the sensor renders as a 🔴 error pill (not an unhandled crash); and `checkpoint.js` carries no `setInterval` (refresh is explicit — directory-enter + manual Refresh — never polled). Pinned by `test_checkpoint_sensor_js.py`. |
 | L3 | Graph viewer: nodes render in DAG order; tag chips clickable; branch lanes correct for a fork-merge pattern. Pinned by Playwright `test_checkpoint_graph_e2e.py`. |
 
 ---

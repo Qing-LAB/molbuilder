@@ -2042,8 +2042,11 @@ def cmd_snapshot_init(path):
     state = repo.state()
     click.echo(f"Initialised {repo.path}")
     click.echo(f"  HEAD = {state.head[:7] if state.head else '?'}")
-    if state.archive_total_bytes:
-        click.echo(f"  archived {state.archive_total_bytes / (1024 * 1024):.1f} "
+    # state() is cheap and omits archive size (§ 6.2); ask for it
+    # explicitly here -- this is a one-shot command, not a poll.
+    archived = repo.archive_total_bytes()
+    if archived:
+        click.echo(f"  archived {archived / (1024 * 1024):.1f} "
                    f"MB of big binaries to .binsnapshots/")
 
 
