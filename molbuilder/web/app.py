@@ -265,6 +265,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.results   import bp as results_bp
     from .blueprints.selection import bp as selection_bp
     from .blueprints.system_load import bp as system_load_bp
+    from .blueprints.checkpoint  import bp as checkpoint_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
@@ -274,6 +275,7 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(results_bp)
     app.register_blueprint(selection_bp)
     app.register_blueprint(system_load_bp)
+    app.register_blueprint(checkpoint_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
