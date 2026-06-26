@@ -29,7 +29,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, List, Mapping, Optional, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 
@@ -2089,7 +2089,13 @@ def write_run_wrapper(script_path: Path, *,
                        env: Optional[str] = None,
                        mpi_np: Optional[int] = None,
                        omp_threads: Optional[int] = None,
-                       max_memory_mb: Optional[int] = None) -> Path:
+                       max_memory_mb: Optional[int] = None,
+                       time: Optional[str] = None,
+                       gres: Optional[str] = None,
+                       mem: Optional[str] = None,
+                       cpus_per_task: Optional[int] = None,
+                       exclusive: Optional[bool] = None,
+                       emit_sbatch: bool = True) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
@@ -2101,6 +2107,15 @@ def write_run_wrapper(script_path: Path, *,
     path can clamp ``mpi_np <= n_atoms`` (the propor IMAX=0 lower
     bound).  Parse-failure is treated as "unknown" and falls back to
     the unclamped behaviour rather than refusing to render.
+
+    **SLURM submission layer** (slurm-integration.md § 15 B): when a
+    ``scheduler`` block is configured (``get_scheduler`` non-None) and
+    ``emit_sbatch`` is True, ALSO writes ``<basename>.sbatch`` -- the
+    thin submission wrapper that ``sbatch``'s this same ``.run.sh``.
+    The ``time``/``gres``/``mem``/``cpus_per_task``/``exclusive`` knobs
+    feed that header (§ 6 value-source matrix); they are no-ops when no
+    scheduler is configured (local/laptop users just get the ``.run.sh``,
+    § 10).
     """
     script_path = Path(script_path).resolve()
     if not script_path.is_file():
@@ -2131,7 +2146,271 @@ def write_run_wrapper(script_path: Path, *,
     wrapper_path = script_path.parent / (script_path.stem + ".run.sh")
     wrapper_path.write_text(text)
     wrapper_path.chmod(0o755)
+
+    # --- SLURM submission layer (slurm-integration.md § 15 B) ---------
+    # Emit <basename>.sbatch iff a scheduler is configured.  Resolution
+    # of the per-job header values (ntasks/cpus/gpu) lives here because
+    # only this layer knows both the .fdf (GPU request, n_atoms) and the
+    # CLI overrides.  Skipped silently when no scheduler block exists
+    # (today's behaviour for local/laptop users, § 10).
+    if emit_sbatch:
+        _maybe_write_sbatch(
+            script_path, wrapper_path,
+            mpi_np=mpi_np, time=time, gres=gres, mem=mem,
+            cpus_per_task=cpus_per_task, exclusive=exclusive,
+            env=env,
+        )
     return wrapper_path
+
+
+def _maybe_write_sbatch(script_path: Path,
+                        wrapper_path: Path,
+                        *,
+                        mpi_np: Optional[int],
+                        time: Optional[str],
+                        gres: Optional[str],
+                        mem: Optional[str],
+                        cpus_per_task: Optional[int],
+                        exclusive: Optional[bool],
+                        env: Optional[str]) -> Optional[Path]:
+    """Resolve the per-job header values and write ``<basename>.sbatch``
+    when a ``scheduler`` block is configured; else return None.
+
+    Resolution rules (slurm-integration.md § 6):
+      * GPU job (``.fdf`` requests GPU AND env wasn't force-overridden to
+        a non-GPU env): ``--gres`` -> 1 rank/GPU; ``-n`` = GPU count.
+      * CPU job: ``-n`` = ``mpi_np`` (CLI ``--np``); falls back to 1 with
+        a generate-time note when unset (the launcher still resolves the
+        runtime rank count from ``SLURM_NTASKS``, § 7.3).
+    """
+    from . import runtime_config as _rc
+    project_dir = script_path.parent if script_path.parent.exists() else None
+    scheduler = _rc.get_scheduler(project_dir=project_dir)
+    if scheduler is None:
+        return None  # § 10: no scheduler -> emit only .run.sh
+
+    suffix = script_path.suffix.lower()
+    is_siesta = suffix == ".fdf"
+
+    # Is this a GPU job?  Only SIESTA .fdf can be; honour an explicit
+    # --env override that points away from GPU (mirrors the run-wrapper's
+    # env_lookup_category logic).
+    gpu = bool(is_siesta and env is None and _fdf_requests_gpu(script_path))
+    gpu_type: Optional[str] = None
+    gpu_count: Optional[int] = None
+    if gres is not None:
+        gpu_type, gpu_count = _parse_gres(gres)
+        gpu = True  # an explicit --gres forces a GPU header
+
+    if gpu:
+        # 1 rank per GPU (§ 7.5.1).  ntasks follows the GPU count; a
+        # bare --np for a GPU job is ignored in favour of the rank=GPU
+        # invariant (CLI --gres count is authoritative).
+        if gpu_count is None:
+            gpu_count = mpi_np if (mpi_np and mpi_np >= 1) else 1
+        ntasks = gpu_count
+    else:
+        # CPU job: ntasks = mpi_np (the rank count).  When unset, 1 is a
+        # safe header floor -- under sbatch the launcher reads
+        # SLURM_NTASKS (§ 7.3), so the user controls scale via -n.
+        ntasks = mpi_np if (mpi_np and mpi_np >= 1) else 1
+
+    return write_sbatch(
+        script_path, scheduler,
+        ntasks=ntasks,
+        cpus_per_task=cpus_per_task,
+        time=time,
+        gpu=gpu,
+        gpu_count=gpu_count,
+        gpu_type=gpu_type,
+        mem=mem,
+        exclusive=exclusive,
+    )
+
+
+# --------------------------------------------------------------------- #
+#  SLURM .sbatch submission layer (docs/protocols/slurm-integration.md)  #
+# --------------------------------------------------------------------- #
+
+
+_GRES_RE = re.compile(r"^(?:gpu:)?(?P<type>[A-Za-z0-9_.]+):(?P<count>\d+)$")
+
+
+def _parse_gres(gres: str) -> Tuple[Optional[str], int]:
+    """Parse a ``--gres`` spec into ``(gpu_type, count)``.
+
+    Accepts ``gpu:a100:2``, ``a100:2``, or a bare count ``2`` (=> type
+    unspecified, caller falls back to ``scheduler.gpu.default_type``).
+    Raises :exc:`WrapperError` on anything else so a typo'd CLI value
+    fails at generate time, not after a job queues.
+    """
+    g = gres.strip()
+    if g.isdigit():
+        return None, int(g)
+    m = _GRES_RE.match(g)
+    if not m:
+        raise WrapperError(
+            f"invalid --gres value {gres!r}; expected "
+            f"``[gpu:]<type>:<count>`` (e.g. ``gpu:a100:2``) or a bare "
+            f"count."
+        )
+    return m.group("type"), int(m.group("count"))
+
+
+def render_sbatch(script_path: Path,
+                  scheduler: Mapping[str, Any],
+                  *,
+                  ntasks: int,
+                  cpus_per_task: Optional[int] = None,
+                  time: Optional[str] = None,
+                  gpu: bool = False,
+                  gpu_count: Optional[int] = None,
+                  gpu_type: Optional[str] = None,
+                  mem: Optional[str] = None,
+                  exclusive: Optional[bool] = None) -> str:
+    """Render the ``<basename>.sbatch`` submission script.
+
+    The thin two-layer model (slurm-integration.md § 3, § 5): an
+    ``#SBATCH`` header that allocates resources, then a one-line body
+    that delegates to the UNCHANGED launcher
+    ``bash <basename>.run.sh "$@"``.  The launcher still owns env
+    activation + the ``mpirun`` launch; the ``.sbatch`` never
+    re-implements ``module load`` / ``source activate`` (§ 2 principle 3).
+
+    Value sourcing (§ 6): stable site directives come from ``scheduler``;
+    per-job values (``ntasks``/``cpus_per_task``/``time``/``mem``/GPU
+    type+count/``exclusive``) are resolved by the CALLER (CLI flag →
+    ``.fdf`` → config default) and passed in here already resolved.
+
+    Args:
+      scheduler: the resolved block from
+        :func:`runtime_config.get_scheduler` (``directives`` carry a
+        validated ``partition``+``qos``).
+      ntasks: ``-n``.  CPU jobs: the MPI rank count.  GPU jobs: 1 rank
+        per GPU (§ 7.5.1) -- pass ``gpu_count``.  Under sbatch the
+        launcher reads ``SLURM_NTASKS`` (runwrap line ~1367), so this
+        ``-n`` and ``mpirun -np`` agree by construction (§ 7.3).
+      gpu: emit the ``--gres`` + ``--gres-flags=enforce-binding`` lines
+        and route to ``scheduler.gpu.partition`` (§ 7.4, § 8).
+      exclusive: ``--exclusive``.  Defaults to ``scheduler.gpu.exclusive``
+        for GPU jobs (None => use the config value); always off for CPU.
+    """
+    if not isinstance(ntasks, int) or ntasks < 1:
+        raise WrapperError(
+            f"render_sbatch: ntasks must be a positive int; got {ntasks!r}."
+        )
+
+    basename = Path(script_path).stem
+    if not _SAFE_WRAPPER_NAME_RE.fullmatch(basename):
+        raise WrapperError(
+            f"unsafe script basename for sbatch emission: {basename!r}."
+        )
+
+    directives = dict(scheduler.get("directives") or {})
+    gpu_cfg    = dict(scheduler.get("gpu") or {})
+    defaults   = dict(scheduler.get("defaults") or {})
+
+    partition = directives.get("partition")
+    qos       = directives.get("qos")
+    # Refuse-to-emit (§ 10): get_scheduler already guarantees these, but
+    # render_sbatch may be called directly -- never emit a header that
+    # won't allocate.
+    if not partition or not qos:
+        raise WrapperError(
+            "render_sbatch: scheduler.directives.partition + qos are "
+            "required (slurm-integration.md § 10).  Use "
+            "runtime_config.get_scheduler() which enforces this."
+        )
+
+    if gpu:
+        # GPU jobs route to gpu.partition when set; else the same
+        # partition (on Sol `public` carries the GPU nodes -- § 7.4).
+        partition = gpu_cfg.get("partition") or partition
+        gpu_type  = gpu_type or gpu_cfg.get("default_type")
+        if not gpu_type:
+            raise WrapperError(
+                "render_sbatch: GPU job but no gpu type resolved; set "
+                "scheduler.gpu.default_type or pass --gres <type>:<n> "
+                "(slurm-integration.md § 6)."
+            )
+        if gpu_count is None:
+            gpu_count = ntasks  # 1 rank per GPU (§ 7.5.1)
+        if exclusive is None:
+            exclusive = bool(gpu_cfg.get("exclusive", False))
+    else:
+        exclusive = False  # CPU jobs never request a whole node here
+
+    # Per-job values: caller arg wins, else config default.
+    cpus = cpus_per_task if cpus_per_task is not None \
+        else defaults.get("cpus_per_task")
+    walltime = time if time is not None else defaults.get("time")
+    memory   = mem if mem is not None else defaults.get("mem")
+
+    site = "asu-sol" if partition == "public" else "custom"
+    lines: List[str] = [
+        "#!/bin/bash",
+        f"# === molbuilder sbatch header (scheduler: slurm; site: {site}) ===",
+        "# Generated by `molbuilder run` from the `scheduler` config block.",
+        "# Authoritative design: docs/protocols/slurm-integration.md.",
+        "# Submit with:  cd <projdir>; sbatch "
+        f"{basename}.sbatch   (NOT bash -- § 7.8)",
+        "#",
+        f"#SBATCH -J {basename}",
+        "#SBATCH -N 1",
+        f"#SBATCH -n {ntasks}",
+    ]
+    if cpus is not None:
+        lines.append(f"#SBATCH -c {cpus}")
+    if walltime:
+        lines.append(f"#SBATCH -t {walltime}")
+    lines.append(f"#SBATCH -p {partition}")
+    lines.append(f"#SBATCH -q {qos}")
+    if gpu:
+        lines.append(f"#SBATCH --gres=gpu:{gpu_type}:{gpu_count}")
+        # Nudge SLURM toward co-locating the CPU cores with the GPU's
+        # NUMA node; the launcher still does the authoritative per-rank
+        # runtime bind (§ 7.5.1).
+        lines.append("#SBATCH --gres-flags=enforce-binding")
+    if exclusive:
+        lines.append("#SBATCH --exclusive")
+    if memory:
+        lines.append(f"#SBATCH --mem={memory}")
+    lines.append("#SBATCH -o slurm.%j.out")
+    lines.append("#SBATCH -e slurm.%j.err")
+    if directives.get("mail_type"):
+        lines.append(f"#SBATCH --mail-type={directives['mail_type']}")
+    if directives.get("mail_user"):
+        lines.append(f"#SBATCH --mail-user=\"{directives['mail_user']}\"")
+    if directives.get("export"):
+        lines.append(f"#SBATCH --export={directives['export']}")
+
+    body = (
+        "\n"
+        "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
+        "# launcher never cd's (config.md § 1).  --export=NONE means a\n"
+        "# clean env, so the launcher's `module load mamba` + activation\n"
+        "# are load-bearing (§ 7.1).  \"$@\" forwards --cold / --continue.\n"
+        f"bash {basename}.run.sh \"$@\"\n"
+    )
+    return "\n".join(lines) + "\n" + body
+
+
+def write_sbatch(script_path: Path,
+                 scheduler: Mapping[str, Any],
+                 **kwargs: Any) -> Path:
+    """Render + write ``<basename>.sbatch`` next to ``script_path``.
+
+    Returns the path.  Mode 0o644 (a submission script, not directly
+    executed -- you ``sbatch`` it, you don't ``./`` it).  Validated
+    through ``bash -n`` like the wrapper before it hits disk.
+    """
+    script_path = Path(script_path).resolve()
+    text = render_sbatch(script_path, scheduler, **kwargs)
+    _validate_rendered_wrapper(text, script_path)
+    sbatch_path = script_path.parent / (script_path.stem + ".sbatch")
+    sbatch_path.write_text(text)
+    sbatch_path.chmod(0o644)
+    return sbatch_path
 
 
 def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
@@ -2181,4 +2460,6 @@ __all__ = [
     "WrapperError",
     "render_run_wrapper",
     "write_run_wrapper",
+    "render_sbatch",
+    "write_sbatch",
 ]
