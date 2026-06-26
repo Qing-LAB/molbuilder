@@ -209,7 +209,10 @@ def test_scf_timing_instrument_present(tmp_path):
         assert '| _mb_scf_tee "$_out_file" "$_scf_timing_log"' in t
         # PIPESTATUS so awk never masks SIESTA's exit code
         assert "_siesta_exit=${PIPESTATUS[0]}" in t
-        assert 'SIESTA wall time:' in t
+        # Reliable benchmark metric = total wall / N SCF iters (SIESTA's
+        # own per-scf time is unreliable; per-line stamps are buffered).
+        assert '_n_scf=$(wc -l < "$_scf_timing_log"' in t
+        assert "total/N -- the reliable metric" in t
 
 
 def test_propor_diagnostic_still_reads_out_after_timing(tmp_path):

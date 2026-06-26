@@ -2317,8 +2317,24 @@ def render_run_wrapper(script_path: Path, *,
             f"_t_end=$(date +%s.%N)\n"
             f'_siesta_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
             f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
-            f'_log INFO "SIESTA wall time: ${{_siesta_wall}}s '
-            f'(per-iteration deltas in $_scf_timing_log)"\n'
+            # Reliable per-iteration metric = total wall / N_iters.  SIESTA's
+            # OWN per-scf time in the .out is NOT trustworthy (it effectively
+            # records only the first iteration), and the external per-line
+            # stamps in .scf-timing.log are subject to Fortran stdout
+            # buffering -- so the headline benchmark number is total/N
+            # (slurm-integration.md § 11.0).  N = scf: iteration lines.
+            f'_n_scf=$(wc -l < "$_scf_timing_log" 2>/dev/null | tr -d " ")\n'
+            f'case "$_n_scf" in ""|*[!0-9]*) _n_scf=0 ;; esac\n'
+            f'if [ "$_n_scf" -ge 1 ]; then\n'
+            f'    _per_iter=$(awk -v t="$_siesta_wall" -v n="$_n_scf" '
+            f"'BEGIN{{printf \"%.2f\", t/n}}')\n"
+            f'    _log INFO "benchmark: SIESTA wall ${{_siesta_wall}}s / '
+            f'${{_n_scf}} SCF iters = ${{_per_iter}}s/iter '
+            f'(total/N -- the reliable metric)"\n'
+            f'else\n'
+            f'    _log INFO "benchmark: SIESTA wall ${{_siesta_wall}}s '
+            f'(no SCF iterations parsed from $_scf_timing_log)"\n'
+            f'fi\n'
             f"\n"
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"

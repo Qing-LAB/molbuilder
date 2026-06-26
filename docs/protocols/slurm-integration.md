@@ -600,29 +600,43 @@ allocation, so CPU-only and GPU configs are *separate* `.sbatch` files
 runs the CPU job on a CPU node and the GPU job on a GPU node concurrently.
 Collect each job's `.scf-timing.log` and compare.
 
-### 11.0 Iteration-count methodology (why a few, but not 1–2)
-The ranking metric is **steady-state wall-time per SCF iteration**
-(dominated by the fixed-size O(N³) eigensolve — identical every
-iteration, convergence-independent). But **iteration 1–2 is one-time
-warmup** (pseudo/basis/mesh setup; on GPU: CUDA context + cuBLAS/ELPA
-handle + memory-pool alloc + first-kernel JIT — bigger for GPU, would
-*penalize* it unfairly). So cap at **`MaxSCFIterations 5`**, single-point
-(no relax), and **report the mean of iters 3–5** (the parser's
-per-iteration delta cancels the one-time setup). 1–2 iters is wrong; ~5
-is enough and bounds wall-time.
+### 11.0 Iteration-count methodology + the RELIABLE per-iteration metric
+The ranking metric is **wall-time per SCF iteration** (dominated by the
+fixed-size O(N³) eigensolve — near-identical every iteration,
+convergence-independent).
 
-### 11.0b Per-iteration timing instrument — `.scf-timing.log`
-SIESTA emits **no usable per-iteration wall time** (the `scf:` lines
-carry energies + dDmax but no time; `timer: IterSCF` is cumulative). So
-the wrapper MUST measure it: pipe SIESTA stdout through a filter that
-**timestamps each `scf:` line** into a persistent
-**`<basename>.scf-timing.log`** (`<epoch> <iter#> <dDmax>`); per-iter
-time = consecutive-stamp delta. This is the benchmark's measurement
-instrument and is **non-optional**. Forward-looking: the same filter
-maintains a `<basename>.status.json` (current iter / per-iter time / ETA
-/ config) — the machine-readable status a future **notifier** pushes
-(webhook/email) so the user needn't log in to grep; this is the
-front-end of the job-monitor/watcher surface.
+**The reliable measurement is `total SIESTA wall time ÷ N SCF iterations`
+— NOT SIESTA's own per-scf time, and NOT external per-line stamps**
+(user, 2026-06-26):
+- SIESTA's reported per-scf time in the `.out` is **untrustworthy** — it
+  effectively records only the **first** iteration.
+- External per-line wall-clock stamps (§ 11.0b) are subject to
+  **Fortran stdout buffering** (SIESTA's runtime, not libc — `stdbuf`
+  won't fix it), so consecutive-stamp deltas can be a flush artifact.
+- **`total/N` is robust**: total wall comes from the wrapper's own
+  `date +%s.%N` around the launch (reliable), and `N` is just the COUNT
+  of `scf:` iteration lines (reliable even if their timestamps cluster).
+  The wrapper logs `benchmark: SIESTA wall <T>s / <N> SCF iters =
+  <T/N>s/iter (total/N -- the reliable metric)`.
+
+Warmup caveat: `total/N` averages in the one-time setup (pseudo/basis/
+mesh; on GPU the CUDA context + first-kernel JIT). To keep it fair, cap
+at **`MaxSCFIterations 5`** single-point (no relax) for the first pass so
+setup is amortized; to *subtract* setup precisely, run two points
+(N=2 and N=10) and take `(T₁₀−T₂)/8`. The first Sol pass uses plain
+`total/N` at N=5 across all three configs (apples-to-apples).
+
+### 11.0b Per-iteration timing instrument — `.scf-timing.log` (secondary)
+The wrapper pipes SIESTA stdout through `_mb_scf_tee`, which writes the
+`.out` AND stamps each `scf:` iteration line into a per-run
+**`<basename>-runN.scf-timing.log`** (`<epoch.ns> <iter#> <scf line>`).
+Its **primary, reliable use is the iteration COUNT `N`** (for § 11.0's
+`total/N`); the per-line deltas are a **best-effort secondary** view of
+the steady-state curve (trust them only when SIESTA happens to flush
+per-iteration). Forward-looking: a Python **`molbuilder.monitor`** module
+(item F) parses these artifacts periodically and a **notifier hook**
+pushes lightweight status/result summaries (webhook/email) so the user
+needn't log in to grep — the front-end of the job-monitor/watcher surface.
 
 ### 11.1 Correctness gate ("is the GPU actually doing the work?")
 After a short capped run, assert from the parser's `runtime_info`
