@@ -28,6 +28,7 @@ known clean state without having to manually ``rm`` the files.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -37,6 +38,27 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.runwrap import write_run_wrapper
+
+
+@pytest.fixture(autouse=True)
+def _autosetup_minimal_config(tmp_path, monkeypatch):
+    """Every wrapper render needs a ``script_generation.activation`` or
+    the v2 wrapper-independence contract's refuse-to-emit guard
+    (docs/config.md § 2, landed 2026-06-25) rejects it.  Mirror
+    test_runwrap.py's fixture: a cwd molbuilder.json with the canonical
+    Sol defaults so write_run_wrapper can emit.  Without this the whole
+    file fails with RuntimeConfigError ("activation is not set")."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "home").mkdir()
+    (tmp_path / "molbuilder.json").write_text(json.dumps({
+        "script_generation": {
+            "preamble":   "module load mamba",
+            "activation": "source activate",
+        }
+    }))
+    yield tmp_path
 
 
 def _bind():
@@ -116,6 +138,28 @@ class TestColdFlagText:
 # --------------------------------------------------------------------- #
 
 
+def _strip_preamble_activation(text: str) -> str:
+    """Remove the baked preamble + conda-activation block (script-
+    execution blocks 3-4) from a rendered wrapper so the behaviour
+    tests can EXECUTE it in a bare CI shell.  ``module load mamba`` /
+    ``source activate`` exit 127 without an HPC module system or conda;
+    under ``set -e`` that aborts the wrapper before the cold block ever
+    runs.  ``_log`` is defined earlier (block 2) so the cold block's
+    logging survives the strip.  Mirrors test_runwrap.py's executable-
+    test stripping; the difference here is we KEEP ``_log``."""
+    start = text.find("# --- Baked preamble")
+    assert start >= 0, "baked-preamble marker not found in wrapper"
+    em = text.find("which python:", start)
+    assert em >= 0, "activation conda-dump end marker not found"
+    eol = text.find("\n", em)
+    assert eol >= 0
+    return (
+        text[:start]
+        + "# preamble + activation stripped for CI (no conda here).\n"
+        + text[eol + 1:]
+    )
+
+
 def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
     """Build a SIESTA wrapper but truncate the bash BEFORE the
     actual ``mpirun siesta`` invocation so the script exits cleanly
@@ -129,7 +173,7 @@ def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
         "%endblock AtomicCoordinatesAndAtomicSpecies\n"
     )
     wrapper = write_run_wrapper(script)
-    text = wrapper.read_text()
+    text = _strip_preamble_activation(wrapper.read_text())
     # Truncate at the first ``mpirun`` so the cold block has executed
     # but the SIESTA launch is skipped.  Append explicit exit 0 so
     # the test doesn't depend on what the wrapper would emit after.
@@ -262,7 +306,7 @@ class TestColdBehaviourSystemLabelMismatch:
             f"%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
         wrapper = write_run_wrapper(script)
-        text = wrapper.read_text()
+        text = _strip_preamble_activation(wrapper.read_text())
         # Truncate AFTER the closing banner separator (which prints
         # the Mode + Constraints lines we want to observe).  The
         # naive ``find("mpirun")`` matches the FIRST occurrence which
@@ -405,7 +449,7 @@ class TestColdBehaviourSystemLabelMismatch:
             "%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
         wrapper = write_run_wrapper(script)
-        text = wrapper.read_text()
+        text = _strip_preamble_activation(wrapper.read_text())
         end = text.find('echo "================================')
         if end < 0:
             end = text.find("mpirun")
