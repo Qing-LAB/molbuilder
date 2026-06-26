@@ -143,6 +143,74 @@
          window.molbuilder.projects.getCurrentFile(). -->
     <p class="ps-selection">No file selected.</p>
   </section>
+
+  {#- Run-history panel (PR-B Phase 2, 2026-06-25).  Surfaces the
+      checkpoint repo state + commit history for the currently-
+      selected directory.  Hidden when no dir is selected OR when
+      the dir has no .git/.  Drives:
+        * sensor badge (clean / dirty / N changes / uninit / running)
+        * list view of past checkpoints with tag chips
+        * "Initialise run history" CTA when not yet initialised
+        * "Checkpoint now" / "Restore" / "Tag" action buttons
+      See lib/projects/checkpoint.js for the wiring and
+      docs/protocols/run-checkpoints.md § 6 for the design contract. -#}
+  <section class="ps-checkpoint" id="ps-checkpoint"
+           aria-label="Run history" hidden>
+    <header class="ps-checkpoint-header">
+      <h3 class="ps-checkpoint-title">Run history</h3>
+      <span class="ps-checkpoint-sensor" id="ps-checkpoint-sensor"
+            aria-live="polite"
+            title="Click to refresh">…</span>
+      <button type="button" id="ps-checkpoint-collapse"
+              class="ps-checkpoint-collapse"
+              aria-label="Collapse run history panel"
+              aria-expanded="true" title="Collapse">▾</button>
+    </header>
+
+    <!-- Empty-state CTA: shown when the selected dir has no .git/.
+         Click invokes POST /api/checkpoint/init. -->
+    <div class="ps-checkpoint-empty" id="ps-checkpoint-empty" hidden>
+      <p class="ps-checkpoint-empty-msg">
+        No checkpoint history yet for this directory.
+      </p>
+      <button type="button" id="ps-checkpoint-init"
+              class="ps-checkpoint-init-btn">
+        Initialise run history
+      </button>
+    </div>
+
+    <!-- Action bar: shown when initialised.  Three primary actions. -->
+    <div class="ps-checkpoint-actions" id="ps-checkpoint-actions" hidden>
+      <button type="button" id="ps-checkpoint-commit-btn"
+              class="ps-checkpoint-action"
+              title="Save the current state as a new checkpoint">
+        Checkpoint now
+      </button>
+      <button type="button" id="ps-checkpoint-tag-btn"
+              class="ps-checkpoint-action"
+              title="Tag the most recent checkpoint with a semantic label">
+        Tag HEAD…
+      </button>
+      <button type="button" id="ps-checkpoint-refresh-btn"
+              class="ps-checkpoint-action"
+              title="Refresh the list">
+        ↻
+      </button>
+    </div>
+
+    <!-- List view: scrollable column of checkpoints, most recent
+         first.  Each row is built by checkpoint.js -- a sha chip,
+         message, refs (tag/branch chips), and archive size. -->
+    <ul class="ps-checkpoint-list" id="ps-checkpoint-list" hidden>
+    </ul>
+
+    <!-- Inline error/advisory surface.  Renders bucket-B advisories
+         from the routes (dirty tree, legacy MANIFEST, etc.) so the
+         user sees them in context. -->
+    <div class="ps-checkpoint-advisory" id="ps-checkpoint-advisory"
+         hidden role="status" aria-live="polite">
+    </div>
+  </section>
 </aside>
 
 <!-- File-preview modal (lives outside the sidebar so it can float

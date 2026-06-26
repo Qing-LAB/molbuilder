@@ -1316,3 +1316,220 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
     background: rgba(0, 0, 0, 0.5);
   }
 }
+
+/* ---------------------------------------------------------------- */
+/*  Run-history panel (PR-B Phase 2, 2026-06-25)                    */
+/*                                                                  */
+/*  Mounts inside the projects sidebar BELOW the file tree.         */
+/*  Hidden via [hidden] until checkpoint.js detects a selected      */
+/*  directory; populated from the /api/checkpoint/* routes.         */
+/*  See lib/projects/checkpoint.js + docs/protocols/                */
+/*  run-checkpoints.md § 6 for the design.                          */
+/* ---------------------------------------------------------------- */
+
+.ps-checkpoint {
+    margin-top:        0.5rem;
+    padding:           0.5rem 0.75rem;
+    border-top:        1px solid var(--ps-border);
+    background:        var(--ps-bg);
+    font-size:         0.85rem;
+    color:             var(--ps-fg);
+    max-height:        40vh;
+    overflow-y:        auto;
+    flex-shrink:       0;
+}
+
+.ps-checkpoint-header {
+    display:           flex;
+    align-items:       center;
+    gap:               0.5rem;
+    margin-bottom:     0.4rem;
+}
+
+.ps-checkpoint-title {
+    margin:            0;
+    font-size:         0.9rem;
+    font-weight:       600;
+    color:             var(--ps-fg);
+    flex:              1;
+}
+
+.ps-checkpoint-sensor {
+    padding:           0.1rem 0.5rem;
+    border-radius:     999px;
+    font-size:         0.75rem;
+    font-weight:       500;
+    cursor:            pointer;
+    user-select:       none;
+    border:            1px solid transparent;
+}
+
+/* Sensor state colours.  Matches docs/protocols/                   */
+/* run-checkpoints.md § 6.2 -- green=clean, yellow=dirty,           */
+/* blue=running, gray=uninit, red=error.                            */
+.ps-checkpoint-sensor[data-state="clean"] {
+    background:        #2d4a2d;
+    color:             #b8e0b8;
+    border-color:      #4a7a4a;
+}
+.ps-checkpoint-sensor[data-state="dirty"] {
+    background:        #4a3d2d;
+    color:             #e0c898;
+    border-color:      #7a6539;
+}
+.ps-checkpoint-sensor[data-state="uninit"] {
+    background:        #3a3a3a;
+    color:             #aaa;
+    border-color:      #555;
+}
+.ps-checkpoint-sensor[data-state="error"] {
+    background:        #4a2d2d;
+    color:             #e0a8a8;
+    border-color:      #7a4a4a;
+}
+
+.ps-checkpoint-collapse {
+    background:        transparent;
+    border:            none;
+    color:             var(--ps-fg);
+    cursor:            pointer;
+    padding:           0.1rem 0.3rem;
+    font-size:         0.75rem;
+}
+.ps-checkpoint-collapse:hover {
+    background:        var(--ps-hover);
+    border-radius:     3px;
+}
+
+.ps-checkpoint-empty {
+    padding:           0.6rem;
+    text-align:        center;
+    border:            1px dashed var(--ps-border);
+    border-radius:     4px;
+}
+
+.ps-checkpoint-empty-msg {
+    margin:            0 0 0.5rem 0;
+    color:             var(--ps-fg);
+    opacity:           0.8;
+}
+
+.ps-checkpoint-init-btn,
+.ps-checkpoint-action {
+    background:        var(--ps-accent, #4a7aa7);
+    color:             #fff;
+    border:            none;
+    padding:           0.25rem 0.6rem;
+    border-radius:     3px;
+    font-size:         0.8rem;
+    cursor:            pointer;
+}
+.ps-checkpoint-init-btn:hover,
+.ps-checkpoint-action:hover {
+    filter:            brightness(1.1);
+}
+
+.ps-checkpoint-actions {
+    display:           flex;
+    gap:               0.3rem;
+    margin-bottom:     0.4rem;
+    flex-wrap:         wrap;
+}
+
+.ps-checkpoint-list {
+    list-style:        none;
+    margin:            0;
+    padding:           0;
+    border-radius:     3px;
+    overflow:          hidden;
+}
+
+.ps-checkpoint-list-item {
+    padding:           0.4rem 0.5rem;
+    border-bottom:     1px solid var(--ps-border);
+    font-size:         0.8rem;
+    cursor:            pointer;
+    transition:        background 0.1s;
+}
+.ps-checkpoint-list-item:hover {
+    background:        var(--ps-hover);
+}
+.ps-checkpoint-list-item:last-child {
+    border-bottom:     none;
+}
+
+.ps-checkpoint-row-sha {
+    font-family:       var(--font-mono, monospace);
+    color:             #88aacc;
+    font-size:         0.75rem;
+    margin-right:      0.4rem;
+}
+
+.ps-checkpoint-row-summary {
+    color:             var(--ps-fg);
+}
+
+.ps-checkpoint-row-refs {
+    display:           inline-flex;
+    gap:               0.25rem;
+    margin-left:       0.4rem;
+    flex-wrap:         wrap;
+}
+
+.ps-checkpoint-ref-chip {
+    display:           inline-block;
+    padding:           0.05rem 0.4rem;
+    background:        var(--ps-accent, #4a7aa7);
+    color:             #fff;
+    border-radius:     999px;
+    font-size:         0.7rem;
+}
+.ps-checkpoint-ref-chip[data-kind="tag"] {
+    background:        #7a5b2d;
+}
+.ps-checkpoint-ref-chip[data-kind="branch"] {
+    background:        #2d4a5a;
+}
+
+.ps-checkpoint-row-archive {
+    color:             var(--ps-fg);
+    opacity:           0.6;
+    font-size:         0.7rem;
+    margin-left:       0.4rem;
+}
+
+.ps-checkpoint-row-actions {
+    display:           none;
+    gap:               0.25rem;
+    margin-top:        0.3rem;
+}
+.ps-checkpoint-list-item.is-expanded .ps-checkpoint-row-actions {
+    display:           flex;
+}
+
+.ps-checkpoint-row-action-btn {
+    background:        var(--ps-bg-2, #2a2a2a);
+    color:             var(--ps-fg);
+    border:            1px solid var(--ps-border);
+    padding:           0.15rem 0.45rem;
+    font-size:         0.7rem;
+    border-radius:     3px;
+    cursor:            pointer;
+}
+.ps-checkpoint-row-action-btn:hover {
+    background:        var(--ps-hover);
+}
+.ps-checkpoint-row-action-btn[data-action="restore"] {
+    color:             #e0a868;
+}
+
+.ps-checkpoint-advisory {
+    margin-top:        0.4rem;
+    padding:           0.4rem 0.6rem;
+    background:        #4a3d2d;
+    color:             #e0c898;
+    border:            1px solid #7a6539;
+    border-radius:     3px;
+    font-size:         0.75rem;
+    line-height:       1.3;
+}
