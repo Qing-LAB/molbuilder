@@ -2244,6 +2244,8 @@ def render_run_wrapper(script_path: Path, *,
         f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
         f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
         f"_mb_cleanup() {{\n"
+        f'    [ -n "${{_monitor_pid:-}}" ] && kill "$_monitor_pid" '
+        f"2>/dev/null\n"
         f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" 2>/dev/null\n'
         f'    if [ "${{_mps_started:-0}}" = "1" ]; then\n'
         f"        echo quit | nvidia-cuda-mps-control >/dev/null 2>&1\n"
@@ -2308,6 +2310,32 @@ def render_run_wrapper(script_path: Path, *,
             f'_scf_timing_log="${{_out_file%.out}}.scf-timing.log"\n'
             f'_log INFO "scf timing  : per-iteration stamps -> '
             f'$_scf_timing_log"\n'
+            # --- Background job monitor (PoC; molbuilder.monitor, § 11.0b) -
+            # Low-priority Python monitor: each interval it parses the .out
+            # + .scf-timing.log, appends status to <basename>.monitor.log,
+            # and fires notifier hooks.  It blocks on time.sleep() between
+            # wakes (0 CPU while sleeping) and runs under `nice` + self-nice
+            # so it never competes with the compute ranks on the node.  Opt
+            # out with MB_MONITOR=0; skipped if molbuilder isn't importable
+            # in this env (logged, not fatal).  Killed by _mb_cleanup; it
+            # also self-exits when this wrapper's PID ($$) disappears.
+            f'_monitor_pid=""\n'
+            f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
+            f'&& command -v nice >/dev/null 2>&1 '
+            f'&& python -c "import molbuilder.monitor" >/dev/null 2>&1; then\n'
+            f'    nice -n 19 python -m molbuilder monitor '
+            f'--out "$_out_file" --timing "$_scf_timing_log" '
+            f'--log "{basename}.monitor.log" '
+            f'--interval "${{MB_MONITOR_INTERVAL:-300}}" '
+            f'--watch-pid $$ >/dev/null 2>&1 &\n'
+            f'    _monitor_pid=$!\n'
+            f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
+            f'${{MB_MONITOR_INTERVAL:-300}}s) -> {basename}.monitor.log"\n'
+            f'else\n'
+            f'    _log INFO "monitor: not started (MB_MONITOR='
+            f'${{MB_MONITOR:-1}}; need nice + importable molbuilder.monitor '
+            f'in this env)"\n'
+            f'fi\n'
             f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
             f'$_launch_cmd {script_name} | _mb_scf_tee "$_out_file" '

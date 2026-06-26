@@ -790,7 +790,21 @@ except the GPU/timing blocks.
   framework (A–D) into a temp project: one CPU `.fdf`
   (`Diag.ELPA.GPU .false.`) + one GPU `.fdf` (`.true.`), each with its
   `.run.sh`, and the three `.sbatch` of § 11.2 (CPU np=64, GPU K=8,
-  GPU K=4). Gated on the conda envs existing on Sol.
+  GPU K=4). Gated on the conda envs existing on Sol. **The live phase-4
+  dir is strictly read-only** — copy the latest `.XV` geometry + the 4
+  `.psml` into the temp project; never write into the live dir.
+- **F. Background monitor + notifier hooks** — ✅ DONE (PoC).
+  `molbuilder/monitor.py` (stdlib-only): `parse_status` (counts SCF iters
+  → the reliable `total/N`-style live estimate, last energy, done marker),
+  a pluggable `register_notifier` hook (default PoC log stub; env
+  `MB_NOTIFY_URL` → stdlib webhook), `run_monitor` loop (blocks on
+  `time.sleep` → 0 CPU while idle; stops when the watched wrapper PID
+  disappears or a `.out` completion marker appears). CLI `molbuilder
+  monitor` self-lowers priority via `os.nice`. The SIESTA wrapper
+  backgrounds it at `nice -n 19` (guarded by `MB_MONITOR` + importability;
+  killed by the unified `_mb_cleanup`). 14 monitor tests + 2 wrapper-wiring
+  tests + a standalone demo. Future: connect a real notifier (lightweight
+  messaging / result summary) by registering a hook — no loop changes.
 
 **Tests** (host env): ✅ scheduler parse/merge + refuse-to-emit; ✅
 `.sbatch` golden (asu-sol → `-p public`/`-q public`, conditional `--gres`,

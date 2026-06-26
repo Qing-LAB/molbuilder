@@ -1422,6 +1422,49 @@ def cmd_run(script: Path,
     return 0
 
 
+@cli.command("monitor",
+             short_help="background job-monitor + notifier hooks (PoC)")
+@click.option("--out", "out_path", required=True,
+              type=click.Path(path_type=Path),
+              help="the SIESTA .out (or -runN.out) to watch")
+@click.option("--timing", "timing_path", required=True,
+              type=click.Path(path_type=Path),
+              help="the per-run .scf-timing.log (gives the iteration COUNT)")
+@click.option("--log", "log_path", required=True,
+              type=click.Path(path_type=Path),
+              help="append status lines here (e.g. <basename>.monitor.log)")
+@click.option("--interval", type=click.FloatRange(min=1.0), default=300.0,
+              show_default=True, help="seconds between wakes")
+@click.option("--watch-pid", type=int, default=0,
+              help="stop when this PID (the job wrapper) disappears; "
+                   "0 = run until a .out completion marker")
+@click.option("--nice", "nice_level", type=int, default=19, show_default=True,
+              help="self-lower OS priority by this much so the monitor "
+                   "never competes with compute ranks on the same node")
+def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
+                interval: float, watch_pid: int, nice_level: int) -> int:
+    """Periodically parse the running job's artifacts, append a status
+    line, and fire notifier hooks -- the front end of the job-monitor /
+    notifier surface (docs/protocols/slurm-integration.md § 11.0b).
+
+    Lightweight by design: sleeps between wakes, does only tail-reads, and
+    self-lowers its OS priority (``--nice``) so it yields to the compute
+    task on a busy node.  Connect a real notifier via the ``MB_NOTIFY_URL``
+    env (stdlib webhook POST) or ``molbuilder.monitor.register_notifier``.
+    """
+    from . import monitor as _mon
+    # Belt-and-suspenders to the launcher's ``nice``: lower our own
+    # priority so a busy node always favours the compute task.
+    try:
+        os.nice(max(0, nice_level))
+    except (OSError, AttributeError):
+        pass
+    _mon.register_notifier(_mon.make_log_notifier(log_path))
+    _mon.run_monitor(out_path, timing_path, log_path,
+                     interval=interval, watch_pid=watch_pid)
+    return 0
+
+
 # --------------------------------------------------------------------- #
 #  serve subcommand (Flask web UI)                                      #
 # --------------------------------------------------------------------- #

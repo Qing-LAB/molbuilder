@@ -228,3 +228,29 @@ def test_pyscf_has_no_scf_timing(tmp_path):
     t = runwrap.render_run_wrapper(p)
     assert "_mb_scf_tee" not in t
     assert "scf-timing.log" not in t
+
+
+# --------------------------------------------------------------------- #
+#  Background monitor wiring (§ 11.0b, item F)                         #
+# --------------------------------------------------------------------- #
+
+
+def test_wrapper_launches_low_priority_monitor(tmp_path):
+    """SIESTA wrappers background the molbuilder.monitor at nice 19,
+    guarded by MB_MONITOR + importability, watching the wrapper PID."""
+    t = _gpu(tmp_path)
+    assert 'if [ "${MB_MONITOR:-1}" = "1" ]' in t
+    assert 'python -c "import molbuilder.monitor"' in t
+    assert "nice -n 19 python -m molbuilder monitor" in t
+    assert "--watch-pid $$" in t
+    assert "--interval \"${MB_MONITOR_INTERVAL:-300}\"" in t
+    # cleaned up by the single unified EXIT trap
+    assert '[ -n "${_monitor_pid:-}" ] && kill "$_monitor_pid"' in t
+
+
+def test_monitor_killed_in_unified_cleanup(tmp_path):
+    """The monitor kill lives in _mb_cleanup (the ONE EXIT trap), not its
+    own trap (which would clobber the others)."""
+    t = _gpu(tmp_path)
+    trap_cmds = [ln for ln in t.splitlines() if ln.strip().startswith("trap ")]
+    assert trap_cmds == ["trap _mb_cleanup EXIT"], trap_cmds

@@ -81,6 +81,8 @@ _L2_MODULES = {
     "diagnostics",       # capabilities snapshot
     "envs",              # subprocess dispatch
     "runwrap",           # bash-wrapper emitter
+    "monitor",           # background job-monitor + notifier hooks (PoC,
+                         # § 11.0b); stdlib-only, parses run artifacts
     "data",              # bundled JSON tables
     "script_bundle",     # workflow-handoff RunBundle: consumes script_contract +
                          # Structure to fuse run-dir artifacts into a portable
