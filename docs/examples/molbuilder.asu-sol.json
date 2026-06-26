@@ -1,0 +1,48 @@
+{
+  "_comment_purpose":
+    "ASU Sol cluster config TEMPLATE for molbuilder's script generator.  Committed to git on purpose: the operational `molbuilder.json` is gitignored (it carries TLS / auth / secret-key paths), so the Sol-specific GENERATION setup would otherwise be lost whenever a new system is set up.  Copy the `script_generation` + `scheduler` blocks below into your machine's `molbuilder.json` (server-wide) or a project `.molbuilder.json`.  Authoritative design: docs/protocols/slurm-integration.md.  Values verified live on Sol 2026-06-26 (see that doc's § 7.0 doc-drift log).",
+
+  "_comment_script_generation":
+    "Baked verbatim into every generated `.run.sh` at generate time (docs/config.md § 2).  `preamble` runs before activation; `activation` is how the wrapper enters the conda env.  With sbatch `--export=NONE` the job starts from a CLEAN environment, so `module load mamba/latest` is load-bearing -- it is what makes `source activate` callable.",
+  "script_generation": {
+    "_comment_preamble":
+      "module load mamba/latest -- Sol provides mamba as an environment module; the canonical incantation to make `source activate <env>` work in a clean non-interactive shell.  (ASU docs use `mamba/latest`; plain `module load mamba` loads the default, usually the same.)  NOTE on OpenMPI tmpdir: our env ships OpenMPI 5.0.10 (PRRTE), which honors SLURM's node-local $TMPDIR automatically under sbatch -- no `orte_tmpdir_base` MCA tweak is needed (that param was for OpenMPI 4 / ORTE).  If you ever see OpenMPI's 'shared memory backing file on a network filesystem' warning (e.g. running OUTSIDE sbatch on an NFS home), add `\\nexport TMPDIR=/tmp` here.",
+    "preamble": "module load mamba/latest",
+
+    "_comment_activation":
+      "Sol uses `source activate` (legacy form, works once mamba is module-loaded).  The alternative `conda activate` requires the conda shell hook to be sourced; on Sol after `module load mamba/latest`, `source activate` is the documented form.",
+    "activation": "source activate"
+  },
+
+  "_comment_scheduler":
+    "Generates the `<basename>.sbatch` submission script (docs/protocols/slurm-integration.md).  `directives` = stable site `#SBATCH` values; `gpu` = GPU-job overrides; `defaults` = per-job values overridable via CLI.  The launcher (`.run.sh`) still owns env activation + the mpirun launch -- the .sbatch only allocates resources and delegates.",
+  "scheduler": {
+    "kind": "slurm",
+
+    "_comment_directives":
+      "partition=public (Sol made `general` PRIVATE in May 2026; public users use `public` -- live `srun -p general` is rejected).  qos=public (<= 7 days).  --export=NONE is the ASU standard (clean env).  mail_user uses the %u expansion -> your ASURITE.",
+    "directives": {
+      "partition": "public",
+      "qos": "public",
+      "mail_type": "ALL",
+      "mail_user": "%u@asu.edu",
+      "export": "NONE"
+    },
+
+    "_comment_gpu":
+      "GPU jobs run on the SAME `public` partition (confirmed live: `srun -p public -G 1` allocated an A100-80GB).  default_type=a100 (4 per node, 80 GiB each; prefer over a30's 24 GiB).  exclusive=true for production (Sol GPU nodes are SHARED by default -> avoid contention); the benchmark sweep overrides this to false for faster scheduling.  CAVEAT: some A100s are MIG-sliced -- the benchmark's correctness gate must confirm a full 80 GiB GPU, not a 20 GiB slice.",
+    "gpu": {
+      "partition": "public",
+      "default_type": "a100",
+      "exclusive": true
+    },
+
+    "_comment_defaults":
+      "Per-job values; CLI flags (--time/--np/--gres/--mem) override.  time=4h is safe under every public-QoS ceiling.  cpus_per_task is the OMP width per MPI rank (ELPA is OpenMP-threaded).  mem=null -> Sol's default (2 GiB/core or 24 GiB/GPU).  IMPORTANT: for a moderate system (e.g. the 444-atom BDT-Au junction), benchmark CPU (high np) vs GPU before committing -- single-GPU does NOT always beat many CPU cores for an O(N^3) diagon at this size.  See slurm-integration.md § 11.",
+    "defaults": {
+      "time": "0-04:00:00",
+      "cpus_per_task": 8,
+      "mem": null
+    }
+  }
+}
