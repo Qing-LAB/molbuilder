@@ -236,16 +236,42 @@ def test_pyscf_has_no_scf_timing(tmp_path):
 
 
 def test_wrapper_launches_low_priority_monitor(tmp_path):
-    """SIESTA wrappers background the molbuilder.monitor at nice 19,
-    guarded by MB_MONITOR + importability, watching the wrapper PID."""
+    """SIESTA wrappers background the SELF-CONTAINED mb_monitor.py at
+    nice 19 with the JOB's own python (no molbuilder install needed),
+    guarded by MB_MONITOR + the shipped file, watching the wrapper PID."""
     t = _gpu(tmp_path)
     assert 'if [ "${MB_MONITOR:-1}" = "1" ]' in t
-    assert 'python -c "import molbuilder.monitor"' in t
-    assert "nice -n 19 python -m molbuilder monitor" in t
+    assert "[ -f mb_monitor.py ]" in t
+    assert "nice -n 19 python mb_monitor.py" in t        # shipped, not -m
+    assert "python -m molbuilder monitor" not in t       # NOT the package form
     assert "--watch-pid $$" in t
     assert "--interval \"${MB_MONITOR_INTERVAL:-300}\"" in t
     # cleaned up by the single unified EXIT trap
     assert '[ -n "${_monitor_pid:-}" ] && kill "$_monitor_pid"' in t
+
+
+def test_wrapper_ships_standalone_monitor(tmp_path):
+    """write_run_wrapper drops a verbatim, stdlib-only copy of the monitor
+    next to a SIESTA job as mb_monitor.py (runnable with the job's python).
+    A PySCF job gets none."""
+    import json
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "source activate"}}))
+    fdf = tmp_path / "j.fdf"
+    fdf.write_text("NumberOfAtoms 10\nDiag.ELPA.GPU .true.\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=2, emit_sbatch=False)
+    shipped = tmp_path / "mb_monitor.py"
+    assert shipped.is_file()
+    src = (shipped).read_text()
+    assert "def run_monitor(" in src and "def main(" in src
+    # It is the stdlib-only module -- no molbuilder/numpy imports.
+    assert "import numpy" not in src
+    assert "import molbuilder" not in src
+    # PySCF job: no monitor shipped (siesta-only instrument).
+    py = tmp_path / "q.py"; py.write_text("# fake\n")
+    (tmp_path / "mb_monitor.py").unlink()
+    runwrap.write_run_wrapper(py, emit_sbatch=False)
+    assert not (tmp_path / "mb_monitor.py").exists()
 
 
 def test_monitor_killed_in_unified_cleanup(tmp_path):

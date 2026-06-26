@@ -794,17 +794,26 @@ except the GPU/timing blocks.
   dir is strictly read-only** — copy the latest `.XV` geometry + the 4
   `.psml` into the temp project; never write into the live dir.
 - **F. Background monitor + notifier hooks** — ✅ DONE (PoC).
-  `molbuilder/monitor.py` (stdlib-only): `parse_status` (counts SCF iters
-  → the reliable `total/N`-style live estimate, last energy, done marker),
-  a pluggable `register_notifier` hook (default PoC log stub; env
-  `MB_NOTIFY_URL` → stdlib webhook), `run_monitor` loop (blocks on
-  `time.sleep` → 0 CPU while idle; stops when the watched wrapper PID
-  disappears or a `.out` completion marker appears). CLI `molbuilder
-  monitor` self-lowers priority via `os.nice`. The SIESTA wrapper
-  backgrounds it at `nice -n 19` (guarded by `MB_MONITOR` + importability;
-  killed by the unified `_mb_cleanup`). 14 monitor tests + 2 wrapper-wiring
-  tests + a standalone demo. Future: connect a real notifier (lightweight
-  messaging / result summary) by registering a hook — no loop changes.
+  `molbuilder/monitor.py` (**stdlib-only** — os/re/time/urllib/dataclasses;
+  no molbuilder/numpy): `parse_status` (counts SCF iters → the reliable
+  `total/N`-style live estimate, last energy, done marker), a pluggable
+  `register_notifier` hook (default PoC log stub; env `MB_NOTIFY_URL` →
+  stdlib webhook), `run_monitor` loop (blocks on `time.sleep` → **0 CPU
+  while idle**; stops when the watched wrapper PID disappears or a `.out`
+  completion marker appears).
+  **Env/install problem solved by shipping, not importing**: molbuilder is
+  never installed (run via `python -m molbuilder` from the repo dir) and
+  the backend SIESTA env has no numpy/molbuilder, so the job CANNOT do
+  `python -m molbuilder monitor`. Instead `write_run_wrapper` **ships a
+  verbatim copy as `mb_monitor.py`** next to the job; the wrapper runs it
+  with the **job's own python from the working dir** (`nice -n 19 python
+  mb_monitor.py … --watch-pid $$`), guarded by `MB_MONITOR` + the file's
+  presence, killed by the unified `_mb_cleanup`. Both a stdlib `argparse`
+  entry (the shipped `mb_monitor.py`) and a click `molbuilder monitor`
+  (in-repo) call the same `run_monitor`. 14 monitor tests + 3 wrapper
+  tests; **proven standalone in the backend env from a non-repo dir**.
+  Future: connect a real notifier (lightweight messaging / result summary)
+  by registering a hook — no loop changes.
 
 **Tests** (host env): ✅ scheduler parse/merge + refuse-to-emit; ✅
 `.sbatch` golden (asu-sol → `-p public`/`-q public`, conditional `--gres`,

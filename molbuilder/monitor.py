@@ -310,6 +310,53 @@ def make_log_notifier(log: Path) -> Notifier:
     return _hook
 
 
+# --------------------------------------------------------------------- #
+#  Standalone entry (stdlib only -- runs WITHOUT the molbuilder package) #
+# --------------------------------------------------------------------- #
+#
+# CRITICAL: this module imports ONLY the stdlib (os/re/time/urllib/
+# dataclasses/pathlib/typing) -- no molbuilder, no numpy.  That is what
+# lets the run-wrapper SHIP this file as ``mb_monitor.py`` next to the
+# job and run it with the JOB's own python (e.g. the minimal
+# ``molbuilder-siesta-gpu`` env, which has no numpy/molbuilder), from the
+# working directory, with no install and no repo on PATH.  Keep it
+# stdlib-only.
+
+
+def main(argv=None) -> int:
+    """argparse entry for the SHIPPED standalone ``mb_monitor.py``.
+
+    Mirrors the ``molbuilder monitor`` click command but with zero
+    third-party deps so it runs in any python.  Self-lowers priority via
+    ``os.nice`` and installs the default PoC log notifier.
+    """
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="mb_monitor",
+        description="molbuilder background job-monitor + notifier hooks "
+                    "(self-contained; § 11.0b)")
+    p.add_argument("--out", required=True, help="SIESTA .out to watch")
+    p.add_argument("--timing", required=True,
+                   help="per-run .scf-timing.log (iteration COUNT)")
+    p.add_argument("--log", required=True,
+                   help="append status lines here (<basename>.monitor.log)")
+    p.add_argument("--interval", type=float, default=300.0,
+                   help="seconds between wakes (default 300)")
+    p.add_argument("--watch-pid", type=int, default=0, dest="watch_pid",
+                   help="stop when this PID disappears; 0 = until done")
+    p.add_argument("--nice", type=int, default=19, dest="nice_level",
+                   help="self-lower OS priority by this much (default 19)")
+    a = p.parse_args(argv)
+    try:
+        os.nice(max(0, a.nice_level))
+    except (OSError, AttributeError):
+        pass
+    register_notifier(make_log_notifier(a.log))
+    run_monitor(a.out, a.timing, a.log,
+                interval=a.interval, watch_pid=a.watch_pid)
+    return 0
+
+
 __all__ = [
     "JobStatus",
     "parse_status",
@@ -319,4 +366,9 @@ __all__ = [
     "make_webhook_notifier",
     "make_log_notifier",
     "Notifier",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
