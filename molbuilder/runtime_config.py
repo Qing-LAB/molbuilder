@@ -470,6 +470,22 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
         out["script_generation"] = _validate_script_generation(
             raw["script_generation"])
 
+    # --- scheduler section (slurm-integration.md § 4) --------------- #
+    # Validated lazily by get_scheduler (which merges scopes first and
+    # applies the refuse-to-emit rule on the MERGED result).  Here we
+    # only need to (a) keep the key out of the allowlist's drop set and
+    # (b) reject a non-object early.  A partial block (e.g. project
+    # scope supplying only ``defaults.time``) is legal at this layer --
+    # completeness is a merged-config property, enforced in get_scheduler.
+    if "scheduler" in raw:
+        sched = raw["scheduler"]
+        if not isinstance(sched, Mapping):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler' must be an object; got "
+                f"{type(sched).__name__}."
+            )
+        out["scheduler"] = dict(sched)
+
     return out
 
 
@@ -808,6 +824,189 @@ def require_activation(project_dir: Optional[Path] = None) -> str:
     return sg["activation"]
 
 
+# --------------------------------------------------------------------- #
+#  scheduler section (docs/protocols/slurm-integration.md § 4)          #
+# --------------------------------------------------------------------- #
+
+
+# Supported scheduler kinds.  Only SLURM today; PBS/local are future.
+_SCHEDULER_KINDS: tuple = ("slurm",)
+
+# ``directives`` keys we recognise (stable site #SBATCH header values).
+# Unknown keys are accepted verbatim (forward-compat) but these are the
+# ones the emitter maps to canonical flags.
+_SCHEDULER_DIRECTIVE_KEYS: tuple = (
+    "partition", "qos", "mail_type", "mail_user", "export",
+)
+
+# Per-job defaults (slurm-integration.md § 4.1, § 6).  ``time`` is a
+# walltime string; ``cpus_per_task`` an int (OMP width per rank); ``mem``
+# a string like "120G" or None (=> scheduler default).
+_SCHEDULER_DEFAULT_KEYS: tuple = ("time", "cpus_per_task", "mem")
+
+
+def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """Validate + normalise the ``scheduler`` block of one merged config.
+
+    Returns the resolved ``{kind, directives, gpu, defaults}`` dict.
+    Raises :class:`RuntimeConfigError` on shape errors AND on the
+    refuse-to-emit rule (slurm-integration.md § 10): a ``slurm`` site
+    that omits ``directives.partition`` or ``directives.qos`` cannot
+    produce a header that will allocate, so we fail at generate time
+    while the user is at a terminal -- never after a job has queued.
+    """
+    if not isinstance(raw, Mapping):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler' must be an object; got "
+            f"{type(raw).__name__}."
+        )
+
+    kind = raw.get("kind", "slurm")
+    if kind not in _SCHEDULER_KINDS:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.kind' must be one of "
+            f"{_SCHEDULER_KINDS!r}; got {kind!r}."
+        )
+
+    def _as_obj(key: str) -> Dict[str, Any]:
+        v = raw.get(key, {})
+        if v is None:
+            return {}
+        if not isinstance(v, Mapping):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.{key}' must be an object; "
+                f"got {type(v).__name__}."
+            )
+        return dict(v)
+
+    directives = _as_obj("directives")
+    gpu        = _as_obj("gpu")
+    defaults   = _as_obj("defaults")
+
+    # Refuse-to-emit: slurm needs a partition + qos (§ 10).
+    for required in ("partition", "qos"):
+        val = directives.get(required)
+        if not (isinstance(val, str) and val.strip()):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.directives.{required}' is "
+                f"required for a slurm site but is missing/empty.  The "
+                f".sbatch generator refuses to emit a header that won't "
+                f"allocate.\n"
+                f"\n"
+                f"Fix: add to molbuilder.json (see the asu-sol preset in "
+                f"docs/examples/molbuilder.asu-sol.json):\n"
+                f'    {{\n'
+                f'      "scheduler": {{\n'
+                f'        "kind": "slurm",\n'
+                f'        "directives": {{"partition": "public", '
+                f'"qos": "public"}}\n'
+                f'      }}\n'
+                f'    }}\n'
+                f"\n"
+                f"On ASU Sol use partition/qos \"public\" (the \"general\" "
+                f"partition went private in May 2026).  See "
+                f"docs/protocols/slurm-integration.md § 4, § 7.0, § 10."
+            )
+
+    # String-typed directives must actually be strings (catch e.g. a
+    # numeric partition).  Unknown keys pass through untouched.
+    for k in _SCHEDULER_DIRECTIVE_KEYS:
+        if k in directives and not isinstance(directives[k], str):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.directives.{k}' must be a "
+                f"string; got {type(directives[k]).__name__}."
+            )
+
+    # gpu block: partition/default_type strings, exclusive bool.
+    for k in ("partition", "default_type"):
+        if k in gpu and gpu[k] is not None and not isinstance(gpu[k], str):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.gpu.{k}' must be a string; "
+                f"got {type(gpu[k]).__name__}."
+            )
+    if "exclusive" in gpu and not isinstance(gpu["exclusive"], bool):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.gpu.exclusive' must be a "
+            f"boolean; got {type(gpu['exclusive']).__name__}."
+        )
+
+    # defaults: time str|None, cpus_per_task int|None, mem str|None.
+    if "time" in defaults and defaults["time"] is not None \
+            and not isinstance(defaults["time"], str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.defaults.time' must be a "
+            f"string (e.g. \"0-04:00:00\") or null; got "
+            f"{type(defaults['time']).__name__}."
+        )
+    if "cpus_per_task" in defaults and defaults["cpus_per_task"] is not None \
+            and not isinstance(defaults["cpus_per_task"], int):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.defaults.cpus_per_task' must be "
+            f"an integer or null; got "
+            f"{type(defaults['cpus_per_task']).__name__}."
+        )
+    if "mem" in defaults and defaults["mem"] is not None \
+            and not isinstance(defaults["mem"], str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.defaults.mem' must be a string "
+            f"(e.g. \"120G\") or null; got {type(defaults['mem']).__name__}."
+        )
+
+    return {
+        "kind":       kind,
+        "directives": directives,
+        "gpu":        gpu,
+        "defaults":   defaults,
+    }
+
+
+def get_scheduler(
+    project_dir: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return the effective ``scheduler`` block, or ``None`` if unset.
+
+    Mirrors :func:`get_script_generation`'s lifecycle (read at generate
+    time only).  Server-wide and project scopes are deep-merged (the
+    generic ``_deep_merge`` rule -- objects recurse, scalars/arrays
+    replace; project wins), then validated.
+
+    Returns ``None`` when neither scope defines a ``scheduler`` block --
+    the signal to emit only ``.run.sh`` (today's behaviour) and skip the
+    ``.sbatch`` (slurm-integration.md § 10).  When a block IS present it
+    is validated strictly, so a malformed/partial site config raises
+    here rather than producing a header that won't allocate.
+
+    Returns:
+        {
+            "kind":       "slurm",
+            "directives": {partition, qos, mail_type, mail_user, export, ...},
+            "gpu":        {partition, default_type, exclusive, ...},
+            "defaults":   {time, cpus_per_task, mem},
+        }
+        or None.
+    """
+    server_raw  = _read_server_wide().get("scheduler")
+    project_raw: Optional[Mapping[str, Any]] = None
+    if project_dir is not None:
+        project_raw = _read_project(Path(project_dir)).get("scheduler")
+
+    if server_raw is None and project_raw is None:
+        return None
+
+    merged: Dict[str, Any] = {}
+    if isinstance(server_raw, Mapping):
+        merged = _deep_merge(merged, dict(server_raw))
+    elif server_raw is not None:
+        # A non-object scheduler at server scope is a hard error.
+        merged = _validate_scheduler(server_raw)  # raises with the message
+    if isinstance(project_raw, Mapping):
+        merged = _deep_merge(merged, dict(project_raw))
+    elif project_raw is not None:
+        _validate_scheduler(project_raw)  # raises
+
+    return _validate_scheduler(merged)
+
+
 def write_config_scope(
     project_dir: Optional[Path],
     patch: Mapping[str, Any],
@@ -886,4 +1085,5 @@ __all__ = [
     "get_rate_limit",
     "get_script_generation",
     "require_activation",
+    "get_scheduler",
 ]
