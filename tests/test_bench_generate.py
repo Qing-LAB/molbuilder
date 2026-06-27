@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.bench.generate import (
-    generate_bench_bundle, render_gpu_sweep_helper, transform_fdf,
+    generate_bench_bundle, render_sweep_placeholder, transform_fdf,
 )
 
 # A compact-but-complete SIESTA fdf: enough for the run-wrapper to parse
@@ -124,32 +124,16 @@ def test_transform_appends_missing_directives():
 # --------------------------------------------------------------------- #
 
 
-def test_sweep_helper_matrix_and_calculator(tmp_path):
+def test_sweep_placeholder_reminds_to_prep(tmp_path):
+    # The baked sweep is a placeholder: running it before prep-bench must
+    # remind the user (exit non-zero), not silently produce a broken sweep.
     helper = tmp_path / "job-gpu-sweep.sh"
-    helper.write_text(render_gpu_sweep_helper(gpus_per_node=4,
-                                              cores_per_socket=24))
+    helper.write_text(render_sweep_placeholder())
     helper.chmod(helper.stat().st_mode | stat.S_IEXEC)
-
-    # Valid bash.
-    subprocess.run(["bash", "-n", str(helper)], check=True)
-
-    # No-args matrix: a single-GPU K=4 line with -n 4 -c 6.
-    matrix = subprocess.run(["bash", str(helper)], capture_output=True,
-                            text=True, check=True).stdout
-    assert "sbatch --gres=gpu:a100:1 -n 4 -c 6 job-gpu.sbatch" in matrix
-    # K=16 single-GPU is in the sweep with c=1 (OMP off).
-    assert "sbatch --gres=gpu:a100:1 -n 16 -c 1 job-gpu.sbatch" in matrix
-    # multi-GPU lines carry the no-NCCL / no-gpu-bind caveat.
-    assert "do NOT add --gpu-bind" in matrix
-
-    # Calculator form: G=2 K=4 -> -n 8 -c 6.
-    one = subprocess.run(["bash", str(helper), "2", "4"],
-                         capture_output=True, text=True, check=True).stdout
-    assert "--gres=gpu:a100:2 -n 8 -c 6" in one
-    # K=16 dual-GPU -> -n 32 -c 1.
-    k16 = subprocess.run(["bash", str(helper), "2", "16"],
-                         capture_output=True, text=True, check=True).stdout
-    assert "--gres=gpu:a100:2 -n 32 -c 1" in k16
+    subprocess.run(["bash", "-n", str(helper)], check=True)        # valid bash
+    r = subprocess.run(["bash", str(helper)], capture_output=True, text=True)
+    assert r.returncode != 0                                       # reminds
+    assert "Run ./prep-bench first" in r.stderr
 
 
 # --------------------------------------------------------------------- #
