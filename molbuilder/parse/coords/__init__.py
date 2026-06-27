@@ -15,7 +15,12 @@ originally surfaced as the Phase 1 lattice-extraction bug in
 
 from molbuilder.parse.registry import register
 from .pyscf_geom import PySCFGeomFileParser
-from .siesta_xv import SiestaXVFileParser
+from .siesta_xv import (
+    SiestaXVFileParser,
+    read_xv,
+    read_xv_cell,
+    xv_to_xyz,
+)
 
 
 register(SiestaXVFileParser)
@@ -24,4 +29,7 @@ register(PySCFGeomFileParser)
 __all__ = [
     "SiestaXVFileParser",
     "PySCFGeomFileParser",
+    "read_xv",          # .XV -> Structure (Å)
+    "read_xv_cell",     # .XV -> 3x3 cell (Å)
+    "xv_to_xyz",        # .XV -> extended-XYZ text (cell-preserving)
 ]

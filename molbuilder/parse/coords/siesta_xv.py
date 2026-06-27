@@ -149,7 +149,7 @@ def _read_xv(path: Union[str, Path]) -> Structure:
     )
 
 
-def _read_xv_cell(path: Path) -> Optional[np.ndarray]:
+def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
     """Read JUST the 3 cell-vector rows from a .XV file and return
     them in Å as a 3x3 ndarray.  Returns None on parse failure;
     the structure portion is :func:`_read_xv`'s responsibility (it
@@ -158,6 +158,7 @@ def _read_xv_cell(path: Path) -> Optional[np.ndarray]:
     Cell rows are in Bohr per SIESTA convention; we convert to Å here.
     Velocity columns (the trailing 3 floats) are discarded.
     """
+    path = Path(path)   # accept str (public alias read_xv_cell)
     try:
         text = path.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
@@ -218,6 +219,37 @@ class SiestaXVFileParser(FileParser):
 # composes them); re-export here so tests + future callers have one
 # import path per file type.
 read_xv = _read_xv
+read_xv_cell = _read_xv_cell
+
+
+def xv_to_xyz(xv_path: Union[str, Path],
+              xyz_path: Optional[Union[str, Path]] = None) -> str:
+    """Translate a SIESTA ``.XV`` into extended-XYZ text (written to
+    ``xyz_path`` when given), **preserving the periodic cell**.
+
+    A SIESTA ``.XV`` carries the lattice; a plain ``.xyz`` would drop it
+    and a downstream generator would invent a vacuum cell -- wrong for a
+    periodic junction.  So the cell is emitted on the comment line as the
+    ASE extended-XYZ ``Lattice="..."`` header (row-major, Å), which
+    ``molbuilder.siesta.convert`` (via ASE) round-trips back into the FDF
+    cell.  Coordinates come from :func:`read_xv` (Å), the cell from
+    :func:`read_xv_cell` (Å).
+
+    Returns the extended-XYZ text.  This is the convenient ``.XV`` data-
+    extraction entry (also exposed as the ``molbuilder xv2xyz`` CLI).
+    """
+    xv_path = Path(xv_path)
+    struct = _read_xv(xv_path)
+    cell = _read_xv_cell(xv_path)
+    if cell is not None:
+        flat = " ".join(f"{v:.8f}"
+                        for v in np.asarray(cell, dtype=float).reshape(-1))
+        comment = f'Lattice="{flat}" Properties=species:S:1:pos:R:3'
+    else:
+        comment = struct.title or xv_path.stem
+    return struct.to_xyz(str(xyz_path) if xyz_path is not None else None,
+                         comment=comment)
+
 
 from molbuilder.parse.dirs._assembler_helpers import (   # noqa: E402
     SiestaFdfStructureError,

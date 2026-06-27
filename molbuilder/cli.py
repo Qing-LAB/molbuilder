@@ -1422,6 +1422,27 @@ def cmd_run(script: Path,
     return 0
 
 
+@cli.command("xv2xyz",
+             short_help="translate a SIESTA .XV to extended-XYZ (cell-preserving)")
+@click.argument("xv_path", metavar="input.XV",
+                type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
+def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
+    """Convert a SIESTA ``.XV`` final-coordinates file to extended-XYZ.
+
+    The periodic cell is preserved on the comment line as an ASE
+    ``Lattice="..."`` header (Å), so a downstream ``molbuilder fdf`` keeps
+    the real cell instead of inventing a vacuum box.  This is the
+    convenient ``.XV`` extraction entry; the underlying API is
+    ``molbuilder.parse.coords.xv_to_xyz``.
+    """
+    from .parse.coords import xv_to_xyz
+    text = xv_to_xyz(xv_path, xyz_path)
+    n = text.splitlines()[0].strip() if text else "?"
+    click.echo(f"Wrote {xyz_path}: {n} atoms (cell preserved as Lattice=…)")
+    return 0
+
+
 @cli.command("monitor",
              short_help="background job-monitor + notifier hooks (PoC)")
 @click.option("--out", "out_path", required=True,
