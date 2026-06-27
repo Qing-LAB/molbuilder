@@ -253,7 +253,7 @@ bash <basename>.run.sh "$@"
 | `-c` cpus/rank | CLI `--omp`/`--cpus` → derived `node_cores / ntasks` → `defaults.cpus_per_task` | feeds OMP for ELPA-OpenMP |
 | `-t` time | CLI `--time` → `defaults.time` | only the user knows runtime |
 | `--gres` | `.fdf` GPU request (`_fdf_requests_gpu`) + CLI `--gres <type>:<n>` → `gpu.default_type` | auto-on when chemistry wants GPU |
-| `--mem` | CLI `--mem` → `defaults.mem` (null = scheduler default) | opt-in |
+| `--mem` | CLI `--mem` → `defaults.mem` → **system-aware estimate** for CPU `.fdf` (null `defaults.mem`) → scheduler default | estimator (`siesta/memory.py`) sizes peak RSS from N_orb²·k-pts + per-rank replication; see § 11.0d |
 | `-N` nodes | fixed `1` (v1) | multi-node deferred |
 
 **The user's real per-job surface**: *time*, and *GPU type/count when
@@ -744,6 +744,36 @@ rules keep it useful instead of noisy:
 Env overrides on the generated wrapper: `MB_MONITOR_INTERVAL` (wake
 seconds) and `MB_MONITOR_STALL_HEARTBEAT` (heartbeat seconds);
 `MB_MONITOR=0` disables the monitor outright.
+
+### 11.0d Memory: system-aware `--mem` estimate + runtime audit
+A high-rank CPU SIESTA job that inherits the cluster's tiny per-core
+memory default OOMs (the BDT-Au lesson: np=64 OOM'd at 320 GB, survived
+480 GB). Two layers prevent this:
+
+1. **Generate-time `--mem` estimate** (`molbuilder/siesta/memory.py`).
+   When `scheduler.defaults.mem` is null and the script is a CPU `.fdf`,
+   the sbatch emitter sizes peak RSS from the problem: a dense-diagonaler
+   term `c_dense·N_orb²·bytes/cplx·n_kpoints` (the dominant cost; the
+   `c_dense` coefficient is *effective*, calibrated to observed RSS —
+   SIESTA streams k-points through distributed buffers, it does **not**
+   hold all of them at once), a real-space mesh term, and a per-rank
+   replication term `c_rank·ntasks`, all ×`safety`, floored, and capped at
+   `mem_model.node_mem_gb`. Coefficients live in `scheduler.mem_model`
+   and are tuned against a real `sacct -o MaxRSS`. The chosen value is
+   written as `#SBATCH --mem=<N>G` with a breakdown comment.
+
+2. **Runtime audit in the launcher** (`_siesta_mem_audit_block`). The
+   `.run.sh` re-estimates for the **actually-resolved** rank count
+   (`$_mpi_np`) — the model coefficients are baked in and recomputed in
+   `awk`, because the launcher runs in the backend env with no molbuilder.
+   It reads the real allocation (`SLURM_MEM_PER_NODE`, else
+   `SLURM_MEM_PER_CPU × tasks × cpus`, else `/proc/meminfo`) and logs
+   `[INFO] memory: estimated ~XG (n ranks, model) vs allocated ~YG`,
+   raising `[WARN] … EXCEEDS allocation … OOM risk` when the estimate is
+   larger. This is what catches the case the generate-time value cannot:
+   the user overriding `-n` or `--mem` on the `sbatch` CLI (exactly the
+   np=64-at-240G OOM). The two layers agree by construction — same model,
+   same coefficients.
 
 ### 11.1 Correctness gate ("is the GPU actually doing the work?")
 After a short capped run, assert from the parser's `runtime_info`

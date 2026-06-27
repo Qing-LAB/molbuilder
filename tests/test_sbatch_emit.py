@@ -260,6 +260,54 @@ def test_gpu_fdf_auto_gres_without_cli(project):
     assert "#SBATCH -n 2" in txt                    # ranks share it
 
 
+# A complete-enough fdf so the memory estimator parses a real system
+# (N_orb > 0) and the runtime mem-audit block is emitted.
+_PARSEABLE_FDF = """\
+NumberOfAtoms 4
+MeshCutoff 300 Ry
+PAO.BasisSize TZP
+LatticeConstant 1.0 Ang
+%block LatticeVectors
+10.0 0.0 0.0
+0.0 10.0 0.0
+0.0 0.0 10.0
+%endblock LatticeVectors
+%block ChemicalSpeciesLabel
+1 6 C
+%endblock ChemicalSpeciesLabel
+%block AtomicCoordinatesAndAtomicSpecies
+0.0 0.0 0.0 1
+0.1 0.0 0.0 1
+0.0 0.1 0.0 1
+0.0 0.0 0.1 1
+%endblock AtomicCoordinatesAndAtomicSpecies
+"""
+
+
+def test_wrapper_cpu_emits_runtime_mem_audit(project):
+    # CPU SIESTA .fdf -> the launcher carries the estimate-vs-allocation
+    # audit (recomputes for the runtime rank count; WARNs on OOM risk).
+    fdf = project / "job.fdf"
+    fdf.write_text(_PARSEABLE_FDF)
+    runwrap.write_run_wrapper(fdf, mpi_np=64)
+    runsh = (project / "job.run.sh").read_text()
+    assert "_mb_mem_est=$(awk" in runsh
+    assert "memory          : estimated" in runsh
+    assert "EXCEEDS allocation" in runsh           # the WARN branch
+    # Reads the SLURM allocation, with a /proc/meminfo fallback.
+    assert "SLURM_MEM_PER_NODE" in runsh and "MemTotal" in runsh
+
+
+def test_wrapper_gpu_has_no_mem_audit(project):
+    # GPU jobs size memory from gpu.mem, not the CPU model -> no audit.
+    fdf = project / "job.fdf"
+    fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",
+                              cpus_per_task=6)
+    runsh = (project / "job.run.sh").read_text()
+    assert "_mb_mem_est=$(awk" not in runsh
+
+
 def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):
     """§ 10: with no scheduler block, only .run.sh is emitted."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))

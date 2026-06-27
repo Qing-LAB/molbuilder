@@ -933,6 +933,65 @@ def _siesta_resolved_log_block(script_name: str, gpu_mode: bool) -> str:
     )
 
 
+def _siesta_mem_audit_block(params: Mapping[str, Any]) -> str:
+    """Bash that, at runtime, RE-estimates peak memory for the ACTUAL
+    resolved rank count and compares it to the SLURM allocation -- the
+    runtime half of the ``--mem`` story (user request 2026-06-27).
+
+    The launcher runs in the backend env (no molbuilder/numpy), so the
+    memory MODEL coefficients are baked here at generate time and the
+    estimate is recomputed in ``awk`` against ``$_mpi_np``.  This is what
+    catches the dangerous case the generate-time ``--mem`` cannot: the
+    user overriding ``-n`` or ``--mem`` on the ``sbatch`` CLI (the np=64
+    OOM-at-240G lesson).  Mirrors
+    :func:`molbuilder.siesta.memory.estimate_siesta_memory`:
+    ``ceil(safety*(fixed + c_rank*n)) + ceil(extra)``, floored, capped.
+
+    READS ``$_mpi_np`` and SLURM's ``SLURM_MEM_PER_NODE`` /
+    ``SLURM_MEM_PER_CPU`` (+ ``/proc/meminfo`` when not under SLURM).
+    EMITS one ``_log INFO`` line (+ ``_log WARN`` if the estimate exceeds
+    the allocation).
+    """
+    fixed  = float(params["fixed_gb"])
+    perrk  = float(params["per_rank_gb"])
+    safety = float(params["safety"])
+    extra  = float(params["extra_gb"])
+    floor  = float(params["floor_gb"])
+    cap    = float(params.get("cap_gb") or 0.0)
+    return (
+        "# --- Memory: estimate (for the resolved rank count) vs SLURM "
+        "allocation ---\n"
+        f"_mb_mem_est=$(awk -v n=\"$_mpi_np\" -v f={fixed:g} -v pr={perrk:g} "
+        f"-v s={safety:g} -v e={extra:g} -v fl={floor:g} -v cap={cap:g} "
+        "'BEGIN{ raw=s*(f+pr*n); est=int(raw); if(est<raw)est++; "
+        "ex=int(e); if(ex<e)ex++; est+=ex; if(est<fl)est=fl; "
+        "if(cap>0 && est>cap)est=cap; print est }')\n"
+        "_mb_mem_alloc_mb=\"\"\n"
+        "if [ -n \"${SLURM_MEM_PER_NODE:-}\" ]; then\n"
+        "    _mb_mem_alloc_mb=$SLURM_MEM_PER_NODE\n"
+        "elif [ -n \"${SLURM_MEM_PER_CPU:-}\" ]; then\n"
+        "    _mb_mem_alloc_mb=$(( SLURM_MEM_PER_CPU * "
+        "${SLURM_NTASKS:-1} * ${SLURM_CPUS_PER_TASK:-1} ))\n"
+        "fi\n"
+        "if [ -n \"$_mb_mem_alloc_mb\" ]; then\n"
+        "    _mb_mem_alloc=$(( _mb_mem_alloc_mb / 1024 ))\n"
+        "    _log INFO \"memory          : estimated ~${_mb_mem_est}G "
+        "($_mpi_np ranks, model) vs allocated ~${_mb_mem_alloc}G (SLURM)\"\n"
+        "    if [ \"$_mb_mem_est\" -gt \"$_mb_mem_alloc\" ]; then\n"
+        "        _log WARN \"memory          : estimate (~${_mb_mem_est}G) "
+        "EXCEEDS allocation (~${_mb_mem_alloc}G) -- OOM risk; raise --mem "
+        "or lower -n (slurm-integration.md mem model)\"\n"
+        "    fi\n"
+        "else\n"
+        "    _mb_mem_phys=$(awk '/MemTotal/{printf \"%d\", $2/1048576}' "
+        "/proc/meminfo 2>/dev/null)\n"
+        "    _log INFO \"memory          : estimated ~${_mb_mem_est}G "
+        "($_mpi_np ranks, model); node RAM ~${_mb_mem_phys:-?}G "
+        "(no SLURM --mem)\"\n"
+        "fi\n"
+    )
+
+
 def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
     """Bash implementing ``--dry-run``: print the resolved command and,
     in GPU mode, the per-rank GPU/NUMA mapping that WOULD be used, then
@@ -1336,7 +1395,8 @@ def render_run_wrapper(script_path: Path, *,
                         mpi_np: Optional[int] = None,
                         omp_threads: Optional[int] = None,
                         max_memory_mb: Optional[int] = None,
-                        n_atoms: Optional[int] = None) -> str:
+                        n_atoms: Optional[int] = None,
+                        mem_audit: Optional[Mapping[str, Any]] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -2310,6 +2370,7 @@ def render_run_wrapper(script_path: Path, *,
         # dry-run guard (exits before launch), then the real launch.
         launch_block = (
             _siesta_resolved_log_block(script_name, gpu_mode)
+            + (_siesta_mem_audit_block(mem_audit) if mem_audit else "")
             + _siesta_dry_run_block(script_name, gpu_mode)
             + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
@@ -2572,6 +2633,48 @@ def _ship_monitor_script(dest_dir: Path) -> Path:
     return dst
 
 
+def _build_mem_audit(script_path: Path, *,
+                     gres: Optional[str],
+                     env: Optional[str]) -> Optional[dict]:
+    """Build the baked memory-model coefficients for the runtime
+    estimate-vs-allocation audit (:func:`_siesta_mem_audit_block`).
+
+    Returns None (no audit line) unless this is a **CPU** SIESTA ``.fdf``
+    whose system actually parses: GPU jobs size memory from ``gpu.mem``,
+    not this model.  The coefficients are ntasks-independent (the launcher
+    plugs in the runtime rank count), so the estimate is computed once at
+    ``ntasks=1`` purely to read the np-independent component sizes.
+    Best-effort: any failure -> None (the wrapper just omits the line).
+    """
+    if script_path.suffix.lower() != ".fdf":
+        return None
+    if gres is not None:
+        return None  # GPU job (explicit --gres)
+    try:
+        if env is None and _fdf_requests_gpu(script_path):
+            return None  # GPU job (fdf requests ELPA-CUDA)
+        from . import runtime_config as _rc
+        project_dir = script_path.parent if script_path.parent.exists() else None
+        scheduler = _rc.get_scheduler(project_dir=project_dir)
+        mem_cfg = scheduler.get("mem_model") if scheduler else None
+        from .siesta.memory import estimate_siesta_memory, MemModel
+        model = MemModel.from_config(mem_cfg)
+        est = estimate_siesta_memory(
+            script_path, 1, model=model, psml_lib=script_path.parent)
+        if est.n_orb <= 0:
+            return None
+        return {
+            "fixed_gb": est.base_gb + est.dense_gb + est.mesh_gb,
+            "per_rank_gb": model.c_rank,
+            "safety": model.safety,
+            "extra_gb": model.extra_gb,
+            "floor_gb": model.floor_gb,
+            "cap_gb": model.node_mem_gb or 0.0,
+        }
+    except Exception:
+        return None
+
+
 def write_run_wrapper(script_path: Path, *,
                        env: Optional[str] = None,
                        mpi_np: Optional[int] = None,
@@ -2616,6 +2719,7 @@ def write_run_wrapper(script_path: Path, *,
         omp_threads=omp_threads,
         max_memory_mb=max_memory_mb,
         n_atoms=n_atoms,
+        mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
     # (parse-only, no execution) before we hand it back.  Catches the
