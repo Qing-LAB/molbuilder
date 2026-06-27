@@ -20,11 +20,13 @@
 | Monitor: progress + utilization sampling | **built** (`monitor.py`; § 9) |
 | Memory estimator + runtime check | **built** (`siesta/memory.py`; slurm-integration.md § 11.0d) |
 | GPU-to-CPU placement (same socket) | **built** (slurm-integration.md § 7.5.2) |
-| **prep-bench** — on-target detect + format | **proposed** (§ 7.2, § 4) |
+| Environment **probes** (detect → `environment.json`) | **built** (`bench/environment.py`) |
+| Scheduler **adapters** — selection + `sweep_K` | **built** (`bench/adapters.py`); `format_*` next |
+| `environment@1` schema (persistence) | **built** (`bench/environment.py`) |
+| **prep-bench** — on-target detect + format | **proposed** (§ 7.2, § 4); detection done, formatting next |
 | **summarize** — results → `bench-result.json` | **proposed** (§ 7.4, § 5) |
 | **prep-run** — `bench-result.json` → run script | **proposed** (§ 7.5, § 4) |
-| Environment **probes** + scheduler **adapters** | **proposed** (§ 4) |
-| Persisted data schemas (`environment`, `bench-result`) | **proposed** (§ 5) |
+| `bench-result@1` schema (persistence) | **proposed** (§ 5.3) |
 
 This doc specifies the proposed pieces precisely enough to build them
 independently, against stable interfaces (§ 4) and data formats (§ 5).
