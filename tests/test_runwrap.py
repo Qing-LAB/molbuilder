@@ -152,10 +152,13 @@ def test_render_siesta_emits_np_arg_parser():
 
 
 def test_render_siesta_emits_propor_diagnostic():
-    """2026-05-28: on SIESTA exit-non-zero with propor: ERROR in the
-    .out, the wrapper prints a focused retry hint that names the
-    actual basename + specific safe -np values.  Pin the key text
-    so a regression doesn't silently drop the diagnostic."""
+    """On SIESTA exit-non-zero with propor: ERROR, the wrapper prints
+    a MULTI-CAUSE diagnostic (2026-06-26): pseudopotential FIRST (a
+    null KB projector / mismatched pseudo), then -np as a legitimate
+    tunable, then spin.  Pin the key text so a regression doesn't
+    silently drop the diagnostic or revert to the old
+    'it's-never-a-config-bug, just-lower-np' framing that masks a
+    defective pseudo."""
     _bind()
     text = render_run_wrapper(Path("/x/hemeC.fdf"), mpi_np=15)
     # Captured run, not exec.  2026-06-26: the launch is piped through
@@ -167,11 +170,15 @@ def test_render_siesta_emits_propor_diagnostic():
     # (``$_out_file`` so --continue can write -runN.out); the grep
     # reads from that variable, not the baked basename.
     assert 'grep -aq "propor: ERROR" "$_out_file"' in text
-    # Retry hint names the actual basename (not $0).
+    # Cause 1: pseudopotential, checked FIRST.
+    assert "Kleinman-Bylander" in text
+    assert "ekb=0" in text
+    assert "molbuilder pseudo check" in text
+    # Cause 2: -np still a legitimate tunable, names the actual basename.
     assert "bash hemeC.run.sh -np 8" in text
-    # The empirical table is preserved.
-    assert "works: 2, 4, 6, 8, 12, 14" in text
-    assert "fails: 9, 10, 11, 13, 15, 16" in text
+    assert "np IS a legitimate tunable" in text
+    # Cause 3: spin.
+    assert "Spin.Total" in text
     # Re-exit with SIESTA's code.
     assert 'exit "$_siesta_exit"' in text
 
@@ -658,16 +665,18 @@ def test_continue_picks_max_plus_one(tmp_path):
     assert "_out_file=myjob-run3.out" in stdout
 
 
-def test_no_flag_with_prior_run_refuses(tmp_path):
-    """No --continue + prior run exists + no --force -> refuse,
-    naming both alternative flags in the error message."""
+def test_no_flag_with_prior_run_auto_continues(tmp_path):
+    """DEFAULT (2026-06-26): no flag + a prior run exists -> AUTO-ADVANCE
+    to the next -runN.  Never errors, never overwrites.  This replaced
+    the old refuse-with-exit-1 gate (the #1 resubmit papercut -- OOM /
+    propor / walltime resubmits kept tripping it)."""
     w = _emit_truncated_wrapper(tmp_path, "myjob")
     (tmp_path / "myjob-run0.out").write_text("prior")
     stdout, stderr, code = _run_wrapper(w)
-    assert code == 1, (stdout, stderr)
-    assert "previous output exists" in stderr
-    assert "--continue" in stderr
-    assert "--force" in stderr
+    assert code == 0, (stdout, stderr)
+    assert "_out_file=myjob-run1.out" in stdout
+    assert "auto-continuing" in stderr            # informs, does not fail
+    assert "--force" in stderr                    # names how to restart at run0
 
 
 def test_force_overwrites_run0(tmp_path):
@@ -693,14 +702,13 @@ def test_continue_short_form_works(tmp_path):
     assert "_out_file=myjob-run1.out" in stdout
 
 
-def test_continue_without_prior_warns_and_starts_run0(tmp_path):
-    """--continue with no prior -runN -> warn + start at -run0
-    (defensive fallback so a user who passes --continue on a fresh
-    dir gets a useful run instead of an error)."""
+def test_continue_without_prior_starts_run0(tmp_path):
+    """--continue with no prior -runN -> just start at -run0 (the
+    'no prior' branch is a fresh run; --continue only adds an engine
+    warm-start, which is a no-op when there's nothing to resume)."""
     w = _emit_truncated_wrapper(tmp_path, "myjob")
-    stdout, stderr, code = _run_wrapper(w, "--continue")
+    stdout, _stderr, code = _run_wrapper(w, "--continue")
     assert code == 0
-    assert "no prior -runN.out found" in stderr
     assert "_out_file=myjob-run0.out" in stdout
 
 
@@ -812,13 +820,15 @@ def test_pyscf_wrapper_continue_advances_run_index(tmp_path):
     assert "_out_file=myjob-run1.pyscf.log" in stdout
 
 
-def test_pyscf_wrapper_refuses_overwrite_without_force(tmp_path):
-    """No --continue, no --force, prior run exists -> refuse."""
+def test_pyscf_wrapper_auto_continues_without_flag(tmp_path):
+    """No flag, prior run exists -> AUTO-ADVANCE (same default as SIESTA;
+    shared resolver)."""
     w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
     (tmp_path / "myjob-run0.pyscf.log").write_text("prior")
-    _stdout, stderr, code = _run_wrapper(w)
-    assert code == 1
-    assert "previous output exists" in stderr
+    stdout, stderr, code = _run_wrapper(w)
+    assert code == 0, (stdout, stderr)
+    assert "_out_file=myjob-run1.pyscf.log" in stdout
+    assert "auto-continuing" in stderr
 
 
 def test_pyscf_wrapper_does_not_collide_with_siesta_out(tmp_path):

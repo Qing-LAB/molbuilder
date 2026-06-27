@@ -75,7 +75,7 @@ permitted by the contract:
 | **Run-index resolution** (picks `-run0`, `-run1`, ... for `.out` files) | sibling `<basename>-runN.out` files in cwd | reading the caller's cwd to choose its own output filename; not external config, not detection of tools |
 | **Argument parsing** (`--continue` / `-c`, `--force` / `-f`, `-np N` / `--np N`, `-omp N`, `-h`) | the wrapper's own argv | explicit user input to a single invocation; not external state |
 | **Scheduler-var read** (`SLURM_NTASKS`, `SLURM_GPUS_ON_NODE`, etc.) | env vars set by SLURM/PBS at job start | the scheduler's published contract for handing the job its rank count + GPU allocation; informs `mpirun -np`, never changes activation or preamble |
-| **SIESTA propor post-mortem** (after SIESTA crashes, grep its `.out` for `propor: ERROR: IMAX = 0` and print a known retry-with-different-np hint) | the engine's own output file | post-mortem text-analysis on the engine's output; not a fallback path, not a retry, just a hint printed before exiting with SIESTA's exit code |
+| **SIESTA propor post-mortem** (after SIESTA crashes, grep its `.out`/runwrap-log for `propor: ERROR: IMAX = 0` and print a multi-cause hint: defective/mismatched pseudopotential FIRST, then `-np` as a tunable, then `Spin.Total`) | the engine's own output file | post-mortem text-analysis on the engine's output; not a fallback path, not a retry, just a hint printed before exiting with SIESTA's exit code |
 
 None of these read configuration files, probe for tools, or change
 which env / preamble runs.  They are bounded reads of (a) the

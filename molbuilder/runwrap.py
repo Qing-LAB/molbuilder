@@ -70,12 +70,17 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
     Honours two shell variables that the caller (the engine-specific
     args block) is expected to set:
 
-      ``_continue`` (0/1)  -- ``--continue`` was passed; advance to
-        next free N.  Without ``--continue`` we refuse to overwrite
-        an existing -runN{ext} unless ``--force`` was also passed.
-      ``_force``    (0/1)  -- ``--force`` was passed; allow restart
-        from -run0 even if prior runs exist (they are preserved on
-        disk; we just don't continue from them).
+      ``_continue`` (0/1)  -- ``--continue`` was passed; in addition
+        to the default index advance it asks the engine to warm-start
+        from prior state (.DM/.CG/.XV).
+      ``_force``    (0/1)  -- ``--force`` was passed; restart the
+        sequence at -run0 (overwriting it) instead of advancing.
+
+    DEFAULT (2026-06-26): when a prior ``-runN{ext}`` exists the
+    resolver **auto-advances** to ``max(N)+1`` -- re-running NEVER
+    errors and NEVER overwrites a prior result.  The old behaviour
+    (refuse-with-exit-1 unless ``--continue``/``--force``) was the
+    single biggest papercut in the iterative resubmit loop.
 
     The resolver is shared by SIESTA + PySCF wrappers so the run-index
     semantics are identical across engines; only the suffix differs.
@@ -86,10 +91,10 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
     return (
         f"# --- Run index resolution ------------------------------\n"
         f"# Outputs are ``{basename}-runN{ext}``.  First run produces\n"
-        f"# -run0; ``--continue`` scans existing -runN files and uses\n"
-        f"# max(N)+1.  Without --continue, refuse to overwrite an\n"
-        f"# existing -run0 unless --force was passed (otherwise the\n"
-        f"# user would silently lose the previous result).\n"
+        f"# -run0; any later run AUTO-ADVANCES to max(N)+1 by default so\n"
+        f"# re-running never errors and never clobbers a prior result.\n"
+        f"# --force restarts the sequence at -run0; --continue adds an\n"
+        f"# engine warm-start on top of the (default) index advance.\n"
         f"_existing_max=-1\n"
         f'shopt -s nullglob 2>/dev/null || true\n'
         f'for _f in "{basename}-run"*{ext}; do\n'
@@ -103,26 +108,26 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
         f"    fi\n"
         f"done\n"
         f"\n"
-        f'if [ "$_continue" = "1" ]; then\n'
-        f'    if [ "$_existing_max" -ge 0 ]; then\n'
-        f"        _run_n=$((_existing_max + 1))\n"
-        f"    else\n"
-        f'        echo "[molbuilder] --continue requested but no prior '
-        f'-runN{ext} found; starting fresh as -run0" >&2\n'
-        f"        _run_n=0\n"
+        f'if [ "$_force" = "1" ]; then\n'
+        f"    # --force: explicitly restart the sequence at -run0 (SIESTA's\n"
+        f"    # redirect clobbers the existing -run0).\n"
+        f"    _run_n=0\n"
+        f'elif [ "$_existing_max" -ge 0 ]; then\n'
+        f"    # DEFAULT auto-continue (2026-06-26): a prior -runN exists, so\n"
+        f"    # advance to the next free index.  Re-running the script NEVER\n"
+        f"    # errors and NEVER overwrites a prior result -- the #1 papercut\n"
+        f"    # in the iterative HPC loop (resubmit after OOM / propor / a\n"
+        f"    # walltime hit) was the old refuse-with-exit-1 gate.\n"
+        f"    # (--continue additionally asks the engine to warm-start from\n"
+        f"    # .DM/.CG/.XV; the run-index advances either way.)\n"
+        f"    _run_n=$((_existing_max + 1))\n"
+        f'    if [ "$_continue" != "1" ]; then\n'
+        f'        echo "[molbuilder] prior output present; auto-continuing '
+        f'as -run${{_run_n}}{ext} (use --force to restart at -run0, '
+        f'--cold to also drop warm-start state)." >&2\n'
         f"    fi\n"
         f"else\n"
-        f'    if [ "$_existing_max" -ge 0 ] && [ "$_force" != "1" ]; then\n'
-        f'        echo "ERROR: previous output exists '
-        f'(``{basename}-run${{_existing_max}}{ext}``)." >&2\n'
-        f'        echo "  Use --continue to add '
-        f'``{basename}-run$((_existing_max + 1)){ext}`` '
-        f'(resume from last state)." >&2\n'
-        f'        echo "  Use --force to start over from -run0 '
-        f'(overwrites the existing run0)." >&2\n'
-        f"        exit 1\n"
-        f"    fi\n"
-        f"    _run_n=0\n"
+        f"    _run_n=0   # first run\n"
         f"fi\n"
         f'_out_file="{basename}-run${{_run_n}}{ext}"\n'
         f'echo "[molbuilder] run index: $_run_n  ->  $_out_file"\n'
@@ -2388,24 +2393,34 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
             f"SIESTA crashed with 'propor: ERROR: IMAX = 0' during startup.\n"
             f"\n"
-            f"This is a SIESTA-side issue with how it distributes work\n"
-            f"across MPI ranks for this specific molecule + rank-count\n"
-            f"combination.  Some mpi_np values leave some ranks empty\n"
-            f"in matel_table's radial-function pipeline and the internal\n"
-            f"proportionality check then fails.  It is NOT a configuration\n"
-            f"bug in your .fdf -- the same .fdf works at a different -np.\n"
+            f"IMAX=0 means one of SIESTA's per-orbital / per-rank tables\n"
+            f"came out EMPTY.  It has three common causes -- check them in\n"
+            f"this order, most fundamental first.  Do NOT just lower -np\n"
+            f"reflexively: that masks a defective pseudopotential and gives\n"
+            f"silently-wrong physics.\n"
             f"\n"
-            f"Your -np was $_mpi_np.  Retry WITHOUT regenerating:\n"
+            f"1) DEFECTIVE / MISMATCHED PSEUDOPOTENTIAL  (check this FIRST)\n"
+            f"   A pseudo with a null Kleinman-Bylander projector (ekb=0 on\n"
+            f"   a whole l-channel) trips IMAX=0.  In $_out_file find each\n"
+            f"   species' 'PSML: Kleinman-Bylander projectors' table and look\n"
+            f"   for 'rc=  0.000010   Ekb=  0.000000' rows -- a valence\n"
+            f"   element missing its p or d channel is broken.  Fix: replace\n"
+            f"   that .psml with a vetted one (PseudoDojo; match the rest of\n"
+            f"   your set's generator version + XC).  Screen the whole set:\n"
+            f"     python -m molbuilder pseudo check <pseudo-dir>\n"
             f"\n"
-            f"  bash {basename}.run.sh -np 8     # powers of 2 are usually safest\n"
-            f"  bash {basename}.run.sh -np 4     # if 8 also fails\n"
-            f"  bash {basename}.run.sh -np 2     # last resort\n"
+            f"2) MPI RANK COUNT  (np IS a legitimate tunable here)\n"
+            f"   If the pseudos are clean, some -np values leave trailing\n"
+            f"   ranks empty in the orbital/projector distribution.  Retry\n"
+            f"   at a different -np (lower; powers of 2 are safest):\n"
+            f"     bash {basename}.run.sh -np 8\n"
+            f"     bash {basename}.run.sh -np 4\n"
+            f"   The same clean .fdf can fail at one -np and pass at another.\n"
             f"\n"
-            f"Empirically (probed on hemeC, 81 atoms, Fe + S + organic):\n"
-            f"  works: 2, 4, 6, 8, 12, 14\n"
-            f"  fails: 9, 10, 11, 13, 15, 16\n"
-            f"For pure-organic systems the safe range is usually wider;\n"
-            f"larger heteroatom mixes are more conservative.\n"
+            f"3) ZERO / MISSING NET SPIN on an open-shell metal\n"
+            f"   SpinPolarized with Spin.Total unset or 0 on a d/f-shell\n"
+            f"   metal also triggers IMAX=0; set an initial Spin.Total.\n"
+            f"   (molbuilder's preflight normally catches this pre-run.)\n"
             f"\n"
             f"Full SIESTA output: $_out_file\n"
             f"HINT\n"
