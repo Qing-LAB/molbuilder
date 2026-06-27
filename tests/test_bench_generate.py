@@ -3,9 +3,11 @@ benchmark bundle generator (molbuilder/bench/generate.py)."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -217,3 +219,51 @@ def test_generate_rejects_non_fdf(tmp_path):
     bad.write_text("not an fdf")
     with pytest.raises(ValueError, match="must be a .fdf"):
         generate_bench_bundle(bad, tmp_path / "out")
+
+
+def test_generate_ships_prep_lib_verbatim(tmp_path):
+    import molbuilder.bench as _benchpkg
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, written = generate_bench_bundle(fdf, out)
+
+    src = Path(_benchpkg.__file__).parent
+    # the 6 stdlib modules are copied byte-for-byte into mbbench/
+    for m in ("environment", "adapters", "result", "prep", "summarize",
+              "prep_run"):
+        shipped = out_dir / "mbbench" / f"{m}.py"
+        assert shipped.is_file()
+        assert shipped.read_bytes() == (src / f"{m}.py").read_bytes()
+    assert (out_dir / "mbbench" / "__init__.py").is_file()
+    # executable shims for each on-target driver
+    for shim in ("prep-bench", "bench-summarize", "prep-run"):
+        p = out_dir / shim
+        assert p.is_file() and (p.stat().st_mode & 0o111)
+
+
+def test_shipped_prep_lib_runs_with_no_molbuilder(tmp_path):
+    # The headline guarantee: the bundle's prep-bench runs on a target with
+    # NO molbuilder importable.  Run the shim in a clean env from the bundle
+    # dir; if any shipped module secretly needed molbuilder, import would
+    # fail (molbuilder is not pip-installed -- it lives in the repo).
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, _ = generate_bench_bundle(fdf, out)
+
+    env = {"PATH": os.environ.get("PATH", ""),
+           "HOME": str(tmp_path)}            # NO PYTHONPATH -> no repo/molbuilder
+    # sanity: molbuilder is indeed unreachable in this clean env
+    chk = subprocess.run(
+        [sys.executable, "-c", "import molbuilder"],
+        cwd=str(tmp_path), env=env, capture_output=True)
+    assert chk.returncode != 0, "test invalid: molbuilder importable here"
+
+    r = subprocess.run(
+        [sys.executable, "prep-bench", "--scheduler", "workstation",
+         "--cores-per-socket", "8", "--gpus-per-node", "1",
+         "--gpu-type", "a100"],
+        cwd=str(out_dir), env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (out_dir / "environment.json").is_file()
+    sweep = (out_dir / "job-gpu-sweep.sh").read_text()
+    assert "K values = 1,2,4,8" in sweep      # divisors of 8

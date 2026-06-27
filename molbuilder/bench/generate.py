@@ -252,6 +252,27 @@ exit cleanly (`COMPLETED`) instead of aborting non-zero -- otherwise SLURM
 marks every bench point `FAILED` and the accounting (`sacct MaxRSS`) is
 unreliable.
 
+## Self-contained on the target (no molbuilder install)
+
+This bundle ships its own prep-lib (`mbbench/`) + executable drivers, so
+the whole detect -> run -> decide flow runs on the target with nothing
+installed:
+
+```
+./prep-bench        # detect this machine -> environment.json + a
+                    #   topology-sized job-gpu-sweep.sh (each point isolated
+                    #   in its own point-G<g>K<k>/ dir)
+bash job-gpu-sweep.sh   # run the sweep (sbatch per point on SLURM;
+                        #   sequential on a workstation)
+./bench-summarize   # parse the points -> bench-result.json (ranked winner)
+./prep-run --script-base <your-prod>   # winner -> run-production.sh,
+                                       #   re-resolved for THIS machine
+```
+
+`prep-bench` accepts `--cores-per-socket` / `--gpus-per-node` / `--gpu-type`
+/ `--scheduler` overrides when detection can't see the compute node. See
+`docs/protocols/benchmark-workflow.md` for the full design.
+
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
 
@@ -405,7 +426,59 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
         max_scf=max_scf), encoding="utf-8")
     written.append(readme)
 
+    # Ship the self-contained prep-lib so the target needs NO molbuilder
+    # install (the on-target prep-bench/summarize/prep-run drivers).
+    written.extend(_ship_prep_lib(out_dir))
+
     return out_dir, written
+
+
+# Stdlib-only modules that form the shipped on-target prep-lib, and the
+# executable shims that expose their main()s.  Copied VERBATIM (they use
+# package-relative imports, so they work the same inside the shipped
+# ``mbbench`` package as inside ``molbuilder.bench``).
+_PREP_LIB_MODULES = ("environment", "adapters", "result", "prep",
+                     "summarize", "prep_run")
+_PREP_SHIMS = {"prep-bench": "prep", "bench-summarize": "summarize",
+               "prep-run": "prep_run"}
+
+
+def _ship_prep_lib(out_dir: Path) -> List[Path]:
+    """Copy the stdlib-only prep-lib into ``<out>/mbbench/`` + write the
+    ``prep-bench`` / ``bench-summarize`` / ``prep-run`` shims, so the
+    bundle runs the whole on-target workflow with no molbuilder install
+    (benchmark-workflow.md § 4.7 self-contained rule)."""
+    src = Path(__file__).resolve().parent
+    written: List[Path] = []
+
+    pkg = out_dir / "mbbench"
+    pkg.mkdir(exist_ok=True)
+    init = pkg / "__init__.py"
+    init.write_text(
+        '"""Self-contained molbuilder benchmark prep-lib (stdlib-only).\n\n'
+        "Copied verbatim by `molbuilder bench generate` so the target can "
+        "run\nprep-bench / bench-summarize / prep-run with no molbuilder "
+        'install."""\n', encoding="utf-8")
+    written.append(init)
+    for m in _PREP_LIB_MODULES:
+        dst = pkg / f"{m}.py"
+        shutil.copy2(src / f"{m}.py", dst)
+        written.append(dst)
+
+    for shim, mod in _PREP_SHIMS.items():
+        p = out_dir / shim
+        p.write_text(
+            "#!/usr/bin/env python3\n"
+            "# self-contained entry: adds this bundle dir to sys.path so the\n"
+            "# shipped mbbench package imports without any molbuilder install.\n"
+            "import os, sys\n"
+            "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+            f"from mbbench.{mod} import main\n"
+            "sys.exit(main())\n", encoding="utf-8")
+        p.chmod(0o755)
+        written.append(p)
+
+    return written
 
 
 __all__ = [
