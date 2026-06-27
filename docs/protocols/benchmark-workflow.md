@@ -47,6 +47,40 @@ Corollary: the prep scripts MUST be **self-contained** (stdlib python or
 plain bash, no molbuilder/numpy import), because the target backend env
 (e.g. `molbuilder-siesta-gpu`) has none of those.
 
+### § 1.1 Two targets, one workflow
+
+The **same six steps** (§ 2) must run on a **local workstation** and a
+**remote supercomputer**. The only differences are confined to the
+`SchedulerAdapter` + `TopologyProbe` (§ 4); everything else — the fdf
+transform, the launcher, the monitor + `util.csv`, the timing instrument,
+the `--mem` estimator, the bench-hints contract — is **scheduler-agnostic
+and shared**.
+
+| Stage | Workstation | Supercomputer (SLURM) |
+|---|---|---|
+| detect | no `sbatch` ⇒ `workstation` | `sbatch`/`$SLURM_*` ⇒ `slurm` |
+| topology | `lscpu` + `nvidia-smi -L` (prep runs **on** the box) | `scontrol show node` (compute-node-correct, from login) |
+| bench scripts | one `run-bench.sh` that `mpirun`s each point **sequentially** (one box, shared GPUs) | `.sbatch` per point, **submitted in parallel** to the queue |
+| sweep | helper emits `./job-gpu.run.sh -n K*G …` lines (direct) | helper emits `sbatch --gres … -n K*G …` lines |
+| memory | estimator **informs** (`[INFO] est vs node RAM`); no hard `--mem` | estimator **sizes** `#SBATCH --mem` (gates the cgroup) |
+| env entry | config `activation` = `conda activate <env>` (no `module load`) | `module load mamba` + `source activate` |
+| submit | `./run.sh` | `sbatch <prod>.sbatch` |
+| monitor / util / timing | **identical** | **identical** |
+
+**Already workstation-ready (built):** the monitor + `util.csv`/timing are
+scheduler-free; the runtime `--mem` audit already has a no-SLURM branch
+(reads `/proc/meminfo`, prints "node RAM ~XG (no SLURM --mem)",
+slurm-integration.md § 11.0d); `bench generate` already emits a runnable
+`.run.sh` when no scheduler is configured (§ 10 there). The existing
+`molbuilder bench siesta-gpu` is the **seed of the workstation runner** —
+it already sweeps points *sequentially on the current machine*.
+
+**Needs the workstation adapter (proposed):** make `job-gpu-sweep.sh`
+emit direct-exec lines (not `sbatch`) in workstation mode; have
+prep-bench/prep-run pick `WorkstationAdapter` vs `SlurmAdapter` from the
+detected Environment. No engine/monitor/estimator code changes — that is
+the point of isolating the difference in the adapter.
+
 ---
 
 ## § 2 The workflow
