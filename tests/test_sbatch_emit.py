@@ -13,6 +13,9 @@ Authoritative design: docs/protocols/slurm-integration.md
 from __future__ import annotations
 
 import json
+import math
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -323,6 +326,40 @@ def test_wrapper_cpu_emits_runtime_mem_audit(project):
     assert "EXCEEDS allocation" in runsh           # the WARN branch
     # Reads the SLURM allocation, with a /proc/meminfo fallback.
     assert "SLURM_MEM_PER_NODE" in runsh and "MemTotal" in runsh
+
+
+def test_runtime_mem_audit_awk_reproduces_the_formula(project):
+    # The baked awk must compute ceil(safety*(fixed + c_rank*n)) +
+    # ceil(extra), floored, capped -- the same formula as the Python
+    # estimator.  Extract the awk's constants, RUN it for several rank
+    # counts, and check against an independent Python evaluation.
+    fdf = project / "job.fdf"
+    fdf.write_text(_PARSEABLE_FDF)
+    runwrap.write_run_wrapper(fdf, mpi_np=64)
+    runsh = (project / "job.run.sh").read_text()
+    line = next(ln for ln in runsh.splitlines()
+                if ln.strip().startswith("_mb_mem_est=$(awk"))
+
+    def _const(flag):
+        m = re.search(rf"-v {flag}=([0-9.]+)", line)
+        return float(m.group(1))
+    f, pr, s, e = _const("f"), _const("pr"), _const("s"), _const("e")
+    fl, cap = _const("fl"), _const("cap")
+
+    def _py(n):
+        raw = s * (f + pr * n)
+        est = math.ceil(raw) + math.ceil(e)
+        est = max(est, fl)
+        if cap > 0 and est > cap:
+            est = cap
+        return int(est)
+
+    for n in (1, 4, 8, 32, 64, 256):
+        out = subprocess.run(
+            ["bash"], text=True, capture_output=True,
+            input=f'_mpi_np={n}\n{line}\necho "$_mb_mem_est"')
+        assert out.returncode == 0, out.stderr
+        assert int(out.stdout.strip()) == _py(n), f"mismatch at n={n}"
 
 
 def test_wrapper_gpu_has_no_mem_audit(project):

@@ -20,6 +20,7 @@ on the shape now.
 
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 
 from .environment import Environment, Topology
@@ -27,6 +28,31 @@ from .environment import Environment, Topology
 # Fallback rank-counts when cores-per-socket is unknown (so the sweep is
 # still useful; the adapter notes the missing topology).
 _FALLBACK_KS = (1, 2, 4, 8)
+
+# A script basename is interpolated UNQUOTED into generated shell, so it
+# must not carry shell metacharacters / spaces (production base is
+# user-derived from an fdf name).
+_SAFE_BASE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _check_base(base: str) -> str:
+    if not isinstance(base, str) or not _SAFE_BASE.fullmatch(base):
+        raise ValueError(
+            f"unsafe script_base {base!r}: only letters, digits, '.', "
+            f"'_', '-' are allowed (it is interpolated into shell).")
+    return base
+
+
+# GPU type goes into ``--gres=gpu:<type>:N`` -- keep it a bare token.
+_SAFE_GPU_TYPE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _check_gpu_type(gtype: Optional[str]) -> str:
+    """Sanitize the detected GPU type for shell interpolation; fall back
+    to the generic ``gpu`` if absent or odd."""
+    if gtype and _SAFE_GPU_TYPE.fullmatch(gtype):
+        return gtype
+    return "gpu"
 
 
 def divisors(n: int) -> List[int]:
@@ -91,7 +117,7 @@ class SchedulerAdapter:
         topo = env.topology
         gpn = gpus_per_node or topo.gpus_per_node or 1
         cps = topo.cores_per_socket
-        gtype = topo.gpu_type or "gpu"
+        gtype = _check_gpu_type(topo.gpu_type)
         ks = self.sweep_K(topo) or list(_FALLBACK_KS)
 
         head = [
@@ -145,6 +171,7 @@ class SchedulerAdapter:
         the translation and runs/submits the production scripts (assumed
         already engine-correct, the caller's job).
         """
+        _check_base(script_base)
         engine = (choice or {}).get("engine")
         knobs = (choice or {}).get("knobs") or {}
         topo = env.topology
@@ -166,7 +193,7 @@ class SchedulerAdapter:
             else:
                 c = knobs.get("cores_per_rank")
                 notes.append("cores/socket unknown -> kept bench c; verify")
-            cmd = self.gpu_launch_line(g, k, c, topo.gpu_type or "gpu",
+            cmd = self.gpu_launch_line(g, k, c, _check_gpu_type(topo.gpu_type),
                                        script_base)
         elif engine == "cpu":
             np = int(knobs.get("ranks") or 1)

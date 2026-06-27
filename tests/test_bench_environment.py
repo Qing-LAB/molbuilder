@@ -2,6 +2,8 @@
 (molbuilder/bench/environment.py, adapters.py)."""
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from molbuilder.bench import adapters
@@ -266,3 +268,116 @@ def test_format_run_rejects_unknown_engine():
     with pytest.raises(ValueError, match="engine must be"):
         adapters.SlurmAdapter().format_run(
             {"engine": "quantum"}, Environment(scheduler="slurm"))
+
+
+# --------------------------------------------------------------------- #
+#  SLURM detection paths (monkeypatched subprocess)                     #
+# --------------------------------------------------------------------- #
+
+
+def test_detect_topology_slurm_via_scontrol(monkeypatch):
+    def fake_run(cmd, **k):
+        if cmd[0] == "sinfo":
+            return "gpu01 gpu:a100:4\n"        # _slurm_pick_node (%N %G)
+        if cmd[0] == "scontrol":
+            return _SCONTROL
+        return None
+    monkeypatch.setattr(env_mod, "_run", fake_run)
+    topo, src = env_mod.detect_topology("slurm", partition="public")
+    assert src == "scontrol"
+    assert topo.cores_per_socket == 24 and topo.gpus_per_node == 4
+
+
+def test_detect_topology_slurm_login_no_local_fallback(monkeypatch):
+    # On a LOGIN node (no SLURM_JOB_ID) where scontrol fails, lscpu must
+    # NOT be consulted (it would describe the wrong machine, § 4.6).
+    monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+
+    def fake_run(cmd, **k):
+        return _LSCPU if cmd[0] == "lscpu" else None   # sinfo/scontrol fail
+    monkeypatch.setattr(env_mod, "_run", fake_run)
+    topo, src = env_mod.detect_topology("slurm", partition="public")
+    assert src == "unknown"
+    assert topo.cores_per_socket is None               # lscpu NOT used
+
+
+def test_detect_topology_slurm_on_compute_node_uses_lscpu(monkeypatch):
+    # Inside an allocation (SLURM_JOB_ID set) lscpu IS the compute node.
+    monkeypatch.setenv("SLURM_JOB_ID", "123")
+
+    def fake_run(cmd, **k):
+        if cmd[0] == "lscpu":
+            return _LSCPU
+        if cmd[0] == "nvidia-smi":
+            return _NVIDIA_L
+        return None
+    monkeypatch.setattr(env_mod, "_run", fake_run)
+    topo, src = env_mod.detect_topology("slurm", partition="public")
+    assert src == "lscpu"
+    assert topo.cores_per_socket == 24 and topo.gpus_per_node == 2
+
+
+def test_detect_site_default_partition(monkeypatch):
+    monkeypatch.setattr(env_mod, "_run",
+                        lambda *a, **k: "general\npublic*\nhtc\n")
+    site, src = env_mod.detect_site("slurm")
+    assert site.partition == "public" and src == "sinfo"
+    assert site.qos is None            # qos is config, not detected
+
+
+# --------------------------------------------------------------------- #
+#  generated shell is syntactically valid (bash -n) + safe              #
+# --------------------------------------------------------------------- #
+
+
+def _bash_n(script: str):
+    p = subprocess.run(["bash", "-n"], input=script, text=True,
+                       capture_output=True)
+    return p.returncode == 0, p.stderr
+
+
+_SLURM_ENV = Environment(scheduler="slurm",
+                         topology=Topology(cores_per_socket=24,
+                                           gpus_per_node=4, gpu_type="a100"))
+_WS_ENV = Environment(scheduler="workstation",
+                      topology=Topology(sockets=2, cores_per_socket=10,
+                                        gpus_per_node=2, gpu_type="rtx"))
+
+
+@pytest.mark.parametrize("adapter,env", [
+    (adapters.SlurmAdapter(), _SLURM_ENV),
+    (adapters.WorkstationAdapter(), _WS_ENV),
+])
+def test_format_bench_is_valid_bash(adapter, env):
+    ok, err = _bash_n(adapter.format_bench(env)["job-gpu-sweep.sh"])
+    assert ok, err
+
+
+@pytest.mark.parametrize("adapter,env,choice", [
+    (adapters.SlurmAdapter(), _SLURM_ENV,
+     {"engine": "gpu", "knobs": {"gpus": 2, "ranks_per_gpu": 8}}),
+    (adapters.WorkstationAdapter(), _WS_ENV,
+     {"engine": "cpu", "knobs": {"ranks": 8}}),
+])
+def test_format_run_is_valid_bash(adapter, env, choice):
+    ok, err = _bash_n(adapter.format_run(choice, env,
+                                         script_base="prod")["run-production.sh"])
+    assert ok, err
+
+
+def test_format_run_rejects_unsafe_script_base():
+    with pytest.raises(ValueError, match="unsafe script_base"):
+        adapters.SlurmAdapter().format_run(
+            {"engine": "cpu", "knobs": {"ranks": 4}},
+            _SLURM_ENV, script_base="x; rm -rf /")
+
+
+def test_format_bench_sanitizes_gpu_type():
+    env = Environment(scheduler="slurm",
+                      topology=Topology(cores_per_socket=8, gpus_per_node=1,
+                                        gpu_type="a100; evil"))
+    s = adapters.SlurmAdapter().format_bench(env)["job-gpu-sweep.sh"]
+    assert "evil" not in s
+    assert "gpu:gpu:1" in s             # fell back to the generic token
+    ok, err = _bash_n(s)
+    assert ok, err

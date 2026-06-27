@@ -269,7 +269,14 @@ def detect_topology(scheduler: str, *,
             if out:
                 topo, source = _parse_scontrol_node(out), "scontrol"
 
-    if source == "unknown":                          # local probe
+    # Local probe ONLY when we are physically ON the target: a workstation,
+    # or a SLURM job/allocation (``SLURM_JOB_ID`` set).  On a SLURM LOGIN
+    # node ``lscpu`` would describe the *login* node, not the compute node
+    # (§ 4.6) -- so if scontrol failed there, leave topology unknown and
+    # let declared flags fill it, rather than report the wrong machine.
+    on_node = (scheduler == "workstation"
+               or bool(os.environ.get("SLURM_JOB_ID")))
+    if source == "unknown" and on_node:
         lsc = _run(["lscpu"])
         if lsc:
             topo, source = _parse_lscpu(lsc), "lscpu"
@@ -303,22 +310,24 @@ def _read_mem_total_gb() -> Optional[float]:
 
 
 def detect_site(scheduler: str) -> Tuple[Site, str]:
-    """SLURM default partition (+ qos) from ``sinfo``; empty on a
-    workstation."""
+    """SLURM **default partition** from ``sinfo`` (the one ``%P`` marks
+    with ``*``); empty on a workstation.
+
+    ``qos``/``account`` are intentionally left ``None`` -- they are site
+    policy, not reliably derivable from ``sinfo``, so they come from the
+    user's config (the SlurmAdapter / scheduler block), not detection."""
     if scheduler != "slurm":
         return Site(), "n/a"
     site = Site()
-    out = _run(["sinfo", "-h", "-o", "%P %Q"])       # PARTITION QOS-ish
+    out = _run(["sinfo", "-h", "-o", "%P"])          # PARTITION (default=*)
     if out:
-        for line in out.splitlines():
-            toks = line.split()
-            if toks and toks[0].endswith("*"):       # default partition
-                site.partition = toks[0].rstrip("*")
+        names = [t for t in out.split() if t]
+        for name in names:
+            if name.endswith("*"):                   # the default partition
+                site.partition = name.rstrip("*")
                 break
-        if site.partition is None:                   # else first listed
-            toks = out.split()
-            if toks:
-                site.partition = toks[0].rstrip("*")
+        if site.partition is None and names:         # else the first listed
+            site.partition = names[0].rstrip("*")
     return site, ("sinfo" if site.partition else "unknown")
 
 
