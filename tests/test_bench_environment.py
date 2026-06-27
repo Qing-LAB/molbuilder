@@ -180,9 +180,46 @@ def test_get_adapter_selects_by_scheduler():
         adapters.get_adapter(Environment(scheduler="pbs"))
 
 
-def test_format_methods_not_yet_implemented():
-    a = adapters.SlurmAdapter()
+def _sweep(adapter, env, **kw):
+    return adapter.format_bench(env, **kw)["job-gpu-sweep.sh"]
+
+
+def test_format_bench_slurm_emits_sbatch_grid():
+    env = Environment(scheduler="slurm",
+                      topology=Topology(cores_per_socket=24, gpus_per_node=2,
+                                        gpu_type="a100"))
+    s = _sweep(adapters.SlurmAdapter(), env)
+    # K=8 -> c=24/8=3; single + dual GPU lines present.
+    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in s
+    assert "sbatch --gres=gpu:a100:2 -n 16 -c 3 job-gpu.sbatch" in s
+    assert "QUEUE IN PARALLEL" in s
+    # multi-GPU caveat on G>=2 lines
+    assert "do NOT add --gpu-bind" in s
+
+
+def test_format_bench_workstation_emits_direct_grid():
+    env = Environment(scheduler="workstation",
+                      topology=Topology(cores_per_socket=24, gpus_per_node=1,
+                                        gpu_type="a100"))
+    s = _sweep(adapters.WorkstationAdapter(), env)
+    # direct launch, no sbatch, picks the GPU + drives the launcher knobs
+    assert "sbatch" not in s
+    assert ("CUDA_VISIBLE_DEVICES=0 MOLBUILDER_MPI_NP=8 "
+            "MOLBUILDER_OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
+    assert "SEQUENTIALLY" in s
+
+
+def test_format_bench_unknown_cores_uses_fallback_ks():
+    env = Environment(scheduler="slurm",
+                      topology=Topology(gpus_per_node=1))   # no cores/socket
+    s = _sweep(adapters.SlurmAdapter(), env)
+    assert "fallback set" in s
+    assert "-n 8" in s            # K=8 from the fallback set
+    # without cores/socket there is no -c; the launcher defaults it
+    assert "-c" not in s.split("\n\n", 1)[1]
+
+
+def test_format_run_still_pending():
     with pytest.raises(NotImplementedError):
-        a.format_bench(None, Environment(scheduler="slurm"))
-    with pytest.raises(NotImplementedError):
-        a.format_run(None, None, Environment(scheduler="slurm"))
+        adapters.SlurmAdapter().format_run(None, None,
+                                           Environment(scheduler="slurm"))
