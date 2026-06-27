@@ -2273,10 +2273,18 @@ def render_run_wrapper(script_path: Path, *,
         f'    [ -n "$_v_val" ] && _log INFO "$_v=$_v_val"\n'
         f"done\n"
         f"\n"
+        f"# The env bootstrap (preamble ``module load``, conda/mamba\n"
+        f"# ``activate``) sources EXTERNAL scripts not under our control.\n"
+        f"# Conda activate.d hooks (e.g. cuda-nvcc's, which references an\n"
+        f"# unset NVCC_PREPEND_FLAGS) abort under the wrapper's ``set -u``.\n"
+        f"# Disable nounset for the bootstrap ONLY; restore it before our\n"
+        f"# own logic (where -u still catches real bugs).\n"
+        f"set +u\n"
         f"{_preamble_block}"
         f"# --- Activation (verbatim from script_generation.activation) ---\n"
         f'_log STAGE "{_activation_form} {target_env}"\n'
         f"{_activation_form} {target_env}\n"
+        f"set -u\n"
         f"\n"
         f'_log INFO "CONDA_DEFAULT_ENV=${{CONDA_DEFAULT_ENV:-<unset>}}"\n'
         f'_log INFO "CONDA_PREFIX=${{CONDA_PREFIX:-<unset>}}"\n'
@@ -2354,7 +2362,11 @@ def render_run_wrapper(script_path: Path, *,
             # stamps in .scf-timing.log are subject to Fortran stdout
             # buffering -- so the headline benchmark number is total/N
             # (slurm-integration.md § 11.0).  N = scf: iteration lines.
-            f'_n_scf=$(wc -l < "$_scf_timing_log" 2>/dev/null | tr -d " ")\n'
+            f'if [ -f "$_scf_timing_log" ]; then\n'
+            f'    _n_scf=$(wc -l < "$_scf_timing_log" | tr -d " ")\n'
+            f'else\n'
+            f'    _n_scf=0   # SIESTA crashed before any scf: output\n'
+            f'fi\n'
             f'case "$_n_scf" in ""|*[!0-9]*) _n_scf=0 ;; esac\n'
             f'if [ "$_n_scf" -ge 1 ]; then\n'
             f'    _per_iter=$(awk -v t="$_siesta_wall" -v n="$_n_scf" '
@@ -2370,7 +2382,8 @@ def render_run_wrapper(script_path: Path, *,
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"
             f'    echo "===== SIESTA exited with code $_siesta_exit =====" >&2\n'
-            f'    if grep -aq "propor: ERROR" "$_out_file" 2>/dev/null; then\n'
+            f'    if grep -aq "propor: ERROR" "$_out_file" "$_runwrap_log" '
+            f'2>/dev/null; then\n'
             f"        cat <<HINT >&2\n"
             f"\n"
             f"SIESTA crashed with 'propor: ERROR: IMAX = 0' during startup.\n"
@@ -2397,9 +2410,9 @@ def render_run_wrapper(script_path: Path, *,
             f"Full SIESTA output: $_out_file\n"
             f"HINT\n"
             f'    elif grep -aq "ERROR\\|aborted\\|Stopping" '
-            f'"$_out_file" 2>/dev/null; then\n'
+            f'"$_out_file" "$_runwrap_log" 2>/dev/null; then\n'
             f'        echo "Other SIESTA error detected; check '
-            f'$_out_file for details." >&2\n'
+            f'$_out_file / $_runwrap_log for details." >&2\n'
             f"    fi\n"
             f'    exit "$_siesta_exit"\n'
             f"fi\n"
@@ -2812,7 +2825,16 @@ def render_sbatch(script_path: Path,
     cpus = cpus_per_task if cpus_per_task is not None \
         else defaults.get("cpus_per_task")
     walltime = time if time is not None else defaults.get("time")
-    memory   = mem if mem is not None else defaults.get("mem")
+    # mem: caller arg wins; else for GPU jobs prefer ``gpu.mem`` (Sol's GPU
+    # default is a tight 24 GB/GPU), else ``defaults.mem``.  CPU jobs use
+    # ``defaults.mem`` (null => the generous partition default -- do NOT cap
+    # a 64-rank CPU job at a small total).
+    if mem is not None:
+        memory = mem
+    elif gpu:
+        memory = gpu_cfg.get("mem") or defaults.get("mem")
+    else:
+        memory = defaults.get("mem")
 
     site = "asu-sol" if partition == "public" else "custom"
     lines: List[str] = [

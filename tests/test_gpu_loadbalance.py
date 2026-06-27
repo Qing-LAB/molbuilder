@@ -187,6 +187,35 @@ def test_pyscf_has_dry_run(tmp_path):
 # --------------------------------------------------------------------- #
 
 
+def test_env_bootstrap_disables_nounset(tmp_path):
+    """conda activate.d hooks (e.g. cuda-nvcc's unbound NVCC_PREPEND_FLAGS)
+    abort under `set -u`; the env bootstrap (preamble + activation) must
+    run under `set +u`, restored to `set -u` afterwards.  (Real Sol GPU
+    blocker, 2026-06-26.)"""
+    t = _gpu(tmp_path)
+    lines = t.splitlines()
+    i_su  = next(i for i, l in enumerate(lines) if l == "set +u")
+    i_act = next(i for i, l in enumerate(lines)
+                 if l.startswith("source activate"))
+    i_ru  = next(i for i, l in enumerate(lines)
+                 if l == "set -u" and i > i_su)
+    assert i_su < i_act < i_ru            # +u ... activate ... -u
+
+
+def test_propor_diagnostic_scans_runwrap_log(tmp_path):
+    """SIESTA's propor/abort errors go to STDERR (-> the runwrap log), not
+    stdout, so the diagnostic must grep the runwrap log too."""
+    t = _gpu(tmp_path)
+    assert 'grep -aq "propor: ERROR" "$_out_file" "$_runwrap_log"' in t
+
+
+def test_timing_read_guarded_when_no_output(tmp_path):
+    """If SIESTA crashes before any scf: output, the .scf-timing.log never
+    exists -- the total/N read must guard the file, not error noisily."""
+    t = _gpu(tmp_path)
+    assert 'if [ -f "$_scf_timing_log" ]; then' in t
+
+
 def test_omp_honors_slurm_cpus_per_task(tmp_path):
     t = _gpu(tmp_path)
     assert ('_omp_threads="${OMP_NUM_THREADS:-'

@@ -929,6 +929,14 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{CONFIG_FILENAME}: 'scheduler.gpu.exclusive' must be a "
             f"boolean; got {type(gpu['exclusive']).__name__}."
         )
+    # gpu.mem: GPU-specific memory default (Sol's GPU default is a tight
+    # 24 GB/GPU); string like "64G" or null.
+    if "mem" in gpu and gpu["mem"] is not None \
+            and not isinstance(gpu["mem"], str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.gpu.mem' must be a string "
+            f"(e.g. \"64G\") or null; got {type(gpu['mem']).__name__}."
+        )
 
     # defaults: time str|None, cpus_per_task int|None, mem str|None.
     if "time" in defaults and defaults["time"] is not None \

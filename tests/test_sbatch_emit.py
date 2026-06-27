@@ -132,6 +132,29 @@ def test_mem_emitted_when_set(tmp_path):
     assert "#SBATCH --mem=120G" in txt
 
 
+def test_gpu_mem_default_applies_to_gpu_not_cpu(tmp_path):
+    """``scheduler.gpu.mem`` is a GPU-only default (Sol's GPU 24 GB default
+    is tight); CPU jobs must NOT inherit it (they keep the generous
+    partition default)."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1)
+    assert "#SBATCH --mem=64G" in gtxt              # GPU gets gpu.mem
+    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
+    ctxt = render_sbatch(cfdf, sched, ntasks=64)    # CPU job
+    assert "--mem" not in ctxt                       # NOT capped
+
+
+def test_explicit_mem_overrides_gpu_mem(tmp_path):
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
+    fdf = tmp_path / "g.fdf"; fdf.write_text("Diag.ELPA.GPU .true.\n")
+    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1, mem="120G")
+    assert "#SBATCH --mem=120G" in txt and "64G" not in txt
+
+
 def test_cpus_omitted_when_unset(tmp_path):
     fdf = tmp_path / "c.fdf"
     fdf.write_text("x\n")
