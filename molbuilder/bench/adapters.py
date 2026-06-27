@@ -114,12 +114,19 @@ class SchedulerAdapter:
         raise NotImplementedError
 
     def format_bench(self, env: Environment, *,
-                     gpus_per_node: Optional[int] = None
+                     gpus_per_node: Optional[int] = None,
+                     ks: Optional[List[int]] = None
                      ) -> Dict[str, str]:
         """Render the environment-tailored ``job-gpu-sweep.sh`` for this
         scheduler: the valid (G, K) grid as runnable lines (invalid ones
         as comments).  Returns ``{filename: content}`` so it can grow to
         emit more formatted files later.
+
+        ``ks`` overrides the swept ranks-per-GPU values (default: the
+        cores-per-socket divisors -- full-socket points).  Pass an explicit
+        list (e.g. ``[8, 16]``) to probe specific K; a K that does not
+        divide cores/socket is still emitted but flagged as leaving some
+        cores idle.
 
         Running the produced script does the right thing per scheduler by
         construction: under SLURM each point is an ``sbatch`` (all points
@@ -135,7 +142,8 @@ class SchedulerAdapter:
         gpn = gpus_per_node or topo.gpus_per_node or 1
         cps = topo.cores_per_socket
         gtype = _check_gpu_type(topo.gpu_type)
-        ks = self.sweep_K(topo) or list(_FALLBACK_KS)
+        ks = [int(k) for k in ks] if ks else (
+            self.sweep_K(topo) or list(_FALLBACK_KS))
 
         head = [
             "#!/usr/bin/env bash",
@@ -182,10 +190,13 @@ class SchedulerAdapter:
                     continue
                 d = f"point-G{g}K{k}"
                 ctag = "" if c is None else f" c={c}"
+                idle = (cps - k * c) if (cps and c is not None) else 0
+                under = (f"  ({idle} idle cores: K does not divide "
+                         f"cores/socket)" if idle > 0 else "")
                 caveat = ("  (multi-GPU: no NCCL -- MEASURE; do NOT add "
                           "--gpu-bind)" if g >= 2 else "")
                 launch = self.gpu_launch_line(g, k, c, gtype)
-                body.append(f"# G={g} K={k}{ctag}{caveat}")
+                body.append(f"# G={g} K={k}{ctag}{under}{caveat}")
                 body.append(f"_mb_point {d}")
                 body.append(f"( cd {d} && {launch} )")
 

@@ -75,6 +75,30 @@ def test_overrides_from_drops_none():
     assert prep._overrides_from(None, None, None) is None
 
 
+def test_parse_ks():
+    assert prep._parse_ks("8,16") == [8, 16]
+    assert prep._parse_ks("8, 16 ,32") == [8, 16, 32]
+    assert prep._parse_ks(None) is None
+    assert prep._parse_ks("") is None
+
+
+def test_gpu_ks_override_in_sweep(tmp_path):
+    # --gpu-ks 8,16 -> exactly G x {8,16}; K=16 underuses a 24-core socket
+    # (c=1, 8 idle) and is flagged but still emitted.
+    prep.run_prep_bench(
+        tmp_path,
+        overrides={"cores_per_socket": 24, "gpus_per_node": 2,
+                   "gpu_type": "a100"},
+        scheduler_override="slurm", ks=[8, 16], now_iso="t")
+    text = (tmp_path / "job-gpu-sweep.sh").read_text()
+    assert "K values = 8,16" in text
+    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in text
+    assert "sbatch --gres=gpu:a100:2 -n 32 -c 1 job-gpu.sbatch" in text  # G2K16
+    assert "8 idle cores" in text                 # K=16 doesn't divide 24
+    # no K=4/K=2 points (we asked for 8,16 only)
+    assert "K=4 " not in text
+
+
 def test_main_standalone(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     rc = prep.main(["--out", str(tmp_path), "--scheduler", "workstation",

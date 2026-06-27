@@ -39,13 +39,15 @@ def run_prep_bench(out_dir,
                    *,
                    overrides: Optional[dict] = None,
                    scheduler_override: Optional[str] = None,
+                   ks: Optional[list] = None,
                    now_iso: Optional[str] = None
                    ) -> Tuple[Environment, List[Path]]:
     """Detect the target, write ``environment.json``, and format the
     benchmark scripts into ``out_dir``.
 
     ``overrides`` is a flat dict of declared topology values (e.g.
-    ``{"cores_per_socket": 24}``) that win over detection.  Returns
+    ``{"cores_per_socket": 24}``) that win over detection.  ``ks`` (e.g.
+    ``[8, 16]``) overrides the swept ranks-per-GPU values.  Returns
     ``(Environment, [written paths])``.  ``.sh`` outputs are made
     executable.
     """
@@ -62,7 +64,7 @@ def run_prep_bench(out_dir,
     written.append(env_path)
 
     adapter = get_adapter(env)
-    for name, content in adapter.format_bench(env).items():
+    for name, content in adapter.format_bench(env, ks=ks).items():
         p = out / name
         p.write_text(content, encoding="utf-8")
         if name.endswith(".sh"):
@@ -94,6 +96,13 @@ def _overrides_from(cores_per_socket=None, gpus_per_node=None, gpu_type=None):
     return {k: v for k, v in d.items() if v is not None} or None
 
 
+def _parse_ks(spec):
+    """``"8,16"`` -> ``[8, 16]``; ``None``/empty -> ``None`` (use default)."""
+    if not spec:
+        return None
+    return [int(x) for x in str(spec).split(",") if x.strip()]
+
+
 def main(argv=None) -> int:
     """Standalone ``argparse`` entry (zero third-party deps)."""
     import argparse
@@ -112,6 +121,9 @@ def main(argv=None) -> int:
                    help="override detected GPUs/node")
     p.add_argument("--gpu-type", default=None,
                    help="override detected GPU type (e.g. a100)")
+    p.add_argument("--gpu-ks", default=None,
+                   help="comma-separated ranks-per-GPU (K) values to sweep "
+                        "(e.g. 8,16); default = cores/socket divisors")
     a = p.parse_args(argv)
 
     env, written = run_prep_bench(
@@ -119,6 +131,7 @@ def main(argv=None) -> int:
         overrides=_overrides_from(a.cores_per_socket, a.gpus_per_node,
                                   a.gpu_type),
         scheduler_override=a.scheduler,
+        ks=_parse_ks(a.gpu_ks),
         now_iso=utc_now_iso())
     print(_summary(env, written))
     return 0
