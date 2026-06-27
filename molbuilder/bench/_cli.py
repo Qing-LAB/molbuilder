@@ -269,4 +269,37 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                "`./job-gpu-sweep.sh` in the out dir.")
 
 
+@bench_group.command("prep",
+                     short_help="detect the target machine + format the "
+                                "benchmark scripts for it")
+@click.option("--out", default=".",
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="bundle directory to write into (default: current dir).")
+@click.option("--scheduler", type=click.Choice(["slurm", "workstation"]),
+              default=None, help="force the scheduler (else auto-detected).")
+@click.option("--cores-per-socket", type=int, default=None,
+              help="override detected cores/socket.")
+@click.option("--gpus-per-node", type=int, default=None,
+              help="override detected GPUs/node.")
+@click.option("--gpu-type", default=None,
+              help="override detected GPU type (e.g. a100).")
+def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
+             gpus_per_node, gpu_type) -> None:
+    """Detect this machine (scheduler + topology) and format the benchmark
+    scripts for it -- step 1 of the on-target workflow
+    (docs/protocols/benchmark-workflow.md § 7.2).
+
+    Writes ``environment.json`` + the topology-sized ``job-gpu-sweep.sh``.
+    Run it in the bundle directory on the target; no hand-editing needed.
+    """
+    from .prep import _overrides_from, _summary, run_prep_bench, utc_now_iso
+
+    env, written = run_prep_bench(
+        out,
+        overrides=_overrides_from(cores_per_socket, gpus_per_node, gpu_type),
+        scheduler_override=scheduler,
+        now_iso=utc_now_iso())
+    click.echo(_summary(env, written))
+
+
 __all__ = ["bench_group"]

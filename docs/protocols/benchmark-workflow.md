@@ -23,7 +23,7 @@
 | Environment **probes** (detect → `environment.json`) | **built** (`bench/environment.py`) |
 | Scheduler **adapters** — full interface (`sweep_K`, `format_bench`, `format_run`) | **built** (`bench/adapters.py`) |
 | `environment@1` schema (persistence) | **built** (`bench/environment.py`) |
-| **prep-bench** — on-target detect + format | **proposed** (§ 7.2, § 4); detection done, formatting next |
+| **prep-bench** — on-target detect + format | **built** (`bench/prep.py`; `molbuilder bench prep`) |
 | **summarize** — results → `bench-result.json` | **proposed** (§ 7.4, § 5) |
 | **prep-run** — `bench-result.json` → run script | **proposed** (§ 7.5, § 4) |
 | `bench-result@1` schema (persistence) | **proposed** (§ 5.3) |
