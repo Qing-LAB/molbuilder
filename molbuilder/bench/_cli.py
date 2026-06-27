@@ -302,4 +302,24 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     click.echo(_summary(env, written))
 
 
+@bench_group.command("summarize",
+                     short_help="read a sweep's outputs -> bench-result.json")
+@click.option("--bundle", default=".",
+              type=click.Path(file_okay=False, exists=True, resolve_path=True),
+              help="bundle directory holding the point-G*K*/ run dirs.")
+@click.option("--out", default=None, type=click.Path(),
+              help="output path (default: <bundle>/bench-result.json).")
+def cmd_summarize(bundle: str, out: Optional[str]) -> None:
+    """Read the benchmark sweep's per-point outputs and write
+    ``bench-result.json`` -- the portable verdict + ``choice`` that
+    ``molbuilder bench prep-run`` consumes
+    (docs/protocols/benchmark-workflow.md § 7.4).
+    """
+    from .prep import utc_now_iso
+    from .summarize import run_summarize, summary_text
+
+    res, out_path = run_summarize(bundle, out=out, now_iso=utc_now_iso())
+    click.echo(summary_text(res, out_path))
+
+
 __all__ = ["bench_group"]
