@@ -790,6 +790,32 @@ memory default OOMs (the BDT-Au lesson: np=64 OOM'd at 320 GB, survived
    np=64-at-240G OOM). The two layers agree by construction — same model,
    same coefficients.
 
+### 11.0e Utilization sampling — GPU-bound vs host/CPU-bound
+The **same** monitor loop (§ 11.0c) also samples machine utilization, so a
+post-run plot answers *why* a point was fast/slow. One process, one
+interval (default **5 s**); each wake reads `/proc/stat` (cpu%),
+`/proc/meminfo` (mem), and `nvidia-smi` (per-GPU sm%, mem-util, VRAM).
+
+Output `<basename>.util.csv` is **change-gated** like the status log: a
+row is written only when a metric moves **≥10 %** from the last logged row
+(or a `--util-keepalive` window, default 300 s, elapses). With the epoch +
+ISO timestamp on every row the sparse series still plots cleanly, and a
+flat run doesn't bloat the file. The faster 5 s wake does **not** spam the
+`[STATUS]` log — those lines stay change-gated independently (§ 11.0c).
+
+At finish, a **`[UTIL-SUMMARY]`** line gives the verdict from the running
+cpu%/per-GPU-sm% means: sustained **GPU sm% ≥ ~85 %** ⇒ GPU-bound (GPU
+saturated, the ideal); **≤ ~60 % while cpu% is pegged** ⇒ host/CPU-bound
+(GPU starved — more ranks/GPU or faster host needed). This is the direct
+signal for "when do we become CPU-bound" as the GPU K-sweep climbs.
+Stdlib-only (subprocess + `/proc`), so it ships in `mb_monitor.py`.
+Env/flags: `--util <csv>`, `--util-keepalive`, `MB_MONITOR_INTERVAL`.
+
+> The full **benchmark workflow** this feeds (generate → prep-bench →
+> run+monitor → bench-hints → prep-run → submit, with target-isolated
+> detection/formatting) is specified in
+> `docs/protocols/benchmark-workflow.md`.
+
 ### 11.1 Correctness gate ("is the GPU actually doing the work?")
 After a short capped run, assert from the parser's `runtime_info`
 (captured by the §-5-of-#5 runtime probes):
