@@ -259,6 +259,42 @@ bash <basename>.run.sh "$@"
 **The user's real per-job surface**: *time*, and *GPU type/count when
 relevant*. Everything else is site-config (once) or derived.
 
+### 6.1 Manual request vs automatic runtime adaptation (who decides what, when)
+
+There are **two phases**, and it matters which is which:
+
+| | **Generation time — MANUAL request** | **Run time — AUTOMATIC adaptation** |
+|---|---|---|
+| Where | the `#SBATCH` header in `<basename>.sbatch` | inside `<basename>.run.sh`, on the compute node |
+| What | what you **ask SLURM for**: `-n` (ranks), `-c` (cores/rank), `--gres=gpu:<type>:<N>` (GPU count) | what the launcher **does with what SLURM granted** |
+| Set by | CLI flags at generation: `--np`, `--cpus`, `--gres` | reads the allocation env vars — no hand-editing |
+| Source | env vars the launcher reads | |
+| ranks | `-n` | `_mpi_np ← SLURM_NTASKS` |
+| OMP/cores | `-c` | `_omp_threads ← SLURM_CPUS_PER_TASK` |
+| GPU count | `--gres` | `_ngpu ← CUDA_VISIBLE_DEVICES` (SLURM-set) |
+| ranks-per-GPU `K` | — | derived `_mpi_np / _ngpu` |
+| rank→GPU map, MPS on/off, NUMA | — | derived from the above (per-rank launcher, § 7.5.1) |
+
+**They agree by construction** (§ 7.3): the header *requests* an
+allocation; the launcher *reads that same allocation* (`SLURM_NTASKS`
+etc.). You set the request once at generation; the launcher adapts to
+whatever the node actually provides — you never edit inside the `.run.sh`.
+
+**Runtime override hatch** (no regeneration): `bash <basename>.run.sh
+-np N -omp M`, or env `MB_NP=N` / `OMP_NUM_THREADS=M`, override the
+auto-detected values — useful for poking the sweep without re-`sbatch`.
+
+**Worked example — the GPU `K=8` benchmark job:**
+- *Manual* (generation): `molbuilder run gpu-k8.fdf --np 8 --gres gpu:a100:1 --cpus 3`
+  → header `#SBATCH -n 8 -c 3 --gres=gpu:a100:1`.
+- *Automatic* (run): SLURM grants 8 tasks + 1 A100 →
+  `SLURM_NTASKS=8` ⇒ `_mpi_np=8`; `CUDA_VISIBLE_DEVICES=<one id>` ⇒
+  `_ngpu=1`; `K = 8/1 = 8` ⇒ MPS on; the per-rank launcher maps all 8
+  ranks → that one GPU; `SLURM_CPUS_PER_TASK=3` ⇒ `OMP_NUM_THREADS=3`.
+- The whole **K-sweep** is just three headers with different `-n`/`-c`
+  (`-n 64` CPU; `-n 8 -c 3` and `-n 4 -c 6` GPU); each `.run.sh` adapts
+  itself — nothing inside them is touched.
+
 ---
 
 ## 7. ASU Sol compatibility — the constrained-environment walkthrough
