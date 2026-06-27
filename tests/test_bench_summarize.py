@@ -98,6 +98,21 @@ def test_discover_ignores_non_point_dirs(tmp_path):
     assert [p.label for p in pts] == ["point-G2K4"]
 
 
+def test_cpu_point_recovers_np_from_out(tmp_path):
+    # The CPU bench is a single root-level run; np (sbatch -n) isn't in any
+    # filename, so summarize recovers it from the SIESTA .out header.
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "job-cpu-run0.out").write_text(
+        "* Running on 64 nodes in parallel.\n>> End of run: completed\n")
+    (b / "job-cpu-run0.scf-timing.log").write_text(
+        "100.0 1 scf:1\n200.0 2 scf:2\n300.0 3 scf:3\n")
+    pts = summarize.discover_points(b)
+    cpu = next(p for p in pts if p.engine == "cpu")
+    assert cpu.knobs == {"ranks": 64}
+    assert cpu.state == "completed"
+
+
 def test_summary_text_smoke(tmp_path):
     b = _bundle(tmp_path)
     res, out_path = summarize.run_summarize(b, now_iso="t")

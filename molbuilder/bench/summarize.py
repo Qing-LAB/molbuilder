@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .result import (
-    BenchPoint, BenchResult, build_bench_result, parse_scf_timing,
-    parse_util_csv_peak_mem, parse_util_summary,
+    BenchPoint, BenchResult, build_bench_result, parse_mpi_ranks,
+    parse_scf_timing, parse_util_csv_peak_mem, parse_util_summary,
 )
 
 # "the run finished" markers in a SIESTA .out (best-effort; a capped bench
@@ -56,21 +56,12 @@ def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
     return max(cands, key=_idx)
 
 
-def _point_state(d: Path, basename: str) -> str:
-    out = _latest_run_file(d, basename, "out")
-    if out is None:
-        return "unknown"
-    tail = _read(out, tail=16384)
-    if any(m in tail for m in _DONE_MARKERS):
-        return "completed"
-    return "incomplete"          # produced output but no end-of-run marker
-
-
 def parse_point(label: str, d: Path, basename: str, engine: str,
                 knobs: Dict) -> BenchPoint:
     """Parse one point's artifacts (in directory ``d``, output basename
     ``basename``) into a :class:`BenchPoint`."""
     metrics: Dict = {}
+    knobs = dict(knobs)
 
     timing = _latest_run_file(d, basename, "scf-timing.log")
     if timing is not None:
@@ -91,9 +82,23 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
         if peak is not None:
             metrics["peak_rss_gb"] = peak
 
-    return BenchPoint(label=label, engine=engine, knobs=dict(knobs),
-                      metrics=metrics, bound=bound,
-                      state=_point_state(d, basename))
+    # Read the .out once: end-of-run state + (CPU) the np from the
+    # "Running on N nodes" header, which no filename records.
+    out = _latest_run_file(d, basename, "out")
+    out_tail = _read(out, tail=16384) if out is not None else ""
+    if out is None:
+        state = "unknown"
+    elif any(m in out_tail for m in _DONE_MARKERS):
+        state = "completed"
+    else:
+        state = "incomplete"
+    if engine == "cpu" and "ranks" not in knobs:
+        n = parse_mpi_ranks(out_tail)
+        if n is not None:
+            knobs["ranks"] = n
+
+    return BenchPoint(label=label, engine=engine, knobs=knobs,
+                      metrics=metrics, bound=bound, state=state)
 
 
 def discover_points(bundle) -> List[BenchPoint]:

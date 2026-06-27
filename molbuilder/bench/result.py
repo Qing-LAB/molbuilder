@@ -118,6 +118,18 @@ def parse_util_csv_peak_mem(csv_text: str) -> Optional[float]:
     return peak
 
 
+_MPI_RANKS = re.compile(r"Running on\s+(\d+)\s+nodes", re.IGNORECASE)
+
+
+def parse_mpi_ranks(out_text: str) -> Optional[int]:
+    """The MPI rank count from a SIESTA ``.out`` header line
+    ``* Running on <N> nodes in parallel.`` (``None`` if absent).  Used to
+    recover a CPU point's ``np`` -- it is set via ``sbatch -n`` and so is
+    not in any filename."""
+    m = _MPI_RANKS.search(out_text)
+    return int(m.group(1)) if m else None
+
+
 _SACCT_MEM = re.compile(r"\bmem=([0-9.]+)([KMGT])", re.IGNORECASE)
 _SACCT_UNIT = {"K": 1 / 1048576, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 
@@ -289,6 +301,6 @@ def build_bench_result(points: List[BenchPoint], *,
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
     "parse_scf_timing", "parse_util_summary", "parse_util_csv_peak_mem",
-    "parse_sacct_mem", "choose_winner", "recommend_resources",
-    "build_bench_result",
+    "parse_sacct_mem", "parse_mpi_ranks", "choose_winner",
+    "recommend_resources", "build_bench_result",
 ]

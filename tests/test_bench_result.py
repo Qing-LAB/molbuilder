@@ -6,9 +6,15 @@ import pytest
 
 from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
-    parse_sacct_mem, parse_scf_timing, parse_util_csv_peak_mem,
-    parse_util_summary, recommend_resources,
+    parse_mpi_ranks, parse_sacct_mem, parse_scf_timing,
+    parse_util_csv_peak_mem, parse_util_summary, recommend_resources,
 )
+
+
+def test_parse_mpi_ranks():
+    assert parse_mpi_ranks("* Running on 20 nodes in parallel.\n") == 20
+    assert parse_mpi_ranks("header\n* Running on   8 nodes in parallel.") == 8
+    assert parse_mpi_ranks("no parallel line here") is None
 
 
 # --------------------------------------------------------------------- #

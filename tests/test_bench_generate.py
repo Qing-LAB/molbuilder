@@ -251,3 +251,38 @@ def test_shipped_prep_lib_runs_with_no_molbuilder(tmp_path):
     assert (out_dir / "environment.json").is_file()
     sweep = (out_dir / "job-gpu-sweep.sh").read_text()
     assert "K values = 1,2,4,8" in sweep      # divisors of 8
+
+
+def test_shipped_summarize_and_prep_run_shims_standalone(tmp_path):
+    # The bench-summarize + prep-run shims also run with no molbuilder.
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, _ = generate_bench_bundle(fdf, out)
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": str(tmp_path)}
+
+    # fake one swept, completed GPU point
+    d = out_dir / "point-G1K8"
+    d.mkdir()
+    (d / "job-gpu-run0.scf-timing.log").write_text(
+        "1000.0 1 scf:1\n1010.0 2 scf:2\n1020.0 3 scf:3\n1030.0 4 scf:4\n")
+    (d / "job-gpu.monitor.log").write_text(
+        "[t] [UTIL-SUMMARY] cpu mean=40% (..); gpu0 sm mean=91% (..) "
+        "-> GPU-bound (..)\n")
+    (d / "job-gpu-run0.out").write_text(">> End of run: completed\n")
+
+    br = out_dir / "bench-result.json"
+    r1 = subprocess.run(
+        [sys.executable, "bench-summarize", "--bundle", str(out_dir),
+         "--out", str(br)],
+        cwd=str(out_dir), env=env, capture_output=True, text=True)
+    assert r1.returncode == 0, r1.stderr
+    assert br.is_file()
+
+    r2 = subprocess.run(
+        [sys.executable, "prep-run", "--bench-result", str(br),
+         "--script-base", "prod", "--scheduler", "workstation",
+         "--cores-per-socket", "16", "--gpus-per-node", "1",
+         "--gpu-type", "a100", "--out", str(out_dir / "run-production.sh")],
+        cwd=str(out_dir), env=env, capture_output=True, text=True)
+    assert r2.returncode == 0, r2.stderr
+    assert (out_dir / "run-production.sh").is_file()
