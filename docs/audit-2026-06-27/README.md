@@ -262,6 +262,25 @@ don't re-litigate them.
 
 ---
 
+## Part A.5 — Two follow-up questions (2026-06-27)
+
+**Q1: probe K=16 single/dual GPU?** Yes. K=16 → `-c = 24/16 = 1`
+(≤ cores/socket = valid): 16 ranks share one A100 via MPS with OMP off — a
+distinct regime vs ELPA host-OMP. k8 > k4 was observed, so K=16 tests
+whether the curve still climbs. The sweep helper auto-generates every
+G×K, so adding 16 to the default K set yields k16-single (`-n 16`) and
+k16-dual (`-n 32`). Ceiling is K=cores/socket (24 → c=1); K>24 → c=0 =
+invalid. → fix #BENCH-3 (add 16 to `_SWEEP_KS`, note the OMP-off caveat).
+
+**Q2: could the background monitor cause the TIMEOUT?** No — verified.
+`_mb_cleanup` (the wrapper's single `EXIT` trap, `runwrap.py:2409`) does
+`kill "$_monitor_pid"` the instant the wrapper exits; the monitor also
+self-exits within one ≤60 s tick when its `--watch-pid $$` disappears, and
+runs `nice -19`/mostly-asleep. **Decisive evidence:** the GPU jobs ended
+at 2:08 / 2:42 — well under the 4 h walltime; a hung monitor would have
+TIMEOUT'd them too. The CPU TIMEOUT is SIESTA itself still computing at
+4 h (slow diagon + the 240 G run memory-throttled). No code change.
+
 ## Part C — Action plan
 
 Ordered; the Sol data already decided the estimator question (no change).
@@ -281,3 +300,15 @@ Ordered; the Sol data already decided the estimator question (no change).
 10. **B-7** — defer; documented limitation, revisit with a gamma anchor.
 
 Test suite green → commit per logical group → push.
+
+**STATUS (landed 2026-06-27):** items 1–8 shipped across commits
+`bench generate: …` (B-BENCH-1/2/3, B-2, B-3), `runwrap: socket-pin …`
+(B-1, B-4), `monitor: tighten geom …` (B-5, 433 G anchor). #9 (B-6) and
+#10 (B-7 scientific) deferred as documented limitations. Memory model
+validated against the 433 G real peak — no coefficient change.
+
+**Open follow-up (proposed, not built):** GPU-sweep diagnostics — sample
+GPU sm% + CPU% (≈5 s) during a run to distinguish GPU-bound vs host/CPU-
+bound, and refine the sweep K set to socket-divisors (K∈{1,2,4,8,12,24},
+c=24/K) so every point fully uses the socket (K=16→c=1 leaves 8 cores
+idle). See the session discussion.
