@@ -19,7 +19,7 @@ CLI (added to ``molbuilder`` as ``molbuilder monitor``)::
 
     nice -n 19 python -m molbuilder monitor \\
         --out job-run0.out --timing job-run0.scf-timing.log \\
-        --log job.monitor.log --interval 300 --watch-pid $$ &
+        --log job.monitor.log --interval 60 --watch-pid $$ &
 
 Connect a real notifier programmatically::
 
@@ -36,7 +36,15 @@ Design notes:
   wrapper's PID); ``.out`` completion markers are a best-effort hint.
 - The reliable live per-iteration estimate is ``elapsed / n_iters``
   (running average) -- consistent with the benchmark's ``total/N`` metric
-  (§ 11.0); SIESTA's own per-scf time is not trusted.
+  (§ 11.0); SIESTA's own per-scf time is not trusted.  It is reported
+  ONLY while the job is progressing: a stalled job's ``elapsed /
+  frozen_n_iters`` keeps inflating with wall time and is meaningless, so
+  it is suppressed (§ 11.0c).
+- **Quiet when stalled** -- the loop wakes often (default 60 s) but logs
+  a ``[STATUS]`` line only when the SCF iteration count / geometry move /
+  energy / state actually changed.  A persistent stall emits at most one
+  throttled ``[STALL]`` heartbeat per ``--stall-heartbeat`` window
+  instead of flushing a (misleading) timing line every wake.
 """
 
 from __future__ import annotations
@@ -71,15 +79,30 @@ class JobStatus:
     per_iter_s: Optional[float] = None
     energy: Optional[str] = None     # last reported total energy (as printed)
     done_marker: Optional[str] = None  # the .out completion marker, if seen
+    geom_step: Optional[int] = None  # geometry-relaxation move # (CG/FIRE/...)
+    progressing: bool = True         # did the iteration count advance since the
+                                     # previous tick?  Set by run_monitor, not
+                                     # parse_status (which is stateless).  When
+                                     # False the per-iter estimate is suppressed
+                                     # -- ``elapsed / frozen_n_iters`` only
+                                     # inflates and means nothing (§ 11.0c).
 
     def as_text(self) -> str:
-        """One-line human/notifier summary."""
+        """One-line human/notifier summary.
+
+        ``avg_per_iter`` is shown ONLY while the job is progressing: a
+        stalled job's ``elapsed / n_iters`` keeps growing with wall time
+        even though no iteration completed, so reporting it is actively
+        misleading (§ 11.0c).
+        """
         bits = [f"state={self.state}",
                 f"elapsed={self.elapsed_s:.0f}s",
                 f"scf_iters={self.n_iters}"]
+        if self.geom_step is not None:
+            bits.append(f"geom_move={self.geom_step}")
         if self.scf_iter is not None:
             bits.append(f"last_iter={self.scf_iter}")
-        if self.per_iter_s is not None:
+        if self.per_iter_s is not None and self.progressing:
             bits.append(f"avg_per_iter={self.per_iter_s:.2f}s")
         if self.energy is not None:
             bits.append(f"energy={self.energy}")
@@ -95,6 +118,12 @@ _DONE_MARKERS = (
     ">> End of run:",
 )
 _SCF_LINE = re.compile(r"^[ \t]*scf:[ \t]*[0-9]")
+# Geometry-relaxation move marker.  SIESTA prints e.g.
+# ``Begin CG move = 3`` / ``Begin FIRE move = 12`` / ``Begin Broyden
+# move = 5`` / ``Begin Z-matrix opt. move = 1`` at each ionic step.  We
+# take the highest move number seen in the .out tail as the current
+# geometry step (None for single-point runs, which never print it).
+_GEOM_LINE = re.compile(r"Begin\b.*\bmove\b\D*([0-9]+)", re.IGNORECASE)
 
 
 def _tail_bytes(path: Path, nbytes: int = 16384) -> str:
@@ -144,14 +173,21 @@ def parse_status(out_path: Path, timing_path: Path,
         st.per_iter_s = st.elapsed_s / st.n_iters
         st.state = "running"
 
-    # Last energy + done marker from the .out tail.
+    # Last energy + geometry step + done marker from the .out tail.
     tail = _tail_bytes(Path(out_path))
     if tail:
-        for line in reversed(tail.splitlines()):
+        lines = tail.splitlines()
+        for line in reversed(lines):
             if _SCF_LINE.match(line):
                 f = line.split()
                 if len(f) >= 3:
                     st.energy = f[2]
+                break
+        # Highest geometry-move number in the tail (None if not relaxing).
+        for line in reversed(lines):
+            gm = _GEOM_LINE.search(line)
+            if gm:
+                st.geom_step = int(gm.group(1))
                 break
         for m in _DONE_MARKERS:
             if m in tail:
@@ -244,19 +280,39 @@ def _append(log_path: Path, line: str) -> None:
         pass
 
 
+def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
+    """Did real work advance between two ticks?  True iff the SCF
+    iteration count or the geometry-move number went up."""
+    if curr.n_iters > prev.n_iters:
+        return True
+    return (curr.geom_step or 0) > (prev.geom_step or 0)
+
+
 def run_monitor(out: Path, timing: Path, log: Path, *,
-                interval: float = 300.0,
+                interval: float = 60.0,
                 watch_pid: int = 0,
                 start_epoch: Optional[float] = None,
                 max_ticks: Optional[int] = None,
+                stall_heartbeat_s: float = 600.0,
                 sleep: Callable[[float], None] = time.sleep,
                 clock: Callable[[], float] = time.time) -> JobStatus:
     """Periodically parse + log + notify until the watched job ends.
 
     Returns the final :class:`JobStatus`.  ``max_ticks`` bounds the loop
     (tests pass a small value); ``sleep``/``clock`` are injectable for
-    deterministic testing.  One status line per tick is appended to
-    ``log`` and every registered notifier fires (start / tick / finish).
+    deterministic testing.
+
+    Wakes every ``interval`` seconds (short, so progress is reported
+    promptly) but is QUIET when nothing changed (§ 11.0c): a ``[STATUS]``
+    line + ``tick`` notification fire only when the job actually advanced
+    (SCF iteration or geometry move) or its energy/state changed.  A
+    long stall emits at most one throttled ``[STALL]`` heartbeat every
+    ``stall_heartbeat_s`` seconds -- with NO per-iteration estimate,
+    because ``elapsed / frozen_n_iters`` only inflates and is meaningless
+    when no iteration has completed.  This keeps a stalled job from
+    flushing a misleading timing line on every wake.  Set
+    ``stall_heartbeat_s <= 0`` to silence the stall heartbeat entirely
+    (the log then goes quiet until the job next progresses or ends).
     """
     out, timing, log = Path(out), Path(timing), Path(log)
     start = clock() if start_epoch is None else start_epoch
@@ -268,6 +324,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                  f"{st0.as_text()}")
     _fire(st0, "start")
 
+    prev = st0
+    last_emit = start          # wall time of the last [STATUS]/[STALL] line
     ticks = 0
     while True:
         sleep(interval)
@@ -277,14 +335,43 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         st = parse_status(out, timing, start, now)
         if not alive:
             st.state = "gone" if st.state != "done" else "done"
-        _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
+
+        st.progressing = _progressed(st, prev)
+
         if not alive or st.state == "done":
+            # Terminal: the cumulative ``elapsed / n_iters`` over the whole
+            # run IS a valid final average, so report it (force-show even
+            # though this last tick added no new iteration).
+            st.progressing = True
+            _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             _append(log, f"[{_iso(now)}] [MONITOR] job ended "
                          f"(watch_pid alive={alive}, marker="
                          f"{st.done_marker or '-'}); final notify + exit")
             _fire(st, "finish")
             return st
-        _fire(st, "tick")
+
+        if not st.progressing:
+            # (1) Never report the wrong estimate while LIVE + stalled:
+            # elapsed / frozen-iters only inflates with wall time.
+            st.per_iter_s = None
+
+        changed = (st.progressing
+                   or st.energy != prev.energy
+                   or st.state != prev.state)
+        if changed:
+            _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
+            _fire(st, "tick")
+            last_emit = now
+        elif stall_heartbeat_s > 0 and now - last_emit >= stall_heartbeat_s:
+            # (2) Throttled liveness ping only -- no iteration-time message.
+            _append(log, f"[{_iso(now)}] [STALL] no SCF/geometry progress "
+                         f"for {now - last_emit:.0f}s; state={st.state} "
+                         f"scf_iters={st.n_iters} "
+                         f"(alive={alive})")
+            _fire(st, "tick")
+            last_emit = now
+
+        prev = st
         if max_ticks is not None and ticks >= max_ticks:
             return st
 
@@ -340,8 +427,16 @@ def main(argv=None) -> int:
                    help="per-run .scf-timing.log (iteration COUNT)")
     p.add_argument("--log", required=True,
                    help="append status lines here (<basename>.monitor.log)")
-    p.add_argument("--interval", type=float, default=300.0,
-                   help="seconds between wakes (default 300)")
+    p.add_argument("--interval", type=float, default=60.0,
+                   help="seconds between wakes (default 60); a stalled job "
+                        "stays quiet -- see --stall-heartbeat")
+    p.add_argument("--stall-heartbeat", type=float, default=600.0,
+                   dest="stall_heartbeat_s",
+                   help="when the job is making no SCF/geometry progress, "
+                        "emit at most one liveness ping this often "
+                        "(seconds, default 600); no per-iter timing is "
+                        "printed while stalled.  Use 0 to silence the "
+                        "stall heartbeat entirely")
     p.add_argument("--watch-pid", type=int, default=0, dest="watch_pid",
                    help="stop when this PID disappears; 0 = until done")
     p.add_argument("--nice", type=int, default=19, dest="nice_level",
@@ -353,7 +448,8 @@ def main(argv=None) -> int:
         pass
     register_notifier(make_log_notifier(a.log))
     run_monitor(a.out, a.timing, a.log,
-                interval=a.interval, watch_pid=a.watch_pid)
+                interval=a.interval, watch_pid=a.watch_pid,
+                stall_heartbeat_s=a.stall_heartbeat_s)
     return 0
 
 

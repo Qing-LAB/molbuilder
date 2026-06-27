@@ -704,7 +704,7 @@ runwrap.py `_mb_scf_tee_block`): every line goes to the `.out`, and every
 (`date +%s.%N`) written to **`<basename>-runN.scf-timing.log`**
 (`<epoch.ns> <iter#> <scf line>`). It is **synchronous with SIESTA's
 stdout** (in the launch pipe). This is DISTINCT from `mb_monitor.py`, the
-`nice -19` 300-second **heartbeat** that watches job liveness for
+`nice -19` **heartbeat** (§ 11.0c) that watches job liveness for
 notifications and never writes the timing log. The headline `total/N`
 (§ 11.0) is computed independently: the wrapper brackets the launch with
 its own `date +%s.%N` (total wall) and divides by the COUNT of `scf:`
@@ -716,6 +716,34 @@ per-iteration). Forward-looking: a Python **`molbuilder.monitor`** module
 (item F) parses these artifacts periodically and a **notifier hook**
 pushes lightweight status/result summaries (webhook/email) so the user
 needn't log in to grep — the front-end of the job-monitor/watcher surface.
+
+### 11.0c Background monitor (`mb_monitor.py`) — wake cadence + stall handling
+`mb_monitor.py` (the shipped, stdlib-only copy of `molbuilder/monitor.py`)
+wakes every **`--interval` seconds (default 60)** and, on each wake, does
+cheap tail-reads of the `.out` + a count of the `.scf-timing.log`. Two
+rules keep it useful instead of noisy:
+
+1. **No misleading per-iteration estimate.** The reliable live metric is
+   the running average `elapsed / n_iters` (§ 11.0). But when the job is
+   **not progressing** (the SCF iteration count and the geometry-move
+   number — parsed from `Begin … move = N` — are both unchanged since the
+   previous wake), `elapsed` keeps growing while `n_iters` is frozen, so
+   that ratio only **inflates** and means nothing. The monitor therefore
+   **suppresses `avg_per_iter` entirely while live + stalled** and only
+   shows it again once iterations resume (a *terminal* done/gone job does
+   report its true whole-run average).
+2. **Quiet when nothing changed.** A `[STATUS]` line + `tick`
+   notification fire **only** when the job actually advanced (SCF iter /
+   geometry move) or its energy/state changed — so a fast 60 s cadence
+   does not flush a line every wake. A persistent stall emits at most one
+   throttled **`[STALL]`** liveness ping per **`--stall-heartbeat` window
+   (default 600 s)**, carrying *no* timing — just enough to distinguish a
+   stalled job from a dead monitor. `--stall-heartbeat 0` silences even
+   that (the log goes quiet until the job next progresses or ends).
+
+Env overrides on the generated wrapper: `MB_MONITOR_INTERVAL` (wake
+seconds) and `MB_MONITOR_STALL_HEARTBEAT` (heartbeat seconds);
+`MB_MONITOR=0` disables the monitor outright.
 
 ### 11.1 Correctness gate ("is the GPU actually doing the work?")
 After a short capped run, assert from the parser's `runtime_info`

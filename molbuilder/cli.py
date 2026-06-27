@@ -1516,8 +1516,14 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
 @click.option("--log", "log_path", required=True,
               type=click.Path(path_type=Path),
               help="append status lines here (e.g. <basename>.monitor.log)")
-@click.option("--interval", type=click.FloatRange(min=1.0), default=300.0,
-              show_default=True, help="seconds between wakes")
+@click.option("--interval", type=click.FloatRange(min=1.0), default=60.0,
+              show_default=True, help="seconds between wakes (a stalled job "
+                                      "stays quiet -- see --stall-heartbeat)")
+@click.option("--stall-heartbeat", "stall_heartbeat_s",
+              type=click.FloatRange(min=0.0), default=600.0, show_default=True,
+              help="while the job makes no SCF/geometry progress, emit at "
+                   "most one liveness ping this often (no per-iter timing "
+                   "is printed while stalled); 0 = silence it entirely")
 @click.option("--watch-pid", type=int, default=0,
               help="stop when this PID (the job wrapper) disappears; "
                    "0 = run until a .out completion marker")
@@ -1525,7 +1531,8 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
               help="self-lower OS priority by this much so the monitor "
                    "never competes with compute ranks on the same node")
 def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
-                interval: float, watch_pid: int, nice_level: int) -> int:
+                interval: float, stall_heartbeat_s: float,
+                watch_pid: int, nice_level: int) -> int:
     """Periodically parse the running job's artifacts, append a status
     line, and fire notifier hooks -- the front end of the job-monitor /
     notifier surface (docs/protocols/slurm-integration.md § 11.0b).
@@ -1544,7 +1551,8 @@ def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
         pass
     _mon.register_notifier(_mon.make_log_notifier(log_path))
     _mon.run_monitor(out_path, timing_path, log_path,
-                     interval=interval, watch_pid=watch_pid)
+                     interval=interval, watch_pid=watch_pid,
+                     stall_heartbeat_s=stall_heartbeat_s)
     return 0
 
 

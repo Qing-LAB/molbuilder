@@ -122,22 +122,112 @@ def test_run_monitor_stops_when_watch_pid_gone(tmp_path):
     assert "job ended" in log.read_text()
 
 
-def test_run_monitor_ticks_until_max(tmp_path):
+def test_run_monitor_logs_each_progress_tick(tmp_path):
+    # A PROGRESSING job (the timing log grows by one iter every wake)
+    # logs a [STATUS] line + fires a tick on each advance, with the
+    # per-iter average shown.
     out = tmp_path / "j.out"
     out.write_text("scf:   1   -100.5\n")          # no done marker
     timing = tmp_path / "j.scf-timing.log"
     timing.write_text("100.0 1 scf: 1 -100.5\n")
     log = tmp_path / "j.monitor.log"
+    step = {"n": 1}
+
+    def _grow(_):                       # injected sleep: advance the run
+        step["n"] += 1
+        with timing.open("a", encoding="utf-8") as fh:
+            fh.write(f"{100.0 + step['n']} {step['n']} scf: {step['n']}\n")
+
     ticks = []
     monitor.register_notifier(
         lambda st, ev: ticks.append(ev) if ev == "tick" else None)
     monitor.run_monitor(
         out, timing, log, interval=1, watch_pid=0,   # 0 => never "gone"
-        sleep=lambda s: None, max_ticks=3,
+        sleep=_grow, max_ticks=3,
         clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0]),
     )
+    text = log.read_text()
     assert len(ticks) == 3
-    assert log.read_text().count("[STATUS]") == 3
+    assert text.count("[STATUS]") == 3
+    assert "avg_per_iter=" in text                  # progressing -> shown
+
+
+def test_run_monitor_quiet_when_stalled(tmp_path):
+    # A STALLED live job (no new iters, no energy change) must NOT flush a
+    # [STATUS]/timing line on every wake, and (heartbeat window not yet
+    # reached) emits nothing at all.
+    out = tmp_path / "j.out"
+    out.write_text("scf:   1   -100.5\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 1 scf: 1 -100.5\n")    # frozen forever
+    log = tmp_path / "j.monitor.log"
+    ticks = []
+    monitor.register_notifier(
+        lambda st, ev: ticks.append(ev) if ev == "tick" else None)
+    monitor.run_monitor(
+        out, timing, log, interval=1, watch_pid=0,
+        sleep=lambda s: None, max_ticks=4,
+        stall_heartbeat_s=1000.0,                   # never reached here
+        clock=_fake_clock([0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0]),
+    )
+    text = log.read_text()
+    assert "[STATUS]" not in text                   # no spam
+    assert "[STALL]" not in text                    # window not reached
+    assert ticks == []                              # no tick notifications
+
+
+def test_run_monitor_stall_heartbeat_is_throttled(tmp_path):
+    # A long stall emits at most one [STALL] heartbeat per window, with NO
+    # per-iteration estimate in it.
+    out = tmp_path / "j.out"
+    out.write_text("scf:   1   -100.5\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 1 scf: 1 -100.5\n")
+    log = tmp_path / "j.monitor.log"
+    monitor.run_monitor(
+        out, timing, log, interval=1, watch_pid=0,
+        sleep=lambda s: None, max_ticks=3,
+        stall_heartbeat_s=5.0,
+        # start=0 (last_emit=0); ticks at now=3 (<5), 6 (>=5 -> STALL),
+        # 9 (6+3<5+6 -> no).  Exactly one heartbeat.
+        clock=_fake_clock([0.0, 0.0, 0.0, 3.0, 6.0, 9.0]),
+    )
+    text = log.read_text()
+    stall_lines = [ln for ln in text.splitlines() if "[STALL]" in ln]
+    assert len(stall_lines) == 1
+    assert "avg_per_iter=" not in stall_lines[0]    # no timing in the ping
+    assert "[STATUS]" not in text
+
+
+def test_run_monitor_stall_heartbeat_zero_is_silent(tmp_path):
+    # --stall-heartbeat 0 -> no [STALL] line ever; a stalled live job is
+    # completely quiet until it progresses or ends.
+    out = tmp_path / "j.out"
+    out.write_text("scf:   1   -100.5\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 1 scf: 1 -100.5\n")
+    log = tmp_path / "j.monitor.log"
+    monitor.run_monitor(
+        out, timing, log, interval=1, watch_pid=0,
+        sleep=lambda s: None, max_ticks=5,
+        stall_heartbeat_s=0.0,
+        clock=_fake_clock([0.0, 0.0, 0.0, 100.0, 200.0, 300.0, 400.0, 500.0]),
+    )
+    text = log.read_text()
+    assert "[STALL]" not in text
+    assert "[STATUS]" not in text                   # nothing changed, ever
+
+
+def test_parse_status_geometry_move(tmp_path):
+    # The geometry-relaxation move number is parsed from the .out tail
+    # (None for single-point runs); the highest move wins.
+    out = tmp_path / "j.out"
+    out.write_text("Begin CG move = 1\nscf:   3   -100.7\n"
+                   "Begin CG move = 3\nscf:   5   -100.9\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 5 scf: 5 -100.9\n")
+    st = monitor.parse_status(out, timing, 0.0, 10.0)
+    assert st.geom_step == 3
 
 
 # --------------------------------------------------------------------- #
