@@ -362,6 +362,37 @@ def test_runtime_mem_audit_awk_reproduces_the_formula(project):
         assert int(out.stdout.strip()) == _py(n), f"mismatch at n={n}"
 
 
+def test_workstation_gpu_knobs_match_launcher_contract(project):
+    # CONTRACT: the env vars the bench/run adapter emits for a workstation
+    # GPU point MUST be exactly the ones the generated launcher reads, or
+    # the rank/omp count is silently wrong (params valid bash, wrong
+    # meaning).  This pins producer (adapter) <-> consumer (launcher).
+    from molbuilder.bench.adapters import WorkstationAdapter
+    from molbuilder.bench.environment import Environment, Topology
+
+    fdf = project / "g.fdf"
+    fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",
+                              cpus_per_task=6)
+    launcher = (project / "g.run.sh").read_text()
+    # the launcher actually honours these on a workstation (no SLURM):
+    assert "MOLBUILDER_MPI_NP" in launcher
+    assert "MOLBUILDER_OMP_NUM_THREADS" in launcher
+
+    env = Environment(scheduler="workstation",
+                      topology=Topology(cores_per_socket=24, gpus_per_node=1,
+                                        gpu_type="a100"))
+    sweep = WorkstationAdapter().format_bench(env)["job-gpu-sweep.sh"]
+    # the adapter drives those SAME knobs (+ CUDA_VISIBLE_DEVICES for G):
+    assert "MOLBUILDER_MPI_NP=" in sweep
+    assert "MOLBUILDER_OMP_NUM_THREADS=" in sweep
+    assert "CUDA_VISIBLE_DEVICES=" in sweep
+    run = WorkstationAdapter().format_run(
+        {"engine": "gpu", "knobs": {"gpus": 1, "ranks_per_gpu": 8}}, env,
+        script_base="prod")["run-production.sh"]
+    assert "MOLBUILDER_MPI_NP=8" in run
+
+
 def test_wrapper_gpu_has_no_mem_audit(project):
     # GPU jobs size memory from gpu.mem, not the CPU model -> no audit.
     fdf = project / "job.fdf"

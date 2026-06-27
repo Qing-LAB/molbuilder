@@ -462,6 +462,31 @@ its adapter (§ 5.4), and writes the production run script. No hand editing.
   uses the socket (`K·c = cores`, `c = cores // K`). A K that does not
   divide leaves cores idle (e.g. 24/16 → c=1, 8 idle); the helper flags
   the utilization rather than silently wasting cores.
+- **`threads_per_core`** is detected and recorded but **not** used in the
+  sizing: `c` is a count of **physical cores** per rank (1 OMP thread
+  each — SIESTA's OMP does not benefit from hyper-threading). It is kept
+  in the data for other consumers / future HT-aware allocation.
+
+### § 8.1 Generated-parameter contract (producer ↔ consumer)
+
+The adapter is the *producer* of launch parameters; the launcher
+(`runwrap`'s `.run.sh`) is the *consumer*. They are coupled by **exact
+names**, so a parameter can be valid shell yet mean nothing if the names
+drift. The verified contract (a test pins it):
+
+| Target | Adapter emits | Launcher reads → effect |
+|---|---|---|
+| SLURM | `sbatch -n K·G` | `SLURM_NTASKS` → MPI ranks |
+| SLURM | `sbatch -c c` | `SLURM_CPUS_PER_TASK` → OMP threads |
+| SLURM | `--gres=gpu:<t>:G` | `CUDA_VISIBLE_DEVICES` → visible GPUs → `K = ranks/GPU` |
+| workstation | `MOLBUILDER_MPI_NP=K·G` | → `_gpu_mpi_np_default` → `_mpi_np` (ranks) |
+| workstation | `MOLBUILDER_OMP_NUM_THREADS=c` | → `_omp_default` → `_omp_threads` |
+| workstation | `CUDA_VISIBLE_DEVICES=0..G-1` | counted → visible GPUs → `K` |
+| CPU (either) | `sbatch -n np` / `MB_NP=np` | `SLURM_NTASKS` / `MB_NP` → ranks |
+
+The SLURM mappings are empirically confirmed by the Sol runs (gpu-k4 →
+4 ranks, gpu-k8 → 8 ranks); the workstation mappings are traced through
+the launcher and locked by `test_workstation_gpu_knobs_match_launcher_contract`.
 
 ---
 
