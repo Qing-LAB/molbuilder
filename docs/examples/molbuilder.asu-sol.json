@@ -30,6 +30,12 @@
       "time": "0-04:00:00",
       "cpus_per_task": 8,
       "mem": null
+    },
+    "_comment_mem_model": "System-aware --mem estimator for CPU SIESTA jobs (molbuilder/siesta/memory.py).  When `defaults.mem` is null AND the job is a SIESTA .fdf, molbuilder estimates peak RSS from N_orb^2 x k-points (the dense diagonalization) + mesh + per-rank replication, x safety, capped at node_mem_gb.  This is what stops a high-np job (e.g. BDT-Au at np=64 needs ~250-300 GB) from inheriting Sol's tiny per-core default and OOM-ing.  node_mem_gb=500: Sol `public` nodes have ~503 GB (515558 MB).  Coefficients are heuristic -- tune against a successful run's `sacct -o MaxRSS`.  An explicit --mem always overrides; GPU jobs use gpu.mem instead.",
+    "mem_model": {
+      "node_mem_gb": 500,
+      "safety": 1.3,
+      "extra_gb": 0
     }
   }
 }

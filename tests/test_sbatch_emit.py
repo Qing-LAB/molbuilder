@@ -281,3 +281,63 @@ def test_emit_sbatch_false_suppresses(project):
     runwrap.write_run_wrapper(fdf, mpi_np=4, emit_sbatch=False)
     assert (project / "x.run.sh").is_file()
     assert not (project / "x.sbatch").exists()
+
+
+def _min_cpu_fdf(tmp_path):
+    """Minimal SIESTA .fdf carrying the fields the mem estimator reads."""
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(
+        "SystemName test\n"
+        "NumberOfAtoms 100\n"
+        "NumberOfSpecies 1\n"
+        "PAO.BasisSize DZP\n"
+        "MeshCutoff 300 Ry\n"
+        "LatticeConstant 1.0 Ang\n"
+        "%block LatticeVectors\n"
+        "20.0 0.0 0.0\n0.0 20.0 0.0\n0.0 0.0 20.0\n"
+        "%endblock LatticeVectors\n"
+        "%block kgrid_Monkhorst_Pack\n"
+        "2 0 0 0.0\n0 2 0 0.0\n0 0 1 0.0\n"
+        "%endblock kgrid_Monkhorst_Pack\n"
+        "%block ChemicalSpeciesLabel\n1 6 C\n%endblock ChemicalSpeciesLabel\n"
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        + "".join(f"{i*0.1} 0.0 0.0 1\n" for i in range(100))
+        + "%endblock AtomicCoordinatesAndAtomicSpecies\n"
+    )
+    return fdf
+
+
+def test_cpu_siesta_mem_auto_estimated_when_unset(tmp_path):
+    """A CPU SIESTA .fdf with no explicit/config mem gets a system-aware
+    --mem (prevents the high-np OOM), with the breakdown as a comment."""
+    sched = dict(_SCHED)
+    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
+    sched["mem_model"] = {"node_mem_gb": 500}
+    fdf = _min_cpu_fdf(tmp_path)
+    txt = render_sbatch(fdf, sched, ntasks=64)
+    assert "#SBATCH --mem=" in txt
+    assert "auto-estimated from problem size" in txt
+    # more ranks -> more replication -> >= memory
+    lo = render_sbatch(fdf, sched, ntasks=8)
+    def _mem(t): return int([l for l in t.splitlines()
+                             if l.startswith("#SBATCH --mem=")][0]
+                            .split("=")[1].rstrip("G"))
+    assert _mem(txt) >= _mem(lo)
+
+
+def test_explicit_mem_skips_estimate(tmp_path):
+    sched = dict(_SCHED); sched["defaults"] = dict(_SCHED["defaults"], mem=None)
+    fdf = _min_cpu_fdf(tmp_path)
+    txt = render_sbatch(fdf, sched, ntasks=64, mem="120G")
+    assert "#SBATCH --mem=120G" in txt
+    assert "auto-estimated" not in txt
+
+
+def test_node_mem_cap_clamps_estimate(tmp_path):
+    sched = dict(_SCHED); sched["defaults"] = dict(_SCHED["defaults"], mem=None)
+    sched["mem_model"] = {"node_mem_gb": 16}     # tiny cap
+    fdf = _min_cpu_fdf(tmp_path)
+    txt = render_sbatch(fdf, sched, ntasks=64)
+    mem = int([l for l in txt.splitlines()
+               if l.startswith("#SBATCH --mem=")][0].split("=")[1].rstrip("G"))
+    assert mem <= 16

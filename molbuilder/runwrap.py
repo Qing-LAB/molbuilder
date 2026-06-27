@@ -2844,12 +2844,39 @@ def render_sbatch(script_path: Path,
     # default is a tight 24 GB/GPU), else ``defaults.mem``.  CPU jobs use
     # ``defaults.mem`` (null => the generous partition default -- do NOT cap
     # a 64-rank CPU job at a small total).
+    mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
     elif gpu:
         memory = gpu_cfg.get("mem") or defaults.get("mem")
     else:
         memory = defaults.get("mem")
+        # CPU SIESTA job with no explicit / config mem: estimate it from
+        # the problem size so a large job doesn't inherit the tiny
+        # partition default and OOM (the np=64 BDT-Au lesson -- 64 ranks
+        # needed ~250 GB but the bare default killed it).  Best-effort:
+        # estimation NEVER blocks emission; on any failure we fall back
+        # to the partition default.  See slurm-integration.md (mem model)
+        # and molbuilder/siesta/memory.py.
+        if memory is None and Path(script_path).suffix.lower() == ".fdf":
+            try:
+                from .siesta.memory import (estimate_siesta_memory,
+                                            MemModel)
+                _model = MemModel.from_config(scheduler.get("mem_model"))
+                _est = estimate_siesta_memory(
+                    script_path, ntasks, model=_model,
+                    psml_lib=Path(script_path).parent)
+                # Only emit when we actually parsed a system; a stub/
+                # unparseable .fdf yields n_orb=0 -> floor, which is
+                # meaningless.  Fall back to the partition default there.
+                if _est.n_orb > 0:
+                    memory = f"{_est.request_gb}G"
+                    mem_comment = (
+                        f"# --mem auto-estimated from problem size "
+                        f"({_est.breakdown_str()}); tune via "
+                        f"scheduler.mem_model or override with --mem.")
+            except Exception:
+                memory = None   # fall back to the partition default
 
     site = "asu-sol" if partition == "public" else "custom"
     lines: List[str] = [
@@ -2879,6 +2906,8 @@ def render_sbatch(script_path: Path,
     if exclusive:
         lines.append("#SBATCH --exclusive")
     if memory:
+        if mem_comment:
+            lines.append(mem_comment)
         lines.append(f"#SBATCH --mem={memory}")
     lines.append("#SBATCH -o slurm.%j.out")
     lines.append("#SBATCH -e slurm.%j.err")

@@ -882,6 +882,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
     directives = _as_obj("directives")
     gpu        = _as_obj("gpu")
     defaults   = _as_obj("defaults")
+    mem_model  = _as_obj("mem_model")
 
     # Refuse-to-emit: slurm needs a partition + qos (§ 10).
     for required in ("partition", "qos"):
@@ -960,11 +961,24 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"(e.g. \"120G\") or null; got {type(defaults['mem']).__name__}."
         )
 
+    # mem_model: tunable coefficients for the CPU --mem estimator
+    # (molbuilder/siesta/memory.py).  All values must be numeric; the
+    # estimator's MemModel.from_config is tolerant of missing keys, so we
+    # only type-check what IS present.
+    for k, v in mem_model.items():
+        if v is not None and not isinstance(v, (int, float)) \
+                or isinstance(v, bool):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'scheduler.mem_model.{k}' must be a "
+                f"number; got {type(v).__name__}."
+            )
+
     return {
         "kind":       kind,
         "directives": directives,
         "gpu":        gpu,
         "defaults":   defaults,
+        "mem_model":  mem_model,
     }
 
 
