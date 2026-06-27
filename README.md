@@ -809,6 +809,50 @@ python -m molbuilder envs validate molbuilder-siesta-gpu         # post-install 
 Full engineering documentation:
 [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
 
+### Generating a CPU-vs-GPU comparison — `molbuilder bench generate`
+
+Before committing a long production run, you usually want to know
+whether **CPU (many MPI ranks)** or **GPU (ELPA-CUDA)** is faster for
+*your* system on *your* cluster — single-GPU does not always beat a full
+CPU node for an O(N³) diagonalization.  `molbuilder bench generate`
+takes one `.fdf` and emits two self-contained, directly comparable
+benchmark jobs:
+
+```bash
+python -m molbuilder bench generate my-system.fdf
+# -> my-system.bench/
+#      job-cpu.{fdf,run.sh,sbatch}   plain diagon  -> molbuilder-siesta
+#      job-gpu.{fdf,run.sh,sbatch}   Diag.ELPA.GPU -> molbuilder-siesta-gpu
+#      job-gpu-sweep.sh              GPU G×K sweep helper (self-contained)
+#      README.md                     how to submit + read the result
+```
+
+Both jobs are made **cold and comparable** (`MaxSCFIterations 5`,
+`DM.UseSaveDM .false.`, relaxation steps zeroed); everything else is
+byte-for-byte your input fdf.  You measure both, then run production
+with the winner — molbuilder makes no automatic recommendation.
+
+Tuning is done at submit time (the launcher auto-adapts, no regen):
+
+```bash
+cd my-system.bench
+sbatch job-cpu.sbatch              # default -n (CPU ranks); --mem auto-estimated
+sbatch -n 32 job-cpu.sbatch        # try another rank count
+
+./job-gpu-sweep.sh                 # print the valid G×K grid as sbatch lines
+./job-gpu-sweep.sh 2 4             # the one line for 2 GPUs × 4 ranks/GPU
+./job-gpu-sweep.sh --submit        # submit the whole valid sweep
+```
+
+The GPU sweep spans **G** (GPUs, via `--gres=gpu:a100:G`) × **K** (MPI
+ranks per GPU, via `-n K*G` with `-c cores_per_socket/K`).  The helper
+bakes in the node topology (`--gpus-per-node`, `--cores-per-socket` at
+generate time) and flags the caveats: multi-GPU (G≥2) is **not**
+guaranteed faster (ELPA-CUDA, no NCCL — measure), and `--gpu-bind` is
+off-limits for G≥2 (it breaks the per-rank launcher).  Read the per-bundle
+`README.md` and `docs/protocols/slurm-integration.md` § 11.0 for the
+timing methodology.
+
 ### Performance benchmarking — `molbuilder bench siesta-gpu`
 
 Every generated SIESTA `.fdf` carries a `BENCH-MARKS` annotation

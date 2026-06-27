@@ -179,4 +179,85 @@ def cmd_siesta_gpu(project_dir: str,
     click.echo(f"csv: {csv}")
 
 
+@bench_group.command("generate",
+                     short_help="emit CPU-only + GPU-only benchmark bundles "
+                                "from one .fdf")
+@click.argument("fdf", type=click.Path(exists=True, dir_okay=False,
+                                       resolve_path=True))
+@click.option("--out", "out_dir", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="output directory (default: <fdf-stem>.bench next to the "
+                   "input).")
+@click.option("--cpu-np", type=int, default=64, show_default=True,
+              help="default MPI rank count baked into job-cpu.sbatch "
+                   "(override at submit: sbatch -n <np> job-cpu.sbatch).")
+@click.option("--gpu-gpus", "gpu_gpus", type=int, default=1, show_default=True,
+              help="default GPU count (G) baked into job-gpu.sbatch.")
+@click.option("--gpu-k", type=int, default=4, show_default=True,
+              help="default MPI ranks per GPU (K); job-gpu gets -n K*G, "
+                   "-c cores_per_socket/K.")
+@click.option("--gpus-per-node", type=int, default=4, show_default=True,
+              help="node topology baked into the sweep helper (GPUs/node).")
+@click.option("--cores-per-socket", type=int, default=24, show_default=True,
+              help="node topology baked into the sweep helper (cores/socket; "
+                   "bounds K*c).")
+@click.option("--cpu-block-size", type=int, default=8, show_default=True,
+              help="ScaLAPACK BlockSize for the CPU bundle.")
+@click.option("--gpu-block-size", type=int, default=256, show_default=True,
+              help="BlockSize for the GPU (ELPA-CUDA) bundle.")
+@click.option("--max-scf", type=int, default=5, show_default=True,
+              help="MaxSCFIterations cap (both bundles run cold + capped "
+                   "for a comparable, quick measurement).")
+def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
+                 gpu_gpus: int, gpu_k: int, gpus_per_node: int,
+                 cores_per_socket: int, cpu_block_size: int,
+                 gpu_block_size: int, max_scf: int) -> None:
+    """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
+
+    Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
+    ``job-gpu`` (``Diag.ELPA.GPU`` -> ``molbuilder-siesta-gpu``), each a
+    full ``.fdf`` + ``.run.sh`` (+ ``.sbatch`` when a scheduler is
+    configured), plus a self-contained ``job-gpu-sweep.sh`` helper and a
+    README.  Both are cold + SCF-capped so CPU and GPU are directly
+    comparable; you measure and pick the mechanism for the real run.
+    """
+    from ..runtime_config import RuntimeConfigError
+    from .generate import generate_bench_bundle
+
+    if gpu_k < 1 or gpu_k > cores_per_socket:
+        click.echo(f"ERROR: --gpu-k must be 1..{cores_per_socket} "
+                   f"(cores/socket); got {gpu_k}.", err=True)
+        raise SystemExit(2)
+
+    try:
+        out, written = generate_bench_bundle(
+            fdf, out_dir,
+            cpu_np=cpu_np, gpu_gpus=gpu_gpus, gpu_k=gpu_k,
+            gpus_per_node=gpus_per_node, cores_per_socket=cores_per_socket,
+            cpu_block_size=cpu_block_size, gpu_block_size=gpu_block_size,
+            max_scf=max_scf,
+        )
+    except (ValueError, OSError, RuntimeConfigError) as e:
+        click.echo(f"ERROR: {e}", err=True)
+        raise SystemExit(2)
+
+    gpu_c = max(1, cores_per_socket // gpu_k)
+    click.echo("==== molbuilder bench generate ====")
+    click.echo(f"input  : {fdf}")
+    click.echo(f"out    : {out}")
+    click.echo(f"job-cpu: plain diagon, default -n {cpu_np}")
+    click.echo(f"job-gpu: ELPA-CUDA, default G={gpu_gpus} K={gpu_k} "
+               f"(-n {gpu_k*gpu_gpus} -c {gpu_c})")
+    has_sbatch = any(p.suffix == ".sbatch" for p in written)
+    if not has_sbatch:
+        click.echo("note   : no scheduler configured -> only .run.sh emitted "
+                   "(no .sbatch); see slurm-integration.md.")
+    click.echo("")
+    for p in written:
+        click.echo(f"  {p.relative_to(out)}")
+    click.echo("")
+    click.echo("Next: read README.md, then `sbatch job-cpu.sbatch` and "
+               "`./job-gpu-sweep.sh` in the out dir.")
+
+
 __all__ = ["bench_group"]
