@@ -109,8 +109,20 @@ def test_gpu_exclusive_defaults_from_config(tmp_path):
 def test_gpu_count_defaults_to_ntasks(tmp_path):
     fdf = tmp_path / "g.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)  # 1 rank/GPU
+    txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)  # 1 rank/GPU default
     assert "#SBATCH --gres=gpu:a100:3" in txt
+
+
+def test_gpu_ranks_independent_of_gpu_count(tmp_path):
+    """K ranks sharing FEWER GPUs via MPS: -n is the RANK count, --gres is
+    the GPU count -- they are independent (the load-balance model)."""
+    fdf = tmp_path / "g.fdf"
+    fdf.write_text("Diag.ELPA.GPU .true.\n")
+    txt = render_sbatch(fdf, _SCHED, ntasks=8, cpus_per_task=3,
+                        gpu=True, gpu_count=1)        # 8 ranks, 1 GPU
+    assert "#SBATCH -n 8" in txt                       # ranks, NOT 1
+    assert "#SBATCH -c 3" in txt
+    assert "#SBATCH --gres=gpu:a100:1" in txt
 
 
 def test_mem_emitted_when_set(tmp_path):
@@ -200,14 +212,29 @@ def test_wrapper_gpu_fdf_emits_gres(project):
     assert "#SBATCH --gres-flags=enforce-binding" in txt
 
 
+def test_wrapper_gpu_K_ranks_share_one_gpu(project):
+    """The benchmark case: 8 (or 4) ranks share ONE A100 via MPS ->
+    -n must be the rank count (8), --gres the GPU count (1)."""
+    fdf = project / "gpu-k8.fdf"
+    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=8, gres="gpu:a100:1",
+                              cpus_per_task=3, exclusive=False)
+    txt = (project / "gpu-k8.sbatch").read_text()
+    assert "#SBATCH -n 8" in txt                  # ranks (was wrongly 1)
+    assert "#SBATCH -c 3" in txt
+    assert "#SBATCH --gres=gpu:a100:1" in txt     # one GPU, shared
+
+
 def test_gpu_fdf_auto_gres_without_cli(project):
     """A .fdf with Diag.ELPA.GPU .true. emits a GPU header even without
-    --gres (default type/count from config; 1 rank/GPU)."""
+    --gres: the GPU count defaults to ONE (ranks share it via MPS) and
+    -n is the rank count -- not 1-rank-per-GPU."""
     fdf = project / "auto.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
     runwrap.write_run_wrapper(fdf, mpi_np=2)
     txt = (project / "auto.sbatch").read_text()
-    assert "#SBATCH --gres=gpu:a100:2" in txt
+    assert "#SBATCH --gres=gpu:a100:1" in txt      # default 1 GPU
+    assert "#SBATCH -n 2" in txt                    # ranks share it
 
 
 def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):

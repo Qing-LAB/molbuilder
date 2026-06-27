@@ -249,7 +249,7 @@ bash <basename>.run.sh "$@"
 | `-p` / `-q` | `scheduler.directives` (or `gpu.partition` for GPU) | stable per site |
 | `--mail-*`, `--export` | `scheduler.directives` | stable |
 | `-o` / `-e` | fixed `slurm.%j.{out,err}` | ASU convention |
-| `-n` ntasks | CLI `--np` → `.fdf`-aware mpi_np selector → `scheduler.defaults` | **GPU jobs: 1 rank per GPU** (§ 8) |
+| `-n` ntasks | CLI `--np` → `.fdf`-aware mpi_np selector → `scheduler.defaults` | **rank count** for CPU+GPU; `--gres` carries the GPU count (independent — K ranks may share a GPU via MPS, § 7.5.1) |
 | `-c` cpus/rank | CLI `--omp`/`--cpus` → derived `node_cores / ntasks` → `defaults.cpus_per_task` | feeds OMP for ELPA-OpenMP |
 | `-t` time | CLI `--time` → `defaults.time` | only the user knows runtime |
 | `--gres` | `.fdf` GPU request (`_fdf_requests_gpu`) + CLI `--gres <type>:<n>` → `gpu.default_type` | auto-on when chemistry wants GPU |

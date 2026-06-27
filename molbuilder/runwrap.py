@@ -2642,10 +2642,12 @@ def _maybe_write_sbatch(script_path: Path,
     when a ``scheduler`` block is configured; else return None.
 
     Resolution rules (slurm-integration.md § 6):
-      * GPU job (``.fdf`` requests GPU AND env wasn't force-overridden to
-        a non-GPU env): ``--gres`` -> 1 rank/GPU; ``-n`` = GPU count.
-      * CPU job: ``-n`` = ``mpi_np`` (CLI ``--np``); falls back to 1 with
-        a generate-time note when unset (the launcher still resolves the
+      * ``-n`` (ntasks) = the **MPI rank count** (``mpi_np``) for BOTH CPU
+        and GPU jobs.  For GPU jobs ``--gres`` carries the **GPU count**,
+        which is INDEPENDENT of the rank count: under the K-ranks-per-GPU
+        load-balance model (§ 7.5.1), ranks may exceed GPUs (e.g. 8 ranks
+        sharing 1 A100 via MPS -> ``-n 8 --gres=gpu:a100:1``).
+      * Unset ``mpi_np`` falls back to 1 (the launcher still resolves the
         runtime rank count from ``SLURM_NTASKS``, § 7.3).
     """
     from . import runtime_config as _rc
@@ -2668,12 +2670,13 @@ def _maybe_write_sbatch(script_path: Path,
         gpu = True  # an explicit --gres forces a GPU header
 
     if gpu:
-        # 1 rank per GPU (§ 7.5.1).  ntasks follows the GPU count; a
-        # bare --np for a GPU job is ignored in favour of the rank=GPU
-        # invariant (CLI --gres count is authoritative).
+        # ``--gres`` carries the GPU COUNT; ``-n`` (ntasks) is the MPI
+        # RANK count.  These are INDEPENDENT -- under the K-ranks-per-GPU
+        # load-balance model (§ 7.5.1) ranks may exceed GPUs (e.g. 8 ranks
+        # sharing 1 A100 via MPS).  So ntasks = mpi_np, NOT the GPU count.
         if gpu_count is None:
-            gpu_count = mpi_np if (mpi_np and mpi_np >= 1) else 1
-        ntasks = gpu_count
+            gpu_count = 1   # default to 1 GPU when --gres count not given
+        ntasks = mpi_np if (mpi_np and mpi_np >= 1) else gpu_count
     else:
         # CPU job: ntasks = mpi_np (the rank count).  When unset, 1 is a
         # safe header floor -- under sbatch the launcher reads
