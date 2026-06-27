@@ -35,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Iterable
+import re
 import xml.etree.ElementTree as ET
 
 
@@ -109,6 +110,13 @@ class PsmlInfo:
     generator:           str             # "ONCVPSP" / "ATOM" / "Hamann" / etc.
     valence_config:      str             # "[Ar] 3d6 4s2" etc. (free-form)
     suggested_mesh_ry:   Optional[float] # PseudoDojo's recommended cutoff
+    null_channels:       List[str] = field(default_factory=list)
+                                         # l-letters (s/p/d/f) whose ENTIRE
+                                         # Kleinman-Bylander channel has
+                                         # ekb~=0 -- a defective/incomplete
+                                         # pseudo (the BDT S.psml had a dead
+                                         # 'p' channel; triggers propor
+                                         # IMAX=0 AND gives wrong physics).
     parse_warnings:      List[str] = field(default_factory=list)
 
 
@@ -173,6 +181,7 @@ def parse_psml_header(path: Path) -> PsmlInfo:
             xc_family="unknown", xc_authors="unknown",
             relativistic="unknown", generator="unknown",
             valence_config="", suggested_mesh_ry=None,
+            null_channels=[],
             parse_warnings=[f"could not parse XML: {exc}"],
         )
 
@@ -323,12 +332,40 @@ def parse_psml_header(path: Path) -> PsmlInfo:
                 except ValueError:
                     pass
 
+    # ----- nonlocal-projector value validation ---------------------
+    # Each <proj l=".." ekb=".."> is a Kleinman-Bylander projector; the
+    # KB energy ``ekb`` IS the projector's strength (V_nl = Σ ekb·|p><p|),
+    # so ekb=0 means the channel contributes NOTHING.  A whole l-channel
+    # with EVERY projector at ekb~=0 is a defective / incomplete pseudo
+    # for that angular momentum -- e.g. the BDT ``S.psml`` (ONCVPSP-4.0.1)
+    # carried a dead 'p' channel, which both gives wrong S bonding AND
+    # trips SIESTA's ``propor: ERROR: IMAX = 0`` at high np.  Flag any
+    # l whose entire set of projectors is null.  (A channel chosen as the
+    # LOCAL potential simply has no <proj> entries -- that is NOT flagged,
+    # because the channel is absent, not present-but-zero.)
+    _EKB_NULL = 1e-6
+    proj_by_l: Dict[str, List[float]] = {}
+    for pr in _findall_local(root, "proj"):
+        l_letter = (pr.attrib.get("l") or "").strip().lower()
+        if not l_letter:
+            continue
+        try:
+            ekb = abs(float(pr.attrib.get("ekb", "")))
+        except (TypeError, ValueError):
+            continue
+        proj_by_l.setdefault(l_letter, []).append(ekb)
+    null_channels = sorted(
+        l for l, eks in proj_by_l.items()
+        if eks and all(e < _EKB_NULL for e in eks)
+    )
+
     return PsmlInfo(
         path=path, element=element, atomic_number=atomic_number,
         xc_family=xc_family, xc_authors=xc_authors,
         relativistic=relativistic, generator=generator,
         valence_config=valence_config,
         suggested_mesh_ry=suggested_mesh,
+        null_channels=null_channels,
         parse_warnings=warnings,
     )
 
@@ -361,7 +398,9 @@ def scan_psml_directory(directory: Path) -> Dict[str, PsmlInfo]:
 class CoverageEntry:
     """One row of a coverage report: per-element pass / warn / fail."""
     element:  str
-    status:   str       # "ok" | "missing" | "xc_mismatch" | "relativistic_mismatch" | "parse_warning"
+    status:   str       # "ok" | "missing" | "dead_projector" |
+                        # "xc_mismatch" | "relativistic_mismatch" |
+                        # "generator_mismatch" | "parse_warning"
     message:  str
     path:     Optional[Path] = None
 
@@ -408,6 +447,25 @@ def check_coverage(elements: Iterable[str],
                          f"http://www.pseudo-dojo.org (PSML format, "
                          f"functional matching cfg.xc_authors)."),
                 path=None,
+            ))
+            continue
+        # Value validation: a defective pseudo with a dead KB channel.
+        # ERROR-severity -- this is the failure that masqueraded as a
+        # propor crash; it also silently corrupts the physics for that
+        # element's bonding, so it must block BEFORE the run.
+        if info.null_channels:
+            chans = "/".join(info.null_channels)
+            out.append(CoverageEntry(
+                element=key, status="dead_projector",
+                message=(f"{key}.psml has a NULL Kleinman-Bylander "
+                         f"projector for the '{chans}' channel (ekb=0): "
+                         f"the pseudopotential is defective/incomplete "
+                         f"for a valence angular momentum.  It gives "
+                         f"wrong {key} bonding AND can trip SIESTA's "
+                         f"'propor: ERROR: IMAX=0'.  Replace it with a "
+                         f"vetted pseudo (PseudoDojo) matching the rest "
+                         f"of your set's generator version + XC."),
+                path=info.path,
             ))
             continue
         # Check XC family + authors when expectations were supplied.
@@ -465,7 +523,59 @@ def check_coverage(elements: Iterable[str],
                      f"{info.xc_authors}, {info.relativistic})"),
             path=info.path,
         ))
+
+    # Set-level VERSION CONTROL: a coherent pseudopotential set comes from
+    # ONE generator version.  A single stranger (e.g. an ONCVPSP-4.0.1
+    # pseudo dropped into an otherwise ONCVPSP-3.3.0 set -- exactly how
+    # the bad BDT S.psml entered) is a strong smell even when each file
+    # individually parses.  WARN-severity: it MIGHT be intentional, but
+    # the user should confirm the whole set is from one PseudoDojo
+    # release.  Only compares pseudos that are actually present.
+    gen_keys: Dict[str, List[str]] = {}
+    for key in seen:
+        info = info_map.get(key)
+        if info is None or info.generator in ("", "unknown"):
+            continue
+        gen_keys.setdefault(_generator_key(info.generator), []).append(key)
+    if len(gen_keys) > 1:
+        summary = "; ".join(
+            f"{gk} ({','.join(sorted(els))})"
+            for gk, els in sorted(gen_keys.items())
+        )
+        # Name the minority version(s) as the likely stranger(s).
+        majority = max(gen_keys.values(), key=len)
+        strangers = sorted(
+            el for gk, els in gen_keys.items()
+            if els is not majority for el in els
+        )
+        out.append(CoverageEntry(
+            element=",".join(strangers) or "*", status="generator_mismatch",
+            message=(f"pseudopotential set mixes generator versions: "
+                     f"{summary}.  A coherent set should come from ONE "
+                     f"PseudoDojo / ONCVPSP release; confirm the "
+                     f"odd-one-out ({', '.join(strangers)}) is intended "
+                     f"-- a stray version is how a defective pseudo "
+                     f"usually sneaks in."),
+            path=None,
+        ))
     return out
+
+
+def _generator_key(generator: str) -> str:
+    """Reduce a free-form creator string to a comparable version key.
+
+    ``"ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)"`` ->
+    ``"ONCVPSP-4"``; ``"ONCVPSP-3.3.0+psml-3.3.0-73 ..."`` ->
+    ``"ONCVPSP-3"``.  Compares on generator name + MAJOR version so a
+    3.3.0-vs-3.3.1 patch difference doesn't warn but a 3.x-vs-4.x set
+    mix does.  Falls back to the raw (trimmed) string for unrecognized
+    creators so two genuinely different generators still differ.
+    """
+    g = generator.strip()
+    m = re.match(r"([A-Za-z][A-Za-z0-9_]*)[-\s]*v?(\d+)", g)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    return g.split("+", 1)[0].strip() or "unknown"
 
 
 __all__ = [

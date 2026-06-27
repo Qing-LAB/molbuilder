@@ -695,3 +695,132 @@ class TestMetalAwareScriptTemplates:
             method="RKS", spin=0,
         ))
         assert "Hard SCF (typical for open-shell metals" not in text
+
+
+# ===================================================================== #
+#  Conformance tests for docs/protocols/pseudopotential-validation.md   #
+#  C4 (generator/version) + C5 (dead KB projector).  Each test pins a   #
+#  clause of the standard to the implementation.                        #
+# ===================================================================== #
+
+
+def _psml_with_projectors(element, projectors, *, z,
+                          creator="ONCVPSP-3.3.0+psml-3.3.0-73 "
+                                  "(scalar-relativistic)"):
+    """Synthetic PSML carrying a <nonlocal-projectors> block.
+
+    projectors: list of (l_letter, ekb_float).  Lets a test build a
+    pseudo with a deliberately dead channel (all ekb=0 for an l).
+    """
+    proj = "\n".join(
+        f'<proj l="{l}" seq="{i+1}" ekb="{ekb}" eref="0" type="oncv"/>'
+        for i, (l, ekb) in enumerate(projectors)
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<psml version="1.1" xmlns="http://esl.cecam.org/PSML/ns/1.1">
+<provenance creator="{creator}"/>
+<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
+ z-pseudo="{z}" relativity="scalar"/>
+<exchange-correlation><libxc-info>
+<functional type="exchange" id="101"/>
+<functional type="correlation" id="130"/>
+</libxc-info></exchange-correlation>
+<nonlocal-projectors>
+{proj}
+</nonlocal-projectors>
+</psml>"""
+
+
+# A sulfur with s + d projectors real but the ENTIRE p-channel dead --
+# exactly the defective BDT S.psml (ONCVPSP-4.0.1) that motivated C5.
+_S_DEAD_P = [("s", 6.774), ("s", 0.542),
+             ("p", 0.0), ("p", 0.0),
+             ("d", 0.0), ("d", 3.022)]
+_S_GOOD = [("s", 6.764), ("s", 0.574),
+           ("p", 3.227), ("p", 0.887),
+           ("d", -3.548), ("d", -0.987)]
+
+
+class TestDeadProjectorC5:
+    def test_null_channel_detected(self, tmp_path):
+        from molbuilder.pseudos import parse_psml_header
+        p = tmp_path / "S.psml"
+        p.write_text(_psml_with_projectors("S", _S_DEAD_P, z=16))
+        info = parse_psml_header(p)
+        # Only 'p' is fully null; 'd' has one real projector (3.022) so
+        # it is NOT flagged -- the standard requires the WHOLE channel.
+        assert info.null_channels == ["p"]
+
+    def test_good_pseudo_has_no_null_channels(self, tmp_path):
+        from molbuilder.pseudos import parse_psml_header
+        p = tmp_path / "S.psml"
+        p.write_text(_psml_with_projectors("S", _S_GOOD, z=16))
+        assert parse_psml_header(p).null_channels == []
+
+    def test_absent_channel_is_not_flagged(self, tmp_path):
+        # A channel chosen as LOCAL has no <proj> entries at all; absent
+        # != present-but-zero, so it must NOT be flagged (C5 clause).
+        from molbuilder.pseudos import parse_psml_header
+        p = tmp_path / "X.psml"
+        p.write_text(_psml_with_projectors(
+            "C", [("s", 5.0), ("s", 0.3)], z=6))  # no p/d entries at all
+        assert parse_psml_header(p).null_channels == []
+
+    def test_dead_projector_is_error_status(self, tmp_path):
+        from molbuilder.pseudos import check_coverage
+        (tmp_path / "S.psml").write_text(
+            _psml_with_projectors("S", _S_DEAD_P, z=16))
+        [entry] = check_coverage(["S"], tmp_path)
+        assert entry.status == "dead_projector"
+        assert "p" in entry.message and "ekb=0" in entry.message
+
+    def test_dead_projector_maps_to_error_severity(self, tmp_path):
+        # The validation layer must escalate dead_projector to ERROR.
+        from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
+
+        class _Cfg:
+            psml_lib = str(tmp_path)
+            xc_authors = "PBE"
+        (tmp_path / "S.psml").write_text(
+            _psml_with_projectors("S", _S_DEAD_P, z=16))
+
+        class _Struct:
+            elements = ["S"]
+        issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
+                                               dest_dir=tmp_path)
+        assert any(i.severity == "error" and "Kleinman" in i.message
+                   for i in issues), [(_i.severity, _i.message) for _i in issues]
+
+
+class TestGeneratorVersionC4:
+    def test_mixed_major_version_warns(self, tmp_path):
+        from molbuilder.pseudos import check_coverage
+        (tmp_path / "C.psml").write_text(_psml_with_projectors(
+            "C", _S_GOOD, z=6,
+            creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"))
+        (tmp_path / "S.psml").write_text(_psml_with_projectors(
+            "S", _S_GOOD, z=16,
+            creator="ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)"))
+        entries = check_coverage(["C", "S"], tmp_path)
+        gm = [e for e in entries if e.status == "generator_mismatch"]
+        assert len(gm) == 1
+        # The minority (S, the v4 stranger) is named.
+        assert "S" in gm[0].element
+
+    def test_patch_difference_does_not_warn(self, tmp_path):
+        from molbuilder.pseudos import check_coverage
+        (tmp_path / "C.psml").write_text(_psml_with_projectors(
+            "C", _S_GOOD, z=6,
+            creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"))
+        (tmp_path / "S.psml").write_text(_psml_with_projectors(
+            "S", _S_GOOD, z=16,
+            creator="ONCVPSP-3.3.1+psml-3.3.1-99 (scalar-relativistic)"))
+        entries = check_coverage(["C", "S"], tmp_path)
+        assert not [e for e in entries if e.status == "generator_mismatch"]
+
+    def test_generator_key_reduces_to_name_major(self):
+        from molbuilder.pseudos import _generator_key
+        assert _generator_key(
+            "ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)") == "ONCVPSP-4"
+        assert _generator_key(
+            "ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)") == "ONCVPSP-3"

@@ -322,6 +322,68 @@ cli.add_command(envs_group)
 cli.add_command(bench_group)
 
 
+# `molbuilder pseudo ...`  (screen a pseudopotential set).
+@click.group("pseudo", context_settings={"help_option_names": ["-h", "--help"]})
+def pseudo_group() -> None:
+    """Screen pseudopotential (.psml) sets before a run."""
+
+
+@pseudo_group.command("check", short_help="screen a pseudopotential directory")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False))
+@click.option("--elements", default=None,
+              help="comma-separated symbols to require (e.g. Au,C,H,S); "
+                   "default: screen every .psml found in the directory.")
+@click.option("--xc", "xc_authors", default=None,
+              help="expected XC authors (e.g. PBE) -- flags pseudos that "
+                   "don't match the calc's functional.")
+@click.option("--relativistic", default="scalar", show_default=True,
+              type=click.Choice(["scalar", "spin-orbit", "no"]),
+              help="expected relativistic treatment.")
+def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
+    """Screen a directory of .psml files: coverage, XC + relativistic
+    match, dead Kleinman-Bylander projectors (ekb=0, a defective
+    pseudo), and generator-version consistency across the set.
+
+    Exits non-zero if any ERROR-severity issue (missing or
+    dead-projector) is found, so it can gate a workflow.
+    """
+    from pathlib import Path as _P
+    from molbuilder.pseudos import (scan_psml_directory, check_coverage)
+
+    d = _P(directory)
+    if elements:
+        els = [e.strip() for e in elements.split(",") if e.strip()]
+    else:
+        els = sorted(scan_psml_directory(d).keys())
+        if not els:
+            raise click.ClickException(f"no parseable .psml files in {d}")
+
+    GGA = {"pbe", "pbesol", "blyp", "revpbe", "rpbe"}
+    LDA = {"ca", "pz", "pw"}
+    a = (xc_authors or "").lower()
+    fam = "GGA" if a in GGA else "LDA" if a in LDA else None
+
+    entries = check_coverage(els, d, expected_xc_family=fam,
+                             expected_xc_authors=xc_authors or None,
+                             expected_relativistic=relativistic)
+    ERR = {"missing", "dead_projector"}
+    n_err = n_warn = 0
+    for e in entries:
+        if e.status == "ok":
+            tag = "OK   "
+        elif e.status in ERR:
+            tag = "ERROR"; n_err += 1
+        else:
+            tag = "WARN "; n_warn += 1
+        click.echo(f"  [{tag}] {e.element:<8} {e.message}")
+    click.echo(f"\n{len(entries)} checks: {n_err} error(s), {n_warn} warning(s).")
+    if n_err:
+        raise SystemExit(1)
+
+
+cli.add_command(pseudo_group)
+
+
 # --------------------------------------------------------------------- #
 #  Build subcommands (peptide / dna / rna / smiles / name)              #
 # --------------------------------------------------------------------- #

@@ -117,9 +117,10 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     ):
         if entry.status == "ok":
             continue
-        severity = ("error" if entry.status == "missing"
+        severity = ("error" if entry.status in ("missing", "dead_projector")
                     else "warn")    # xc_mismatch / relativistic_mismatch /
-                                    # parse_warning -- all advisory
+                                    # generator_mismatch / parse_warning --
+                                    # all advisory
         out.append(Issue(severity, entry.message,
                           f"config.psml_lib.{entry.element}"))
     return out
