@@ -218,6 +218,50 @@ def test_run_monitor_stall_heartbeat_zero_is_silent(tmp_path):
     assert "[STATUS]" not in text                   # nothing changed, ever
 
 
+def test_util_sampling_change_gated_and_summary(tmp_path):
+    # The util CSV is change-gated: a row is written only when a metric
+    # moves >=10% from the last logged row (+ a keepalive), and a
+    # [UTIL-SUMMARY] verdict lands at finish.
+    out = tmp_path / "j.out"
+    out.write_text("scf:   1   -100.5\n")
+    timing = tmp_path / "j.scf-timing.log"
+    timing.write_text("100.0 1 scf: 1 -100.5\n")
+    log = tmp_path / "j.monitor.log"
+    util = tmp_path / "j.util.csv"
+
+    # Scripted samples: high GPU sm (saturated), one flat repeat (should be
+    # skipped), then a >10% drop (should log).
+    seq = [
+        monitor.UtilSample(0.0, 50.0, 100.0, [(0, 95.0, 40.0, 20.0)]),
+        monitor.UtilSample(0.0, 51.0, 100.0, [(0, 94.0, 40.0, 20.0)]),  # flat
+        monitor.UtilSample(0.0, 52.0, 100.0, [(0, 60.0, 40.0, 20.0)]),  # sm drop
+        monitor.UtilSample(0.0, 52.0, 100.0, [(0, 60.0, 40.0, 20.0)]),
+    ]
+    it = iter(seq)
+    last = {"s": seq[0]}
+
+    def _sampler():
+        try:
+            last["s"] = next(it)
+        except StopIteration:
+            pass
+        return last["s"]
+
+    monitor.run_monitor(
+        out, timing, log, interval=1, watch_pid=999_999_999,
+        sleep=lambda s: None, max_ticks=4, util_path=util,
+        util_keepalive_s=1e9, sampler=_sampler,
+        clock=_fake_clock([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]),
+    )
+    rows = util.read_text().splitlines()
+    assert rows[0].startswith("epoch,iso,cpu_pct,mem_gb,gpu0_sm")
+    # header + first sample + the sm-drop sample (the flat one is skipped);
+    # the watched PID is dead so the loop ends on tick 1 -> final forced row.
+    assert len(rows) >= 2
+    assert "[UTIL-SUMMARY]" in log.read_text()
+    assert "gpu0 sm mean=" in log.read_text()
+
+
 def test_parse_status_geometry_move(tmp_path):
     # The geometry-relaxation move number is parsed from the .out tail
     # (None for single-point runs); the highest move wins.

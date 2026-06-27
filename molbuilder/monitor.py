@@ -51,12 +51,13 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -201,6 +202,180 @@ def parse_status(out_path: Path, timing_path: Path,
 
 
 # --------------------------------------------------------------------- #
+#  Utilization sampling (cpu% / mem / GPU sm% / VRAM)                    #
+# --------------------------------------------------------------------- #
+#
+# The SAME monitor loop that watches SCF progress also samples machine
+# utilization, so a post-run plot answers "were we GPU-bound or host/CPU-
+# bound?" (sustained GPU sm% high => GPU-bound; low while cpu% pegged =>
+# host-bound).  To keep the file small it is CHANGE-GATED like the status
+# log: a row is written only when some metric moved >= ``change_frac``
+# from the last logged row (or a keepalive elapsed).  With timestamps the
+# sparse series still plots cleanly.  Stdlib only: ``/proc`` + nvidia-smi.
+
+
+def _read_cpu_busy_total() -> Optional[Tuple[int, int]]:
+    """``(busy, total)`` jiffies from ``/proc/stat`` aggregate cpu line."""
+    try:
+        with open("/proc/stat", encoding="ascii") as fh:
+            parts = fh.readline().split()
+        vals = [int(x) for x in parts[1:]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)   # idle + iowait
+        return sum(vals) - idle, sum(vals)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _read_mem_used_gb() -> Optional[float]:
+    """Node memory in use (GB) = MemTotal - MemAvailable from /proc."""
+    try:
+        info: Dict[str, int] = {}
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                k, _, rest = line.partition(":")
+                info[k] = int(rest.split()[0])           # kB
+        avail = info.get("MemAvailable", info.get("MemFree", 0))
+        return round((info.get("MemTotal", 0) - avail) / 1048576.0, 2)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+_GPU_QUERY = ["nvidia-smi",
+              "--query-gpu=index,utilization.gpu,utilization.memory,"
+              "memory.used",
+              "--format=csv,noheader,nounits"]
+
+
+def _gpu_present() -> bool:
+    try:
+        r = subprocess.run(["nvidia-smi", "-L"], capture_output=True,
+                           timeout=5)
+        return r.returncode == 0 and b"GPU " in r.stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _sample_gpus() -> List[Tuple[int, float, float, float]]:
+    """Per-GPU ``(index, sm%, mem_util%, vram_gb)`` via nvidia-smi
+    (empty list on any failure -- best-effort)."""
+    try:
+        r = subprocess.run(_GPU_QUERY, capture_output=True, text=True,
+                          timeout=10)
+        if r.returncode != 0:
+            return []
+        out = []
+        for line in r.stdout.strip().splitlines():
+            f = [x.strip() for x in line.split(",")]
+            if len(f) >= 4:
+                out.append((int(f[0]), float(f[1]), float(f[2]),
+                            round(float(f[3]) / 1024.0, 2)))   # MiB -> GB
+        return out
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+
+
+def _metric_moved(new, old, frac: float) -> bool:
+    """True if ``new`` differs from ``old`` by >= ``frac`` (relative, with
+    a floor of 1 so near-zero values still register a real jump)."""
+    if old is None or new is None:
+        return new is not None
+    return abs(new - old) >= max(abs(old), 1.0) * frac
+
+
+@dataclass
+class UtilSample:
+    epoch: float
+    cpu_pct: Optional[float]
+    mem_gb: Optional[float]
+    gpus: List[Tuple[int, float, float, float]] = field(default_factory=list)
+
+    def changed_from(self, other: "UtilSample", frac: float) -> bool:
+        if other is None:
+            return True
+        if _metric_moved(self.cpu_pct, other.cpu_pct, frac):
+            return True
+        if _metric_moved(self.mem_gb, other.mem_gb, frac):
+            return True
+        og = {g[0]: g for g in other.gpus}
+        for idx, sm, mu, vram in self.gpus:
+            o = og.get(idx)
+            if o is None or _metric_moved(sm, o[1], frac) \
+                    or _metric_moved(vram, o[3], frac):
+                return True
+        return False
+
+
+@dataclass
+class UtilAccum:
+    """Running cpu% + per-GPU sm% stats for the end-of-run verdict.
+    Flat memory (sum/min/max/count), so it is safe for arbitrarily long
+    runs -- no per-sample list."""
+    cpu_sum: float = 0.0
+    cpu_n: int = 0
+    cpu_min: float = 1e9
+    cpu_max: float = -1e9
+    gpu_sum: Dict[int, float] = field(default_factory=dict)
+    gpu_n: Dict[int, int] = field(default_factory=dict)
+    gpu_min: Dict[int, float] = field(default_factory=dict)
+    gpu_max: Dict[int, float] = field(default_factory=dict)
+
+    def add(self, s: UtilSample) -> None:
+        if s.cpu_pct is not None:
+            self.cpu_sum += s.cpu_pct
+            self.cpu_n += 1
+            self.cpu_min = min(self.cpu_min, s.cpu_pct)
+            self.cpu_max = max(self.cpu_max, s.cpu_pct)
+        for idx, sm, _mu, _vram in s.gpus:
+            self.gpu_sum[idx] = self.gpu_sum.get(idx, 0.0) + sm
+            self.gpu_n[idx] = self.gpu_n.get(idx, 0) + 1
+            self.gpu_min[idx] = min(self.gpu_min.get(idx, 1e9), sm)
+            self.gpu_max[idx] = max(self.gpu_max.get(idx, -1e9), sm)
+
+    def summary(self) -> str:
+        bits = []
+        if self.cpu_n:
+            bits.append(f"cpu mean={self.cpu_sum / self.cpu_n:.0f}% "
+                        f"({self.cpu_min:.0f}-{self.cpu_max:.0f})")
+        gpu_means = []
+        for idx in sorted(self.gpu_n):
+            m = self.gpu_sum[idx] / self.gpu_n[idx]
+            gpu_means.append(m)
+            bits.append(f"gpu{idx} sm mean={m:.0f}% "
+                        f"({self.gpu_min[idx]:.0f}-{self.gpu_max[idx]:.0f})")
+        verdict = ""
+        if gpu_means:
+            mx = max(gpu_means)
+            if mx >= 85:
+                verdict = " -> GPU-bound (GPU saturated)"
+            elif mx <= 60:
+                verdict = " -> host/CPU-bound (GPU starved)"
+            else:
+                verdict = " -> mixed (GPU not saturated)"
+        return "; ".join(bits) + verdict
+
+
+def _util_csv_header(ngpu: int) -> str:
+    cols = ["epoch", "iso", "cpu_pct", "mem_gb"]
+    for i in range(ngpu):
+        cols += [f"gpu{i}_sm", f"gpu{i}_memutil", f"gpu{i}_vram_gb"]
+    return ",".join(cols)
+
+
+def _util_csv_row(s: UtilSample, ngpu: int) -> str:
+    def _f(v):
+        return "" if v is None else f"{v:g}"
+    cells = [f"{s.epoch:.0f}", _iso(s.epoch), _f(s.cpu_pct), _f(s.mem_gb)]
+    by_idx = {g[0]: g for g in s.gpus}
+    for i in range(ngpu):
+        g = by_idx.get(i)
+        if g is None:
+            cells += ["", "", ""]
+        else:
+            cells += [_f(g[1]), _f(g[2]), _f(g[3])]
+    return ",".join(cells)
+
+
+# --------------------------------------------------------------------- #
 #  Notifier hooks                                                       #
 # --------------------------------------------------------------------- #
 
@@ -292,11 +467,15 @@ def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
 
 
 def run_monitor(out: Path, timing: Path, log: Path, *,
-                interval: float = 60.0,
+                interval: float = 5.0,
                 watch_pid: int = 0,
                 start_epoch: Optional[float] = None,
                 max_ticks: Optional[int] = None,
                 stall_heartbeat_s: float = 600.0,
+                util_path: Optional[Path] = None,
+                util_change_frac: float = 0.10,
+                util_keepalive_s: float = 300.0,
+                sampler: Optional[Callable[[], "UtilSample"]] = None,
                 sleep: Callable[[float], None] = time.sleep,
                 clock: Callable[[], float] = time.time) -> JobStatus:
     """Periodically parse + log + notify until the watched job ends.
@@ -327,6 +506,39 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
                  f"{st0.as_text()}")
     _fire(st0, "start")
 
+    # --- utilization sampling setup (same loop, separate change-gated
+    # output file; § 11.0e).  ``sampler`` is injectable for tests. ---
+    _sample = sampler if sampler is not None else _make_default_sampler(clock)
+    util_accum = UtilAccum()
+    util_prev: Optional[UtilSample] = None
+    util_ngpu = 0
+    util_last_log = start
+    if util_path is not None:
+        first = _sample()
+        util_ngpu = len(first.gpus)
+        try:
+            Path(util_path).write_text(
+                _util_csv_header(util_ngpu) + "\n", encoding="utf-8")
+        except OSError:
+            util_path = None
+        if util_path is not None:
+            _append(util_path, _util_csv_row(first, util_ngpu))
+            util_accum.add(first)
+            util_prev = first
+
+    def _util_tick(now: float, *, force: bool = False) -> None:
+        nonlocal util_prev, util_last_log
+        if util_path is None:
+            return
+        s = _sample()
+        util_accum.add(s)
+        if (force or util_prev is None
+                or s.changed_from(util_prev, util_change_frac)
+                or now - util_last_log >= util_keepalive_s):
+            _append(util_path, _util_csv_row(s, util_ngpu))
+            util_prev = s
+            util_last_log = now
+
     prev = st0
     last_emit = start          # wall time of the last [STATUS]/[STALL] line
     ticks = 0
@@ -334,6 +546,7 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         sleep(interval)
         ticks += 1
         now = clock()
+        _util_tick(now)
         alive = _pid_alive(watch_pid)
         st = parse_status(out, timing, start, now)
         if not alive:
@@ -346,7 +559,11 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             # run IS a valid final average, so report it (force-show even
             # though this last tick added no new iteration).
             st.progressing = True
+            _util_tick(now, force=True)        # anchor the series end
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
+            if util_path is not None:
+                _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
+                             f"{util_accum.summary()}")
             _append(log, f"[{_iso(now)}] [MONITOR] job ended "
                          f"(watch_pid alive={alive}, marker="
                          f"{st.done_marker or '-'}); final notify + exit")
@@ -377,6 +594,29 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         prev = st
         if max_ticks is not None and ticks >= max_ticks:
             return st
+
+
+def _make_default_sampler(clock: Callable[[], float]
+                          ) -> Callable[[], "UtilSample"]:
+    """A stateful sampler closure: cpu% is a delta across calls, so it
+    holds the previous ``/proc/stat`` snapshot.  GPU presence is probed
+    once up front (no per-tick ``nvidia-smi -L``)."""
+    state = {"prev": _read_cpu_busy_total()}
+    gpu_on = _gpu_present()
+
+    def _s() -> "UtilSample":
+        bt = _read_cpu_busy_total()
+        cpu_pct = None
+        if bt and state["prev"]:
+            db = bt[0] - state["prev"][0]
+            dt = bt[1] - state["prev"][1]
+            cpu_pct = round(100.0 * db / dt, 1) if dt > 0 else None
+        if bt:
+            state["prev"] = bt
+        return UtilSample(epoch=clock(), cpu_pct=cpu_pct,
+                          mem_gb=_read_mem_used_gb(),
+                          gpus=_sample_gpus() if gpu_on else [])
+    return _s
 
 
 def _iso(epoch: float) -> str:
@@ -430,9 +670,10 @@ def main(argv=None) -> int:
                    help="per-run .scf-timing.log (iteration COUNT)")
     p.add_argument("--log", required=True,
                    help="append status lines here (<basename>.monitor.log)")
-    p.add_argument("--interval", type=float, default=60.0,
-                   help="seconds between wakes (default 60); a stalled job "
-                        "stays quiet -- see --stall-heartbeat")
+    p.add_argument("--interval", type=float, default=5.0,
+                   help="seconds between wakes (default 5; this is the "
+                        "utilization sample rate -- status lines stay "
+                        "change-gated, so a fast rate does not spam)")
     p.add_argument("--stall-heartbeat", type=float, default=600.0,
                    dest="stall_heartbeat_s",
                    help="when the job is making no SCF/geometry progress, "
@@ -440,6 +681,15 @@ def main(argv=None) -> int:
                         "(seconds, default 600); no per-iter timing is "
                         "printed while stalled.  Use 0 to silence the "
                         "stall heartbeat entirely")
+    p.add_argument("--util", default=None, dest="util_path",
+                   help="append change-gated cpu%%/mem/GPU-sm%%/VRAM samples "
+                        "to this CSV (e.g. <basename>.util.csv); omit to "
+                        "disable utilization sampling")
+    p.add_argument("--util-keepalive", type=float, default=300.0,
+                   dest="util_keepalive_s",
+                   help="even with no >10%% change, write a util row at "
+                        "least this often (seconds, default 300) so the "
+                        "plotted series has anchor points")
     p.add_argument("--watch-pid", type=int, default=0, dest="watch_pid",
                    help="stop when this PID disappears; 0 = until done")
     p.add_argument("--nice", type=int, default=19, dest="nice_level",
@@ -452,7 +702,9 @@ def main(argv=None) -> int:
     register_notifier(make_log_notifier(a.log))
     run_monitor(a.out, a.timing, a.log,
                 interval=a.interval, watch_pid=a.watch_pid,
-                stall_heartbeat_s=a.stall_heartbeat_s)
+                stall_heartbeat_s=a.stall_heartbeat_s,
+                util_path=a.util_path,
+                util_keepalive_s=a.util_keepalive_s)
     return 0
 
 
