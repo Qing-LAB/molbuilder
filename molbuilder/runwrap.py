@@ -824,18 +824,23 @@ def _gpu_socket_affinity_block() -> str:
     § 7.5.2).
 
     Each rank already knows its GPU's NUMA node (``$_numa``).  This block
-    resolves that NUMA node's **socket** (``physical_package_id``) and the
-    socket(s) its own allowed CPUs span, then:
+    resolves that NUMA node's **socket** (``physical_package_id``) and, by
+    walking the rank's own ``Cpus_allowed_list``, the set of sockets it
+    owns cores on AND the GPU-socket NUMA nodes it actually owns
+    (``$_pin_numas``), then:
 
-      * **pins** (``numactl --cpunodebind/--membind`` to all NUMA nodes on
-        the GPU's socket) when the cpuset spans MORE than one socket --
-        the ``--exclusive`` / whole-node signature, where SLURM's cpuset
-        is the entire node and a rank would otherwise roam cross-socket;
+      * **pins** (``numactl --cpunodebind/--membind`` to the **owned**
+        GPU-socket NUMA nodes only) when the cpuset spans MORE than one
+        socket -- the whole-node / ``--exclusive`` (or partial multi-
+        socket) case where a rank would otherwise roam cross-socket;
       * **no-ops** when the cpuset is already confined to the GPU's socket
         (SLURM co-located us -- nothing to do);
-      * **warns, never fails** when the GPU's socket is NOT in our cpuset
-        (a shared cross-socket allocation we cannot fix from here) --
-        correct-but-slow is not a reason to kill a valid job.
+      * **warns, never fails** when we own NO cores on the GPU's socket
+        (a shared cross-socket allocation we cannot fix from here).
+
+    Binding only to OWNED NUMA nodes is the B-1 fix (audit 2026-06-27): a
+    partial multi-NUMA allocation on the 8-NUMA Sol GPU nodes must never
+    ``--membind`` to a socket-mate NUMA node it wasn't allocated.
 
     Sets ``$_pin`` (empty or the ``numactl`` prefix) for the ``exec``.
     All sysfs reads are guarded; missing topology/``numactl`` -> no pin.
@@ -843,7 +848,7 @@ def _gpu_socket_affinity_block() -> str:
     return (
         '# --- GPU<->CPU socket co-location (slurm-integration.md 7.5.2) ---\n'
         '_pin=""\n'
-        '_gpu_sock=""; _sock_numas=""\n'
+        '_gpu_sock=""\n'
         'if [ "${_numa:--1}" -ge 0 ] && '
         '[ -r "/sys/devices/system/node/node${_numa}/cpulist" ]; then\n'
         '    _gcpu=$(sed "s/[,-].*//" '
@@ -852,27 +857,12 @@ def _gpu_socket_affinity_block() -> str:
         '"/sys/devices/system/cpu/cpu${_gcpu}/topology/physical_package_id" '
         '2>/dev/null)\n'
         'fi\n'
-        '# All NUMA nodes on the GPU\'s socket (socket-wide numactl bind).\n'
-        'if [ -n "$_gpu_sock" ]; then\n'
-        '    for _nd in /sys/devices/system/node/node[0-9]*; do\n'
-        '        _ndn=${_nd##*node}\n'
-        '        _c0=$(sed "s/[,-].*//" "$_nd/cpulist" 2>/dev/null)\n'
-        '        case "$_c0" in ""|*[!0-9]*) continue ;; esac\n'
-        '        _ps=$(cat '
-        '"/sys/devices/system/cpu/cpu${_c0}/topology/physical_package_id" '
-        '2>/dev/null)\n'
-        '        [ "$_ps" = "$_gpu_sock" ] && '
-        '_sock_numas="${_sock_numas:+$_sock_numas,}$_ndn"\n'
-        '    done\n'
-        'fi\n'
-        '# Socket(s) this rank\'s allowed CPUs span.\n'
-        '_my_socks=""\n'
+        '# Walk this rank\'s OWNED cpus: collect the sockets we span and the\n'
+        '# GPU-socket NUMA nodes we actually own.  Sample both endpoints of\n'
+        '# each range so a contiguous "0-47" is seen as two sockets.\n'
+        '_my_socks=""; _pin_numas=""\n'
         '_cl=$(awk "/Cpus_allowed_list/{print \\$2}" /proc/self/status '
         '2>/dev/null)\n'
-        '# Sample BOTH endpoints of each range: a contiguous list like\n'
-        '# "0-47" spans two sockets, so the first cpu alone under-reports\n'
-        '# (the --exclusive whole-node case).  Endpoints catch the\n'
-        '# dual-socket node these GPUs live on.\n'
         '_oldifs=$IFS; IFS=,\n'
         'for _rng in $_cl; do\n'
         '    _a=${_rng%%-*}; _b=${_rng##*-}\n'
@@ -884,6 +874,18 @@ def _gpu_socket_affinity_block() -> str:
         '        [ -n "$_ps" ] || continue\n'
         '        case ",$_my_socks," in *",$_ps,"*) : ;; '
         '*) _my_socks="${_my_socks:+$_my_socks,}$_ps" ;; esac\n'
+        '        # If this owned cpu is on the GPU\'s socket, record its\n'
+        '        # NUMA node (the node* symlink under the cpu dir).\n'
+        '        if [ -n "$_gpu_sock" ] && [ "$_ps" = "$_gpu_sock" ]; then\n'
+        '            for _nd in '
+        '/sys/devices/system/cpu/cpu${_e}/node[0-9]*; do\n'
+        '                _nn=${_nd##*node}\n'
+        '                case "$_nn" in ""|*[!0-9]*) continue ;; esac\n'
+        '                case ",$_pin_numas," in *",$_nn,"*) : ;; '
+        '*) _pin_numas="${_pin_numas:+$_pin_numas,}$_nn" ;; esac\n'
+        '                break\n'
+        '            done\n'
+        '        fi\n'
         '    done\n'
         'done\n'
         'IFS=$_oldifs\n'
@@ -893,21 +895,21 @@ def _gpu_socket_affinity_block() -> str:
         '        case "$_my_socks" in\n'
         '          *,*)\n'
         '            if command -v numactl >/dev/null 2>&1 && '
-        '[ -n "$_sock_numas" ]; then\n'
-        '                _pin="numactl --cpunodebind=$_sock_numas '
-        '--membind=$_sock_numas"\n'
+        '[ -n "$_pin_numas" ]; then\n'
+        '                _pin="numactl --cpunodebind=$_pin_numas '
+        '--membind=$_pin_numas"\n'
         '                echo "molbuilder[rank ${_lr}/${_ls}]: socket-pin '
-        '-> GPU socket $_gpu_sock (numa $_sock_numas) via numactl '
-        '(whole-node/--exclusive)" >&2\n'
+        '-> GPU socket $_gpu_sock, owned numa $_pin_numas via numactl '
+        '(was multi-socket)" >&2\n'
         '            fi\n'
         '            ;;\n'
         '        esac\n'
         '        ;;\n'
         '      *)\n'
         '        echo "molbuilder[rank ${_lr}/${_ls}]: WARN cross-socket '
-        '-- GPU numa=$_numa is on socket $_gpu_sock but this rank\'s CPUs '
-        'are on socket(s) $_my_socks; host<->device + ELPA OpenMP pay a '
-        'remote hop. Request --exclusive for clean GPU timing '
+        '-- GPU numa=$_numa is on socket $_gpu_sock but this rank owns '
+        'cores only on socket(s) $_my_socks; host<->device + ELPA OpenMP '
+        'pay a remote hop. Request --exclusive for clean GPU timing '
         '(slurm-integration.md 7.5.2)." >&2\n'
         '        ;;\n'
         '    esac\n'
@@ -2762,7 +2764,7 @@ def _build_mem_audit(script_path: Path, *,
         if est.n_orb <= 0:
             return None
         return {
-            "fixed_gb": est.base_gb + est.dense_gb + est.mesh_gb,
+            "fixed_gb": est.fixed_raw_gb,   # unrounded base+dense+mesh (B-4)
             "per_rank_gb": model.c_rank,
             "safety": model.safety,
             "extra_gb": model.extra_gb,

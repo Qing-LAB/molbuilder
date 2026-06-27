@@ -475,6 +475,11 @@ class MemEstimate:
     mesh_gb:    float
     repl_gb:    float
     base_gb:    float
+    fixed_raw_gb: float         # base+dense+mesh, UNROUNDED (np-independent
+                                # part).  The runtime launcher audit bakes
+                                # this so its awk re-estimate reproduces the
+                                # single-ceil Python result exactly, instead
+                                # of summing the rounded components (B-4).
     n_orb:      int
     mesh_mpts:  float
     capped:     bool            # True if node_mem_gb cap clamped it
@@ -550,6 +555,7 @@ def estimate_siesta_memory(fdf_path, ntasks: int, *,
         mesh_gb=round(mesh_gb, 1),
         repl_gb=round(repl_gb, 1),
         base_gb=round(model.base_gb, 1),
+        fixed_raw_gb=model.base_gb + dense_gb + mesh_gb,
         n_orb=int(n_orb),
         mesh_mpts=round(mesh_mpts, 1),
         capped=capped,
