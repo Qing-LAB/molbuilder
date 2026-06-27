@@ -25,7 +25,7 @@
 | `environment@1` schema (persistence) | **built** (`bench/environment.py`) |
 | **prep-bench** — on-target detect + format | **built** (`bench/prep.py`; `molbuilder bench prep`) |
 | **summarize** — results → `bench-result.json` | **built** (`bench/summarize.py`; `molbuilder bench summarize`) |
-| **prep-run** — `bench-result.json` → run script | **proposed** (§ 7.5, § 4) |
+| **prep-run** — `bench-result.json` → run script | **built** (`bench/prep_run.py`; `molbuilder bench prep-run`) |
 | `bench-result@1` schema (persistence) | **proposed** (§ 5.3) |
 
 This doc specifies the proposed pieces precisely enough to build them

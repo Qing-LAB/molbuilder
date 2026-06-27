@@ -322,4 +322,48 @@ def cmd_summarize(bundle: str, out: Optional[str]) -> None:
     click.echo(summary_text(res, out_path))
 
 
+@bench_group.command("prep-run",
+                     short_help="bench-result.json -> production run-script "
+                                "for this machine")
+@click.option("--bench-result", "bench_result", default="bench-result.json",
+              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help="the bench-result.json from `bench summarize`.")
+@click.option("--script-base", default="job",
+              help="basename of the production scripts "
+                   "(<base>.fdf/.run.sh/.sbatch).")
+@click.option("--out", default=None, type=click.Path(),
+              help="output path (default: run-production.sh beside the "
+                   "bench-result).")
+@click.option("--scheduler", type=click.Choice(["slurm", "workstation"]),
+              default=None, help="force the scheduler (else auto-detected).")
+@click.option("--cores-per-socket", type=int, default=None)
+@click.option("--gpus-per-node", type=int, default=None)
+@click.option("--gpu-type", default=None)
+def cmd_prep_run(bench_result: str, script_base: str, out: Optional[str],
+                 scheduler: Optional[str], cores_per_socket, gpus_per_node,
+                 gpu_type) -> None:
+    """Format the production run from the benchmark verdict, re-resolved
+    for THIS machine (docs/protocols/benchmark-workflow.md § 7.5).
+
+    Reads ``bench-result.json``, applies the winning mechanism to your
+    production scripts (``--script-base``), and writes ``run-production.sh``.
+    The portable *choice* transfers; the concrete ``-n``/``-c``/``-G`` are
+    re-resolved from this machine's topology (§ 5.4).
+    """
+    from .prep import _overrides_from, utc_now_iso
+    from .prep_run import _summary, run_prep_run
+
+    try:
+        env, choice, out_path = run_prep_run(
+            bench_result,
+            script_base=script_base, out=out, scheduler_override=scheduler,
+            overrides=_overrides_from(cores_per_socket, gpus_per_node,
+                                      gpu_type),
+            now_iso=utc_now_iso())
+    except ValueError as e:
+        click.echo(f"ERROR: {e}", err=True)
+        raise SystemExit(2)
+    click.echo(_summary(env, choice, out_path))
+
+
 __all__ = ["bench_group"]
