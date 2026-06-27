@@ -480,6 +480,40 @@ timing header so a slow run is diagnosable (bad binding vs. bad config).
 The existing `_gpu_runtime_defaults_block` is single-GPU/generate-time;
 this per-rank/runtime probe is NEW logic.
 
+### 7.5.2 GPU↔CPU socket co-location (the cross-socket penalty)
+On Sol's dual-socket GPU nodes (EPYC 7413, NUMA 0-3 = socket 0 / cores
+0-23, NUMA 4-7 = socket 1 / cores 24-47, ~2 A100 per socket) a **shared**
+allocation routinely lands **cross-socket**: SLURM gives a socket-1 GPU
+(GPU `numa_node` 5/7) but socket-0 cores (cpus 4-23). Host↔GPU transfers
+and host-side ELPA OpenMP then cross the inter-socket link — correct
+results, penalized timing. Verified on both gpu-k4 and gpu-k8 (2026-06-26).
+
+**Root cause:** `--gres-flags=enforce-binding` (we emit it) only enforces
+affinity when `gres.conf` declares per-GPU `Cores=` (or `AutoDetect=nvml`
+populated it). Sol's apparently does not — the signature is "job starts
+immediately + cross-socket." Detect with
+`scontrol show node <gpu-node> | grep -i gres`: a bare `Gres=gpu:a100:4`
+with **no `(S:n)`** socket tag ⇒ affinity undeclared ⇒ enforce-binding is
+structurally a no-op (sbatch.html / gres.conf.html `Cores=`).
+
+**Two things that DON'T work as a default:**
+- `--gpu-bind=closest` **conflicts with our per-rank launcher** (§ 7.5.1):
+  the launcher owns GPU→rank mapping by reading the full `CUDA_VISIBLE_DEVICES`
+  set and re-exporting per rank; `--gpu-bind` pre-collapses CVD per task,
+  so every rank would map to GPU 0 and the K-ranks-per-GPU spread breaks.
+  Do NOT add it to the emitter.
+- `--ntasks-per-socket … -m block:block` is unreliable for single-GPU
+  (SLURM picks GPU + cores independently without affinity config) and
+  costs scheduling flexibility. Not a default.
+
+**Robust paths:** (1) ADMIN — file a Sol RC ticket to add gres.conf
+`AutoDetect=nvml` or explicit per-GPU `Cores=` (GPUs 0-1→0-23, 2-3→24-47);
+then enforce-binding co-locates automatically, no `--exclusive`. (2)
+FRAMEWORK — under `--exclusive` the launcher (which already probes the
+GPU's real NUMA) should **pin** ranks/OMP to the GPU's socket; on a shared
+cross-socket allocation it can only **warn**, never fail (correct-but-slow
+is not a reason to kill a valid job). TODO.
+
 ### 7.6 Working directory / outputs
 `SLURM_SUBMIT_DIR` = the dir you `sbatch` from = the project dir. The
 launcher never `cd`s (`config.md` § 1), so outputs land beside inputs.
