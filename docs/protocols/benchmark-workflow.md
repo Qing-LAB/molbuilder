@@ -21,7 +21,7 @@
 | Memory estimator + runtime check | **built** (`siesta/memory.py`; slurm-integration.md § 11.0d) |
 | GPU-to-CPU placement (same socket) | **built** (slurm-integration.md § 7.5.2) |
 | Environment **probes** (detect → `environment.json`) | **built** (`bench/environment.py`) |
-| Scheduler **adapters** — selection + `sweep_K` + `format_bench` | **built** (`bench/adapters.py`); `format_run` next |
+| Scheduler **adapters** — full interface (`sweep_K`, `format_bench`, `format_run`) | **built** (`bench/adapters.py`) |
 | `environment@1` schema (persistence) | **built** (`bench/environment.py`) |
 | **prep-bench** — on-target detect + format | **proposed** (§ 7.2, § 4); detection done, formatting next |
 | **summarize** — results → `bench-result.json` | **proposed** (§ 7.4, § 5) |
