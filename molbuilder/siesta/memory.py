@@ -427,15 +427,30 @@ class MemModel:
     them against observed peak RSS via :meth:`from_config`.
     """
     base_gb:     float = 2.0    # fixed binary + libraries + buffers
-    c_dense:     float = 4.0    # ~4 complex N_orb^2 matrices per k-point
+    c_dense:     float = 2.4    # EFFECTIVE dense-matrix coefficient.  The
+                                # term is ``c_dense * N_orb^2 * bpc *
+                                # n_kpoints``, but a literal "one full
+                                # N_orb^2 set per k-point" badly over-counts:
+                                # under ScaLAPACK + Diag.ParallelOverK SIESTA
+                                # streams the k-points through a small set of
+                                # DISTRIBUTED dense buffers rather than
+                                # holding all of them at once.  2.4 is
+                                # calibrated so the np-independent part
+                                # reproduces the observed ~162 GB at np=4 on
+                                # the BDT-Au junction (N_orb~=14.8k, 16 k-pts)
+                                # -- NOT a literal matrix count.  It still
+                                # scales monotonically with k-points, so a
+                                # gamma run lands far below a k-sampled one.
     c_mesh:      float = 0.05   # GB per million real-space mesh points
-    c_rank:      float = 1.5    # GB of per-rank replication, per MPI task.
-                                # Calibrated to bracket a real OOM: the BDT
-                                # Au junction used ~162 GB at np=4 but
-                                # >240 GB at np=64 -- ~1.4 GB/rank of
-                                # replicated sparse structures + ScaLAPACK
-                                # workspace + comm buffers.  Tune against a
-                                # successful run's ``sacct MaxRSS``.
+    c_rank:      float = 3.5    # GB of per-rank replication, per MPI task.
+                                # Calibrated to bracket TWO real anchors on
+                                # the BDT-Au junction: ~162 GB at np=4, and
+                                # at np=64 it OOM'd at --mem=320G but SURVIVED
+                                # 480G (so true peak is ~400-470 GB).  The
+                                # ~3.5 GB/rank slope = replicated sparse
+                                # structures + ScaLAPACK workspace + comm
+                                # buffers, growing ~linearly with rank count.
+                                # Tune against a successful ``sacct MaxRSS``.
     safety:      float = 1.3    # global headroom multiplier
     extra_gb:    float = 0.0    # flat add-on (e.g. NEGF / Green funcs)
     floor_gb:    float = 4.0    # never request less than this
@@ -492,9 +507,11 @@ def estimate_siesta_memory(fdf_path, ntasks: int, *,
     n_orb, w1 = estimate_norb(inputs, psml_lib)
 
     # Dense matrices: real (8 B) for Gamma-only, complex (16 B) when a
-    # k-mesh forces complex arithmetic.  The diagonaliser holds ~one set
-    # of N_orb x N_orb matrices PER k-point, so the term scales with the
-    # k-point count (c_dense ~= 4 such matrices: H, S, eigvecs, work).
+    # k-mesh forces complex arithmetic.  The term scales with the k-point
+    # count, but ``c_dense`` is an EFFECTIVE coefficient (~2.4), calibrated
+    # to observed RSS -- NOT a literal matrix count: SIESTA streams the
+    # k-points through a small set of DISTRIBUTED ScaLAPACK buffers rather
+    # than materialising one full N_orb^2 set per k-point (see MemModel).
     bpc = 16.0 if inputs.n_kpoints > 1 else 8.0
     dense_gb = model.c_dense * (n_orb ** 2) * bpc * inputs.n_kpoints / 1e9
 

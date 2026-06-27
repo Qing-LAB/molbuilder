@@ -378,10 +378,12 @@ def test_mesh_calibration_against_real_siesta(tmp_path):
     assert abs(est.mesh_mpts - real_mpts) / real_mpts < 0.30
 
 
-def _au_c_444_tzp_fdf(tmp_path) -> Path:
-    """A ~444-atom TZP system with N_orb ~= 11000 (203 Au + 241 C),
-    4x4x1 k-grid, in the real 17.64 x 17.64 x 58.41 A cell."""
-    lines = ["0.0 0.0 0.0 1"] * 203 + ["0.0 0.0 0.0 2"] * 241
+def _bdt_au444_tzp_fdf(tmp_path) -> Path:
+    """The real BDT-Au(111) junction the model is calibrated against:
+    432 Au + 6 C + 2 S + 4 H = 444 atoms, TZP, 4x4x1 (=16) k-grid, in
+    the 17.64 x 17.64 x 58.41 A cell.  N_orb ~= 14.8k."""
+    lines = (["0.0 0.0 0.0 1"] * 432 + ["0.0 0.0 0.0 2"] * 6
+             + ["0.0 0.0 0.0 3"] * 2 + ["0.0 0.0 0.0 4"] * 4)
     coords = "\n".join(lines)
     fdf = f"""\
 NumberOfAtoms 444
@@ -401,30 +403,32 @@ LatticeConstant 1.0 Ang
 %block ChemicalSpeciesLabel
 1 79 Au
 2 6 C
+3 16 S
+4 1 H
 %endblock ChemicalSpeciesLabel
 %block AtomicCoordinatesAndAtomicSpecies
 {coords}
 %endblock AtomicCoordinatesAndAtomicSpecies
 """
-    return _write(tmp_path, fdf, name="aucal.fdf")
+    return _write(tmp_path, fdf, name="bdtau.fdf")
 
 
-def test_calibration_against_observed_162gb(tmp_path):
-    # Two real anchors on the BDT Au junction (N_orb ~= 11000, 16 k-pts):
-    #   * np=4  -> ~162 GB total RSS (observed).
-    #   * np=64 -> OOM at --mem=240G (so the true need is >240 GB).
-    # Pin the model to bracket BOTH: dense term is ~np-independent
+def test_calibration_against_observed_anchors(tmp_path):
+    # Two real anchors on the BDT-Au junction (N_orb ~= 14.8k, 16 k-pts):
+    #   * np=4  -> ~162 GB total RSS (observed, did not OOM).
+    #   * np=64 -> OOM'd at --mem=320G but SURVIVED 480G (true peak in
+    #     ~400-470 GB).
+    # Pin the model to bracket BOTH: the dense term is ~np-independent
     # (k-point-scaled), the per-rank replication (c_rank) grows the rest.
-    fdf = _au_c_444_tzp_fdf(tmp_path)
+    fdf = _bdt_au444_tzp_fdf(tmp_path)
     norb, _ = estimate_norb(parse_fdf_mem_inputs(fdf))
-    assert 10500 <= norb <= 11500
+    assert 14000 <= norb <= 15500
 
     model = MemModel.from_config({"node_mem_gb": 500.0})
     np4 = estimate_siesta_memory(fdf, ntasks=4, model=model)
     np64 = estimate_siesta_memory(fdf, ntasks=64, model=model)
 
-    assert 150 <= np4.request_gb <= 210      # brackets observed ~162 GB
-    assert np64.request_gb > 240             # must exceed the np=64 OOM
-    assert np64.request_gb <= 360            # but stay sane (< node cap)
-    assert np4.request_gb < 500 and np64.request_gb < 500
+    assert 170 <= np4.request_gb <= 230      # brackets observed ~162 GB
+    assert np64.request_gb > 320             # must exceed the np=64 OOM
+    assert 440 <= np64.request_gb <= 500     # at/under the 480 survival
     assert not np4.capped and not np64.capped
