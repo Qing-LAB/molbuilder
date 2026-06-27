@@ -139,12 +139,22 @@ def _gpu_type_from_name(name: str) -> Optional[str]:
 
 
 def _parse_gres(gres: str) -> Tuple[Optional[int], Optional[str]]:
-    """``gpu:a100:4`` / ``gpu:a100:4(S:0-1)`` / ``gpu:4`` -> (count, type)."""
+    """``gpu:a100:4`` / ``gpu:a100:4(S:0-1)`` / ``gpu:4`` ->
+    ``(count, type)``.
+
+    A node's ``Gres`` can list MULTIPLE comma-separated resources (e.g.
+    ``gpu:a100:4,mps:400``); split on ``,`` and parse only the ``gpu:``
+    entry, else a trailing ``mps:0`` would be read as ``0`` GPUs."""
     g = gres.strip()
     if not g or g.lower() in ("(null)", "none"):
         return None, None
     g = re.sub(r"\(.*?\)", "", g)                    # drop (S:..) socket tag
-    parts = g.split(":")
+    entries = [e for e in g.split(",") if e]
+    gpu_entry = next((e for e in entries
+                      if e.split(":", 1)[0].lower() == "gpu"), None)
+    target = gpu_entry if gpu_entry is not None else (entries[0]
+                                                      if entries else g)
+    parts = target.split(":")
     count = _to_int(parts[-1])
     gtype = None
     for p in parts:
@@ -201,7 +211,9 @@ def _parse_nvidia_smi_l(text: str) -> Tuple[Optional[int], Optional[str]]:
         return None, None
     gtype = None
     for ln in lines:
-        gtype = _gpu_type_from_name(ln)
+        # Match the model NAME only -- strip the "(UUID: GPU-a30...)" tail,
+        # whose hex can false-match type tokens like a30/a40/a100.
+        gtype = _gpu_type_from_name(ln.split("(", 1)[0])
         if gtype:
             break
     return len(lines), gtype

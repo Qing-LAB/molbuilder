@@ -11,7 +11,7 @@ from molbuilder.bench import environment as env_mod
 from molbuilder.bench.environment import (
     Environment, Site, Topology, _parse_gres, _parse_lscpu,
     _parse_nvidia_smi_l, _parse_scontrol_node, resolve_environment,
-)
+)  # noqa: F401  (_parse_nvidia_smi_l used in the uuid test)
 
 
 # --------------------------------------------------------------------- #
@@ -67,9 +67,23 @@ def test_parse_nvidia_smi_l():
     ("gpu:4", (4, None)),
     ("(null)", (None, None)),
     ("", (None, None)),
+    # multiple comma-separated resources: parse the gpu entry, not mps
+    ("gpu:a100:4,mps:0", (4, "a100")),
+    ("gpu:a100:4(S:0-1),mps:400", (4, "a100")),
+    ("mps:0,gpu:v100:2", (2, "v100")),
 ])
 def test_parse_gres(gres, expect):
     assert _parse_gres(gres) == expect
+
+
+def test_parse_nvidia_smi_l_ignores_uuid_hex():
+    # An UNKNOWN model whose UUID happens to contain 'a30'/'a40' hex must
+    # NOT be mis-typed; the type comes from the model name only.
+    unknown = "GPU 0: NVIDIA SuperNew9000 (UUID: GPU-a30bbbbb-a40f-1111)\n"
+    assert _parse_nvidia_smi_l(unknown) == (1, None)
+    # a known model is still detected despite hex in its UUID
+    known = "GPU 0: NVIDIA A100-SXM4-80GB (UUID: GPU-a30f-2222)\n"
+    assert _parse_nvidia_smi_l(known) == (1, "a100")
 
 
 # --------------------------------------------------------------------- #
@@ -370,6 +384,29 @@ def test_format_run_rejects_unsafe_script_base():
         adapters.SlurmAdapter().format_run(
             {"engine": "cpu", "knobs": {"ranks": 4}},
             _SLURM_ENV, script_base="x; rm -rf /")
+
+
+def test_format_run_coerces_unsafe_knob_values():
+    # Knob values from a foreign bench-result must be int-coerced before
+    # reaching the shell -- a string like "3 ; touch X" must NOT inject.
+    choice = {"engine": "gpu",
+              "knobs": {"gpus": 1, "ranks_per_gpu": 2,
+                        "cores_per_rank": "3 ; touch /tmp/PWNED"}}
+    env = Environment(scheduler="slurm",
+                      topology=Topology(gpus_per_node=1, gpu_type="a100"))
+    s = adapters.SlurmAdapter().format_run(
+        choice, env, script_base="prod")["run-production.sh"]
+    cmd = s.split("\n\n", 1)[1]
+    assert "touch" not in cmd                 # not injected into the command
+    # the raw value may echo back, but ONLY inert inside a '#' comment
+    # (json.dumps keeps it on one escaped line -- no break-out)
+    for ln in s.splitlines():
+        if "PWNED" in ln:
+            assert ln.lstrip().startswith("#"), ln
+    ok, err = _bash_n(s)
+    assert ok, err
+    # cores unknown + non-int bench c -> dropped to None -> no -c flag
+    assert "sbatch --gres=gpu:a100:1 -n 2 prod.sbatch" in cmd
 
 
 def test_format_bench_sanitizes_gpu_type():

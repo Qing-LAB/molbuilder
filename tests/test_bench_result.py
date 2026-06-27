@@ -127,8 +127,18 @@ def test_choose_winner_ignores_non_completed_and_timeless():
 def test_recommend_from_winner_peak_rss():
     pts = _pts()
     rec = recommend_resources(pts, choose_winner(pts))
-    assert rec["mem_gb"] == 29          # ceil(25.2 * 1.15)
+    assert rec["mem_gb"] == 29          # ceil(25.2 * 1.15) = ceil(28.98)
     assert "time" in rec and rec["time"].count(":") == 2
+
+
+def test_recommend_mem_uses_true_ceil():
+    # rss*safety just above an integer must round UP (the old +0.999 trick
+    # floored values within 0.001 of an int).
+    pts = [BenchPoint("g", "gpu", {"gpus": 1, "ranks_per_gpu": 8},
+                      {"s_per_iter": 100.0, "peak_rss_gb": 25.218},
+                      bound="gpu", state="completed")]
+    rec = recommend_resources(pts, choose_winner(pts))
+    assert rec["mem_gb"] == 30           # ceil(29.0007), not 29
 
 
 def test_build_and_round_trip():

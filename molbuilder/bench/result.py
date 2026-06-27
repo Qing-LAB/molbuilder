@@ -22,9 +22,10 @@ module is ready to consume properly-isolated points.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 SCHEMA = "molbuilder/bench-result@1"
 
@@ -47,12 +48,18 @@ def parse_scf_timing(text: str) -> Dict[str, Optional[float]]:
     for line in text.splitlines():
         tok = line.split(None, 1)[0] if line.strip() else ""
         try:
-            epochs.append(float(tok))
+            v = float(tok)
         except ValueError:
             continue
+        if math.isfinite(v):                         # reject nan/inf tokens
+            epochs.append(v)
     if len(epochs) < 2:
         return {"s_per_iter": None, "iters_measured": 0}
-    deltas = [epochs[i] - epochs[i - 1] for i in range(1, len(epochs))]
+    # Only forward (positive) deltas are real iteration durations.
+    deltas = [d for d in (epochs[i] - epochs[i - 1]
+                          for i in range(1, len(epochs))) if d > 0]
+    if not deltas:
+        return {"s_per_iter": None, "iters_measured": 0}
     measured = deltas[1:] if len(deltas) >= 2 else deltas
     return {"s_per_iter": round(sum(measured) / len(measured), 1),
             "iters_measured": len(measured)}
@@ -118,7 +125,15 @@ _SACCT_UNIT = {"K": 1 / 1048576, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
 def parse_sacct_mem(sacct_text: str) -> Optional[float]:
     """Peak memory in GB from ``sacct`` output -- the ``mem=<n><unit>`` in
     a ``TRESUsageInMax`` field (the most robust place; Sol leaves the bare
-    ``MaxRSS`` column blank for some jobs).  Takes the max seen."""
+    ``MaxRSS`` column blank for some jobs).  Takes the max seen.
+
+    CONTRACT: the caller's ``sacct -o`` format MUST include
+    ``TRESUsageInMax`` (not only ``MaxRSS``) -- a bare ``MaxRSS`` column
+    has no ``mem=`` token and is deliberately NOT scanned (a generic
+    ``<n><unit>`` scan would also match ``ReqMem``/``MaxVMSize`` and
+    over-report).  When nothing matches this returns ``None`` and the
+    caller's recommendation simply omits ``mem_gb`` (visibly absent, not
+    silently wrong)."""
     peak = None
     for val, unit in _SACCT_MEM.findall(sacct_text):
         try:
@@ -136,8 +151,10 @@ def parse_sacct_mem(sacct_text: str) -> Optional[float]:
 
 @dataclass
 class BenchPoint:
-    label:   str
-    engine:  str                                     # "cpu" | "gpu"
+    # Defaults so a malformed/partial point in loaded JSON degrades to an
+    # empty-label entry rather than raising TypeError (F5).
+    label:   str = ""
+    engine:  str = ""                                # "cpu" | "gpu"
     knobs:   Dict = field(default_factory=dict)
     metrics: Dict = field(default_factory=dict)      # s_per_iter, sm%, rss...
     bound:   Optional[str] = None                    # gpu | host | mixed
@@ -240,7 +257,7 @@ def recommend_resources(points: List[BenchPoint], choice: Dict, *,
     if win is not None:
         rss = win.metrics.get("peak_rss_gb")
         if isinstance(rss, (int, float)) and rss > 0:
-            rec["mem_gb"] = int(rss * mem_safety + 0.999)
+            rec["mem_gb"] = math.ceil(rss * mem_safety)
         spi = win.s_per_iter()
         if spi:
             secs = int(spi * prod_iters * time_safety)

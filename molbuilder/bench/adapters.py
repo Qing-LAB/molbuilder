@@ -20,10 +20,21 @@ on the shape now.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Dict, List, Optional
 
 from .environment import Environment, Topology
+
+
+def _int_or(v, default):
+    """Coerce ``v`` to int; return ``default`` on anything non-integer.
+    Used to sanitize knob values from a foreign bench-result before they
+    are interpolated into generated shell."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 # Fallback rank-counts when cores-per-socket is unknown (so the sweep is
 # still useful; the adapter notes the missing topology).
@@ -177,26 +188,32 @@ class SchedulerAdapter:
         topo = env.topology
         notes: List[str] = []
 
+        # EVERY knob that reaches the shell MUST be integer-coerced first
+        # -- the values come straight from a (possibly hand-edited or
+        # foreign) bench-result JSON.  A raw string would otherwise be
+        # interpolated unquoted and could inject (audit: format_run
+        # cores_per_rank).  Non-numeric -> 1 (counts) or None (optional c).
         if engine == "gpu":
-            k = int(knobs.get("ranks_per_gpu") or 1)
-            g_req = int(knobs.get("gpus") or 1)
+            k = _int_or(knobs.get("ranks_per_gpu"), 1)
+            g_req = _int_or(knobs.get("gpus"), 1)
+            bench_c = _int_or(knobs.get("cores_per_rank"), None)
             g = min(g_req, topo.gpus_per_node) if topo.gpus_per_node else g_req
             if topo.gpus_per_node and g < g_req:
                 notes.append(f"G clamped {g_req}->{g} (this machine has "
                              f"{topo.gpus_per_node} GPU(s))")
             if topo.cores_per_socket:
                 c = max(1, topo.cores_per_socket // k)
-                if knobs.get("cores_per_rank") not in (None, c):
+                if bench_c not in (None, c):
                     notes.append(f"c re-resolved to {c} = cores/socket"
                                  f"({topo.cores_per_socket})//K({k}) "
-                                 f"[bench had {knobs.get('cores_per_rank')}]")
+                                 f"[bench had {bench_c}]")
             else:
-                c = knobs.get("cores_per_rank")
+                c = bench_c
                 notes.append("cores/socket unknown -> kept bench c; verify")
             cmd = self.gpu_launch_line(g, k, c, _check_gpu_type(topo.gpu_type),
                                        script_base)
         elif engine == "cpu":
-            np = int(knobs.get("ranks") or 1)
+            np = _int_or(knobs.get("ranks"), 1)
             total = ((topo.sockets or 1) * topo.cores_per_socket
                      if topo.cores_per_socket else None)
             if total and np > total:
@@ -211,7 +228,10 @@ class SchedulerAdapter:
         head = [
             "#!/usr/bin/env bash",
             f"# run-production.sh -- generated for scheduler '{self.name}'",
-            f"#   from the benchmark winner: engine={engine} knobs={knobs}",
+            # json.dumps keeps the knobs on ONE escaped line: a newline /
+            # metachar in a value can't break out of this '#' comment.
+            f"#   from the benchmark winner: engine={engine} "
+            f"knobs={json.dumps(knobs)}",
             "#   the MECHANISM transfers across machines; the concrete -n/"
             "-c/-G are re-resolved here for THIS machine (§ 5.4):",
         ]
@@ -246,9 +266,9 @@ class SlurmAdapter(SchedulerAdapter):
 
 class WorkstationAdapter(SchedulerAdapter):
     """Single machine: no scheduler; points run sequentially via a direct
-    launch.  ``sweep_K`` is additionally bounded by the box -- with only a
-    few GPUs there is no point in a wide multi-GPU sweep, and K is still
-    capped at cores-per-socket by the divisor rule."""
+    launch.  Uses the shared ``sweep_K`` (cores-per-socket divisors); the
+    multi-GPU width of the sweep is bounded by ``gpus_per_node`` in
+    :meth:`format_bench`, so a 1-GPU box yields only G=1 points."""
     name = "workstation"
 
     def matches(self, env: Environment) -> bool:
