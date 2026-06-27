@@ -218,11 +218,43 @@ def test_format_bench_workstation_emits_direct_grid():
                       topology=Topology(cores_per_socket=24, gpus_per_node=1,
                                         gpu_type="a100"))
     s = _sweep(adapters.WorkstationAdapter(), env)
-    # direct launch, no sbatch, picks the GPU + drives the launcher knobs
-    assert "sbatch" not in s
+    # direct launch (no sbatch SUBMISSION), picks the GPU + launcher knobs
+    assert "&& sbatch" not in s
     assert ("CUDA_VISIBLE_DEVICES=0 MOLBUILDER_MPI_NP=8 "
             "MOLBUILDER_OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
     assert "SEQUENTIALLY" in s
+    # each point is isolated in its own dir
+    assert "_mb_point point-G1K8" in s
+    assert "( cd point-G1K8 &&" in s
+
+
+def test_format_bench_isolates_points_at_runtime(tmp_path):
+    # Functional: the workstation sweep must run each point in its OWN
+    # point-G<g>K<k>/ dir with the shared files symlinked in, so outputs
+    # never collide on the job-gpu basename.
+    (tmp_path / "job-gpu.fdf").write_text("fake fdf\n")
+    (tmp_path / "C.psml").write_text("pseudo\n")
+    (tmp_path / "job-gpu.run.sh").write_text(
+        "#!/usr/bin/env bash\npwd >> ../_ran.log\n")
+    (tmp_path / "job-gpu.run.sh").chmod(0o755)
+
+    env = Environment(scheduler="workstation",
+                      topology=Topology(cores_per_socket=4, gpus_per_node=1,
+                                        gpu_type="rtx"))     # K in {1,2,4}
+    sweep = adapters.WorkstationAdapter().format_bench(env)["job-gpu-sweep.sh"]
+    (tmp_path / "job-gpu-sweep.sh").write_text(sweep)
+    r = subprocess.run(["bash", "job-gpu-sweep.sh"], cwd=str(tmp_path),
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+    for k in (1, 2, 4):
+        d = tmp_path / f"point-G1K{k}"
+        assert d.is_dir()
+        assert (d / "job-gpu.fdf").is_symlink()
+        assert (d / "C.psml").is_symlink()
+    ran = (tmp_path / "_ran.log").read_text().split()
+    assert len(ran) == 3                       # one run per point...
+    assert all("point-G1K" in line for line in ran)   # ...each in its dir
 
 
 def test_format_bench_unknown_cores_uses_fallback_ks():

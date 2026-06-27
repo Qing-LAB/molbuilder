@@ -12,11 +12,11 @@ the rest of the prep layer.  The pure ``parse_*`` functions take text and
 are unit-tested; ``build_bench_result`` assembles them.
 
 NOTE (output isolation): a point is identified by its ``label``; the
-caller hands each point its own artifacts.  The sweep must therefore give
-every (G, K) point a DISTINCT output set (its own SystemLabel/subdir) --
-otherwise all GPU points share the ``job-gpu`` basename and clobber each
-other.  Wiring that into ``format_bench`` is a tracked follow-up; this
-module is ready to consume properly-isolated points.
+caller hands each point its own artifacts.  The sweep helper
+(``adapters.format_bench``) runs every (G, K) point in its own
+``point-G<g>K<k>/`` subdirectory, so the GPU points never clobber the
+shared ``job-gpu`` basename -- a summarize driver maps each such
+directory back to a point label/knobs.
 """
 
 from __future__ import annotations

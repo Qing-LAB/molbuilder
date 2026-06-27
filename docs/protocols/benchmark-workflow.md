@@ -437,7 +437,11 @@ source; never silently guesses.
 ### § 7.3 run-bench (target, mostly built)
 Launches the points (queue-submitted in parallel under SLURM; sequential
 on a workstation). The launcher + monitor are built; the monitor emits
-`util.csv` (§ 9). Per-point outputs: timing log, `util.csv`, peak memory.
+`util.csv` (§ 9). **Output isolation (built):** the sweep runs each (G, K)
+point in its own `point-G<g>K<k>/` subdirectory (the shared fdf / run.sh /
+sbatch / monitor / pseudos are symlinked in), so points never clobber the
+shared `job-gpu` basename. Per-point outputs (timing log, `util.csv`, peak
+memory) live under that directory; summarize maps the directory → label.
 
 ### § 7.4 summarize (target, proposed)
 Reads each point's timing + utilization + memory, writes

@@ -122,9 +122,15 @@ class SchedulerAdapter:
         emit more formatted files later.
 
         Running the produced script does the right thing per scheduler by
-        construction: under SLURM each line is an ``sbatch`` (all points
-        **queue in parallel**); on a workstation each line launches
-        in-place (points run **sequentially**)."""
+        construction: under SLURM each point is an ``sbatch`` (all points
+        **queue in parallel**); on a workstation each runs in-place
+        (points run **sequentially**).
+
+        **Output isolation:** every (G, K) point runs in its own
+        ``point-G<g>K<k>/`` subdirectory (the shared fdf / run.sh / sbatch
+        / monitor / pseudopotentials are symlinked in), so points never
+        clobber the shared ``job-gpu`` basename and summarize can map each
+        directory back to its (G, K) label."""
         topo = env.topology
         gpn = gpus_per_node or topo.gpus_per_node or 1
         cps = topo.cores_per_socket
@@ -140,14 +146,30 @@ class SchedulerAdapter:
             "c=cores/rank (=cores_per_socket/K, full-socket).",
             "#   K values = " + ",".join(str(k) for k in ks)
             + (" (cores/socket unknown -> fallback set)" if not cps else ""),
+            "#   each point runs in its own point-G<g>K<k>/ dir (isolated "
+            "outputs).",
         ]
         if self.name == "slurm":
-            head.append("#   each line is an sbatch -> points QUEUE IN "
-                        "PARALLEL.")
+            head.append("#   sbatch per point -> points QUEUE IN PARALLEL.")
         else:
-            head.append("#   each line launches in-place -> points run "
-                        "SEQUENTIALLY (one box).")
-        head.append("set -u")
+            head.append("#   in-place per point -> points run SEQUENTIALLY "
+                        "(one box).")
+        head += [
+            "set -u",
+            "",
+            "# Isolate a sweep point: its own dir with the shared artifacts",
+            "# symlinked in, so outputs don't collide on the job-gpu base.",
+            "_mb_point() {",
+            '    d="$1"; mkdir -p "$d"',
+            "    for f in job-gpu.fdf job-gpu.run.sh job-gpu.sbatch "
+            "mb_monitor.py; do",
+            '        [ -e "$f" ] && ln -sfn "../$f" "$d/$f"',
+            "    done",
+            "    for p in *.psml *.psf *.vps; do",
+            '        [ -e "$p" ] && ln -sfn "../$p" "$d/$p"',
+            "    done",
+            "}",
+        ]
 
         body: List[str] = []
         for g in range(1, gpn + 1):
@@ -158,11 +180,14 @@ class SchedulerAdapter:
                     body.append(f"# INVALID G={g} K={k}: K exceeds "
                                 f"cores/socket={cps}")
                     continue
-                line = self.gpu_launch_line(g, k, c, gtype)
-                if g >= 2:
-                    line += ("   # multi-GPU: no NCCL -- MEASURE, don't "
-                             "assume; do NOT add --gpu-bind")
-                body.append(line)
+                d = f"point-G{g}K{k}"
+                ctag = "" if c is None else f" c={c}"
+                caveat = ("  (multi-GPU: no NCCL -- MEASURE; do NOT add "
+                          "--gpu-bind)" if g >= 2 else "")
+                launch = self.gpu_launch_line(g, k, c, gtype)
+                body.append(f"# G={g} K={k}{ctag}{caveat}")
+                body.append(f"_mb_point {d}")
+                body.append(f"( cd {d} && {launch} )")
 
         content = "\n".join(head) + "\n\n" + "\n".join(body) + "\n"
         return {"job-gpu-sweep.sh": content}
@@ -255,13 +280,14 @@ class SlurmAdapter(SchedulerAdapter):
         # Override the sbatch header's defaults; the launcher reads
         # SLURM_NTASKS/_CPUS_PER_TASK so -n/-c and mpirun agree (§ 7.3).
         # Omit -c when cores/socket is unknown (let the header default it).
+        # BARE command (no trailing comment): format_bench wraps it in
+        # ``( cd <dir> && ... )`` where an inline '#' would comment out ')'.
         cflag = "" if c is None else f"-c {c} "
-        ctag = "" if c is None else f" c={c}"
         return (f"sbatch --gres=gpu:{gpu_type}:{g} -n {k * g} {cflag}"
-                f"{script_base}.sbatch  # G={g} K={k}{ctag}")
+                f"{script_base}.sbatch")
 
     def cpu_launch_line(self, np, script_base):
-        return f"sbatch -n {np} {script_base}.sbatch  # CPU np={np}"
+        return f"sbatch -n {np} {script_base}.sbatch"
 
 
 class WorkstationAdapter(SchedulerAdapter):
@@ -277,15 +303,14 @@ class WorkstationAdapter(SchedulerAdapter):
     def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
         # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and drive
         # the launcher's GPU-mode overrides directly.  Runs in-place
-        # (blocking) -> sequential sweep.
+        # (blocking) -> sequential sweep.  BARE command (see SlurmAdapter).
         cvd = ",".join(str(i) for i in range(g))
         omp = "" if c is None else f"MOLBUILDER_OMP_NUM_THREADS={c} "
         return (f"CUDA_VISIBLE_DEVICES={cvd} MOLBUILDER_MPI_NP={k * g} "
-                f"{omp}./{script_base}.run.sh  # G={g} K={k}"
-                + (f" c={c}" if c is not None else ""))
+                f"{omp}./{script_base}.run.sh")
 
     def cpu_launch_line(self, np, script_base):
-        return f"MB_NP={np} ./{script_base}.run.sh  # CPU np={np}"
+        return f"MB_NP={np} ./{script_base}.run.sh"
 
 
 # Registry — resolution order.  A new scheduler appends one entry here.
