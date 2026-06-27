@@ -414,12 +414,13 @@ LatticeConstant 1.0 Ang
 
 
 def test_calibration_against_observed_anchors(tmp_path):
-    # Two real anchors on the BDT-Au junction (N_orb ~= 14.8k, 16 k-pts):
+    # Real anchors on the BDT-Au junction (N_orb ~= 14.8k, 16 k-pts):
     #   * np=4  -> ~162 GB total RSS (observed, did not OOM).
-    #   * np=64 -> OOM'd at --mem=320G but SURVIVED 480G (true peak in
-    #     ~400-470 GB).
-    # Pin the model to bracket BOTH: the dense term is ~np-independent
-    # (k-point-scaled), the per-rank replication (c_rank) grows the rest.
+    #   * np=64 -> OOM'd at --mem=320G; SURVIVED 480G; and the unthrottled
+    #     480G survivor reported a peak cgroup RSS of 433.15 GB
+    #     (`sacct TRESUsageInMax mem=`, Sol jobs 2026-06-27) -- the
+    #     GROUND-TRUTH np=64 peak.  Our estimate must sit ABOVE 433 (so it
+    #     doesn't OOM) yet under the 480 that survived / the node cap.
     fdf = _bdt_au444_tzp_fdf(tmp_path)
     norb, _ = estimate_norb(parse_fdf_mem_inputs(fdf))
     assert 14000 <= norb <= 15500
@@ -429,6 +430,6 @@ def test_calibration_against_observed_anchors(tmp_path):
     np64 = estimate_siesta_memory(fdf, ntasks=64, model=model)
 
     assert 170 <= np4.request_gb <= 230      # brackets observed ~162 GB
-    assert np64.request_gb > 320             # must exceed the np=64 OOM
+    assert np64.request_gb > 433             # must exceed the REAL peak
     assert 440 <= np64.request_gb <= 500     # at/under the 480 survival
     assert not np4.capped and not np64.capped

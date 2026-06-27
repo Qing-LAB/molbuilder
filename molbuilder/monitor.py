@@ -123,7 +123,10 @@ _SCF_LINE = re.compile(r"^[ \t]*scf:[ \t]*[0-9]")
 # move = 5`` / ``Begin Z-matrix opt. move = 1`` at each ionic step.  We
 # take the highest move number seen in the .out tail as the current
 # geometry step (None for single-point runs, which never print it).
-_GEOM_LINE = re.compile(r"Begin\b.*\bmove\b\D*([0-9]+)", re.IGNORECASE)
+# The literal ``move = <N>`` (and case-sensitive ``Begin``) is required
+# so narrative text like "begin to move 8 atoms" can't false-positive
+# (audit 2026-06-27 B-5).
+_GEOM_LINE = re.compile(r"Begin\b.*\bmove\b\s*=\s*([0-9]+)")
 
 
 def _tail_bytes(path: Path, nbytes: int = 16384) -> str:
