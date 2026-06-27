@@ -509,10 +509,25 @@ structurally a no-op (sbatch.html / gres.conf.html `Cores=`).
 **Robust paths:** (1) ADMIN — file a Sol RC ticket to add gres.conf
 `AutoDetect=nvml` or explicit per-GPU `Cores=` (GPUs 0-1→0-23, 2-3→24-47);
 then enforce-binding co-locates automatically, no `--exclusive`. (2)
-FRAMEWORK — under `--exclusive` the launcher (which already probes the
-GPU's real NUMA) should **pin** ranks/OMP to the GPU's socket; on a shared
-cross-socket allocation it can only **warn**, never fail (correct-but-slow
-is not a reason to kill a valid job). TODO.
+FRAMEWORK — **DONE** (`_gpu_socket_affinity_block`, 2026-06-27): the
+per-rank launcher resolves the GPU's NUMA node → its socket
+(`physical_package_id`) and the socket(s) its own `Cpus_allowed_list`
+spans, then:
+- **pins** the rank (`numactl --cpunodebind/--membind` to *all* NUMA
+  nodes on the GPU's socket, e.g. `0,1,2,3`) when the cpuset spans **more
+  than one socket** — the whole-node / `--exclusive` signature, where
+  SLURM's cpuset is the entire node and the rank would otherwise roam
+  cross-socket;
+- **no-ops** when the cpuset is already confined to the GPU's socket
+  (SLURM co-located us — nothing to do);
+- **warns, never fails** when the GPU's socket isn't in our cpuset (a
+  shared cross-socket allocation we can't fix from here).
+
+Endpoint-sampled per range so a contiguous `0-47` is correctly read as
+two sockets; all sysfs reads + `numactl` are guarded (missing → no pin).
+This makes `--exclusive` the clean-benchmark default: ranks land on their
+GPU's socket automatically. (`> 2`-socket nodes: endpoint sampling can
+miss a *middle* socket, harmless for the dual-socket GPU nodes here.)
 
 ### 7.6 Working directory / outputs
 `SLURM_SUBMIT_DIR` = the dir you `sbatch` from = the project dir. The

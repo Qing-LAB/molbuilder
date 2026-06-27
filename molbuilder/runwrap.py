@@ -818,6 +818,103 @@ def _gpu_loadbalance_block() -> str:
     )
 
 
+def _gpu_socket_affinity_block() -> str:
+    """Bash (rank-time, inside the quoted heredoc) implementing the
+    GPU↔CPU socket co-location framework fix (slurm-integration.md
+    § 7.5.2).
+
+    Each rank already knows its GPU's NUMA node (``$_numa``).  This block
+    resolves that NUMA node's **socket** (``physical_package_id``) and the
+    socket(s) its own allowed CPUs span, then:
+
+      * **pins** (``numactl --cpunodebind/--membind`` to all NUMA nodes on
+        the GPU's socket) when the cpuset spans MORE than one socket --
+        the ``--exclusive`` / whole-node signature, where SLURM's cpuset
+        is the entire node and a rank would otherwise roam cross-socket;
+      * **no-ops** when the cpuset is already confined to the GPU's socket
+        (SLURM co-located us -- nothing to do);
+      * **warns, never fails** when the GPU's socket is NOT in our cpuset
+        (a shared cross-socket allocation we cannot fix from here) --
+        correct-but-slow is not a reason to kill a valid job.
+
+    Sets ``$_pin`` (empty or the ``numactl`` prefix) for the ``exec``.
+    All sysfs reads are guarded; missing topology/``numactl`` -> no pin.
+    """
+    return (
+        '# --- GPU<->CPU socket co-location (slurm-integration.md 7.5.2) ---\n'
+        '_pin=""\n'
+        '_gpu_sock=""; _sock_numas=""\n'
+        'if [ "${_numa:--1}" -ge 0 ] && '
+        '[ -r "/sys/devices/system/node/node${_numa}/cpulist" ]; then\n'
+        '    _gcpu=$(sed "s/[,-].*//" '
+        '"/sys/devices/system/node/node${_numa}/cpulist")\n'
+        '    _gpu_sock=$(cat '
+        '"/sys/devices/system/cpu/cpu${_gcpu}/topology/physical_package_id" '
+        '2>/dev/null)\n'
+        'fi\n'
+        '# All NUMA nodes on the GPU\'s socket (socket-wide numactl bind).\n'
+        'if [ -n "$_gpu_sock" ]; then\n'
+        '    for _nd in /sys/devices/system/node/node[0-9]*; do\n'
+        '        _ndn=${_nd##*node}\n'
+        '        _c0=$(sed "s/[,-].*//" "$_nd/cpulist" 2>/dev/null)\n'
+        '        case "$_c0" in ""|*[!0-9]*) continue ;; esac\n'
+        '        _ps=$(cat '
+        '"/sys/devices/system/cpu/cpu${_c0}/topology/physical_package_id" '
+        '2>/dev/null)\n'
+        '        [ "$_ps" = "$_gpu_sock" ] && '
+        '_sock_numas="${_sock_numas:+$_sock_numas,}$_ndn"\n'
+        '    done\n'
+        'fi\n'
+        '# Socket(s) this rank\'s allowed CPUs span.\n'
+        '_my_socks=""\n'
+        '_cl=$(awk "/Cpus_allowed_list/{print \\$2}" /proc/self/status '
+        '2>/dev/null)\n'
+        '# Sample BOTH endpoints of each range: a contiguous list like\n'
+        '# "0-47" spans two sockets, so the first cpu alone under-reports\n'
+        '# (the --exclusive whole-node case).  Endpoints catch the\n'
+        '# dual-socket node these GPUs live on.\n'
+        '_oldifs=$IFS; IFS=,\n'
+        'for _rng in $_cl; do\n'
+        '    _a=${_rng%%-*}; _b=${_rng##*-}\n'
+        '    for _e in "$_a" "$_b"; do\n'
+        '        case "$_e" in ""|*[!0-9]*) continue ;; esac\n'
+        '        _ps=$(cat '
+        '"/sys/devices/system/cpu/cpu${_e}/topology/physical_package_id" '
+        '2>/dev/null)\n'
+        '        [ -n "$_ps" ] || continue\n'
+        '        case ",$_my_socks," in *",$_ps,"*) : ;; '
+        '*) _my_socks="${_my_socks:+$_my_socks,}$_ps" ;; esac\n'
+        '    done\n'
+        'done\n'
+        'IFS=$_oldifs\n'
+        'if [ -n "$_gpu_sock" ] && [ -n "$_my_socks" ]; then\n'
+        '    case ",$_my_socks," in\n'
+        '      *",$_gpu_sock,"*)\n'
+        '        case "$_my_socks" in\n'
+        '          *,*)\n'
+        '            if command -v numactl >/dev/null 2>&1 && '
+        '[ -n "$_sock_numas" ]; then\n'
+        '                _pin="numactl --cpunodebind=$_sock_numas '
+        '--membind=$_sock_numas"\n'
+        '                echo "molbuilder[rank ${_lr}/${_ls}]: socket-pin '
+        '-> GPU socket $_gpu_sock (numa $_sock_numas) via numactl '
+        '(whole-node/--exclusive)" >&2\n'
+        '            fi\n'
+        '            ;;\n'
+        '        esac\n'
+        '        ;;\n'
+        '      *)\n'
+        '        echo "molbuilder[rank ${_lr}/${_ls}]: WARN cross-socket '
+        '-- GPU numa=$_numa is on socket $_gpu_sock but this rank\'s CPUs '
+        'are on socket(s) $_my_socks; host<->device + ELPA OpenMP pay a '
+        'remote hop. Request --exclusive for clean GPU timing '
+        '(slurm-integration.md 7.5.2)." >&2\n'
+        '        ;;\n'
+        '    esac\n'
+        'fi\n'
+    )
+
+
 def _gpu_per_rank_launcher_block() -> str:
     """Bash that writes the per-rank GPU launcher + picks the CPU-bind
     policy.  Emit ONLY in GPU mode.
@@ -879,7 +976,8 @@ def _gpu_per_rank_launcher_block() -> str:
         'echo "molbuilder[rank ${_lr}/${_ls}]: '
         'CUDA_VISIBLE_DEVICES=$_gpu (numa=$_numa) '
         'cpus=${_cpus:-?}" >&2\n'
-        'exec siesta "$@"\n'
+        + _gpu_socket_affinity_block()
+        + 'exec $_pin siesta "$@"\n'
         'HELPEREOF\n'
         'chmod +x "$_rank_helper"\n'
         # Cleanup is handled by the single unified EXIT trap (_mb_cleanup,

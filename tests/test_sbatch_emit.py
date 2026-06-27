@@ -235,6 +235,33 @@ def test_wrapper_gpu_fdf_emits_gres(project):
     assert "#SBATCH --gres-flags=enforce-binding" in txt
 
 
+def test_wrapper_gpu_has_socket_affinity_block(project):
+    # GPU launcher carries the § 7.5.2 socket co-location logic: pin under
+    # a whole-node (--exclusive) cpuset, WARN on a shared cross-socket
+    # allocation, exec via the $_pin prefix.  write_run_wrapper bash -n's
+    # the rendered wrapper, so reaching here = it parses.
+    fdf = project / "g.fdf"
+    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",
+                              cpus_per_task=6)
+    runsh = (project / "g.run.sh").read_text()
+    assert "socket co-location" in runsh
+    assert "socket-pin -> GPU socket" in runsh        # the pin branch
+    assert "WARN cross-socket" in runsh               # the warn branch
+    assert "exec $_pin siesta" in runsh               # numactl-or-nothing
+    assert "physical_package_id" in runsh
+
+
+def test_wrapper_cpu_has_no_socket_affinity_block(project):
+    # CPU jobs have no GPU to co-locate against.
+    fdf = project / "c.fdf"
+    fdf.write_text("NumberOfAtoms 444\n")
+    runwrap.write_run_wrapper(fdf, mpi_np=8)
+    runsh = (project / "c.run.sh").read_text()
+    assert "socket co-location" not in runsh
+    assert "exec $_pin siesta" not in runsh
+
+
 def test_wrapper_gpu_K_ranks_share_one_gpu(project):
     """The benchmark case: 8 (or 4) ranks share ONE A100 via MPS ->
     -n must be the rank count (8), --gres the GPU count (1)."""
