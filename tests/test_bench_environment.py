@@ -219,7 +219,50 @@ def test_format_bench_unknown_cores_uses_fallback_ks():
     assert "-c" not in s.split("\n\n", 1)[1]
 
 
-def test_format_run_still_pending():
-    with pytest.raises(NotImplementedError):
-        adapters.SlurmAdapter().format_run(None, None,
-                                           Environment(scheduler="slurm"))
+def _run_script(adapter, choice, env, **kw):
+    return adapter.format_run(choice, env, **kw)["run-production.sh"]
+
+
+def test_format_run_gpu_reresolves_c_from_local_topology():
+    # Bench (on a 24-core/socket box) chose gpu K=8, c=3. On a target with
+    # 48 cores/socket, K transfers but c must be re-derived = 48//8 = 6.
+    choice = {"engine": "gpu",
+              "knobs": {"gpus": 1, "ranks_per_gpu": 8, "cores_per_rank": 3}}
+    env = Environment(scheduler="slurm",
+                      topology=Topology(sockets=2, cores_per_socket=48,
+                                        gpus_per_node=4, gpu_type="a100"))
+    s = _run_script(adapters.SlurmAdapter(), choice, env, script_base="prod")
+    assert "sbatch --gres=gpu:a100:1 -n 8 -c 6 prod.sbatch" in s
+    assert "re-resolved to 6" in s         # the translation is recorded
+
+
+def test_format_run_gpu_clamps_G_to_local_gpus():
+    # Bench chose 4 GPUs; this workstation has 1 -> clamp, and re-derive c.
+    choice = {"engine": "gpu",
+              "knobs": {"gpus": 4, "ranks_per_gpu": 4, "cores_per_rank": 6}}
+    env = Environment(scheduler="workstation",
+                      topology=Topology(sockets=1, cores_per_socket=16,
+                                        gpus_per_node=1, gpu_type="rtx"))
+    s = _run_script(adapters.WorkstationAdapter(), choice, env,
+                    script_base="prod")
+    # G clamped 4->1; c = 16//4 = 4; direct (no sbatch)
+    assert ("CUDA_VISIBLE_DEVICES=0 MOLBUILDER_MPI_NP=4 "
+            "MOLBUILDER_OMP_NUM_THREADS=4 ./prod.run.sh") in s
+    assert "G clamped 4->1" in s
+    assert "sbatch" not in s
+
+
+def test_format_run_cpu_clamps_np_to_local_cores():
+    choice = {"engine": "cpu", "knobs": {"ranks": 64}}
+    env = Environment(scheduler="workstation",
+                      topology=Topology(sockets=2, cores_per_socket=10))
+    s = _run_script(adapters.WorkstationAdapter(), choice, env,
+                    script_base="prod")
+    assert "MB_NP=20 ./prod.run.sh" in s    # 64 clamped to 2*10 = 20
+    assert "np clamped 64->20" in s
+
+
+def test_format_run_rejects_unknown_engine():
+    with pytest.raises(ValueError, match="engine must be"):
+        adapters.SlurmAdapter().format_run(
+            {"engine": "quantum"}, Environment(scheduler="slurm"))

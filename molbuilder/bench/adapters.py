@@ -64,10 +64,16 @@ class SchedulerAdapter:
     # ----- formatting (§ 4.3) --------------------------------------- #
 
     def gpu_launch_line(self, g: int, k: int, c: Optional[int],
-                        gpu_type: str) -> str:
-        """One runnable launch command for a (G, K) point.  This is the
-        ONLY scheduler-specific line; the grid logic is shared in
-        :meth:`format_bench`.  Subclasses implement it."""
+                        gpu_type: str, script_base: str = "job-gpu") -> str:
+        """One runnable launch command for a GPU (G, K) point against
+        ``<script_base>``.  The ONLY scheduler-specific line; the grid
+        logic (bench) and the single-point logic (run) are shared.
+        Subclasses implement it."""
+        raise NotImplementedError
+
+    def cpu_launch_line(self, np: int, script_base: str) -> str:
+        """One runnable launch command for a CPU point (``np`` ranks)
+        against ``<script_base>``.  Subclasses implement it."""
         raise NotImplementedError
 
     def format_bench(self, env: Environment, *,
@@ -124,9 +130,69 @@ class SchedulerAdapter:
         content = "\n".join(head) + "\n\n" + "\n".join(body) + "\n"
         return {"job-gpu-sweep.sh": content}
 
-    def format_run(self, job, choice, env: Environment) -> List[str]:
-        raise NotImplementedError(
-            f"{self.name}.format_run not implemented yet")
+    def format_run(self, choice: Dict, env: Environment, *,
+                   script_base: str = "job") -> Dict[str, str]:
+        """Apply the portable benchmark ``choice`` to the production job,
+        **re-resolving the machine-specific knobs from this Environment**
+        (benchmark-workflow.md § 5.4): the *mechanism* transfers (engine,
+        ranks-per-GPU K), but the concrete per-rank cores ``c`` and GPU
+        count ``G`` are recomputed for the local topology, never copied
+        from the machine the benchmark ran on.
+
+        ``choice`` is the ``choice`` block of a ``bench-result`` document
+        (§ 5.3): ``{"engine": "gpu"|"cpu", "knobs": {...}}``.  Returns
+        ``{"run-production.sh": <script>}`` -- a tiny launcher that records
+        the translation and runs/submits the production scripts (assumed
+        already engine-correct, the caller's job).
+        """
+        engine = (choice or {}).get("engine")
+        knobs = (choice or {}).get("knobs") or {}
+        topo = env.topology
+        notes: List[str] = []
+
+        if engine == "gpu":
+            k = int(knobs.get("ranks_per_gpu") or 1)
+            g_req = int(knobs.get("gpus") or 1)
+            g = min(g_req, topo.gpus_per_node) if topo.gpus_per_node else g_req
+            if topo.gpus_per_node and g < g_req:
+                notes.append(f"G clamped {g_req}->{g} (this machine has "
+                             f"{topo.gpus_per_node} GPU(s))")
+            if topo.cores_per_socket:
+                c = max(1, topo.cores_per_socket // k)
+                if knobs.get("cores_per_rank") not in (None, c):
+                    notes.append(f"c re-resolved to {c} = cores/socket"
+                                 f"({topo.cores_per_socket})//K({k}) "
+                                 f"[bench had {knobs.get('cores_per_rank')}]")
+            else:
+                c = knobs.get("cores_per_rank")
+                notes.append("cores/socket unknown -> kept bench c; verify")
+            cmd = self.gpu_launch_line(g, k, c, topo.gpu_type or "gpu",
+                                       script_base)
+        elif engine == "cpu":
+            np = int(knobs.get("ranks") or 1)
+            total = ((topo.sockets or 1) * topo.cores_per_socket
+                     if topo.cores_per_socket else None)
+            if total and np > total:
+                notes.append(f"np clamped {np}->{total} (this machine has "
+                             f"{total} cores)")
+                np = total
+            cmd = self.cpu_launch_line(np, script_base)
+        else:
+            raise ValueError(
+                f"choice.engine must be 'gpu' or 'cpu'; got {engine!r}")
+
+        head = [
+            "#!/usr/bin/env bash",
+            f"# run-production.sh -- generated for scheduler '{self.name}'",
+            f"#   from the benchmark winner: engine={engine} knobs={knobs}",
+            "#   the MECHANISM transfers across machines; the concrete -n/"
+            "-c/-G are re-resolved here for THIS machine (§ 5.4):",
+        ]
+        head += [f"#     - {n}" for n in (notes or ["(no re-resolution "
+                                                    "needed)"])]
+        head.append("set -u")
+        content = "\n".join(head) + "\n\n" + cmd + "\n"
+        return {"run-production.sh": content}
 
 
 class SlurmAdapter(SchedulerAdapter):
@@ -138,14 +204,17 @@ class SlurmAdapter(SchedulerAdapter):
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "slurm"
 
-    def gpu_launch_line(self, g, k, c, gpu_type):
+    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
         # Override the sbatch header's defaults; the launcher reads
         # SLURM_NTASKS/_CPUS_PER_TASK so -n/-c and mpirun agree (§ 7.3).
         # Omit -c when cores/socket is unknown (let the header default it).
         cflag = "" if c is None else f"-c {c} "
         ctag = "" if c is None else f" c={c}"
         return (f"sbatch --gres=gpu:{gpu_type}:{g} -n {k * g} {cflag}"
-                f"job-gpu.sbatch  # G={g} K={k}{ctag}")
+                f"{script_base}.sbatch  # G={g} K={k}{ctag}")
+
+    def cpu_launch_line(self, np, script_base):
+        return f"sbatch -n {np} {script_base}.sbatch  # CPU np={np}"
 
 
 class WorkstationAdapter(SchedulerAdapter):
@@ -158,15 +227,18 @@ class WorkstationAdapter(SchedulerAdapter):
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "workstation"
 
-    def gpu_launch_line(self, g, k, c, gpu_type):
+    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
         # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and drive
         # the launcher's GPU-mode overrides directly.  Runs in-place
         # (blocking) -> sequential sweep.
         cvd = ",".join(str(i) for i in range(g))
         omp = "" if c is None else f"MOLBUILDER_OMP_NUM_THREADS={c} "
         return (f"CUDA_VISIBLE_DEVICES={cvd} MOLBUILDER_MPI_NP={k * g} "
-                f"{omp}./job-gpu.run.sh  # G={g} K={k}"
+                f"{omp}./{script_base}.run.sh  # G={g} K={k}"
                 + (f" c={c}" if c is not None else ""))
+
+    def cpu_launch_line(self, np, script_base):
+        return f"MB_NP={np} ./{script_base}.run.sh  # CPU np={np}"
 
 
 # Registry — resolution order.  A new scheduler appends one entry here.
