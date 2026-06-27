@@ -206,12 +206,21 @@ def cmd_siesta_gpu(project_dir: str,
 @click.option("--gpu-block-size", type=int, default=256, show_default=True,
               help="BlockSize for the GPU (ELPA-CUDA) bundle.")
 @click.option("--max-scf", type=int, default=5, show_default=True,
-              help="MaxSCFIterations cap (both bundles run cold + capped "
-                   "for a comparable, quick measurement).")
+              help="MaxSCFIterations cap (both bundles run cold + capped, "
+                   "with SCF.MustConverge .false. so the capped run exits "
+                   "0 / COMPLETED).")
+@click.option("--cpu-time", default=None,
+              help="#SBATCH -t for the CPU bundle (e.g. 0-12:00:00); else "
+                   "the scheduler default.  CPU diagon at a few-hundred "
+                   "atoms can exceed a 4 h default -- set this generously.")
+@click.option("--gpu-time", default=None,
+              help="#SBATCH -t for the GPU bundle; else the scheduler "
+                   "default.")
 def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                  gpu_gpus: int, gpu_k: int, gpus_per_node: int,
                  cores_per_socket: int, cpu_block_size: int,
-                 gpu_block_size: int, max_scf: int) -> None:
+                 gpu_block_size: int, max_scf: int,
+                 cpu_time: Optional[str], gpu_time: Optional[str]) -> None:
     """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
 
     Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
@@ -235,7 +244,7 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
             cpu_np=cpu_np, gpu_gpus=gpu_gpus, gpu_k=gpu_k,
             gpus_per_node=gpus_per_node, cores_per_socket=cores_per_socket,
             cpu_block_size=cpu_block_size, gpu_block_size=gpu_block_size,
-            max_scf=max_scf,
+            max_scf=max_scf, cpu_time=cpu_time, gpu_time=gpu_time,
         )
     except (ValueError, OSError, RuntimeConfigError) as e:
         click.echo(f"ERROR: {e}", err=True)

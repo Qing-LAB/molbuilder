@@ -25,25 +25,25 @@ This module only does text surgery on the fdf + reuses
 re-renders the structure, so the benchmarked input is byte-for-byte the
 user's own fdf apart from the handful of flipped directives.
 
-The input is expected to be a molbuilder-generated fdf (canonical
-directive spelling: ``SystemName``, ``BlockSize``, ``DM.UseSaveDM``,
-``Diag.ELPA.GPU``); the set-or-append surgery matches those canonical
-keys.
+The directive surgery is SIESTA-label-normalized (``.``/``-``/``_``
+stripped, case-insensitive), so a variant-spelled input directive (e.g.
+``Diag-ELPA-GPU``) is matched and replaced in place rather than
+duplicated -- it does not assume a molbuilder-canonical input.
 """
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from . import disable_md, force_max_scf_iters, override_field_value
 from ..runwrap import write_run_wrapper
 
 # GPU ranks-per-GPU values the sweep helper enumerates (the launcher
-# turns on MPS when K >= 2).
-_SWEEP_KS = (1, 2, 4, 8)
+# turns on MPS when K >= 2).  K=16 keeps c = cores_per_socket/16 = 1
+# (OMP off -- pure rank-parallelism via MPS), a distinct regime worth
+# measuring; K beyond cores_per_socket is flagged invalid by the helper.
+_SWEEP_KS = (1, 2, 4, 8, 16)
 
 
 # --------------------------------------------------------------------- #
@@ -51,16 +51,42 @@ _SWEEP_KS = (1, 2, 4, 8)
 # --------------------------------------------------------------------- #
 
 
-def _set_or_append(text: str, anchor: str, value: str) -> str:
-    """Set ``<anchor> <value>``: override the existing line if present,
-    else append it inside the engine body (before any user-custom block).
+def _norm_label(s: str) -> str:
+    """SIESTA fdf-label normalization: case-insensitive and with ``.``
+    ``-`` ``_`` stripped entirely (``DM.UseSaveDM`` == ``DM-UseSaveDM`` ==
+    ``dmusesavedm``).  Matching on this is what makes the surgery robust
+    to variant-spelled input rather than only the canonical form."""
+    return s.lower().replace(".", "").replace("-", "").replace("_", "")
 
-    Mirrors :func:`force_max_scf_iters`'s injection point so generated
-    directives land in the same place regardless of whether the source
-    already declared them.
+
+def _set_or_append(text: str, anchor: str, value: str, *,
+                   only_if_present: bool = False) -> str:
+    """Set ``<anchor> <value>`` SIESTA-normalized: replace the first
+    directive line whose label normalizes to ``anchor`` (regardless of
+    its `.`/`-`/`_`/case spelling) in place; else append it inside the
+    engine body (before any user-custom block).
+
+    ``only_if_present`` -> never append (used for MD step-count: absent
+    means single-point already, nothing to zero).  Operating on
+    normalized labels avoids the duplicate-conflicting-line bug a plain
+    ``re.escape(anchor)`` match causes on legacy spellings (audit
+    2026-06-27 B-2).
     """
-    if re.search(rf"^\s*{re.escape(anchor)}\s+", text, re.MULTILINE):
-        return override_field_value(text, anchor, value)
+    target = _norm_label(anchor)
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped or stripped[0] in "#%":
+            continue
+        tok = stripped.split(None, 1)[0]
+        if _norm_label(tok) == target:
+            indent = line[:len(line) - len(stripped)]
+            eol = "\n" if line.endswith("\n") else ""
+            lines[i] = (f"{indent}{anchor}          {value}"
+                        f"    # bench override{eol}")
+            return "".join(lines)
+    if only_if_present:
+        return text
     new_line = f"{anchor}          {value}    # bench override"
     if "user-custom BEGIN" in text:
         return text.replace(
@@ -72,28 +98,42 @@ def _set_or_append(text: str, anchor: str, value: str) -> str:
 
 
 def _remove_directive(text: str, anchor: str) -> str:
-    """Drop every ``^<anchor> ...`` line (used to strip GPU directives
-    from the CPU bundle so it is a plain ``diagon`` run)."""
-    return re.sub(rf"^[ \t]*{re.escape(anchor)}\s+.*\n?", "", text,
-                  flags=re.MULTILINE)
+    """Drop every directive line whose label normalizes to ``anchor``
+    (any `.`/`-`/`_`/case spelling) -- used to strip GPU directives from
+    the CPU bundle so it is a genuine plain ``diagon`` run."""
+    target = _norm_label(anchor)
+    out = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped and stripped[0] not in "#%":
+            tok = stripped.split(None, 1)[0]
+            if _norm_label(tok) == target:
+                continue
+        out.append(line)
+    return "".join(out)
 
 
 def transform_fdf(src_text: str, *, label: str, gpu: bool,
                   block_size: int, max_scf: int = 5) -> str:
     """Return the benchmark variant of ``src_text``.
 
-    Common to both: relabel to ``label``, cap SCF at ``max_scf``, force a
-    cold start (``DM.UseSaveDM .false.``), zero MD/relaxation steps, set
-    ``BlockSize``.  GPU adds ``Diag.Algorithm ELPA-1STAGE`` +
-    ``Diag.ELPA.GPU .true.``; CPU strips any such directive so it runs a
-    plain ``diagon``.
+    Common to both: relabel to ``label``, cap SCF at ``max_scf`` AND turn
+    off ``SCF.MustConverge`` (so the capped run exits 0 / ``COMPLETED``
+    instead of aborting non-zero -> SLURM ``FAILED``; audit 2026-06-27
+    B-BENCH-1), force a cold start (``DM.UseSaveDM .false.``), zero any MD
+    step count (single-point), set ``BlockSize``.  GPU adds
+    ``Diag.Algorithm ELPA-1STAGE`` + ``Diag.ELPA.GPU .true.``; CPU strips
+    any such directive so it runs a plain ``diagon``.  All edits are
+    SIESTA-label-normalized, so variant-spelled input is replaced in
+    place, never duplicated.
     """
     t = src_text
     t = _set_or_append(t, "SystemName", label)
     t = _set_or_append(t, "SystemLabel", label)
-    t = force_max_scf_iters(t, max_scf)
+    t = _set_or_append(t, "MaxSCFIterations", str(max_scf))
+    t = _set_or_append(t, "SCF.MustConverge", ".false.")
     t = _set_or_append(t, "DM.UseSaveDM", ".false.")
-    t = disable_md(t)
+    t = _set_or_append(t, "MD.NumCGsteps", "0", only_if_present=True)
     t = _set_or_append(t, "BlockSize", str(block_size))
     if gpu:
         t = _set_or_append(t, "Diag.Algorithm", "ELPA-1STAGE")
@@ -201,11 +241,16 @@ def render_readme(*, cpu_np: int, gpu_gpus: int, gpu_k: int,
 # CPU-vs-GPU benchmark bundle
 
 Generated by `molbuilder bench generate`.  Two self-contained, **cold**
-(`MaxSCFIterations {max_scf}`, `DM.UseSaveDM .false.`, MD steps zeroed)
-SIESTA jobs built from the same input fdf so you can compare CPU and GPU
-on this system and pick the mechanism for your production run.  molbuilder
-makes **no automatic recommendation** -- each job just reports its own
-wall time; you decide.
+(`MaxSCFIterations {max_scf}`, `SCF.MustConverge .false.`,
+`DM.UseSaveDM .false.`, MD steps zeroed) SIESTA jobs built from the same
+input fdf so you can compare CPU and GPU on this system and pick the
+mechanism for your production run.  molbuilder makes **no automatic
+recommendation** -- each job just reports its own wall time; you decide.
+
+`SCF.MustConverge .false.` matters: it lets the deliberately-capped run
+exit cleanly (`COMPLETED`) instead of aborting non-zero -- otherwise SLURM
+marks every bench point `FAILED` and the accounting (`sacct MaxRSS`) is
+unreliable.
 
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
@@ -238,6 +283,12 @@ Two knobs (both sbatch-CLI overrides; the launcher auto-adapts):
 | **G** | `--gres=gpu:a100:G` | number of GPUs |
 | **K** | `-n (K*G)` | MPI ranks **per GPU** (launcher derives K, enables MPS when K>=2) |
 | OMP | `-c (cores_per_socket/K)` | threads/rank; keep `K*c <= {cores_per_socket}` (cores/socket) |
+
+The sweep spans `K = 1,2,4,8,16`.  At **K=16** the OMP width is `c=1`
+(OMP off) -- pure rank-parallelism via MPS, a distinct regime from the
+ELPA host-OMP points; measure it to see whether more ranks/GPU still help
+or have turned over.  `K = cores/socket` ({cores_per_socket}) is the
+ceiling (c=1); beyond it `c` would be 0 (invalid).
 
 **Caveats** (baked from this node's topology: {gpus_per_node} GPUs/node,
 {cores_per_socket} cores/socket):
@@ -273,12 +324,20 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
                           cores_per_socket: int = 24,
                           cpu_block_size: int = 8,
                           gpu_block_size: int = 256,
-                          max_scf: int = 5) -> Tuple[Path, List[Path]]:
+                          max_scf: int = 5,
+                          cpu_time: Optional[str] = None,
+                          gpu_time: Optional[str] = None
+                          ) -> Tuple[Path, List[Path]]:
     """Generate the CPU + GPU benchmark bundle from ``fdf_path``.
 
     Returns ``(out_dir, [written paths])``.  The ``.sbatch`` files are
     emitted only when a ``scheduler`` block is configured (otherwise just
     the ``.run.sh`` launchers, per slurm-integration.md § 10).
+
+    ``cpu_time`` / ``gpu_time`` set the per-bundle ``#SBATCH -t`` (else the
+    scheduler default).  CPU diagon at a few-hundred atoms can exceed the
+    4 h site default before finishing the capped iters -- pass a longer
+    ``cpu_time`` (audit 2026-06-27 B-BENCH-2).
     """
     fdf_path = Path(fdf_path).resolve()
     if fdf_path.suffix.lower() != ".fdf":
@@ -293,12 +352,15 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     written: List[Path] = []
 
     # Pseudopotentials must sit beside the job fdfs (the run uses them and
-    # the CPU --mem estimator reads valence configs from them).
-    for psml in sorted(src_dir.glob("*.psml")):
-        dst = out_dir / psml.name
-        if psml.resolve() != dst.resolve():
-            shutil.copy2(psml, dst)
-        written.append(dst)
+    # the CPU --mem estimator reads valence configs from .psml).  Copy the
+    # modern .psml AND the legacy formats SIESTA also accepts (.psf/.vps)
+    # so a non-.psml project still produces a runnable bundle (B-3).
+    for pat in ("*.psml", "*.psf", "*.vps", "*.psp8"):
+        for pseudo in sorted(src_dir.glob(pat)):
+            dst = out_dir / pseudo.name
+            if pseudo.resolve() != dst.resolve():
+                shutil.copy2(pseudo, dst)
+            written.append(dst)
 
     cpu_fdf = out_dir / "job-cpu.fdf"
     cpu_fdf.write_text(transform_fdf(
@@ -313,14 +375,14 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     written.append(gpu_fdf)
 
     # CPU launcher + sbatch: scales with -n; --mem auto-estimated.
-    written.append(write_run_wrapper(cpu_fdf, mpi_np=cpu_np))
+    written.append(write_run_wrapper(cpu_fdf, mpi_np=cpu_np, time=cpu_time))
 
     # GPU launcher + sbatch: G GPUs (--gres) x K ranks/GPU (-n=K*G);
     # -c = cores/socket / K so K*c stays within one socket.
     gpu_c = max(1, cores_per_socket // gpu_k)
     written.append(write_run_wrapper(
         gpu_fdf, mpi_np=gpu_k * gpu_gpus,
-        gres=f"a100:{gpu_gpus}", cpus_per_task=gpu_c))
+        gres=f"a100:{gpu_gpus}", cpus_per_task=gpu_c, time=gpu_time))
 
     # write_run_wrapper returns only the .run.sh; pick up the .sbatch it
     # emits (when a scheduler is configured) + the shipped monitor so the

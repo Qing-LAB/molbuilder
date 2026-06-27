@@ -71,9 +71,30 @@ def test_transform_cpu_strips_gpu_directives():
     assert re.search(r"^MaxSCFIterations\s+5", out, re.MULTILINE)
     assert re.search(r"^DM\.UseSaveDM\s+\.false\.", out, re.MULTILINE)
     assert re.search(r"^BlockSize\s+8", out, re.MULTILINE)
+    # Capped run must exit 0 (not abort -> SLURM FAILED).
+    assert re.search(r"^SCF\.MustConverge\s+\.false\.", out, re.MULTILINE)
     # CPU bundle is plain diagon -- NO ELPA/GPU directives.
     assert "Diag.ELPA.GPU" not in out
     assert "Diag.Algorithm" not in out
+
+
+def test_transform_normalizes_variant_spelled_directives():
+    # SIESTA treats . - _ as interchangeable and labels as case-
+    # insensitive.  A legacy-spelled input must be replaced IN PLACE, not
+    # duplicated, and GPU directives must be stripped for the CPU bundle
+    # regardless of spelling (audit 2026-06-27 B-2).
+    src = ("SystemName x\nNumberOfAtoms 1\n"
+           "DM-UseSaveDM .true.\nDiag-ELPA-GPU .true.\n"
+           "max_scf_iterations 99\n")
+    cpu = transform_fdf(src, label="job-cpu", gpu=False,
+                        block_size=8, max_scf=5)
+    # No conflicting duplicate left behind, original variant gone.
+    assert "DM-UseSaveDM .true." not in cpu
+    assert cpu.count(".true.") == 0          # both flipped/stripped
+    assert "Diag-ELPA-GPU" not in cpu and "Diag.ELPA.GPU" not in cpu
+    # The variant MaxSCFIterations was replaced in place, not appended.
+    assert len(re.findall(r"(?im)^\s*max[._-]?scf", cpu)) == 1
+    assert re.search(r"(?im)^MaxSCFIterations\s+5", cpu)
 
 
 def test_transform_gpu_adds_elpa_directives():
@@ -114,6 +135,8 @@ def test_sweep_helper_matrix_and_calculator(tmp_path):
     matrix = subprocess.run(["bash", str(helper)], capture_output=True,
                             text=True, check=True).stdout
     assert "sbatch --gres=gpu:a100:1 -n 4 -c 6 job-gpu.sbatch" in matrix
+    # K=16 single-GPU is in the sweep with c=1 (OMP off).
+    assert "sbatch --gres=gpu:a100:1 -n 16 -c 1 job-gpu.sbatch" in matrix
     # multi-GPU lines carry the no-NCCL / no-gpu-bind caveat.
     assert "do NOT add --gpu-bind" in matrix
 
@@ -121,6 +144,10 @@ def test_sweep_helper_matrix_and_calculator(tmp_path):
     one = subprocess.run(["bash", str(helper), "2", "4"],
                          capture_output=True, text=True, check=True).stdout
     assert "--gres=gpu:a100:2 -n 8 -c 6" in one
+    # K=16 dual-GPU -> -n 32 -c 1.
+    k16 = subprocess.run(["bash", str(helper), "2", "16"],
+                         capture_output=True, text=True, check=True).stdout
+    assert "--gres=gpu:a100:2 -n 32 -c 1" in k16
 
 
 # --------------------------------------------------------------------- #
