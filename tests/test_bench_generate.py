@@ -198,6 +198,19 @@ def test_cpu_sbatch_is_one_core_per_rank(tmp_path):
     assert re.search(r"^#SBATCH -n 64\b", cpu_sbatch, re.MULTILINE)
 
 
+def test_gpu_exclusive_flag(tmp_path):
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, _ = generate_bench_bundle(fdf, out, gpu_exclusive=False)
+    assert "--exclusive" not in (out_dir / "job-gpu.sbatch").read_text()
+    out2 = tmp_path / "out2"
+    out2.mkdir()
+    (out2 / ".molbuilder.json").write_text(
+        (out / ".molbuilder.json").read_text())
+    out_dir2, _ = generate_bench_bundle(fdf, out2, gpu_exclusive=True)
+    assert "--exclusive" in (out_dir2 / "job-gpu.sbatch").read_text()
+
+
 def test_generate_gpu_sbatch_has_gres_and_ranks(tmp_path):
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)

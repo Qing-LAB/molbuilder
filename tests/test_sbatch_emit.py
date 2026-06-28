@@ -253,6 +253,7 @@ def test_wrapper_gpu_has_socket_affinity_block(project):
     assert "WARN cross-socket" in runsh               # the warn branch
     assert "exec $_pin siesta" in runsh               # numactl-or-nothing
     assert "physical_package_id" in runsh
+    assert "MB_NO_SOCKET_PIN" in runsh                # the A/B disable toggle
 
 
 def test_wrapper_cpu_has_no_socket_affinity_block(project):

@@ -847,7 +847,15 @@ def _gpu_socket_affinity_block() -> str:
     """
     return (
         '# --- GPU<->CPU socket co-location (slurm-integration.md 7.5.2) ---\n'
+        '# Disable the whole pin (trust the scheduler) with '
+        'MB_NO_SOCKET_PIN=1 -- useful to A/B whether the pin actually '
+        'helps on this machine.\n'
         '_pin=""\n'
+        'if [ "${MB_NO_SOCKET_PIN:-0}" = "1" ]; then\n'
+        '    echo "molbuilder[rank ${_lr}/${_ls}]: socket co-location '
+        'DISABLED (MB_NO_SOCKET_PIN=1) -- trusting scheduler placement" '
+        '>&2\n'
+        'else\n'
         '_gpu_sock=""\n'
         'if [ "${_numa:--1}" -ge 0 ] && '
         '[ -r "/sys/devices/system/node/node${_numa}/cpulist" ]; then\n'
@@ -914,6 +922,7 @@ def _gpu_socket_affinity_block() -> str:
         '        ;;\n'
         '    esac\n'
         'fi\n'
+        'fi\n'                                    # close MB_NO_SOCKET_PIN else
     )
 
 

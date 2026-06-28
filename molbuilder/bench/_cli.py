@@ -18,11 +18,52 @@ from . import (
 @click.group("bench",
              context_settings={"help_option_names": ["-h", "--help"]})
 def bench_group() -> None:
-    """Run small parameter sweeps over generated engine scripts.
+    """Benchmark CPU vs GPU on YOUR machine, then run production with the
+    winner -- no hand-tuning of queue names, core counts, or bindings.
 
-    Reads the BENCH-MARKS block (see docs/protocols/script-contract.md)
-    from a generated .fdf, sweeps a handful of (np, omp, BlockSize)
-    test points, reports per-iter wall time.  Today: siesta-gpu only.
+    \b
+    WORKFLOW (run `molbuilder bench <cmd> --help` for each):
+      generate    HOST    one .fdf -> a portable, self-contained bundle
+      prep        TARGET  detect the machine -> environment.json + the sweep
+      summarize   TARGET  read the sweep's outputs -> bench-result.json
+      prep-run    TARGET  bench-result.json -> production run script
+      siesta-gpu  (legacy) in-place np/omp/BlockSize sweep on one project
+
+    \b
+    KEY TERMS (these trip everyone up -- read once):
+      rank   one MPI PROCESS = one running copy of SIESTA.  N ranks = N
+             processes computing in parallel, exchanging data by messages.
+      -n     the NUMBER OF RANKS (SLURM --ntasks; identical to `mpirun
+             -np N`).  NOT the CPU count.
+      -c     CPU cores per rank (OpenMP threads inside each process).
+      ==>    total CPU cores = -n * -c.
+      G      number of GPUs (--gres=gpu:<type>:G).
+      K      MPI ranks PER GPU (so -n = K*G); K ranks share one GPU (MPS).
+      c      cores per rank of a GPU point = cores_per_socket / K.
+
+    \b
+    TUNING the GPU point -- is -n (= K*G) too small or too big?
+      * SWEEP K (e.g. `prep --gpu-ks 8,16`): if s/iter keeps dropping, -n
+        was too small; if it rises, -n is too big (MPS contention, c->1).
+      * the monitor's GPU sm% (util.csv / [UTIL-SUMMARY]; in
+        bench-result.json as `bound`): sustained high sm% = GPU saturated
+        (good); low sm% while cpu% is pegged = host-bound (more ranks
+        won't help -- the CPU side feeding ELPA-CUDA is the limit).
+
+    \b
+    CPU point: SIESTA CPU is MPI-only, so 1 core/rank (-c 1); -n*-c must
+    fit one node.  Scale with `sbatch -n <np>`; override -c per submission.
+
+    \b
+    PLACEMENT / GPU<->CPU BINDING (we do NOT hand-craft it):
+      --gpu-exclusive   GPU job takes the WHOLE node (default, from config).
+                        Clean timing; lets the launcher pin each rank to its
+                        GPU's own socket (it owns all cores).
+      --no-gpu-exclusive  pack jobs; placement is left to SLURM (no pin).
+      We never use --gpu-bind (it conflicts with the per-rank launcher) and
+      under a non-exclusive SLURM alloc we TRUST the scheduler's cpuset.
+      Runtime: `MB_NO_SOCKET_PIN=1 sbatch job-gpu.sbatch` disables the
+      auto socket-pin -- A/B it to see if the pin actually helps.
     """
 
 
@@ -197,10 +238,12 @@ def cmd_siesta_gpu(project_dir: str,
               help="default MPI ranks per GPU (K); job-gpu gets -n K*G, "
                    "-c cores_per_socket/K.")
 @click.option("--gpus-per-node", type=int, default=4, show_default=True,
-              help="node topology baked into the sweep helper (GPUs/node).")
+              help="FALLBACK GPUs/node for the default GPU point; the real "
+                   "value + the sweep are detected on the target by "
+                   "`bench prep`.")
 @click.option("--cores-per-socket", type=int, default=24, show_default=True,
-              help="node topology baked into the sweep helper (cores/socket; "
-                   "bounds K*c).")
+              help="FALLBACK cores/socket (sets the default GPU point's "
+                   "-c = cores/K); `bench prep` detects the real value.")
 @click.option("--cpu-block-size", type=int, default=8, show_default=True,
               help="ScaLAPACK BlockSize for the CPU bundle.")
 @click.option("--gpu-block-size", type=int, default=256, show_default=True,
@@ -221,12 +264,21 @@ def cmd_siesta_gpu(project_dir: str,
               help="cores (OMP threads) per CPU rank; CPU SIESTA is "
                    "MPI-only so 1 is right (-n*-c must fit one node). "
                    "Override per submission with `sbatch -c N`.")
+@click.option("--gpu-exclusive/--no-gpu-exclusive", "gpu_exclusive",
+              default=None,
+              help="whether the GPU job takes the whole node (#SBATCH "
+                   "--exclusive).  Default = the scheduler config "
+                   "(gpu.exclusive).  --exclusive gives clean timing + "
+                   "lets the launcher socket-pin (it owns all cores); "
+                   "--no-gpu-exclusive packs jobs but the placement is "
+                   "SLURM's (no pin).")
 def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                  gpu_gpus: int, gpu_k: int, gpus_per_node: int,
                  cores_per_socket: int, cpu_block_size: int,
                  gpu_block_size: int, max_scf: int,
                  cpu_time: Optional[str], gpu_time: Optional[str],
-                 cpu_cpus_per_task: int) -> None:
+                 cpu_cpus_per_task: int,
+                 gpu_exclusive: Optional[bool]) -> None:
     """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
 
     Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
@@ -251,7 +303,7 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
             gpus_per_node=gpus_per_node, cores_per_socket=cores_per_socket,
             cpu_block_size=cpu_block_size, gpu_block_size=gpu_block_size,
             max_scf=max_scf, cpu_time=cpu_time, gpu_time=gpu_time,
-            cpu_cpus_per_task=cpu_cpus_per_task,
+            cpu_cpus_per_task=cpu_cpus_per_task, gpu_exclusive=gpu_exclusive,
         )
     except (ValueError, OSError, RuntimeConfigError) as e:
         click.echo(f"ERROR: {e}", err=True)

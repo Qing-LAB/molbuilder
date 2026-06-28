@@ -282,7 +282,8 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
                           max_scf: int = 5,
                           cpu_time: Optional[str] = None,
                           gpu_time: Optional[str] = None,
-                          cpu_cpus_per_task: int = 1
+                          cpu_cpus_per_task: int = 1,
+                          gpu_exclusive: Optional[bool] = None
                           ) -> Tuple[Path, List[Path]]:
     """Generate the CPU + GPU benchmark bundle from ``fdf_path``.
 
@@ -344,7 +345,8 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     gpu_c = max(1, cores_per_socket // gpu_k)
     written.append(write_run_wrapper(
         gpu_fdf, mpi_np=gpu_k * gpu_gpus,
-        gres=f"a100:{gpu_gpus}", cpus_per_task=gpu_c, time=gpu_time))
+        gres=f"a100:{gpu_gpus}", cpus_per_task=gpu_c, time=gpu_time,
+        exclusive=gpu_exclusive))
 
     # write_run_wrapper returns only the .run.sh; pick up the .sbatch it
     # emits (when a scheduler is configured) + the shipped monitor so the
