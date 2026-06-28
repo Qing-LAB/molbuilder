@@ -12,6 +12,10 @@ resolution), § 3's runtime read, and § 5 (CPU-on-ELPA) describe the **target
 model** — the agreed direction not yet fully built. § 7 is the authoritative
 built-vs-proposed ledger; every "target" claim below is tagged.
 
+**Want copy-paste worked examples + `.molbuilder.json` templates** for a
+workstation and a supercomputer (all situations)? See the cookbook:
+[`deployment-examples.md`](deployment-examples.md).
+
 ---
 
 ## 0. The two phases (the mental model)
