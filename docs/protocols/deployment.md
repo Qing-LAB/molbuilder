@@ -18,6 +18,49 @@ workstation and a supercomputer (all situations)? See the cookbook:
 
 ---
 
+## 00. The contract — what "standalone" means, the steps, assumptions, requirements
+
+This section is the definition the rest of the doc depends on. Read it first.
+
+**"standalone" does NOT mean "no molbuilder."** molbuilder **is installed** on
+the target. Standalone means a generated script does its whole task **by
+itself**: it **activates the correct conda env and runs the job with zero
+manual steps**, so it works when **submitted remotely / headless** — `sbatch`,
+a queue, cron; no terminal, nobody to type `conda activate`. Submit and forget.
+
+### The three steps and their goals
+
+| step | tool | goal | who owns the decision |
+|---|---|---|---|
+| **prep** | `prep-bench` / `prep-run` | detect THIS target (scheduler + topology) and **format** the scripts for it (node-sized sweep, `environment.json`). Pure machine-adaptation — no science. | automatic |
+| **bench** | `job-*.run.sh` / the sweep | run the short, capped jobs to **measure** (CPU vs GPU, np scaling). Offers the harness + reports wall/iter; makes **no** recommendation. | the scientist decides |
+| **run** | `run-production.sh` / `run-transport.sh` | **execute** the production calculation with the chosen mechanism. | the scientist |
+
+### Assumptions (true before any generated script runs)
+
+- **molbuilder is installed** on the target (the host env).
+- The backend **envs are already prepared by the scientist** (Phase A,
+  `molbuilder envs install`). Scripts never build, doctor, or repair them.
+- The activation method (preamble + conda/mamba activate) is **known at
+  prep/generate time** — from `.molbuilder.json` config or detection.
+
+### Requirements (every generated run script MUST satisfy)
+
+1. **Self-activating.** It bakes its own env activation (the same mechanism
+   `runwrap` emits) and activates the env **itself** — there is **no** manual
+   `conda activate` prerequisite, before or after.
+2. **Headless-submittable.** `sbatch <script>` (or any queue, no terminal)
+   runs it end to end.
+3. **One task, start to finish.** activate → run → clean up; it assumes the
+   scientist types **nothing**.
+
+A script that requires a manual `conda activate` first (e.g. today's
+`run-transport.sh`) **violates requirement 1 and is a bug**, not a design
+choice. (Status: the `bench` `job-*.run.sh` meet this contract — they bake
+activation via `runwrap`; `run-transport.sh` does **not** yet — § 7.)
+
+---
+
 ## 0. The two phases (the mental model)
 
 Deployment is **two separate phases**. Conflating them is the #1 source of
@@ -234,3 +277,5 @@ up in `conda env list`.
 | **runtime** config-else-probe resolution (one bundle, both targets) | proposed (§ 2) |
 | env-presence check → pointer to `molbuilder envs doctor` | proposed |
 | CPU benchmark point on ELPA (apples-to-apples) | **built** (`transform_fdf` + explicit env, § 5) |
+| `bench` `job-*.run.sh` self-activate (contract req 1) | **built** (`runwrap` bakes activation) |
+| `run-transport.sh` self-activates (contract req 1) | **BUG / proposed** — today it requires a manual `conda activate` (§ 00) |
