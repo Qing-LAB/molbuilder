@@ -379,11 +379,28 @@ is **conda/mamba on a workstation**; the HPC toolchain is never guessed.
   (toolchain is on PATH, discoverable).  **HPC: no** — explicit config.
 - **Job B — doctor: verify the *truth* of prerequisites** (confirm stated
   facts: env present, toolchain loads, scheduler/GPU/driver there).
-  **Every target, always** — run by `prep` on whatever target it is
-  invoked on.  On HPC, doctor *runs the explicit `module load mamba`* to
-  reach the truth, then checks `mamba env list` / activation / driver; it
-  uses the explicit preamble to verify, it does not method-detect.
-  **Doctor is prep-time, not the `.run.sh`** — the wrapper stays baked.
+  **Every target, always** — a prep-time check on whatever target it is
+  invoked on.  **Doctor is prep-time, not the `.run.sh`** — the wrapper
+  stays baked; if the env is missing at *run* time the wrapper's
+  `set -euo pipefail` aborts loud anyway (§ 1).
+
+  **The mechanism is the EXISTING `molbuilder envs` toolkit — do NOT build
+  a new readiness/doctor checker** (it has been re-derived and rejected
+  repeatedly):
+  - **`molbuilder envs doctor`** — present/missing per recipe **+ runs each
+    recipe's verify command** (invokes the engine binary in the env).
+  - **`molbuilder envs validate <env>`** — post-install correctness probes;
+    for `molbuilder-siesta-gpu`: binary links, **CUDA stack
+    (`nvidia-smi` + `libcuda.so.1`)**, siesta ctest, and the load-bearing
+    **ELPA-GPU-codepath probe** that catches ELPA silently falling back to
+    CPU (slurm-integration.md § 7.9 driver floor + § 11.1 GPU correctness
+    gate are both covered here).
+
+  These run in the **host molbuilder env** (which *is* installed on the
+  target — § 9.5), so they are not bound by the bundle's stdlib-only
+  self-contained rule.  Assistant-not-nanny: prep **surfaces / points at**
+  these commands; the scientist runs them — molbuilder does not auto-install
+  or auto-decide.
 
 ### 9.5 Per-target activation defaults + assumption
 
