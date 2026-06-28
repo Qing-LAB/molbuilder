@@ -3132,7 +3132,19 @@ def render_sbatch(script_path: Path,
     if directives.get("mail_type"):
         lines.append(f"#SBATCH --mail-type={directives['mail_type']}")
     if directives.get("mail_user"):
-        lines.append(f"#SBATCH --mail-user=\"{directives['mail_user']}\"")
+        _mu = directives["mail_user"]
+        # Hint, don't twist: SLURM's %-patterns (%u/%j/%x) expand ONLY in
+        # -o/-e/-i filenames, never --mail-user -- a "%u@..." is sent
+        # literally and bounces.  We keep the user's value (it's their
+        # config) but flag it right here so it's obvious.
+        if "%" in _mu:
+            lines.append(
+                "# NOTE: SLURM %-patterns (%u/%j) do NOT expand in "
+                "--mail-user (only in -o/-e/-i);")
+            lines.append(
+                f'#       "{_mu}" is sent literally + bounces. Use a real '
+                "address, or drop mail_user (SLURM mails the submitter).")
+        lines.append(f"#SBATCH --mail-user=\"{_mu}\"")
     if directives.get("export"):
         lines.append(f"#SBATCH --export={directives['export']}")
 

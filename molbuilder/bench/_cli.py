@@ -333,8 +333,9 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                  preamble: Optional[str]) -> None:
     """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
 
-    Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
-    ``job-gpu`` (``Diag.ELPA.GPU`` -> ``molbuilder-siesta-gpu``), each a
+    Emits ``job-cpu`` (ELPA-1STAGE, no CUDA) and ``job-gpu`` (ELPA-1STAGE +
+    ``Diag.ELPA.GPU``) -- same solver, only the hardware differs.  Both run
+    in ``molbuilder-siesta-gpu`` (ELPA lives only there); each a
     full ``.fdf`` + ``.run.sh`` (+ ``.sbatch`` when a scheduler is
     configured), plus a self-contained ``job-gpu-sweep.sh`` helper and a
     README.  Both are cold + SCF-capped so CPU and GPU are directly
@@ -366,9 +367,9 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
     click.echo("==== molbuilder bench generate ====")
     click.echo(f"input  : {fdf}")
     click.echo(f"out    : {out}")
-    click.echo(f"job-cpu: plain diagon, default -n {cpu_np}")
-    click.echo(f"job-gpu: ELPA-CUDA, default G={gpu_gpus} K={gpu_k} "
-               f"(-n {gpu_k*gpu_gpus} -c {gpu_c})")
+    click.echo(f"job-cpu: ELPA-1STAGE (no CUDA), default -n {cpu_np}")
+    click.echo(f"job-gpu: ELPA-1STAGE + Diag.ELPA.GPU, default G={gpu_gpus} "
+               f"K={gpu_k} (-n {gpu_k*gpu_gpus} -c {gpu_c})")
     has_sbatch = any(p.suffix == ".sbatch" for p in written)
     if not has_sbatch:
         click.echo("note   : no scheduler configured -> only .run.sh emitted "

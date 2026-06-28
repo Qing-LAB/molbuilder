@@ -228,6 +228,14 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
                                 "\nThen on the target:  cd run/ && "
                                 "conda activate molbuilder-siesta && \\\n"
                                 "                      bash run-transport.sh\n"
+                                "\nENVIRONMENT: run-transport.sh is a "
+                                "STANDALONE driver -- unlike\n"
+                                "  `bench generate`, it does NOT read "
+                                ".molbuilder.json. You activate the\n"
+                                "  env yourself (above) and override the "
+                                "binaries/launcher if needed:\n"
+                                "      SIESTA=siesta TBTRANS=tbtrans "
+                                "MPI=\"mpirun -np 8\" bash run-transport.sh\n"
                                 "\nTip: relax converges at --kx 2 --ky 2; use "
                                 "the denser k for the device.")
 @click.option("--device", "device_xyz", required=True,

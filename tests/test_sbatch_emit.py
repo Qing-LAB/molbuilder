@@ -88,6 +88,24 @@ def test_cpu_header_shape(tmp_path):
     assert 'bash cpu-np64.run.sh "$@"' in txt
 
 
+def test_mail_user_percent_pattern_is_flagged_not_dropped(tmp_path):
+    # %u doesn't expand in --mail-user (only -o/-e/-i).  We KEEP the
+    # user's value (don't twist their config) but flag it explicitly.
+    fdf = tmp_path / "j.fdf"; fdf.write_text("NumberOfAtoms 1\n")
+    txt = render_sbatch(fdf, _SCHED, ntasks=8)        # _SCHED has %u
+    assert '#SBATCH --mail-user="%u@asu.edu"' in txt   # kept verbatim
+    assert "do NOT expand in --mail-user" in txt        # but flagged
+
+
+def test_mail_user_real_address_not_flagged(tmp_path):
+    sched = json.loads(json.dumps(_SCHED))
+    sched["directives"]["mail_user"] = "me@asu.edu"
+    fdf = tmp_path / "j.fdf"; fdf.write_text("NumberOfAtoms 1\n")
+    txt = render_sbatch(fdf, sched, ntasks=8)
+    assert '#SBATCH --mail-user="me@asu.edu"' in txt
+    assert "do NOT expand" not in txt
+
+
 def test_gpu_header_shape(tmp_path):
     fdf = tmp_path / "gpu-2a100.fdf"
     fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
