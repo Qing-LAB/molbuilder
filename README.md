@@ -1085,6 +1085,14 @@ Full install steps + the license contract:
 > cores or NUMA nodes); the molbuilder app, the conda envs, and
 > every backend run on the same physical machine.
 
+> **Scope.** This section is **deploying molbuilder itself** — installing
+> the envs and serving the app.  The `molbuilder.json` `script_generation`
+> setup below (so generated job wrappers run standalone) is really
+> *job-execution-module* config, not deployment; it lives here for
+> first-run convenience, with the full contract + detection model in
+> [`docs/config.md`](docs/config.md) § 9.  Network access / auth / TLS:
+> [`docs/deployment.md`](docs/deployment.md).
+
 ### Deployment workflow
 
 The base system needs one conda-compatible package manager.  From

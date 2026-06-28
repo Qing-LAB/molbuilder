@@ -1,4 +1,19 @@
-# Deployment guide
+# Deploying molbuilder over a network (LAN · internet · auth · TLS)
+
+> **Scope.** "Deployment" here means **deploying molbuilder itself**. This
+> doc covers the **network-access** half: serving the web app + sign-in
+> (CAS / OAuth) + TLS + the **serve-time** `molbuilder.json` sections
+> (`tls`, `auth`, `envs`, `secret_key_file`). The **install** half
+> (bootstrap the envs) is in [README §Deployment](../README.md#deployment)
+> + [`README_install.md`](README_install.md).
+> **Not deployment:** *using* the script-generator **module** to submit and
+> run calculations (job execution) — generating standalone
+> `.run.sh`/`.sbatch`, activation, sbatch, benchmarks — is a separate
+> concern in [`config.md`](config.md) (§ 9 + contract),
+> [`protocols/slurm-integration.md`](protocols/slurm-integration.md),
+> [`protocols/job-execution-examples.md`](protocols/job-execution-examples.md).
+> Job execution owns the `script_generation` / `scheduler` keys of the same
+> `molbuilder.json`; this doc owns the serve-keys.
 
 Default deployment is **localhost-only**: `molbuilder serve` binds
 `127.0.0.1:8000` and is reachable only from the same machine.  No
