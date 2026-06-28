@@ -392,8 +392,13 @@ Lives in the bundle's OUT dir, merged over a server-wide
 | env missing anywhere | `molbuilder envs doctor` → `… install` (Phase A) |
 | GPU job won't fit | fewer ranks/GPU (`--gpu-ks`), smaller structure, or CPU-only |
 
-Transport is the same shape: `transport bundle …` for the scripts,
-`slurm-integration.md` for sbatch, this cookbook's templates for the env.
+Transport (`transport bundle …`) is *meant* to be the same shape, with
+`slurm-integration.md` for sbatch and the templates above for the env.
+**Today it is not there yet:** the transport bundle emits its own
+`run-transport.sh` driver (manual `conda activate`, no scheduler adapter, no
+monitor, no warm/cold restart) rather than riding the shared `runwrap` layer.
+Bringing it onto runwrap + the scheduler adapter is the open work in § 6
+(task #37).
 
 ---
 
@@ -429,3 +434,10 @@ owns it:
    at runtime" rule (§ 3.3, row C) for the activation decision only, and
    belongs in the `prep` step (the on-target detection step that already
    exists).
+3. **Transport on the shared runwrap (#37).** `transport bundle` today emits
+   its own `run-transport.sh` driver (manual activation, no scheduler
+   adapter, no monitor, no warm/cold restart — § 4.5), so transport does not
+   yet ride this system. Rebuild it on the shared `runwrap` +
+   scheduler-adapter layer (preserving the multi-run electrode/relax/device
+   hand-offs and the TranSIESTA warm/cold inventory in
+   [`protocols/script-execution.md`](protocols/script-execution.md)).
