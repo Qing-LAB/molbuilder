@@ -110,8 +110,7 @@ This file is **not magic** and must never be treated as implicit context.
   "scheduler": {
     "kind": "slurm",
     "directives": { "partition": "public", "qos": "public",
-                    "export": "NONE", "mail_type": "ALL",
-                    "mail_user": "%u@asu.edu" },
+                    "export": "NONE", "mail_type": "ALL" },
     "gpu": { "partition": "public", "default_type": "a100",
              "exclusive": true, "mem": "64G" },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
@@ -133,6 +132,12 @@ This file is **not magic** and must never be treated as implicit context.
 `script_generation.preamble` is a free-form "run this before activation"
 slot — put any environment-specific setup there (module loads, `export`s,
 license-server vars, …).
+
+> **Gotcha — `mail_user`:** SLURM's `%u`/`%j` filename patterns expand **only**
+> in `--output`/`--error`/`--input`, *not* `--mail-user`. A `"mail_user":
+> "%u@asu.edu"` is sent literally and bounces. Omit `mail_user` (with
+> `mail_type` set, SLURM mails the submitting user by default) or bake a real
+> address.
 
 ---
 
