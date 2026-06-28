@@ -28,7 +28,7 @@
 | **prep-run** — `bench-result.json` → run script | **built** (`bench/prep_run.py`; `molbuilder bench prep-run`) |
 | `bench-result@1` schema (persistence) | **built** (`bench/result.py`) |
 | Self-contained bundle (ships the prep-lib, no install) | **built** (`mbbench/` + shims, in `bench generate`) |
-| Readiness/doctor (Job B, config.md § 9.4) | **built — reuse** `molbuilder envs doctor` + `envs validate` (NOT a new checker); prep surfaces it (§ 7.2) |
+| Readiness/doctor (Job B, job-execution.md § 3.4) | **built — reuse** `molbuilder envs doctor` + `envs validate` (NOT a new checker); prep surfaces it (§ 7.2) |
 
 All stages are now built (§ 0); this doc specifies them against the stable
 interfaces (§ 4) and data formats (§ 5) so new schedulers/engines extend
@@ -437,7 +437,7 @@ writes `environment.json` (§ 5.2), and uses the matching adapter to format
 the benchmark scripts + size the sweep. Prints what it detected and the
 source; never silently guesses.
 
-**Readiness/doctor (Job B, config.md § 9.4).** Detection answers *what the
+**Readiness/doctor (Job B, job-execution.md § 3.4).** Detection answers *what the
 machine is*; the **readiness check** answers *is it ready to run*, and it
 is **the existing `molbuilder envs` toolkit — not a new checker**:
 `molbuilder envs doctor` (env present + verify-command runs the engine

@@ -9,9 +9,10 @@
 > **Not deployment:** *using* the script-generator **module** to submit and
 > run calculations (job execution) — generating standalone
 > `.run.sh`/`.sbatch`, activation, sbatch, benchmarks — is a separate
-> concern in [`config.md`](config.md) (§ 9 + contract),
-> [`protocols/slurm-integration.md`](protocols/slurm-integration.md),
-> [`protocols/job-execution-examples.md`](protocols/job-execution-examples.md).
+> concern in [`job-execution.md`](job-execution.md) (the master doc:
+> big picture + workflow + detection contract + cookbook),
+> [`config.md`](config.md) (the config schema + wrapper contract), and
+> [`protocols/slurm-integration.md`](protocols/slurm-integration.md).
 > Job execution owns the `script_generation` / `scheduler` keys of the same
 > `molbuilder.json`; this doc owns the serve-keys.
 

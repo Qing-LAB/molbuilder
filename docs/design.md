@@ -159,7 +159,7 @@ archived).
 
 ### Ops & deployment
 
-[`README.md`](README.md) · [`README_install.md`](README_install.md) (four-env install model) · [`deployment.md`](deployment.md)
+[`README.md`](README.md) · [`README_install.md`](README_install.md) (four-env install model) · [`deployment.md`](deployment.md) (deploying the app) · [`job-execution.md`](job-execution.md) (job-execution system: big picture + workflow + detection contract + cookbook — master doc) · [`config.md`](config.md) (config schema + wrapper contract)
 
 ### Historical (archived — NOT a source of truth)
 

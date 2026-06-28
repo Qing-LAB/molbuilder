@@ -313,123 +313,16 @@ schema above.
 
 ---
 
-## 9. Detection model — what is detected, when, per target
+## 9. Detection model — moved
 
-> **Scope — this is job execution, not deployment.** This section (and
-> config.md as a whole) documents *using the script-generator **module***
-> to **submit and run calculations** on a target: standalone
-> `.run.sh`/`.sbatch`, activation, the `script_generation` / `scheduler`
-> keys.  **Deploying molbuilder itself** (serving the web app, auth, TLS,
-> the `tls`/`auth`/`envs` keys) is the separate concern in
-> [`deployment.md`](deployment.md).  One `molbuilder.json`, two key-owners.
-
-"the wrapper does no detection" is too coarse to be a spec.  There are
-several distinct things one might call "detection", and the rule differs
-for each.  This section is the authoritative definition of *standalone*,
-*detection*, the *assumption* each target makes, and the *goal*.  The
-worked, copy-paste cookbook that applies this is
-[`protocols/job-execution-examples.md`](protocols/job-execution-examples.md);
-the SLURM/HPC specifics are in
-[`protocols/slurm-integration.md`](protocols/slurm-integration.md).
-
-### 9.1 Definition
-
-**Detection = reading external state and choosing behaviour from it
-without the user stating that choice explicitly.**  The external state is
-one of five things, and the rule depends on *what* is read and *when*:
-
-| | WHAT is read | example |
-|---|---|---|
-| **T** | conda/mamba **tool** | `$CONDA_EXE`, `which mamba`, `$CONDA_PREFIX` |
-| **M** | HPC **toolchain** (modules) | whether `module load mamba` is needed |
-| **C** | **config** file | `molbuilder.json` / `.molbuilder.json` |
-| **A** | scheduler **allocation** | `SLURM_NTASKS`, `CUDA_VISIBLE_DEVICES`, `SLURM_CPUS_PER_TASK` |
-| **H** | **hardware** topology | GPU PCI bus → NUMA node → socket (sysfs) |
-
-### 9.2 The three moments
-
-| moment | where it runs | does what |
-|---|---|---|
-| **generate** | the machine where you run `molbuilder bench generate` / `run` | resolves T/M/C and **bakes** them into `.molbuilder.json` + the `.run.sh` (verbatim) |
-| **prep / doctor** | **on the target** (`./prep-bench`, `molbuilder envs doctor`) | detects the scheduler + topology to *format* the sweep, **and verifies readiness honestly (every target)** — § 9.4 |
-| **runtime** | the compute node, inside `.run.sh` | everything baked; reads only A/H (the scheduler's published contract, § 1.5) |
-
-### 9.3 The rule matrix
-
-| WHAT | GENERATE-TIME | RUNTIME (inside `.run.sh`) |
-|---|---|---|
-| **T — conda/mamba tool** | ✅ **allowed, narrow** — `runtime_config.detect_conda_activation` probes the command on PATH → activation form.  *The only tool-autodetect there is.* | ❌ **forbidden** — no `which conda`, no `conda info --base`, no PATH search.  Baked verbatim. |
-| **M — HPC toolchain** | ⛔ **impossible → must be explicit** — on a clean login shell mamba isn't on PATH; nothing to detect.  From config `preamble`. | ❌ **forbidden** — baked verbatim (`module load mamba`). |
-| **C — config file** | ✅ **required** — generator reads `molbuilder.json` / `.molbuilder.json`. | ❌ **forbidden** — the wrapper never reads a config file at runtime. |
-| **A — allocation** | n/a (no allocation yet) | ✅ **required** — `SLURM_NTASKS`→`-np`, `CUDA_VISIBLE_DEVICES`→GPU map, `SLURM_CPUS_PER_TASK`→OMP. |
-| **H — topology** | n/a (target node unknown) | ✅ **required** — per-rank launcher reads sysfs for GPU→NUMA→socket binding. |
-
-**Precise restatement of "standalone":** the generated wrapper does **no
-runtime detection of tools, config, or toolchain (T/M/C)** — those are
-decided once at generate time and baked, which is what makes it
-standalone.  It **does** read the **allocation and topology (A/H)** at
-runtime, because those are what the scheduler hands the job and adapting
-to them is the whole point.  At **generate time** the *only* tool-autodetect
-is **conda/mamba on a workstation**; the HPC toolchain is never guessed.
-
-### 9.4 Two different "detection" jobs (don't conflate them)
-
-- **Job A — autodetect the activation *method*** (infer an unstated
-  choice: which activation form / preamble).  **Workstation: yes**
-  (toolchain is on PATH, discoverable).  **HPC: no** — explicit config.
-- **Job B — doctor: verify the *truth* of prerequisites** (confirm stated
-  facts: env present, toolchain loads, scheduler/GPU/driver there).
-  **Every target, always** — a prep-time check on whatever target it is
-  invoked on.  **Doctor is prep-time, not the `.run.sh`** — the wrapper
-  stays baked; if the env is missing at *run* time the wrapper's
-  `set -euo pipefail` aborts loud anyway (§ 1).
-
-  **The mechanism is the EXISTING `molbuilder envs` toolkit — do NOT build
-  a new readiness/doctor checker** (it has been re-derived and rejected
-  repeatedly):
-  - **`molbuilder envs doctor`** — present/missing per recipe **+ runs each
-    recipe's verify command** (invokes the engine binary in the env).
-  - **`molbuilder envs validate <env>`** — post-install correctness probes;
-    for `molbuilder-siesta-gpu`: binary links, **CUDA stack
-    (`nvidia-smi` + `libcuda.so.1`)**, siesta ctest, and the load-bearing
-    **ELPA-GPU-codepath probe** that catches ELPA silently falling back to
-    CPU (slurm-integration.md § 7.9 driver floor + § 11.1 GPU correctness
-    gate are both covered here).
-
-  These run in the **host molbuilder env** (which *is* installed on the
-  target — § 9.5), so they are not bound by the bundle's stdlib-only
-  self-contained rule.  Assistant-not-nanny: prep **surfaces / points at**
-  these commands; the scientist runs them — molbuilder does not auto-install
-  or auto-decide.
-
-### 9.5 Per-target activation defaults + assumption
-
-| target | activation form | required prerequisite (baked) | who supplies it |
-|---|---|---|---|
-| **workstation** | `conda activate` | `source "<base>/etc/profile.d/conda.sh"` (the conda hook — a non-interactive `bash job.run.sh` does **not** read `~/.bashrc`, so the `conda` function must be sourced) | **autodetected** + baked (`detect_conda_activation`) |
-| **HPC** | `source activate` | `module load mamba` (puts the legacy `activate` shim on PATH) | **explicit** config / `asu-sol` preset |
-
-Each form carries its own prerequisite; that is why the workstation
-default (`conda activate`) *requires* baking the hook-source line — it is
-load-bearing for standalone, not overreach.  Override either with
-`--activation` / `--preamble` (the explicit hatch).
-
-- **The assumption that flips behaviour:** *is the machine that generates
-  the script the same one that runs it, with conda already on PATH?*
-  **Yes** → workstation → generate-time tool-autodetect is valid.
-  **No / clean HPC shell** → nothing about the target is detectable →
-  activation + preamble must be explicit config.
-- **Env creation is always the user's** (workstation *and* HPC).  Doctor
-  verifies presence and stops with a pointer to `molbuilder envs doctor`;
-  it never runs `envs install`.
-
-### 9.6 The goal
-
-A `.run.sh` / `.sbatch` that takes the job from **submit to result with
-zero manual steps on the target** — every T/M/C decision resolved and
-baked at generate time, every A/H decision adapted at runtime from what
-the scheduler actually granted.  Submit headless (`sbatch`), log out,
-collect the result.
+The detection / standalone model — *what* is detected, *when*, and per
+target (the five external states T/M/C/A/H, the three moments, the rule
+matrix, Job A autodetect-activation vs Job B doctor-readiness, the
+per-target activation defaults, and the goal) — now lives in
+[`job-execution.md`](job-execution.md) § 3, the master doc for the
+job-execution **system**.  This file remains the source of truth for the
+config **schema** + wrapper contract (§§ 1–8) that the detection model
+references.
 
 ---
 
