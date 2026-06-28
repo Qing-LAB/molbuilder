@@ -28,9 +28,11 @@
 | **prep-run** — `bench-result.json` → run script | **built** (`bench/prep_run.py`; `molbuilder bench prep-run`) |
 | `bench-result@1` schema (persistence) | **built** (`bench/result.py`) |
 | Self-contained bundle (ships the prep-lib, no install) | **built** (`mbbench/` + shims, in `bench generate`) |
+| Readiness/doctor (Job B, config.md § 9.4) | **built — reuse** `molbuilder envs doctor` + `envs validate` (NOT a new checker); prep surfaces it (§ 7.2) |
 
-This doc specifies the proposed pieces precisely enough to build them
-independently, against stable interfaces (§ 4) and data formats (§ 5).
+All stages are now built (§ 0); this doc specifies them against the stable
+interfaces (§ 4) and data formats (§ 5) so new schedulers/engines extend
+them without editing the core.
 
 ---
 
@@ -102,11 +104,11 @@ launch script when no scheduler is configured. The existing `molbuilder
 bench siesta-gpu` command is the **seed of the workstation runner** — it
 already runs a sweep of points *sequentially on the current machine*.
 
-**Still needed (the workstation adapter, proposed):** make the sweep
-helper emit direct run commands instead of queue submissions, and have
-prep-bench/prep-run select the workstation vs SLURM adapter from the
-detected Environment. **No engine, monitor, or estimator code changes** —
-that is the entire point of confining the difference to the adapter.
+**Workstation adapter (built):** the sweep helper emits direct run
+commands instead of queue submissions, and prep-bench/prep-run select the
+workstation vs SLURM adapter from the detected Environment. **No engine,
+monitor, or estimator code changes** — that is the entire point of
+confining the difference to the adapter.
 
 ---
 
@@ -429,13 +431,24 @@ run still exits cleanly), the pseudopotentials, `job-gpu-sweep.sh`,
 `README.md`. Topology flags it takes today become **fallbacks** once
 prep-bench detects topology on the target (§ 4.6).
 
-### § 7.2 prep-bench (target, proposed)
-Self-contained. Runs `resolve_environment()` (§ 4.4), writes
-`environment.json` (§ 5.2), and uses the matching adapter to format the
-benchmark scripts + size the sweep. Prints what it detected and the
+### § 7.2 prep-bench (target, built)
+Self-contained (`bench/prep.py`). Runs `resolve_environment()` (§ 4.4),
+writes `environment.json` (§ 5.2), and uses the matching adapter to format
+the benchmark scripts + size the sweep. Prints what it detected and the
 source; never silently guesses.
 
-### § 7.3 run-bench (target, mostly built)
+**Readiness/doctor (Job B, config.md § 9.4).** Detection answers *what the
+machine is*; the **readiness check** answers *is it ready to run*, and it
+is **the existing `molbuilder envs` toolkit — not a new checker**:
+`molbuilder envs doctor` (env present + verify-command runs the engine
+binary) and `molbuilder envs validate <gpu-env>` (CUDA stack +
+ELPA-GPU-codepath; slurm-integration.md § 7.9 / § 11.1). Per
+assistant-not-nanny, prep **surfaces/points at** these; the scientist runs
+them (they run in the host molbuilder env, which is installed on the
+target, so they are exempt from the § 2 stdlib-only rule). The run
+wrapper's `set -euo pipefail` aborts loud if the env is missing at run time.
+
+### § 7.3 run-bench (target, built)
 Launches the points (queue-submitted in parallel under SLURM; sequential
 on a workstation). The launcher + monitor are built; the monitor emits
 `util.csv` (§ 9). **Output isolation (built):** the sweep runs each (G, K)
@@ -444,12 +457,12 @@ sbatch / monitor / pseudos are symlinked in), so points never clobber the
 shared `job-gpu` basename. Per-point outputs (timing log, `util.csv`, peak
 memory) live under that directory; summarize maps the directory → label.
 
-### § 7.4 summarize (target, proposed)
+### § 7.4 summarize (target, built)
 Reads each point's timing + utilization + memory, writes
 `bench-result.json` (§ 5.3) including the portable `choice`. Self-contained
-so it runs on the target.
+(`bench/summarize.py`) so it runs on the target.
 
-### § 7.5 prep-run (target, proposed)
+### § 7.5 prep-run (target, built)
 Reads `bench-result.json` + the production input, takes the portable
 `choice`, re-resolves the concrete knobs from the local Environment via
 its adapter (§ 5.4), and writes the production run script. No hand editing.
