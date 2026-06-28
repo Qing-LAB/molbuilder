@@ -36,6 +36,7 @@ import click
 from .diagnostics import initialize as _initialize_diagnostics
 from .envs._cli import envs_group
 from .bench._cli import bench_group
+from .transport._cli import transport_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
 
@@ -320,6 +321,10 @@ cli.add_command(envs_group)
 # runs short SIESTA jobs across a handful of (np, omp, BlockSize)
 # combinations.  See molbuilder/bench/.
 cli.add_command(bench_group)
+
+# `molbuilder transport ...`  (TranSIESTA workflow helpers; preflight =
+# device<->electrode consistency gates).  See molbuilder/transport/.
+cli.add_command(transport_group)
 
 
 # `molbuilder pseudo ...`  (screen a pseudopotential set).
