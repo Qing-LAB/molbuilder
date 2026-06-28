@@ -156,6 +156,18 @@ def normalise_cell_pbc(
             )
         if any(not _math.isfinite(x) for r in rows for x in r):
             raise MolstructJsonError("cell entries must all be finite")
+        # Reject a singular/degenerate lattice (zero volume / parallel
+        # vectors) -- it breaks downstream reciprocal-space math.  3x3
+        # determinant via the rule of Sarrus (avoid a numpy dependency
+        # in this stdlib-light sidecar module).
+        a, b, c = rows
+        det = (a[0] * (b[1] * c[2] - b[2] * c[1])
+               - a[1] * (b[0] * c[2] - b[2] * c[0])
+               + a[2] * (b[0] * c[1] - b[1] * c[0]))
+        if abs(det) < 1e-8:
+            raise MolstructJsonError(
+                "cell is singular/degenerate (near-zero volume); the "
+                "three lattice vectors must be linearly independent")
         cell_out = rows
     if pbc is None:
         pbc_out = [cell_out is not None] * 3

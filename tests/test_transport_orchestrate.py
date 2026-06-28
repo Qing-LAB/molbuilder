@@ -47,10 +47,13 @@ def test_frozen_defaults_to_electrode_atoms():
     assert frozen == [0, 1, 2, 3, 6, 7, 8, 9]      # both electrodes, not bridge
 
 
-def test_frozen_prefers_explicit_frozen_atoms():
+def test_frozen_unions_explicit_with_electrodes():
+    # The leads MUST always be frozen (clone invariant); explicit
+    # frozen_atoms are unioned in, never substituted for the electrodes.
     dev = _au_device()
-    dev.frozen_atoms = [0, 1]
-    assert _frozen_for_relax(dev) == [0, 1]
+    dev.frozen_atoms = [4]                          # a bridge atom
+    frozen = _frozen_for_relax(dev)
+    assert set(frozen) == {0, 1, 2, 3, 6, 7, 8, 9, 4}   # electrodes + the extra
 
 
 # --------------------------------------------------------------------- #

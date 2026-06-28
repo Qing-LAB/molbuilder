@@ -848,7 +848,9 @@ def detect_conda_activation() -> Optional[Dict[str, str]]:
     if base is None:
         which = shutil.which("conda") or shutil.which("mamba")
         if which:
-            base = Path(which).parent.parent
+            # Resolve symlinks: a PATH shim (e.g. ~/.local/bin/conda ->
+            # <base>/bin/conda) would otherwise yield the wrong base.
+            base = Path(which).resolve().parent.parent
     if base is None:
         pref = os.environ.get("CONDA_PREFIX")
         if pref:

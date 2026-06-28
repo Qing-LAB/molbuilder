@@ -220,6 +220,23 @@ def test_generate_explicit_activation_flag(tmp_path, monkeypatch):
     assert "module load mamba" in run and "source activate" in run
 
 
+def test_generate_preamble_only_flag_is_honored(tmp_path, monkeypatch):
+    # --preamble WITHOUT --activation must NOT be silently dropped: the
+    # activation comes from auto-detect, the preamble from the flag.
+    import molbuilder.runtime_config as rc
+    _no_server_config(monkeypatch)
+    monkeypatch.setattr(rc, "detect_conda_activation",
+                        lambda: {"activation": "conda activate",
+                                 "preamble": 'source "/x/conda.sh"'})
+    fdf = _make_src(tmp_path)
+    out = tmp_path / "out"; out.mkdir()
+    out_dir, _ = generate_bench_bundle(fdf, out, preamble="module load mamba")
+    cfg = json.loads((out_dir / ".molbuilder.json").read_text())
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    assert cfg["script_generation"]["activation"] == "conda activate"
+    assert "module load mamba" in (out_dir / "job-cpu.run.sh").read_text()
+
+
 def test_generate_no_activation_no_conda_errors_helpfully(tmp_path, monkeypatch):
     import molbuilder.runtime_config as rc
     _no_server_config(monkeypatch)

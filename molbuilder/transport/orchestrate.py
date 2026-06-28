@@ -80,13 +80,14 @@ class TransportBundle:
 def _frozen_for_relax(device: Structure) -> List[int]:
     """0-based indices to freeze during the device relaxation.
 
-    Prefer the structure's explicit ``frozen_atoms``; otherwise freeze
-    every atom in a ``*-electrode`` region (the leads stay at their bulk
-    geometry while the scattering region relaxes, § 6.2).
+    The ``*-electrode`` atoms MUST stay at their bulk geometry — the
+    electrode ``.TSHS`` is built from the *un*relaxed bulk slab, so any
+    lead atom that moves breaks the electrode↔device geometric-clone
+    invariant (§ 6.2) and silently corrupts the junction.  So the leads
+    are ALWAYS frozen, UNIONED with any explicit ``frozen_atoms`` the
+    user added (e.g. a fixed contact layer) — never one OR the other.
     """
-    if device.frozen_atoms:
-        return sorted(set(device.frozen_atoms))
-    frozen: set = set()
+    frozen: set = set(device.frozen_atoms or [])
     for _label, _name, idxs in _find_electrode_regions(device):
         frozen.update(idxs)
     return sorted(frozen)
@@ -208,7 +209,12 @@ MPI="${{MPI:-mpirun -np 4}}"
 run_siesta() {{   # <label> <expected-output>
   local label="$1" expect="$2"
   echo "[transport] === $label ==="
-  $MPI "$SIESTA" "$label.fdf" > "$label.out" 2>&1
+  # NB: guard the launch so a non-zero SIESTA exit is reported here
+  # rather than tripping `set -e` and dying before the message.
+  if ! $MPI "$SIESTA" "$label.fdf" > "$label.out" 2>&1; then
+    echo "[transport] FAILED: $label exited non-zero -- see $label.out" >&2
+    exit 1
+  fi
   if [ ! -e "$expect" ]; then
     echo "[transport] FAILED: $label did not produce $expect" >&2
     echo "[transport] see $label.out for the SIESTA error" >&2

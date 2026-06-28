@@ -477,12 +477,16 @@ def selection_save():
             existing_regions: Dict[str, list] = {}
             existing_frozen: list = []
             existing_rules: Dict[str, Any] = {}
+            existing_cell = None
+            existing_pbc = None
             if sidecar_path.exists():
                 try:
                     existing = molstruct_json.load(sidecar_path)
                     existing_regions = dict(existing.get("regions") or {})
                     existing_frozen  = list(existing.get("frozen_atoms") or [])
                     existing_rules   = dict(existing.get("selection_rules") or {})
+                    existing_cell    = existing.get("cell")
+                    existing_pbc     = existing.get("pbc")
                 except molstruct_json.MolstructJsonError as e:
                     # A corrupt sidecar carries user work the server
                     # cannot read but ALSO cannot replace safely: writing
@@ -538,6 +542,10 @@ def selection_save():
                     regions         = existing_regions,
                     frozen_atoms    = existing_frozen,
                     selection_rules = existing_rules,
+                    # carry the lattice through the load-modify-write so a
+                    # region edit doesn't strip an existing cell.
+                    cell            = existing_cell,
+                    pbc             = existing_pbc,
                     created_by      = "molbuilder selection panel",
                 )
             except molstruct_json.MolstructJsonError as exc:
@@ -683,6 +691,9 @@ def selection_refresh_hash():
                     regions         = existing_regions,
                     frozen_atoms    = existing_frozen,
                     selection_rules = existing_rules,
+                    # preserve the lattice across the hash-refresh rewrite.
+                    cell            = existing.get("cell"),
+                    pbc             = existing.get("pbc"),
                     created_by      = "molbuilder save (hash refresh)",
                 )
             except molstruct_json.MolstructJsonError as exc:

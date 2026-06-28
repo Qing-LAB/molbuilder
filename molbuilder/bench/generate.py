@@ -65,21 +65,21 @@ def _ensure_activation(out_dir: Path,
     a message that points at the flags + auto-detect, not just a JSON
     snippet.
     """
-    chosen_act = activation
-    chosen_pre = preamble
-    source = "flag" if activation else None
+    sg = _rc.get_script_generation(project_dir=out_dir)
 
-    # (2) existing config already resolves it -> leave it alone.
+    # activation: explicit flag > existing config > auto-detected conda.
+    chosen_act = activation or sg.get("activation")
+    detected = None
     if chosen_act is None:
-        if _rc.get_script_generation(project_dir=out_dir).get("activation"):
-            return None
-        # (3) auto-detect the local conda.
         detected = _rc.detect_conda_activation()
         if detected:
             chosen_act = detected["activation"]
-            if chosen_pre is None:
-                chosen_pre = detected["preamble"]
-            source = "auto-detected local conda"
+
+    # preamble: explicit flag wins; else the auto-detect hook (only when
+    # WE auto-detected); else leave any existing-config preamble alone.
+    chosen_pre = preamble
+    if chosen_pre is None and detected is not None:
+        chosen_pre = detected["preamble"]
 
     if chosen_act is None:
         raise _rc.RuntimeConfigError(
@@ -95,6 +95,12 @@ def _ensure_activation(out_dir: Path,
             "    auto-detect), or set script_generation in molbuilder.json."
         )
 
+    # If nothing new was supplied or detected, the existing config fully
+    # covers it -- leave the file untouched.
+    if activation is None and preamble is None and detected is None:
+        return None
+    source = "flag" if (activation or preamble) else "auto-detected local conda"
+
     # Materialise the resolved config into the bundle so the wrapper +
     # any re-generation find it.  Merge into an existing file if present.
     cfg_path = out_dir / ".molbuilder.json"
@@ -104,11 +110,13 @@ def _ensure_activation(out_dir: Path,
             existing = json.loads(cfg_path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             existing = {}
-    sg = dict(existing.get("script_generation") or {})
-    sg["activation"] = chosen_act
+    if not isinstance(existing, dict):           # malformed top-level JSON
+        existing = {}
+    sg_block = dict(existing.get("script_generation") or {})
+    sg_block["activation"] = chosen_act
     if chosen_pre:
-        sg["preamble"] = chosen_pre
-    existing["script_generation"] = sg
+        sg_block["preamble"] = chosen_pre
+    existing["script_generation"] = sg_block
     cfg_path.write_text(json.dumps(existing, indent=2) + "\n",
                         encoding="utf-8")
 

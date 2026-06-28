@@ -200,6 +200,16 @@ class Structure:
                     f"floats (lattice vectors as rows, Angstrom); got "
                     f"shape {cell.shape}"
                 )
+            # Reject a singular/degenerate lattice (zero volume, or two
+            # parallel/duplicated vectors): it would blow up later in
+            # reciprocal-space / k-grid math (1/det, inv(cell)) with an
+            # opaque LinAlgError instead of a clear message here.
+            if abs(float(np.linalg.det(cell))) < 1e-8:
+                raise ValueError(
+                    "Structure.cell is singular/degenerate (near-zero "
+                    "volume); the three lattice vectors must be linearly "
+                    "independent."
+                )
             self.cell = cell
         if self.pbc is None:
             self.pbc = ((True, True, True) if self.cell is not None
@@ -687,6 +697,9 @@ class Structure:
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
             frozen_atoms  = list(self.frozen_atoms),
+            cell          = (self.cell.copy() if self.cell is not None
+                             else None),
+            pbc           = self.pbc,
         )
 
     def translated(self, vec: Sequence[float]) -> "Structure":
@@ -701,6 +714,10 @@ class Structure:
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
             frozen_atoms  = list(self.frozen_atoms),
+            # A rigid translation leaves the lattice unchanged.
+            cell          = (self.cell.copy() if self.cell is not None
+                             else None),
+            pbc           = self.pbc,
         )
 
     def centered(self) -> "Structure":
@@ -765,6 +782,14 @@ class Structure:
                     i + atom_offset for i in idxs
                 )
             atom_offset += s.n_atoms
+        # Carry the FIRST input's lattice (the conventional base when
+        # concatenating, e.g. add_electrode_slab builds onto a base
+        # structure).  The caller owns making the cell big enough for
+        # the merged atoms — concat can't infer a new lattice.
+        base_cell = next((s.cell for s in structures if s.cell is not None),
+                         None)
+        base_pbc = next((s.pbc for s in structures if s.cell is not None),
+                        None)
         return cls(
             elements      = elements,
             positions     = np.vstack(positions),
@@ -775,4 +800,7 @@ class Structure:
             title         = title,
             regions       = regions,
             frozen_atoms  = frozen_atoms,
+            cell          = (base_cell.copy() if base_cell is not None
+                             else None),
+            pbc           = base_pbc,
         )

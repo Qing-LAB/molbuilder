@@ -55,6 +55,24 @@ def test_structure_cell_validation():
                   cell=np.zeros((2, 3)))
 
 
+def test_structure_rejects_degenerate_cell():
+    # zero-volume (two parallel vectors) must fail loudly, not crash later
+    bad = np.array([[10.0, 0, 0], [10.0, 0, 0], [0, 0, 10.0]])
+    with pytest.raises(ValueError, match="singular|degenerate"):
+        Structure(elements=["C"], positions=np.zeros((1, 3)), cell=bad)
+
+
+def test_copy_translated_preserve_cell_and_pbc():
+    s = Structure(elements=["C", "N"], positions=np.array([[0, 0, 0], [1.0, 0, 0]]),
+                  cell=HEX, pbc=(True, True, False))
+    for clone in (s.copy(), s.translated([1.0, 2.0, 3.0]), s.centered()):
+        assert clone.cell is not None and np.allclose(clone.cell, HEX)
+        assert clone.pbc == (True, True, False)
+    # copy is independent (no shared array)
+    s.copy().cell[0, 0] = 999.0
+    assert s.cell[0, 0] == pytest.approx(17.30)
+
+
 def test_sidecar_cell_round_trip(tmp_path):
     d = msj.to_dict(n_atoms_total=1, structure_hash="0" * 32,
                     cell=HEX, pbc=(True, True, False))

@@ -126,6 +126,8 @@ def write_bundle_as_handoff(bundle: BundleResult,
         structure_hash=structure_hash,
         regions=bundle.regions or None,
         frozen_atoms=bundle.frozen_atoms or None,
+        cell=bundle.structure.cell,
+        pbc=bundle.structure.pbc,
         created_by="molbuilder bundle_writer",
     )
     _msj.save(sidecar_path, sidecar_payload)
