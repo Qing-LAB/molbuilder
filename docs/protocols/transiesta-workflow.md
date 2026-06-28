@@ -314,7 +314,7 @@ relies on the wizard's clone-by-construction or human review).
 | # | Invariant | Across | Why (physics) | Gate |
 |---|---|---|---|---|
 | I1 | XC functional + authors | relax = electrode = device | one H footing; mixing shifts E_F | `contract.xc` |
-| I2 | Pseudopotentials (per species) | all three | different core = different atom | (file identity) ✗ |
+| I2 | Pseudopotentials (per species) | all three | different core = different atom | wizard clones species ✓ |
 | I3 | MeshCutoff | electrode = device | real-space grid must align for the NEGF coupling | `contract.meshcutoff` |
 | I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | `contract.energyshift` |
 | I5 | Basis tier, per species | frozen-electrode-Au **==** device-Au | a basis step = spurious scattering (§ 4.4) | `contract.basis` |
@@ -322,7 +322,7 @@ relies on the wizard's clone-by-construction or human review).
 | I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k | `kgrid.transverse` |
 | I8 | Device kz = 1 | device | open boundary along transport (no periodicity) | `kgrid.device_kz` |
 | I9 | Electrode kz dense (converged) | electrode | it is a *periodic bulk* run; thin cell → large BZ | `kgrid.electrode_kz` |
-| I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ self-energy must map atom-for-atom onto the device | `cell.transverse` (lateral); atom-clone = wizard ✗ |
+| I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ self-energy must map atom-for-atom onto the device | wizard clones atoms ✓ |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest principal layers couple (§ 4.1) | `electrode.thickness` (warn) |
 | I12 | z-vacuum ≈ 0 at the leads | device | a gap = strained/severed lead, not a junction (§ 1.3) | `device.z_vacuum` (warn) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | `electrode.saveHS` (warn) |
@@ -343,9 +343,11 @@ Each gate traces to a physical requirement and a reference (verified DOIs,
 | Au valence 5s5p5d6s (semicore) ⇒ MeshCutoff 350–500 | semicore d needs a fine grid | § 4.3 | van Setten 2018 (10.1016/j.cpc.2018.01.012) |
 | result caveat flag (G₀ vs exp ≈ 0.011 G₀) | DFT-NEGF overestimates conductance ~1–2 orders | § 4.6 | Xiao 2004 (10.1021/nl035000m) |
 
-The preflight already encodes I1,I3–I9,I11–I13 as machine checks (14 tests);
-I2 and I10's atom-level clone are guaranteed-by-construction once the
-electrode wizard (§ 6.2) lands and are flagged ✗ until then.
+The preflight encodes I1,I3–I9,I11–I13 as machine checks (14 tests); I2 and
+I10's atom-level clone are now guaranteed-by-construction by the electrode
+wizard (§ 6.2, `transport electrode`), which derives the lead geometry +
+lateral cell + numerical contract from the device — verified by a round-trip
+test that feeds wizard output back through the preflight.
 
 ---
 
@@ -355,8 +357,8 @@ electrode wizard (§ 6.2) lands and are flagged ✗ until then.
 |---|---|
 | Device `.fdf` emitter (modern `TS.Elec`/`TS.ChemPots`), `*-electrode` detection | **built** (`transiesta.py`) |
 | Real-binary smoke test | **built** (`test_transiesta_siesta_smoke_l4.py`) |
-| **Electrode wizard** (clone + thickness/`kz`) | proposed (§ 6.2) |
-| **Consistency preflight** | proposed (§ 6.3) — *do first* |
+| **Electrode wizard** (clone + thickness/`kz`) | **built** (`wizard.py`, `transport electrode`) |
+| **Consistency preflight** | **built** (`preflight.py`, `transport preflight`) |
 | **3-run orchestration** (auto coord/TSHS hand-off) | proposed (§ 6.4) |
 | **Convergence sweep** | proposed (§ 6.5) |
 | **Bias driver** + I–V stitch | proposed (§ 6.4) |
