@@ -36,11 +36,88 @@ duplicated -- it does not assume a molbuilder-canonical input.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .. import runtime_config as _rc
 from ..runwrap import write_run_wrapper
+
+
+def _ensure_activation(out_dir: Path,
+                       activation: Optional[str],
+                       preamble: Optional[str]) -> Optional[str]:
+    """Make sure the wrapper generator can resolve a conda activation
+    for this bundle, WITHOUT the user having to hand-author a config.
+
+    Resolution order (first that yields an activation wins):
+
+      1. ``--activation`` / ``--preamble`` passed explicitly.
+      2. An existing config (server-wide ``molbuilder.json`` or a
+         ``.molbuilder.json`` already in ``out_dir``).
+      3. Auto-detected local conda/mamba (:func:`detect_conda_activation`).
+
+    For (1) and (3) a ``.molbuilder.json`` is written into ``out_dir`` so
+    the downstream wrapper finds it; returns a human-readable note about
+    what was used (or None when an existing config already covered it).
+    Raises :class:`RuntimeConfigError` only when nothing resolves — with
+    a message that points at the flags + auto-detect, not just a JSON
+    snippet.
+    """
+    chosen_act = activation
+    chosen_pre = preamble
+    source = "flag" if activation else None
+
+    # (2) existing config already resolves it -> leave it alone.
+    if chosen_act is None:
+        if _rc.get_script_generation(project_dir=out_dir).get("activation"):
+            return None
+        # (3) auto-detect the local conda.
+        detected = _rc.detect_conda_activation()
+        if detected:
+            chosen_act = detected["activation"]
+            if chosen_pre is None:
+                chosen_pre = detected["preamble"]
+            source = "auto-detected local conda"
+
+    if chosen_act is None:
+        raise _rc.RuntimeConfigError(
+            "could not resolve a conda activation for the bundle.\n"
+            "No --activation given, no molbuilder.json / .molbuilder.json "
+            "config, and no conda/mamba found on PATH to auto-detect.\n"
+            "\n"
+            "Fix (pick one):\n"
+            "  * pass it on the command line:\n"
+            "      molbuilder bench generate ... \\\n"
+            '        --activation "source activate" --preamble "module load mamba"\n'
+            "  * or run generate on a machine with conda on PATH (it will\n"
+            "    auto-detect), or set script_generation in molbuilder.json."
+        )
+
+    # Materialise the resolved config into the bundle so the wrapper +
+    # any re-generation find it.  Merge into an existing file if present.
+    cfg_path = out_dir / ".molbuilder.json"
+    existing: dict = {}
+    if cfg_path.is_file():
+        try:
+            existing = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            existing = {}
+    sg = dict(existing.get("script_generation") or {})
+    sg["activation"] = chosen_act
+    if chosen_pre:
+        sg["preamble"] = chosen_pre
+    existing["script_generation"] = sg
+    cfg_path.write_text(json.dumps(existing, indent=2) + "\n",
+                        encoding="utf-8")
+
+    pre_note = f' + preamble "{chosen_pre}"' if chosen_pre else ""
+    return (f'activation "{chosen_act}"{pre_note} ({source}) written to '
+            f"{cfg_path.name}.\n"
+            f"  NOTE: this is THIS machine's setup. For a different run "
+            f"target (e.g. an HPC cluster) re-generate with "
+            f"--activation/--preamble or edit {cfg_path.name}.")
 
 
 # --------------------------------------------------------------------- #
@@ -283,7 +360,10 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
                           cpu_time: Optional[str] = None,
                           gpu_time: Optional[str] = None,
                           cpu_cpus_per_task: int = 1,
-                          gpu_exclusive: Optional[bool] = None
+                          gpu_exclusive: Optional[bool] = None,
+                          activation: Optional[str] = None,
+                          preamble: Optional[str] = None,
+                          echo=None
                           ) -> Tuple[Path, List[Path]]:
     """Generate the CPU + GPU benchmark bundle from ``fdf_path``.
 
@@ -305,6 +385,14 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     out_dir = (Path(out_dir).resolve() if out_dir is not None
                else src_dir / f"{fdf_path.stem}.bench")
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve the conda activation BEFORE emitting any run wrapper, so the
+    # generator never dead-ends on a missing hand-authored config: explicit
+    # flags > existing config > auto-detected local conda.  Returns a note
+    # (or None) describing what was materialised into the bundle.
+    activation_note = _ensure_activation(out_dir, activation, preamble)
+    if activation_note and echo is not None:
+        echo(activation_note)
 
     written: List[Path] = []
 

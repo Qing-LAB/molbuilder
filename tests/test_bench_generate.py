@@ -176,6 +176,69 @@ def test_generate_bundle_emits_both_jobs(tmp_path):
     assert "Diag.ELPA.GPU" not in (out_dir / "job-cpu.fdf").read_text()
 
 
+#  Activation resolution -- the hole that dead-ended a fresh user:        #
+#  generate must NOT require a hand-authored .molbuilder.json.             #
+
+
+def _no_server_config(monkeypatch):
+    """Force the server-wide config layer empty so these tests exercise
+    the project / auto-detect paths regardless of the host machine."""
+    import molbuilder.runtime_config as rc
+    monkeypatch.setattr(rc, "_read_server_wide", lambda: {})
+
+
+def test_generate_cold_start_autodetects_activation(tmp_path, monkeypatch):
+    # THE regression for this whole episode: an empty out dir, NO config
+    # anywhere -> generate must still succeed by auto-detecting conda,
+    # and bake a real activation into the run wrapper.
+    import molbuilder.runtime_config as rc
+    _no_server_config(monkeypatch)
+    monkeypatch.setattr(rc, "detect_conda_activation",
+                        lambda: {"activation": "conda activate",
+                                 "preamble": 'source "/x/conda.sh"'})
+    fdf = _make_src(tmp_path)
+    out = tmp_path / "out"; out.mkdir()           # NO .molbuilder.json
+    out_dir, written = generate_bench_bundle(fdf, out)
+    assert (out_dir / "job-cpu.run.sh").is_file()
+    cfg = json.loads((out_dir / ".molbuilder.json").read_text())
+    assert cfg["script_generation"]["activation"] == "conda activate"
+    assert "conda activate" in (out_dir / "job-cpu.run.sh").read_text()
+
+
+def test_generate_explicit_activation_flag(tmp_path, monkeypatch):
+    # An HPC target: the generating box's conda is irrelevant; the user
+    # supplies activation/preamble and it lands in the scripts.
+    _no_server_config(monkeypatch)
+    fdf = _make_src(tmp_path)
+    out = tmp_path / "out"; out.mkdir()
+    out_dir, _ = generate_bench_bundle(
+        fdf, out, activation="source activate", preamble="module load mamba")
+    cfg = json.loads((out_dir / ".molbuilder.json").read_text())
+    assert cfg["script_generation"]["activation"] == "source activate"
+    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    run = (out_dir / "job-cpu.run.sh").read_text()
+    assert "module load mamba" in run and "source activate" in run
+
+
+def test_generate_no_activation_no_conda_errors_helpfully(tmp_path, monkeypatch):
+    import molbuilder.runtime_config as rc
+    _no_server_config(monkeypatch)
+    monkeypatch.setattr(rc, "detect_conda_activation", lambda: None)
+    fdf = _make_src(tmp_path)
+    out = tmp_path / "out"; out.mkdir()
+    with pytest.raises(rc.RuntimeConfigError, match="--activation"):
+        generate_bench_bundle(fdf, out)
+
+
+def test_detect_conda_activation_finds_local_conda():
+    # Smoke: the tests run inside a conda env, so detection must work.
+    from molbuilder.runtime_config import detect_conda_activation
+    got = detect_conda_activation()
+    assert got is not None
+    assert got["activation"] == "conda activate"
+    assert got["preamble"].startswith("source ")
+
+
 def test_generate_cpu_sbatch_has_estimated_mem(tmp_path):
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)

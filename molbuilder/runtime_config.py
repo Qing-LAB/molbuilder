@@ -824,6 +824,46 @@ def require_activation(project_dir: Optional[Path] = None) -> str:
     return sg["activation"]
 
 
+def detect_conda_activation() -> Optional[Dict[str, str]]:
+    """Best-effort detect a conda/mamba activation for THIS machine.
+
+    Returns ``{"activation": "conda activate", "preamble": 'source
+    "<base>/etc/profile.d/conda.sh"'}`` when a conda/mamba install is
+    discoverable (via ``$CONDA_EXE`` / ``$MAMBA_EXE`` / ``conda`` on
+    PATH / ``$CONDA_PREFIX``) and its activation hook exists; else None.
+
+    The hook path is the GENERATING machine's — correct when the script
+    runs on the SAME machine (a workstation where you generate and run).
+    For a different target (e.g. an HPC cluster reached after
+    ``module load mamba``) set ``script_generation`` explicitly; this
+    detection is only the no-config convenience for the local case.
+    """
+    import shutil
+
+    base: Optional[Path] = None
+    exe = os.environ.get("CONDA_EXE") or os.environ.get("MAMBA_EXE")
+    if exe:
+        # <base>/bin/conda  or  <base>/condabin/conda
+        base = Path(exe).parent.parent
+    if base is None:
+        which = shutil.which("conda") or shutil.which("mamba")
+        if which:
+            base = Path(which).parent.parent
+    if base is None:
+        pref = os.environ.get("CONDA_PREFIX")
+        if pref:
+            pp = Path(pref)
+            # CONDA_PREFIX may point at an env (<base>/envs/<name>);
+            # walk back to the base in that case.
+            base = pp.parent.parent if pp.parent.name == "envs" else pp
+    if base is None:
+        return None
+    hook = base / "etc" / "profile.d" / "conda.sh"
+    if not hook.is_file():
+        return None
+    return {"activation": "conda activate", "preamble": f'source "{hook}"'}
+
+
 # --------------------------------------------------------------------- #
 #  scheduler section (docs/protocols/slurm-integration.md § 4)          #
 # --------------------------------------------------------------------- #

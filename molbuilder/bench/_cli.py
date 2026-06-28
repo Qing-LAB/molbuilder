@@ -272,13 +272,24 @@ def cmd_siesta_gpu(project_dir: str,
                    "lets the launcher socket-pin (it owns all cores); "
                    "--no-gpu-exclusive packs jobs but the placement is "
                    "SLURM's (no pin).")
+@click.option("--activation", default=None,
+              help="conda activation for the run scripts, e.g. "
+                   "'conda activate' or 'source activate'.  Default: an "
+                   "existing molbuilder.json config, else auto-detected "
+                   "from the local conda. Set this for a different run "
+                   "target (e.g. an HPC cluster).")
+@click.option("--preamble", default=None,
+              help="shell line(s) to run before activation, e.g. "
+                   "'module load mamba' on an HPC cluster.")
 def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                  gpu_gpus: int, gpu_k: int, gpus_per_node: int,
                  cores_per_socket: int, cpu_block_size: int,
                  gpu_block_size: int, max_scf: int,
                  cpu_time: Optional[str], gpu_time: Optional[str],
                  cpu_cpus_per_task: int,
-                 gpu_exclusive: Optional[bool]) -> None:
+                 gpu_exclusive: Optional[bool],
+                 activation: Optional[str],
+                 preamble: Optional[str]) -> None:
     """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
 
     Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
@@ -304,6 +315,7 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
             cpu_block_size=cpu_block_size, gpu_block_size=gpu_block_size,
             max_scf=max_scf, cpu_time=cpu_time, gpu_time=gpu_time,
             cpu_cpus_per_task=cpu_cpus_per_task, gpu_exclusive=gpu_exclusive,
+            activation=activation, preamble=preamble, echo=click.echo,
         )
     except (ValueError, OSError, RuntimeConfigError) as e:
         click.echo(f"ERROR: {e}", err=True)
