@@ -8,7 +8,7 @@ recommendation -- each bundle just reports its own wall/iter).
 
 Both points use the SAME eigensolver (``Diag.Algorithm ELPA-1STAGE``) so
 the CPU-vs-GPU number isolates the *hardware*, not the solver
-(deployment.md § 5); only the GPU point adds ``Diag.ELPA.GPU .true.``.
+(slurm-integration.md § 11); only the GPU point adds ``Diag.ELPA.GPU .true.``.
 ELPA lives only in ``molbuilder-siesta-gpu`` (the precompiled
 ``molbuilder-siesta`` has no ELPA), so BOTH bundles run there -- the CPU
 one declares that env EXPLICITLY (visible as "Target env" in its
@@ -217,12 +217,13 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     only the GPU point adds ``Diag.ELPA.GPU .true.``.  So the CPU-vs-GPU
     number isolates the *hardware* (the CUDA toggle), not *solver* —
     ScaLAPACK-CPU vs ELPA-GPU would conflate the two
-    (deployment.md § 5).  ELPA lives only in ``molbuilder-siesta-gpu``
+    (slurm-integration.md § 11).  ELPA lives only in ``molbuilder-siesta-gpu``
     (the CPU ``molbuilder-siesta`` conda package is built without it), so
-    BOTH points route there; the run-wrapper routes any ELPA fdf to that
-    env (``runwrap._fdf_requests_elpa``).  All edits are SIESTA-label-
-    normalized, so variant-spelled input is replaced in place, never
-    duplicated.
+    BOTH points route there: the CPU point declares that env EXPLICITLY
+    (``env=`` to ``write_run_wrapper``), the GPU point auto-routes via its
+    ``Diag.ELPA.GPU`` flag (``runwrap._fdf_requests_gpu``).  All edits are
+    SIESTA-label-normalized, so variant-spelled input is replaced in place,
+    never duplicated.
     """
     t = src_text
     t = _set_or_append(t, "SystemName", label)

@@ -680,8 +680,9 @@ consumer card.)
 
 **Jobs are independent + parallel, NOT sequential.** A SLURM job has one
 allocation, so CPU-only and GPU configs are *separate* `.sbatch` files
-(they also differ in the `.fdf`'s `Diag.ELPA.GPU` flag → different env:
-`molbuilder-siesta` vs `molbuilder-siesta-gpu`). Submit them all; SLURM
+(they differ only in the `.fdf`'s `Diag.ELPA.GPU` flag and the GPU job's
+`--gres`; **both run the same ELPA-1STAGE solver in `molbuilder-siesta-gpu`**
+— apples-to-apples *hardware* comparison, § 11.2). Submit them all; SLURM
 runs the CPU job on a CPU node and the GPU job on a GPU node concurrently.
 Collect each job's `.scf-timing.log` and compare.
 
@@ -857,7 +858,7 @@ kept on the GPU's 24-core socket.
 
 | # | Config | `.fdf` flag | env | resources |
 |---|---|---|---|---|
-| 1 | **CPU np=64** | `Diag.ELPA.GPU .false.` | `molbuilder-siesta` | `-n 64` (no gres) — schedules immediately; the CPU reference |
+| 1 | **CPU np=64** | ELPA-1STAGE, no `Diag.ELPA.GPU` | `molbuilder-siesta-gpu` (declared explicitly) | `-n 64` (no gres) — schedules immediately; the CPU reference |
 | 2 | **GPU 1×A100, K=8 (max)** | `.true.` | `molbuilder-siesta-gpu` | `-n 8 -c 3 --gres=gpu:a100:1 --gres-flags=enforce-binding`, MPS |
 | 3 | **GPU 1×A100, K=4 (down one)** | `.true.` | `molbuilder-siesta-gpu` | `-n 4 -c 6 --gres=gpu:a100:1 --gres-flags=enforce-binding`, MPS |
 
@@ -1020,9 +1021,11 @@ Inputs (copy/reuse, framework-generated `.fdf`/`.run.sh`/`.sbatch`):
   **`MaxSCFIterations 5`**, single-point (no relax / `MD.NumCGsteps 0`),
   `DM.UseSaveDM .false.`. GPU variant adds `Diag.ELPA.GPU .true.`.
 
-Prerequisite gate (run-time, on Sol): the conda envs
-(`molbuilder-siesta-gpu`, `molbuilder-siesta`) must be installed on Sol —
-verify `module load mamba/latest && mamba env list | grep molbuilder`
+Prerequisite gate (run-time, on Sol): the conda env `molbuilder-siesta-gpu`
+must be installed on Sol — it holds ELPA, which **both** the CPU-ELPA and
+GPU-ELPA bench points use (the precompiled `molbuilder-siesta` is *not* used
+by this apples-to-apples bench). Verify
+`module load mamba/latest && mamba env list | grep molbuilder`
 before submitting. If absent, install them first (step zero). Then:
 `cd <tempproj>; sbatch cpu-np20.sbatch; sbatch cpu-np64.sbatch;
 sbatch gpu-2a100.sbatch` → compare each `.scf-timing.log` (mean iters 3–5).

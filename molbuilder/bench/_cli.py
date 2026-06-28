@@ -253,7 +253,7 @@ CONFIG FILE -- .molbuilder.json (explicit; the flags above just write it):
                              "activation": "source activate" }
     }
 \b
-  Full reference: docs/protocols/deployment.md section 3.
+  Full reference: docs/config.md sections 3-4 (config lookup + schema).
 \b
 K is GPU processes/GPU (np = K*G); --gpu-ks may exceed cores/socket
 (oversubscription is allowed + flagged) to find where np stops scaling.

@@ -256,7 +256,7 @@ def test_generate_help_documents_molbuilder_json_explicitly():
     assert ".molbuilder.json" in out
     assert "WHERE" in out and "WHAT" in out          # location + content
     assert '"script_generation"' in out               # a concrete example
-    assert "deployment.md" in out                      # pointer to full ref
+    assert "config.md" in out                          # pointer to full ref
 
 
 def test_detect_conda_activation_finds_local_conda():
