@@ -132,7 +132,9 @@ missing.  Specifically:
 * `script_generation.activation` is not set in either scope →
   generator prints a clear error naming the missing key + the doc
   reference (`docs/config.md § 4`) and exits non-zero.  No wrapper
-  is written.
+  is written.  (A bundle front-end may populate this key by
+  autodetect on a workstation *before* the generator runs — see the
+  "Autodetect front-end" note in § 4.)
 * `script_generation.preamble` is empty in BOTH scopes AND the
   generator detects it's being asked to produce a wrapper for an
   HPC-target env (siesta-gpu, siesta) → same: print error, point
@@ -210,6 +212,19 @@ target-cluster assumption into every fresh deployment.  Sol uses
 `source activate`; modern conda installs use `conda activate`.  The
 operator picks during initial setup — once — and the generator
 refuses to operate without it.  See § 2's refuse-to-emit rule.
+
+**Autodetect front-end (Job A — workstation only).** The *core* generator
+above requires `activation` to be present and refuses to emit without it.
+A bundle-producing front-end — notably `molbuilder bench generate`
+(`bench/generate.py::_ensure_activation`) — may **auto-detect** the local
+conda/mamba on a *workstation* and **write** the resolved
+`script_generation` into the bundle's `.molbuilder.json` *before* the core
+generator runs, so the user need not hand-author it.  This is the only
+tool-autodetect, it is workstation-only, and on a clean HPC shell the key
+stays explicit.  The refuse-to-emit rule is unchanged — autodetect merely
+populates the key the generator then consumes.  Full rationale: the
+detection contract in [`job-execution.md`](job-execution.md) § 3.3–3.5
+("Job A").
 
 **Why the enum is two values, not three (no `mamba activate`):**
 on modern mamba + conda, `mamba activate <env>` and

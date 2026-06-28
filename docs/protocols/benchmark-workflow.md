@@ -437,16 +437,15 @@ writes `environment.json` (§ 5.2), and uses the matching adapter to format
 the benchmark scripts + size the sweep. Prints what it detected and the
 source; never silently guesses.
 
-**Readiness/doctor (Job B, job-execution.md § 3.4).** Detection answers *what the
-machine is*; the **readiness check** answers *is it ready to run*, and it
-is **the existing `molbuilder envs` toolkit — not a new checker**:
-`molbuilder envs doctor` (env present + verify-command runs the engine
-binary) and `molbuilder envs validate <gpu-env>` (CUDA stack +
-ELPA-GPU-codepath; slurm-integration.md § 7.9 / § 11.1). Per
-assistant-not-nanny, prep **surfaces/points at** these; the scientist runs
-them (they run in the host molbuilder env, which is installed on the
-target, so they are exempt from the § 2 stdlib-only rule). The run
-wrapper's `set -euo pipefail` aborts loud if the env is missing at run time.
+**Readiness/doctor (Job B).** Detection answers *what the machine is*; the
+readiness check answers *is it ready to run* — and it is the **existing
+`molbuilder envs` toolkit** (`envs doctor` + `envs validate <gpu-env>`),
+**not a new checker**. prep **surfaces/points at** these; the scientist
+runs them (assistant-not-nanny). The full contract — Job A vs Job B, why
+the envs toolkit, the host-env / stdlib-only exemption, the
+`set -euo pipefail` run-time backstop — is owned by
+[`job-execution.md`](job-execution.md) § 3.4; the GPU specifics are in
+slurm-integration.md § 7.9 / § 11.1.
 
 ### § 7.3 run-bench (target, built)
 Launches the points (queue-submitted in parallel under SLURM; sequential
