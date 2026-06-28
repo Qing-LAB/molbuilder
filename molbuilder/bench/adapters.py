@@ -182,21 +182,26 @@ class SchedulerAdapter:
         body: List[str] = []
         for g in range(1, gpn + 1):
             for k in ks:
-                c = (cps // k) if cps else None
-                invalid = (cps is not None and (k > cps or c is None or c < 1))
-                if invalid:
-                    body.append(f"# INVALID G={g} K={k}: K exceeds "
-                                f"cores/socket={cps}")
-                    continue
+                # K = GPU processes (MPI ranks SHARING the GPU via MPS).
+                # OMP threads/rank = cores/socket / K, floored at 1.  K is
+                # NOT capped at cores/socket: a GPU-bound run can profit
+                # from more ranks than cores (the GPU does the work), so we
+                # ALLOW oversubscription and just flag it -- the whole point
+                # of the sweep is to find where np stops scaling.
+                c = max(1, cps // k) if cps else None
                 d = f"point-G{g}K{k}"
                 ctag = "" if c is None else f" c={c}"
-                idle = (cps - k * c) if (cps and c is not None) else 0
-                under = (f"  ({idle} idle cores: K does not divide "
-                         f"cores/socket)" if idle > 0 else "")
+                if cps and k > cps:
+                    note = (f"  (OVERSUBSCRIBED: K={k} > cores/socket={cps}; "
+                            f"{k} ranks share {cps} cores -- MEASURE the knee)")
+                else:
+                    idle = (cps - k * c) if (cps and c is not None) else 0
+                    note = (f"  ({idle} idle cores: K does not divide "
+                            f"cores/socket)" if idle > 0 else "")
                 caveat = ("  (multi-GPU: no NCCL -- MEASURE; do NOT add "
                           "--gpu-bind)" if g >= 2 else "")
                 launch = self.gpu_launch_line(g, k, c, gtype)
-                body.append(f"# G={g} K={k}{ctag}{under}{caveat}")
+                body.append(f"# G={g} K={k}{ctag}{note}{caveat}")
                 body.append(f"_mb_point {d}")
                 body.append(f"( cd {d} && {launch} )")
 

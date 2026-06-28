@@ -99,6 +99,22 @@ def test_gpu_ks_override_in_sweep(tmp_path):
     assert "K=4 " not in text
 
 
+def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
+    # GPU-instance / np scaling on a small box: K beyond cores/socket is
+    # ALLOWED (ranks share the GPU via MPS) and flagged, NOT skipped, so
+    # the np-scaling curve isn't truncated at the core count.
+    prep.run_prep_bench(
+        tmp_path,
+        overrides={"cores_per_socket": 6, "gpus_per_node": 1,
+                   "gpu_type": "rtx3060"},
+        scheduler_override="workstation", ks=[1, 2, 4, 8], now_iso="t")
+    text = (tmp_path / "job-gpu-sweep.sh").read_text()
+    for k in (1, 2, 4, 8):
+        assert f"point-G1K{k}" in text            # full ladder emitted
+    assert "INVALID" not in text                  # K=8 > 6 not rejected
+    assert "OVERSUBSCRIBED: K=8 > cores/socket=6" in text
+
+
 def test_main_standalone(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     rc = prep.main(["--out", str(tmp_path), "--scheduler", "workstation",
