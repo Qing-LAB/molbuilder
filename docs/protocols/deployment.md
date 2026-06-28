@@ -180,18 +180,18 @@ Tuning knobs honored at run time (no regeneration): `MB_NP` /
 
 ---
 
-## 5. The CPU-vs-GPU benchmark must compare hardware, not solvers *(target; § 7)*
+## 5. The CPU-vs-GPU benchmark compares hardware, not solvers
 
-Both points should use **ELPA**; the GPU point just adds `Diag.ELPA.GPU
-.true.`, so the only variable is the CUDA toggle and the measured difference
-is *hardware*, not *solver*. Because ELPA lives in `molbuilder-siesta-gpu`,
-the CPU point then also routes there (§ 2 rule).
-
-> **Today:** `bench generate` emits the CPU point on **plain `diagon`
-> (ScaLAPACK)** in `molbuilder-siesta`, and the GPU point on ELPA-CUDA in
-> `molbuilder-siesta-gpu`. That CPU-vs-GPU number therefore conflates *solver*
-> with *hardware*; switching the CPU point to ELPA (no `Diag.ELPA.GPU`) is the
-> agreed fix.
+Both points use the **same** solver, `Diag.Algorithm ELPA-1STAGE`; only the
+GPU point adds `Diag.ELPA.GPU .true.`, so the only variable is the CUDA toggle
+and the measured difference is *hardware*, not *solver* (ScaLAPACK-CPU vs
+ELPA-GPU would conflate the two). ELPA lives only in `molbuilder-siesta-gpu`
+(the precompiled `molbuilder-siesta` has no ELPA — verified via `conda list`),
+so **both points run there**: the GPU point auto-routes via its `Diag.ELPA.GPU`
+flag, and the CPU point **declares that env explicitly** (visible as
+`Target env` in its `.run.sh`). This is an explicit, visible setup — the
+generator does *not* silently re-route the global env detection (assistant,
+not nanny — `design.md` § Stance).
 
 ---
 
@@ -233,4 +233,4 @@ up in `conda env list`.
 | `.molbuilder.json` documented in `--help` (path + example) | **built** (`bench generate -h` § CONFIG FILE) |
 | **runtime** config-else-probe resolution (one bundle, both targets) | proposed (§ 2) |
 | env-presence check → pointer to `molbuilder envs doctor` | proposed |
-| CPU benchmark point on ELPA (apples-to-apples) | proposed (§ 5) |
+| CPU benchmark point on ELPA (apples-to-apples) | **built** (`transform_fdf` + explicit env, § 5) |

@@ -6,10 +6,18 @@ the user can measure CPU vs GPU on their own system and decide which
 mechanism the production run should use (molbuilder makes NO automatic
 recommendation -- each bundle just reports its own wall/iter).
 
-  * ``job-cpu.{fdf,run.sh,sbatch}`` -- plain ``diagon`` (no
-    ``Diag.ELPA.GPU``); the run-wrapper auto-selects ``molbuilder-siesta``.
-  * ``job-gpu.{fdf,run.sh,sbatch}`` -- ``Diag.ELPA.GPU .true.``; the
-    wrapper auto-selects ``molbuilder-siesta-gpu``.
+Both points use the SAME eigensolver (``Diag.Algorithm ELPA-1STAGE``) so
+the CPU-vs-GPU number isolates the *hardware*, not the solver
+(deployment.md § 5); only the GPU point adds ``Diag.ELPA.GPU .true.``.
+ELPA lives only in ``molbuilder-siesta-gpu`` (the precompiled
+``molbuilder-siesta`` has no ELPA), so BOTH bundles run there -- the CPU
+one declares that env EXPLICITLY (visible as "Target env" in its
+``.run.sh``), not by silent re-routing.
+
+  * ``job-cpu.{fdf,run.sh,sbatch}`` -- ELPA-1STAGE, no ``Diag.ELPA.GPU``;
+    env ``molbuilder-siesta-gpu`` (explicit).
+  * ``job-gpu.{fdf,run.sh,sbatch}`` -- ELPA-1STAGE + ``Diag.ELPA.GPU
+    .true.``; env ``molbuilder-siesta-gpu`` (auto-routed by the GPU flag).
 
 Both are made COLD and comparable (``MaxSCFIterations 5``,
 ``DM.UseSaveDM .false.``, MD/relaxation steps zeroed) -- everything else
@@ -203,11 +211,18 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     off ``SCF.MustConverge`` (so the capped run exits 0 / ``COMPLETED``
     instead of aborting non-zero -> SLURM ``FAILED``; audit 2026-06-27
     B-BENCH-1), force a cold start (``DM.UseSaveDM .false.``), zero any MD
-    step count (single-point), set ``BlockSize``.  GPU adds
-    ``Diag.Algorithm ELPA-1STAGE`` + ``Diag.ELPA.GPU .true.``; CPU strips
-    any such directive so it runs a plain ``diagon``.  All edits are
-    SIESTA-label-normalized, so variant-spelled input is replaced in
-    place, never duplicated.
+    step count (single-point), set ``BlockSize``.
+
+    **Both points use the SAME solver, ``Diag.Algorithm ELPA-1STAGE``** —
+    only the GPU point adds ``Diag.ELPA.GPU .true.``.  So the CPU-vs-GPU
+    number isolates the *hardware* (the CUDA toggle), not *solver* —
+    ScaLAPACK-CPU vs ELPA-GPU would conflate the two
+    (deployment.md § 5).  ELPA lives only in ``molbuilder-siesta-gpu``
+    (the CPU ``molbuilder-siesta`` conda package is built without it), so
+    BOTH points route there; the run-wrapper routes any ELPA fdf to that
+    env (``runwrap._fdf_requests_elpa``).  All edits are SIESTA-label-
+    normalized, so variant-spelled input is replaced in place, never
+    duplicated.
     """
     t = src_text
     t = _set_or_append(t, "SystemName", label)
@@ -217,13 +232,13 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     t = _set_or_append(t, "DM.UseSaveDM", ".false.")
     t = _set_or_append(t, "MD.NumCGsteps", "0", only_if_present=True)
     t = _set_or_append(t, "BlockSize", str(block_size))
+    # Same eigensolver on both points; only the CUDA toggle differs.
+    t = _set_or_append(t, "Diag.Algorithm", "ELPA-1STAGE")
     if gpu:
-        t = _set_or_append(t, "Diag.Algorithm", "ELPA-1STAGE")
         t = _set_or_append(t, "Diag.ELPA.GPU", ".true.")
     else:
         t = _remove_directive(t, "Diag.ELPA.GPU")
         t = _remove_directive(t, "Diag.ELPA.UseGPU")
-        t = _remove_directive(t, "Diag.Algorithm")
     return t
 
 
@@ -300,7 +315,13 @@ bash job-gpu-sweep.sh   # run the sweep (sbatch per point on SLURM;
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
 
-## job-cpu  -- plain `diagon` (`molbuilder-siesta`)
+Both points use the SAME solver (`Diag.Algorithm ELPA-1STAGE`); only job-gpu
+adds `Diag.ELPA.GPU`.  So the comparison is HARDWARE, not solver.  ELPA lives
+only in `molbuilder-siesta-gpu`, so BOTH run there -- the `.run.sh` shows the
+`Target env`.  This is a setup for YOU to measure and decide; molbuilder makes
+no recommendation.
+
+## job-cpu  -- ELPA on CPU (`molbuilder-siesta-gpu`)
 
 ```
 cd <this dir>
@@ -427,14 +448,22 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
         block_size=gpu_block_size, max_scf=max_scf), encoding="utf-8")
     written.append(gpu_fdf)
 
-    # CPU launcher + sbatch: scales with -n; --mem auto-estimated.  CPU
-    # SIESTA is MPI-only (mainline ELPA is not GPU/OMP-heavy), so 1 core
+    # CPU launcher + sbatch: scales with -n; --mem auto-estimated.  1 core
     # per rank -- otherwise -n*-c over-subscribes the node (a 64-rank job
     # with the GPU-oriented cpus_per_task=8 default would ask for 512
     # cores on one node).  Override per submission with `sbatch -c N`.
+    #
+    # The CPU point uses ELPA-1STAGE (apples-to-apples with the GPU point;
+    # only the CUDA toggle differs), and ELPA lives ONLY in the gpu env --
+    # the precompiled molbuilder-siesta has no ELPA.  So we declare that
+    # env EXPLICITLY here (it shows up as "Target env" in the .run.sh
+    # banner); we do NOT silently re-route it.  Change it if your build
+    # differs.
+    from ..diagnostics import get_capabilities
+    elpa_env = get_capabilities().env_for_category("siesta-gpu")
     written.append(write_run_wrapper(
         cpu_fdf, mpi_np=cpu_np, cpus_per_task=cpu_cpus_per_task,
-        time=cpu_time))
+        time=cpu_time, env=elpa_env))
 
     # GPU launcher + sbatch: G GPUs (--gres) x K ranks/GPU (-n=K*G);
     # -c = cores/socket / K so K*c stays within one socket.

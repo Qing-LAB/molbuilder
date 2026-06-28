@@ -65,19 +65,20 @@ _SCHEDULER_CONFIG = {
 # --------------------------------------------------------------------- #
 
 
-def test_transform_cpu_strips_gpu_directives():
+def test_transform_cpu_uses_elpa_without_gpu_flag():
+    # Apples-to-apples: the CPU point uses the SAME solver as GPU
+    # (ELPA-1STAGE) but NOT the CUDA toggle -- only hardware differs.
     out = transform_fdf(_INPUT_FDF, label="job-cpu", gpu=False,
                         block_size=8, max_scf=5)
     assert re.search(r"^SystemName\s+job-cpu", out, re.MULTILINE)
-    assert re.search(r"^SystemLabel\s+job-cpu", out, re.MULTILINE)
     assert re.search(r"^MaxSCFIterations\s+5", out, re.MULTILINE)
     assert re.search(r"^DM\.UseSaveDM\s+\.false\.", out, re.MULTILINE)
     assert re.search(r"^BlockSize\s+8", out, re.MULTILINE)
-    # Capped run must exit 0 (not abort -> SLURM FAILED).
     assert re.search(r"^SCF\.MustConverge\s+\.false\.", out, re.MULTILINE)
-    # CPU bundle is plain diagon -- NO ELPA/GPU directives.
+    # Same eigensolver as the GPU point ...
+    assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE", out, re.MULTILINE)
+    # ... but NOT the CUDA toggle (that's the only difference).
     assert "Diag.ELPA.GPU" not in out
-    assert "Diag.Algorithm" not in out
 
 
 def test_transform_normalizes_variant_spelled_directives():

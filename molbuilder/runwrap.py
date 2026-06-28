@@ -1450,8 +1450,10 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     keyword spellings that toggle the same internal ``elpa_use_gpu``
     flag: ``Diag.ELPA.UseGPU`` (older) and ``Diag.ELPA.GPU`` (newer).
     Either turning the value true means the job needs to run in the
-    ``molbuilder-siesta-gpu`` env (the CPU env's SIESTA is linked
-    against a non-CUDA ELPA and silently ignores the flag).
+    ``molbuilder-siesta-gpu`` env -- the precompiled ``molbuilder-siesta``
+    conda package is built WITHOUT ELPA (verified: ``conda list -n
+    molbuilder-siesta`` has scalapack + siesta, no elpa), so the flag
+    would error / fall back there.
 
     Match defensively: SIESTA's FDF parser is whitespace- and case-
     insensitive on labels; the value may be ``.true.``, ``true``,
