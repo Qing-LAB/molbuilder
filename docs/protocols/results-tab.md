@@ -134,6 +134,47 @@ other tab does.  The sidebar already publishes
 existing `projects.onChange` subscriber API) by re-rendering the
 inspector for the new file.
 
+### 2.7 Markdown is NOT a result file — it gets a dedicated DOCUMENT tab *(proposed)*
+
+**The problem today.** The Markdown inspector
+(`web/static/lib/inspectors/markdown.js`) registers with
+**`isResult: false`** + `match: f => f.endsWith(".md")`.  So a `.md`
+file is *deliberately* excluded from the `/results` result-file picker
+(`inspector-registry.md` § 2) — it never appears in the Results file
+list — yet it can still be reached through the generic inspector popup.
+Net effect: `.md` is invisible where the user looks for it and reachable
+only by a confusing back-door.  `.md` files (design docs, a bundle's
+`README.md`, run notes) don't belong in *Results* at all — Results is for
+**run output** (trajectories, spectra, structures, logs).
+
+**The decision.** Split documents out of Results:
+
+1. **Results sheds `.md`.** Keep the Markdown inspector's `isResult:
+   false`; Results' dispatch table (§ 2.2) gains no `.md` row. Results
+   never lists or opens a document.
+2. **New top-level `DOCUMENT` tab.** It lists the `.md` files under the
+   current project and renders the selected one. Its body **reuses the
+   existing Markdown inspector verbatim** — the split-pane CodeMirror 5
+   (markdown mode, raw, left) + DOMPurify-sanitised `marked` render
+   (right), with the existing Save button. No new renderer; the inspector
+   module is simply mounted by the DOCUMENT tab instead of by a popup.
+3. **Routing (the confusing-open fix).** Selecting a `.md` in the projects
+   sidebar dispatches to the **DOCUMENT tab**, never the generic inspector
+   popup. Per the sidebar interaction model (single-click = preview,
+   double-click = commit; `projects-sidebar.md`): a single click previews
+   the document in DOCUMENT; a **double-click** commits/opens it there.
+   Both land in the same place — there is no CodeMirror popup path for
+   `.md` anymore.
+
+**Why reuse, not rebuild:** the raw+rendered split-pane already exists and
+is the thing "the current tab uses to show MD"; the only change is *where*
+it mounts (a dedicated tab) and *how* it's reached (sidebar → DOCUMENT,
+not popup). See `projects-sidebar.md` for the paired sidebar changes
+(file metadata, sorting, the `.md` → DOCUMENT dispatch).
+
+> Scope note: DOCUMENT is read+save for `.md` only (v1). `.txt`/other
+> prose could join later via the same tab; out of scope here.
+
 ---
 
 ## 3. Structural plan (assumes the recommendations above)

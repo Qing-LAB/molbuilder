@@ -1516,6 +1516,59 @@ use case in the sidebar.
 
 ---
 
+## 15.5 Proposed: file metadata, sorting, and the `.md` → DOCUMENT dispatch
+
+Three paired enhancements (proposed, not yet built). The first two are
+sidecar-tab-agnostic list improvements; the third is the sidebar half of
+the Results→DOCUMENT split in `results-tab.md` § 2.7.
+
+### 15.5.1 Per-file metadata in the list — date/time + size
+
+The listing must carry, per entry, the **modified time** and **size**.
+The data already exists server-side (`os.stat`; the per-file `read`
+capability — § 5.4 C3 — already returns `mtime` + `file_size`), so this
+is exposing it in the *directory listing* response, not new bookkeeping:
+
+```
+// each file entry gains:
+{ name, ..., size: number /*bytes*/, mtime: number /*epoch seconds*/ }
+```
+
+Render a compact, right-aligned `mtime` (relative — "3m", "2h", "Jun 27")
+and a humanised `size` per row. Directories show neither (or a child
+count). Keep it within the existing row template so the resize/width logic
+(§ 3.1) is untouched.
+
+### 15.5.2 Sort by name / size / time
+
+A sort control (header click or a small select) toggles the list order by
+**name** (A→Z, the current default), **size**, or **modified time**, each
+ascending/descending. Sorting is a **pure view transform over the loaded
+listing** — it must NOT refetch, must NOT change `cursor`/`current_file`
+(§ 4.1), and must early-return when the order is unchanged (the
+no-rewrite-on-no-op rule). Persist the chosen sort like the width
+preference (§ 3.1, localStorage). Directories sort as a group above files
+regardless of key.
+
+### 15.5.3 `.md` selection routes to the DOCUMENT tab
+
+`.md` is not a Results file (`results-tab.md` § 2.7). The sidebar's
+open/navigate behaviour for a `.md` entry therefore dispatches to the new
+**DOCUMENT** tab, never the generic CodeMirror inspector popup, following
+the universal interaction model:
+
+| gesture on a `.md` row | effect |
+|---|---|
+| single-click | **preview** the document in DOCUMENT (raw+rendered split-pane) |
+| double-click | **commit/open** it in DOCUMENT |
+
+This reuses the existing navigate capability (§ 5.4 C7) — the only change
+is that the `.md` extension resolves to the DOCUMENT tab's route. Every
+non-`.md` file keeps its current dispatch. No popup path remains for
+`.md`.
+
+---
+
 ## 16. Change protocol
 
 ```mermaid
