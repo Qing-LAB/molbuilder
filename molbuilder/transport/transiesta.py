@@ -299,26 +299,119 @@ def _emit_header(cfg: TransportConfig, struct: Structure) -> List[str]:
     return lines
 
 
-def _emit_geometry(struct: Structure) -> List[str]:
+def axis_vacuum(cell: np.ndarray,
+                positions: np.ndarray) -> List[float]:
+    """Per-axis vacuum gap (Å): the part of each lattice vector NOT
+    spanned by the atoms.
+
+    Computes fractional coordinates, takes each axis' atom span, and
+    returns ``(1 - span_frac) * |lattice_vector|``.  For a genuinely
+    periodic axis this is roughly one inter-layer spacing (the next
+    atom is the periodic image); for a vacuum axis it is the real
+    empty padding.  A large value on an axis the user declared
+    periodic (or on the transport axis) is the diagnostic the
+    boundary check warns on.
+    """
+    cell = np.asarray(cell, dtype=float)
+    pos = np.asarray(positions, dtype=float)
+    inv = np.linalg.inv(cell)
+    frac = pos @ inv                                  # (N, 3)
+    veclen = np.linalg.norm(cell, axis=1)             # |a|, |b|, |c|
+    out: List[float] = []
+    for ax in range(3):
+        span = float(frac[:, ax].max() - frac[:, ax].min())
+        out.append(max(0.0, (1.0 - span) * float(veclen[ax])))
+    return out
+
+
+# Above this much empty space (Å) on a periodic axis we flag it: a
+# real bulk lattice leaves ~one interlayer spacing (a few Å); much
+# more usually means the axis is actually vacuum (or the cell is
+# mis-sized), which changes the physics.
+_VACUUM_FLAG_ANG = 5.0
+
+
+def _lattice_block(struct: Structure,
+                   cell: Optional[np.ndarray]) -> List[str]:
+    """Emit the LatticeVectors block.
+
+    If ``cell`` is provided (the structure's real lattice — hexagonal,
+    triclinic, whatever), it is emitted VERBATIM and the per-axis
+    vacuum is reported with a warning when an axis declared periodic
+    leaves large empty space or the transport axis (c) has vacuum.
+
+    If ``cell`` is None there is no lattice to preserve, so an
+    orthorhombic vacuum box is fabricated from atom extents — a model
+    of an ISOLATED cluster, flagged loudly because it is wrong for a
+    periodic surface electrode (the hex Au(111) case).
+    """
+    lines = ["LatticeConstant        1.0 Ang"]
+    if cell is not None:
+        cell = np.asarray(cell, dtype=float)
+        pbc = struct.pbc or (True, True, True)
+        vac = axis_vacuum(cell, struct.positions)
+        lines += [
+            "# Explicit lattice preserved from the structure (NOT",
+            "# recomputed from atom extents).  Per-axis boundary:",
+        ]
+        names = ("a", "b", "c (transport)")
+        for ax in range(3):
+            kind = "periodic" if pbc[ax] else "vacuum"
+            lines.append(
+                f"#   {names[ax]:<14} {kind:<8} | empty span "
+                f"{vac[ax]:.2f} Å")
+        # Transport axis (c) must be periodic / seamless for the leads.
+        if vac[2] > _VACUUM_FLAG_ANG or not pbc[2]:
+            lines.append(
+                "# WARNING: the transport axis (c) has vacuum / is not "
+                "periodic;")
+            lines.append(
+                "#   the electrode .TSHS cannot attach seamlessly "
+                "(Brandbyge 2002 § III).")
+        for ax in (0, 1):
+            if pbc[ax] and vac[ax] > _VACUUM_FLAG_ANG:
+                lines.append(
+                    f"# NOTE: transverse axis {names[ax]} declared periodic "
+                    f"but leaves {vac[ax]:.1f} Å empty — confirm the surface "
+                    f"actually tiles (else it is an isolated cluster).")
+        lines.append("%block LatticeVectors")
+        for ax in range(3):
+            v = cell[ax]
+            lines.append(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}")
+        lines.append("%endblock LatticeVectors")
+    else:
+        a, b, c = _compute_cell_from_extents(struct)
+        lines += [
+            "# WARNING: no lattice on the structure — an orthorhombic",
+            "# VACUUM BOX was fabricated from atom extents (a,b = extent",
+            "# + 30 Å padding; c = extent + 2 Å).  This models an",
+            "# ISOLATED CLUSTER, NOT a periodic surface electrode.  For a",
+            "# real Au(111) lead, supply the structure's hexagonal cell",
+            "# (set Structure.cell / the molstruct sidecar's 'cell').",
+            "%block LatticeVectors",
+            f"  {a:7.3f}    0.000    0.000",
+            f"    0.000  {b:7.3f}    0.000",
+            f"    0.000    0.000  {c:7.3f}",
+            "%endblock LatticeVectors",
+        ]
+    return lines
+
+
+def _emit_geometry(struct: Structure,
+                   cell: Optional[np.ndarray] = None) -> List[str]:
     """Lattice + AtomicCoordinates blocks.
 
-    Cell is computed from the input structure's atom extents:
-    transverse (a, b) = extent + 30 Å vacuum padding (SIESTA-
-    canonical floor for isolated-molecule transverse padding;
-    Soler 2002 § II.E); transport (c) = extent + 2 Å rounded up.
-    The c-direction default is INTENDED AS A STARTING POINT — the
-    user MUST verify it matches their electrode z-periodicity for
-    the .TSHS self-energy match to work (Brandbyge 2002 § III).
-    The .fdf banner explicitly says so.
-
-    Pre-2026-06-18 this site hardcoded a 50×50×50 Å placeholder.
-    Audit finding SCI-I9.
+    The lattice comes from ``cell`` (or ``struct.cell``) when present —
+    preserved verbatim so a hexagonal Au(111) surface keeps its real
+    cell.  Only when no lattice is available does it fall back to the
+    orthorhombic vacuum box (an isolated-cluster model), with a loud
+    warning.  Atom coordinates are always emitted verbatim.
     """
     from ase.data import atomic_numbers as _Z
     species = sorted(set(struct.elements), key=lambda e: e.capitalize())
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
 
-    a, b, c = _compute_cell_from_extents(struct)
+    resolved_cell = cell if cell is not None else struct.cell
 
     lines: List[str] = ["# --- Geometry ---", ""]
     lines.append(f"NumberOfAtoms          {struct.n_atoms}")
@@ -330,23 +423,7 @@ def _emit_geometry(struct: Structure) -> List[str]:
         lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")
-    lines.append("LatticeConstant        1.0 Ang")
-    lines.append("# Cell auto-computed from atom extents:")
-    lines.append("#   a, b  = extent + 30 Å transverse vacuum padding")
-    lines.append("#   c     = extent + 2 Å buffer (rounded up)")
-    lines.append("# VERIFY the c-direction matches your electrode "
-                  "z-periodicity:")
-    lines.append("# TranSIESTA tiles the cell along the transport "
-                  "axis using the")
-    lines.append("# electrode .TSHS — a mismatched c breaks the "
-                  "self-energy match.")
-    lines.append("# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) "
-                  "§ III.")
-    lines.append("%block LatticeVectors")
-    lines.append(f"  {a:7.3f}    0.000    0.000")
-    lines.append(f"    0.000  {b:7.3f}    0.000")
-    lines.append(f"    0.000    0.000  {c:7.3f}")
-    lines.append("%endblock LatticeVectors")
+    lines.extend(_lattice_block(struct, resolved_cell))
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")

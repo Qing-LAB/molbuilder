@@ -11,8 +11,43 @@ from .orchestrate import (
     build_transport_bundle,
     format_bundle,
 )
-from .preflight import format_report, preflight_files
+from .preflight import format_report, parse_fdf_params, preflight_files
 from .wizard import DEFAULT_ELECTRODE_KZ, electrode_wizard, format_models
+
+
+def _load_device(device_xyz, sidecar_path, cell_fdf):
+    """Load a region-labeled device Structure from xyz + sidecar, and
+    resolve its lattice (sidecar 'cell' if present, else a reference
+    fdf's LatticeVectors via --cell-fdf).  Shared by electrode/bundle."""
+    import numpy as np
+    from pathlib import Path as _P
+    from ..sidecars.molstruct import (apply_to_structure,
+                                       load as load_sidecar, sidecar_path_for)
+    from ..structure import Structure
+
+    struct = Structure.from_xyz(device_xyz)
+    sc = _P(sidecar_path) if sidecar_path else sidecar_path_for(device_xyz)
+    if not _P(sc).exists():
+        raise click.ClickException(
+            f"no region sidecar found at {sc}; the device must carry "
+            f"region labels (*-electrode). Pass --sidecar explicitly.")
+    apply_to_structure(struct, load_sidecar(sc))
+
+    # A --cell-fdf reference lattice overrides whatever the sidecar held
+    # (lets the user point at an existing relaxed .fdf's hex cell).
+    if cell_fdf:
+        cell = parse_fdf_params(_P(cell_fdf).read_text()).cell_ang
+        if not cell:
+            raise click.ClickException(
+                f"no LatticeVectors block found in {cell_fdf}")
+        struct.cell = np.asarray(cell, dtype=float)
+    if struct.cell is None:
+        click.echo("WARNING: device has no lattice (no sidecar 'cell', no "
+                   "--cell-fdf); the emitter will fabricate an orthorhombic "
+                   "vacuum box (isolated-cluster model, NOT a periodic "
+                   "surface). Supply --cell-fdf for a real Au(111) lead.",
+                   err=True)
+    return struct
 
 
 @click.group("transport",
@@ -93,10 +128,14 @@ def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
 @click.option("--z-period", type=float, default=None,
               help="bulk repeat along transport (Å); override the "
                    "layer-spacing estimate.")
+@click.option("--cell-fdf", "cell_fdf", default=None,
+              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help="reference .fdf to read the device lattice (LatticeVectors) "
+                   "from; preserves a hexagonal Au(111) cell.")
 @click.option("--out-dir", type=click.Path(file_okay=False), default=".",
               show_default=True, help="where to write the electrode .fdf(s).")
 def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
-                  kx, ky, electrode_kz, z_period, out_dir):
+                  kx, ky, electrode_kz, z_period, cell_fdf, out_dir):
     """Derive the bulk-electrode `.fdf`(s) from a region-labeled device
     (docs/protocols/transiesta-workflow.md § 6.2).
 
@@ -106,17 +145,8 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
     on the resulting pair to confirm.
     """
     from ..config.transport import TransportConfig
-    from ..sidecars.molstruct import load as load_sidecar
-    from ..sidecars.molstruct import apply_to_structure, sidecar_path_for
-    from ..structure import Structure
 
-    struct = Structure.from_xyz(device_xyz)
-    sc = Path(sidecar_path) if sidecar_path else sidecar_path_for(device_xyz)
-    if not Path(sc).exists():
-        raise click.ClickException(
-            f"no region sidecar found at {sc}; the device must carry "
-            f"region labels (*-electrode). Pass --sidecar explicitly.")
-    apply_to_structure(struct, load_sidecar(sc))
+    struct = _load_device(device_xyz, sidecar_path, cell_fdf)
 
     cfg_kw = {"job_name": job_name}
     if mesh_cutoff is not None:
@@ -164,10 +194,14 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
               show_default=True, help="CG steps for the device relaxation.")
 @click.option("--z-period", type=float, default=None,
               help="bulk repeat along transport (Å); override the estimate.")
+@click.option("--cell-fdf", "cell_fdf", default=None,
+              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help="reference .fdf to read the device lattice from "
+                   "(preserves a hexagonal Au(111) cell).")
 @click.option("--out-dir", type=click.Path(file_okay=False), default=".",
               show_default=True, help="where to write the bundle.")
 def cmd_bundle(device_xyz, sidecar_path, job_name, mesh_cutoff, kx, ky,
-               electrode_kz, relax_steps, z_period, out_dir):
+               electrode_kz, relax_steps, z_period, cell_fdf, out_dir):
     """Derive the full 3-run bundle (relax + electrodes + device + driver)
     from one region-labeled device (transiesta-workflow.md § 6.4).
 
@@ -177,17 +211,8 @@ def cmd_bundle(device_xyz, sidecar_path, job_name, mesh_cutoff, kx, ky,
     Run it under `molbuilder-siesta`.
     """
     from ..config.transport import TransportConfig
-    from ..sidecars.molstruct import load as load_sidecar
-    from ..sidecars.molstruct import apply_to_structure, sidecar_path_for
-    from ..structure import Structure
 
-    struct = Structure.from_xyz(device_xyz)
-    sc = Path(sidecar_path) if sidecar_path else sidecar_path_for(device_xyz)
-    if not Path(sc).exists():
-        raise click.ClickException(
-            f"no region sidecar found at {sc}; the device must carry "
-            f"region labels (*-electrode). Pass --sidecar explicitly.")
-    apply_to_structure(struct, load_sidecar(sc))
+    struct = _load_device(device_xyz, sidecar_path, cell_fdf)
 
     cfg_kw = {"job_name": job_name}
     if mesh_cutoff is not None:

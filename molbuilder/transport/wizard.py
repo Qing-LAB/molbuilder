@@ -83,8 +83,10 @@ class ElectrodeModel:
     block_name: str                  # sanitized TS.Elec name, e.g. "L"
     elements: List[str]
     positions: np.ndarray            # (M, 3) Å, shifted to min-z = 0
-    cell_a: float                    # device lateral a (Å)
-    cell_b: float                    # device lateral b (Å)
+    lat_a: np.ndarray                # device lateral vector a (3,), Å
+    lat_b: np.ndarray                # device lateral vector b (3,), Å
+    cell_a: float                    # |lat_a| (Å), for display/checks
+    cell_b: float                    # |lat_b| (Å)
     z_period: float                  # proposed bulk repeat (Å)
     z_span: float                    # top-layer − bottom-layer z (Å)
     n_layers: int
@@ -171,8 +173,16 @@ def extract_electrode_model(
     elems = [device.elements[i] for i in idxs]
 
     # Lateral cell from the DEVICE (not the electrode's own extent) so
-    # the lead tiles the device cross-section exactly (I6).
-    a, b, _c = _compute_cell_from_extents(device)
+    # the lead tiles the device cross-section exactly (I6).  Prefer the
+    # device's REAL lattice vectors (preserves a hexagonal Au(111)
+    # surface); fall back to an orthorhombic extent box only when the
+    # device carries no cell.
+    if device.cell is not None:
+        dc = np.asarray(device.cell, dtype=float)
+        lat_a, lat_b = dc[0].copy(), dc[1].copy()
+    else:
+        a, b, _c = _compute_cell_from_extents(device)
+        lat_a, lat_b = np.array([a, 0.0, 0.0]), np.array([0.0, b, 0.0])
 
     # Shift so the lowest layer is at z = 0 (clean periodic cell).
     z = pos[:, 2]
@@ -211,7 +221,9 @@ def extract_electrode_model(
 
     return ElectrodeModel(
         label=label, block_name=block_name, elements=elems, positions=pos,
-        cell_a=a, cell_b=b, z_period=zper, z_span=z_span, n_layers=n_layers,
+        lat_a=lat_a, lat_b=lat_b,
+        cell_a=float(np.linalg.norm(lat_a)), cell_b=float(np.linalg.norm(lat_b)),
+        z_period=zper, z_span=z_span, n_layers=n_layers,
         d_interlayer=d_inter, n_atoms=len(elems), notes=notes)
 
 
@@ -269,14 +281,15 @@ def render_electrode_fdf(
         "%endblock ChemicalSpeciesLabel",
         "",
         "LatticeConstant        1.0 Ang",
-        "# a, b = device lateral cell (the lead tiles the device cross-section).",
+        "# a, b = device lateral vectors VERBATIM (the lead tiles the device",
+        "#        cross-section; hexagonal cells are preserved, not squared).",
         "# c    = bulk repeat along the transport axis.  VERIFY this matches",
         f"#        the lead's true periodicity ({model.n_layers} layers, "
         f"interlayer {model.d_interlayer:.3f} Å).",
         "%block LatticeVectors",
-        f"  {model.cell_a:9.4f}    0.0000    0.0000",
-        f"    0.0000  {model.cell_b:9.4f}    0.0000",
-        f"    0.0000    0.0000  {model.z_period:9.4f}",
+        f"  {model.lat_a[0]:14.8f} {model.lat_a[1]:14.8f} {model.lat_a[2]:14.8f}",
+        f"  {model.lat_b[0]:14.8f} {model.lat_b[1]:14.8f} {model.lat_b[2]:14.8f}",
+        f"  {0.0:14.8f} {0.0:14.8f} {model.z_period:14.8f}",
         "%endblock LatticeVectors",
         "",
         "AtomicCoordinatesFormat        Ang",

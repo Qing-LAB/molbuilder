@@ -51,6 +51,7 @@ import contextlib
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
+import math as _math
 import os
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
@@ -127,6 +128,52 @@ def _now_iso_z() -> str:
 # --------------------------------------------------------------------- #
 
 
+def normalise_cell_pbc(
+    cell: Optional[Any], pbc: Optional[Any],
+) -> "tuple[Optional[List[List[float]]], List[bool]]":
+    """Validate + canonicalise the optional periodic lattice.
+
+    ``cell`` is a 3x3 of lattice vectors (rows, Angstrom) or None;
+    ``pbc`` is a length-3 of per-axis periodicity bools or None.
+    Returns ``(cell_out, pbc_out)`` where ``cell_out`` is a list of 3
+    lists of 3 floats (JSON-friendly) or None, and ``pbc_out`` is a
+    list of 3 bools (defaults to all-periodic when a cell is present,
+    all-False otherwise).  Additive-optional in schema v3 — absence is
+    a valid (non-periodic) structure.
+    """
+    cell_out: Optional[List[List[float]]] = None
+    if cell is not None:
+        try:
+            rows = [[float(x) for x in row] for row in cell]
+        except (TypeError, ValueError) as exc:
+            raise MolstructJsonError(
+                f"cell must be a 3x3 numeric matrix; got {cell!r} ({exc})"
+            ) from exc
+        if len(rows) != 3 or any(len(r) != 3 for r in rows):
+            raise MolstructJsonError(
+                f"cell must be 3x3 (3 lattice-vector rows); got "
+                f"{len(rows)} row(s)"
+            )
+        if any(not _math.isfinite(x) for r in rows for x in r):
+            raise MolstructJsonError("cell entries must all be finite")
+        cell_out = rows
+    if pbc is None:
+        pbc_out = [cell_out is not None] * 3
+    else:
+        try:
+            pbc_out = [bool(b) for b in pbc]
+        except TypeError as exc:
+            raise MolstructJsonError(
+                f"pbc must be a length-3 list of bools; got {pbc!r}"
+            ) from exc
+        if len(pbc_out) != 3:
+            raise MolstructJsonError(
+                f"pbc must have exactly 3 entries (one per axis); got "
+                f"{len(pbc_out)}"
+            )
+    return cell_out, pbc_out
+
+
 def to_dict(
     *,
     n_atoms_total: int,
@@ -134,6 +181,8 @@ def to_dict(
     regions: Optional[Dict[str, List[int]]] = None,
     frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
+    cell: Optional[Any] = None,
+    pbc: Optional[Any] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -222,6 +271,8 @@ def to_dict(
             # the caller built it by hand with stray keys).
             normed_rules[target] = _rule_to_json(rule)
 
+    normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
+
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -229,6 +280,8 @@ def to_dict(
         "regions":         normed_regions,
         "frozen_atoms":    normed_frozen,
         "selection_rules": normed_rules,
+        "cell":            normed_cell,
+        "pbc":             normed_pbc,
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
@@ -367,6 +420,21 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         )
     struct.regions      = dict(sidecar_data.get("regions") or {})
     struct.frozen_atoms = list(sidecar_data.get("frozen_atoms") or [])
+
+    # Periodic lattice (additive-optional, v3).  Absent / null cell ->
+    # leave the structure non-periodic.  Re-validated through the same
+    # normaliser the writer uses, so a hand-edited sidecar fails here
+    # with a clear message rather than deep in an emitter.
+    cell_raw = sidecar_data.get("cell")
+    pbc_raw  = sidecar_data.get("pbc")
+    norm_cell, norm_pbc = normalise_cell_pbc(cell_raw, pbc_raw)
+    if norm_cell is not None:
+        import numpy as _np
+        struct.cell = _np.asarray(norm_cell, dtype=float)
+        struct.pbc  = tuple(norm_pbc)
+    elif pbc_raw is not None:
+        # pbc without a cell is unusual but legal (records intent).
+        struct.pbc = tuple(norm_pbc)
 
 
 def load(sidecar_path):

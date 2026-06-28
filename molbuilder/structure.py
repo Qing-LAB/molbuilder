@@ -44,7 +44,7 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -156,6 +156,16 @@ class Structure:
     # existing call site working without change.
     regions:       Dict[str, List[int]] = field(default_factory=dict)
     frozen_atoms:  List[int]            = field(default_factory=list)
+    # Periodic lattice (2026-06-27).  ``cell`` is the (3, 3) matrix whose
+    # ROWS are the lattice vectors in Angstrom (ASE convention), or None
+    # for a non-periodic molecule.  ``pbc`` is per-axis periodicity:
+    # True = periodic (the structure tiles, no vacuum), False = vacuum
+    # along that axis.  This is the SOURCE OF TRUTH for the cell — the
+    # transport/SIESTA emitters preserve it verbatim instead of
+    # fabricating an orthorhombic vacuum box from atom extents.  Both
+    # default to "no lattice" so every existing call site is unchanged.
+    cell:          Optional[np.ndarray]            = None
+    pbc:           Optional[Tuple[bool, bool, bool]] = None
 
     def __post_init__(self) -> None:
         self.positions = np.asarray(self.positions, dtype=float).reshape(-1, 3)
@@ -177,6 +187,31 @@ class Structure:
         ):
             if len(arr) != n:
                 raise ValueError(f"{name} has length {len(arr)}, expected {n}")
+
+        # Normalise the periodic lattice.  A provided cell must be a
+        # 3x3 of finite floats; pbc defaults to "fully periodic" when a
+        # cell is present (a lattice implies periodicity) and "no
+        # periodicity" when it is absent.
+        if self.cell is not None:
+            cell = np.asarray(self.cell, dtype=float)
+            if cell.shape != (3, 3) or not np.all(np.isfinite(cell)):
+                raise ValueError(
+                    f"Structure.cell must be a 3x3 matrix of finite "
+                    f"floats (lattice vectors as rows, Angstrom); got "
+                    f"shape {cell.shape}"
+                )
+            self.cell = cell
+        if self.pbc is None:
+            self.pbc = ((True, True, True) if self.cell is not None
+                        else (False, False, False))
+        else:
+            pbc = tuple(bool(b) for b in self.pbc)
+            if len(pbc) != 3:
+                raise ValueError(
+                    f"Structure.pbc must have exactly 3 entries "
+                    f"(one per axis); got {len(pbc)}"
+                )
+            self.pbc = pbc
 
         # Validate transport metadata.  Both fields default to empty,
         # so a caller that doesn't care about regions / frozen atoms

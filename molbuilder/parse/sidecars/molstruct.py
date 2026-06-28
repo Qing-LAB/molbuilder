@@ -27,6 +27,7 @@ from molbuilder.parse.types import SidecarResult
 from molbuilder.sidecars.molstruct import (
     SCHEMA_VERSION,
     MolstructJsonError,
+    normalise_cell_pbc,
 )
 
 from ._helpers import build_sidecar_result
@@ -45,6 +46,8 @@ def _normalised_dict(
     regions: Optional[Dict[str, List[int]]] = None,
     frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
+    cell: Optional[Any] = None,
+    pbc: Optional[Any] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -127,6 +130,8 @@ def _normalised_dict(
             # Re-serialise so the stored form is normalised.
             normed_rules[target] = _rule_to_json(rule)
 
+    normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
+
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -134,6 +139,8 @@ def _normalised_dict(
         "regions":         normed_regions,
         "frozen_atoms":    normed_frozen,
         "selection_rules": normed_rules,
+        "cell":            normed_cell,
+        "pbc":             normed_pbc,
         "created_by":      str(created_by),
         "created_at":      created_at,
     }
@@ -215,6 +222,8 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
             regions         = data.get("regions"),
             frozen_atoms    = data.get("frozen_atoms"),
             selection_rules = data.get("selection_rules"),
+            cell            = data.get("cell"),
+            pbc             = data.get("pbc"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),
         )
