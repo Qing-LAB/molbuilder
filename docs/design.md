@@ -37,6 +37,30 @@ The package consolidates what was originally two separate repos
 shared Flask + 3Dmol.js stack into one codebase.  History reconstructable
 from `git log`; per-component contracts under [`docs/`](README.md).
 
+### Stance — an assistant to the scientist, not a nanny
+
+molbuilder is **an assistant to a scientist**, not an automatic
+test/calculation system and not a push-button black box. It does **not own
+the experiment, the design, or the recipe** — the scientist does. Its job is
+to provide **background, support, and hints that reduce the burden** so the
+scientist can focus on the science.
+
+Concretely, this stance binds every feature:
+
+- **Easy but explicit, never push-button.** Make the right thing easy *and
+  visible* — surface the choice, the env, the parameter — never silently
+  auto-decide on the scientist's behalf.
+- **Don't twist the environment or the recipe.** No silent env re-routing, no
+  hidden mutation of the user's input; offer a *setup to test* and let the
+  scientist run and adjust it.
+- **Generate setups + surface hints, not finished answers.** A benchmark
+  offers the harness to measure; a preflight surfaces inconsistencies; an
+  emitter writes a defensible *starting point* the scientist owns and tunes.
+
+When a feature is tempted to decide something the scientist should decide,
+the answer is to make that decision **explicit and documented**, not
+automatic.
+
 ---
 
 ## 0. Document index

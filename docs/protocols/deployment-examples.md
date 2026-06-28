@@ -4,6 +4,13 @@ Copy-paste worked examples for running the generated workflows (benchmark,
 transport) on **a workstation** and on **a supercomputer**, covering the
 situations you actually hit, with `.molbuilder.json` templates to study.
 
+> **This is a setup to test, not a push-button.** molbuilder *assists* — it
+> generates the harness and surfaces hints to cut your burden; **you** own the
+> recipe, the env, and the decisions. Nothing here auto-decides your
+> environment or twists your input; read the example, adapt it, run it.
+
+
+
 - The *model* + rationale (env phases, resolution rule, SLURM/CUDA relay):
   [`deployment.md`](deployment.md).
 - *Building* the envs (Phase A — your responsibility, once per machine):
