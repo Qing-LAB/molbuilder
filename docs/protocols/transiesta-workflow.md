@@ -168,6 +168,47 @@ commonly gives ~0.1–0.4 G₀. The geometry/k/electrode contract here gives a
 beyond-DFT corrections (self-energy/DFT+Σ, scissors, hybrid). The framework
 should report this honestly, not imply DFT-NEGF == experiment.
 
+### § 4.7 The cell is hexagonal, and the relax k-mesh ≠ the transport k-mesh
+
+Two coupled points surfaced auditing the actual `BDT_Au111_hex_6_6_6`
+geometry (444 atoms = 432 Au + BDT):
+
+**(a) The lattice is hexagonal, not orthorhombic.** Each electrode is a
+**6×6 hexagonal Au(111) surface** (36 atoms/layer × 6 layers × 2),
+interlayer spacing 2.40 Å, lateral vectors ≈ **17.3 Å at 60°**. The gold
+*tiles the transverse plane* — it is a periodic metallic surface, not a
+laterally-isolated cluster. An earlier orthorhombic stage-1 cell
+(`46×44×64`, 90°) was the wrong frame; reading it led to a wrong "vacuum
+isolated → Γ-only" conclusion. **Lesson:** the cell is *not* recoverable
+from atom extents (extent + vacuum padding fabricates an orthorhombic box
+that severs the periodic gold). The lattice is the structure's own
+property and must be preserved verbatim — implemented as
+`Structure.cell`/`pbc` (source of truth, carried in the molstruct sidecar)
+which the emitter emits unchanged; the wizard clones the device's real
+lateral vectors so device ⇄ electrode `cell.transverse` matches by
+construction.
+
+**(b) Relax with a coarser k-mesh than transport.** For the ~17.3 Å hex
+cell the transverse reciprocal vector is |b| ≈ 0.42 Å⁻¹, so the metal
+Fermi surface needs sampling:
+
+| mesh | spacing | ≈ on a 1×1 Au(111) cell | use |
+|---|---|---|---|
+| 1×1×1 | 0.42 Å⁻¹ | ~6×6 | **too coarse for the metal** (noisy E_F, unstable SCF) |
+| 2×2×1 | 0.21 Å⁻¹ | ~12×12 | **relax** — forces/geometry converge here |
+| 4×4×1 | 0.10 Å⁻¹ | ~24×24 | **transport** — the sharp T(E_F) Fermi-surface integral |
+
+So: **relax at 2×2×1, transport at 4×4×1; not 1×1×1.** Forces converge
+faster than transmission (local properties are k-robust), so the relax can
+be coarser — but Γ-only is wrong here because the leads are *periodic
+metallic* gold (even with the lead atoms frozen, Γ-only gives a poorly
+defined E_F that corrupts the S–Au charge transfer). Γ-only is correct
+only for a genuinely vacuum-isolated/molecular cell. The relaxed
+coordinates don't care what k the later transmission uses, so the
+coarse-relax / dense-transport split is fully consistent. This is what the
+orchestration emits (relax fdf takes the device transverse k; the
+convergence sweep § 6.5 confirms both).
+
 ---
 
 ## § 5 Recommended baseline (defensible start; all to be converged)
