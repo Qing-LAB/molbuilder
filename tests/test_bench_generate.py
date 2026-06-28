@@ -247,6 +247,17 @@ def test_generate_no_activation_no_conda_errors_helpfully(tmp_path, monkeypatch)
         generate_bench_bundle(fdf, out)
 
 
+def test_generate_help_documents_molbuilder_json_explicitly():
+    # config file must be explicit in --help (where it lives + an example)
+    from click.testing import CliRunner
+    from molbuilder.bench._cli import bench_group
+    out = CliRunner().invoke(bench_group, ["generate", "-h"]).output
+    assert ".molbuilder.json" in out
+    assert "WHERE" in out and "WHAT" in out          # location + content
+    assert '"script_generation"' in out               # a concrete example
+    assert "deployment.md" in out                      # pointer to full ref
+
+
 def test_detect_conda_activation_finds_local_conda():
     # Smoke: the tests run inside a conda env, so detection must work.
     from molbuilder.runtime_config import detect_conda_activation

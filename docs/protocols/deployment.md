@@ -226,7 +226,7 @@ up in `conda env list`.
 |---|---|
 | sbatch emission + per-rank CUDA relay + MPS + socket co-location | **built** (`runwrap.py`, `slurm-integration.md`) |
 | activation/preamble from config → flags → auto-detected local conda | **built** (baked at generate time) |
-| `.molbuilder.json` documented in `--help` (path + example) | proposed |
+| `.molbuilder.json` documented in `--help` (path + example) | **built** (`bench generate -h` § CONFIG FILE) |
 | **runtime** config-else-probe resolution (one bundle, both targets) | proposed (§ 2) |
 | env-presence check → pointer to `molbuilder envs doctor` | proposed |
 | CPU benchmark point on ELPA (apples-to-apples) | proposed (§ 5) |

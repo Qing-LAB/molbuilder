@@ -238,6 +238,23 @@ Then ON THE TARGET (the bundle is self-contained -- no molbuilder needed):
   ./bench-summarize                 # rank CPU vs GPU points -> winner
   ./prep-run --script-base myprod   # winner -> run-production.sh for THIS machine
 \b
+CONFIG FILE -- .molbuilder.json (explicit; the flags above just write it):
+  WHERE: the OUT dir (it travels with the bundle), merged over a server-wide
+         ~/.config/molbuilder/molbuilder.json if present -- project wins.
+  WHAT : a `scheduler` block (SLURM directives) + a `script_generation` block
+         (how to load + activate conda). Workstation: optional (auto-detected).
+  HPC example (what --activation/--preamble bake for you):
+\b
+    {
+      "scheduler": { "kind": "slurm",
+        "directives": { "partition": "public", "qos": "public",
+                        "export": "NONE" } },
+      "script_generation": { "preamble": "module load mamba",
+                             "activation": "source activate" }
+    }
+\b
+  Full reference: docs/protocols/deployment.md section 3.
+\b
 K is GPU processes/GPU (np = K*G); --gpu-ks may exceed cores/socket
 (oversubscription is allowed + flagged) to find where np stops scaling.
 """
