@@ -277,22 +277,37 @@ and immediately prevents the silent errors, before any orchestration.
 
 ## § 8 References
 
-- M. Brandbyge, J.-L. Mozos, P. Ordejón, J. Taylor, K. Stokbro,
-  "Density-functional method for nonequilibrium electron transport,"
-  *Phys. Rev. B* **65**, 165401 (2002). — original TranSIESTA / NEGF.
-- N. Papior, N. Lorente, T. Frederiksen, A. García, M. Brandbyge,
-  "Improvements on non-equilibrium and transport Green function
-  techniques: The next-generation TranSIESTA," *Comput. Phys. Commun.*
-  **212**, 8 (2017). — modern TranSIESTA; electrode/principal-layer
-  requirements.
-- J. M. Soler et al., "The SIESTA method for ab initio order-N materials
-  simulation," *J. Phys.: Condens. Matter* **14**, 2745 (2002). — SIESTA,
-  PAO basis, EnergyShift, MeshCutoff.
-- M. J. van Setten et al., "The PseudoDojo: ... norm-conserving
-  pseudopotentials," *Comput. Phys. Commun.* **226**, 39 (2018).
-- X. Xiao, B. Xu, N. J. Tao, "Measurement of single molecule conductance:
-  Benzenedithiol ...," *Nano Lett.* **4**, 267 (2004). — Au–BDT ≈ 0.011 G₀
-  (the DFT-NEGF overestimation benchmark, § 4.6).
+DOIs verified 2026-06-27; arXiv preprint links given for open access.
+
+1. M. Brandbyge, J.-L. Mozos, P. Ordejón, J. Taylor, K. Stokbro,
+   "Density-functional method for nonequilibrium electron transport,"
+   *Phys. Rev. B* **65**, 165401 (2002). — original TranSIESTA / NEGF.
+   doi:[10.1103/PhysRevB.65.165401](https://doi.org/10.1103/PhysRevB.65.165401)
+   · arXiv:[cond-mat/0110650](https://arxiv.org/abs/cond-mat/0110650)
+2. N. Papior, N. Lorente, T. Frederiksen, A. García, M. Brandbyge,
+   "Improvements on non-equilibrium and transport Green function
+   techniques: The next-generation TranSIESTA," *Comput. Phys. Commun.*
+   **212**, 8–24 (2017). — modern TranSIESTA; electrode/principal-layer
+   requirements, multi-electrode chemical potentials.
+   doi:[10.1016/j.cpc.2016.09.022](https://doi.org/10.1016/j.cpc.2016.09.022)
+   · arXiv:[1607.04464](https://arxiv.org/abs/1607.04464)
+3. J. M. Soler, E. Artacho, J. D. Gale, A. García, J. Junquera,
+   P. Ordejón, D. Sánchez-Portal, "The SIESTA method for ab initio
+   order-N materials simulation," *J. Phys.: Condens. Matter* **14**,
+   2745–2779 (2002). — SIESTA, PAO basis, EnergyShift, MeshCutoff.
+   doi:[10.1088/0953-8984/14/11/302](https://doi.org/10.1088/0953-8984/14/11/302)
+   · arXiv:[cond-mat/0111138](https://arxiv.org/abs/cond-mat/0111138)
+4. M. J. van Setten, M. Giantomassi, E. Bousquet, M. J. Verstraete,
+   D. R. Hamann, X. Gonze, G.-M. Rignanese, "The PseudoDojo: Training and
+   grading a 85 element optimized norm-conserving pseudopotential table,"
+   *Comput. Phys. Commun.* **226**, 39–54 (2018).
+   doi:[10.1016/j.cpc.2018.01.012](https://doi.org/10.1016/j.cpc.2018.01.012)
+   · arXiv:[1710.10138](https://arxiv.org/abs/1710.10138)
+5. X. Xiao, B. Xu, N. J. Tao, "Measurement of Single Molecule Conductance:
+   Benzenedithiol and Benzenedimethanethiol," *Nano Lett.* **4**, 267–271
+   (2004). — Au–BDT ≈ 0.011 G₀ (the DFT-NEGF overestimation benchmark,
+   § 4.6).
+   doi:[10.1021/nl035000m](https://doi.org/10.1021/nl035000m)
 
 (Estimations in § 4.1/§ 4.3 — orbital range vs Au(111) spacing, semicore
 MeshCutoff — are order-of-magnitude arguments to be replaced by the § 6.5
