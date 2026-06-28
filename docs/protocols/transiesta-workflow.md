@@ -201,6 +201,56 @@ contract*.** This is the same philosophy as the benchmark workflow
 (`benchmark-workflow.md`): one source of truth, contracts not hand-tuning,
 versioned portable data.
 
+### § 6.0 Data flow, file sets & I/O contracts (the exact design)
+
+**Diagram — what each run consumes and produces (file level).** The single
+numerical contract (§ 6.8) is baked, *identical*, into all three fdfs; only
+the geometry and the open-vs-bulk boundary (`kz`, `SolutionMethod`) differ.
+
+```
+ SOURCE SET (user owns)            DERIVED RUNS (driver owns)                          TARGET SET (results)
+ ─────────────────────            ─────────────────────────────────────              ─────────────────────
+ device.molstruct.json ┐
+   regions: L/R-electrode,│   ┌─▶ relax.fdf ──SCF/CG──▶ relaxed coords ──┐
+   interface, frozen     ├──▶ │   (MD.CG, kz=1)          (device.XV)       │
+ numerical contract      │   │                                            ├─▶ device.fdf ──NEGF──▶ device.TSHS ─┐
+   {XC, MeshCutoff,      │   │                                            │   (kz=1, SolutionMethod  device.out  ├─▶ tbtrans
+    EnergyShift, basis,  │   └─▶ electrode.fdf ─SCF────▶ electrode.TSHS ──┘    transiesta,           (E_F, SCF)  │   *.TBT.AVTRANS
+    transverse k}        │       (clone of frozen layers,  (E_F^lead,           TS.Elec→electrode.TSHS)          ▼
+ pseudopotentials (.psml)┘        dense kz, NumCGsteps 0,    H_lead, S_lead)                            transport-result.json
+                                  SaveHS / TS.HS.Save)                                                  {E_F, G₀=T(E_F),
+                                                                                                         conv status, caveat}
+       │                                  │                                       │
+       └── consistency PREFLIGHT ─────────┴── enforces the INVARIANT SET (§ 6.8) ─┘  before any binary runs
+```
+
+**Source set** (the *only* things a user authors): a region-labeled device
+structure (`molstruct.json`, `region-labels.md` convention), the numerical
+contract values, and the pseudopotential files. Everything below is derived.
+
+**Intermediate set** (driver-owned, handed stage→stage): `relax.fdf` →
+`device.XV` (relaxed coordinates); `electrode.fdf` → `electrode.TSHS` (the
+bulk-lead Hamiltonian/overlap + its E_F). These are *consumed* by the device
+run — the relaxed coords replace the device coordinate block, the
+`electrode.TSHS` becomes the `TS.Elec.<name>` HS reference.
+
+**Target set** (results, versioned): `device.TSHS` + `device.out` (device
+SCF, its E_F), the `tbtrans` transmission files (`*.TBT.AVTRANS_*`,
+`*.TBT.nc`), and `transport-result.json` (the portable summary, § 6.6).
+
+**Per-stage I/O contract** (what each stage *requires* in / *guarantees* out):
+
+| Stage | Requires (in) | Guarantees (out) | Boundary knobs |
+|---|---|---|---|
+| **relax** | labeled device geom + contract + frozen list | relaxed coords; `max|F| < tol` | `MD.CG`, `kz=1` |
+| **electrode** | clone of frozen-electrode layers + *same* contract + dense `kz` + `SaveHS` | `electrode.TSHS` (H_lead, S_lead, E_F^lead) | `NumCGsteps 0`, `kz` dense |
+| **transiesta** | relaxed device coords + *same* contract + `electrode.TSHS` | `device.TSHS`, device E_F, converged SCF | `kz=1`, `SolutionMethod transiesta` |
+| **tbtrans** | `device.TSHS` (+ electrode reference) | `T(E)`, `G₀ = T(E_F)` | bias = 0 (or swept) |
+
+The **preflight** (`§ 6.3`, now built) is the gate that sits on the
+device↔electrode edge of this diagram and refuses to proceed unless the
+invariant set holds.
+
 ### § 6.1 One descriptor → three runs (single source of truth)
 A `transport-plan` carries: the labeled device (`L/R-electrode` +
 `interface` + relaxed/frozen, via the `*-electrode` convention,
@@ -253,6 +303,49 @@ GPU benchmark.
 G₀ = T(E_F), the convergence status, and the § 4.6 DFT-NEGF caveat flag) —
 same persistence pattern as `environment.json` / `bench-result.json`,
 portable to plots / the Results tab.
+
+### § 6.7 The invariant set (what must stay identical, and across which runs)
+
+This is the contract the framework *keeps* — break any row and the
+transmission is silently wrong. "Across" = which runs must agree; "Gate" =
+the preflight check `id` that enforces it (✗ = not yet machine-checked,
+relies on the wizard's clone-by-construction or human review).
+
+| # | Invariant | Across | Why (physics) | Gate |
+|---|---|---|---|---|
+| I1 | XC functional + authors | relax = electrode = device | one H footing; mixing shifts E_F | `contract.xc` |
+| I2 | Pseudopotentials (per species) | all three | different core = different atom | (file identity) ✗ |
+| I3 | MeshCutoff | electrode = device | real-space grid must align for the NEGF coupling | `contract.meshcutoff` |
+| I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | `contract.energyshift` |
+| I5 | Basis tier, per species | frozen-electrode-Au **==** device-Au | a basis step = spurious scattering (§ 4.4) | `contract.basis` |
+| I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | `cell.transverse` |
+| I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k | `kgrid.transverse` |
+| I8 | Device kz = 1 | device | open boundary along transport (no periodicity) | `kgrid.device_kz` |
+| I9 | Electrode kz dense (converged) | electrode | it is a *periodic bulk* run; thin cell → large BZ | `kgrid.electrode_kz` |
+| I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ self-energy must map atom-for-atom onto the device | `cell.transverse` (lateral); atom-clone = wizard ✗ |
+| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest principal layers couple (§ 4.1) | `electrode.thickness` (warn) |
+| I12 | z-vacuum ≈ 0 at the leads | device | a gap = strained/severed lead, not a junction (§ 1.3) | `device.z_vacuum` (warn) |
+| I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | `electrode.saveHS` (warn) |
+
+### § 6.8 Scientific-validation map (gate → principle → literature)
+
+Each gate traces to a physical requirement and a reference (verified DOIs,
+§ 8) — so the design is auditable, not asserted.
+
+| Gate / invariant | Scientific principle | Doc § | Reference |
+|---|---|---|---|
+| `kgrid.device_kz` (I8) | NEGF open boundary: no Bloch periodicity along transport | § 1, § 4 | Brandbyge 2002 (10.1103/PhysRevB.65.165401) |
+| `kgrid.electrode_kz` (I9) | bulk-lead BZ must be converged to get the right band structure | § 4.2 | Papior 2017 (10.1016/j.cpc.2016.09.022) |
+| `contract.{xc,meshcutoff,energyshift}` (I1,I3,I4) | a single self-consistent Hamiltonian/Fermi reference across runs | § 4.3 | Brandbyge 2002; Soler 2002 (10.1088/0953-8984/14/11/302) |
+| `contract.basis` (I5) | basis-set discontinuity ⇒ artificial backscattering | § 4.4 | Brandbyge 2002 |
+| `cell.transverse` / `kgrid.transverse` (I6,I7) | lead Σ maps onto the device cross-section; k-projection | § 4.5 | Papior 2017 |
+| `electrode.thickness` (I11) | principal-layer screening: only nearest layers couple | § 4.1 | Papior 2017 |
+| Au valence 5s5p5d6s (semicore) ⇒ MeshCutoff 350–500 | semicore d needs a fine grid | § 4.3 | van Setten 2018 (10.1016/j.cpc.2018.01.012) |
+| result caveat flag (G₀ vs exp ≈ 0.011 G₀) | DFT-NEGF overestimates conductance ~1–2 orders | § 4.6 | Xiao 2004 (10.1021/nl035000m) |
+
+The preflight already encodes I1,I3–I9,I11–I13 as machine checks (14 tests);
+I2 and I10's atom-level clone are guaranteed-by-construction once the
+electrode wizard (§ 6.2) lands and are flagged ✗ until then.
 
 ---
 
