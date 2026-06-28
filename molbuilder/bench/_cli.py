@@ -216,11 +216,17 @@ def cmd_siesta_gpu(project_dir: str,
 @click.option("--gpu-time", default=None,
               help="#SBATCH -t for the GPU bundle; else the scheduler "
                    "default.")
+@click.option("--cpu-c", "cpu_cpus_per_task", type=int, default=1,
+              show_default=True,
+              help="cores (OMP threads) per CPU rank; CPU SIESTA is "
+                   "MPI-only so 1 is right (-n*-c must fit one node). "
+                   "Override per submission with `sbatch -c N`.")
 def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                  gpu_gpus: int, gpu_k: int, gpus_per_node: int,
                  cores_per_socket: int, cpu_block_size: int,
                  gpu_block_size: int, max_scf: int,
-                 cpu_time: Optional[str], gpu_time: Optional[str]) -> None:
+                 cpu_time: Optional[str], gpu_time: Optional[str],
+                 cpu_cpus_per_task: int) -> None:
     """Generate CPU-only + GPU-only benchmark bundles from one ``.fdf``.
 
     Emits ``job-cpu`` (plain diagon -> ``molbuilder-siesta``) and
@@ -245,6 +251,7 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
             gpus_per_node=gpus_per_node, cores_per_socket=cores_per_socket,
             cpu_block_size=cpu_block_size, gpu_block_size=gpu_block_size,
             max_scf=max_scf, cpu_time=cpu_time, gpu_time=gpu_time,
+            cpu_cpus_per_task=cpu_cpus_per_task,
         )
     except (ValueError, OSError, RuntimeConfigError) as e:
         click.echo(f"ERROR: {e}", err=True)

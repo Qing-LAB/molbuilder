@@ -281,7 +281,8 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
                           gpu_block_size: int = 256,
                           max_scf: int = 5,
                           cpu_time: Optional[str] = None,
-                          gpu_time: Optional[str] = None
+                          gpu_time: Optional[str] = None,
+                          cpu_cpus_per_task: int = 1
                           ) -> Tuple[Path, List[Path]]:
     """Generate the CPU + GPU benchmark bundle from ``fdf_path``.
 
@@ -329,8 +330,14 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
         block_size=gpu_block_size, max_scf=max_scf), encoding="utf-8")
     written.append(gpu_fdf)
 
-    # CPU launcher + sbatch: scales with -n; --mem auto-estimated.
-    written.append(write_run_wrapper(cpu_fdf, mpi_np=cpu_np, time=cpu_time))
+    # CPU launcher + sbatch: scales with -n; --mem auto-estimated.  CPU
+    # SIESTA is MPI-only (mainline ELPA is not GPU/OMP-heavy), so 1 core
+    # per rank -- otherwise -n*-c over-subscribes the node (a 64-rank job
+    # with the GPU-oriented cpus_per_task=8 default would ask for 512
+    # cores on one node).  Override per submission with `sbatch -c N`.
+    written.append(write_run_wrapper(
+        cpu_fdf, mpi_np=cpu_np, cpus_per_task=cpu_cpus_per_task,
+        time=cpu_time))
 
     # GPU launcher + sbatch: G GPUs (--gres) x K ranks/GPU (-n=K*G);
     # -c = cores/socket / K so K*c stays within one socket.

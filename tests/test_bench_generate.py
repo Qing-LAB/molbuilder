@@ -187,6 +187,17 @@ def test_generate_cpu_sbatch_has_estimated_mem(tmp_path):
     assert "auto-estimated" in cpu_sbatch
 
 
+def test_cpu_sbatch_is_one_core_per_rank(tmp_path):
+    # CPU SIESTA is MPI-only: -c must be 1 so -n*-c fits one node (the
+    # GPU-oriented cpus_per_task=8 default would over-subscribe).
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, _ = generate_bench_bundle(fdf, out, cpu_np=64)
+    cpu_sbatch = (out_dir / "job-cpu.sbatch").read_text()
+    assert re.search(r"^#SBATCH -c 1\b", cpu_sbatch, re.MULTILINE)
+    assert re.search(r"^#SBATCH -n 64\b", cpu_sbatch, re.MULTILINE)
+
+
 def test_generate_gpu_sbatch_has_gres_and_ranks(tmp_path):
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)
