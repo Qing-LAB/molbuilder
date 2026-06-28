@@ -1,4 +1,4 @@
-# HANDOFF — Job execution workflow & implementation
+# HANDOFF — Job execution workflow & toolbox
 
 You are continuing **the job-execution work** on molbuilder
 (repo `/home/qqing/molbuilder`, branch `main`). This file is scratch; the
@@ -7,33 +7,47 @@ then **obey the READ-FIRST gate before doing anything**.
 
 ---
 
-## 0. THE JOB (what this is, in one line)
+## 0. THE JOB (one line) + scope
 
-Build out the **job-execution system**: molbuilder generates a *self-running
+Make the **job-execution toolbox** ready: molbuilder generates a *self-running
 script bundle* → you copy it to a target → a `prep` step detects the machine
 and formats the run → the wrapper runs itself (activates its own conda env,
-runs the engine, handles warm/cold restart). It serves **benchmark,
-transport, and plain production** runs — the same machinery underneath. The
-core pipeline is BUILT; the remaining work is closing four gaps (§ 3).
+runs the engine, handles warm/cold restart). The core pipeline is BUILT; the
+remaining work is closing the gaps in § 3.
 
-**LASER FOCUS — the only goal is a *ready job-execution toolbox*.** "Ready"
-= the P1→P2→P3 chain done: (P1) prep tells the user if the target is ready,
-(P2) ONE bundle runs on workstation AND HPC without regeneration, (P3)
-transport rides the same toolbox. Do these IN PRIORITY ORDER. Do NOT start
-P4 hardening, or any task outside this list, until P1–P3 land — and do not
-wander into transport science, web UI, or new features. If a task isn't on
-the §3 list, it is out of scope for this work.
+**What job execution IS:** the *generic* machinery to **run any prepared
+script on a target** — engine-agnostic AND calculation-agnostic. It does not
+know or care what the script computes. It owns: `runwrap` (self-activating
+wrapper), `prep` (detect the machine), scheduler adapters, the monitor, the
+portable bundle, the benchmark sweep, and production runs.
+
+**What job execution IS NOT (out of scope — do NOT pull these in):** the
+*science* modules that PREPARE inputs — `transport` (NEGF; multi-backend:
+SIESTA/PySCF/future VASP), `optimization`, `spectra`. They produce `.fdf`/`.py`
+for a scientific purpose and are tracked under their OWN modules/roadmaps.
+Note: "TranSIESTA" is not an engine — it is SIESTA run with a transport
+`.fdf`, so a transport job is just a SIESTA job to the runner. **Reason about a
+thing's role/layer, not its name** (see memory `reason-by-role-not-surface-terms`).
+
+**LASER FOCUS — the only goal is a ready toolbox, in priority order:**
+- **P1 = #25** prep tells the user if the target is ready (readiness pointer).
+- **P2 = #24/#25** ONE bundle runs on workstation AND HPC without regeneration.
+- **P3 = #5** hardening (only after P1+P2).
+
+Do them in order. Do not start anything outside this list — no science
+modules, no web UI, no new features. If a task isn't in § 3, it is out of scope.
 
 ---
 
 ## 1. READ-FIRST GATE (do this BEFORE proposing or writing anything)
 
-The previous sessions failed by acting while clueless. Do NOT. In order:
+Past sessions failed by acting while clueless. Do NOT. In order:
 
 1. **`memory/MEMORY.md`** — the rules index. Especially: *read-before-claiming*,
-   *framework-first / no reinventing*, *static-review-first*, *align-before-act*,
-   *assistant-not-nanny*, *design.md is source of truth*, *run under correct env*,
-   *no pip install -e*, *commit author/trailers*.
+   *reason-by-role-not-surface-terms*, *framework-first / no reinventing*,
+   *static-review-first*, *align-before-act*, *assistant-not-nanny*,
+   *design.md is source of truth*, *run under correct env*, *no pip install -e*,
+   *commit author/trailers*.
 2. **`docs/design.md`** — the Stance ("assistant, not nanny": easy but explicit,
    never push-button; don't twist the env/recipe) + the numbered Design
    Principles + Anti-patterns (no custom frameworks/registries).
@@ -58,6 +72,10 @@ Then run `TaskList` and pick the highest-priority unblocked task.
 - **READ-FIRST / NO REINVENTING.** Check what exists first. The canonical trap:
   do **not** build a readiness/doctor/env-checker — it EXISTS as
   `molbuilder envs doctor` + `molbuilder envs validate`. Reuse it.
+- **REASON BY ROLE, NOT NAME.** Before claiming two things are the same or one
+  belongs to another, state each one's purpose/owner/layer; if they differ,
+  they're different even when they share a word. (This session's whole mess
+  came from collapsing transport-module / TranSIESTA / job-execution by name.)
 - **STATIC-REVIEW-FIRST.** Read the code AND the generated product/script
   before executing anything.
 - **ALIGN-BEFORE-ACT.** Propose the change in words, get an explicit "go", ship
@@ -72,9 +90,9 @@ Then run `TaskList` and pick the highest-priority unblocked task.
   no PYTHONPATH/sys.path hacks. **Commit only when asked**; author
   `Quan <qqing@asu.edu>`, NEVER `Co-Authored-By: Claude`; never push under
   `.github/workflows/*`.
-- **VERIFY AGENT CLAIMS.** If you delegate, ~half of subagent claims don't
-  survive a check (this session: an agent wrongly reported #37 "done"). Verify
-  in the code before acting on any finding.
+- **VERIFY EVERY CLAIM — yours and any agent's.** ~half of subagent claims
+  don't survive a check (this session a survey wrongly reported a feature
+  "done"). Verify in the code before acting.
 
 ---
 
@@ -90,41 +108,37 @@ Shared core: `bench/{generate,environment,adapters,result,prep,prep_run,
 summarize}.py` + `runwrap.py` (self-activating, warm/cold restart) +
 `monitor.py`. Scheduler adapters: slurm + workstation. Activation: baked at
 generate time — workstation autodetected (`bench/generate.py::_ensure_activation`
-→ writes `.molbuilder.json`), HPC explicit (`--activation`/`--preamble` or
-`asu-sol` preset). The *core* generator refuses-to-emit without `activation`
-(config.md §2/§4); the bench front-end autodetects+writes it on a workstation.
+→ writes `.molbuilder.json`), HPC explicit (`--activation`/`--preamble` or the
+`asu-sol` example config). The *core* generator refuses-to-emit without
+`activation` (config.md §2/§4); the bench front-end autodetects+writes it on a
+workstation.
 
-**REMAINING WORK — the four open tasks (see `TaskList` for full detail):**
+**REMAINING WORK — three open tasks (see `TaskList` for full detail):**
 - **P1 · #25 readiness gate** (small): `bench/prep.py::_summary` does NOT yet
-  surface `envs doctor` / `envs validate`. Add the pointer (surface only).
+  surface `envs doctor` / `envs validate`. Add the pointer (surface only,
+  reuse the envs toolkit). Owner doc: job-execution.md §3.4 + §6 item 1.
 - **P2 · #24/#25 one portable bundle** (large, THE goal): activation is baked
   at generate → a bundle is locked to one target. Move activation resolution to
   **prep-time on the target** so ONE bundle works on workstation + HPC. Changes
-  the contract (relaxes job-execution.md §3.3 row C for activation only) → design
-  against `job-execution.md §3` and update the doc in lockstep.
-- **P3 · #37 transport → shared runwrap** (medium; blocked by P2): `transport
-  bundle` (`orchestrate.py::build_transport_bundle` → `render_driver:173`)
-  emits its OWN `run-transport.sh` with manual `conda activate`, no scheduler
-  adapter, no monitor, no warm/cold restart — it does NOT ride the system
-  (job-execution.md §4.5 documents this gap). The single-job wrapper path
-  (web `build.py` + `cli.py` + `bench/generate.py`) uses runwrap; the
-  multi-run transport driver does not. Rebuild it on runwrap+adapter.
-- **P4 · hardening** (optional): test the §3.5 activation defaults; end-to-end
-  static-review + validation of prep→bench→run.
+  the contract (relaxes job-execution.md §3.3 row C for activation only) →
+  design against `job-execution.md §3` and update the doc in lockstep.
+- **P3 · #5 hardening** (after P1+P2): test the §3.5 activation defaults;
+  end-to-end static-review + validation of prep→bench→run.
 
 **Done this session:** consolidated all job-execution docs into the single
-master `docs/job-execution.md` (moved config.md §9 → §3; folded+deleted the
-cookbook; reconciled the activation layering note; trimmed the readiness
-overlap). Commits: `40b63b2` (backup), `31d8ebd` (consolidation), `793d404`
-(reconcile). Task list rebuilt (#1 done; #2–#5 open).
+master `docs/job-execution.md` (moved config.md §9 → §3; folded+deleted the old
+cookbook; reconciled the activation layering note), then **removed a
+transport↔job-execution conflation** I had introduced (transport is a separate
+science module, not job execution). See `git log` for the doc series. Task list
+is clean: #1 done; #2 (#25), #3 (#24/#25), #5 (hardening) open.
 
 ---
 
 ## 4. START HERE
 
-Recommended order: **#25 (P1) first** — small, self-contained, pure surface.
-Then design **#24/#25 (P2)** in words and get a go before coding (it changes
-the contract). #37 (P3) follows P2. #5 (P4) opportunistically.
+**#25 (P1) first** — small, self-contained, pure surface. Then design
+**#24/#25 (P2)** in words and get a go before coding (it changes the contract).
+**#5 (P3)** only after P1+P2.
 
 After the READ-FIRST gate, propose the chosen task in words, wait for the
 explicit "go", ship ONE thing. This file is scratch — delete it once absorbed,

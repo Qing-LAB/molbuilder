@@ -23,15 +23,16 @@ machine**. That self-running script — the **runwrap** (`.run.sh` for a
 workstation, `.sbatch` for SLURM) — does three things on its own:
 
 1. **turns on the right conda environment** (so the engine binary is found);
-2. **runs the engine** (SIESTA / PySCF / TranSIESTA) with the parameters the
+2. **runs the engine** (SIESTA / PySCF) with the parameters the
    generator baked in;
 3. **handles restarts** — picks up where a prior run left off (warm), or
    starts clean and moves the old files aside instead of deleting them
    (cold). The per-engine rules are in
    [`protocols/script-execution.md`](protocols/script-execution.md).
 
-This is a **general system**, not a benchmark feature. A benchmark rides on
-it; a transport calculation rides on it; a plain production run rides on it.
+This is a **general system**, not a benchmark feature. It is engine- and
+calculation-agnostic: it runs *whatever* script was prepared for it — a
+benchmark, a production run — regardless of which module produced the input.
 Same machinery underneath.
 
 Before anything runs there is a **prep** step — the **front door of the
@@ -182,8 +183,8 @@ actually granted. Submit headless (`sbatch`), log out, collect the result.
 
 ## 4. Examples & templates (cookbook)
 
-Copy-paste worked examples for submitting + running the generated workflows
-(benchmark, transport) on **a workstation** and on **a supercomputer**, with
+Copy-paste worked examples for submitting + running a generated job
+(benchmark / production) on **a workstation** and on **a supercomputer**, with
 `.molbuilder.json` templates to study.
 
 > **This is a setup to test, not a push-button.** molbuilder *assists* — it
@@ -392,14 +393,6 @@ Lives in the bundle's OUT dir, merged over a server-wide
 | env missing anywhere | `molbuilder envs doctor` → `… install` (Phase A) |
 | GPU job won't fit | fewer ranks/GPU (`--gpu-ks`), smaller structure, or CPU-only |
 
-Transport (`transport bundle …`) is *meant* to be the same shape, with
-`slurm-integration.md` for sbatch and the templates above for the env.
-**Today it is not there yet:** the transport bundle emits its own
-`run-transport.sh` driver (manual `conda activate`, no scheduler adapter, no
-monitor, no warm/cold restart) rather than riding the shared `runwrap` layer.
-Bringing it onto runwrap + the scheduler adapter is the open work in § 6
-(task #37).
-
 ---
 
 ## 5. Where each detail lives (the map)
@@ -434,10 +427,3 @@ owns it:
    at runtime" rule (§ 3.3, row C) for the activation decision only, and
    belongs in the `prep` step (the on-target detection step that already
    exists).
-3. **Transport on the shared runwrap (#37).** `transport bundle` today emits
-   its own `run-transport.sh` driver (manual activation, no scheduler
-   adapter, no monitor, no warm/cold restart — § 4.5), so transport does not
-   yet ride this system. Rebuild it on the shared `runwrap` +
-   scheduler-adapter layer (preserving the multi-run electrode/relax/device
-   hand-offs and the TranSIESTA warm/cold inventory in
-   [`protocols/script-execution.md`](protocols/script-execution.md)).
