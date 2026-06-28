@@ -178,6 +178,20 @@ def test_device_z_vacuum_warns():
     assert "device.z_vacuum" in _ids(r, "warn")
 
 
+def test_transport_help_carries_worked_examples():
+    # get-started examples must stay in --help (no doc-flipping needed)
+    from click.testing import CliRunner
+    from molbuilder.transport._cli import transport_group
+    r = CliRunner().invoke(transport_group, ["-h"])
+    assert r.exit_code == 0
+    assert "QUICKSTART" in r.output
+    assert "molbuilder transport bundle --device" in r.output
+    assert "run-transport.sh" in r.output
+    for sub in ("preflight", "electrode", "bundle"):
+        rs = CliRunner().invoke(transport_group, [sub, "-h"])
+        assert "EXAMPLE" in rs.output and "molbuilder transport" in rs.output
+
+
 def test_parser_matches_transiesta_emitter_keys():
     # The fixtures mirror the ACTUAL keys molbuilder's transiesta emitter
     # writes (PAO.BasisSize/EnergyShift, XC.Functional/Authors, MeshCutoff,

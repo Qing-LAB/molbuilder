@@ -50,8 +50,33 @@ def _load_device(device_xyz, sidecar_path, cell_fdf):
     return struct
 
 
+_TRANSPORT_EPILOG = """\
+\b
+QUICKSTART -- a conductance run is 3 coupled SIESTA runs; derive them all
+from ONE region-labeled device, then verify consistency:
+\b
+  # 1. derive relax + both electrodes + device + driver from the device
+  #    (--cell-fdf preserves the real hexagonal Au(111) lattice)
+  molbuilder transport bundle --device dev.xyz --job-name junc \\
+      --mesh-cutoff 400 --kx 4 --ky 4 --cell-fdf relaxed.fdf --out-dir run/
+\b
+  # 2. on the target, under the molbuilder-siesta env, run the driver
+  #    (it runs electrodes+relax, hands off coords + .TSHS, then tbtrans)
+  cd run/ && conda activate molbuilder-siesta && bash run-transport.sh
+\b
+  # 3. verify the device<->electrode contract (do this after any hand-edit)
+  molbuilder transport preflight --device run/junc.fdf \\
+      --electrode run/junc_L-electrode.fdf
+\b
+Just need an electrode from an existing device?
+  molbuilder transport electrode --device dev.xyz --which L-electrode \\
+      --cell-fdf relaxed.fdf --out-dir run/
+"""
+
+
 @click.group("transport",
-             context_settings={"help_option_names": ["-h", "--help"]})
+             context_settings={"help_option_names": ["-h", "--help"]},
+             epilog=_TRANSPORT_EPILOG)
 def transport_group() -> None:
     """TranSIESTA transport-workflow helpers.
 
@@ -61,12 +86,21 @@ def transport_group() -> None:
     contract + a geometric clone + commensurate k.  These commands enforce
     that consistency (the actual failure mode).  Scientific basis:
     docs/protocols/transiesta-workflow.md.
+
+    Run `molbuilder transport COMMAND -h` for a worked example of each.
     """
 
 
 @transport_group.command("preflight",
                          short_help="check device<->electrode .fdf "
-                                    "consistency before a TranSIESTA run")
+                                    "consistency before a TranSIESTA run",
+                         epilog="\b\nEXAMPLE:\n"
+                                "  molbuilder transport preflight \\\n"
+                                "      --device junc.fdf "
+                                "--electrode junc_L-electrode.fdf\n"
+                                "\nExits non-zero on any ERROR (mismatched "
+                                "MeshCutoff/XC/basis, non-commensurate k,\n"
+                                "device kz!=1, electrode kz=1, ...).")
 @click.option("--device", "device", required=True,
               type=click.Path(exists=True, dir_okay=False, resolve_path=True),
               help="the NEGF device .fdf (SolutionMethod transiesta).")
@@ -101,7 +135,17 @@ def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
 
 @transport_group.command("electrode",
                          short_help="derive bulk-lead .fdf(s) from a "
-                                    "labeled device structure")
+                                    "labeled device structure",
+                         epilog="\b\nEXAMPLE:\n"
+                                "  molbuilder transport electrode \\\n"
+                                "      --device dev.xyz --which L-electrode \\\n"
+                                "      --job-name junc --mesh-cutoff 400 "
+                                "--kx 4 --ky 4 \\\n"
+                                "      --cell-fdf relaxed.fdf --out-dir run/\n"
+                                "\nClones the lead atoms + device lateral cell "
+                                "+ contract, so the\nelectrode passes "
+                                "`transport preflight` against the device by "
+                                "construction.")
 @click.option("--device", "device_xyz", required=True,
               type=click.Path(exists=True, dir_okay=False, resolve_path=True),
               help="device structure (.xyz); its .molstruct.json sidecar "
@@ -174,7 +218,18 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
 
 @transport_group.command("bundle",
                          short_help="derive the full relax+electrode+device "
-                                    "run bundle from a labeled device")
+                                    "run bundle from a labeled device",
+                         epilog="\b\nEXAMPLE:\n"
+                                "  molbuilder transport bundle \\\n"
+                                "      --device dev.xyz --job-name junc \\\n"
+                                "      --mesh-cutoff 400 --kx 4 --ky 4 "
+                                "--electrode-kz 40 \\\n"
+                                "      --cell-fdf relaxed.fdf --out-dir run/\n"
+                                "\nThen on the target:  cd run/ && "
+                                "conda activate molbuilder-siesta && \\\n"
+                                "                      bash run-transport.sh\n"
+                                "\nTip: relax converges at --kx 2 --ky 2; use "
+                                "the denser k for the device.")
 @click.option("--device", "device_xyz", required=True,
               type=click.Path(exists=True, dir_okay=False, resolve_path=True),
               help="device structure (.xyz); its .molstruct.json sidecar "

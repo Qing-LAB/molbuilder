@@ -220,9 +220,33 @@ def cmd_siesta_gpu(project_dir: str,
     click.echo(f"csv: {csv}")
 
 
+_GENERATE_EPILOG = """\
+\b
+EXAMPLES:
+\b
+  # workstation: conda is on PATH, so activation is auto-detected -- no config
+  molbuilder bench generate input.fdf --out bench/
+\b
+  # an HPC target (e.g. Sol): tell it the activation it will use THERE
+  molbuilder bench generate input.fdf --out bench/ \\
+      --activation "source activate" --preamble "module load mamba"
+\b
+Then ON THE TARGET (the bundle is self-contained -- no molbuilder needed):
+  cd bench/
+  ./prep-bench --gpu-ks 1,2,4,8     # detect machine -> environment.json + sweep
+  bash job-gpu-sweep.sh             #   (SLURM: sbatch job-cpu.sbatch too)
+  ./bench-summarize                 # rank CPU vs GPU points -> winner
+  ./prep-run --script-base myprod   # winner -> run-production.sh for THIS machine
+\b
+K is GPU processes/GPU (np = K*G); --gpu-ks may exceed cores/socket
+(oversubscription is allowed + flagged) to find where np stops scaling.
+"""
+
+
 @bench_group.command("generate",
                      short_help="emit CPU-only + GPU-only benchmark bundles "
-                                "from one .fdf")
+                                "from one .fdf",
+                     epilog=_GENERATE_EPILOG)
 @click.argument("fdf", type=click.Path(exists=True, dir_okay=False,
                                        resolve_path=True))
 @click.option("--out", "out_dir", default=None,
