@@ -6,6 +6,11 @@ from pathlib import Path
 
 import click
 
+from .orchestrate import (
+    DEFAULT_RELAX_STEPS,
+    build_transport_bundle,
+    format_bundle,
+)
 from .preflight import format_report, preflight_files
 from .wizard import DEFAULT_ELECTRODE_KZ, electrode_wizard, format_models
 
@@ -135,6 +140,79 @@ def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
     click.echo(f"\nwrote {len(models)} electrode .fdf(s) to {out}/")
     click.echo("Next: run 'molbuilder transport preflight --device <device.fdf> "
                "--electrode <this.fdf>' to confirm the contract.")
+
+
+@transport_group.command("bundle",
+                         short_help="derive the full relax+electrode+device "
+                                    "run bundle from a labeled device")
+@click.option("--device", "device_xyz", required=True,
+              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help="device structure (.xyz); its .molstruct.json sidecar "
+                   "(region labels) is auto-discovered alongside it.")
+@click.option("--sidecar", "sidecar_path", default=None,
+              type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help="explicit .molstruct.json (overrides auto-discovery).")
+@click.option("--job-name", default="transport", show_default=True,
+              help="device job name; the bundle files are named from it.")
+@click.option("--mesh-cutoff", type=int, default=None,
+              help="MeshCutoff (Ry) for all runs (default: config default).")
+@click.option("--kx", type=int, default=None, help="transverse kx.")
+@click.option("--ky", type=int, default=None, help="transverse ky.")
+@click.option("--electrode-kz", type=int, default=DEFAULT_ELECTRODE_KZ,
+              show_default=True, help="dense kz for the bulk leads (§ 4.2).")
+@click.option("--relax-steps", type=int, default=DEFAULT_RELAX_STEPS,
+              show_default=True, help="CG steps for the device relaxation.")
+@click.option("--z-period", type=float, default=None,
+              help="bulk repeat along transport (Å); override the estimate.")
+@click.option("--out-dir", type=click.Path(file_okay=False), default=".",
+              show_default=True, help="where to write the bundle.")
+def cmd_bundle(device_xyz, sidecar_path, job_name, mesh_cutoff, kx, ky,
+               electrode_kz, relax_steps, z_period, out_dir):
+    """Derive the full 3-run bundle (relax + electrodes + device + driver)
+    from one region-labeled device (transiesta-workflow.md § 6.4).
+
+    All four `.fdf`s share one numerical contract by construction; the
+    `run-transport.sh` driver runs them in order and performs the
+    relax→device and electrode→device file hand-offs automatically.
+    Run it under `molbuilder-siesta`.
+    """
+    from ..config.transport import TransportConfig
+    from ..sidecars.molstruct import load as load_sidecar
+    from ..sidecars.molstruct import apply_to_structure, sidecar_path_for
+    from ..structure import Structure
+
+    struct = Structure.from_xyz(device_xyz)
+    sc = Path(sidecar_path) if sidecar_path else sidecar_path_for(device_xyz)
+    if not Path(sc).exists():
+        raise click.ClickException(
+            f"no region sidecar found at {sc}; the device must carry "
+            f"region labels (*-electrode). Pass --sidecar explicitly.")
+    apply_to_structure(struct, load_sidecar(sc))
+
+    cfg_kw = {"job_name": job_name}
+    if mesh_cutoff is not None:
+        cfg_kw["siesta_mesh_cutoff_ry"] = mesh_cutoff
+    if kx is not None and ky is not None:
+        cfg_kw["k_mesh_transverse"] = (kx, ky, 1)
+    cfg = TransportConfig(**cfg_kw)
+
+    try:
+        bundle = build_transport_bundle(
+            struct, cfg, electrode_kz=electrode_kz, relax_steps=relax_steps,
+            z_period=z_period)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for name, content in bundle.files.items():
+        path = out / name
+        path.write_text(content)
+        if name.endswith(".sh"):
+            path.chmod(0o755)
+    click.echo(format_bundle(bundle))
+    click.echo(f"\nwrote {len(bundle.files)} files to {out}/")
+    click.echo(f"Run under molbuilder-siesta:  bash {out}/run-transport.sh")
 
 
 __all__ = ["transport_group"]

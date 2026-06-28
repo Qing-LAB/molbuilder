@@ -359,7 +359,7 @@ test that feeds wizard output back through the preflight.
 | Real-binary smoke test | **built** (`test_transiesta_siesta_smoke_l4.py`) |
 | **Electrode wizard** (clone + thickness/`kz`) | **built** (`wizard.py`, `transport electrode`) |
 | **Consistency preflight** | **built** (`preflight.py`, `transport preflight`) |
-| **3-run orchestration** (auto coord/TSHS hand-off) | proposed (§ 6.4) |
+| **3-run orchestration** (auto coord/TSHS hand-off) | **built** (`orchestrate.py`, `transport bundle`) |
 | **Convergence sweep** | proposed (§ 6.5) |
 | **Bias driver** + I–V stitch | proposed (§ 6.4) |
 | `transport-plan` / `transport-result` schemas | proposed (§ 6.6) |
