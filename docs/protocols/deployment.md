@@ -7,6 +7,11 @@ operational decisions; defers the sbatch block-by-block detail to
 [`slurm-integration.md`](slurm-integration.md) and env *building* to
 [`README_install.md`](../README_install.md).
 
+**Reading this doc:** §§ 0–1, 4, 6 describe **what is built today**. § 2 (env
+resolution), § 3's runtime read, and § 5 (CPU-on-ELPA) describe the **target
+model** — the agreed direction not yet fully built. § 7 is the authoritative
+built-vs-proposed ledger; every "target" claim below is tagged.
+
 ---
 
 ## 0. The two phases (the mental model)
@@ -43,7 +48,7 @@ The scheduler is probed (workstation = no scheduler on PATH; SLURM =
 
 ---
 
-## 2. Environment resolution in the run script (the algorithm)
+## 2. Environment resolution — the model *(target; § 7)*
 
 One rule: **config if present, else probe.**
 
@@ -66,19 +71,20 @@ One rule: **config if present, else probe.**
      missing  -> STOP with: "prepare <env> first: molbuilder envs doctor"
                  (Phase A — the script does not create it)
 
-4. RUN:  conda run -n <env> siesta <fdf>     (PATH already correct;
-                                               nothing to "locate")
+4. RUN:  activate <env>, then `mpirun -np N siesta <fdf>`
+         (PATH is already correct once activated — nothing to "locate")
 ```
 
-This is what makes a single bundle portable: the **workstation** auto-probes,
-the **HPC** target reads its config. The activation is the only
-target-specific knob, and it lives in (or is detected for) one place.
+In this model a **single** bundle is portable: the workstation auto-probes,
+the HPC target reads its config; activation is the only target-specific knob.
 
-> **Current state vs target.** Today the activation/preamble are *baked into*
-> the `.run.sh` at generate time (from config → flags → auto-detected local
-> conda). Moving steps 1–3 to *runtime* (so the exact same bundle runs on
-> both a workstation and Sol without regeneration) is the agreed direction;
-> until then, generate one bundle per target (§ 6).
+> **What's built today (vs the model above).** The activation + preamble are
+> resolved *at generate time* (config → `--activation`/`--preamble` flags →
+> auto-detected local conda) and **baked into** the `.run.sh`; step 2's
+> gpu-first selection and step 3's presence-check are not yet emitted into the
+> wrapper. Consequence: today you **generate one bundle per target** (§ 6).
+> Moving steps 1–3 to *runtime* — so the same bundle runs on a workstation and
+> on Sol without regeneration — is the agreed next step (§ 7).
 
 ---
 
@@ -87,9 +93,10 @@ target-specific knob, and it lives in (or is detected for) one place.
 This file is **not magic** and must never be treated as implicit context.
 
 - **WHERE:** a project-level `<project-dir>/.molbuilder.json` that travels
-  *with the bundle* (the run scripts read it from their own directory),
-  deep-merged over an optional server-wide `molbuilder.json`. **Project
-  wins.**
+  *with the bundle*, deep-merged over an optional server-wide
+  `molbuilder.json`. **Project wins.** Today it is read **at generate time**
+  (the generator bakes the result into the scripts); in the runtime model
+  (§ 2) the run script reads it from its own directory.
 - **WHAT:** a `scheduler` block (SLURM directives + mem model) and a
   `script_generation` block (how to load + activate conda).
 - **Workstation:** you can omit it entirely — activation is auto-detected
@@ -142,7 +149,10 @@ relay is the whole point — none of it is assumed.
 | `--gres=gpu:type:G` → `CUDA_VISIBLE_DEVICES` | allocated GPUs | a **per-rank launcher** assigns one GPU/rank + NUMA co-location |
 | (K = ranks/GPU ≥ 2) | concurrency | **MPS** daemon (`CUDA_MPS_PIPE_DIRECTORY`) so ranks share the GPU |
 | topology | binding | `mpirun --bind-to core --map-by package:PE=$OMP_NUM_THREADS` |
-| `--export=NONE` | clean shell | the `module load mamba` preamble is **load-bearing** |
+
+(The sbatch header itself carries `--export=NONE` — a config directive, not an
+allocation — so the job starts in a **clean shell**; that is exactly why the
+`module load mamba` preamble is load-bearing, § 1/§ 3.)
 
 **CUDA is relayed per-rank, not globally.** The wrapper writes a small
 helper (`.mb-rank-launch-*.sh`) and launches `mpirun … bash <helper> siesta`;
@@ -161,13 +171,18 @@ Tuning knobs honored at run time (no regeneration): `MB_NP` /
 
 ---
 
-## 5. The CPU-vs-GPU benchmark must compare hardware, not solvers
+## 5. The CPU-vs-GPU benchmark must compare hardware, not solvers *(target; § 7)*
 
-For the `bench generate` bundle, both points use **ELPA**; the GPU point
-just adds `Diag.ELPA.GPU .true.`. So the only variable is the CUDA toggle and
-the measured difference is *hardware*, not *solver*. (A ScaLAPACK-CPU vs
-ELPA-GPU comparison would conflate the two.) Because ELPA lives in
-`molbuilder-siesta-gpu`, the CPU point also routes there (§ 2 rule).
+Both points should use **ELPA**; the GPU point just adds `Diag.ELPA.GPU
+.true.`, so the only variable is the CUDA toggle and the measured difference
+is *hardware*, not *solver*. Because ELPA lives in `molbuilder-siesta-gpu`,
+the CPU point then also routes there (§ 2 rule).
+
+> **Today:** `bench generate` emits the CPU point on **plain `diagon`
+> (ScaLAPACK)** in `molbuilder-siesta`, and the GPU point on ELPA-CUDA in
+> `molbuilder-siesta-gpu`. That CPU-vs-GPU number therefore conflates *solver*
+> with *hardware*; switching the CPU point to ELPA (no `Diag.ELPA.GPU`) is the
+> agreed fix.
 
 ---
 
