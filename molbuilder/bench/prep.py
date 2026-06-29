@@ -7,11 +7,12 @@ scheduler adapter's ``format_bench`` and write what it returns (the
 topology-sized ``job-gpu-sweep.sh``).  The user never hand-edits a queue
 name or a core count -- this is what makes the bundle portable (§ 2).
 
-**Stdlib-only** (it imports the stdlib-only ``environment`` + ``adapters``
-modules): meant to run on the target backend env, which has no
-molbuilder/numpy.  ``run_prep_bench`` is the testable core; ``main`` is
-the standalone ``argparse`` entry (the bundle can ship this file like
-``mb_monitor.py``); the ``molbuilder bench prep`` CLI calls the same core.
+Import-light (it pulls only the stdlib ``environment`` + ``adapters``
+modules).  ``run_prep_bench`` is the testable core; the on-target
+``prep-bench`` shim bootstraps the molbuilder host env and calls
+``molbuilder bench prep`` (job-execution.md § 8.3, § 3.4 contract), which
+calls this same core -- there is no shipped standalone copy (the old stdlib
+``mbbench/`` was retired; benchmark-workflow.md § 30).
 """
 
 from __future__ import annotations
@@ -136,47 +137,4 @@ def _parse_ks(spec):
     return [int(x) for x in str(spec).split(",") if x.strip()]
 
 
-def main(argv=None) -> int:
-    """Standalone ``argparse`` entry (zero third-party deps)."""
-    import argparse
-    p = argparse.ArgumentParser(
-        prog="prep-bench",
-        description="Detect this machine (scheduler + topology) and format "
-                    "the benchmark scripts for it.  Run in the bundle dir on "
-                    "the target.")
-    p.add_argument("--out", default=".",
-                   help="output directory (default: current dir)")
-    p.add_argument("--scheduler", choices=["slurm", "workstation"],
-                   default=None, help="force the scheduler (else detected)")
-    p.add_argument("--cores-per-socket", type=int, default=None,
-                   help="override detected cores/socket")
-    p.add_argument("--gpus-per-node", type=int, default=None,
-                   help="override detected GPUs/node")
-    p.add_argument("--gpu-type", default=None,
-                   help="override detected GPU type (e.g. a100)")
-    p.add_argument("--gpu-ks", default=None,
-                   help="comma-separated ranks-per-GPU (K) values to sweep "
-                        "(e.g. 8,16); default = cores/socket divisors")
-    p.add_argument("--gpu-cs", default=None,
-                   help="comma-separated cores-per-rank (c) values to sweep "
-                        "(e.g. 1,8,16); default per K = {1, cores//K, "
-                        "2*cores//K} (starved/1-socket/cross-socket)")
-    a = p.parse_args(argv)
-
-    env, written = run_prep_bench(
-        a.out,
-        overrides=_overrides_from(a.cores_per_socket, a.gpus_per_node,
-                                  a.gpu_type),
-        scheduler_override=a.scheduler,
-        ks=_parse_ks(a.gpu_ks),
-        cs=_parse_ks(a.gpu_cs),
-        now_iso=utc_now_iso())
-    print(_summary(env, written))
-    return 0
-
-
-__all__ = ["run_prep_bench", "utc_now_iso", "main"]
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+__all__ = ["run_prep_bench", "utc_now_iso"]

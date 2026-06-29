@@ -76,16 +76,18 @@ def test_prep_run_rejects_unsafe_script_base(tmp_path):
                               scheduler_override="slurm")
 
 
-def test_main_standalone(tmp_path, monkeypatch, capsys):
+def test_run_prep_run_core(tmp_path, monkeypatch):
+    # The on-target shim calls `molbuilder bench prep-run`, which calls this
+    # core (job-execution.md § 8.3); there is no standalone entry to test.
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
     brp = _write_bench_result(
         tmp_path, {"engine": "gpu", "knobs": {"gpus": 1, "ranks_per_gpu": 8},
                    "rationale": "gpu-k8 fastest"})
-    rc = prep_run.main([
-        "--bench-result", str(brp), "--script-base", "prod",
-        "--scheduler", "workstation", "--cores-per-socket", "16",
-        "--gpus-per-node", "1", "--gpu-type", "a100"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "prep-run: production run formatted" in out
+    env, choice, out_path = prep_run.run_prep_run(
+        brp, script_base="prod", scheduler_override="workstation",
+        overrides={"cores_per_socket": 16, "gpus_per_node": 1,
+                   "gpu_type": "a100"})
+    assert choice["engine"] == "gpu"
     assert (tmp_path / "run-production.sh").is_file()
+    summary = prep_run._summary(env, choice, out_path)
+    assert "prep-run: production run formatted" in summary

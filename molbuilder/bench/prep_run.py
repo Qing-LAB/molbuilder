@@ -82,42 +82,4 @@ def _summary(env: Environment, choice: Dict, out_path: Path) -> str:
     ])
 
 
-def main(argv=None) -> int:
-    import argparse
-    p = argparse.ArgumentParser(
-        prog="prep-run",
-        description="Format the production run from a benchmark verdict "
-                    "(bench-result.json), re-resolved for THIS machine.")
-    p.add_argument("--bench-result", default="bench-result.json",
-                   help="path to bench-result.json (default: ./)")
-    p.add_argument("--script-base", default="job",
-                   help="basename of the production scripts "
-                        "(<base>.fdf/.run.sh/.sbatch).")
-    p.add_argument("--out", default=None,
-                   help="output path (default: run-production.sh beside the "
-                        "bench-result).")
-    p.add_argument("--scheduler", choices=["slurm", "workstation"],
-                   default=None, help="force the scheduler (else detected).")
-    p.add_argument("--cores-per-socket", type=int, default=None)
-    p.add_argument("--gpus-per-node", type=int, default=None)
-    p.add_argument("--gpu-type", default=None)
-    a = p.parse_args(argv)
-
-    from .prep import _overrides_from, utc_now_iso
-    env, choice, out_path = run_prep_run(
-        a.bench_result,
-        script_base=a.script_base,
-        out=a.out,
-        scheduler_override=a.scheduler,
-        overrides=_overrides_from(a.cores_per_socket, a.gpus_per_node,
-                                  a.gpu_type),
-        now_iso=utc_now_iso())
-    print(_summary(env, choice, out_path))
-    return 0
-
-
-__all__ = ["run_prep_run", "main"]
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+__all__ = ["run_prep_run"]

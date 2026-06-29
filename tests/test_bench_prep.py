@@ -141,17 +141,20 @@ def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
     assert "K=8 > cores/socket=6" in text         # flagged, not skipped (§8.12)
 
 
-def test_main_standalone(tmp_path, monkeypatch, capsys):
+def test_run_prep_bench_core(tmp_path, monkeypatch):
+    # The on-target shim calls `molbuilder bench prep`, which calls this core
+    # (job-execution.md § 8.3); there is no standalone entry to test.
     monkeypatch.setattr(env_mod, "_run", lambda *a, **k: None)
-    rc = prep.main(["--out", str(tmp_path), "--scheduler", "workstation",
-                    "--cores-per-socket", "16", "--gpus-per-node", "2",
-                    "--gpu-type", "a100"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "prep-bench: detected target" in out
-    assert "scheduler : workstation" in out
+    env, written = prep.run_prep_bench(
+        tmp_path, scheduler_override="workstation",
+        overrides={"cores_per_socket": 16, "gpus_per_node": 2,
+                   "gpu_type": "a100"})
+    assert env.scheduler == "workstation"
     assert (tmp_path / "environment.json").is_file()
     assert (tmp_path / "job-gpu-sweep.sh").is_file()
+    summary = prep._summary(env, written)
+    assert "prep-bench: detected target" in summary
+    assert "scheduler : workstation" in summary
 
 
 def test_utc_now_iso_format():

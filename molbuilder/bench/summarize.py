@@ -191,27 +191,7 @@ def summary_text(res: BenchResult, out_path: Path) -> str:
     return "\n".join(lines)
 
 
-def main(argv=None) -> int:
-    import argparse
-    p = argparse.ArgumentParser(
-        prog="bench-summarize",
-        description="Read a benchmark sweep's outputs (point-G*K*/ dirs) "
-                    "and write bench-result.json.")
-    p.add_argument("--bundle", default=".", help="bundle dir (default: .)")
-    p.add_argument("--out", default=None,
-                   help="output path (default: <bundle>/bench-result.json)")
-    a = p.parse_args(argv)
-    from .prep import utc_now_iso
-    res, out_path = run_summarize(a.bundle, out=a.out, now_iso=utc_now_iso())
-    print(summary_text(res, out_path))
-    return 0
-
-
 __all__ = [
     "parse_point", "discover_points", "summarize_bundle", "run_summarize",
-    "summary_text", "main",
+    "summary_text",
 ]
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
