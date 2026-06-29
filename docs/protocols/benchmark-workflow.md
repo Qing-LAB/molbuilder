@@ -425,17 +425,29 @@ what it is without consulting the docs.
 ## § 7 Components & responsibilities
 
 ### § 7.1 `molbuilder bench generate` (host, built)
-Emits the portable bundle (`bench-generate-spec`): `job-cpu.fdf`,
-`job-gpu.fdf` (cold, iteration-capped, `SCF.MustConverge` off so a capped
-run still exits cleanly), the pseudopotentials, `job-gpu-sweep.sh`,
-`README.md`. Topology flags it takes today become **fallbacks** once
-prep-bench detects topology on the target (§ 4.6).
+Emits the **target-neutral** portable bundle: `job-cpu.fdf`, `job-gpu.fdf`
+(cold, iteration-capped, `SCF.MustConverge` off so a capped run still exits
+cleanly), the pseudopotentials, `bench-manifest.json` (the benchmark knobs —
+mpi_np, gpu_gpus/K, times, exclusive), `job-gpu-sweep.sh` placeholder,
+`README.md`. It does **not** bake the run wrappers or resolve activation —
+the target is unknown; that moves to prep (job-execution.md § 7). The
+benchmark-knob flags become **fallbacks** once prep detects topology on the
+target (§ 4.6).
 
 ### § 7.2 prep-bench (target, built)
-Self-contained (`bench/prep.py`). Runs `resolve_environment()` (§ 4.4),
-writes `environment.json` (§ 5.2), and uses the matching adapter to format
-the benchmark scripts + size the sweep. Prints what it detected and the
-source; never silently guesses.
+Two layers:
+- **stdlib `./prep-bench`** (`bench/prep.py`, self-contained, no molbuilder):
+  runs `resolve_environment()` (§ 4.4), writes `environment.json` (§ 5.2),
+  and uses the matching adapter to size + format the sweep. Prints what it
+  detected and the source; never silently guesses.
+- **`molbuilder bench prep`** (molbuilder env on the target — the contract,
+  job-execution.md § 3.4) additionally **bakes the run wrappers**: it reads
+  `bench-manifest.json`, resolves activation for *this* target
+  (scheduler-gated: workstation autodetect / HPC shipped config), and emits
+  the standalone `job-{cpu,gpu}.run.sh` (+ `.sbatch` only when the detected
+  scheduler is SLURM) via `runwrap.write_run_wrapper`, with `gres`/`-c` from
+  the detected topology. This is what makes ONE bundle portable
+  (`bake_target_wrappers`; full design in job-execution.md § 7).
 
 **Readiness/doctor (Job B).** Detection answers *what the machine is*; the
 readiness check answers *is it ready to run* — and it is the **existing

@@ -218,8 +218,11 @@ def _env(scheduler, *, cores=24, gpus=1, gtype="a100"):
 
 
 def test_bake_workstation_autodetects_conda(tmp_path, monkeypatch):
-    # SAME bundle, workstation target: prep autodetects conda and bakes
-    # `conda activate` into the run wrappers (no scheduler -> .run.sh only).
+    # §3.5 DEFAULTS GUARD (workstation): prep autodetects conda and bakes
+    # BOTH the form `conda activate` AND its load-bearing prerequisite -- the
+    # conda-hook source line (a non-interactive `bash job.run.sh` does not
+    # read ~/.bashrc, so the hook MUST be sourced).  Pinned against silent
+    # drift.  No scheduler -> .run.sh only.
     import molbuilder.runtime_config as rc
     monkeypatch.setattr(rc, "detect_conda_activation",
                         lambda: {"activation": "conda activate",
@@ -229,17 +232,21 @@ def test_bake_workstation_autodetects_conda(tmp_path, monkeypatch):
     bake_target_wrappers(out_dir, _env("workstation"))
     run = (out_dir / "job-cpu.run.sh").read_text()
     assert "conda activate" in run
+    assert 'source "/x/conda.sh"' in run               # the hook -- load-bearing
     assert (out_dir / "job-gpu.run.sh").is_file()
     # workstation: no scheduler -> no sbatch
     assert not (out_dir / "job-cpu.sbatch").exists()
     # it specialised THIS dir's config for the workstation
     cfg = json.loads((out_dir / ".molbuilder.json").read_text())
     assert cfg["script_generation"]["activation"] == "conda activate"
+    assert cfg["script_generation"]["preamble"] == 'source "/x/conda.sh"'
 
 
 def test_bake_hpc_uses_shipped_config_and_detected_topology(tmp_path):
-    # SAME generator, HPC target: prep uses the shipped explicit activation
-    # and bakes sbatch headers from the DETECTED topology (gres type + cores).
+    # §3.5 DEFAULTS GUARD (HPC) + topology: prep uses the shipped explicit
+    # activation -- BOTH the form `source activate` AND its load-bearing
+    # prerequisite `module load mamba` (clean job shell) -- and bakes sbatch
+    # headers from the DETECTED topology (gres type + cores).
     from molbuilder.bench.generate import bake_target_wrappers
     out_dir = _make_bundle(tmp_path, hpc_config=True)
     bake_target_wrappers(out_dir, _env("slurm", cores=24, gpus=1, gtype="a100"))
