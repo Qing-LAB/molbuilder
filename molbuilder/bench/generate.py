@@ -665,6 +665,24 @@ def render_bench_plan(env, manifest: dict, ks: List[int]) -> str:
         "  " + "  ".join("-" * w[i] for i in range(7)),
     ]
     lines += ["  " + fmt(r) for r in rows]
+
+    # WARNING (not auto-fixed -- the rank count is the scientist's call):
+    # if the CPU baseline asks for more ranks than this machine has cores,
+    # `mpirun` typically REFUSES to launch (not enough slots), so the CPU
+    # point would fail.  Surface it loudly; the fix is a one-line manifest
+    # edit (job-execution.md § 8.11).
+    total_cores = (t.sockets or 1) * (cores or 0)
+    if isinstance(cpu_np, int) and total_cores and cpu_np > total_cores:
+        lines += [
+            "",
+            f"  ⚠ WARNING: CPU baseline mpi_np={cpu_np} exceeds this machine's "
+            f"{total_cores} cores ({t.sockets}×{cores}).",
+            "    mpirun will likely REFUSE to launch the CPU point (not enough "
+            "slots).",
+            f'    Fix: set "mpi_np" to <= {total_cores} under points.cpu in '
+            "bench-manifest.json, then re-run ./prep-bench.",
+        ]
+
     lines += [
         "",
         "How to change (then re-run ./prep-bench):",

@@ -331,3 +331,18 @@ def test_bench_plan_enumerates_cpu_baseline_and_gpu_sweep(tmp_path):
     assert "./prep-bench --gpu-ks" in plan             # the GPU knob
     assert 'edit "mpi_np"' in plan                     # the CPU knob (manifest)
     assert "Next step: ./run-bench" in plan
+
+
+def test_bench_plan_warns_when_cpu_np_exceeds_cores(tmp_path):
+    # §8.11: CPU baseline mpi_np (=64, Sol default) > this machine's cores ->
+    # mpirun would refuse.  Warn loudly in the plan; do NOT auto-fix (the
+    # scientist sets it via the manifest).
+    from molbuilder.bench.generate import render_bench_plan
+    out_dir = _make_bundle(tmp_path)                   # cpu mpi_np=64
+    manifest = json.loads((out_dir / "bench-manifest.json").read_text())
+
+    warn = render_bench_plan(_env("workstation", cores=10), manifest, ks=[1, 2])
+    assert "WARNING" in warn and "mpi_np=64" in warn and "REFUSE" in warn
+
+    ok = render_bench_plan(_env("workstation", cores=64), manifest, ks=[1, 2])
+    assert "WARNING" not in ok                          # 64 cores fits np=64
