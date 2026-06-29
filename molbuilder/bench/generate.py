@@ -53,64 +53,17 @@ from .. import runtime_config as _rc
 from ..runwrap import write_run_wrapper
 
 
-def _ensure_activation(out_dir: Path,
-                       activation: Optional[str],
-                       preamble: Optional[str]) -> Optional[str]:
-    """Make sure the wrapper generator can resolve a conda activation
-    for this bundle, WITHOUT the user having to hand-author a config.
-
-    Resolution order (first that yields an activation wins):
-
-      1. ``--activation`` / ``--preamble`` passed explicitly.
-      2. An existing config (server-wide ``molbuilder.json`` or a
-         ``.molbuilder.json`` already in ``out_dir``).
-      3. Auto-detected local conda/mamba (:func:`detect_conda_activation`).
-
-    For (1) and (3) a ``.molbuilder.json`` is written into ``out_dir`` so
-    the downstream wrapper finds it; returns a human-readable note about
-    what was used (or None when an existing config already covered it).
-    Raises :class:`RuntimeConfigError` only when nothing resolves — with
-    a message that points at the flags + auto-detect, not just a JSON
-    snippet.
+def _write_activation_config(out_dir: Path, activation: Optional[str],
+                             preamble: Optional[str]) -> Path:
+    """Merge ``script_generation.{activation,preamble}`` into the bundle's
+    ``.molbuilder.json`` (creating the file, preserving anything else in
+    it).  Only the fields that are given are written (a ``None`` leaves any
+    existing value untouched).  This is the SINGLE place the activation
+    decision is persisted: both the generate-time explicit-flag path and the
+    prep-time target resolver (:func:`bake_target_wrappers`) write through
+    here, so the on-disk shape is byte-identical regardless of which moment
+    wrote it.  Returns the config path.  (job-execution.md § 7.3.)
     """
-    sg = _rc.get_script_generation(project_dir=out_dir)
-
-    # activation: explicit flag > existing config > auto-detected conda.
-    chosen_act = activation or sg.get("activation")
-    detected = None
-    if chosen_act is None:
-        detected = _rc.detect_conda_activation()
-        if detected:
-            chosen_act = detected["activation"]
-
-    # preamble: explicit flag wins; else the auto-detect hook (only when
-    # WE auto-detected); else leave any existing-config preamble alone.
-    chosen_pre = preamble
-    if chosen_pre is None and detected is not None:
-        chosen_pre = detected["preamble"]
-
-    if chosen_act is None:
-        raise _rc.RuntimeConfigError(
-            "could not resolve a conda activation for the bundle.\n"
-            "No --activation given, no molbuilder.json / .molbuilder.json "
-            "config, and no conda/mamba found on PATH to auto-detect.\n"
-            "\n"
-            "Fix (pick one):\n"
-            "  * pass it on the command line:\n"
-            "      molbuilder bench generate ... \\\n"
-            '        --activation "source activate" --preamble "module load mamba"\n'
-            "  * or run generate on a machine with conda on PATH (it will\n"
-            "    auto-detect), or set script_generation in molbuilder.json."
-        )
-
-    # If nothing new was supplied or detected, the existing config fully
-    # covers it -- leave the file untouched.
-    if activation is None and preamble is None and detected is None:
-        return None
-    source = "flag" if (activation or preamble) else "auto-detected local conda"
-
-    # Materialise the resolved config into the bundle so the wrapper +
-    # any re-generation find it.  Merge into an existing file if present.
     cfg_path = out_dir / ".molbuilder.json"
     existing: dict = {}
     if cfg_path.is_file():
@@ -121,19 +74,14 @@ def _ensure_activation(out_dir: Path,
     if not isinstance(existing, dict):           # malformed top-level JSON
         existing = {}
     sg_block = dict(existing.get("script_generation") or {})
-    sg_block["activation"] = chosen_act
-    if chosen_pre:
-        sg_block["preamble"] = chosen_pre
+    if activation is not None:
+        sg_block["activation"] = activation
+    if preamble:
+        sg_block["preamble"] = preamble
     existing["script_generation"] = sg_block
     cfg_path.write_text(json.dumps(existing, indent=2) + "\n",
                         encoding="utf-8")
-
-    pre_note = f' + preamble "{chosen_pre}"' if chosen_pre else ""
-    return (f'activation "{chosen_act}"{pre_note} ({source}) written to '
-            f"{cfg_path.name}.\n"
-            f"  NOTE: this is THIS machine's setup. For a different run "
-            f"target (e.g. an HPC cluster) re-generate with "
-            f"--activation/--preamble or edit {cfg_path.name}.")
+    return cfg_path
 
 
 # --------------------------------------------------------------------- #
@@ -292,26 +240,36 @@ exit cleanly (`COMPLETED`) instead of aborting non-zero -- otherwise SLURM
 marks every bench point `FAILED` and the accounting (`sacct MaxRSS`) is
 unreliable.
 
-## Self-contained on the target (no molbuilder install)
+## Portable bundle -- prep on the target
 
-This bundle ships its own prep-lib (`mbbench/`) + executable drivers, so
-the whole detect -> run -> decide flow runs on the target with nothing
-installed:
+This bundle is **target-neutral**: the run wrappers are NOT baked yet.  Copy
+it to the machine it will run on, then prep THERE -- prep detects the machine,
+resolves the conda activation for it, and bakes the standalone
+`job-{{cpu,gpu}}.run.sh` (+ `.sbatch` on SLURM).  The SAME bundle works on a
+workstation and on an HPC node; no per-target regeneration.
 
 ```
-./prep-bench        # detect this machine -> environment.json + a
-                    #   topology-sized job-gpu-sweep.sh (each point isolated
-                    #   in its own point-G<g>K<k>/ dir)
-bash job-gpu-sweep.sh   # run the sweep (sbatch per point on SLURM;
-                        #   sequential on a workstation)
-./bench-summarize   # parse the points -> bench-result.json (ranked winner)
-./prep-run --script-base <your-prod>   # winner -> run-production.sh,
-                                       #   re-resolved for THIS machine
+molbuilder bench prep        # detect machine + resolve activation + BAKE the
+                             #   run wrappers + write a topology-sized
+                             #   job-gpu-sweep.sh (each point isolated in its
+                             #   own point-G<g>K<k>/ dir)
+molbuilder envs doctor       # verify the env is ready before you submit
+bash job-gpu-sweep.sh        # run the sweep (sbatch per point on SLURM;
+                             #   sequential on a workstation)
+./bench-summarize            # parse the points -> bench-result.json (winner)
+./prep-run --script-base <your-prod>   # winner -> run-production.sh
 ```
 
-`prep-bench` accepts `--cores-per-socket` / `--gpus-per-node` / `--gpu-type`
-/ `--scheduler` overrides when detection can't see the compute node. See
-`docs/protocols/benchmark-workflow.md` for the full design.
+- **Workstation:** `molbuilder bench prep` autodetects `conda activate`.
+- **HPC:** ship a `.molbuilder.json` with `script_generation`
+  (`preamble: module load mamba`, `activation: source activate`) in the bundle
+  -- the job runs in a clean shell, so the toolchain can't be autodetected.
+
+`molbuilder bench prep` accepts `--cores-per-socket` / `--gpus-per-node` /
+`--gpu-type` / `--scheduler` overrides when detection can't see the compute
+node.  (The shipped stdlib `./prep-bench` does detection + the sweep only; it
+does not bake the run wrappers.)  See
+`docs/protocols/benchmark-workflow.md` and `docs/job-execution.md § 7`.
 
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
@@ -416,13 +374,19 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
                else src_dir / f"{fdf_path.stem}.bench")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve the conda activation BEFORE emitting any run wrapper, so the
-    # generator never dead-ends on a missing hand-authored config: explicit
-    # flags > existing config > auto-detected local conda.  Returns a note
-    # (or None) describing what was materialised into the bundle.
-    activation_note = _ensure_activation(out_dir, activation, preamble)
-    if activation_note and echo is not None:
-        echo(activation_note)
+    # Activation is resolved + baked at PREP time, on the target
+    # (job-execution.md § 3.2 / § 7): ONE portable bundle then runs on a
+    # workstation (prep autodetects conda) AND an HPC node (prep reads the
+    # shipped config).  So generate does NOT autodetect the host's conda and
+    # does NOT bake a target-locked wrapper.  It only PERSISTS an explicit
+    # --activation / --preamble (the HPC case, § 4.4.2) for prep to consume;
+    # with neither, the bundle stays target-neutral and prep decides on the
+    # machine it will run on.
+    if activation or preamble:
+        cfg = _write_activation_config(out_dir, activation, preamble)
+        if echo is not None:
+            echo(f"activation/preamble written to {cfg.name} "
+                 f"(used by `molbuilder bench prep` on the target).")
 
     written: List[Path] = []
 
@@ -449,38 +413,28 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
         block_size=gpu_block_size, max_scf=max_scf), encoding="utf-8")
     written.append(gpu_fdf)
 
-    # CPU launcher + sbatch: scales with -n; --mem auto-estimated.  1 core
-    # per rank -- otherwise -n*-c over-subscribes the node (a 64-rank job
-    # with the GPU-oriented cpus_per_task=8 default would ask for 512
-    # cores on one node).  Override per submission with `sbatch -c N`.
+    # The run wrappers (.run.sh / .sbatch) are baked at PREP, on the target
+    # (job-execution.md § 3.2 / § 7), so ONE bundle is portable.  generate
+    # records the benchmark KNOBS it was asked for in a manifest; `molbuilder
+    # bench prep` reads it, resolves activation for the target, and bakes the
+    # wrappers via runwrap.write_run_wrapper -- with `gres` / `-c` derived
+    # from the DETECTED gpu-type + cores there, not guessed here.
     #
-    # The CPU point uses ELPA-1STAGE (apples-to-apples with the GPU point;
-    # only the CUDA toggle differs), and ELPA lives ONLY in the gpu env --
-    # the precompiled molbuilder-siesta has no ELPA.  So we declare that
-    # env EXPLICITLY here (it shows up as "Target env" in the .run.sh
-    # banner); we do NOT silently re-route it.  Change it if your build
-    # differs.
-    from ..diagnostics import get_capabilities
-    elpa_env = get_capabilities().env_for_category("siesta-gpu")
-    written.append(write_run_wrapper(
-        cpu_fdf, mpi_np=cpu_np, cpus_per_task=cpu_cpus_per_task,
-        time=cpu_time, env=elpa_env))
-
-    # GPU launcher + sbatch: G GPUs (--gres) x K ranks/GPU (-n=K*G);
-    # -c = cores/socket / K so K*c stays within one socket.
-    gpu_c = max(1, cores_per_socket // gpu_k)
-    written.append(write_run_wrapper(
-        gpu_fdf, mpi_np=gpu_k * gpu_gpus,
-        gres=f"a100:{gpu_gpus}", cpus_per_task=gpu_c, time=gpu_time,
-        exclusive=gpu_exclusive))
-
-    # write_run_wrapper returns only the .run.sh; pick up the .sbatch it
-    # emits (when a scheduler is configured) + the shipped monitor so the
-    # caller's file listing is complete.
-    for extra in (out_dir / "job-cpu.sbatch", out_dir / "job-gpu.sbatch",
-                  out_dir / "mb_monitor.py"):
-        if extra.is_file() and extra not in written:
-            written.append(extra)
+    # CPU is MPI-only (1 core/rank); both points run ELPA-1STAGE in
+    # molbuilder-siesta-gpu (ELPA lives only there) -- the env is declared
+    # at bake time, not silently re-routed.  GPU: G GPUs x K ranks/GPU.
+    manifest = out_dir / "bench-manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "molbuilder/bench-manifest@1",
+        "jobs": {
+            "cpu": {"fdf": cpu_fdf.name, "mpi_np": cpu_np,
+                    "cpus_per_task": cpu_cpus_per_task, "time": cpu_time},
+            "gpu": {"fdf": gpu_fdf.name, "gpu_gpus": gpu_gpus,
+                    "gpu_k": gpu_k, "time": gpu_time,
+                    "exclusive": gpu_exclusive},
+        },
+    }, indent=2) + "\n", encoding="utf-8")
+    written.append(manifest)
 
     # The real sweep is written by `./prep-bench` on the target (it needs
     # the detected scheduler + topology + per-point isolation).  Bake a
@@ -503,6 +457,97 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     written.extend(_ship_prep_lib(out_dir))
 
     return out_dir, written
+
+
+def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
+    """Resolve the conda activation for THIS target and bake the run
+    wrappers from the bundle's ``bench-manifest.json`` (job-execution.md
+    § 7.4).  This is the **prep-time** step that makes one bundle portable;
+    it runs in the molbuilder env the contract guarantees on every target
+    (§ 3.4), while the stdlib ``prep-bench`` does only detection + the sweep.
+
+    The detected ``env.scheduler`` gates activation resolution on BOTH
+    branches (NOT a config>autodetect precedence, which would bake a shipped
+    HPC activation on a workstation -- § 7.5):
+
+      * **workstation** -> autodetect conda on PATH and write it into this
+        dir's ``.molbuilder.json`` (specialising the copy for this machine);
+      * **slurm / HPC** -> the activation MUST be the shipped explicit config
+        (the job runs in a clean shell; nothing to autodetect -- § 3.3 row M).
+
+    Then :func:`runwrap.write_run_wrapper` bakes the standalone ``.run.sh`` /
+    ``.sbatch`` (it reads the activation from the config we just ensured).
+    ``gres`` / ``-c`` come from the DETECTED topology, not a generate guess.
+    Returns the written wrapper paths (+ ``.sbatch`` / ``mb_monitor.py``).
+    """
+    out_dir = Path(out_dir)
+    manifest_path = out_dir / "bench-manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"{manifest_path.name} not found in {out_dir} -- run "
+            f"`molbuilder bench generate` first to produce the bundle.")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    jobs = manifest["jobs"]
+
+    # --- resolve activation for this target (scheduler-gated) ---
+    if env.scheduler == "workstation":
+        det = _rc.detect_conda_activation()
+        if det is None:
+            raise _rc.RuntimeConfigError(
+                "no conda/mamba found on PATH on this workstation.\n"
+                "Activate your conda, or ship an explicit script_generation "
+                "in .molbuilder.json (see docs/job-execution.md § 4.4.1).")
+        _write_activation_config(out_dir, det["activation"], det["preamble"])
+        if echo is not None:
+            echo(f'activation: autodetected "{det["activation"]}" '
+                 f"for this workstation.")
+    else:                                            # slurm / HPC
+        sg = _rc.get_script_generation(project_dir=out_dir)
+        if not sg.get("activation"):
+            raise _rc.RuntimeConfigError(
+                "HPC target: no activation configured.  Ship a "
+                ".molbuilder.json with script_generation (preamble + "
+                "activation) in the bundle -- see docs/job-execution.md "
+                "§ 4.4.2.  The job runs in a clean shell, so the toolchain "
+                "cannot be autodetected (§ 3.3 row M).")
+        if echo is not None:
+            echo(f'activation: "{sg["activation"]}" from the shipped config.')
+
+    # --- bake the standalone wrappers (reuses write_run_wrapper) ---
+    from ..diagnostics import get_capabilities
+    elpa_env = get_capabilities().env_for_category("siesta-gpu")
+
+    # Emit .sbatch only when the DETECTED scheduler is SLURM.  Otherwise a
+    # bundle carrying an HPC scheduler block but prepped on a workstation
+    # would emit stray SLURM .sbatch files that don't match the machine
+    # (write_run_wrapper keys sbatch emission off the config block; the
+    # detected scheduler is the truth -- § 7.5).
+    emit_sbatch = env.scheduler == "slurm"
+
+    written: List[Path] = []
+    cpu = jobs["cpu"]
+    written.append(write_run_wrapper(
+        out_dir / cpu["fdf"], mpi_np=cpu["mpi_np"],
+        cpus_per_task=cpu["cpus_per_task"], time=cpu.get("time"),
+        env=elpa_env, emit_sbatch=emit_sbatch))
+
+    gpu = jobs["gpu"]
+    cores = env.topology.cores_per_socket or 24
+    gtype = env.topology.gpu_type or "a100"
+    gpu_c = max(1, cores // gpu["gpu_k"])
+    written.append(write_run_wrapper(
+        out_dir / gpu["fdf"], mpi_np=gpu["gpu_k"] * gpu["gpu_gpus"],
+        gres=f"{gtype}:{gpu['gpu_gpus']}", cpus_per_task=gpu_c,
+        time=gpu.get("time"), exclusive=gpu.get("exclusive"), env=elpa_env,
+        emit_sbatch=emit_sbatch))
+
+    # write_run_wrapper returns only the .run.sh; pick up the .sbatch it
+    # emits (when a scheduler is configured) + the shipped monitor.
+    for extra in (out_dir / "job-cpu.sbatch", out_dir / "job-gpu.sbatch",
+                  out_dir / "mb_monitor.py"):
+        if extra.is_file() and extra not in written:
+            written.append(extra)
+    return written
 
 
 # Stdlib-only modules that form the shipped on-target prep-lib, and the

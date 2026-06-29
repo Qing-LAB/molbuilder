@@ -157,7 +157,10 @@ def _make_out_with_config(tmp_path) -> Path:
     return out
 
 
-def test_generate_bundle_emits_both_jobs(tmp_path):
+def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
+    # generate writes the TARGET-NEUTRAL bundle: fdf inputs + manifest +
+    # sweep placeholder + README + pseudos.  The run wrappers are baked at
+    # PREP, on the target (job-execution.md § 7) -- so they are absent here.
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)
 
@@ -166,15 +169,26 @@ def test_generate_bundle_emits_both_jobs(tmp_path):
         gpus_per_node=4, cores_per_socket=24)
 
     names = {p.name for p in written}
-    for expect in ("job-cpu.fdf", "job-gpu.fdf", "job-cpu.run.sh",
-                   "job-gpu.run.sh", "job-cpu.sbatch", "job-gpu.sbatch",
+    for expect in ("job-cpu.fdf", "job-gpu.fdf", "bench-manifest.json",
                    "job-gpu-sweep.sh", "README.md", "C.psml"):
         assert expect in names, f"missing {expect}"
         assert (out_dir / expect).is_file()
+    # wrappers are NOT baked at generate (portable bundle)
+    assert not (out_dir / "job-cpu.run.sh").exists()
+    assert not (out_dir / "job-gpu.run.sh").exists()
+    assert not (out_dir / "job-cpu.sbatch").exists()
 
     # GPU fdf routes to GPU; CPU fdf does not.
     assert "Diag.ELPA.GPU" in (out_dir / "job-gpu.fdf").read_text()
     assert "Diag.ELPA.GPU" not in (out_dir / "job-cpu.fdf").read_text()
+
+    # the manifest carries the chosen knobs verbatim (§ 7.3)
+    man = json.loads((out_dir / "bench-manifest.json").read_text())
+    assert man["schema"] == "molbuilder/bench-manifest@1"
+    assert man["jobs"]["cpu"]["mpi_np"] == 64
+    assert man["jobs"]["cpu"]["cpus_per_task"] == 1
+    assert man["jobs"]["gpu"]["gpu_gpus"] == 1
+    assert man["jobs"]["gpu"]["gpu_k"] == 4
 
 
 #  Activation resolution -- the hole that dead-ended a fresh user:        #
@@ -188,27 +202,28 @@ def _no_server_config(monkeypatch):
     monkeypatch.setattr(rc, "_read_server_wide", lambda: {})
 
 
-def test_generate_cold_start_autodetects_activation(tmp_path, monkeypatch):
-    # THE regression for this whole episode: an empty out dir, NO config
-    # anywhere -> generate must still succeed by auto-detecting conda,
-    # and bake a real activation into the run wrapper.
+def test_generate_cold_start_is_target_neutral(tmp_path, monkeypatch):
+    # No config, no flags -> generate must NOT autodetect the host's conda
+    # and must NOT write a .molbuilder.json.  Activation is decided at PREP,
+    # on the target (job-execution.md § 7); generate stays target-neutral.
     import molbuilder.runtime_config as rc
     _no_server_config(monkeypatch)
+    # Even if a host conda is detectable, generate must not consult it.
     monkeypatch.setattr(rc, "detect_conda_activation",
                         lambda: {"activation": "conda activate",
                                  "preamble": 'source "/x/conda.sh"'})
     fdf = _make_src(tmp_path)
     out = tmp_path / "out"; out.mkdir()           # NO .molbuilder.json
-    out_dir, written = generate_bench_bundle(fdf, out)
-    assert (out_dir / "job-cpu.run.sh").is_file()
-    cfg = json.loads((out_dir / ".molbuilder.json").read_text())
-    assert cfg["script_generation"]["activation"] == "conda activate"
-    assert "conda activate" in (out_dir / "job-cpu.run.sh").read_text()
+    out_dir, _ = generate_bench_bundle(fdf, out)
+    assert not (out_dir / "job-cpu.run.sh").exists()
+    assert not (out_dir / ".molbuilder.json").exists()
+    assert (out_dir / "bench-manifest.json").is_file()
 
 
-def test_generate_explicit_activation_flag(tmp_path, monkeypatch):
-    # An HPC target: the generating box's conda is irrelevant; the user
-    # supplies activation/preamble and it lands in the scripts.
+def test_generate_explicit_activation_persisted_for_prep(tmp_path, monkeypatch):
+    # An HPC target: generate persists the explicit activation/preamble into
+    # .molbuilder.json for `bench prep` to consume on the cluster.  It does
+    # NOT bake a wrapper here (that happens at prep).
     _no_server_config(monkeypatch)
     fdf = _make_src(tmp_path)
     out = tmp_path / "out"; out.mkdir()
@@ -217,35 +232,21 @@ def test_generate_explicit_activation_flag(tmp_path, monkeypatch):
     cfg = json.loads((out_dir / ".molbuilder.json").read_text())
     assert cfg["script_generation"]["activation"] == "source activate"
     assert cfg["script_generation"]["preamble"] == "module load mamba"
-    run = (out_dir / "job-cpu.run.sh").read_text()
-    assert "module load mamba" in run and "source activate" in run
+    assert not (out_dir / "job-cpu.run.sh").exists()
 
 
-def test_generate_preamble_only_flag_is_honored(tmp_path, monkeypatch):
-    # --preamble WITHOUT --activation must NOT be silently dropped: the
-    # activation comes from auto-detect, the preamble from the flag.
-    import molbuilder.runtime_config as rc
+def test_generate_preamble_only_persists_preamble(tmp_path, monkeypatch):
+    # --preamble WITHOUT --activation: persist the preamble; leave activation
+    # unset so prep resolves it (workstation autodetect / HPC explicit).  No
+    # host-conda autodetect at generate.
     _no_server_config(monkeypatch)
-    monkeypatch.setattr(rc, "detect_conda_activation",
-                        lambda: {"activation": "conda activate",
-                                 "preamble": 'source "/x/conda.sh"'})
     fdf = _make_src(tmp_path)
     out = tmp_path / "out"; out.mkdir()
     out_dir, _ = generate_bench_bundle(fdf, out, preamble="module load mamba")
     cfg = json.loads((out_dir / ".molbuilder.json").read_text())
     assert cfg["script_generation"]["preamble"] == "module load mamba"
-    assert cfg["script_generation"]["activation"] == "conda activate"
-    assert "module load mamba" in (out_dir / "job-cpu.run.sh").read_text()
-
-
-def test_generate_no_activation_no_conda_errors_helpfully(tmp_path, monkeypatch):
-    import molbuilder.runtime_config as rc
-    _no_server_config(monkeypatch)
-    monkeypatch.setattr(rc, "detect_conda_activation", lambda: None)
-    fdf = _make_src(tmp_path)
-    out = tmp_path / "out"; out.mkdir()
-    with pytest.raises(rc.RuntimeConfigError, match="--activation"):
-        generate_bench_bundle(fdf, out)
+    assert "activation" not in cfg["script_generation"]
+    assert not (out_dir / "job-cpu.run.sh").exists()
 
 
 def test_generate_help_documents_molbuilder_json_explicitly():
@@ -268,50 +269,11 @@ def test_detect_conda_activation_finds_local_conda():
     assert got["preamble"].startswith("source ")
 
 
-def test_generate_cpu_sbatch_has_estimated_mem(tmp_path):
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out, cpu_np=64)
-    cpu_sbatch = (out_dir / "job-cpu.sbatch").read_text()
-    # The system-aware estimator wrote a concrete --mem (not the null
-    # default) and annotated it.
-    assert re.search(r"^#SBATCH --mem=\d+G", cpu_sbatch, re.MULTILINE)
-    assert "auto-estimated" in cpu_sbatch
-
-
-def test_cpu_sbatch_is_one_core_per_rank(tmp_path):
-    # CPU SIESTA is MPI-only: -c must be 1 so -n*-c fits one node (the
-    # GPU-oriented cpus_per_task=8 default would over-subscribe).
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out, cpu_np=64)
-    cpu_sbatch = (out_dir / "job-cpu.sbatch").read_text()
-    assert re.search(r"^#SBATCH -c 1\b", cpu_sbatch, re.MULTILINE)
-    assert re.search(r"^#SBATCH -n 64\b", cpu_sbatch, re.MULTILINE)
-
-
-def test_gpu_exclusive_flag(tmp_path):
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out, gpu_exclusive=False)
-    assert "--exclusive" not in (out_dir / "job-gpu.sbatch").read_text()
-    out2 = tmp_path / "out2"
-    out2.mkdir()
-    (out2 / ".molbuilder.json").write_text(
-        (out / ".molbuilder.json").read_text())
-    out_dir2, _ = generate_bench_bundle(fdf, out2, gpu_exclusive=True)
-    assert "--exclusive" in (out_dir2 / "job-gpu.sbatch").read_text()
-
-
-def test_generate_gpu_sbatch_has_gres_and_ranks(tmp_path):
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out, gpu_gpus=1, gpu_k=4,
-                                       cores_per_socket=24)
-    gpu_sbatch = (out_dir / "job-gpu.sbatch").read_text()
-    assert "--gres=gpu:a100:1" in gpu_sbatch
-    assert re.search(r"^#SBATCH -n 4", gpu_sbatch, re.MULTILINE)   # K*G
-    assert re.search(r"^#SBATCH -c 6", gpu_sbatch, re.MULTILINE)   # 24/K
+# NOTE: the sbatch CONTENT tests (estimated --mem, -c 1 / -n for CPU,
+# gpu --gres / -n=K*G / -c=cores//K, --exclusive) moved to
+# tests/test_bench_prep.py::TestBakeTargetWrappers -- the wrappers are now
+# baked at PREP, on the target, from the detected topology (job-execution.md
+# § 7).  They are no longer produced by `generate`.
 
 
 def test_generate_rejects_non_fdf(tmp_path):

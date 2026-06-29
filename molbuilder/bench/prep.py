@@ -74,6 +74,28 @@ def run_prep_bench(out_dir,
     return env, written
 
 
+def _readiness_lines(env: Environment) -> List[str]:
+    """Surface the EXISTING ``molbuilder envs`` readiness checks
+    (job-execution.md § 3.4, "Job B"): prep *points at* them so the
+    scientist runs them before spending a queue slot.  Point only -- never
+    auto-run, never auto-install (assistant, not nanny -- design.md Stance).
+
+    ``doctor`` always shows (env presence + each recipe's verify command);
+    the GPU-env ``validate`` line shows only when GPUs were detected, since
+    that is where the CUDA-stack / ELPA-GPU-codepath probe matters."""
+    lines = [
+        "  next: verify this target is ready before you submit "
+        "(prep points; you run):",
+        "    molbuilder envs doctor"
+        "                          # envs present + each recipe's verify cmd",
+    ]
+    if env.topology.gpus_per_node:
+        lines.append(
+            "    molbuilder envs validate molbuilder-siesta-gpu"
+            "  # CUDA stack + ELPA-GPU codepath")
+    return lines
+
+
 def _summary(env: Environment, written: List[Path]) -> str:
     t = env.topology
     lines = [
@@ -87,6 +109,7 @@ def _summary(env: Environment, written: List[Path]) -> str:
         "  wrote:",
     ]
     lines += [f"    {p}" for p in written]
+    lines += _readiness_lines(env)
     return "\n".join(lines)
 
 

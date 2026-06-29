@@ -363,23 +363,19 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
         click.echo(f"ERROR: {e}", err=True)
         raise SystemExit(2)
 
-    gpu_c = max(1, cores_per_socket // gpu_k)
     click.echo("==== molbuilder bench generate ====")
     click.echo(f"input  : {fdf}")
-    click.echo(f"out    : {out}")
-    click.echo(f"job-cpu: ELPA-1STAGE (no CUDA), default -n {cpu_np}")
-    click.echo(f"job-gpu: ELPA-1STAGE + Diag.ELPA.GPU, default G={gpu_gpus} "
-               f"K={gpu_k} (-n {gpu_k*gpu_gpus} -c {gpu_c})")
-    has_sbatch = any(p.suffix == ".sbatch" for p in written)
-    if not has_sbatch:
-        click.echo("note   : no scheduler configured -> only .run.sh emitted "
-                   "(no .sbatch); see slurm-integration.md.")
+    click.echo(f"out    : {out}  (portable bundle -- run wrappers baked at prep)")
+    click.echo(f"job-cpu: ELPA-1STAGE (no CUDA), -n {cpu_np}")
+    click.echo(f"job-gpu: ELPA-1STAGE + Diag.ELPA.GPU, G={gpu_gpus} K={gpu_k}")
     click.echo("")
     for p in written:
         click.echo(f"  {p.relative_to(out)}")
     click.echo("")
-    click.echo("Next: read README.md, then `sbatch job-cpu.sbatch` and "
-               "`./job-gpu-sweep.sh` in the out dir.")
+    click.echo("Next: copy the bundle to the target, then "
+               "`molbuilder bench prep` THERE (it detects the machine, "
+               "resolves activation, and bakes job-{cpu,gpu}.run.sh / "
+               ".sbatch). Then run job-cpu + `./job-gpu-sweep.sh`.")
 
 
 @bench_group.command("prep",
@@ -408,6 +404,8 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     Writes ``environment.json`` + the topology-sized ``job-gpu-sweep.sh``.
     Run it in the bundle directory on the target; no hand-editing needed.
     """
+    from ..runtime_config import RuntimeConfigError
+    from .generate import bake_target_wrappers
     from .prep import (_overrides_from, _parse_ks, _summary, run_prep_bench,
                        utc_now_iso)
 
@@ -417,6 +415,17 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         scheduler_override=scheduler,
         ks=_parse_ks(gpu_ks),
         now_iso=utc_now_iso())
+
+    # Bake the run wrappers for THIS target (job-execution.md § 7.4): resolve
+    # activation (workstation autodetect / HPC shipped config) + write
+    # job-{cpu,gpu}.run.sh(.sbatch).  This is what makes one bundle portable.
+    try:
+        written += bake_target_wrappers(out, env, echo=click.echo)
+    except (RuntimeConfigError, FileNotFoundError) as e:
+        click.echo(_summary(env, written))
+        click.echo(f"\nERROR baking run wrappers: {e}", err=True)
+        raise SystemExit(2)
+
     click.echo(_summary(env, written))
 
 
