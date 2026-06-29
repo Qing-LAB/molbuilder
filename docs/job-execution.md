@@ -797,12 +797,13 @@ detection rule, then runs it:
    is *not* on PATH → load it via the bundle's `.molbuilder.json` `preamble`
    (e.g. `module load mamba`), then activate. The host-env name is baked from
    the generating env; override with `MB_HOST_ENV`.
-2. *Resolve the invocation* (`$_mb_run`): the `molbuilder` console script if
-   installed, else `python -m molbuilder` if importable, else (dev checkout,
-   no install) the repo root found by walking up from the shim →
-   `env PYTHONPATH=<repo> python -m molbuilder`. (So a bundle placed under the
-   repo works in dev; a bundle copied to a bare HPC node needs molbuilder
-   *importable* in that env — the contract.)
+2. *Resolve the invocation* (`$_mb_run`), in order: **`MB_REPO=<path>`** (the
+   explicit escape hatch — point it at a molbuilder checkout) → the
+   `molbuilder` console script if installed → `python -m molbuilder` if
+   importable → (dev checkout) the repo root found by walking up from the shim
+   → `env PYTHONPATH=<repo> python -m molbuilder`. (So a bundle placed under
+   the repo works in dev; a bundle copied to a bare HPC node needs molbuilder
+   *importable* in that env — installed, or `MB_REPO` pointed at a checkout.)
 
 | shim (in the bundle) | calls | does |
 |---|---|---|

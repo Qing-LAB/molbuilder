@@ -214,6 +214,7 @@ def test_generate_ships_self_bootstrapping_shims(tmp_path):
         # bootstrap: env activation (workstation autodetect / HPC preamble) +
         # invocation resolution into $_mb_run, then the actual call.
         assert "MB_HOST_ENV" in t                 # baked host-env (overridable)
+        assert "MB_REPO" in t                     # explicit repo escape hatch
         assert 'import molbuilder' in t           # importability gate
         assert "conda activate" in t              # workstation activation
         assert '"preamble"' in t                  # reads HPC preamble from config (not hardcoded)
