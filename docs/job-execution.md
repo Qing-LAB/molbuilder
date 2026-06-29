@@ -887,6 +887,15 @@ intent + units, and the two "K"s are disambiguated:
   scripts" + "manifest@2 is self-describing" tests.
 - `benchmark-workflow.md` § 7 reconciled to the single-entry model.
 
+### 8.9 Resolved decisions (confirmed 2026-06-28 — all yes)
+
+1. **`run-bench` runs CPU + full GPU sweep by default** — one command does the
+   whole matrix; individual `job-*.run.sh` remain.
+2. **`mbbench/` dropped entirely** — obsolete per the § 3.4 contract; the shims
+   call molbuilder.
+3. **Manifest bumped to `@2`** with the self-describing shape above (pre-1.0,
+   no back-compat shim).
+
 ### 8.10 Fresh-eye review finding — the workstation sweep didn't sweep (FIXED 2026-06-28)
 
 A post-implementation review of the *generated* scripts found that the
@@ -904,11 +913,15 @@ launcher actually honours these").
 `OMP_NUM_THREADS` (the vars the wrapper's *launch* actually reads — matching
 its own `cpu_launch_line`). Tests corrected to the honored vars.
 
-### 8.9 Open questions to confirm before coding
+### 8.11 Open follow-up — CPU baseline default rank count
 
-1. **`run-bench` runs CPU + full GPU sweep by default?** (Proposal: yes —
-   one command does the whole matrix; individual `job-*.run.sh` remain.)
-2. **Drop `mbbench/` entirely?** (Proposal: yes — obsolete per the § 3.4
-   contract; the shims call molbuilder.)
-3. **Manifest bump to `@2`** with the self-describing shape above? (Proposal:
-   yes; pre-1.0, no back-compat shim.)
+The CPU baseline bakes `points.cpu.mpi_np = 64` (a Sol-sized default from
+`bench generate`). On a target with fewer cores, `./run-bench`'s CPU point
+asks `mpirun -np 64`, which OpenMPI **refuses by default** (not enough slots)
+unless oversubscription is allowed — so the CPU point can fail to launch, not
+merely thrash. `BENCH-PLAN.md` surfaces the value + how to change it (edit
+`points.cpu.mpi_np`), but a cleaner default would be for `prep` to clamp the
+CPU baseline to the detected core count (sockets×cores_per_socket) unless the
+user overrode it — adapting resources to the machine, the same way GPU `-c` is
+derived. **Not yet implemented** (deferred — it changes a default, the
+scientist's call). Until then: set `points.cpu.mpi_np` before `./run-bench`.
