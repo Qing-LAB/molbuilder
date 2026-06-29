@@ -423,13 +423,19 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     # CPU is MPI-only (1 core/rank); both points run ELPA-1STAGE in
     # molbuilder-siesta-gpu (ELPA lives only there) -- the env is declared
     # at bake time, not silently re-routed.  GPU: G GPUs x K ranks/GPU.
+    # ``engine`` + per-job ``script`` are engine-NEUTRAL on purpose: the
+    # job-execution layer (prep, bake, runwrap) dispatches by file extension
+    # (.fdf -> siesta, .py -> pyscf), so a future PySCF bench reuses this
+    # exact schema with engine="pyscf" + script="job-cpu.py" -- no special
+    # casing.  Keep the key "script", not "fdf" (job-execution.md § 7.3).
     manifest = out_dir / "bench-manifest.json"
     manifest.write_text(json.dumps({
         "schema": "molbuilder/bench-manifest@1",
+        "engine": "siesta",
         "jobs": {
-            "cpu": {"fdf": cpu_fdf.name, "mpi_np": cpu_np,
+            "cpu": {"script": cpu_fdf.name, "mpi_np": cpu_np,
                     "cpus_per_task": cpu_cpus_per_task, "time": cpu_time},
-            "gpu": {"fdf": gpu_fdf.name, "gpu_gpus": gpu_gpus,
+            "gpu": {"script": gpu_fdf.name, "gpu_gpus": gpu_gpus,
                     "gpu_k": gpu_k, "time": gpu_time,
                     "exclusive": gpu_exclusive},
         },
@@ -527,7 +533,7 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
     written: List[Path] = []
     cpu = jobs["cpu"]
     written.append(write_run_wrapper(
-        out_dir / cpu["fdf"], mpi_np=cpu["mpi_np"],
+        out_dir / cpu["script"], mpi_np=cpu["mpi_np"],
         cpus_per_task=cpu["cpus_per_task"], time=cpu.get("time"),
         env=elpa_env, emit_sbatch=emit_sbatch))
 
@@ -536,7 +542,7 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
     gtype = env.topology.gpu_type or "a100"
     gpu_c = max(1, cores // gpu["gpu_k"])
     written.append(write_run_wrapper(
-        out_dir / gpu["fdf"], mpi_np=gpu["gpu_k"] * gpu["gpu_gpus"],
+        out_dir / gpu["script"], mpi_np=gpu["gpu_k"] * gpu["gpu_gpus"],
         gres=f"{gtype}:{gpu['gpu_gpus']}", cpus_per_task=gpu_c,
         time=gpu.get("time"), exclusive=gpu.get("exclusive"), env=elpa_env,
         emit_sbatch=emit_sbatch))

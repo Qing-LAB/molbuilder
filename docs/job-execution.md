@@ -561,14 +561,24 @@ user's benchmark knobs (chosen via `bench generate` flags). Derived numbers
 ```json
 {
   "schema": "molbuilder/bench-manifest@1",
+  "engine": "siesta",
   "jobs": {
-    "cpu": { "fdf": "job-cpu.fdf", "mpi_np": 64,
+    "cpu": { "script": "job-cpu.fdf", "mpi_np": 64,
              "cpus_per_task": 1, "time": null },
-    "gpu": { "fdf": "job-gpu.fdf", "gpu_gpus": 1, "gpu_k": 4,
+    "gpu": { "script": "job-gpu.fdf", "gpu_gpus": 1, "gpu_k": 4,
              "time": null, "exclusive": null }
   }
 }
 ```
+
+> **Engine-neutral by design (multi-engine readiness).** `engine` +
+> per-job `script` (not `fdf`) keep the schema engine-agnostic: the
+> job-execution layer (prep/bake/runwrap) dispatches by file *extension*
+> (`.fdf`→siesta, `.py`→pyscf), so a future PySCF bench reuses this exact
+> schema with `engine: "pyscf"` + `script: "job-cpu.py"` — no special
+> casing. The science-specific part (how the inputs are produced —
+> `transform_fdf` for SIESTA) stays in the engine's own module; only the
+> *generic* run knobs live here.
 
 | field | source (generate flag) | consumed at prep as |
 |---|---|---|
@@ -650,12 +660,12 @@ bake_target_wrappers(out, env):
     # workstation, would emit stray SLURM .sbatch files (§ 7.5 #6).
     emit_sbatch = (env.scheduler == "slurm")
     cpu = manifest.jobs.cpu
-    write_run_wrapper(out/cpu.fdf, env=elpa_env, emit_sbatch=emit_sbatch,
+    write_run_wrapper(out/cpu.script, env=elpa_env, emit_sbatch=emit_sbatch,
                       mpi_np=cpu.mpi_np, cpus_per_task=cpu.cpus_per_task, time=cpu.time)
     gpu = manifest.jobs.gpu
     cores = env.topology.cores_per_socket or 24
     gtype = env.topology.gpu_type or "a100"
-    write_run_wrapper(out/gpu.fdf, env=elpa_env, emit_sbatch=emit_sbatch,
+    write_run_wrapper(out/gpu.script, env=elpa_env, emit_sbatch=emit_sbatch,
                       mpi_np=gpu.gpu_k*gpu.gpu_gpus,
                       gres=f"{gtype}:{gpu.gpu_gpus}",
                       cpus_per_task=max(1, cores//gpu.gpu_k),

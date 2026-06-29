@@ -185,6 +185,12 @@ def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
     # the manifest carries the chosen knobs verbatim (§ 7.3)
     man = json.loads((out_dir / "bench-manifest.json").read_text())
     assert man["schema"] == "molbuilder/bench-manifest@1"
+    # engine-neutral schema (multi-engine readiness): top-level engine +
+    # per-job `script` (NOT a SIESTA-flavored `fdf` key)
+    assert man["engine"] == "siesta"
+    assert man["jobs"]["cpu"]["script"] == "job-cpu.fdf"
+    assert man["jobs"]["gpu"]["script"] == "job-gpu.fdf"
+    assert "fdf" not in man["jobs"]["cpu"]
     assert man["jobs"]["cpu"]["mpi_np"] == 64
     assert man["jobs"]["cpu"]["cpus_per_task"] == 1
     assert man["jobs"]["gpu"]["gpu_gpus"] == 1
