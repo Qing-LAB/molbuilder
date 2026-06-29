@@ -529,21 +529,27 @@ def test_cpu_mode_wrapper_does_not_emit_numa_wrap_gpu_branches(
     assert '$_numa_wrap_gpu mpirun' in wrapper_text
 
 
-def test_gpu_runtime_defaults_block_emits_3_line_banner(
+def test_gpu_resources_summary_unified_in_launch_banner(
         tmp_path, caps_with_gpu_env):
-    """C fix (2026-06-16): the GPU runtime banner now has 3 lines on
-    stderr: (1) mode summary, (2) chosen arithmetic + GPU NUMA, (3)
-    the advisor / override pointer.  Pin all three line headers so a
-    regression in the bash heredoc surfaces loudly."""
+    """Unified-banner contract (2026-06-28): there is ONE GPU-resource
+    summary, in the post-resolution launch banner, printed with the
+    RESOLVED launch values ($_mpi_np / $_omp_threads / final MPS / ranks per
+    GPU) -- NOT a separate pre-resolution probe advisory that could
+    contradict it.  The early `_gpu_runtime_defaults_block` no longer emits a
+    `molbuilder: chosen ...` line."""
     cfg = SiestaConfig(enable_gpu=True)
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
-    assert "molbuilder: GPU mode (ELPA-CUDA, no NCCL)" in wrapper_text
-    assert "molbuilder: chosen" in wrapper_text
+    # the single unified summary line, in the launch banner, resolved values
+    assert "GPU resources : GPU mode (ELPA-CUDA, no NCCL)" in wrapper_text
+    assert "chosen $_mpi_np ranks × $_omp_threads threads" in wrapper_text
     assert "GPU0 NUMA=" in wrapper_text
     assert "molbuilder envs advise siesta-gpu" in wrapper_text
+    # the contradictory pre-resolution probe advisory is GONE
+    assert "molbuilder: chosen $_gpu_mpi_np_default ranks" not in wrapper_text
+    assert "molbuilder: GPU mode (ELPA-CUDA, no NCCL)" not in wrapper_text
 
 
 def test_gpu_runtime_defaults_block_probes_gpu_numa(

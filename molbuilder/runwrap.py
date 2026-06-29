@@ -1420,25 +1420,16 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# ``mpi_np=N`` / ``OMP=M`` -- no risk of the reader thinking\n'
         '# ``mps=1`` means "1 MPS instance" (there is no count to\n'
         '# choose: one MPS daemon per GPU, all ranks share it).\n'
+        # NO user-facing advisory here.  This block runs BEFORE the rank /
+        # OMP / MPS overrides (SLURM_NTASKS, MB_NP, -np, --mps, or a baked
+        # bench literal) are resolved, so announcing "chosen N ranks" from
+        # the probe here could contradict what actually launches.  The
+        # SINGLE authoritative GPU-resource summary is printed once, in the
+        # post-resolution launch banner (search "GPU resources"), with the
+        # real resolved values.  We only stringify the MPS default for the
+        # --dry-run banner's pre-resolution preview.
         '_use_mps_str="off"; '
         '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
-        '_numa_str="off"; [ "$_numa_pinned" = 1 ] && '
-        '_numa_str="on (socket $_gpu_numa)"\n'
-        '_total_cores_used=$(( _gpu_mpi_np_default * _omp_default ))\n'
-        # Banner: 3 lines on stderr, kubectl-style.  Line 1 is the
-        # mode summary; line 2 is the derived arithmetic + NUMA pin
-        # state + budget shape; line 3 is the advisor / override hint.
-        'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
-        'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
-        'mps=$_use_mps_str, numa-pin=$_numa_str" >&2\n'
-        'echo "molbuilder: chosen $_gpu_mpi_np_default ranks '
-        '× $_omp_default threads = $_total_cores_used '
-        'of $_gpu_budget budget cores (GPU0 NUMA=$_gpu_numa, '
-        'phys=$_phys_cores, cps=$_cps)" >&2\n'
-        'echo "molbuilder: tune via \'molbuilder envs advise '
-        'siesta-gpu\' or MOLBUILDER_MPI_NP / '
-        'MOLBUILDER_OMP_NUM_THREADS / MOLBUILDER_USE_MPS / '
-        '-np / -omp / --mps / --no-mps" >&2\n'
         "\n"
     )
 
@@ -2247,6 +2238,22 @@ def render_run_wrapper(script_path: Path, *,
             # GPU mode: print a brief monitoring hint so the user has
             # nvidia-smi commands at hand when they start the run.
             + ((
+                # THE single authoritative GPU-resource summary, printed
+                # with the RESOLVED launch values ($_mpi_np / $_omp_threads
+                # / final $_use_mps_default / $_ranks_per_gpu) so it always
+                # matches what runs -- replacing the old pre-resolution
+                # probe advisory that could contradict it (one unified line
+                # for the user).  $_gpu_numa is the generation-time GPU0
+                # NUMA probe (per-rank placement is logged per rank below).
+                '_mps_str_now="off"; '
+                '[ "$_use_mps_default" = "1" ] && _mps_str_now="on"\n'
+                'echo "  GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- '
+                'chosen $_mpi_np ranks × $_omp_threads threads '
+                '($(( _mpi_np * _omp_threads )) cores); mps=$_mps_str_now; '
+                'ranks/GPU=${_ranks_per_gpu:-?}; GPU0 NUMA=$_gpu_numa"\n'
+                'echo "                # tune: molbuilder envs advise '
+                'siesta-gpu | MOLBUILDER_MPI_NP / MOLBUILDER_OMP_NUM_THREADS '
+                '/ -np / -omp / --mps / --no-mps"\n'
                 # IMPORTANT: keep the command on its own line so the
                 # user can copy-paste it directly into a shell.  An
                 # earlier banner shape put ``(sm%, mem%, ...)`` after
