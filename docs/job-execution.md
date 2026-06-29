@@ -887,6 +887,23 @@ intent + units, and the two "K"s are disambiguated:
   scripts" + "manifest@2 is self-describing" tests.
 - `benchmark-workflow.md` § 7 reconciled to the single-entry model.
 
+### 8.10 Fresh-eye review finding — the workstation sweep didn't sweep (FIXED 2026-06-28)
+
+A post-implementation review of the *generated* scripts found that the
+**workstation** GPU sweep set `MOLBUILDER_MPI_NP=K` / `MOLBUILDER_OMP_NUM_THREADS`
+per point — but the baked `job-gpu.run.sh` carries an **explicit** `mpi_np`, so
+those vars only set the *auto-mode* default, which the explicit value
+**shadows**. Verified empirically: `MOLBUILDER_MPI_NP=8 → 4 ranks` (ignored),
+`MB_NP=8 → 8 ranks` (honored). So every GPU sweep point ran the *same* baked K
+— the sweep didn't sweep — and the same bug hit the workstation **production**
+run (`prep-run`). (SLURM was fine: `sbatch -n` → `SLURM_NTASKS`, which the
+wrapper honors.) Several tests had *locked in* the bug (one even commented "the
+launcher actually honours these").
+
+**Fix:** `WorkstationAdapter.gpu_launch_line` now emits `MB_NP` /
+`OMP_NUM_THREADS` (the vars the wrapper's *launch* actually reads — matching
+its own `cpu_launch_line`). Tests corrected to the honored vars.
+
 ### 8.9 Open questions to confirm before coding
 
 1. **`run-bench` runs CPU + full GPU sweep by default?** (Proposal: yes —

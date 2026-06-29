@@ -317,12 +317,17 @@ class WorkstationAdapter(SchedulerAdapter):
         return env.scheduler == "workstation"
 
     def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
-        # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and drive
-        # the launcher's GPU-mode overrides directly.  Runs in-place
-        # (blocking) -> sequential sweep.  BARE command (see SlurmAdapter).
+        # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and set the
+        # per-point ranks/threads.  Use MB_NP / OMP_NUM_THREADS -- the vars
+        # the wrapper actually honors for the LAUNCH (`_mpi_np` reads
+        # MB_NP/SLURM_NTASKS; `_omp_threads` reads OMP_NUM_THREADS).  NOT
+        # MOLBUILDER_MPI_NP/MOLBUILDER_OMP_NUM_THREADS: those only set the
+        # GPU auto-default, which the wrapper's baked explicit mpi_np
+        # SHADOWS -- so the sweep would not vary K (bug found 2026-06-28).
+        # Same MB_NP convention as cpu_launch_line.
         cvd = ",".join(str(i) for i in range(g))
-        omp = "" if c is None else f"MOLBUILDER_OMP_NUM_THREADS={c} "
-        return (f"CUDA_VISIBLE_DEVICES={cvd} MOLBUILDER_MPI_NP={k * g} "
+        omp = "" if c is None else f"OMP_NUM_THREADS={c} "
+        return (f"CUDA_VISIBLE_DEVICES={cvd} MB_NP={k * g} "
                 f"{omp}./{script_base}.run.sh")
 
     def cpu_launch_line(self, np, script_base):

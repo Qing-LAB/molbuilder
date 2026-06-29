@@ -394,22 +394,26 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
     runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",
                               cpus_per_task=6)
     launcher = (project / "g.run.sh").read_text()
-    # the launcher actually honours these on a workstation (no SLURM):
-    assert "MOLBUILDER_MPI_NP" in launcher
-    assert "MOLBUILDER_OMP_NUM_THREADS" in launcher
+    # The launcher's LAUNCH honours MB_NP / OMP_NUM_THREADS (`_mpi_np` reads
+    # MB_NP/SLURM_NTASKS; `_omp_threads` reads OMP_NUM_THREADS).  NOTE: a baked
+    # explicit mpi_np makes MOLBUILDER_MPI_NP a no-op for the launch (it only
+    # sets the shadowed auto-default) -- so the workstation sweep MUST use
+    # MB_NP, not MOLBUILDER_MPI_NP (bug fixed 2026-06-28).
+    assert "MB_NP" in launcher
+    assert "OMP_NUM_THREADS" in launcher
 
     env = Environment(scheduler="workstation",
                       topology=Topology(cores_per_socket=24, gpus_per_node=1,
                                         gpu_type="a100"))
     sweep = WorkstationAdapter().format_bench(env)["job-gpu-sweep.sh"]
-    # the adapter drives those SAME knobs (+ CUDA_VISIBLE_DEVICES for G):
-    assert "MOLBUILDER_MPI_NP=" in sweep
-    assert "MOLBUILDER_OMP_NUM_THREADS=" in sweep
+    # the adapter drives the SAME honoured knobs (+ CUDA_VISIBLE_DEVICES for G):
+    assert "MB_NP=" in sweep
+    assert "OMP_NUM_THREADS=" in sweep
     assert "CUDA_VISIBLE_DEVICES=" in sweep
     run = WorkstationAdapter().format_run(
         {"engine": "gpu", "knobs": {"gpus": 1, "ranks_per_gpu": 8}}, env,
         script_base="prod")["run-production.sh"]
-    assert "MOLBUILDER_MPI_NP=8" in run
+    assert "MB_NP=8" in run
 
 
 def test_wrapper_gpu_has_no_mem_audit(project):

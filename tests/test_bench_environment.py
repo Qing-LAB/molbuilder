@@ -220,8 +220,8 @@ def test_format_bench_workstation_emits_direct_grid():
     s = _sweep(adapters.WorkstationAdapter(), env)
     # direct launch (no sbatch SUBMISSION), picks the GPU + launcher knobs
     assert "&& sbatch" not in s
-    assert ("CUDA_VISIBLE_DEVICES=0 MOLBUILDER_MPI_NP=8 "
-            "MOLBUILDER_OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
+    assert ("CUDA_VISIBLE_DEVICES=0 MB_NP=8 "
+            "OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
     assert "SEQUENTIALLY" in s
     # each point is isolated in its own dir
     assert "_mb_point point-G1K8" in s
@@ -294,8 +294,8 @@ def test_format_run_gpu_clamps_G_to_local_gpus():
     s = _run_script(adapters.WorkstationAdapter(), choice, env,
                     script_base="prod")
     # G clamped 4->1; c = 16//4 = 4; direct (no sbatch)
-    assert ("CUDA_VISIBLE_DEVICES=0 MOLBUILDER_MPI_NP=4 "
-            "MOLBUILDER_OMP_NUM_THREADS=4 ./prod.run.sh") in s
+    assert ("CUDA_VISIBLE_DEVICES=0 MB_NP=4 "
+            "OMP_NUM_THREADS=4 ./prod.run.sh") in s
     assert "G clamped 4->1" in s
     assert "sbatch" not in s
 

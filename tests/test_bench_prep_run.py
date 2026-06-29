@@ -58,7 +58,7 @@ def test_prep_run_workstation_direct_launch(tmp_path):
                    "gpu_type": "rtx"}, now_iso="t")
     text = out_path.read_text()
     assert "&& sbatch" not in text
-    assert "MOLBUILDER_MPI_NP=4" in text
+    assert "MB_NP=4" in text          # the var the wrapper honours (not MOLBUILDER_MPI_NP)
     assert "./prod.run.sh" in text
 
 
