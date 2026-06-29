@@ -472,7 +472,7 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
 
     # Ship the on-target entry shims (prep-bench / run-bench / bench-summarize
     # / prep-run) -- thin wrappers over `molbuilder bench …` (§ 8.3).
-    written.extend(_ship_entry_shims(out_dir))
+    written.extend(_ship_entry_shims(out_dir, _detect_host_env()))
 
     return out_dir, written
 
@@ -569,15 +569,76 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
 
 
 # The bundle's on-target entry points (job-execution.md § 8.3).  molbuilder
-# is installed on every target (the § 3.4 contract), so each shim is a thin
-# bash wrapper that calls the molbuilder machinery -- ONE implementation, no
-# shipped stdlib copy, no second command to remember.  ``run-bench`` is the
-# exception: it just runs the baked scripts (CPU baseline + GPU sweep).
-_BENCH_SHIMS = {
-    "prep-bench":     "exec molbuilder bench prep \"$@\"",
-    "bench-summarize": "exec molbuilder bench summarize \"$@\"",
-    "prep-run":       "exec molbuilder bench prep-run \"$@\"",
+# is installed on every target (the § 3.4 contract), so each shim SELF-BOOTSTRAPS
+# the molbuilder host env, then calls the molbuilder machinery -- ONE
+# implementation, no shipped stdlib copy, no second command, and the user never
+# has to activate anything by hand.  ``run-bench`` is the exception: it just
+# runs the baked .run.sh (which self-activate the BACKEND env themselves).
+_BENCH_SHIMS = {           # shim name -> the `molbuilder bench <sub>` it runs
+    "prep-bench":      "prep",
+    "bench-summarize": "summarize",
+    "prep-run":        "prep-run",
 }
+
+
+def _shim_bootstrap(host_env: str) -> str:
+    """Bash that makes the molbuilder CLI callable with NO manual activation
+    (job-execution.md § 8.3 / the § 3.4 contract), then sets ``$_mb_run`` to
+    the right invocation.  Two stages:
+
+    1. **Activate the molbuilder env** (only if molbuilder isn't already
+       importable).  Mirrors the T/M rule: *workstation* -- conda/mamba is on
+       PATH, autodetect the base + source the hook + ``conda activate <env>``;
+       *HPC clean shell* -- conda/mamba is NOT on PATH, load it via the
+       bundle's ``.molbuilder.json`` ``preamble`` (e.g. ``module load mamba``)
+       first.  Env name baked from the generating env; override ``MB_HOST_ENV``.
+    2. **Resolve the invocation** into ``$_mb_run``: the ``molbuilder`` console
+       script if installed, else ``python -m molbuilder`` if importable, else
+       (dev checkout) the repo root found by walking up from this script ->
+       ``env PYTHONPATH=<repo> python -m molbuilder``.  Errors loudly if none.
+    """
+    return (
+        '_mb_importable() { python -c "import molbuilder" >/dev/null 2>&1; }\n'
+        '# --- 1) activate the molbuilder env if it is not already usable ---\n'
+        'if ! command -v molbuilder >/dev/null 2>&1 && ! _mb_importable; then\n'
+        f'    _mb_env="${{MB_HOST_ENV:-{host_env}}}"\n'
+        '    if ! command -v conda >/dev/null 2>&1 && '
+        '! command -v mamba >/dev/null 2>&1 && [ -f .molbuilder.json ]; then\n'
+        '        _mb_pre="$(sed -n '
+        "'s/.*\"preamble\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'"
+        ' .molbuilder.json | head -1)"\n'
+        '        [ -n "$_mb_pre" ] && eval "$_mb_pre"\n'
+        '    fi\n'
+        '    _mb_base="$( { conda info --base || mamba info --base; } 2>/dev/null )"\n'
+        '    [ -n "$_mb_base" ] && [ -f "$_mb_base/etc/profile.d/conda.sh" ] && '
+        '. "$_mb_base/etc/profile.d/conda.sh"\n'
+        '    conda activate "$_mb_env" 2>/dev/null || '
+        'source activate "$_mb_env" 2>/dev/null || true\n'
+        'fi\n'
+        '# --- 2) resolve how to invoke molbuilder ---\n'
+        '_mb_run=""\n'
+        'if command -v molbuilder >/dev/null 2>&1; then _mb_run="molbuilder"\n'
+        'elif _mb_importable; then _mb_run="python -m molbuilder"\n'
+        'else\n'
+        '    _d="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"\n'
+        '    while [ -n "$_d" ] && [ "$_d" != "/" ]; do\n'
+        '        if [ -f "$_d/molbuilder/__init__.py" ] && '
+        'PYTHONPATH="$_d" python -c "import molbuilder" >/dev/null 2>&1; then\n'
+        '            _mb_run="env PYTHONPATH=$_d python -m molbuilder"; break\n'
+        '        fi\n'
+        '        _d="$(dirname "$_d")"\n'
+        '    done\n'
+        'fi\n'
+        'if [ -z "$_mb_run" ]; then\n'
+        '    echo "ERROR: cannot run molbuilder -- the molbuilder env must be '
+        'available on this target (the contract)." >&2\n'
+        '    echo "  Workstation: ensure conda/mamba + the molbuilder env exist '
+        '(env name: ${MB_HOST_ENV:-' + host_env + '}; override with MB_HOST_ENV)." >&2\n'
+        '    echo "  HPC: set script_generation.preamble in .molbuilder.json '
+        '(e.g. \'module load mamba\')." >&2\n'
+        '    exit 1\n'
+        'fi\n'
+    )
 
 _RUN_BENCH = """\
 #!/usr/bin/env bash
@@ -599,20 +660,36 @@ echo "===== all points done -- next: ./bench-summarize ====="
 """
 
 
-def _ship_entry_shims(out_dir: Path) -> List[Path]:
+def _detect_host_env() -> str:
+    """The molbuilder host-env name to bake into the shims: the env that is
+    running `bench generate` (so the bundle reactivates the same env on the
+    target).  Falls back to the conventional ``molbuilder`` when generate runs
+    from ``base`` / an unnamed env; always overridable on the target via
+    ``MB_HOST_ENV``."""
+    import os
+    env = os.environ.get("CONDA_DEFAULT_ENV") or ""
+    return env if env and env != "base" else "molbuilder"
+
+
+def _ship_entry_shims(out_dir: Path, host_env: str) -> List[Path]:
     """Write the bundle's on-target entry points (job-execution.md § 8.3):
-    thin bash shims that call ``molbuilder bench …`` (molbuilder is present
-    on every target -- the § 3.4 contract) + the static ``run-bench``.  No
-    stdlib ``mbbench/`` copy is shipped -- one implementation lives in
-    molbuilder and the shims are the single, discoverable entry points."""
+    bash shims that SELF-BOOTSTRAP the molbuilder host env (workstation
+    autodetect / HPC config preamble) and then call ``molbuilder bench …``
+    -- so the user never activates anything by hand.  No stdlib ``mbbench/``
+    copy is shipped; one implementation lives in molbuilder.  ``run-bench``
+    needs no bootstrap (it runs the baked .run.sh, which self-activate)."""
     written: List[Path] = []
-    for name, body in _BENCH_SHIMS.items():
+    boot = _shim_bootstrap(host_env)
+    for name, sub in _BENCH_SHIMS.items():
         p = out_dir / name
         p.write_text(
             "#!/usr/bin/env bash\n"
-            f"# {name}: entry point -- runs the molbuilder machinery on this\n"
-            "# target (molbuilder is installed here; job-execution.md § 8.3).\n"
-            f"{body}\n", encoding="utf-8")
+            f"# {name}: on-target entry point -- bootstraps the molbuilder env\n"
+            "# (no manual activation) then runs the CLI; job-execution.md § 8.3.\n"
+            "set -u\n"
+            + boot
+            + f'exec $_mb_run bench {sub} "$@"\n',
+            encoding="utf-8")
         p.chmod(0o755)
         written.append(p)
     rb = out_dir / "run-bench"

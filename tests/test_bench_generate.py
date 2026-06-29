@@ -200,18 +200,25 @@ def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
     assert man["points"]["gpu"]["gpu_k"] == 4
 
 
-def test_generate_ships_thin_molbuilder_shims(tmp_path):
-    # §8.3: the on-target entry points are thin bash shims that call
-    # `molbuilder bench …` (no shipped stdlib copy); run-bench guards.
+def test_generate_ships_self_bootstrapping_shims(tmp_path):
+    # §8.3: the on-target entry points are bash shims that SELF-BOOTSTRAP the
+    # molbuilder env (no manual activation) then run the CLI -- no stdlib copy.
     fdf = _make_src(tmp_path)
     out = _make_out_with_config(tmp_path)
     out_dir, _ = generate_bench_bundle(fdf, out)
-    for shim, call in (("prep-bench", "molbuilder bench prep"),
-                       ("bench-summarize", "molbuilder bench summarize"),
-                       ("prep-run", "molbuilder bench prep-run")):
+    for shim, sub in (("prep-bench", "prep"),
+                      ("bench-summarize", "summarize"),
+                      ("prep-run", "prep-run")):
         t = (out_dir / shim).read_text()
         assert t.startswith("#!/usr/bin/env bash")
-        assert f'exec {call} "$@"' in t
+        # bootstrap: env activation (workstation autodetect / HPC preamble) +
+        # invocation resolution into $_mb_run, then the actual call.
+        assert "MB_HOST_ENV" in t                 # baked host-env (overridable)
+        assert 'import molbuilder' in t           # importability gate
+        assert "conda activate" in t              # workstation activation
+        assert '"preamble"' in t                  # reads HPC preamble from config (not hardcoded)
+        assert "python -m molbuilder" in t        # fallback invocation
+        assert f'exec $_mb_run bench {sub} "$@"' in t
         assert (out_dir / shim).stat().st_mode & 0o111
     rb = (out_dir / "run-bench").read_text()
     assert "job-cpu.run.sh" in rb and "job-gpu-sweep.sh" in rb

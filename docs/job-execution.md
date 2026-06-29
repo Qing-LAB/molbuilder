@@ -783,9 +783,26 @@ retired. It wasn't. This redesign retires it.
 
 ### 8.3 The corrected model — one entry point per stage
 
-The bundle ships **thin shell shims that simply call the molbuilder machinery**
-(present by contract). Each shim is the obvious entry point; none asks the user
-to know a second command.
+The bundle ships **bash shims that SELF-BOOTSTRAP the molbuilder env and then
+call the molbuilder machinery** — the user never activates anything by hand.
+Each shim is the obvious entry point; none asks the user to know a second
+command.
+
+**The bootstrap (job-execution.md § 3.4 contract; `_shim_bootstrap`).** On a
+fresh shell the shim makes the `molbuilder` CLI callable, mirroring the T/M
+detection rule, then runs it:
+1. *Activate the env* (only if molbuilder isn't already importable):
+   **workstation** — conda/mamba is on PATH (the user guarantees it) → source
+   the conda hook + `conda activate <env>`; **HPC clean shell** — conda/mamba
+   is *not* on PATH → load it via the bundle's `.molbuilder.json` `preamble`
+   (e.g. `module load mamba`), then activate. The host-env name is baked from
+   the generating env; override with `MB_HOST_ENV`.
+2. *Resolve the invocation* (`$_mb_run`): the `molbuilder` console script if
+   installed, else `python -m molbuilder` if importable, else (dev checkout,
+   no install) the repo root found by walking up from the shim →
+   `env PYTHONPATH=<repo> python -m molbuilder`. (So a bundle placed under the
+   repo works in dev; a bundle copied to a bare HPC node needs molbuilder
+   *importable* in that env — the contract.)
 
 | shim (in the bundle) | calls | does |
 |---|---|---|
@@ -794,8 +811,8 @@ to know a second command.
 | **`./bench-summarize`** | `molbuilder bench summarize` | rank the points → `bench-result.json` |
 | **`./prep-run`** | `molbuilder bench prep-run` | winner → `run-production.sh` |
 
-- **`mbbench/` (stdlib copy) is removed.** The shims are ~3-line bash that
-  `exec molbuilder bench <sub> "$@"`. One implementation, in molbuilder.
+- **`mbbench/` (stdlib copy) is removed.** The shims bootstrap the env (above)
+  then `exec $_mb_run bench <sub> "$@"`. One implementation, in molbuilder.
 - **No half-state.** `./prep-bench` always produces a runnable bundle or
   fails loudly with the fix.
 
