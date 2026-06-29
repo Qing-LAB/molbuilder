@@ -404,8 +404,12 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     Writes ``environment.json`` + the topology-sized ``job-gpu-sweep.sh``.
     Run it in the bundle directory on the target; no hand-editing needed.
     """
+    import json
+    from pathlib import Path
+
     from ..runtime_config import RuntimeConfigError
-    from .generate import bake_target_wrappers
+    from .adapters import divisors
+    from .generate import bake_target_wrappers, render_bench_plan
     from .prep import (_overrides_from, _parse_ks, _summary, run_prep_bench,
                        utc_now_iso)
 
@@ -426,7 +430,19 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         click.echo(f"\nERROR baking run wrappers: {e}", err=True)
         raise SystemExit(2)
 
+    # Write + PRINT the human-readable benchmark plan (job-execution.md § 8.4):
+    # the enumerated matrix (CPU baseline + each GPU K), what's measured, and
+    # how to change it.  K matches the sweep (--gpu-ks or cores-per-socket
+    # divisors).
+    manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
+    ks = _parse_ks(gpu_ks) or divisors(env.topology.cores_per_socket or 0)
+    plan = render_bench_plan(env, manifest, ks)
+    plan_path = Path(out) / "BENCH-PLAN.md"
+    plan_path.write_text(plan + "\n", encoding="utf-8")
+    written.append(plan_path)
+
     click.echo(_summary(env, written))
+    click.echo("\n" + plan)
 
 
 @bench_group.command("summarize",

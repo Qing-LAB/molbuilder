@@ -240,36 +240,35 @@ exit cleanly (`COMPLETED`) instead of aborting non-zero -- otherwise SLURM
 marks every bench point `FAILED` and the accounting (`sacct MaxRSS`) is
 unreliable.
 
-## Portable bundle -- prep on the target
+## Portable bundle -- one entry point per step
 
-This bundle is **target-neutral**: the run wrappers are NOT baked yet.  Copy
-it to the machine it will run on, then prep THERE -- prep detects the machine,
-resolves the conda activation for it, and bakes the standalone
-`job-{{cpu,gpu}}.run.sh` (+ `.sbatch` on SLURM).  The SAME bundle works on a
-workstation and on an HPC node; no per-target regeneration.
+This bundle is **target-neutral**: the run wrappers are NOT baked yet.  Copy it
+to the machine it will run on, then run the four shell entry points below (each
+just calls molbuilder, which is installed on the target).  The SAME bundle works
+on a workstation and on an HPC node; no per-target regeneration.
 
 ```
-molbuilder bench prep        # detect machine + resolve activation + BAKE the
-                             #   run wrappers + write a topology-sized
-                             #   job-gpu-sweep.sh (each point isolated in its
-                             #   own point-G<g>K<k>/ dir)
-molbuilder envs doctor       # verify the env is ready before you submit
-bash job-gpu-sweep.sh        # run the sweep (sbatch per point on SLURM;
-                             #   sequential on a workstation)
+./prep-bench                 # THE on-target step: detect machine + resolve
+                             #   activation + BAKE job-{{cpu,gpu}}.run.sh(.sbatch)
+                             #   + write the real sweep + write/print BENCH-PLAN.md
+                             #   (read it -- it lists every point + how to change)
+./run-bench                  # run the WHOLE matrix: CPU baseline + GPU sweep
 ./bench-summarize            # parse the points -> bench-result.json (winner)
 ./prep-run --script-base <your-prod>   # winner -> run-production.sh
 ```
 
-- **Workstation:** `molbuilder bench prep` autodetects `conda activate`.
+`./prep-bench` prints **BENCH-PLAN.md** — the enumerated test matrix (CPU
+baseline + each GPU K), what's measured, and exactly how to change each knob.
+Read it; it's the source of truth for what will run.
+
+- **Workstation:** `./prep-bench` autodetects `conda activate`.
 - **HPC:** ship a `.molbuilder.json` with `script_generation`
   (`preamble: module load mamba`, `activation: source activate`) in the bundle
   -- the job runs in a clean shell, so the toolchain can't be autodetected.
 
-`molbuilder bench prep` accepts `--cores-per-socket` / `--gpus-per-node` /
+`./prep-bench` accepts `--gpu-ks` / `--cores-per-socket` / `--gpus-per-node` /
 `--gpu-type` / `--scheduler` overrides when detection can't see the compute
-node.  (The shipped stdlib `./prep-bench` does detection + the sweep only; it
-does not bake the run wrappers.)  See
-`docs/protocols/benchmark-workflow.md` and `docs/job-execution.md § 7`.
+node.  See `docs/job-execution.md § 8`.
 
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
@@ -428,16 +427,29 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     # (.fdf -> siesta, .py -> pyscf), so a future PySCF bench reuses this
     # exact schema with engine="pyscf" + script="job-cpu.py" -- no special
     # casing.  Keep the key "script", not "fdf" (job-execution.md § 7.3).
+    # Self-describing manifest@2 (job-execution.md § 8.6): a human can read it
+    # and understand WHAT is benchmarked.  `points` (not `jobs`); engine-neutral
+    # `script` key (.fdf->siesta, .py->pyscf); the two K's are disambiguated
+    # (point "gpu" carries the single-point gpu_k; the SWEEP K list is
+    # `sweep_param`/`sweep_default`, resolved at prep).
     manifest = out_dir / "bench-manifest.json"
     manifest.write_text(json.dumps({
-        "schema": "molbuilder/bench-manifest@1",
+        "schema": "molbuilder/bench-manifest@2",
         "engine": "siesta",
-        "jobs": {
-            "cpu": {"script": cpu_fdf.name, "mpi_np": cpu_np,
+        "description": "CPU-vs-GPU SCF-timing benchmark; cold, "
+                       "iteration-capped, single-point.",
+        "measured": "SCF wall-time per iteration (s/iter), from "
+                    "<basename>-run0.scf-timing.log",
+        "points": {
+            "cpu": {"script": cpu_fdf.name, "solver": "ELPA-1STAGE (no CUDA)",
+                    "role": "baseline", "mpi_np": cpu_np,
                     "cpus_per_task": cpu_cpus_per_task, "time": cpu_time},
-            "gpu": {"script": gpu_fdf.name, "gpu_gpus": gpu_gpus,
-                    "gpu_k": gpu_k, "time": gpu_time,
-                    "exclusive": gpu_exclusive},
+            "gpu": {"script": gpu_fdf.name, "solver": "ELPA-CUDA",
+                    "gpus": gpu_gpus, "gpu_k": gpu_k, "time": gpu_time,
+                    "exclusive": gpu_exclusive,
+                    "sweep_param": "K = MPI ranks per GPU (-n = K*gpus, "
+                                   "cores/rank = cores_per_socket/K)",
+                    "sweep_default": "divisors(cores_per_socket)"},
         },
     }, indent=2) + "\n", encoding="utf-8")
     written.append(manifest)
@@ -458,9 +470,9 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
         max_scf=max_scf), encoding="utf-8")
     written.append(readme)
 
-    # Ship the self-contained prep-lib so the target needs NO molbuilder
-    # install (the on-target prep-bench/summarize/prep-run drivers).
-    written.extend(_ship_prep_lib(out_dir))
+    # Ship the on-target entry shims (prep-bench / run-bench / bench-summarize
+    # / prep-run) -- thin wrappers over `molbuilder bench …` (§ 8.3).
+    written.extend(_ship_entry_shims(out_dir))
 
     return out_dir, written
 
@@ -493,7 +505,7 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
             f"{manifest_path.name} not found in {out_dir} -- run "
             f"`molbuilder bench generate` first to produce the bundle.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    jobs = manifest["jobs"]
+    points = manifest["points"]
 
     # --- resolve activation for this target (scheduler-gated) ---
     if env.scheduler == "workstation":
@@ -531,19 +543,19 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
     emit_sbatch = env.scheduler == "slurm"
 
     written: List[Path] = []
-    cpu = jobs["cpu"]
+    cpu = points["cpu"]
     written.append(write_run_wrapper(
         out_dir / cpu["script"], mpi_np=cpu["mpi_np"],
         cpus_per_task=cpu["cpus_per_task"], time=cpu.get("time"),
         env=elpa_env, emit_sbatch=emit_sbatch))
 
-    gpu = jobs["gpu"]
+    gpu = points["gpu"]
     cores = env.topology.cores_per_socket or 24
     gtype = env.topology.gpu_type or "a100"
     gpu_c = max(1, cores // gpu["gpu_k"])
     written.append(write_run_wrapper(
-        out_dir / gpu["script"], mpi_np=gpu["gpu_k"] * gpu["gpu_gpus"],
-        gres=f"{gtype}:{gpu['gpu_gpus']}", cpus_per_task=gpu_c,
+        out_dir / gpu["script"], mpi_np=gpu["gpu_k"] * gpu["gpus"],
+        gres=f"{gtype}:{gpu['gpus']}", cpus_per_task=gpu_c,
         time=gpu.get("time"), exclusive=gpu.get("exclusive"), env=elpa_env,
         emit_sbatch=emit_sbatch))
 
@@ -556,52 +568,116 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
     return written
 
 
-# Stdlib-only modules that form the shipped on-target prep-lib, and the
-# executable shims that expose their main()s.  Copied VERBATIM (they use
-# package-relative imports, so they work the same inside the shipped
-# ``mbbench`` package as inside ``molbuilder.bench``).
-_PREP_LIB_MODULES = ("environment", "adapters", "result", "prep",
-                     "summarize", "prep_run")
-_PREP_SHIMS = {"prep-bench": "prep", "bench-summarize": "summarize",
-               "prep-run": "prep_run"}
+# The bundle's on-target entry points (job-execution.md § 8.3).  molbuilder
+# is installed on every target (the § 3.4 contract), so each shim is a thin
+# bash wrapper that calls the molbuilder machinery -- ONE implementation, no
+# shipped stdlib copy, no second command to remember.  ``run-bench`` is the
+# exception: it just runs the baked scripts (CPU baseline + GPU sweep).
+_BENCH_SHIMS = {
+    "prep-bench":     "exec molbuilder bench prep \"$@\"",
+    "bench-summarize": "exec molbuilder bench summarize \"$@\"",
+    "prep-run":       "exec molbuilder bench prep-run \"$@\"",
+}
+
+_RUN_BENCH = """\
+#!/usr/bin/env bash
+# run-bench -- run the WHOLE benchmark matrix: CPU baseline (point 0) then the
+# GPU sweep, in order.  Each runs in its own dir (the sweep isolates points).
+# See BENCH-PLAN.md (written by ./prep-bench) for the enumerated plan.
+set -u
+if [ ! -f job-cpu.run.sh ] || [ ! -f job-gpu-sweep.sh ] || \\
+   ! grep -q _mb_point job-gpu-sweep.sh 2>/dev/null; then
+    echo "run ./prep-bench first -- it detects this machine and bakes the" >&2
+    echo "run scripts + the real sweep (BENCH-PLAN.md explains the plan)." >&2
+    exit 1
+fi
+echo "===== benchmark point 0: CPU baseline (job-cpu) ====="
+bash job-cpu.run.sh
+echo "===== benchmark GPU sweep ====="
+bash job-gpu-sweep.sh
+echo "===== all points done -- next: ./bench-summarize ====="
+"""
 
 
-def _ship_prep_lib(out_dir: Path) -> List[Path]:
-    """Copy the stdlib-only prep-lib into ``<out>/mbbench/`` + write the
-    ``prep-bench`` / ``bench-summarize`` / ``prep-run`` shims, so the
-    bundle runs the whole on-target workflow with no molbuilder install
-    (benchmark-workflow.md § 4.7 self-contained rule)."""
-    src = Path(__file__).resolve().parent
+def _ship_entry_shims(out_dir: Path) -> List[Path]:
+    """Write the bundle's on-target entry points (job-execution.md § 8.3):
+    thin bash shims that call ``molbuilder bench …`` (molbuilder is present
+    on every target -- the § 3.4 contract) + the static ``run-bench``.  No
+    stdlib ``mbbench/`` copy is shipped -- one implementation lives in
+    molbuilder and the shims are the single, discoverable entry points."""
     written: List[Path] = []
-
-    pkg = out_dir / "mbbench"
-    pkg.mkdir(exist_ok=True)
-    init = pkg / "__init__.py"
-    init.write_text(
-        '"""Self-contained molbuilder benchmark prep-lib (stdlib-only).\n\n'
-        "Copied verbatim by `molbuilder bench generate` so the target can "
-        "run\nprep-bench / bench-summarize / prep-run with no molbuilder "
-        'install."""\n', encoding="utf-8")
-    written.append(init)
-    for m in _PREP_LIB_MODULES:
-        dst = pkg / f"{m}.py"
-        shutil.copy2(src / f"{m}.py", dst)
-        written.append(dst)
-
-    for shim, mod in _PREP_SHIMS.items():
-        p = out_dir / shim
+    for name, body in _BENCH_SHIMS.items():
+        p = out_dir / name
         p.write_text(
-            "#!/usr/bin/env python3\n"
-            "# self-contained entry: adds this bundle dir to sys.path so the\n"
-            "# shipped mbbench package imports without any molbuilder install.\n"
-            "import os, sys\n"
-            "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
-            f"from mbbench.{mod} import main\n"
-            "sys.exit(main())\n", encoding="utf-8")
+            "#!/usr/bin/env bash\n"
+            f"# {name}: entry point -- runs the molbuilder machinery on this\n"
+            "# target (molbuilder is installed here; job-execution.md § 8.3).\n"
+            f"{body}\n", encoding="utf-8")
         p.chmod(0o755)
         written.append(p)
-
+    rb = out_dir / "run-bench"
+    rb.write_text(_RUN_BENCH, encoding="utf-8")
+    rb.chmod(0o755)
+    written.append(rb)
     return written
+
+
+def render_bench_plan(env, manifest: dict, ks: List[int]) -> str:
+    """Human-readable benchmark plan (job-execution.md § 8.4): the full test
+    matrix -- CPU baseline (point 0) + one GPU point per swept K -- with the
+    varied parameter, ranks/cores per point, what is measured, and exactly
+    how to change each.  Built from the DETECTED environment + the manifest,
+    so it always matches what ``./run-bench`` will actually run.
+    """
+    t = env.topology
+    cores = t.cores_per_socket or 0
+    pts = manifest.get("points", {})
+    cpu = pts.get("cpu", {})
+    gpu = pts.get("gpu", {})
+    gpus = gpu.get("gpus", 1)
+    gtype = t.gpu_type or "gpu"
+    cpu_np = cpu.get("mpi_np", "?")
+
+    rows = [("0", "cpu", cpu.get("solver", "CPU"),
+             str(cpu_np), "1", "—", "CPU baseline (s/iter)")]
+    for i, k in enumerate(ks, start=1):
+        c = max(1, cores // k) if cores else "?"
+        note = f"{k} rank(s)/GPU" + (" (MPS)" if k >= 2 else "")
+        rows.append((str(i), f"gpu-G{gpus}K{k}", gpu.get("solver", "GPU"),
+                     str(k * gpus), str(c), f"{gpus}×{gtype}", note))
+
+    w = [max(len(r[i]) for r in rows + [("#", "point", "engine path",
+         "ranks", "c/rank", "gpu", "answers")]) for i in range(7)]
+    def fmt(r): return "  ".join(s.ljust(w[i]) for i, s in enumerate(r))
+    hdr = ("#", "point", "engine path", "ranks", "c/rank", "gpu", "answers")
+
+    lines = [
+        f"BENCH PLAN — {manifest.get('engine', '?')}, detected: "
+        f"{env.scheduler}, {t.sockets}×{cores} cores, "
+        f"{t.gpus_per_node}×{gtype} GPU",
+        manifest.get("description", ""),
+        f"Measured per point: {manifest.get('measured', '?')}.",
+        "Varied parameter: K = MPI ranks sharing one GPU (GPU points); "
+        "the CPU point is the baseline.",
+        "Run order (./run-bench runs top-to-bottom; each point isolated):",
+        "",
+        "  " + fmt(hdr),
+        "  " + "  ".join("-" * w[i] for i in range(7)),
+    ]
+    lines += ["  " + fmt(r) for r in rows]
+    lines += [
+        "",
+        "How to change (then re-run ./prep-bench):",
+        "  • GPU K values   : ./prep-bench --gpu-ks 1,2,5,10",
+        '  • CPU rank count : edit "mpi_np" under points.cpu in '
+        "bench-manifest.json",
+        "  • SIESTA params  : edit job-cpu.fdf / job-gpu.fdf "
+        "(MeshCutoff, kgrid, PAO.BasisSize, …)",
+        "",
+        "Next step: ./run-bench   "
+        "(or one point: bash job-cpu.run.sh / bash job-gpu.run.sh)",
+    ]
+    return "\n".join(lines)
 
 
 __all__ = [
@@ -609,4 +685,6 @@ __all__ = [
     "render_sweep_placeholder",
     "render_readme",
     "generate_bench_bundle",
+    "bake_target_wrappers",
+    "render_bench_plan",
 ]

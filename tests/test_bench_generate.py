@@ -170,31 +170,52 @@ def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
 
     names = {p.name for p in written}
     for expect in ("job-cpu.fdf", "job-gpu.fdf", "bench-manifest.json",
-                   "job-gpu-sweep.sh", "README.md", "C.psml"):
+                   "job-gpu-sweep.sh", "README.md", "C.psml",
+                   "prep-bench", "run-bench", "bench-summarize", "prep-run"):
         assert expect in names, f"missing {expect}"
         assert (out_dir / expect).is_file()
     # wrappers are NOT baked at generate (portable bundle)
     assert not (out_dir / "job-cpu.run.sh").exists()
     assert not (out_dir / "job-gpu.run.sh").exists()
     assert not (out_dir / "job-cpu.sbatch").exists()
+    # NO stdlib copy shipped (§ 8.3): molbuilder is on the target by contract
+    assert not (out_dir / "mbbench").exists()
 
     # GPU fdf routes to GPU; CPU fdf does not.
     assert "Diag.ELPA.GPU" in (out_dir / "job-gpu.fdf").read_text()
     assert "Diag.ELPA.GPU" not in (out_dir / "job-cpu.fdf").read_text()
 
-    # the manifest carries the chosen knobs verbatim (§ 7.3)
+    # self-describing manifest@2 (§ 8.6): human-readable, engine-neutral
+    # `script` key, `points` (not `jobs`)
     man = json.loads((out_dir / "bench-manifest.json").read_text())
-    assert man["schema"] == "molbuilder/bench-manifest@1"
-    # engine-neutral schema (multi-engine readiness): top-level engine +
-    # per-job `script` (NOT a SIESTA-flavored `fdf` key)
+    assert man["schema"] == "molbuilder/bench-manifest@2"
     assert man["engine"] == "siesta"
-    assert man["jobs"]["cpu"]["script"] == "job-cpu.fdf"
-    assert man["jobs"]["gpu"]["script"] == "job-gpu.fdf"
-    assert "fdf" not in man["jobs"]["cpu"]
-    assert man["jobs"]["cpu"]["mpi_np"] == 64
-    assert man["jobs"]["cpu"]["cpus_per_task"] == 1
-    assert man["jobs"]["gpu"]["gpu_gpus"] == 1
-    assert man["jobs"]["gpu"]["gpu_k"] == 4
+    assert "description" in man and "measured" in man
+    assert man["points"]["cpu"]["script"] == "job-cpu.fdf"
+    assert man["points"]["gpu"]["script"] == "job-gpu.fdf"
+    assert man["points"]["cpu"]["role"] == "baseline"
+    assert man["points"]["cpu"]["mpi_np"] == 64
+    assert man["points"]["cpu"]["cpus_per_task"] == 1
+    assert man["points"]["gpu"]["gpus"] == 1
+    assert man["points"]["gpu"]["gpu_k"] == 4
+
+
+def test_generate_ships_thin_molbuilder_shims(tmp_path):
+    # §8.3: the on-target entry points are thin bash shims that call
+    # `molbuilder bench …` (no shipped stdlib copy); run-bench guards.
+    fdf = _make_src(tmp_path)
+    out = _make_out_with_config(tmp_path)
+    out_dir, _ = generate_bench_bundle(fdf, out)
+    for shim, call in (("prep-bench", "molbuilder bench prep"),
+                       ("bench-summarize", "molbuilder bench summarize"),
+                       ("prep-run", "molbuilder bench prep-run")):
+        t = (out_dir / shim).read_text()
+        assert t.startswith("#!/usr/bin/env bash")
+        assert f'exec {call} "$@"' in t
+        assert (out_dir / shim).stat().st_mode & 0o111
+    rb = (out_dir / "run-bench").read_text()
+    assert "job-cpu.run.sh" in rb and "job-gpu-sweep.sh" in rb
+    assert "run ./prep-bench first" in rb         # guards the un-prepped state
 
 
 #  Activation resolution -- the hole that dead-ended a fresh user:        #
@@ -289,84 +310,9 @@ def test_generate_rejects_non_fdf(tmp_path):
         generate_bench_bundle(bad, tmp_path / "out")
 
 
-def test_generate_ships_prep_lib_verbatim(tmp_path):
-    import molbuilder.bench as _benchpkg
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, written = generate_bench_bundle(fdf, out)
-
-    src = Path(_benchpkg.__file__).parent
-    # the 6 stdlib modules are copied byte-for-byte into mbbench/
-    for m in ("environment", "adapters", "result", "prep", "summarize",
-              "prep_run"):
-        shipped = out_dir / "mbbench" / f"{m}.py"
-        assert shipped.is_file()
-        assert shipped.read_bytes() == (src / f"{m}.py").read_bytes()
-    assert (out_dir / "mbbench" / "__init__.py").is_file()
-    # executable shims for each on-target driver
-    for shim in ("prep-bench", "bench-summarize", "prep-run"):
-        p = out_dir / shim
-        assert p.is_file() and (p.stat().st_mode & 0o111)
-
-
-def test_shipped_prep_lib_runs_with_no_molbuilder(tmp_path):
-    # The headline guarantee: the bundle's prep-bench runs on a target with
-    # NO molbuilder importable.  Run the shim in a clean env from the bundle
-    # dir; if any shipped module secretly needed molbuilder, import would
-    # fail (molbuilder is not pip-installed -- it lives in the repo).
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out)
-
-    env = {"PATH": os.environ.get("PATH", ""),
-           "HOME": str(tmp_path)}            # NO PYTHONPATH -> no repo/molbuilder
-    # sanity: molbuilder is indeed unreachable in this clean env
-    chk = subprocess.run(
-        [sys.executable, "-c", "import molbuilder"],
-        cwd=str(tmp_path), env=env, capture_output=True)
-    assert chk.returncode != 0, "test invalid: molbuilder importable here"
-
-    r = subprocess.run(
-        [sys.executable, "prep-bench", "--scheduler", "workstation",
-         "--cores-per-socket", "8", "--gpus-per-node", "1",
-         "--gpu-type", "a100"],
-        cwd=str(out_dir), env=env, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    assert (out_dir / "environment.json").is_file()
-    sweep = (out_dir / "job-gpu-sweep.sh").read_text()
-    assert "K values = 1,2,4,8" in sweep      # divisors of 8
-
-
-def test_shipped_summarize_and_prep_run_shims_standalone(tmp_path):
-    # The bench-summarize + prep-run shims also run with no molbuilder.
-    fdf = _make_src(tmp_path)
-    out = _make_out_with_config(tmp_path)
-    out_dir, _ = generate_bench_bundle(fdf, out)
-    env = {"PATH": os.environ.get("PATH", ""), "HOME": str(tmp_path)}
-
-    # fake one swept, completed GPU point
-    d = out_dir / "point-G1K8"
-    d.mkdir()
-    (d / "job-gpu-run0.scf-timing.log").write_text(
-        "1000.0 1 scf:1\n1010.0 2 scf:2\n1020.0 3 scf:3\n1030.0 4 scf:4\n")
-    (d / "job-gpu.monitor.log").write_text(
-        "[t] [UTIL-SUMMARY] cpu mean=40% (..); gpu0 sm mean=91% (..) "
-        "-> GPU-bound (..)\n")
-    (d / "job-gpu-run0.out").write_text(">> End of run: completed\n")
-
-    br = out_dir / "bench-result.json"
-    r1 = subprocess.run(
-        [sys.executable, "bench-summarize", "--bundle", str(out_dir),
-         "--out", str(br)],
-        cwd=str(out_dir), env=env, capture_output=True, text=True)
-    assert r1.returncode == 0, r1.stderr
-    assert br.is_file()
-
-    r2 = subprocess.run(
-        [sys.executable, "prep-run", "--bench-result", str(br),
-         "--script-base", "prod", "--scheduler", "workstation",
-         "--cores-per-socket", "16", "--gpus-per-node", "1",
-         "--gpu-type", "a100", "--out", str(out_dir / "run-production.sh")],
-        cwd=str(out_dir), env=env, capture_output=True, text=True)
-    assert r2.returncode == 0, r2.stderr
-    assert (out_dir / "run-production.sh").is_file()
+# NOTE (§ 8.2/§ 8.3): the old "shipped stdlib prep-lib runs with no molbuilder"
+# tests were retired -- molbuilder is installed on every target (the § 3.4
+# contract), so the bundle no longer ships an mbbench/ copy and the shims call
+# `molbuilder bench …` (see test_generate_ships_thin_molbuilder_shims).  The
+# summarize / prep-run logic is exercised by tests/test_bench_result.py and the
+# prep bake/plan flow by tests/test_bench_prep.py.

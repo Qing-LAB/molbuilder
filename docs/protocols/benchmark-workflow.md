@@ -27,7 +27,7 @@
 | **summarize** — results → `bench-result.json` | **built** (`bench/summarize.py`; `molbuilder bench summarize`) |
 | **prep-run** — `bench-result.json` → run script | **built** (`bench/prep_run.py`; `molbuilder bench prep-run`) |
 | `bench-result@1` schema (persistence) | **built** (`bench/result.py`) |
-| Self-contained bundle (ships the prep-lib, no install) | **built** (`mbbench/` + shims, in `bench generate`) |
+| On-target entry shims (`prep-bench`/`run-bench`/`bench-summarize`/`prep-run`) | **built** — thin bash wrappers over `molbuilder bench …` (job-execution.md § 8.3). The old stdlib `mbbench/` copy was **retired** (molbuilder is on every target — § 3.4 contract). |
 | Readiness/doctor (Job B, job-execution.md § 3.4) | **built — reuse** `molbuilder envs doctor` + `envs validate` (NOT a new checker); prep surfaces it (§ 7.2) |
 
 All stages are now built (§ 0); this doc specifies them against the stable
@@ -117,7 +117,7 @@ confining the difference to the adapter.
 ```
    host (has molbuilder)              target machine
    ┌─────────────────────┐  copy   ┌──────────────────────────────────────┐
-   │ molbuilder bench    │ ──────▶ │ 1. prep-bench  detect + format        │
+   │ molbuilder bench    │ ──────▶ │ 1. ./prep-bench  detect+bake+sweep+PLAN│
    │ generate <fdf>      │         │       │        (scheduler + topology)  │
    │  → portable bundle  │         │       ▼                                │
    └─────────────────────┘         │ 2. run bench ──▶ monitor:             │
@@ -226,10 +226,13 @@ priority, recorded in the data (§ 5.2):
   scheduler axis. They extend the shared core + the data schema (§ 5.5),
   which is versioned for exactly this. Keep them orthogonal to adapters.
 
-**Self-contained constraint (restated).** The *shipped* adapters/probes
-run on the target, so they are Python-stdlib or POSIX shell. The same
-logic may also exist as a host-side molbuilder module; keep the two in
-sync with a layout-invariant test, as `mb_monitor.py` already does.
+**On-target execution (restated).** molbuilder is installed on every target
+(the § 3.4 contract), so prep/summarize/prep-run run as `molbuilder bench …`
+via thin shell shims (job-execution.md § 8.3) — there is no shipped stdlib
+copy of those modules. The one genuinely self-contained artifact is the
+**runtime monitor** `mb_monitor.py`: it is launched by the `.run.sh` inside
+the *job's* environment (which need not be the molbuilder env), so it stays
+stdlib-only and is shipped beside the wrapper.
 
 ---
 
@@ -434,20 +437,19 @@ the target is unknown; that moves to prep (job-execution.md § 7). The
 benchmark-knob flags become **fallbacks** once prep detects topology on the
 target (§ 4.6).
 
-### § 7.2 prep-bench (target, built)
-Two layers:
-- **stdlib `./prep-bench`** (`bench/prep.py`, self-contained, no molbuilder):
-  runs `resolve_environment()` (§ 4.4), writes `environment.json` (§ 5.2),
-  and uses the matching adapter to size + format the sweep. Prints what it
-  detected and the source; never silently guesses.
-- **`molbuilder bench prep`** (molbuilder env on the target — the contract,
-  job-execution.md § 3.4) additionally **bakes the run wrappers**: it reads
-  `bench-manifest.json`, resolves activation for *this* target
-  (scheduler-gated: workstation autodetect / HPC shipped config), and emits
-  the standalone `job-{cpu,gpu}.run.sh` (+ `.sbatch` only when the detected
-  scheduler is SLURM) via `runwrap.write_run_wrapper`, with `gres`/`-c` from
-  the detected topology. This is what makes ONE bundle portable
-  (`bake_target_wrappers`; full design in job-execution.md § 7).
+### § 7.2 prep-bench (target, built — the single on-target entry)
+`./prep-bench` is a thin shim that calls `molbuilder bench prep` (molbuilder
+is on every target — the § 3.4 contract). It is **one command that does the
+whole on-target step** (job-execution.md § 8.3): `resolve_environment()`
+(§ 4.4) → write `environment.json` (§ 5.2) → size + format the sweep → **bake
+the standalone `job-{cpu,gpu}.run.sh`** (+ `.sbatch` only when the *detected*
+scheduler is SLURM; activation scheduler-gated — workstation autodetect / HPC
+shipped config) via `runwrap.write_run_wrapper`, `gres`/`-c` from the detected
+topology → write + **print `BENCH-PLAN.md`** (the enumerated test matrix: CPU
+baseline + each GPU K, what's measured, how to change). No second command, no
+half-state. (`bake_target_wrappers` + `render_bench_plan`; full design in
+job-execution.md §§ 7–8.) `./run-bench` then runs the whole matrix (CPU + GPU
+sweep).
 
 **Readiness/doctor (Job B).** Detection answers *what the machine is*; the
 readiness check answers *is it ready to run* — and it is the **existing

@@ -735,3 +735,163 @@ wrapper comes out fully baked and standalone (no runtime config read).
    `environment.json`.
 3. **README regenerated now** — `render_readme` documents the prep-bakes flow;
    the § 4 cookbook recipes were reconciled in the same change.
+
+---
+
+## 8. Workflow redesign — one entry point, full transparency (2026-06-28)
+
+> **Status: IMPLEMENTED (2026-06-28).** Supersedes the entry-point / shim
+> parts of § 7 (the prep-time-baking contract of § 7 stays). It existed
+> because § 7's *implementation* shipped a confusing, opaque on-target
+> experience; this section is the contract the redesigned workflow now honors.
+> Code: `bench/generate.py` (`_ship_entry_shims`, `render_bench_plan`,
+> manifest@2), `bench/_cli.py` (`cmd_prep` writes+prints `BENCH-PLAN.md`),
+> tests in `test_bench_{generate,prep}.py`. § 8.9 decisions all = yes.
+
+### 8.1 What was wrong (honest list)
+
+1. **Two commands, one of them hidden.** `prep-bench` (a shell script in the
+   bundle) did **detection + sweep only**; baking the run wrappers lived in a
+   *separate* command, `molbuilder bench prep`, that the user had to already
+   know. A shell entry point that can't do its own job and makes you memorise
+   a Python entry point is backwards.
+2. **Broken half-state.** Running `./prep-bench` left **no `job-cpu.run.sh` /
+   `job-gpu.run.sh`**, while the sweep it wrote symlinked `job-gpu.run.sh` —
+   so the bundle was un-runnable, with no message saying so.
+3. **No plan / no transparency.** Nothing told the user *what* would be
+   benchmarked: which points, in what order, what parameter varies, what is
+   measured, or how to change it. You had to reverse-engineer it from
+   `job-gpu-sweep.sh` (bash) + `bench-manifest.json` (terse) + the `.fdf`.
+4. **CPU baseline hidden.** `job-cpu.fdf` *is* the CPU-only point, but it is
+   **not in the sweep** and nothing says "run it too" — so "CPU vs GPU" looks
+   like it has no CPU.
+5. **Inconsistent knobs.** `manifest.gpu.gpu_k` (the single GPU point's ranks)
+   ≠ the sweep's `--gpu-ks` list — two different things spelled the same, no
+   explanation.
+6. **Dead weight.** The bundle shipped a **stdlib copy of the prep-lib**
+   (`mbbench/`) whose only reason to exist was "the target might not have
+   molbuilder." **The contract (§ 3.4) says molbuilder *is* on every target**,
+   so that copy is obsolete — and having two implementations is itself a
+   source of the confusion above.
+
+### 8.2 Root cause
+
+The stdlib-only `mbbench/` + the prep split are leftovers from a pre-contract
+assumption ("no molbuilder on the target"). Once § 3.4 fixed the contract to
+**molbuilder installed on every target**, that whole layer should have been
+retired. It wasn't. This redesign retires it.
+
+### 8.3 The corrected model — one entry point per stage
+
+The bundle ships **thin shell shims that simply call the molbuilder machinery**
+(present by contract). Each shim is the obvious entry point; none asks the user
+to know a second command.
+
+| shim (in the bundle) | calls | does |
+|---|---|---|
+| **`./prep-bench`** | `molbuilder bench prep` | **the whole on-target prep**: detect topology → bake `job-cpu.run.sh` + `job-gpu.run.sh` (+`.sbatch` on SLURM) → write the sweep → write **`BENCH-PLAN.md`** → print the plan + next step |
+| **`./run-bench`** | (runs the baked scripts) | run **every** point — CPU baseline **and** the GPU sweep — in order, each isolated; the one command to execute the benchmark |
+| **`./bench-summarize`** | `molbuilder bench summarize` | rank the points → `bench-result.json` |
+| **`./prep-run`** | `molbuilder bench prep-run` | winner → `run-production.sh` |
+
+- **`mbbench/` (stdlib copy) is removed.** The shims are ~3-line bash that
+  `exec molbuilder bench <sub> "$@"`. One implementation, in molbuilder.
+- **No half-state.** `./prep-bench` always produces a runnable bundle or
+  fails loudly with the fix.
+
+### 8.4 Transparency — `BENCH-PLAN.md` (the heart of the fix)
+
+`prep` writes `BENCH-PLAN.md` **and prints it**. It enumerates the full test
+matrix in plain language — what runs, the order, the one varied parameter,
+what is measured, and exactly how to change each. Concrete shape:
+
+```
+BENCH PLAN — siesta, detected: workstation, 2×10 cores, 1×rtx GPU
+Measured per point: SCF wall-time per iteration (s/iter), from <basename>-run0.scf-timing.log.
+Varied parameter:  K = MPI ranks sharing one GPU (GPU points only).  CPU point is the baseline.
+Run order (./run-bench runs them top to bottom; each in its own point-*/ dir):
+
+  #  point        engine path              ranks  cores/rank  GPU      what it answers
+  0  cpu          ELPA-1STAGE (no CUDA)    20     1           —        CPU baseline (s/iter)
+  1  gpu-G1K1     ELPA-CUDA                1      10          1×rtx    1 rank/GPU
+  2  gpu-G1K2     ELPA-CUDA                2      5           1×rtx    2 ranks/GPU (MPS)
+  3  gpu-G1K5     ELPA-CUDA                5      2           1×rtx    5 ranks/GPU (MPS)
+  4  gpu-G1K10    ELPA-CUDA                10     1           1×rtx    10 ranks/GPU (MPS)
+
+How to change:
+  • GPU K values     : ./prep-bench --gpu-ks 1,2,5,10   (re-runs prep)
+  • CPU rank count   : ./prep-bench --cpu-np 20
+  • SIESTA params    : edit job-cpu.fdf / job-gpu.fdf (MeshCutoff, kgrid, PAO.BasisSize, …),
+                       then ./prep-bench again
+Next step:  ./run-bench      (or run one point: bash job-cpu.run.sh / bash job-gpu.run.sh)
+```
+
+The plan is generated from the detected `environment.json` + the manifest, so
+it always matches what will actually run (no probe/launch mismatch).
+
+### 8.5 CPU folded into the matrix
+
+The CPU baseline becomes **point 0 of the benchmark**, not a separate hidden
+file. `./run-bench` runs the CPU point then the GPU sweep; `summarize` ranks
+CPU vs the best GPU point from the same set. `job-cpu.run.sh` still exists for
+running it alone.
+
+### 8.6 Self-describing manifest
+
+`bench-manifest.json` gains a top-level human-readable description and per-job
+intent + units, and the two "K"s are disambiguated:
+
+```json
+{
+  "schema": "molbuilder/bench-manifest@2",
+  "engine": "siesta",
+  "description": "CPU-vs-GPU SCF-timing benchmark; cold, capped, single-point.",
+  "measured": "SCF wall-time per iteration (s/iter)",
+  "points": {
+    "cpu":  { "script": "job-cpu.fdf", "solver": "ELPA-1STAGE (no CUDA)",
+              "mpi_np": 20, "cpus_per_task": 1, "role": "baseline" },
+    "gpu":  { "script": "job-gpu.fdf", "solver": "ELPA-CUDA",
+              "gpus": 1, "sweep_param": "K = ranks/GPU",
+              "sweep_default": "divisors(cores_per_socket)" }
+  }
+}
+```
+
+### 8.7 Artifact model
+
+| file | after `bench generate` (host) | after `./prep-bench` (target) |
+|---|---|---|
+| `job-{cpu,gpu}.fdf`, `*.psml` | ✅ | ✅ |
+| `bench-manifest.json` (self-describing) | ✅ | ✅ |
+| `prep-bench`/`run-bench`/`bench-summarize`/`prep-run` (thin shims) | ✅ | ✅ |
+| `README.md` | ✅ | ✅ |
+| `mbbench/` (stdlib copy) | ❌ removed | ❌ |
+| `environment.json` | — | ✅ |
+| `job-{cpu,gpu}.run.sh` / `.sbatch`, `mb_monitor.py` | — | ✅ baked |
+| `job-gpu-sweep.sh` (placeholder → real) | placeholder | ✅ real |
+| **`BENCH-PLAN.md`** | — | ✅ written + printed |
+
+### 8.8 Implementation + test surface
+
+- `bench/generate.py`: replace `_ship_prep_lib` (mbbench copy) with
+  `_ship_entry_shims` (thin `molbuilder bench …` shims incl. `run-bench`);
+  manifest@2 (self-describing); drop `_PREP_LIB_MODULES`.
+- `bench/_cli.py`: `cmd_prep` writes+prints `BENCH-PLAN.md`, writes `run-bench`,
+  folds in the CPU point; `prep-bench` is the documented single entry.
+- `bench/adapters.py`: sweep includes the CPU baseline as point 0.
+- Retire the obsolete "runs with no molbuilder" tests
+  (`test_shipped_prep_lib_runs_with_no_molbuilder`,
+  `test_shipped_summarize_and_prep_run_shims_standalone`,
+  `test_generate_ships_prep_lib_verbatim`) → replace with "shim calls
+  `molbuilder bench …`" + "prep writes BENCH-PLAN + run-bench + both run
+  scripts" + "manifest@2 is self-describing" tests.
+- `benchmark-workflow.md` § 7 reconciled to the single-entry model.
+
+### 8.9 Open questions to confirm before coding
+
+1. **`run-bench` runs CPU + full GPU sweep by default?** (Proposal: yes —
+   one command does the whole matrix; individual `job-*.run.sh` remain.)
+2. **Drop `mbbench/` entirely?** (Proposal: yes — obsolete per the § 3.4
+   contract; the shims call molbuilder.)
+3. **Manifest bump to `@2`** with the self-describing shape above? (Proposal:
+   yes; pre-1.0, no back-compat shim.)

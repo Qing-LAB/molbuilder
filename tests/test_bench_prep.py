@@ -310,3 +310,24 @@ def test_bake_missing_manifest_raises(tmp_path):
     d = tmp_path / "empty"; d.mkdir()
     with pytest.raises(FileNotFoundError, match="bench-manifest"):
         bake_target_wrappers(d, _env("workstation"))
+
+
+def test_bench_plan_enumerates_cpu_baseline_and_gpu_sweep(tmp_path):
+    # §8.4: the plan must make the matrix legible -- CPU baseline (point 0) +
+    # one GPU point per swept K, with cores/rank = cores//K, how-to-change,
+    # and the next step.
+    from molbuilder.bench.generate import render_bench_plan
+    out_dir = _make_bundle(tmp_path)
+    manifest = json.loads((out_dir / "bench-manifest.json").read_text())
+    env = _env("workstation", cores=10, gpus=1, gtype="rtx")
+    plan = render_bench_plan(env, manifest, ks=[1, 2, 5, 10])
+
+    assert "BENCH PLAN" in plan
+    assert "CPU baseline" in plan                      # point 0 is the CPU
+    for k in (1, 2, 5, 10):
+        assert f"gpu-G1K{k}" in plan                   # one row per K
+    assert "ELPA-CUDA" in plan and "ELPA-1STAGE (no CUDA)" in plan
+    assert "How to change" in plan
+    assert "./prep-bench --gpu-ks" in plan             # the GPU knob
+    assert 'edit "mpi_np"' in plan                     # the CPU knob (manifest)
+    assert "Next step: ./run-bench" in plan
