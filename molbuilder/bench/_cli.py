@@ -411,11 +411,22 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     import json
     from pathlib import Path
 
-    from ..runtime_config import RuntimeConfigError
-    from .adapters import divisors
-    from .generate import bake_target_wrappers, render_bench_plan
+    from ..runtime_config import RuntimeConfigError, get_execution
+    from .adapters import divisors, resolve_launch_adapter, resolve_mode
+    from .generate import (bake_run_bench, bake_target_wrappers,
+                           render_bench_plan)
     from .prep import (_overrides_from, _parse_ks, _summary, run_prep_bench,
                        utc_now_iso)
+
+    # Resolve the run-vs-submit LAUNCH policy (job-execution.md § 8.13) from
+    # the bundle's .molbuilder.json -- applied uniformly to the CPU baseline
+    # and the GPU sweep, independent of the detected scheduler.
+    try:
+        exec_cfg = get_execution(project_dir=Path(out))
+    except RuntimeConfigError as e:
+        click.echo(f"ERROR reading execution policy: {e}", err=True)
+        raise SystemExit(2)
+    cfg_mode, submit_via = exec_cfg["mode"], exec_cfg["submit_via"]
 
     env, written = run_prep_bench(
         out,
@@ -423,25 +434,39 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         scheduler_override=scheduler,
         ks=_parse_ks(gpu_ks),
         cs=_parse_ks(gpu_cs),
+        mode=cfg_mode,
+        submit_via=submit_via,
         now_iso=utc_now_iso())
+
+    rmode = resolve_mode(env, cfg_mode)
 
     # Bake the run wrappers for THIS target (job-execution.md § 7.4): resolve
     # activation (workstation autodetect / HPC shipped config) + write
-    # job-{cpu,gpu}.run.sh(.sbatch).  This is what makes one bundle portable.
+    # job-{cpu,gpu}.run.sh(.sbatch).  .sbatch is emitted iff mode=submit
+    # (§ 8.13).  This is what makes one bundle portable.
     try:
-        written += bake_target_wrappers(out, env, echo=click.echo)
+        written += bake_target_wrappers(
+            out, env, submit=(rmode == "submit"), echo=click.echo)
     except (RuntimeConfigError, FileNotFoundError) as e:
         click.echo(_summary(env, written))
         click.echo(f"\nERROR baking run wrappers: {e}", err=True)
         raise SystemExit(2)
 
+    # Bake run-bench so the CPU baseline launches the SAME way as the sweep
+    # (§ 8.13): both submit under mode=submit, both bash under direct.
+    manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
+    adapter, _ = resolve_launch_adapter(env, mode=cfg_mode,
+                                        submit_via=submit_via)
+    cpu_np = manifest["points"]["cpu"]["mpi_np"]
+    written.append(bake_run_bench(out, adapter, cpu_np, rmode))
+
     # Write + PRINT the human-readable benchmark plan (job-execution.md § 8.4):
     # the enumerated matrix (CPU baseline + the GPU G×K×c grid), what's
     # measured, and how to change it.  K/c match the sweep.
-    manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
     ks = _parse_ks(gpu_ks) or divisors(env.topology.cores_per_socket or 0)
     cs = _parse_ks(gpu_cs)
-    plan = render_bench_plan(env, manifest, ks, cs)
+    plan = render_bench_plan(env, manifest, ks, cs, mode=cfg_mode,
+                             submit_via=submit_via)
     plan_path = Path(out) / "BENCH-PLAN.md"
     plan_path.write_text(plan + "\n", encoding="utf-8")
     written.append(plan_path)

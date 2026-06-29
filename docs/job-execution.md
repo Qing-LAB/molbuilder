@@ -977,3 +977,72 @@ tells us what actually wins on the real allocation.
 `Conditions: N points` summary + the `Add / remove conditions` block
 (`--gpu-ks`, `--gpu-cs`, `--gpus-per-node`, manifest `points.cpu.mpi_np`, the
 `.fdf`s) — so the live knobs are always in front of the user after prep.
+
+### 8.13 Execution mode — run-vs-submit is a config policy, CPU and GPU symmetric (2026-06-29)
+
+**The bug this fixes.** `run-bench` was shipped *static* and hardcoded two
+asymmetric lines:
+
+```
+bash job-cpu.run.sh        # CPU baseline -> runs mpirun IN THE CURRENT SHELL
+bash job-gpu-sweep.sh      # GPU sweep -> on slurm, sbatch per point (queued)
+```
+
+So on a cluster the GPU points queued correctly but the **CPU baseline ran on
+the login node** — which on Sol is forbidden (everything must be submitted).
+The launch mechanism was also keyed *only* off the detected scheduler
+(`get_adapter(env)`), with no way to say "submit this even though I'm in an
+interactive shell" or "just run it, it's a 2-minute job."
+
+**The contract.** *How* a point is launched is a first-class, user-settable
+**policy**, applied **identically to the CPU baseline and every GPU point**:
+
+- On Sol (and any shared cluster) **everything submits** — CPU and GPU follow
+  the same job system. No login-node execution.
+- `direct` bash execution is the **special-case escape** (short jobs, a
+  workstation, or *inside* an already-granted interactive allocation).
+
+**Config schema** — a new top-level key in `.molbuilder.json`, sibling to
+`scheduler` / `script_generation`, read at PREP time on the target:
+
+```json
+"execution": {
+  "mode": "submit",        // "direct" | "submit"  -- how run-bench launches EACH point
+  "submit_via": "slurm"    // backend when mode=submit; "slurm" today, extensible (pbs/lsf/...)
+}
+```
+
+- **`submit`** → every point launches via `sbatch <base>.sbatch`
+  (`SlurmAdapter.cpu_launch_line` / `.gpu_launch_line`). CPU baseline included.
+- **`direct`** → every point launches via `bash <base>.run.sh` in the current
+  shell (`WorkstationAdapter`), sequential.
+- **absent** → derived from the detected scheduler (slurm → `submit`,
+  workstation → `direct`), so existing bundles need no config and today's
+  workstation behavior is unchanged.
+
+**How it threads through (data flow).**
+
+1. `prep` reads `execution` from `.molbuilder.json` and resolves
+   `mode` (config → else default-from-`env.scheduler`).
+2. The resolved `mode` selects the **launch adapter** — *independently of the
+   detected scheduler*, which still drives **topology detection** (cores,
+   sockets, GPU count) and `.sbatch` header values. `submit`+`submit_via:slurm`
+   → `SlurmAdapter`; `direct` → `WorkstationAdapter`. (Detection and launch
+   mechanism are now decoupled: you can be *on* slurm but launch `direct`.)
+3. `bake_target_wrappers` gates `emit_sbatch` on `mode == "submit"` (not on
+   `env.scheduler == "slurm"`), so `.sbatch` files exist exactly when something
+   will `sbatch` them.
+4. `run-bench` is **baked at prep** (no longer static): it routes the **CPU
+   baseline through `cpu_launch_line`** and the GPU points through the sweep —
+   both via the same adapter, so `mode` applies uniformly. The generate-time
+   `run-bench` is the static "run ./prep-bench first" guard, overwritten by the
+   baked version at prep.
+
+**Discoverability.** `BENCH-PLAN.md` states the resolved mode up front
+(e.g. *"Launch: submit via slurm (sbatch per point)"* vs *"Launch: direct bash
+(sequential, current shell)"*) and the footer notes how to change it (edit
+`execution.mode` in `.molbuilder.json`, then re-run `./prep-bench`).
+
+**Extensibility.** A future scheduler (PBS/LSF/cloud) = one new adapter +
+one `submit_via` value; `mode`/`direct` are unchanged. This is the same
+"add one adapter" path the module already documents (§ 4.3).

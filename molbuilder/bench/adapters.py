@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .environment import Environment, Topology
 
@@ -374,7 +374,41 @@ def get_adapter(env: Environment) -> SchedulerAdapter:
         f"registered: {[a.name for a in ADAPTERS]}")
 
 
+def resolve_mode(env: Environment, mode: Optional[str] = None) -> str:
+    """Resolve the launch MODE (job-execution.md § 8.13): an explicit
+    ``execution.mode`` ("direct" | "submit") wins; otherwise derive from the
+    DETECTED scheduler (slurm -> submit, else -> direct).  Always returns a
+    concrete "direct" or "submit"."""
+    if mode in ("direct", "submit"):
+        return mode
+    return "submit" if env.scheduler == "slurm" else "direct"
+
+
+def resolve_launch_adapter(env: Environment, *, mode: Optional[str] = None,
+                           submit_via: str = "slurm"
+                           ) -> Tuple[SchedulerAdapter, str]:
+    """Select the adapter that LAUNCHES benchmark points, honoring the
+    run-vs-submit policy independently of the detected scheduler
+    (job-execution.md § 8.13).  Returns ``(adapter, resolved_mode)``.
+
+      * ``submit`` -> the ``submit_via`` adapter (picked BY NAME, bypassing
+        ``matches`` so "submit from an interactive shell" works);
+      * ``direct`` -> the workstation adapter (direct bash, sequential).
+
+    Topology still comes from ``env`` (detection); only the launch mechanism
+    is chosen here -- detection and launch are decoupled."""
+    rmode = resolve_mode(env, mode)
+    if rmode == "submit":
+        for a in ADAPTERS:
+            if a.name == submit_via:
+                return a, rmode
+        raise ValueError(
+            f"execution.submit_via={submit_via!r} has no registered adapter; "
+            f"available: {[a.name for a in ADAPTERS]}")
+    return WorkstationAdapter(), rmode
+
+
 __all__ = [
     "divisors", "SchedulerAdapter", "SlurmAdapter", "WorkstationAdapter",
-    "ADAPTERS", "get_adapter",
+    "ADAPTERS", "get_adapter", "resolve_mode", "resolve_launch_adapter",
 ]

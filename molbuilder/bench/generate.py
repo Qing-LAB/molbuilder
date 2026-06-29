@@ -477,7 +477,8 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
     return out_dir, written
 
 
-def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
+def bake_target_wrappers(out_dir, env, *, submit: Optional[bool] = None,
+                         echo=None) -> List[Path]:
     """Resolve the conda activation for THIS target and bake the run
     wrappers from the bundle's ``bench-manifest.json`` (job-execution.md
     § 7.4).  This is the **prep-time** step that makes one bundle portable;
@@ -535,12 +536,12 @@ def bake_target_wrappers(out_dir, env, *, echo=None) -> List[Path]:
     from ..diagnostics import get_capabilities
     elpa_env = get_capabilities().env_for_category("siesta-gpu")
 
-    # Emit .sbatch only when the DETECTED scheduler is SLURM.  Otherwise a
-    # bundle carrying an HPC scheduler block but prepped on a workstation
-    # would emit stray SLURM .sbatch files that don't match the machine
-    # (write_run_wrapper keys sbatch emission off the config block; the
-    # detected scheduler is the truth -- § 7.5).
-    emit_sbatch = env.scheduler == "slurm"
+    # Emit .sbatch exactly when something will SUBMIT them, i.e. the resolved
+    # launch mode is "submit" (job-execution.md § 8.13).  ``submit`` is the
+    # resolved execution.mode decision from the caller; when None (standalone
+    # path with no policy) fall back to the DETECTED scheduler so a bundle
+    # prepped on a workstation never emits stray SLURM .sbatch files (§ 7.5).
+    emit_sbatch = (env.scheduler == "slurm") if submit is None else submit
 
     written: List[Path] = []
     cpu = points["cpu"]
@@ -667,6 +668,49 @@ echo "===== all points done -- next: ./bench-summarize ====="
 """
 
 
+def bake_run_bench(out_dir, adapter, cpu_np: int, mode: str) -> Path:
+    """Bake ``run-bench`` for THIS target (job-execution.md § 8.13), replacing
+    the static guard shipped by generate.  The CPU baseline is launched through
+    the SAME adapter as the GPU sweep -- ``adapter.cpu_launch_line`` -- so the
+    run-vs-submit ``mode`` applies UNIFORMLY: under ``submit`` both CPU and GPU
+    go through ``sbatch`` (no login-node execution); under ``direct`` both run
+    via ``bash`` in the current shell.  Fixes the old asymmetry where the CPU
+    baseline always ran in the terminal.
+    """
+    out_dir = Path(out_dir)
+    cpu_launch = adapter.cpu_launch_line(int(cpu_np), "job-cpu")
+    submit = mode == "submit"
+    tail = ("all points SUBMITTED -- check the queue (e.g. squeue -u $USER); "
+            "run ./bench-summarize once they finish"
+            if submit else
+            "all points done -- next: ./bench-summarize")
+    content = (
+        "#!/usr/bin/env bash\n"
+        f"# run-bench (baked by prep: scheduler '{adapter.name}', mode "
+        f"'{mode}') -- run the WHOLE matrix: CPU baseline (point 0) then the\n"
+        "# GPU sweep.  CPU and GPU launch the SAME way (job-execution.md "
+        "§ 8.13).\n"
+        "set -u\n"
+        "if [ ! -f job-cpu.run.sh ] || [ ! -f job-gpu-sweep.sh ] || \\\n"
+        "   ! grep -q _mb_point job-gpu-sweep.sh 2>/dev/null; then\n"
+        '    echo "run ./prep-bench first -- it detects this machine and '
+        'bakes the" >&2\n'
+        '    echo "run scripts + the real sweep (BENCH-PLAN.md explains the '
+        'plan)." >&2\n'
+        "    exit 1\n"
+        "fi\n"
+        f'echo "===== benchmark point 0: CPU baseline (job-cpu, {mode}) ====="\n'
+        f"{cpu_launch}\n"
+        'echo "===== benchmark GPU sweep ====="\n'
+        "bash job-gpu-sweep.sh\n"
+        f'echo "===== {tail} ====="\n'
+    )
+    p = out_dir / "run-bench"
+    p.write_text(content, encoding="utf-8")
+    p.chmod(0o755)
+    return p
+
+
 def _detect_host_env() -> str:
     """The molbuilder host-env name to bake into the shims: the env that is
     running `bench generate` (so the bundle reactivates the same env on the
@@ -707,15 +751,24 @@ def _ship_entry_shims(out_dir: Path, host_env: str) -> List[Path]:
 
 
 def render_bench_plan(env, manifest: dict, ks: List[int],
-                      cs: Optional[List[int]] = None) -> str:
+                      cs: Optional[List[int]] = None,
+                      mode: Optional[str] = None,
+                      submit_via: str = "slurm") -> str:
     """Human-readable benchmark plan (job-execution.md § 8.4): the full test
     matrix -- CPU baseline (point 0) + the GPU ``G × K × c`` grid -- with the
     varied axes, ranks/cores per point, what is measured, and exactly how to
     change each.  Built from the DETECTED environment + the manifest, so it
     always matches what ``./run-bench`` will actually run.  ``cs`` is the
     explicit cores/rank list (else the per-K bracket {1, cores//K, 2cores//K}).
+    ``mode`` ("direct"|"submit") is the resolved launch policy (§ 8.13), stated
+    up front so the user knows whether ./run-bench submits or runs in-shell.
     """
-    from .adapters import _bracket_cs
+    from .adapters import _bracket_cs, resolve_mode
+
+    rmode = resolve_mode(env, mode)
+    launch = (f"submit via {submit_via} (sbatch per point; CPU + GPU both "
+              "queued)" if rmode == "submit"
+              else "direct bash (sequential, current shell)")
 
     t = env.topology
     cores = t.cores_per_socket or 0
@@ -754,6 +807,7 @@ def render_bench_plan(env, manifest: dict, ks: List[int],
         f"{t.gpus_per_node}×{gtype} GPU",
         manifest.get("description", ""),
         f"Measured per point: {manifest.get('measured', '?')}.",
+        f"Launch: {launch}  (execution.mode in .molbuilder.json -- § 8.13).",
         "Varied axes (GPU points): K = MPI ranks/GPU, c = cores(OMP)/rank.  c "
         "is NOT capped at one socket -- the cross-socket points MEASURE whether",
         "more CPU beats the GPU<->socket traffic on an allocation we don't "
@@ -796,9 +850,13 @@ def render_bench_plan(env, manifest: dict, ks: List[int],
         "bench-manifest.json",
         "  • Simulation params : edit job-cpu.fdf / job-gpu.fdf "
         "(MeshCutoff, kgrid, PAO.BasisSize, …)",
+        '  • Run vs submit     : set "execution":{"mode":"direct"|"submit"} '
+        "in .molbuilder.json (§ 8.13)",
         "",
         "Next step: ./run-bench   "
-        "(or one point: bash job-cpu.run.sh / bash job-gpu.run.sh)",
+        + ("(submits every point; check the queue, then ./bench-summarize)"
+           if rmode == "submit"
+           else "(runs each point in this shell; or one: bash job-cpu.run.sh)"),
     ]
     return "\n".join(lines)
 

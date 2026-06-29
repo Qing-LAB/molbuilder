@@ -20,7 +20,7 @@ import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from .adapters import get_adapter
+from .adapters import resolve_launch_adapter
 from .environment import Environment, resolve_environment
 
 # Topology override keys accepted from the CLI / caller (flow to
@@ -41,6 +41,8 @@ def run_prep_bench(out_dir,
                    scheduler_override: Optional[str] = None,
                    ks: Optional[list] = None,
                    cs: Optional[list] = None,
+                   mode: Optional[str] = None,
+                   submit_via: str = "slurm",
                    now_iso: Optional[str] = None
                    ) -> Tuple[Environment, List[Path]]:
     """Detect the target, write ``environment.json``, and format the
@@ -50,6 +52,12 @@ def run_prep_bench(out_dir,
     ``{"cores_per_socket": 24}``) that win over detection.  ``ks`` (e.g.
     ``[8, 16]``) overrides the swept ranks-per-GPU values; ``cs`` (e.g.
     ``[1, 8, 16]``) overrides the swept cores-per-rank values (§ 8.12).
+
+    ``mode`` ("direct" | "submit") + ``submit_via`` select the LAUNCH adapter
+    (job-execution.md § 8.13), so the baked sweep uses ``sbatch`` per point
+    under ``submit`` and direct ``bash`` under ``direct`` -- independent of the
+    detected scheduler.  ``mode=None`` derives it from detection.
+
     Returns ``(Environment, [written paths])``.  ``.sh`` outputs are made
     executable.
     """
@@ -65,7 +73,7 @@ def run_prep_bench(out_dir,
     env_path.write_text(env.to_json() + "\n", encoding="utf-8")
     written.append(env_path)
 
-    adapter = get_adapter(env)
+    adapter, _ = resolve_launch_adapter(env, mode=mode, submit_via=submit_via)
     for name, content in adapter.format_bench(env, ks=ks, cs=cs).items():
         p = out / name
         p.write_text(content, encoding="utf-8")

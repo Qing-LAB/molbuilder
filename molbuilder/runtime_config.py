@@ -486,6 +486,19 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         out["scheduler"] = dict(sched)
 
+    # --- execution section (job-execution.md § 8.13) ---------------- #
+    # The run-vs-submit launch policy.  Like ``scheduler``, it is merged +
+    # validated lazily by its getter (:func:`get_execution`); here we only
+    # keep it out of the allowlist's drop set and reject a non-object early.
+    if "execution" in raw:
+        execn = raw["execution"]
+        if not isinstance(execn, Mapping):
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: 'execution' must be an object; got "
+                f"{type(execn).__name__}."
+            )
+        out["execution"] = dict(execn)
+
     return out
 
 
@@ -1069,6 +1082,46 @@ def get_scheduler(
         _validate_scheduler(project_raw)  # raises
 
     return _validate_scheduler(merged)
+
+
+def get_execution(
+    project_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Return the effective ``execution`` block (job-execution.md § 8.13):
+    the run-vs-submit launch policy, read at prep time on the target.
+
+    Server-wide and project scopes are deep-merged (project wins).
+
+    Returns:
+        {
+            "mode":       "direct" | "submit" | None,   # None -> caller
+                          # derives from the detected scheduler
+            "submit_via": "slurm",                       # backend when submit
+        }
+
+    ``mode`` is the source of truth for HOW a benchmark point is launched,
+    decoupled from the DETECTED scheduler (which still drives topology
+    detection): you can be *on* slurm yet launch ``direct``, or force
+    ``submit`` from an interactive shell.  A malformed ``mode`` raises.
+    """
+    server_raw = _read_server_wide().get("execution") or {}
+    project_raw: Dict[str, Any] = {}
+    if project_dir is not None:
+        project_raw = _read_project(Path(project_dir)).get("execution") or {}
+
+    merged: Dict[str, Any] = {}
+    if isinstance(server_raw, Mapping):
+        merged = _deep_merge(merged, dict(server_raw))
+    if isinstance(project_raw, Mapping):
+        merged = _deep_merge(merged, dict(project_raw))
+
+    mode = merged.get("mode")
+    if mode is not None and mode not in ("direct", "submit"):
+        raise RuntimeConfigError(
+            f'execution.mode must be "direct" or "submit"; got {mode!r}.\n'
+            "Fix it in .molbuilder.json (job-execution.md § 8.13).")
+    submit_via = merged.get("submit_via", "slurm")
+    return {"mode": mode, "submit_via": submit_via}
 
 
 def write_config_scope(
