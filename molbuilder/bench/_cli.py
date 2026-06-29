@@ -395,8 +395,12 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
 @click.option("--gpu-ks", default=None,
               help="comma-separated K (ranks/GPU) values to sweep, e.g. "
                    "8,16 (default: cores/socket divisors).")
+@click.option("--gpu-cs", default=None,
+              help="comma-separated c (cores/rank) values to sweep, e.g. "
+                   "1,8,16 (default per K: {1, cores//K, 2*cores//K} -- "
+                   "starved / 1-socket / cross-socket).")
 def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
-             gpus_per_node, gpu_type, gpu_ks) -> None:
+             gpus_per_node, gpu_type, gpu_ks, gpu_cs) -> None:
     """Detect this machine (scheduler + topology) and format the benchmark
     scripts for it -- step 1 of the on-target workflow
     (docs/protocols/benchmark-workflow.md § 7.2).
@@ -418,6 +422,7 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         overrides=_overrides_from(cores_per_socket, gpus_per_node, gpu_type),
         scheduler_override=scheduler,
         ks=_parse_ks(gpu_ks),
+        cs=_parse_ks(gpu_cs),
         now_iso=utc_now_iso())
 
     # Bake the run wrappers for THIS target (job-execution.md § 7.4): resolve
@@ -431,12 +436,12 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         raise SystemExit(2)
 
     # Write + PRINT the human-readable benchmark plan (job-execution.md § 8.4):
-    # the enumerated matrix (CPU baseline + each GPU K), what's measured, and
-    # how to change it.  K matches the sweep (--gpu-ks or cores-per-socket
-    # divisors).
+    # the enumerated matrix (CPU baseline + the GPU G×K×c grid), what's
+    # measured, and how to change it.  K/c match the sweep.
     manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
     ks = _parse_ks(gpu_ks) or divisors(env.topology.cores_per_socket or 0)
-    plan = render_bench_plan(env, manifest, ks)
+    cs = _parse_ks(gpu_cs)
+    plan = render_bench_plan(env, manifest, ks, cs)
     plan_path = Path(out) / "BENCH-PLAN.md"
     plan_path.write_text(plan + "\n", encoding="utf-8")
     written.append(plan_path)

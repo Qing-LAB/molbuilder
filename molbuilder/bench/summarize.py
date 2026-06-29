@@ -27,7 +27,7 @@ from .result import (
 # with SCF.MustConverge .false. still exits cleanly and prints these).
 _DONE_MARKERS = ("Job completed", "End of run", "siesta: Final energy",
                  ">> End of run:")
-_POINT_RE = re.compile(r"^point-G(\d+)K(\d+)$")
+_POINT_RE = re.compile(r"^point-G(\d+)K(\d+)C(\d+)$")
 _RUN_IDX = re.compile(r"-run(\d+)\.")
 
 
@@ -106,13 +106,14 @@ def discover_points(bundle) -> List[BenchPoint]:
     plus a single CPU run (``job-cpu-*`` in the bundle root) if present."""
     bundle = Path(bundle)
     pts: List[BenchPoint] = []
-    for d in sorted(p for p in bundle.glob("point-G*K*") if p.is_dir()):
+    for d in sorted(p for p in bundle.glob("point-G*K*C*") if p.is_dir()):
         m = _POINT_RE.match(d.name)
         if not m:
             continue
         pts.append(parse_point(
             d.name, d, "job-gpu", "gpu",
-            {"gpus": int(m.group(1)), "ranks_per_gpu": int(m.group(2))}))
+            {"gpus": int(m.group(1)), "ranks_per_gpu": int(m.group(2)),
+             "cores_per_rank": int(m.group(3))}))
     if list(bundle.glob("job-cpu-run*.out")):
         # the CPU bench is a single root-level run; np isn't recorded in
         # the filenames (set via sbatch -n), so knobs stay empty.

@@ -706,34 +706,47 @@ def _ship_entry_shims(out_dir: Path, host_env: str) -> List[Path]:
     return written
 
 
-def render_bench_plan(env, manifest: dict, ks: List[int]) -> str:
+def render_bench_plan(env, manifest: dict, ks: List[int],
+                      cs: Optional[List[int]] = None) -> str:
     """Human-readable benchmark plan (job-execution.md § 8.4): the full test
-    matrix -- CPU baseline (point 0) + one GPU point per swept K -- with the
-    varied parameter, ranks/cores per point, what is measured, and exactly
-    how to change each.  Built from the DETECTED environment + the manifest,
-    so it always matches what ``./run-bench`` will actually run.
+    matrix -- CPU baseline (point 0) + the GPU ``G × K × c`` grid -- with the
+    varied axes, ranks/cores per point, what is measured, and exactly how to
+    change each.  Built from the DETECTED environment + the manifest, so it
+    always matches what ``./run-bench`` will actually run.  ``cs`` is the
+    explicit cores/rank list (else the per-K bracket {1, cores//K, 2cores//K}).
     """
+    from .adapters import _bracket_cs
+
     t = env.topology
     cores = t.cores_per_socket or 0
+    gpn = t.gpus_per_node or 1
     pts = manifest.get("points", {})
     cpu = pts.get("cpu", {})
     gpu = pts.get("gpu", {})
-    gpus = gpu.get("gpus", 1)
     gtype = t.gpu_type or "gpu"
     cpu_np = cpu.get("mpi_np", "?")
 
+    hdr = ("#", "point", "engine path", "ranks", "c/rank", "gpu", "what it probes")
     rows = [("0", "cpu", cpu.get("solver", "CPU"),
              str(cpu_np), "1", "—", "CPU baseline (s/iter)")]
-    for i, k in enumerate(ks, start=1):
-        c = max(1, cores // k) if cores else "?"
-        note = f"{k} rank(s)/GPU" + (" (MPS)" if k >= 2 else "")
-        rows.append((str(i), f"gpu-G{gpus}K{k}", gpu.get("solver", "GPU"),
-                     str(k * gpus), str(c), f"{gpus}×{gtype}", note))
+    i = 1
+    for g in range(1, gpn + 1):
+        for k in ks:
+            for c in (cs if cs else _bracket_cs(cores or None, k)):
+                per_gpu = k * c
+                if cores and per_gpu > 2 * cores:
+                    what = f"{per_gpu} c/GPU — > node, may not fit"
+                elif cores and per_gpu > cores:
+                    what = f"{per_gpu} c/GPU — CROSS-SOCKET (traffic test)"
+                else:
+                    what = f"{per_gpu} c/GPU — within 1 socket"
+                rows.append((str(i), f"gpu-G{g}K{k}C{c}",
+                             gpu.get("solver", "GPU"), str(k * g), str(c),
+                             f"{g}×{gtype}", what))
+                i += 1
 
-    w = [max(len(r[i]) for r in rows + [("#", "point", "engine path",
-         "ranks", "c/rank", "gpu", "answers")]) for i in range(7)]
-    def fmt(r): return "  ".join(s.ljust(w[i]) for i, s in enumerate(r))
-    hdr = ("#", "point", "engine path", "ranks", "c/rank", "gpu", "answers")
+    w = [max(len(r[j]) for r in rows + [hdr]) for j in range(7)]
+    def fmt(r): return "  ".join(s.ljust(w[j]) for j, s in enumerate(r))
 
     lines = [
         f"BENCH PLAN — {manifest.get('engine', '?')}, detected: "
@@ -741,12 +754,14 @@ def render_bench_plan(env, manifest: dict, ks: List[int]) -> str:
         f"{t.gpus_per_node}×{gtype} GPU",
         manifest.get("description", ""),
         f"Measured per point: {manifest.get('measured', '?')}.",
-        "Varied parameter: K = MPI ranks sharing one GPU (GPU points); "
-        "the CPU point is the baseline.",
+        "Varied axes (GPU points): K = MPI ranks/GPU, c = cores(OMP)/rank.  c "
+        "is NOT capped at one socket -- the cross-socket points MEASURE whether",
+        "more CPU beats the GPU<->socket traffic on an allocation we don't "
+        "control (§ 8.12).  The CPU point is the baseline.",
         "Run order (./run-bench runs top-to-bottom; each point isolated):",
         "",
         "  " + fmt(hdr),
-        "  " + "  ".join("-" * w[i] for i in range(7)),
+        "  " + "  ".join("-" * w[j] for j in range(7)),
     ]
     lines += ["  " + fmt(r) for r in rows]
 
@@ -769,11 +784,17 @@ def render_bench_plan(env, manifest: dict, ks: List[int]) -> str:
 
     lines += [
         "",
-        "How to change (then re-run ./prep-bench):",
-        "  • GPU K values   : ./prep-bench --gpu-ks 1,2,5,10",
-        '  • CPU rank count : edit "mpi_np" under points.cpu in '
+        f"Conditions: {len(rows)} points "
+        f"(1 CPU baseline + {len(rows) - 1} GPU G×K×c).",
+        "Add / remove conditions (then re-run ./prep-bench):",
+        "  • GPU ranks/GPU (K) : ./prep-bench --gpu-ks 1,2,5,10",
+        "  • GPU cores/rank (c): ./prep-bench --gpu-cs 1,8,16   "
+        "(default per K: {1, cores//K, 2·cores//K})",
+        "  • GPU count (G)     : ./prep-bench --gpus-per-node N "
+        "(sweeps G=1..N)",
+        '  • CPU rank count    : edit "mpi_np" under points.cpu in '
         "bench-manifest.json",
-        "  • SIESTA params  : edit job-cpu.fdf / job-gpu.fdf "
+        "  • Simulation params : edit job-cpu.fdf / job-gpu.fdf "
         "(MeshCutoff, kgrid, PAO.BasisSize, …)",
         "",
         "Next step: ./run-bench   "

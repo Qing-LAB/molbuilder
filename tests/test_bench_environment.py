@@ -220,12 +220,13 @@ def test_format_bench_workstation_emits_direct_grid():
     s = _sweep(adapters.WorkstationAdapter(), env)
     # direct launch (no sbatch SUBMISSION), picks the GPU + launcher knobs
     assert "&& sbatch" not in s
+    # K=8 row, the 1-socket bracket point c=24//8=3 (G×K×c grid, §8.12)
     assert ("CUDA_VISIBLE_DEVICES=0 MB_NP=8 "
             "OMP_NUM_THREADS=3 ./job-gpu.run.sh") in s
     assert "SEQUENTIALLY" in s
-    # each point is isolated in its own dir
-    assert "_mb_point point-G1K8" in s
-    assert "( cd point-G1K8 &&" in s
+    # each point is isolated in its own G/K/c dir
+    assert "_mb_point point-G1K8C3" in s
+    assert "( cd point-G1K8C3 &&" in s
 
 
 def test_format_bench_isolates_points_at_runtime(tmp_path):
@@ -247,13 +248,15 @@ def test_format_bench_isolates_points_at_runtime(tmp_path):
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
 
+    # G×K×c grid (§8.12): cps=4 -> K∈{1,2,4}, c bracket {1,cps//K,2cps//K}:
+    #   K=1->{1,4,8}, K=2->{1,2,4}, K=4->{1,2}  = 8 points; C1 is in every row.
     for k in (1, 2, 4):
-        d = tmp_path / f"point-G1K{k}"
+        d = tmp_path / f"point-G1K{k}C1"
         assert d.is_dir()
         assert (d / "job-gpu.fdf").is_symlink()
         assert (d / "C.psml").is_symlink()
     ran = (tmp_path / "_ran.log").read_text().split()
-    assert len(ran) == 3                       # one run per point...
+    assert len(ran) == 8                       # one run per (K,c) point...
     assert all("point-G1K" in line for line in ran)   # ...each in its dir
 
 
@@ -263,8 +266,8 @@ def test_format_bench_unknown_cores_uses_fallback_ks():
     s = _sweep(adapters.SlurmAdapter(), env)
     assert "fallback set" in s
     assert "-n 8" in s            # K=8 from the fallback set
-    # without cores/socket there is no -c; the launcher defaults it
-    assert "-c" not in s.split("\n\n", 1)[1]
+    # cores/socket unknown -> c falls back to {1,2,4}; -c IS emitted (§8.12)
+    assert "-c 1" in s.split("\n\n", 1)[1]
 
 
 def _run_script(adapter, choice, env, **kw):

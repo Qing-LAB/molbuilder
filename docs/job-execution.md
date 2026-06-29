@@ -943,3 +943,37 @@ CPU baseline to the detected core count (sockets×cores_per_socket) unless the
 user overrode it — adapting resources to the machine, the same way GPU `-c` is
 derived. **Not yet implemented** (deferred — it changes a default, the
 scientist's call). Until then: set `points.cpu.mpi_np` before `./run-bench`.
+
+### 8.12 Sweep space — the (G, K, c) grid, no wishful-binding cap (2026-06-29)
+
+**Why.** The GPU sweep used to derive cores/rank as `c = cores_per_socket // K`
+so `K·c` stays within one socket — baking a "the GPU and its ranks live on the
+same socket" assumption. On a cluster we don't control (Sol does **not**
+promise the GPU and CPU come from the same socket / close), that "optimal"
+footprint is wishful and routinely violated — and *whether piling on more
+CPU per GPU beats the cross-socket traffic is exactly what the benchmark must
+measure*, not something the generator pre-decides and caps.
+
+**The grid.** GPU points are a full **(G × K × c)** grid:
+- **G** — GPUs, `1..gpus_per_node` (`--gpus-per-node`).
+- **K** — MPI ranks per GPU (`-n = K·G`), `--gpu-ks` (default: divisors of
+  cores/socket).
+- **c** — cores (OMP threads) per rank (`-c`), `--gpu-cs` — an **independent**
+  axis, **not capped at one socket**. Default per K = the *bracket*
+  `{1, cores//K, 2·cores//K}` → *starved / one-socket / cross-socket*, so each
+  K row brackets the traffic question. Total CPU per GPU = `K·c`, free to span
+  sockets; points that exceed the node are **flagged** (`> node, may not fit`),
+  not dropped — SLURM rejecting an oversize point is a legitimate data point.
+- Each point isolates in `point-G<g>K<k>C<c>/`; `summarize` parses the
+  `(G,K,c)` label.
+
+**Binding stays best-effort, not prescriptive.** The wrapper's per-rank
+GPU↔NUMA `numactl` binding still adapts to whatever the scheduler granted and
+*logs* when it lands cross-socket — but it no longer constrains the generated
+conditions. The sweep proposes configs the old "optimal" forbade; the result
+tells us what actually wins on the real allocation.
+
+**Discoverability.** `./prep-bench` prints `BENCH-PLAN.md` ending with a
+`Conditions: N points` summary + the `Add / remove conditions` block
+(`--gpu-ks`, `--gpu-cs`, `--gpus-per-node`, manifest `points.cpu.mpi_np`, the
+`.fdf`s) — so the live knobs are always in front of the user after prep.

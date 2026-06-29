@@ -39,6 +39,18 @@ def _int_or(v, default):
 # Fallback rank-counts when cores-per-socket is unknown (so the sweep is
 # still useful; the adapter notes the missing topology).
 _FALLBACK_KS = (1, 2, 4, 8)
+_FALLBACK_CS = (1, 2, 4)        # cores/rank when cores-per-socket is unknown
+
+
+def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
+    """Default cores-per-rank set for a given K: the *bracket*
+    ``{1, cores//K, 2*cores//K}`` -- starved / one-socket / cross-socket --
+    so each K row probes minimal, the conventional full-socket footprint, AND
+    a deliberately cross-socket one (job-execution.md § 8.12).  Deduped, >=1.
+    Falls back to ``_FALLBACK_CS`` when cores/socket is unknown."""
+    if not cps:
+        return list(_FALLBACK_CS)
+    return sorted({1, max(1, cps // k), max(1, (2 * cps) // k)})
 
 # A script basename is interpolated UNQUOTED into generated shell, so it
 # must not carry shell metacharacters / spaces (production base is
@@ -115,46 +127,57 @@ class SchedulerAdapter:
 
     def format_bench(self, env: Environment, *,
                      gpus_per_node: Optional[int] = None,
-                     ks: Optional[List[int]] = None
+                     ks: Optional[List[int]] = None,
+                     cs: Optional[List[int]] = None
                      ) -> Dict[str, str]:
         """Render the environment-tailored ``job-gpu-sweep.sh`` for this
-        scheduler: the valid (G, K) grid as runnable lines (invalid ones
-        as comments).  Returns ``{filename: content}`` so it can grow to
-        emit more formatted files later.
+        scheduler: the (G, K, c) grid as runnable lines.  Returns
+        ``{filename: content}`` so it can grow to emit more files later.
 
-        ``ks`` overrides the swept ranks-per-GPU values (default: the
-        cores-per-socket divisors -- full-socket points).  Pass an explicit
-        list (e.g. ``[8, 16]``) to probe specific K; a K that does not
-        divide cores/socket is still emitted but flagged as leaving some
-        cores idle.
+        ``ks`` overrides the swept ranks-per-GPU values (default: cores-per-
+        socket divisors).  ``cs`` overrides the swept cores-per-rank (=OMP
+        threads/rank) values (default per K: the *bracket*
+        ``{1, cores//K, 2*cores//K}`` -- starved / one-socket / cross-socket).
+
+        c is an INDEPENDENT axis, deliberately NOT capped at one socket: on a
+        system where the scheduler does not co-locate the GPU with its ranks'
+        socket (e.g. Sol), the "optimal" full-socket footprint is wishful and
+        the real question -- *does more CPU working with the GPU beat the
+        cross-socket traffic?* -- is exactly what the sweep must MEASURE rather
+        than pre-decide (job-execution.md § 8.12).  Per-rank GPU<->NUMA binding
+        stays best-effort in the wrapper (adapts to what SLURM granted, logs
+        cross-socket); it no longer constrains the generated conditions.
 
         Running the produced script does the right thing per scheduler by
-        construction: under SLURM each point is an ``sbatch`` (all points
-        **queue in parallel**); on a workstation each runs in-place
-        (points run **sequentially**).
+        construction: under SLURM each point is an ``sbatch`` (queue in
+        parallel); on a workstation each runs in-place (sequential).
 
-        **Output isolation:** every (G, K) point runs in its own
-        ``point-G<g>K<k>/`` subdirectory (the shared fdf / run.sh / sbatch
-        / monitor / pseudopotentials are symlinked in), so points never
-        clobber the shared ``job-gpu`` basename and summarize can map each
-        directory back to its (G, K) label."""
+        **Output isolation:** every (G, K, c) point runs in its own
+        ``point-G<g>K<k>C<c>/`` subdirectory (shared artifacts symlinked in),
+        so points never clobber the ``job-gpu`` basename and summarize maps
+        each directory back to its (G, K, c) label."""
         topo = env.topology
         gpn = gpus_per_node or topo.gpus_per_node or 1
         cps = topo.cores_per_socket
         gtype = _check_gpu_type(topo.gpu_type)
         ks = [int(k) for k in ks] if ks else (
             self.sweep_K(topo) or list(_FALLBACK_KS))
+        cs_explicit = [int(c) for c in cs] if cs else None
 
         head = [
             "#!/usr/bin/env bash",
             f"# job-gpu-sweep.sh -- generated for scheduler '{self.name}'",
             f"#   topology: gpus/node={gpn} cores/socket="
             f"{cps if cps else '?'} gpu_type={gtype}",
-            "#   knobs: G=GPUs, K=MPI ranks/GPU (-n=K*G), "
-            "c=cores/rank (=cores_per_socket/K, full-socket).",
+            "#   knobs: G=GPUs, K=MPI ranks/GPU (-n=K*G), c=cores(OMP)/rank "
+            "(-c=c).  c is an independent axis, NOT capped at one socket.",
             "#   K values = " + ",".join(str(k) for k in ks)
             + (" (cores/socket unknown -> fallback set)" if not cps else ""),
-            "#   each point runs in its own point-G<g>K<k>/ dir (isolated "
+            "#   c values = " + (",".join(str(c) for c in cs_explicit)
+                                 if cs_explicit
+                                 else "{1, cores//K, 2*cores//K} per K "
+                                      "(starved / 1-socket / cross-socket)"),
+            "#   each point runs in its own point-G<g>K<k>C<c>/ dir (isolated "
             "outputs).",
         ]
         if self.name == "slurm":
@@ -182,28 +205,31 @@ class SchedulerAdapter:
         body: List[str] = []
         for g in range(1, gpn + 1):
             for k in ks:
-                # K = GPU processes (MPI ranks SHARING the GPU via MPS).
-                # OMP threads/rank = cores/socket / K, floored at 1.  K is
-                # NOT capped at cores/socket: a GPU-bound run can profit
-                # from more ranks than cores (the GPU does the work), so we
-                # ALLOW oversubscription and just flag it -- the whole point
-                # of the sweep is to find where np stops scaling.
-                c = max(1, cps // k) if cps else None
-                d = f"point-G{g}K{k}"
-                ctag = "" if c is None else f" c={c}"
-                if cps and k > cps:
-                    note = (f"  (OVERSUBSCRIBED: K={k} > cores/socket={cps}; "
-                            f"{k} ranks share {cps} cores -- MEASURE the knee)")
-                else:
-                    idle = (cps - k * c) if (cps and c is not None) else 0
-                    note = (f"  ({idle} idle cores: K does not divide "
-                            f"cores/socket)" if idle > 0 else "")
-                caveat = ("  (multi-GPU: no NCCL -- MEASURE; do NOT add "
-                          "--gpu-bind)" if g >= 2 else "")
-                launch = self.gpu_launch_line(g, k, c, gtype)
-                body.append(f"# G={g} K={k}{ctag}{note}{caveat}")
-                body.append(f"_mb_point {d}")
-                body.append(f"( cd {d} && {launch} )")
+                # K = MPI ranks SHARING the GPU (via MPS).  c = cores (OMP
+                # threads) per rank -- an INDEPENDENT axis, not capped at one
+                # socket (§ 8.12).  Total CPU for this point = K*c*G.
+                for c in (cs_explicit if cs_explicit else _bracket_cs(cps, k)):
+                    d = f"point-G{g}K{k}C{c}"
+                    total = k * c
+                    notes = []
+                    if cps and k > cps:
+                        notes.append(f"K={k} > cores/socket={cps}: ranks "
+                                     f"oversubscribe cores")
+                    if cps and total > 2 * cps:
+                        notes.append(f"{total} cores > node ({2*cps}): SLURM "
+                                     f"may REJECT -- a 'did not fit' data point")
+                    elif cps and total > cps:
+                        notes.append(f"{total} cores > 1 socket ({cps}): "
+                                     f"CROSS-SOCKET -- measures traffic vs "
+                                     f"throughput")
+                    if g >= 2:
+                        notes.append("multi-GPU: no NCCL -- MEASURE; do NOT "
+                                     "add --gpu-bind")
+                    note = ("  (" + "; ".join(notes) + ")") if notes else ""
+                    launch = self.gpu_launch_line(g, k, c, gtype)
+                    body.append(f"# G={g} K={k} c={c} (total {total} cores){note}")
+                    body.append(f"_mb_point {d}")
+                    body.append(f"( cd {d} && {launch} )")
 
         content = "\n".join(head) + "\n\n" + "\n".join(body) + "\n"
         return {"job-gpu-sweep.sh": content}

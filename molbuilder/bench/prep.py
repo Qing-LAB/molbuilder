@@ -40,6 +40,7 @@ def run_prep_bench(out_dir,
                    overrides: Optional[dict] = None,
                    scheduler_override: Optional[str] = None,
                    ks: Optional[list] = None,
+                   cs: Optional[list] = None,
                    now_iso: Optional[str] = None
                    ) -> Tuple[Environment, List[Path]]:
     """Detect the target, write ``environment.json``, and format the
@@ -47,8 +48,9 @@ def run_prep_bench(out_dir,
 
     ``overrides`` is a flat dict of declared topology values (e.g.
     ``{"cores_per_socket": 24}``) that win over detection.  ``ks`` (e.g.
-    ``[8, 16]``) overrides the swept ranks-per-GPU values.  Returns
-    ``(Environment, [written paths])``.  ``.sh`` outputs are made
+    ``[8, 16]``) overrides the swept ranks-per-GPU values; ``cs`` (e.g.
+    ``[1, 8, 16]``) overrides the swept cores-per-rank values (§ 8.12).
+    Returns ``(Environment, [written paths])``.  ``.sh`` outputs are made
     executable.
     """
     out = Path(out_dir)
@@ -64,7 +66,7 @@ def run_prep_bench(out_dir,
     written.append(env_path)
 
     adapter = get_adapter(env)
-    for name, content in adapter.format_bench(env, ks=ks).items():
+    for name, content in adapter.format_bench(env, ks=ks, cs=cs).items():
         p = out / name
         p.write_text(content, encoding="utf-8")
         if name.endswith(".sh"):
@@ -147,6 +149,10 @@ def main(argv=None) -> int:
     p.add_argument("--gpu-ks", default=None,
                    help="comma-separated ranks-per-GPU (K) values to sweep "
                         "(e.g. 8,16); default = cores/socket divisors")
+    p.add_argument("--gpu-cs", default=None,
+                   help="comma-separated cores-per-rank (c) values to sweep "
+                        "(e.g. 1,8,16); default per K = {1, cores//K, "
+                        "2*cores//K} (starved/1-socket/cross-socket)")
     a = p.parse_args(argv)
 
     env, written = run_prep_bench(
@@ -155,6 +161,7 @@ def main(argv=None) -> int:
                                   a.gpu_type),
         scheduler_override=a.scheduler,
         ks=_parse_ks(a.gpu_ks),
+        cs=_parse_ks(a.gpu_cs),
         now_iso=utc_now_iso())
     print(_summary(env, written))
     return 0

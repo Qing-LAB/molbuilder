@@ -117,9 +117,10 @@ def test_gpu_ks_override_in_sweep(tmp_path):
         scheduler_override="slurm", ks=[8, 16], now_iso="t")
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
     assert "K values = 8,16" in text
-    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in text
-    assert "sbatch --gres=gpu:a100:2 -n 32 -c 1 job-gpu.sbatch" in text  # G2K16
-    assert "8 idle cores" in text                 # K=16 doesn't divide 24
+    # G×K×c grid (§8.12): K=8 bracket c={1,3,6}, K=16 bracket c={1,3}
+    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in text   # G1K8C3
+    assert "sbatch --gres=gpu:a100:2 -n 32 -c 1 job-gpu.sbatch" in text  # G2K16C1
+    assert "CROSS-SOCKET" in text                 # e.g. K=8 c=6 -> 48 > 1 socket
     # no K=4/K=2 points (we asked for 8,16 only)
     assert "K=4 " not in text
 
@@ -137,7 +138,7 @@ def test_gpu_instance_scaling_allows_oversubscription(tmp_path):
     for k in (1, 2, 4, 8):
         assert f"point-G1K{k}" in text            # full ladder emitted
     assert "INVALID" not in text                  # K=8 > 6 not rejected
-    assert "OVERSUBSCRIBED: K=8 > cores/socket=6" in text
+    assert "K=8 > cores/socket=6" in text         # flagged, not skipped (§8.12)
 
 
 def test_main_standalone(tmp_path, monkeypatch, capsys):
@@ -327,8 +328,9 @@ def test_bench_plan_enumerates_cpu_baseline_and_gpu_sweep(tmp_path):
     for k in (1, 2, 5, 10):
         assert f"gpu-G1K{k}" in plan                   # one row per K
     assert "ELPA-CUDA" in plan and "ELPA-1STAGE (no CUDA)" in plan
-    assert "How to change" in plan
-    assert "./prep-bench --gpu-ks" in plan             # the GPU knob
+    assert "Add / remove conditions" in plan
+    assert "./prep-bench --gpu-ks" in plan             # the K knob
+    assert "./prep-bench --gpu-cs" in plan             # the c knob (§8.12)
     assert 'edit "mpi_np"' in plan                     # the CPU knob (manifest)
     assert "Next step: ./run-bench" in plan
 
