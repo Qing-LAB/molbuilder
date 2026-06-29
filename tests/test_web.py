@@ -2062,12 +2062,16 @@ def test_siesta_form_schema_matches_documented_layout():
         #   Parallel execution contributed 7 (mpi_np,
         #   parallel_block_size, parallel_over_k, omp_threads,
         #   max_memory_mb, enable_gpu, elpa_algorithm).
-        ("Compute & budget",        14),
-        # Optimization: the SIESTA staged-opt stage-table widget
-        # shipped 2026-06-25 (#542 C1.5) as a single dataclass-typed
-        # field (List[SiestaStageSpec]) — one field, rendered as a
-        # multi-row stage-table by the JS form-schema renderer.
-        ("Optimization",             1),
+        # Compute & budget: 15 fields = the 14 above + the staged-opt
+        # stage-table widget (cfg.stages, List[SiestaStageSpec]; one
+        # dataclass-typed field rendered as a multi-row table).  Per
+        # design.md 2026-06-22 + the #542 PySCF-parity decision +
+        # engines/siesta.md, cfg.stages lives in the "Compute & budget"
+        # Stage card.  It was mis-tagged section="Optimization"
+        # (workflow_group="budget"), which appended a stray "Optimization"
+        # section after the schema order -- a form-order regression vs the
+        # PySCF `stages` field; fixed 2026-06-29.
+        ("Compute & budget",        15),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

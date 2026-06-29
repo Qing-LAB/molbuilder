@@ -71,7 +71,16 @@ HTTP_METHODS = {"get", "post", "put", "delete", "patch"}
 #   ("relative/path.py", "test_function_name"): "reason"
 # Use sparingly — usually a missing status check is a real bug.
 ALLOWLIST: dict[Tuple[str, str], str] = {
-    # (none at time of writing)
+    # Body-validation helper, NOT an HTTP test: every `.get(...)` here is
+    # `body.get("key")` (dict access on the response body passed in as an
+    # argument), not `client.get("/path")`.  The helper has no response /
+    # status_code in scope; its callers (test_envelope_bucket_b_*) assert
+    # `r.status_code == 200` BEFORE passing the body in, so the negative
+    # `"errors" not in body` assertion is guarded at the call site.  This is
+    # exactly the dict.get false positive the heuristic docstring anticipates.
+    ("test_checkpoint_routes.py", "_assert_bucket_b"):
+        "body-validation helper; .get() is dict.get on the body, not an HTTP "
+        "call; callers guard status_code == 200 before calling it",
 }
 
 

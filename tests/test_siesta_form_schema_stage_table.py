@@ -89,17 +89,23 @@ def test_stages_default_matches_default_siesta_stages_value_for_value(
     assert f["default"] == expected
 
 
-def test_stages_field_lives_in_optimization_section(schema):
-    """Per the SiestaStageSpec field metadata, stages belongs in the
-    Optimization section / workflow_group=budget.  Pinning the
-    section assignment ensures the field shows up where the user
-    expects it (next to the other relaxation knobs)."""
+def test_stages_field_lives_in_compute_budget_section(schema):
+    """``stages`` belongs in the "Compute & budget" Stage card -- per
+    design.md 2026-06-22 ("cfg.stages lives in Compute & budget's Stage
+    card as a stage-table widget"), the #542 PySCF-parity decision, and
+    ``engines/siesta.md`` (the SIESTA stage-table is the engine parallel
+    to PySCF's, whose field uses section="Compute & budget").  This test
+    previously asserted section="Optimization" -- it had pinned a
+    regression: that mis-tag appended a stray "Optimization" section
+    after the schema order (caught by the e2e pinned-section-order test).
+    Fixed 2026-06-29 to match the design source of truth."""
     for section in schema.get("sections", []):
         names = [f.get("name") for f in section.get("fields", [])]
         if "stages" in names:
-            assert section.get("name") == "Optimization", (
+            assert section.get("name") == "Compute & budget", (
                 f"stages landed in section {section.get('name')!r}; "
-                f"expected Optimization"
+                f"expected 'Compute & budget' (design.md 2026-06-22 + "
+                f"PySCF parity)"
             )
             return
     raise AssertionError("stages field missing entirely from schema")

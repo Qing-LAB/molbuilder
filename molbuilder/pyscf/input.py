@@ -397,35 +397,43 @@ def render_script(struct: Structure,
     out.append("_atom_block = '''")
     out.append(_atoms_block(struct))
     out.append("'''")
-    out.append('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
-    out.append("if _os.path.exists(_opt_path) "
-               "and _os.path.getsize(_opt_path) > 0:")
-    out.append("    try:")
-    out.append("        with open(_opt_path) as _mb_xyz_fh:")
-    out.append("            _xyz_lines = _mb_xyz_fh.read().splitlines()")
-    # XYZ format: line 0 = atom count, line 1 = comment, lines 2..N+1
-    # = "ELEM  X  Y  Z" rows.  We rebuild _atom_block as PySCF expects
-    # (4 cols, whitespace-separated, Ang) and re-prefix every row with
-    # the same 4-space indent the literal uses so a downstream reader
-    # sees a uniform block shape.
-    out.append("        _n_xyz = int(_xyz_lines[0].strip())")
-    out.append("        _rows = []")
-    out.append("        for _row in _xyz_lines[2:2 + _n_xyz]:")
-    out.append("            _parts = _row.split()")
-    out.append("            if len(_parts) < 4:")
-    out.append("                raise ValueError("
-               "f\"malformed XYZ row: {_row!r}\")")
-    out.append("            _el = _parts[0]")
-    out.append("            _x, _y, _z = (float(_parts[1]), "
-               "float(_parts[2]), float(_parts[3]))")
-    out.append("            _rows.append("
-               "f\"    {_el:<2s}  {_x:14.8f}  {_y:14.8f}  {_z:14.8f}\")")
-    out.append("        _atom_block = \"\\n\".join(_rows)")
-    out.append('        print(f"[molbuilder] continuation: loaded '
-               'geometry from {_opt_path} ({_n_xyz} atoms)")')
-    out.append("    except (OSError, ValueError, IndexError) as _mb_e:")
-    out.append('        print(f"[molbuilder] warning: could not parse '
-               '{_opt_path} ({_mb_e}); using literal geometry from script")')
+    # Warm-restart READ of <JOB>_optimized.xyz is gated by the SAME flags as
+    # the WRITE (cfg.save_optimized_xyz and cfg.optimize, see "save" below):
+    # the file is only ever produced by an optimization run that saves it, so
+    # reading it only makes sense then.  With --no-save-optimized-xyz or
+    # --no-optimize the script never mentions _optimized.xyz at all (single-
+    # point uses the literal geometry).  Bug fix 2026-06-29: the read was
+    # previously unconditional, so the flag controlled writing but not reading.
+    if cfg.save_optimized_xyz and cfg.optimize:
+        out.append('_opt_path = _mb_outfile(JOB + "_optimized.xyz")')
+        out.append("if _os.path.exists(_opt_path) "
+                   "and _os.path.getsize(_opt_path) > 0:")
+        out.append("    try:")
+        out.append("        with open(_opt_path) as _mb_xyz_fh:")
+        out.append("            _xyz_lines = _mb_xyz_fh.read().splitlines()")
+        # XYZ format: line 0 = atom count, line 1 = comment, lines 2..N+1
+        # = "ELEM  X  Y  Z" rows.  We rebuild _atom_block as PySCF expects
+        # (4 cols, whitespace-separated, Ang) and re-prefix every row with
+        # the same 4-space indent the literal uses so a downstream reader
+        # sees a uniform block shape.
+        out.append("        _n_xyz = int(_xyz_lines[0].strip())")
+        out.append("        _rows = []")
+        out.append("        for _row in _xyz_lines[2:2 + _n_xyz]:")
+        out.append("            _parts = _row.split()")
+        out.append("            if len(_parts) < 4:")
+        out.append("                raise ValueError("
+                   "f\"malformed XYZ row: {_row!r}\")")
+        out.append("            _el = _parts[0]")
+        out.append("            _x, _y, _z = (float(_parts[1]), "
+                   "float(_parts[2]), float(_parts[3]))")
+        out.append("            _rows.append("
+                   "f\"    {_el:<2s}  {_x:14.8f}  {_y:14.8f}  {_z:14.8f}\")")
+        out.append("        _atom_block = \"\\n\".join(_rows)")
+        out.append('        print(f"[molbuilder] continuation: loaded '
+                   'geometry from {_opt_path} ({_n_xyz} atoms)")')
+        out.append("    except (OSError, ValueError, IndexError) as _mb_e:")
+        out.append('        print(f"[molbuilder] warning: could not parse '
+                   '{_opt_path} ({_mb_e}); using literal geometry from script")')
     out.append("mol = gto.M(")
     out.append("    atom       = _atom_block,")
     out.append(f'    basis      = "{cfg.basis}",')

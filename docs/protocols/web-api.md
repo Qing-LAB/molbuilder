@@ -219,7 +219,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 59 routes
+## 2. Endpoint index — all 67 routes
 
 ```mermaid
 flowchart LR
@@ -301,6 +301,23 @@ flowchart LR
         misc_ips["POST /api/siesta/install-pseudos"]
         misc_back["GET /api/backends"]
         misc_health["GET /api/health"]
+    end
+    subgraph "Checkpoint (project snapshot / version control)"
+        ck_init["POST /api/checkpoint/init"]
+        ck_state["GET /api/checkpoint/state"]
+        ck_list["GET /api/checkpoint/list"]
+        ck_commit["POST /api/checkpoint/commit"]
+        ck_restore["POST /api/checkpoint/restore"]
+        ck_diff["GET /api/checkpoint/diff"]
+        ck_tag["POST /api/checkpoint/tag"]
+        ck_mig["POST /api/checkpoint/migrate-manifest"]
+    end
+    subgraph "Admin (rate-limit control)"
+        adm_status["GET /api/admin/rate_limit/status"]
+        adm_clear["POST /api/admin/rate_limit/clear"]
+    end
+    subgraph "Vendor assets"
+        ven_plotly["GET /vendor/plotly.min.js"]
     end
 ```
 

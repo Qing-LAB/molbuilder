@@ -139,6 +139,26 @@
     --ps-danger-fg:       #e07a7a;
     --ps-warn-bg:         #5d4520;
     --ps-warn-fg:         #ffdca7;
+    /* Checkpoint sensor states + git-ref chips (Phase 3 completion,
+       2026-06-29): semantic palette for the projects-sidebar checkpoint
+       UI -- moved out of raw hex in projects-sidebar.css. */
+    --ps-ck-clean-bg:       #2d4a2d;
+    --ps-ck-clean-fg:       #b8e0b8;
+    --ps-ck-clean-border:   #4a7a4a;
+    --ps-ck-dirty-bg:       #4a3d2d;
+    --ps-ck-dirty-fg:       #e0c898;
+    --ps-ck-dirty-border:   #7a6539;
+    --ps-ck-uninit-bg:      #3a3a3a;
+    --ps-ck-uninit-fg:      #aaaaaa;
+    --ps-ck-uninit-border:  #555555;
+    --ps-ck-error-bg:       #4a2d2d;
+    --ps-ck-error-fg:       #e0a8a8;
+    --ps-ck-error-border:   #7a4a4a;
+    --ps-ck-restore-fg:     #e0a868;
+    --ps-ref-tag-bg:        #7a5b2d;
+    --ps-ref-branch-bg:     #2d4a5a;
+    --ps-code-fg:           #88aacc;
+    --ps-on-accent:         #ffffff;
 
     /* --- Selection panel (lib/selection-panel.css) ---
      * Distinct teal/cyan accent + green-include / red-exclude tags

@@ -575,8 +575,13 @@ class SiestaConfig:
     stages: List[SiestaStageSpec] = field(
         default_factory=lambda: _default_siesta_stages(),
         metadata={
-            "section":        "Optimization",
-            "workflow_group": "budget",
+            # Lives in the "Compute & budget" Stage card -- mirrors the PySCF
+            # `stages` field + the design.md 2026-06-22 decision ("cfg.stages
+            # lives in Compute & budget's Stage card as a stage-table widget").
+            # Was "Optimization"/"budget" -- an unlisted section appended after
+            # the schema order, i.e. a form-order regression vs that decision.
+            "section":        "Compute & budget",
+            "workflow_group": "stage",
             "label":          "Per-stage relaxation ladder",
             "engine_key":     "(molbuilder: cfg.stages -> generator's "
                               "STAGES literal in the emitted fdf-runner "

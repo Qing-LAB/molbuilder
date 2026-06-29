@@ -1368,24 +1368,24 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 /* run-checkpoints.md § 6.2 -- green=clean, yellow=dirty,           */
 /* blue=running, gray=uninit, red=error.                            */
 .ps-checkpoint-sensor[data-state="clean"] {
-    background:        #2d4a2d;
-    color:             #b8e0b8;
-    border-color:      #4a7a4a;
+    background:        var(--ps-ck-clean-bg);
+    color:             var(--ps-ck-clean-fg);
+    border-color:      var(--ps-ck-clean-border);
 }
 .ps-checkpoint-sensor[data-state="dirty"] {
-    background:        #4a3d2d;
-    color:             #e0c898;
-    border-color:      #7a6539;
+    background:        var(--ps-ck-dirty-bg);
+    color:             var(--ps-ck-dirty-fg);
+    border-color:      var(--ps-ck-dirty-border);
 }
 .ps-checkpoint-sensor[data-state="uninit"] {
-    background:        #3a3a3a;
-    color:             #aaa;
-    border-color:      #555;
+    background:        var(--ps-ck-uninit-bg);
+    color:             var(--ps-ck-uninit-fg);
+    border-color:      var(--ps-ck-uninit-border);
 }
 .ps-checkpoint-sensor[data-state="error"] {
-    background:        #4a2d2d;
-    color:             #e0a8a8;
-    border-color:      #7a4a4a;
+    background:        var(--ps-ck-error-bg);
+    color:             var(--ps-ck-error-fg);
+    border-color:      var(--ps-ck-error-border);
 }
 
 .ps-checkpoint-collapse {
@@ -1417,7 +1417,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-checkpoint-init-btn,
 .ps-checkpoint-action {
     background:        var(--ps-accent, #4a7aa7);
-    color:             #fff;
+    color:             var(--ps-on-accent);
     border:            none;
     padding:           0.25rem 0.6rem;
     border-radius:     3px;
@@ -1460,7 +1460,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 
 .ps-checkpoint-row-sha {
     font-family:       var(--font-mono, monospace);
-    color:             #88aacc;
+    color:             var(--ps-code-fg);
     font-size:         0.75rem;
     margin-right:      0.4rem;
 }
@@ -1480,15 +1480,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
     display:           inline-block;
     padding:           0.05rem 0.4rem;
     background:        var(--ps-accent, #4a7aa7);
-    color:             #fff;
+    color:             var(--ps-on-accent);
     border-radius:     999px;
     font-size:         0.7rem;
 }
 .ps-checkpoint-ref-chip[data-kind="tag"] {
-    background:        #7a5b2d;
+    background:        var(--ps-ref-tag-bg);
 }
 .ps-checkpoint-ref-chip[data-kind="branch"] {
-    background:        #2d4a5a;
+    background:        var(--ps-ref-branch-bg);
 }
 
 .ps-checkpoint-row-archive {
@@ -1520,15 +1520,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
     background:        var(--ps-hover);
 }
 .ps-checkpoint-row-action-btn[data-action="restore"] {
-    color:             #e0a868;
+    color:             var(--ps-ck-restore-fg);
 }
 
 .ps-checkpoint-advisory {
     margin-top:        0.4rem;
     padding:           0.4rem 0.6rem;
-    background:        #4a3d2d;
-    color:             #e0c898;
-    border:            1px solid #7a6539;
+    background:        var(--ps-ck-dirty-bg);
+    color:             var(--ps-ck-dirty-fg);
+    border:            1px solid var(--ps-ck-dirty-border);
     border-radius:     3px;
     font-size:         0.75rem;
     line-height:       1.3;
@@ -1557,7 +1557,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 
 .ps-checkpoint-view-btn.is-active {
     background:        var(--ps-accent, #4a7aa7);
-    color:             #fff;
+    color:             var(--ps-on-accent);
 }
 .ps-checkpoint-view-btn:hover:not(.is-active) {
     background:        var(--ps-hover);

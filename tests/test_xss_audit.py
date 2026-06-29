@@ -249,6 +249,18 @@ class TestNoUnsafeInnerHTML:
             # render of ``_spectra_inspector.html``) to host.innerHTML.
             # Same trust boundary; same justification.
             ("lib/inspectors/spectra.js", "host.innerHTML = partialHtml"),
+            # Markdown inspector: the live-preview pane assigns
+            # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
+            # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes
+            # ``marked.parse(text)`` through ``DOMPurify.sanitize(...)`` on
+            # EVERY call before returning, so the only thing reaching
+            # innerHTML is DOMPurify-sanitised HTML (script/on*/javascript:/
+            # iframe stripped).  The heuristic can't see the sanitiser
+            # through the wrapper function; the sanitisation is mandatory and
+            # has one site.  (Source is user-editable markdown -> self-XSS at
+            # worst, and DOMPurify defends even that.)
+            ("lib/inspectors/markdown.js",
+             "elRender.innerHTML = _renderToHTML"),
             # Shared partial-inspector factory (task #308 dedupe):
             # the ``host.innerHTML = partialHtml`` assignment moved
             # out of the trajectory + spectra wrappers and into the
