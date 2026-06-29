@@ -8,14 +8,16 @@ recommendation -- each bundle just reports its own wall/iter).
 
 Both points use the SAME eigensolver (``Diag.Algorithm ELPA-1STAGE``) so
 the CPU-vs-GPU number isolates the *hardware*, not the solver
-(slurm-integration.md § 11); only the GPU point adds ``Diag.ELPA.GPU .true.``.
+(slurm-integration.md § 11): the GPU point sets ``Diag.ELPA.GPU .true.``,
+the CPU point sets it EXPLICITLY ``.false.`` (the ELPA-CUDA build defaults
+to GPU; omitting it crashed the CPU baseline in CUDA -- § 11).
 ELPA lives only in ``molbuilder-siesta-gpu`` (the precompiled
 ``molbuilder-siesta`` has no ELPA), so BOTH bundles run there -- the CPU
 one declares that env EXPLICITLY (visible as "Target env" in its
 ``.run.sh``), not by silent re-routing.
 
-  * ``job-cpu.{fdf,run.sh,sbatch}`` -- ELPA-1STAGE, no ``Diag.ELPA.GPU``;
-    env ``molbuilder-siesta-gpu`` (explicit).
+  * ``job-cpu.{fdf,run.sh,sbatch}`` -- ELPA-1STAGE + ``Diag.ELPA.GPU
+    .false.`` (explicit CPU path); env ``molbuilder-siesta-gpu`` (explicit).
   * ``job-gpu.{fdf,run.sh,sbatch}`` -- ELPA-1STAGE + ``Diag.ELPA.GPU
     .true.``; env ``molbuilder-siesta-gpu`` (auto-routed by the GPU flag).
 
@@ -162,8 +164,10 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     step count (single-point), set ``BlockSize``.
 
     **Both points use the SAME solver, ``Diag.Algorithm ELPA-1STAGE``** —
-    only the GPU point adds ``Diag.ELPA.GPU .true.``.  So the CPU-vs-GPU
-    number isolates the *hardware* (the CUDA toggle), not *solver* —
+    the GPU point sets ``Diag.ELPA.GPU .true.`` and the CPU point sets it
+    EXPLICITLY ``.false.`` (the ELPA-CUDA build defaults to GPU, so omitting
+    the flag crashes the CPU baseline in CUDA -- see below).  So the
+    CPU-vs-GPU number isolates the *hardware* (the CUDA toggle), not *solver* —
     ScaLAPACK-CPU vs ELPA-GPU would conflate the two
     (slurm-integration.md § 11).  ELPA lives only in ``molbuilder-siesta-gpu``
     (the CPU ``molbuilder-siesta`` conda package is built without it), so
@@ -185,8 +189,17 @@ def transform_fdf(src_text: str, *, label: str, gpu: bool,
     t = _set_or_append(t, "Diag.Algorithm", "ELPA-1STAGE")
     if gpu:
         t = _set_or_append(t, "Diag.ELPA.GPU", ".true.")
+        t = _remove_directive(t, "Diag.ELPA.UseGPU")   # drop stale alias
     else:
-        t = _remove_directive(t, "Diag.ELPA.GPU")
+        # EXPLICIT .false. -- NOT merely omitted.  The benchmark binary is
+        # the ELPA-CUDA build (molbuilder-siesta-gpu; both points run there,
+        # § 11), and in that build Diag.ELPA.GPU DEFAULTS to attempting the
+        # GPU.  Omitting the flag let the CPU baseline initialize CUDA and
+        # crash on the allocated node ("cudaGetLastError: unknown error;
+        # STOP 1" -- Sol job 57852377, 2026-06-29).  Forcing .false. selects
+        # the CPU ELPA kernels.  Drop the legacy alias too so no stale
+        # Diag.ELPA.UseGPU .true. re-enables the GPU path.
+        t = _set_or_append(t, "Diag.ELPA.GPU", ".false.")
         t = _remove_directive(t, "Diag.ELPA.UseGPU")
     return t
 

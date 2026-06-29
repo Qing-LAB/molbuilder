@@ -65,9 +65,12 @@ _SCHEDULER_CONFIG = {
 # --------------------------------------------------------------------- #
 
 
-def test_transform_cpu_uses_elpa_without_gpu_flag():
+def test_transform_cpu_uses_elpa_with_gpu_flag_explicitly_false():
     # Apples-to-apples: the CPU point uses the SAME solver as GPU
-    # (ELPA-1STAGE) but NOT the CUDA toggle -- only hardware differs.
+    # (ELPA-1STAGE) but with the CUDA toggle EXPLICITLY OFF -- only
+    # hardware differs.  The flag must be set .false., NOT omitted: the
+    # ELPA-CUDA build defaults to GPU, so an omitted flag let the CPU
+    # baseline initialize CUDA and crash (Sol job 57852377, 2026-06-29).
     out = transform_fdf(_INPUT_FDF, label="job-cpu", gpu=False,
                         block_size=8, max_scf=5)
     assert re.search(r"^SystemName\s+job-cpu", out, re.MULTILINE)
@@ -77,15 +80,16 @@ def test_transform_cpu_uses_elpa_without_gpu_flag():
     assert re.search(r"^SCF\.MustConverge\s+\.false\.", out, re.MULTILINE)
     # Same eigensolver as the GPU point ...
     assert re.search(r"^Diag\.Algorithm\s+ELPA-1STAGE", out, re.MULTILINE)
-    # ... but NOT the CUDA toggle (that's the only difference).
-    assert "Diag.ELPA.GPU" not in out
+    # ... with the CUDA toggle EXPLICITLY .false. (that's the difference).
+    assert re.search(r"^Diag\.ELPA\.GPU\s+\.false\.", out, re.MULTILINE)
 
 
 def test_transform_normalizes_variant_spelled_directives():
     # SIESTA treats . - _ as interchangeable and labels as case-
     # insensitive.  A legacy-spelled input must be replaced IN PLACE, not
-    # duplicated, and GPU directives must be stripped for the CPU bundle
-    # regardless of spelling (audit 2026-06-27 B-2).
+    # duplicated; for the CPU bundle the GPU toggle is flipped to .false.
+    # in place regardless of spelling (audit 2026-06-27 B-2; CUDA-crash
+    # fix 2026-06-29).
     src = ("SystemName x\nNumberOfAtoms 1\n"
            "DM-UseSaveDM .true.\nDiag-ELPA-GPU .true.\n"
            "max_scf_iterations 99\n")
@@ -93,8 +97,12 @@ def test_transform_normalizes_variant_spelled_directives():
                         block_size=8, max_scf=5)
     # No conflicting duplicate left behind, original variant gone.
     assert "DM-UseSaveDM .true." not in cpu
-    assert cpu.count(".true.") == 0          # both flipped/stripped
-    assert "Diag-ELPA-GPU" not in cpu and "Diag.ELPA.GPU" not in cpu
+    assert cpu.count(".true.") == 0          # both flipped to .false.
+    # The variant spelling is replaced in place by the canonical .false.;
+    # exactly one GPU-toggle line, set OFF, no duplicate.
+    assert "Diag-ELPA-GPU .true." not in cpu
+    assert len(re.findall(r"(?im)^\s*Diag[._-]ELPA[._-]GPU", cpu)) == 1
+    assert re.search(r"(?im)^Diag\.ELPA\.GPU\s+\.false\.", cpu)
     # The variant MaxSCFIterations was replaced in place, not appended.
     assert len(re.findall(r"(?im)^\s*max[._-]?scf", cpu)) == 1
     assert re.search(r"(?im)^MaxSCFIterations\s+5", cpu)
@@ -181,9 +189,14 @@ def test_generate_emits_portable_inputs_not_wrappers(tmp_path):
     # NO stdlib copy shipped (§ 8.3): molbuilder is on the target by contract
     assert not (out_dir / "mbbench").exists()
 
-    # GPU fdf routes to GPU; CPU fdf does not.
-    assert "Diag.ELPA.GPU" in (out_dir / "job-gpu.fdf").read_text()
-    assert "Diag.ELPA.GPU" not in (out_dir / "job-cpu.fdf").read_text()
+    # GPU fdf enables the CUDA toggle; CPU fdf sets it EXPLICITLY .false.
+    # (NOT omitted -- the ELPA-CUDA build defaults to GPU and the CPU
+    # baseline crashed in CUDA when it was omitted; Sol job 57852377).
+    import re as _re
+    assert _re.search(r"(?im)^Diag\.ELPA\.GPU\s+\.true\.",
+                      (out_dir / "job-gpu.fdf").read_text())
+    assert _re.search(r"(?im)^Diag\.ELPA\.GPU\s+\.false\.",
+                      (out_dir / "job-cpu.fdf").read_text())
 
     # self-describing manifest@2 (§ 8.6): human-readable, engine-neutral
     # `script` key, `points` (not `jobs`)
