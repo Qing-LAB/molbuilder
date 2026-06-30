@@ -19,7 +19,9 @@ Nothing reaches across jobs outside these two.
 from __future__ import annotations
 
 import dataclasses
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Matches the molbuilder/<name>@<major> convention used by
@@ -158,6 +160,21 @@ class JobSet:
             shared=list(d.get("shared") or []),
             jobs=[Job.from_dict(j) for j in (d.get("jobs") or [])],
         )
+
+    def write(self, path) -> Path:
+        """Persist to ``job-set.json`` -- the bundle's plan, carried
+        host->target (data-vocabulary.md § 1).  Pretty JSON so a human can
+        read/diff the plan in the bundle.  (A candidate adopter of the
+        proposed ``persist.VersionedDoc`` base, § 14.)"""
+        p = Path(path)
+        p.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+        return p
+
+    @classmethod
+    def load(cls, path) -> "JobSet":
+        """Read a ``job-set.json`` back into a JobSet (major-version checked
+        via ``from_dict``)."""
+        return cls.from_dict(json.loads(Path(path).read_text()))
 
     # ----- structural validation ------------------------------------- #
 

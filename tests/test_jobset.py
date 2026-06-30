@@ -401,3 +401,68 @@ def test_submit_exclusive_suppresses_mem(tmp_path):
     cmd = submit_jobset(js, tmp_path, mode="submit", dry_run=True)[0].command
     assert "--exclusive" in cmd
     assert not any(a.startswith("--mem") for a in cmd)   # exclusive wins
+
+
+# --------------------------------------------------------------------- #
+#  persistence (job-set.json write/load)                                #
+# --------------------------------------------------------------------- #
+
+def test_jobset_write_load_roundtrip(tmp_path):
+    js = _ladder()
+    p = js.write(tmp_path / "job-set.json")
+    assert p.is_file()
+    assert JobSet.load(p).to_dict() == js.to_dict()      # lossless on disk
+
+
+# --------------------------------------------------------------------- #
+#  molbuilder jobset CLI (plan / prep / submit over a bundle)           #
+# --------------------------------------------------------------------- #
+
+def _runner():
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner(), jobset_group
+
+
+def test_cli_plan_reads_jobset_json(tmp_path):
+    _ladder().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["plan", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "JOB-SET PLAN" in r.output and "Order: s1 -> s2" in r.output
+
+
+def test_cli_errors_without_jobset_json(tmp_path):
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["plan", str(tmp_path)])
+    assert r.exit_code != 0
+    assert "no job-set.json" in r.output
+
+
+def test_cli_prep_lays_out_dirs(tmp_path):
+    js = _sweep()
+    js.write(tmp_path / "job-set.json")
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["prep", str(tmp_path), "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    assert "prepped 2 job dir(s)" in r.output
+    assert (tmp_path / "point-G1K1C4" / "job-gpu.run.sh").is_symlink()
+
+
+def test_cli_submit_dry_run_lists_commands(tmp_path):
+    _sweep().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", str(tmp_path), "--mode", "submit",
+                            "--dry-run"])
+    assert r.exit_code == 0, r.output
+    assert "planned" in r.output and "sbatch" in r.output
+    assert "-J" in r.output and "G1K1C4" in r.output
+
+
+def test_cli_submit_requires_mode(tmp_path):
+    _sweep().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["submit", str(tmp_path)])
+    assert r.exit_code != 0                                # --mode required

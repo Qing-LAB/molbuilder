@@ -24,7 +24,8 @@
 | Piece | State |
 |---|---|
 | Stage *science*: `SiestaStageSpec`, `cfg.stages`, validation, per-stage `.fdf` | **built** (`config/siesta.py`, `validation/siesta.py`, `siesta/input.py`) |
-| `jobset` model + `job-set@1` persistence (§ 3) | **built** (`jobset/model.py`) |
+| `jobset` model + `job-set@1` persistence — `to_dict`/`from_dict` + `write`/`load` (§ 3) | **built** (`jobset/model.py`) |
+| `molbuilder jobset` CLI — `plan` / `prep` / `submit` over a bundle's `job-set.json` (§ 5) | **built** (`jobset/_cli.py`) |
 | `jobset` materialize engine — data symlinks (shared/script/carry) (§ 4) | **built** (`jobset/materialize.py`) |
 | `jobset` **prep** engine — render wrappers in root (from the real files) + materialize + link wrappers into job dirs (§ 5) | **built** (`jobset/prep.py::prep_jobset`) |
 | `jobset` plan engine — STAGE-PLAN table (§ 5) | **built** (`jobset/plan.py`) |
@@ -35,9 +36,9 @@
 | Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
 | `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
-| Prep-time resource resolve + per-stage `.sbatch` bake + `job-set.json` emit (§ 5) | **proposed** (CLI/prep wiring) |
+| **HOST bundle producer** — one command: config → render stage `.fdf`s + place pseudos + `stages_to_jobset(...).write()` (§ 5 step 2-3) | **proposed** — the remaining wiring (`fdf --stage-strategy` renders the `.fdf`s today; the `job-set.json` write is API-only via `.write()`) |
 | Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**) |
-| CLI/prep wiring + bench migration onto the framework (§ 13 D4) | **proposed** |
+| Bench migration onto the framework (§ 13 D4) | **proposed** |
 
 ---
 
@@ -344,39 +345,41 @@ flowchart TD
 |---|---|---|---|---|
 | 1 | Author + `validate()` (blocks a broken ladder) | HOST | `validation/siesta.py` | built |
 | 2 | Produce `JobSet` + render per-stage `.fdf` | HOST | `siesta/stages.py`, `siesta/input.py` | built |
-| 3 | Persist → `job-set.json` | HOST | `jobset/model.py` | model built; bundle-write proposed |
+| 3 | Persist → `job-set.json` (`JobSet.write`) | HOST | `jobset/model.py` | **built** (`.write`/`.load`); one-command host producer proposed |
 | 4 | Ship bundle to target | — | scp / bundle | reuses job-exec |
 | 5 | Prep: render wrappers (root, real files) + `materialize()` + link wrappers in + `plan()` | TARGET | `jobset/prep.py::prep_jobset` (reuses `runwrap.write_run_wrapper`) + `jobset/plan.py` | **built** |
 | 6 | Submit: per-job sbatch CLI flags + `--dependency` (or ordered local `bash`), carry resolves | TARGET | `jobset/submit.py::submit_jobset` | **built** |
 | 7 | Monitor | TARGET | bench monitor | reuses job-exec |
 
-### Example — operations (the API)
+### Example — operations (the verbs)
 
-The framework is the foundation; the **Python API is the interface today**.
-A thin CLI/bundle wrapper (the `stage-prep` / `stage-submit` generated
-scripts, mirroring `prep-bench` / `run-bench`) is the one wiring piece still
-to build — see § 1.
+The **HOST** writes the bundle's plan with the Python API; the **TARGET**
+uses the `molbuilder jobset` CLI (built). The one piece still to wire is a
+single host *command* that bundles steps 2–3 (today: render the `.fdf`s with
+`molbuilder fdf --stage-strategy`, then `JobSet.write` via the API).
 
 ```python
-from molbuilder.jobset import prep_jobset, render_plan, submit_jobset
-
-# HOST: author the ladder → JobSet (+ render the per-stage .fdf in the bundle)
+# HOST (Python): author the ladder → JobSet, render the per-stage .fdf in the
+# bundle, and persist the plan.
+from molbuilder.siesta.stages import stages_to_jobset
 js = stages_to_jobset(cfg, shared=[...], resources_for=overrides.get)
+js.write(bundle_dir / "job-set.json")          # the plan, carried to the target
+```
 
-# TARGET: render launchers + lay out point-stage<N>/ + see the plan
-prep_jobset(js, bundle_dir)                    # wrappers + dirs + carry symlinks
-print(render_plan(js))                          # chain + per-stage resources, dry
-
-# TARGET: review before anything irreversible, then run
-submit_jobset(js, bundle_dir, mode="submit", domain="public", dry_run=True)  # plan
-submit_jobset(js, bundle_dir, mode="submit", domain="public")                # go
+```bash
+# ...ship the bundle to the target, then on the TARGET:
+molbuilder jobset prep   ./bundle                       # wrappers + point-*/ + carry symlinks
+molbuilder jobset plan   ./bundle                       # the chain + per-job resources (review)
+molbuilder jobset submit ./bundle --mode submit --domain public --dry-run   # preview commands
+molbuilder jobset submit ./bundle --mode submit --domain public             # go
 
 # continue an interrupted stage (engine resumes from its own warm files)
-# cd point-stage2 && sbatch bdt_stage2.sbatch --continue
+cd point-stage2 && sbatch bdt_stage2.sbatch --continue
 
 # explore an alternative tail without losing the converged path (§11)
-# cd point-stage2; molbuilder snapshot tag stage2-converged   # built
-# git checkout -b stage2-tzp   # branch: raw git today (snapshot branch not built, §11 gap)
+cd point-stage2
+molbuilder snapshot tag stage2-converged       # built
+git checkout -b stage2-tzp                      # branch: raw git today (§11 gap)
 ```
 
 ---

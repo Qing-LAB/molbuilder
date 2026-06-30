@@ -322,6 +322,12 @@ cli.add_command(envs_group)
 # combinations.  See molbuilder/bench/.
 cli.add_command(bench_group)
 
+# `molbuilder jobset ...`  (engine-agnostic staged execution: plan / prep /
+# submit a bundle's job-set.json -- the SIESTA stage ladder, and later the
+# bench sweep).  See molbuilder/jobset/ + docs/protocols/staged-execution.md.
+from .jobset._cli import jobset_group
+cli.add_command(jobset_group)
+
 # `molbuilder transport ...`  (TranSIESTA workflow helpers; preflight =
 # device<->electrode consistency gates).  See molbuilder/transport/.
 cli.add_command(transport_group)
