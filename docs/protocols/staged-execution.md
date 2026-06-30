@@ -297,6 +297,18 @@ the carried file lands in stage2's own dir under the shared `SystemLabel`
 from it — molbuilder wires the file into place; the **engine** does the
 resume (§ 10).
 
+**Localize-on-run — why the symlink doesn't clobber the producer.** Stages
+share one `SystemLabel`, so stage2 *also writes* `bdt.XV`. If it wrote
+through the symlink it would overwrite stage1's file — breaking the isolation
+this section promises. So stage2's launcher, as its **first action at run
+time** (after the producer finished, ordering guaranteed), replaces each
+carried symlink with a real **local copy** (`prep_jobset` passes the carry
+list as `write_run_wrapper(carry_in=…)`, which emits a
+`cp --remove-destination "$(readlink -f f)" f` preamble in the `.run.sh`).
+After that, stage2 reads *and* writes its own local `bdt.XV`; stage1's dir is
+never touched. This is what makes the §4 "never clobber" guarantee hold for
+the restart files, not just the `.out`/logs.
+
 **Which files are carried (the D1 rule, § 13).** `stages_to_jobset` decides
 the carry set per consecutive pair:
 

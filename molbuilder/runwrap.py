@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -1522,7 +1523,8 @@ def render_run_wrapper(script_path: Path, *,
                         omp_threads: Optional[int] = None,
                         max_memory_mb: Optional[int] = None,
                         n_atoms: Optional[int] = None,
-                        mem_audit: Optional[Mapping[str, Any]] = None) -> str:
+                        mem_audit: Optional[Mapping[str, Any]] = None,
+                        carry_in: Optional[List[str]] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -2699,6 +2701,34 @@ def render_run_wrapper(script_path: Path, *,
         resolved_defaults=_resolved_defaults,
     )
     _user_custom = _sc.emit_user_custom_placeholder()
+
+    # Carry-forward localization (staged-execution.md § 4): when a job
+    # INHERITS restart files from a prior job, they arrive as symlinks into
+    # the producer's dir.  Replace each with a real LOCAL copy before the
+    # engine runs, so this job's writes to the same <SystemLabel> filename
+    # stay in this dir and never reach back through the symlink and clobber
+    # the producer's results.  Runs in the job's cwd; ordering (SLURM
+    # dependency / sequential direct) guarantees the producer has finished.
+    # Empty (no block) for jobs with no carry -- existing callers unaffected.
+    _carry_in = list(carry_in or [])
+    if _carry_in:
+        _carry_items = " ".join(shlex.quote(c) for c in _carry_in)
+        carry_deref = (
+            "# --- Carry-forward: localize inherited restart files "
+            "(staged-execution.md § 4) ---\n"
+            f"for _cf in {_carry_items}; do\n"
+            '    if [ -L "$_cf" ]; then\n'
+            '        _ct="$(readlink -f "$_cf" 2>/dev/null || true)"\n'
+            '        if [ -n "$_ct" ] && [ -e "$_ct" ]; then\n'
+            '            cp --remove-destination "$_ct" "$_cf"\n'
+            '            _log INFO "carry: localized $_cf from $_ct"\n'
+            "        fi\n"
+            "    fi\n"
+            "done\n\n"
+        )
+    else:
+        carry_deref = ""
+
     return (
         f"#!/usr/bin/env bash\n"
         f"{_provenance}\n"
@@ -2751,6 +2781,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# caller's cwd is the contract -- outputs (log, -runN.out)\n"
         f"# land where the wrapper was invoked.\n"
         f"\n"
+        f"{carry_deref}"
         f"{env_activation}"
         f"{env_prefix}"
         f"{launch_block}"
@@ -2832,6 +2863,7 @@ def write_run_wrapper(script_path: Path, *,
                        mem: Optional[str] = None,
                        cpus_per_task: Optional[int] = None,
                        exclusive: Optional[bool] = None,
+                       carry_in: Optional[List[str]] = None,
                        emit_sbatch: bool = True) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
@@ -2867,6 +2899,7 @@ def write_run_wrapper(script_path: Path, *,
         max_memory_mb=max_memory_mb,
         n_atoms=n_atoms,
         mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
+        carry_in=carry_in,
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
     # (parse-only, no execution) before we hand it back.  Catches the

@@ -83,6 +83,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             gres=r.gres,
             mem=r.mem,
             exclusive=r.exclusive,
+            # localize carried restart files at run time so this job's writes
+            # never clobber the producer's dir (staged-execution.md § 4).
+            carry_in=[c.pattern for c in job.carry],
             emit_sbatch=emit_sbatch,
         )
         rendered.add(job.script)

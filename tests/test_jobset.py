@@ -534,3 +534,64 @@ def test_cli_status(tmp_path):
     r = runner.invoke(grp, ["status", str(tmp_path)])
     assert r.exit_code == 0, r.output
     assert "JOB-SET STATUS" in r.output and "First incomplete" in r.output
+
+
+def test_status_finished_with_real_siesta_out(tmp_path):
+    # DEPTH: the real decode_run_dir -> "finished" path (not monkeypatched),
+    # so a drift in the status-dict shape between decode + runstatus is caught.
+    import shutil
+    fix = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
+           / "hemeC-stage2-run3-finished-42fr.out")
+    d = tmp_path / "point-s1"; d.mkdir()
+    shutil.copy(fix, d / "demo.out")            # label = jobset.name = "demo"
+    st = jobset_status(_ladder(), tmp_path)
+    assert st.stages[0].state == "finished"     # REAL parse of a finished run
+
+
+# --------------------------------------------------------------------- #
+#  carry-forward BEHAVIOR (the §4 isolation guarantee, end-result)       #
+# --------------------------------------------------------------------- #
+
+def test_carry_deref_localizes_and_isolates_producer(tmp_path):
+    # DEPTH: run the ACTUAL deref bash the generated wrapper emits, and prove
+    # the §4 guarantee holds -- the consumer gets a real local copy and a
+    # later write to it does NOT reach back and clobber the producer.
+    import os
+    import subprocess
+    from molbuilder.runwrap import render_run_wrapper
+
+    (tmp_path / "point-s1").mkdir()
+    (tmp_path / "point-s1" / "JOB.XV").write_text("STAGE1-GEOM")
+    c = tmp_path / "point-s2"; c.mkdir()
+    os.symlink("../point-s1/JOB.XV", c / "JOB.XV")     # as materialize lays it
+    assert (c / "JOB.XV").is_symlink()
+
+    (tmp_path / ".molbuilder.json").write_text(
+        '{"script_generation": {"preamble": "x", "activation": "source activate"}}')
+    fdf = tmp_path / "JOB_s2.fdf"
+    fdf.write_text("SystemLabel JOB\nNumberOfAtoms 1\n")
+    txt = render_run_wrapper(fdf, carry_in=["JOB.XV"])
+    start = txt.index("# --- Carry-forward")
+    block = "_log(){ :; }\n" + txt[start:txt.index("\n\n", start)]
+    subprocess.run(["bash", "-eu", "-c", block], cwd=str(c), check=True)
+
+    # localized to a REAL file holding the producer's content
+    assert not (c / "JOB.XV").is_symlink()
+    assert (c / "JOB.XV").read_text() == "STAGE1-GEOM"
+    # this stage writes its OWN geometry -> producer untouched (§4 holds)
+    (c / "JOB.XV").write_text("STAGE2-GEOM")
+    assert (tmp_path / "point-s1" / "JOB.XV").read_text() == "STAGE1-GEOM"
+
+
+def test_prep_carry_deref_only_in_consumer_wrapper(tmp_path):
+    # the deref preamble appears ONLY in the carrying stage's wrapper.
+    js = _ladder()                               # s1: no carry; s2: carries .XV/.DM
+    _write_config(tmp_path)
+    for s in ("demo_s1.fdf", "demo_s2.fdf"):
+        _write_fdf(tmp_path / s)
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+    s1 = (tmp_path / "demo_s1.run.sh").read_text()
+    s2 = (tmp_path / "demo_s2.run.sh").read_text()
+    assert "Carry-forward: localize" not in s1
+    assert "Carry-forward: localize" in s2
+    assert "demo.XV" in s2 and "demo.DM" in s2

@@ -315,3 +315,63 @@ def test_jobset_flag_off_by_default_no_job_set_json(xyz, tmp_path):
     r = _invoke("fdf", str(xyz), str(fdf), "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     assert not (tmp_path / "job-set.json").exists()   # unchanged default
+
+
+# --------------------------------------------------------------------- #
+#  End-to-end loop + cross-stage consistency (depth, not API-presence)   #
+# --------------------------------------------------------------------- #
+
+
+def test_jobset_end_to_end_produce_prep_status_submit(xyz, tmp_path):
+    """Pin the WHOLE loop on one bundle: produce (--jobset) -> the plan's
+    scripts are the real rendered files -> prep lays out the dirs -> status
+    reports pending + the right resume point -> submit(dry-run) plans every
+    stage. This is the composition the per-layer unit tests don't cover."""
+    from molbuilder.jobset.model import JobSet
+    from molbuilder.jobset import prep_jobset, jobset_status, submit_jobset
+
+    b = tmp_path / "bundle"; b.mkdir()
+    r = _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
+                "--stage-strategy", "publishable", "--jobset")
+    assert r.exit_code == 0, r.output
+
+    js = JobSet.load(b / "job-set.json")
+    # cross-consistency: every Job.script names a file that was actually rendered
+    assert [j.script for j in js.jobs] == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
+    for j in js.jobs:
+        assert (b / j.script).is_file()
+
+    # a bundle carries the script_generation block the wrappers need.
+    (b / ".molbuilder.json").write_text(
+        '{"script_generation": {"preamble": "module load mamba", '
+        '"activation": "source activate"}}')
+    prep_jobset(js, b, emit_sbatch=False)
+    for j in js.jobs:
+        assert (b / f"point-{j.name}").is_dir()
+
+    st = jobset_status(js, b)
+    assert [s.state for s in st.stages] == ["pending", "pending"]
+    assert st.first_incomplete == "stage1" and st.complete is False
+
+    res = submit_jobset(js, b, mode="direct", dry_run=True)
+    assert [x.status for x in res] == ["planned", "planned"]
+
+
+def test_jobset_systemlabel_carry_consistency(xyz, tmp_path):
+    """The contract that makes warm-restart work: the SystemLabel INSIDE each
+    rendered stage .fdf == the JobSet name == the carry filename stem. If any
+    drifts, SIESTA's auto-restart silently breaks."""
+    from molbuilder.jobset.model import JobSet
+
+    b = tmp_path / "bundle"; b.mkdir()
+    _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
+            "--stage-strategy", "publishable", "--jobset")
+    js = JobSet.load(b / "job-set.json")
+
+    assert js.name == "JOB"
+    for j in js.jobs:
+        body = (b / j.script).read_text()
+        assert any("SystemLabel" in ln and "JOB" in ln
+                   for ln in body.splitlines())          # label baked in fdf
+    # the carried restart files use that SAME shared label.
+    assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
