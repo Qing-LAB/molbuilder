@@ -22,7 +22,9 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-SCHEMA_VERSION = "job-set@1"
+# Matches the molbuilder/<name>@<major> convention used by
+# bench/environment.py and bench/result.py (same major-version check).
+SCHEMA = "molbuilder/job-set@1"
 
 _DEP_KINDS = ("afterok", "afterany")
 _KINDS = ("sweep", "ladder")
@@ -58,10 +60,11 @@ class Resources:
 
 @dataclass
 class Carry:
-    """One runtime-produced file carried forward: ``pattern`` (a glob like
-    ``"*.XV"``) taken from job ``from_job``'s directory and symlinked into
-    the consuming job's directory (docs/protocols/staged-execution.md
-    § 8 D1)."""
+    """One runtime-produced file carried forward: ``pattern`` (a concrete
+    filename, e.g. ``"job.XV"``) taken from job ``from_job``'s directory and
+    symlinked into the consuming job's directory.  Concrete, not a glob: the
+    symlink is laid at materialize time (before the producer runs) and
+    resolves once the file appears (docs/protocols/staged-execution.md § 13 D1)."""
     pattern:  str
     from_job: str
 
@@ -126,7 +129,7 @@ class JobSet:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "schema": SCHEMA_VERSION,
+            "schema": SCHEMA,
             "name": self.name,
             "engine": self.engine,
             "kind": self.kind,
@@ -136,11 +139,14 @@ class JobSet:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
-        schema = d.get("schema")
-        if schema != SCHEMA_VERSION:
+        # Major-version check, same rule as bench/environment.py + result.py:
+        # tolerate same-major minor bumps, reject a different major.
+        got = str(d.get("schema") or "")
+        want_major = SCHEMA.rsplit("@", 1)[-1]
+        if got.rsplit("@", 1)[-1] != want_major:
             raise ValueError(
-                f"job-set: unsupported schema {schema!r}; "
-                f"expected {SCHEMA_VERSION!r}")
+                f"job-set: unsupported schema {got!r}; "
+                f"need major {want_major} ({SCHEMA}).")
         return cls(
             name=d["name"],
             engine=d["engine"],
@@ -191,4 +197,4 @@ class JobSet:
         return errors
 
 
-__all__ = ["Resources", "Carry", "Job", "JobSet", "SCHEMA_VERSION"]
+__all__ = ["Resources", "Carry", "Job", "JobSet", "SCHEMA"]

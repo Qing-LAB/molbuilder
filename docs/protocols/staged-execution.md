@@ -28,7 +28,9 @@
 | SIESTA stage producer — `cfg.stages` → ladder `JobSet` (§ 3, § 7) | **built** (`siesta/stages.py::stages_to_jobset`) |
 | Monolithic runner = `direct` mode (§ 9) | **built** (`render_siesta_stages_runner`) |
 | Engine-native resume (§ 10) | **built** (`script-execution.md`, `runwrap`) |
-| Checkpoints / branch (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
+| Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
+| `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
+| Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
 | `jobset` **submit** engine — dependency-threaded sbatch (§ 7) | **proposed** (`jobset/submit.py`) |
 | Prep-time resource resolve + per-stage `.sbatch` bake + `job-set.json` emit (§ 5) | **proposed** |
 | Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**) |
@@ -144,7 +146,7 @@ ordered + acyclic).
 
 ```json
 {
-  "schema": "job-set@1",
+  "schema": "molbuilder/job-set@1",
   "name": "bdt",
   "engine": "siesta",
   "kind": "ladder",
@@ -293,8 +295,9 @@ cd point-stage2 && sbatch bdt_stage2.sbatch --continue
 
 # explore an alternative tail without losing the converged path (§11)
 cd point-stage2
-molbuilder snapshot tag stage2-converged
-molbuilder snapshot branch stage2-tzp        # edit fdf, re-submit; restore to the tag if worse
+molbuilder snapshot tag stage2-converged     # built
+git checkout -b stage2-tzp                    # branch: raw git today (snapshot branch not yet built, §11 gap)
+# ...edit fdf, re-submit; `molbuilder snapshot restore stage2-converged` to rewind if worse
 ```
 
 ---
@@ -445,8 +448,16 @@ flowchart LR
 **Scope alignment (zero conflict).** Each `point-<name>/` stage dir is
 exactly the checkpoint design's "single working directory" (lowest-dir
 rule, P5: each SLURM job self-contained). So **each stage dir is its own
-checkpoint repo**; `molbuilder snapshot {tag,branch,restore}` works per
-stage unchanged.
+checkpoint repo**; `molbuilder snapshot {init,checkpoint,tag,list,restore}`
+works per stage unchanged.
+
+> **Gap (verified 2026-06-30):** `molbuilder snapshot **branch**` is in the
+> `run-checkpoints.md` design (Phase 4) but is **not yet implemented** —
+> only `init/checkpoint/tag/list/restore/migrate-manifest` exist today. To
+> branch a stage right now, use raw `git checkout -b <name>` inside the
+> stage dir (each dir is a real git repo). Building the `snapshot branch`
+> wrapper is the one new checkpoint piece this integration needs (§ 1; it
+> is what makes "explore alternatives" first-class).
 
 - The shared package (bundle root) lives **outside** the per-stage repos —
   immutable inputs, not versioned per stage; git records the *symlink*.
@@ -467,17 +478,37 @@ molbuilder organizes + informs; the user decides.
 
 ---
 
-## § 12 What is reused vs new
+## § 12 Reuse, debt, and the handoff boundary
 
-**Reused as-is** (no new wheels): `_mb_point` dir+symlink isolation;
+**Genuinely reused (the submit engine, when built, calls these directly):**
 `SlurmAdapter` routing / exclusive+mem / per-job `-J`; env routing on
-ELPA/GPU; `write_run_wrapper`/`render_sbatch`; the entry-shim env bootstrap
-(job-execution.md § 8.3); per-job memory estimate; engine-native
-warm-restart (`script-execution.md`); git checkpoints (`run-checkpoints.md`).
+ELPA/GPU; `write_run_wrapper` / `render_sbatch`; the entry-shim env
+bootstrap (job-execution.md § 8.3); per-job memory estimate; engine-native
+warm-restart (`script-execution.md`); git checkpoints `snapshot
+tag`/`restore` (`run-checkpoints.md`).
 
-**New** (small, contained): the `jobset/{model,materialize,plan,submit}`
+**Known debt — `jobset` currently PARALLELS the bench, it does not yet
+reuse it (be honest):** `jobset/materialize.py` reimplements the bench's
+isolation, which today is **inline bash** (`_mb_point` generated into
+`job-gpu-sweep.sh`, `bench/adapters.py`); `jobset/plan.py` parallels
+`bench/generate.py::render_bench_plan`. Until the bench **migrates** onto
+the framework (§ 13 D4 — `format_bench` returns a `JobSet`), there are two
+implementations of isolation + plan. That migration is what converts this
+section's first paragraph from "will reuse" to "reuses", and it is the
+condition for the framework to be a unification rather than a second copy.
+
+**Handoff boundary (don't reinvent it).** Carry-forward (§ 4) is *intra*-
+ladder geometry. The *inter-workflow* handoff — a converged relaxation
+feeding the next calculation (transport / spectra / bands) — is already
+`bundle_writer.py` + `bundle-contract.md` (the `.xyz` + `.molstruct.json`
+pair the next tab loads). The job-set framework stops at "produce the
+converged geometry"; the cross-workflow step reuses that existing
+primitive.
+
+**Net new (small, contained):** the `jobset/{model,materialize,plan,submit}`
 modules; `stages_to_jobset` producer; the carry-forward symlink step; the
-dependency-threading submit driver; the per-stage resource seam.
+dependency-threading submit driver; the per-stage resource seam; and the
+`snapshot branch` checkpoint wrapper (§ 11 gap).
 
 ---
 
@@ -503,3 +534,43 @@ dependency-threading submit driver; the per-stage resource seam.
   returns a `JobSet`) as a fast-follow — additive, a producer swap with the
   existing bench tests as the net. No parallel copy of the isolation/submit
   logic is ever created.
+
+---
+
+## § 14 Proposed infrastructure (build as shared, not one-offs)
+
+A review against the existing toolset (2026-06-30) surfaced three things
+that should be built as **infrastructure for wider use**, not local
+helpers — each abstracts a pattern already repeated or already needed in
+more than one place:
+
+1. **`molbuilder/persist.py` — a versioned-document base.** The
+   `to_dict` / `to_json` / `from_dict` + `SCHEMA = "molbuilder/<name>@<major>"`
+   + major-version-check pattern is now hand-rolled in **three** places
+   (`bench/environment.py`, `bench/result.py`, `jobset/model.py`). Extract a
+   tiny mixin/base (`VersionedDoc`) that owns the schema string, the
+   major-check, and atomic `write(path)` / `read(path)`. Adopters: all
+   three above, plus any future persisted artifact. *Infra, not a jobset
+   detail.*
+
+2. **`molbuilder/runstatus.py` — a run/stage status reader.** The "molbuilder
+   informs, the user decides" half of § 10–§ 11 has **no** implementation
+   yet: there is no tool that answers, for a job dir, *did it converge? was
+   it killed? are warm-restart files present? which is the first incomplete
+   stage?* This is needed by staging **and** the bench **and** the results
+   tab. Build it once: parse the engine `.out` (reuse `parse/` engines) +
+   check the project-ID warm files (`script-execution.md` inventory) +
+   read checkpoint state (`checkpoint.py`) → a `RunStatus` record the
+   `plan`/UI/CLI surface. *This is the missing "inform" infrastructure, and
+   the highest-leverage next build.*
+
+3. **`molbuilder snapshot branch` (+ `diff`, `prune`).** The checkpoint
+   design (`run-checkpoints.md` Phases 4–5) specifies branch/diff/prune but
+   only `init/checkpoint/tag/list/restore/migrate-manifest` are built.
+   `branch` is the one verb "explore alternatives" (§ 11) actually needs.
+   It is general checkpoint infrastructure (every run dir), not a staging
+   feature — build it in `checkpoint.py` + the `snapshot` group.
+
+The discipline (feedback: framework-first): a new wheel earns its place
+only as shared infrastructure, with the existing callers named that should
+migrate onto it. Each item above names its adopters.

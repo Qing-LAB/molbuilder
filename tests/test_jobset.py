@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.jobset.model import (Carry, Job, JobSet, Resources,
-                                     SCHEMA_VERSION)
+                                     SCHEMA)
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 
@@ -37,7 +37,7 @@ def _ladder() -> JobSet:
 def test_jobset_roundtrips_through_job_set_at_1():
     js = _ladder()
     d = js.to_dict()
-    assert d["schema"] == SCHEMA_VERSION
+    assert d["schema"] == SCHEMA
     back = JobSet.from_dict(d)
     assert back.to_dict() == d           # lossless
     assert back.jobs[1].carry[0].pattern == "demo.XV"
