@@ -29,6 +29,12 @@ into the SIESTA binary via `MD.UseSaveDM T` etc.; PySCF puts the
 warm-restart into the generated Python script via an `if exists →
 init_guess = "chkfile"` block).  Different machinery, same surface.
 
+This is the **per-job** contract.  How it extends to a multi-stage /
+multi-job set — per-stage separation, the SIESTA-vs-PySCF *granularity*
+asymmetry, and the rule that **molbuilder informs but the user decides
+to continue** (never auto-recovers) — is in
+[`staged-execution.md`](staged-execution.md) § 6.1.
+
 ---
 
 ## Per-engine warm-start file inventory

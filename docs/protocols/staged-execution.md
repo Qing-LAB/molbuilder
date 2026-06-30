@@ -32,6 +32,7 @@
 | **`jobset` submit engine** — dependency-threaded sbatch driver | **PROPOSED** (§ 4; `jobset/submit.py`) |
 | `on_nonconvergence` → SLURM dependency mapping | **built** in the producer (`_dep_kind`); consumed by the submit engine (§ 5) |
 | CLI / prep wiring + bench migration onto the framework | **PROPOSED** (§ 8 D4) |
+| Continuation contract (engine-native resume; molbuilder informs, user decides) | **built** (per-job: `script-execution.md` + `runwrap`); multi-stage extension **documented** (§ 6.1), surfacing/status **proposed** |
 
 ---
 
@@ -311,6 +312,60 @@ Keyed off the existing `execution.mode` (job-execution.md § 8.13):
 
 So no behavior changes for existing single-allocation users; the chain is
 additive, gated by the same mode switch the benchmark uses.
+
+---
+
+## § 6.1 Continuation & handoff — engine-native, user-decided (contract)
+
+**Principle (2026-06-30): resume is the modeling software's job, not
+molbuilder's.** When a job is stopped — by the scheduler (walltime/node),
+by non-convergence, or by the user — the *engine's own* restart mechanism
+recovers it from result files persisted on disk. molbuilder does **not**
+implement recovery and does **not** auto-resume: silent automatic
+recovery is easy to get subtly wrong, and re-doing work without the user's
+awareness is a heavy penalty. molbuilder's job is to (a) **organize** so
+the engine's restart files are cleanly separated per job, (b) **inform** so
+the user can decide *continue vs switch vs move on*, and (c) make that
+**manual** action trivial.
+
+**The per-job contract already exists** — `script-execution.md` (warm-
+restart is automatic when the project-ID-keyed files are present;
+`--continue` asserts them; `--cold` moves them aside, never deletes). This
+section only states how it extends to a staged / multi-job set; it adds no
+new recovery machinery.
+
+**Engine facts (verified — get them right; they differ):**
+
+| | SIESTA | PySCF |
+|---|---|---|
+| restart files | `<label>.XV` (geometry), `.DM` (density), `.CG` (optimizer) | `<JOB>.chk` (SCF DM), `<JOB>_optimized.xyz` (geometry) |
+| flags | `MD.UseSaveXV` / `DM.UseSaveDM` / `MD.UseSaveCG` (default on) | script `init_guess="chkfile"` + geometry warm-restart block |
+| **geometry granularity** | **per geometry step** (`.XV` rewritten each step) → resumes mid-relaxation | **per completed stage** (`_optimized.xyz` at stage end); mid-optimization only via geomeTRIC's temp, "on certain failures" |
+
+So a killed SIESTA stage resumes close to where it died; a killed PySCF
+stage resumes from its last *completed* stage (coarser). The framework
+must surface that difference, not paper over it.
+
+**How continuation works in a job-set (no new mechanism):**
+- Each stage already runs in its **own dir** with its **own**
+  project-ID-keyed restart files (§ 4) — natural separation.
+- To continue a stage: the user **re-submits that stage's job**; the
+  engine auto-picks-up its own warm files in that dir (`--continue` to
+  *assert* they're there). The carry-forward symlinks already feed the
+  next stage.
+- To restart a stage clean (e.g. after switching params): `--cold` on that
+  stage moves its warm files aside (kept, not deleted).
+- **Nothing downstream re-runs automatically.** A dependency chain that
+  was cancelled mid-way is *resumed by the user re-submitting from the
+  first incomplete stage* — molbuilder shows which that is; it does not
+  decide.
+
+**molbuilder's role = information, not automation.** `STAGE-PLAN.md` plus
+per-stage status (did it converge? was it killed? are warm files present?
+which stage is the first incomplete one?) gives the user what they need to
+choose **continue / switch parameters / accept-and-move-on**. The
+framework guarantees the *separation* and the *easy re-submit*; the
+*decision* is always the user's.
 
 ---
 
