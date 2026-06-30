@@ -205,9 +205,13 @@ def test_format_bench_slurm_emits_sbatch_grid():
                       topology=Topology(cores_per_socket=24, gpus_per_node=2,
                                         gpu_type="a100"))
     s = _sweep(adapters.SlurmAdapter(), env)
-    # K=8 -> c=24/8=3; single + dual GPU lines present.
-    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in s
-    assert "sbatch --gres=gpu:a100:2 -n 16 -c 3 job-gpu.sbatch" in s
+    # K=8 -> c=24/8=3; single + dual GPU lines present.  Each sweep point
+    # carries the selected-domain -p/-q via $MB_GPU_PQ and a per-point -J
+    # (§ 4.3, § 4.4) ahead of the --gres/-n/-c.
+    assert "--gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in s
+    assert "--gres=gpu:a100:2 -n 16 -c 3 job-gpu.sbatch" in s
+    assert "-J job-gpu-G1K8C3 " in s
+    assert "${MB_GPU_PQ:-}" in s
     assert "QUEUE IN PARALLEL" in s
     # multi-GPU caveat on G>=2 lines
     assert "do NOT add --gpu-bind" in s

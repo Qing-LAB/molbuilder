@@ -411,22 +411,29 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     import json
     from pathlib import Path
 
-    from ..runtime_config import RuntimeConfigError, get_execution
-    from .adapters import divisors, resolve_launch_adapter, resolve_mode
+    from ..runtime_config import (RuntimeConfigError, get_execution,
+                                   get_routing, get_scheduler)
+    from .adapters import (divisors, fitting_domains, parse_walltime,
+                           recommend_domain, resolve_launch_adapter,
+                           resolve_mode)
     from .generate import (bake_run_bench, bake_target_wrappers,
                            render_bench_plan)
     from .prep import (_overrides_from, _parse_ks, _summary, run_prep_bench,
                        utc_now_iso)
 
-    # Resolve the run-vs-submit LAUNCH policy (job-execution.md § 8.13) from
+    # Resolve the run-vs-submit LAUNCH policy (job-execution.md § 8.13) +
+    # the submission-domain routing table (slurm-integration.md § 4.3) from
     # the bundle's .molbuilder.json -- applied uniformly to the CPU baseline
     # and the GPU sweep, independent of the detected scheduler.
     try:
         exec_cfg = get_execution(project_dir=Path(out))
+        routing = get_routing(project_dir=Path(out))
+        sched = get_scheduler(project_dir=Path(out)) or {}
     except RuntimeConfigError as e:
-        click.echo(f"ERROR reading execution policy: {e}", err=True)
+        click.echo(f"ERROR reading execution/routing config: {e}", err=True)
         raise SystemExit(2)
     cfg_mode, submit_via = exec_cfg["mode"], exec_cfg["submit_via"]
+    exec_domain = exec_cfg["domain"]
 
     env, written = run_prep_bench(
         out,
@@ -453,12 +460,31 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
         raise SystemExit(2)
 
     # Bake run-bench so the CPU baseline launches the SAME way as the sweep
-    # (§ 8.13): both submit under mode=submit, both bash under direct.
+    # (§ 8.13): both submit under mode=submit, both bash under direct.  Under
+    # submit + a routing table, bake the explicit domain-selection gate +
+    # recommendation (§ 4.3, § 4.4).
     manifest = json.loads((Path(out) / "bench-manifest.json").read_text())
     adapter, _ = resolve_launch_adapter(env, mode=cfg_mode,
                                         submit_via=submit_via)
     cpu_np = manifest["points"]["cpu"]["mpi_np"]
-    written.append(bake_run_bench(out, adapter, cpu_np, rmode))
+
+    # Effective walltime for the recommendation/fit-check: the manifest
+    # point time (usually null) → scheduler defaults.time → the safe 4h.
+    job_time = (manifest["points"]["gpu"].get("time")
+                or sched.get("defaults", {}).get("time")
+                or "0-04:00:00")
+    try:
+        job_secs = parse_walltime(job_time)
+    except ValueError:
+        job_secs = parse_walltime("0-04:00:00")
+    # Memory is not pinned in the manifest (null → partition default), so a
+    # domain WITH a max_mem_gb cap can't be proven to fit (§ 4.3).
+    recommend = recommend_domain(routing, job_secs, None) if routing else None
+    fitting = fitting_domains(routing, job_secs, None) if routing else []
+
+    written.append(bake_run_bench(
+        out, adapter, cpu_np, rmode, routing=routing, exec_domain=exec_domain,
+        recommend=recommend, fitting=fitting, job_time=job_time))
 
     # Write + PRINT the human-readable benchmark plan (job-execution.md § 8.4):
     # the enumerated matrix (CPU baseline + the GPU G×K×c grid), what's
@@ -466,7 +492,8 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
     ks = _parse_ks(gpu_ks) or divisors(env.topology.cores_per_socket or 0)
     cs = _parse_ks(gpu_cs)
     plan = render_bench_plan(env, manifest, ks, cs, mode=cfg_mode,
-                             submit_via=submit_via)
+                             submit_via=submit_via, routing=routing,
+                             recommend=recommend, job_time=job_time)
     plan_path = Path(out) / "BENCH-PLAN.md"
     plan_path.write_text(plan + "\n", encoding="utf-8")
     written.append(plan_path)

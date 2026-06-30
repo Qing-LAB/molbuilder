@@ -34,7 +34,7 @@ def test_get_execution_reads_mode_and_submit_via(tmp_path):
     _write_project(tmp_path, {"execution": {"mode": "submit",
                                             "submit_via": "slurm"}})
     out = get_execution(project_dir=tmp_path)
-    assert out == {"mode": "submit", "submit_via": "slurm"}
+    assert out == {"mode": "submit", "submit_via": "slurm", "domain": None}
 
 
 def test_get_execution_absent_is_none_mode(tmp_path):
@@ -102,7 +102,7 @@ def test_resolve_launch_adapter_unknown_submit_via_raises():
 def test_bake_run_bench_submit_uses_sbatch_for_cpu(tmp_path):
     p = bake_run_bench(tmp_path, SlurmAdapter(), cpu_np=64, mode="submit")
     text = p.read_text()
-    assert "sbatch -n 64 job-cpu.sbatch" in text       # CPU submits, not bash
+    assert "sbatch -J job-cpu -n 64 job-cpu.sbatch" in text  # CPU submits, named
     assert "bash job-gpu-sweep.sh" in text             # sweep still invoked
     assert "SUBMITTED" in text                          # tail tells the truth
 
@@ -148,7 +148,8 @@ def test_prep_submit_mode_bakes_sbatch_sweep_on_workstation(tmp_path):
                    "gpu_type": "a100"},
         ks=[1], cs=[1], mode="submit", submit_via="slurm")
     sweep = (tmp_path / "job-gpu-sweep.sh").read_text()
-    assert "sbatch --gres=gpu:a100:1" in sweep
+    assert "--gres=gpu:a100:1" in sweep
+    assert "sbatch ${MB_GPU_PQ:-} -J job-gpu-G1K1C1" in sweep   # § 4.3/§ 4.4
 
 
 def test_prep_direct_mode_bakes_bash_sweep(tmp_path):

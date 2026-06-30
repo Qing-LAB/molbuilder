@@ -44,7 +44,8 @@ def test_run_prep_bench_writes_environment_and_sweep(tmp_path):
     assert sweep.stat().st_mode & 0o111               # +x
     text = sweep.read_text()
     assert "K values = 1,2,3,4,6,8,12,24" in text     # divisors of 24
-    assert "sbatch --gres=gpu:a100:4 -n" in text      # 4 GPUs detected
+    assert "--gres=gpu:a100:4 -n" in text             # 4 GPUs detected
+    assert "-J job-gpu-G4" in text                     # per-point name (§ 4.4)
     r = subprocess.run(["bash", "-n", str(sweep)], capture_output=True)
     assert r.returncode == 0, r.stderr
 
@@ -118,8 +119,8 @@ def test_gpu_ks_override_in_sweep(tmp_path):
     text = (tmp_path / "job-gpu-sweep.sh").read_text()
     assert "K values = 8,16" in text
     # G×K×c grid (§8.12): K=8 bracket c={1,3,6}, K=16 bracket c={1,3}
-    assert "sbatch --gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in text   # G1K8C3
-    assert "sbatch --gres=gpu:a100:2 -n 32 -c 1 job-gpu.sbatch" in text  # G2K16C1
+    assert "--gres=gpu:a100:1 -n 8 -c 3 job-gpu.sbatch" in text   # G1K8C3
+    assert "--gres=gpu:a100:2 -n 32 -c 1 job-gpu.sbatch" in text  # G2K16C1
     assert "CROSS-SOCKET" in text                 # e.g. K=8 c=6 -> 48 > 1 socket
     # no K=4/K=2 points (we asked for 8,16 only)
     assert "K=4 " not in text

@@ -1008,9 +1008,18 @@ interactive shell" or "just run it, it's a 2-minute job."
 ```json
 "execution": {
   "mode": "submit",        // "direct" | "submit"  -- how run-bench launches EACH point
-  "submit_via": "slurm"    // backend when mode=submit; "slurm" today, extensible (pbs/lsf/...)
+  "submit_via": "slurm",   // backend when mode=submit; "slurm" today, extensible (pbs/lsf/...)
+  "domain": "htc"          // OPTIONAL standing explicit choice of routing domain
+                           //   (slurm-integration.md § 4.3); overridden by
+                           //   `./run-bench --domain <name>`. Absent -> the run
+                           //   is not submitted until a domain is selected.
 }
 ```
+
+`execution.domain` is the *explicit* partition/QoS selection for submit
+mode (the named domains live in `scheduler.routing`, § 4.3 of
+slurm-integration.md). It is never auto-filled: routing only *recommends*;
+the user picks. See § 8.14.
 
 - **`submit`** → every point launches via `sbatch <base>.sbatch`
   (`SlurmAdapter.cpu_launch_line` / `.gpu_launch_line`). CPU baseline included.
@@ -1046,3 +1055,33 @@ interactive shell" or "just run it, it's a 2-minute job."
 **Extensibility.** A future scheduler (PBS/LSF/cloud) = one new adapter +
 one `submit_via` value; `mode`/`direct` are unchanged. This is the same
 "add one adapter" path the module already documents (§ 4.3).
+
+### 8.14 Submission domain (explicit + recommended) and per-point job names (2026-06-29)
+
+Two refinements to submit mode, specified in detail in
+slurm-integration.md § 4.3 (routing) and § 4.4 (job names):
+
+**Domain selection — recommend, then explicit pick.** The user declares a
+named menu of submission domains (`scheduler.routing`: `debug`, `htc`,
+`public`, … each with its `max_time`/`max_mem_gb`/`partition`/`qos`).
+`./run-bench`:
+- **recommends** per point the cheapest domain that point's `-t`/`--mem`
+  fits (advisory, printed in `BENCH-PLAN.md`);
+- **submits only to the domain the user explicitly selects** —
+  `./run-bench --domain <name>` (per-run) or `execution.domain` (standing
+  choice). No selection → it prints the menu + recommendation and does
+  **not** submit (*assistant, not nanny* — never push-button).
+- **fit-check:** if the selected domain does not fit a point (e.g.
+  `--domain debug` for a 3-hour point), that point is **refused with the
+  reason** (requested `-t` vs domain `max_time`), not silently retargeted.
+
+No `scheduler.routing` table → unchanged: the single `directives`
+partition/qos default, `--domain` is a no-op with a note.
+
+**Per-point job names.** Every GPU sweep point used to submit as
+`-J job-gpu`, indistinguishable in `squeue`. Each point now overrides
+`-J` on the `sbatch` CLI to encode its config —
+`-J job-gpu-G<g>K<k>C<c>` (e.g. `job-gpu-G1K2C5`) — matching its
+`point-G<g>K<k>C<c>/` directory and `BENCH-PLAN.md` row, so the queue,
+the output dirs, and the plan all line up. The CPU baseline stays
+`-J job-cpu` (one point).

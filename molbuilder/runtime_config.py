@@ -1028,13 +1028,19 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"number; got {type(v).__name__}."
             )
 
-    return {
+    out = {
         "kind":       kind,
         "directives": directives,
         "gpu":        gpu,
         "defaults":   defaults,
         "mem_model":  mem_model,
     }
+    # routing: pass through verbatim (deep-validated by get_routing, which
+    # owns the domain schema -- slurm-integration.md § 4.3).  Preserve it
+    # here so get_scheduler -> get_routing can see it.
+    if raw.get("routing") is not None:
+        out["routing"] = raw["routing"]
+    return out
 
 
 def get_scheduler(
@@ -1121,7 +1127,67 @@ def get_execution(
             f'execution.mode must be "direct" or "submit"; got {mode!r}.\n'
             "Fix it in .molbuilder.json (job-execution.md § 8.13).")
     submit_via = merged.get("submit_via", "slurm")
-    return {"mode": mode, "submit_via": submit_via}
+    domain = merged.get("domain")
+    if domain is not None and not isinstance(domain, str):
+        raise RuntimeConfigError(
+            f"execution.domain must be a string (a scheduler.routing name); "
+            f"got {type(domain).__name__} (job-execution.md § 8.14).")
+    return {"mode": mode, "submit_via": submit_via, "domain": domain}
+
+
+def get_routing(
+    project_dir: Optional[Path] = None,
+) -> List[Dict[str, Any]]:
+    """Return the validated ``scheduler.routing`` list (slurm-integration.md
+    § 4.3): the named submission-domain menu, read at prep time.
+
+    Each entry is a domain ``{name, max_time, max_mem_gb?, partition, qos,
+    gpu_partition?}``.  Returns ``[]`` when no table is configured (→ the
+    single ``directives`` default behavior, unchanged).  The framework
+    hardcodes NO names/limits — every value here is user data, seeded from
+    the user's live ``sinfo``/``sacctmgr`` (§ 7.0).  Order is preserved
+    (most-constrained → most-general); the FIRST fitting domain is the
+    recommendation.
+    """
+    sched = get_scheduler(project_dir=project_dir) or {}
+    raw = sched.get("routing")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise RuntimeConfigError(
+            "scheduler.routing must be a list of domain objects "
+            "(slurm-integration.md § 4.3).")
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for i, dom in enumerate(raw):
+        if not isinstance(dom, Mapping):
+            raise RuntimeConfigError(
+                f"scheduler.routing[{i}] must be an object; got "
+                f"{type(dom).__name__}.")
+        for key in ("name", "max_time", "partition", "qos"):
+            if not dom.get(key) or not isinstance(dom[key], str):
+                raise RuntimeConfigError(
+                    f"scheduler.routing[{i}].{key} is required and must be a "
+                    f"non-empty string (§ 4.3).")
+        name = dom["name"]
+        if name in seen:
+            raise RuntimeConfigError(
+                f"scheduler.routing: duplicate domain name {name!r} (§ 4.3).")
+        seen.add(name)
+        mem = dom.get("max_mem_gb")
+        if mem is not None and not isinstance(mem, (int, float)):
+            raise RuntimeConfigError(
+                f"scheduler.routing[{i}].max_mem_gb must be a number (GB).")
+        gpu_part = dom.get("gpu_partition")
+        if gpu_part is not None and not isinstance(gpu_part, str):
+            raise RuntimeConfigError(
+                f"scheduler.routing[{i}].gpu_partition must be a string.")
+        out.append({
+            "name": name, "max_time": dom["max_time"],
+            "max_mem_gb": mem, "partition": dom["partition"],
+            "qos": dom["qos"], "gpu_partition": gpu_part,
+        })
+    return out
 
 
 def write_config_scope(

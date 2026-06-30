@@ -226,7 +226,12 @@ class SchedulerAdapter:
                         notes.append("multi-GPU: no NCCL -- MEASURE; do NOT "
                                      "add --gpu-bind")
                     note = ("  (" + "; ".join(notes) + ")") if notes else ""
-                    launch = self.gpu_launch_line(g, k, c, gtype)
+                    # Per-point job name (squeue differentiation, § 4.4) +
+                    # the explicitly-selected domain's -p/-q via $MB_GPU_PQ
+                    # (set by run-bench; empty -> the .sbatch header default).
+                    launch = self.gpu_launch_line(
+                        g, k, c, gtype, job_name=f"job-gpu-G{g}K{k}C{c}",
+                        pq="${MB_GPU_PQ:-}")
                     body.append(f"# G={g} K={k} c={c} (total {total} cores){note}")
                     body.append(f"_mb_point {d}")
                     body.append(f"( cd {d} && {launch} )")
@@ -318,18 +323,26 @@ class SlurmAdapter(SchedulerAdapter):
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "slurm"
 
-    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
+    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu",
+                        *, job_name=None, pq=None):
         # Override the sbatch header's defaults; the launcher reads
         # SLURM_NTASKS/_CPUS_PER_TASK so -n/-c and mpirun agree (§ 7.3).
         # Omit -c when cores/socket is unknown (let the header default it).
-        # BARE command (no trailing comment): format_bench wraps it in
-        # ``( cd <dir> && ... )`` where an inline '#' would comment out ')'.
+        # ``pq`` injects the explicitly-selected routing domain's -p/-q
+        # (a shell expansion like ``$MB_GPU_PQ``; § 4.3); ``job_name`` makes
+        # squeue rows distinct per point (§ 4.4).  BARE command (no trailing
+        # comment): format_bench wraps it in ``( cd <dir> && ... )`` where an
+        # inline '#' would comment out ')'.
         cflag = "" if c is None else f"-c {c} "
-        return (f"sbatch --gres=gpu:{gpu_type}:{g} -n {k * g} {cflag}"
+        pqf = f"{pq} " if pq else ""
+        jf = f"-J {job_name} " if job_name else ""
+        return (f"sbatch {pqf}{jf}--gres=gpu:{gpu_type}:{g} -n {k * g} {cflag}"
                 f"{script_base}.sbatch")
 
-    def cpu_launch_line(self, np, script_base):
-        return f"sbatch -n {np} {script_base}.sbatch"
+    def cpu_launch_line(self, np, script_base, *, job_name=None, pq=None):
+        pqf = f"{pq} " if pq else ""
+        jf = f"-J {job_name} " if job_name else ""
+        return f"sbatch {pqf}{jf}-n {np} {script_base}.sbatch"
 
 
 class WorkstationAdapter(SchedulerAdapter):
@@ -342,7 +355,10 @@ class WorkstationAdapter(SchedulerAdapter):
     def matches(self, env: Environment) -> bool:
         return env.scheduler == "workstation"
 
-    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu"):
+    def gpu_launch_line(self, g, k, c, gpu_type, script_base="job-gpu",
+                        *, job_name=None, pq=None):
+        # Direct launch: no scheduler -> ``pq``/``job_name`` (sbatch-only
+        # concepts) are ignored.
         # No scheduler: pick the GPUs with CUDA_VISIBLE_DEVICES and set the
         # per-point ranks/threads.  Use MB_NP / OMP_NUM_THREADS -- the vars
         # the wrapper actually honors for the LAUNCH (`_mpi_np` reads
@@ -356,7 +372,7 @@ class WorkstationAdapter(SchedulerAdapter):
         return (f"CUDA_VISIBLE_DEVICES={cvd} MB_NP={k * g} "
                 f"{omp}./{script_base}.run.sh")
 
-    def cpu_launch_line(self, np, script_base):
+    def cpu_launch_line(self, np, script_base, *, job_name=None, pq=None):
         return f"MB_NP={np} ./{script_base}.run.sh"
 
 
@@ -372,6 +388,64 @@ def get_adapter(env: Environment) -> SchedulerAdapter:
     raise ValueError(
         f"no scheduler adapter matches environment {env.scheduler!r}; "
         f"registered: {[a.name for a in ADAPTERS]}")
+
+
+def parse_walltime(s) -> int:
+    """SLURM walltime string -> seconds.  Accepts the forms SLURM accepts:
+    ``MM``, ``MM:SS``, ``HH:MM:SS``, ``D-HH``, ``D-HH:MM``, ``D-HH:MM:SS``
+    (slurm-integration.md § 4.3).  Empty -> 0.  Raises ValueError on garbage
+    so a malformed config max_time fails loudly, not silently as 0."""
+    s = str(s).strip()
+    if not s:
+        return 0
+    days = 0
+    if "-" in s:
+        d, _, s = s.partition("-")
+        days = int(d)
+        parts = [int(x) for x in s.split(":")] if s else [0]
+        while len(parts) < 3:
+            parts.append(0)
+        h, m, sec = parts[0], parts[1], parts[2]
+    else:
+        parts = [int(x) for x in s.split(":")]
+        if len(parts) == 1:
+            h, m, sec = 0, parts[0], 0          # bare = minutes (SLURM rule)
+        elif len(parts) == 2:
+            h, m, sec = 0, parts[0], parts[1]   # MM:SS
+        else:
+            h, m, sec = parts[0], parts[1], parts[2]
+    return ((days * 24 + h) * 60 + m) * 60 + sec
+
+
+def domain_fits(domain: Dict, job_secs: int,
+                job_mem_gb: Optional[float]) -> bool:
+    """Does this routing ``domain`` fit a job of ``job_secs`` walltime and
+    ``job_mem_gb`` memory (slurm-integration.md § 4.3)?  A domain with a
+    ``max_mem_gb`` cap does NOT fit a job whose memory is unknown
+    (``None``) -- we can't prove it fits, so we don't claim it (no silent
+    over-ask, § 12)."""
+    if job_secs > parse_walltime(domain["max_time"]):
+        return False
+    cap = domain.get("max_mem_gb")
+    if cap is not None:
+        if job_mem_gb is None or job_mem_gb > cap:
+            return False
+    return True
+
+
+def fitting_domains(routing: List[Dict], job_secs: int,
+                    job_mem_gb: Optional[float]) -> List[Dict]:
+    """The domains (in list order) that fit the job -- § 4.3."""
+    return [d for d in routing if domain_fits(d, job_secs, job_mem_gb)]
+
+
+def recommend_domain(routing: List[Dict], job_secs: int,
+                     job_mem_gb: Optional[float]) -> Optional[str]:
+    """The recommended domain NAME: the FIRST (cheapest, by list order)
+    that fits -- § 4.3.  ``None`` when none fits (the caller surfaces a
+    refuse-to-emit)."""
+    fits = fitting_domains(routing, job_secs, job_mem_gb)
+    return fits[0]["name"] if fits else None
 
 
 def resolve_mode(env: Environment, mode: Optional[str] = None) -> str:
@@ -411,4 +485,5 @@ def resolve_launch_adapter(env: Environment, *, mode: Optional[str] = None,
 __all__ = [
     "divisors", "SchedulerAdapter", "SlurmAdapter", "WorkstationAdapter",
     "ADAPTERS", "get_adapter", "resolve_mode", "resolve_launch_adapter",
+    "parse_walltime", "domain_fits", "fitting_domains", "recommend_domain",
 ]

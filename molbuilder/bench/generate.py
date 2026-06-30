@@ -681,45 +681,153 @@ echo "===== all points done -- next: ./bench-summarize ====="
 """
 
 
-def bake_run_bench(out_dir, adapter, cpu_np: int, mode: str) -> Path:
-    """Bake ``run-bench`` for THIS target (job-execution.md § 8.13), replacing
-    the static guard shipped by generate.  The CPU baseline is launched through
-    the SAME adapter as the GPU sweep -- ``adapter.cpu_launch_line`` -- so the
-    run-vs-submit ``mode`` applies UNIFORMLY: under ``submit`` both CPU and GPU
-    go through ``sbatch`` (no login-node execution); under ``direct`` both run
-    via ``bash`` in the current shell.  Fixes the old asymmetry where the CPU
-    baseline always ran in the terminal.
+_RUN_BENCH_GUARD = (
+    "set -u\n"
+    "if [ ! -f job-cpu.run.sh ] || [ ! -f job-gpu-sweep.sh ] || \\\n"
+    "   ! grep -q _mb_point job-gpu-sweep.sh 2>/dev/null; then\n"
+    '    echo "run ./prep-bench first -- it detects this machine and '
+    'bakes the" >&2\n'
+    '    echo "run scripts + the real sweep (BENCH-PLAN.md explains the '
+    'plan)." >&2\n'
+    "    exit 1\n"
+    "fi\n"
+)
+
+
+def _domain_select_block(routing, exec_domain, recommend,
+                         fitting, job_time) -> str:
+    """Bash that resolves the explicitly-selected routing domain
+    (slurm-integration.md § 4.3): parse ``--domain``, else ``execution.domain``,
+    else print the menu + recommendation and EXIT (never push-button); validate
+    the name; fit-check it against this run's walltime; export ``MB_GPU_PQ`` and
+    set ``$_cpu_pq`` for the CPU baseline.  All names/limits are baked from the
+    user's ``scheduler.routing`` data -- the framework hardcodes none."""
+    fit_set = " ".join(d["name"] for d in fitting)
+    rec = recommend or "(none fits -- widen a domain's max_time)"
+    # Menu lines + the name->(-p/-q) case, generated from the routing data.
+    menu, cases = [], []
+    for d in routing:
+        gpu_part = d.get("gpu_partition") or d["partition"]
+        extra = []
+        if d.get("gpu_partition"):
+            extra.append(f"gpu:{d['gpu_partition']}")
+        if d.get("max_mem_gb") is not None:
+            extra.append(f"<={d['max_mem_gb']}GB")
+        tail = (" , " + ", ".join(extra)) if extra else ""
+        menu.append(
+            f'    echo "    {d["name"]} : {d["max_time"]} : '
+            f'{d["partition"]}/{d["qos"]}{tail}" >&2')
+        cases.append(
+            f'    {d["name"]}) _cpu_pq="-p {d["partition"]} -q {d["qos"]}"; '
+            f'_gpu_pq="-p {gpu_part} -q {d["qos"]}";;')
+    exec_default = exec_domain or ""
+    return (
+        "# --- explicit submission-domain selection "
+        "(slurm-integration.md § 4.3) ---\n"
+        f'_rec="{rec}"\n'
+        f'_fitting="{fit_set}"\n'
+        f'_dom="{exec_default}"\n'
+        'while [ $# -gt 0 ]; do\n'
+        '    case "$1" in\n'
+        '        --domain) _dom="${2:-}"; shift 2;;\n'
+        '        --domain=*) _dom="${1#*=}"; shift;;\n'
+        '        *) shift;;\n'
+        '    esac\n'
+        'done\n'
+        'if [ -z "$_dom" ]; then\n'
+        '    echo "Select a submission domain explicitly (assistant, not '
+        'nanny):" >&2\n'
+        '    echo "    ./run-bench --domain <name>" >&2\n'
+        '    echo "  available (name : max_time : partition/qos):" >&2\n'
+        + "\n".join(menu) + "\n"
+        f'    echo "  recommended for this run (walltime {job_time}): '
+        '$_rec" >&2\n'
+        '    exit 2\n'
+        'fi\n'
+        'case "$_dom" in\n'
+        + "\n".join(cases) + "\n"
+        '    *) echo "unknown domain \'$_dom\'; see ./run-bench (no --domain) '
+        'for the menu." >&2; exit 2;;\n'
+        'esac\n'
+        'case " $_fitting " in\n'
+        '    *" $_dom "*) ;;\n'
+        '    *) echo "domain \'$_dom\' does not fit this run\'s walltime '
+        f'({job_time}); recommended: $_rec." >&2;\n'
+        '       echo "  widen the domain\'s max_time, lower -t, or pick a '
+        'fitting domain." >&2; exit 2;;\n'
+        'esac\n'
+        'export MB_GPU_PQ="$_gpu_pq"\n'
+        'echo "domain: $_dom  ($_cpu_pq; GPU $_gpu_pq)" >&2\n'
+    )
+
+
+def bake_run_bench(out_dir, adapter, cpu_np: int, mode: str, *,
+                   routing=None, exec_domain=None, recommend=None,
+                   fitting=None, job_time: str = "?") -> Path:
+    """Bake ``run-bench`` for THIS target (job-execution.md § 8.13, § 8.14),
+    replacing the static guard shipped by generate.  The CPU baseline is
+    launched through the SAME adapter as the GPU sweep so the run-vs-submit
+    ``mode`` applies UNIFORMLY (submit → both sbatch; direct → both bash).
+
+    When ``mode == submit`` AND a ``routing`` table is given, bake the
+    explicit domain-selection gate (§ 4.3): ``--domain`` / ``execution.domain``
+    pick the partition/qos (exported as ``MB_GPU_PQ`` for the sweep, ``$_cpu_pq``
+    for the baseline); no selection → print menu + recommendation and exit.
+    Without a routing table, the header's ``-p``/``-q`` defaults stand.
     """
     out_dir = Path(out_dir)
-    cpu_launch = adapter.cpu_launch_line(int(cpu_np), "job-cpu")
     submit = mode == "submit"
-    tail = ("all points SUBMITTED -- check the queue (e.g. squeue -u $USER); "
-            "run ./bench-summarize once they finish"
-            if submit else
-            "all points done -- next: ./bench-summarize")
-    content = (
+    routing = routing or []
+    head = (
         "#!/usr/bin/env bash\n"
         f"# run-bench (baked by prep: scheduler '{adapter.name}', mode "
         f"'{mode}') -- run the WHOLE matrix: CPU baseline (point 0) then the\n"
         "# GPU sweep.  CPU and GPU launch the SAME way (job-execution.md "
         "§ 8.13).\n"
-        "set -u\n"
-        "if [ ! -f job-cpu.run.sh ] || [ ! -f job-gpu-sweep.sh ] || \\\n"
-        "   ! grep -q _mb_point job-gpu-sweep.sh 2>/dev/null; then\n"
-        '    echo "run ./prep-bench first -- it detects this machine and '
-        'bakes the" >&2\n'
-        '    echo "run scripts + the real sweep (BENCH-PLAN.md explains the '
-        'plan)." >&2\n'
-        "    exit 1\n"
-        "fi\n"
-        f'echo "===== benchmark point 0: CPU baseline (job-cpu, {mode}) ====="\n'
-        f"{cpu_launch}\n"
-        'echo "===== benchmark GPU sweep ====="\n'
-        "bash job-gpu-sweep.sh\n"
-        f'echo "===== {tail} ====="\n'
+        + _RUN_BENCH_GUARD
     )
+
+    if submit and routing:
+        cpu_launch = adapter.cpu_launch_line(
+            int(cpu_np), "job-cpu", job_name="job-cpu", pq="$_cpu_pq")
+        body = (
+            _domain_select_block(routing, exec_domain, recommend,
+                                 fitting or [], job_time)
+            + 'echo "===== benchmark point 0: CPU baseline (job-cpu, submit '
+            '-> $_dom) ====="\n'
+            f"{cpu_launch}\n"
+            'echo "===== benchmark GPU sweep (-> $_dom) ====="\n'
+            "bash job-gpu-sweep.sh\n"
+            'echo "===== all points SUBMITTED -- squeue -u $USER; run '
+            './bench-summarize once they finish ====="\n'
+        )
+    elif submit:
+        # Submit mode, no routing table: header -p/-q defaults; still name
+        # the CPU point (the sweep names its own points, § 4.4).
+        cpu_launch = adapter.cpu_launch_line(
+            int(cpu_np), "job-cpu", job_name="job-cpu")
+        body = (
+            'echo "===== benchmark point 0: CPU baseline (job-cpu, submit) '
+            '====="\n'
+            f"{cpu_launch}\n"
+            'echo "===== benchmark GPU sweep ====="\n'
+            "bash job-gpu-sweep.sh\n"
+            'echo "===== all points SUBMITTED -- squeue -u $USER; run '
+            './bench-summarize once they finish ====="\n'
+        )
+    else:
+        cpu_launch = adapter.cpu_launch_line(int(cpu_np), "job-cpu")
+        body = (
+            'echo "===== benchmark point 0: CPU baseline (job-cpu, direct) '
+            '====="\n'
+            f"{cpu_launch}\n"
+            'echo "===== benchmark GPU sweep ====="\n'
+            "bash job-gpu-sweep.sh\n"
+            'echo "===== all points done -- next: ./bench-summarize ====="\n'
+        )
+
     p = out_dir / "run-bench"
-    p.write_text(content, encoding="utf-8")
+    p.write_text(head + body, encoding="utf-8")
     p.chmod(0o755)
     return p
 
@@ -766,7 +874,10 @@ def _ship_entry_shims(out_dir: Path, host_env: str) -> List[Path]:
 def render_bench_plan(env, manifest: dict, ks: List[int],
                       cs: Optional[List[int]] = None,
                       mode: Optional[str] = None,
-                      submit_via: str = "slurm") -> str:
+                      submit_via: str = "slurm",
+                      routing: Optional[List[dict]] = None,
+                      recommend: Optional[str] = None,
+                      job_time: Optional[str] = None) -> str:
     """Human-readable benchmark plan (job-execution.md § 8.4): the full test
     matrix -- CPU baseline (point 0) + the GPU ``G × K × c`` grid -- with the
     varied axes, ranks/cores per point, what is measured, and exactly how to
@@ -821,6 +932,24 @@ def render_bench_plan(env, manifest: dict, ks: List[int],
         manifest.get("description", ""),
         f"Measured per point: {manifest.get('measured', '?')}.",
         f"Launch: {launch}  (execution.mode in .molbuilder.json -- § 8.13).",
+    ]
+    if rmode == "submit" and routing:
+        jt = job_time or "?"
+        rec = recommend or "(none fits -- widen a domain's max_time)"
+        lines.append(
+            f"Domain (EXPLICIT pick required): ./run-bench --domain <name>  "
+            f"-- recommended for walltime {jt}: {rec}")
+        for d in routing:
+            extra = []
+            if d.get("gpu_partition"):
+                extra.append(f"gpu:{d['gpu_partition']}")
+            if d.get("max_mem_gb") is not None:
+                extra.append(f"<={d['max_mem_gb']}GB")
+            tail = ("  (" + ", ".join(extra) + ")") if extra else ""
+            lines.append(
+                f"    {d['name']} : {d['max_time']} : "
+                f"{d['partition']}/{d['qos']}{tail}")
+    lines += [
         "Varied axes (GPU points): K = MPI ranks/GPU, c = cores(OMP)/rank.  c "
         "is NOT capped at one socket -- the cross-socket points MEASURE whether",
         "more CPU beats the GPU<->socket traffic on an allocation we don't "
@@ -865,9 +994,13 @@ def render_bench_plan(env, manifest: dict, ks: List[int],
         "(MeshCutoff, kgrid, PAO.BasisSize, …)",
         '  • Run vs submit     : set "execution":{"mode":"direct"|"submit"} '
         "in .molbuilder.json (§ 8.13)",
+        '  • Submission domain  : edit "scheduler":{"routing":[…]} in '
+        ".molbuilder.json (§ 4.3); pick at run with ./run-bench --domain <name>",
         "",
         "Next step: ./run-bench   "
-        + ("(submits every point; check the queue, then ./bench-summarize)"
+        + ((f"--domain <name>   (EXPLICIT; recommended: {recommend or '?'}; "
+            "then ./bench-summarize)" if routing
+            else "(submits every point; check the queue, then ./bench-summarize)")
            if rmode == "submit"
            else "(runs each point in this shell; or one: bash job-cpu.run.sh)"),
     ]

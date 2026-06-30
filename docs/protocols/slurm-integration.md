@@ -54,11 +54,25 @@ header; a `scheduler` config block; a shipped **`asu-sol` preset**;
 per-job resource values derived from the `.fdf`/CLI; a **benchmark /
 validation mode** (§ 11) that proves correctness + sizes resources.
 
-**Explicitly NOT in scope** (keep it focused): no partition-selection
-logic engine; no job-array / dependency orchestration beyond the
-benchmark sweep; no querying SLURM at generate time (`sinfo`/`sacctmgr`)
-— generation works offline on a laptop; no change to the `.run.sh`
-launcher internals; **no multi-node MPI in v1** (single-node only).
+**In scope (added 2026-06-29):** an **optional, config-driven
+partition/QoS routing table** (§ 4.3) — the user declares an ordered list
+of named `{name, max_time, max_mem_gb?, partition, qos}` domains in
+`scheduler.routing`. The framework **recommends** the cheapest domain a
+job's requested `-t`/`--mem` fits, but **selection is explicit**: the
+user picks the domain (`./run-bench --domain <name>` or
+`execution.domain` in config) — never a silent push-button auto-submit
+(*assistant, not nanny*). This is a *mechanism over user-supplied data*,
+NOT a baked heuristic: the framework hardcodes no partition names or
+limits (§ 12), queries no scheduler, and falls back to the single
+`directives` default when no table is set.
+
+**Explicitly NOT in scope** (keep it focused): no partition limits or
+names hardcoded in code (the routing *table* is user data, seeded from
+the user's live `sinfo`/`sacctmgr` — § 7.0 discipline); no job-array /
+dependency orchestration beyond the benchmark sweep; no querying SLURM at
+generate time (`sinfo`/`sacctmgr`) — generation works offline on a
+laptop; no change to the `.run.sh` launcher internals; **no multi-node
+MPI in v1** (single-node only).
 
 ---
 
@@ -158,13 +172,29 @@ time only (same lifecycle as `script_generation`, `config.md` § 3).
       "export": "NONE"
     },
     "gpu": { "partition": "public", "default_type": "a100", "exclusive": true },
-    "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null }
+    "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
+    "routing": [
+      { "name": "debug",  "max_time": "0-00:15:00", "partition": "htc",    "qos": "debug"  },
+      { "name": "htc",    "max_time": "0-04:00:00", "partition": "htc",    "qos": "public" },
+      { "name": "public", "max_time": "7-00:00:00", "partition": "public", "qos": "public" }
+    ]
   }
 }
 ```
 
 - `directives` — stable site header values. **`partition: "public"`**
-  (NOT `general` — § 7.0).
+  (NOT `general` — § 7.0). When a routing domain is **explicitly
+  selected** (§ 4.3), that domain's `partition`/`qos` are emitted;
+  `directives` remains the fallback default when no `routing` table
+  exists or no domain is selected.
+- `routing` — **optional**, ordered list of named domains (§ 4.3). The
+  framework *recommends* the cheapest domain a job fits but never submits
+  to one silently — the user selects explicitly. Absent → today's
+  single-default behavior, unchanged. The values above are an EXAMPLE
+  keyed to Sol's documented ceilings (debug ≤ 15 min, htc ≤ 4 h,
+  public/general ≤ 7 d); the user MUST confirm names + limits against
+  their live `sinfo`/`sacctmgr` (§ 7.0) — the framework hardcodes none of
+  them.
 - `gpu.partition` — **`public`** on Sol (CONFIRMED live, § 7.0); the
   public GPU nodes live in the same `public` partition.
 - `gpu.exclusive` — request a whole node for GPU jobs (Sol GPU nodes
@@ -205,6 +235,120 @@ once, shipped in `docs/molbuilder.json.example` (and a future
 One block makes every generated Sol job correct. `gpu.partition` is
 `public` (confirmed live, § 7.0).
 
+### 4.3 Walltime / memory routing (optional, config-driven; recommend + explicit select)
+
+**Goal.** Give the user a named menu of submission domains (`debug`,
+`htc`, `public`, …), let the framework **recommend** the cheapest one a
+job fits, and require the user to **select explicitly** which domain a run
+goes to. A 10-minute test *fits* `debug`, a 3-hour run *fits* `htc`, a
+5-day run needs `public`/`general` — but molbuilder *assists*, it does not
+auto-decide (*assistant, not nanny*, design.md Stance): nothing is
+submitted to a domain the user did not name.
+
+**Why this is not the forbidden "heuristic" (§ 12).** The framework bakes
+no partition names and no limits. It only (a) reads the named domains the
+user wrote, (b) parses two SLURM walltime strings to seconds, (c) reports
+which domains fit + recommends the cheapest, and (d) emits the
+`-p`/`-q` of the domain the **user selected**. Names + ceilings are the
+user's data, seeded from their live `sinfo`/`sacctmgr` (§ 7.0). Remove the
+table → identical to the pre-2026-06-29 single-default behavior.
+
+**Schema.** `scheduler.routing` is a JSON array of **named domain**
+objects, ordered **most-constrained → most-general** (so the *first*
+fitting one is the cheapest = the recommendation):
+
+```json
+{ "name": "htc", "max_time": "0-04:00:00", "max_mem_gb": 256,
+  "partition": "htc", "qos": "public", "gpu_partition": "htc" }
+```
+
+| field | required | meaning |
+|---|---|---|
+| `name` | yes | the domain label the user selects by (`--domain <name>`); unique in the list |
+| `max_time` | yes | the domain *fits* a job when its requested `-t` ≤ this (SLURM `D-HH:MM:SS` or `HH:MM:SS`) |
+| `max_mem_gb` | no | also require job `--mem` ≤ this (GB); absent → no memory gate |
+| `partition` | yes | `-p` to emit for a CPU job in this domain |
+| `qos` | yes | `-q` to emit in this domain |
+| `gpu_partition` | no | `-p` to emit for a **GPU** job in this domain; absent → use `partition` |
+
+**Two-step model: recommend, then explicit select.**
+
+1. **Recommend (automatic, advisory).** The generator knows the job's
+   requested **walltime** (`-t` from CLI → else `defaults.time`) and
+   **memory** (`--mem`/estimate → else `defaults.mem`, may be `null`). A
+   domain *fits* when `job_time ≤ max_time` AND (`max_mem_gb` absent OR
+   `job_mem ≤ max_mem_gb`). `job_mem == null` (no cap requested) fits only
+   domains with **no** `max_mem_gb` (can't prove a capped one fits — keeps
+   "no silent over-ask", § 12). The **first fitting domain** (cheapest, by
+   list order) is the *recommendation*, surfaced in `BENCH-PLAN.md` and
+   the prep summary. It is advisory only — it is never auto-submitted.
+2. **Select (explicit, the user's call).** The domain actually emitted is
+   chosen by, in precedence order:
+   - `./run-bench --domain <name>` (per-run, explicit) — wins;
+   - else `execution.domain` in `.molbuilder.json` (a standing explicit
+     choice);
+   - else **no selection** → the run is NOT submitted: prep/run-bench
+     print the menu + the recommendation and tell the user to re-run with
+     `--domain <name>`. (Never push-button.)
+   The selected domain's `qos` + `gpu_partition`/`partition` (per engine)
+   are emitted.
+
+**Fit-check on the explicit choice (loud, never silent).** If the user
+selects a domain a point does **not** fit (e.g. `--domain debug` for a
+3-hour point), molbuilder does not silently retarget or truncate: it
+**refuses that point and says why** (requested `-t` vs the domain's
+`max_time`), and names the recommended domain instead. (Mirrors
+"over-asks fail loudly", § 12, caught at GENERATE — earlier than the
+submit-time rejection of § 7.7.)
+
+**No routing table.** `scheduler.routing` absent/empty → unchanged: use
+`directives.partition`/`qos` (and `gpu.partition` for GPU); `--domain`
+is then a no-op with a note that no domains are configured.
+
+**Precedence.** explicit `--domain` **>** `execution.domain` **>**
+(no submit). The selected routing domain **>** `directives`/`gpu`
+defaults. `gpu.partition` (§ 4.1) is consulted only on the no-routing
+path; with routing, a per-domain `gpu_partition` carries the GPU case so
+the whole policy lives in one ordered table.
+
+**Interaction with the benchmark sweep.** `./run-bench --domain <name>`
+applies the *one explicitly chosen* domain to every point it submits, and
+echoes, per point, the domain + the recommendation — so the user sees if
+any point would have preferred a different domain (and which points the
+chosen domain refuses, per the fit-check). The recommendation is computed
+per-point from each point's own `-t`; the *selection* stays single and
+explicit for the whole run.
+
+**Anti-drift.** Because the menu is data, a Sol partition rename (§ 7.0,
+the `general`→`public` migration that broke ASU's own examples) is a
+one-line config edit, not a code change.
+
+### 4.4 Distinct job names per benchmark point
+
+**Problem.** The header bakes `#SBATCH -J <basename>` (§ 5), so every
+GPU sweep point submits as `job-gpu` — `squeue -u $USER` shows a wall of
+identical names and you cannot tell which `(G,K,c)` point a running job is.
+
+**Fix.** Each point overrides `-J` on the `sbatch` CLI (the CLI `-J` wins
+over the header `-J`), encoding the point's **config** in the name:
+
+```
+sbatch -J job-gpu-G1K2C5 --gres=gpu:a100:1 -n 2 -c 5 job-gpu.sbatch
+                ^^^^^^^^  G=1 K=2 c=5  -> unique, self-describing
+```
+
+- GPU sweep point → `-J <base>-G<g>K<k>C<c>` (e.g. `job-gpu-G1K2C5`).
+- CPU baseline → `-J <base>` (`job-cpu`) — already unique (one point).
+- The name carries the SAME identity as the point directory
+  (`point-G<g>K<k>C<c>/`, § 8 of job-execution.md) so `squeue` rows,
+  output dirs, and `BENCH-PLAN.md` rows all line up.
+
+This is generated by the scheduler adapter's launch line (it already
+emits the per-point `-n`/`-c`/`--gres`); adding `-J` is the same
+mechanism, no new wheel. SLURM job-name chars are unconstrained for our
+ASCII `G/K/C` suffix, but the generator keeps the suffix to
+`[A-Za-z0-9._-]` for portability.
+
 ---
 
 ## 5. The generated `<basename>.sbatch` — block by block
@@ -213,12 +357,15 @@ One block makes every generated Sol job correct. `gpu.partition` is
 #!/bin/bash
 # === molbuilder sbatch header (scheduler: slurm; site: asu-sol) ===
 #SBATCH -J <basename>                       # job name = project basename
+                                            #   (sweep points override -J on the
+                                            #    sbatch CLI -> -J <base>-G<g>K<k>C<c>, § 4.4)
 #SBATCH -N 1                                # single node (v1)
 #SBATCH -n <ntasks>                         # MPI ranks   (derived, § 6)
 #SBATCH -c <cpus_per_task>                  # cores/rank  (config / derived)
 #SBATCH -t <time>                           # walltime    (CLI / default)
-#SBATCH -p <partition>                      # public  (or gpu.partition)
-#SBATCH -q <qos>                            # public
+#SBATCH -p <partition>                      # public  (or gpu.partition; or the
+                                            #   explicitly selected routing domain, § 4.3)
+#SBATCH -q <qos>                            # public  (or selected domain's qos, § 4.3)
 #SBATCH --gres=gpu:<type>:<n>               # ONLY if the .fdf requests GPU
 #SBATCH --mem=<mem>                         # emitted only if set
 #SBATCH -o slurm.%j.out
@@ -245,8 +392,8 @@ bash <basename>.run.sh "$@"
 
 | Directive | Source (first wins) | Notes |
 |---|---|---|
-| `-J` job name | `.fdf`/`.py` basename | the project ID |
-| `-p` / `-q` | `scheduler.directives` (or `gpu.partition` for GPU) | stable per site |
+| `-J` job name | `.fdf`/`.py` basename; **sweep points add `-G<g>K<k>C<c>`** (§ 4.4) | the project ID, made unique per benchmark point |
+| `-p` / `-q` | explicitly selected `routing` domain (§ 4.3) → else `scheduler.directives` (or `gpu.partition` for GPU) | routing domain is *recommended* automatically but *selected* explicitly (`--domain`/`execution.domain`) |
 | `--mail-*`, `--export` | `scheduler.directives` | stable |
 | `-o` / `-e` | fixed `slurm.%j.{out,err}` | ASU convention |
 | `-n` ntasks | CLI `--np` → `.fdf`-aware mpi_np selector → `scheduler.defaults` | **rank count** for CPU+GPU; `--gres` carries the GPU count (independent — K ranks may share a GPU via MPS, § 7.5.1) |
@@ -537,7 +684,10 @@ Convention: `cd <projdir>; sbatch <basename>.sbatch`. **Compatible.**
 ### 7.7 Walltime / QoS ceilings
 `-q public` (≤ 7 days). The `0-04:00:00` default is safe under every
 public ceiling. An over-long `-t` is rejected at submit — loud and
-immediate. **Compatible.**
+immediate. **Compatible.** When a `scheduler.routing` table is configured
+(§ 4.3), the explicitly selected domain's ceiling is also checked at
+GENERATE (the fit-check), so an over-ask is caught before submit, not
+only by SLURM at submit.
 
 ### 7.8 Submission is MANDATORY (login nodes cannot run the job)
 On Sol you cannot `bash run.sh` interactively for a real job:
@@ -889,10 +1039,14 @@ resource sizing — before committing the long production run.
 - **No duplicated env activation** — the launcher owns it.
 - **No `srun --mpi=pmix` / no `module load openmpi`** — would break the
   conda-MPI ABI (§ 7.5).
-- **No partition-selection heuristics.** One configured default; user
-  overrides explicitly.
+- **No partition-selection heuristics baked in CODE.** Routing is
+  config *data* the user authors (`scheduler.routing`, § 4.3): the code
+  only matches the job's `-t`/`--mem` against the user's ordered rules
+  and falls back to the single configured default when there is no table.
+  No names, no limits, no cluster knowledge in the framework.
 - **No hardcoding partition/GPU names from ASU's docs** — they are
-  stale (§ 7.0); pin from the live system.
+  stale (§ 7.0); pin from the live system (this applies to the
+  `routing` table too — seed it from your own `sinfo`/`sacctmgr`).
 - **No silent resource defaults that exceed a QoS ceiling.** Over-asks
   fail loudly at submit.
 - **No `cd` in the `.sbatch`.** `SLURM_SUBMIT_DIR` is the contract.
