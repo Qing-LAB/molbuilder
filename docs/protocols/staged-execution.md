@@ -147,6 +147,16 @@ implicit):
 `depends_on`/`carry` that references a non-prior job (keeps the graph
 ordered + acyclic).
 
+> **Scope boundary (by design, not an oversight):** `depends_on` is a
+> **single** producer — the model expresses a *linear chain* (ladder) or
+> *independent set* (sweep), which is all the two current producers need.
+> `carry` is already multi-source (a list), so the data layer is half-ready
+> for a **diamond DAG** (e.g. transport `device` depending on *both*
+> electrode runs); promoting `depends_on` to `List[str]` (and the SLURM dep
+> to `afterok:id1:id2`) is the small, well-contained change to make when a
+> multi-parent consumer actually arrives. Not built speculatively — named
+> here so the boundary is explicit.
+
 ### Example — a 2-stage ladder as stored `job-set.json`
 
 ```json
@@ -229,24 +239,29 @@ and scheduler resources — it never parses an `.fdf`. Swapping engines
 ### Example — the materialized tree
 
 ```
-bdt/                              # bundle root: shared, immutable
+bdt/                              # bundle root: shared + rendered-once wrappers
 ├── C.psml  S.psml  Au.psml  H.psml
 ├── mb_monitor.py
 ├── bdt_stage1.fdf  bdt_stage2.fdf
+├── bdt_stage1.run.sh  bdt_stage1.sbatch   # rendered IN ROOT at prep (real files)
+├── bdt_stage2.run.sh  bdt_stage2.sbatch   #   from the real .fdf (resolve() no-op)
 ├── job-set.json                  # the plan (job-set@1)
 ├── STAGE-PLAN.md                 # human view (§ 5)
 ├── point-stage1/
-│   ├── C.psml -> ../C.psml       # shared (symlink)
+│   ├── C.psml -> ../C.psml                 # shared (symlink, materialize)
 │   ├── bdt_stage1.fdf -> ../bdt_stage1.fdf
-│   ├── bdt_stage1.sbatch         # baked at prep
-│   ├── bdt.out  bdt.XV  bdt.DM   # its own results
-│   ├── .git/  .binsnapshots/     # its own checkpoints (§ 11)
+│   ├── bdt_stage1.sbatch -> ../bdt_stage1.sbatch   # wrapper linked in (prep)
+│   ├── bdt_stage1.run.sh -> ../bdt_stage1.run.sh
+│   ├── mb_monitor.py -> ../mb_monitor.py
+│   ├── bdt.out  bdt.XV  bdt.DM             # its own results
+│   ├── .git/  .binsnapshots/               # its own checkpoints (§ 11)
 └── point-stage2/
     ├── C.psml -> ../C.psml
     ├── bdt_stage2.fdf -> ../bdt_stage2.fdf
-    ├── bdt.XV -> ../point-stage1/bdt.XV   # carry-forward
-    ├── bdt.DM -> ../point-stage1/bdt.DM
-    └── bdt_stage2.sbatch
+    ├── bdt_stage2.sbatch -> ../bdt_stage2.sbatch
+    ├── bdt_stage2.run.sh -> ../bdt_stage2.run.sh
+    ├── bdt.XV -> ../point-stage1/bdt.XV    # carry-forward (materialize)
+    └── bdt.DM -> ../point-stage1/bdt.DM
 ```
 
 ---

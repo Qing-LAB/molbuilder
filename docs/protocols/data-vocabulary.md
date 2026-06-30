@@ -21,7 +21,7 @@
 | Detected environment | `environment.json` | `molbuilder/environment@1` | `benchmark-workflow.md`, `bench/environment.py` | `scheduler`, `topology`, `site` |
 | Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `benchmark-workflow.md`, `bench/generate.py` | `points.{cpu,gpu}` |
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `benchmark-workflow.md`, `bench/result.py` | `points`, `choice`, `recommend` |
-| **Job-set plan** | `job-set.json` | `molbuilder/job-set@1` | `staged-execution.md` | `shared`, `jobs[]` |
+| **Job-set plan** | `job-set.json` | `molbuilder/job-set@1` | `staged-execution.md` | `name`, `engine`, `kind`, `shared`, `jobs[]` |
 | Decoded run | `decoded.json` | `schema_version: <int>` *(predates the `@major` convention)* | `job-decoder.md` | `schema_version`, decoded plots, job-type, triggers |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair)* | `bundle-contract.md`, `bundle_writer.py` | geometry; `regions`/`frozen_atoms`/`structure_hash` |
 | Checkpoint binary archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256> <bytes> <name>`)* | `run-checkpoints.md` § 10 | — |

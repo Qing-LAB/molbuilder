@@ -18,13 +18,18 @@ def _res_str(r) -> str:
     bits: List[str] = []
     if r.domain:
         bits.append(f"domain={r.domain}")
-    if r.time:
-        bits.append(f"t={r.time}")
-    if r.exclusive is not None:
-        bits.append("exclusive" if r.exclusive else "shared")
+    # the per-job rank/core counts ARE the variation for a sweep -- show them.
+    if r.mpi_np:
+        bits.append(f"n={r.mpi_np}")
+    if r.cpus_per_task:
+        bits.append(f"c={r.cpus_per_task}")
     if r.gres:
         bits.append(r.gres)
-    if r.mem:
+    if r.time:
+        bits.append(f"t={r.time}")
+    if r.exclusive:
+        bits.append("exclusive")
+    if r.mem and not r.exclusive:
         bits.append(f"mem={r.mem}")
     return ", ".join(bits) if bits else "(inherit defaults)"
 

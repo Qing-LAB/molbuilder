@@ -294,6 +294,13 @@ def test_prep_rejects_missing_script(tmp_path):
         prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
 
 
+def test_render_plan_surfaces_per_job_ranks_and_cores():
+    # the plan MUST show the -n/-c variation -- that IS the sweep.
+    txt = render_plan(_sweep())
+    assert "n=1" in txt and "n=2" in txt
+    assert "c=4" in txt and "gpu:a100:1" in txt
+
+
 # --------------------------------------------------------------------- #
 #  submit engine                                                        #
 # --------------------------------------------------------------------- #
