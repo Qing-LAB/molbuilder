@@ -572,9 +572,17 @@ def _make_pyscf_options_decorator():
                    "Mirrors the form's Stage strategy dropdown.  Sets "
                    "multi-stage mode (one fdf per enabled stage + a "
                    ".run.sh runner).")
+# --jobset: also emit job-set.json so the bundle is runnable by the
+# engine-agnostic framework (`molbuilder jobset prep/plan/submit`,
+# staged-execution.md).  Opt-in (doesn't change the default file set);
+# only meaningful in multi-stage mode.
+@click.option("--jobset", "emit_jobset", is_flag=True, default=False,
+              help="also write job-set.json (the ladder as a JobSet) so the "
+                   "bundle runs via `molbuilder jobset prep/submit`.  "
+                   "Requires --stage-strategy / --stages-json.")
 @_make_siesta_options_decorator()
 def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
-            stages_json, stage_strategy, **fields):
+            stages_json, stage_strategy, emit_jobset, **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
     Every SiestaConfig field is exposed as a CLI option (auto-generated
@@ -614,6 +622,12 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             "pipeline (one .fdf per enabled stage + a .run.sh runner).  "
             "Pick one path -- they're mutually exclusive."
         )
+    if emit_jobset and not multi_stage:
+        raise click.UsageError(
+            "--jobset writes the job-set.json for a stage LADDER; it needs "
+            "--stage-strategy or --stages-json (a single-stage one-shot .fdf "
+            "is not a job-set)."
+        )
 
     # Apply --stage overlay AFTER cfg is built so the user's per-knob
     # --relax-* overrides land in cfg first, then the stage values
@@ -644,6 +658,7 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             fdf_path=fdf_path,
             stages_json=stages_json,
             stage_strategy=stage_strategy,
+            emit_jobset=emit_jobset,
         )
         return
 
@@ -665,7 +680,8 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
 
 
 def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
-                              stages_json, stage_strategy):
+                              stages_json, stage_strategy,
+                              emit_jobset=False):
     """Helper for cmd_fdf's multi-stage branch.
 
     Pulled out of cmd_fdf so the logic is unit-testable independent
@@ -769,6 +785,22 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         lib = _P(cfg.psml_lib).expanduser()
         if lib.is_dir():
             copy_pseudopotentials(species, lib, out_dir)
+
+    # --jobset: persist the ladder as a JobSet so `molbuilder jobset
+    # prep/submit` can run this bundle (staged-execution.md § 5).  The Job
+    # scripts are exactly the <label>_<stage>.fdf rendered above; ``shared``
+    # is the pseudopotentials present in the bundle root (symlinked into each
+    # stage dir at prep).  This is the host-side producer the framework was
+    # missing -- it reuses stages_to_jobset + JobSet.write, no new logic.
+    if emit_jobset:
+        from .siesta.stages import stages_to_jobset
+        pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
+                         for p in out_dir.glob(ext))
+        try:
+            js = stages_to_jobset(cfg, shared=pseudos)
+        except ValueError as e:
+            raise click.ClickException(f"--jobset: {e}")
+        written.append(js.write(out_dir / "job-set.json"))
 
     # Per-stage molwatch preview log, one per enabled stage.  Each
     # log carries the stage's own convergence targets so the watch-

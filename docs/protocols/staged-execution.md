@@ -36,8 +36,8 @@
 | Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
 | `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
-| **HOST bundle producer** — one command: config → render stage `.fdf`s + place pseudos + `stages_to_jobset(...).write()` (§ 5 step 2-3) | **proposed** — the remaining wiring (`fdf --stage-strategy` renders the `.fdf`s today; the `job-set.json` write is API-only via `.write()`) |
-| Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**) |
+| **HOST bundle producer** — `molbuilder fdf … --stage-strategy <s> --jobset`: render stage `.fdf`s + pseudos + `job-set.json` in one command (§ 5 step 2-3) | **built** (`cli.py::_emit_siesta_multi_stage`, opt-in `--jobset`) |
+| Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**; `resources_for` seam, no CLI flag yet) |
 | Bench migration onto the framework (§ 13 D4) | **proposed** |
 
 ---
@@ -353,21 +353,15 @@ flowchart TD
 
 ### Example — operations (the verbs)
 
-The **HOST** writes the bundle's plan with the Python API; the **TARGET**
-uses the `molbuilder jobset` CLI (built). The one piece still to wire is a
-single host *command* that bundles steps 2–3 (today: render the `.fdf`s with
-`molbuilder fdf --stage-strategy`, then `JobSet.write` via the API).
-
-```python
-# HOST (Python): author the ladder → JobSet, render the per-stage .fdf in the
-# bundle, and persist the plan.
-from molbuilder.siesta.stages import stages_to_jobset
-js = stages_to_jobset(cfg, shared=[...], resources_for=overrides.get)
-js.write(bundle_dir / "job-set.json")          # the plan, carried to the target
-```
+End-to-end, all CLI: the **HOST** produces the bundle (stage `.fdf`s +
+`job-set.json`) in one command; the **TARGET** preps, reviews, and submits.
 
 ```bash
-# ...ship the bundle to the target, then on the TARGET:
+# HOST: render the ladder's .fdf's + the job-set.json plan into ./bundle
+molbuilder fdf h2.xyz bundle/JOB.fdf --stage-strategy publishable --jobset \
+    --psml-lib ~/pseudos                                # pseudos copied into the bundle
+
+# ...ship ./bundle to the target, then on the TARGET:
 molbuilder jobset prep   ./bundle                       # wrappers + point-*/ + carry symlinks
 molbuilder jobset plan   ./bundle                       # the chain + per-job resources (review)
 molbuilder jobset submit ./bundle --mode submit --domain public --dry-run   # preview commands

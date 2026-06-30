@@ -272,3 +272,46 @@ def test_stages_json_then_stage_strategy_layers_correctly(xyz, tmp_path):
     body = (tmp_path / "JOB_stage1.fdf").read_text()
     assert "MD.NumCGsteps 50" in body
     assert "MD.MaxForceTol 0.1 eV/Ang" in body
+
+
+# --------------------------------------------------------------------- #
+#  --jobset: emit job-set.json so the bundle runs via `molbuilder jobset` #
+# --------------------------------------------------------------------- #
+
+
+def test_jobset_flag_emits_runnable_job_set_json(xyz, tmp_path):
+    from molbuilder.jobset.model import JobSet, SCHEMA
+
+    fdf = tmp_path / "JOB.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf),
+                "--stage-strategy", "publishable", "--jobset")
+    assert r.exit_code == 0, r.output
+    jpath = tmp_path / "job-set.json"
+    assert jpath.is_file()                          # opt-in artifact present
+
+    js = JobSet.load(jpath)
+    assert js.to_dict()["schema"] == SCHEMA
+    assert js.kind == "ladder" and js.engine == "siesta"
+    assert js.validate() == []                       # framework-valid
+    # scripts match the <label>_<stage>.fdf actually rendered next to it.
+    assert [j.script for j in js.jobs] == ["JOB_stage1.fdf", "JOB_stage2.fdf"]
+    for j in js.jobs:
+        assert (tmp_path / j.script).is_file()
+    # the chain + carry are wired (stage2 warm-starts from stage1).
+    assert js.jobs[1].depends_on == "stage1"
+    assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
+
+
+def test_jobset_flag_requires_multi_stage(xyz, tmp_path):
+    fdf = tmp_path / "JOB.fdf"
+    r = CliRunner().invoke(
+        cli, ["fdf", str(xyz), str(fdf), "--jobset"])
+    assert r.exit_code != 0
+    assert "--jobset" in r.output and "stage-strategy" in r.output
+
+
+def test_jobset_flag_off_by_default_no_job_set_json(xyz, tmp_path):
+    fdf = tmp_path / "JOB.fdf"
+    r = _invoke("fdf", str(xyz), str(fdf), "--stage-strategy", "publishable")
+    assert r.exit_code == 0, r.output
+    assert not (tmp_path / "job-set.json").exists()   # unchanged default
