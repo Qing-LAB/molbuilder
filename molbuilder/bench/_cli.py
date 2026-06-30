@@ -378,9 +378,48 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
                ".sbatch). Then run job-cpu + `./job-gpu-sweep.sh`.")
 
 
+_PREP_EPILOG = """\
+\b
+RESOURCE MODEL -- think in three independent knobs, no arithmetic in your head:
+\b
+  --gpus-per-node N   G = how many GPUs                (sweeps 1..N)
+  --gpu-ks K[,K...]   K = parallel apps (MPI ranks) PER GPU
+  --gpu-cs c[,c...]   c = CPU cores (OMP threads) PER app
+\b
+The tool computes the rest:
+    ranks (np)   = K x G          (apps-per-GPU times #GPUs)
+    cores total  = K x c x G      (and cores PER GPU = K x c)
+A point is named point-G<G>K<K>C<c>; its job shows as job-gpu-G<G>K<K>C<c>.
+\b
+EXAMPLES (read each as a sentence):
+\b
+  "2 GPUs; 12 apps on each; 2 cores per app"   (= np 24, 48 cores, whole A100 node)
+      --gpus-per-node 2 --gpu-ks 12 --gpu-cs 2          -> point-G2K12C2
+\b
+  "1 GPU; 1 app; 4 cores for it"
+      --gpus-per-node 1 --gpu-ks 1 --gpu-cs 4           -> point-G1K1C4
+\b
+  "1 GPU; 4 apps; 6 cores each"   (the published SIESTA-GPU optimum: ~4 apps/GPU + small OMP)
+      --gpus-per-node 1 --gpu-ks 4 --gpu-cs 6           -> point-G1K4C6
+\b
+  Sweep a GRID (compare combinations) -- comma-separate any axis:
+      --gpus-per-node 2 --gpu-ks 4,8,12 --gpu-cs 1,2,4  -> all G x K x c points
+\b
+NOTES:
+  * cores PER GPU (K x c) is capped only by the node; the A100 node has 48
+    cores (2x24), so e.g. 1 GPU can take at most 48 cores; 64 needs >1 node
+    (multi-node is not supported in v1).
+  * SIESTA CPU baseline is pure-MPI (OMP=1 helps nothing); the GPU/ELPA path
+    benefits from a *small* OMP (c ~ 3-6). Let the c-sweep measure it.
+  * Defaults (no flags): K = cores/socket divisors; c per K = the bracket
+    {1, cores//K, 2*cores//K} (starved / one-socket / cross-socket).
+"""
+
+
 @bench_group.command("prep",
                      short_help="detect the target machine + format the "
-                                "benchmark scripts for it")
+                                "benchmark scripts for it",
+                     epilog=_PREP_EPILOG)
 @click.option("--out", default=".",
               type=click.Path(file_okay=False, resolve_path=True),
               help="bundle directory to write into (default: current dir).")
@@ -389,16 +428,17 @@ def cmd_generate(fdf: str, out_dir: Optional[str], cpu_np: int,
 @click.option("--cores-per-socket", type=int, default=None,
               help="override detected cores/socket.")
 @click.option("--gpus-per-node", type=int, default=None,
-              help="override detected GPUs/node.")
+              help="G = number of GPUs (sweeps 1..N). See examples below.")
 @click.option("--gpu-type", default=None,
               help="override detected GPU type (e.g. a100).")
 @click.option("--gpu-ks", default=None,
-              help="comma-separated K (ranks/GPU) values to sweep, e.g. "
-                   "8,16 (default: cores/socket divisors).")
+              help="K = parallel apps (MPI ranks) PER GPU; comma-separated to "
+                   "sweep, e.g. 4,8,12 (default: cores/socket divisors). "
+                   "np = K*G.")
 @click.option("--gpu-cs", default=None,
-              help="comma-separated c (cores/rank) values to sweep, e.g. "
-                   "1,8,16 (default per K: {1, cores//K, 2*cores//K} -- "
-                   "starved / 1-socket / cross-socket).")
+              help="c = CPU cores (OMP threads) PER app; comma-separated to "
+                   "sweep, e.g. 1,2,6 (default per K: {1, cores//K, "
+                   "2*cores//K}). cores/GPU = K*c. See examples below.")
 def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
              gpus_per_node, gpu_type, gpu_ks, gpu_cs) -> None:
     """Detect this machine (scheduler + topology) and format the benchmark
