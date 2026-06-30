@@ -153,27 +153,55 @@ def test_mem_emitted_when_set(tmp_path):
     assert "#SBATCH --mem=120G" in txt
 
 
-def test_gpu_mem_default_applies_to_gpu_not_cpu(tmp_path):
-    """``scheduler.gpu.mem`` is a GPU-only default (Sol's GPU 24 GB default
-    is tight); CPU jobs must NOT inherit it (they keep the generous
-    partition default)."""
+def test_mem_is_unified_no_gpu_special_case(tmp_path):
+    """Memory is the SAME for CPU and GPU -- it's the same job (2026-06-29).
+    There is NO scheduler.gpu.mem; a job-agnostic defaults.mem applies to
+    BOTH engines identically.  (Removed the GPU-only flat default.)"""
     sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem="200G")
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                         exclusive=False)
+    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
+    ctxt = render_sbatch(cfdf, sched, ntasks=64)
+    # Same defaults.mem honored by both engines -- no GPU divergence.
+    assert "#SBATCH --mem=200G" in gtxt
+    assert "#SBATCH --mem=200G" in ctxt
+
+
+def test_gpu_mem_config_key_is_gone(tmp_path):
+    """A stray scheduler.gpu.mem is IGNORED, not honored (clean removal):
+    the GPU job estimates/falls back like any job, never reads gpu.mem."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")          # stray legacy key
     sched["defaults"] = dict(_SCHED["defaults"], mem=None)
     gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1)
-    assert "#SBATCH --mem=64G" in gtxt              # GPU gets gpu.mem
-    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
-    ctxt = render_sbatch(cfdf, sched, ntasks=64)    # CPU job
-    assert "--mem" not in ctxt                       # NOT capped
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                         exclusive=False)
+    assert "64G" not in gtxt                               # NOT read
 
 
-def test_explicit_mem_overrides_gpu_mem(tmp_path):
+def test_explicit_mem_overrides_default(tmp_path):
     sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem="64G")
     fdf = tmp_path / "g.fdf"; fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1, mem="120G")
+    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                        mem="120G", exclusive=False)
     assert "#SBATCH --mem=120G" in txt and "64G" not in txt
+
+
+def test_exclusive_ignores_mem_takes_whole_node(tmp_path):
+    """Exclusive owns the whole node -> --mem=0; any configured/explicit mem
+    is ignored, and the script says so (§ 4.3.1)."""
+    sched = dict(_SCHED)
+    sched["defaults"] = dict(_SCHED["defaults"], mem="120G")
+    fdf = tmp_path / "g.fdf"; fdf.write_text("Diag.ELPA.GPU .true.\n")
+    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                        exclusive=True)
+    assert "#SBATCH --exclusive" in txt
+    assert "#SBATCH --mem=0" in txt
+    assert "#SBATCH --mem=120G" not in txt
+    assert "IGNORED" in txt                                # loud comment
 
 
 def test_cpus_omitted_when_unset(tmp_path):
@@ -417,7 +445,8 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
 
 
 def test_wrapper_gpu_has_no_mem_audit(project):
-    # GPU jobs size memory from gpu.mem, not the CPU model -> no audit.
+    # The runtime mem-audit block is not emitted in this path (independent of
+    # the header mem; GPU and CPU share the same per-job estimator now).
     fdf = project / "job.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
     runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",

@@ -3069,20 +3069,25 @@ def render_sbatch(script_path: Path,
     # default is a tight 24 GB/GPU), else ``defaults.mem``.  CPU jobs use
     # ``defaults.mem`` (null => the generous partition default -- do NOT cap
     # a 64-rank CPU job at a small total).
+    # Memory is JOB-SPECIFIC and the SAME for CPU and GPU -- it's the same
+    # system, same physics.  ONE path, no GPU special-case: estimate per-job
+    # from the .fdf problem size (× rank count -- the estimator already
+    # accounts for ranks, so a low-rank GPU job naturally estimates lower).
+    # Config carries only the estimator's coefficients (scheduler.mem_model,
+    # genuinely site-wide) and an OPTIONAL job-agnostic override
+    # (defaults.mem / CLI --mem); it does NOT carry the per-job value.
+    #   1. explicit caller arg (CLI --mem) -- a hard override;
+    #   2. defaults.mem IF set -- a site override for ALL jobs;
+    #   3. else estimate from the .fdf (the job-specific default).
+    # Best-effort: estimation NEVER blocks emission; on any failure we fall
+    # back to the partition default.  See slurm-integration.md (mem model)
+    # and molbuilder/siesta/memory.py.  (Exclusive jobs ignore all of this
+    # and take the whole node -- § 4.3.1, handled at emission below.)
     mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
-    elif gpu:
-        memory = gpu_cfg.get("mem") or defaults.get("mem")
     else:
         memory = defaults.get("mem")
-        # CPU SIESTA job with no explicit / config mem: estimate it from
-        # the problem size so a large job doesn't inherit the tiny
-        # partition default and OOM (the np=64 BDT-Au lesson -- 64 ranks
-        # needed ~250 GB but the bare default killed it).  Best-effort:
-        # estimation NEVER blocks emission; on any failure we fall back
-        # to the partition default.  See slurm-integration.md (mem model)
-        # and molbuilder/siesta/memory.py.
         if memory is None and Path(script_path).suffix.lower() == ".fdf":
             try:
                 from .siesta.memory import (estimate_siesta_memory,
@@ -3130,7 +3135,16 @@ def render_sbatch(script_path: Path,
         lines.append("#SBATCH --gres-flags=enforce-binding")
     if exclusive:
         lines.append("#SBATCH --exclusive")
-    if memory:
+        # --exclusive reserves the WHOLE node, which already grants ALL of
+        # the node's memory.  The configured mem request is therefore
+        # IGNORED here; --mem=0 = "all memory on the node".  Stated out loud
+        # so the ignored value is never a silent surprise (the mem<->exclusive
+        # rule -- slurm-integration.md § 4.3.1).
+        lines.append(
+            f"# --exclusive owns the whole node -> ALL its memory.  Configured "
+            f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")
+        lines.append("#SBATCH --mem=0")
+    elif memory:
         if mem_comment:
             lines.append(mem_comment)
         lines.append(f"#SBATCH --mem={memory}")

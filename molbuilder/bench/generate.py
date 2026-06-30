@@ -491,6 +491,7 @@ def generate_bench_bundle(fdf_path, out_dir=None, *,
 
 
 def bake_target_wrappers(out_dir, env, *, submit: Optional[bool] = None,
+                         exclusive: Optional[bool] = None,
                          echo=None) -> List[Path]:
     """Resolve the conda activation for THIS target and bake the run
     wrappers from the bundle's ``bench-manifest.json`` (job-execution.md
@@ -567,10 +568,13 @@ def bake_target_wrappers(out_dir, env, *, submit: Optional[bool] = None,
     cores = env.topology.cores_per_socket or 24
     gtype = env.topology.gpu_type or "a100"
     gpu_c = max(1, cores // gpu["gpu_k"])
+    # exclusive: explicit prep flag (--exclusive/--no-exclusive) wins; else
+    # the manifest/config default (job-execution.md § 8.15).
+    gpu_excl = exclusive if exclusive is not None else gpu.get("exclusive")
     written.append(write_run_wrapper(
         out_dir / gpu["script"], mpi_np=gpu["gpu_k"] * gpu["gpus"],
         gres=f"{gtype}:{gpu['gpus']}", cpus_per_task=gpu_c,
-        time=gpu.get("time"), exclusive=gpu.get("exclusive"), env=elpa_env,
+        time=gpu.get("time"), exclusive=gpu_excl, env=elpa_env,
         emit_sbatch=emit_sbatch))
 
     # write_run_wrapper returns only the .run.sh; pick up the .sbatch it

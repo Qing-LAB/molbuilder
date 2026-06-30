@@ -323,6 +323,47 @@ explicit for the whole run.
 the `general`→`public` migration that broke ASU's own examples) is a
 one-line config edit, not a code change.
 
+### 4.3.1 Exclusivity and memory — one explicit knob, no fighting directives (2026-06-29)
+
+**Memory is one unified, job-specific quantity — CPU and GPU identical.**
+It is the same system and the same physics, so there is **no
+`scheduler.gpu.mem`** (removed; clean break). `--mem` resolves the same way
+for both engines: explicit `--mem` → `defaults.mem` → **estimate from the
+`.fdf`** (`siesta/memory.py`). The estimator already scales with rank
+count, so a low-rank GPU job estimates *lower* than a 64-rank CPU job
+automatically (e.g. CPU 64 ranks → 500 G; GPU 4 ranks → 375 G) — that
+difference is physics, not a config knob. Config holds only the estimator
+**coefficients** (`scheduler.mem_model`, genuinely site-wide) and an
+optional job-agnostic override (`defaults.mem`).
+
+**Exclusivity is an explicit `prep` choice, not a buried config value.**
+`--exclusive` reserves a whole node; on a shared cluster that means a
+longer queue wait but clean, uncontended timing. Because it is easy to
+miss in a config file, it is:
+- a **`prep` flag** — `./prep-bench --exclusive` / `--no-exclusive` — which
+  **wins** over the config default (`scheduler.gpu.exclusive`);
+- announced as the **FIRST line `prep` prints**, e.g.
+  *"Allocation: EXCLUSIVE — each GPU job reserves a WHOLE node; configured
+  --mem (…) is IGNORED (all node RAM). …"* or the SHARED equivalent.
+
+**The mem ↔ exclusive rule (no contradictory directives).** When a job is
+`--exclusive` it already owns all the node's memory, so the generator
+**ignores** the resolved `--mem` and emits **`--mem=0`** (= all node RAM),
+with a one-line comment stating the ignored value. You never hand-set
+`mem=0`, and you never see `--exclusive` and a `--mem=120G` cap fighting in
+the same header. Shared (`--no-exclusive`) jobs emit the estimated/overridden
+`--mem` as usual.
+
+Decision matrix:
+
+| prep flag | `#SBATCH` emitted | queue | timing |
+|---|---|---|---|
+| `--exclusive` | `--exclusive` + `--mem=0` (configured mem ignored) | slower | clean |
+| `--no-exclusive` | estimated/`defaults.mem` `--mem=<N>`, no `--exclusive` | faster | shared-node noise possible |
+
+Per D9, the benchmark sweep should normally be **`--no-exclusive`** (faster
+scheduling); production runs use **`--exclusive`** for a clean final number.
+
 ### 4.4 Distinct job names per benchmark point
 
 **Problem.** The header bakes `#SBATCH -J <basename>` (§ 5), so every
@@ -400,7 +441,7 @@ bash <basename>.run.sh "$@"
 | `-c` cpus/rank | CLI `--omp`/`--cpus` → derived `node_cores / ntasks` → `defaults.cpus_per_task` | feeds OMP for ELPA-OpenMP |
 | `-t` time | CLI `--time` → `defaults.time` | only the user knows runtime |
 | `--gres` | `.fdf` GPU request (`_fdf_requests_gpu`) + CLI `--gres <type>:<n>` → `gpu.default_type` | auto-on when chemistry wants GPU |
-| `--mem` | CLI `--mem` → `defaults.mem` → **system-aware estimate** for CPU `.fdf` (null `defaults.mem`) → scheduler default | estimator (`siesta/memory.py`) sizes peak RSS from N_orb²·k-pts + per-rank replication; see § 11.0d |
+| `--mem` | CLI `--mem` → `defaults.mem` → **system-aware estimate from the `.fdf`** (null `defaults.mem`) → scheduler default. **Same path for CPU AND GPU** — memory is job-specific, not engine-specific (there is NO `gpu.mem`). **`--exclusive` overrides all of this → `--mem=0`** (whole node, § 4.3.1). | estimator (`siesta/memory.py`) sizes peak RSS from N_orb²·k-pts + per-rank replication; a low-rank GPU job naturally estimates lower than a 64-rank CPU job. See § 11.0d |
 | `-N` nodes | fixed `1` (v1) | multi-node deferred |
 
 **The user's real per-job surface**: *time*, and *GPU type/count when

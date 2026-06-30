@@ -439,8 +439,15 @@ NOTES:
               help="c = CPU cores (OMP threads) PER app; comma-separated to "
                    "sweep, e.g. 1,2,6 (default per K: {1, cores//K, "
                    "2*cores//K}). cores/GPU = K*c. See examples below.")
+@click.option("--exclusive/--no-exclusive", "exclusive", default=None,
+              help="EXCLUSIVE: each GPU job reserves a whole node (clean "
+                   "timing, slower to schedule; configured --mem is ignored "
+                   "-> all node RAM).  --no-exclusive: pack onto shared nodes "
+                   "(faster, possible timing noise).  Default: the config's "
+                   "scheduler.gpu.exclusive.  The resolved mode is the FIRST "
+                   "line prep prints.")
 def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
-             gpus_per_node, gpu_type, gpu_ks, gpu_cs) -> None:
+             gpus_per_node, gpu_type, gpu_ks, gpu_cs, exclusive) -> None:
     """Detect this machine (scheduler + topology) and format the benchmark
     scripts for it -- step 1 of the on-target workflow
     (docs/protocols/benchmark-workflow.md § 7.2).
@@ -487,13 +494,39 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
 
     rmode = resolve_mode(env, cfg_mode)
 
+    # Resolve GPU-node EXCLUSIVITY: explicit --exclusive/--no-exclusive wins,
+    # else the config default (job-execution.md § 8.15).  Announce it FIRST --
+    # it is too easy to miss in the config and decides queue time + whether
+    # the --mem request is honored.
+    gpu_excl = (exclusive if exclusive is not None
+                else bool(sched.get("gpu", {}).get("exclusive", False)))
+    gpu_mem = sched.get("gpu", {}).get("mem")
+    if rmode == "submit":
+        if gpu_excl:
+            click.echo(
+                "Allocation: EXCLUSIVE -- each GPU job reserves a WHOLE node; "
+                f"configured --mem ({gpu_mem or 'unset'}) is IGNORED (all node "
+                "RAM). Clean timing, slower to schedule.  Override: "
+                "./prep-bench --no-exclusive")
+        else:
+            click.echo(
+                f"Allocation: SHARED -- GPU jobs request --mem="
+                f"{gpu_mem or 'partition default'} and pack onto shared nodes "
+                "(faster scheduling; possible timing noise).  Override: "
+                "./prep-bench --exclusive")
+    else:
+        click.echo("Allocation: DIRECT run (no scheduler) -- exclusivity / "
+                   "--mem do not apply.")
+
     # Bake the run wrappers for THIS target (job-execution.md § 7.4): resolve
     # activation (workstation autodetect / HPC shipped config) + write
     # job-{cpu,gpu}.run.sh(.sbatch).  .sbatch is emitted iff mode=submit
-    # (§ 8.13).  This is what makes one bundle portable.
+    # (§ 8.13); GPU exclusivity is the resolved value above.  This is what
+    # makes one bundle portable.
     try:
         written += bake_target_wrappers(
-            out, env, submit=(rmode == "submit"), echo=click.echo)
+            out, env, submit=(rmode == "submit"), exclusive=gpu_excl,
+            echo=click.echo)
     except (RuntimeConfigError, FileNotFoundError) as e:
         click.echo(_summary(env, written))
         click.echo(f"\nERROR baking run wrappers: {e}", err=True)

@@ -1085,3 +1085,25 @@ partition/qos default, `--domain` is a no-op with a note.
 `point-G<g>K<k>C<c>/` directory and `BENCH-PLAN.md` row, so the queue,
 the output dirs, and the plan all line up. The CPU baseline stays
 `-J job-cpu` (one point).
+
+### 8.15 Exclusivity (explicit prep flag) + unified per-job memory (2026-06-29)
+
+Two corrections, detailed in slurm-integration.md § 4.3.1:
+
+**Memory is one quantity, CPU and GPU identical.** It's the same system, so
+there is **no `scheduler.gpu.mem`** (removed). `--mem` is estimated per-job
+from the `.fdf` (`siesta/memory.py`) for BOTH engines; the estimator scales
+with rank count, so a low-rank GPU job estimates lower than the 64-rank CPU
+baseline automatically (e.g. 375 G vs 500 G). Config holds only the
+estimator coefficients (`mem_model`) + an optional `defaults.mem` override.
+
+**Exclusivity is an explicit `prep` flag and the first thing prep prints.**
+`./prep-bench --exclusive` / `--no-exclusive` wins over the config default
+`scheduler.gpu.exclusive`; the resolved mode is announced on the **first
+output line** (it decides queue time and whether `--mem` is honored, and is
+too easy to miss in config). The **mem↔exclusive rule:** an `--exclusive`
+job owns the whole node, so the generator ignores the resolved `--mem` and
+emits **`--mem=0`** (all node RAM) with a comment stating the ignored value
+— no contradictory `--exclusive` + `--mem=120G` header, and no hand-setting
+`mem=0`. Per D9 the sweep is normally `--no-exclusive` (faster scheduling);
+production uses `--exclusive` for clean final numbers.
