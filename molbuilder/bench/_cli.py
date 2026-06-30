@@ -405,12 +405,35 @@ EXAMPLES (read each as a sentence):
   Sweep a GRID (compare combinations) -- comma-separate any axis:
       --gpus-per-node 2 --gpu-ks 4,8,12 --gpu-cs 1,2,4  -> all G x K x c points
 \b
+TUNING -- how many cores/app (c) and apps/GPU (K)?  (first opinion; then MEASURE)
+\b
+  What c (OMP cores/app) does: it speeds ONLY the HOST work of a GPU run --
+  H/S setup, the real-space mesh (scales with MeshCutoff), and ELPA's host
+  driver that feeds the GPU.  It NEVER speeds the GPU eigensolve itself.
+\b
+  * c=1  -> too few: host work serializes, the GPU starves between solves.
+  * c=2-6 -> the productive zone (covers host work + feeds the GPU).
+  * c>~6 -> tapers fast: mainline SIESTA host code is mostly MPI, not OMP,
+           and once the host keeps up the GPU is the bottleneck.
+\b
+  K vs c is a SPLIT of a fixed budget (K x c <= socket cores, 24 on an A100):
+    more K = more MPS clients overlapping on the GPU (better GPU use);
+    more c = more host OMP per app.
+  Published optimum: ~4 apps/GPU + small OMP  -> on a 24-core socket, K=4 c=6.
+\b
+  Read the result (util sampling, slurm-integration.md § 11.0e):
+    s/iter ~flat as c grows -> GPU-bound: don't spend cores on OMP (raise K
+                               or add a GPU);
+    s/iter drops as c grows -> host-bound: more c pays (big mesh / H/S setup).
+  First bet for a mid-size system (~hundreds of atoms): GPU-bound at K=4, so
+  c ~ 4-6 captures the benefit; higher rarely helps.
+\b
 NOTES:
   * cores PER GPU (K x c) is capped only by the node; the A100 node has 48
     cores (2x24), so e.g. 1 GPU can take at most 48 cores; 64 needs >1 node
     (multi-node is not supported in v1).
-  * SIESTA CPU baseline is pure-MPI (OMP=1 helps nothing); the GPU/ELPA path
-    benefits from a *small* OMP (c ~ 3-6). Let the c-sweep measure it.
+  * SIESTA CPU baseline is pure-MPI (OMP=1 helps nothing); only the GPU/ELPA
+    path benefits from OMP (see TUNING above).
   * Defaults (no flags): K = cores/socket divisors; c per K = the bracket
     {1, cores//K, 2*cores//K} (starved / one-socket / cross-socket).
 """
