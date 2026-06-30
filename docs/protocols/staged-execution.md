@@ -264,6 +264,60 @@ bdt/                              # bundle root: shared + rendered-once wrappers
     └── bdt.DM -> ../point-stage1/bdt.DM
 ```
 
+### Carry-forward — explicit walkthrough (what `Carry` is and does)
+
+**`Carry` is the *only* runtime data channel between jobs.** It is one
+restart file produced by one job and fed to a later job. The data model is
+deliberately tiny — `Carry(pattern, from_job)`:
+
+| field | meaning | example |
+|---|---|---|
+| `pattern` | the **concrete** filename to carry (NOT a glob) | `"bdt.XV"` |
+| `from_job` | the producer job whose dir holds it | `"stage1"` |
+
+**What it materializes.** For each `Carry` on a job, `materialize` lays one
+relative symlink in that job's dir pointing into the producer's dir:
+
+```
+point-stage2/bdt.XV  ->  ../point-stage1/bdt.XV
+```
+
+The symlink is created at **prep time, before stage1 has run**, so it is a
+**dangling** symlink at first. It resolves the moment stage1 writes
+`bdt.XV`; the dependency edge (§ 7–8) guarantees stage2 starts only after
+that, so the consumer never reads a missing or half-written file. Because
+the carried file lands in stage2's own dir under the shared `SystemLabel`
+(`bdt`), SIESTA's auto-restart finds `bdt.XV` in its cwd and warm-starts
+from it — molbuilder wires the file into place; the **engine** does the
+resume (§ 10).
+
+**Which files are carried (the D1 rule, § 13).** `stages_to_jobset` decides
+the carry set per consecutive pair:
+
+| file | carried when | why |
+|---|---|---|
+| `.XV` (coordinates) | **always** | the relaxed geometry is the whole point of staging |
+| `.DM` (density matrix) | `cfg.use_save_dm` is on | a converged density is a good SCF seed; skip if disabled |
+| `.CG` (optimizer history) | the two stages share `relax_type` | optimizer state is algorithm-specific — see example |
+
+**Worked example — why `.CG` is conditional.** A typical ladder is a cheap
+CG warm-up then a tight Broyden final:
+
+```
+stage1: relax_type=CG       --carry .XV, .DM, .CG-->  stage2: relax_type=CG       (same optimizer: history helps)
+stage1: relax_type=CG       --carry .XV, .DM-------->  stage2: relax_type=Broyden  (.CG DROPPED: Broyden can't use CG history)
+```
+
+Carrying a `.CG` across a `CG → Broyden` switch is at best ignored and at
+worst corrupts the new optimizer's state, so the producer omits it and
+Broyden restarts its optimizer fresh **from the carried geometry** (`.XV`).
+This is the single place the framework reasons about restart *semantics*;
+everything else is opaque file plumbing.
+
+**Sweeps have no carry.** A benchmark sweep is `kind="sweep"` — independent
+jobs, every `carry` list empty. Carry is exclusively the ladder's
+scientific lineage; the two job-set kinds differ in exactly this.
+
 ---
 
 ## § 5 The workflow
