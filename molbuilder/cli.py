@@ -580,9 +580,18 @@ def _make_pyscf_options_decorator():
               help="also write job-set.json (the ladder as a JobSet) so the "
                    "bundle runs via `molbuilder jobset prep/submit`.  "
                    "Requires --stage-strategy / --stages-json.")
+@click.option("--stage-resources", "stage_resources", default=None,
+              metavar="JSON_OR_PATH",
+              help="per-stage scheduler resources for the job-set, as a JSON "
+                   "object {stage_name: {domain?, time?, exclusive?, mem?, "
+                   "gres?, mpi_np?, cpus_per_task?}} (literal or a .json "
+                   "path).  This is HOW a ladder asks for a cheap warm-up + "
+                   "an expensive final (staged-execution.md § 6).  Requires "
+                   "--jobset; stages omitted here inherit the job-level config.")
 @_make_siesta_options_decorator()
 def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
-            stages_json, stage_strategy, emit_jobset, **fields):
+            stages_json, stage_strategy, emit_jobset, stage_resources,
+            **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
     Every SiestaConfig field is exposed as a CLI option (auto-generated
@@ -628,6 +637,11 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             "--stage-strategy or --stages-json (a single-stage one-shot .fdf "
             "is not a job-set)."
         )
+    if stage_resources is not None and not emit_jobset:
+        raise click.UsageError(
+            "--stage-resources only applies to the job-set; pass --jobset "
+            "(and --stage-strategy / --stages-json) too."
+        )
 
     # Apply --stage overlay AFTER cfg is built so the user's per-knob
     # --relax-* overrides land in cfg first, then the stage values
@@ -659,6 +673,7 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             stages_json=stages_json,
             stage_strategy=stage_strategy,
             emit_jobset=emit_jobset,
+            stage_resources=stage_resources,
         )
         return
 
@@ -679,9 +694,35 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         sys.exit(2)
 
 
+def _parse_json_or_path(value: str, hint: str):
+    """Parse a CLI value that is either literal JSON (starts with ``{``/``[``)
+    or a path to a ``.json`` file.  Raises ``click.BadParameter`` with a clean
+    message (never a stack trace) on bad JSON or a missing file."""
+    import json as _json
+    from pathlib import Path as _Path
+    s = value.strip()
+    if s[:1] in ("{", "["):
+        try:
+            return _json.loads(s)
+        except _json.JSONDecodeError as e:
+            raise click.BadParameter(
+                f"{hint}: not valid JSON ({e.msg} at line {e.lineno}, "
+                f"column {e.colno})", param_hint=hint)
+    p = _Path(s)
+    if not p.exists():
+        raise click.BadParameter(f"{hint}: file not found: {p}",
+                                 param_hint=hint)
+    try:
+        return _json.loads(p.read_text())
+    except _json.JSONDecodeError as e:
+        raise click.BadParameter(
+            f"{hint}: not valid JSON in {p} ({e.msg} at line {e.lineno}, "
+            f"column {e.colno})", param_hint=hint)
+
+
 def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                               stages_json, stage_strategy,
-                              emit_jobset=False):
+                              emit_jobset=False, stage_resources=None):
     """Helper for cmd_fdf's multi-stage branch.
 
     Pulled out of cmd_fdf so the logic is unit-testable independent
@@ -794,10 +835,32 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
     # missing -- it reuses stages_to_jobset + JobSet.write, no new logic.
     if emit_jobset:
         from .siesta.stages import stages_to_jobset
+        from .jobset.model import Resources
         pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
                          for p in out_dir.glob(ext))
+        # --stage-resources: per-stage scheduler overrides (§ 6).  Validate
+        # the stage names against the actual ladder so a typo is a loud error,
+        # not a silently-ignored override.
+        resources_for = None
+        if stage_resources is not None:
+            spec = _parse_json_or_path(stage_resources, "--stage-resources")
+            if not isinstance(spec, dict):
+                raise click.BadParameter(
+                    "--stage-resources must be a JSON object "
+                    "{stage_name: {resource fields}}",
+                    param_hint="--stage-resources")
+            valid = {s.name for s in cfg.stages if s.enabled}
+            unknown = [k for k in spec if k not in valid]
+            if unknown:
+                raise click.BadParameter(
+                    f"--stage-resources: unknown stage name(s) {unknown}; "
+                    f"enabled stages are {sorted(valid)}",
+                    param_hint="--stage-resources")
+            res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
+            resources_for = res_map.get
         try:
-            js = stages_to_jobset(cfg, shared=pseudos)
+            js = stages_to_jobset(cfg, shared=pseudos,
+                                  resources_for=resources_for)
         except ValueError as e:
             raise click.ClickException(f"--jobset: {e}")
         written.append(js.write(out_dir / "job-set.json"))

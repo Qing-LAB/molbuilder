@@ -42,7 +42,7 @@
 | `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
 | **HOST bundle producer** — `molbuilder fdf … --stage-strategy <s> --jobset`: render stage `.fdf`s + pseudos + `job-set.json` in one command (§ 5 step 2-3) | **built** (`cli.py::_emit_siesta_multi_stage`, opt-in `--jobset`) |
-| Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**; `resources_for` seam, no CLI flag yet) |
+| Per-stage resource CLI source (§ 6) — `fdf --jobset --stage-resources <json>` | **built** (`cli.py`, validated against stage names → `resources_for`) |
 | Bench migration onto the framework (§ 13 D4) | **proposed** |
 
 ---
@@ -362,7 +362,7 @@ flowchart TD
 |---|---|---|---|---|
 | 1 | Author + `validate()` (blocks a broken ladder) | HOST | `validation/siesta.py` | built |
 | 2 | Produce `JobSet` + render per-stage `.fdf` | HOST | `siesta/stages.py`, `siesta/input.py` | built |
-| 3 | Persist → `job-set.json` (`JobSet.write`) | HOST | `jobset/model.py` | **built** (`.write`/`.load`); one-command host producer proposed |
+| 3 | Persist → `job-set.json` (`JobSet.write`) | HOST | `jobset/model.py`, `fdf --jobset` | **built** (host producer = `fdf … --jobset [--stage-resources]`) |
 | 4 | Ship bundle to target | — | scp / bundle | reuses job-exec |
 | 5 | Prep: render wrappers (root, real files) + `materialize()` + link wrappers in + `plan()` | TARGET | `jobset/prep.py::prep_jobset` (reuses `runwrap.write_run_wrapper`) + `jobset/plan.py` | **built** |
 | 6 | Submit: per-job sbatch CLI flags + `--dependency` (or ordered local `bash`), carry resolves | TARGET | `jobset/submit.py::submit_jobset` | **built** |
@@ -405,8 +405,17 @@ final Broyden is expensive (longer walltime, GPU/ELPA, more memory). One
 The per-stage **override** is supplied through the producer's
 `resources_for` seam (kept OUT of `SiestaStageSpec`, which stays the
 science-knob widget — `_stagespec_to_field_schemas` only renders scalar
-relax knobs):
+relax knobs). On the **CLI** this is `fdf --jobset --stage-resources`
+(a `{stage: {domain?, time?, exclusive?, mem?, gres?, mpi_np?,
+cpus_per_task?}}` JSON, validated against the actual stage names); in
+**Python** it is the `resources_for` callable directly:
 
+```bash
+molbuilder fdf in.xyz bundle/JOB.fdf --stage-strategy publishable --jobset \
+  --stage-resources '{"stage1": {"domain": "htc",    "time": "0-04:00:00"},
+                      "stage2": {"domain": "public", "time": "7-00:00:00",
+                                 "exclusive": true}}'
+```
 ```python
 stages_to_jobset(cfg, shared=[...], resources_for={
     "stage1": Resources(domain="htc",    time="0-04:00:00"),
@@ -419,8 +428,9 @@ estimated default (*assistant, not nanny* — no surprise choices). Because
 `diag_algorithm`/`enable_gpu` are **decoupled** (engines/siesta.md § 13), a
 stage can switch *solver and hardware* (ScaLAPACK-CPU warm-up → ELPA-GPU
 final) — those ride the per-stage `.fdf`, and the env routes automatically
-(`_fdf_requests_elpa`/`_fdf_requests_gpu`). Memory stays **per-job
-estimated** from each stage's `.fdf` (§ 4.3.1) — no flat per-stage mem knob.
+(`_fdf_requests_elpa`/`_fdf_requests_gpu`). Memory is **per-job estimated**
+from each stage's `.fdf` by default; an explicit `mem` in `--stage-resources`
+overrides that for a stage (and `exclusive` suppresses `--mem` entirely).
 
 ---
 

@@ -375,3 +375,52 @@ def test_jobset_systemlabel_carry_consistency(xyz, tmp_path):
                    for ln in body.splitlines())          # label baked in fdf
     # the carried restart files use that SAME shared label.
     assert "JOB.XV" in [c.pattern for c in js.jobs[1].carry]
+
+
+# --------------------------------------------------------------------- #
+#  --stage-resources: per-stage scheduler resources in the job-set       #
+# --------------------------------------------------------------------- #
+
+
+def test_stage_resources_set_per_stage_in_jobset(xyz, tmp_path):
+    """The headline staged-cluster capability (§6): a cheap warm-up + an
+    expensive final, expressed per stage and carried in job-set.json."""
+    from molbuilder.jobset.model import JobSet
+
+    b = tmp_path / "bundle"; b.mkdir()
+    spec = ('{"stage1": {"domain": "htc", "time": "0-04:00:00"}, '
+            '"stage2": {"domain": "public", "time": "7-00:00:00", '
+            '"exclusive": true}}')
+    r = _invoke("fdf", str(xyz), str(b / "JOB.fdf"),
+                "--stage-strategy", "publishable", "--jobset",
+                "--stage-resources", spec)
+    assert r.exit_code == 0, r.output
+
+    js = JobSet.load(b / "job-set.json")
+    s1, s2 = js.jobs
+    assert s1.resources.domain == "htc" and s1.resources.time == "0-04:00:00"
+    assert s2.resources.domain == "public" and s2.resources.exclusive is True
+    # and the plan surfaces the difference.
+    from molbuilder.jobset import render_plan
+    txt = render_plan(js)
+    assert "domain=htc" in txt and "domain=public" in txt
+
+
+def test_stage_resources_rejects_unknown_stage_name(xyz, tmp_path):
+    b = tmp_path / "bundle"; b.mkdir()
+    r = CliRunner().invoke(cli, [
+        "fdf", str(xyz), str(b / "JOB.fdf"),
+        "--stage-strategy", "publishable", "--jobset",
+        "--stage-resources", '{"stageX": {"domain": "htc"}}'])
+    assert r.exit_code != 0
+    assert "unknown stage name" in r.output
+
+
+def test_stage_resources_requires_jobset(xyz, tmp_path):
+    b = tmp_path / "bundle"; b.mkdir()
+    r = CliRunner().invoke(cli, [
+        "fdf", str(xyz), str(b / "JOB.fdf"),
+        "--stage-strategy", "publishable",
+        "--stage-resources", '{"stage1": {"domain": "htc"}}'])
+    assert r.exit_code != 0
+    assert "--stage-resources only applies" in r.output

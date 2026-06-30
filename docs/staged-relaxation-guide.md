@@ -73,6 +73,21 @@ This creates a `bundle/` folder with one input file per stage
 `job-set.json` — the **plan** that ties the stages together. The `--jobset`
 flag is what writes that plan; without it you just get the raw input files.
 
+**Give each stage its own resources** (the whole point of staging on a
+cluster — a cheap warm-up, then an expensive final) with `--stage-resources`:
+
+```bash
+molbuilder fdf my-structure.xyz bundle/JOB.fdf \
+    --stage-strategy publishable --jobset --psml-lib ~/pseudopotentials \
+    --stage-resources '{"stage1": {"domain": "htc",    "time": "0-04:00:00"},
+                        "stage2": {"domain": "public", "time": "7-00:00:00",
+                                   "exclusive": true}}'
+```
+
+Each entry can set `domain` (which queue), `time`, `exclusive`, `mem`,
+`gres` (GPUs), `mpi_np`, `cpus_per_task`. Stages you don't list inherit the
+defaults. `molbuilder jobset plan` (step 4) shows the result.
+
 ### 2. (If needed) copy the bundle to where you'll run
 
 ```bash
@@ -184,6 +199,7 @@ reports; it never resumes for you.
 | Goal | Command |
 |---|---|
 | Build a staged bundle | `molbuilder fdf IN.xyz bundle/JOB.fdf --stage-strategy publishable --jobset --psml-lib DIR` |
+| ...with per-stage resources | add `--stage-resources '{"stage1":{"domain":"htc","time":"0-04:00:00"},"stage2":{"domain":"public","time":"7-00:00:00","exclusive":true}}'` |
 | Lay out the stage folders | `molbuilder jobset prep bundle/` |
 | See what will run (no run) | `molbuilder jobset plan bundle/` |
 | Check progress / where to resume | `molbuilder jobset status bundle/` |
