@@ -390,6 +390,83 @@ mechanism, no new wheel. SLURM job-name chars are unconstrained for our
 ASCII `G/K/C` suffix, but the generator keeps the suffix to
 `[A-Za-z0-9._-]` for portability.
 
+### 4.5 Probing a cluster into the `scheduler` block — `probe-scheduler` (2026-06-29)
+
+**Problem.** Writing the `scheduler` block (§ 4.1) + the `routing` menu
+(§ 4.3) by hand means a human runs `sinfo`/`sacctmgr`, reads off partition
+time-limits + which carry GPUs + which QoS they're allowed to use, and
+hand-edits `.molbuilder.json`. That reconciliation is mechanical and
+error-prone, and it has to be redone whenever the cluster changes
+(§ 7.0 drift). Automate the *reconciliation*, keep the *decision* explicit.
+
+**Command.** `molbuilder bench probe-scheduler [--out DIR] [--write] [--yes]`
+— run **on the target's login node** (where `sinfo`/`sacctmgr` exist and
+molbuilder is installed). It probes the live scheduler and proposes a
+ready `scheduler` block; `--write` merges it into `DIR/.molbuilder.json`
+(after a diff + confirmation), else it prints it for review.
+
+**This is the anti-hardcoding rule (§ 12) made executable:** every name and
+limit comes from the live system, never from baked-in site knowledge.
+
+**Probes (each best-effort; a failure degrades to "unknown", never crashes
+— same discipline as topology detection, § 4.6):**
+
+| query | parsed into |
+|---|---|
+| `sinfo -h -o "%P\|%l\|%D\|%G"` | partitions: `{name (strip `*`), timelimit→sec, gres→{type:count}, has_gpu}` |
+| `sacctmgr -nP show qos format=Name,MaxWall,Flags` | `{qos_name: max_wall_sec}` |
+| `sacctmgr -nP show assoc user=$USER format=QOS` | the set of QoS the user may submit to |
+
+**Derivation (data flow): live probes → proposed `scheduler` block.**
+
+```
+gpu_parts   = [p for p in partitions if p.has_gpu]        # GPU-bearing only
+gpu_parts.sort(key=timelimit_asc)                          # cheapest/shortest first
+default_type = best_gpu(union of all gpu gres)             # a100 > a100.40gb > a100.20gb > a30 ...
+allowed      = qos the user may use (∩ with QoS that exist)
+
+routing = []
+# 1) a debug domain, IFF the user has the debug QoS:
+if "debug" in allowed:
+    routing += {name:"debug", partition: gpu_parts[0].name, qos:"debug",
+                max_time: qos_maxwall["debug"]}            # e.g. 0-00:15:00
+# 2) one domain per GPU partition the user can reach:
+for p in gpu_parts:
+    q = pick_qos(allowed, prefer "public" → "<p.name>" → first non-debug/-private)
+    routing += {name: p.name, partition: p.name, qos: q,
+                max_time: min(p.timelimit, qos_maxwall.get(q, ∞))}
+dedupe + order routing by max_time ascending               # § 4.3 "first fitting = cheapest"
+
+directives = {partition: gpu_parts[0].name, qos: pick_qos(allowed)}   # the fallback default
+gpu        = {partition: gpu_parts[0].name, default_type: default_type}
+block      = {kind:"slurm", directives, gpu, routing}      # exclusivity/mem stay per § 4.3.1
+```
+
+**Honest assumptions, printed with the proposal (the user confirms):**
+- **QoS↔partition pairing.** `sinfo`/`assoc` give the allowed-QoS *set* but
+  not which QoS each partition accepts; we assume an allowed QoS is valid on
+  any reachable partition and prefer `public`. If a site restricts this,
+  `scontrol show partition <p>` (`AllowQos`) is the authority — the proposal
+  flags this so the user can correct one line.
+- **Exclusivity / memory are NOT probed** — they're policy, not facts
+  (§ 4.3.1): the prober leaves `gpu.exclusive` and never writes `gpu.mem`.
+- **Group/condo QoS** (`grp_*`, `long`) are offered only if they appear in
+  the user's `assoc` (and `long`/14-day domains are opt-in, not defaulted —
+  benchmarks are short).
+
+**`--write` is explicit + reversible-friendly:** it deep-merges the `scheduler`
+block via `runtime_config.write_config_scope` (preserving `execution`,
+`script_generation`, etc.), prints a before/after diff, and asks to confirm
+unless `--yes`. Without `--write` it only prints — *assistant, not nanny*.
+
+**Reuse, no new wheels:** `sinfo`/`scontrol` probing already exists
+(`bench/environment.py`), and `write_config_scope` already merges config;
+`probe-scheduler` adds only the `sacctmgr` parse + the derivation above.
+
+**Consumes downstream unchanged:** the written block is read by
+`get_scheduler`/`get_routing` (§ 4.1, § 4.3) exactly like a hand-written
+one — `probe-scheduler` is a *config author*, not a new runtime path.
+
 ---
 
 ## 5. The generated `<basename>.sbatch` — block by block
