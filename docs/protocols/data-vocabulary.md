@@ -22,13 +22,17 @@
 | Benchmark manifest | `bench-manifest.json` | `molbuilder/bench-manifest@2` | `benchmark-workflow.md`, `bench/generate.py` | `points.{cpu,gpu}` |
 | Benchmark result | `bench-result.json` | `molbuilder/bench-result@1` | `benchmark-workflow.md`, `bench/result.py` | `points`, `choice`, `recommend` |
 | **Job-set plan** | `job-set.json` | `molbuilder/job-set@1` | `staged-execution.md` | `shared`, `jobs[]` |
+| Decoded run | `decoded.json` | `schema_version: <int>` *(predates the `@major` convention)* | `job-decoder.md` | `schema_version`, decoded plots, job-type, triggers |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair)* | `bundle-contract.md`, `bundle_writer.py` | geometry; `regions`/`frozen_atoms`/`structure_hash` |
 | Checkpoint binary archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256> <bytes> <name>`)* | `run-checkpoints.md` § 10 | — |
 
 **Schema-string convention.** `molbuilder/<name>@<major>`. Readers check the
 **major only** (tolerate same-major minor bumps, reject a different major) —
 implemented identically in `bench/environment.py`, `bench/result.py`, and
-`jobset/model.py`. New persisted artifacts MUST follow this.
+`jobset/model.py`. New persisted artifacts MUST follow this. The one
+exception is `decoded.json`, which predates the convention and carries a
+bare integer `schema_version` (`job-decoder.md`); not worth a breaking
+change, but don't copy that pattern for anything new.
 
 ---
 

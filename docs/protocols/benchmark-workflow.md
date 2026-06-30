@@ -500,6 +500,14 @@ its adapter (§ 5.4), and writes the production run script. No hand editing.
 
 ### § 8.1 Generated-parameter contract (producer ↔ consumer)
 
+> For the canonical **config-layer ↔ exchange/SLURM-flag** names (e.g.
+> `omp_threads` ↔ `cpus_per_task` ↔ `-c`), see
+> [`data-vocabulary.md`](data-vocabulary.md) § 2 — the single source. The
+> table below is the **runtime wiring** that sits *underneath* those names:
+> how the adapter's emitted env-vars / `sbatch` flags reach the launcher's
+> internal variables at run time (the bench-specific channel, not in the
+> canonical registry).
+
 The adapter is the *producer* of launch parameters; the launcher
 (`runwrap`'s `.run.sh`) is the *consumer*. They are coupled by **exact
 names**, so a parameter can be valid shell yet mean nothing if the names

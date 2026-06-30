@@ -113,6 +113,14 @@ Pinned by
 
 ## 4. Refresh contract — `pageshow` + `visibilitychange`
 
+> **The refresh *semantics* are owned by
+> [`results-state-contract.md`](results-state-contract.md) § 5** (the state
+> machine: a `pageshow`/`visibilitychange` fires **one poll only** inside
+> `WATCHING` and does **NOT** transition; the Refresh button is a
+> file-switch with the same path). This section owns only the **per-inspector
+> wiring** — which `refreshFn` and loaded-state guard each inspector uses, and
+> the `_on()` cleanup. If the two ever disagree, § 5 wins.
+
 Any inspector that **caches loaded data** (trajectory frames,
 spectra results, source-file chunks) MUST re-fetch on tab
 re-entry. Without this, the user sees stale data after navigating
@@ -306,24 +314,15 @@ state = {
   `pollOnce()` immediately on tab re-entry so a 15 s wait isn't
   imposed after a bfcache restore (audit #194).
 
-### 6.5 Load button — dual mode (legacy `/watch` only)
+### 6.5 Load button — REMOVED (2026-05-19)
 
-The trajectory loader on the legacy `/watch` page has two
-behaviours, branching on the path field's content. The
-inspector-on-`/results` does NOT use this loader — it receives
-the file path through `opts.file` at mount time — but the dual
-mode is still wired in the core for `/watch`'s benefit:
-
-- **Path field has text**: POST `{path}` as JSON to
-  `/api/watch/load`. Server reads from disk; front-end starts a
-  polling timer at 15 s intervals (live-watching mode).
-- **Path field empty**: trigger the hidden `<input type="file">`.
-  When the user picks a file, upload as `multipart/form-data` to
-  `/api/watch/load`. The path field updates to
-  `(uploaded) <filename>` for clarity. Polling timer is
-  **stopped** because uploaded files don't change on disk.
-
-Pressing Enter in the path input triggers Load.
+The old `/watch` page and its loader-bar (path-input + Load button, with
+the text-vs-upload dual mode) were **removed 2026-05-19 along with `/watch`
+itself** (`trajectory/core.js` § "UI wiring" comment). `/results` drives
+loading through the registry's `mount(host, file, ctx)` — the **sidebar
+selection IS the load trigger**; there is no loader-bar UI. The legacy
+Build→Watch `?path=…` query-param pre-fill (`applyHandoff`) is gone for the
+same reason. Kept as a record so the deleted contract isn't re-introduced.
 
 ### 6.6 Status messages
 

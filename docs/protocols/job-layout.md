@@ -307,6 +307,13 @@ the existing Watch tab pointed at the run directory; the watcher's
 discovery chain (above) finds the `.molwatch.log` as soon as the
 engine writes its first frame.
 
+**On SLURM clusters** the `.run.sh` is the *inner* launcher: a sibling
+`<basename>.sbatch` (the `#SBATCH` resource header) wraps it and is what
+you submit — `sbatch <basename>.sbatch`, which simply `bash`-execs this
+`.run.sh`. The two-layer model (and where each header value comes from) is
+[`slurm-integration.md`](slurm-integration.md) § 3. On a workstation/local
+run there is no `.sbatch`; you run the `.run.sh` directly as above.
+
 The wrapper is regenerated freshly each time `molbuilder run` runs
 (it's per-invocation output, not state).  Edits between regenerations
 are lost — keep custom flags in a sibling wrapper if you need them
