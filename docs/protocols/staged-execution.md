@@ -33,6 +33,7 @@
 | `on_nonconvergence` → SLURM dependency mapping | **built** in the producer (`_dep_kind`); consumed by the submit engine (§ 5) |
 | CLI / prep wiring + bench migration onto the framework | **PROPOSED** (§ 8 D4) |
 | Continuation contract (engine-native resume; molbuilder informs, user decides) | **built** (per-job: `script-execution.md` + `runwrap`); multi-stage extension **documented** (§ 6.1), surfacing/status **proposed** |
+| Checkpoints & branching (git per stage dir; tag=milestone, branch=experiment; user-driven) | **built** (`run-checkpoints.md`, `checkpoint.py`, `molbuilder snapshot`); job-set integration **documented** (§ 6.2) — each `point-<name>/` is a checkpoint repo |
 
 ---
 
@@ -369,13 +370,75 @@ framework guarantees the *separation* and the *easy re-submit*; the
 
 ---
 
+## § 6.2 Checkpoints & branching — exploring alternatives (integration)
+
+The job-set gives *forward* motion (stage → stage); `run-checkpoints.md`
+gives the ability to **save a state and fork to explore a different
+parameter path** — "what if stage 3 used TZP?" — without losing the
+converged work. The two compose with **no new machinery**: the checkpoint
+design was already written in staging vocabulary (P6's examples are
+`stage3-converged` and `stage4-tzp`).
+
+**Two complementary lineage axes (distinct, don't conflate):**
+- **Carry-forward** (this framework) — the *scientific* lineage ACROSS
+  stages: stage N's geometry feeds N+1. A single forward chain.
+- **Git checkpoints** (run-checkpoints.md) — the *exploratory* lineage
+  WITHIN a job dir: commit history + tags (milestones) + branches
+  (alternatives). A tree.
+
+**Scope alignment (zero conflict).** A job-set materializes each stage into
+its own `point-<name>/` dir — which is exactly the checkpoint design's
+"single working directory" (the lowest-dir rule, P5: each independent run /
+SLURM job self-contained). So **each stage dir is its own checkpoint repo**;
+`molbuilder snapshot {init,checkpoint,tag,branch,restore}` works per stage
+with no extension.
+
+- The **static shared package** (pseudos at the bundle root, symlinked in)
+  lives OUTSIDE the per-stage repos — immutable inputs, not versioned per
+  stage. Git records the *symlink*, so branch/restore preserve it.
+- The **carry-forward** symlink (`<label>.XV → ../point-<prev>/`) is also
+  tracked as a symlink, so branching stage N to explore an alternative
+  keeps the SAME upstream geometry — you fork *from the carried
+  checkpoint*, which is the point.
+
+**Milestones vs experiments (P6, applied):**
+- A stage that converges is the natural **tag** point —
+  `stage<N>-converged`. molbuilder *informs* (status: converged + warm
+  files present); the **user tags** (or pastes the `tag-on-converged.sh`
+  snippet).
+- To explore an alternative tail, the user **branches** that stage's dir —
+  `stage<N>-tzp` — re-renders the stage with the new parameters, and
+  re-submits. Git keeps the original path recoverable.
+
+**Resume vs branch — the user's two distinct moves:**
+
+| Situation | Mechanism | Who decides |
+|---|---|---|
+| Same path, was interrupted | **resume** — engine warm-restart (§ 6.1) | user re-submits |
+| Different parameter path | **branch** — checkpoint + git branch (run-checkpoints.md) | user branches, then re-submits |
+
+Checkpoint-before-switch is the *protection*: tag the converged state,
+branch, explore; if the experiment is worse, `restore` to the tag. Both
+axes are **explicit and user-decided** — P1 (no automatic git activity) and
+§ 6.1 (no automatic resume) are the same stance, applied to the two axes.
+
+The framework's contribution is only the **separation** (per-stage dirs =
+per-stage repos) and the **information** (which stage converged / is the
+fork point); run-checkpoints.md supplies save/tag/branch/restore; the user
+supplies the decision.
+
+---
+
 ## § 7 What is reused vs new
 
 **Reused as-is** (no new wheels): `_mb_point` dir+symlink isolation;
 `SlurmAdapter` routing (`--domain`, slurm-integration.md § 4.3);
 exclusive/mem per job (§ 4.3.1); per-job `-J` (§ 4.4); env routing on
 ELPA/GPU (§ 13); `write_run_wrapper`/`render_sbatch`; the env-bootstrap
-entry-shim pattern (job-execution.md § 8.3); per-job memory estimate.
+entry-shim pattern (job-execution.md § 8.3); per-job memory estimate; the
+engine-native warm-restart contract (`script-execution.md`, § 6.1); and
+the git checkpoint/tag/branch system (`run-checkpoints.md`, § 6.2) — each
+stage dir is already a "single working directory" checkpoint repo.
 
 **New** (small, contained): `StageResources` + `SiestaStageSpec.resources`
 (§ 3); the carry-forward symlink step in `_mb_point` for stages; the

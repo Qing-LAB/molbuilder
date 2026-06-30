@@ -62,7 +62,7 @@ The current model (rolling overwrites, manual file-shuffling) loses scientific w
 
 **P5. The repository scope is the single working directory.** `git init` happens **only** in the lowest directory — the one containing `.fdf` / `.py` / `.run.sh`. Sibling directories and parent directories are not touched. Each independent run (and each SLURM job) is self-contained.
 
-**P6. Tagging is for humans, branching is for experiments.** Tags (e.g. `stage3-converged`) are semantic milestones the user creates. Branches (e.g. `stage4-tzp`) carry experimental parameter sweeps.
+**P6. Tagging is for humans, branching is for experiments.** Tags (e.g. `stage3-converged`) are semantic milestones the user creates. Branches (e.g. `stage4-tzp`) carry experimental parameter sweeps. (How this composes with the staged-execution job-set — each stage dir is one of these per-working-dir repos, carry-forward vs git-branch as the two lineage axes — is in [`staged-execution.md`](staged-execution.md) § 6.2.)
 
 **P7. The sidebar is the primary navigation UI; the CLI is the secondary.** The CLI exists for completeness and SSH workflows; the sidebar is where most users will operate.
 
