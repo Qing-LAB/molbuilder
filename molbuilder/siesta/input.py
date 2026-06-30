@@ -971,29 +971,27 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     else:
         over_k = bool(cfg.parallel_over_k)
     out.append(f"Diag.ParallelOverK {'.true.' if over_k else '.false.'}")
-    if cfg.enable_gpu:
-        # SIESTA 5.4.2 ELPA-GPU routing requires TWO keywords:
-        #
-        #   * Diag.Algorithm ELPA-1STAGE -- without this the default
-        #     remains Divide-and-Conquer (ScaLAPACK), and the
-        #     ``Diag.ELPA.GPU`` keyword below is silently ignored.
-        #     Confirmed from Src/diag_option.F90:213-225 (default
-        #     algorithm path) + :264-273 (the ELPA branches).
-        #     ELPA-1STAGE is preferred over ELPA-2STAGE on GPU: ELPA's
-        #     own User Guide reports ~3x speedup for the 1-stage solver
-        #     on NVIDIA hardware vs the 2-stage variant; verified by
-        #     the 2025-02 ELPA/ELSI paper (arXiv:2502.02460).
-        #
-        #   * Diag.ELPA.GPU true (Src/diag_option.F90:139) -- toggles
-        #     the GPU codepath inside ELPA itself.
-        #
-        # ELPA-1STAGE forces ParallelOverK=.false. internally regardless
-        # of the line above; harmless but worth knowing if k-points
-        # were enabled.  The run-wrapper detects ``Diag.ELPA.GPU``
-        # via ``_fdf_requests_gpu`` and auto-routes the job into the
-        # molbuilder-siesta-gpu env.
-        out.append(f"Diag.Algorithm     {cfg.elpa_algorithm}")
-        out.append("Diag.ELPA.GPU      .true.")
+    # Diagonalizer (engines/siesta.md § 13).  The solver choice
+    # (``diag_algorithm``) is INDEPENDENT of the GPU toggle; ELPA runs on
+    # CPU and GPU alike, and ``enable_gpu`` only moves an ELPA solve onto
+    # the GPU.
+    #   * ScaLAPACK -> emit nothing (SIESTA's built-in Divide-and-Conquer).
+    #   * ELPA-* -> emit ``Diag.Algorithm`` (required: Diag.ELPA.GPU alone
+    #     is ignored without it, Src/diag_option.F90:213-225) AND
+    #     ``Diag.ELPA.GPU .true./.false.``.  The explicit ``.false.`` for
+    #     CPU-ELPA is load-bearing: the source ELPA defaults to the GPU
+    #     codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
+    _algo = (cfg.diag_algorithm or "ScaLAPACK").strip()
+    _is_elpa = _algo.upper().startswith("ELPA")
+    if cfg.enable_gpu and not _is_elpa:
+        raise ValueError(
+            "enable_gpu requires an ELPA diagonalizer (diag_algorithm = "
+            "ELPA-1STAGE or ELPA-2STAGE); GPU acceleration does not apply to "
+            f"the {_algo} solver.  Pick an ELPA algorithm or turn GPU off "
+            "(engines/siesta.md § 13).")
+    if _is_elpa:
+        out.append(f"Diag.Algorithm     {_algo}")
+        out.append(f"Diag.ELPA.GPU      {'.true.' if cfg.enable_gpu else '.false.'}")
     out.append("")
 
     # Relaxation / dynamics.  In SIESTA 5.4.2 the step-count and

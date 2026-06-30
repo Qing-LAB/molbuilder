@@ -2061,7 +2061,7 @@ def test_siesta_form_schema_matches_documented_layout():
         #   md_target_temperature, md_length_timestep).
         #   Parallel execution contributed 7 (mpi_np,
         #   parallel_block_size, parallel_over_k, omp_threads,
-        #   max_memory_mb, enable_gpu, elpa_algorithm).
+        #   max_memory_mb, enable_gpu, diag_algorithm).
         # Compute & budget: 15 fields = the 14 above + the staged-opt
         # stage-table widget (cfg.stages, List[SiestaStageSpec]; one
         # dataclass-typed field rendered as a multi-row table).  Per

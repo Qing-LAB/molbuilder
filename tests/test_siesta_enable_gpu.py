@@ -131,7 +131,7 @@ def test_render_fdf_emits_gpu_keyword_when_enabled():
     typo like ``T``, ``Yes``, etc. -- they're ACCEPTED by fdf_get
     but the run-wrapper detector also has to accept them, and pinning
     one form keeps the contract simple."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
     assert "Diag.ELPA.GPU      .true." in fdf
 
@@ -143,59 +143,68 @@ def test_render_fdf_emits_diag_algorithm_with_gpu():
     at Src/diag_option.F90:213-225 (default ScaLAPACK path) and the
     user-visible failure: nvidia-smi at 0% utilisation while SCF is
     iterating happily on CPU."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
     assert "Diag.Algorithm     ELPA-1STAGE" in fdf
 
 
-def test_render_fdf_elpa_algorithm_choice_propagates():
-    """The user can switch the ELPA solver variant via the
-    ``elpa_algorithm`` field (default ELPA-1STAGE -> ELPA-2STAGE for
-    benchmarking or CPU-tuned configs).  Pin that the choice flows
-    through to the rendered keyword."""
-    cfg = SiestaConfig(enable_gpu=True, elpa_algorithm="ELPA-2STAGE")
+def test_render_fdf_diag_algorithm_choice_propagates():
+    """The ELPA variant is chosen via ``diag_algorithm`` (1STAGE/2STAGE).
+    Pin that the choice flows through to the rendered keyword."""
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-2STAGE")
     fdf = render_fdf(_mk_struct(), cfg)
     assert "Diag.Algorithm     ELPA-2STAGE" in fdf
     assert "Diag.Algorithm     ELPA-1STAGE" not in fdf
 
 
-def test_render_fdf_omits_diag_algorithm_without_gpu():
-    """When GPU is off, leave Diag.Algorithm OUT of the engine body
-    so SIESTA falls through to its default Divide-and-Conquer ScaLAPACK
-    path (the right CPU recipe).  The elpa_algorithm field is ignored
-    in this case.
-
-    The BENCH-MARKS contract block legitimately declares Diag.Algorithm
-    as a sweep anchor on a comment line; what matters is that no
-    non-comment line sets the FDF value.
-    """
-    cfg = SiestaConfig(enable_gpu=False, elpa_algorithm="ELPA-2STAGE")
-    fdf = render_fdf(_mk_struct(), cfg)
+def test_render_fdf_scalapack_default_omits_diag_keywords():
+    """ScaLAPACK (the default) emits NEITHER Diag.Algorithm nor
+    Diag.ELPA.GPU -- SIESTA falls through to its built-in Divide-and-
+    Conquer path.  (Comment lines in the BENCH-MARKS block don't count.)"""
+    fdf = render_fdf(_mk_struct(), SiestaConfig())   # default = ScaLAPACK, CPU
     engine_lines = [
         ln for ln in fdf.splitlines()
-        if "Diag.Algorithm" in ln and not ln.lstrip().startswith("#")
+        if ("Diag.Algorithm" in ln or "Diag.ELPA.GPU" in ln)
+        and not ln.lstrip().startswith("#")
     ]
     assert engine_lines == [], (
-        f"engine body should not set Diag.Algorithm, got: {engine_lines!r}"
+        f"ScaLAPACK should emit no diag keywords, got: {engine_lines!r}"
     )
 
 
-def test_elpa_algorithm_field_metadata():
-    """Pin the form-schema metadata so the UI renders this as a
-    dropdown (not a free-text field) with the correct two choices."""
-    field = SiestaConfig.__dataclass_fields__["elpa_algorithm"]
+def test_render_fdf_cpu_elpa_emits_algorithm_and_gpu_false():
+    """CPU-ELPA (engines/siesta.md § 13): selecting an ELPA algorithm
+    WITHOUT GPU must emit ``Diag.Algorithm`` AND an EXPLICIT
+    ``Diag.ELPA.GPU .false.`` -- the source ELPA build defaults to the
+    GPU codepath, so an omitted flag crashes a CPU run (Sol job 57852378).
+    This is the behavior the old 'ELPA only when GPU' model wrongly denied."""
+    cfg = SiestaConfig(enable_gpu=False, diag_algorithm="ELPA-2STAGE")
+    fdf = render_fdf(_mk_struct(), cfg)
+    assert "Diag.Algorithm     ELPA-2STAGE" in fdf
+    assert "Diag.ELPA.GPU      .false." in fdf
+    assert "Diag.ELPA.GPU      .true." not in fdf
+
+
+def test_render_fdf_gpu_with_scalapack_is_rejected():
+    """GPU acceleration only applies to ELPA; GPU + ScaLAPACK is a
+    contradiction and must raise rather than emit a nonsensical .fdf."""
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ScaLAPACK")
+    with pytest.raises(ValueError, match="requires an ELPA diagonalizer"):
+        render_fdf(_mk_struct(), cfg)
+
+
+def test_diag_algorithm_field_metadata():
+    """Pin the form-schema metadata: a dropdown with three choices
+    (ScaLAPACK + the two ELPA variants), default ScaLAPACK (safe on the
+    precompiled CPU env), always shown (NOT gated behind GPU)."""
+    field = SiestaConfig.__dataclass_fields__["diag_algorithm"]
     md = field.metadata
-    # 2026-06-16 form restructure: merged "Relaxation" + "Parallel
-    # execution" into a single "Compute & budget" section so the
-    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
-    # stays compact.  See SiestaConfig._form_section_order.
     assert md["section"] == "Compute & budget"
     assert md["workflow_group"] == "budget"
-    assert md["choices"] == ("ELPA-1STAGE", "ELPA-2STAGE")
+    assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"
-    # Default matches the GPU-preferred variant.
-    default_field = SiestaConfig().elpa_algorithm
-    assert default_field == "ELPA-1STAGE"
+    assert md["id_suffix"] == "diag-algorithm"
+    assert SiestaConfig().diag_algorithm == "ScaLAPACK"
 
 
 # --------------------------------------------------------------------- #
@@ -271,7 +280,7 @@ def test_write_run_wrapper_routes_to_gpu_env_when_keyword_set(
         tmp_path, caps_with_gpu_env):
     """End-to-end: render_fdf(enable_gpu=True) -> file with keyword ->
     write_run_wrapper picks ``molbuilder-siesta-gpu``."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -292,7 +301,7 @@ def test_write_run_wrapper_refuses_gpu_when_env_absent(tmp_path):
         conda_envs=frozenset({"molbuilder-siesta"}),
     ))
     try:
-        cfg = SiestaConfig(enable_gpu=True)
+        cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
         fdf_text = render_fdf(_mk_struct(), cfg)
         fdf = tmp_path / "job.fdf"
         fdf.write_text(fdf_text, encoding="utf-8")
@@ -331,7 +340,7 @@ def test_gpu_wrapper_keeps_siesta_template_intact(
     Pin both signatures here.
     """
     import subprocess
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -367,7 +376,7 @@ def test_gpu_wrapper_honors_user_set_mpi_np(tmp_path, caps_with_gpu_env):
     user's choice).  Same shape as the prior bug catch: an
     explicit form-set value got silently dropped because the GPU
     code path unconditionally chose the policy default."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -387,7 +396,7 @@ def test_gpu_wrapper_uses_policy_default_when_user_unset(
     auto (None), GPU mode SHOULD use the runtime-probed policy via
     the shell vars.  Pinning that the prior fix didn't disable the
     auto path for users who actually want it."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -404,7 +413,7 @@ def test_write_run_wrapper_explicit_env_overrides_detection(
     over the .fdf-driven routing -- they may want to force a specific
     env for testing.  Pinning that the detector doesn't override an
     explicit user choice."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -434,7 +443,7 @@ def test_gpu_runtime_defaults_block_uses_numa_aware_budget(
     regression to the old (_phys_cores - 1)/np formula (which over-
     subscribed the GPU socket on dual-socket boxes when NUMA-pinned)
     surfaces loudly."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -461,7 +470,7 @@ def test_gpu_runtime_defaults_block_wraps_mpirun_in_numactl(
     boxes with numactl can pin all ranks to the GPU socket.  For
     single-socket / no-numactl hosts the variable is empty and the
     launch line behaves as before."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -493,7 +502,7 @@ def test_gpu_mpirun_binds_to_physical_cores_not_ht_siblings(
     Pin the new canonical form + explicitly REJECT the broken
     forms so a regression surfaces loudly.
     """
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -537,7 +546,7 @@ def test_gpu_resources_summary_unified_in_launch_banner(
     GPU) -- NOT a separate pre-resolution probe advisory that could
     contradict it.  The early `_gpu_runtime_defaults_block` no longer emits a
     `molbuilder: chosen ...` line."""
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -568,7 +577,7 @@ def test_gpu_runtime_defaults_block_probes_gpu_numa(
       * The old runtime probe (``nvidia-smi topo -m`` + ``NUMA
         Affinity`` column parse) MUST NOT be back.
     """
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
@@ -600,7 +609,7 @@ def test_wrapper_emits_fdf_aware_rank_default_selector(
     A100's 80 GB and hits ``cudaMalloc: out of memory`` (the exact
     user-reported failure 2026-06-26 on TJ-BDT-Au111 stage 4).
     """
-    cfg = SiestaConfig(enable_gpu=True)
+    cfg = SiestaConfig(enable_gpu=True, diag_algorithm="ELPA-1STAGE")
     fdf = tmp_path / "job.fdf"
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
@@ -648,3 +657,42 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
         assert "_mpi_np_default=4" in wrapper_text
     finally:
         set_capabilities(Capabilities(runtime_config={}))
+
+
+# --------------------------------------------------------------------- #
+#  ELPA decoupled from GPU: CPU-ELPA routing (engines/siesta.md § 13)    #
+# --------------------------------------------------------------------- #
+
+
+def test_fdf_requests_elpa_detects_cpu_elpa(tmp_path):
+    """An ELPA Diag.Algorithm (even with GPU off) must be detected so the
+    job routes to the ELPA-linked build."""
+    p = _write_fdf(tmp_path,
+                   "Diag.Algorithm ELPA-2STAGE\nDiag.ELPA.GPU .false.\n")
+    assert _runwrap._fdf_requests_elpa(p) is True
+    assert _runwrap._fdf_requests_gpu(p) is False        # not a GPU job
+
+
+def test_fdf_requests_elpa_false_for_scalapack(tmp_path):
+    p = _write_fdf(tmp_path, "SystemLabel siesta\nMeshCutoff 300.0 Ry\n")
+    assert _runwrap._fdf_requests_elpa(p) is False
+
+
+def test_cpu_elpa_routes_to_elpa_build(tmp_path, caps_with_gpu_env):
+    """The crux of the fix: CPU-ELPA (no GPU) must still route to
+    ``molbuilder-siesta-gpu`` -- the only build linked against ELPA --
+    NOT the precompiled ``molbuilder-siesta`` (which has no ELPA)."""
+    cfg = SiestaConfig(enable_gpu=False, diag_algorithm="ELPA-2STAGE")
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" in wrapper_text
+
+
+def test_scalapack_routes_to_cpu_build(tmp_path, caps_with_gpu_env):
+    """ScaLAPACK (default) stays on the precompiled CPU env."""
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(render_fdf(_mk_struct(), SiestaConfig()), encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" not in wrapper_text
+    assert "molbuilder-siesta" in wrapper_text

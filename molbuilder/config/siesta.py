@@ -143,7 +143,7 @@ class SiestaConfig:
     #   * Stage card   -- force_tol + max_displ (convergence targets)
     #   * Budget card  -- relax_steps + mpi_np + omp_threads +
     #                     BlockSize + ParallelOverK + max_memory_mb +
-    #                     enable_gpu + elpa_algorithm
+    #                     diag_algorithm + enable_gpu
     _form_section_order = (
         "System",
         "Basis & grid",
@@ -911,76 +911,74 @@ class SiestaConfig:
         "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
-        # SIESTA 5.4.2 fdf keyword (verified against upstream source
-        # at Src/diag_option.F90:138-139 -- both ``Diag.ELPA.UseGPU``
-        # and the newer alias ``Diag.ELPA.GPU`` are accepted with the
-        # same semantics; we emit the modern form).  When on, the
-        # generator emits TWO keywords: ``Diag.Algorithm`` (from the
-        # ``elpa_algorithm`` field below -- defaults to ELPA-1STAGE)
-        # AND ``Diag.ELPA.GPU .true.``.  Both are required:
-        # ``Diag.ELPA.GPU`` alone is silently ignored when SIESTA is
-        # still using its default Divide-and-Conquer ScaLAPACK path
-        # (Src/diag_option.F90:213-225).  The run-wrapper detects
-        # ``Diag.ELPA.GPU`` in the rendered .fdf and routes the job
-        # into ``molbuilder-siesta-gpu`` -- so the same .fdf is
-        # portable between backends; turning the toggle on at
-        # generate time makes the choice explicit and reproducible.
+        # OPTIONAL accelerator on top of an ELPA ``diag_algorithm``
+        # (engines/siesta.md § 13).  It does NOT select ELPA -- that's
+        # the ``diag_algorithm`` field.  enable_gpu only decides where an
+        # already-chosen ELPA solve runs:
+        #   * ON  -> ``Diag.ELPA.GPU .true.``  (GPU-only, no CPU fallback)
+        #   * OFF -> ``Diag.ELPA.GPU .false.`` (CPU-ELPA -- explicit
+        #            .false. is load-bearing: the source ELPA defaults to
+        #            the GPU codepath, so an omitted flag crashes a CPU run;
+        #            verified Sol job 57852378).
+        # Only meaningful with an ELPA algorithm; GPU + ScaLAPACK is
+        # rejected at render time.  Keyword Src/diag_option.F90:138-139
+        # (``Diag.ELPA.GPU`` / older ``Diag.ELPA.UseGPU``; we emit the
+        # modern form).  Routing to ``molbuilder-siesta-gpu`` is driven by
+        # the ELPA *algorithm* choice, not by this toggle (CPU-ELPA still
+        # needs the ELPA build).
         "engine_key":  'Diag.ELPA.GPU',
         "id_suffix": "enable-gpu",
-        "help":      "Run SIESTA's diagonalizer on an NVIDIA CUDA GPU "
-                     "via ELPA-CUDA.  Requirements: (1) an NVIDIA CUDA "
-                     "GPU on the machine that runs the generated "
-                     "``.run.sh`` -- if absent, SIESTA either falls "
-                     "back to ScaLAPACK or errors at ``cudaSetDevice`` "
-                     "depending on the ELPA build; (2) the "
-                     "``molbuilder-siesta-gpu`` env (install: ``python "
-                     "-m molbuilder envs install molbuilder-siesta-"
-                     "gpu``) -- the precompiled conda-forge SIESTA in "
-                     "``molbuilder-siesta`` is NOT linked against "
-                     "ELPA.  When on, the run-wrapper auto-routes the "
-                     "job into the GPU env AND refuses to emit if the "
-                     "env is not installed.  Leave off to use the CPU "
-                     "SIESTA (ScaLAPACK).  The companion field "
-                     "``elpa_algorithm`` chooses which ELPA solver "
-                     "variant gets used (default ELPA-1STAGE, faster "
-                     "on GPU).",
+        "help":      "OPTIONAL: run the ELPA diagonalization on an NVIDIA "
+                     "CUDA GPU.  This does NOT turn ELPA on -- pick the "
+                     "solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). "
+                     "This toggle only moves that ELPA solve onto the GPU "
+                     "(GPU-only, no CPU fallback).  Requires an ELPA "
+                     "diagonalizer (GPU + ScaLAPACK is rejected) and an "
+                     "NVIDIA GPU on the run machine.  Off = the chosen ELPA "
+                     "solver runs on CPU (or ScaLAPACK if that's selected). "
+                     "Either ELPA choice routes the job to "
+                     "``molbuilder-siesta-gpu`` (the ELPA-linked build); "
+                     "the wrapper refuses to emit if that env is missing. "
+                     "Affinity hint: GPU favors 1STAGE.",
     })
-    elpa_algorithm: str = field(default="ELPA-1STAGE", metadata={
+    diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "section": "Compute & budget",
         "workflow_group": "budget",
-        "label":     "ELPA solver (when GPU on)",
-        # SIESTA 5.4.2 fdf keyword (Src/diag_option.F90:264-273):
-        # ``elpa-1`` / ``elpa-1stage`` -> ELPA_1stage,
-        # ``elpa`` / ``elpa-2`` / ``elpa-2stage`` -> ELPA_2stage.
-        # We emit the long forms so the .fdf reads unambiguously.
-        # ONLY emitted when ``enable_gpu`` is True; CPU runs stay on
-        # SIESTA's default Divide-and-Conquer ScaLAPACK path because
-        # that's what's available there.
+        "label":     "Diagonalizer",
+        # The EIGENSOLVER choice -- independent of hardware (engines/
+        # siesta.md § 13, rewritten 2026-06-29).  ELPA runs on CPU AND
+        # GPU; ``enable_gpu`` only moves an ELPA solve onto the GPU.
+        #   * ScaLAPACK -> emit NOTHING (SIESTA's built-in Divide-and-
+        #     Conquer default); runs in the precompiled ``molbuilder-siesta``.
+        #   * ELPA-1STAGE / ELPA-2STAGE (Src/diag_option.F90:264-273) ->
+        #     emit ``Diag.Algorithm`` + ``Diag.ELPA.GPU .true./.false.``;
+        #     routes to ``molbuilder-siesta-gpu`` (the only ELPA-linked
+        #     build) whether or not the GPU is used.
+        # Default ScaLAPACK = works out of the box on the precompiled
+        # CPU env; ELPA is a freely selectable upgrade (NOT GPU-gated).
         "engine_key":  'Diag.Algorithm',
-        "id_suffix": "elpa-algorithm",
-        "choices":   ("ELPA-1STAGE", "ELPA-2STAGE"),
+        "id_suffix": "diag-algorithm",
+        "choices":   ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"),
         "tier":      "advanced",
-        "help":      "Which ELPA solver variant to use when Use GPU is "
-                     "enabled.  NOT version numbers -- both variants "
-                     "ship in the SAME ELPA library version (we build "
-                     "ELPA 2024.05.001, bumped from 2021.11.001 on "
-                     "2026-06-16 after multi-rank GPU deadlocks at the "
-                     "older tag; see decision-log entry); they are "
-                     "different algorithmic strategies for the same "
-                     "eigenproblem:\n"
+        "help":      "Eigensolver for the SCF diagonalization.  ELPA works "
+                     "on CPU AND GPU -- it is NOT GPU-only.  Hardware "
+                     "affinity (a performance hint, not a restriction): "
+                     "GPU favors 1STAGE, CPU favors 2STAGE.\n"
+                     "  * ScaLAPACK: SIESTA's built-in Divide-and-Conquer. "
+                     "Runs in the precompiled ``molbuilder-siesta`` env "
+                     "(no ELPA needed).  The safe default.\n"
                      "  * ELPA-1STAGE: direct tridiagonalisation in one "
-                     "step.  Faster on NVIDIA GPUs (ELPA 2024.05 User "
-                     "Guide §\"ELPA - Usability\"; arXiv:2502.02460 "
-                     "reports ~3x speedup over 2-stage on A100).  "
-                     "Default for GPU runs.\n"
-                     "  * ELPA-2STAGE: tridiagonalise via an intermediate "
-                     "band form (full -> band -> tridiag).  Historically "
-                     "the default; faster on CPU because the band-"
-                     "reduction stage exposes more BLAS-3 work, but the "
-                     "band<->tridiag transforms don't map well to GPU "
-                     "memory hierarchy.\n"
-                     "Ignored when Use GPU is off (SIESTA's default "
-                     "Divide-and-Conquer ScaLAPACK is used for CPU runs).",
+                     "step.  Faster on NVIDIA GPUs (arXiv:2502.02460 "
+                     "reports ~3x over 2-stage on A100).  Best for GPU.\n"
+                     "  * ELPA-2STAGE: tridiagonalise via a banded form; "
+                     "the band-reduction exposes more BLAS-3 work, so it "
+                     "is typically faster on CPU.  Best for CPU.\n"
+                     "Both ELPA variants ship in the SAME library (ELPA "
+                     "2024.05.001) -- these are algorithmic strategies, "
+                     "not versions.  Selecting either ELPA routes the job "
+                     "to ``molbuilder-siesta-gpu`` (the ELPA-linked build); "
+                     "turn ``Use GPU`` on to run that ELPA solve on the GPU "
+                     "(GPU-only, no CPU fallback).",
     })
 
     # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's

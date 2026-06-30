@@ -1469,6 +1469,30 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     return last_value in truthy if last_value is not None else False
 
 
+def _fdf_requests_elpa(fdf_path: Path) -> bool:
+    """Whether the .fdf selects an ELPA eigensolver via ``Diag.Algorithm``.
+
+    ELPA (1- or 2-stage, CPU *or* GPU) is linked only into the
+    ``molbuilder-siesta-gpu`` build, so ANY ELPA choice -- even CPU-ELPA
+    (``Diag.ELPA.GPU .false.``) -- must route there, not just the GPU case
+    (engines/siesta.md § 13).  ScaLAPACK / Divide-and-Conquer is the SIESTA
+    default and stays on the precompiled ``molbuilder-siesta``.
+
+    Matches SIESTA's whitespace-/case-insensitive FDF label parsing; last
+    occurrence wins.  Returns False on any read error (safe CPU fall-through).
+    """
+    import re
+    try:
+        text = fdf_path.read_text()
+    except OSError:
+        return False
+    pat = re.compile(r"(?im)^\s*Diag\.Algorithm\b\s+(\S+)")
+    last_value: Optional[str] = None
+    for m in pat.finditer(text):
+        last_value = m.group(1).strip().lower()
+    return last_value.startswith("elpa") if last_value is not None else False
+
+
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
@@ -1541,13 +1565,16 @@ def render_run_wrapper(script_path: Path, *,
             f"{', '.join(sorted(EXTENSION_TO_CATEGORY))}."
         )
 
-    # SIESTA-GPU routing: the .fdf is the ground truth for which env
-    # to run in.  When ``Diag.ELPA.GPU`` is set true at generate time,
-    # the job needs ``molbuilder-siesta-gpu`` (whose ELPA was built
-    # with --enable-nvidia-gpu) -- the CPU env would silently ignore
-    # the keyword and run on CPU.  Inspecting the fdf here keeps the
-    # config -> runwrap path stateless: there's no parallel routing
-    # metadata to keep in sync with the file.
+    # SIESTA env routing: the .fdf is the ground truth for which env
+    # to run in.  The ELPA-linked build lives ONLY in
+    # ``molbuilder-siesta-gpu`` (engines/siesta.md § 13), so a job needs
+    # that env whenever it uses ELPA AT ALL -- whether on GPU
+    # (``Diag.ELPA.GPU .true.``) or on CPU (``Diag.Algorithm ELPA-*`` with
+    # ``Diag.ELPA.GPU .false.``).  Keying on the GPU flag ALONE (the old
+    # bug) sent CPU-ELPA jobs to ``molbuilder-siesta``, which has no ELPA
+    # and would error / silently fall back.  ScaLAPACK stays on the
+    # precompiled ``molbuilder-siesta``.  Inspecting the fdf here keeps the
+    # config -> runwrap path stateless.
     #
     # IMPORTANT: ``category`` drives every downstream ``if category ==
     # "siesta":`` branch in this module (MPI launch, .out filename,
@@ -1558,7 +1585,8 @@ def render_run_wrapper(script_path: Path, *,
     # filename and an unbalanced-quote template into the wrapper.
     env_lookup_category = category
     if (category == "siesta" and env is None
-            and _fdf_requests_gpu(script_path)):
+            and (_fdf_requests_gpu(script_path)
+                 or _fdf_requests_elpa(script_path))):
         env_lookup_category = "siesta-gpu"
 
     caps = get_capabilities()

@@ -454,6 +454,19 @@
                 : null;
         ["p-relax-steps", "p-force-tol", "p-max-displ"]
             .forEach(id => setLock(id, noneReason));
+
+        // GPU acceleration applies ONLY to an ELPA diagonalizer
+        // (ScaLAPACK has no GPU path; engines/siesta.md § 13).  When the
+        // user turns GPU on while ScaLAPACK is selected, switch to the
+        // GPU-preferred ELPA-1STAGE -- same auto-set pattern as
+        // method->spin above, and it keeps render_fdf from rejecting the
+        // GPU+ScaLAPACK combo.  GPU off leaves the algorithm alone (ELPA
+        // and ScaLAPACK both run on CPU).
+        const gpu = $("p-enable-gpu") && $("p-enable-gpu").checked;
+        const diag = $("p-diag-algorithm");
+        if (gpu && diag && diag.value === "ScaLAPACK") {
+            diag.value = "ELPA-1STAGE";
+        }
     }
 
     function applyCompatibility() {
@@ -471,7 +484,7 @@
     function wireCompatibilityListeners() {
         [
             "py-method", "py-optimize", "py-solvent",
-            "p-spin-polarized", "p-relax",
+            "p-spin-polarized", "p-relax", "p-enable-gpu", "p-diag-algorithm",
         ].forEach(id => {
             const el = $(id);
             if (el) el.addEventListener("change", applyCompatibility);

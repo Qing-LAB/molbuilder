@@ -231,24 +231,62 @@ copy_pseudopotentials(species, lib, dest_dir) -> List[str]    # missing
     `WriteMDhistory`, and `SaveHS` (always emitted; the older
     `WriteHS` keyword is silently dropped by SIESTA 5.4.2 and was
     replaced 2026-06-23).
-13. **Diagonalizer** (only when `cfg.enable_gpu=True`):
-    `Diag.Algorithm <cfg.elpa_algorithm>` plus `Diag.ELPA.GPU .true.`.
-    The two keywords together are load-bearing — `Diag.ELPA.GPU`
-    alone is silently ignored when SIESTA's default Divide-and-Conquer
-    ScaLAPACK path is still active (Src/diag_option.F90:213-225).
-    When `enable_gpu=False` (the CPU default) nothing is emitted and
-    SIESTA uses ScaLAPACK.  The precompiled conda-forge
-    `siesta=5.4.2=mpi_openmpi_*` build (env `molbuilder-siesta`) is
-    NOT linked against ELPA, so there is no "CPU-ELPA" option here;
-    ELPA-CUDA lives only in the source-built `molbuilder-siesta-gpu`
-    env (see [`siesta-gpu.md`](siesta-gpu.md)).  The web UI's
-    `enable_gpu` toggle is the script-input contract — it never
-    queries env presence.  `runwrap.write_run_wrapper` inspects the
-    rendered .fdf for `Diag.ELPA.GPU`, routes the job to
-    `molbuilder-siesta-gpu`, AND gates env presence at script-
-    generation time: if the GPU env isn't installed,
-    `WrapperError` fires with the install hint instead of letting
-    `source activate` fail cryptically at run time.
+13. **Diagonalizer — solver choice and the optional GPU accelerator**
+    (contract rewritten 2026-06-29; supersedes the old "ELPA only when
+    GPU" model, which wrongly denied CPU runs ELPA).
+
+    Two **orthogonal** decisions:
+
+    a. **`Diag.Algorithm` is the eigensolver choice, independent of
+       hardware** — `ScaLAPACK` (SIESTA's default Divide-and-Conquer) /
+       `ELPA-1STAGE` / `ELPA-2STAGE`.  **ELPA runs on CPU *and* GPU.**
+       Performance *affinity* (a hint, not a restriction): GPU favors
+       **1STAGE**, CPU favors **2STAGE** (so the affinity-aware default
+       is 1STAGE when GPU is on, 2STAGE when off; the user may override
+       either way).
+
+    b. **`enable_gpu` is an optional accelerator on top of an ELPA
+       choice.**  ON ⇒ the ELPA solve runs on the GPU
+       (`Diag.ELPA.GPU .true.`) — **GPU-only, no silent CPU fallback**.
+       OFF with an ELPA algorithm ⇒ **CPU-ELPA** (`Diag.ELPA.GPU
+       .false.`).  `enable_gpu` is only meaningful when an ELPA
+       algorithm is chosen (GPU + ScaLAPACK is rejected at the UI).
+
+    **Emission (`render_fdf`):**
+    - ScaLAPACK → emit **nothing** (SIESTA's built-in default).
+    - ELPA-* → **always** emit `Diag.Algorithm <choice>`, plus
+      `Diag.ELPA.GPU .true.` (GPU on) or **`Diag.ELPA.GPU .false.`
+      (CPU)**.  The explicit `.false.` is load-bearing: the
+      source-built ELPA defaults to the GPU codepath, so an *omitted*
+      flag makes a CPU-ELPA job initialize CUDA and crash
+      (`cudaGetLastError: unknown error`; verified on Sol job 57852378
+      — see [`../job-case-analysis/ANALYSIS-G1K1C4.md`](../job-case-analysis/ANALYSIS-G1K1C4.md)).
+      `Diag.ELPA.GPU` *alone* (no ELPA `Diag.Algorithm`) is silently
+      ignored — both keywords are required for the GPU path
+      (Src/diag_option.F90:213-225).
+
+    **Env routing — keyed on "needs ELPA", not on GPU:**
+    - **ScaLAPACK** → `molbuilder-siesta` (the precompiled conda-forge
+      build, no ELPA — perfectly fine for DnC).
+    - **ELPA (CPU *or* GPU)** → `molbuilder-siesta-gpu`, the only
+      ELPA-linked build (see [`siesta-gpu.md`](siesta-gpu.md)).  This is
+      why CPU-ELPA still routes to the "gpu" env — that env is the ELPA
+      build, GPU usage is separate.
+    - The router (`runwrap`) detects **either** an ELPA `Diag.Algorithm`
+      **or** `Diag.ELPA.GPU` true and bumps `siesta → siesta-gpu`;
+      `molbuilder.json` `envs.{siesta,siesta-gpu}` overrides the concrete
+      env name (the per-machine selector — there is no build-tab env
+      picker, the env *follows* the algorithm choice).
+
+    The web UI's `enable_gpu` toggle is the script-input contract — it
+    never queries env presence.  `runwrap.write_run_wrapper` gates env
+    presence at script-generation time: if the resolved target env isn't
+    installed, `WrapperError` fires with the install hint instead of
+    letting `source activate` fail cryptically at run time.
+
+    Consistent with [`../protocols/scientific-validation.md`](../protocols/scientific-validation.md)
+    (ELPA-CPU vs ELPA-GPU agree to ~1e-6 eV) and the CPU-vs-GPU benchmark,
+    whose CPU baseline *is* ELPA-1STAGE on CPU.
 14. **Troubleshooting block** (when `cfg.verbose_comments=True`):
     inline tuning hints for SCF / forces / speed, plus relaxation
     hints when an MD block is present.
