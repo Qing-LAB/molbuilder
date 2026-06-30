@@ -26,10 +26,11 @@ from typing import List
 from .model import JobSet
 
 
-def _relink(link_dir: Path, target: str, link_name: str) -> None:
+def relink(link_dir: Path, target: str, link_name: str) -> None:
     """Create ``link_dir/link_name`` -> ``target`` (a relative path),
     replacing any existing entry (``ln -sfn`` semantics).  Dangling
-    targets are allowed (carry-forward before the producer runs)."""
+    targets are allowed (carry-forward before the producer runs, and the
+    rendered wrappers the prep step links in afterwards)."""
     link_path = link_dir / link_name
     if link_path.is_symlink() or link_path.exists():
         link_path.unlink()
@@ -63,13 +64,13 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
         # static package + this job's own input script: same bytes, one
         # level up in the bundle root.
         for fname in list(jobset.shared) + [job.script]:
-            _relink(d, os.path.join("..", fname), os.path.basename(fname))
+            relink(d, os.path.join("..", fname), os.path.basename(fname))
         # runtime-produced carry-forward from the producing job's dir.
         for c in job.carry:
             target = os.path.join("..", job_dir_name(c.from_job), c.pattern)
-            _relink(d, target, os.path.basename(c.pattern))
+            relink(d, target, os.path.basename(c.pattern))
         created.append(d)
     return created
 
 
-__all__ = ["materialize", "job_dir_name"]
+__all__ = ["materialize", "job_dir_name", "relink"]

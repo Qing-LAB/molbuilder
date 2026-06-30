@@ -1,38 +1,37 @@
-"""Submit engine — execute a *materialized* :class:`JobSet`
-(docs/protocols/staged-execution.md § 2.1, § 8).
+"""Submit engine — launch a *prepped* :class:`JobSet`
+(docs/protocols/staged-execution.md § 2.1, § 7-9).
 
 This is the keystone both producers feed: the SIESTA stage ladder and
-(once it migrates) the benchmark sweep render to a JobSet, ``materialize``
-lays out the ``point-<name>/`` dirs + shared/carry symlinks, and THIS
-engine launches them.
+(once it migrates) the benchmark sweep render to a JobSet, ``prep_jobset``
+renders the launchers + lays out the ``point-<name>/`` tree, and THIS engine
+launches them.  It assumes prep already ran (the wrappers are symlinked into
+each job dir); it renders nothing itself.
 
 Two execution paths, chosen by ``mode`` (== ``execution.mode``):
 
-  * ``"submit"`` — SLURM.  Each job becomes an ``sbatch``; a ladder threads
-    ``--dependency=<dep_kind>:<jobid>`` down the chain, a sweep submits all
-    jobs with no dependency (they queue in parallel).  The selected
-    ``domain`` resolves to ``sbatch -p/-q`` at submit time (mirrors the
-    bench ``MB_GPU_PQ`` injection) so the same rendered ``.sbatch`` works
-    for any domain.
-  * ``"direct"`` — local shell.  Jobs run **sequentially** in dependency
-    order via ``bash <name>.run.sh``; an ``afterok`` edge aborts the rest
-    of the chain when its producer fails, an ``afterany`` edge runs the
-    next job regardless (the SLURM dependency-kind semantics, honored
-    locally so a workstation dry-run matches what the cluster would do).
+  * ``"submit"`` — SLURM.  Each job becomes an ``sbatch`` whose **per-job
+    resources are CLI flags** (``-J``/``-n``/``-c``/``--gres``/``--mem``/
+    ``-t``/``--exclusive`` + the domain's ``-p/-q``) over the (possibly
+    shared) rendered ``.sbatch`` — exactly generalizing the benchmark launch
+    line, so one rendered wrapper serves every point of a sweep.  A ladder
+    threads ``--dependency=<dep_kind>:<jobid>`` down the chain; a sweep
+    submits with no dependency (jobs queue in parallel).
+  * ``"direct"`` — local shell.  Each job's ``<stem>.run.sh`` is run in
+    turn with its per-job knobs as args (``-np``/``-omp``), honoring
+    ``dep_kind`` locally (an ``afterok`` edge whose producer failed skips
+    the dependent and everything below it; ``afterany`` runs regardless —
+    the SLURM dependency-kind semantics reproduced on a workstation).
 
-REUSE, not reinvention: the per-job ``Resources`` → SLURM-flags translation
-(``-n``/``-c``/``-t``/``--mem``/``--gres``/``--exclusive``) is
-``runwrap.write_run_wrapper`` — the SAME path the single-job and bench
-flows use.  This engine only adds the cross-job concerns: dependency
+REUSE, not reinvention: prep renders via ``runwrap.write_run_wrapper``; this
+engine adds only the cross-job concerns — per-job CLI overrides, dependency
 threading, domain→``-p/-q`` resolution, and ordered local execution.
 
 RESUME IS THE MODELING SOFTWARE'S JOB (script-execution.md): this engine
 only launches.  It never inspects prior output to auto-recover — the carry
-symlinks materialize already laid let SIESTA/PySCF restart natively; the
-decision to continue or switch stays the user's (assistant, not nanny).
-``dry_run=True`` writes nothing and runs nothing: it returns the exact
-command line each job WOULD get, so the plan is reviewable before anything
-is irreversible.
+symlinks prep laid let SIESTA/PySCF restart natively; the decision to
+continue or switch stays the user's (assistant, not nanny).  ``dry_run=True``
+runs nothing: it returns the exact command line each job WOULD get, so the
+plan is reviewable before anything is irreversible.
 """
 
 from __future__ import annotations
@@ -44,12 +43,12 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .materialize import job_dir_name
-from .model import Job, JobSet
+from .model import JobSet, Resources
 
 
 class SubmitError(Exception):
     """A JobSet could not be submitted (bad mode, unknown domain, missing
-    materialized dir, scheduler required but absent, or sbatch failure)."""
+    prepped wrapper, or sbatch failure)."""
 
 
 @dataclass
@@ -95,57 +94,51 @@ def _resolve_domain(domain: Optional[str], *, gpu: bool,
 
 
 # --------------------------------------------------------------------- #
-#  per-job wrapper rendering (reuses runwrap.write_run_wrapper)          #
+#  per-job resource → CLI flags (bench launch-line model)               #
 # --------------------------------------------------------------------- #
 
-def _render_wrappers(job: Job, job_dir: Path, *, emit_sbatch: bool) -> Path:
-    """Render ``<script>.run.sh`` (and ``.sbatch`` when ``emit_sbatch``) for
-    one job's input, threading its :class:`Resources` through the SHARED
-    translation in ``runwrap``.  Returns the script path inside ``job_dir``.
+def _sbatch_resource_flags(r: Resources) -> List[str]:
+    """The per-job ``sbatch`` overrides.  CLI flags win over the rendered
+    header's #SBATCH defaults, so one shared ``.sbatch`` serves every job.
+    ``--exclusive`` and ``--mem`` are mutually exclusive (whole-node owns all
+    memory — the ``--mem`` is meaningless and rejected by some sites), so
+    exclusive suppresses ``--mem`` (slurm-integration.md § 4.3.1)."""
+    flags: List[str] = []
+    if r.mpi_np:
+        flags += ["-n", str(r.mpi_np)]
+    if r.cpus_per_task:
+        flags += ["-c", str(r.cpus_per_task)]
+    if r.gres:
+        flags.append(f"--gres={r.gres}")
+    if r.time:
+        flags += ["-t", r.time]
+    if r.exclusive:
+        flags.append("--exclusive")
+    elif r.mem:
+        flags.append(f"--mem={r.mem}")
+    return flags
 
-    The job's ``script`` is the materialized symlink to the rendered input
-    (e.g. the ``.fdf``); the wrappers land next to it in the job dir, so the
-    per-job ``-n``/``-c``/``--mem``/``--gres`` differ per point while the
-    science input is shared.
-    """
-    from ..runwrap import write_run_wrapper
 
-    script_path = job_dir / job.script
-    if not script_path.exists():
-        raise SubmitError(
-            f"job {job.name!r}: input {job.script!r} not found in {job_dir} "
-            "(was the JobSet materialized first?)")
-    r = job.resources
-    write_run_wrapper(
-        script_path,
-        mpi_np=r.mpi_np,
-        cpus_per_task=r.cpus_per_task,
-        time=r.time,
-        gres=r.gres,
-        mem=r.mem,
-        exclusive=r.exclusive,
-        emit_sbatch=emit_sbatch,
-    )
-    return script_path
+def _run_sh_args(r: Resources) -> List[str]:
+    """The per-job knobs for the local ``.run.sh`` (it accepts ``-np`` /
+    ``-omp``; runwrap.py § arg-parsing)."""
+    args: List[str] = []
+    if r.mpi_np:
+        args += ["-np", str(r.mpi_np)]
+    if r.cpus_per_task:
+        args += ["-omp", str(r.cpus_per_task)]
+    return args
+
+
+def _wrapper_name(script: str, suffix: str) -> str:
+    """``bdt_stage1.fdf`` + ``.sbatch`` -> ``bdt_stage1.sbatch`` (mirrors
+    runwrap's stem + suffix rule)."""
+    return Path(script).stem + suffix
 
 
 # --------------------------------------------------------------------- #
 #  the two execution paths                                              #
 # --------------------------------------------------------------------- #
-
-def _sbatch_cmd(sbatch_path: Path, *, dep: Optional[str],
-                pq: Optional[tuple]) -> List[str]:
-    """Build the ``sbatch`` argv: optional ``--dependency`` (threaded from
-    the producer's job id) + optional ``-p/-q`` (the resolved domain) +
-    the rendered ``.sbatch``."""
-    cmd = ["sbatch"]
-    if dep:
-        cmd.append(f"--dependency={dep}")
-    if pq:
-        cmd += ["-p", pq[0], "-q", pq[1]]
-    cmd.append(str(sbatch_path))
-    return cmd
-
 
 def _parse_sbatch_id(stdout: str) -> str:
     """Extract the job id from ``Submitted batch job <id>``."""
@@ -157,30 +150,36 @@ def _parse_sbatch_id(stdout: str) -> str:
 
 def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                   dry_run: bool) -> List[JobResult]:
-    """SLURM path: sbatch each job, threading ``--dependency`` from the
-    producer's id.  A sweep (no ``depends_on``) submits with no dependency,
-    so its jobs queue in parallel; a ladder chains."""
+    """SLURM path: sbatch each job with per-job CLI flags, threading
+    ``--dependency`` from the producer's id.  A sweep (no ``depends_on``)
+    submits with no dependency, so its jobs queue in parallel; a ladder
+    chains."""
     results: List[JobResult] = []
     ids: Dict[str, str] = {}            # job.name -> slurm job id
     for job in jobset.jobs:
         job_dir = base_dir / job_dir_name(job.name)
+        sbatch_name = _wrapper_name(job.script, ".sbatch")
         gpu = bool(job.resources.gres)
         pq = _resolve_domain(domain, gpu=gpu, project_dir=base_dir)
-        dep = None
+
+        cmd = ["sbatch"]
         if job.depends_on is not None:
             dep_id = ids.get(job.depends_on)
-            if dep_id is None:
-                # producer wasn't submitted (dry-run shows the intent;
-                # a real run would have it because order is validated).
-                dep = f"{job.dep_kind}:<{job.depends_on}>"
-            else:
-                dep = f"{job.dep_kind}:{dep_id}"
-        sbatch_path = job_dir / (Path(job.script).stem + ".sbatch")
-        cmd = _sbatch_cmd(sbatch_path, dep=dep, pq=pq)
+            cmd.append(f"--dependency={job.dep_kind}:"
+                       f"{dep_id if dep_id else '<' + job.depends_on + '>'}")
+        cmd += ["-J", job.name]
+        if pq:
+            cmd += ["-p", pq[0], "-q", pq[1]]
+        cmd += _sbatch_resource_flags(job.resources)
+        cmd.append(sbatch_name)          # relative; we cd into the job dir
+
         if dry_run:
             results.append(JobResult(job.name, cmd, "planned"))
             continue
-        _render_wrappers(job, job_dir, emit_sbatch=True)
+        if not (job_dir / sbatch_name).exists():
+            raise SubmitError(
+                f"job {job.name!r}: {sbatch_name} not in {job_dir} "
+                "(run prep_jobset first).")
         cp = subprocess.run(cmd, cwd=str(job_dir),
                             capture_output=True, text=True)
         if cp.returncode != 0:
@@ -197,17 +196,16 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
 
 def _run_direct(jobset: JobSet, base_dir: Path, *,
                 dry_run: bool) -> List[JobResult]:
-    """Local path: run each ``<name>.run.sh`` sequentially in dependency
-    order.  An ``afterok`` edge whose producer failed skips the dependent
-    (and, transitively, anything depending on it); an ``afterany`` edge runs
-    regardless — the SLURM dependency-kind semantics honored locally."""
+    """Local path: run each ``<stem>.run.sh`` sequentially in dependency
+    order with its per-job knobs.  An ``afterok`` edge whose producer failed
+    skips the dependent (and, transitively, anything depending on it); an
+    ``afterany`` edge runs regardless."""
     results: List[JobResult] = []
     failed: set = set()                 # job names that failed / were skipped
     for job in jobset.jobs:
         job_dir = base_dir / job_dir_name(job.name)
-        run_sh = job_dir / (Path(job.script).stem + ".run.sh")
-        cmd = ["bash", str(run_sh)]
-        # honor the dependency kind: afterok blocks on a failed producer.
+        run_name = _wrapper_name(job.script, ".run.sh")
+        cmd = ["bash", run_name] + _run_sh_args(job.resources)
         if job.depends_on in failed and job.dep_kind == "afterok":
             results.append(JobResult(job.name, cmd, "skipped"))
             failed.add(job.name)        # propagate down the chain
@@ -215,7 +213,10 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         if dry_run:
             results.append(JobResult(job.name, cmd, "planned"))
             continue
-        _render_wrappers(job, job_dir, emit_sbatch=False)
+        if not (job_dir / run_name).exists():
+            raise SubmitError(
+                f"job {job.name!r}: {run_name} not in {job_dir} "
+                "(run prep_jobset first).")
         cp = subprocess.run(cmd, cwd=str(job_dir))
         if cp.returncode != 0:
             failed.add(job.name)
@@ -233,17 +234,16 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
 def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   domain: Optional[str] = None,
                   dry_run: bool = False) -> List[JobResult]:
-    """Execute a materialized ``jobset`` rooted at ``base_dir``.
+    """Launch a prepped ``jobset`` rooted at ``base_dir``.
 
-    ``mode`` is ``"submit"`` (SLURM ``sbatch`` + dependency threading) or
-    ``"direct"`` (ordered local ``bash`` execution).  ``domain`` is a
-    ``scheduler.routing`` name resolved to ``-p/-q`` at submit time
-    (``submit`` mode only).  ``dry_run`` returns the planned command for
-    each job without writing wrappers or launching anything.
+    ``mode`` is ``"submit"`` (SLURM ``sbatch`` + per-job CLI flags +
+    dependency threading) or ``"direct"`` (ordered local ``bash``).
+    ``domain`` is a ``scheduler.routing`` name resolved to ``-p/-q``
+    (``submit`` mode only).  ``dry_run`` returns the planned command for each
+    job without launching.
 
     Returns one :class:`JobResult` per job (the inform layer reads these).
-    Refuses an invalid JobSet (same gate as materialize) so the engine
-    can't act on a structurally-broken plan.
+    Refuses an invalid JobSet (same gate as prep/materialize).
     """
     errs = jobset.validate()
     if errs:
@@ -251,7 +251,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
             "refusing to submit an invalid JobSet:\n  - " + "\n  - ".join(errs))
     base = Path(base_dir).resolve()
     if not base.is_dir():
-        raise SubmitError(f"base dir not found (materialize first): {base}")
+        raise SubmitError(f"base dir not found (prep first): {base}")
 
     if mode == "submit":
         return _submit_slurm(jobset, base, domain=domain, dry_run=dry_run)

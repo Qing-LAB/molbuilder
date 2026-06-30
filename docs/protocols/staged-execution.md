@@ -25,10 +25,11 @@
 |---|---|
 | Stage *science*: `SiestaStageSpec`, `cfg.stages`, validation, per-stage `.fdf` | **built** (`config/siesta.py`, `validation/siesta.py`, `siesta/input.py`) |
 | `jobset` model + `job-set@1` persistence (§ 3) | **built** (`jobset/model.py`) |
-| `jobset` materialize engine — dirs + shared/carry symlinks (§ 4) | **built** (`jobset/materialize.py`) |
+| `jobset` materialize engine — data symlinks (shared/script/carry) (§ 4) | **built** (`jobset/materialize.py`) |
+| `jobset` **prep** engine — render wrappers in root (from the real files) + materialize + link wrappers into job dirs (§ 5) | **built** (`jobset/prep.py::prep_jobset`) |
 | `jobset` plan engine — STAGE-PLAN table (§ 5) | **built** (`jobset/plan.py`) |
 | SIESTA stage producer — `cfg.stages` → ladder `JobSet` (§ 3, § 7) | **built** (`siesta/stages.py::stages_to_jobset`) |
-| `jobset` **submit** engine — both `execution.mode`s over a materialized JobSet (§ 7, § 9): `submit` = dependency-threaded sbatch chain; `direct` = ordered local `bash` honoring `dep_kind` | **built** (`jobset/submit.py::submit_jobset`) |
+| `jobset` **submit** engine — both `execution.mode`s over a *prepped* JobSet (§ 7, § 9): `submit` = per-job sbatch CLI flags (`-J`/`-n`/`-c`/`--gres`/`--mem`/`-t`/`--exclusive`/`-p`/`-q`) + dependency threading; `direct` = ordered local `bash` (`-np`/`-omp`) honoring `dep_kind` | **built** (`jobset/submit.py::submit_jobset`) |
 | Pre-framework monolithic single-dir runner (§ 9) | **built** (`render_siesta_stages_runner`) — retained for the trivial single-stage/workstation case |
 | Engine-native resume (§ 10) | **built** (`script-execution.md`, `runwrap`) |
 | Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
@@ -56,13 +57,15 @@ flowchart LR
   end
   JS(["JobSet<br/><i>job-set@1 data</i>"])
   subgraph E["Engines — engine-agnostic core"]
-    M["materialize<br/>dirs + symlinks + carry"]
-    SU["submit<br/>dependency-threaded sbatch"]
+    M["materialize<br/>data symlinks (shared/script/carry)"]
+    PR["prep<br/>render wrappers (root) + materialize + link"]
+    SU["submit<br/>per-job sbatch CLI flags + --dependency"]
     PL["plan<br/>STAGE-PLAN / BENCH-PLAN"]
   end
   B --> JS
   S --> JS
-  JS --> M
+  JS --> PR
+  PR --> M
   JS --> SU
   JS --> PL
   JS -. "persist (job-set.json)" .-> F[("job-set.json")]
@@ -260,10 +263,9 @@ flowchart TD
   B --> C(["JobSet"])
   C -->|"to_dict()"| D[("job-set.json")]
   D -->|"render per-stage .fdf"| D2["bdt_stage&lt;N&gt;.fdf"]
-  D -->|ship bundle to target| E["prep (TARGET):<br/>detect env + topology,<br/>resolve Job.resources"]
-  E --> F["materialize → point-stage&lt;N&gt;/"]
+  D -->|ship bundle to target| E["prep_jobset (TARGET):<br/>render wrappers (in root, from real files)<br/>+ materialize point-stage&lt;N&gt;/ + link wrappers in"]
   E --> G["plan → STAGE-PLAN.md"]
-  F --> H["submit:<br/>sbatch chain (--dependency)<br/>carry symlinks resolve"]
+  E --> H["submit_jobset:<br/>per-job sbatch CLI flags + --dependency<br/>carry symlinks resolve"]
   H --> I["monitor (per-stage mb_monitor, squeue)"]
   I -.->|interrupted| J["resume (§10) — engine warm-restart"]
   I -.->|explore alt| K["branch (§11) — git checkpoint"]
@@ -275,31 +277,37 @@ flowchart TD
 | 2 | Produce `JobSet` + render per-stage `.fdf` | HOST | `siesta/stages.py`, `siesta/input.py` | built |
 | 3 | Persist → `job-set.json` | HOST | `jobset/model.py` | model built; bundle-write proposed |
 | 4 | Ship bundle to target | — | scp / bundle | reuses job-exec |
-| 5 | Prep: resolve resources, `materialize()`, bake `.sbatch`, `plan()` | TARGET | `jobset/materialize.py` + `runwrap` + `jobset/plan.py` | materialize/plan built; CLI/prep wiring proposed |
-| 6 | Submit: dependency-threaded `sbatch` (or ordered local `bash`), carry resolves | TARGET | `jobset/submit.py::submit_jobset` | **built** |
+| 5 | Prep: render wrappers (root, real files) + `materialize()` + link wrappers in + `plan()` | TARGET | `jobset/prep.py::prep_jobset` (reuses `runwrap.write_run_wrapper`) + `jobset/plan.py` | **built** |
+| 6 | Submit: per-job sbatch CLI flags + `--dependency` (or ordered local `bash`), carry resolves | TARGET | `jobset/submit.py::submit_jobset` | **built** |
 | 7 | Monitor | TARGET | bench monitor | reuses job-exec |
 
-### Example — operations (the verbs)
+### Example — operations (the API)
 
-```bash
-# HOST: author the ladder, produce + persist the JobSet (in the bundle)
-molbuilder fdf bdt.cif --stage-strategy publishable     # cfg.stages -> fdfs + job-set.json
+The framework is the foundation; the **Python API is the interface today**.
+A thin CLI/bundle wrapper (the `stage-prep` / `stage-submit` generated
+scripts, mirroring `prep-bench` / `run-bench`) is the one wiring piece still
+to build — see § 1.
 
-# TARGET: detect, lay out, see the plan
-./stage-prep                  # resolve resources, materialize point-*/, STAGE-PLAN.md
-cat STAGE-PLAN.md             # the chain + per-stage resources, before anything runs
+```python
+from molbuilder.jobset import prep_jobset, render_plan, submit_jobset
 
-# TARGET: run
-./stage-submit                # submit mode: sbatch chain (or direct mode: one job)
+# HOST: author the ladder → JobSet (+ render the per-stage .fdf in the bundle)
+js = stages_to_jobset(cfg, shared=[...], resources_for=overrides.get)
+
+# TARGET: render launchers + lay out point-stage<N>/ + see the plan
+prep_jobset(js, bundle_dir)                    # wrappers + dirs + carry symlinks
+print(render_plan(js))                          # chain + per-stage resources, dry
+
+# TARGET: review before anything irreversible, then run
+submit_jobset(js, bundle_dir, mode="submit", domain="public", dry_run=True)  # plan
+submit_jobset(js, bundle_dir, mode="submit", domain="public")                # go
 
 # continue an interrupted stage (engine resumes from its own warm files)
-cd point-stage2 && sbatch bdt_stage2.sbatch --continue
+# cd point-stage2 && sbatch bdt_stage2.sbatch --continue
 
 # explore an alternative tail without losing the converged path (§11)
-cd point-stage2
-molbuilder snapshot tag stage2-converged     # built
-git checkout -b stage2-tzp                    # branch: raw git today (snapshot branch not yet built, §11 gap)
-# ...edit fdf, re-submit; `molbuilder snapshot restore stage2-converged` to rewind if worse
+# cd point-stage2; molbuilder snapshot tag stage2-converged   # built
+# git checkout -b stage2-tzp   # branch: raw git today (snapshot branch not built, §11 gap)
 ```
 
 ---
@@ -344,31 +352,38 @@ flowchart LR
   s2 -->|"+ carry"| s3["point-stage3<br/>sbatch --dependency=...:jid2"]
 ```
 
-The real entry point is `submit_jobset(jobset, base_dir, *, mode, domain,
-dry_run)` (`jobset/submit.py`). It runs **after** `materialize` (it never
-lays out dirs itself — that keeps the model→disk and disk→scheduler steps
-separately testable). What it adds on top of the per-job translation it
-**reuses** (`runwrap.write_run_wrapper` → `-n`/`-c`/`-t`/`--mem`/`--gres`/
-`--exclusive`):
+**Render once, vary per job via CLI flags — the bench model.** `prep_jobset`
+renders each *distinct* script's wrapper **once, in the bundle root, from the
+real file** (so `write_run_wrapper`'s `Path.resolve()` is a no-op and the
+`.run.sh`/`.sbatch` land where intended), then symlinks it into each job dir.
+The per-job resource *variation* is applied by `submit_jobset` as **sbatch
+CLI flags over that shared wrapper** — exactly generalizing the bench launch
+line, so one rendered `.sbatch` serves every point of a sweep:
 
 ```
-ids = {}                                     # job.name -> slurm jobid
-for job in jobset.jobs:                       # already validate()'d
-    pq  = resolve_domain(domain, gpu=bool(job.resources.gres))  # -> -p/-q
-    dep = f"--dependency={job.dep_kind}:{ids[job.depends_on]}" if job.depends_on else ""
-    render_wrappers(job)                       # reuse: write_run_wrapper -> .sbatch
-    ids[job.name] = sbatch {dep} {pq} point-<name>/<script>.sbatch   # capture jobid
+# prep (once): renders in root, links the wrapper into every job dir
+for script in distinct(job.script for job in jobset.jobs):
+    write_run_wrapper(base/script, ...)        # REUSE; real file, resolve() no-op
+
+# submit: per-job CLI flags over the (possibly shared) wrapper
+ids = {}                                        # job.name -> slurm jobid
+for job in jobset.jobs:                          # already validate()'d
+    pq    = resolve_domain(domain, gpu=bool(job.resources.gres))  # -> -p/-q
+    dep   = f"--dependency={job.dep_kind}:{ids[job.depends_on]}" if job.depends_on else ""
+    flags = -J job.name {dep} {pq} -n mpi_np -c cpus_per_task --gres .. --mem .. -t .. [--exclusive]
+    ids[job.name] = (cd point-<name> && sbatch {flags} <stem>.sbatch)   # capture jobid
 ```
 
-Three cross-job concerns, and nothing else: **dependency threading**
-(producer's real jobid), **`domain`→`-p/-q`** resolved at submit time (the
-same `sbatch -p/-q` override bench injects via `MB_GPU_PQ`, so one rendered
-`.sbatch` serves any domain), and **ordered local execution** in `direct`
-mode. `<label>` is shared across stages (`cfg.system_label`), so SIESTA's
-auto-restart finds `<label>.XV` in each stage's own dir — the carried
-symlink supplies it from the prior stage. No bash polling: SLURM enforces
-the order. `dry_run=True` returns each job's exact command line **without
-writing wrappers or launching** — the plan is reviewable before anything is
+Three cross-job concerns, and nothing else: **per-job CLI overrides** (so a
+shared wrapper still gets the right `-n`/`-c`/`--gres`/`-J` per job — CLI
+flags win over the rendered `#SBATCH` defaults; `--exclusive` suppresses
+`--mem`), **dependency threading** (producer's real jobid), and **`domain`→
+`-p/-q`** resolved at submit time. `direct` mode is the same per-job idea
+locally: `bash <stem>.run.sh -np .. -omp ..`. `<label>` is shared across
+stages (`cfg.system_label`), so SIESTA's auto-restart finds `<label>.XV` in
+each stage's own dir — the carried symlink supplies it from the prior stage.
+No bash polling: SLURM enforces the order. `dry_run=True` returns each job's
+exact command line **without launching** — reviewable before anything is
 irreversible (assistant, not nanny).
 
 ---
@@ -413,6 +428,15 @@ Same per-stage-dir layout (§ 4), same `STAGE-PLAN`, same carry symlinks —
 > single-stage/workstation case. The framework's `direct` mode is the
 > per-stage-dir local executor of a `JobSet` — same layout as `submit`, just
 > not queued. "direct" in this doc always means the latter.
+>
+> **Consistency obligation:** the monolithic runner does in-place `.XV`/`.DM`
+> auto-restart between stages in one dir; `stages_to_jobset` expresses the
+> same scientific intent as explicit `Carry` (.XV always / .DM if
+> `use_save_dm` / .CG if same `relax_type`, § 13 D1) + `dep_kind` from
+> `on_nonconvergence` (§ 8). The two are different *mechanisms* for one
+> *contract* — when the carry set or the policy mapping changes, both must
+> move together, or a ladder run would behave differently depending on which
+> executor ran it.
 
 Additive: existing single-allocation users are unaffected.
 
@@ -533,10 +557,11 @@ pair the next tab loads). The job-set framework stops at "produce the
 converged geometry"; the cross-workflow step reuses that existing
 primitive.
 
-**Net new (small, contained):** the `jobset/{model,materialize,plan,submit}`
+**Net new (small, contained):** the `jobset/{model,materialize,prep,plan,submit}`
 modules; `stages_to_jobset` producer; the carry-forward symlink step; the
-dependency-threading submit driver; the per-stage resource seam; and the
-`snapshot branch` checkpoint wrapper (§ 11 gap).
+prep render-in-root + link step; the per-job-CLI-flag submit driver (the bench
+launch line generalized) with dependency threading; the per-stage resource
+seam; and the `snapshot branch` checkpoint wrapper (§ 11 gap).
 
 ---
 

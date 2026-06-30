@@ -15,6 +15,7 @@ from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
 from molbuilder.jobset.submit import submit_jobset, SubmitError
+from molbuilder.jobset.prep import prep_jobset
 
 
 class _CP:
@@ -242,10 +243,12 @@ def test_stages_to_jobset_rejects_invalid_ladder():
 
 
 # --------------------------------------------------------------------- #
-#  submit engine                                                        #
+#  prep engine (renders wrappers in root, links them into job dirs)     #
 # --------------------------------------------------------------------- #
 
 def _sweep() -> JobSet:
+    # a SHARED-script sweep: both points use the SAME job-gpu.fdf but differ
+    # in resources -- the case that broke the per-job-render model.
     return JobSet(
         name="sw", engine="siesta", kind="sweep",
         jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
@@ -256,30 +259,72 @@ def _sweep() -> JobSet:
                                       gres="gpu:a100:1"))])
 
 
-def test_submit_dry_run_writes_nothing_and_plans_dependency(tmp_path):
-    # ladder, SLURM mode, dry-run: returns the planned sbatch lines with the
-    # threaded --dependency, and creates NO files.
+def _write_fdf(path):
+    # minimal .fdf so write_run_wrapper renders for real (bash -n validated).
+    path.write_text("SystemName test\nSystemLabel test\nNumberOfAtoms 2\n")
+
+
+def _write_config(root):
+    # a bundle carries the script_generation block the wrapper needs.
+    (root / ".molbuilder.json").write_text(
+        '{"script_generation": {"preamble": "module load mamba", '
+        '"activation": "source activate"}}')
+
+
+def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
+    # THE integration seam the old stubbed tests never exercised (F1): the
+    # script is symlinked into the job dir, but the wrapper must NOT end up at
+    # the resolved bundle-root target -- it must land in the job dir.
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
+    # rendered ONCE in the bundle root, from the real file.
+    assert (tmp_path / "job-gpu.run.sh").is_file()
+    # symlinked into BOTH job dirs (one shared wrapper, the bench model).
+    for name in ("point-G1K1C4", "point-G1K2C4"):
+        link = tmp_path / name / "job-gpu.run.sh"
+        assert link.is_symlink() and os.readlink(link) == "../job-gpu.run.sh"
+        assert link.resolve() == (tmp_path / "job-gpu.run.sh").resolve()
+
+
+def test_prep_rejects_missing_script(tmp_path):
+    from molbuilder.jobset.prep import PrepError
+    with pytest.raises(PrepError, match="not in bundle root"):
+        prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
+
+
+# --------------------------------------------------------------------- #
+#  submit engine                                                        #
+# --------------------------------------------------------------------- #
+
+def test_submit_dry_run_threads_dependency_and_emits_J(tmp_path):
+    # ladder, SLURM, dry-run: threaded --dependency + per-job -J, no files.
     res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True)
     assert [r.status for r in res] == ["planned", "planned"]
     assert res[0].command[0] == "sbatch"
-    # s2 depends on s1 (afterok); dry-run shows the symbolic producer ref.
+    assert res[0].command[res[0].command.index("-J") + 1] == "s1"
     dep = [a for a in res[1].command if a.startswith("--dependency=")]
     assert dep == ["--dependency=afterok:<s1>"]
     assert list(tmp_path.iterdir()) == []          # wrote nothing
 
 
-def test_submit_dry_run_sweep_has_no_dependency(tmp_path):
+def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
+    # the F2 fix: a SHARED-script sweep must still get per-job -n via CLI.
     res = submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
     for r in res:
         assert not any(a.startswith("--dependency=") for a in r.command)
+        assert "--gres=gpu:a100:1" in r.command
+    assert res[0].command[res[0].command.index("-n") + 1] == "1"
+    assert res[1].command[res[1].command.index("-n") + 1] == "2"   # varies
 
 
 def test_submit_slurm_parses_ids_and_threads_real_dep(tmp_path, monkeypatch):
     js = _ladder()
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    materialize(js, tmp_path)
-    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    for d in (tmp_path / "point-s1", tmp_path / "point-s2"):
+        d.mkdir()
+    (tmp_path / "point-s1" / "demo_s1.sbatch").write_text("x")
+    (tmp_path / "point-s2" / "demo_s2.sbatch").write_text("x")
     ids = iter(["111", "222"])
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(stdout=f"Submitted batch job {next(ids)}"))
@@ -290,12 +335,17 @@ def test_submit_slurm_parses_ids_and_threads_real_dep(tmp_path, monkeypatch):
     assert res[1].job_id == "222"
 
 
+def test_submit_slurm_errors_when_not_prepped(tmp_path):
+    # real run (not dry): a missing wrapper is a friendly error, not a crash.
+    (tmp_path / "point-s1").mkdir()
+    with pytest.raises(SubmitError, match="run prep_jobset first"):
+        submit_jobset(_ladder(), tmp_path, mode="submit")
+
+
 def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
     js = _ladder()
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    materialize(js, tmp_path)
-    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    (tmp_path / "point-s1").mkdir()
+    (tmp_path / "point-s1" / "demo_s1.sbatch").write_text("x")
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(returncode=1, stderr="boom"))
     with pytest.raises(SubmitError, match="sbatch failed"):
@@ -304,16 +354,22 @@ def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
 
 def test_run_direct_afterok_skips_dependent_after_failure(tmp_path, monkeypatch):
     js = _ladder()                                 # s2 --afterok--> s1
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    materialize(js, tmp_path)
-    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    for d in (tmp_path / "point-s1", tmp_path / "point-s2"):
+        d.mkdir()
+    (tmp_path / "point-s1" / "demo_s1.run.sh").write_text("x")
+    (tmp_path / "point-s2" / "demo_s2.run.sh").write_text("x")
     # s1 fails -> afterok edge means s2 must be SKIPPED, never executed.
     monkeypatch.setattr(_submit.subprocess, "run",
                         lambda *a, **k: _CP(returncode=2))
     res = submit_jobset(js, tmp_path, mode="direct")
     assert res[0].status == "failed"
     assert res[1].status == "skipped" and res[1].returncode is None
+
+
+def test_submit_direct_dry_run_passes_np_omp(tmp_path):
+    res = submit_jobset(_sweep(), tmp_path, mode="direct", dry_run=True)
+    assert res[0].command[0] == "bash"
+    assert "-np" in res[0].command and "-omp" in res[0].command
 
 
 def test_submit_direct_rejects_domain(tmp_path):
@@ -329,3 +385,12 @@ def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
     bad.jobs[1].name = "s1"                         # duplicate
     with pytest.raises(SubmitError, match="invalid JobSet"):
         submit_jobset(bad, tmp_path, mode="submit", dry_run=True)
+
+
+def test_submit_exclusive_suppresses_mem(tmp_path):
+    js = JobSet("x", "siesta", "sweep",
+                jobs=[Job("j", "j.fdf",
+                          resources=Resources(exclusive=True, mem="120G"))])
+    cmd = submit_jobset(js, tmp_path, mode="submit", dry_run=True)[0].command
+    assert "--exclusive" in cmd
+    assert not any(a.startswith("--mem") for a in cmd)   # exclusive wins

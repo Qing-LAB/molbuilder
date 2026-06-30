@@ -50,7 +50,7 @@ them. Within a layer, **one concept = one name**:
 | Concept | config-layer name | exchange / SLURM name | producer translates at |
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
-| OMP cores per rank | `omp_threads` | **`cpus_per_task`** → `-c` | `stages_to_jobset`, `render_sbatch` |
+| OMP cores per rank | `omp_threads` | **`cpus_per_task`** → `-c` | `stages_to_jobset` (jobset) / CLI+`build` callers (single-job) — see note |
 | Walltime | *(none; `defaults.time`)* | **`time`** → `-t` | — |
 | Memory | `max_memory_mb` (cap) / `defaults.mem` | `mem` → `--mem` | `render_sbatch` (estimate) |
 | Whole-node | `gpu.exclusive` | `exclusive` → `--exclusive` | — |
@@ -64,7 +64,11 @@ them. Within a layer, **one concept = one name**:
 **The translation rule:** persisted/exchange files use the exchange-layer
 name; a *producer* maps config→exchange at its boundary (e.g.
 `stages_to_jobset` maps `SiestaConfig.omp_threads` → `cpus_per_task`). Never
-mix the two within one file.
+mix the two within one file. `render_sbatch` is a *consumer* — it receives
+`cpus_per_task` already translated; it does not re-derive it from
+`omp_threads`. (In `runwrap` these are two distinct knobs that coincide on
+SLURM, where `-c` sets `SLURM_CPUS_PER_TASK`, the wrapper's OMP default; the
+"one concept" framing is the SLURM mapping, not a Python rename.)
 
 ---
 
