@@ -13,6 +13,14 @@ from molbuilder.jobset.model import (Carry, Job, JobSet, Resources,
                                      SCHEMA)
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
+from molbuilder.jobset import submit as _submit
+from molbuilder.jobset.submit import submit_jobset, SubmitError
+
+
+class _CP:
+    """Minimal stand-in for subprocess.CompletedProcess."""
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
 
 
 # --------------------------------------------------------------------- #
@@ -231,3 +239,93 @@ def test_stages_to_jobset_rejects_invalid_ladder():
     cfg = SiestaConfig(stages=s)
     with pytest.raises(ValueError, match="invalid ladder"):
         stages_to_jobset(cfg)
+
+
+# --------------------------------------------------------------------- #
+#  submit engine                                                        #
+# --------------------------------------------------------------------- #
+
+def _sweep() -> JobSet:
+    return JobSet(
+        name="sw", engine="siesta", kind="sweep",
+        jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
+                  resources=Resources(mpi_np=1, cpus_per_task=4,
+                                      gres="gpu:a100:1")),
+              Job(name="G1K2C4", script="job-gpu.fdf",
+                  resources=Resources(mpi_np=2, cpus_per_task=4,
+                                      gres="gpu:a100:1"))])
+
+
+def test_submit_dry_run_writes_nothing_and_plans_dependency(tmp_path):
+    # ladder, SLURM mode, dry-run: returns the planned sbatch lines with the
+    # threaded --dependency, and creates NO files.
+    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True)
+    assert [r.status for r in res] == ["planned", "planned"]
+    assert res[0].command[0] == "sbatch"
+    # s2 depends on s1 (afterok); dry-run shows the symbolic producer ref.
+    dep = [a for a in res[1].command if a.startswith("--dependency=")]
+    assert dep == ["--dependency=afterok:<s1>"]
+    assert list(tmp_path.iterdir()) == []          # wrote nothing
+
+
+def test_submit_dry_run_sweep_has_no_dependency(tmp_path):
+    res = submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
+    for r in res:
+        assert not any(a.startswith("--dependency=") for a in r.command)
+
+
+def test_submit_slurm_parses_ids_and_threads_real_dep(tmp_path, monkeypatch):
+    js = _ladder()
+    for f in js.shared + [j.script for j in js.jobs]:
+        (tmp_path / f).write_text("x")
+    materialize(js, tmp_path)
+    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    ids = iter(["111", "222"])
+    monkeypatch.setattr(_submit.subprocess, "run",
+                        lambda *a, **k: _CP(stdout=f"Submitted batch job {next(ids)}"))
+    res = submit_jobset(js, tmp_path, mode="submit")
+    assert res[0].job_id == "111" and res[0].status == "submitted"
+    # the second sbatch threads the REAL producer id, not the symbolic ref.
+    assert "--dependency=afterok:111" in res[1].command
+    assert res[1].job_id == "222"
+
+
+def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
+    js = _ladder()
+    for f in js.shared + [j.script for j in js.jobs]:
+        (tmp_path / f).write_text("x")
+    materialize(js, tmp_path)
+    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    monkeypatch.setattr(_submit.subprocess, "run",
+                        lambda *a, **k: _CP(returncode=1, stderr="boom"))
+    with pytest.raises(SubmitError, match="sbatch failed"):
+        submit_jobset(js, tmp_path, mode="submit")
+
+
+def test_run_direct_afterok_skips_dependent_after_failure(tmp_path, monkeypatch):
+    js = _ladder()                                 # s2 --afterok--> s1
+    for f in js.shared + [j.script for j in js.jobs]:
+        (tmp_path / f).write_text("x")
+    materialize(js, tmp_path)
+    monkeypatch.setattr(_submit, "_render_wrappers", lambda *a, **k: None)
+    # s1 fails -> afterok edge means s2 must be SKIPPED, never executed.
+    monkeypatch.setattr(_submit.subprocess, "run",
+                        lambda *a, **k: _CP(returncode=2))
+    res = submit_jobset(js, tmp_path, mode="direct")
+    assert res[0].status == "failed"
+    assert res[1].status == "skipped" and res[1].returncode is None
+
+
+def test_submit_direct_rejects_domain(tmp_path):
+    with pytest.raises(SubmitError, match="no meaning in 'direct'"):
+        submit_jobset(_sweep(), tmp_path, mode="direct", domain="htc",
+                      dry_run=True)
+
+
+def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
+    with pytest.raises(SubmitError, match="unknown mode"):
+        submit_jobset(_sweep(), tmp_path, mode="bogus", dry_run=True)
+    bad = _ladder()
+    bad.jobs[1].name = "s1"                         # duplicate
+    with pytest.raises(SubmitError, match="invalid JobSet"):
+        submit_jobset(bad, tmp_path, mode="submit", dry_run=True)

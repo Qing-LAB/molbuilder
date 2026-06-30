@@ -28,13 +28,13 @@
 | `jobset` materialize engine — dirs + shared/carry symlinks (§ 4) | **built** (`jobset/materialize.py`) |
 | `jobset` plan engine — STAGE-PLAN table (§ 5) | **built** (`jobset/plan.py`) |
 | SIESTA stage producer — `cfg.stages` → ladder `JobSet` (§ 3, § 7) | **built** (`siesta/stages.py::stages_to_jobset`) |
-| Monolithic runner = `direct` mode (§ 9) | **built** (`render_siesta_stages_runner`) |
+| `jobset` **submit** engine — both `execution.mode`s over a materialized JobSet (§ 7, § 9): `submit` = dependency-threaded sbatch chain; `direct` = ordered local `bash` honoring `dep_kind` | **built** (`jobset/submit.py::submit_jobset`) |
+| Pre-framework monolithic single-dir runner (§ 9) | **built** (`render_siesta_stages_runner`) — retained for the trivial single-stage/workstation case |
 | Engine-native resume (§ 10) | **built** (`script-execution.md`, `runwrap`) |
 | Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
 | `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
-| `jobset` **submit** engine — dependency-threaded sbatch (§ 7) | **proposed** (`jobset/submit.py`) |
-| Prep-time resource resolve + per-stage `.sbatch` bake + `job-set.json` emit (§ 5) | **proposed** |
+| Prep-time resource resolve + per-stage `.sbatch` bake + `job-set.json` emit (§ 5) | **proposed** (CLI/prep wiring) |
 | Per-stage resource UI/CLI source (§ 6) | **proposed** (model support **built**) |
 | CLI/prep wiring + bench migration onto the framework (§ 13 D4) | **proposed** |
 
@@ -275,8 +275,8 @@ flowchart TD
 | 2 | Produce `JobSet` + render per-stage `.fdf` | HOST | `siesta/stages.py`, `siesta/input.py` | built |
 | 3 | Persist → `job-set.json` | HOST | `jobset/model.py` | model built; bundle-write proposed |
 | 4 | Ship bundle to target | — | scp / bundle | reuses job-exec |
-| 5 | Prep: resolve resources, `materialize()`, bake `.sbatch`, `plan()` | TARGET | `jobset/materialize.py` + `SlurmAdapter` + `jobset/plan.py` | materialize/plan built; resolve+bake proposed |
-| 6 | Submit: dependency-threaded `sbatch`, carry resolves | TARGET | `jobset/submit.py` | proposed |
+| 5 | Prep: resolve resources, `materialize()`, bake `.sbatch`, `plan()` | TARGET | `jobset/materialize.py` + `runwrap` + `jobset/plan.py` | materialize/plan built; CLI/prep wiring proposed |
+| 6 | Submit: dependency-threaded `sbatch` (or ordered local `bash`), carry resolves | TARGET | `jobset/submit.py::submit_jobset` | **built** |
 | 7 | Monitor | TARGET | bench monitor | reuses job-exec |
 
 ### Example — operations (the verbs)
@@ -344,21 +344,32 @@ flowchart LR
   s2 -->|"+ carry"| s3["point-stage3<br/>sbatch --dependency=...:jid2"]
 ```
 
-Driver (pseudocode; mirrors `run-bench`, adds dependency threading):
+The real entry point is `submit_jobset(jobset, base_dir, *, mode, domain,
+dry_run)` (`jobset/submit.py`). It runs **after** `materialize` (it never
+lays out dirs itself — that keeps the model→disk and disk→scheduler steps
+separately testable). What it adds on top of the per-job translation it
+**reuses** (`runwrap.write_run_wrapper` → `-n`/`-c`/`-t`/`--mem`/`--gres`/
+`--exclusive`):
 
 ```
-prev = None
-for job in jobset.jobs:                      # already validated
-    materialize(job)                         # dir + shared + carry symlinks
-    flags = routing(job.resources) + excl/mem/-t + (-J job.name)
-    dep   = f"--dependency={job.dep_kind}:{prev}" if prev else ""
-    prev  = sbatch {dep} {flags} {job.script-as-.sbatch}   # capture jobid
+ids = {}                                     # job.name -> slurm jobid
+for job in jobset.jobs:                       # already validate()'d
+    pq  = resolve_domain(domain, gpu=bool(job.resources.gres))  # -> -p/-q
+    dep = f"--dependency={job.dep_kind}:{ids[job.depends_on]}" if job.depends_on else ""
+    render_wrappers(job)                       # reuse: write_run_wrapper -> .sbatch
+    ids[job.name] = sbatch {dep} {pq} point-<name>/<script>.sbatch   # capture jobid
 ```
 
-`<label>` is shared across stages (`cfg.system_label`), so SIESTA's
+Three cross-job concerns, and nothing else: **dependency threading**
+(producer's real jobid), **`domain`→`-p/-q`** resolved at submit time (the
+same `sbatch -p/-q` override bench injects via `MB_GPU_PQ`, so one rendered
+`.sbatch` serves any domain), and **ordered local execution** in `direct`
+mode. `<label>` is shared across stages (`cfg.system_label`), so SIESTA's
 auto-restart finds `<label>.XV` in each stage's own dir — the carried
 symlink supplies it from the prior stage. No bash polling: SLURM enforces
-the order.
+the order. `dry_run=True` returns each job's exact command line **without
+writing wrappers or launching** — the plan is reviewable before anything is
+irreversible (assistant, not nanny).
 
 ---
 
@@ -380,14 +391,28 @@ downstream job depends on the last stage."
 
 ## § 9 Two execution modes (`execution.mode`)
 
-The same `JobSet` is consumed two ways (job-execution.md § 8.13):
+The **same materialized `JobSet`** is executed two ways by one engine
+(`submit_jobset`), selected by `execution.mode` (job-execution.md § 8.13).
+Same per-stage-dir layout (§ 4), same `STAGE-PLAN`, same carry symlinks —
+**only the launcher differs**:
 
-- **`direct`** — the monolithic runner: all stages in one allocation,
-  in-place `.XV` auto-restart, one resource spec. Right for a workstation
-  or a short ladder. **Unchanged today.**
-- **`submit`** — the chain (§ 7): one `sbatch`/stage, per-stage resources,
-  dependency + carry. Right for a cluster where stages differ in
-  cost/hardware or the whole ladder exceeds one walltime.
+- **`submit`** — the SLURM chain (§ 7): one `sbatch`/stage, per-stage
+  resources, `--dependency` threading + carry. Right for a cluster where
+  stages differ in cost/hardware or the ladder exceeds one walltime.
+- **`direct`** — ordered **local** execution: each stage's `<name>.run.sh`
+  run in turn, honoring `dep_kind` locally (an `afterok` edge whose
+  producer failed **skips** the dependent and everything below it; an
+  `afterany` edge runs regardless — the SLURM semantics reproduced on a
+  workstation, so a local run matches what the cluster would do). Right for
+  a workstation or a short ladder.
+
+> **Not to be confused with** the pre-framework **monolithic runner**
+> (`render_siesta_stages_runner`): a single script that loops over stages in
+> **one** directory with in-place `.XV` auto-restart. It predates the
+> framework, uses no per-stage dirs, and is retained for the trivial
+> single-stage/workstation case. The framework's `direct` mode is the
+> per-stage-dir local executor of a `JobSet` — same layout as `submit`, just
+> not queued. "direct" in this doc always means the latter.
 
 Additive: existing single-allocation users are unaffected.
 
@@ -482,12 +507,13 @@ molbuilder organizes + informs; the user decides.
 
 ## § 12 Reuse, debt, and the handoff boundary
 
-**Genuinely reused (the submit engine, when built, calls these directly):**
-`SlurmAdapter` routing / exclusive+mem / per-job `-J`; env routing on
-ELPA/GPU; `write_run_wrapper` / `render_sbatch`; the entry-shim env
-bootstrap (job-execution.md § 8.3); per-job memory estimate; engine-native
-warm-restart (`script-execution.md`); git checkpoints `snapshot
-tag`/`restore` (`run-checkpoints.md`).
+**Genuinely reused (the submit engine calls these directly, now built):**
+`write_run_wrapper` / `render_sbatch` for the per-job `Resources`→SLURM-flags
+translation (the SAME path single-job + bench use); `runtime_config.get_routing`
+for `domain`→`-p/-q`; env routing on ELPA/GPU; the entry-shim env bootstrap
+(job-execution.md § 8.3); per-job memory estimate; engine-native warm-restart
+(`script-execution.md`); git checkpoints `snapshot tag`/`restore`
+(`run-checkpoints.md`).
 
 **Known debt — `jobset` currently PARALLELS the bench, it does not yet
 reuse it (be honest):** `jobset/materialize.py` reimplements the bench's
