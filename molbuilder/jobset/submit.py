@@ -178,8 +178,11 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
             continue
         if not (job_dir / sbatch_name).exists():
             raise SubmitError(
-                f"job {job.name!r}: {sbatch_name} not in {job_dir} "
-                "(run prep_jobset first).")
+                f"job {job.name!r}: {sbatch_name} not in {job_dir}. "
+                "Run prep first (`molbuilder jobset prep`); if you already "
+                "did, no scheduler is configured -- submit mode needs one "
+                "(add a scheduler block to .molbuilder.json, or use "
+                "--mode direct).")
         cp = subprocess.run(cmd, cwd=str(job_dir),
                             capture_output=True, text=True)
         if cp.returncode != 0:

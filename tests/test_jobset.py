@@ -345,7 +345,7 @@ def test_submit_slurm_parses_ids_and_threads_real_dep(tmp_path, monkeypatch):
 def test_submit_slurm_errors_when_not_prepped(tmp_path):
     # real run (not dry): a missing wrapper is a friendly error, not a crash.
     (tmp_path / "point-s1").mkdir()
-    with pytest.raises(SubmitError, match="run prep_jobset first"):
+    with pytest.raises(SubmitError, match="prep first"):
         submit_jobset(_ladder(), tmp_path, mode="submit")
 
 

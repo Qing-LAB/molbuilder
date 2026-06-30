@@ -8,6 +8,10 @@
 > workflow. Status per piece is in § 1; the rest explains it with diagrams
 > and small examples.
 >
+> **User-facing how-to** (plain language, copy-paste commands, no internals):
+> [`../staged-relaxation-guide.md`](../staged-relaxation-guide.md). This
+> document is the developer/design counterpart.
+>
 > Cross-references: `engines/siesta.md` (stage *science* — the param
 > tiers), `slurm-integration.md` (routing § 4.3 / exclusive+mem § 4.3.1 /
 > per-job `-J` § 4.4), `script-execution.md` (engine-native resume),
