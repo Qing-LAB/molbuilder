@@ -160,6 +160,42 @@ copy.
 
 ---
 
+## § 2.2 Workflow — from `cfg.stages` to a running chain
+
+The pipeline reuses the bundle lifecycle of `job-execution.md`
+(**generate → prep → submit**); the `jobset` framework is the spine.
+Each step has one owner module and one artifact, so the whole flow is
+inspectable as data, not buried in a script.
+
+```
+ cfg.stages ──validate──► JobSet ──persist──► job-set.json ──ship──► TARGET
+   (HOST)                (producer)          (job-set@1)            │
+                                                                    ▼
+                              materialize ──► point-<stage>/ dirs ──► submit ──► chain runs
+                              (+ per-stage .sbatch, STAGE-PLAN.md)   (deps + carry)
+```
+
+| # | Step | Where | Owner | Artifact | Status |
+|---|---|---|---|---|---|
+| 1 | **Author + validate** — set `cfg.stages` (+ `execution.mode`); `validate()` blocks a broken ladder at the Build tab / CLI | HOST | `validation/siesta.py` → `validate_siesta_stages` | issues | **built** |
+| 2 | **Produce** — `stages_to_jobset(cfg, shared=…)` → `JobSet`; render one `<label>_<stage>.fdf` per enabled stage | HOST (generate) | `siesta/stages.py`, `siesta/input.py::render_siesta_stage_fdfs` | `JobSet` + per-stage `.fdf` | **built** (producer); fdf render **built** |
+| 3 | **Persist** — `JobSet.to_dict()` → `job-set.json` in the bundle | HOST (generate) | `jobset/model.py` | `job-set.json` (`job-set@1`) | **built** (model); bundle write **proposed** |
+| 4 | **Ship** — copy the bundle (fdfs + `job-set.json` + shared package + entry shims) to the target | — | (scp / bundle) | bundle on target | reuses job-exec |
+| 5 | **Prep** — detect env/topology; **resolve** each `Job.resources` (domain→`-p`/`-q`, gres from fdf+GPU type, walltime, exclusive/mem); `materialize()` the `point-<stage>/` dirs; bake per-stage `.sbatch`; render `STAGE-PLAN.md` | TARGET | `jobset/materialize.py` + `SlurmAdapter` + `jobset/plan.py` | dirs + `.sbatch` + `STAGE-PLAN.md` | materialize/plan **built**; resource-resolve + sbatch bake **proposed** |
+| 6 | **Submit** — walk the `JobSet`, one `sbatch` per job with `--dependency` threaded from `depends_on`/`dep_kind`; carry symlinks resolve as each stage writes `.XV`/`.DM`/`.CG` | TARGET | `jobset/submit.py` | queued chain | **proposed** (§ 4) |
+| 7 | **Monitor** — per-stage dir outputs + `mb_monitor`; `squeue` shows `-J <label>_<stage>` rows; `STAGE-PLAN.md` is the map | TARGET | reuses bench monitor | logs | reuses job-exec |
+
+**`direct` mode** (`execution.mode=direct`, § 6) collapses steps 5–6 into
+the existing monolithic runner: all stages in one allocation, in-place
+`.XV` auto-restart — no per-stage dirs or dependency chain. The same
+`JobSet` describes both; only the engine that consumes it differs.
+
+So the framework is the *single description* (`job-set.json`) that both
+the direct runner and the submit chain read — the workflow is "produce one
+JobSet, then pick an engine to run it."
+
+---
+
 ## § 3 Per-stage resources — `SiestaStageSpec.resources`
 
 The point of staging on a cluster is that **stages want different
