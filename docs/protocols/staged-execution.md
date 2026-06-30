@@ -29,7 +29,8 @@
 |---|---|
 | Stage *science*: `SiestaStageSpec`, `cfg.stages`, validation, per-stage `.fdf` | **built** (`config/siesta.py`, `validation/siesta.py`, `siesta/input.py`) |
 | `jobset` model + `job-set@1` persistence — `to_dict`/`from_dict` + `write`/`load` (§ 3) | **built** (`jobset/model.py`) |
-| `molbuilder jobset` CLI — `plan` / `prep` / `submit` over a bundle's `job-set.json` (§ 5) | **built** (`jobset/_cli.py`) |
+| `molbuilder jobset` CLI — `plan` / `prep` / `submit` / `status` over a bundle's `job-set.json` (§ 5) | **built** (`jobset/_cli.py`) |
+| `jobset` **runstatus** — the *inform* layer (§ 10): per-stage state + warm-file inventory + first-incomplete pointer, reusing the Results-tab directory decoder | **built** (`jobset/runstatus.py`) |
 | `jobset` materialize engine — data symlinks (shared/script/carry) (§ 4) | **built** (`jobset/materialize.py`) |
 | `jobset` **prep** engine — render wrappers in root (from the real files) + materialize + link wrappers into job dirs (§ 5) | **built** (`jobset/prep.py::prep_jobset`) |
 | `jobset` plan engine — STAGE-PLAN table (§ 5) | **built** (`jobset/plan.py`) |
@@ -541,7 +542,9 @@ resumes from its last *completed* stage. Surface that, don't paper over it.
 **In a job-set:** each stage's restart files live in its own dir →
 continue = **re-submit that stage** (engine auto-picks-up; `--continue` to
 assert). A cancelled chain is resumed by the user re-submitting from the
-**first incomplete stage** — molbuilder shows which; it does not decide.
+**first incomplete stage** — `molbuilder jobset status` shows which (per-stage
+state + warm-file inventory + the first-incomplete pointer, via
+`runstatus.jobset_status`); it does not decide.
 
 ---
 
@@ -676,16 +679,17 @@ more than one place:
    three above, plus any future persisted artifact. *Infra, not a jobset
    detail.*
 
-2. **`molbuilder/runstatus.py` — a run/stage status reader.** The "molbuilder
-   informs, the user decides" half of § 10–§ 11 has **no** implementation
-   yet: there is no tool that answers, for a job dir, *did it converge? was
-   it killed? are warm-restart files present? which is the first incomplete
-   stage?* This is needed by staging **and** the bench **and** the results
-   tab. Build it once: parse the engine `.out` (reuse `parse/` engines) +
-   check the project-ID warm files (`script-execution.md` inventory) +
-   read checkpoint state (`checkpoint.py`) → a `RunStatus` record the
-   `plan`/UI/CLI surface. *This is the missing "inform" infrastructure, and
-   the highest-leverage next build.*
+2. **`jobset/runstatus.py` — a run/stage status reader. ✅ BUILT.** The
+   "molbuilder informs, the user decides" half of § 10 is now implemented:
+   `jobset_status(jobset, base_dir)` answers, per stage, *finished / running /
+   failed / pending / not-started*, which warm-restart files are present, and
+   *which is the first incomplete stage* (the resume pointer). It **reuses**
+   the Results-tab directory decoder (`parse.dirs.job.decode_run_dir`) for the
+   per-dir state — no reinvented convergence parsing — and adds the warm-file
+   inventory (`script-execution.md`) + the cross-stage pointer. Surfaced as
+   `molbuilder jobset status` and `render_status`. Read-only; never
+   auto-resumes. *Still a candidate to also serve the bench + results tab —
+   the engine-agnostic `JobSetStatus` record is the shared shape for that.*
 
 3. **`molbuilder snapshot branch` (+ `diff`, `prune`).** The checkpoint
    design (`run-checkpoints.md` Phases 4–5) specifies branch/diff/prune but

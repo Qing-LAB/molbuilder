@@ -150,6 +150,17 @@ molbuilder's job is to **organize and inform** — it never silently re-runs or
 deletes your work, because redoing a long calculation unknowingly is
 expensive. You stay in control.
 
+**First, ask molbuilder where things stand:**
+
+```bash
+molbuilder jobset status bundle/
+```
+
+It shows each stage's state (finished / running / failed / pending /
+not-started), which restart files are present, and — most useful — the
+**first incomplete stage**, i.e. exactly where to pick back up. It only
+reports; it never resumes for you.
+
 - **A stage was interrupted (time limit, crash).** Re-submit that one stage;
   the modeling code (SIESTA/PySCF) picks up from its own restart files:
   ```bash
@@ -175,6 +186,7 @@ expensive. You stay in control.
 | Build a staged bundle | `molbuilder fdf IN.xyz bundle/JOB.fdf --stage-strategy publishable --jobset --psml-lib DIR` |
 | Lay out the stage folders | `molbuilder jobset prep bundle/` |
 | See what will run (no run) | `molbuilder jobset plan bundle/` |
+| Check progress / where to resume | `molbuilder jobset status bundle/` |
 | Preview the launch commands | `molbuilder jobset submit bundle/ --mode submit --domain NAME --dry-run` |
 | Run on a cluster | `molbuilder jobset submit bundle/ --mode submit --domain NAME` |
 | Run on your own machine | `molbuilder jobset submit bundle/ --mode direct` |

@@ -11,10 +11,12 @@ from .materialize import materialize, job_dir_name, relink
 from .prep import prep_jobset, PrepError
 from .plan import render_plan
 from .submit import submit_jobset, JobResult, SubmitError
+from .runstatus import jobset_status, render_status, StageStatus, JobSetStatus
 
 __all__ = [
     "Carry", "Job", "JobSet", "Resources", "SCHEMA",
     "materialize", "job_dir_name", "relink",
     "prep_jobset", "PrepError", "render_plan",
     "submit_jobset", "JobResult", "SubmitError",
+    "jobset_status", "render_status", "StageStatus", "JobSetStatus",
 ]

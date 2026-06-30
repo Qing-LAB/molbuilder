@@ -25,6 +25,7 @@ from .model import JobSet
 from .plan import render_plan
 from .prep import prep_jobset, PrepError
 from .submit import submit_jobset, SubmitError
+from .runstatus import jobset_status, render_status
 
 _JOBSET_FILE = "job-set.json"
 
@@ -60,6 +61,19 @@ def plan_cmd(bundle: str) -> None:
     carry) + the order.  Reads only ``job-set.json`` -- changes nothing."""
     js, _ = _load(bundle)
     click.echo(render_plan(js))
+
+
+@jobset_group.command("status", short_help="show per-stage status + resume point")
+@click.argument("bundle", type=click.Path(exists=True, file_okay=False),
+                default=".")
+def status_cmd(bundle: str) -> None:
+    """Show each stage's run state (finished / running / failed / pending /
+    not-started), which warm-restart files are present, and the FIRST
+    incomplete stage (the one to resume from).  Read-only -- molbuilder
+    informs; you decide whether to continue or switch (staged-execution.md
+    § 10).  Reuses the same directory decoder as the Results tab."""
+    js, base = _load(bundle)
+    click.echo(render_status(jobset_status(js, base)))
 
 
 @jobset_group.command("prep", short_help="render launchers + lay out job dirs")

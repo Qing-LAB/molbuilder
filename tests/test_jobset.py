@@ -16,6 +16,7 @@ from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
 from molbuilder.jobset.submit import submit_jobset, SubmitError
 from molbuilder.jobset.prep import prep_jobset
+from molbuilder.jobset.runstatus import jobset_status, render_status
 
 
 class _CP:
@@ -466,3 +467,70 @@ def test_cli_submit_requires_mode(tmp_path):
     runner, grp = _runner()
     r = runner.invoke(grp, ["submit", str(tmp_path)])
     assert r.exit_code != 0                                # --mode required
+
+
+# --------------------------------------------------------------------- #
+#  runstatus (the inform layer)                                          #
+# --------------------------------------------------------------------- #
+
+def _fake_decoder(states):
+    """Return a decode_run_dir stand-in: dir-name -> state."""
+    class _R:
+        def __init__(self, state):
+            self.status = {"state": state, "detail": state}
+    def fake(run_dir):
+        return _R(states[run_dir.name])
+    return fake
+
+
+def test_status_fresh_bundle_all_not_started(tmp_path):
+    st = jobset_status(_ladder(), tmp_path)        # nothing prepped
+    assert [s.state for s in st.stages] == ["not-started", "not-started"]
+    assert st.first_incomplete == "s1" and st.complete is False
+
+
+def test_status_pending_and_warm_files(tmp_path):
+    (tmp_path / "point-s1").mkdir()
+    (tmp_path / "point-s1" / "demo.XV").write_text("x")   # label = jobset.name
+    st = jobset_status(_ladder(), tmp_path)
+    assert st.stages[0].state == "pending"                # dir, no .out
+    assert "demo.XV" in st.stages[0].warm_files
+
+
+def test_status_first_incomplete_advances(tmp_path, monkeypatch):
+    import molbuilder.parse.dirs.job as jobmod
+    for n in ("point-s1", "point-s2"):
+        d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
+    monkeypatch.setattr(jobmod, "decode_run_dir",
+                        _fake_decoder({"point-s1": "finished",
+                                       "point-s2": "running"}))
+    st = jobset_status(_ladder(), tmp_path)
+    assert st.stages[0].state == "finished"
+    assert st.first_incomplete == "s2" and st.complete is False
+
+
+def test_status_complete_when_all_finished(tmp_path, monkeypatch):
+    import molbuilder.parse.dirs.job as jobmod
+    for n in ("point-s1", "point-s2"):
+        d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
+    monkeypatch.setattr(jobmod, "decode_run_dir",
+                        _fake_decoder({"point-s1": "finished",
+                                       "point-s2": "finished"}))
+    st = jobset_status(_ladder(), tmp_path)
+    assert st.complete is True and st.first_incomplete is None
+    assert "All stages finished" in render_status(st)
+
+
+def test_render_status_shows_resume_pointer(tmp_path):
+    txt = render_status(jobset_status(_ladder(), tmp_path))
+    assert "JOB-SET STATUS -- demo" in txt
+    assert "First incomplete stage: s1" in txt
+    assert "does NOT auto-resume" in txt
+
+
+def test_cli_status(tmp_path):
+    _ladder().write(tmp_path / "job-set.json")
+    runner, grp = _runner()
+    r = runner.invoke(grp, ["status", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "JOB-SET STATUS" in r.output and "First incomplete" in r.output
