@@ -100,6 +100,12 @@ stage):
 This is the same contract PySCF enforces (config.md cross-engine
 equivalence); SIESTA stages are no longer the unvalidated outlier.
 
+**Execution on a scheduler** — how the ladder runs as a *job-set*
+(per-stage directories, symlink-shared package, per-stage resources, a
+dependency chain with `.XV` carry-forward) is specified in
+[`../protocols/staged-execution.md`](../protocols/staged-execution.md).
+The monolithic single-job runner below is its `direct`-mode fallback.
+
 **Strategy presets** (`SIESTA_STAGE_STRATEGY_PRESETS`).  Overlay
 enable-flag patterns onto whatever stage knobs are in `cfg.stages`:
 
