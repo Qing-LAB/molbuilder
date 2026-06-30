@@ -25,7 +25,7 @@ def _ladder() -> JobSet:
         shared=["C.psml", "mb_monitor.py"],
         jobs=[
             Job(name="s1", script="demo_s1.fdf",
-                resources=Resources(domain="htc", walltime="0-04:00:00")),
+                resources=Resources(domain="htc", time="0-04:00:00")),
             Job(name="s2", script="demo_s2.fdf",
                 resources=Resources(domain="public", exclusive=True),
                 depends_on="s1", dep_kind="afterok",
@@ -210,7 +210,7 @@ def test_stages_to_jobset_resources_injection():
     from molbuilder.jobset.model import Resources
     from molbuilder.siesta.stages import stages_to_jobset
 
-    overrides = {"stage2": Resources(domain="public", walltime="7-00:00:00",
+    overrides = {"stage2": Resources(domain="public", time="7-00:00:00",
                                      exclusive=True)}
     cfg = SiestaConfig()
     js = stages_to_jobset(cfg, resources_for=overrides.get)

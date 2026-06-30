@@ -13,7 +13,9 @@
 > per-job `-J` § 4.4), `script-execution.md` (engine-native resume),
 > `run-checkpoints.md` (git tag/branch), `job-execution.md`
 > (generate→prep→submit bundle lifecycle), `benchmark-workflow.md`
-> (the `_mb_point` isolation this generalizes).
+> (the `_mb_point` isolation this generalizes), and **`data-vocabulary.md`
+> — the concentrated definition of every field name + JSON format used
+> here (`job-set@1`, `Resources` fields, the canonical vocabulary).**
 
 ---
 
@@ -107,12 +109,12 @@ classDiagram
   }
   class Resources {
     +str domain
-    +str walltime
+    +str time
     +bool exclusive
     +str mem
     +str gres
     +int mpi_np
-    +int omp
+    +int cpus_per_task
   }
   class Carry {
     +str pattern
@@ -153,11 +155,11 @@ ordered + acyclic).
   "shared": ["C.psml", "S.psml", "Au.psml", "H.psml", "mb_monitor.py"],
   "jobs": [
     { "name": "stage1", "script": "bdt_stage1.fdf",
-      "resources": {"domain": "htc", "walltime": "0-04:00:00",
+      "resources": {"domain": "htc", "time": "0-04:00:00",
                     "exclusive": false},
       "depends_on": null, "dep_kind": "afterok", "carry": [] },
     { "name": "stage2", "script": "bdt_stage2.fdf",
-      "resources": {"domain": "public", "walltime": "7-00:00:00",
+      "resources": {"domain": "public", "time": "7-00:00:00",
                     "exclusive": true},
       "depends_on": "stage1", "dep_kind": "afterany",
       "carry": [ {"pattern": "bdt.XV", "from_job": "stage1"},
@@ -316,8 +318,8 @@ relax knobs):
 
 ```python
 stages_to_jobset(cfg, shared=[...], resources_for={
-    "stage1": Resources(domain="htc",    walltime="0-04:00:00"),
-    "stage2": Resources(domain="public", walltime="7-00:00:00", exclusive=True),
+    "stage1": Resources(domain="htc",    time="0-04:00:00"),
+    "stage2": Resources(domain="public", time="7-00:00:00", exclusive=True),
 }.get)
 ```
 

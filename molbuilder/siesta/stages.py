@@ -73,9 +73,11 @@ def stages_to_jobset(
             if r is not None:
                 return r
         # Default: inherit the job-level parallel knobs; scheduler
-        # resources (domain/walltime/exclusive/mem/gres) resolve at submit.
+        # resources (domain/time/exclusive/mem/gres) resolve at submit.
+        # This is the config->exchange translation boundary: SiestaConfig's
+        # ``omp_threads`` becomes the exchange field ``cpus_per_task``.
         return Resources(mpi_np=getattr(cfg, "mpi_np", None),
-                         omp=getattr(cfg, "omp_threads", None))
+                         cpus_per_task=getattr(cfg, "omp_threads", None))
 
     jobs = []
     prev = None

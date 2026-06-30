@@ -36,17 +36,21 @@ class Resources:
     "inherit the job-level default / per-job estimate" (assistant, not
     nanny — no surprise resource choices).
 
-    ``domain`` is a ``scheduler.routing`` name (slurm-integration.md
-    § 4.3); the submit engine resolves it to ``-p``/``-q``.  ``gres`` is a
-    raw SLURM gres string (e.g. ``"gpu:a100:1"``) or None for a CPU job.
+    Field names match the EXCHANGE vocabulary used by the other persisted
+    artifacts (bench-manifest, scheduler config) so the system speaks one
+    language on files: ``mpi_np`` / ``cpus_per_task`` / ``time`` / ``mem`` /
+    ``exclusive`` (NOT ``omp`` / ``walltime``).  ``domain`` is a
+    ``scheduler.routing`` name (slurm-integration.md § 4.3) the submit engine
+    resolves to ``-p``/``-q``; ``gres`` is a raw SLURM gres string (e.g.
+    ``"gpu:a100:1"``) or None.
     """
-    domain:    Optional[str]   = None
-    walltime:  Optional[str]   = None    # SLURM -t (D-HH:MM:SS)
-    exclusive: Optional[bool]  = None
-    mem:       Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
-    gres:      Optional[str]   = None    # SLURM --gres (e.g. "gpu:a100:1")
-    mpi_np:    Optional[int]   = None
-    omp:       Optional[int]   = None
+    domain:        Optional[str]   = None
+    time:          Optional[str]   = None    # SLURM -t (D-HH:MM:SS); == scheduler defaults.time
+    exclusive:     Optional[bool]  = None
+    mem:           Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
+    gres:          Optional[str]   = None    # SLURM --gres (e.g. "gpu:a100:1")
+    mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
+    cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

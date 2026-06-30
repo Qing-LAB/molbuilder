@@ -187,6 +187,13 @@ No section-level merging between the two server-wide candidates
 
 ## 4. Schema — the keys the generator needs
 
+> For the system-wide names exchanged BETWEEN subsystems (the persisted
+> `@N` schema strings, the canonical config-layer ↔ scheduler-layer
+> parameter vocabulary, and the identifier/path conventions), see the
+> concentrated definition in
+> [`protocols/data-vocabulary.md`](protocols/data-vocabulary.md). This
+> section covers the `molbuilder.json` user-config keys only.
+
 ```json
 {
   "script_generation": {

@@ -18,8 +18,8 @@ def _res_str(r) -> str:
     bits: List[str] = []
     if r.domain:
         bits.append(f"domain={r.domain}")
-    if r.walltime:
-        bits.append(f"t={r.walltime}")
+    if r.time:
+        bits.append(f"t={r.time}")
     if r.exclusive is not None:
         bits.append("exclusive" if r.exclusive else "shared")
     if r.gres:
