@@ -1362,11 +1362,30 @@ def validate_siesta_stages(stages: List[SiestaStageSpec]) -> List[str]:
     name_re = re.compile(r"^[A-Za-z0-9_]+$")
     valid_relax = {"CG", "Broyden", "FIRE"}
     valid_policy = {"proceed", "continue", "halt"}
+    # Structural invariants the generator can't recover from (parity with
+    # pyscf.validate_stages): an empty / all-disabled ladder, and -- the
+    # fatal one -- duplicate names, since per-stage fdfs are keyed
+    # ``<basename>_<name>.fdf`` and a collision silently overwrites a stage
+    # in render_siesta_stage_fdfs.
+    if not stages:
+        errors.append("stages: list is empty; need at least 1 stage")
+        return errors
+    if not any(s.enabled for s in stages):
+        errors.append(
+            "stages: no stage is enabled; either enable one or set "
+            "relax_type='none' to skip the optimization loop entirely")
+    seen_names: set = set()
     for i, s in enumerate(stages):
         prefix = f"stages[{i}]"
-        if not isinstance(s.name, str) or not name_re.match(s.name):
+        if not isinstance(s.name, str) or not name_re.match(s.name or ""):
             errors.append(
                 f"{prefix}.name = {s.name!r}: must match [A-Za-z0-9_]+")
+        elif s.name in seen_names:
+            errors.append(
+                f"{prefix}.name = {s.name!r}: duplicate; per-stage output "
+                f"files would collide (one stage silently overwrites another)")
+        else:
+            seen_names.add(s.name)
         if s.relax_type not in valid_relax:
             errors.append(
                 f"{prefix}.relax_type = {s.relax_type!r}: must be one of "
@@ -1443,14 +1462,16 @@ def siesta_stages_from_dicts(payload: Any) -> List[SiestaStageSpec]:
     payloads round-trip cleanly.
     """
     import dataclasses as _dc
+    # TypeError on shape errors -- parity with pyscf.stages_from_dicts and
+    # the web _shared coercion boundary (so callers catch one type).
     if not isinstance(payload, list):
-        raise ValueError(
+        raise TypeError(
             f"stages payload must be a list, got {type(payload).__name__}")
     spec_fields = {f.name: f for f in _dc.fields(SiestaStageSpec)}
     out: List[SiestaStageSpec] = []
     for i, entry in enumerate(payload):
         if not isinstance(entry, dict):
-            raise ValueError(
+            raise TypeError(
                 f"stages[{i}] must be a dict, got "
                 f"{type(entry).__name__}")
         coerced: Dict[str, Any] = {}

@@ -376,6 +376,20 @@ def _validate_siesta(struct: Structure, cfg,
         ),
     )
 
+    # Multi-stage relaxation ladder (parity with PySCF's validate_stages,
+    # 2026-06-29; engines/siesta.md "Staged optimization").  When a
+    # relaxation will run, ``cfg.stages`` drives render_siesta_stage_fdfs,
+    # so reject the structural errors the generator can't recover from --
+    # empty / all-disabled list, DUPLICATE NAMES (silently overwrite a
+    # per-stage fdf), bad relax_type / non-positive knobs / bad policy --
+    # as clean "error" issues at the Build-tab gate instead of a
+    # render-time crash or a silently dropped stage.  Closes the
+    # cross-engine gap where SIESTA stages bypassed validation entirely.
+    if relax not in ("none", ""):
+        from ..config.siesta import validate_siesta_stages
+        for _msg in validate_siesta_stages(getattr(cfg, "stages", []) or []):
+            issues.append(Issue("error", _msg, "config.stages"))
+
     # SIESTA-specific: spin_polarized + no spin_total + open-shell metal
     # -> propor: ERROR: IMAX = 0 (initial-DM constructor abort).  See
     # the 2026-05-24 hemeC-dithiol incident for the failure mode

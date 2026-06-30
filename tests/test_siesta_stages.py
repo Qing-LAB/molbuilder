@@ -127,6 +127,57 @@ def test_validate_catches_unknown_policy():
     assert any("on_nonconvergence" in e for e in errs)
 
 
+# --- structural-invariant parity with pyscf.validate_stages (2026-06-29) ---
+
+def test_validate_catches_empty_list():
+    errs = validate_siesta_stages([])
+    assert any("empty" in e for e in errs)
+
+
+def test_validate_catches_all_disabled():
+    stages = [dataclasses.replace(s, enabled=False)
+              for s in _default_siesta_stages()]
+    errs = validate_siesta_stages(stages)
+    assert any("no stage is enabled" in e for e in errs)
+
+
+def test_validate_catches_duplicate_names():
+    """The fatal one: per-stage fdfs key on <basename>_<name>.fdf, so a
+    duplicate name silently overwrites a stage in render_siesta_stage_fdfs."""
+    s0 = _default_siesta_stages()[0]
+    dup = [dataclasses.replace(s0, name="stage1"),
+           dataclasses.replace(s0, name="stage1")]
+    errs = validate_siesta_stages(dup)
+    assert any("duplicate" in e for e in errs)
+
+
+def test_validate_wired_into_validate_pipeline():
+    """The whole point: a broken SIESTA ladder must surface as an "error"
+    issue through validate() (the Build-tab / CLI gate), not crash at
+    render or silently drop a stage -- parity with PySCF."""
+    import numpy as np
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.structure import Structure
+    from molbuilder.validation import validate
+
+    struct = Structure(
+        elements=["H"], positions=np.zeros((1, 3)), atom_names=["H1"],
+        residue_ids=[1], residue_names=["UNL"], chain_ids=["A"],
+    )
+    s0 = _default_siesta_stages()[0]
+    cfg = SiestaConfig(
+        relax_type="CG",
+        stages=[dataclasses.replace(s0, name="dup"),
+                dataclasses.replace(s0, name="dup")],
+    )
+    issues = validate(struct, cfg)
+    stage_errs = [i for i in issues
+                  if getattr(i, "where", "") == "config.stages"
+                  and i.severity == "error"]
+    assert stage_errs, f"expected a config.stages error issue, got {issues!r}"
+    assert any("duplicate" in i.message for i in stage_errs)
+
+
 # --------------------------------------------------------------------- #
 #  Strategy presets                                                      #
 # --------------------------------------------------------------------- #

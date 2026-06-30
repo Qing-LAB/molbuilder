@@ -80,6 +80,26 @@ established by decision-log 2026-06-23 (stage1 CG warm-up 0.05 eV/Å,
 stage2 Broyden publishable 0.04 eV/Å, stage3 Broyden crystal-tight
 0.01 eV/Å).
 
+**Structural validation** (`validate_siesta_stages`, wired into
+`validation/siesta.py::_validate_siesta` — parity with PySCF's
+`validate_stages` via `validation/pyscf.py`, 2026-06-29).  When a stage
+bundle is requested, the same `validate()` pipeline the Build tab + CLI
+run rejects the structural errors the generator can't recover from, as
+clean `"error"` issues (NOT a render-time crash or a silent dropped
+stage):
+
+* empty `stages` list, or no enabled stage (would emit a no-op / unbound
+  geometry);
+* **duplicate stage `name`** — fatal: per-stage fdfs are keyed
+  `<basename>_<name>.fdf`, so a collision silently overwrites a stage in
+  `render_siesta_stage_fdfs`;
+* bad `name` chars, `relax_type` outside {CG,Broyden,FIRE}, non-positive
+  `relax_steps`/`relax_force_tol`/`relax_max_displ`, bad
+  `on_nonconvergence`, or `continue_retries` outside [1,5].
+
+This is the same contract PySCF enforces (config.md cross-engine
+equivalence); SIESTA stages are no longer the unvalidated outlier.
+
 **Strategy presets** (`SIESTA_STAGE_STRATEGY_PRESETS`).  Overlay
 enable-flag patterns onto whatever stage knobs are in `cfg.stages`:
 
