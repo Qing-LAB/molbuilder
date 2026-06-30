@@ -24,9 +24,14 @@
 | **Monolithic runner** — all stages in ONE job, sequential bash loop, in-place `.XV` auto-restart | **built** (`render_siesta_stages_runner`); becomes the `direct` mode (§ 6) |
 | Benchmark job-set isolation (`_mb_point`: per-job dir + `ln -sfn` shared files) | **built** (`bench/adapters.py`) |
 | Scheduler routing/exclusive/mem/`-J` per job | **built** (slurm-integration.md § 4.3–4.4) |
-| **Per-stage resource overrides** (`SiestaStageSpec.resources`) | **PROPOSED** (§ 3) |
-| **Stage submit driver** — one sbatch/stage, dependency chain, `.XV` carry-forward | **PROPOSED** (§ 4) |
-| `on_nonconvergence` → SLURM dependency mapping | **PROPOSED** (§ 5) |
+| **`jobset` framework — data model + `job-set@1` persistence** | **built** (`jobset/model.py`) |
+| **`jobset` materialize engine** — per-job dirs + shared/carry symlinks | **built** (`jobset/materialize.py`) |
+| **`jobset` plan engine** — STAGE-PLAN / BENCH-PLAN table | **built** (`jobset/plan.py`) |
+| **SIESTA stage producer** — `cfg.stages` → ladder `JobSet` (deps + carry) | **built** (`siesta/stages.py::stages_to_jobset`) |
+| Per-stage resources | **built** as `Job.resources` + the `resources_for` producer seam; a per-stage UI/CLI source is **PROPOSED** (§ 3) |
+| **`jobset` submit engine** — dependency-threaded sbatch driver | **PROPOSED** (§ 4; `jobset/submit.py`) |
+| `on_nonconvergence` → SLURM dependency mapping | **built** in the producer (`_dep_kind`); consumed by the submit engine (§ 5) |
+| CLI / prep wiring + bench migration onto the framework | **PROPOSED** (§ 8 D4) |
 
 ---
 
@@ -76,6 +81,82 @@ part; staging reuses it.
 
 The last two rows are the only genuinely new mechanics; everything above
 is reuse.
+
+---
+
+## § 2.1 Framework architecture — the `JobSet` abstraction
+
+This is **not** a stage-specific patch onto the bench. The bench sweep and
+the stage ladder are two **producers** of one data structure — `JobSet` —
+consumed by shared, engine-agnostic **engines** (materialize / submit /
+plan). Each module has a single responsibility and no knowledge of the
+others' internals (logical isolation).
+
+```
+ PRODUCERS (engine knowledge)        CORE (engine-agnostic)
+ ───────────────────────────        ──────────────────────────────────
+ bench:  format_bench  ───┐
+                          ├──►  JobSet  ──►  materialize  (dirs+symlinks+carry)
+ siesta: stages_to_jobset ┘     (data)  ──►  submit       (dependency-threaded sbatch)
+                                        ──►  plan         (BENCH-PLAN / STAGE-PLAN)
+                                        ──►  job-set.json  (persistence, job-set@1)
+```
+
+**Data model** (`molbuilder/jobset/model.py` — pure dataclasses, no IO,
+no scheduler, no filesystem):
+
+- **`Resources`** — a per-job scheduler ask: `domain` (routing name,
+  slurm-integration.md § 4.3) / `walltime` / `exclusive` / `mem` / `gres`
+  / `mpi_np` / `omp`. All `Optional` (`None` = inherit the job-level
+  default / per-job estimate — *assistant, not nanny*).
+- **`Carry`** — one inter-job data-flow rule: `pattern` (e.g. `"*.XV"`)
+  carried `from_job` (the producing job's name). The materialize engine
+  lays it as a symlink; this is the abstraction of "shared information
+  produced at runtime", distinct from the static shared package.
+- **`Job`** — one unit of work: `name` (unique → its dir `point-<name>/`
+  and its `-J`), `script` (its input filename), `resources: Resources`,
+  `depends_on: Optional[str]` (producer job name), `dep_kind`
+  (`"afterok"`/`"afterany"`), `carry: List[Carry]`.
+- **`JobSet`** — `name`, `engine`, `kind` (`"sweep"`/`"ladder"`),
+  `shared: List[str]` (static package files symlinked into EVERY job dir
+  — pseudos, geometry, monitor), `jobs: List[Job]`, `to_json`/`from_json`.
+
+**Shared-information abstraction (the heart of the design).** Information
+shared across jobs is modeled in exactly two forms, nothing implicit:
+1. **static package** → `JobSet.shared` (same bytes for every job; one
+   set of symlinks),
+2. **runtime-produced** → `Carry` (one job's output feeds another; a
+   symlink resolved after the producer runs).
+A producer declares both; no job reaches outside these two channels.
+
+**Persistence** (`job-set@1`): a `JobSet` serializes to `job-set.json` in
+the bundle — the declarative source of truth that materialize/submit/plan
+all read, same lifecycle as `environment.json` / `bench-manifest.json`
+(written at prep, consumed downstream; engine-neutral, self-describing,
+versioned). The whole execution plan is inspectable as data, not buried
+in a bash script.
+
+**Engines (one responsibility each, engine-agnostic):**
+
+| module | input | output | knows about |
+|---|---|---|---|
+| `jobset/model.py` | — | the dataclasses + `job-set@1` (de)serialize | nothing (pure data) |
+| `jobset/materialize.py` | `JobSet` + target dir | `point-<name>/` dirs, `shared` + `carry` symlinks | filesystem only |
+| `jobset/submit.py` | `JobSet` + `SchedulerAdapter` | dependency-threaded submit driver | the scheduler adapter only |
+| `jobset/plan.py` | `JobSet` | the human PLAN table | nothing (formats data) |
+
+**Producers (the ONLY place engine knowledge lives):**
+
+- `bench/adapters.format_bench` → a **sweep** `JobSet` (independent jobs,
+  empty `carry`).
+- `siesta/stages.py::stages_to_jobset(cfg)` → a **ladder** `JobSet`
+  (chained jobs; `dep_kind` from `on_nonconvergence`, § 5; `carry` per
+  § 8 D1).
+
+This is the systematic framework: producers know engines, the core knows
+data, and `Carry`/`shared` are the only sanctioned shared-information
+channels. The bench migrates onto it (§ 8 D4) — it does not get a parallel
+copy.
 
 ---
 
@@ -212,22 +293,41 @@ dependency-threading submit driver (§ 4); the policy→dependency mapping
 
 ---
 
-## § 8 Open decisions
+## § 8 Decisions (resolved 2026-06-30)
 
-- **D1 — carry-forward set.** `.XV` is mandatory (geometry). Also link
-  `.DM` (SCF warm-start, big file) and `.CG` (optimizer history)? Default
-  YES for `.DM`/`.CG` when present; they cut the next stage's first-SCF
-  cost. Confirm.
-- **D2 — `continue` retries as jobs.** Resubmit-self via a small `afterany`
-  self-dependency loop, or a single job with an internal retry? Lean:
-  internal retry inside that stage's `.run.sh` (the monolith already has
-  the retry logic) so the chain stays one-job-per-stage.
-- **D3 — resource defaulting visibility.** Like the benchmark's BENCH-PLAN,
-  emit a `STAGE-PLAN.md` showing each stage's resolved domain/walltime/
-  solver/hardware + the dependency graph, so the per-stage choices are in
-  front of the user before submit (discoverability — § 8.4 of job-exec).
-- **D4 — should the benchmark and stage drivers share one `job-set`
-  module?** They now differ only in (independent vs chained) + (carry-
-  forward). A common `job_set.py` (`mb_point`, routing, submit) with two
-  thin callers would prevent drift. Lean YES, but stage it AFTER the
-  stage driver works standalone.
+- **D1 — carry-forward set: `.XV` always; `.DM` iff `use_save_dm`; `.CG`
+  iff the consecutive stages share `relax_type`.**
+  `.XV` is the relaxed geometry — the point of chaining, always carried.
+  `.DM` (SCF density matrix) warm-starts the next SCF and is carried when
+  `cfg.use_save_dm` (SIESTA's `DM.UseSaveDM`, default on); same basis/mesh
+  across stages (shared `SystemLabel`) makes it valid. `.CG` is the
+  **optimizer** history and is algorithm-specific: carrying it across a
+  `relax_type` switch (the common `CG`→`Broyden` ladder) is at best
+  ignored, at worst wrong — so `.CG` is carried **only** when stage N and
+  N+1 use the same `relax_type` (same-algorithm continuation warm-starts
+  the optimizer; an algorithm switch restarts it fresh from the carried
+  geometry). This is a deliberate, documented improvement over the
+  monolith (which keeps `.CG` in-dir regardless).
+
+- **D2 — `continue` is an in-`.run.sh` retry, NOT extra jobs.**
+  One sbatch per stage. A stage whose policy is `continue` re-enters
+  SIESTA up to `continue_retries` times from its own `.XV` inside that
+  stage's wrapper (reusing the monolith's retry logic), then exits
+  success/failure per the fall-through-to-`halt` rule. Keeps the
+  dependency graph exactly one job per stage — no self-dependency loops.
+
+- **D3 — yes: emit `STAGE-PLAN.md` at prep.** Mirrors `BENCH-PLAN.md`
+  (job-execution.md § 8.4): a table of each stage's resolved
+  domain/walltime/solver/hardware + the carry-forward set + the
+  dependency graph + the `on_nonconvergence` policy, printed before
+  submit so the per-stage choices and the chain are visible up front.
+
+- **D4 — the `jobset` framework IS the core (built first), not a
+  follow-up.** Per the architectural directive (2026-06-30), build
+  `jobset/{model,materialize,submit,plan}.py` as the foundation
+  (§ 2.1); `siesta/stages.py::stages_to_jobset` is its first producer.
+  The bench then **migrates** onto it — `format_bench` returns a `JobSet`
+  instead of a `{filename: text}` dict — as a fast-follow (low risk: the
+  framework is additive and the migration is a producer swap, with the
+  existing bench tests as the safety net). No parallel copy of the
+  isolation/submit logic is created at any point.
