@@ -38,36 +38,34 @@ from typing import Dict, List, Optional, Tuple
 # Big binary patterns (gitignored, archived by SHA on each checkpoint).
 # Mirrors the .gitignore policy in docs/protocols/run-checkpoints.md § 9.1.
 # Glob patterns; matched non-recursively against the working dir top level.
-_BIG_BINARY_GLOBS = (
-    "*.DM",
-    "*.HSX",
-    "*.TSHS",
-    "*.TBT.AVTRANS_*",
-    "*.TBT.CC",
-    "*.TBT.DOS",
-)
+# Big-binary classification is ENGINE-SPECIFIC and PERSISTED per repo
+# (``.mbcheckpoint.json``, git-tracked), so restore uses the SAME
+# classification the checkpoint used and the user can edit it.  These are the
+# built-in defaults seeded at ``init`` from the EXPLICIT engine (the web/CLI
+# caller already knows it -- a UI<->API contract); the persisted config is the
+# source of truth thereafter.  See docs/protocols/run-checkpoints.md § 9.
+_ENGINE_BIG_BINARY_GLOBS = {
+    "siesta": ("*.DM", "*.HSX", "*.TSHS",
+               "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS"),
+    "pyscf":  ("*.chk", "*.cube"),
+}
+# Safe default when the engine is unspecified: the UNION of every engine's
+# patterns.  Over-archiving is harmless; under-archiving silently loses data.
+_DEFAULT_ARCHIVE_GLOBS = tuple(sorted({
+    g for globs in _ENGINE_BIG_BINARY_GLOBS.values() for g in globs}))
 
-# Default .gitignore contents written by ``init`` when the file doesn't
-# already exist.  See docs/protocols/run-checkpoints.md § 9 for the
-# rationale per pattern.
-_DEFAULT_GITIGNORE = """\
-# molbuilder run-checkpoints contract: this dir is managed by git.
-# Large binary state files are archived separately in .binsnapshots/<sha>/.
-# See docs/protocols/run-checkpoints.md § 9 for rationale per pattern.
+_CHECKPOINT_CONFIG = ".mbcheckpoint.json"
+_CHECKPOINT_CONFIG_SCHEMA = "molbuilder/checkpoint-config@1"
 
-# Big binary state (archived by SHA, not committed)
-*.DM
-*.HSX
-*.TSHS
-*.TBT.AVTRANS_*
-*.TBT.CC
-*.TBT.DOS
-
+# Engine-independent .gitignore tail: scratch, caches, editor noise, and the
+# archive dir itself.  The big-binary section is GENERATED from the repo's
+# archive globs (below) so git-ignore and sha-archive never drift apart.
+_GITIGNORE_FIXED_TAIL = """\
 # Pseudopotential cache files (deterministic from .psml)
 *.ion.nc
 *.ion.xml
 
-# SIESTA scratch / rotating logs
+# Scratch / rotating logs
 fdf.*.log
 WORK_*
 INPUT_TMP.*
@@ -75,7 +73,7 @@ INPUT_TMP.*
 # Binary archive directory
 .binsnapshots/
 
-# Other SIESTA per-run scratch / large MD trajectories
+# Large MD trajectories
 *.MD
 *.MD_CAR
 
@@ -83,6 +81,54 @@ INPUT_TMP.*
 *.swp
 *~
 """
+
+
+def _render_gitignore(archive_globs) -> str:
+    """Render ``.gitignore`` with the big-binary section generated from
+    ``archive_globs`` so the git-ignore set and the sha-archive set stay
+    consistent (run-checkpoints.md § 9)."""
+    head = ("# molbuilder run-checkpoints contract: this dir is managed by "
+            "git.\n"
+            "# Large binary state files are archived separately in "
+            ".binsnapshots/<sha>/.\n"
+            "# See docs/protocols/run-checkpoints.md § 9 for rationale.\n\n"
+            "# Big binary state (archived by SHA, not committed) -- "
+            "engine-specific, editable\n")
+    return head + "\n".join(archive_globs) + "\n\n" + _GITIGNORE_FIXED_TAIL
+
+
+def _resolve_archive_globs(engine, archive_globs) -> tuple:
+    """Init-time resolution: explicit ``archive_globs`` win; else the
+    ``engine``'s built-in defaults; else (engine unspecified) the safe
+    union.  Raises for an unknown engine (better a loud error than a silently
+    wrong archive set)."""
+    if archive_globs:
+        return tuple(archive_globs)
+    if engine:
+        globs = _ENGINE_BIG_BINARY_GLOBS.get(engine)
+        if globs is None:
+            raise CheckpointError(
+                f"unknown engine {engine!r} for checkpoint archive globs; "
+                f"known: {sorted(_ENGINE_BIG_BINARY_GLOBS)}.  Pass explicit "
+                f"archive_globs=[...] to override.")
+        return globs
+    return _DEFAULT_ARCHIVE_GLOBS
+
+
+def _read_archive_globs(path) -> tuple:
+    """The repo's persisted big-binary classification (``.mbcheckpoint.json``);
+    falls back to the safe union for repos created before this config existed
+    or if the config is unreadable (robust -- never crash a restore over it)."""
+    cfg = Path(path) / _CHECKPOINT_CONFIG
+    if cfg.is_file():
+        try:
+            from . import persist
+            globs = persist.read_json(cfg).get("archive_globs")
+            if globs:
+                return tuple(globs)
+        except Exception:
+            pass
+    return _DEFAULT_ARCHIVE_GLOBS
 
 # File markers indicating a directory is itself a working dir (must not
 # be subsumed by a parent's checkpoint repo per P5 lowest-directory rule).
@@ -210,9 +256,11 @@ def _check_nested_working_dirs(path: Path) -> List[str]:
 
 
 def _list_big_binaries(path: Path) -> List[Path]:
-    """Top-level big binaries (per ``_BIG_BINARY_GLOBS``)."""
+    """Top-level big binaries per the repo's PERSISTED classification
+    (``.mbcheckpoint.json`` via ``_read_archive_globs`` -- engine-specific,
+    user-editable)."""
     found: List[Path] = []
-    for pat in _BIG_BINARY_GLOBS:
+    for pat in _read_archive_globs(path):
         found.extend(p for p in path.glob(pat) if p.is_file())
     return found
 
@@ -657,10 +705,20 @@ class Repo:
 
     # -- Phase 1: init -------------------------------------------- #
 
-    def init(self) -> None:
+    def init(self, engine: Optional[str] = None,
+             archive_globs: Optional[List[str]] = None) -> None:
         """Initialise the working dir as a git repository.  Idempotent
         (no-op if already initialised).  Refuses if the directory
-        contains nested working dirs (P5)."""
+        contains nested working dirs (P5).
+
+        ``engine`` (``"siesta"`` / ``"pyscf"``) selects the built-in
+        big-binary classification seeded into the persisted config
+        (``.mbcheckpoint.json``); the web/CLI caller already knows it at task
+        setup (UI<->API contract, run-checkpoints.md § 9).  ``archive_globs``
+        overrides with an explicit set.  When neither is given, the safe
+        union of all engines' patterns is used.  Both the persisted config
+        AND the ``.gitignore`` big-binary section are derived from the same
+        resolved globs, so they never drift."""
         p = Path(self.path)
         if self.initialized:
             return
@@ -671,6 +729,8 @@ class Repo:
                 f"present: {nested}.  Each lowest-directory must be "
                 f"its own checkpoint repo (run-checkpoints.md § P5).")
 
+        globs = _resolve_archive_globs(engine, archive_globs)
+
         _run_git(["init", "-q"], cwd=self.path)
         host = os.uname().nodename
         _run_git(["config", "user.email", f"molbuilder@{host}"],
@@ -680,7 +740,17 @@ class Repo:
 
         gi = p / ".gitignore"
         if not gi.exists():
-            gi.write_text(_DEFAULT_GITIGNORE, encoding="utf-8")
+            gi.write_text(_render_gitignore(globs), encoding="utf-8")
+        # Persist the classification (git-tracked, written BEFORE the commit
+        # so it lands in the initial commit and is present for the archive
+        # step below).  The UNIFIED accessor for it is archive_globs() /
+        # set_archive_globs().
+        from . import persist
+        persist.write_json(p / _CHECKPOINT_CONFIG, {
+            "schema": _CHECKPOINT_CONFIG_SCHEMA,
+            "engine": engine or "unspecified",
+            "archive_globs": list(globs),
+        })
         snaps = p / ".binsnapshots"
         snaps.mkdir(exist_ok=True)
         (snaps / ".gitkeep").touch()
@@ -710,6 +780,45 @@ class Repo:
         # Archive big binaries to the new HEAD's SHA.
         head_sha = self._head_sha()
         _archive_binaries(p, head_sha)
+
+    # -- Big-binary classification: the UNIFIED accessor ---------- #
+
+    def archive_globs(self) -> List[str]:
+        """The big-binary patterns this repo archives -- the persisted,
+        engine-specific, user-editable classification (run-checkpoints.md
+        § 9).  THE single read API; CLI, web, and internals all go through
+        it (falls back to the safe union for pre-config repos)."""
+        return list(_read_archive_globs(Path(self.path)))
+
+    def set_archive_globs(self, globs: List[str]) -> List[str]:
+        """Update this repo's big-binary classification (the user-customizable
+        table) and regenerate the ``.gitignore`` big-binary section to match,
+        so git-ignore and sha-archive stay consistent.  Persisted in
+        ``.mbcheckpoint.json``; the change is a normal edit the user then
+        checkpoints.  THE single write API (CLI + web share it).  Raises on an
+        empty set."""
+        self._require_init()
+        cleaned = [str(g).strip() for g in globs if str(g).strip()]
+        if not cleaned:
+            raise CheckpointError(
+                "archive_globs cannot be empty -- restore would archive "
+                "nothing and silently lose binary state.")
+        from . import persist
+        p = Path(self.path)
+        cfg = p / _CHECKPOINT_CONFIG
+        data: Dict[str, Any] = {}
+        if cfg.is_file():
+            try:
+                data = persist.read_json(cfg)
+            except Exception:
+                data = {}
+        data["schema"] = _CHECKPOINT_CONFIG_SCHEMA
+        data["archive_globs"] = cleaned
+        persist.write_json(cfg, data)
+        # keep .gitignore's big-binary section consistent with the archive set.
+        (p / ".gitignore").write_text(_render_gitignore(cleaned),
+                                      encoding="utf-8")
+        return cleaned
 
     # -- Phase 2: checkpoint -------------------------------------- #
 

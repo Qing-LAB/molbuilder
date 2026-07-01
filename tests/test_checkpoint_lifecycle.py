@@ -527,3 +527,80 @@ def test_cli_restore_warns_on_missing_archive(tmp_path):
                                  "-p", str(tmp_path)])
     assert r.exit_code == 0, r.output
     assert "WARNING" in r.output and "NO binary archive" in r.output
+
+
+# ----------------------------------------------------------------- #
+#  Engine-aware, persistent, editable big-binary classification      #
+#  (run-checkpoints.md § 9) -- the unified accessor.                  #
+# ----------------------------------------------------------------- #
+
+
+def test_init_pyscf_engine_archives_chk_not_dm(tmp_path):
+    """PySCF's .chk is a big binary; SIESTA's .DM is not, for a pyscf repo."""
+    (tmp_path / "job.py").write_text("# pyscf script\n")
+    (tmp_path / "job.chk").write_bytes(b"\x00" * 4096)     # PySCF checkpoint
+    repo = Repo(str(tmp_path))
+    repo.init(engine="pyscf")
+    assert "*.chk" in repo.archive_globs()
+    assert "*.DM" not in repo.archive_globs()
+    # .chk archived (not git-committed), and gitignored.
+    sha = repo.resolve_ref("HEAD")
+    assert (tmp_path / ".binsnapshots" / sha / "job.chk").is_file()
+    assert "*.chk" in (tmp_path / ".gitignore").read_text()
+
+
+def test_init_siesta_engine_uses_siesta_globs(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    assert "*.DM" in repo.archive_globs() and "*.chk" not in repo.archive_globs()
+
+
+def test_init_no_engine_uses_safe_union(tmp_path):
+    """Unspecified engine -> union, so nothing is missed regardless of engine."""
+    repo = Repo(str(tmp_path))
+    (tmp_path / "note.txt").write_text("x")
+    repo.init()
+    globs = repo.archive_globs()
+    assert "*.DM" in globs and "*.chk" in globs          # both engines covered
+
+
+def test_set_archive_globs_persists_and_syncs_gitignore(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.set_archive_globs(["*.DM", "*.chk", "*.custombin"])
+    # persisted (read back through the unified accessor)
+    assert Repo(str(tmp_path)).archive_globs() == ["*.DM", "*.chk", "*.custombin"]
+    # .gitignore regenerated to match
+    gi = (tmp_path / ".gitignore").read_text()
+    assert "*.custombin" in gi and "*.chk" in gi
+    # a *.custombin file is now treated as a big binary
+    (tmp_path / "x.custombin").write_bytes(b"\x00" * 512)
+    cp = repo.checkpoint(message="add custom binary")
+    assert cp is not None and cp.has_archive
+
+
+def test_set_archive_globs_rejects_empty(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    with pytest.raises(CheckpointError, match="cannot be empty"):
+        repo.set_archive_globs([])
+
+
+def test_cli_snapshot_config_show_and_set(tmp_path):
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    _seed_working_dir(tmp_path)
+    Repo(str(tmp_path)).init(engine="siesta")
+    runner = CliRunner()
+    # show
+    r = runner.invoke(cli, ["snapshot", "config", "-p", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "*.DM" in r.output
+    # set
+    r = runner.invoke(cli, ["snapshot", "config", "-p", str(tmp_path),
+                            "--set", "*.DM,*.chk"])
+    assert r.exit_code == 0, r.output
+    assert Repo(str(tmp_path)).archive_globs() == ["*.DM", "*.chk"]

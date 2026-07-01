@@ -508,3 +508,54 @@ def test_envelope_bucket_b_restore_legacy_manifest(client, tmp_path):
                     json={"path": str(tmp_path), "ref": "baseline"})
     assert r.status_code == 200
     _assert_bucket_b(r.get_json())
+
+
+# ----------------------------------------------------------------- #
+#  Engine on init + the config get/set contract (run-checkpoints §9) #
+# ----------------------------------------------------------------- #
+
+
+def test_init_with_engine_pyscf_seeds_chk_globs(client, tmp_path):
+    (tmp_path / "job.py").write_text("# pyscf\n")
+    r = client.post("/api/checkpoint/init",
+                    json={"path": str(tmp_path), "engine": "pyscf"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "*.chk" in body["archive_globs"] and "*.DM" not in body["archive_globs"]
+
+
+def test_init_unknown_engine_is_advisory(client, tmp_path):
+    _seed(tmp_path)
+    r = client.post("/api/checkpoint/init",
+                    json={"path": str(tmp_path), "engine": "bogus"})
+    body = r.get_json()
+    assert body["ok"] is False and "unknown engine" in (body.get("error") or "")
+
+
+def test_config_get_and_set_roundtrip(client, tmp_path):
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    Repo(str(tmp_path)).init(engine="siesta")
+    # GET
+    r = client.get("/api/checkpoint/config", query_string={"path": str(tmp_path)})
+    assert r.status_code == 200
+    assert "*.DM" in r.get_json()["archive_globs"]
+    # POST (edit the table)
+    r = client.post("/api/checkpoint/config",
+                    json={"path": str(tmp_path),
+                          "archive_globs": ["*.DM", "*.chk", "*.mybin"]})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()["archive_globs"] == ["*.DM", "*.chk", "*.mybin"]
+    # persisted
+    assert Repo(str(tmp_path)).archive_globs() == ["*.DM", "*.chk", "*.mybin"]
+
+
+def test_config_set_rejects_empty_as_advisory(client, tmp_path):
+    from molbuilder.checkpoint import Repo
+    _seed(tmp_path)
+    Repo(str(tmp_path)).init(engine="siesta")
+    r = client.post("/api/checkpoint/config",
+                    json={"path": str(tmp_path), "archive_globs": []})
+    body = r.get_json()
+    assert body["ok"] is False and "cannot be empty" in (body.get("error") or "")

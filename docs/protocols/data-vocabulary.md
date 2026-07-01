@@ -25,6 +25,7 @@
 | Decoded run | `decoded.json` | `schema_version: <int>` *(predates the `@major` convention)* | `job-decoder.md` | `schema_version`, decoded plots, job-type, triggers |
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` | *(sidecar pair)* | `bundle-contract.md`, `bundle_writer.py` | geometry; `regions`/`frozen_atoms`/`structure_hash` |
 | Checkpoint binary archive | `.binsnapshots/<sha>/MANIFEST` | *(3-col `<sha256> <bytes> <name>`)* | `run-checkpoints.md` § 10 | — |
+| Checkpoint config | `.mbcheckpoint.json` | `molbuilder/checkpoint-config@1` | `run-checkpoints.md` § 9 | `engine`, `archive_globs` (the engine-specific, user-editable big-binary classification) |
 
 **Schema-string convention.** `molbuilder/<name>@<major>`. Readers check the
 **major only** (tolerate same-major minor bumps, reject a different major) —

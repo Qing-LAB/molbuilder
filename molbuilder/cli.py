@@ -2277,15 +2277,23 @@ def _resolve_repo_path(path: Optional[str]) -> str:
 
 @cmd_snapshot.command("init",
                       short_help="initialise this dir as a checkpoint repo")
+@click.option("--engine", type=click.Choice(["siesta", "pyscf"]), default=None,
+              help="Engine whose big-binary files to archive (SIESTA: "
+                   ".DM/.HSX/.TSHS/.TBT.*; PySCF: .chk/.cube).  The web UI "
+                   "passes this from the task setup; on the CLI, set it so "
+                   "the right files are archived.  Omit for the safe union.")
 @click.option("-p", "--path", default=None, type=click.Path(),
               help="Working dir to initialise.  Default: cwd.")
-def cmd_snapshot_init(path):
+def cmd_snapshot_init(engine, path):
     """Create a git repo + .gitignore + first commit + binary archive
     in the current working dir (or --path).
 
     Refuses if the directory contains nested working dirs (subdirs
     with .fdf / .py / .run.sh) -- each lowest-directory is its own
     checkpoint repo per the run-checkpoints.md § P5 rule.
+
+    ``--engine`` selects which files count as big binaries (the persisted,
+    editable classification -- see ``molbuilder snapshot config``).
     """
     from molbuilder.checkpoint import (
         Repo, NestedRepoRefusedError, CheckpointError,
@@ -2296,7 +2304,7 @@ def cmd_snapshot_init(path):
                    f"(HEAD = {repo._head_sha()[:7]})")
         return
     try:
-        repo.init()
+        repo.init(engine=engine)
     except NestedRepoRefusedError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -2312,6 +2320,36 @@ def cmd_snapshot_init(path):
     if archived:
         click.echo(f"  archived {archived / (1024 * 1024):.1f} "
                    f"MB of big binaries to .binsnapshots/")
+
+
+@cmd_snapshot.command("config",
+                      short_help="show / edit which files are archived as big binaries")
+@click.option("--set", "set_globs", default=None, metavar="GLOBS",
+              help="Comma-separated globs to REPLACE the archive set "
+                   "(e.g. '*.DM,*.HSX,*.chk').  Regenerates .gitignore to "
+                   "match.  Omit to just show the current set.")
+@click.option("-p", "--path", default=None, type=click.Path(),
+              help="Working dir.  Default: cwd.")
+def cmd_snapshot_config(set_globs, path):
+    """Show (or ``--set``) the big-binary patterns this repo archives -- the
+    engine-specific, user-editable classification (run-checkpoints.md § 9).
+    The web UI edits the SAME persisted table through the API; this is the
+    CLI face of that one unified accessor."""
+    from molbuilder.checkpoint import Repo, CheckpointError
+    repo = Repo(_resolve_repo_path(path))
+    if not repo.initialized:
+        click.echo(f"Error: {repo.path} is not a checkpoint repo.", err=True)
+        sys.exit(2)
+    if set_globs is not None:
+        globs = [g.strip() for g in set_globs.split(",") if g.strip()]
+        try:
+            repo.set_archive_globs(globs)
+        except CheckpointError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        click.echo("updated archive globs (checkpoint to save the change):")
+    for g in repo.archive_globs():
+        click.echo(f"  {g}")
 
 
 @cmd_snapshot.command("checkpoint",

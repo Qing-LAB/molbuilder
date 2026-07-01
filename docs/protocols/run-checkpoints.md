@@ -577,38 +577,71 @@ All routes return the standard envelope per [`web-api.md`](web-api.md) § 1.6.
 
 ---
 
-## 9. .gitignore policy
+## 9. Big-binary classification (engine-specific, persisted, editable)
 
-### 9.1 Default `.gitignore` content (written at Phase 1)
+**Which files are "big binaries" is ENGINE-SPECIFIC.** SIESTA writes
+`.DM`/`.HSX`/`.TSHS`/`.TBT.*`; PySCF writes `.chk` (+ `.cube`). Hardcoding
+one engine's set meant a PySCF `.chk` was neither ignored nor archived — it
+got committed into git (binary bloat) and was invisible to the restore-safety
+guards. So the classification is **seeded per engine at init, persisted in
+the repo, and user-editable through one unified API.**
 
-```
-# molbuilder run-checkpoints contract: this dir is auto-managed by git.
-# Large binary state is archived separately in .binsnapshots/<sha>/.
-*.DM
-*.HSX
-*.TSHS
-*.TBT.AVTRANS_*
-*.TBT.CC
-*.TBT.DOS
-*.ion.nc
-*.ion.xml
-.binsnapshots/
-fdf.*.log              # SIESTA's rotating fdf-parse log; noisy + redundant with .out
-WORK_*                 # SIESTA scratch
-INPUT_TMP.*
-```
+### 9.1 Built-in per-engine defaults (`checkpoint.py`)
 
-### 9.2 Why each entry
-
-| Pattern | Why ignored |
+| Engine | Archive globs (`_ENGINE_BIG_BINARY_GLOBS`) |
 |---|---|
-| `*.DM`, `*.HSX`, `*.TSHS` | Big binaries; archived by SHA in `.binsnapshots/`. |
-| `*.TBT.AVTRANS_*`, `*.TBT.CC`, `*.TBT.DOS` | Transport output; can be regenerated from `.TSHS`. |
+| `siesta` | `*.DM`, `*.HSX`, `*.TSHS`, `*.TBT.AVTRANS_*`, `*.TBT.CC`, `*.TBT.DOS` |
+| `pyscf` | `*.chk`, `*.cube` |
+| *(unspecified)* | the **union** of all engines' globs (`_DEFAULT_ARCHIVE_GLOBS`) — over-archiving is harmless; under-archiving silently loses data |
+
+### 9.2 Persisted config — `.mbcheckpoint.json` (git-tracked)
+
+`init` writes `.mbcheckpoint.json` (schema `molbuilder/checkpoint-config@1`,
+via `persist.py`) recording `{engine, archive_globs}`. It is **git-tracked**
+so it travels with the repo and is the single source of truth for BOTH
+checkpoint (what to archive) AND restore (the dirty-binary + missing-archive
+guards, § 4.6) — the two can never disagree. Registered in
+[`data-vocabulary.md`](data-vocabulary.md) § 1.
+
+### 9.3 The unified accessor (one API, all callers)
+
+| Caller | Read | Write |
+|---|---|---|
+| Python | `Repo.archive_globs()` | `Repo.set_archive_globs(globs)` |
+| CLI | `molbuilder snapshot config` | `molbuilder snapshot config --set '*.DM,*.chk'` |
+| Web / UI | `GET /api/checkpoint/config` | `POST /api/checkpoint/config` `{path, archive_globs}` |
+
+`set_archive_globs` regenerates the `.gitignore` big-binary section from the
+new set (so git-ignore and sha-archive stay consistent) and refuses an empty
+set (that would archive nothing → silent binary loss). `_list_big_binaries`
+reads the config on every operation (falls back to the union for pre-config
+repos — robust, never crashes a restore).
+
+### 9.4 UI ↔ API contract
+
+The web form **already knows the engine at task setup**, so it passes it in:
+`POST /api/checkpoint/init` `{path, engine}` seeds the classification (unknown
+engine → bucket-B advisory, `web-api.md § 1.6`). The **user-editable table**
+is surfaced in the Projects Sidebar and reads/writes the same persisted config
+through `GET`/`POST /api/checkpoint/config` — never a second, divergent copy.
+*(The sidebar table widget is the remaining frontend piece; the API + config
+are the contract it binds to.)*
+
+### 9.5 `.gitignore` — big-binary section GENERATED from the config
+
+`_render_gitignore(archive_globs)` emits the big-binary patterns from the
+resolved globs, then a fixed engine-independent tail:
+
+| Fixed pattern | Why ignored |
+|---|---|
 | `*.ion.nc`, `*.ion.xml` | Pseudopotential CACHE files; deterministic from `.psml`. |
 | `fdf.*.log` | SIESTA's parsing log — verbose and rotating. |
-| `WORK_*`, `INPUT_TMP.*` | SIESTA scratch files; meaningless mid-run captures. |
+| `WORK_*`, `INPUT_TMP.*` | Scratch files; meaningless mid-run captures. |
+| `*.MD`, `*.MD_CAR` | Large MD trajectories. |
+| `.binsnapshots/` | The binary archive directory itself. |
+| `*.swp`, `*~` | Editor noise. |
 
-### 9.3 Files EXPLICITLY tracked (none are in `.gitignore`)
+### 9.6 Files EXPLICITLY tracked (none are in `.gitignore`)
 
 `*.fdf`, `*.psml`, `*.out`, `*.molwatch.log`, `*.molstruct.json`, `*.transport.json`, `*.runtime_info.json`, `*.parse.log`, `*.CG`, `*.XV`, `*.EIG`, `*.FA`, `*.FORCE_STRESS`, `*.bib`, `*.run.sh`, `*.md`.
 

@@ -211,6 +211,8 @@ entry would supersede this section if we ever do.
 | `/api/spectra/render` — validator hard-error blocks script emission | **200** | `{ok:false, error:"preflight failed; see issues", issues:[...], errors_only:[...]}` |
 | `/api/checkpoint/restore` — working tree has uncommitted changes (state-shaped refusal) | **200** | `{ok:false, error:"<DirtyWorkingTreeError message>", issues:[{severity:"error", message:"<same>", where:"working-tree"}], errors_only:[...same...]}` — sidebar's advisory chip renders `issues[0].message` inline; the user commits or discards, then retries |
 | `/api/checkpoint/init` — nested working dirs detected | **200** | `{ok:false, error:"...", issues:[{severity:"error", message:"...", where:"path"}], errors_only:[...]}` |
+| `/api/checkpoint/init` — unknown `engine` (UI passes it from task setup; SIESTA/PySCF selects the big-binary classification, run-checkpoints.md § 9) | **200** | `{ok:false, error:"unknown engine ...", issues:[{severity:"error", ..., where:"engine"}], ...}` |
+| `/api/checkpoint/config` (POST) — empty `archive_globs` (would archive nothing → silent binary loss) | **200** | `{ok:false, error:"archive_globs cannot be empty...", ..., where:"archive_globs"}` — GET/POST config read+edit the persisted big-binary table (the sidebar's editable widget binds here) |
 | `/api/checkpoint/restore` — legacy 2-col MANIFEST needs migration | **200** | `{ok:false, error:"...migrate-manifest...", issues:[{severity:"error", message:"...", where:".binsnapshots"}], errors_only:[...]}` |
 | `/api/files/read` — path outside picker roots (§ 1.2) | **400** | `{ok:false, error:"path outside roots"}` |
 | `/api/results/bundle` — `stem` contains NUL or is `.` / `..` | **400** | `{ok:false, error:"<charset/all-dots reason>"}` |
@@ -303,13 +305,15 @@ flowchart LR
         misc_health["GET /api/health"]
     end
     subgraph "Checkpoint (project snapshot / version control)"
-        ck_init["POST /api/checkpoint/init"]
+        ck_init["POST /api/checkpoint/init  {path, engine?}"]
         ck_state["GET /api/checkpoint/state"]
         ck_list["GET /api/checkpoint/list"]
         ck_commit["POST /api/checkpoint/commit"]
         ck_restore["POST /api/checkpoint/restore"]
         ck_diff["GET /api/checkpoint/diff"]
         ck_tag["POST /api/checkpoint/tag"]
+        ck_cfg_get["GET /api/checkpoint/config"]
+        ck_cfg_set["POST /api/checkpoint/config  {path, archive_globs}"]
         ck_mig["POST /api/checkpoint/migrate-manifest"]
     end
     subgraph "Admin (rate-limit control)"

@@ -250,6 +250,10 @@ def api_checkpoint_init():
         path = _resolve_path(body.get("path"))
     except ValueError as exc:
         return _protocol_error(str(exc))
+    # UI<->API contract: the web form already knows the engine at task setup
+    # and passes it here, so the right big-binary files are archived
+    # (run-checkpoints.md § 9).  Absent -> the safe union.
+    engine = body.get("engine")
     repo = Repo(str(path))
     if repo.initialized:
         return jsonify({
@@ -258,15 +262,58 @@ def api_checkpoint_init():
             "note":  "already initialised; no-op",
         })
     try:
-        repo.init()
+        repo.init(engine=engine)
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")
     except CheckpointError as exc:
-        return _server_fault(str(exc))
+        # unknown engine is user input -> advisory, not a server fault.
+        return _advisory(str(exc), where="engine")
     except Exception as exc:                       # noqa: BLE001
         _log.exception("checkpoint init failed")
         return _server_fault(f"{type(exc).__name__}: {exc}")
-    return jsonify({"ok": True, "state": _serialise_state(repo.state())})
+    return jsonify({"ok": True, "state": _serialise_state(repo.state()),
+                    "archive_globs": repo.archive_globs()})
+
+
+@bp.get("/api/checkpoint/config")
+def api_checkpoint_config_get():
+    """Read the big-binary archive classification (the user-editable table
+    the sidebar renders).  Unified accessor -- same data the CLI's
+    ``snapshot config`` shows (run-checkpoints.md § 9)."""
+    try:
+        path = _resolve_path(request.args.get("path"))
+    except ValueError as exc:
+        return _protocol_error(str(exc))
+    repo = Repo(str(path))
+    if not repo.initialized:
+        return _advisory(f"{path} is not a checkpoint repo.", where="path")
+    return jsonify({"ok": True, "archive_globs": repo.archive_globs()})
+
+
+@bp.post("/api/checkpoint/config")
+def api_checkpoint_config_set():
+    """Replace the big-binary archive classification (the UI table edit).
+    Body: ``{"path", "archive_globs": [...]}``.  Regenerates .gitignore to
+    match; the change is a normal edit the user then checkpoints."""
+    body = _get_body()
+    try:
+        path = _resolve_path(body.get("path"))
+    except ValueError as exc:
+        return _protocol_error(str(exc))
+    globs = body.get("archive_globs")
+    if not isinstance(globs, list):
+        return _protocol_error("archive_globs must be a list of glob strings")
+    repo = Repo(str(path))
+    if not repo.initialized:
+        return _advisory(f"{path} is not a checkpoint repo.", where="path")
+    try:
+        updated = repo.set_archive_globs(globs)
+    except CheckpointError as exc:
+        return _advisory(str(exc), where="archive_globs")
+    except Exception as exc:                       # noqa: BLE001
+        _log.exception("checkpoint config set failed")
+        return _server_fault(f"{type(exc).__name__}: {exc}")
+    return jsonify({"ok": True, "archive_globs": updated})
 
 
 @bp.post("/api/checkpoint/commit")
