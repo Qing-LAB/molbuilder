@@ -207,10 +207,10 @@ flowchart TD
 # HOST — emit the CPU+GPU bench bundle from one .fdf
 molbuilder bench generate device.fdf --out ./bench
 # TARGET — detect machine, size the grid, emit job-set.json + scripts
-molbuilder bench prep ./bench
+molbuilder bench prep --out ./bench
 molbuilder jobset plan   ./bench        # the (G,K,c) points + resources (review)
 molbuilder jobset submit ./bench --mode submit --domain public   # queue all points
-molbuilder bench summarize ./bench      # read point-*/ outputs → pick the winner
+molbuilder bench summarize --bundle ./bench   # read point-*/ outputs → pick the winner
 ```
 
 Full science + adapters: **`protocols/benchmark-workflow.md`**. (Bench also
@@ -232,13 +232,13 @@ is visible, not to imply it exists.
 | Do | Command |
 |---|---|
 | Build a ladder bundle (host) | `molbuilder fdf <xyz> <out.fdf> --stage-strategy <s> --jobset` |
-| Build a sweep bundle (host→target) | `molbuilder bench generate <fdf>` → `molbuilder bench prep <dir>` |
+| Build a sweep bundle (host→target) | `molbuilder bench generate <fdf> --out <dir>` → `molbuilder bench prep --out <dir>` |
 | Lay out job dirs + wrappers | `molbuilder jobset prep <dir>` |
 | Review before running | `molbuilder jobset plan <dir>` |
 | Preview exact submit commands | `molbuilder jobset submit <dir> --mode submit --domain <d> --dry-run` |
 | Run | `molbuilder jobset submit <dir> --mode submit --domain <d>` |
 | Check progress (read-only) | `molbuilder jobset status <dir>` |
-| Summarize a sweep | `molbuilder bench summarize <dir>` |
+| Summarize a sweep | `molbuilder bench summarize --bundle <dir>` |
 
 ---
 
