@@ -95,13 +95,9 @@ class Environment:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Environment":
-        got = str(d.get("schema", ""))
-        want_major = SCHEMA.rsplit("@", 1)[-1]
-        got_major = got.rsplit("@", 1)[-1] if "@" in got else ""
-        if got_major != want_major:
-            raise ValueError(
-                f"environment schema mismatch: got {got!r}, need "
-                f"major {want_major} ({SCHEMA}).")
+        from ..persist import check_schema_major
+        check_schema_major(str(d.get("schema", "")), SCHEMA,
+                           label="environment")
         # Tolerant of unknown/extra keys; missing keys -> dataclass default.
         topo_fields = {f for f in Topology.__dataclass_fields__}
         site_fields = {f for f in Site.__dataclass_fields__}

@@ -28,11 +28,13 @@
 
 **Schema-string convention.** `molbuilder/<name>@<major>`. Readers check the
 **major only** (tolerate same-major minor bumps, reject a different major) —
-implemented identically in `bench/environment.py`, `bench/result.py`, and
-`jobset/model.py`. New persisted artifacts MUST follow this. The one
-exception is `decoded.json`, which predates the convention and carries a
-bare integer `schema_version` (`job-decoder.md`); not worth a breaking
-change, but don't copy that pattern for anything new.
+enforced by the single shared helper **`molbuilder/persist.py::check_schema_major`**
+(with `schema_major` + `read_json`/`write_json`), adopted by
+`bench/environment.py`, `bench/result.py`, and `jobset/model.py` (was
+hand-rolled 3× with a subtle missing-`@` inconsistency). New persisted
+artifacts MUST use it. The one exception is `decoded.json`, which predates
+the convention and carries a bare integer `schema_version` (`job-decoder.md`);
+not worth a breaking change, but don't copy that pattern for anything new.
 
 ---
 

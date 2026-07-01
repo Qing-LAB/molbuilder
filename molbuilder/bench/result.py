@@ -204,13 +204,9 @@ class BenchResult:
 
     @classmethod
     def from_dict(cls, d: dict) -> "BenchResult":
-        got = str(d.get("schema", ""))
-        want_major = SCHEMA.rsplit("@", 1)[-1]
-        got_major = got.rsplit("@", 1)[-1] if "@" in got else ""
-        if got_major != want_major:
-            raise ValueError(
-                f"bench-result schema mismatch: got {got!r}, need major "
-                f"{want_major} ({SCHEMA}).")
+        from ..persist import check_schema_major
+        check_schema_major(str(d.get("schema", "")), SCHEMA,
+                           label="bench-result")
         pt_fields = {f for f in BenchPoint.__dataclass_fields__}
         points = [BenchPoint(**{k: v for k, v in p.items() if k in pt_fields})
                   for p in (d.get("points") or [])]

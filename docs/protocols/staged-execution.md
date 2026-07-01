@@ -692,14 +692,16 @@ that should be built as **infrastructure for wider use**, not local
 helpers — each abstracts a pattern already repeated or already needed in
 more than one place:
 
-1. **`molbuilder/persist.py` — a versioned-document base.** The
-   `to_dict` / `to_json` / `from_dict` + `SCHEMA = "molbuilder/<name>@<major>"`
-   + major-version-check pattern is now hand-rolled in **three** places
-   (`bench/environment.py`, `bench/result.py`, `jobset/model.py`). Extract a
-   tiny mixin/base (`VersionedDoc`) that owns the schema string, the
-   major-check, and atomic `write(path)` / `read(path)`. Adopters: all
-   three above, plus any future persisted artifact. *Infra, not a jobset
-   detail.*
+1. **`molbuilder/persist.py` — shared schema-IO helpers. ✅ BUILT.** The
+   `molbuilder/<name>@<major>` major-version check was hand-rolled in **three**
+   places (`bench/environment.py`, `bench/result.py`, `jobset/model.py`) with
+   a subtle missing-`@` inconsistency. Shipped as function helpers —
+   `check_schema_major(got, want, *, label)` + `schema_major` +
+   `read_json`/`write_json` (L1, pure stdlib) — and all three adopters now
+   route through it (unified `"<artifact> schema mismatch"` message). Chose
+   functions over a `VersionedDoc` mixin: the duplication was the check + IO,
+   not the field-specific `to_dict`/`from_dict` bodies, so a base class would
+   add coupling for little gain.
 
 2. **`jobset/runstatus.py` — a run/stage status reader. ✅ BUILT.** The
    "molbuilder informs, the user decides" half of § 10 is now implemented:

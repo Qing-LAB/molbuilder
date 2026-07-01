@@ -1,0 +1,54 @@
+"""Versioned-document helpers — the shared ``molbuilder/<name>@<major>``
+schema convention + JSON IO (data-vocabulary.md § 1).
+
+The major-version check was hand-rolled identically in three persisted
+artifacts (``bench/environment.py``, ``bench/result.py``, ``jobset/model.py``),
+with a subtle inconsistency in how a missing ``@`` was handled.  This is the
+one place that logic lives now.
+
+L1: pure stdlib, no molbuilder deps -- any layer may use it.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+
+def schema_major(schema: str) -> str:
+    """The major token of a ``molbuilder/<name>@<major>`` string, or ``""``
+    when there is no ``@`` (so a bare/garbage value never matches a real
+    major)."""
+    s = str(schema or "")
+    return s.rsplit("@", 1)[-1] if "@" in s else ""
+
+
+def check_schema_major(got: str, want: str, *, label: str = "") -> None:
+    """Raise :class:`ValueError` unless ``got`` and ``want`` share the same
+    major version (tolerate same-major minor bumps, reject a different
+    major).  ``label`` prefixes the message so the artifact is obvious.
+
+    The single enforcement point for the schema convention -- adopted by
+    ``environment@1`` / ``bench-result@1`` / ``job-set@1`` (was duplicated)."""
+    if schema_major(got) != schema_major(want):
+        prefix = f"{label} " if label else ""
+        raise ValueError(
+            f"{prefix}schema mismatch: got {got!r}, need major "
+            f"{schema_major(want)} ({want}).")
+
+
+def read_json(path) -> Any:
+    """Read + parse a JSON file."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def write_json(path, obj: Any) -> Path:
+    """Write ``obj`` as pretty JSON (2-space indent) with a trailing newline
+    so the file reads/diffs cleanly.  Returns the path."""
+    p = Path(path)
+    p.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+__all__ = ["schema_major", "check_schema_major", "read_json", "write_json"]

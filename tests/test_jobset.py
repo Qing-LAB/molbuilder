@@ -57,7 +57,7 @@ def test_jobset_roundtrips_through_job_set_at_1():
 def test_from_dict_rejects_unknown_schema():
     d = _ladder().to_dict()
     d["schema"] = "job-set@99"
-    with pytest.raises(ValueError, match="unsupported schema"):
+    with pytest.raises(ValueError, match="schema mismatch"):
         JobSet.from_dict(d)
 
 

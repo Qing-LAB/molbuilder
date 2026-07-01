@@ -19,7 +19,6 @@ Nothing reaches across jobs outside these two.
 from __future__ import annotations
 
 import dataclasses
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -145,14 +144,10 @@ class JobSet:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
-        # Major-version check, same rule as bench/environment.py + result.py:
-        # tolerate same-major minor bumps, reject a different major.
-        got = str(d.get("schema") or "")
-        want_major = SCHEMA.rsplit("@", 1)[-1]
-        if got.rsplit("@", 1)[-1] != want_major:
-            raise ValueError(
-                f"job-set: unsupported schema {got!r}; "
-                f"need major {want_major} ({SCHEMA}).")
+        # Major-version check via the shared helper (persist.py), same rule
+        # bench/environment + bench/result use.
+        from ..persist import check_schema_major
+        check_schema_major(str(d.get("schema") or ""), SCHEMA, label="job-set")
         return cls(
             name=d["name"],
             engine=d["engine"],
@@ -164,17 +159,16 @@ class JobSet:
     def write(self, path) -> Path:
         """Persist to ``job-set.json`` -- the bundle's plan, carried
         host->target (data-vocabulary.md § 1).  Pretty JSON so a human can
-        read/diff the plan in the bundle.  (A candidate adopter of the
-        proposed ``persist.VersionedDoc`` base, § 14.)"""
-        p = Path(path)
-        p.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
-        return p
+        read/diff the plan in the bundle."""
+        from ..persist import write_json
+        return write_json(path, self.to_dict())
 
     @classmethod
     def load(cls, path) -> "JobSet":
         """Read a ``job-set.json`` back into a JobSet (major-version checked
         via ``from_dict``)."""
-        return cls.from_dict(json.loads(Path(path).read_text()))
+        from ..persist import read_json
+        return cls.from_dict(read_json(path))
 
     # ----- structural validation ------------------------------------- #
 
