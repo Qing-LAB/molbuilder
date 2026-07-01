@@ -3,6 +3,11 @@
 The canonical index lives in **[`design.md`](design.md) § 0**.
 Read that first.
 
+**Before building anything**, consult **[`architecture.md`](architecture.md)**
+— the design-foundation index of the major infrastructure/modules/APIs
+(what already exists + which tool to reuse), the antidote to
+reinventing/patching blind.
+
 ## The doc rule
 
 > Tests must be derivable from the spec without reading the

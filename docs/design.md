@@ -65,6 +65,13 @@ automatic.
 
 ## 0. Document index
 
+> **Building something? Start at [`architecture.md`](architecture.md)** — the
+> design-foundation index of every major infrastructure/module/API (role ·
+> layer · public API · authoritative doc · "reuse for X"), with a task→tool
+> lookup. It exists to stop reinventing/patching without knowing the tools.
+> This file remains the narrative master (principles, Architecture, roadmap,
+> decisions).
+
 This file is the **master**: it holds principles, cross-cutting
 decisions, architecture, and an index to every subsystem doc.
 Each subsystem doc is the **sole source of truth** for its own
