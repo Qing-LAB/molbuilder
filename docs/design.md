@@ -101,6 +101,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`jobset-infrastructure.md`](jobset-infrastructure.md) | Plain-language explainer of the `jobset` framework + each use-case scenario (ladder, sweep) with diagrams + examples (contract: `protocols/staged-execution.md`) |
 | [`staged-relaxation-guide.md`](staged-relaxation-guide.md) | User guide — running a staged relaxation (the ladder scenario), step by step |
 | [`workspace-guide.md`](workspace-guide.md) | Developer guide — the client-side workspace store (mental model, `ws.*` API, mount-restore rule, gotchas); plain-language companion to `protocols/workspace-contract.md` |
+| [`projects-sidebar-guide.md`](projects-sidebar-guide.md) | Developer guide — the projects sidebar for tab authors (`projects.*` API, `onChange` vs `onCommit`, gotchas); plain-language companion to `protocols/projects-sidebar.md` |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 

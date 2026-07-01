@@ -9,6 +9,11 @@ When this doc and existing code disagree, **the doc wins** until a
 deliberate design change updates the doc.  Code changes are reviewed
 against the doc, not against other code.
 
+**New to the sidebar?** Start with the plain-language
+[`projects-sidebar-guide.md`](../projects-sidebar-guide.md) — the developer
+on-ramp (mental model, the `projects.*` API cheat-sheet, the
+`onChange`-vs-`onCommit` rule, gotchas). This doc is the precise design/contract.
+
 **Related design surfaces**:
 * [`selection.md`](selection.md) — the selection-cursor contract; this
   doc references it for cursor semantics and tab integration history.
