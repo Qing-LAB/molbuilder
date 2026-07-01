@@ -498,6 +498,30 @@ def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
     return _copy_archived_binaries(path, sha, expected)
 
 
+def _working_binaries_dirty(path: Path, head_sha: str) -> List[str]:
+    """Big-binary files in the working dir that DIFFER from what was archived
+    at ``head_sha`` -- i.e. uncommitted binary changes a restore would
+    overwrite.  Big binaries are gitignored, so ``git status`` cannot see
+    them; restore checks this separately to honor P3 (the user decides; the
+    system never silently discards binary work).  Returns sorted names."""
+    expected: Dict[str, Tuple[str, int]] = {}
+    arch = _archive_dir(path, head_sha)
+    manifest = arch / _MANIFEST_NAME
+    if arch.is_dir() and manifest.is_file():
+        try:
+            expected = _parse_canonical_manifest(manifest.read_bytes(),
+                                                 where=str(arch))
+        except CheckpointError:
+            expected = {}                       # unreadable archive -> treat all as dirty
+    dirty: List[str] = []
+    for wb in _list_big_binaries(path):
+        want = expected.get(wb.name)
+        actual = hashlib.sha256(wb.read_bytes()).hexdigest()
+        if want is None or want[0] != actual:
+            dirty.append(wb.name)
+    return sorted(dirty)
+
+
 def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
     """Convert a 2-column ``sha256sum`` MANIFEST in ``arch`` to the
     canonical 3-column form (§ 10.4).
@@ -765,6 +789,20 @@ class Repo:
             raise DirtyWorkingTreeError(
                 "working tree has uncommitted changes; "
                 "checkpoint or discard them before restoring.")
+        # Big binaries are gitignored, so the git-status check above cannot
+        # see uncommitted changes to them.  Restore would overlay the ref's
+        # archived binaries and silently destroy that work -- refuse instead
+        # (P3: the user decides; asymmetry with text would be a data-loss
+        # trap).  Skipped when include_binaries is False (binaries untouched).
+        if include_binaries:
+            dirty_bins = _working_binaries_dirty(Path(self.path),
+                                                 self._head_sha())
+            if dirty_bins:
+                raise DirtyWorkingTreeError(
+                    "uncommitted binary changes would be overwritten by "
+                    f"restore: {', '.join(dirty_bins)}.  Checkpoint or move "
+                    "them aside first (big binaries are gitignored, so "
+                    "'git status' does not show them).")
         # Resolve ref to a SHA.
         sha = self._resolve_ref(ref)
         # ATOMICITY (§ 10.3): verify the binary archive BEFORE mutating the
@@ -784,6 +822,36 @@ class Repo:
             return []
         # Copy the already-verified binaries (verification passed above).
         return _copy_archived_binaries(Path(self.path), sha, expected)
+
+    def missing_archive_warning(self, ref: str) -> Optional[str]:
+        """Return a warning string if restoring ``ref`` would restore NO
+        binaries in a project that clearly USES big binaries (the working dir
+        has some, or other checkpoints have archives) -- a sign ``ref``'s
+        archive is missing/incomplete (e.g. an interrupted checkpoint in the
+        commit->archive window), NOT that the checkpoint was legitimately
+        binary-free.  Returns ``None`` when there is no reason to warn.
+
+        This is the honest bound on § 10.3: because big binaries are
+        gitignored, git records nothing about what a commit "should" have, so
+        a lost archive cannot be proven -- but it CAN be flagged loudly so a
+        restore never silently returns text-only for a binary project (#1)."""
+        self._require_init()
+        sha = self._resolve_ref(ref)
+        base = Path(self.path)
+        if (_archive_dir(base, sha) / _MANIFEST_NAME).is_file():
+            return None                          # ref has an archive -> fine
+        snaps = base / ".binsnapshots"
+        others = [d for d in snaps.iterdir()
+                  if d.is_dir() and (d / _MANIFEST_NAME).is_file()] \
+            if snaps.is_dir() else []
+        if not (_list_big_binaries(base) or others):
+            return None                          # binary-free project -> normal
+        return (
+            f"checkpoint {ref!r} has NO binary archive, but this project uses "
+            f"big binaries -- if {ref!r} had .DM/.HSX/.TSHS files they were "
+            f"NOT restored (the archive may be incomplete, e.g. a checkpoint "
+            f"interrupted between commit and archive).  Verify the result; "
+            f"re-checkpoint to heal the archive.")
 
     # -- § 10.4 migrate-manifest ---------------------------------- #
 

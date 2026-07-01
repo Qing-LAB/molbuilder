@@ -2482,7 +2482,13 @@ def cmd_snapshot_restore(ref, no_binaries, path):
                    f"{'file' if len(restored) == 1 else 'files'} "
                    f"from archive: {', '.join(restored)}")
     elif not no_binaries:
-        click.echo("  (no archived binaries for this ref)")
+        # #1: a missing archive in a binary-using project is a LOUD warning
+        # (possible interrupted checkpoint), not a neutral note.
+        warning = repo.missing_archive_warning(ref)
+        if warning:
+            click.echo(f"  WARNING: {warning}", err=True)
+        else:
+            click.echo("  (no archived binaries for this ref)")
 
 
 @cmd_snapshot.command("migrate-manifest",

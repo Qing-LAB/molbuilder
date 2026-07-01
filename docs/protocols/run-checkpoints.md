@@ -192,10 +192,19 @@ That is the entire commit lifecycle. There is no Phase 3.
 |---|---|---|
 | List | `git log --graph --oneline --decorate --all` | — |
 | Diff text | `git diff <a>..<b> -- '*.fdf' '*.out' '*.molwatch.log'` | — |
-| Restore to a checkpoint | `git restore --source=<ref> .` + `cp .binsnapshots/<sha>/* .` (overlays archived binaries on top of restored text) | both, sequenced |
+| Restore to a checkpoint | **verify** the ref's binary archive, then `git restore --source=<ref> .`, then `cp .binsnapshots/<sha>/* .` | verify-first, then text, then binaries |
 | Prune unused binaries | identify SHAs unreferenced by any tag/branch/HEAD; `rm -rf .binsnapshots/<sha>` | — |
 
-Restore refuses on a dirty working tree (P3 means the user explicitly decides whether to discard or checkpoint first; the system does not pick).
+**Restore is ATOMIC and safe by contract (§ 10.3 — data-safety critical):**
+
+1. **Refuses on a dirty *text* tree** — `git status --porcelain` non-empty (P3: the user decides whether to discard or checkpoint first; the system does not pick).
+2. **Refuses on dirty *binaries*** — big binaries are gitignored, so `git status` can't see them; restore separately compares each working big-binary's sha256 to HEAD's archived copy and **refuses** if any differ (they would be silently overwritten). Message: *"uncommitted binary changes would be overwritten by restore: `<names>`. Checkpoint or move them aside first…"* Skipped for a text-only restore (`--no-binaries`).
+3. **Verifies the archive BEFORE mutating anything** — the ref's archived binaries are checked (existence + size + sha256) *before* `git restore` runs, so a corrupt/incomplete archive aborts the WHOLE restore (text stays put too). Never a half-restored tree. Message: *"…integrity check failed for `<name>`… refusing to restore."*
+4. **Warns loudly on a missing archive** — if the ref has NO archive but the project clearly uses big binaries (working binaries present, or other checkpoints have archives), restore succeeds text-only and prints: *"WARNING: checkpoint `<ref>` has NO binary archive, but this project uses big binaries — if `<ref>` had .DM/.HSX/.TSHS they were NOT restored (the archive may be incomplete, e.g. a checkpoint interrupted between commit and archive). Verify the result; re-checkpoint to heal."* This is the honest bound: because gitignored binaries aren't recorded in the commit, a lost archive can't be *proven*, only flagged — never silent.
+
+**Save-side fidelity (§ 4.3):** `_archive_binaries` hashes the source, copies, re-hashes the archived copy, and requires they match — a silent copy corruption (disk error) fails the checkpoint loudly rather than recording the corrupt bytes' own sha as truth.
+
+**Known limitation (documented, not a silent trap):** a **binary-only change** (a big binary edited with no accompanying text change) is treated as a clean tree by `checkpoint()` and is not captured as a new checkpoint while HEAD already has an archive. Change a text file alongside, or move the binary aside, if you must snapshot a binary-only edit. (Restore's dirty-binary refusal above still protects such an edit from being overwritten.)
 
 ### 4.7 USER-CUSTOM snippet library
 

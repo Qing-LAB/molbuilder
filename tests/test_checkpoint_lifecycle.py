@@ -352,42 +352,61 @@ def _sole_archive_dir(tmp_path: Path) -> Path:
     return dirs[0]
 
 
+def _clean_head_with_corruptible_v1(tmp_path):
+    """init (c1, .DM=zeros) tagged 'v1', then a clean 'c2' (.DM=0x22) so the
+    working tree matches HEAD -- no dirty-binary refusal (#2) fires, and we
+    can corrupt v1's OLD archive to exercise restore-time integrity (#3).
+    Returns (repo, v1_archive_dir)."""
+    from molbuilder.checkpoint import _archive_dir
+    _seed_working_dir(tmp_path)                          # .DM = zeros
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    v1 = repo.resolve_ref("v1")
+    # change text too -- a binary-only change is treated as "clean" by
+    # checkpoint(), so we need a text edit to force a real c2 commit+archive.
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n# c2\n")
+    (tmp_path / "siesta-test.DM").write_bytes(b"\x22" * 2048)
+    repo.checkpoint(message="c2")                        # HEAD now matches working
+    return repo, _archive_dir(tmp_path, v1)
+
+
 def test_restore_aborts_on_tampered_archived_binary(tmp_path):
     """A corrupted archived binary (bytes changed, MANIFEST sha unchanged)
     must abort restore and NOT copy the bad bytes into the working tree."""
-    _seed_working_dir(tmp_path)                     # .DM = 2048 zero bytes
-    repo = Repo(str(tmp_path))
-    repo.init()
-    repo.tag("v1", message="baseline")
-    # current working .DM differs from the archive -> detectable if touched.
-    (tmp_path / "siesta-test.DM").write_bytes(b"\xAB" * 2048)
-    # tamper the archived copy: same size, different bytes -> sha mismatch.
-    (_sole_archive_dir(tmp_path) / "siesta-test.DM").write_bytes(b"\xFF" * 2048)
-
+    repo, v1arch = _clean_head_with_corruptible_v1(tmp_path)
+    (v1arch / "siesta-test.DM").write_bytes(b"\xFF" * 2048)   # sha mismatch
     with pytest.raises(CheckpointError, match="integrity check failed"):
         repo.restore("v1")
-    # the failed restore left the working binary untouched.
-    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\xAB" * 2048
+    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\x22" * 2048  # untouched
 
 
 def test_restore_aborts_on_archived_binary_size_mismatch(tmp_path):
-    _seed_working_dir(tmp_path)
-    repo = Repo(str(tmp_path))
-    repo.init()
-    repo.tag("v1", message="baseline")
-    (_sole_archive_dir(tmp_path) / "siesta-test.DM").write_bytes(b"\x00" * 1024)
+    repo, v1arch = _clean_head_with_corruptible_v1(tmp_path)
+    (v1arch / "siesta-test.DM").write_bytes(b"\x00" * 1024)   # size mismatch
     with pytest.raises(CheckpointError, match="integrity check failed"):
         repo.restore("v1")
 
 
 def test_restore_aborts_on_missing_archived_file(tmp_path):
+    repo, v1arch = _clean_head_with_corruptible_v1(tmp_path)
+    (v1arch / "siesta-test.DM").unlink()                 # MANIFEST still lists it
+    with pytest.raises(CheckpointError, match="refusing to restore"):
+        repo.restore("v1")
+
+
+def test_restore_refuses_on_uncommitted_binary_change(tmp_path):
+    """#2 SAFETY: a modified-but-not-checkpointed big binary must NOT be
+    silently overwritten by restore -- git can't see gitignored binaries, so
+    restore checks them separately and refuses (P3: the user decides)."""
     _seed_working_dir(tmp_path)
     repo = Repo(str(tmp_path))
     repo.init()
     repo.tag("v1", message="baseline")
-    (_sole_archive_dir(tmp_path) / "siesta-test.DM").unlink()   # MANIFEST still lists it
-    with pytest.raises(CheckpointError, match="refusing to restore"):
+    (tmp_path / "siesta-test.DM").write_bytes(b"\x77" * 2048)   # uncommitted edit
+    with pytest.raises(DirtyWorkingTreeError, match="uncommitted binary changes"):
         repo.restore("v1")
+    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\x77" * 2048  # preserved
 
 
 def test_restore_include_binaries_false_skips_integrity_and_binaries(tmp_path):
@@ -459,3 +478,52 @@ def test_archive_detects_copy_corruption_at_save(tmp_path, monkeypatch):
     repo = cp.Repo(str(tmp_path))
     with pytest.raises(cp.CheckpointError, match="corrupt"):
         repo.init()                                  # init archives the .DM
+
+
+# ----------------------------------------------------------------- #
+#  #1: missing-archive is a LOUD warning, never a silent text-only    #
+#      restore, for a project that uses big binaries.                 #
+# ----------------------------------------------------------------- #
+
+
+def test_missing_archive_warning_flags_lost_archive(tmp_path):
+    """A ref whose archive is gone, in a binary-using project, warns."""
+    import shutil as _sh
+    from molbuilder.checkpoint import _archive_dir
+    _seed_working_dir(tmp_path)                          # project HAS a .DM
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    _sh.rmtree(_archive_dir(tmp_path, repo.resolve_ref("v1")))   # lost archive
+    w = repo.missing_archive_warning("v1")
+    assert w is not None and "NO binary archive" in w
+
+
+def test_missing_archive_warning_none_for_binary_free_project(tmp_path):
+    """A legitimately text-only checkpoint must NOT warn (no false alarm)."""
+    (tmp_path / "job.fdf").write_text("SystemLabel test\n")   # no big binary
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="text only")
+    assert repo.missing_archive_warning("v1") is None
+
+
+def test_cli_restore_warns_on_missing_archive(tmp_path):
+    import shutil as _sh
+    from click.testing import CliRunner
+    from molbuilder.checkpoint import _archive_dir
+    from molbuilder.cli import cli
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    v1 = repo.resolve_ref("v1")
+    # clean c2 so restore's dirty-binary guard passes, then lose v1's archive.
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\n# c2\n")
+    (tmp_path / "siesta-test.DM").write_bytes(b"\x22" * 2048)
+    repo.checkpoint(message="c2")
+    _sh.rmtree(_archive_dir(tmp_path, v1))
+    r = CliRunner().invoke(cli, ["snapshot", "restore", "v1",
+                                 "-p", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "WARNING" in r.output and "NO binary archive" in r.output
