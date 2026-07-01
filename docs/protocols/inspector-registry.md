@@ -8,6 +8,8 @@ self-registers on script load and is the sole owner of its
 mount-host DOM, its data fetch, and its dispose.
 
 This doc is the sole source of truth for the inspector contract.
+
+**New to inspectors?** Start with the plain-language [`results-tab-guide.md`](../results-tab-guide.md) — the developer on-ramp (how dispatch works, how to write an inspector, the state/refresh rules, gotchas).
 The `/results` dispatch architecture (which file picks which
 inspector + how the dropdown groups them) is in
 [`results-tab.md`](results-tab.md); this doc covers the

@@ -10,7 +10,7 @@
 > route table.
 
 **Status**: canonical spec for task #58 (signed off 2026-05-16).
-See § 2 for the locked-in decisions.
+New to the Results tab? Start with the plain-language [`results-tab-guide.md`](../results-tab-guide.md).  See § 2 for the locked-in decisions.
 
 **Module(s) the spec affects** (after merge):
 
