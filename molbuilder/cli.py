@@ -856,6 +856,23 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
                     f"--stage-resources: unknown stage name(s) {unknown}; "
                     f"enabled stages are {sorted(valid)}",
                     param_hint="--stage-resources")
+            # Validate each stage's body is an object with KNOWN resource
+            # fields -- a typo'd field would otherwise be silently dropped by
+            # Resources.from_dict (loud errors, not silent no-ops).
+            import dataclasses as _dc
+            res_fields = {f.name for f in _dc.fields(Resources)}
+            for sname, body in spec.items():
+                if not isinstance(body, dict):
+                    raise click.BadParameter(
+                        f"--stage-resources['{sname}'] must be an object of "
+                        f"resource fields; got {type(body).__name__}",
+                        param_hint="--stage-resources")
+                bad = [k for k in body if k not in res_fields]
+                if bad:
+                    raise click.BadParameter(
+                        f"--stage-resources['{sname}']: unknown field(s) "
+                        f"{bad}; valid fields are {sorted(res_fields)}",
+                        param_hint="--stage-resources")
             res_map = {k: Resources.from_dict(v) for k, v in spec.items()}
             resources_for = res_map.get
         try:

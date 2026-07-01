@@ -105,6 +105,12 @@ _L2_MODULES = {
                          # canonical dict builders consume parse.types.
     "bench",             # bench subcommand machinery -- consumes siesta config +
                          # runwrap; generates BENCH-MARKS-aware sweeps.
+    "jobset",            # engine-agnostic staged-execution framework
+                         # (model / materialize / prep / plan / submit /
+                         # runstatus + the jobset CLI group).  L2: prep ->
+                         # runwrap, submit -> runtime_config, runstatus ->
+                         # parse -- all L2; the model is pure stdlib.  See
+                         # docs/protocols/staged-execution.md.
 }
 
 _L3_MODULES = {

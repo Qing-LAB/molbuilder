@@ -424,3 +424,24 @@ def test_stage_resources_requires_jobset(xyz, tmp_path):
         "--stage-resources", '{"stage1": {"domain": "htc"}}'])
     assert r.exit_code != 0
     assert "--stage-resources only applies" in r.output
+
+
+def test_stage_resources_rejects_unknown_field(xyz, tmp_path):
+    # a typo'd resource field must be a LOUD error, not silently dropped.
+    b = tmp_path / "bundle"; b.mkdir()
+    r = CliRunner().invoke(cli, [
+        "fdf", str(xyz), str(b / "JOB.fdf"),
+        "--stage-strategy", "publishable", "--jobset",
+        "--stage-resources", '{"stage1": {"domian": "htc"}}'])  # typo
+    assert r.exit_code != 0
+    assert "unknown field" in r.output and "domian" in r.output
+
+
+def test_stage_resources_rejects_non_object_body(xyz, tmp_path):
+    b = tmp_path / "bundle"; b.mkdir()
+    r = CliRunner().invoke(cli, [
+        "fdf", str(xyz), str(b / "JOB.fdf"),
+        "--stage-strategy", "publishable", "--jobset",
+        "--stage-resources", '{"stage1": "htc"}'])         # not an object
+    assert r.exit_code != 0
+    assert "must be an object" in r.output
