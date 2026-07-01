@@ -259,9 +259,17 @@ def _list_big_binaries(path: Path) -> List[Path]:
     """Top-level big binaries per the repo's PERSISTED classification
     (``.mbcheckpoint.json`` via ``_read_archive_globs`` -- engine-specific,
     user-editable)."""
+    # Dedupe by basename: OVERLAPPING globs (e.g. "*.DM" and "*.D*") would
+    # otherwise list the same file twice -> duplicate MANIFEST entries, which
+    # the strict parser REJECTS on restore (trapping the checkpoint).  The
+    # archive keys files by basename, so basename is the right dedupe key.
     found: List[Path] = []
+    seen: set = set()
     for pat in _read_archive_globs(path):
-        found.extend(p for p in path.glob(pat) if p.is_file())
+        for p in path.glob(pat):
+            if p.is_file() and p.name not in seen:
+                seen.add(p.name)
+                found.append(p)
     return found
 
 
@@ -456,31 +464,46 @@ def _archive_binaries(path: Path, sha: str) -> int:
         raise CheckpointError(
             f"_archive_binaries: SHA dir name {sha!r} is not 40 "
             f"lowercase hex chars (§ 10.1).")
-    target = _archive_dir(path, sha)
-    target.mkdir(parents=True, exist_ok=True)
+    final = _archive_dir(path, sha)
+    # ATOMIC PUBLISH: build the archive in a sibling ``.tmp`` dir and rename it
+    # into place only after every binary is copied AND the MANIFEST is written.
+    # A crash mid-copy then leaves only the throwaway .tmp -- never a PARTIAL
+    # archive at the real path that restore would mistake for complete (silent
+    # loss) or the parser would choke on (§ 10.3).
+    tmp = final.parent / (sha + ".tmp")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    tmp.mkdir(parents=True)
     entries: List[Tuple[str, int, str]] = []
     total = 0
-    for src in binaries:
-        dst = target / src.name
-        # Hash the SOURCE, copy, then re-hash the ARCHIVED copy and require
-        # they match.  Deriving the MANIFEST sha from the copy alone would
-        # make a silent copy corruption (disk error) self-consistent -- the
-        # bad bytes would later "verify" against their own bad sha and be
-        # restored as truth.  Verify FIDELITY (source == archive) at save
-        # time so a corrupt copy fails loudly here, not silently on restore.
-        src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
-        shutil.copy2(src, dst)
-        dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
-        if dst_sha != src_sha:
-            raise CheckpointError(
-                f"archive copy of {src.name!r} is corrupt: source sha256 "
-                f"{src_sha!r} != archived {dst_sha!r} (disk error?); the "
-                f"checkpoint was NOT safely archived.")
-        size = dst.stat().st_size
-        entries.append((src_sha, size, src.name))
-        total += size
-    _atomic_write_text(target / _MANIFEST_NAME,
-                       _format_canonical_manifest(entries))
+    try:
+        for src in binaries:
+            dst = tmp / src.name
+            # Hash the SOURCE, copy, then re-hash the ARCHIVED copy and require
+            # they match.  Deriving the MANIFEST sha from the copy alone would
+            # make a silent copy corruption (disk error) self-consistent -- the
+            # bad bytes would later "verify" against their own bad sha and be
+            # restored as truth.  Verify FIDELITY (source == archive) at save
+            # time so a corrupt copy fails loudly here, not silently on restore.
+            src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
+            shutil.copy2(src, dst)
+            dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
+            if dst_sha != src_sha:
+                raise CheckpointError(
+                    f"archive copy of {src.name!r} is corrupt: source sha256 "
+                    f"{src_sha!r} != archived {dst_sha!r} (disk error?); the "
+                    f"checkpoint was NOT safely archived.")
+            size = dst.stat().st_size
+            entries.append((src_sha, size, src.name))
+            total += size
+        _atomic_write_text(tmp / _MANIFEST_NAME,
+                           _format_canonical_manifest(entries))
+        if final.exists():                     # idempotent re-archive
+            shutil.rmtree(final)
+        os.replace(tmp, final)                 # atomic: complete archive or nothing
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)  # never leave a stray .tmp
+        raise
     return total
 
 
@@ -534,7 +557,16 @@ def _copy_archived_binaries(path: Path, sha: str,
     arch = _archive_dir(path, sha)
     restored: List[str] = []
     for name in sorted(expected.keys()):
-        shutil.copy2(arch / name, path / name)
+        try:
+            shutil.copy2(arch / name, path / name)
+        except OSError as e:
+            # Verified moments ago, so this is a TOCTOU/IO fault mid-copy.
+            # Surface it clearly (the working tree may be partially restored)
+            # rather than let a raw OSError escape.
+            raise CheckpointError(
+                f"restore: archive verified but copying {name!r} failed "
+                f"({e}); the working tree may be partially restored -- fix "
+                f"the disk/archive and re-run restore.")
         restored.append(name)
     return restored
 
@@ -559,8 +591,13 @@ def _working_binaries_dirty(path: Path, head_sha: str) -> List[str]:
         try:
             expected = _parse_canonical_manifest(manifest.read_bytes(),
                                                  where=str(arch))
-        except CheckpointError:
-            expected = {}                       # unreadable archive -> treat all as dirty
+        except CheckpointError as e:
+            # A corrupt HEAD MANIFEST is NOT "you have local changes" -- say so
+            # plainly instead of the misleading dirty-binary message below.
+            raise CheckpointError(
+                f"cannot check for uncommitted binary changes: HEAD's archive "
+                f"MANIFEST is unreadable ({e}).  The archive at {arch} is "
+                f"corrupt; restore is unsafe until it is repaired.")
     dirty: List[str] = []
     for wb in _list_big_binaries(path):
         want = expected.get(wb.name)

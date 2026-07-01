@@ -12,6 +12,7 @@ L1: pure stdlib, no molbuilder deps -- any layer may use it.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -44,10 +45,14 @@ def read_json(path) -> Any:
 
 
 def write_json(path, obj: Any) -> Path:
-    """Write ``obj`` as pretty JSON (2-space indent) with a trailing newline
-    so the file reads/diffs cleanly.  Returns the path."""
+    """Write ``obj`` as pretty JSON (2-space indent, trailing newline).
+    ATOMIC: writes a sibling ``.tmp`` then ``os.replace`` into place, so a
+    crash mid-write never leaves a truncated/corrupt config (which readers
+    would then fail to parse).  Returns the path."""
     p = Path(path)
-    p.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, p)                 # atomic on the same filesystem
     return p
 
 

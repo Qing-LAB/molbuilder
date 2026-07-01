@@ -604,3 +604,73 @@ def test_cli_snapshot_config_show_and_set(tmp_path):
                             "--set", "*.DM,*.chk"])
     assert r.exit_code == 0, r.output
     assert Repo(str(tmp_path)).archive_globs() == ["*.DM", "*.chk"]
+
+
+# ----------------------------------------------------------------- #
+#  Fresh-eye review fixes (2026-07)                                   #
+# ----------------------------------------------------------------- #
+
+
+def test_overlapping_globs_do_not_duplicate_archive_entries(tmp_path):
+    """C1: overlapping globs (*.DM + *.D*) must not list a file twice ->
+    duplicate MANIFEST entries would trap the checkpoint (restore rejects)."""
+    from molbuilder.checkpoint import _list_big_binaries
+    _seed_working_dir(tmp_path)                          # sim... sits as siesta-test.DM
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.set_archive_globs(["*.DM", "*.D*"])             # overlapping
+    found = _list_big_binaries(tmp_path)
+    assert [p.name for p in found].count("siesta-test.DM") == 1   # deduped
+    # and a real checkpoint -> restore roundtrip works (no dup MANIFEST).
+    (tmp_path / "siesta-test.fdf").write_text("v2\n")
+    repo.checkpoint(message="c2")
+    repo.tag("v2", message="v2")
+    (tmp_path / "siesta-test.fdf").write_text("v3\n")
+    repo.checkpoint(message="c3")
+    repo.restore("v2")                                   # would raise if duplicated
+    assert (tmp_path / "siesta-test.fdf").read_text() == "v2\n"
+
+
+def test_corrupt_head_manifest_gives_clear_error_not_dirty(tmp_path):
+    """C4: a corrupt HEAD MANIFEST must say 'corrupt/unreadable', not the
+    misleading 'uncommitted binary changes'."""
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.tag("v1", message="v1")
+    manifest = _sole_archive_dir(tmp_path) / "MANIFEST"
+    manifest.write_text("this is not a valid manifest\n")   # corrupt HEAD archive
+    with pytest.raises(CheckpointError, match="corrupt|unreadable"):
+        repo.restore("v1")
+
+
+def test_archive_copy_corruption_leaves_no_partial_archive(tmp_path, monkeypatch):
+    """#3: a corrupting copy at save fails loudly AND leaves NO final archive
+    dir (only the throwaway .tmp is cleaned) -- never a partial archive."""
+    import molbuilder.checkpoint as cp
+    _seed_working_dir(tmp_path)
+    monkeypatch.setattr(cp.shutil, "copy2",
+                        lambda s, d, *a, **k: Path(d).write_bytes(b"\xFF" * 8))
+    repo = cp.Repo(str(tmp_path))
+    with pytest.raises(cp.CheckpointError, match="corrupt"):
+        repo.init(engine="siesta")
+    snaps = tmp_path / ".binsnapshots"
+    # no *.tmp and no partial per-sha archive left behind
+    leftovers = [d.name for d in snaps.iterdir() if d.is_dir()] if snaps.is_dir() else []
+    assert all(not n.endswith(".tmp") for n in leftovers), leftovers
+
+
+def test_restore_copy_failure_is_clear_error(tmp_path, monkeypatch):
+    """C3: a copy fault AFTER verification surfaces as a clear CheckpointError,
+    not a raw OSError."""
+    import molbuilder.checkpoint as cp
+    _seed_working_dir(tmp_path)
+    repo = cp.Repo(str(tmp_path))
+    repo.init(engine="siesta")
+    repo.tag("v1", message="v1")
+    # verify uses read_bytes (still real); only the copy step is broken.
+    def _boom(s, d, *a, **k):
+        raise OSError("simulated disk fault")
+    monkeypatch.setattr(cp.shutil, "copy2", _boom)
+    with pytest.raises(cp.CheckpointError, match="copying .* failed"):
+        repo.restore("v1")

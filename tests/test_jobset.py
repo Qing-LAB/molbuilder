@@ -595,3 +595,14 @@ def test_prep_carry_deref_only_in_consumer_wrapper(tmp_path):
     assert "Carry-forward: localize" not in s1
     assert "Carry-forward: localize" in s2
     assert "demo.XV" in s2 and "demo.DM" in s2
+
+
+def test_prep_writes_stage_plan_md(tmp_path):
+    """J1 (D3): prep emits STAGE-PLAN.md into the bundle (bench parity)."""
+    js = _sweep()
+    _write_config(tmp_path)
+    _write_fdf(tmp_path / "job-gpu.fdf")
+    prep_jobset(js, tmp_path, emit_sbatch=False)
+    plan = tmp_path / "STAGE-PLAN.md"
+    assert plan.is_file()
+    assert "JOB-SET PLAN" in plan.read_text()

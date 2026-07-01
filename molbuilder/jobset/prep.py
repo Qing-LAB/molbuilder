@@ -103,6 +103,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 relink(d, f"../{wrapper}", wrapper)
         if has_monitor:
             relink(d, "../mb_monitor.py", "mb_monitor.py")
+
+    # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
+    # The reviewable plan lands in the bundle at prep, not just on the
+    # `jobset plan` command's stdout.
+    from .plan import render_plan
+    (base / "STAGE-PLAN.md").write_text(render_plan(jobset) + "\n",
+                                        encoding="utf-8")
     return dirs
 
 

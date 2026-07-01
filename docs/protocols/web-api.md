@@ -7,7 +7,7 @@ the JS contracts the responses feed are in
 [`projects-sidebar.md`](projects-sidebar.md) and
 [`atom-selection.md`](atom-selection.md).
 
-**Implementation**: `molbuilder/web/blueprints/{build,files,modify,results,selection,spectra,watch}.py`
+**Implementation**: `molbuilder/web/blueprints/{build,files,modify,results,selection,spectra,watch,checkpoint}.py`
 plus the dispatcher in `molbuilder/web/app.py`.
 
 **Test layer**: `tests/test_web*.py`, `tests/test_selection_blueprint.py`,
@@ -221,7 +221,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 67 routes
+## 2. Endpoint index — all 69 routes
 
 ```mermaid
 flowchart LR
@@ -325,7 +325,22 @@ flowchart LR
     end
 ```
 
-Sections § 3–§ 13 below cover each blueprint in detail.
+Sections § 3–§ 13 below cover each blueprint in detail. The **checkpoint**
+routes (`/api/checkpoint/*`) don't have a prose section; their behavior is
+governed by `run-checkpoints.md` (§ 4–§ 10) and their contract is:
+
+| Route | Body / query | Returns |
+|---|---|---|
+| `POST /api/checkpoint/init` | `{path, engine?}` (`engine` = `siesta`/`pyscf`, seeds the big-binary classification, § 9; UI passes it from task setup) | `{ok, state, archive_globs}`; unknown engine → bucket-B advisory (`where:"engine"`) |
+| `GET /api/checkpoint/state` | `?path` | `{ok, state}` (cheap; no archive walk) |
+| `GET /api/checkpoint/list` | `?path[&limit]` | `{ok, checkpoints[]}` |
+| `GET /api/checkpoint/diff` | `?path&a&b[&pathspec]` | `{ok, diff}` |
+| `POST /api/checkpoint/commit` | `{path, message?}` | `{ok, checkpoint|null}` (clean tree → null) |
+| `POST /api/checkpoint/tag` | `{path, label, message, at?}` | `{ok}` |
+| `POST /api/checkpoint/restore` | `{path, ref, include_binaries?}` | `{ok, restored[]}`; dirty text/binary or corrupt/incomplete archive → advisory (run-checkpoints.md § 4.6) |
+| `GET /api/checkpoint/config` | `?path` | `{ok, archive_globs}` — the editable big-binary table (§ 9) |
+| `POST /api/checkpoint/config` | `{path, archive_globs[]}` | `{ok, archive_globs}`; empty list → advisory |
+| `POST /api/checkpoint/migrate-manifest` | `{path, ref}` | `{ok, entries}` |
 
 ---
 

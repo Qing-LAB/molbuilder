@@ -69,3 +69,17 @@ def test_adopters_use_the_shared_check():
         bad = {"schema": good.rsplit("@", 1)[0] + "@99"}
         with pytest.raises(ValueError, match="schema mismatch"):
             cls.from_dict(bad)
+
+
+def test_write_json_is_atomic_no_tmp_left(tmp_path):
+    """C2: write_json publishes via os.replace -- no .tmp sibling remains,
+    content is complete."""
+    p = tmp_path / "cfg.json"
+    persist.write_json(p, {"schema": "molbuilder/x@1", "archive_globs": ["*.DM"]})
+    assert p.is_file()
+    assert not (tmp_path / "cfg.json.tmp").exists()      # tmp cleaned by replace
+    assert persist.read_json(p)["archive_globs"] == ["*.DM"]
+    # overwrite (the set path) -- still atomic, still no tmp
+    persist.write_json(p, {"schema": "molbuilder/x@1", "archive_globs": ["*.chk"]})
+    assert not (tmp_path / "cfg.json.tmp").exists()
+    assert persist.read_json(p)["archive_globs"] == ["*.chk"]
