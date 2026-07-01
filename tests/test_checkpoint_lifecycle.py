@@ -445,3 +445,17 @@ def test_checkpoint_produces_a_self_consistent_archive(tmp_path):
     expected = _verify_archived_binaries(tmp_path, repo.resolve_ref("HEAD"))
     assert expected["siesta-test.DM"] == (
         __import__("hashlib").sha256(b"\x00" * 2048).hexdigest(), 2048)
+
+
+def test_archive_detects_copy_corruption_at_save(tmp_path, monkeypatch):
+    """SAVE-side fidelity: a silently-corrupting copy (disk error) must make
+    archiving FAIL loudly -- never record the corrupt copy's own sha as truth
+    (which would later 'verify' against itself and restore bad bytes)."""
+    import molbuilder.checkpoint as cp
+    _seed_working_dir(tmp_path)                      # .DM = 2048 zeros
+    def _corrupting_copy(src, dst, *a, **k):
+        Path(dst).write_bytes(b"\xFF" * 2048)        # wrong bytes
+    monkeypatch.setattr(cp.shutil, "copy2", _corrupting_copy)
+    repo = cp.Repo(str(tmp_path))
+    with pytest.raises(cp.CheckpointError, match="corrupt"):
+        repo.init()                                  # init archives the .DM

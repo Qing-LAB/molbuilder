@@ -414,10 +414,22 @@ def _archive_binaries(path: Path, sha: str) -> int:
     total = 0
     for src in binaries:
         dst = target / src.name
+        # Hash the SOURCE, copy, then re-hash the ARCHIVED copy and require
+        # they match.  Deriving the MANIFEST sha from the copy alone would
+        # make a silent copy corruption (disk error) self-consistent -- the
+        # bad bytes would later "verify" against their own bad sha and be
+        # restored as truth.  Verify FIDELITY (source == archive) at save
+        # time so a corrupt copy fails loudly here, not silently on restore.
+        src_sha = hashlib.sha256(src.read_bytes()).hexdigest()
         shutil.copy2(src, dst)
+        dst_sha = hashlib.sha256(dst.read_bytes()).hexdigest()
+        if dst_sha != src_sha:
+            raise CheckpointError(
+                f"archive copy of {src.name!r} is corrupt: source sha256 "
+                f"{src_sha!r} != archived {dst_sha!r} (disk error?); the "
+                f"checkpoint was NOT safely archived.")
         size = dst.stat().st_size
-        sha256 = hashlib.sha256(dst.read_bytes()).hexdigest()
-        entries.append((sha256, size, src.name))
+        entries.append((src_sha, size, src.name))
         total += size
     _atomic_write_text(target / _MANIFEST_NAME,
                        _format_canonical_manifest(entries))
