@@ -465,7 +465,7 @@ slurm-integration.md § 7.9 / § 11.1.
 Launches the points (queue-submitted in parallel under SLURM; sequential
 on a workstation). The launcher + monitor are built; the monitor emits
 `util.csv` (§ 9). **Output isolation (built):** the sweep runs each (G, K)
-point in its own `point-G<g>K<k>/` subdirectory (the shared fdf / run.sh /
+point in its own `point-G<g>K<k>C<c>/` subdirectory (the shared fdf / run.sh /
 sbatch / monitor / pseudos are symlinked in), so points never clobber the
 shared `job-gpu` basename. Per-point outputs (timing log, `util.csv`, peak
 memory) live under that directory; summarize maps the directory → label.

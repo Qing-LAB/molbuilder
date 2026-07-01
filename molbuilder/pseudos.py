@@ -531,8 +531,12 @@ def check_coverage(elements: Iterable[str],
     # individually parses.  WARN-severity: it MIGHT be intentional, but
     # the user should confirm the whole set is from one PseudoDojo
     # release.  Only compares pseudos that are actually present.
+    # Iterate in a STABLE order: ``seen`` is a set, and a hash-ordered walk
+    # would make both the group-insertion order and the majority tie-break
+    # (``max(..., key=len)`` below) non-deterministic -- the named "stranger"
+    # could flip run to run.  Sorted keys make the C4 warning reproducible.
     gen_keys: Dict[str, List[str]] = {}
-    for key in seen:
+    for key in sorted(seen):
         info = info_map.get(key)
         if info is None or info.generator in ("", "unknown"):
             continue
