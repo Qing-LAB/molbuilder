@@ -53,7 +53,7 @@ L1) · **L3** surfaces (cli/web). Enforced by `tests/test_layering.py`.
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
 | `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `stages_to_jobset`; `prep_jobset`; `submit_jobset(mode,domain,dry_run)`; `jobset_status`; `render_plan`; `JobSet.write/load`; CLI `molbuilder jobset {plan,prep,status,submit}` | `protocols/staged-execution.md`; user: `staged-relaxation-guide.md` |
-| `bench/` | L2 | portable **benchmark** sweep (detect→format→run→summarize) | `molbuilder bench {generate,prep,summarize,prep-run,siesta-gpu}`; adapters `format_bench`/`format_run` | `protocols/benchmark-workflow.md` |
+| `bench/` | L2 | portable **benchmark** sweep (detect→format→run→summarize) | `molbuilder bench {generate,prep,summarize,prep-run,siesta-gpu,probe-scheduler}`; adapters `format_bench`/`format_run` | `protocols/benchmark-workflow.md` |
 | `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI, mem, carry-localize) | `write_run_wrapper(...carry_in=)`, `render_sbatch`, `write_sbatch` | `protocols/slurm-integration.md`, `protocols/script-execution.md` |
 | `runtime_config` | L2 | reader for `molbuilder.json` (scheduler/routing/script-gen) | `get_scheduler`, `get_routing`, `get_script_generation`, `require_activation`, `write_config_scope` | `config.md`, `protocols/slurm-integration.md` |
 | `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs (`mb_monitor.py`) | `monitor` module (copied verbatim to targets) | `protocols/benchmark-workflow.md` § 9 |
