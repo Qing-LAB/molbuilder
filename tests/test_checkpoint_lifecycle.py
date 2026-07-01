@@ -338,3 +338,73 @@ def test_cli_snapshot_branch(tmp_path):
     assert r.exit_code == 0, r.output
     assert "stage4-tzp" in r.output
     assert Repo(str(tmp_path)).state().current_branch == "stage4-tzp"
+
+
+# ----------------------------------------------------------------- #
+#  Binary-archive integrity on restore (§ 10.3 data-safety) —       #
+#  the "verify sha256+size BEFORE touching the working tree" path.   #
+# ----------------------------------------------------------------- #
+
+
+def _sole_archive_dir(tmp_path: Path) -> Path:
+    dirs = [d for d in (tmp_path / ".binsnapshots").iterdir() if d.is_dir()]
+    assert len(dirs) == 1, dirs
+    return dirs[0]
+
+
+def test_restore_aborts_on_tampered_archived_binary(tmp_path):
+    """A corrupted archived binary (bytes changed, MANIFEST sha unchanged)
+    must abort restore and NOT copy the bad bytes into the working tree."""
+    _seed_working_dir(tmp_path)                     # .DM = 2048 zero bytes
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    # current working .DM differs from the archive -> detectable if touched.
+    (tmp_path / "siesta-test.DM").write_bytes(b"\xAB" * 2048)
+    # tamper the archived copy: same size, different bytes -> sha mismatch.
+    (_sole_archive_dir(tmp_path) / "siesta-test.DM").write_bytes(b"\xFF" * 2048)
+
+    with pytest.raises(CheckpointError, match="integrity check failed"):
+        repo.restore("v1")
+    # the failed restore left the working binary untouched.
+    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\xAB" * 2048
+
+
+def test_restore_aborts_on_archived_binary_size_mismatch(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    (_sole_archive_dir(tmp_path) / "siesta-test.DM").write_bytes(b"\x00" * 1024)
+    with pytest.raises(CheckpointError, match="integrity check failed"):
+        repo.restore("v1")
+
+
+def test_restore_aborts_on_missing_archived_file(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    (_sole_archive_dir(tmp_path) / "siesta-test.DM").unlink()   # MANIFEST still lists it
+    with pytest.raises(CheckpointError, match="refusing to restore"):
+        repo.restore("v1")
+
+
+def test_restore_include_binaries_false_skips_integrity_and_binaries(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    (tmp_path / "siesta-test.DM").write_bytes(b"\xAB" * 2048)
+    # even a corrupt archive is fine when binaries are skipped.
+    (_sole_archive_dir(tmp_path) / "siesta-test.DM").write_bytes(b"\xFF" * 999)
+    restored = repo.restore("v1", include_binaries=False)
+    assert restored == []
+    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\xAB" * 2048  # untouched
+
+
+def test_archive_total_bytes_reports_archived_size(tmp_path):
+    _seed_working_dir(tmp_path)                     # one 2048-byte .DM
+    repo = Repo(str(tmp_path))
+    repo.init()
+    assert repo.archive_total_bytes() == 2048
