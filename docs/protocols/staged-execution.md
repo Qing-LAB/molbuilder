@@ -43,7 +43,7 @@
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
 | **HOST bundle producer** — `molbuilder fdf … --stage-strategy <s> --jobset`: render stage `.fdf`s + pseudos + `job-set.json` in one command (§ 5 step 2-3) | **built** (`cli.py::_emit_siesta_multi_stage`, opt-in `--jobset`) |
 | Per-stage resource CLI source (§ 6) — `fdf --jobset --stage-resources <json>` | **built** (`cli.py`, validated against stage names → `resources_for`) |
-| Bench migration onto the framework (§ 13 D4) | **proposed** |
+| Bench migration onto the framework (§ 13 D4) | **partial** — bench is now a jobset producer (`bench/to_jobset.py::sweep_to_jobset`; shared `sweep_grid`; `prep-bench` emits `job-set.json`). Follow-up: retire the inline-bash `_mb_point` for `jobset submit` once Sol-validated |
 
 ---
 
@@ -633,15 +633,19 @@ for `domain`→`-p/-q`; env routing on ELPA/GPU; the entry-shim env bootstrap
 (`script-execution.md`); git checkpoints `snapshot tag`/`restore`
 (`run-checkpoints.md`).
 
-**Known debt — `jobset` currently PARALLELS the bench, it does not yet
-reuse it (be honest):** `jobset/materialize.py` reimplements the bench's
-isolation, which today is **inline bash** (`_mb_point` generated into
-`job-gpu-sweep.sh`, `bench/adapters.py`); `jobset/plan.py` parallels
-`bench/generate.py::render_bench_plan`. Until the bench **migrates** onto
-the framework (§ 13 D4 — `format_bench` returns a `JobSet`), there are two
-implementations of isolation + plan. That migration is what converts this
-section's first paragraph from "will reuse" to "reuses", and it is the
-condition for the framework to be a unification rather than a second copy.
+**Debt status — bench is now a jobset PRODUCER (D4, partial):** the grid is
+unified — `bench/adapters.py::sweep_grid` is the SINGLE `(G,K,c)` enumeration
+that BOTH the bash sweep (`format_bench`) and the new producer
+(`bench/to_jobset.py::sweep_to_jobset` → `JobSet(kind="sweep")`) iterate, so
+they cannot diverge. `prep-bench` now emits `job-set.json` alongside the bash
+sweep, so a bench bundle is a first-class JobSet — `molbuilder jobset
+plan/prep/status/submit` operate on it, materializing the SAME
+`point-G<g>K<k>C<c>/` dirs summarize reads. **Remaining (follow-up):** retire
+the inline-bash `_mb_point` execution in favour of `jobset submit` once the
+jobset-submit path is Sol-validated (keep the proven bash until then); the
+science-rich `render_bench_plan` stays bench-specific (it is NOT a dupe of the
+generic `jobset/plan.py` — CPU baseline, domain table, cross-socket
+annotations, mpi_np-vs-cores warning).
 
 **Handoff boundary (don't reinvent it).** Carry-forward (§ 4) is *intra*-
 ladder geometry. The *inter-workflow* handoff — a converged relaxation
@@ -676,11 +680,15 @@ seam; and the `snapshot branch` checkpoint wrapper (§ 11 gap).
   stage's resolved domain/walltime/solver/hardware + carry set + dependency
   graph + `on_nonconvergence`, shown before submit.
 
-- **D4 — the `jobset` framework IS the core, built first.** `siesta/stages`
-  is its first producer; the bench **migrates** onto it (`format_bench`
-  returns a `JobSet`) as a fast-follow — additive, a producer swap with the
-  existing bench tests as the net. No parallel copy of the isolation/submit
-  logic is ever created.
+- **D4 — the `jobset` framework IS the core; bench is its second producer
+  (partial, shipped).** `siesta/stages` was the first producer;
+  `bench/to_jobset.py::sweep_to_jobset` is the second. The `(G,K,c)` grid is
+  now defined ONCE (`adapters.sweep_grid`) and consumed by both the bash
+  sweep and the JobSet, and `prep-bench` emits `job-set.json`. Done as an
+  additive, tests-as-the-net change (the bash output is byte-preserved).
+  Follow-up: switch bench execution from the inline-bash `_mb_point` loop to
+  `jobset submit` once that path is Sol-validated — until then both consume
+  the one grid, so there is no divergent copy of the grid logic.
 
 ---
 

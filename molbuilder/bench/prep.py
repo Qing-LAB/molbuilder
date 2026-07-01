@@ -82,6 +82,20 @@ def run_prep_bench(out_dir,
             p.chmod(0o755)
         written.append(p)
 
+    # Also emit the sweep as a first-class JobSet (job-set.json), so the bench
+    # bundle is describable/runnable by the engine-agnostic framework
+    # (`molbuilder jobset plan/prep/submit`) -- the SAME (G,K,c) grid as the
+    # bash sweep above (both iterate adapters.sweep_grid) and the SAME
+    # point-G<g>K<k>C<c>/ dirs summarize reads.  Bench = a jobset producer
+    # (staged-execution.md § 13 D4).
+    from .to_jobset import sweep_to_jobset
+    pseudos = sorted(p.name for ext in ("*.psml", "*.psf", "*.vps")
+                     for p in out.glob(ext))
+    monitor = ["mb_monitor.py"] if (out / "mb_monitor.py").is_file() else []
+    js = sweep_to_jobset(adapter, env, ks=ks, cs=cs,
+                         shared=pseudos + monitor)
+    written.append(js.write(out / "job-set.json"))
+
     return env, written
 
 

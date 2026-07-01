@@ -28,7 +28,7 @@ def test_run_prep_bench_writes_environment_and_sweep(tmp_path):
         now_iso="2026-06-27T00:00:00Z")
 
     names = {p.name for p in written}
-    assert names == {"environment.json", "job-gpu-sweep.sh"}
+    assert names == {"environment.json", "job-gpu-sweep.sh", "job-set.json"}
 
     # environment.json is valid + round-trips
     envp = tmp_path / "environment.json"

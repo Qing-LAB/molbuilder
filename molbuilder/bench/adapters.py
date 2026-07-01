@@ -52,6 +52,19 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
         return list(_FALLBACK_CS)
     return sorted({1, max(1, cps // k), max(1, (2 * cps) // k)})
 
+
+def sweep_grid(gpn, cps, ks, cs_explicit):
+    """The canonical ``(G, K, c)`` enumeration -- the SINGLE source of truth
+    for the sweep grid, iterated by BOTH the bash emitter (``format_bench``)
+    AND the JobSet producer (``bench.to_jobset.sweep_to_jobset``), so the two
+    can never define the grid differently.  Order: G outer, then K, then c
+    (the per-K bracket ``{1, cores//K, 2*cores//K}`` when ``cs_explicit`` is
+    None).  Yields ``(g, k, c)`` tuples."""
+    for g in range(1, gpn + 1):
+        for k in ks:
+            for c in (cs_explicit if cs_explicit else _bracket_cs(cps, k)):
+                yield (g, k, c)
+
 # A script basename is interpolated UNQUOTED into generated shell, so it
 # must not carry shell metacharacters / spaces (production base is
 # user-derived from an fdf name).
@@ -203,38 +216,38 @@ class SchedulerAdapter:
         ]
 
         body: List[str] = []
-        for g in range(1, gpn + 1):
-            for k in ks:
-                # K = MPI ranks SHARING the GPU (via MPS).  c = cores (OMP
-                # threads) per rank -- an INDEPENDENT axis, not capped at one
-                # socket (§ 8.12).  Total CPU for this point = K*c*G.
-                for c in (cs_explicit if cs_explicit else _bracket_cs(cps, k)):
-                    d = f"point-G{g}K{k}C{c}"
-                    total = k * c
-                    notes = []
-                    if cps and k > cps:
-                        notes.append(f"K={k} > cores/socket={cps}: ranks "
-                                     f"oversubscribe cores")
-                    if cps and total > 2 * cps:
-                        notes.append(f"{total} cores > node ({2*cps}): SLURM "
-                                     f"may REJECT -- a 'did not fit' data point")
-                    elif cps and total > cps:
-                        notes.append(f"{total} cores > 1 socket ({cps}): "
-                                     f"CROSS-SOCKET -- measures traffic vs "
-                                     f"throughput")
-                    if g >= 2:
-                        notes.append("multi-GPU: no NCCL -- MEASURE; do NOT "
-                                     "add --gpu-bind")
-                    note = ("  (" + "; ".join(notes) + ")") if notes else ""
-                    # Per-point job name (squeue differentiation, § 4.4) +
-                    # the explicitly-selected domain's -p/-q via $MB_GPU_PQ
-                    # (set by run-bench; empty -> the .sbatch header default).
-                    launch = self.gpu_launch_line(
-                        g, k, c, gtype, job_name=f"job-gpu-G{g}K{k}C{c}",
-                        pq="${MB_GPU_PQ:-}")
-                    body.append(f"# G={g} K={k} c={c} (total {total} cores){note}")
-                    body.append(f"_mb_point {d}")
-                    body.append(f"( cd {d} && {launch} )")
+        # K = MPI ranks SHARING the GPU (via MPS).  c = cores (OMP threads)
+        # per rank -- an INDEPENDENT axis, not capped at one socket (§ 8.12).
+        # Total CPU for this point = K*c*G.  The grid enumeration is the
+        # shared ``sweep_grid`` (single source of truth with the JobSet
+        # producer); this loop only renders each point's bash.
+        for (g, k, c) in sweep_grid(gpn, cps, ks, cs_explicit):
+            d = f"point-G{g}K{k}C{c}"
+            total = k * c
+            notes = []
+            if cps and k > cps:
+                notes.append(f"K={k} > cores/socket={cps}: ranks "
+                             f"oversubscribe cores")
+            if cps and total > 2 * cps:
+                notes.append(f"{total} cores > node ({2*cps}): SLURM "
+                             f"may REJECT -- a 'did not fit' data point")
+            elif cps and total > cps:
+                notes.append(f"{total} cores > 1 socket ({cps}): "
+                             f"CROSS-SOCKET -- measures traffic vs "
+                             f"throughput")
+            if g >= 2:
+                notes.append("multi-GPU: no NCCL -- MEASURE; do NOT "
+                             "add --gpu-bind")
+            note = ("  (" + "; ".join(notes) + ")") if notes else ""
+            # Per-point job name (squeue differentiation, § 4.4) +
+            # the explicitly-selected domain's -p/-q via $MB_GPU_PQ
+            # (set by run-bench; empty -> the .sbatch header default).
+            launch = self.gpu_launch_line(
+                g, k, c, gtype, job_name=f"job-gpu-G{g}K{k}C{c}",
+                pq="${MB_GPU_PQ:-}")
+            body.append(f"# G={g} K={k} c={c} (total {total} cores){note}")
+            body.append(f"_mb_point {d}")
+            body.append(f"( cd {d} && {launch} )")
 
         content = "\n".join(head) + "\n\n" + "\n".join(body) + "\n"
         return {"job-gpu-sweep.sh": content}
