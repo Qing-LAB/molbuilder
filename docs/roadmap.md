@@ -28,10 +28,19 @@ sound and immediately usable; the only missing layer is the SLURM
 submission header. Closing it makes the generator end-to-end usable on
 the user's actual target system.
 
-**Current state**: `<basename>.run.sh` is scheduler-agnostic — it reads
-`SLURM_NTASKS`/`SLURM_GPUS_*` at runtime but emits NO `#SBATCH`
-directives. `script_generation.{preamble,activation}` already matches
-ASU's `module load mamba/latest` + `source activate` pattern.
+**Status: SHIPPED.** The `#SBATCH` submission layer is implemented —
+`runwrap.render_sbatch`/`write_sbatch` emit a `<basename>.sbatch` wrapping
+the unchanged `.run.sh` (per-job knobs from `.fdf`/CLI), driven by the
+`scheduler` config block; used by `molbuilder bench` and the `jobset`
+staged-execution framework (`molbuilder jobset submit`). Authoritative:
+[`protocols/slurm-integration.md`](protocols/slurm-integration.md). The
+resolutions below are retained as the verified Sol facts. (Residual: D7
+CUDA build-target tracking lives with the env/build work, not here.)
+
+**Original state (now resolved)**: `<basename>.run.sh` was
+scheduler-agnostic — it reads `SLURM_NTASKS`/`SLURM_GPUS_*` at runtime but
+emitted NO `#SBATCH` directives. `script_generation.{preamble,activation}`
+matches ASU's `module load mamba/latest` + `source activate` pattern.
 
 **Full design + verified facts now live in
 [`docs/protocols/slurm-integration.md`](protocols/slurm-integration.md)**
@@ -52,12 +61,11 @@ ASU's `module load mamba/latest` + `source activate` pattern.
   + the `siesta_diag.elpa_gpu` correctness gate) is the first job to
   submit — validates MPI+CUDA+resource sizing in one short batch run.
 
-**Design shape**: `scheduler` config block + `asu-sol` preset + a thin
+**Design shape (as shipped)**: `scheduler` config block + a thin
 `<basename>.sbatch` wrapping the unchanged `.run.sh`; per-job knobs
-derived from `.fdf`/CLI. **Status: design doc drafted + Sol-verified;
-awaiting sign-off on the doc before implementation.** Open items: D7
-(CUDA build-target), and final point-by-point review of
-`slurm-integration.md`.
+derived from `.fdf`/CLI — implemented in `runwrap` + `jobset` (see the
+SHIPPED note above). Residual open item: D7 (CUDA build-target), tracked
+with the env/build work.
 
 ### 0.2 Test-suite follow-ups (from the 2026-06-26 red-tests pass)
 

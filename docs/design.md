@@ -158,7 +158,9 @@ archived).
 (cross-engine tier framework + design considerations) ·
 [`siesta-gpu.md`](engines/siesta-gpu.md)
 (GPU SIESTA source-build recipe) ·
-[`builders.md`](engines/builders.md)
+[`builders.md`](engines/builders.md) ·
+[`pyscf-publication-guide.md`](engines/pyscf-publication-guide.md)
+(PySCF publication-quality parameter recipe + methods template)
 
 ### Types — L1 data contracts (`docs/types/`)
 

@@ -15,7 +15,6 @@ Status (2026-06-07): the tab is now `/molbuilder` (was `/modify`
 — legacy path returns 404 after the Structure → Molbuilder
 rename).  `/api/modify/*` BACKEND routes are unchanged (the API
 prefix kept its name for stability); only the page route moved.
-Doc will be renamed to `molbuilder.md` in a future cleanup.
 
 M1 Python API + CLI + tests; M2 UI skeleton; M3 delete + add-
 atom; M4 anchor-pair orient + rotate, per-atom info panel,
