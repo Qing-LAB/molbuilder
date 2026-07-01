@@ -708,6 +708,21 @@ class Repo:
                  cwd=self.path)
         return label
 
+    # -- Phase 4: experimental branching -------------------------- #
+
+    def branch(self, name: str) -> str:
+        """Create a new branch and switch to it (§ 4.5, Phase 4) -- the
+        user's subsequent checkpoints land on it.  Equivalent to
+        ``git checkout -b <name>``; carries any uncommitted changes onto the
+        new branch (git's default) so a user can branch mid-edit before an
+        experiment.  Raises :class:`CheckpointError` (with git's message) if
+        the branch already exists or the name is invalid."""
+        self._require_init()
+        if not name.strip():
+            raise CheckpointError("branch name must be non-empty")
+        _run_git(["checkout", "-q", "-b", name], cwd=self.path)
+        return name
+
     # -- Phase 5: restore ----------------------------------------- #
 
     def restore(self, ref: str, *,

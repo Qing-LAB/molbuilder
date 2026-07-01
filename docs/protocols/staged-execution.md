@@ -39,7 +39,7 @@
 | Pre-framework monolithic single-dir runner (§ 9) | **built** (`render_siesta_stages_runner`) — retained for the trivial single-stage/workstation case |
 | Engine-native resume (§ 10) | **built** (`script-execution.md`, `runwrap`) |
 | Checkpoints — `snapshot tag`/`restore` (§ 11) | **built** (`run-checkpoints.md`, `molbuilder snapshot`) |
-| `snapshot branch` (explore alternatives, § 11) | **NOT built** — designed (run-checkpoints Phase 4); use raw `git checkout -b` today |
+| `snapshot branch` (explore alternatives, § 11) | **built** (`checkpoint.py::Repo.branch`, `molbuilder snapshot branch`) |
 | Cross-workflow handoff (relax → transport/spectra) | **built** (`bundle_writer.py`, `bundle-contract.md`) — reused, not in scope |
 | **HOST bundle producer** — `molbuilder fdf … --stage-strategy <s> --jobset`: render stage `.fdf`s + pseudos + `job-set.json` in one command (§ 5 step 2-3) | **built** (`cli.py::_emit_siesta_multi_stage`, opt-in `--jobset`) |
 | Per-stage resource CLI source (§ 6) — `fdf --jobset --stage-resources <json>` | **built** (`cli.py`, validated against stage names → `resources_for`) |
@@ -390,7 +390,7 @@ cd point-stage2 && sbatch bdt_stage2.sbatch --continue
 # explore an alternative tail without losing the converged path (§11)
 cd point-stage2
 molbuilder snapshot tag stage2-converged       # built
-git checkout -b stage2-tzp                      # branch: raw git today (§11 gap)
+molbuilder snapshot branch stage2-tzp           # fork an experiment
 ```
 
 ---
@@ -597,13 +597,12 @@ rule, P5: each SLURM job self-contained). So **each stage dir is its own
 checkpoint repo**; `molbuilder snapshot {init,checkpoint,tag,list,restore}`
 works per stage unchanged.
 
-> **Gap (verified 2026-06-30):** `molbuilder snapshot **branch**` is in the
-> `run-checkpoints.md` design (Phase 4) but is **not yet implemented** —
-> only `init/checkpoint/tag/list/restore/migrate-manifest` exist today. To
-> branch a stage right now, use raw `git checkout -b <name>` inside the
-> stage dir (each dir is a real git repo). Building the `snapshot branch`
-> wrapper is the one new checkpoint piece this integration needs (§ 1; it
-> is what makes "explore alternatives" first-class).
+> **`molbuilder snapshot branch <name>`** (built — `checkpoint.py::Repo.branch`)
+> forks an experimental path inside a stage dir (each dir is a real git repo):
+> `git checkout -b` semantics, so the user's subsequent checkpoints land on
+> the branch while the converged path stays recoverable via its tag. This is
+> what makes "explore alternatives" first-class (P6: tags = milestones,
+> branches = experiments).
 
 - The shared package (bundle root) lives **outside** the per-stage repos —
   immutable inputs, not versioned per stage; git records the *symlink*.

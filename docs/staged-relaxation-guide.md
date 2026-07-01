@@ -187,7 +187,7 @@ reports; it never resumes for you.
   ```bash
   cd bundle/point-stage2
   molbuilder snapshot tag stage2-good      # save this state
-  git checkout -b stage2-bigger-basis      # fork to experiment
+  molbuilder snapshot branch stage2-bigger-basis   # fork to experiment
   # ...edit the input, re-run; if it's worse:
   molbuilder snapshot restore stage2-good  # rewind
   ```

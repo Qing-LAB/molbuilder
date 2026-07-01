@@ -280,3 +280,61 @@ def test_user_supplied_gitignore_is_not_overwritten(tmp_path):
     repo = Repo(str(tmp_path))
     repo.init()
     assert (tmp_path / ".gitignore").read_text() == custom
+
+
+# ----------------------------------------------------------------- #
+#  Phase 4: experimental branching (run-checkpoints.md § 4.5)        #
+# ----------------------------------------------------------------- #
+
+
+def test_branch_forks_and_isolates_the_alternative(tmp_path):
+    """P6: a branch carries an experiment without disturbing the original
+    path. Checkpoints after `branch` land on the branch; the original
+    branch's converged state is recoverable."""
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("converged", message="good geometry")
+    original = (tmp_path / "siesta-test.fdf").read_text()
+
+    # fork an experiment and change the input on the branch.
+    repo.branch("try-tzp")
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test\nPAO.BasisSize TZP\n")
+    cp = repo.checkpoint(message="experiment: TZP basis")
+    assert cp is not None
+    # the experimental checkpoint is on the new branch.
+    state = repo.state()
+    assert state.current_branch == "try-tzp"
+
+    # the converged tag still restores the ORIGINAL input (isolation).
+    repo.restore("converged")
+    assert (tmp_path / "siesta-test.fdf").read_text() == original
+
+
+def test_branch_rejects_duplicate_name(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.branch("exp")
+    with pytest.raises(CheckpointError):
+        repo.branch("exp")            # already exists -> git errors, wrapped
+
+
+def test_branch_rejects_empty_name(tmp_path):
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    with pytest.raises(CheckpointError, match="non-empty"):
+        repo.branch("   ")
+
+
+def test_cli_snapshot_branch(tmp_path):
+    from click.testing import CliRunner
+    from molbuilder.cli import cli
+    _seed_working_dir(tmp_path)
+    Repo(str(tmp_path)).init()
+    r = CliRunner().invoke(cli, ["snapshot", "branch", "stage4-tzp",
+                                 "-p", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "stage4-tzp" in r.output
+    assert Repo(str(tmp_path)).state().current_branch == "stage4-tzp"

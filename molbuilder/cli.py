@@ -2378,6 +2378,32 @@ def cmd_snapshot_tag(label, message, at, path):
     click.echo(f"tagged {at} as {label!r}")
 
 
+@cmd_snapshot.command("branch",
+                      short_help="fork a branch to explore an alternative")
+@click.argument("name")
+@click.option("-p", "--path", default=None, type=click.Path(),
+              help="Working dir.  Default: cwd.")
+def cmd_snapshot_branch(name, path):
+    """Create a new branch and switch to it (run-checkpoints.md § 4.5) --
+    for exploring an experimental parameter path without losing the current
+    one.  Tags mark milestones; branches carry experiments (P6).  Your next
+    ``snapshot checkpoint`` lands on this branch; ``snapshot restore`` /
+    ``git checkout`` returns you to the original."""
+    from molbuilder.checkpoint import Repo, CheckpointError
+    repo = Repo(_resolve_repo_path(path))
+    if not repo.initialized:
+        click.echo(f"Error: {repo.path} is not a checkpoint repo.",
+                   err=True)
+        sys.exit(2)
+    try:
+        repo.branch(name)
+    except CheckpointError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    click.echo(f"switched to a new branch {name!r} "
+               "(subsequent checkpoints land here)")
+
+
 @cmd_snapshot.command("list",
                       short_help="list checkpoints (most recent first)")
 @click.option("-n", "--limit", type=int, default=20, show_default=True,
