@@ -23,6 +23,11 @@
 
 ---
 
+> **New to this?** Read the plain-language explainer first —
+> [`../jobset-infrastructure.md`](../jobset-infrastructure.md) — which walks
+> the infrastructure and each use-case scenario (ladder, sweep) with diagrams
+> and examples. This document is the authoritative *contract*.
+
 ## § 1 Status
 
 | Piece | State |
@@ -58,7 +63,7 @@ engine-agnostic **engines**:
 ```mermaid
 flowchart LR
   subgraph P["Producers — the only place engine knowledge lives"]
-    B["bench.format_bench()<br/>(sweep)"]
+    B["bench.sweep_to_jobset()<br/>(sweep)"]
     S["siesta.stages_to_jobset()<br/>(ladder)"]
   end
   JS(["JobSet<br/><i>job-set@1 data</i>"])

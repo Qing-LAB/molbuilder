@@ -98,6 +98,8 @@ subsystem-specific decisions land in the subsystem doc.
 | [`package-layout.md`](package-layout.md) | On-disk package structure (L1/L2/L3 folder map, import-stability promises) |
 | [`science.md`](science.md) | Scientific correctness contract (spin+charge, validation pass, cross-engine consistency, output style) |
 | [`roadmap.md`](roadmap.md) | Open backend / feature roadmap (3DNA, Transport B.3, etc.) |
+| [`jobset-infrastructure.md`](jobset-infrastructure.md) | Plain-language explainer of the `jobset` framework + each use-case scenario (ladder, sweep) with diagrams + examples (contract: `protocols/staged-execution.md`) |
+| [`staged-relaxation-guide.md`](staged-relaxation-guide.md) | User guide — running a staged relaxation (the ladder scenario), step by step |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 
