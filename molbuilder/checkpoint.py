@@ -424,27 +424,26 @@ def _archive_binaries(path: Path, sha: str) -> int:
     return total
 
 
-def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
-    """Copy archived binaries for ``sha`` back into ``path``.  MANIFEST
-    is parsed strictly (§ 10.2 / § 10.3) and each file's sha256 is
-    re-verified against the recorded value BEFORE any byte hits the
-    working tree.  Returns list of restored file names."""
+def _verify_archived_binaries(path: Path, sha: str
+                              ) -> Dict[str, Tuple[str, int]]:
+    """Verify the archived binaries for ``sha`` against their MANIFEST
+    (existence + size + sha256), touching NOTHING.  Raises
+    :class:`CheckpointError` on ANY mismatch.  Returns the expected
+    ``{name: (sha256, size)}`` map, or ``{}`` when there is no archive (a
+    binary-free checkpoint is legal, § 4.6).
+
+    Split out from the copy so callers (``restore``) can verify the archive
+    is intact BEFORE they mutate the working tree at all -- a corrupt archive
+    must abort the WHOLE restore, not leave a half-restored tree (§ 10.3)."""
     arch = _archive_dir(path, sha)
     manifest = arch / _MANIFEST_NAME
-    if not arch.is_dir():
-        return []
-    if not manifest.is_file():
-        # No archive present for this checkpoint -- not an error per
-        # § 4.6 (an empty checkpoint with no big binaries is legal).
-        return []
-    raw = manifest.read_bytes()
-    expected = _parse_canonical_manifest(raw, where=str(arch))
+    if not arch.is_dir() or not manifest.is_file():
+        return {}
+    expected = _parse_canonical_manifest(manifest.read_bytes(), where=str(arch))
     if not expected:
         raise CheckpointError(
             f"archive at {arch}: canonical MANIFEST is present but "
             f"contained zero entries (§ 10.2).")
-    # First pass: verify every file's sha256 against MANIFEST.  Any
-    # mismatch aborts BEFORE we touch the working tree (§ 10.3).
     for name, (want_sha256, want_size) in expected.items():
         src = arch / name
         if not src.is_file():
@@ -463,12 +462,28 @@ def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
                 f"archive at {arch}: integrity check failed for "
                 f"{name!r} -- expected sha256 {want_sha256!r}, got "
                 f"{actual_sha256!r}; refusing to restore (§ 10.3).")
-    # Second pass: copy.  Sorted order = deterministic restore log.
+    return expected
+
+
+def _copy_archived_binaries(path: Path, sha: str,
+                            expected: Dict[str, Tuple[str, int]]
+                            ) -> List[str]:
+    """Copy the (already-verified) archived binaries into the working tree.
+    Sorted order = deterministic restore log.  Call ONLY after
+    :func:`_verify_archived_binaries` has passed."""
+    arch = _archive_dir(path, sha)
     restored: List[str] = []
     for name in sorted(expected.keys()):
         shutil.copy2(arch / name, path / name)
         restored.append(name)
     return restored
+
+
+def _restore_archived_binaries(path: Path, sha: str) -> List[str]:
+    """Verify then copy the archived binaries for ``sha`` (verification
+    aborts BEFORE any byte hits the working tree, § 10.3)."""
+    expected = _verify_archived_binaries(path, sha)
+    return _copy_archived_binaries(path, sha, expected)
 
 
 def _migrate_legacy_manifest(arch: Path) -> Dict[str, Tuple[str, int]]:
@@ -740,6 +755,14 @@ class Repo:
                 "checkpoint or discard them before restoring.")
         # Resolve ref to a SHA.
         sha = self._resolve_ref(ref)
+        # ATOMICITY (§ 10.3): verify the binary archive BEFORE mutating the
+        # working tree, so a corrupt/incomplete archive aborts the WHOLE
+        # restore -- text AND binaries -- rather than leaving a half-restored
+        # tree (text rewound, binaries stale).  git restore touches text; the
+        # binary integrity check must gate it, not follow it.
+        expected: Dict[str, Tuple[str, int]] = {}
+        if include_binaries:
+            expected = _verify_archived_binaries(Path(self.path), sha)
         # git restore: rewinds the working tree but keeps HEAD on
         # the current branch (per § 11 decision 3).
         _run_git(["restore", "--source", ref, "--worktree",
@@ -747,7 +770,8 @@ class Repo:
                  cwd=self.path)
         if not include_binaries:
             return []
-        return _restore_archived_binaries(Path(self.path), sha)
+        # Copy the already-verified binaries (verification passed above).
+        return _copy_archived_binaries(Path(self.path), sha, expected)
 
     # -- § 10.4 migrate-manifest ---------------------------------- #
 

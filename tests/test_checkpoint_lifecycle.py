@@ -408,3 +408,40 @@ def test_archive_total_bytes_reports_archived_size(tmp_path):
     repo = Repo(str(tmp_path))
     repo.init()
     assert repo.archive_total_bytes() == 2048
+
+
+def test_restore_is_atomic_corrupt_binary_leaves_text_untouched(tmp_path):
+    """SAFETY (§ 10.3 atomicity): a corrupt binary archive must abort the
+    WHOLE restore -- the TEXT must NOT be rewound either. Before the
+    verify-before-git-restore fix this left a half-restored tree (text@ref,
+    binaries@current)."""
+    from molbuilder.checkpoint import _archive_dir
+    _seed_working_dir(tmp_path)                       # .fdf v1, .DM v1
+    repo = Repo(str(tmp_path))
+    repo.init()
+    repo.tag("v1", message="baseline")
+    v1_sha = repo.resolve_ref("v1")
+    # advance BOTH text and binary to a v2 state and commit.
+    (tmp_path / "siesta-test.fdf").write_text("SystemLabel test_v2\n")
+    (tmp_path / "siesta-test.DM").write_bytes(b"\x22" * 2048)
+    repo.checkpoint(message="v2")
+    # corrupt v1's archived binary (sha mismatch, same size).
+    (_archive_dir(tmp_path, v1_sha) / "siesta-test.DM").write_bytes(b"\xFF" * 2048)
+
+    with pytest.raises(CheckpointError, match="integrity check failed"):
+        repo.restore("v1")
+    # NEITHER text nor binary was touched -- restore was all-or-nothing.
+    assert (tmp_path / "siesta-test.fdf").read_text() == "SystemLabel test_v2\n"
+    assert (tmp_path / "siesta-test.DM").read_bytes() == b"\x22" * 2048
+
+
+def test_checkpoint_produces_a_self_consistent_archive(tmp_path):
+    """SAVE-side integrity: a freshly-written archive verifies against its own
+    MANIFEST (the sha256+size recorded match the bytes actually archived)."""
+    from molbuilder.checkpoint import _verify_archived_binaries
+    _seed_working_dir(tmp_path)
+    repo = Repo(str(tmp_path))
+    repo.init()
+    expected = _verify_archived_binaries(tmp_path, repo.resolve_ref("HEAD"))
+    assert expected["siesta-test.DM"] == (
+        __import__("hashlib").sha256(b"\x00" * 2048).hexdigest(), 2048)
