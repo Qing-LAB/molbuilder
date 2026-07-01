@@ -1045,6 +1045,35 @@
         }
     }
 
+    /**
+     * MOUNT-RESTORE OWNERSHIP (workspace-contract.md § "Mount-time restore").
+     *
+     * Returns the source-file path that a mount-time snapshot restore will
+     * hydrate (structure + selection), or ``null`` when the persisted
+     * snapshot carries no restorable structure.
+     *
+     * CONTRACT — every mount-time writer MUST honor this:  on page mount the
+     * snapshot restore (``viewer.js::restoreModifyState``) is the SOLE
+     * authority for hydrating the workspace from the persisted snapshot.  Any
+     * surface that would ALSO issue a load/commit on mount (e.g. the sidebar
+     * bootstrap re-committing ``projects.getCurrentFile()``) MUST first call
+     * this and, if it returns that same file, DEFER — issuing a competing
+     * ``adoptSession``/commit races the restore and clobbers the restored
+     * selection (the two-writer mount race, fixed 2026-07-01).  A genuinely
+     * DIFFERENT file (a real cross-tab handoff) is not owned by the snapshot,
+     * so it still loads.
+     *
+     * Order-independent by construction: it reads the SAME persisted snapshot
+     * the restore derives from, so callers need not know whether the restore
+     * has already run.
+     */
+    function mountRestoreTarget() {
+        var snap = readPersistedSnapshot();
+        if (!snap || !snap.state || !snap.state.structure
+                || !snap.state.structure.text) return null;
+        return (snap.state.source && snap.state.source.file) || null;
+    }
+
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
 
     var api = {
@@ -1056,6 +1085,7 @@
         getLastSavedTo:        getLastSavedTo,
         getSelection:          getSelection,
         getAtoms:              getAtoms,
+        mountRestoreTarget:    mountRestoreTarget,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
         installStructure:      installStructure,

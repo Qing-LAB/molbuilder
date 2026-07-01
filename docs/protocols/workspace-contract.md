@@ -8,6 +8,10 @@
 >
 > **Companion docs:**
 >
+> * [`workspace-guide.md`](../workspace-guide.md) — **start here if you're new**:
+>   the plain-language developer guide (mental model, `ws.*` API cheat-sheet,
+>   the mount-restore rule, common gotchas).  This contract is the precise
+>   spec; the guide is the friendly on-ramp.
 > * [`workspace-state.md`](workspace-state.md) — the 2026-06-07
 >   audit + migration history that motivated this contract.  Read
 >   it for the *why* behind the design.
@@ -153,6 +157,7 @@ represented as `null` or empty.
 | `ws.getAtoms()` | `Atom[]` (slice) | Direct atom-array accessor for hot paths (filter/picker).  Returns `[]` when empty.  Always reflects current state — never stale relative to `getStructure().atoms`. |
 | `ws.getSourceFile()` | `string \| null` | Convenience: equivalent to `getSource().file`.  Used by selection-panel + viewer-adapter (current code reads `selection.store.getState().sourceFile`). |
 | `ws.getLastSavedTo()` | `string \| null` | The disk path the workspace was last successfully saved to this session.  Returns `null` until the first `save()` call lands.  Used by `structureSave.targetPath()` to resolve the natural save destination and by modify-viewer's Send-to-Optimization gate to require a saved-and-clean state. |
+| `ws.mountRestoreTarget()` | `string \| null` | The source-file a mount-time snapshot restore will hydrate (structure + selection), or `null` when the snapshot carries no restorable structure.  **Mount-time writers MUST consult this and defer when it equals the file they were about to load — see §4.5 (single-authority mount restore).**  Order-independent: derived from the persisted snapshot, not from whether the restore has run yet. |
 
 ### 2.1 Subscriptions
 
@@ -321,6 +326,59 @@ Contract:
 `loading`, `inFlight`, `error`, `history`.  These are transient
 runtime state; restoring them would be incorrect (e.g.
 `inFlight=true` from a navigation-killed request).
+
+### 4.5 Mount-time restore ownership (single-authority rule)
+
+**Why this exists.**  On a page mount there can be MORE THAN ONE surface
+that wants to hydrate the workspace from persisted state:
+
+- `viewer.js::restoreModifyState` restores the full snapshot
+  (structure **+ selection** + camera + chrome) from §4.1.
+- `selection-bootstrap.js` re-commits `projects.getCurrentFile()` for a
+  genuine cross-tab handoff.
+- (future) any new tab/surface that loads-on-mount.
+
+The workspace store is a **shared, mutable, async** module: its mutators
+(`adoptSession`, `setSourceFile`, `set`, …) all write the one `state` and,
+under the hood, race with last-writer-wins.  If two of the surfaces above
+both write on mount for the **same file**, the later write wins
+nondeterministically.  A fresh-load commit carries `selection:[]`, so when
+it lands *after* the snapshot restore it **silently clobbers the restored
+selection** — an intermittent "my selection vanished after navigating back"
+bug (root-caused + fixed 2026-07-01; the class also produced the earlier
+BOMB-0/2 / "MUST await" / "selector tracks the old file" fixes).
+
+**THE CONTRACT (every mount-time writer MUST honor it):**
+
+> On page mount, the **snapshot restore is the SOLE authority** for
+> hydrating the workspace from the persisted snapshot.  Before any *other*
+> surface issues a load/commit on mount, it MUST consult
+> **`ws.mountRestoreTarget()`** — the source-file the snapshot restore will
+> hydrate (or `null`).  If that equals the file the surface was about to
+> load, the surface **MUST defer** (do not commit).  A file the snapshot
+> does **not** own (a genuinely different / new structure — a real cross-tab
+> handoff) is not subject to this and still loads.
+
+```js
+// selection-bootstrap.js — the canonical honoring of the contract:
+const target = ws.mountRestoreTarget();          // file the restore owns, or null
+if (isLoadableStructure(initial) && initial !== target) {
+    commitFile(initial);        // cross-tab handoff: snapshot doesn't own it
+} else if (isLoadableStructure(initial)) {
+    setCandidate(initial);      // DEFER — restoreModifyState owns hydration
+}
+```
+
+`ws.mountRestoreTarget()` is **order-independent**: it derives from the SAME
+persisted snapshot the restore uses, so a caller need not know whether the
+restore has already run.  Live (non-mount) user actions — a sidebar
+dblclick, the Load button — are NOT gated: they are explicit intent and
+must load.
+
+**Design rule for the store itself:** a mount-time restore must set the
+selection **last / authoritatively** for its file; a redundant fresh-load
+of an already-owned file is a coordination error at the *caller*, prevented
+by the rule above rather than papered over inside the store.
 
 ---
 

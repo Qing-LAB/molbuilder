@@ -170,15 +170,28 @@
 
         if (projects) {
             const initial = projects.getCurrentFile() || "";
-            if (_isLoadableStructure(initial)) {
-                // Cross-tab handoff: commit immediately on mount.
-                // Goes through the same _commitFile path as the Load
-                // button so canvas-state stays in sync (the legacy
-                // ``store.setSourceFile(initial)`` shortcut left
-                // canvas-state empty for cross-tab-handed-off
-                // structures, and Save then failed with
-                // "No structure to save").
+            // MOUNT-RESTORE OWNERSHIP (workspace-contract.md § "Mount-time
+            // restore").  If the persisted snapshot will restore THIS same
+            // file, the snapshot restore (viewer.js::restoreModifyState) is
+            // the sole authority for hydrating it -- re-committing here would
+            // race the restore and clobber the restored selection (the
+            // two-writer mount race, fixed 2026-07-01).  Only a file the
+            // snapshot does NOT own (a genuine cross-tab handoff of a
+            // different/new structure) is committed on mount.
+            const _ws = window.molbuilder && window.molbuilder.workspace;
+            const _restoreTarget = (_ws
+                && typeof _ws.mountRestoreTarget === "function")
+                ? _ws.mountRestoreTarget() : null;
+            if (_isLoadableStructure(initial) && initial !== _restoreTarget) {
+                // Cross-tab handoff (no snapshot owns this file): commit
+                // immediately on mount.  Goes through the same _commitFile
+                // path as the Load button so canvas-state stays in sync.
                 _commitFile(initial);
+                _setCandidate(initial);
+            } else if (_isLoadableStructure(initial)) {
+                // Snapshot restore owns this file -- reflect the candidate for
+                // the Load-button readout, but DO NOT re-commit (defer to
+                // restoreModifyState, per the contract above).
                 _setCandidate(initial);
             }
             projects.onChange((sel) => {
