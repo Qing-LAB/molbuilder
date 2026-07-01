@@ -323,6 +323,9 @@ all intermediate files separately preserved.
 
 Sibling docs to read next:
 * `docs/engines/pyscf.md` — the script-output contract
+* `docs/engines/optimization-tuning.md` — the CROSS-ENGINE tier framework
+  (this guide is the PySCF-specific companion; optimization-tuning.md § 4 /
+  § 2.3.1 hold the shared four-tier definitions this recipe draws on)
 * `docs/engines/siesta.md` — the SIESTA equivalent
 * `docs/engines/transport.md` — TranSIESTA-specific guidance
 * `docs/protocols/scientific-validation.md` — broader scientific-correctness review process

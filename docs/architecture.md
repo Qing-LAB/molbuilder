@@ -58,6 +58,10 @@ L1) · **L3** surfaces (cli/web). Enforced by `tests/test_layering.py`.
 | `runtime_config` | L2 | reader for `molbuilder.json` (scheduler/routing/script-gen) | `get_scheduler`, `get_routing`, `get_script_generation`, `require_activation`, `write_config_scope` | `config.md`, `protocols/slurm-integration.md` |
 | `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs (`mb_monitor.py`) | `monitor` module (copied verbatim to targets) | `protocols/benchmark-workflow.md` § 9 |
 
+**Overarching run lifecycle** (generate → detect → prep → run/submit, and the
+detection/standalone contract for workstation vs HPC): **`job-execution.md`** —
+the master doc for *running* a molbuilder-generated job on any target.
+
 ### Persistence, parsing, data exchange
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
@@ -70,7 +74,7 @@ L1) · **L3** surfaces (cli/web). Enforced by `tests/test_layering.py`.
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
 | `checkpoint` | L1 | git-based run-dir **snapshot/restore** with sha-archived big binaries (engine-aware, safety-critical) | `Repo.{init(engine=),checkpoint,tag,branch,restore,list_checkpoints,state,archive_globs,set_archive_globs}`; CLI `molbuilder snapshot …` | `protocols/run-checkpoints.md` (safety contract § 4.6, § 9) |
-| `validation/` | L2 | scientific-correctness analyzers + engine adapters | `validation` (analyzer/adapters/validators) | `protocols/scientific-validation.md`, `protocols/chemistry-correctness.md` |
+| `validation/` | L2 | scientific-correctness analyzers + engine adapters | `validation` (analyzer/adapters/validators) | `science.md` (the correctness contract), `protocols/scientific-validation.md`, `protocols/chemistry-correctness.md` |
 | `pseudos` | L1 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | `protocols/pseudopotential-validation.md` |
 | `chemistry`, `residues` | L1 | structure analysis (open-shell, charge, residues) | `chemistry.analyze_structure` | `protocols/chemistry-correctness.md` |
 
@@ -104,6 +108,15 @@ schema strings + the config↔exchange parameter vocabulary is
   10 design principles, anti-patterns, and the decisions log.
 - **`protocols/*.md`** — the per-subsystem contracts (the authoritative
   source for each row above).
+- **`job-execution.md`** — the master doc for *running* a generated job
+  (generate→detect→prep→run/submit; the detection/standalone contract).
+- **`science.md`** — the scientific-correctness contract (spin/charge,
+  validation invariants, open-shell/metal checks, defensible-output style).
+- **`config.md`** — `molbuilder.json` keys + the wrapper runtime contract.
+- **`deployment.md`** — deploying the molbuilder *server* (TLS/auth/proxy) —
+  distinct from job execution.
+- **`README_install.md`** — the four-env model + per-env install recipes.
+- **`roadmap.md`** — open feature/backend work (closed items → design.md).
 - **`README.md`** — the doc-folder map + the "tests derivable from spec" rule.
 
 This index is deliberately thin — it routes you to the authoritative doc.
