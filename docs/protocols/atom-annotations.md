@@ -248,15 +248,17 @@ by omitting selection.
 | Arg | Values | Effect |
 |---|---|---|
 | `mode` | `"modify"` \| `"readonly"` | `modify`: full structure-edit ops + selection editing. `readonly`: view + selection for **filter/highlight/inspect only** — no edit ops, no writes (the Results inspectors). |
-| `persistence` | `"workspace"` \| `"ephemeral"` | `workspace`: this view's structure+selection+annotations **are** the workspace — persisted to sessionStorage + restored on nav (the Molbuilder/Modify tab). `ephemeral`: a transient view **re-derived from its source each mount** — never persisted, never restored (the Results inspectors, driven by the selected result file). |
+| `persistence` | `"workspace"` \| `"ephemeral"` | `workspace`: this view's structure+selection+annotations **are** the workspace — held in the working copy, drafted so they survive reload/crash, written only on explicit Save (§6.1) (the Molbuilder/Modify tab). `ephemeral`: a transient view **re-derived from its source each mount** — owns no data, never saved (the Results inspectors, driven by the selected result file). |
 
 ### 6.1 Load / edit / save (via the working-copy)
 
 The `persistence: workspace` view's data lifecycle **is** the **working-copy**
-(`working-copy-persistence.md` — the shared load/edit/save foundation). This
-replaces today's three scattered paths (the panel's `writeLabel` auto-saving the
-sidecar, the viewer's structure save-to-project, and the dispatcher's own
-commit/dirty flow) with one clean flow:
+(`working-copy-persistence.md` — the shared load/edit/save foundation). The
+working-copy is the **persistence API over the store's data** — not a second
+in-memory copy (the store stays the single source of truth, §6): `update` drafts
+the store's data, `save` writes it. This replaces today's three scattered paths
+(the panel's `writeLabel` auto-saving the sidecar, the viewer's structure
+save-to-project, and the dispatcher's own commit/dirty flow) with one clean flow:
 
 - **Load** (`open`) — read `<name>.xyz` + its `.molstruct.json` into the working
   copy: structure + annotations, one object.
