@@ -115,6 +115,7 @@ subsystem-specific decisions land in the subsystem doc.
 
 | Doc | Owns |
 |---|---|
+| [`atom-annotations.md`](protocols/atom-annotations.md) | **PROPOSED** — unified extensible per-atom annotations model + fused viewer/selection + responsive UI; the design for the viewer↔selection merge |
 | [`web-api.md`](protocols/web-api.md) | HTTP `/api/*` endpoint reference (request/response shapes) |
 | [`projects-sidebar.md`](protocols/projects-sidebar.md) | Sidebar architecture, public `projects.*` API, lock model, capability table |
 | [`atom-selection.md`](protocols/atom-selection.md) | Selection store, `.molstruct.json` sidecar shape, viewer adapter |
