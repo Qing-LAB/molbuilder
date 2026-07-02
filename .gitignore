@@ -79,3 +79,6 @@ molbuilder.json
 
 projects/*
 *.parse.log
+
+# Persistent E2E failure diagnostics (capture_on_fail harness)
+test-artifacts/

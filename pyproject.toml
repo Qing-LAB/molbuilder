@@ -189,4 +189,5 @@ markers      = [
     "smoke: end-to-end smoke tests that subprocess-run a generated script (slow; require pyscf)",
     "e2e: browser-driven Playwright tests (slow; require chromium install)",
     "slow: tests that take > 1s (full-suite runs include these; pre-commit skips)",
+    "capture_on_fail: dump browser state + console to test-artifacts/ on failure (flagged intermittents)",
 ]

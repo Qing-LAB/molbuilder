@@ -5103,7 +5103,14 @@ def test_build_form_tri_select_optional_bool(page, flask_server):
 # --------------------------------------------------------------------- #
 
 
+@pytest.mark.capture_on_fail
 class TestModifySecondVisitExternalChange:
+    # Revisit waits use a GENEROUS 15s ceiling, not a speed-gate: a full
+    # page-reload revisit (navigate->reload->bootstrap->restore) can exceed a
+    # tight 5s under a loaded suite.  The storage path is verified sound
+    # (canvas-state preserves source.file on edit + pagehide-flush + the
+    # dirty-gate/mountRestoreTarget restore), so a generous timeout only
+    # changes failure-detection latency, never masks a real never-restore.
     """Audit follow-up: pin the second-visit refresh contract for
     /modify so a future regression that breaks the sidebar-pick →
     selection-panel wiring on bfcache restore / tab re-entry fails
@@ -5125,7 +5132,7 @@ class TestModifySecondVisitExternalChange:
         ) == 3
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=15000)
 
         page.goto(f"{flask_server}/molbuilder")
         # The selection store MUST repopulate.  Without the refresh
@@ -5134,7 +5141,7 @@ class TestModifySecondVisitExternalChange:
         page.wait_for_function(
             "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 3",
-            timeout=5000,
+            timeout=15000,
         )
 
     def test_dirty_canvas_preserves_in_memory_atoms_on_revisit(
@@ -5175,7 +5182,7 @@ class TestModifySecondVisitExternalChange:
         ) is True
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=15000)
 
         page.goto(f"{flask_server}/molbuilder")
         # Selection store MUST reflect 2 atoms (in-memory post-
@@ -5184,7 +5191,7 @@ class TestModifySecondVisitExternalChange:
         page.wait_for_function(
             "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 2",
-            timeout=5000,
+            timeout=15000,
         )
 
     def test_external_xyz_replacement_reloads_atom_list_on_revisit(
@@ -5204,7 +5211,7 @@ class TestModifySecondVisitExternalChange:
         _load_file(page, str(xyz_path), expected_atoms=3)
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=15000)
 
         # Replace the file with a different structure (5 atoms,
         # methane).
@@ -5227,7 +5234,7 @@ class TestModifySecondVisitExternalChange:
         page.wait_for_function(
             "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 5",
-            timeout=5000,
+            timeout=15000,
         )
 
 

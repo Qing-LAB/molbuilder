@@ -110,6 +110,76 @@ def web_client():
 #  function level by carrying an explicit @pytest.mark.<X>.            #
 # --------------------------------------------------------------------- #
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Stash each phase's report on the item so fixtures can tell, at
+    teardown, whether the test failed.  Used by the ``capture_on_fail``
+    diagnostic harness (a test flagged with @pytest.mark.capture_on_fail
+    dumps browser state + console to a PERSISTENT ``test-artifacts/`` dir
+    when it fails -- so a rare intermittent E2E failure is inspectable
+    after the fact instead of needing a re-repro)."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, "rep_" + rep.when, rep)
+
+
+@pytest.fixture(autouse=True)
+def _capture_on_fail(request):
+    """Persistent failure diagnostics for ``@pytest.mark.capture_on_fail``
+    tests (any file).  On failure of a flagged test, dump the browser state
+    (viewer/store atom counts, source_file, dirty, mountRestoreTarget, the
+    persisted snapshot) + the console to a PERSISTENT ``test-artifacts/``
+    dir -- so a rare intermittent E2E is inspectable after the fact without
+    a re-repro.  No-op (and no ``page`` dependency) for unflagged tests."""
+    marked = request.node.get_closest_marker("capture_on_fail") is not None
+    page = None
+    msgs: list = []
+    if marked:
+        try:
+            page = request.getfixturevalue("page")
+            page.on("console", lambda m: msgs.append(m.text))
+        except Exception:
+            page = None
+    yield
+    if not marked:
+        return
+    rep = getattr(request.node, "rep_call", None)
+    if not (rep and rep.failed):
+        return
+    import json as _json
+    import datetime as _dt
+    import pathlib as _pl
+    art = _pl.Path(__file__).resolve().parent.parent / "test-artifacts"
+    art.mkdir(exist_ok=True)
+    snap = {"note": "no page for this test"}
+    if page is not None:
+        try:
+            snap = page.evaluate(
+                "() => { const w=window.molbuilder||{}, ws=w.workspace,"
+                " t=w.__molbuilder_modify_test; let p=null;"
+                " try{p=ws&&ws.readPersistedSnapshot&&ws.readPersistedSnapshot();}catch(e){}"
+                " const pa=p&&p.state&&p.state.structure&&p.state.structure.atoms;"
+                " return { url: location.href,"
+                " viewer_n_atoms: t&&t.getNAtoms?t.getNAtoms():null,"
+                " store_atoms: ws&&ws.getState?((ws.getState().atoms||[]).length):null,"
+                " source_file: ws&&ws.getSourceFile?ws.getSourceFile():null,"
+                " dirty: ws&&ws.isDirty?ws.isDirty():null,"
+                " mount_restore_target: ws&&ws.mountRestoreTarget?ws.mountRestoreTarget():null,"
+                " persisted_n_atoms: pa?pa.length:null,"
+                " persisted_dirty: p&&p.state?!!p.state.dirty:null }; }")
+        except Exception as e:  # noqa: BLE001
+            snap = {"evaluate_error": str(e)}
+    ts = _dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    out = art / f"fail-{request.node.name}-{ts}.log"
+    out.write_text(
+        "test:  " + request.node.nodeid + "\n\n"
+        "PAGE STATE:\n" + _json.dumps(snap, indent=2) + "\n\n"
+        "ERROR:\n" + str(rep.longrepr)[:3000] + "\n\n"
+        "CONSOLE (last 300):\n" + "\n".join(msgs[-300:]) + "\n",
+        encoding="utf-8")
+    print(f"[capture_on_fail] diagnostic written -> {out}")
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` to
     files that subprocess-run a real engine binary (siesta /
