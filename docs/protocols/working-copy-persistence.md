@@ -164,6 +164,10 @@ Data flows *up*: edit → transient scratch → **commit** → durable file.
   do not silently overwrite."
 - **Working copy** — in-memory current state + its source + source hash + dirty
   flag. Owned by the core.
+- **Session** — the *server-side* session the working copy belongs to (the login
+  when authenticated; the single server instance for no-auth localhost) — never
+  the browser tab. It keys scratch and decides when scratch is cleaned; fully
+  defined in §13.5.
 - **Scratch record** — the working copy persisted under
   `<project>/.molbuilder_workspace/`, surviving reload/restart/crash. Keyed by
   `(source-stem, session)`.
@@ -323,7 +327,8 @@ work and **never** auto-adopts stale work.
 3. **Commit write order — RESOLVED (§9.3):** write the identity/source file
    **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
    source unchanged and the retry gate still passes.
-4. **`onMismatch` default** — ship `refuse`, add `choose` as the enhancement.
+4. **`onMismatch` default — DECIDED:** ship `refuse`, add `choose` (keep /
+   discard-stale / reload) as the enhancement.
 5. **Session — RESOLVED: the *server-side* session, never the browser tab** (so
    a tab reload/close never loses the working copy). Two run modes:
    - **Authenticated:** the login session; session-end = logout/expiry → cleanup.
