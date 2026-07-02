@@ -49,7 +49,8 @@ flowchart LR
 | `lib/projects/list.js` | the directory listing / navigation UI |
 | `lib/projects/api.js` | the transport layer (HTTP to `/api/files/*`); swappable without changing the public API |
 | `lib/projects/preview.js` | single-click preview |
-| `lib/projects/dialogs.js`, `mutation-bar.js`, `checkpoint.js` | create/rename/delete UI, the mutation bar, the checkpoint panel |
+| `lib/projects/dialogs.js`, `mutation-bar.js` | create/rename/delete UI, the mutation bar |
+| `lib/projects/checkpoint.js` | the **run-history (checkpoint) panel** — see §4.5 |
 | `projects-sidebar.js` + `_projects_sidebar.html` + `projects-sidebar.css` | bootstrap glue, the server-rendered DOM contract, and the visibility/lock styles |
 
 You almost never touch these as a tab author — you use the API in §3.
@@ -129,6 +130,26 @@ projects.onCommit((sel) => {
 
 ---
 
+### 4.5 The run-history (checkpoint) panel
+
+The sidebar hosts a **run-history panel** (`lib/projects/checkpoint.js`) that
+surfaces git-based checkpoints for a run directory: a status pill, commit list,
+and Init / Checkpoint-now / Tag / Restore actions (over `/api/checkpoint/*`).
+Two rules a consumer/maintainer should know:
+
+- **Activation gate:** it appears **only for a run directory** — a dir at
+  projects rel-depth 3 (`projects/PROJECT/CATEGORY/RUN/`). Anything shallower,
+  or a file, hides the panel. It reacts to `projects.onChange` (directory
+  navigation), so it's a first-class *consumer* of the sidebar API (§3).
+- **Explicit-refresh only:** no background polling — state refreshes on
+  directory-enter and the manual Refresh control (no `setInterval`,
+  no visibility timer).
+
+This panel is part of the checkpoint subsystem; its full design + the safety
+contract live in **`protocols/run-checkpoints.md` §6** (UI integration) — the
+authoritative source. (Data-safety note: restore is verify-before-mutate; see
+run-checkpoints.md §4.6.)
+
 ## 5. Common gotchas / anti-patterns
 
 - **Don't** query the sidebar's DOM directly — use the API (the DOM is a
@@ -149,4 +170,5 @@ projects.onCommit((sel) => {
   (§7), anti-patterns (§15), backend contract (§12).
 - **`protocols/selection.md`** — the file-picker ↔ tab interaction model.
 - **`protocols/web-api.md`** — the `/api/files/*` wire shapes.
+- **`protocols/run-checkpoints.md`** — the checkpoint subsystem incl. the sidebar run-history panel (§6) + the restore safety contract (§4.6).
 - **`workspace-guide.md`** — the workspace store (the mount-restore rule in §4 above).

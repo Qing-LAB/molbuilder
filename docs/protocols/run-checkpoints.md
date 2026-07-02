@@ -1,6 +1,6 @@
 # Run-checkpoints — git-based working-dir state management
 
-**Status**: design — pre-implementation. No code referenced here exists yet. Authoritative for the implementation that closes tasks #33 and the related sidebar work.
+**Status**: IMPLEMENTED. The core (`molbuilder/checkpoint.py` — `Repo.init/checkpoint/tag/branch/restore/list_checkpoints/state/archive_globs`), the `/api/checkpoint/*` routes, the `molbuilder snapshot` CLI, and the **sidebar run-history panel** (`molbuilder/web/static/lib/projects/checkpoint.js`, § 6) are all shipped and tested. This doc remains authoritative for the design + any remaining UI polish (e.g. the git-graph viewer, § 6.4). (Was "pre-implementation" through 2026-06; corrected 2026-07-01.)
 
 **Related design surfaces**:
 - [`projects-sidebar.md`](projects-sidebar.md) — the sidebar architecture this design plugs into.

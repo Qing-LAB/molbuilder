@@ -18,6 +18,7 @@ on-ramp (mental model, the `projects.*` API cheat-sheet, the
 * [`selection.md`](selection.md) — the selection-cursor contract; this
   doc references it for cursor semantics and tab integration history.
 * [`web-api.md`](web-api.md) — backend endpoint envelope shapes.
+* [`run-checkpoints.md`](run-checkpoints.md) — the checkpoint subsystem; § 6 is the sidebar run-history panel (`lib/projects/checkpoint.js`) that plugs into this sidebar.
 
 ---
 
