@@ -70,7 +70,7 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 _SIDECAR_SUFFIX = ".molstruct.json"
@@ -195,6 +195,7 @@ def to_dict(
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
     pbc: Optional[Any] = None,
+    annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -285,6 +286,25 @@ def to_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
+    # Extensible per-atom annotation channels (schema v4; atom-annotations.md
+    # § 3).  Additive alongside regions/frozen_atoms (which are still written
+    # -- "dual-write" so v3 readers keep working).  Accepts a mapping of
+    # {name: AtomChannel} (serialised) or already-JSON channel dicts.
+    normed_annotations: Dict[str, Any] = {}
+    if annotations:
+        from molbuilder.structure import AtomChannel as _AtomChannel
+        for name, ch in annotations.items():
+            if isinstance(ch, _AtomChannel):
+                normed_annotations[name] = ch.to_json()
+            elif isinstance(ch, dict) and "kind" in ch:
+                # round-trip a raw channel dict through the type so a
+                # hand-built one is normalised + validated.
+                normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
+            else:
+                raise MolstructJsonError(
+                    f"annotations[{name!r}] must be an AtomChannel or a "
+                    f"channel dict with a 'kind'; got {type(ch).__name__}")
+
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -294,6 +314,7 @@ def to_dict(
         "selection_rules": normed_rules,
         "cell":            normed_cell,
         "pbc":             normed_pbc,
+        "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
@@ -432,6 +453,14 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         )
     struct.regions      = dict(sidecar_data.get("regions") or {})
     struct.frozen_atoms = list(sidecar_data.get("frozen_atoms") or [])
+
+    # Extensible annotation channels (schema v4; atom-annotations.md § 3).
+    # Absent on a v3 sidecar -> leave struct.annotations empty (regions +
+    # frozen above already carry the built-ins).
+    ann_raw = sidecar_data.get("annotations")
+    if ann_raw:
+        from molbuilder.structure import annotations_from_json
+        struct.annotations = annotations_from_json(ann_raw)
 
     # Periodic lattice (additive-optional, v3).  Absent / null cell ->
     # leave the structure non-periodic.  Re-validated through the same

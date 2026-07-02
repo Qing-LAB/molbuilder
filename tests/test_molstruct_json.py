@@ -438,14 +438,14 @@ class TestSchemaVersioning:
         with pytest.raises(msj.MolstructJsonError, match="reads versions"):
             msj.load(p)
 
-    def test_v3_writes_with_frozen_atoms_key(self, tmp_path):
+    def test_v4_writes_with_frozen_atoms_key(self, tmp_path):
         """Canonical write: the key is ``frozen_atoms``."""
         d = msj.to_dict(
             n_atoms_total=3, structure_hash="b" * 32,
             regions={"L-electrode": [0]},
             frozen_atoms=[1, 2],
         )
-        assert d["schema_version"] == 3
+        assert d["schema_version"] == 4
         assert "frozen_atoms" in d
         assert "fixed_atoms" not in d   # the old key is gone
 

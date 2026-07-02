@@ -33,10 +33,12 @@ from molbuilder.sidecars.molstruct import (
 from ._helpers import build_sidecar_result
 
 
-# Only the current schema version loads.  v1/v2 sidecars (which used
-# the older ``fixed_atoms`` key name) must be re-exported from /modify
-# to produce a v3 file.
-_READABLE_SCHEMA_VERSIONS = (3,)
+# Readable schema versions.  v1/v2 sidecars (older ``fixed_atoms`` key)
+# must be re-exported from /modify.  v3 has no ``annotations`` (a v3
+# reader/consumer sees only regions + frozen); v4 adds the extensible
+# annotation channels (atom-annotations.md § 3) additively -- v3 files
+# still load (annotations absent -> empty).
+_READABLE_SCHEMA_VERSIONS = (3, 4)
 
 
 def _normalised_dict(
@@ -48,6 +50,7 @@ def _normalised_dict(
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
     pbc: Optional[Any] = None,
+    annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -132,6 +135,31 @@ def _normalised_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
+    # Extensible annotation channels (schema v4; atom-annotations.md § 3).
+    # Absent on v3.  Round-trip each channel through AtomChannel so a
+    # hand-edited sidecar is validated + normalised here (clear error at
+    # load time, not deep in a consumer).
+    normed_annotations: Dict[str, Any] = {}
+    if annotations:
+        from molbuilder.structure import AtomChannel as _AtomChannel
+        for name, ch in annotations.items():
+            try:
+                channel = _AtomChannel.from_json(ch)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MolstructJsonError(
+                    f"annotations[{name!r}]: invalid channel: {exc}") from exc
+            # Validate atom indices against n_atoms_total here (mirrors the
+            # regions/frozen checks above) so a bad sidecar fails at load,
+            # not deep in a consumer.
+            idxs = (channel.data.keys() if channel.kind == "value"
+                    else channel.data)
+            for idx in idxs:
+                if not 0 <= int(idx) < n_atoms_total:
+                    raise MolstructJsonError(
+                        f"annotations[{name!r}]: atom index {idx} out of "
+                        f"range [0, {n_atoms_total})")
+            normed_annotations[name] = channel.to_json()
+
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
@@ -141,6 +169,7 @@ def _normalised_dict(
         "selection_rules": normed_rules,
         "cell":            normed_cell,
         "pbc":             normed_pbc,
+        "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at,
     }
@@ -224,6 +253,7 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
             selection_rules = data.get("selection_rules"),
             cell            = data.get("cell"),
             pbc             = data.get("pbc"),
+            annotations     = data.get("annotations"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),
         )

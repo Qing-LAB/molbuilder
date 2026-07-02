@@ -159,7 +159,7 @@ class TestPdbWorkflowEndToEnd:
 
     # ----- Step 2: assign frozen_atoms + a region via /save ----- #
 
-    def test_step_2_save_writes_v3_sidecar(
+    def test_step_2_save_writes_v4_sidecar(
         self, web, pdb_under_root,
     ):
         pdb_path, n_atoms, _ = pdb_under_root
@@ -195,7 +195,7 @@ class TestPdbWorkflowEndToEnd:
             f"selection/save didn't write the sidecar at {sidecar}"
         )
         on_disk = json.loads(sidecar.read_text())
-        assert on_disk["schema_version"] == 3
+        assert on_disk["schema_version"] == 4
         assert on_disk["n_atoms_total"] == n_atoms
         assert on_disk["frozen_atoms"] == frozen_indices
         assert on_disk["regions"]["L-electrode"] == region_indices

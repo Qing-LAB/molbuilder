@@ -156,7 +156,10 @@ trajectory / spectra inspectors):
    `atom_annotations()`/`set_channel()`; `copy_annotations`/`remap_annotations`;
    `modify.py` delete-remap + verbatim rebuilds carry annotations; `copy()`/
    `translated()` carry them. tests/test_atom_annotations.py (11).
-2. **Sidecar v4** — `annotations` + v3 back-read + dual-write; tests + data-vocabulary.
+2. **Sidecar v4** — **SHIPPED (2026-07-01).** `SCHEMA_VERSION 3->4`; `to_dict`
+   writes `annotations` + dual-writes regions/frozen; `apply_to_structure`
+   reads them; parse-side reads v3+v4 and validates channel indices at load;
+   AtomChannel.to_json/from_json round-trip. tests/test_sidecar_annotations.py.
 3. **fdf channel-driven emission** — frozen/region via channels + strategy
    registry; the existing siesta/transport fdf tests are the net.
 4. **JS unified `Atom` + channel filter** — store carries channels; filter by any.

@@ -143,6 +143,41 @@ class AtomChannel:
         data = dict(self.data) if self.kind == "value" else list(self.data)
         return AtomChannel(self.kind, data, self.color, self.fdf)
 
+    def to_json(self) -> dict:
+        """JSON-friendly form (for the .molstruct.json sidecar, § 3).
+        ``value`` data keys become strings (JSON object keys)."""
+        if self.kind == "value":
+            data: Any = {str(k): v for k, v in self.data.items()}
+        else:
+            data = list(self.data)
+        out = {"kind": self.kind, "data": data}
+        if self.color is not None:
+            out["color"] = self.color
+        if self.fdf is not None:
+            out["fdf"] = self.fdf
+        return out
+
+    @classmethod
+    def from_json(cls, obj: dict) -> "AtomChannel":
+        """Inverse of :meth:`to_json` (value keys back to ints)."""
+        kind = obj["kind"]
+        raw = obj.get("data")
+        if kind == "value":
+            data: Any = {int(k): v for k, v in (raw or {}).items()}
+        else:
+            data = [int(i) for i in (raw or [])]
+        return cls(kind, data, obj.get("color"), obj.get("fdf"))
+
+
+def annotations_to_json(ann: "dict[str, AtomChannel]") -> dict:
+    """Serialize an annotations map for the sidecar (§ 3)."""
+    return {name: ch.to_json() for name, ch in ann.items()}
+
+
+def annotations_from_json(obj: Optional[dict]) -> "dict[str, AtomChannel]":
+    """Deserialize an annotations map from the sidecar (§ 3)."""
+    return {name: AtomChannel.from_json(v) for name, v in (obj or {}).items()}
+
 
 def copy_annotations(ann: "dict[str, AtomChannel]") -> "dict[str, AtomChannel]":
     """Deep-copy an annotations map (channels carried verbatim, § 2.1)."""
