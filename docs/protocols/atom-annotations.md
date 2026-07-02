@@ -156,10 +156,40 @@ atom / this structure have?".
 
 | Layer | Module | Owns |
 |---|---|---|
-| L1 pure model | **`lib/workspace/_atom-channels.js`** (new) | `atomChannels(atom)`, `channelKinds(atoms)` — pure functions, **no DOM, no store, no HTTP**; the JS mirror of Python `Structure.channels()` |
+| L1 low-level presentation API | **`lib/workspace/_atom-channels.js`** + **`_atom-index.js`** | `atomChannels`/`channelKinds` (channel taxonomy + order) and `toDisplay`/`fromDisplay`/`shiftExpression` (index base) — pure, **no DOM/store/HTTP** |
 | L2 store | `_selection-store-impl.js` | holds atoms + filter drafts; `knownChannels()` (via L1); `_filterToRule` translates a draft → server rule |
 | L3 UI | `selection-panel.js` (+ viewer-adapter) | renders the filter over `knownChannels()`; overlays colour by channel |
 | server | `/api/selection/*` | supplies per-atom channels + evaluates rules |
+
+### § 5.1 The L1 contract (low-level presentation API)
+
+**L1 is the low-level presentation API.** It exists only to serve the UI (the
+backend never converts index base or enumerates channels), so it *is*
+presentation — the primitive tier. It owns two things and nothing else:
+
+1. **Primitives + conventions** — the display value (`toDisplay(i) = i+1`), the
+   channel taxonomy (`category`/`tag`/`flag`/`value`), and the stable channel
+   enumeration order. It returns **values/model**, never finished presentation
+   (no formatted `"#5"` string, no widget, no render).
+2. **A contract higher layers build on.** L2 (store) and L3 (panel, viewer)
+   **compose** L1's primitives into formatted, rendered UI and **must not
+   re-derive** them (no rogue `atom.index + 1`, no re-implementing the
+   regions-vs-frozen split).
+
+**Conformance is bound by tests, not trust.** A layer that cannot import L1 at
+runtime — the **standalone viewer embed** (`mol-viewer-embed.js`), which inlines
+`+1` to stay self-contained — MUST still **provably conform**:
+
+- `test_atom_index_js::test_viewer_index_labels_conform_to_l1` binds the viewer's
+  inline `+1` to `toDisplay` (they can't drift).
+- `test_atom_channels_js::test_selection_panel_frozen_name_matches_l1` binds the
+  panel's `FROZEN_TAG_LABEL` to L1's `FROZEN_CHANNEL`.
+- The L1 primitives themselves are pinned in `test_atom_index_js.py` /
+  `test_atom_channels_js.py`; the panel's runtime 1-based display is pinned by
+  the `test_atom_index_display_is_1_based` E2E.
+
+This is the boundary: **low-level presentation API (values + conventions) below;
+high-level presentation (format + render) above.**
 
 **The channel model (L1):** an atom's channels unify its element, residue, each
 tag/region, each flag (`frozen`), and each `value` channel:

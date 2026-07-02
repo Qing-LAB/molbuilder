@@ -3,13 +3,29 @@
  * ``Structure.channels()``: given one normalized atom, produce its unified
  * channels; aggregate the filterable channels across a set of atoms.
  *
- * PURE by contract: no DOM, no store, no HTTP, no molbuilder deps.  The store
- * (L2), panel + viewer-adapter (L3) build on it; it builds on nothing.  This is
- * what keeps "filter by any channel" from being bolted onto the store.
+ * ──────────────────────────── L1 CONTRACT ────────────────────────────
+ * WHAT L1 IS.  The LOW-LEVEL PRESENTATION API for atom metadata.  It OWNS the
+ *   channel taxonomy (category/tag/flag/value), the mapping "raw atom fields →
+ *   its channels", and the stable enumeration ORDER.  (Mostly presentation-
+ *   support; the enumeration also feeds the filter, which becomes a server
+ *   query — so it borders on data-model, but the taxonomy + order are its
+ *   presentation contract.)
+ * PRIMITIVES, NOT FINISHED PRESENTATION.  atomChannels/channelKinds return the
+ *   channel MODEL (values + kinds + order).  They do NOT render dropdowns,
+ *   columns, colours, or labels — higher presentation layers (L2 store /
+ *   L3 panel + viewer-adapter) COMPOSE the model into UI.
+ * HIGHER LAYERS BUILD ON THIS.  L2/L3 MUST use this taxonomy + order and never
+ *   re-derive them (e.g. no re-implementing the regions-vs-frozen split).  The
+ *   panel's FROZEN_TAG_LABEL is drift-guarded against FROZEN_CHANNEL here.
+ * GUARANTEES (bound by tests/test_atom_channels_js.py):
+ *   kinds are category/tag/flag/value; channelKinds order is element, residue,
+ *   sorted tags, frozen, sorted values; atomChannels is null-safe + accepts
+ *   both wire and normalized atom shapes.
+ * ──────────────────────────────────────────────────────────────────────
  *
- * Loadable both as a browser global (``window.molbuilder.atomChannelModel``)
- * and as a Node module (``module.exports``) so the pure logic is unit-tested
- * under Node without a browser.
+ * PURE by contract: no DOM, no store, no HTTP, no molbuilder deps.  Loadable as
+ * a browser global (``window.molbuilder.atomChannelModel``) AND a Node module
+ * (``module.exports``) so the contract is unit-tested under Node.
  */
 (function (root) {
     "use strict";
