@@ -10,10 +10,10 @@ with a two-line request), `on_mismatch:"force"` was an open request field, and
 S1 (same-session reload → restore edits) was never implemented (contradicting
 §2.1 and §8.4). It is being **redesigned server-authoritative** per the state
 machine (§6.1) + authority contract below. **No browser consumer is wired yet**,
-and `writeLabel` still auto-saves the sidecar — Phase 3 is unbuilt. The system-wide, **format-agnostic**
-module
-for holding *user-edited* data that is **not durable until explicitly
-committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
+and `writeLabel` still auto-saves the sidecar — Phase 3 is unbuilt.
+
+The system-wide, **format-agnostic** module for holding *user-edited* data that
+is **not durable until explicitly committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
 the **first application** of this core, not the core itself.
 
 **The principle (one sentence):**
@@ -99,7 +99,7 @@ flowchart TD
         A3["script …"]
     end
 
-    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · new · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
+    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · new · recover<br/>update · commit · discard<br/>list_orphans · discard_orphan · clean_all<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
 
     SCR[("SCRATCH — transient<br/>&lt;project&gt;/.molbuilder_workspace/<br/>survives reload / crash")]
     DUR[("DURABLE — project files<br/>&lt;stem&gt;.xyz + .molstruct.json<br/>written ONLY on commit")]
@@ -126,34 +126,31 @@ flowchart TD
 
 ### 2.1 Worked example (the structure app, end to end)
 
-The happy path plus the two cases that matter — reload (S1) and a source that
-changed underneath (S4):
+The happy path plus the reload (S1) and changed-underneath (S4) cases — through
+the server-authoritative flow (§6.1):
 
-```
-1. Open   User opens mol.xyz in /modify.
-          → open("mol.xyz", structureCodec);  sourceHash = sha256(mol.xyz) = H0.
-          Project files on disk: UNTOUCHED.
-
-2. Edit   User tags atoms 1–3 as "L-electrode".
-          → wc.update(data');  core mirrors to
-             .molbuilder_workspace/mol.<session>.molstruct.json.
-          mol.xyz / mol.molstruct.json on disk: STILL UNTOUCHED.
-
-3. Reload User reloads the tab (S1).
-          → working copy restored from scratch; the tags are still there.
-
-4. Save   User clicks Save → wc.commit("mol.xyz").
-          gate: H0 == sha256(mol.xyz)  ✓
-          → write mol.molstruct.json, then mol.xyz (identity file last, §9.3)
-          → re-anchor: sourceHash ← sha256(new mol.xyz)  (§9.4)
-          → clear scratch.   NOW the project files change — and only now.
-
-4'. Save, but the file moved under us (S4):
-          Between step 1 and step 4 the user edited mol.xyz in another tool → H1.
-          gate: H0 == sha256(mol.xyz)?  H0 ≠ H1  ✗
-          → REFUSE: "mol.xyz changed since you loaded it; your tags were made
-             for the old atom order — save as a new file, or reload and redo."
-          No wrong-atom write; the user decides.
+```mermaid
+sequenceDiagram
+    actor U as User (/modify)
+    participant S as Server (working-copy)
+    participant D as Durable files
+    U->>S: open(mol.xyz)
+    S->>S: load + persist authentic H0 = sha256(mol.xyz)
+    Note over D: untouched
+    U->>S: update (tag atoms 1-3 = L-electrode)
+    S->>S: store data, dirty=true (scratch)
+    Note over D: STILL untouched
+    U->>S: reload = open(mol.xyz) again
+    S-->>U: RESUME — returns the dirty working copy (tags intact, S1)
+    U->>S: commit(mol.xyz)
+    alt gate: stored H0 == current sha256(mol.xyz)  PASS
+        S->>D: write .molstruct.json, then .xyz (identity last, §9.3)
+        S->>S: re-anchor H ← sha256(new .xyz); dirty=false
+        Note over D: NOW changed — and only now
+    else source changed on disk: H0 != current  FAIL
+        S-->>U: REFUSE — "mol.xyz changed; save-as or reload and redo"
+        Note over D: untouched (no wrong-atom write)
+    end
 ```
 
 ---
@@ -196,14 +193,14 @@ The core treats artifact data as **opaque**; the application plugs in:
 
 ```
 codec.load(source_path)       -> data            # read durable -> working data
-codec.hashSource(source_path) -> str             # the source hash (e.g. sha256 of the .xyz)
+codec.hash_source(source_path) -> str             # the source hash (e.g. sha256 of the .xyz)
 codec.files(data, target)     -> [(path, bytes)] # durable file(s) this artifact writes
-codec.scratchBlob(data)       -> bytes/json      # how the working copy is stored in scratch
-codec.fromScratch(blob)       -> data            # inverse (crash recovery)
+codec.scratch_blob(data)       -> bytes/json      # how the working copy is stored in scratch
+codec.from_scratch(blob)       -> data            # inverse (crash recovery)
 ```
 
 `.xyz`+`.json` supplies a codec whose `files()` returns *two* paths and whose
-`hashSource()` is `sha256(.xyz)`. A config-file app returns one path. **The core
+`hash_source()` is `sha256(.xyz)`. A config-file app returns one path. **The core
 never learns what an atom is.**
 
 ---
@@ -216,18 +213,19 @@ new(codec)                -> WorkingCopy     # freshly-built artifact, no source
 recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§10)
 
 WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
-WorkingCopy.data() / .isDirty() / .sourceHash()
-WorkingCopy.commit(target_path, {onMismatch})    -> CommitResult
+WorkingCopy.data() / .is_dirty() / .source_hash()
+WorkingCopy.commit(target_path, {on_mismatch})    -> CommitResult
 WorkingCopy.discard()                            # drop working copy + scratch, no write
 
-listOrphans(project)          -> [ScratchRecord] # sessions no longer live
-discardOrphan(record) / cleanAll(project)
+list_orphans(project)          -> [ScratchRecord] # sessions no longer live
+discard_orphan(record) / clean_all(project)
 ```
 
 `commit` runs the gate → writes → **re-anchors the working copy to the committed
-target** (new source + hash, §9.4) → clears scratch (§9.3). `onMismatch` is
-`refuse` (MVP; return a mismatch result) or `force` (override the gate). The
-future `choose` UX (keep / discard-stale / reload) is built on `force`.
+target** (new source + hash, §9.4) → clears scratch (§9.3). `on_mismatch` is `refuse` (MVP; return a mismatch result) or `force` (the raw
+override primitive). At the API layer the server gates `force` behind a
+server-issued token (§6.1 #4); the future `choose` UX (keep / discard-stale /
+reload) is built on it.
 
 ### 6.1 The state machine + server-authority contract (MUST for the API)
 
@@ -293,13 +291,13 @@ stateDiagram-v2
 
 **An application MUST:**
 1. Supply a complete **codec** (§5); keep it pure (no side effects beyond
-   reading the source in `load`/`hashSource`).
+   reading the source in `load`/`hash_source`).
 2. `open()` on load, `update()` on **every** edit, `commit()` **only** on an
    explicit user save, `discard()` to abandon.
 3. Treat the returned `WorkingCopy` as the **single owner** of that artifact's
-   transient state — read `data()`/`isDirty()` from it, never keep a parallel
+   transient state — read `data()`/`is_dirty()` from it, never keep a parallel
    copy that can drift.
-4. **Surface** the commit `onMismatch` outcome to the user (refuse, or the
+4. **Surface** the commit `on_mismatch` outcome to the user (refuse, or the
    keep/discard/reload choice) — never silently override the gate.
 
 **An application (or any consumer) MUST NOT:**
@@ -367,9 +365,9 @@ re-commit then behave exactly like a fresh `open` of the saved file.
 A crash leaves a scratch record no automatic path can clear (its session is
 gone). For **no-auth localhost, a routine server restart is the same situation** —
 the prior server session's scratch is now orphaned and surfaces here too.
-`listOrphans` surfaces them (source, hash, age, still-matches-source?); the user
+`list_orphans` surfaces them (source, hash, age, still-matches-source?); the user
 `recover`s (adopt back, subject to the same commit gate) or `discard`s;
-`cleanAll` wipes a project's scratch. The core **never** auto-deletes unsaved
+`clean_all` wipes a project's scratch. The core **never** auto-deletes unsaved
 work and **never** auto-adopts stale work.
 
 ---
@@ -397,17 +395,16 @@ work and **never** auto-adopts stale work.
 
 1. **Where the core lives — RESOLVED:** `molbuilder/workingcopy.py` (L1) exposes
    the §6 API + the `Codec` seam; `web/blueprints/workingcopy.py` is the
-   scratch-backed `/api/workingcopy/*` surface (Phase 2b, built) — it covers the
-   sourced flows (open/update/commit/discard + orphans/recover/clean); the
-   sourceless `new` (S6) flow is core-only for now, exposed when a
-   build-from-scratch UI needs it.
+   `/api/workingcopy/*` surface. The first cut was stateless + client-
+   authoritative (unsound, see Status); it is being **redesigned
+   server-authoritative per §6.1**. Sourceless `new` (S6) is core-only for now.
 2. **Scratch record format — RESOLVED:** one JSON envelope `{schema, source,
    source_hash, session, ts, blob}`, written atomically (via `persist.write_json`)
    as `<stem>.<session>.wc.json` under `.molbuilder_workspace/`.
 3. **Commit write order — RESOLVED (§9.3):** write the identity/source file
    **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
    source unchanged and the retry gate still passes.
-4. **`onMismatch` default — DECIDED:** ship `refuse` + `force` (the override
+4. **`on_mismatch` default — DECIDED:** ship `refuse` + `force` (the override
    primitive; both live in the code); the `choose` UX (keep / discard-stale /
    reload) is built on `force` later.
 5. **Session — RESOLVED: the *server-side* session, never the browser tab** (so
