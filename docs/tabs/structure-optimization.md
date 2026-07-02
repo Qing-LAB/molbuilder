@@ -1,5 +1,7 @@
 # `/structure-optimization` tab — SIESTA/PySCF form
 
+**The schema-driven form?** See [`../form-schema-guide.md`](../form-schema-guide.md) — how `lib/form-schema.js` turns the config dataclass into this tab's form and collects values back.
+
 > Status (2026-06-08): the page route is `/structure-optimization`
 > (was `/build`).  Per task #295 the in-tab Build/Load form (kind +
 > sequence + backend dropdown + add-hydrogens select + file-upload
