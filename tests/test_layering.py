@@ -63,6 +63,9 @@ _L1_MODULES = {
     "checkpoint",        # run-dir checkpoint/restart helpers; L1 because the
                          # L1 ``config`` dataclasses (siesta/pyscf) import it,
                          # so it must sit at or below L1 (no domain deps).
+    "annotations_fdf",   # fdf emit-strategy registry for extensible atom-
+                         # annotation channels; pure (typing only, struct is
+                         # duck-typed) -- siesta/input consumes it.
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.

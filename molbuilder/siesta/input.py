@@ -605,6 +605,16 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append("%endblock Geometry.Constraints")
         out.append("")
 
+    # Extensible annotation channels (atom-annotations.md § 4): emit fdf for
+    # any Structure.annotations channel that carries a REGISTERED fdf
+    # strategy.  No registered strategies / no annotations -> no-op (the
+    # frozen/region built-ins above are untouched).
+    from ..annotations_fdf import emit_channels as _emit_channels
+    _channel_lines = _emit_channels(struct)
+    if _channel_lines:
+        out += _channel_lines
+        out.append("")
+
     # Basis & grid
     out.append("# --- Basis & grid ---")
     if v: out += [

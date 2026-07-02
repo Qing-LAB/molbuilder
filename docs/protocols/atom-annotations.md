@@ -1,6 +1,6 @@
 # Unified atom annotations + fused viewer/selection — design
 
-**Status: IN PROGRESS (2026-07-01). Phase 1 (Structure layer) SHIPPED; Phases 2-6 remain — see §7.** Authoritative for
+**Status: IN PROGRESS (2026-07-01). Phases 1-3 SHIPPED (Structure layer + sidecar v4 + fdf registry); Phases 4-6 remain — see §7.** Authoritative for
 the work that (1) unifies per-atom metadata into one extensible model, (2) makes
 selection always-available + filterable by any metadata, and (3) fuses the
 MolViewer and atom-selection into one responsive component. Implement in the
@@ -100,22 +100,28 @@ rules (save-flow §4) per-channel.
 
 ---
 
-## 4. fdf / setup-script flow (channel-driven emission)
+## 4. fdf / setup-script flow (channel emit-strategy registry)
 
-The fdf emitter stops special-casing `frozen`/`regions` and instead **iterates
-channels**, dispatching by kind + a per-channel emit strategy:
+**Additive, not a rewrite.** The two built-ins keep their existing, Sol-
+validated emission untouched — they ARE the built-in strategies:
 
-| Channel (by emit-strategy) | Emits |
+| Built-in channel | Emits (unchanged) |
 |---|---|
-| `frozen` flag → `constraints` strategy | `%block Geometry.Constraints` (1-based, as today) — SIESTA fdf |
-| tag with `transport` strategy (region labels `L-electrode`/`device`/…) | transport/electrode blocks (`TS.Atoms`, electrode labels) — transport fdf |
-| future `value` (e.g. `charge`, `initspin`) | per-atom directives when a strategy is registered |
+| `frozen` flag | `%block Geometry.Constraints` (1-based) — `siesta/input.py` |
+| region tags (`L-electrode`/`device`/…) | transport/electrode blocks (`TS.Atoms`, electrode labels) — `transport/transiesta.py` |
 
-A channel with **no** registered emit-strategy is **carried but not emitted** —
-so a generic user tag never accidentally becomes an electrode block (and the
-validator can warn "channel X present, no fdf consumer"). This is the extension
-point: new metadata → register one emit strategy, no emitter rewrite. The same
-model serves other setup scripts (PySCF, transport) later.
+On top, a **strategy registry** lets **extensible** channels emit: a channel in
+`Structure.annotations` may carry an `fdf` = `<strategy-id>`; a registered
+strategy `(channel, struct) -> fdf lines` is invoked during fdf assembly. A
+channel with **no** registered strategy is **carried but not emitted** (a
+generic user tag never becomes an electrode block; the validator may warn
+"channel X present, no fdf consumer").
+
+This is the extension point — new metadata (e.g. a `charge`/`initspin` value
+channel) → register one strategy → it emits, **no emitter rewrite and no risk
+to the proven frozen/region paths**. The same registry serves other setup
+scripts (PySCF, transport) later. (A future cleanup MAY migrate the two
+built-ins into the registry once it's battle-tested; not required now.)
 
 ---
 
@@ -196,8 +202,11 @@ This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
    writes `annotations` + dual-writes regions/frozen; `apply_to_structure`
    reads them; parse-side reads v3+v4 and validates channel indices at load;
    AtomChannel.to_json/from_json round-trip. tests/test_sidecar_annotations.py.
-3. **fdf channel-driven emission** — frozen/region via channels + strategy
-   registry; the existing siesta/transport fdf tests are the net.
+3. **fdf channel emit-strategy registry** — **SHIPPED (2026-07-01).** Additive:
+   `annotations_fdf.py` (register_fdf_strategy/emit_channels/unregistered_
+   channels); wired into `siesta/input.py` (no-op when no registered channels);
+   built-in frozen/region emission untouched. tests/test_annotations_fdf.py;
+   335 fdf tests unchanged.
 4. **JS unified `Atom` + channel filter** — store carries channels; filter by any.
 5. **Fused module + migrate ALL molview tabs** — embed mounts viewer+panel+
    adapter with the § 6 `mode`/`persistence` args; **every** molview-embedding
