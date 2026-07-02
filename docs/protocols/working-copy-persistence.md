@@ -151,6 +151,9 @@ changed underneath (S4):
           No wrong-atom write; the user decides.
 ```
 
+---
+
+## 3. The two tiers
 
 | Tier | What | Trigger | Lifetime |
 |---|---|---|---|
