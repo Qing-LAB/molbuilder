@@ -81,24 +81,21 @@ If a change ever violates one of S1–S6, it violates this contract.
 
 ```mermaid
 flowchart TD
-    subgraph APP["APPLICATION LAYER — one per artifact type"]
+    subgraph APP["APPLICATIONS — one per artifact type (each = a CODEC + its own UI/CLI wiring)"]
         direction LR
-        A1["structure + sidecar<br/>codec + UX wiring"]
-        A2["config file<br/>codec"]
-        A3["script … <br/>codec"]
+        A1["structure + sidecar<br/>(browser /modify)"]
+        A2["config file"]
+        A3["script …"]
     end
 
-    CONS["CONSUMER<br/>(e.g. browser store)<br/>via /api/workingcopy/*"]
-
-    CORE["CORE — working-copy engine (format-agnostic)<br/><br/>open · openNew · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
+    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · openNew · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
 
     SCR[("SCRATCH — transient<br/>&lt;project&gt;/.molbuilder_workspace/<br/>survives reload / crash")]
     DUR[("DURABLE — project files<br/>&lt;stem&gt;.xyz + .molstruct.json<br/>written ONLY on commit")]
 
-    A1 -- "supplies CODEC<br/>(load·hashSource·files·scratchBlob)" --> CORE
-    A2 -- codec --> CORE
-    A3 -- codec --> CORE
-    CONS -- "open / update / commit / discard" --> CORE
+    A1 -- "CODEC + open/update/commit/discard" --> CORE
+    A2 --> CORE
+    A3 --> CORE
 
     CORE == "mirror (debounced)" ==> SCR
     CORE == "commit (explicit)" ==> DUR
@@ -108,17 +105,46 @@ flowchart TD
 ```
 
 **Reading the diagram:**
-- **Down** the stack = increasing generality. An application knows its format;
-  the core knows none; the stores know only bytes.
+- **Down** the stack = increasing generality: an application knows its format,
+  the core knows none, the stores know only bytes.
 - The **codec** is the *single* seam between an application and the core — the
-  only format-specific code. Everything below the codec is shared.
-- The core is the **only writer** of scratch and durable files. No application
-  or consumer writes a project file directly — that is what makes the guarantees
-  (§8) hold system-wide.
+  only format-specific code; everything below it is shared.
+- The core is the **only writer** of either store. No application writes a
+  project file directly — that is what makes the guarantees (§8) hold
+  system-wide.
 
----
+### 2.1 Worked example (the structure app, end to end)
 
-## 3. The two tiers
+The happy path plus the two cases that matter — reload (S1) and a source that
+changed underneath (S4):
+
+```
+1. Open   User opens mol.xyz in /modify.
+          → open("mol.xyz", structureCodec);  sourceHash = sha256(mol.xyz) = H0.
+          Project files on disk: UNTOUCHED.
+
+2. Edit   User tags atoms 1–3 as "L-electrode".
+          → wc.update(data');  core mirrors to
+             .molbuilder_workspace/mol.<session>.molstruct.json.
+          mol.xyz / mol.molstruct.json on disk: STILL UNTOUCHED.
+
+3. Reload User reloads the tab (S1).
+          → working copy restored from scratch; the tags are still there.
+
+4. Save   User clicks Save → wc.commit("mol.xyz").
+          gate: H0 == sha256(mol.xyz)  ✓
+          → write mol.molstruct.json, then mol.xyz (identity file last, §9.3)
+          → re-anchor: sourceHash ← sha256(new mol.xyz)  (§9.4)
+          → clear scratch.   NOW the project files change — and only now.
+
+4'. Save, but the file moved under us (S4):
+          Between step 1 and step 4 the user edited mol.xyz in another tool → H1.
+          gate: H0 == sha256(mol.xyz)?  H0 ≠ H1  ✗
+          → REFUSE: "mol.xyz changed since you loaded it; your tags were made
+             for the old atom order — save as a new file, or reload and redo."
+          No wrong-atom write; the user decides.
+```
+
 
 | Tier | What | Trigger | Lifetime |
 |---|---|---|---|
@@ -246,12 +272,7 @@ before `.xyz`), so a mid-commit failure leaves the *source unchanged* — the re
 gate still passes, instead of tripping on a source the first attempt already
 rewrote.
 
-### §9.4 Authority
-The **server-side scratch is the single source of truth** for the working copy.
-A consumer may keep a client-side cache for fast restore (the browser app uses
-`sessionStorage`); it is only a cache — the scratch wins on any divergence.
-
-### §9.5 Commit re-anchors the working copy (so a second save works)
+### §9.4 Commit re-anchors the working copy (so a second save works)
 A successful commit rewrites the source (same-file) or writes a new target
 (save-as). If the working copy kept its *old* source hash, the **next** save
 would gate that stale hash against the file the previous commit just wrote — and
