@@ -852,9 +852,19 @@
             return Promise.resolve();
         }
 
+        // Unified filterable-channel enumeration (atom-annotations.md §5, L2):
+        // the live set of channels across the current atoms, via the pure L1
+        // model.  Consumers enumerate this instead of special-casing regions
+        // vs frozen.  Returns [] if the L1 model isn't loaded (defensive).
+        function knownChannels() {
+            var m = root.molbuilder && root.molbuilder.atomChannelModel;
+            return (m && m.channelKinds) ? m.channelKinds(state.atoms) : [];
+        }
+
         return {
             // reads
             getState:           getState,
+            knownChannels:      knownChannels,
             subscribe:          subscribe,
             // source file
             setSourceFile:      setSourceFile,

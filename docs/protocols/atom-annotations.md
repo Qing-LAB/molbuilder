@@ -265,7 +265,7 @@ This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
 4. **JS unified `Atom` + channel filter** — layered (§5). **4a SHIPPED
    (2026-07-01):** pure L1 channel model `lib/workspace/_atom-channels.js`
    (atomChannels/channelKinds; browser global + node export; node-unit-tested,
-   no browser).  4b store `knownChannels` + generalized `_filterToRule`; 4c
+   no browser).  **4b SHIPPED (2026-07-01):** store `knownChannels()` (L2 via L1) + panel `knownLabels` refactored onto L1 (behavior-preserving, extensible) + L1 wired into the template. 4c
    panel UI; 4d server value-channel payload + `by_value`.
 5. **Fused module + migrate ALL molview tabs** — embed mounts viewer+panel+
    adapter with the § 6 `mode`/`persistence` args; **every** molview-embedding

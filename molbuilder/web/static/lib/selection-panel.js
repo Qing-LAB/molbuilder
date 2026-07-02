@@ -276,6 +276,20 @@
         // (``frozen_atoms``) — see ``renderFilters`` for the
         // value/display split.
         function knownLabels(s) {
+            // Derive from the pure L1 channel model (atom-annotations.md §5):
+            // the "By label" dropdown offers every TAG + FLAG channel present
+            // (regions -> tag, frozen -> flag, and any future tag/flag
+            // channels), computed from the render SNAPSHOT so it stays
+            // consistent with what's drawn.  Behavior-preserving vs the old
+            // regions+frozen enumeration (same set, sorted).
+            const m = root.molbuilder && root.molbuilder.atomChannelModel;
+            if (m && m.channelKinds) {
+                return m.channelKinds(s.atoms || [])
+                    .filter((c) => c.kind === "tag" || c.kind === "flag")
+                    .map((c) => c.name)
+                    .sort();
+            }
+            // Fallback if L1 isn't loaded (defensive; template loads it first).
             const out = new Set();
             let anyFrozen = false;
             (s.atoms || []).forEach((a) => {
