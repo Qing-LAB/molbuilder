@@ -82,3 +82,18 @@ def test_empty_and_null_safe():
       A.deepStrictEqual(M.channelKinds(null), []);
       console.log("ok");
     """)
+
+
+def test_selection_panel_frozen_name_matches_l1():
+    """The panel's FROZEN_TAG_LABEL and the L1 model's FROZEN_CHANNEL are
+    intentionally independent constants (different layers) so the panel needs no
+    L1 load-time dependency -- this test guards them against drift."""
+    import re
+    l1_frozen = _run(
+        "console.log(JSON.stringify(M.FROZEN_CHANNEL));").strip().strip('"')
+    panel = (Path(__file__).resolve().parent.parent
+             / "molbuilder/web/static/lib/selection-panel.js").read_text()
+    m = re.search(r'FROZEN_TAG_LABEL\s*=\s*"([^"]+)"', panel)
+    assert m, "FROZEN_TAG_LABEL literal not found in selection-panel.js"
+    assert m.group(1) == l1_frozen, (
+        f"frozen name drift: panel={m.group(1)!r} vs L1={l1_frozen!r}")

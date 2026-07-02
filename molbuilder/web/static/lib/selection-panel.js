@@ -51,14 +51,13 @@
     // paired: the tag's × button has to translate the display label
     // back to the server-side target.
     //
-    // Single source of truth: the frozen CHANNEL name lives in the L1
-    // channel model (atom-annotations.md § 5); alias it here so the panel
-    // and the model can never drift.  FROZEN_TARGET is the SERVER-side
-    // synthetic-region name (a different concern — the store↔engine
-    // boundary), so it stays defined here.
-    const FROZEN_TAG_LABEL =
-        (root.molbuilder.atomChannelModel
-         && root.molbuilder.atomChannelModel.FROZEN_CHANNEL) || "frozen";
+    // The frozen tag's display label.  This equals the L1 channel model's
+    // FROZEN_CHANNEL by definition, but is kept as a local constant (not sourced
+    // from L1) so the panel stays loadable without forcing an L1 load-time
+    // dependency for one string; test_selection_panel_frozen_name_matches_l1
+    // asserts the two never drift.  FROZEN_TARGET is the SERVER-side
+    // synthetic-region name (store↔engine boundary), a separate concern.
+    const FROZEN_TAG_LABEL = "frozen";
     const FROZEN_TARGET    = "frozen_atoms";
 
     function mount(rootEl) {
@@ -287,33 +286,20 @@
         // store's atom.index is 0-based.  Convert only for display, via the
         // shared helper (defensive fallback if it isn't loaded).
         function _toDisplayIndex(i) {
-            const m = root.molbuilder && root.molbuilder.atomIndexModel;
-            return (m && m.toDisplay) ? m.toDisplay(i) : i + 1;
+            return root.molbuilder.atomIndexModel.toDisplay(i);
         }
 
         function knownLabels(s) {
-            // Derive from the pure L1 channel model (atom-annotations.md §5):
-            // the "By label" dropdown offers every TAG + FLAG channel present
+            // The "By label" dropdown offers every TAG + FLAG channel present
             // (regions -> tag, frozen -> flag, and any future tag/flag
-            // channels), computed from the render SNAPSHOT so it stays
-            // consistent with what's drawn.  Behavior-preserving vs the old
-            // regions+frozen enumeration (same set, sorted).
-            const m = root.molbuilder && root.molbuilder.atomChannelModel;
-            if (m && m.channelKinds) {
-                return m.channelKinds(s.atoms || [])
-                    .filter((c) => c.kind === "tag" || c.kind === "flag")
-                    .map((c) => c.name)
-                    .sort();
-            }
-            // Fallback if L1 isn't loaded (defensive; template loads it first).
-            const out = new Set();
-            let anyFrozen = false;
-            (s.atoms || []).forEach((a) => {
-                (a.labels || []).forEach((label) => out.add(label));
-                if (a.isFrozen) anyFrozen = true;
-            });
-            if (anyFrozen) out.add(FROZEN_TAG_LABEL);
-            return Array.from(out).sort();
+            // channels), from the pure L1 channel model (atom-annotations.md
+            // § 5), computed from the render SNAPSHOT so it stays consistent
+            // with what's drawn.
+            return root.molbuilder.atomChannelModel
+                .channelKinds(s.atoms || [])
+                .filter((c) => c.kind === "tag" || c.kind === "flag")
+                .map((c) => c.name)
+                .sort();
         }
 
         function renderFilters(s) {

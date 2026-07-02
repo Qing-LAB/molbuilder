@@ -60,6 +60,13 @@
 (function (root) {
     "use strict";
 
+    // The channel/index FEATURES (knownChannels, the 1-based by_index shift)
+    // depend on the L1 models (atom-channels.js / atom-index.js); the rest of
+    // the store does not.  So this module stays loadable standalone (node
+    // harnesses) — those two functions reference L1 at CALL time, and a caller
+    // that uses them must have L1 loaded (modify.html does; a test that
+    // exercises them supplies it).
+
     const EVAL_URL    = "/api/selection/eval";
     const ATOMS_URL   = "/api/selection/atoms";
     const SAVE_URL    = "/api/selection/save";
@@ -116,9 +123,8 @@
                 // The user types 1-based indices (matching the display);
                 // the server by_index_range rule is 0-based -- shift at this
                 // boundary (data-vocabulary.md § 3.1).
-                const m = root.molbuilder && root.molbuilder.atomIndexModel;
-                const expression = (m && m.shiftExpression)
-                    ? m.shiftExpression(raw, -1) : raw;
+                const expression =
+                    root.molbuilder.atomIndexModel.shiftExpression(raw, -1);
                 return { op: "by_index_range", expression: expression };
             }
             case "by_residue": {
@@ -871,8 +877,7 @@
         // model.  Consumers enumerate this instead of special-casing regions
         // vs frozen.  Returns [] if the L1 model isn't loaded (defensive).
         function knownChannels() {
-            var m = root.molbuilder && root.molbuilder.atomChannelModel;
-            return (m && m.channelKinds) ? m.channelKinds(state.atoms) : [];
+            return root.molbuilder.atomChannelModel.channelKinds(state.atoms);
         }
 
         return {
