@@ -12,9 +12,10 @@ step).
 > when the user hits Save (overwrite, or save-as). A draft keeps unsaved edits
 > safe across a reload or crash. That's it — no gate, no hashing.**
 
-**Companions:** `browser-data-contract.md` (the `.xyz`+`.json` application),
-`data-vocabulary.md` §3.1–3.2 (atom index base + the sidecar's engine-side
-`structure_hash`, which is unrelated to any of this).
+**Companions:** `data-vocabulary.md` §3.1–3.2 (atom index base + the sidecar's
+engine-side `structure_hash`, which is unrelated to any of this). The `.xyz`+
+`.json` application is `workingcopy_structure.py` (codec) + the `/modify` wiring
+(§9); `browser-data-contract.md` is **superseded** (it described the old gate).
 
 ---
 
@@ -148,9 +149,9 @@ and **project files change only on an explicit Save.**
 
 ## 8. Applications
 
-| Application | `files()` writes | Spec |
+| Application | `files()` writes | Codec |
 |---|---|---|
-| **Structure + sidecar** | `<stem>.xyz` + `<stem>.molstruct.json` | `browser-data-contract.md` |
+| **Structure + sidecar** | `<stem>.xyz` + `<stem>.molstruct.json` | `workingcopy_structure.py` |
 | *(future)* config / script | its file(s) | reuse this core unchanged |
 
 ---
@@ -158,6 +159,7 @@ and **project files change only on an explicit Save.**
 ## 9. Remaining work
 
 Wire the `/modify` tab to it: hold labels in the working copy + `update` on edit
-(instead of auto-POSTing `/api/selection/save`), and add an explicit **Save** /
-**Save As** that calls `/api/workingcopy/save`. Draft can be the browser
-`sessionStorage` (simplest) mirrored to the server draft for crash-safety.
+(which mirrors to the server draft, §7, instead of auto-POSTing
+`/api/selection/save`), and add an explicit **Save** / **Save As** that calls
+`/api/workingcopy/save`. The browser may also keep a `sessionStorage` copy for
+instant same-tab restore, but the server draft (§7) is what survives a crash.
