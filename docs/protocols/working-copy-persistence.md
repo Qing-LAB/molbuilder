@@ -94,7 +94,7 @@ flowchart TD
         A3["script …"]
     end
 
-    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · openNew · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
+    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · new · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
 
     SCR[("SCRATCH — transient<br/>&lt;project&gt;/.molbuilder_workspace/<br/>survives reload / crash")]
     DUR[("DURABLE — project files<br/>&lt;stem&gt;.xyz + .molstruct.json<br/>written ONLY on commit")]
@@ -207,7 +207,7 @@ never learns what an atom is.**
 
 ```
 open(source_path, codec)      -> WorkingCopy     # load + record source hash (no scratch write yet)
-openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
+new(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
 recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§10)
 
 WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
@@ -221,7 +221,8 @@ discardOrphan(record) / cleanAll(project)
 
 `commit` runs the gate → writes → **re-anchors the working copy to the committed
 target** (new source + hash, §9.4) → clears scratch (§9.3). `onMismatch` is
-`refuse` (MVP) or `choose` (keep / discard-stale / reload — the app's UX).
+`refuse` (MVP; return a mismatch result) or `force` (override the gate). The
+future `choose` UX (keep / discard-stale / reload) is built on `force`.
 
 ---
 
@@ -273,7 +274,7 @@ in another tool), that mismatch is caught → refuse (or prompt). No blind
 overwrite.
 
 ### §9.2 No source — freshly-built artifact (S6)
-`openNew()` has no source hash; its first `commit` is a plain **save-as** to a
+`new()` has no source hash; its first `commit` is a plain **save-as** to a
 chosen path. The gate engages only once a source exists.
 
 ### §9.3 Multi-file artifacts + partial failure (real, not "atomic")
@@ -330,15 +331,19 @@ work and **never** auto-adopts stale work.
 
 1. **Where the core lives — RESOLVED:** `molbuilder/workingcopy.py` (L1) exposes
    the §6 API + the `Codec` seam; `web/blueprints/workingcopy.py` is the
-   scratch-backed `/api/workingcopy/*` surface (Phase 2b, built).
+   scratch-backed `/api/workingcopy/*` surface (Phase 2b, built) — it covers the
+   sourced flows (open/update/commit/discard + orphans/recover/clean); the
+   sourceless `new` (S6) flow is core-only for now, exposed when a
+   build-from-scratch UI needs it.
 2. **Scratch record format — RESOLVED:** one JSON envelope `{schema, source,
    source_hash, session, ts, blob}`, written atomically (via `persist.write_json`)
    as `<stem>.<session>.wc.json` under `.molbuilder_workspace/`.
 3. **Commit write order — RESOLVED (§9.3):** write the identity/source file
    **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
    source unchanged and the retry gate still passes.
-4. **`onMismatch` default — DECIDED:** ship `refuse`, add `choose` (keep /
-   discard-stale / reload) as the enhancement.
+4. **`onMismatch` default — DECIDED:** ship `refuse` + `force` (the override
+   primitive; both live in the code); the `choose` UX (keep / discard-stale /
+   reload) is built on `force` later.
 5. **Session — RESOLVED: the *server-side* session, never the browser tab** (so
    a tab reload/close never loses the working copy). Two run modes:
    - **Authenticated:** the login session; session-end = logout/expiry → cleanup.

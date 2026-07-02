@@ -127,7 +127,8 @@ def _resolve_within_roots(raw_path: str) -> Path:
 
     Raises :class:`_PickerError` with status 400 if the path is
     missing, contains ``..``, or resolves outside every allowed root.
-    Raises with status 404 if the resolved path doesn't exist on disk.
+    Existence is NOT checked here (the caller decides: a listing wants 404 on
+    a missing path, but a save-as target legitimately doesn't exist yet).
     """
     if not raw_path:
         raise _PickerError(400, "missing 'path' query parameter")
