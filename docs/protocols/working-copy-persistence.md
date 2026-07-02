@@ -67,7 +67,7 @@ mirrored to scratch, committed to a durable file with a **source-hash gate** and
 | # | Scenario | Required behavior |
 |---|---|---|
 | S1 | Edit → reload the tab | working copy restored from scratch; no data lost |
-| S2 | Edit → walk away (no save) | durable files untouched; work recoverable per policy |
+| S2 | Edit → walk away (no save) | durable files untouched; scratch retained until session-end (§13.5) — recoverable on return |
 | S3 | Explicit "Save" | the **only** moment durable files change |
 | S4 | Source changed on disk since load | commit **refuses** (or prompts) — never blind-overwrites |
 | S5 | Browser/server/OS crash mid-edit | scratch survives; user **explicitly** recovers or discards |
@@ -169,7 +169,7 @@ never learns what an atom is.**
 ```
 open(source_path, codec)      -> WorkingCopy     # load + record source hash (no scratch write yet)
 openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
-recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§9, §10)
+recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§10)
 
 WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
 WorkingCopy.data() / .isDirty() / .sourceHash()
@@ -216,8 +216,9 @@ any is broken, the guarantees no longer apply to that application.
 2. **A working copy always carries the source hash it was opened against.**
 3. **Commit never launders** — on source-hash mismatch it refuses or forces an
    explicit choice; it never silently writes stale data under a fresh hash.
-4. **Transient data survives reload/crash** (scratch is authoritative
-   server-side; a client mirror like `sessionStorage` is a cache — scratch wins).
+4. **Transient data survives reload/crash** — the **server-side scratch is the
+   single source of truth**. A consumer MAY keep its own client-side cache for
+   speed, but that is the consumer's concern and the scratch always wins.
 5. **Editing is non-destructive** to durable files until commit.
 
 ---
@@ -235,14 +236,18 @@ overwrite.
 chosen path. The gate engages only once a source exists.
 
 ### §9.3 Multi-file artifacts + partial failure (real, not "atomic")
-Two files can't be atomic together. The core instead: writes each via
-**temp-file + rename** (per-file atomic), in a **defined order**, and **keeps the
-scratch record until ALL files land** — so a partial failure leaves scratch
-intact for retry and the durable state is never half-committed-then-forgotten.
+Two files can't be atomic together. The core writes each via **temp-file +
+rename** (per-file atomic) and **keeps the scratch record until ALL files land**,
+so a partial failure is never silently forgotten. **Write order matters and is
+resolved in §13.3:** write the **identity/source file last** (`.json` metadata
+before `.xyz`), so a mid-commit failure leaves the *source unchanged* — the retry
+gate still passes, instead of tripping on a source the first attempt already
+rewrote.
 
 ### §9.4 Authority
-Server-side scratch is the source of truth; a `sessionStorage` mirror is a
-same-tab fast-restore cache. On divergence, scratch wins.
+The **server-side scratch is the single source of truth** for the working copy.
+A consumer may keep a client-side cache for fast restore (the browser app uses
+`sessionStorage`); it is only a cache — the scratch wins on any divergence.
 
 ---
 
@@ -275,13 +280,19 @@ work and **never** auto-adopts stale work.
 
 ---
 
-## 13. Open decisions (before implementation)
+## 13. Decisions (before implementation)
 
-1. **Where the core lives** — a new backend module (e.g.
+1. *(open)* **Where the core lives** — a new backend module (e.g.
    `molbuilder/workingcopy.py`) exposing the §6 API + a thin `/api/workingcopy/*`
    surface the browser store calls.
-2. **Scratch record format** — one JSON envelope `{source, source_hash, session,
-   ts, blob}` vs the codec owning the on-disk shape.
-3. **Commit ordering for `.xyz`+`.json`** — which file first; define the
-   partial-failure recovery direction.
+2. *(open)* **Scratch record format** — one JSON envelope `{source, source_hash,
+   session, ts, blob}` vs the codec owning the on-disk shape.
+3. **Commit write order — RESOLVED (§9.3):** write the identity/source file
+   **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
+   source unchanged and the retry gate still passes.
 4. **`onMismatch` default** — ship `refuse`, add `choose` as the enhancement.
+5. *(open — blocks S2 + cleanup)* **Define "session"** — a *server login*
+   (survives tab-close → walk-away work is recoverable; cleanup on logout/expiry)
+   vs a *browser tab* (close = new session → old scratch is a §10 orphan).
+   **Recommend server-login:** walking away should not silently destroy unsaved
+   work — a clean logout cleans, a crash leaves a recoverable orphan.
