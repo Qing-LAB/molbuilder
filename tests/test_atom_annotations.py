@@ -1,0 +1,113 @@
+"""Phase 1 of the viewer/selection merge (atom-annotations.md): the
+Structure per-atom annotations layer + all-channel remap."""
+import numpy as np
+import pytest
+
+from molbuilder.structure import (Structure, AtomChannel,
+                                   copy_annotations, remap_annotations)
+from molbuilder import modify
+
+
+def _struct(n=5):
+    return Structure(elements=["C"] * n,
+                     positions=np.arange(n * 3, dtype=float).reshape(n, 3))
+
+
+# ---- AtomChannel ---------------------------------------------------- #
+
+def test_channel_kind_validation_and_defaults():
+    assert AtomChannel("tag").data == []
+    assert AtomChannel("value").data == {}
+    with pytest.raises(ValueError, match="kind"):
+        AtomChannel("bogus")
+
+
+def test_channel_remapped_tag_and_value():
+    tag = AtomChannel("tag", [0, 2, 4])
+    r = tag.remapped({0: 0, 2: 1})          # 4 fell off
+    assert r.kind == "tag" and r.data == [0, 1]
+    val = AtomChannel("value", {0: 1.5, 2: -1.0, 4: 9.0})
+    rv = val.remapped({2: 0, 4: 1})
+    assert rv.data == {0: -1.0, 1: 9.0}
+
+
+# ---- Structure annotations ----------------------------------------- #
+
+def test_annotations_default_empty_and_backcompat():
+    s = _struct()
+    assert s.annotations == {}
+    assert s.channels() == {}               # no regions/frozen either
+
+
+def test_channels_unify_regions_frozen_and_extras():
+    s = _struct()
+    s.regions = {"L-electrode": [0, 1]}
+    s.frozen_atoms = [4]
+    s.set_channel("charge", AtomChannel("value", {0: -1.0, 1: 0.5}))
+    ch = s.channels()
+    assert ch["L-electrode"].kind == "tag" and ch["L-electrode"].data == [0, 1]
+    assert ch["frozen"].kind == "flag" and ch["frozen"].data == [4]
+    assert ch["charge"].kind == "value" and ch["charge"].data == {0: -1.0, 1: 0.5}
+
+
+def test_atom_annotations_per_atom_view():
+    s = _struct()
+    s.regions = {"bridge": [0]}
+    s.frozen_atoms = [0]
+    s.set_channel("charge", AtomChannel("value", {0: -1.0}))
+    assert s.atom_annotations(0) == {"bridge": True, "frozen": True, "charge": -1.0}
+    assert s.atom_annotations(3) == {}
+
+
+def test_set_channel_rejects_builtin_names_and_bad_index():
+    s = _struct()
+    s.regions = {"L": [0]}
+    with pytest.raises(ValueError, match="built-in"):
+        s.set_channel("frozen", AtomChannel("flag", [1]))
+    with pytest.raises(ValueError, match="built-in"):
+        s.set_channel("L", AtomChannel("tag", [1]))
+    with pytest.raises(ValueError, match="out of range"):
+        s.set_channel("charge", AtomChannel("value", {99: 1.0}))
+
+
+def test_validation_rejects_out_of_range_and_collision_at_construction():
+    with pytest.raises(ValueError, match="out of range"):
+        Structure(elements=["C"], positions=[[0, 0, 0]],
+                  annotations={"x": AtomChannel("tag", [5])})
+    with pytest.raises(ValueError, match="built-in"):
+        Structure(elements=["C", "C"], positions=[[0, 0, 0], [1, 0, 0]],
+                  regions={"L": [0]}, annotations={"L": AtomChannel("tag", [1])})
+
+
+def test_copy_and_translated_carry_annotations():
+    s = _struct()
+    s.set_channel("charge", AtomChannel("value", {0: -1.0}))
+    for clone in (s.copy(), s.translated([1, 0, 0])):
+        assert clone.get_channel("charge").data == {0: -1.0}
+        clone.annotations["charge"].data[0] = 99.0   # deep copy: original intact
+    assert s.get_channel("charge").data == {0: -1.0}
+
+
+# ---- remap helpers + modify integration ---------------------------- #
+
+def test_remap_annotations_drops_emptied_channels():
+    ann = {"a": AtomChannel("tag", [0, 1]), "b": AtomChannel("flag", [4])}
+    out = remap_annotations(ann, {0: 0, 1: 1})   # 4 gone -> channel "b" emptied
+    assert set(out) == {"a"} and out["a"].data == [0, 1]
+
+
+def test_delete_atoms_remaps_annotations():
+    s = _struct(5)
+    s.set_channel("charge", AtomChannel("value", {2: -1.0, 4: 9.0}))
+    s.regions = {"tail": [4]}
+    out = modify.delete_atoms(s, [0, 1])         # keep 2,3,4 -> new idx 0,1,2
+    assert out.get_channel("charge").data == {0: -1.0, 2: 9.0}
+    assert out.get_channel("tail").data == [2]
+
+
+def test_passthrough_op_carries_annotations_verbatim():
+    s = _struct(3)
+    s.set_channel("charge", AtomChannel("value", {0: -1.0}))
+    out = modify.translate(s, [1.0, 0, 0]) if hasattr(modify, "translate") \
+        else s.translated([1.0, 0, 0])
+    assert out.get_channel("charge").data == {0: -1.0}

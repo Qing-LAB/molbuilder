@@ -44,7 +44,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .structure import Structure
+from .structure import Structure, copy_annotations, remap_annotations
 
 
 # --------------------------------------------------------------------- #
@@ -54,10 +54,11 @@ from .structure import Structure
 
 def _reindex_transport_metadata(
     struct: Structure, keep: Sequence[int],
-) -> Tuple[List[int], "dict[str, List[int]]"]:
-    """Remap ``struct.frozen_atoms`` and ``struct.regions`` after a
-    slice/delete operation, dropping any index that fell off and
-    renumbering survivors to their new 0-based position.
+) -> Tuple[List[int], "dict[str, List[int]]", "dict"]:
+    """Remap ``struct.frozen_atoms``, ``struct.regions`` AND the
+    extensible ``struct.annotations`` channels after a slice/delete
+    operation, dropping any index that fell off and renumbering survivors
+    to their new 0-based position (atom-annotations.md § 2.1).
 
     Used by ``delete_atoms`` (the only modify-op that changes the
     index space).  Pure-passthrough ops (translate / rotate / orient)
@@ -70,7 +71,8 @@ def _reindex_transport_metadata(
         remapped = [old_to_new[i] for i in idxs if i in old_to_new]
         if remapped:
             new_regions[label] = remapped
-    return new_frozen, new_regions
+    new_annotations = remap_annotations(struct.annotations, old_to_new)
+    return new_frozen, new_regions, new_annotations
 
 
 def compute_selection_remap_after_delete(
@@ -141,7 +143,8 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
     if len(keep) == struct.n_atoms:
         # No-op (or all indices were out of range / already absent).
         return struct.copy()
-    new_frozen, new_regions = _reindex_transport_metadata(struct, keep)
+    new_frozen, new_regions, new_annotations = _reindex_transport_metadata(
+        struct, keep)
     return Structure(
         elements=     [struct.elements[i]      for i in keep],
         positions=    struct.positions[keep].copy(),
@@ -152,6 +155,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         title=struct.title,
         regions=new_regions,
         frozen_atoms=new_frozen,
+        annotations=new_annotations,
     )
 
 
@@ -229,6 +233,7 @@ def add_atom(
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
+        annotations=copy_annotations(struct.annotations),
     )
 
 
@@ -377,6 +382,7 @@ def orient_along_axis(
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
+        annotations=copy_annotations(struct.annotations),
     )
 
 
@@ -456,6 +462,7 @@ def rotate_around_axis(
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
+        annotations=copy_annotations(struct.annotations),
     )
 
 
@@ -955,6 +962,7 @@ def add_electrode_slab(
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
+        annotations=copy_annotations(struct.annotations),
     )
 
 

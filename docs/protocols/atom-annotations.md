@@ -147,9 +147,11 @@ trajectory / spectra inspectors):
 ## 7. Phased implementation plan (each: implement → test → commit)
 
 0. **This design** — approve.
-1. **Structure annotations layer** (Python) — channels + `regions`/`frozen_atoms`
-   as backed accessors; generalize `remap_frozen_and_regions` → all-channel
-   remap (§2.1); full API compat; unit tests (incl. remap on add/delete).
+1. **Structure annotations layer** (Python) — **SHIPPED (2026-07-01).**
+   `AtomChannel` + `Structure.annotations` + unified `channels()`/`get_channel()`/
+   `atom_annotations()`/`set_channel()`; `copy_annotations`/`remap_annotations`;
+   `modify.py` delete-remap + verbatim rebuilds carry annotations; `copy()`/
+   `translated()` carry them. tests/test_atom_annotations.py (11).
 2. **Sidecar v4** — `annotations` + v3 back-read + dual-write; tests + data-vocabulary.
 3. **fdf channel-driven emission** — frozen/region via channels + strategy
    registry; the existing siesta/transport fdf tests are the net.

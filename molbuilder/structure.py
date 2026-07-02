@@ -94,6 +94,74 @@ def _resolve_source(source: Union[str, Path]) -> str:
 # ---------------------------------------------------------------------- #
 
 
+# ---------------------------------------------------------------------- #
+#  Per-atom annotation channels (atom-annotations.md)                    #
+# ---------------------------------------------------------------------- #
+
+_CHANNEL_KINDS = ("tag", "flag", "value")
+
+
+@dataclass
+class AtomChannel:
+    """One named per-atom metadata channel (atom-annotations.md § 2).
+
+    ``kind``:
+      * ``"tag"``  / ``"flag"`` — a *subset* of atoms; ``data`` is a
+        sorted ``List[int]`` of member indices.  (Both share this shape;
+        ``tag`` = a named region-like set, ``flag`` = a boolean property.)
+      * ``"value"`` — a per-atom scalar; ``data`` is ``Dict[int, Any]``
+        mapping atom index -> value (sparse; absent atoms have no value).
+
+    ``color`` / ``fdf`` are optional hints: a presentation color and the
+    id of the fdf emit-strategy this channel maps to (a channel with no
+    strategy is carried but not emitted -- § 4).
+    """
+    kind: str
+    data: Any = None
+    color: Optional[str] = None
+    fdf: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in _CHANNEL_KINDS:
+            raise ValueError(
+                f"AtomChannel.kind must be one of {_CHANNEL_KINDS}; "
+                f"got {self.kind!r}")
+        if self.data is None:
+            self.data = {} if self.kind == "value" else []
+
+    def remapped(self, old_to_new: "dict[int, int]") -> "AtomChannel":
+        """Return a copy with atom indices translated through
+        ``old_to_new`` (survivors only) -- for structure edits (§ 2.1)."""
+        if self.kind == "value":
+            data: Any = {old_to_new[i]: v for i, v in self.data.items()
+                         if i in old_to_new}
+        else:
+            data = sorted(old_to_new[i] for i in self.data if i in old_to_new)
+        return AtomChannel(self.kind, data, self.color, self.fdf)
+
+    def copy(self) -> "AtomChannel":
+        data = dict(self.data) if self.kind == "value" else list(self.data)
+        return AtomChannel(self.kind, data, self.color, self.fdf)
+
+
+def copy_annotations(ann: "dict[str, AtomChannel]") -> "dict[str, AtomChannel]":
+    """Deep-copy an annotations map (channels carried verbatim, § 2.1)."""
+    return {name: ch.copy() for name, ch in ann.items()}
+
+
+def remap_annotations(ann: "dict[str, AtomChannel]",
+                      old_to_new: "dict[int, int]") -> "dict[str, AtomChannel]":
+    """Remap every channel's atom indices through ``old_to_new`` (the
+    all-channel generalization of ``modify.remap_frozen_and_regions``,
+    atom-annotations.md § 2.1).  Channels that end up empty are dropped."""
+    out: "dict[str, AtomChannel]" = {}
+    for name, ch in ann.items():
+        remapped = ch.remapped(old_to_new)
+        if remapped.data:                      # drop channels emptied by the edit
+            out[name] = remapped
+    return out
+
+
 @dataclass
 class Structure:
     """All-atom 3D structure of a (poly)molecule.
@@ -166,6 +234,14 @@ class Structure:
     # default to "no lattice" so every existing call site is unchanged.
     cell:          Optional[np.ndarray]            = None
     pbc:           Optional[Tuple[bool, bool, bool]] = None
+    # Extensible per-atom annotations (atom-annotations.md).  Holds
+    # channels BEYOND the two built-ins (regions -> tag channels,
+    # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
+    # value channels (charge / spin / basis-override).  The unified read
+    # API is ``channels()`` / ``get_channel()`` / ``atom_annotations()``,
+    # which present regions + frozen + these together.  Empty default so
+    # every existing call site is unchanged.
+    annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.positions = np.asarray(self.positions, dtype=float).reshape(-1, 3)
@@ -228,6 +304,7 @@ class Structure:
         # sees no behaviour change.
         self._validate_regions(n)
         self._validate_frozen_atoms(n)
+        self._validate_annotations(n)
 
     def _validate_regions(self, n: int) -> None:
         """Per-atom index in [0, n); region names are non-empty
@@ -279,6 +356,78 @@ class Structure:
                 )
             unique.add(idx)
         self.frozen_atoms = sorted(unique)
+
+    def _validate_annotations(self, n: int) -> None:
+        """Extra channels: names must not collide with a built-in
+        (a region label or ``"frozen"``); atom indices must be in
+        [0, n).  Normalises tag/flag data to sorted-unique in place."""
+        if not self.annotations:
+            return
+        reserved = set(self.regions) | {"frozen"}
+        for name, ch in self.annotations.items():
+            if name in reserved:
+                raise ValueError(
+                    f"Structure.annotations[{name!r}] collides with a "
+                    f"built-in channel (a region label or 'frozen'); "
+                    f"edit .regions / .frozen_atoms instead.")
+            if not isinstance(ch, AtomChannel):
+                raise ValueError(
+                    f"Structure.annotations[{name!r}] must be an "
+                    f"AtomChannel; got {type(ch).__name__}")
+            idxs = ch.data.keys() if ch.kind == "value" else ch.data
+            for idx in idxs:
+                if not 0 <= int(idx) < n:
+                    raise ValueError(
+                        f"Structure.annotations[{name!r}]: atom index "
+                        f"{idx} out of range [0, {n})")
+            if ch.kind != "value":
+                ch.data = sorted({int(i) for i in ch.data})
+
+    # ------------------------------------------------------------------ #
+    #  Unified annotation channels (atom-annotations.md § 2)             #
+    # ------------------------------------------------------------------ #
+
+    def channels(self) -> Dict[str, AtomChannel]:
+        """The unified per-atom channel registry: each region label as a
+        ``tag`` channel, ``frozen`` as a ``flag`` channel (when non-empty),
+        plus every extensible channel in ``self.annotations``.  This is
+        the one place to read ALL per-atom metadata uniformly."""
+        out: Dict[str, AtomChannel] = {}
+        for label, idxs in self.regions.items():
+            out[label] = AtomChannel("tag", list(idxs))
+        if self.frozen_atoms:
+            out["frozen"] = AtomChannel("flag", list(self.frozen_atoms))
+        for name, ch in self.annotations.items():
+            out[name] = ch
+        return out
+
+    def get_channel(self, name: str) -> Optional[AtomChannel]:
+        """One channel by name (built-in or extensible), or ``None``."""
+        return self.channels().get(name)
+
+    def atom_annotations(self, index: int) -> Dict[str, Any]:
+        """Everything on atom ``index``: ``{channel_name: value}`` where a
+        tag/flag contributes ``True`` and a value channel its scalar.
+        The per-atom view the selection filter / UI reads."""
+        out: Dict[str, Any] = {}
+        for name, ch in self.channels().items():
+            if ch.kind == "value":
+                if index in ch.data:
+                    out[name] = ch.data[index]
+            elif index in ch.data:
+                out[name] = True
+        return out
+
+    def set_channel(self, name: str, channel: AtomChannel) -> None:
+        """Set an EXTENSIBLE channel (stored in ``annotations``).  Reject
+        built-in names -- edit ``.regions`` / ``.frozen_atoms`` for those.
+        Re-validates against the current atom count."""
+        if name in self.regions or name == "frozen":
+            raise ValueError(
+                f"{name!r} is a built-in channel; edit .regions / "
+                f".frozen_atoms instead.")
+        self.annotations[name] = channel
+        self._validate_annotations(len(self.positions))
 
     # ------------------------------------------------------------------ #
     #  Convenience accessors                                              #
@@ -700,6 +849,7 @@ class Structure:
             cell          = (self.cell.copy() if self.cell is not None
                              else None),
             pbc           = self.pbc,
+            annotations   = copy_annotations(self.annotations),
         )
 
     def translated(self, vec: Sequence[float]) -> "Structure":
@@ -718,6 +868,7 @@ class Structure:
             cell          = (self.cell.copy() if self.cell is not None
                              else None),
             pbc           = self.pbc,
+            annotations   = copy_annotations(self.annotations),
         )
 
     def centered(self) -> "Structure":
