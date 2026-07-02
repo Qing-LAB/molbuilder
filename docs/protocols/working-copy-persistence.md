@@ -1,11 +1,16 @@
 # Working-copy persistence — the transient-data foundation
 
-**Status: IMPLEMENTED (Phases 1-2, 2026-07-02)** — the core
-(`molbuilder/workingcopy.py`, §6 API + `Codec`), the structure+sidecar codec
-(`workingcopy_structure.py`), and the scratch-backed `/api/workingcopy/*` surface
-(`web/blueprints/workingcopy.py`) are all built + tested (S1-S6 + §9 risks).
-Remaining: repoint the browser `writeLabel` off auto-save (Phase 3) + the
-commit/crash-recovery UX (Phases 4-5). The system-wide, **format-agnostic**
+**Status: CORE SOUND; API BEING REDESIGNED (2026-07-02).** The core
+(`molbuilder/workingcopy.py`) + structure codec (`workingcopy_structure.py`) are
+sound and unit-tested as a *stateful object* (S1–S6, §9 risks). The first
+`/api/workingcopy/*` surface (`web/blueprints/workingcopy.py`) was built
+**stateless + client-authoritative — a serious mistake**: an adversarial review
+proved the changed-underneath gate trusted a *client-supplied* hash (bypassable
+with a two-line request), `on_mismatch:"force"` was an open request field, and
+S1 (same-session reload → restore edits) was never implemented (contradicting
+§2.1 and §8.4). It is being **redesigned server-authoritative** per the state
+machine (§6.1) + authority contract below. **No browser consumer is wired yet**,
+and `writeLabel` still auto-saves the sidecar — Phase 3 is unbuilt. The system-wide, **format-agnostic**
 module
 for holding *user-edited* data that is **not durable until explicitly
 committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
@@ -206,7 +211,7 @@ never learns what an atom is.**
 ## 6. The core API (format-agnostic)
 
 ```
-open(source_path, codec)      -> WorkingCopy     # load + record source hash (no scratch write yet)
+open(source_path, codec)      -> WorkingCopy     # in-memory object: load + record H (API persists an anchor, §6.1)
 new(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
 recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§10)
 
@@ -223,6 +228,64 @@ discardOrphan(record) / cleanAll(project)
 target** (new source + hash, §9.4) → clears scratch (§9.3). `onMismatch` is
 `refuse` (MVP; return a mismatch result) or `force` (override the gate). The
 future `choose` UX (keep / discard-stale / reload) is built on `force`.
+
+### 6.1 The state machine + server-authority contract (MUST for the API)
+
+§6 is the *stateful in-memory object*. The `/api/workingcopy/*` surface is
+stateless across HTTP requests, so to keep every guarantee it **MUST be
+server-authoritative**: the server owns the working copy's authentic state — the
+**at-load source hash** and the **working data** — in the scratch record. The
+client is a cache/view, never the authority. This is what makes §8.4 real and
+the changed-underneath gate un-bypassable. (The first API shipped the opposite —
+client-authoritative — and was proven bypassable; hence this redesign.)
+
+**States** — one per working copy, keyed by `(session, source)`:
+
+```mermaid
+stateDiagram-v2
+    [*] --> absent
+    absent --> clean: open (load + persist authentic hash H, data)
+    clean --> clean: open again = RESUME (return server state, S1)
+    dirty --> dirty: open again = RESUME (S1 reload, keeps edits)
+    clean --> dirty: update
+    dirty --> dirty: update
+    clean --> clean: commit (no-op when not dirty)
+    dirty --> clean: commit + gate PASS (write durable, re-anchor H)
+    dirty --> dirty: commit + gate FAIL = REFUSE (stays dirty)
+    clean --> absent: discard
+    dirty --> absent: discard
+```
+
+- **absent** — no server record for `(session, source)`.
+- **clean** — opened; server holds the loaded data + the **authentic** at-load
+  hash `H = hash_source(source)`; `dirty=false`.
+- **dirty** — edited; server holds the working data + the *same* authentic `H`;
+  `dirty=true`.
+
+**Transitions + the authority rule each enforces:**
+
+| Op | Server does | Authority rule (the point) |
+|---|---|---|
+| `open(source)` — no record | load source, **compute + persist** `H`, store `{source, H, data, session, dirty=false}` | **`H` is server-computed, never client-supplied.** |
+| `open(source)` — record exists | return the existing server working copy (data + dirty) | **S1 reload/resume** — never re-read the source over unsaved edits |
+| `update(source, data)` | requires the record; store `data`, `dirty=true`; **`H` unchanged** | client sends edits, **never `H`**; can't update what you didn't open |
+| `commit(source, target)` | **gate: compare the STORED `H` to the *current* on-disk hash of `source`** (when `target==source`); on pass write durable (identity last), **re-anchor `H←hash(target)`**, `dirty=false` | gate reads **only the server `H`**; commit needs the caller's own record |
+| `discard(source)` | delete the record | — |
+| `recover(orphan)` | adopt a dead session's record into the live session | same gate applies at its next commit |
+
+**The authority contract (invariants the machine enforces):**
+1. **The at-load hash is server-authoritative** — computed at `open`, stored,
+   never accepted from the client; the gate reads only it. *(Closes the proven
+   client-hash bypass.)*
+2. **The server scratch is the working copy of record** (§8.4) — `update` stores
+   the data server-side; `open`-on-existing returns it (reload). The client is a
+   cache.
+3. **You can only commit what you opened** — `update`/`commit` require the
+   caller's session to own a record for that `source`; else refuse.
+4. **Overriding the gate is not a free field** — `force` requires a
+   *server-issued token* bound to `(session, source, observed actual_hash)`,
+   handed back only when the server itself returned a mismatch (so an override
+   proves the user was shown the conflict).
 
 ---
 
@@ -261,6 +324,9 @@ any is broken, the guarantees no longer apply to that application.
 4. **Transient data survives reload/crash** — the **server-side scratch is the
    single source of truth**. A consumer MAY keep its own client-side cache for
    speed, but that is the consumer's concern and the scratch always wins.
+   *(Enforced by the §6.1 server state machine. The first stateless API violated
+   this — the client payload was authoritative — which is why the API is being
+   redesigned.)*
 5. **Editing is non-destructive** to durable files until commit.
 
 ---
