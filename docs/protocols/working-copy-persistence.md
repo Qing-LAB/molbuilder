@@ -1,10 +1,9 @@
 # Working-copy persistence — the transient-data foundation
 
 **Status: PROPOSED (2026-07-02).** The system-wide, **format-agnostic** module
-for holding *browser-owned / user-edited* data that is **not durable until
-explicitly committed**. The `.xyz`+`.molstruct.json` case
-(`browser-data-contract.md`) is the **first application** of this core, not the
-core itself.
+for holding *user-edited* data that is **not durable until explicitly
+committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
+the **first application** of this core, not the core itself.
 
 **The principle (one sentence):**
 
@@ -13,133 +12,215 @@ core itself.
 > commit — gated by the source hash so a changed source can never be silently
 > overwritten.**
 
-**Companions:** `browser-data-contract.md` (the `.xyz`+`.json` *application* of
-this core), `data-vocabulary.md` §3.2 (the atom-identity hash one application
-feeds this core).
+**Companions:** `browser-data-contract.md` (the `.xyz`+`.json` *application*),
+`data-vocabulary.md` §3.2 (the atom-identity hash one application feeds this).
 
 ---
 
-## 1. Why a foundation (not a one-off)
+## 1. Goal & scenarios
 
-Any tab that loads a project artifact, lets the user change it, and might save it
-back has the *same* needs: keep the edit safe across a reload, never write the
-project file behind the user's back, and refuse to overwrite a source that
-changed underneath. Structures are one such artifact; config files, generated
-scripts, and future project artifacts are others. This module solves that once,
-generically, so each application supplies only a **codec** (§4) and inherits the
-safety guarantees (§5).
+### 1.1 Goal
+Give every part of the system **one safe, shared way** to hold data a user is
+editing but has not yet committed — so that:
+
+- unsaved work **survives** a reload or crash,
+- durable project files are **never written behind the user's back**,
+- a source that **changed underneath** can never be silently overwritten,
+
+and an application gets all of that by supplying a small **codec** (§5) — it
+does **not** re-implement scratch handling, hashing, atomic writes, or recovery.
+
+### 1.2 Scenarios the core MUST handle (the acceptance list)
+| # | Scenario | Required behavior |
+|---|---|---|
+| S1 | Edit → reload the tab | working copy restored from scratch; no data lost |
+| S2 | Edit → walk away (no save) | durable files untouched; work recoverable per policy |
+| S3 | Explicit "Save" | the **only** moment durable files change |
+| S4 | Source changed on disk since load | commit **refuses** (or prompts) — never blind-overwrites |
+| S5 | Browser/server/OS crash mid-edit | scratch survives; user **explicitly** recovers or discards |
+| S6 | Two tabs edit the same artifact | no silent last-writer-wins clobber |
+| S7 | Artifact built from scratch (no source) | first commit is a plain **save-as** |
+
+If a change ever violates one of S1–S7, it violates this contract.
 
 ---
 
-## 2. The two tiers (where this sits)
+## 2. Architecture — how the layers build on the core
 
-| Tier | What | Granularity | Trigger | Lifetime |
-|---|---|---|---|---|
-| **Transient (this doc)** | working-copy core → scratch | one artifact | auto/debounced on edit | until commit or session-end |
-| **Durable** | project files (`.xyz`, `.json`, …) | one artifact | explicit commit | permanent |
+```
+        ┌─────────────────────────────────────────────────────────────┐
+        │  APPLICATION LAYER   (one per artifact type)                 │
+        │                                                              │
+        │   structure+sidecar        config-file        script  ...    │
+        │   codec + UX wiring          codec             codec         │
+        │        │                        │                 │          │
+        │        └──────── each SUPPLIES a CODEC ────────────┘          │
+        │            (load · hashSource · files · scratchBlob)         │
+        └───────────────────────────────┬─────────────────────────────┘
+                                         │  open()/update()/commit()
+                                         ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  CORE   —   working-copy engine   (format-agnostic)          │
+        │                                                              │
+        │   open() · openNew() · recover()                             │
+        │   WorkingCopy.update() · commit() · discard()                │
+        │   listOrphans() · discardOrphan() · cleanAll()               │
+        │                                                              │
+        │   owns:  source-hash GATE · atomic multi-file write ·        │
+        │          scratch lifecycle · crash-recovery                  │
+        └──────────┬──────────────────────────────────┬───────────────┘
+                   │ mirror (debounced)                │ commit (explicit)
+                   ▼                                   ▼
+        ┌────────────────────────────┐     ┌────────────────────────────┐
+        │ SCRATCH  (transient)       │     │ DURABLE  project files      │
+        │ <project>/.molbuilder_     │     │ <stem>.xyz + .molstruct.json│
+        │   workspace/               │     │ (or any app's file set)     │
+        │ survives reload / crash    │     │ written ONLY on commit      │
+        └────────────────────────────┘     └────────────────────────────┘
+
+   Consumers (e.g. the browser store) reach the CORE through a thin
+   /api/workingcopy/* surface; the CORE is the only writer of both stores.
+```
+
+**Reading the diagram:**
+- **Down** the stack = increasing generality. An application knows its format;
+  the core knows none; the stores know only bytes.
+- The **codec** is the *single* seam between an application and the core — the
+  only format-specific code. Everything below the codec is shared.
+- The core is the **only writer** of scratch and durable files. No application
+  or consumer writes a project file directly — that is what makes the guarantees
+  (§8) hold system-wide.
+
+---
+
+## 3. The two tiers
+
+| Tier | What | Trigger | Lifetime |
+|---|---|---|---|
+| **Transient (this doc)** | working copy → scratch | auto/debounced on edit | until commit or session-end |
+| **Durable** | project files (`.xyz`, `.json`, …) | explicit commit | permanent |
 
 Data flows *up*: edit → transient scratch → **commit** → durable file.
 
 ---
 
-## 3. Core concepts
+## 4. Core concepts
 
-- **Source** — where the artifact was loaded from (a path), or *none* (a
-  freshly-built artifact).
-- **Source hash** — `sha256` of the source at load time. The gate compares it to
-  the source's *current* on-disk hash at commit; a change means "someone/
-  something edited the source underneath — do not silently overwrite."
-- **Working copy** — the in-memory current state + its source + source hash +
-  dirty flag.
-- **Scratch record** — the working copy persisted server-side under
-  `<project>/.molbuilder_workspace/`, so it survives reload / server restart /
-  crash. Keyed by `(source-stem, session)`.
-- **Codec** — the *only* format-specific part (§4), supplied by the application.
-- **Commit** — the single hash-gated, atomic write to a durable target.
+- **Source** — where the artifact was loaded from (a path), or *none* (freshly
+  built).
+- **Source hash** — `sha256` of the source at load. The gate compares it to the
+  source's *current* on-disk hash at commit; a change means "edited underneath —
+  do not silently overwrite."
+- **Working copy** — in-memory current state + its source + source hash + dirty
+  flag. Owned by the core.
+- **Scratch record** — the working copy persisted under
+  `<project>/.molbuilder_workspace/`, surviving reload/restart/crash. Keyed by
+  `(source-stem, session)`.
+- **Codec** — the *only* format-specific part (§5), supplied by the application.
+- **Commit** — the single hash-gated write to a durable target.
 
 ---
 
-## 4. The codec interface (what an application supplies)
+## 5. The codec interface (what an application supplies)
 
 The core treats artifact data as **opaque**; the application plugs in:
 
 ```
-codec.load(source_path)      -> data            # read durable -> working data
-codec.hashSource(source_path)-> str             # the source hash (e.g. sha256 of the .xyz)
-codec.files(data, target)    -> [(path, bytes)] # durable file(s) this artifact writes
-codec.scratchBlob(data)      -> bytes/json      # how the working copy is stored in scratch
-codec.fromScratch(blob)      -> data            # inverse (crash recovery)
+codec.load(source_path)       -> data            # read durable -> working data
+codec.hashSource(source_path) -> str             # the source hash (e.g. sha256 of the .xyz)
+codec.files(data, target)     -> [(path, bytes)] # durable file(s) this artifact writes
+codec.scratchBlob(data)       -> bytes/json      # how the working copy is stored in scratch
+codec.fromScratch(blob)       -> data            # inverse (crash recovery)
 ```
 
-`.xyz`+`.json` supplies a codec whose `files()` returns *two* paths (the `.xyz`
-and the `.molstruct.json`) and whose `hashSource()` is `sha256(.xyz)`. A
-config-file application returns one path. **The core never learns what an atom
-is.**
+`.xyz`+`.json` supplies a codec whose `files()` returns *two* paths and whose
+`hashSource()` is `sha256(.xyz)`. A config-file app returns one path. **The core
+never learns what an atom is.**
 
 ---
 
-## 5. The core API (format-agnostic)
+## 6. The core API (format-agnostic)
 
 ```
 open(source_path, codec)      -> WorkingCopy     # load + record source hash (no scratch write yet)
-openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (see §7.2)
-recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§7 / §8)
+openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (S7)
+recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§9, §10)
 
 WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
 WorkingCopy.data() / .isDirty() / .sourceHash()
 WorkingCopy.commit(target_path, {onMismatch})    -> CommitResult
 WorkingCopy.discard()                            # drop working copy + scratch, no write
 
-# Crash recovery / housekeeping (project-scoped)
-listOrphans(project)          -> [ScratchRecord] # records whose session is no longer live
+listOrphans(project)          -> [ScratchRecord] # sessions no longer live
 discardOrphan(record) / cleanAll(project)
 ```
 
-`commit` runs the gate → writes → clears scratch (§7.3). `onMismatch` is
-`refuse` (MVP) or `choose` (keep / discard-stale / reload — the application's UX).
+`commit` runs the gate → writes → clears scratch (§9.3). `onMismatch` is
+`refuse` (MVP) or `choose` (keep / discard-stale / reload — the app's UX).
 
 ---
 
-## 6. Invariants (the guarantees every application inherits)
+## 7. Use contract — how to build on this
+
+**An application MUST:**
+1. Supply a complete **codec** (§5); keep it pure (no side effects beyond
+   reading the source in `load`/`hashSource`).
+2. `open()` on load, `update()` on **every** edit, `commit()` **only** on an
+   explicit user save, `discard()` to abandon.
+3. Treat the returned `WorkingCopy` as the **single owner** of that artifact's
+   transient state — read `data()`/`isDirty()` from it, never keep a parallel
+   copy that can drift.
+4. **Surface** the commit `onMismatch` outcome to the user (refuse, or the
+   keep/discard/reload choice) — never silently override the gate.
+
+**An application (or any consumer) MUST NOT:**
+1. Write a durable project file **outside** `commit()`.
+2. Assume the durable file is unchanged since load — always go through the gate.
+3. Delete a scratch record behind the user — removal happens only via commit
+   success, session-end, or explicit cleanup (§10).
+4. Reach around the codec to make the core format-aware.
+
+If those rules hold, the application inherits every guarantee in §8 for free; if
+any is broken, the guarantees no longer apply to that application.
+
+---
+
+## 8. Invariants (guarantees every conforming application inherits)
 
 1. **No durable file is written without an explicit `commit`.**
 2. **A working copy always carries the source hash it was opened against.**
 3. **Commit never launders** — on source-hash mismatch it refuses or forces an
-   explicit user choice; it never silently writes stale data under a fresh hash.
-4. **Transient data survives reload/crash** (scratch is authoritative server-side;
-   any client mirror like `sessionStorage` is a cache — scratch wins on conflict).
+   explicit choice; it never silently writes stale data under a fresh hash.
+4. **Transient data survives reload/crash** (scratch is authoritative
+   server-side; a client mirror like `sessionStorage` is a cache — scratch wins).
 5. **Editing is non-destructive** to durable files until commit.
 
 ---
 
-## 7. Risks the core resolves once (so applications don't)
+## 9. Risks the core resolves once (so applications don't)
 
-### §7.1 Concurrent sessions / the durable target moved
-The gate compares source hash to the **current** on-disk source at commit — which
-catches BOTH an external edit AND another session having committed in the
-meantime (the target's hash changed). Either way: mismatch → refuse/choose. No
-last-writer-wins clobber.
+### §9.1 Concurrent sessions / durable target moved (S6)
+The gate compares source hash to the **current** on-disk source at commit —
+catching both an external edit AND another session having committed meanwhile
+(the target's hash changed). Either way: mismatch → refuse/choose. No clobber.
 
-### §7.2 No source (freshly-built artifact)
-`openNew()` has no source hash. Its first `commit` is a plain **save-as** to a
-chosen path (nothing to mismatch); the gate engages only once a source exists.
+### §9.2 No source — freshly-built artifact (S7)
+`openNew()` has no source hash; its first `commit` is a plain **save-as** to a
+chosen path. The gate engages only once a source exists.
 
-### §7.3 Multi-file artifacts + partial-failure (real, not "atomic")
-Two files (`.xyz`+`.json`) cannot be atomic together. The core instead:
-- writes each file via **temp-file + rename** (per-file atomic),
-- in a **defined order**,
-- and **keeps the scratch record until ALL files are written** — so a partial
-  failure leaves the scratch intact for retry, and the durable state is never
-  half-committed-then-forgotten. Scratch is cleared only on full success.
+### §9.3 Multi-file artifacts + partial failure (real, not "atomic")
+Two files can't be atomic together. The core instead: writes each via
+**temp-file + rename** (per-file atomic), in a **defined order**, and **keeps the
+scratch record until ALL files land** — so a partial failure leaves scratch
+intact for retry and the durable state is never half-committed-then-forgotten.
 
-### §7.4 Authority
-Server-side scratch is the source of truth for the working copy. A browser
-`sessionStorage` mirror is a same-tab fast-restore cache; on divergence the
-scratch record wins.
+### §9.4 Authority
+Server-side scratch is the source of truth; a `sessionStorage` mirror is a
+same-tab fast-restore cache. On divergence, scratch wins.
 
 ---
 
-## 8. Crash recovery (explicit, never silent)
+## 10. Crash recovery (explicit, never silent) — S5
 
 A crash leaves a scratch record no automatic path can clear (its session is
 gone). `listOrphans` surfaces them (source, hash, age, still-matches-source?);
@@ -149,7 +230,7 @@ work and **never** auto-adopts stale work.
 
 ---
 
-## 9. Applications
+## 11. Applications
 
 | Application | Codec `files()` | Source hash | Spec |
 |---|---|---|---|
@@ -158,24 +239,23 @@ work and **never** auto-adopts stale work.
 
 ---
 
-## 10. Relationship to other contracts
+## 12. Relationship to other contracts
 
-- **`browser-data-contract.md`** — the *first application*; it now reads as "the
-  structure+sidecar codec + the browser-side (sessionStorage/writeLabel/commit
-  UX) wiring on top of this core."
+- **`browser-data-contract.md`** — the *first application*; reads as "the
+  structure+sidecar codec + the browser-side (sessionStorage / `writeLabel` /
+  commit UX) wiring on top of this core."
 - **`workspace-contract.md`** — owns the in-browser dispatcher/store + `dirty`
   flag that drives this core's client side.
 
 ---
 
-## 11. Open decisions (before implementation)
+## 13. Open decisions (before implementation)
 
 1. **Where the core lives** — a new backend module (e.g.
-   `molbuilder/workingcopy.py`) exposing the §5 API, plus a thin
-   `/api/workingcopy/*` surface; the browser store calls it.
+   `molbuilder/workingcopy.py`) exposing the §6 API + a thin `/api/workingcopy/*`
+   surface the browser store calls.
 2. **Scratch record format** — one JSON envelope `{source, source_hash, session,
-   ts, blob}` per record vs the codec owning the on-disk shape.
-3. **Commit ordering for `.xyz`+`.json`** — `.xyz` then `.json`, or `.json`
-   (metadata) then `.xyz`; define the partial-failure recovery direction.
-4. **`onMismatch` default** — ship `refuse`, add `choose` (per
-   `browser-data-contract.md` §8 #3) as the enhancement.
+   ts, blob}` vs the codec owning the on-disk shape.
+3. **Commit ordering for `.xyz`+`.json`** — which file first; define the
+   partial-failure recovery direction.
+4. **`onMismatch` default** — ship `refuse`, add `choose` as the enhancement.
