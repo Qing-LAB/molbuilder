@@ -17,6 +17,8 @@
 
 ---
 
+**New to this?** Start with the plain-language [`structure-guide.md`](../structure-guide.md) — the build+save lifecycle (the load gate, the six Source panels, saving + sidecar, gotchas). This doc is the precise Save contract.
+
 ## §1 Principles
 
 Three rules govern the Save flow.  They are intentionally simple

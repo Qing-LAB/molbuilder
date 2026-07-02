@@ -1,5 +1,7 @@
 # Spec — builders
 
+**Client-side flow?** See [`../structure-guide.md`](../structure-guide.md) — how these builders feed the workspace (the load gate + Source panels + save). This doc is the server-side synthesis contract.
+
 **Modules**: `molbuilder/peptide.py`, `molbuilder/nucleic.py`,
 `molbuilder/smiles.py`, `molbuilder/pubchem.py`, `molbuilder/builders/backends/*`
 &nbsp;·&nbsp; **Tests**: `tests/test_peptide.py`, `tests/test_nucleic.py`,
