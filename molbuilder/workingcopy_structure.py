@@ -1,11 +1,11 @@
 """Structure + sidecar codec — the first application of the working-copy core
 (working-copy-persistence.md § 11).
 
-The `.xyz` is the identity/source file (the one the source hash is taken over);
-the `.molstruct.json` sidecar is the metadata.  The working ``data`` is a
+Loads/saves a structure as the pair ``<stem>.xyz`` (coordinates) +
+``<stem>.molstruct.json`` (labels/annotations).  The working ``data`` is a
 :class:`~molbuilder.structure.Structure`.  Plugging this into
-:mod:`molbuilder.workingcopy` gives the structure editor transient
-persistence + the explicit hash-gated save for free.
+:mod:`molbuilder.workingcopy` gives the structure editor a draft (survives
+reload/crash) + an explicit save (overwrite or save-as).
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -36,18 +36,14 @@ class StructureCodec:
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
         return struct
 
-    # ---- the source hash (over the .xyz) ----------------------------- #
-    def hash_source(self, source_path) -> str:
-        return molstruct.sha256_of_file(source_path)
-
-    # ---- durable files (metadata first, .xyz/identity LAST, §9.3) ---- #
+    # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
     def files(self, struct: Structure, target) -> List[Tuple[Path, bytes]]:
         target = Path(target)
         xyz_bytes = struct.to_xyz().encode("utf-8")
         sidecar_bytes = (json.dumps(self._sidecar_dict(struct, xyz_bytes),
                                     indent=2) + "\n").encode("utf-8")
-        return [(molstruct.sidecar_path_for(target), sidecar_bytes),
-                (target, xyz_bytes)]
+        return [(target, xyz_bytes),
+                (molstruct.sidecar_path_for(target), sidecar_bytes)]
 
     # ---- scratch round-trip ------------------------------------------ #
     def scratch_blob(self, struct: Structure) -> Any:

@@ -1,6 +1,4 @@
-"""Working-copy persistence core (molbuilder/workingcopy.py) — drives the
-S1-S6 acceptance scenarios + the § 9 risks through a trivial two-file codec."""
-import hashlib
+"""Working-copy core (molbuilder/workingcopy.py) — load, edit (draft), save."""
 import json
 from pathlib import Path
 
@@ -9,23 +7,19 @@ import pytest
 from molbuilder import workingcopy as wc
 
 
-# ---- a trivial two-file artifact: <stem>.txt (source/identity) + sidecar ---- #
 class TxtCodec:
+    """A trivial two-file artifact: <stem>.txt + <stem>.meta.json."""
     def load(self, source_path):
         p = Path(source_path)
         meta_p = p.with_name(f"{p.stem}.meta.json")
         tags = json.loads(meta_p.read_text())["tags"] if meta_p.exists() else []
         return {"body": p.read_text(), "tags": tags}
 
-    def hash_source(self, source_path):
-        return hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
-
     def files(self, data, target):
         target = Path(target)
-        meta = (target.with_name(f"{target.stem}.meta.json"),
-                (json.dumps({"tags": data["tags"]}) + "\n").encode())
-        src = (target, data["body"].encode())
-        return [meta, src]                     # identity/source (target) LAST
+        return [(target, data["body"].encode()),
+                (target.with_name(f"{target.stem}.meta.json"),
+                 (json.dumps({"tags": data["tags"]}) + "\n").encode())]
 
     def scratch_blob(self, data):
         return dict(data)
@@ -48,162 +42,78 @@ def _open(project, session="s1"):
                                session=session, project_dir=project)
 
 
-# --------------------------- happy path (S3) ------------------------------- #
-def test_open_edit_commit_writes_both_files_and_clears_scratch(project):
+def test_open_edit_save_writes_files_and_clears_draft(project):
     w = _open(project)
     assert w.data == {"body": "ATOM 1\nATOM 2\n", "tags": []}
     w.update({"body": "ATOM 1\nATOM 2\n", "tags": ["L-electrode"]})
     assert w.is_dirty()
-    scratch = w._scratch_file()
-    assert scratch.exists()                    # mirrored to scratch...
-    assert not (project / "mol.meta.json").exists()   # ...NOT to durable yet
-
-    r = w.commit(project / "mol.txt")
-    assert r.ok and r.reason == "committed"
+    draft = w._scratch_file()
+    assert draft.exists()                              # draft kept...
+    assert not (project / "mol.meta.json").exists()    # ...but NOT saved yet
+    saved = w.save(project / "mol.txt")
+    assert saved == (project / "mol.txt").resolve()
     assert json.loads((project / "mol.meta.json").read_text())["tags"] == ["L-electrode"]
-    assert not scratch.exists()                # scratch cleared on success
+    assert not draft.exists()                          # draft dropped after save
     assert not w.is_dirty()
 
 
-# --------------------------- reload (S1) ----------------------------------- #
-def test_reload_restores_from_scratch(project):
+def test_save_as_new_path(project):
+    w = _open(project)
+    w.update({"body": "edited\n", "tags": ["t"]})
+    w.save(project / "copy.txt")
+    assert (project / "copy.txt").read_text() == "edited\n"
+    assert json.loads((project / "copy.meta.json").read_text())["tags"] == ["t"]
+
+
+def test_save_overwrites_disk_freely(project):
+    # No gate: even if the file changed on disk, save writes the browser's copy.
+    w = _open(project)
+    w.update({"body": "mine\n", "tags": []})
+    (project / "mol.txt").write_text("SOMETHING ELSE\n")
+    w.save(project / "mol.txt")
+    assert (project / "mol.txt").read_text() == "mine\n"
+
+
+def test_reload_restores_draft(project):
     w = _open(project)
     w.update({"body": "X\n", "tags": ["t"]})
-    # Simulate reload: read the scratch record back + recover().
-    orphans = wc.list_orphans(project, live_sessions=[])   # no live session
+    orphans = wc.list_orphans(project, live_sessions=[])
     assert len(orphans) == 1
     w2 = wc.WorkingCopy.recover(orphans[0], CODEC, project_dir=project)
     assert w2.data == {"body": "X\n", "tags": ["t"]}
-    assert w2.source == project / "mol.txt"
 
 
-# --------------------------- changed underneath (S4) ----------------------- #
-def test_commit_refuses_when_source_changed(project):
-    w = _open(project)
-    w.update({"body": "edited\n", "tags": ["t"]})
-    # Someone edits mol.txt on disk (in another tool) -> hash changes.
-    (project / "mol.txt").write_text("REORDERED\n")
-    r = w.commit(project / "mol.txt")
-    assert not r.ok and r.reason == "mismatch"
-    assert r.expected_hash != r.actual_hash
-    # Durable meta NOT written (no laundering).
-    assert not (project / "mol.meta.json").exists()
-    # "force" lets the app override the gate.
-    r2 = w.commit(project / "mol.txt", on_mismatch="force")
-    assert r2.ok
-
-
-# --------------------------- save-as of a new artifact (S6) ---------------- #
-def test_open_new_first_commit_is_save_as(project):
+def test_new_first_save_is_save_as(project):
     w = wc.WorkingCopy.new(CODEC, session="s1", project_dir=project,
                            data={"body": "fresh\n", "tags": ["a"]})
-    w.update({"body": "fresh\n", "tags": ["a"]})
-    r = w.commit(project / "brand_new.txt")
-    assert r.ok
+    w.update(w.data)
+    w.save(project / "brand_new.txt")
     assert (project / "brand_new.txt").read_text() == "fresh\n"
-    assert w.source == project / "brand_new.txt"        # re-anchored
 
 
-# --------------------------- re-anchor: second save (§9.4) ----------------- #
-def test_second_save_on_same_copy_does_not_falsely_refuse(project):
-    w = _open(project)
-    w.update({"body": "v1\n", "tags": ["t"]})
-    assert w.commit(project / "mol.txt").ok
-    # Continue editing the SAME working copy + save again -> must not trip the
-    # gate on the file the first commit just wrote.
-    w.update({"body": "v2\n", "tags": ["t", "u"]})
-    r = w.commit(project / "mol.txt")
-    assert r.ok, "re-anchor failed: second save wrongly refused"
-    assert (project / "mol.txt").read_text() == "v2\n"
-
-
-# --------------------------- save-as bypasses the source gate -------------- #
-def test_save_as_to_different_target_ignores_source_change(project):
-    w = _open(project)
-    w.update({"body": "mine\n", "tags": ["t"]})
-    (project / "mol.txt").write_text("CHANGED\n")        # source moved underneath
-    r = w.commit(project / "copy.txt")                   # save-as elsewhere
-    assert r.ok, "save-as should not gate on the untouched source"
-    assert (project / "copy.txt").read_text() == "mine\n"
-
-
-# --------------------------- discard -------------------------------------- #
-def test_discard_drops_scratch_without_writing_durable(project):
+def test_discard_drops_draft_without_writing(project):
     w = _open(project)
     w.update({"body": "x\n", "tags": ["t"]})
-    scratch = w._scratch_file()
-    assert scratch.exists()
+    draft = w._scratch_file()
+    assert draft.exists()
     w.discard()
-    assert not scratch.exists()
+    assert not draft.exists()
     assert not (project / "mol.meta.json").exists()
 
 
-# --------------------------- crash recovery (§10) -------------------------- #
-def test_orphans_listed_recovered_discarded(project):
-    w = _open(project, session="dead-session")
+def test_orphans_recover_discard(project):
+    w = _open(project, session="dead")
     w.update({"body": "unsaved\n", "tags": ["t"]})
-    # A different (live) session is running now; the dead one's scratch orphans.
-    orphans = wc.list_orphans(project, live_sessions=["live-session"])
-    assert len(orphans) == 1 and orphans[0].session == "dead-session"
-    # recover, then discard.
-    rec = wc.WorkingCopy.recover(orphans[0], CODEC, project_dir=project)
-    assert rec.data["body"] == "unsaved\n"
+    orphans = wc.list_orphans(project, live_sessions=["live"])
+    assert len(orphans) == 1 and orphans[0].session == "dead"
+    assert wc.WorkingCopy.recover(orphans[0], CODEC,
+                                  project_dir=project).data["body"] == "unsaved\n"
     wc.discard_orphan(orphans[0])
-    assert wc.list_orphans(project, live_sessions=["live-session"]) == []
+    assert wc.list_orphans(project, live_sessions=["live"]) == []
 
 
-def test_clean_all_wipes_scratch(project):
+def test_clean_all(project):
     _open(project, "a").update({"body": "1", "tags": []})
     _open(project, "b").update({"body": "2", "tags": []})
     assert wc.clean_all(project) == 2
     assert wc.clean_all(project) == 0
-
-
-# --------------------------- §9.3 partial failure -------------------------- #
-def test_partial_commit_failure_retains_scratch_and_source(project, monkeypatch):
-    w = _open(project)
-    w.update({"body": "v1\n", "tags": ["t"]})
-    scratch = w._scratch_file()
-    calls = {"n": 0}
-    real = wc._atomic_write_bytes
-
-    def flaky(path, data):
-        calls["n"] += 1
-        if calls["n"] == 2:                # fail the 2nd file (the identity .txt)
-            raise OSError("simulated disk-full")
-        return real(path, data)
-
-    monkeypatch.setattr(wc, "_atomic_write_bytes", flaky)
-    with pytest.raises(OSError):
-        w.commit(project / "mol.txt")
-    # identity file (written last) unchanged; scratch retained for retry.
-    assert (project / "mol.txt").read_text() == "ATOM 1\nATOM 2\n"
-    assert scratch.exists()
-    # retry (unpatched) succeeds; gate passes because the source was untouched.
-    monkeypatch.setattr(wc, "_atomic_write_bytes", real)
-    assert w.commit(project / "mol.txt").ok
-    assert (project / "mol.txt").read_text() == "v1\n"
-    assert not scratch.exists()
-
-
-# --------------------------- #5 gate normalizes path form ------------------ #
-def test_gate_fires_across_path_forms(project):
-    (project / "sub").mkdir()
-    w = _open(project)                     # opens the resolved mol.txt
-    w.update({"body": "mine\n", "tags": []})
-    (project / "mol.txt").write_text("CHANGED\n")     # source moved underneath
-    weird = project / "sub" / ".." / "mol.txt"        # same file, different form
-    r = w.commit(weird)
-    assert not r.ok and r.reason == "mismatch", "gate skipped on a path variant"
-
-
-# --------------------------- #3 sourceless scratch is unique --------------- #
-def test_two_new_copies_have_distinct_scratch(project):
-    a = wc.WorkingCopy.new(CODEC, session="s", project_dir=project,
-                           data={"body": "a", "tags": []})
-    b = wc.WorkingCopy.new(CODEC, session="s", project_dir=project,
-                           data={"body": "b", "tags": []})
-    a.update(a.data)
-    b.update(b.data)
-    assert a._scratch_file() != b._scratch_file()
-    assert a._scratch_file().exists() and b._scratch_file().exists()

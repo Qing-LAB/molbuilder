@@ -1,6 +1,4 @@
-"""/api/workingcopy/* surface (Phase 2b) — open -> update -> commit end to end
-through the Flask app, plus the changed-underneath REFUSE."""
-import hashlib
+"""/api/workingcopy/* — open, update (draft), save (overwrite / save-as)."""
 import json
 
 import numpy as np
@@ -24,92 +22,46 @@ def client_project(tmp_path, monkeypatch):
     return create_app(config={}).test_client(), tmp_path
 
 
-def _json(resp):
-    return json.loads(resp.data)
+def _json(r):
+    return json.loads(r.data)
 
 
-def test_open_update_commit_roundtrip(client_project):
+def test_open_update_save(client_project):
     client, proj = client_project
     xyz = str(proj / "mol.xyz")
-
-    # open
     r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
     assert r["ok"] and r["data"]["xyz"]
-    blob, source_hash = r["data"], r["source_hash"]
-
-    # edit: freeze atom 1 + a region (via the sidecar half of the blob)
+    blob = r["data"]
     blob["sidecar"]["frozen_atoms"] = [1]
-    blob["sidecar"]["regions"] = {"bridge": [2, 3]}
-
-    # update (writes server scratch)
     assert _json(client.post("/api/workingcopy/update",
-                             json={"source": xyz, "source_hash": source_hash,
-                                   "data": blob}))["ok"]
+                             json={"source": xyz, "data": blob}))["ok"]
     assert (proj / ".molbuilder_workspace").exists()
-    assert not (proj / "mol.molstruct.json").exists()      # not durable yet
-
-    # commit
-    r = _json(client.post("/api/workingcopy/commit",
-                          json={"source": xyz, "source_hash": source_hash,
-                                "data": blob}))
-    assert r["ok"], r
-    sidecar = json.loads((proj / "mol.molstruct.json").read_text())
-    assert sidecar["frozen_atoms"] == [1]
-    assert sidecar["regions"] == {"bridge": [2, 3]}
-    # atom-identity invariant: sidecar hash == sha256(the committed .xyz)
-    assert sidecar["structure_hash"] == hashlib.sha256(
-        (proj / "mol.xyz").read_bytes()).hexdigest()
+    assert not (proj / "mol.molstruct.json").exists()   # not saved yet
+    r = _json(client.post("/api/workingcopy/save",
+                          json={"source": xyz, "data": blob}))
+    assert r["ok"]
+    assert json.loads((proj / "mol.molstruct.json").read_text())["frozen_atoms"] == [1]
 
 
-def test_commit_refuses_when_source_changed(client_project):
+def test_save_as_new_path(client_project):
     client, proj = client_project
     xyz = str(proj / "mol.xyz")
     r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
-    blob, source_hash = r["data"], r["source_hash"]
-    blob["sidecar"]["frozen_atoms"] = [0]
-
-    # someone edits mol.xyz on disk after we loaded it
-    (proj / "mol.xyz").write_text("1\nchanged\nH 9.0 9.0 9.0\n")
-
-    r = _json(client.post("/api/workingcopy/commit",
-                          json={"source": xyz, "source_hash": source_hash,
+    blob = r["data"]
+    blob["sidecar"]["regions"] = {"L-electrode": [0]}
+    r = _json(client.post("/api/workingcopy/save",
+                          json={"source": xyz, "target": str(proj / "copy.xyz"),
                                 "data": blob}))
-    assert not r["ok"] and r["reason"] == "mismatch"
-    assert not (proj / "mol.molstruct.json").exists()      # no laundering
+    assert r["ok"] and r["saved"].endswith("copy.xyz")
+    assert (proj / "copy.xyz").exists()
+    assert json.loads((proj / "copy.molstruct.json").read_text())["regions"] == {"L-electrode": [0]}
 
 
 def test_orphans_and_clean(client_project):
     client, proj = client_project
     xyz = str(proj / "mol.xyz")
     r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
-    client.post("/api/workingcopy/update",
-                json={"source": xyz, "source_hash": r["source_hash"],
-                      "data": r["data"]})
-    # Same live session -> its own scratch is NOT an orphan.
-    assert _json(client.post("/api/workingcopy/orphans",
-                             json={"path": xyz}))["orphans"] == []
-    # clean wipes it.
-    assert _json(client.post("/api/workingcopy/clean",
-                             json={"path": xyz}))["removed"] == 1
-
-
-def test_commit_without_source_hash_is_refused(client_project):
-    client, proj = client_project
-    xyz = str(proj / "mol.xyz")
-    r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
-    blob = r["data"]
-    blob["sidecar"]["frozen_atoms"] = [0]
-    # commit back to the source WITHOUT source_hash -> refused (gate unskippable)
-    resp = client.post("/api/workingcopy/commit", json={"source": xyz, "data": blob})
-    assert resp.status_code == 400
-    assert not (proj / "mol.molstruct.json").exists()
-
-
-def test_malformed_body_returns_400(client_project):
-    client, proj = client_project
-    xyz = str(proj / "mol.xyz")
-    r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
-    resp = client.post("/api/workingcopy/update",
-                       json={"source": xyz, "source_hash": r["source_hash"],
-                             "data": {"garbage": True}})   # no xyz/sidecar
-    assert resp.status_code == 400
+    client.post("/api/workingcopy/update", json={"source": xyz, "data": r["data"]})
+    # Same live session -> its own draft is not an orphan.
+    assert _json(client.post("/api/workingcopy/orphans", json={"path": xyz}))["orphans"] == []
+    assert _json(client.post("/api/workingcopy/clean", json={"path": xyz}))["removed"] == 1

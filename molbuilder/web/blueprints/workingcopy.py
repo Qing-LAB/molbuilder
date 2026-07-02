@@ -1,19 +1,15 @@
-"""``/api/workingcopy/*`` — the web surface over the working-copy core
-(``working-copy-persistence.md`` § 6).
+"""``/api/workingcopy/*`` — load / edit (draft) / save for the structure editor.
 
-**Scratch-backed + stateless:** each request reconstructs a
-:class:`~molbuilder.workingcopy.WorkingCopy` from the browser's payload + the
-server scratch and delegates to the tested core — there is no server-side
-in-memory registry to leak or expire.  Structure + sidecar is the only codec
-for now.
+Dead simple: `open` loads the artifact, `update` keeps a draft (so a reload/crash
+doesn't lose edits), `save` writes the files (overwrite the same path, or save-as
+a new one).  No gate, no hashing.  Structure + sidecar codec only.
 
-Session (§ 13.5) is the *server-side* session: the login when authenticated,
-else a stable per-server-run local id for no-auth localhost.
+Session (§13.5) is the server-side session: the login when authenticated, else a
+stable per-server-run local id for no-auth localhost.
 """
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 from flask import Blueprint, g, jsonify, request
 
@@ -48,16 +44,10 @@ def _body():
     return request.get_json(silent=True) or {}
 
 
-def _project_dir(source: Path) -> Path:
-    return source.parent
-
-
 def _resolve(raw):
-    """Resolve a path within the allowed roots (raises _PickerError)."""
     return _resolve_within_roots(raw)
 
 
-# --------------------------------------------------------------------- #
 @bp.route("/api/workingcopy/open", methods=["POST"])
 def wc_open():
     path = _body().get("path")
@@ -68,9 +58,8 @@ def wc_open():
     except _PickerError as e:
         return _bad(e.message, e.status)
     w = wc.WorkingCopy.open(src, _CODEC, session=_session(),
-                            project_dir=_project_dir(src))
+                            project_dir=src.parent)
     return jsonify({"ok": True, "session": w.session, "source": str(w.source),
-                    "source_hash": w.source_hash,
                     "data": _CODEC.scratch_blob(w.data)})
 
 
@@ -86,47 +75,34 @@ def wc_update():
         return _bad(e.message, e.status)
     try:
         data = _CODEC.from_scratch(blob)
-    except Exception as e:  # noqa: BLE001 -- malformed client body -> 400
+    except Exception as e:  # noqa: BLE001 -- malformed body -> 400
         return _bad(f"malformed working-copy body: {e}", 400)
-    w = wc.WorkingCopy(codec=_CODEC, session=_session(),
-                       project_dir=_project_dir(src), data=data, source=src,
-                       source_hash=b.get("source_hash"))
-    w.update(data)
+    wc.WorkingCopy(codec=_CODEC, session=_session(), project_dir=src.parent,
+                   data=data, source=src).update(data)
     return jsonify({"ok": True})
 
 
-@bp.route("/api/workingcopy/commit", methods=["POST"])
-def wc_commit():
+@bp.route("/api/workingcopy/save", methods=["POST"])
+def wc_save():
+    """Write the artifact to `target` (overwrite the same path, or save-as a new
+    one).  `data` is the browser's working copy; there is no gate."""
     b = _body()
     source, blob = b.get("source"), b.get("data")
     if not isinstance(source, str) or blob is None:
         return _bad("missing 'source' or 'data'")
     try:
         src = _resolve(source)
-        tgt = _resolve(b["target"]) if b.get("target") else src
+        target = _resolve(b["target"]) if b.get("target") else src
     except _PickerError as e:
         return _bad(e.message, e.status)
-    source_hash = b.get("source_hash")
-    # § 8.2/8.3: a commit BACK TO THE SOURCE must carry the source hash, so the
-    # changed-underneath gate can never be silently skipped.  A save-as to a
-    # different target has no source to gate.
-    if tgt == src and not source_hash:
-        return _bad("commit to the source requires 'source_hash' "
-                    "(the changed-underneath gate must not be skipped)")
     try:
         data = _CODEC.from_scratch(blob)
-    except Exception as e:  # noqa: BLE001 -- malformed client body -> 400
+    except Exception as e:  # noqa: BLE001
         return _bad(f"malformed working-copy body: {e}", 400)
-    w = wc.WorkingCopy(codec=_CODEC, session=_session(),
-                       project_dir=_project_dir(src), data=data, source=src,
-                       source_hash=source_hash)
-    r = w.commit(tgt, on_mismatch=b.get("on_mismatch", "refuse"))
-    if r.ok:
-        return jsonify({"ok": True, "source": str(r.target),
-                        "source_hash": w.source_hash})
-    return jsonify({"ok": False, "reason": r.reason,
-                    "expected_hash": r.expected_hash,
-                    "actual_hash": r.actual_hash})
+    saved = wc.WorkingCopy(codec=_CODEC, session=_session(),
+                           project_dir=src.parent, data=data,
+                           source=src).save(target)
+    return jsonify({"ok": True, "saved": str(saved)})
 
 
 @bp.route("/api/workingcopy/discard", methods=["POST"])
@@ -138,9 +114,8 @@ def wc_discard():
         src = _resolve(source)
     except _PickerError as e:
         return _bad(e.message, e.status)
-    wc.WorkingCopy(codec=_CODEC, session=_session(),
-                   project_dir=_project_dir(src), data=None, source=src,
-                   source_hash=None).discard()
+    wc.WorkingCopy(codec=_CODEC, session=_session(), project_dir=src.parent,
+                   data=None, source=src).discard()
     return jsonify({"ok": True})
 
 
@@ -156,9 +131,8 @@ def wc_orphans():
     project = p if p.is_dir() else p.parent
     recs = wc.list_orphans(project, live_sessions=[_session()])
     return jsonify({"ok": True, "orphans": [
-        {"scratch": str(r.path), "source": r.source,
-         "source_hash": r.source_hash, "session": r.session, "ts": r.ts}
-        for r in recs]})
+        {"scratch": str(r.path), "source": r.source, "session": r.session,
+         "ts": r.ts} for r in recs]})
 
 
 @bp.route("/api/workingcopy/recover", methods=["POST"])
@@ -173,15 +147,13 @@ def wc_recover():
     try:
         env = persist.read_json(sp)
         rec = wc.ScratchRecord(path=sp, source=env.get("source"),
-                               source_hash=env.get("source_hash"),
                                session=env.get("session"), ts=env.get("ts"),
                                blob=env.get("blob"))
         w = wc.WorkingCopy.recover(rec, _CODEC, project_dir=sp.parent.parent)
-    except Exception as e:  # noqa: BLE001 -- corrupt/malformed scratch -> 400
-        return _bad(f"could not recover scratch record: {e}", 400)
+    except Exception as e:  # noqa: BLE001
+        return _bad(f"could not recover draft: {e}", 400)
     return jsonify({"ok": True,
                     "source": str(w.source) if w.source else None,
-                    "source_hash": w.source_hash,
                     "data": _CODEC.scratch_blob(w.data)})
 
 
