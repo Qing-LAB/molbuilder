@@ -235,6 +235,10 @@ by omitting selection.
   viewer + panel + adapter + the unified API, over the § 2 annotation channels.
 - **API:** `viewer.embed(host, opts) → handle`; the handle exposes view +
   selection/filter ops.
+- **Persistence:** load / edit / save is the **working-copy** (§6.1,
+  `working-copy-persistence.md`) — `open` loads the structure+sidecar, edits
+  `update` a draft (survives reload/crash), and **Save / Save As** writes the
+  pair. One flow replacing the three scattered save paths.
 - **UI (responsive):** **wide** → viewer + selection as **two matching-height
   cards**; **narrow** → **one card with two tabs** (View / Selection). Uses the
   responsive-grid floor from `mobile-layout.md`.
@@ -246,32 +250,38 @@ by omitting selection.
 | `mode` | `"modify"` \| `"readonly"` | `modify`: full structure-edit ops + selection editing. `readonly`: view + selection for **filter/highlight/inspect only** — no edit ops, no writes (the Results inspectors). |
 | `persistence` | `"workspace"` \| `"ephemeral"` | `workspace`: this view's structure+selection+annotations **are** the workspace — persisted to sessionStorage + restored on nav (the Molbuilder/Modify tab). `ephemeral`: a transient view **re-derived from its source each mount** — never persisted, never restored (the Results inspectors, driven by the selected result file). |
 
-### 6.1 Data-persistence contract (when data is kept vs lost)
+### 6.1 Load / edit / save (via the working-copy)
 
-The user must be able to trust *when their work survives*. Unified rule:
+The `persistence: workspace` view's data lifecycle **is** the **working-copy**
+(`working-copy-persistence.md` — the shared load/edit/save foundation). This
+replaces today's three scattered paths (the panel's `writeLabel` auto-saving the
+sidecar, the viewer's structure save-to-project, and the dispatcher's own
+commit/dirty flow) with one clean flow:
 
-> **Your working data = the workspace** (structure + selection + annotations).
-> Under `persistence: workspace` it **survives tab-switches and page reloads
-> within a session**, and the app **warns before discarding unsaved changes**
-> (the dirty-gate). It becomes **durable only when you Save** (to `<name>.xyz`
-> + its `.molstruct.json` sidecar). A `persistence: ephemeral` (read-only
-> inspector) view **owns no data** — it is re-derived from its source file, so
-> there is nothing to lose.
+- **Load** (`open`) — read `<name>.xyz` + its `.molstruct.json` into the working
+  copy: structure + annotations, one object.
+- **Edit** (`update`) — every edit (a label, a freeze, a structure op) mirrors
+  to a **draft** (`<project>/.molbuilder_workspace/`), so a reload or crash never
+  loses unsaved work. **Nothing touches the project files on edit.**
+- **Save / Save As** — the *only* project write: `/api/workingcopy/save` writes
+  the **pair** (`<name>.xyz` + `.molstruct.json`, annotations included) to the
+  same path (overwrite) or a new one (save-as). **No gate — you own the loaded
+  data; Save just writes it.**
+- The module's **dirty state** drives the UX: warn before loading a *different*
+  file over unsaved edits (lost only on explicit Discard).
 
-Per event:
+A `persistence: ephemeral` (read-only inspector) view **owns no data** — it
+`open`s its source for display only, keeps no draft, and never saves.
 
 | Event | `persistence: workspace` | `persistence: ephemeral` |
 |---|---|---|
-| Switch tab & return | **preserved** (restored from the snapshot) | re-derived from source (nothing owned) |
-| Page reload | **preserved** (sessionStorage) | re-derived / empty |
-| Load a different file with unsaved edits | **gated** — warning modal; lost only on explicit *Discard* | n/a |
-| **Save** | written to disk (`.xyz` + `.molstruct.json`, incl. annotations) | n/a |
-| Browser tab/session **closed** | **LOST unless Saved** (sessionStorage is per-session) — the UI must make this explicit | n/a |
+| Switch tab & return / reload | **preserved** (draft) | re-derived from source |
+| Load a different file with unsaved edits | **warn** (dirty); lost only on Discard | n/a |
+| **Save / Save As** | writes `.xyz` + `.molstruct.json` (overwrite / new path) | n/a |
+| Tab/session closed without saving | draft **survives on the server** and is recoverable next session (crash-recovery); a browser-only cache would not | n/a |
 
-Annotations (labels/frozen/new channels) follow the **same** contract as the
-structure — persisted with the workspace + written to the sidecar on Save.
-This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
-(the dirty-gate); those remain authoritative for the mechanics.
+`working-copy-persistence.md` is authoritative for the mechanics (draft, save,
+crash-recovery); this section says only how the fused module *uses* it.
 
 ---
 
@@ -307,6 +317,14 @@ This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
    - **Investigation first (§ 8):** before migrating, audit each embed site for
      data-structure / interface / logic changes; confirm the right
      `mode`/`persistence` per tab; only then migrate.
+   - **Load/edit/save via the working-copy (§ 6.1):** the `persistence:workspace`
+     module loads through `/api/workingcopy/open`, `update`s on every edit (the
+     draft — this **replaces** the panel's `writeLabel` auto-save), and Saves via
+     `/api/workingcopy/save` (overwrite / save-as). The working-copy backend +
+     API are **already built + tested** (`working-copy-persistence.md`); this
+     phase wires the module to them and deletes the three old save paths
+     (`writeLabel` auto-save, viewer save-to-project, dispatcher commit).
+     `mode:readonly` (inspectors) loads via `open` only — no draft, no save.
 6. **Docs + data-vocabulary v4** — register the sidecar v4 shape; merge
    `molviewer-guide.md` + `atom-selection-guide.md` into one; update
    `embedded-viewer.md`, `atom-selection.md`, `types/structure.md`,
