@@ -6,6 +6,8 @@
 > content as it grows, and so cross-references from the README
 > + the GPU SIESTA env doc resolve.
 
+**Start here:** the plain-language [`../transport-guide.md`](../transport-guide.md) (how to run it, the CLI, the consistency contract, shipped-vs-coming).
+
 ## Where the live contracts already live
 
 * **Tab UI + cross-tab workflow** — what the

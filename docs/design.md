@@ -109,6 +109,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`runtime-registry-guide.md`](runtime-registry-guide.md) | Developer guide — the module registry (`register`/`whenReady` vs polling, gotchas); plain-language companion to `protocols/runtime-registry.md` |
 | [`form-schema-guide.md`](form-schema-guide.md) | Developer guide — schema-driven Build forms (dataclass→schema→render→collect round-trip, field kinds, the dataclass-is-truth rule); the only doc dedicated to `lib/form-schema.js` |
 | [`atom-selection-guide.md`](atom-selection-guide.md) | Developer guide — atom selection (one store, three consumers: panel + viewer-adapter + measurements; how to wire it, gotchas); companion to `protocols/atom-selection.md` |
+| [`transport-guide.md`](transport-guide.md) | Developer/user guide — conductance runs (3 coupled SIESTA runs from one labeled device; the `molbuilder transport` CLI; the consistency contract; shipped-vs-coming); companion to `protocols/transiesta-workflow.md` |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 

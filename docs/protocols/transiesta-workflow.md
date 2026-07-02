@@ -13,6 +13,8 @@
 
 ---
 
+**Just want to run one?** See the plain-language [`transport-guide.md`](../transport-guide.md) — how to drive a conductance run with the `molbuilder transport` CLI, the consistency contract, and what's shipped vs coming. This doc is the scientific design.
+
 ## § 0 Scope
 
 The target is a publication-grade zero-bias conductance (and `T(E)`, then
