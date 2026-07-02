@@ -148,3 +148,24 @@ def test_atom_metadata_none_when_empty():
     from molbuilder import script_emit as sc
     assert sc.emit_atom_metadata(regions={}, frozen_atoms=[],
                                  annotations={}, n_atoms_total=3) is None
+
+
+def test_concat_carries_and_reindexes_annotations():
+    """Structure.concat must carry + re-index annotation channels (§2.1),
+    not just regions/frozen (regression for the concat data-loss bug)."""
+    a = _struct(3)
+    a.set_channel("charge", AtomChannel("value", {0: -1.0, 2: 0.5}))
+    a.set_channel("bridge", AtomChannel("tag", [1]))
+    b = _struct(2)
+    b.set_channel("charge", AtomChannel("value", {1: 2.0}))
+    b.set_channel("bridge", AtomChannel("tag", [0]))
+    m = Structure.concat([a, b])
+    assert m.n_atoms == 5
+    # value channel: a's {0,2} unioned with b's {1} -> offset +3 -> {4}
+    assert m.get_channel("charge").data == {0: -1.0, 2: 0.5, 4: 2.0}
+    # tag channel: a's [1] unioned with b's [0] -> offset +3 -> [3]
+    assert m.get_channel("bridge").data == [1, 3]
+    # a channel only on one input still survives
+    a.set_channel("spin", AtomChannel("value", {0: 1.0}))
+    m2 = Structure.concat([a, b])
+    assert m2.get_channel("spin").data == {0: 1.0}

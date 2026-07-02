@@ -284,7 +284,7 @@
         // value/display split.
         // User-facing atom index is 1-based (data-vocabulary.md § 3.1); the
         // store's atom.index is 0-based.  Convert only for display, via the
-        // shared helper (defensive fallback if it isn't loaded).
+        // shared L1 helper (loaded first by modify.html).
         function _toDisplayIndex(i) {
             return root.molbuilder.atomIndexModel.toDisplay(i);
         }
@@ -759,7 +759,9 @@
             const x = document.createElement("button");
             x.type = "button";
             x.className = "selection-tag-remove";
-            x.title = "Remove this label from atom #" + atomIndex;
+            // 1-based for display, matching the row's index column
+            // (data-vocabulary.md § 3.1); atomIndex itself stays 0-based.
+            x.title = "Remove this label from atom #" + _toDisplayIndex(atomIndex);
             x.textContent = "×";
             onTransient(x, "click", (e) => {
                 e.stopPropagation();

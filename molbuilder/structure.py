@@ -139,6 +139,20 @@ class AtomChannel:
             data = sorted(old_to_new[i] for i in self.data if i in old_to_new)
         return AtomChannel(self.kind, data, self.color, self.fdf)
 
+    def union(self, other: "AtomChannel") -> "AtomChannel":
+        """Merge another channel of the SAME kind, assuming DISJOINT atom
+        indices (as when concatenating structures -- § 2.1).  ``self``'s
+        colour/fdf win."""
+        if self.kind != other.kind:
+            raise ValueError(
+                f"cannot union a {self.kind!r} channel with a "
+                f"{other.kind!r} channel")
+        if self.kind == "value":
+            data: Any = {**self.data, **other.data}
+        else:
+            data = sorted(set(self.data) | set(other.data))
+        return AtomChannel(self.kind, data, self.color, self.fdf)
+
     def copy(self) -> "AtomChannel":
         data = dict(self.data) if self.kind == "value" else list(self.data)
         return AtomChannel(self.kind, data, self.color, self.fdf)
@@ -194,6 +208,17 @@ def remap_annotations(ann: "dict[str, AtomChannel]",
         remapped = ch.remapped(old_to_new)
         if remapped.data:                      # drop channels emptied by the edit
             out[name] = remapped
+    return out
+
+
+def merge_annotations(base: "dict[str, AtomChannel]",
+                      add: "dict[str, AtomChannel]") -> "dict[str, AtomChannel]":
+    """Union two annotation maps -- channels sharing a name are merged
+    (assuming DISJOINT atom indices, as when concatenating structures,
+    § 2.1).  Used by ``Structure.concat``."""
+    out = {name: ch.copy() for name, ch in base.items()}
+    for name, ch in add.items():
+        out[name] = out[name].union(ch) if name in out else ch.copy()
     return out
 
 
@@ -947,6 +972,7 @@ class Structure:
         # same label across inputs merge into one combined index list.
         frozen_atoms: List[int] = []
         regions: Dict[str, List[int]] = {}
+        annotations: Dict[str, AtomChannel] = {}
         atom_offset = 0
         offset = 0
         for s in structures:
@@ -967,6 +993,12 @@ class Structure:
                 regions.setdefault(label, []).extend(
                     i + atom_offset for i in idxs
                 )
+            # Extensible annotation channels re-index the same way (§ 2.1):
+            # offset this input's atom indices, then union by channel name.
+            if s.annotations:
+                off = {i: i + atom_offset for i in range(s.n_atoms)}
+                annotations = merge_annotations(
+                    annotations, remap_annotations(s.annotations, off))
             atom_offset += s.n_atoms
         # Carry the FIRST input's lattice (the conventional base when
         # concatenating, e.g. add_electrode_slab builds onto a base
@@ -986,6 +1018,7 @@ class Structure:
             title         = title,
             regions       = regions,
             frozen_atoms  = frozen_atoms,
+            annotations   = annotations,
             cell          = (base_cell.copy() if base_cell is not None
                              else None),
             pbc           = base_pbc,

@@ -874,8 +874,9 @@
 
         // Unified filterable-channel enumeration (atom-annotations.md §5, L2):
         // the live set of channels across the current atoms, via the pure L1
-        // model.  Consumers enumerate this instead of special-casing regions
-        // vs frozen.  Returns [] if the L1 model isn't loaded (defensive).
+        // channel model.  Consumers enumerate this instead of special-casing
+        // regions vs frozen.  A caller that uses this must have L1 loaded
+        // (a feature-level dependency -- see the note at module top).
         function knownChannels() {
             return root.molbuilder.atomChannelModel.channelKinds(state.atoms);
         }
