@@ -17,7 +17,7 @@ the **first application** of this core, not the core itself.
 
 ---
 
-## 1. Goal & scenarios
+## 1. Goal, boundary & contract (read this first)
 
 ### 1.1 Goal
 Give every part of the system **one safe, shared way** to hold data a user is
@@ -27,10 +27,43 @@ editing but has not yet committed — so that:
 - durable project files are **never written behind the user's back**,
 - a source that **changed underneath** can never be silently overwritten,
 
-and an application gets all of that by supplying a small **codec** (§5) — it
-does **not** re-implement scratch handling, hashing, atomic writes, or recovery.
+and an application gets all of that by supplying a small **codec** (§5) — it does
+**not** re-implement scratch handling, hashing, atomic writes, or recovery.
 
-### 1.2 Scenarios the core MUST handle (the acceptance list)
+### 1.2 Boundary — what this IS and is NOT
+
+**IS:** a *transient working copy of ONE artifact* — loaded from a source,
+mirrored to scratch, committed to a durable file with a **source-hash gate** and
+**explicit crash-recovery**.
+
+**IS NOT** (these belong elsewhere — do not grow the core into them):
+
+- **version history / undo** — one *live* working copy, not a version stack.
+- **the artifact's format or meaning** — that is the application's codec (§5);
+  the core never learns what an atom (or any datum) is.
+- **UI / UX** — prompts, buttons, panels are the application's.
+- **collaborative / multi-user editing** — the system is **single-user and
+  isolated by design**; there is no concurrent editor. No locking, no merge, no
+  multi-session arbitration. The source-hash gate exists only to catch a source
+  that changed *on disk* between load and commit (e.g. edited in another tool),
+  **not** to referee concurrent writers.
+- **a database or durable store** — scratch is transient; durability is the one
+  commit target.
+- **target-existence management** — the gate protects the **source's integrity**
+  (was it edited underneath since load?), *not* whether a save-as target already
+  exists. Confirming an overwrite of a *different* target is the application's UX.
+- **the job-execution / checkpoint domain** — unrelated; never connect them.
+
+### 1.3 The contract in one breath (full rules in §7)
+
+- **The core promises:** no durable write without an explicit `commit`; a commit
+  **never launders** a source that changed underneath; edits **survive
+  reload/crash**; nothing is ever **auto-deleted or auto-adopted**.
+- **The application/consumer promises:** supply a complete **codec**; go *only*
+  through `open` / `update` / `commit` / `discard`; **never** write a durable
+  file or delete scratch outside the core.
+
+### 1.4 Scenarios the core MUST handle (the acceptance list)
 | # | Scenario | Required behavior |
 |---|---|---|
 | S1 | Edit → reload the tab | working copy restored from scratch; no data lost |
@@ -38,48 +71,40 @@ does **not** re-implement scratch handling, hashing, atomic writes, or recovery.
 | S3 | Explicit "Save" | the **only** moment durable files change |
 | S4 | Source changed on disk since load | commit **refuses** (or prompts) — never blind-overwrites |
 | S5 | Browser/server/OS crash mid-edit | scratch survives; user **explicitly** recovers or discards |
-| S6 | Two tabs edit the same artifact | no silent last-writer-wins clobber |
-| S7 | Artifact built from scratch (no source) | first commit is a plain **save-as** |
+| S6 | Artifact built from scratch (no source) | first commit is a plain **save-as** |
 
-If a change ever violates one of S1–S7, it violates this contract.
+If a change ever violates one of S1–S6, it violates this contract.
 
 ---
 
 ## 2. Architecture — how the layers build on the core
 
-```
-        ┌─────────────────────────────────────────────────────────────┐
-        │  APPLICATION LAYER   (one per artifact type)                 │
-        │                                                              │
-        │   structure+sidecar        config-file        script  ...    │
-        │   codec + UX wiring          codec             codec         │
-        │        │                        │                 │          │
-        │        └──────── each SUPPLIES a CODEC ────────────┘          │
-        │            (load · hashSource · files · scratchBlob)         │
-        └───────────────────────────────┬─────────────────────────────┘
-                                         │  open()/update()/commit()
-                                         ▼
-        ┌─────────────────────────────────────────────────────────────┐
-        │  CORE   —   working-copy engine   (format-agnostic)          │
-        │                                                              │
-        │   open() · openNew() · recover()                             │
-        │   WorkingCopy.update() · commit() · discard()                │
-        │   listOrphans() · discardOrphan() · cleanAll()               │
-        │                                                              │
-        │   owns:  source-hash GATE · atomic multi-file write ·        │
-        │          scratch lifecycle · crash-recovery                  │
-        └──────────┬──────────────────────────────────┬───────────────┘
-                   │ mirror (debounced)                │ commit (explicit)
-                   ▼                                   ▼
-        ┌────────────────────────────┐     ┌────────────────────────────┐
-        │ SCRATCH  (transient)       │     │ DURABLE  project files      │
-        │ <project>/.molbuilder_     │     │ <stem>.xyz + .molstruct.json│
-        │   workspace/               │     │ (or any app's file set)     │
-        │ survives reload / crash    │     │ written ONLY on commit      │
-        └────────────────────────────┘     └────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph APP["APPLICATION LAYER — one per artifact type"]
+        direction LR
+        A1["structure + sidecar<br/>codec + UX wiring"]
+        A2["config file<br/>codec"]
+        A3["script … <br/>codec"]
+    end
 
-   Consumers (e.g. the browser store) reach the CORE through a thin
-   /api/workingcopy/* surface; the CORE is the only writer of both stores.
+    CONS["CONSUMER<br/>(e.g. browser store)<br/>via /api/workingcopy/*"]
+
+    CORE["CORE — working-copy engine (format-agnostic)<br/><br/>open · openNew · recover<br/>update · commit · discard<br/>listOrphans · discardOrphan · cleanAll<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
+
+    SCR[("SCRATCH — transient<br/>&lt;project&gt;/.molbuilder_workspace/<br/>survives reload / crash")]
+    DUR[("DURABLE — project files<br/>&lt;stem&gt;.xyz + .molstruct.json<br/>written ONLY on commit")]
+
+    A1 -- "supplies CODEC<br/>(load·hashSource·files·scratchBlob)" --> CORE
+    A2 -- codec --> CORE
+    A3 -- codec --> CORE
+    CONS -- "open / update / commit / discard" --> CORE
+
+    CORE == "mirror (debounced)" ==> SCR
+    CORE == "commit (explicit)" ==> DUR
+
+    classDef store fill:#eef,stroke:#557;
+    class SCR,DUR store;
 ```
 
 **Reading the diagram:**
@@ -143,7 +168,7 @@ never learns what an atom is.**
 
 ```
 open(source_path, codec)      -> WorkingCopy     # load + record source hash (no scratch write yet)
-openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (S7)
+openNew(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
 recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§9, §10)
 
 WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
@@ -199,12 +224,13 @@ any is broken, the guarantees no longer apply to that application.
 
 ## 9. Risks the core resolves once (so applications don't)
 
-### §9.1 Concurrent sessions / durable target moved (S6)
-The gate compares source hash to the **current** on-disk source at commit —
-catching both an external edit AND another session having committed meanwhile
-(the target's hash changed). Either way: mismatch → refuse/choose. No clobber.
+### §9.1 Source changed on disk since load (S4)
+At commit the gate compares the working copy's source hash to the source's
+**current** on-disk hash. If the source was edited between load and commit (e.g.
+in another tool), that mismatch is caught → refuse (or prompt). No blind
+overwrite.
 
-### §9.2 No source — freshly-built artifact (S7)
+### §9.2 No source — freshly-built artifact (S6)
 `openNew()` has no source hash; its first `commit` is a plain **save-as** to a
 chosen path. The gate engages only once a source exists.
 

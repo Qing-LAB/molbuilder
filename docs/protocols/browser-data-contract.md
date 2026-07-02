@@ -14,8 +14,8 @@ overwrite a durable project file.
 **This is one application of `working-copy-persistence.md`** — the system-wide,
 format-agnostic working-copy core. This doc = that core's structure+sidecar
 codec + the browser-side wiring (sessionStorage / `writeLabel` / commit UX).
-Generic guarantees (hash-gate, scratch, crash-recovery, multi-session, atomicity)
-live in the core; only the `.xyz`+`.json` specifics live here.
+Generic guarantees (hash-gate, scratch, crash-recovery, atomic commit) live in
+the core; only the `.xyz`+`.json` specifics live here.
 
 **Companions:** `working-copy-persistence.md` (the core this applies),
 `workspace-contract.md` (the dispatcher/store this builds on),
