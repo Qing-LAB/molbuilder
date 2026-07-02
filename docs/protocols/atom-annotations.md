@@ -133,18 +133,54 @@ model serves other setup scripts (PySCF, transport) later.
 
 ## 6. Fused viewer + selection module + responsive UI
 
-One component owns the 3D view **and** the selection (fully fused, selection
-default-on; `selection: false` for the Results bare embeds — structure /
-trajectory / spectra inspectors):
+**Every** molview-embedding tab uses the **one** fused module — selection is
+**always mounted** (not an opt-out). Selection is not just for editing: it
+drives filtering + highlighting during build, modify, AND results inspection,
+so it's valuable everywhere. Per-tab behavior is confined by **arguments**, not
+by omitting selection.
 
-- **Data:** the workspace selection store stays the single source of truth
-  (no second copy — avoids the two-writer class we fixed); the fused module owns
-  the viewer + panel + adapter + the unified API.
-- **API:** `viewer.embed(host, { selection, ... }) → handle`; the handle exposes
-  both view ops and selection/filter ops.
+- **Data:** the workspace selection store stays the single source of truth (no
+  second copy — avoids the two-writer class we fixed); the fused module owns the
+  viewer + panel + adapter + the unified API, over the § 2 annotation channels.
+- **API:** `viewer.embed(host, opts) → handle`; the handle exposes view +
+  selection/filter ops.
 - **UI (responsive):** **wide** → viewer + selection as **two matching-height
-  cards** side by side; **narrow** → **one card with two tabs** (View /
-  Selection). Uses the responsive-grid floor from `mobile-layout.md`.
+  cards**; **narrow** → **one card with two tabs** (View / Selection). Uses the
+  responsive-grid floor from `mobile-layout.md`.
+
+**The two behavior-confining args (this is what differs per tab):**
+
+| Arg | Values | Effect |
+|---|---|---|
+| `mode` | `"modify"` \| `"readonly"` | `modify`: full structure-edit ops + selection editing. `readonly`: view + selection for **filter/highlight/inspect only** — no edit ops, no writes (the Results inspectors). |
+| `persistence` | `"workspace"` \| `"ephemeral"` | `workspace`: this view's structure+selection+annotations **are** the workspace — persisted to sessionStorage + restored on nav (the Molbuilder/Modify tab). `ephemeral`: a transient view **re-derived from its source each mount** — never persisted, never restored (the Results inspectors, driven by the selected result file). |
+
+### 6.1 Data-persistence contract (when data is kept vs lost)
+
+The user must be able to trust *when their work survives*. Unified rule:
+
+> **Your working data = the workspace** (structure + selection + annotations).
+> Under `persistence: workspace` it **survives tab-switches and page reloads
+> within a session**, and the app **warns before discarding unsaved changes**
+> (the dirty-gate). It becomes **durable only when you Save** (to `<name>.xyz`
+> + its `.molstruct.json` sidecar). A `persistence: ephemeral` (read-only
+> inspector) view **owns no data** — it is re-derived from its source file, so
+> there is nothing to lose.
+
+Per event:
+
+| Event | `persistence: workspace` | `persistence: ephemeral` |
+|---|---|---|
+| Switch tab & return | **preserved** (restored from the snapshot) | re-derived from source (nothing owned) |
+| Page reload | **preserved** (sessionStorage) | re-derived / empty |
+| Load a different file with unsaved edits | **gated** — warning modal; lost only on explicit *Discard* | n/a |
+| **Save** | written to disk (`.xyz` + `.molstruct.json`, incl. annotations) | n/a |
+| Browser tab/session **closed** | **LOST unless Saved** (sessionStorage is per-session) — the UI must make this explicit | n/a |
+
+Annotations (labels/frozen/new channels) follow the **same** contract as the
+structure — persisted with the workspace + written to the sidecar on Save.
+This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
+(the dirty-gate); those remain authoritative for the mechanics.
 
 ---
 
@@ -163,11 +199,19 @@ trajectory / spectra inspectors):
 3. **fdf channel-driven emission** — frozen/region via channels + strategy
    registry; the existing siesta/transport fdf tests are the net.
 4. **JS unified `Atom` + channel filter** — store carries channels; filter by any.
-5. **Fused module + responsive UI** — embed mounts viewer+panel+adapter; migrate
-   the Modify tab; set `selection:false` on the 3 Results embeds; E2E-gate
-   (nav-selection loop + full Modify E2E).
-6. **Docs** — merge `molviewer-guide.md` + `atom-selection-guide.md` into one;
-   update `embedded-viewer.md`, `atom-selection.md`, `types/structure.md`,
+5. **Fused module + migrate ALL molview tabs** — embed mounts viewer+panel+
+   adapter with the § 6 `mode`/`persistence` args; **every** molview-embedding
+   tab moves to it (selection always mounted): Modify/Molbuilder =
+   `mode:modify, persistence:workspace`; Results structure/trajectory/spectra
+   inspectors = `mode:readonly, persistence:ephemeral`; others per the
+   investigation below. Responsive 2-card ↔ tabbed UI. E2E-gate (nav-selection
+   loop + full Modify E2E + the Results inspectors).
+   - **Investigation first (§ 8):** before migrating, audit each embed site for
+     data-structure / interface / logic changes; confirm the right
+     `mode`/`persistence` per tab; only then migrate.
+6. **Docs + data-vocabulary v4** — register the sidecar v4 shape; merge
+   `molviewer-guide.md` + `atom-selection-guide.md` into one; update
+   `embedded-viewer.md`, `atom-selection.md`, `types/structure.md`,
    `sidecar-contract.md`, `engines/siesta.md`; full E2E.
 
 **Guardrails:** `Structure` is the lingua franca — keep back-compat accessors so
@@ -176,3 +220,35 @@ consumers don't break mid-migration; **channels remap on every add/delete**
 correctness must); the selection store stays single-source (no duplicate state);
 dual-write the sidecar until readers migrate; a channel with no fdf strategy is
 carried-not-emitted; each phase gated by the relevant test suite before the next.
+
+---
+
+## 8. UI-integration investigation (per embed site)
+
+Audit of the **5** current `viewer.embed` sites and what full integration needs
+(the Phase 5 prerequisite).
+
+| Tab / embed | today | target args | changes needed |
+|---|---|---|---|
+| **Modify/Molbuilder** (`modify/viewer.js`) | full edit; selection wired *externally* via `selection-bootstrap.js` (mounts panel + attaches adapter) | `mode:modify, persistence:workspace` | **interface**: the embed mounts the panel+adapter itself; delete the manual bootstrap wiring. **logic**: none new (behavior preserved). |
+| **Results · structure** (`inspectors/structure.js`) | bare + already uses `selection.measurements` (pick→distance/angle chip) | `mode:readonly, persistence:ephemeral` | **gains** the selection panel + filter (module-provided). Pick/measure already present. |
+| **Results · trajectory** (`trajectory/core.js`) | bare + `pick:triple` + measurements + animation | `mode:readonly, persistence:ephemeral` (keep `pick:triple`, animation) | **gains** panel+filter; keep animation + triple-pick. |
+| **Results · spectra** (`spectra/core.js`) | bare + **`pick:{mode:"none"}`** (vibrational-mode viewer) | `mode:readonly, persistence:ephemeral, pick:none` | selection panel present but **pick stays off**; filter/highlight only. |
+| *(future build/other)* | — | per case | assess when added. |
+
+**Key findings driving the design:**
+- **The fused module must OWN the panel host** — render the selection panel
+  inside its own responsive card. Today only `modify.html` +
+  `_trajectory_inspector.html` have panel/host partials; the inspectors don't.
+  Making the module render the panel means *any* embed gets selection without
+  each host shipping a `#selection-host`.
+- **Three orthogonal args compose** — `mode` (edit vs readonly), `persistence`
+  (workspace vs ephemeral), and the **existing `pick` opt** (spectra needs
+  `pick:none` even in readonly). So "selection always mounted" ≠ "pick always
+  on": the panel/filter is always available; click-pick is governed by `pick`.
+- **No data-structure change for inspectors** — their structures come from
+  parsed results and may carry no annotations; the filter still works on the
+  always-present element/residue channels, plus any annotations that are there.
+- **Persistence is already what each tab does** — Modify persists (workspace),
+  inspectors re-derive from the selected result file (ephemeral). The args make
+  the existing behavior *explicit + contractual* (§ 6.1), not new behavior.
