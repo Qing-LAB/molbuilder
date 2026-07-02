@@ -5397,3 +5397,34 @@ def test_panel_by_residue_filter_selects_matching(
     page.locator("#selection-apply-filter").click()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getSelected().length === 0")
+
+
+def test_atom_index_display_is_1_based(page, flask_server, water_xyz_file):
+    """data-vocabulary.md § 3.1: user-facing atom index is 1-based (display +
+    filter input); internal wiring (data-atom-index, selection) stays 0-based."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    # Atom-list index column shows 1-based: internal atom 0 -> "1".
+    page.wait_for_function(
+        "() => { const e = document.querySelector("
+        "\"tr[data-atom-index='0'] .col-idx\"); return e && e.textContent === '1'; }")
+    assert page.locator("tr[data-atom-index='0'] .col-idx").text_content() == "1"
+    assert page.locator("tr[data-atom-index='2'] .col-idx").text_content() == "3"
+    # Internal wiring stays 0-based (data-atom-index attribute).
+    assert page.locator("tr[data-atom-index='0']").count() == 1
+    # "By atom index" filter input is 1-based: "1-2" -> internal [0, 1].
+    page.evaluate("""() => {
+        const s = window.molbuilder.workspace.selection;
+        s.setFilters([{kind: "by_index", value: "1-2"}]);
+        s.setCombinator("or");
+    }""")
+    _set_selection_mode(page, "filter")
+    page.wait_for_function(
+        "() => document.getElementById('selection-mode-filter').checked")
+    page.locator("#selection-apply-filter").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 2")
+    assert _get_selection(page) == [0, 1], (
+        "by_index '1-2' (1-based) should select internal indices [0,1]; "
+        f"got {_get_selection(page)}")

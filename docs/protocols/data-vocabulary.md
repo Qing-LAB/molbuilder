@@ -85,6 +85,27 @@ SLURM, where `-c` sets `SLURM_CPUS_PER_TASK`, the wrapper's OMP default; the
 | **SLURM job name** | `-J <ID>` (single) / `-J <ID>-G<g>K<k>C<c>` or `-J job-stage<N>` (per-job) | `squeue` differentiation (`slurm-integration.md` § 4.4) |
 | **Dependency kind** | `afterok` / `afterany` | stage chaining (`staged-execution.md` § 8) |
 
+### § 3.1 Atom index base (0-based internal, 1-based user-facing)
+
+Atom indices use **two bases with a single explicit conversion boundary**. This
+is deliberate: arrays/JSON are 0-based by nature; scientists count atoms 1-based
+(SIESTA `.fdf`, PDB serials, counting `.xyz` lines). Mixing them silently is the
+classic off-by-one hazard.
+
+| Layer | Base | Examples |
+|---|---|---|
+| **Internal / machine** | **0-based** | Python `Structure` (`regions`, `frozen_atoms`, positions), the `.molstruct.json` sidecar + `.fdf`/`.py` ATOM-METADATA JSON, `/api/selection/*` rules (`by_index_range`, `by_region`, …), the JS selection store `atom.index`, all wiring (`data-atom-index`, pick indices) |
+| **User-facing / scientific** | **1-based** | everything a user *reads or types*: the selector atom-list index column, the 3D viewer's atom-index labels (auto + picked), measurement chips, tooltips, the "By atom index" filter input |
+| **Engine input files** | **1-based** | SIESTA `.fdf` `AtomicCoordinates` order + `%block Geometry.Constraints` (native SIESTA) |
+
+**The conversion boundary — the ONE rule:** convert only at the user-facing edge.
+`display = internal + 1`; parse user input with `input − 1`. Never let a 1-based
+value into internal state, and never show a 0-based value to a user. The JS
+helper `lib/workspace/_atom-index.js` (`toDisplay` / `fromDisplay` /
+`shiftExpression`) is the single implementation of this rule for the web UI;
+standalone embeds (`mol-viewer-embed.js`) inline `+ 1` at the label with a
+reference back to this section.
+
 ---
 
 ## § 4 How to use this doc

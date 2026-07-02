@@ -718,9 +718,10 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    Per workspace-contract.md §8 these are deprecated public
    surfaces; consumers go through ``window.molbuilder.workspace.*``
    instead. #}
-{# Pure per-atom channel model (atom-annotations.md §5, L1) — loaded BEFORE
-   the store/panel that consume it. #}
+{# Pure per-atom channel model (atom-annotations.md §5, L1) + atom index-base
+   helper (data-vocabulary.md §3.1) — loaded BEFORE the store/panel. #}
 <script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/_atom-index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts

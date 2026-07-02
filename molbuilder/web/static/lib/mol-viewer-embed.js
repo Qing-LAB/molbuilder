@@ -2222,11 +2222,13 @@
                 const a = atoms[i];
                 let text;
                 if (fmt === "name") {
-                    text = a.atom || a.name || a.elem || String(i);
+                    text = a.atom || a.name || a.elem || String(i + 1);
                 } else if (fmt === "element") {
                     text = a.elem || a.element || "?";
                 } else {
-                    text = String(i);   // "index" (default)
+                    // 1-based atom index for display (data-vocabulary.md
+                    // § 3.1); internal indices stay 0-based.
+                    text = String(i + 1);   // "index" (default)
                 }
                 const lbl = viewer.addLabel(text, {
                     position:          { x: a.x, y: a.y, z: a.z },
@@ -2484,11 +2486,13 @@
                 if (pick.label) {
                     let text;
                     if (pick.label === "name") {
-                        text = a.atom || a.name || a.elem || String(idx);
+                        text = a.atom || a.name || a.elem || String(idx + 1);
                     } else if (pick.label === "element") {
                         text = a.elem || a.element || "?";
                     } else {
-                        text = String(idx);
+                        // 1-based atom index for display
+                        // (data-vocabulary.md § 3.1).
+                        text = String(idx + 1);
                     }
                     const lbl = state.viewer.addLabel(text, {
                         position:          { x: a.x, y: a.y, z: a.z },

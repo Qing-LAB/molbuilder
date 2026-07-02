@@ -19,7 +19,7 @@
         { kind: "by_element", label: "By element",
           placeholder: "comma-separated, e.g. Au,C" },
         { kind: "by_index",   label: "By atom index",
-          placeholder: "e.g. 0-3, 5, 9-10" },
+          placeholder: "e.g. 1-4, 6, 10-11" },
         { kind: "by_residue", label: "By residue",
           placeholder: "comma-separated, e.g. ALA,DA" },
         { kind: "by_label",   label: "By label",
@@ -277,6 +277,14 @@
         // value still maps to the canonical server-side target
         // (``frozen_atoms``) — see ``renderFilters`` for the
         // value/display split.
+        // User-facing atom index is 1-based (data-vocabulary.md § 3.1); the
+        // store's atom.index is 0-based.  Convert only for display, via the
+        // shared helper (defensive fallback if it isn't loaded).
+        function _toDisplayIndex(i) {
+            const m = root.molbuilder && root.molbuilder.atomIndexModel;
+            return (m && m.toDisplay) ? m.toDisplay(i) : i + 1;
+        }
+
         function knownLabels(s) {
             // Derive from the pure L1 channel model (atom-annotations.md §5):
             // the "By label" dropdown offers every TAG + FLAG channel present
@@ -691,7 +699,7 @@
             checkTd.appendChild(check);
             tr.appendChild(checkTd);
 
-            tr.appendChild(td("col-idx",  String(atom.index)));
+            tr.appendChild(td("col-idx",  String(_toDisplayIndex(atom.index))));
             tr.appendChild(td("col-el",   atom.element || ""));
             tr.appendChild(td("col-name", atom.atomName || ""));
             tr.appendChild(td("col-res",  atom.residueName || ""));

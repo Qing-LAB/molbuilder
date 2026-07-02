@@ -111,8 +111,14 @@
                 return { op: "by_element", elements: elements };
             }
             case "by_index": {
-                const expression = (f.value || "").trim();
-                if (!expression) return null;
+                const raw = (f.value || "").trim();
+                if (!raw) return null;
+                // The user types 1-based indices (matching the display);
+                // the server by_index_range rule is 0-based -- shift at this
+                // boundary (data-vocabulary.md § 3.1).
+                const m = root.molbuilder && root.molbuilder.atomIndexModel;
+                const expression = (m && m.shiftExpression)
+                    ? m.shiftExpression(raw, -1) : raw;
                 return { op: "by_index_range", expression: expression };
             }
             case "by_residue": {
