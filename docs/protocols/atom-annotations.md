@@ -304,6 +304,17 @@ Audit of the **5** current `viewer.embed` sites and what full integration needs
 | **Results · spectra** (`spectra/core.js`) | bare + **`pick:{mode:"none"}`** (vibrational-mode viewer) | `mode:readonly, persistence:ephemeral, pick:none` | selection panel present but **pick stays off**; filter/highlight only. |
 | *(future build/other)* | — | per case | assess when added. |
 
+**Current-state finding (2026-07-02 audit — narrows Phase 5):** the Modify tab
+**already** embodies most of the fused UI — `modify.html` has a responsive
+`.workspace-grid` (viewer / selection / modify as separate cards, `@media`
+768/640px breakpoints) with selection **always present** and the panel+adapter
+already composed (via `viewer.js` + `selection-bootstrap.js`). So Phase 5's real
+remaining work is: **(i)** extract that modify-specific composition into a
+**reusable module** so other tabs can use it; **(ii)** apply it to the 3 Results
+inspectors (they're the ones still BARE — this is where selection is genuinely
+NEW, `mode:readonly`); **(iii)** minor polish — tabbed-on-narrow (today it
+stacks) + matching-height. The big win is (ii): selection in the inspectors.
+
 **Key findings driving the design:**
 - **The fused module must OWN the panel host** — render the selection panel
   inside its own responsive card. Today only `modify.html` +
