@@ -264,6 +264,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.files     import bp as files_bp
     from .blueprints.results   import bp as results_bp
     from .blueprints.selection import bp as selection_bp
+    from .blueprints.workingcopy import bp as workingcopy_bp
     from .blueprints.system_load import bp as system_load_bp
     from .blueprints.checkpoint  import bp as checkpoint_bp
     app.register_blueprint(build_bp)
@@ -274,6 +275,7 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(files_bp)
     app.register_blueprint(results_bp)
     app.register_blueprint(selection_bp)
+    app.register_blueprint(workingcopy_bp)
     app.register_blueprint(system_load_bp)
     app.register_blueprint(checkpoint_bp)
 

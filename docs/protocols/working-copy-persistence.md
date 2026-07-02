@@ -1,9 +1,11 @@
 # Working-copy persistence — the transient-data foundation
 
-**Status: CORE IMPLEMENTED (Phase 1, 2026-07-02)** — `molbuilder/workingcopy.py`
-ships the §6 API + the `Codec` seam, unit-tested against S1–S6 + the §9 risks
-(`tests/test_workingcopy.py`). The `/api/workingcopy/*` surface and the
-structure-codec application are later phases. The system-wide, **format-agnostic**
+**Status: IMPLEMENTED (Phases 1-2, 2026-07-02)** — the core
+(`molbuilder/workingcopy.py`, §6 API + `Codec`), the structure+sidecar codec
+(`workingcopy_structure.py`), and the scratch-backed `/api/workingcopy/*` surface
+(`web/blueprints/workingcopy.py`) are all built + tested (S1-S6 + §9 risks).
+Remaining: repoint the browser `writeLabel` off auto-save (Phase 3) + the
+commit/crash-recovery UX (Phases 4-5). The system-wide, **format-agnostic**
 module
 for holding *user-edited* data that is **not durable until explicitly
 committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
@@ -324,8 +326,8 @@ work and **never** auto-adopts stale work.
 ## 13. Decisions (before implementation)
 
 1. **Where the core lives — RESOLVED:** `molbuilder/workingcopy.py` (L1) exposes
-   the §6 API + the `Codec` seam. The thin `/api/workingcopy/*` surface the
-   browser store calls is a later phase.
+   the §6 API + the `Codec` seam; `web/blueprints/workingcopy.py` is the
+   scratch-backed `/api/workingcopy/*` surface (Phase 2b, built).
 2. **Scratch record format — RESOLVED:** one JSON envelope `{schema, source,
    source_hash, session, ts, blob}`, written atomically (via `persist.write_json`)
    as `<stem>.<session>.wc.json` under `.molbuilder_workspace/`.
