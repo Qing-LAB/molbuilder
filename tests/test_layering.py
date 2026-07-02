@@ -66,6 +66,10 @@ _L1_MODULES = {
     "annotations_fdf",   # fdf emit-strategy registry for extensible atom-
                          # annotation channels; pure (typing only, struct is
                          # duck-typed) -- siesta/input consumes it.
+    "engine_atom_index", # single-point 0-based -> per-engine atom-index
+                         # translation (pure int math); the engine translators
+                         # consume it.
+
     "persist",           # versioned-document helpers (@major schema check +
                          # JSON IO); pure stdlib, no domain deps -- bench +
                          # jobset persisted artifacts share it.

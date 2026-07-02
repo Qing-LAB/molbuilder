@@ -597,7 +597,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # (~80 chars) for readability.  SIESTA accepts arbitrarily
         # many ``position`` lines inside the block; chunking makes
         # the .fdf easy to grep + edit.
-        ids_1based = [i + 1 for i in frozen]
+        from ..engine_atom_index import siesta_atom_index
+        ids_1based = [siesta_atom_index(i) for i in frozen]
         chunk = 20
         for i in range(0, len(ids_1based), chunk):
             segment = ids_1based[i:i + chunk]

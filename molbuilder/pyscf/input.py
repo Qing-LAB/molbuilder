@@ -634,7 +634,8 @@ def render_script(struct: Structure,
                     '# is 0-based so we shift below.  Without this block '
                     'geomeTRIC moves every atom.',
                 ]
-            ids_1based = ",".join(str(i + 1) for i in frozen)
+            from ..engine_atom_index import geometric_atom_index
+            ids_1based = ",".join(str(geometric_atom_index(i)) for i in frozen)
             out.append(f'# Source: Structure.frozen_atoms = {frozen!r}  (0-based)')
             out.append(f'_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + ".constraints.txt")')
             out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
