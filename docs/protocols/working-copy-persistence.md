@@ -1,417 +1,163 @@
-# Working-copy persistence — the transient-data foundation
+# Working-copy persistence — load, edit, save
 
-**Status: CORE SOUND; API BEING REDESIGNED (2026-07-02).** The core
-(`molbuilder/workingcopy.py`) + structure codec (`workingcopy_structure.py`) are
-sound and unit-tested as a *stateful object* (S1–S6, §9 risks). The first
-`/api/workingcopy/*` surface (`web/blueprints/workingcopy.py`) was built
-**stateless + client-authoritative — a serious mistake**: an adversarial review
-proved the changed-underneath gate trusted a *client-supplied* hash (bypassable
-with a two-line request), `on_mismatch:"force"` was an open request field, and
-S1 (same-session reload → restore edits) was never implemented (contradicting
-§2.1 and §8.4). It is being **redesigned server-authoritative** per the state
-machine (§6.1) + authority contract below. **No browser consumer is wired yet**,
-and `writeLabel` still auto-saves the sidecar — Phase 3 is unbuilt.
+**Status: IMPLEMENTED (2026-07-02).** `molbuilder/workingcopy.py` (core, L1) +
+`workingcopy_structure.py` (the `.xyz`+`.json` codec) + `web/blueprints/
+workingcopy.py` (`/api/workingcopy/*`). Tested. **Not yet wired to the browser**
+— the `/modify` tab still auto-saves the sidecar (that swap is the remaining
+step).
 
-The system-wide, **format-agnostic** module for holding *user-edited* data that
-is **not durable until explicitly committed**. The `.xyz`+`.molstruct.json` case (`browser-data-contract.md`) is
-the **first application** of this core, not the core itself.
+**The whole idea, one sentence:**
 
-**The principle (one sentence):**
+> **Load an artifact into the browser, edit it, and write it back to files only
+> when the user hits Save (overwrite, or save-as). A draft keeps unsaved edits
+> safe across a reload or crash. That's it — no gate, no hashing.**
 
-> **A working copy is transient: loaded from a source, mirrored to scratch so it
-> survives reloads/crashes, and written to a durable target ONLY on explicit
-> commit — gated by the source hash so a changed source can never be silently
-> overwritten.**
-
-**Companions:** `browser-data-contract.md` (the `.xyz`+`.json` *application*),
-`data-vocabulary.md` §3.2 (the atom-identity hash one application feeds this).
+**Companions:** `browser-data-contract.md` (the `.xyz`+`.json` application),
+`data-vocabulary.md` §3.1–3.2 (atom index base + the sidecar's engine-side
+`structure_hash`, which is unrelated to any of this).
 
 ---
 
-## 1. Goal, boundary & contract (read this first)
+## 1. Goal & boundary
 
-### 1.1 Goal
-Give every part of the system **one safe, shared way** to hold data a user is
-editing but has not yet committed — so that:
+**Goal.** Give the editor two things it doesn't have cleanly today:
+1. **Don't lose edits** on a reload or crash → keep a **draft** of the working
+   data.
+2. **Don't touch the project files on every edit** → write them **only on an
+   explicit Save** (the current `/modify` auto-saves the sidecar on every label).
 
-- unsaved work **survives** a reload or crash,
-- durable project files are **never written behind the user's back**,
-- a source that **changed underneath** can never be silently overwritten,
+**This IS:** load → edit-in-browser → save (overwrite or save-as), plus a draft
+for crash-safety. Format-agnostic — an application plugs in a **codec**.
 
-and an application gets all of that by supplying a small **codec** (§5) — it does
-**not** re-implement scratch handling, hashing, atomic writes, or recovery.
-
-### 1.2 Boundary — what this IS and is NOT
-
-**IS:** a *transient working copy of ONE artifact* — loaded from a source,
-mirrored to scratch, committed to a durable file with a **source-hash gate** and
-**explicit crash-recovery**.
-
-**IS NOT** (these belong elsewhere — do not grow the core into them):
-
-- **version history / undo** — one *live* working copy, not a version stack.
-- **the artifact's format or meaning** — that is the application's codec (§5);
-  the core never learns what an atom (or any datum) is.
-- **UI / UX** — prompts, buttons, panels are the application's.
-- **collaborative / multi-user editing** — the system is **single-user and
-  isolated by design**; there is no concurrent editor. No locking, no merge, no
-  multi-session arbitration. The source-hash gate exists only to catch a source
-  that changed *on disk* between load and commit (e.g. edited in another tool),
-  **not** to referee concurrent writers.
-- **a database or durable store** — scratch is transient; durability is the one
-  commit target.
-- **target-existence management** — the gate protects the **source's integrity**
-  (was it edited underneath since load?), *not* whether a save-as target already
-  exists. Confirming an overwrite of a *different* target is the application's UX.
-- **the job-execution / checkpoint domain** — unrelated; never connect them.
-
-### 1.3 The contract in one breath (full rules in §7)
-
-- **The core promises:** no durable write without an explicit `commit`; a commit
-  **never launders** a source that changed underneath; edits **survive
-  reload/crash**; nothing is ever **auto-deleted or auto-adopted**.
-- **The application/consumer promises:** supply a complete **codec**; go *only*
-  through `open` / `update` / `commit` / `discard`; **never** write a durable
-  file or delete scratch outside the core.
-
-### 1.4 Scenarios the core MUST handle (the acceptance list)
-| # | Scenario | Required behavior |
-|---|---|---|
-| S1 | Edit → reload the tab | working copy restored from scratch; no data lost |
-| S2 | Edit → walk away (no save) | durable files untouched; scratch retained (until commit or cleanup, §13.5) — recoverable on return |
-| S3 | Explicit "Save" | the **only** moment durable files change |
-| S4 | Source changed on disk since load | commit **refuses** (or prompts) — never blind-overwrites |
-| S5 | Browser/server/OS crash mid-edit | scratch survives; user **explicitly** recovers or discards |
-| S6 | Artifact built from scratch (no source) | first commit is a plain **save-as** |
-
-If a change ever violates one of S1–S6, it violates this contract.
+**This is NOT:**
+- a **gate / integrity check** — you own the data you loaded; a save just writes
+  it. (An earlier version added a "did the file change underneath?" gate; that
+  was solving a non-problem, because a save writes the whole self-consistent
+  pair, so the on-disk file is simply overwritten.)
+- **version history / undo** — one live working copy, not a version stack.
+- **the artifact's format** — that's the codec.
+- **multi-user / concurrent editing** — single-user, isolated.
 
 ---
 
-## 2. Architecture — how the layers build on the core
+## 2. The flow
 
 ```mermaid
-flowchart TD
-    subgraph APP["APPLICATIONS — one per artifact type (each = a CODEC + its own UI/CLI wiring)"]
-        direction LR
-        A1["structure + sidecar<br/>(browser /modify)"]
-        A2["config file"]
-        A3["script …"]
-    end
-
-    CORE["CORE — working-copy engine (format-agnostic)<br/>reached via /api/workingcopy/*<br/><br/>open · new · recover<br/>update · commit · discard<br/>list_orphans · discard_orphan · clean_all<br/><br/>owns: source-hash GATE · atomic multi-file write ·<br/>scratch lifecycle · crash-recovery"]
-
-    SCR[("SCRATCH — transient<br/>&lt;project&gt;/.molbuilder_workspace/<br/>survives reload / crash")]
-    DUR[("DURABLE — project files<br/>&lt;stem&gt;.xyz + .molstruct.json<br/>written ONLY on commit")]
-
-    A1 -- "CODEC + open/update/commit/discard" --> CORE
-    A2 --> CORE
-    A3 --> CORE
-
-    CORE == "mirror (debounced)" ==> SCR
-    CORE == "commit (explicit)" ==> DUR
-
+flowchart LR
+    F[("project files<br/>&lt;stem&gt;.xyz + .molstruct.json")]
+    WC["working copy<br/>(structure + labels, in the browser)"]
+    D[("draft<br/>&lt;project&gt;/.molbuilder_workspace/")]
+    F -- "open (load)" --> WC
+    WC -- "edit" --> WC
+    WC -- "update (auto)" --> D
+    D -. "reload / crash restores" .-> WC
+    WC == "save (overwrite / save-as)" ==> F
     classDef store fill:#eef,stroke:#557;
-    class SCR,DUR store;
+    class F,D store;
 ```
 
-**Reading the diagram:**
-- **Down** the stack = increasing generality: an application knows its format,
-  the core knows none, the stores know only bytes.
-- The **codec** is the *single* seam between an application and the core — the
-  only format-specific code; everything below it is shared.
-- The core is the **only writer** of either store. No application writes a
-  project file directly — that is what makes the guarantees (§8) hold
-  system-wide.
+- **open** reads the files into a working copy.
+- **update** (on every edit) writes a **draft** — the *only* automatic write, and
+  it goes to `.molbuilder_workspace/`, never the project files.
+- **save** writes the project files (both, together): same path = overwrite, new
+  path = save-as. Then the draft is dropped.
 
-### 2.1 Worked example (the structure app, end to end)
+---
 
-The happy path plus the reload (S1) and changed-underneath (S4) cases — through
-the server-authoritative flow (§6.1):
+## 3. Worked example (the structure app)
 
 ```mermaid
 sequenceDiagram
     actor U as User (/modify)
-    participant S as Server (working-copy)
-    participant D as Durable files
-    U->>S: open(mol.xyz)
-    S->>S: load + persist authentic H0 = sha256(mol.xyz)
-    Note over D: untouched
-    U->>S: update (tag atoms 1-3 = L-electrode)
-    S->>S: store data, dirty=true (scratch)
-    Note over D: STILL untouched
-    U->>S: reload = open(mol.xyz) again
-    S-->>U: RESUME — returns the dirty working copy (tags intact, S1)
-    U->>S: commit(mol.xyz)
-    alt gate: stored H0 == current sha256(mol.xyz)  PASS
-        S->>D: write .molstruct.json, then .xyz (identity last, §9.3)
-        S->>S: re-anchor H ← sha256(new .xyz); dirty=false
-        Note over D: NOW changed — and only now
-    else source changed on disk: H0 != current  FAIL
-        S-->>U: REFUSE — "mol.xyz changed; save-as or reload and redo"
-        Note over D: untouched (no wrong-atom write)
-    end
+    participant B as Browser (working copy)
+    participant DR as Draft
+    participant F as Project files
+    U->>B: open mol.xyz
+    B->>B: load structure + labels
+    U->>B: tag atoms 1-3 = L-electrode
+    B->>DR: update (draft)
+    Note over F: untouched
+    U->>B: reload the tab
+    DR-->>B: draft restores the tags
+    U->>B: Save
+    B->>F: write mol.xyz + mol.molstruct.json (overwrite)
+    B->>DR: drop draft
+    Note over U: "Save As" writes to a NEW path instead
 ```
 
 ---
 
-## 3. The two tiers
+## 4. The codec (the only format-specific part)
 
-| Tier | What | Trigger | Lifetime |
-|---|---|---|---|
-| **Transient (this doc)** | working copy → scratch | auto/debounced on edit | until commit or cleanup (§13.5) |
-| **Durable** | project files (`.xyz`, `.json`, …) | explicit commit | permanent |
+```
+codec.load(source_path)   -> data              # read the file(s) into working data
+codec.files(data, target) -> [(path, bytes)]   # the file(s) a save writes
+codec.scratch_blob(data)  -> json              # how the working copy sits in the draft
+codec.from_scratch(blob)  -> data              # inverse (reload / crash recovery)
+```
 
-Data flows *up*: edit → transient scratch → **commit** → durable file.
+The `.xyz`+`.json` codec: `load` reads the `.xyz` + its sidecar → a `Structure`;
+`files` returns `[(<stem>.xyz, …), (<stem>.molstruct.json, …)]`. **The core never
+learns what an atom is.**
 
 ---
 
-## 4. Core concepts
+## 5. The API
 
-- **Source** — where the artifact was loaded from (a path), or *none* (freshly
-  built).
-- **Source hash** — `sha256` of the source at load. The gate compares it to the
-  source's *current* on-disk hash at commit; a change means "edited underneath —
-  do not silently overwrite."
-- **Working copy** — in-memory current state + its source + source hash + dirty
-  flag. Owned by the core.
-- **Session** — the *server-side* session the working copy belongs to (the login
-  when authenticated; the single server instance for no-auth localhost) — never
-  the browser tab. It keys scratch and decides when scratch is cleaned; fully
-  defined in §13.5.
-- **Scratch record** — the working copy persisted under
-  `<project>/.molbuilder_workspace/`, surviving reload/restart/crash. Keyed by
-  `(source-stem, session)`.
-- **Codec** — the *only* format-specific part (§5), supplied by the application.
-- **Commit** — the single hash-gated write to a durable target.
+```
+WorkingCopy.open(source, codec, session, project_dir)   # load
+WorkingCopy.new(codec, session, project_dir, data)      # a fresh artifact (save-as on first save)
+WorkingCopy.recover(draft_record, codec, project_dir)   # adopt a crashed session's draft
+wc.update(data)                                         # edit -> draft
+wc.save(target)               -> Path                   # write files (overwrite / save-as); drop draft
+wc.discard()                                            # drop draft, write nothing
+list_orphans / discard_orphan / clean_all               # crash-recovery housekeeping
+```
+
+`/api/workingcopy/*` is a thin wrapper: `open` · `update` · `save` · `discard` ·
+`orphans` · `recover` · `clean`. Paths go through `_resolve_within_roots`.
 
 ---
 
-## 5. The codec interface (what an application supplies)
+## 6. Use contract
 
-The core treats artifact data as **opaque**; the application plugs in:
+**An application MUST:** supply a codec; `open` on load, `update` on every edit,
+`save` **only** on an explicit user Save, `discard` to abandon.
 
-```
-codec.load(source_path)       -> data            # read durable -> working data
-codec.hash_source(source_path) -> str             # the source hash (e.g. sha256 of the .xyz)
-codec.files(data, target)     -> [(path, bytes)] # durable file(s) this artifact writes
-codec.scratch_blob(data)       -> bytes/json      # how the working copy is stored in scratch
-codec.from_scratch(blob)       -> data            # inverse (crash recovery)
-```
+**An application MUST NOT:** write a project file outside `save`; auto-save on
+every edit; delete a draft behind the user (only `save` success, session-end, or
+explicit cleanup removes it).
 
-`.xyz`+`.json` supplies a codec whose `files()` returns *two* paths and whose
-`hash_source()` is `sha256(.xyz)`. A config-file app returns one path. **The core
-never learns what an atom is.**
+Follow those and the two guarantees hold: **unsaved edits survive reload/crash**,
+and **project files change only on an explicit Save.**
 
 ---
 
-## 6. The core API (format-agnostic)
+## 7. Draft & crash recovery
 
-```
-open(source_path, codec)      -> WorkingCopy     # in-memory object: load + record H (API persists an anchor, §6.1)
-new(codec)                -> WorkingCopy     # freshly-built artifact, no source (S6)
-recover(scratchRecord, codec) -> WorkingCopy     # crash recovery (§10)
+- The draft lives in `<project>/.molbuilder_workspace/<stem>.<session>.wc.json`
+  (a JSON envelope `{schema, source, session, ts, blob}`, written atomically),
+  keyed by **session** (the server-side session — the login when authenticated,
+  else a stable per-server-run id for no-auth localhost).
+- A crash (or, for no-auth, a server restart) leaves a draft its session can no
+  longer clean. `list_orphans` surfaces them; the user **recovers** or
+  **discards** — the core never auto-deletes unsaved work or auto-adopts stale
+  work. Cleanup is otherwise on `save` or session-end (no time-based sweep).
 
-WorkingCopy.update(data)                         # mirror to scratch, debounced; sets dirty
-WorkingCopy.data() / .is_dirty() / .source_hash()
-WorkingCopy.commit(target_path, {on_mismatch})    -> CommitResult
-WorkingCopy.discard()                            # drop working copy + scratch, no write
+---
 
-list_orphans(project)          -> [ScratchRecord] # sessions no longer live
-discard_orphan(record) / clean_all(project)
-```
+## 8. Applications
 
-`commit` runs the gate → writes → **re-anchors the working copy to the committed
-target** (new source + hash, §9.4) → clears scratch (§9.3). `on_mismatch` is `refuse` (MVP; return a mismatch result) or `force` (the raw
-override primitive). At the API layer the server gates `force` behind a
-server-issued token (§6.1 #4); the future `choose` UX (keep / discard-stale /
-reload) is built on it.
-
-### 6.1 The state machine + server-authority contract (MUST for the API)
-
-§6 is the *stateful in-memory object*. The `/api/workingcopy/*` surface is
-stateless across HTTP requests, so to keep every guarantee it **MUST be
-server-authoritative**: the server owns the working copy's authentic state — the
-**at-load source hash** and the **working data** — in the scratch record. The
-client is a cache/view, never the authority. This is what makes §8.4 real and
-the changed-underneath gate un-bypassable. (The first API shipped the opposite —
-client-authoritative — and was proven bypassable; hence this redesign.)
-
-**States** — one per working copy, keyed by `(session, source)`:
-
-```mermaid
-stateDiagram-v2
-    [*] --> absent
-    absent --> clean: open (load + persist authentic hash H, data)
-    clean --> clean: open again = RESUME (return server state, S1)
-    dirty --> dirty: open again = RESUME (S1 reload, keeps edits)
-    clean --> dirty: update
-    dirty --> dirty: update
-    clean --> clean: commit (no-op when not dirty)
-    dirty --> clean: commit + gate PASS (write durable, re-anchor H)
-    dirty --> dirty: commit + gate FAIL = REFUSE (stays dirty)
-    clean --> absent: discard
-    dirty --> absent: discard
-```
-
-- **absent** — no server record for `(session, source)`.
-- **clean** — opened; server holds the loaded data + the **authentic** at-load
-  hash `H = hash_source(source)`; `dirty=false`.
-- **dirty** — edited; server holds the working data + the *same* authentic `H`;
-  `dirty=true`.
-
-**Transitions + the authority rule each enforces:**
-
-| Op | Server does | Authority rule (the point) |
+| Application | `files()` writes | Spec |
 |---|---|---|
-| `open(source)` — no record | load source, **compute + persist** `H`, store `{source, H, data, session, dirty=false}` | **`H` is server-computed, never client-supplied.** |
-| `open(source)` — record exists | return the existing server working copy (data + dirty) | **S1 reload/resume** — never re-read the source over unsaved edits |
-| `update(source, data)` | requires the record; store `data`, `dirty=true`; **`H` unchanged** | client sends edits, **never `H`**; can't update what you didn't open |
-| `commit(source, target)` | **gate: compare the STORED `H` to the *current* on-disk hash of `source`** (when `target==source`); on pass write durable (identity last), **re-anchor `H←hash(target)`**, `dirty=false` | gate reads **only the server `H`**; commit needs the caller's own record |
-| `discard(source)` | delete the record | — |
-| `recover(orphan)` | adopt a dead session's record into the live session | same gate applies at its next commit |
-
-**The authority contract (invariants the machine enforces):**
-1. **The at-load hash is server-authoritative** — computed at `open`, stored,
-   never accepted from the client; the gate reads only it. *(Closes the proven
-   client-hash bypass.)*
-2. **The server scratch is the working copy of record** (§8.4) — `update` stores
-   the data server-side; `open`-on-existing returns it (reload). The client is a
-   cache.
-3. **You can only commit what you opened** — `update`/`commit` require the
-   caller's session to own a record for that `source`; else refuse.
-4. **Overriding the gate is not a free field** — `force` requires a
-   *server-issued token* bound to `(session, source, observed actual_hash)`,
-   handed back only when the server itself returned a mismatch (so an override
-   proves the user was shown the conflict).
+| **Structure + sidecar** | `<stem>.xyz` + `<stem>.molstruct.json` | `browser-data-contract.md` |
+| *(future)* config / script | its file(s) | reuse this core unchanged |
 
 ---
 
-## 7. Use contract — how to build on this
+## 9. Remaining work
 
-**An application MUST:**
-1. Supply a complete **codec** (§5); keep it pure (no side effects beyond
-   reading the source in `load`/`hash_source`).
-2. `open()` on load, `update()` on **every** edit, `commit()` **only** on an
-   explicit user save, `discard()` to abandon.
-3. Treat the returned `WorkingCopy` as the **single owner** of that artifact's
-   transient state — read `data()`/`is_dirty()` from it, never keep a parallel
-   copy that can drift.
-4. **Surface** the commit `on_mismatch` outcome to the user (refuse, or the
-   keep/discard/reload choice) — never silently override the gate.
-
-**An application (or any consumer) MUST NOT:**
-1. Write a durable project file **outside** `commit()`.
-2. Assume the durable file is unchanged since load — always go through the gate.
-3. Delete a scratch record behind the user — removal happens only via commit
-   success, session-end (authenticated mode only), or explicit cleanup
-   (§10, §13.5).
-4. Reach around the codec to make the core format-aware.
-
-If those rules hold, the application inherits every guarantee in §8 for free; if
-any is broken, the guarantees no longer apply to that application.
-
----
-
-## 8. Invariants (guarantees every conforming application inherits)
-
-1. **No durable file is written without an explicit `commit`.**
-2. **A working copy always carries the source hash it was opened against.**
-3. **Commit never launders** — on source-hash mismatch it refuses or forces an
-   explicit choice; it never silently writes stale data under a fresh hash.
-4. **Transient data survives reload/crash** — the **server-side scratch is the
-   single source of truth**. A consumer MAY keep its own client-side cache for
-   speed, but that is the consumer's concern and the scratch always wins.
-   *(Enforced by the §6.1 server state machine. The first stateless API violated
-   this — the client payload was authoritative — which is why the API is being
-   redesigned.)*
-5. **Editing is non-destructive** to durable files until commit.
-
----
-
-## 9. Risks the core resolves once (so applications don't)
-
-### §9.1 Source changed on disk since load (S4)
-At commit the gate compares the working copy's source hash to the source's
-**current** on-disk hash. If the source was edited between load and commit (e.g.
-in another tool), that mismatch is caught → refuse (or prompt). No blind
-overwrite.
-
-### §9.2 No source — freshly-built artifact (S6)
-`new()` has no source hash; its first `commit` is a plain **save-as** to a
-chosen path. The gate engages only once a source exists.
-
-### §9.3 Multi-file artifacts + partial failure (real, not "atomic")
-Two files can't be atomic together. The core writes each via **temp-file +
-rename** (per-file atomic) and **keeps the scratch record until ALL files land**,
-so a partial failure is never silently forgotten. **Write order matters and is
-resolved in §13.3:** write the **identity/source file last** (`.json` metadata
-before `.xyz`), so a mid-commit failure leaves the *source unchanged* — the retry
-gate still passes, instead of tripping on a source the first attempt already
-rewrote.
-
-### §9.4 Commit re-anchors the working copy (so a second save works)
-A successful commit rewrites the source (same-file) or writes a new target
-(save-as). If the working copy kept its *old* source hash, the **next** save
-would gate that stale hash against the file the previous commit just wrote — and
-wrongly refuse. So commit **re-anchors**: the working copy adopts the committed
-target as its new source and the hash of what was written. Continued editing +
-re-commit then behave exactly like a fresh `open` of the saved file.
-
----
-
-## 10. Crash recovery (explicit, never silent) — S5
-
-A crash leaves a scratch record no automatic path can clear (its session is
-gone). For **no-auth localhost, a routine server restart is the same situation** —
-the prior server session's scratch is now orphaned and surfaces here too.
-`list_orphans` surfaces them (source, hash, age, still-matches-source?); the user
-`recover`s (adopt back, subject to the same commit gate) or `discard`s;
-`clean_all` wipes a project's scratch. The core **never** auto-deletes unsaved
-work and **never** auto-adopts stale work.
-
----
-
-## 11. Applications
-
-| Application | Codec `files()` | Source hash | Spec |
-|---|---|---|---|
-| **Structure + sidecar** | `<stem>.xyz` + `<stem>.molstruct.json` | `sha256(.xyz)` | `browser-data-contract.md` |
-| *(future)* config / script artifacts | their file(s) | their source hash | reuse this core unchanged |
-
----
-
-## 12. Relationship to other contracts
-
-- **`browser-data-contract.md`** — the *first application*; reads as "the
-  structure+sidecar codec + the browser-side (sessionStorage / `writeLabel` /
-  commit UX) wiring on top of this core."
-- **`workspace-contract.md`** — owns the in-browser dispatcher/store + `dirty`
-  flag that drives this core's client side.
-
----
-
-## 13. Decisions (before implementation)
-
-1. **Where the core lives — RESOLVED:** `molbuilder/workingcopy.py` (L1) exposes
-   the §6 API + the `Codec` seam; `web/blueprints/workingcopy.py` is the
-   `/api/workingcopy/*` surface. The first cut was stateless + client-
-   authoritative (unsound, see Status); it is being **redesigned
-   server-authoritative per §6.1**. Sourceless `new` (S6) is core-only for now.
-2. **Scratch record format — RESOLVED:** one JSON envelope `{schema, source,
-   source_hash, session, ts, blob}`, written atomically (via `persist.write_json`)
-   as `<stem>.<session>.wc.json` under `.molbuilder_workspace/`.
-3. **Commit write order — RESOLVED (§9.3):** write the identity/source file
-   **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
-   source unchanged and the retry gate still passes.
-4. **`on_mismatch` default — DECIDED:** ship `refuse` + `force` (the override
-   primitive; both live in the code); the `choose` UX (keep / discard-stale /
-   reload) is built on `force` later.
-5. **Session — RESOLVED: the *server-side* session, never the browser tab** (so
-   a tab reload/close never loses the working copy). Two run modes:
-   - **Authenticated:** the login session; session-end = logout/expiry → cleanup.
-   - **No-auth localhost (fully supported, the safer case):** a single implicit
-     local session (the server instance). There is **no automatic session-end**,
-     so scratch is cleaned **only** on commit or explicit cleanup (§10). A
-     routine `molbuilder serve` restart never discards unsaved work — the prior
-     scratch simply presents as recoverable on restart.
+Wire the `/modify` tab to it: hold labels in the working copy + `update` on edit
+(instead of auto-POSTing `/api/selection/save`), and add an explicit **Save** /
+**Save As** that calls `/api/workingcopy/save`. Draft can be the browser
+`sessionStorage` (simplest) mirrored to the server draft for crash-safety.

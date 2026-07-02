@@ -1,5 +1,7 @@
 # Browser-owned transient data & explicit commit — contract
 
+> **SUPERSEDED (2026-07-02).** This doc was built around a "changed-underneath" hash-gate + a laundering analysis. That premise was wrong — a save writes the whole self-consistent `.xyz`+`.json` pair, so there is nothing to launder and no gate is needed. The real model is the simple **load → edit → save (overwrite/save-as)** in [`working-copy-persistence.md`](working-copy-persistence.md). Treat the sections below as historical; they are being rewritten to just the browser wiring (hold labels in the working copy, Save/Save-As calls `/api/workingcopy/save`).
+
 **Status: ACCEPTED (2026-07-02).** Decisions in §8 are locked. Defines how data that lives *in the browser*
 — loaded from a project file and possibly edited by the user — is held
 transiently but persistently, and the single explicit point at which it may
