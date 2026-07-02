@@ -11,11 +11,17 @@ overwrite a durable project file.
 > `.molstruct.json`) are the durable copy and are overwritten ONLY on explicit
 > user instruction.**
 
-**Companions:** `workspace-contract.md` (the dispatcher/store this builds on),
-`data-vocabulary.md` §3.1–3.2 (atom index base + the atom-identity hash that the
-commit gate enforces), `atom-annotations.md` §6.1 (the data-loss contract this
-refines), `run-checkpoints.md` (a *different* "checkpoint" — engine restart
-files; see §7).
+**This is one application of `working-copy-persistence.md`** — the system-wide,
+format-agnostic working-copy core. This doc = that core's structure+sidecar
+codec + the browser-side wiring (sessionStorage / `writeLabel` / commit UX).
+Generic guarantees (hash-gate, scratch, crash-recovery, multi-session, atomicity)
+live in the core; only the `.xyz`+`.json` specifics live here.
+
+**Companions:** `working-copy-persistence.md` (the core this applies),
+`workspace-contract.md` (the dispatcher/store this builds on),
+`data-vocabulary.md` §3.1–3.2 (atom index base + the atom-identity hash the
+commit gate enforces), `atom-annotations.md` §6.1 (the data-persistence contract
+this refines).
 
 ---
 
@@ -60,10 +66,8 @@ Server-side transient data lives in a per-project scratch directory:
 - **Location.** A dot-directory *inside the project folder* (project-scoped,
   survives server restart, easy to find/clean, `.gitignore`-able). Created
   lazily on first edit.
-- **Naming.** `.molbuilder_workspace/` — deliberately **not**
-  `.molbuilder_checkpoint/`, to avoid collision with `run-checkpoints.md`
-  (engine restart files, a different concept). *(Naming decision — open;
-  `.molbuilder_checkpoint/` was suggested. Either works; pick one and pin it.)*
+- **Naming.** `.molbuilder_workspace/` (locked, §8 #1). Gitignore-able so
+  transient work is never committed to version control.
 - **Contents.** Each scratch record carries: the working structure/annotations,
   the **source path** it was loaded from, the **source hash** at load, the
   session id, and a timestamp.
@@ -132,9 +136,6 @@ produced, so the generation gate is never bypassed.
 - **`atom-annotations.md` §6.1** (data-loss): this **refines** "durable only on
   Save" → "durable only on explicit *commit to project*; transient work is held
   in `.molbuilder_workspace/` scratch, safe across reloads."
-- **`run-checkpoints.md`**: unrelated — that is *engine* restart data (`.XV`,
-  `.DM`, …) written by a running job. The name "checkpoint" is why this
-  contract's scratch dir is `.molbuilder_workspace/`, not `.molbuilder_checkpoint/`.
 - **`workspace-contract.md`**: the dispatcher/store that owns the transient
   state and the `dirty` flag.
 
@@ -142,8 +143,7 @@ produced, so the generation gate is never bypassed.
 
 ## 8. Decisions (locked 2026-07-02)
 
-1. **Scratch dir name** — `.molbuilder_workspace/` (collision-free; not
-   `.molbuilder_checkpoint/`).
+1. **Scratch dir name** — `.molbuilder_workspace/`.
 2. **Structure-in-scratch** — mirror the working `.xyz` to scratch **only when
    the structure was edited**; a label-only session keeps just the working
    `.molstruct.json` record (the source structure stays the on-disk `.xyz`).
