@@ -7,6 +7,8 @@ producer initializes" problem: instead of polling for
 on a Promise.
 
 This doc is the sole source of truth for the registry's contract.
+
+**New to it?** Start with the plain-language [`runtime-registry-guide.md`](../runtime-registry-guide.md) — the developer on-ramp (why it exists, register/whenReady patterns, gotchas).
 The implementation is `molbuilder/web/static/lib/molbuilder-runtime.js`;
 the node-driven unit tests are
 `tests/test_molbuilder_runtime_js.py` (19 tests, see § 5 below).
