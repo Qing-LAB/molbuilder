@@ -145,15 +145,50 @@ serves PySCF / transport setup later.
 
 ---
 
-## 5. JS unified model + always-on filterable selection
+## 5. JS unified model + always-on filterable selection (Phase 4)
 
-- The selection store's `Atom` generalises `labels[]`/`isFrozen` into the same
-  **channels** (mirrors §2). `atom.annotations` exposes everything for the UI.
-- **Selection is always mounted** (fused module, §6). The **filter** operates on
-  **any channel** — element, residue, any `tag`, any `flag`, any `value` (range
-  predicates for scalars) — so "select all `frozen`", "select `bridge` ∩ carbon",
-  "select `charge > 0`" are uniform. This is the efficiency win: one filter UI
-  over all metadata, available during build / modify / results.
+The JS mirrors § 2: everything filterable is a **channel**. To keep this clean
+(no bolting onto the store), a **pure channel-model layer** sits below the store,
+panel, and viewer-adapter — a single place that answers "what channels does this
+atom / this structure have?".
+
+**Layers (each depends only on the one below):**
+
+| Layer | Module | Owns |
+|---|---|---|
+| L1 pure model | **`lib/workspace/_atom-channels.js`** (new) | `atomChannels(atom)`, `channelKinds(atoms)` — pure functions, **no DOM, no store, no HTTP**; the JS mirror of Python `Structure.channels()` |
+| L2 store | `_selection-store-impl.js` | holds atoms + filter drafts; `knownChannels()` (via L1); `_filterToRule` translates a draft → server rule |
+| L3 UI | `selection-panel.js` (+ viewer-adapter) | renders the filter over `knownChannels()`; overlays colour by channel |
+| server | `/api/selection/*` | supplies per-atom channels + evaluates rules |
+
+**The channel model (L1):** an atom's channels unify its element, residue, each
+tag/region, each flag (`frozen`), and each `value` channel:
+
+```js
+atomChannels(atom) -> { element:{kind:"category",value:"C"},
+                        residue:{kind:"category",value:"ALA"},
+                        "L-electrode":{kind:"tag"}, frozen:{kind:"flag"},
+                        charge:{kind:"value",value:-1.0}, ... }
+channelKinds(atoms) -> [{name,kind}]   // every filterable channel present
+```
+
+**Filter contract (L2):** filter drafts generalize from the current
+`by_element`/`by_index`/`by_label` into a **uniform channel filter** —
+`tag`/`flag` → membership, `category` → equals, `value` → a range predicate
+(`>`, `<`, range). `knownChannels()` enumerates all filterable channels (so the
+UI no longer special-cases regions-vs-frozen). Translation to server rules
+stays in `_filterToRule`; tag/flag → `by_region`, value → a new `by_value` rule
+(needs server support).
+
+**Back-compat + boundaries:** the existing `by_element`/`by_index`/`by_label`
+drafts keep working (they map onto the generalized model); the store stays the
+single source of truth (§ 6, workspace-guide); value-channel filtering needs the
+server to (a) include value channels in `/api/selection/atoms` and (b) resolve a
+`by_value` rule — that server slice is called out, not hidden.
+
+**Delivered incrementally (layered, node-tested):** (4a) the L1 pure module +
+node tests; (4b) store `knownChannels` + generalized `_filterToRule`; (4c) panel
+UI; (4d) server value-channel payload + `by_value`. Each is testable on its own.
 
 ---
 
@@ -227,7 +262,11 @@ This section extends `workspace-contract.md` § 4 (persistence) + `save-flow.md`
    channels); wired into `siesta/input.py` (no-op when no registered channels);
    built-in frozen/region emission untouched. tests/test_annotations_fdf.py;
    335 fdf tests unchanged.
-4. **JS unified `Atom` + channel filter** — store carries channels; filter by any.
+4. **JS unified `Atom` + channel filter** — layered (§5). **4a SHIPPED
+   (2026-07-01):** pure L1 channel model `lib/workspace/_atom-channels.js`
+   (atomChannels/channelKinds; browser global + node export; node-unit-tested,
+   no browser).  4b store `knownChannels` + generalized `_filterToRule`; 4c
+   panel UI; 4d server value-channel payload + `by_value`.
 5. **Fused module + migrate ALL molview tabs** — embed mounts viewer+panel+
    adapter with the § 6 `mode`/`persistence` args; **every** molview-embedding
    tab moves to it (selection always mounted): Modify/Molbuilder =
