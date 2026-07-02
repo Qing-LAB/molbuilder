@@ -46,15 +46,30 @@ stream. Three channel **kinds** cover current + foreseeable needs:
 | `value` | name → scalar per atom (sparse map idx→value) | a per-atom number/enum | `charge`, `spin`, `basis_override`, `constraint` |
 
 Each channel also carries light **presentation + emit hints**:
-`{ kind, data, color?, fdf?: <emit-strategy id> }`.
+`{ kind, data, color?, fdf?: <emit-strategy id> }`. (`color?` is a *proposed*
+centralization — region colors today live JS-side in
+`region-label-definitions.js` / `selection-panel.js`, not in the model; the
+design pulls them into the channel so viewer + panel share one source.)
 
 **Built-ins (backward-compatible):**
-- `regions` → **`tag`** channels (one namespace; the existing labels).
+- **each region label → one `tag` channel** (channel name = the label, e.g.
+  `L-electrode`); the registry is `{L-electrode: tag, device: tag, …}`.
 - `frozen_atoms` → a **`flag`** channel named `frozen`.
 
 `Structure.regions` and `Structure.frozen_atoms` remain as **convenience
 accessors backed by the annotations layer** — existing callers keep working;
 they're just views over channels now.
+
+### 2.1 Index stability (channels remap on structure edits)
+
+Channels are **keyed by atom index**, so any structure mutation (add / delete
+atom) MUST remap every channel or metadata silently corrupts (the same hazard
+`selection_remap` guards for the selection). This already exists for the two
+built-ins — `modify.py::remap_frozen_and_regions(old_to_new)` — and the
+annotations layer **generalizes it to iterate all channels** (drop indices that
+vanished, translate the rest through `old_to_new`; `value` channels remap their
+key set). Every modify op that returns a `selection_remap` must also carry the
+channel remap. This is a load-bearing correctness requirement, not an add-on.
 
 **Structure API (proposed):**
 ```python
@@ -70,12 +85,14 @@ struct.atom_annotations(i) -> dict       # everything on atom i (for the UI/filt
 
 ## 3. Persistence (`.molstruct.json` schema v4)
 
-Extend the sidecar: add **`annotations: {name: {kind, data, color?, fdf?}}`**.
-Keep writing `regions` + `frozen_atoms` for one release (v4 reader maps a v3
-file's `regions`/`frozen_atoms` into channels; v4 writer emits both `annotations`
-AND the legacy fields until consumers migrate). Register the v4 shape in
-`data-vocabulary.md`. Atomic-write + label-propagation rules (save-flow §4)
-apply per-channel.
+Extend the sidecar: add **`annotations: {name: {kind, data, color?, fdf?}}`**
+**alongside** the fields it already carries (`regions`, `frozen_atoms`,
+`structure_hash`, `cell`, `pbc`) — purely additive. Keep writing `regions` +
+`frozen_atoms` for one release (v4 reader maps a v3 file's `regions`/
+`frozen_atoms` into channels; v4 writer emits both `annotations` AND the legacy
+fields until consumers migrate). Bump `SCHEMA_VERSION` 3 → 4, register the v4
+shape in `data-vocabulary.md`, and keep the atomic-write + label-propagation
+rules (save-flow §4) per-channel.
 
 ---
 
@@ -84,11 +101,14 @@ apply per-channel.
 The fdf emitter stops special-casing `frozen`/`regions` and instead **iterates
 channels**, dispatching by kind + a per-channel emit strategy:
 
-| Channel | Emits |
+| Channel (by emit-strategy) | Emits |
 |---|---|
-| `frozen` (flag) | `%block Geometry.Constraints` (1-based, as today) |
-| region `tag`s | transport/electrode blocks (`TS.Atoms`, electrode labels) |
-| future `value` (e.g. `charge`) | per-atom directives when a strategy is registered |
+| `frozen` flag → `constraints` strategy | `%block Geometry.Constraints` (1-based, as today) — SIESTA fdf |
+| tag with `transport` strategy (region labels `L-electrode`/`device`/…) | transport/electrode blocks (`TS.Atoms`, electrode labels) — transport fdf |
+| future `value` (e.g. `charge`, `initspin`) | per-atom directives when a strategy is registered |
+
+A tag/flag/value channel with **no** emit-strategy is carried but not emitted —
+so a generic user tag never accidentally becomes an electrode block.
 
 A channel with no registered strategy is **carried but not emitted** (and the
 validator can warn "channel X present, no fdf consumer"). This is the extension
@@ -130,7 +150,8 @@ trajectory / spectra inspectors):
 
 0. **This design** — approve.
 1. **Structure annotations layer** (Python) — channels + `regions`/`frozen_atoms`
-   as backed accessors; full API compat; unit tests.
+   as backed accessors; generalize `remap_frozen_and_regions` → all-channel
+   remap (§2.1); full API compat; unit tests (incl. remap on add/delete).
 2. **Sidecar v4** — `annotations` + v3 back-read + dual-write; tests + data-vocabulary.
 3. **fdf channel-driven emission** — frozen/region via channels + strategy
    registry; the existing siesta/transport fdf tests are the net.
@@ -143,6 +164,8 @@ trajectory / spectra inspectors):
    `sidecar-contract.md`, `engines/siesta.md`; full E2E.
 
 **Guardrails:** `Structure` is the lingua franca — keep back-compat accessors so
-consumers don't break mid-migration; the selection store stays single-source
-(no duplicate state); dual-write the sidecar until readers migrate; each phase
-gated by the relevant test suite before the next.
+consumers don't break mid-migration; **channels remap on every add/delete**
+(generalize `modify.py::remap_frozen_and_regions` to all channels — §2.1, a
+correctness must); the selection store stays single-source (no duplicate state);
+dual-write the sidecar until readers migrate; a channel with no fdf strategy is
+carried-not-emitted; each phase gated by the relevant test suite before the next.
