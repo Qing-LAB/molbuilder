@@ -82,6 +82,9 @@ _L1_MODULES = {
 _L2_MODULES = {
     "peptide", "nucleic", "smiles", "pubchem",
     "modify", "validation",
+    "workingcopy_structure",   # structure+sidecar codec for the workingcopy
+                               # core (reuses structure L1 + sidecars L2)
+
     "builders",          # backends/* package
     "backends",          # back-compat shim re-exporting builders.backends
     "siesta", "pyscf",   # script generators
