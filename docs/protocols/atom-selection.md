@@ -14,6 +14,8 @@ file-selection model).  This doc covers **atom selection**.
 > (2026-05-20).  Server-side (`/api/selection/*`) is documented in
 > `molbuilder/web/blueprints/selection.py`.
 
+**New to it?** Start with the plain-language [`atom-selection-guide.md`](../atom-selection-guide.md) — the developer on-ramp (the one-store/three-consumers model, how to wire the panel + viewer-adapter, gotchas).
+
 ## 1. Modules + responsibilities
 
 | File | Layer | Responsibility | Public API |

@@ -108,6 +108,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`structure-guide.md`](structure-guide.md) | Developer guide — client-side structure build+save (the load gate, Source panels, save+sidecar, gotchas); companion to `protocols/save-flow.md` + `engines/builders.md` |
 | [`runtime-registry-guide.md`](runtime-registry-guide.md) | Developer guide — the module registry (`register`/`whenReady` vs polling, gotchas); plain-language companion to `protocols/runtime-registry.md` |
 | [`form-schema-guide.md`](form-schema-guide.md) | Developer guide — schema-driven Build forms (dataclass→schema→render→collect round-trip, field kinds, the dataclass-is-truth rule); the only doc dedicated to `lib/form-schema.js` |
+| [`atom-selection-guide.md`](atom-selection-guide.md) | Developer guide — atom selection (one store, three consumers: panel + viewer-adapter + measurements; how to wire it, gotchas); companion to `protocols/atom-selection.md` |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 
