@@ -145,10 +145,10 @@ Two rules a consumer/maintainer should know:
   directory-enter and the manual Refresh control (no `setInterval`,
   no visibility timer).
 
-This panel is part of the checkpoint subsystem; its full design + the safety
-contract live in **`protocols/run-checkpoints.md` §6** (UI integration) — the
-authoritative source. (Data-safety note: restore is verify-before-mutate; see
-run-checkpoints.md §4.6.)
+This panel is part of the checkpoint subsystem. Start with the plain-language
+**[`checkpoints-guide.md`](checkpoints-guide.md)** (mental model + CLI/API/UI +
+safety rules); the full design + safety contract are in
+`protocols/run-checkpoints.md` §6 (UI) / §4.6 (verify-before-mutate restore).
 
 ## 5. Common gotchas / anti-patterns
 
