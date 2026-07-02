@@ -87,41 +87,61 @@ copy + the all-channel index remap (§2.1).
 
 ---
 
-## 3. Persistence (`.molstruct.json` schema v4)
+## 3. Data-model persistence (engine-agnostic, round-trippable)
 
-Extend the sidecar: add **`annotations: {name: {kind, data, color?, fdf?}}`**
-**alongside** the fields it already carries (`regions`, `frozen_atoms`,
-`structure_hash`, `cell`, `pbc`) — purely additive. Keep writing `regions` +
-`frozen_atoms` for one release (v4 reader maps a v3 file's `regions`/
-`frozen_atoms` into channels; v4 writer emits both `annotations` AND the legacy
-fields until consumers migrate). Bump `SCHEMA_VERSION` 3 → 4, register the v4
-shape in `data-vocabulary.md`, and keep the atomic-write + label-propagation
-rules (save-flow §4) per-channel.
+The annotation channels are the molview/selector **DATA MODEL**. They are
+persisted **identically wherever a structure is saved** — engine-agnostic, the
+same shape everywhere, so a saved structure round-trips its full metadata:
+
+- **`.molstruct.json` sidecar (schema v4)** — the primary sidecar record.
+  Add `annotations: {name: {kind, data, color?, fdf?}}` **alongside** the
+  existing `regions`/`frozen_atoms`/`structure_hash`/`cell`/`pbc` (additive).
+  Dual-write regions/frozen for one release; v4 reader maps a v3 file's
+  regions/frozen; bump `SCHEMA_VERSION` 3→4; register in `data-vocabulary.md`;
+  keep atomic-write + label-propagation (save-flow §4) per-channel. **(Phase 2,
+  shipped.)**
+- **The `.fdf` / `.py` ATOM-METADATA reserved comment block** — the *same* data
+  embedded in the generated script's comment area (`script-contract.md` §4;
+  `script_emit.emit_atom_metadata` writes it, `apply_inbody_atom_metadata` reads
+  it back). Today it carries regions + frozen; extending it to carry the new
+  annotation channels is **part of persistence** and belongs here — it is the
+  script's copy of the data model, engine-agnostic (a PySCF script would carry
+  the identical block). **(Follow-up within the persistence scope.)**
+
+This is **data**, not engine setup. It says nothing about how a simulation runs;
+it just records what the user labeled. See § 4 for the separate concern.
 
 ---
 
-## 4. fdf / setup-script flow (channel emit-strategy registry)
+## 4. Engine parameter setup (extraction into the engine's required input)
 
-**Additive, not a rewrite.** The two built-ins keep their existing, Sol-
-validated emission untouched — they ARE the built-in strategies:
+**This is a DIFFERENT concern from § 3 — do not conflate them.** § 3 *persists*
+the data model (engine-agnostic, round-trip). § 4 *reads* that data model and
+**translates the relevant parts into the input blocks the engine REQUIRES** to
+run a correct simulation. This is dictated by the engine's physics, is **one-way**
+(data model → engine input), and is **not** how the data is stored.
 
-| Built-in channel | Emits (unchanged) |
-|---|---|
-| `frozen` flag | `%block Geometry.Constraints` (1-based) — `siesta/input.py` |
-| region tags (`L-electrode`/`device`/…) | transport/electrode blocks (`TS.Atoms`, electrode labels) — `transport/transiesta.py` |
+The two built-in translations (keep their existing, Sol-validated code):
 
-On top, a **strategy registry** lets **extensible** channels emit: a channel in
-`Structure.annotations` may carry an `fdf` = `<strategy-id>`; a registered
-strategy `(channel, struct) -> fdf lines` is invoked during fdf assembly. A
-channel with **no** registered strategy is **carried but not emitted** (a
-generic user tag never becomes an electrode block; the validator may warn
-"channel X present, no fdf consumer").
+| Metadatum (from § 3) | Engine block it's translated INTO | Why the engine needs it |
+|---|---|---|
+| `frozen` | SIESTA `%block Geometry.Constraints` | tells the relaxer which atoms not to move — load-bearing for correctness (e.g. electrode atoms fixed so the self-energy / lead coupling is right) |
+| region tags | transport/electrode blocks (`TS.Atoms`, …) | defines the device/lead partition the NEGF solver requires |
 
-This is the extension point — new metadata (e.g. a `charge`/`initspin` value
-channel) → register one strategy → it emits, **no emitter rewrite and no risk
-to the proven frozen/region paths**. The same registry serves other setup
-scripts (PySCF, transport) later. (A future cleanup MAY migrate the two
-built-ins into the registry once it's battle-tested; not required now.)
+**The same `frozen` datum therefore plays two roles**: (a) it is *persisted* as
+data in ATOM-METADATA + the sidecar (§ 3), AND (b) it is *translated* into
+`Geometry.Constraints` as an engine parameter (§ 4). Same source, two distinct
+outputs — persistence vs simulation setup.
+
+**Extension point (additive).** A **strategy registry** lets *new* metadata
+become engine parameters without touching the proven built-ins: a channel in
+`Structure.annotations` may carry `fdf = "<strategy-id>"`; a registered strategy
+`(channel, struct) → engine lines` is invoked during assembly (e.g. a future
+`initspin` value channel → `%block DM.InitSpin`). A channel with **no** strategy
+is **not translated** — it still *persists* via § 3; it simply isn't a
+simulation parameter (the validator may warn "channel present, no engine
+consumer"). No emitter rewrite; no risk to frozen/region. The same registry
+serves PySCF / transport setup later.
 
 ---
 
