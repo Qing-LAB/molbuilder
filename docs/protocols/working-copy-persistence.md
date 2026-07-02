@@ -203,7 +203,8 @@ target** (new source + hash, §9.5) → clears scratch (§9.3). `onMismatch` is
 1. Write a durable project file **outside** `commit()`.
 2. Assume the durable file is unchanged since load — always go through the gate.
 3. Delete a scratch record behind the user — removal happens only via commit
-   success, session-end, or explicit cleanup (§10).
+   success, session-end (authenticated mode only), or explicit cleanup
+   (§10, §13.5).
 4. Reach around the codec to make the core format-aware.
 
 If those rules hold, the application inherits every guarantee in §8 for free; if
