@@ -207,7 +207,7 @@ discardOrphan(record) / cleanAll(project)
 ```
 
 `commit` runs the gate → writes → **re-anchors the working copy to the committed
-target** (new source + hash, §9.5) → clears scratch (§9.3). `onMismatch` is
+target** (new source + hash, §9.4) → clears scratch (§9.3). `onMismatch` is
 `refuse` (MVP) or `choose` (keep / discard-stale / reload — the app's UX).
 
 ---
