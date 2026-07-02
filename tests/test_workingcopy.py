@@ -157,3 +157,53 @@ def test_clean_all_wipes_scratch(project):
     _open(project, "b").update({"body": "2", "tags": []})
     assert wc.clean_all(project) == 2
     assert wc.clean_all(project) == 0
+
+
+# --------------------------- §9.3 partial failure -------------------------- #
+def test_partial_commit_failure_retains_scratch_and_source(project, monkeypatch):
+    w = _open(project)
+    w.update({"body": "v1\n", "tags": ["t"]})
+    scratch = w._scratch_file()
+    calls = {"n": 0}
+    real = wc._atomic_write_bytes
+
+    def flaky(path, data):
+        calls["n"] += 1
+        if calls["n"] == 2:                # fail the 2nd file (the identity .txt)
+            raise OSError("simulated disk-full")
+        return real(path, data)
+
+    monkeypatch.setattr(wc, "_atomic_write_bytes", flaky)
+    with pytest.raises(OSError):
+        w.commit(project / "mol.txt")
+    # identity file (written last) unchanged; scratch retained for retry.
+    assert (project / "mol.txt").read_text() == "ATOM 1\nATOM 2\n"
+    assert scratch.exists()
+    # retry (unpatched) succeeds; gate passes because the source was untouched.
+    monkeypatch.setattr(wc, "_atomic_write_bytes", real)
+    assert w.commit(project / "mol.txt").ok
+    assert (project / "mol.txt").read_text() == "v1\n"
+    assert not scratch.exists()
+
+
+# --------------------------- #5 gate normalizes path form ------------------ #
+def test_gate_fires_across_path_forms(project):
+    (project / "sub").mkdir()
+    w = _open(project)                     # opens the resolved mol.txt
+    w.update({"body": "mine\n", "tags": []})
+    (project / "mol.txt").write_text("CHANGED\n")     # source moved underneath
+    weird = project / "sub" / ".." / "mol.txt"        # same file, different form
+    r = w.commit(weird)
+    assert not r.ok and r.reason == "mismatch", "gate skipped on a path variant"
+
+
+# --------------------------- #3 sourceless scratch is unique --------------- #
+def test_two_new_copies_have_distinct_scratch(project):
+    a = wc.WorkingCopy.new(CODEC, session="s", project_dir=project,
+                           data={"body": "a", "tags": []})
+    b = wc.WorkingCopy.new(CODEC, session="s", project_dir=project,
+                           data={"body": "b", "tags": []})
+    a.update(a.data)
+    b.update(b.data)
+    assert a._scratch_file() != b._scratch_file()
+    assert a._scratch_file().exists() and b._scratch_file().exists()

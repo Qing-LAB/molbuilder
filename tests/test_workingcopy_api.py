@@ -91,3 +91,25 @@ def test_orphans_and_clean(client_project):
     # clean wipes it.
     assert _json(client.post("/api/workingcopy/clean",
                              json={"path": xyz}))["removed"] == 1
+
+
+def test_commit_without_source_hash_is_refused(client_project):
+    client, proj = client_project
+    xyz = str(proj / "mol.xyz")
+    r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
+    blob = r["data"]
+    blob["sidecar"]["frozen_atoms"] = [0]
+    # commit back to the source WITHOUT source_hash -> refused (gate unskippable)
+    resp = client.post("/api/workingcopy/commit", json={"source": xyz, "data": blob})
+    assert resp.status_code == 400
+    assert not (proj / "mol.molstruct.json").exists()
+
+
+def test_malformed_body_returns_400(client_project):
+    client, proj = client_project
+    xyz = str(proj / "mol.xyz")
+    r = _json(client.post("/api/workingcopy/open", json={"path": xyz}))
+    resp = client.post("/api/workingcopy/update",
+                       json={"source": xyz, "source_hash": r["source_hash"],
+                             "data": {"garbage": True}})   # no xyz/sidecar
+    assert resp.status_code == 400

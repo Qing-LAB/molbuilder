@@ -95,3 +95,18 @@ def test_roundtrip_sidecar_applies_back_via_load(project):
     assert w.commit(project / "mol.xyz").ok
     w2 = _open(project, session="s2")
     assert w2.data.regions == {"L-electrode": [0, 1]}
+
+
+def test_structure_codec_second_save_reanchors(project):
+    # After the first commit re-anchors to the new .xyz hash, a second save must
+    # pass the gate (sha256_of_file(target) == the structure_hash just written).
+    w = _open(project)
+    s = w.data
+    s.frozen_atoms = [1]
+    w.update(s)
+    assert w.commit(project / "mol.xyz").ok
+    s.frozen_atoms = [1, 2]
+    w.update(s)
+    r = w.commit(project / "mol.xyz")
+    assert r.ok, "StructureCodec re-anchor failed on 2nd save"
+    assert json.loads((project / "mol.molstruct.json").read_text())["frozen_atoms"] == [1, 2]

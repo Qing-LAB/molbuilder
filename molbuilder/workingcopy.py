@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Protocol, Sequence, Tuple
@@ -96,13 +97,20 @@ class WorkingCopy:
     source: Optional[Path]
     source_hash: Optional[str]
     dirty: bool = False
+    new_id: Optional[str] = None   # unique scratch key for a sourceless copy
 
     # ---- constructors (§6) ------------------------------------------- #
     @classmethod
     def open(cls, source_path, codec: Codec, *, session: str,
              project_dir) -> "WorkingCopy":
-        """Load from a source; record its hash.  No scratch write yet (§6)."""
-        src = Path(source_path)
+        """Load from a source; record its hash.  No scratch write yet (§6).
+
+        The source path is resolved (absolute, symlinks collapsed) so the
+        commit gate compares like with like — a later commit passing a
+        relative/other form of the SAME file must not slip past the gate as if
+        it were a save-as.
+        """
+        src = Path(source_path).resolve()
         return cls(codec=codec, session=session, project_dir=Path(project_dir),
                    data=codec.load(src), source=src,
                    source_hash=codec.hash_source(src), dirty=False)
@@ -110,9 +118,14 @@ class WorkingCopy:
     @classmethod
     def new(cls, codec: Codec, *, session: str, project_dir,
             data: Any = None) -> "WorkingCopy":
-        """A freshly-built artifact with no source (S6); first commit = save-as."""
+        """A freshly-built artifact with no source (S6); first commit = save-as.
+
+        Gets a unique ``new_id`` so two sourceless copies in one session don't
+        collide on the same scratch file.
+        """
         return cls(codec=codec, session=session, project_dir=Path(project_dir),
-                   data=data, source=None, source_hash=None, dirty=False)
+                   data=data, source=None, source_hash=None, dirty=False,
+                   new_id=uuid.uuid4().hex[:12])
 
     @classmethod
     def recover(cls, record: ScratchRecord, codec: Codec, *,
@@ -121,7 +134,7 @@ class WorkingCopy:
         return cls(codec=codec, session=record.session,
                    project_dir=Path(project_dir),
                    data=codec.from_scratch(record.blob),
-                   source=Path(record.source) if record.source else None,
+                   source=Path(record.source).resolve() if record.source else None,
                    source_hash=record.source_hash, dirty=True)
 
     # ---- state ------------------------------------------------------- #
@@ -129,7 +142,7 @@ class WorkingCopy:
         return self.dirty
 
     def _stem(self) -> str:
-        return self.source.stem if self.source else f"new-{self.session}"
+        return self.source.stem if self.source else f"new-{self.new_id or self.session}"
 
     def _scratch_file(self) -> Path:
         return _scratch_path(self.project_dir, self._stem(), self.session)
@@ -162,8 +175,8 @@ class WorkingCopy:
         result) or ``"force"`` (proceed anyway — the app made an explicit
         choice).
         """
-        target = Path(target_path)
-        old_scratch = self._scratch_file()          # capture BEFORE re-anchor
+        target = Path(target_path).resolve()         # normalize so the gate
+        old_scratch = self._scratch_file()           # compares like with like
 
         # § 9.1 gate: source changed on disk since load?
         if (self.source is not None and self.source_hash is not None

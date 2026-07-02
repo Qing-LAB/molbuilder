@@ -84,7 +84,10 @@ def wc_update():
         src = _resolve(source)
     except _PickerError as e:
         return _bad(e.message, e.status)
-    data = _CODEC.from_scratch(blob)
+    try:
+        data = _CODEC.from_scratch(blob)
+    except Exception as e:  # noqa: BLE001 -- malformed client body -> 400
+        return _bad(f"malformed working-copy body: {e}", 400)
     w = wc.WorkingCopy(codec=_CODEC, session=_session(),
                        project_dir=_project_dir(src), data=data, source=src,
                        source_hash=b.get("source_hash"))
@@ -103,10 +106,20 @@ def wc_commit():
         tgt = _resolve(b["target"]) if b.get("target") else src
     except _PickerError as e:
         return _bad(e.message, e.status)
-    data = _CODEC.from_scratch(blob)
+    source_hash = b.get("source_hash")
+    # § 8.2/8.3: a commit BACK TO THE SOURCE must carry the source hash, so the
+    # changed-underneath gate can never be silently skipped.  A save-as to a
+    # different target has no source to gate.
+    if tgt == src and not source_hash:
+        return _bad("commit to the source requires 'source_hash' "
+                    "(the changed-underneath gate must not be skipped)")
+    try:
+        data = _CODEC.from_scratch(blob)
+    except Exception as e:  # noqa: BLE001 -- malformed client body -> 400
+        return _bad(f"malformed working-copy body: {e}", 400)
     w = wc.WorkingCopy(codec=_CODEC, session=_session(),
                        project_dir=_project_dir(src), data=data, source=src,
-                       source_hash=b.get("source_hash"))
+                       source_hash=source_hash)
     r = w.commit(tgt, on_mismatch=b.get("on_mismatch", "refuse"))
     if r.ok:
         return jsonify({"ok": True, "source": str(r.target),
@@ -157,12 +170,15 @@ def wc_recover():
         sp = _resolve(scratch)
     except _PickerError as e:
         return _bad(e.message, e.status)
-    env = persist.read_json(sp)
-    rec = wc.ScratchRecord(path=sp, source=env.get("source"),
-                           source_hash=env.get("source_hash"),
-                           session=env.get("session"), ts=env.get("ts"),
-                           blob=env.get("blob"))
-    w = wc.WorkingCopy.recover(rec, _CODEC, project_dir=sp.parent.parent)
+    try:
+        env = persist.read_json(sp)
+        rec = wc.ScratchRecord(path=sp, source=env.get("source"),
+                               source_hash=env.get("source_hash"),
+                               session=env.get("session"), ts=env.get("ts"),
+                               blob=env.get("blob"))
+        w = wc.WorkingCopy.recover(rec, _CODEC, project_dir=sp.parent.parent)
+    except Exception as e:  # noqa: BLE001 -- corrupt/malformed scratch -> 400
+        return _bad(f"could not recover scratch record: {e}", 400)
     return jsonify({"ok": True,
                     "source": str(w.source) if w.source else None,
                     "source_hash": w.source_hash,
