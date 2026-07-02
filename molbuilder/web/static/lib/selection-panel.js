@@ -49,10 +49,16 @@
     // boolean column on the server, but rendered in the panel as a
     // tag labelled FROZEN_TAG_LABEL.  These two strings have to stay
     // paired: the tag's × button has to translate the display label
-    // back to the server-side target.  Naming the pair once here
-    // (instead of repeating both literals at the read and write
-    // sites) keeps a future rename from silently breaking removal.
-    const FROZEN_TAG_LABEL = "frozen";
+    // back to the server-side target.
+    //
+    // Single source of truth: the frozen CHANNEL name lives in the L1
+    // channel model (atom-annotations.md § 5); alias it here so the panel
+    // and the model can never drift.  FROZEN_TARGET is the SERVER-side
+    // synthetic-region name (a different concern — the store↔engine
+    // boundary), so it stays defined here.
+    const FROZEN_TAG_LABEL =
+        (root.molbuilder.atomChannelModel
+         && root.molbuilder.atomChannelModel.FROZEN_CHANNEL) || "frozen";
     const FROZEN_TARGET    = "frozen_atoms";
 
     function mount(rootEl) {
