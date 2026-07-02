@@ -1,6 +1,6 @@
 # Unified atom annotations + fused viewer/selection — design
 
-**Status: PROPOSED (2026-07-01). Design-first; no code yet.** Authoritative for
+**Status: IN PROGRESS (2026-07-01). Phase 1 (Structure layer) SHIPPED; Phases 2-6 remain — see §7.** Authoritative for
 the work that (1) unifies per-atom metadata into one extensible model, (2) makes
 selection always-available + filterable by any metadata, and (3) fuses the
 MolViewer and atom-selection into one responsive component. Implement in the
@@ -71,15 +71,19 @@ vanished, translate the rest through `old_to_new`; `value` channels remap their
 key set). Every modify op that returns a `selection_remap` must also carry the
 channel remap. This is a load-bearing correctness requirement, not an add-on.
 
-**Structure API (proposed):**
+**Structure API (as shipped, Phase 1):**
 ```python
-struct.annotations                       # {name: Channel}
-struct.get_channel(name) -> Channel | None
-struct.set_tag(name, indices)            # + add_to_tag / remove
-struct.set_flag(name, indices)           # frozen = set_flag("frozen", …)
-struct.set_value(name, {idx: val})       # future scalars
+struct.annotations                       # {name: AtomChannel}  -- extensible extras
+struct.channels() -> {name: AtomChannel} # unified: regions(tag) + frozen(flag) + extras
+struct.get_channel(name) -> AtomChannel | None
 struct.atom_annotations(i) -> dict       # everything on atom i (for the UI/filter)
+struct.set_channel(name, AtomChannel(...))  # set an EXTENSIBLE channel; built-in
+                                            # names rejected -> edit .regions/.frozen_atoms
 ```
+Built-ins keep their existing storage (`.regions` / `.frozen_atoms`) and are
+*surfaced* as channels by `channels()`; extensible channels live in
+`.annotations`. Module helpers `copy_annotations` / `remap_annotations` handle
+copy + the all-channel index remap (§2.1).
 
 ---
 
