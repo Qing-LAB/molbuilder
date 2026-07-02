@@ -67,7 +67,7 @@ mirrored to scratch, committed to a durable file with a **source-hash gate** and
 | # | Scenario | Required behavior |
 |---|---|---|
 | S1 | Edit → reload the tab | working copy restored from scratch; no data lost |
-| S2 | Edit → walk away (no save) | durable files untouched; scratch retained until session-end (§13.5) — recoverable on return |
+| S2 | Edit → walk away (no save) | durable files untouched; scratch retained (until commit or cleanup, §13.5) — recoverable on return |
 | S3 | Explicit "Save" | the **only** moment durable files change |
 | S4 | Source changed on disk since load | commit **refuses** (or prompts) — never blind-overwrites |
 | S5 | Browser/server/OS crash mid-edit | scratch survives; user **explicitly** recovers or discards |
@@ -122,7 +122,7 @@ flowchart TD
 
 | Tier | What | Trigger | Lifetime |
 |---|---|---|---|
-| **Transient (this doc)** | working copy → scratch | auto/debounced on edit | until commit or session-end |
+| **Transient (this doc)** | working copy → scratch | auto/debounced on edit | until commit or cleanup (§13.5) |
 | **Durable** | project files (`.xyz`, `.json`, …) | explicit commit | permanent |
 
 Data flows *up*: edit → transient scratch → **commit** → durable file.
@@ -180,7 +180,8 @@ listOrphans(project)          -> [ScratchRecord] # sessions no longer live
 discardOrphan(record) / cleanAll(project)
 ```
 
-`commit` runs the gate → writes → clears scratch (§9.3). `onMismatch` is
+`commit` runs the gate → writes → **re-anchors the working copy to the committed
+target** (new source + hash, §9.5) → clears scratch (§9.3). `onMismatch` is
 `refuse` (MVP) or `choose` (keep / discard-stale / reload — the app's UX).
 
 ---
@@ -249,13 +250,23 @@ The **server-side scratch is the single source of truth** for the working copy.
 A consumer may keep a client-side cache for fast restore (the browser app uses
 `sessionStorage`); it is only a cache — the scratch wins on any divergence.
 
+### §9.5 Commit re-anchors the working copy (so a second save works)
+A successful commit rewrites the source (same-file) or writes a new target
+(save-as). If the working copy kept its *old* source hash, the **next** save
+would gate that stale hash against the file the previous commit just wrote — and
+wrongly refuse. So commit **re-anchors**: the working copy adopts the committed
+target as its new source and the hash of what was written. Continued editing +
+re-commit then behave exactly like a fresh `open` of the saved file.
+
 ---
 
 ## 10. Crash recovery (explicit, never silent) — S5
 
 A crash leaves a scratch record no automatic path can clear (its session is
-gone). `listOrphans` surfaces them (source, hash, age, still-matches-source?);
-the user `recover`s (adopt back, subject to the same commit gate) or `discard`s;
+gone). For **no-auth localhost, a routine server restart is the same situation** —
+the prior server session's scratch is now orphaned and surfaces here too.
+`listOrphans` surfaces them (source, hash, age, still-matches-source?); the user
+`recover`s (adopt back, subject to the same commit gate) or `discard`s;
 `cleanAll` wipes a project's scratch. The core **never** auto-deletes unsaved
 work and **never** auto-adopts stale work.
 
@@ -291,8 +302,11 @@ work and **never** auto-adopts stale work.
    **last** (`.json` metadata before `.xyz`), so a partial failure leaves the
    source unchanged and the retry gate still passes.
 4. **`onMismatch` default** — ship `refuse`, add `choose` as the enhancement.
-5. *(open — blocks S2 + cleanup)* **Define "session"** — a *server login*
-   (survives tab-close → walk-away work is recoverable; cleanup on logout/expiry)
-   vs a *browser tab* (close = new session → old scratch is a §10 orphan).
-   **Recommend server-login:** walking away should not silently destroy unsaved
-   work — a clean logout cleans, a crash leaves a recoverable orphan.
+5. **Session — RESOLVED: the *server-side* session, never the browser tab** (so
+   a tab reload/close never loses the working copy). Two run modes:
+   - **Authenticated:** the login session; session-end = logout/expiry → cleanup.
+   - **No-auth localhost (fully supported, the safer case):** a single implicit
+     local session (the server instance). There is **no automatic session-end**,
+     so scratch is cleaned **only** on commit or explicit cleanup (§10). A
+     routine `molbuilder serve` restart never discards unsaved work — the prior
+     scratch simply presents as recoverable on restart.
