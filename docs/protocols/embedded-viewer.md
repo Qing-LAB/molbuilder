@@ -9,6 +9,8 @@
 > [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
 > route table.
 
+**New to the viewer?** Start with the plain-language [`molviewer-guide.md`](../molviewer-guide.md) — the developer on-ramp (the embed/handle boundary, the API cheat-sheet, the rules, gotchas). This doc is the precise contract.
+
 `window.molbuilder.viewer.embed(host, opts) → handle` is molbuilder's
 **standard embeddable structure viewer**. Every tab and inspector
 that needs to show a 3-D molecular structure drops it into a host

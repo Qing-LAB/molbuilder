@@ -103,6 +103,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`workspace-guide.md`](workspace-guide.md) | Developer guide — the client-side workspace store (mental model, `ws.*` API, mount-restore rule, gotchas); plain-language companion to `protocols/workspace-contract.md` |
 | [`projects-sidebar-guide.md`](projects-sidebar-guide.md) | Developer guide — the projects sidebar for tab authors (`projects.*` API, `onChange` vs `onCommit`, gotchas); plain-language companion to `protocols/projects-sidebar.md` |
 | [`results-tab-guide.md`](results-tab-guide.md) | Developer guide — the Results tab & inspectors (dispatch, how to write an inspector, the state-machine invariants + refresh rules, gotchas); plain-language companion to `protocols/{inspector-registry,results-state-contract,results-tab}.md` |
+| [`molviewer-guide.md`](molviewer-guide.md) | Developer guide — the embedded 3D viewer (`viewer.embed`/handle boundary, API cheat-sheet, drive-via-handle rule, gotchas); plain-language companion to `protocols/embedded-viewer.md` |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 
