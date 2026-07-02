@@ -154,7 +154,7 @@ def test_emit_atom_metadata_with_regions_only():
     # Find the JSON body (skip the marker + format header).
     json_text = "\n".join(line for line in json_lines if line.startswith(("{", " ", "}", '"')))
     payload = json.loads(json_text)
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["regions"] == {"L-electrode": [0, 1, 2], "R-electrode": [10, 11]}
     assert "frozen_atoms" not in payload  # was empty
 
@@ -546,7 +546,7 @@ def test_extract_script_source_full_round_trip():
     assert any("preserve" in line for line in src["user_custom_lines"])
     assert src["provenance"] is not None
     assert src["provenance"]["generator-version"] == "molbuilder git test"
-    assert src["schema_version"] == 3
+    assert src["schema_version"] == 4
     assert src["notes"] == []
 
 
@@ -574,19 +574,21 @@ def test_extract_script_source_returns_dataclass_with_notes_list():
 
 
 def test_extract_script_source_notes_on_future_schema_version():
-    """``schema_version > 3`` loads + notes; doesn't fail."""
+    """A genuinely-future ``schema_version > 4`` loads + notes; doesn't fail.
+    (v4 is current-known now -- it added `annotations` additively; v5 is the
+    forward-compat case.)"""
     text = (
         "# === molbuilder atom-metadata BEGIN ===\n"
-        "# format: molstruct-json/v4\n"
-        '# {"schema_version": 4, "n_atoms_total": 3,\n'
+        "# format: molstruct-json/v5\n"
+        '# {"schema_version": 5, "n_atoms_total": 3,\n'
         '#  "regions": {"r": [0]}, "frozen_atoms": [0]}\n'
         "# === molbuilder atom-metadata END ===\n"
     )
     src = sc.extract_script_source(text)
-    assert src["schema_version"] == 4
+    assert src["schema_version"] == 5
     assert src["regions"] == {"r": [0]}
     assert src["frozen_atoms"] == [0]
-    assert any("schema_version 4" in n for n in src["notes"])
+    assert any("schema_version 5" in n for n in src["notes"])
 
 
 def test_extract_script_source_rejects_old_schema_version():

@@ -113,13 +113,15 @@ def _extract_script_source(text: str) -> Dict[str, Any]:
                     f"than v3; re-render the source script."
                 )
             else:
-                if sv > 3:
+                if sv > 4:
                     # Forward-compat: load with the current handler
                     # since v3+ promises additive keys.  Note the
-                    # drift so an audit can spot the mismatch.
+                    # drift so an audit can spot the mismatch.  (v3 + v4
+                    # are both current-known: v4 added `annotations`
+                    # additively -- atom-annotations.md § 3.)
                     notes.append(
                         f"atom-metadata schema_version {sv}; molbuilder "
-                        f"expects 3 — loading with current handler."
+                        f"expects 4 — loading with current handler."
                     )
                 raw_regions = atom_md.get("regions")
                 if isinstance(raw_regions, dict):

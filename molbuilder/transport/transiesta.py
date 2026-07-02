@@ -680,6 +680,7 @@ class TransiestaEngine:
         block = emit_atom_metadata(
             regions      = struct.regions or {},
             frozen_atoms = list(struct.frozen_atoms or []),
+            annotations  = dict(getattr(struct, "annotations", {}) or {}),
             n_atoms_total= struct.n_atoms,
         )
         if block:

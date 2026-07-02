@@ -214,25 +214,41 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
                        n_atoms_total: int,
                        created_by: str = "molbuilder",
                        created_at: Optional[str] = None,
-                       selection_rules: Optional[Dict[str, Any]] = None
+                       selection_rules: Optional[Dict[str, Any]] = None,
+                       annotations: Optional[Dict[str, Any]] = None
                        ) -> Optional[str]:
     """Emit the ATOM-METADATA block, or return ``None`` when there is
     nothing to emit.
 
-    Per the contract's emission rule, the block is emitted ONLY when
-    at least one of ``regions`` / ``frozen_atoms`` is non-empty.
-    Absence is the honest signal that this generation had no labels;
-    a downstream sidecar (.molstruct.json) may then still apply.
+    This is **data-model persistence** (atom-annotations.md § 3) — the
+    script's engine-agnostic, round-trippable copy of the per-atom data model,
+    the same shape as the ``.molstruct.json`` sidecar.  It is NOT engine setup
+    (frozen -> Geometry.Constraints etc. is a separate translation, § 4).
+
+    Per the contract's emission rule, the block is emitted ONLY when at least
+    one of ``regions`` / ``frozen_atoms`` / ``annotations`` is non-empty.
+    Absence is the honest signal that this generation had no labels.
 
     Index convention: 0-based throughout the JSON payload, matching
-    ``molstruct_json`` schema v3 and the in-Python ``Structure`` model.
+    ``molstruct_json`` schema v4 and the in-Python ``Structure`` model.
+    ``annotations`` are the extensible channels (schema v4), serialised the
+    same way the sidecar serialises them.
     """
     regions = regions or {}
     frozen_atoms = frozen_atoms or []
-    if not regions and not frozen_atoms:
+    # Serialise extensible channels (AtomChannel -> JSON) exactly as the sidecar.
+    normed_annotations: Dict[str, Any] = {}
+    if annotations:
+        from molbuilder.structure import AtomChannel as _AtomChannel
+        for name, ch in annotations.items():
+            if isinstance(ch, _AtomChannel):
+                normed_annotations[name] = ch.to_json()
+            elif isinstance(ch, dict) and "kind" in ch:
+                normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
+    if not regions and not frozen_atoms and not normed_annotations:
         return None
     payload: Dict[str, Any] = {
-        "schema_version": 3,
+        "schema_version": 4,
         "n_atoms_total":  int(n_atoms_total),
     }
     if regions:
@@ -244,11 +260,13 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
         payload["frozen_atoms"] = sorted(set(int(i) for i in frozen_atoms))
     if selection_rules:
         payload["selection_rules"] = selection_rules
+    if normed_annotations:
+        payload["annotations"] = normed_annotations
     payload["created_by"] = created_by
     if created_at:
         payload["created_at"] = created_at
     out: List[str] = [begin_marker(BLOCK_ATOM_METADATA)]
-    out.append("# format: molstruct-json/v3")
+    out.append("# format: molstruct-json/v4")
     body = json.dumps(payload, indent=2, ensure_ascii=False)
     for line in body.splitlines():
         out.append(f"# {line}")
@@ -305,7 +323,8 @@ def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
         return False
     regions = payload.get("regions") or {}
     frozen = payload.get("frozen_atoms") or []
-    if not regions and not frozen:
+    annotations = payload.get("annotations") or {}
+    if not regions and not frozen and not annotations:
         return False
     if regions:
         # Normalise: sort + dedupe per region; coerce to int.
@@ -315,6 +334,11 @@ def apply_inbody_atom_metadata(struct: Any, text: str) -> bool:
         }
     if frozen:
         struct.frozen_atoms = sorted({int(i) for i in frozen})
+    if annotations:
+        # Extensible channels (v4) -> struct.annotations, same round-trip as
+        # the sidecar (§ 3 data-model persistence).
+        from molbuilder.structure import annotations_from_json
+        struct.annotations = annotations_from_json(annotations)
     return True
 
 

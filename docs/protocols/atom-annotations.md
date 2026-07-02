@@ -103,10 +103,10 @@ same shape everywhere, so a saved structure round-trips its full metadata:
 - **The `.fdf` / `.py` ATOM-METADATA reserved comment block** — the *same* data
   embedded in the generated script's comment area (`script-contract.md` §4;
   `script_emit.emit_atom_metadata` writes it, `apply_inbody_atom_metadata` reads
-  it back). Today it carries regions + frozen; extending it to carry the new
-  annotation channels is **part of persistence** and belongs here — it is the
-  script's copy of the data model, engine-agnostic (a PySCF script would carry
-  the identical block). **(Follow-up within the persistence scope.)**
+  it back). Carries regions + frozen + **the annotation channels** — the
+  script's engine-agnostic copy of the data model (a PySCF script carries the
+  identical block); block bumped to v4, round-trips via emit/apply, wired into
+  the siesta/pyscf/transport emitters. **(SHIPPED 2026-07-01.)**
 
 This is **data**, not engine setup. It says nothing about how a simulation runs;
 it just records what the user labeled. See § 4 for the separate concern.
