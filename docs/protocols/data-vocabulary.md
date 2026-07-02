@@ -106,6 +106,46 @@ helper `lib/workspace/_atom-index.js` (`toDisplay` / `fromDisplay` /
 standalone embeds (`mol-viewer-embed.js`) inline `+ 1` at the label with a
 reference back to this section.
 
+### § 3.2 Atom index provenance & translation boundaries
+
+The atom index is a **safety-critical identity**: the atom a user acts on in
+the UI must be the same physical atom (element + position) in the generated
+engine input. This maps the whole chain — where the identity is *defined*, how
+it's *carried*, and the **only** points where it is *translated*.
+
+**DEFINED (the fact).** The canonical identity is the **0-based index into
+`Structure`** (`elements[i]` / `positions[i]`), fixed by the **atom order in the
+source file** when parsed (`.xyz`/`.pdb`/… → `Structure`). Nothing invents an
+index; that order *is* the identity.
+
+**CARRIED (0-based, unchanged).** The identity travels 0-based and untranslated
+through: the JS selection store (`atom.index`), `/api/selection/*` rules, the
+`.molstruct.json` sidecar + the `.fdf`/`.py` ATOM-METADATA block, and all
+metadata (`frozen_atoms`, `regions`, `annotations`). These indices are only
+valid against the structure they were computed on — **pinned by
+`structure_hash`**; a mismatch must refuse, not mis-apply.
+
+**TRANSLATED (the only three boundaries).**
+
+| Boundary | Direction | Single API |
+|---|---|---|
+| internal → **display** | 0-based → 1-based | `_atom-index.js` `toDisplay` (frontend) |
+| user input → internal | 1-based → 0-based | `_atom-index.js` `fromDisplay` / `shiftExpression` (frontend) |
+| internal → **engine** | 0-based → engine convention | **`engine_atom_index.py`** (backend, engine-facing layer) |
+
+`engine_atom_index.py` is the *sole* place a 0-based identity becomes an engine
+atom number, per-engine: `siesta_atom_index` (SIESTA `.fdf`, **1-based**),
+`geometric_atom_index` (geomeTRIC `$freeze`, **1-based**), `pyscf_atom_index`
+(PySCF `mol.atom`, **0-based**). No other code applies a bare `i+1`.
+
+**Load-bearing invariant.** Engine coordinate blocks emit atoms in **internal
+`Structure` order** (no reordering), so engine atom `siesta_atom_index(i)` is
+the coordinate line for internal atom `i`. The display convention is chosen so
+`toDisplay(i)` **equals** the engine atom number the user reads in the file
+(SIESTA `.fdf`, geomeTRIC `$freeze`) — bound by
+`test_engine_atom_index::test_frontend_display_matches_engine_atom_number`.
+End-to-end element+position tests bind the full user→engine round-trip.
+
 ---
 
 ## § 4 How to use this doc
