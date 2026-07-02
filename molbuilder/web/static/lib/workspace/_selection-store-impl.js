@@ -115,6 +115,14 @@
                 if (!expression) return null;
                 return { op: "by_index_range", expression: expression };
             }
+            case "by_residue": {
+                // Category channel (atom-annotations.md §5): comma-separated
+                // residue names -> the existing server ByResidueName rule.
+                const names = (f.value || "").split(",")
+                    .map((s) => s.trim()).filter(Boolean);
+                if (names.length === 0) return null;
+                return { op: "by_residue_name", names: names };
+            }
             case "by_label": {
                 const name = (f.value || "").trim();
                 if (!name) return null;

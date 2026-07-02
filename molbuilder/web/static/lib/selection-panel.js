@@ -20,6 +20,8 @@
           placeholder: "comma-separated, e.g. Au,C" },
         { kind: "by_index",   label: "By atom index",
           placeholder: "e.g. 0-3, 5, 9-10" },
+        { kind: "by_residue", label: "By residue",
+          placeholder: "comma-separated, e.g. ALA,DA" },
         { kind: "by_label",   label: "By label",
           placeholder: "L-electrode" },
     ];

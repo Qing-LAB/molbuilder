@@ -5369,3 +5369,31 @@ def test_kebab_visible_when_actions_apply(
         "File entry should show the kebab (View / Download / "
         "Rename / Move / Copy / Delete all available)."
     )
+
+
+def test_panel_by_residue_filter_selects_matching(
+        page, flask_server, water_xyz_file):
+    """Phase 4c: the 'By residue' filter flows kind=by_residue ->
+    server by_residue_name -> selection.  Water's atoms are all residue
+    'MOL': filtering by 'MOL' selects all three, a non-match selects none."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    page.evaluate("""() => {
+        const s = window.molbuilder.workspace.selection;
+        s.setFilters([{kind: "by_residue", value: "MOL"}]);
+        s.setCombinator("or");
+    }""")
+    _set_selection_mode(page, "filter")
+    page.wait_for_function(
+        "() => document.getElementById('selection-mode-filter').checked")
+    page.locator("#selection-apply-filter").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 3")
+    assert _get_selection(page) == [0, 1, 2]
+    # A non-matching residue name -> empty selection (rule reached the server).
+    page.evaluate("""() => window.molbuilder.workspace.selection.setFilters(
+        [{kind: "by_residue", value: "ZZZ"}])""")
+    page.locator("#selection-apply-filter").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 0")
