@@ -1,6 +1,6 @@
 # Browser-owned transient data & explicit commit — contract
 
-**Status: PROPOSED (2026-07-02).** Defines how data that lives *in the browser*
+**Status: ACCEPTED (2026-07-02).** Decisions in §8 are locked. Defines how data that lives *in the browser*
 — loaded from a project file and possibly edited by the user — is held
 transiently but persistently, and the single explicit point at which it may
 overwrite a durable project file.
@@ -68,7 +68,8 @@ Server-side transient data lives in a per-project scratch directory:
   the **source path** it was loaded from, the **source hash** at load, the
   session id, and a timestamp.
 - **Lifecycle.** Written/updated on edit (debounced, like the sessionStorage
-  snapshot); removed on successful commit; aged out / cleaned on session end.
+  snapshot); removed automatically **only** on successful commit or session-end;
+  crash-orphans removed via the explicit cleanup (§8.1) — never on a timer.
 
 ---
 
@@ -139,14 +140,38 @@ produced, so the generation gate is never bypassed.
 
 ---
 
-## 8. Open decisions (for sign-off before implementation)
+## 8. Decisions (locked 2026-07-02)
 
-1. **Scratch dir name** — `.molbuilder_workspace/` (recommended, collision-free)
-   vs `.molbuilder_checkpoint/` (suggested).
-2. **Structure-in-scratch** — always mirror the working `.xyz` to scratch, or
-   only when the structure (not just labels) was edited (saves I/O for
-   label-only sessions).
-3. **Commit UX on mismatch** — refuse-only (simplest) vs the warn+choose
-   (keep / discard-stale / save-as-new) flow from the save-path discussion.
-4. **Scratch cleanup** — on commit + session end only, or also an age-out sweep
-   for abandoned sessions.
+1. **Scratch dir name** — `.molbuilder_workspace/` (collision-free; not
+   `.molbuilder_checkpoint/`).
+2. **Structure-in-scratch** — mirror the working `.xyz` to scratch **only when
+   the structure was edited**; a label-only session keeps just the working
+   `.molstruct.json` record (the source structure stays the on-disk `.xyz`).
+3. **Commit UX on mismatch** — **warn + choose**: surface the mismatch and let
+   the user pick *keep* (accept + save as a new file), *discard-stale* (drop the
+   carried labels, keep only the current edit), or *reload + redo*. Hard-refuse
+   is the safe MVP to ship first; the choose-flow is the enhancement.
+4. **Scratch cleanup** — automatic **only** on successful commit or session-end
+   (no time-based age-out sweep — never delete possibly-unsaved work on a timer).
+   Crash-orphaned scratch (where neither fired) is handled solely by the
+   **explicit user cleanup** (§8.1).
+
+### § 8.1 Crash recovery — explicit scratch cleanup
+
+A crash (browser, server, or OS) can leave a scratch record in
+`.molbuilder_workspace/` that **no automatic path will remove** — the session
+that owned it is gone, so neither commit nor session-end cleanup ever fires.
+The contract therefore REQUIRES an explicit, user-visible cleanup:
+
+- **List** — surface orphaned scratch for a project (records whose session is no
+  longer live): source file, source-hash, age, and whether it still matches the
+  on-disk `.xyz`.
+- **Recover or discard** — per record: *recover* (adopt it back into a working
+  session, subject to the same commit hash-gate) or *discard* (delete the
+  scratch file). Never auto-delete a record holding unsaved work without the
+  user's say-so.
+- **Clean all** — a one-shot "clear this project's workspace scratch" for a user
+  who just wants a clean slate.
+
+This preserves "editing is non-destructive + recoverable" across a crash —
+without ever silently deleting unsaved work or silently adopting stale work.
