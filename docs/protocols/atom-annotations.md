@@ -107,13 +107,11 @@ channels**, dispatching by kind + a per-channel emit strategy:
 | tag with `transport` strategy (region labels `L-electrode`/`device`/…) | transport/electrode blocks (`TS.Atoms`, electrode labels) — transport fdf |
 | future `value` (e.g. `charge`, `initspin`) | per-atom directives when a strategy is registered |
 
-A tag/flag/value channel with **no** emit-strategy is carried but not emitted —
-so a generic user tag never accidentally becomes an electrode block.
-
-A channel with no registered strategy is **carried but not emitted** (and the
+A channel with **no** registered emit-strategy is **carried but not emitted** —
+so a generic user tag never accidentally becomes an electrode block (and the
 validator can warn "channel X present, no fdf consumer"). This is the extension
-point: new metadata → register one emit strategy, no emitter rewrite. Same model
-serves other setup scripts (PySCF, transport) later.
+point: new metadata → register one emit strategy, no emitter rewrite. The same
+model serves other setup scripts (PySCF, transport) later.
 
 ---
 
