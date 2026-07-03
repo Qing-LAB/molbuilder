@@ -570,3 +570,37 @@ tabbed-on-narrow (today it stacks) + matching-height.
 - **Persistence is already what each tab does** — Modify persists (workspace),
   inspectors re-derive from the selected result file (ephemeral). The args make
   the existing behavior *explicit + contractual* (§ 6.1), not new behavior.
+
+---
+
+## 9. E2E alignment map (which slice must rewrite which test)
+
+Full suite baseline: **5664 passed · 31 skipped**, all e2e green (`molbuilder`
+env, chromium in-process Flask). This maps each e2e's design against the target
+design — no e2e is broken or uses a removed API (the isolate migration is clean),
+but several **pin behavior the next slices deliberately replace**, so they are
+the *acceptance criteria* those slices must rewrite. **Do not pre-emptively
+change them** — they guard current behavior until the slice ships.
+
+**✅ Aligned (migrated or unchanged):**
+- `test_molbuilder_e2e.py` isolate tests (`test_show_selected_only_*`) — migrated
+  to `ws.selection.setIsolate` / `getState().isolate`; no `viewerAdapterHandle`.
+- `test_molbuilder_e2e.py` panel tests (mount / mode-swap / filter / select-all /
+  apply-filter) — Modify uses the default singleton store (S1 left it unchanged).
+- `test_mol_viewer_embed_e2e.py`, `test_3dmol_atom_serial_matches_zero_based_index`
+  — embed + 0-based-serial/1-based-display convention unchanged.
+- unrelated subsystems (build / pyscf / transport / spectrum-generate /
+  auto-detect / inspector-lifecycle / results-picker) — untouched.
+
+**⚠️ Coupled to superseded behavior — the slice's definition-of-done:**
+| e2e (design pins…) | Rewritten by |
+|---|---|
+| `test_molbuilder_e2e.py` save suite — `test_save_writes_to_source_and_clears_dirty`, `test_save_as_propagates_labels_to_new_sidecar`, `test_save_as_reanchors_selection_store_sourceFile`, the overwrite/rename dialog pair, **and the `writeLabel` → `/api/selection/save` auto-save test** | **Working-copy wiring (§ 6.1 / Phase 3)** — collapses the 3 scattered save paths + kills the auto-save; save-as stops re-anchoring the store. These tests move to the `open/update/save` contract. |
+| `test_hide_frozen_toggle_e2e.py` — trajectory's bespoke hide-frozen toggle | **Trajectory pipeline (§ 6.3)** — `frozen` folds into the store channel + isolate; the bespoke toggle is retired. |
+
+**🕳 New surfaces — node-tested, no e2e yet (add when wired to an embed):**
+- structure inspector's readonly selection panel + ephemeral-store isolation (S3;
+  `test_structure_inspector_chip_e2e.py` still covers only the chip);
+- isolate-via-store render on an inspector; the **k-grid** control + tiling;
+  **FrameSet** time-index; the **working-copy** `/api/workingcopy/*` surface —
+  all await the render-pipeline controller landing in a live embed.
