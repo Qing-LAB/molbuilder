@@ -435,12 +435,22 @@ view, cell)`** (`lib/molview/render-pipeline.js`) — the pure **compose**: laye
 (selection/isolate → visible global indices) → layer 3 (k-grid tile), returning
 `{positions, sourceIndex}` where `sourceIndex[m]` is the global atom each drawn
 position belongs to (element/label/arrow lookup; k-grid images share their
-unit-cell atom).  **Remaining:** the *controller* that RUNS the compose against a
-live embed — subscribe to the store + FrameSet, on change call
-`computeRender(frameSet.coordsAt(t), storeSnapshot, cell)`, build the structure
-(`elements[sourceIndex[m]]` + `positions[m]`), hand it to the embed, and apply
-decorations (labels/arrows) via `sourceIndex`.  Re-runs on store change + frame
-tick + cell/kgrid change (the animation-acceleration boundary).
+unit-cell atom) · **`createRenderController({handle, frameSet, store, elements,
+cell})`** (`lib/molview/render-controller.js`) — the loop that RUNS the compose:
+on store change (selection/isolate/kgrid) or `setFrame`, resolve the frame
+coords, run `computeRender`, rebuild the structure (`elements[sourceIndex[m]]` at
+`positions[m]`), hand it to the embed via `setStructure`; `dispose` detaches.
+Node-tested against a stub embed + the real compose layers (initial render,
+k-grid re-tile, isolate filter, frame scrub, dispose).
+
+**Remaining: the LIVE wiring** — mount the controller in an inspector (static
+structure = 1-frame proof) and **coordinate isolate**: the controller FILTERS
+isolate (the structure carries only the selected atoms), so a pipeline-driven
+view must NOT also run the viewer-adapter's isolate-OVERLAY (double-handling) —
+the adapter keeps selection halos + click wiring; the controller owns the
+structure. Decorations (labels/arrows) key off `sourceIndex`. This is the
+browser-E2E-gated step. Re-runs on store change + frame tick + cell/kgrid change
+(the animation-acceleration boundary).
 
 **Migration.** Build FrameSet + pipeline + decorations into the module in
 parallel; keep the current `trajectory/core.js` isolated as the working fallback;
