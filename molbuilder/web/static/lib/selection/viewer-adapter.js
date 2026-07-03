@@ -154,13 +154,10 @@
         // visually hides them while keeping the model coherent for
         // picking + measurements).  Selection halos draw on top in
         // the existing order so the surviving atoms are obvious.
-        // "Show selected only" is STORE state (the single source of truth) --
-        // the panel drives it via store.setIsolate and the render reads
-        // ``s.isolate`` from the subscription (line ~306).  These stay as thin
-        // store-delegating accessors so the embed handle's isolate API + the
-        // e2e hooks keep working; store.setIsolate notifies -> render re-runs.
-        function setIsolateMode(on) { store.setIsolate(!!on); }
-        function getIsolateMode() { return !!store.getState().isolate; }
+        // "Show selected only" is STORE state (the single source of truth): the
+        // panel drives it via store.setIsolate and the render below reads
+        // ``s.isolate`` from the subscription (line ~306).  The adapter is a
+        // pure consumer -- it exposes NO isolate control of its own (§ 6.2).
 
         function render(s) {
             const atoms = [];
@@ -318,8 +315,6 @@
 
         return {
             dispose:         dispose,
-            setIsolateMode:  setIsolateMode,
-            getIsolateMode:  getIsolateMode,
         };
     }
 

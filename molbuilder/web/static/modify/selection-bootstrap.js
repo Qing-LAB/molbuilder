@@ -428,20 +428,15 @@
             );
             return;
         }
+        // Attach the viewer-adapter (paints store selection onto the viewer).
+        // No handle is exposed: the panel + adapter share ALL state (selection,
+        // filters, isolate) through the store, so nothing needs a reference to
+        // the adapter.  Phase 5 retired window.molbuilder.selection
+        // .viewerAdapterHandle + the (unconsumed) "selection.viewerAdapter
+        // .handle" runtime key -- isolate is store state now, driven via
+        // ws.selection.setIsolate (atom-annotations.md § 6.2).
         runtime.whenReady("modify.handle").then((h) => {
-            const adapterHandle = adapterModule.attach(h);
-            // 2026-06-12: expose the attached adapter so the
-            // selection panel's "Show selected only" checkbox can
-            // toggle isolate mode without reaching into the
-            // bootstrap's local scope.  Module-init contract:
-            // register so panel code can ``whenReady("selection
-            // .viewerAdapter.handle")``.
-            window.molbuilder.selection = window.molbuilder.selection || {};
-            window.molbuilder.selection.viewerAdapterHandle = adapterHandle;
-            if (runtime && typeof runtime.register === "function") {
-                runtime.register(
-                    "selection.viewerAdapter.handle", adapterHandle);
-            }
+            adapterModule.attach(h);
         });
     }
 

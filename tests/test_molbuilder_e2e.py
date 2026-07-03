@@ -816,17 +816,19 @@ def test_show_selected_only_visually_hides_non_selected_atoms(
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
+    # Adapter attaches when the modify viewer handle is ready; isolate is store
+    # state, so we drive it through ws.selection (no viewerAdapterHandle global).
     page.wait_for_function(
-        "() => window.molbuilder.selection"
-        "      && window.molbuilder.selection.viewerAdapterHandle"
+        "() => window.molbuilder.workspace"
+        "      && window.molbuilder.workspace.selection"
+        "      && window.molbuilder.modify && window.molbuilder.modify.handle"
     )
     page.evaluate("() => window.molbuilder.workspace.selection.set([0])")
     page.wait_for_function(
         "() => window.molbuilder.workspace.selection.getState().indices.length === 1"
     )
     page.evaluate(
-        "() => window.molbuilder.selection.viewerAdapterHandle"
-        "        .setIsolateMode(true)"
+        "() => window.molbuilder.workspace.selection.setIsolate(true)"
     )
     # Settle the redraw + setStyle pipeline.
     page.wait_for_timeout(300)
@@ -864,38 +866,33 @@ def test_show_selected_only_visually_hides_non_selected_atoms(
 
 def test_show_selected_only_toggle_wires_isolate_mode(
         page, flask_server, water_xyz_file):
-    """2026-06-12: the "Show selected only" checkbox in the
-    selection panel must call into the viewer-adapter's isolate
-    mode so non-selected atoms render with opacity 0 and the
-    selected atoms read clearly.
+    """The "Show selected only" checkbox drives the isolate flag, which is
+    STORE state (Phase 5): the checkbox calls ws.selection.setIsolate and the
+    viewer adapter reads state.isolate from its subscription.
 
-    The actual setOverlays + 3Dmol setStyle is exercised end-to-
-    end by the viewer-adapter unit tests; this e2e pins the panel
-    checkbox → adapter handle path so a future rename / re-export
-    fails loudly here.
+    This e2e pins the panel checkbox -> store.isolate path so a future rename /
+    re-wiring fails loudly here.  (The setOverlays + 3Dmol setStyle rendering is
+    covered by the isolate-mode e2e above + the viewer-adapter unit tests.)
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     page.wait_for_function(
-        "() => window.molbuilder.selection"
-        "     && window.molbuilder.selection.viewerAdapterHandle"
+        "() => window.molbuilder.workspace"
+        "     && window.molbuilder.workspace.selection"
     )
     # Initially off.
     assert page.evaluate(
-        "() => window.molbuilder.selection"
-        "       .viewerAdapterHandle.getIsolateMode()"
+        "() => window.molbuilder.workspace.selection.getState().isolate"
     ) is False
     # Toggle on.
     page.locator("#selection-isolate-checkbox").check()
     page.wait_for_function(
-        "() => window.molbuilder.selection"
-        "       .viewerAdapterHandle.getIsolateMode() === true"
+        "() => window.molbuilder.workspace.selection.getState().isolate === true"
     )
     # Toggle off.
     page.locator("#selection-isolate-checkbox").uncheck()
     page.wait_for_function(
-        "() => window.molbuilder.selection"
-        "       .viewerAdapterHandle.getIsolateMode() === false"
+        "() => window.molbuilder.workspace.selection.getState().isolate === false"
     )
 
 

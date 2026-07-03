@@ -336,13 +336,16 @@ it; now it is `store.setIsolate` / `state.isolate` like every other field).
 **Not allowed:** exporting a live handle or a mutable flag as a global for
 another module (or a test) to poke. The store API is the only channel.
 
-**Known debt (screen, 2026-07-02):**
-`window.molbuilder.selection.viewerAdapterHandle` (set by the Modify bootstrap)
-violates this — a raw adapter handle exposed globally. Now that isolate is store
-state, **only the isolate e2e still reads it**; retire it by migrating that e2e
-to `ws.selection.setIsolate` / `getState().isolate` and dropping the global.
-`selectionPanel.forceRenderMode` is a *documented debug override* (render-mode
-only, also settable via `sessionStorage` / URL) — a knob, not shared state.
+**Screen result (2026-07-02): clean.** `viewerAdapterHandle` — the one raw
+adapter handle the Modify bootstrap used to expose globally — is **retired**:
+isolate is store state, driven via `ws.selection.setIsolate` and read via
+`getState().isolate` (including in the e2e), and the adapter exposes no isolate
+control of its own. The unused `selection.viewerAdapter.handle` runtime key is
+gone too. The only remaining global is `selectionPanel.forceRenderMode`, a
+*documented debug override* for the atom-list render path (virtual vs simple
+scroll; also settable via `sessionStorage` / URL) — a perf knob, not shared
+state, kept on purpose (large displayed systems — e.g. a k-grid-expanded
+supercell over ~1–2k atoms — use the virtual scroller).
 
 ---
 
