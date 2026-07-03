@@ -580,8 +580,9 @@ the pipeline.
      BUILT (`lib/molview/kgrid.js` `tileKgrid`, node-tested) + the parameter is
      store view-state (`setKgrid`, node-tested); remaining: the UI control
      (enable + [nx,ny,nz]) + wiring into the render.** (c) decorations (§ 6.3
-     layer 4): the **measurement overlay** (§ 6.4 — `mountMeasurementOverlay`,
-     replaces `structure.js`'s chip + trajectory's Inspect readout), plus port
+     layer 4): the **measurement overlay** (§ 6.4 — `mountMeasurementOverlay`) —
+     **BUILT + WIRED into the structure inspector** (selection-driven, viewer
+     clicks → store, chip retired; browser e2e green); remaining: port
      trajectory's arrows +
      frame-scrub UI + live polling onto the pipeline; (d) `frozen` → the
      `frozen` channel (retire the bespoke hide-frozen). Build
