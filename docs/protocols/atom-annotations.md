@@ -347,6 +347,81 @@ scroll; also settable via `sessionStorage` / URL) — a perf knob, not shared
 state, kept on purpose (large displayed systems — e.g. a k-grid-expanded
 supercell over ~1–2k atoms — use the virtual scroller).
 
+### 6.3 Dynamic coordinates + periodic display (the render pipeline)
+
+This is how the fused module absorbs the **trajectory** display (and gains
+**k-grid** validation) without a second atom-list. The key realization: **atom
+identity/labels/selection never vary with time — only coordinates do.** So the
+store stays frame-independent, and rendering becomes a pure pipeline over
+`(store, coordsAt(t), cell/kgrid, decorations)`.
+
+**The store is unchanged (frame-independent).** `atoms:[{index,element}]` +
+labels/`frozen` + `selection` + `filters` + `isolate` — a *selection is a set of
+indices*, computed once, valid for every frame. A static structure is just the
+1-frame case.
+
+**The module owns a `FrameSet`** — the dynamic coordinates, separate from the
+store:
+
+```
+FrameSet = { nframes, currentFrame, coordsAt(t) -> Float32[natoms*3] }
+```
+
+Static structure ⇒ a 1-frame FrameSet (time-index coerced to 0). Trajectory ⇒
+`nframes > 1` (index clamped to `[0, nframes-1]`). Trajectory's current
+`state.data.frames[t][atom] = [el,x,y,z]` is lifted into this: `el` → the store's
+identity, `xyz` → the FrameSet.
+
+**Render is an ordered pipeline** between coordinate extraction and the embed:
+
+```mermaid
+flowchart LR
+    T["1 · time-index<br/>coordsAt(t)"] --> S["2 · selection / isolate / filter<br/>store → visible atom indices"]
+    S --> K["3 · k-grid tiling<br/>cell × [nx,ny,nz]<br/>(display-only images)"]
+    K --> D["4 · decorations<br/>index labels · force arrows"]
+    D --> R[("embed render")]
+    classDef store fill:#eef,stroke:#557;
+    class R store;
+```
+
+1. **Time-index** — pick the current frame's coords (1 frame ⇒ static; N ⇒ clamp).
+2. **Selection / isolate / filter** — the **store** decides *which indices* show
+   (frame-independent, computed once).
+3. **k-grid slot (new, general)** — if a `CellSpec` + `kgrid=[nx,ny,nz]` is
+   given, duplicate the visible atoms in space by the lattice to validate the
+   periodic model (vacuum spacing zero vs non-zero, cell orientation, boundary
+   match). **Images are display-only — they NEVER enter the store or
+   selection/measurement** (you select/measure the *unit cell*; tiling is pure
+   render). k-grid is **not** trajectory-specific — the static structure
+   inspector uses it too, so the slot lives in the pipeline for every view.
+4. **Decorations** — index labels + force arrows etc., built last on the
+   resolved set.
+
+**Animation acceleration — the invalidation boundary.** The embed animates
+precomputed frames by swapping coords per tick (cheap). Recompute the
+handed-to-embed payload ONLY when the *displayed set* changes:
+- per **tick** (scrub) → coords only → cheap;
+- per **selection / isolate / k-grid** change → rebuild the payload.
+
+⚠️ **Memory:** trajectory **×** k-grid multiplies atoms by `nx·ny·nz` per frame.
+Tile **lazily at the current frame** (or cap), never precompute all images × all
+frames.
+
+**Measurement** dissolves into this: a bounded/ordered selection whose geometry
+is read against `coordsAt(t)` + `measurements.js` — no separate structure, just a
+pick cap. **`frozen`** folds in cleanly: trajectory's `runtime_info.frozen_atoms`
+→ the store's `frozen` flag channel, so the module's frozen display + isolate
+replace the bespoke hide-frozen toggle.
+
+**Data structures to add:** `FrameSet` (module-owned) · `CellSpec` + `kgrid`
+(consumed only by layer 3) · the `renderPipeline` the adapter runs (re-runs on
+store change + frame tick + cell/kgrid change).
+
+**Migration.** Build FrameSet + pipeline + decorations into the module in
+parallel; keep the current `trajectory/core.js` isolated as the working fallback;
+verify end-to-end (frame scrub, arrows, measurement, frozen, k-grid); **retire
+the old module only on confirmation** — no flag-day.
+
 ---
 
 ## 7. Phased implementation plan (each: implement → test → commit)
@@ -396,6 +471,19 @@ supercell over ~1–2k atoms — use the virtual scroller).
      triple-pick measurement chip stays). Node-verified; **browser E2E pending.**
      Remaining: trajectory + spectra inspectors, **S4** working-copy wiring for
      Modify, **S5** responsive 2-card↔tabbed + the E2E gate.
+   - **Trajectory via the render pipeline (§ 6.3):** trajectory + spectra are
+     NOT bare (bespoke Inspect atom-list / vibrational-mode viewer), so a second
+     panel would duplicate. Instead, absorb trajectory by giving the module a
+     **module-owned `FrameSet`** (dynamic coords) + the ordered render pipeline
+     (time-index → selection/isolate → **k-grid slot** → decorations), with the
+     k-grid slot designed in from the start (general — the static inspector uses
+     it too). Sub-slices: (a) `FrameSet` + time-index layer (static = 1 frame);
+     (b) the k-grid tiling layer (display-only images); (c) port trajectory
+     decorations (arrows) + frame-scrub UI + live polling onto the pipeline;
+     (d) `frozen` → the `frozen` channel (retire the bespoke hide-frozen). Build
+     in parallel; **retire `trajectory/core.js` only on E2E confirmation.**
+     **Spectra:** keep as the mode viewer (atom-selection adds little); revisit
+     a read-only highlight later.
 6. **Docs + data-vocabulary v4** — register the sidecar v4 shape; merge
    `molviewer-guide.md` + `atom-selection-guide.md` into one; update
    `embedded-viewer.md`, `atom-selection.md`, `types/structure.md`,
