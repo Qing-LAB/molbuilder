@@ -413,13 +413,29 @@ flowchart LR
    spacing zero vs non-zero, cell orientation, boundary match). **Images are
    display-only — they NEVER enter the store or selection/measurement** (you
    select/measure the *unit cell*; tiling is pure render, with a `sourceIndex`
-   mapping each image back to its unit-cell atom for element/style lookup). The
-   **parameter** — `{enabled, dims:[nx,ny,nz]}` — is **store view-state** driven
-   through **`store.setKgrid(patch)`** (like `isolate`, § 6.2); the `cell` comes
-   from the structure at render time, not the store. The render layer reads
-   `state.kgrid` and, when enabled, calls `tileKgrid`. **The UI exposes the
-   enable flag + the [nx,ny,nz] inputs**, driving `setKgrid`. k-grid is **not**
-   trajectory-specific — the static structure inspector uses it too.
+   mapping each image back to its unit-cell atom for element/style lookup).
+
+   **The `cell` is molview's EXISTING lattice** — the unit-cell / lattice display
+   is already a molview option (kept); k-grid tiles *that* lattice. No new cell
+   plumbing: the controller reads the lattice molview already holds.
+
+   **The `[nx,ny,nz]` setting has two modes (2026-07-03):**
+   - **Fixed (supplied by the `.fdf` result):** on Results, the `.fdf` inspector
+     hands its k-grid to molview. When supplied, `dims` are **read-only** (they
+     are the real run's values); only the **render toggles** (enable/disable, to
+     see the supercell that calculation used).
+   - **Free (no `.fdf` value):** molview is in experiment mode — the user **edits
+     `[nx,ny,nz]`**, subject to a **cap** on total displayed atoms (`natoms ×
+     nx·ny·nz ≤ LIMIT`, so the count can't blow up), to check the cell + vacuum +
+     orientation are right.
+
+   So the store view-state is `{enabled, dims:[nx,ny,nz], source: "free"|"fixed"}`
+   driven through **`store.setKgrid(patch)`** (like `isolate`, § 6.2): in `fixed`
+   mode `setKgrid` accepts `enabled` but ignores `dims`; in `free` mode it accepts
+   both and clamps `dims` against the atom-count cap. **The UI** shows the enable
+   flag always; the `[nx,ny,nz]` inputs are **read-only in `fixed`**, editable +
+   capped in `free`. k-grid is **not** trajectory-specific — the static structure
+   inspector uses it too.
 4. **Decorations** — index labels + force arrows etc., built last on the
    resolved set.
 
