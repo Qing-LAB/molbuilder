@@ -429,9 +429,18 @@ pick cap. **`frozen`** folds in cleanly: trajectory's `runtime_info.frozen_atoms
 → the store's `frozen` flag channel, so the module's frozen display + isolate
 replace the bespoke hide-frozen toggle.
 
-**Data structures to add:** `FrameSet` (module-owned) · `CellSpec` + `kgrid`
-(consumed only by layer 3) · the `renderPipeline` the adapter runs (re-runs on
-store change + frame tick + cell/kgrid change).
+**Pieces (BUILT, node-tested):** `FrameSet` (`lib/molview/frameset.js`, layer 1)
+· `tileKgrid` (`lib/molview/kgrid.js`, layer 3 compute) · **`computeRender(coords,
+view, cell)`** (`lib/molview/render-pipeline.js`) — the pure **compose**: layer 2
+(selection/isolate → visible global indices) → layer 3 (k-grid tile), returning
+`{positions, sourceIndex}` where `sourceIndex[m]` is the global atom each drawn
+position belongs to (element/label/arrow lookup; k-grid images share their
+unit-cell atom).  **Remaining:** the *controller* that RUNS the compose against a
+live embed — subscribe to the store + FrameSet, on change call
+`computeRender(frameSet.coordsAt(t), storeSnapshot, cell)`, build the structure
+(`elements[sourceIndex[m]]` + `positions[m]`), hand it to the embed, and apply
+decorations (labels/arrows) via `sourceIndex`.  Re-runs on store change + frame
+tick + cell/kgrid change (the animation-acceleration boundary).
 
 **Migration.** Build FrameSet + pipeline + decorations into the module in
 parallel; keep the current `trajectory/core.js` isolated as the working fallback;
