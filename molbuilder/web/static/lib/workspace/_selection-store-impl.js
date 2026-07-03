@@ -97,6 +97,12 @@
             // handle.  Isolate only takes visual effect with a non-empty
             // selection (the adapter render gates on selSet.size > 0).
             isolate:    false,
+            // k-grid display (§ 6.3 render layer 3): tile the unit cell in
+            // space to validate a periodic model (vacuum / orientation /
+            // boundary).  ``enabled`` + ``dims`` are user-set VIEW state that
+            // lives in the store (like isolate); the lattice ``cell`` comes from
+            // the structure at render time, not from here.
+            kgrid:      { enabled: false, dims: [1, 1, 1] },
             filters:    [],
             combinator: "or",
             loading:    false,
@@ -258,6 +264,8 @@
                 pickOrder:  state.pickOrder.slice(),
                 mode:       state.mode,
                 isolate:    state.isolate,
+                kgrid:      { enabled: state.kgrid.enabled,
+                              dims: state.kgrid.dims.slice() },
                 filters:    state.filters.slice(),
                 combinator: state.combinator,
                 loading:    state.loading,
@@ -538,6 +546,37 @@
             if (next === state.isolate) return;
             state.isolate = next;
             _notify();
+        }
+
+        // k-grid view state.  ``setKgrid(patch)`` merges an ``{enabled?, dims?}``
+        // partial so the UI can drive the enable flag and the [nx,ny,nz] dims
+        // independently; dims are floored + clamped to >= 1.  Synchronous
+        // notify -> the render pipeline re-tiles.
+        function _normDims(dims) {
+            const g = Array.isArray(dims) ? dims : [];
+            const out = [1, 1, 1];
+            for (let d = 0; d < 3; d++) {
+                let n = Math.floor(Number(g[d]));
+                if (!isFinite(n) || n < 1) n = 1;
+                out[d] = n;
+            }
+            return out;
+        }
+        function setKgrid(patch) {
+            if (!patch || typeof patch !== "object") return;
+            let changed = false;
+            if ("enabled" in patch) {
+                const e = !!patch.enabled;
+                if (e !== state.kgrid.enabled) { state.kgrid.enabled = e; changed = true; }
+            }
+            if ("dims" in patch) {
+                const d = _normDims(patch.dims);
+                const cur = state.kgrid.dims;
+                if (d[0] !== cur[0] || d[1] !== cur[1] || d[2] !== cur[2]) {
+                    state.kgrid.dims = d; changed = true;
+                }
+            }
+            if (changed) _notify();
         }
 
         // ----------------------------------------------------------- //
@@ -912,6 +951,7 @@
             // mode
             setMode:            setMode,
             setIsolate:         setIsolate,
+            setKgrid:           setKgrid,
             // selection editing
             toggleAtom:         toggleAtom,
             setSelection:       setSelection,
@@ -953,7 +993,8 @@
     // in sync with dispatcher.js::_selectionSnapshot + the ws.selection object.
     function _ephemeralSnapshot(st) {
         if (!st) {
-            return { indices: [], mode: "click", isolate: false, filters: [],
+            return { indices: [], mode: "click", isolate: false,
+                     kgrid: { enabled: false, dims: [1, 1, 1] }, filters: [],
                      combinator: "or", loading: false, error: null, atoms: [],
                      sourceFile: null, pickOrder: [] };
         }
@@ -961,6 +1002,10 @@
             indices:    Array.isArray(st.selection) ? st.selection.slice() : [],
             mode:       st.mode || "click",
             isolate:    !!st.isolate,
+            kgrid:      st.kgrid
+                            ? { enabled: !!st.kgrid.enabled,
+                                dims: (st.kgrid.dims || [1, 1, 1]).slice() }
+                            : { enabled: false, dims: [1, 1, 1] },
             filters:    (st.filters || []).map(function (f) { return Object.assign({}, f); }),
             combinator: st.combinator || "or",
             loading:    !!st.loading,
@@ -982,6 +1027,7 @@
             clear:           function ()      { return s.clearSelection(); },
             setMode:         function (m)     { return s.setMode(m); },
             setIsolate:      function (on)    { return s.setIsolate(on); },
+            setKgrid:        function (patch) { return s.setKgrid(patch); },
             setFilters:      function (f)     { return s.setFilters(f); },
             addFilter:       function (f)     { return s.addFilter(f); },
             removeFilter:    function (i)     { return s.removeFilter(i); },

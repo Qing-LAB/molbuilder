@@ -318,12 +318,13 @@ through the store API.** Nothing else holds a copy of module state, and no view
 flag lives outside the store.
 
 **Internal state — the store (single source of truth).** `selection`,
-`pickOrder`, `atoms`, `mode`, **`isolate`** ("show selected only"), `filters`,
+`pickOrder`, `atoms`, `mode`, **`isolate`** ("show selected only"),
+**`kgrid`** (`{enabled, dims:[nx,ny,nz]}` — k-grid display, § 6.3), `filters`,
 `combinator`, `sourceFile`, `loading`, `error`. It is:
 - **mutated ONLY** through the store's mutators — `toggle` / `set` / `add` /
   `remove` / `all` / `invert` / `clear` / `setMode` / **`setIsolate`** /
-  `addFilter` / `removeFilter` / `updateFilter` / `setCombinator` / `applyFilter`
-  / `writeLabel` / `adoptSession`;
+  **`setKgrid`** / `addFilter` / `removeFilter` / `updateFilter` /
+  `setCombinator` / `applyFilter` / `writeLabel` / `adoptSession`;
 - **read ONLY** through `getState()` (a defensive snapshot) or `subscribe(fn)`.
 
 The panel and the viewer adapter are **pure consumers**: they render from the
@@ -396,13 +397,19 @@ flowchart LR
 1. **Time-index** — pick the current frame's coords (1 frame ⇒ static; N ⇒ clamp).
 2. **Selection / isolate / filter** — the **store** decides *which indices* show
    (frame-independent, computed once).
-3. **k-grid slot (new, general)** — if a `CellSpec` + `kgrid=[nx,ny,nz]` is
-   given, duplicate the visible atoms in space by the lattice to validate the
-   periodic model (vacuum spacing zero vs non-zero, cell orientation, boundary
-   match). **Images are display-only — they NEVER enter the store or
-   selection/measurement** (you select/measure the *unit cell*; tiling is pure
-   render). k-grid is **not** trajectory-specific — the static structure
-   inspector uses it too, so the slot lives in the pipeline for every view.
+3. **k-grid slot (new, general)** — the **compute** is a pure layer
+   (`lib/molview/kgrid.js` `tileKgrid(coords, cell, [nx,ny,nz])`): duplicate the
+   visible atoms in space by the lattice to validate the periodic model (vacuum
+   spacing zero vs non-zero, cell orientation, boundary match). **Images are
+   display-only — they NEVER enter the store or selection/measurement** (you
+   select/measure the *unit cell*; tiling is pure render, with a `sourceIndex`
+   mapping each image back to its unit-cell atom for element/style lookup). The
+   **parameter** — `{enabled, dims:[nx,ny,nz]}` — is **store view-state** driven
+   through **`store.setKgrid(patch)`** (like `isolate`, § 6.2); the `cell` comes
+   from the structure at render time, not the store. The render layer reads
+   `state.kgrid` and, when enabled, calls `tileKgrid`. **The UI exposes the
+   enable flag + the [nx,ny,nz] inputs**, driving `setKgrid`. k-grid is **not**
+   trajectory-specific — the static structure inspector uses it too.
 4. **Decorations** — index labels + force arrows etc., built last on the
    resolved set.
 
@@ -488,8 +495,11 @@ the old module only on confirmation** — no flag-day.
      k-grid slot designed in from the start (general — the static inspector uses
      it too). Sub-slices: **(a) `FrameSet` + time-index layer — BUILT
      (`lib/molview/frameset.js`, node-tested; static = 1-frame proof);** wiring
-     it into an inspector is the next step. (b) the k-grid tiling layer
-     (display-only images); (c) port trajectory decorations (arrows) +
+     it into an inspector is the next step. **(b) the k-grid layer — compute
+     BUILT (`lib/molview/kgrid.js` `tileKgrid`, node-tested) + the parameter is
+     store view-state (`setKgrid`, node-tested); remaining: the UI control
+     (enable + [nx,ny,nz]) + wiring into the render.** (c) port trajectory
+     decorations (arrows) +
      frame-scrub UI + live polling onto the pipeline; (d) `frozen` → the
      `frozen` channel (retire the bespoke hide-frozen). Build
      in parallel; **retire `trajectory/core.js` only on E2E confirmation.**

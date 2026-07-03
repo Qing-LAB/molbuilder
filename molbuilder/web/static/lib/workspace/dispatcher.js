@@ -364,7 +364,8 @@
     function _selectionSnapshot(st) {
         if (!st) {
             return {
-                indices: [], mode: "click", isolate: false, filters: [],
+                indices: [], mode: "click", isolate: false,
+                kgrid: { enabled: false, dims: [1, 1, 1] }, filters: [],
                 combinator: "or", loading: false, error: null,
                 atoms: [], sourceFile: null, pickOrder: [],
             };
@@ -374,6 +375,10 @@
                             ? st.selection.slice() : [],
             mode:       st.mode || "click",
             isolate:    !!st.isolate,
+            kgrid:      st.kgrid
+                            ? { enabled: !!st.kgrid.enabled,
+                                dims: (st.kgrid.dims || [1, 1, 1]).slice() }
+                            : { enabled: false, dims: [1, 1, 1] },
             filters:    (st.filters || []).map(function (f) {
                 return Object.assign({}, f);
             }),
@@ -423,6 +428,10 @@
         setIsolate:      function (on) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setIsolate(on);
+        },
+        setKgrid:        function (patch) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.setKgrid(patch);
         },
         setFilters:      function (filters) {
             var s = _store(); if (!s) throw _missing("selection store");

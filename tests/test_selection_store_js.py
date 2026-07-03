@@ -129,6 +129,7 @@ class TestStoreAPISurface:
             "                  typeof store.setLoader === 'function',\n"
             "  mode:          typeof store.setMode === 'function',\n"
             "  isolate:       typeof store.setIsolate === 'function',\n"
+            "  kgrid:         typeof store.setKgrid === 'function',\n"
             "  click_editing: typeof store.toggleAtom === 'function' && "
             "                  typeof store.setSelection === 'function' && "
             "                  typeof store.addToSelection === 'function' && "
@@ -172,6 +173,9 @@ class TestInitialState:
             # (Phase 5) so the panel checkbox + viewer adapter drive/read
             # it through the store instead of a cross-module handle.
             "isolate":    False,
+            # k-grid display view-state (Phase 5 § 6.3): user-set enable + dims,
+            # tiled at render; lives in the store like isolate.
+            "kgrid":      {"enabled": False, "dims": [1, 1, 1]},
             "filters":    [],
             "combinator": "or",
             "loading":    False,
@@ -872,3 +876,30 @@ class TestEphemeralStore:
         assert out["aIndices"] == [1, 3]
         assert out["bIndices"] == []          # b untouched by a's edits
         assert out["indicesShape"] is True
+
+
+class TestKgridState:
+    """k-grid view-state (Phase 5 § 6.3) lives in the store: setKgrid merges an
+    ``{enabled?, dims?}`` patch, floors + clamps dims to >= 1, appears in the
+    snapshot, and only notifies on a real change."""
+
+    def test_setkgrid_merges_enable_and_normalizes_dims(self):
+        out = _run_node("""
+            const store = window.molbuilder.selection._createStore();
+            store.setKgrid({ enabled: true });
+            store.setKgrid({ dims: [2.9, 0, -1] });   // floor 2; 0 / -1 -> 1
+            console.log(JSON.stringify(store.getState().kgrid));
+        """)
+        assert out == {"enabled": True, "dims": [2, 1, 1]}
+
+    def test_setkgrid_noop_does_not_notify(self):
+        out = _run_node("""
+            const store = window.molbuilder.selection._createStore();
+            let n = 0;
+            store.subscribe(() => n++);            // fires once immediately
+            const base = n;
+            store.setKgrid({ enabled: false });    // already false
+            store.setKgrid({ dims: [1, 1, 1] });   // already default
+            console.log(JSON.stringify({ extra: n - base }));
+        """)
+        assert out["extra"] == 0
