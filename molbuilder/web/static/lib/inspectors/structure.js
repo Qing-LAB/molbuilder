@@ -134,7 +134,7 @@
                 foldBtn.className = "molview-fold-btn";
                 foldBtn.setAttribute("aria-label", "Fold or unfold the selection panel");
                 foldBtn.setAttribute("aria-expanded", "true");
-                foldBtn.textContent = "❯";
+                foldBtn.textContent = "›";   // › -- light chevron; CSS rotates it on fold
                 foldBtn.addEventListener("click", () => {
                     const folded = card.classList.toggle("is-folded");
                     foldBtn.setAttribute("aria-expanded", String(!folded));

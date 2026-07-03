@@ -3,8 +3,7 @@
  *
  * The side (wide) <-> bottom (narrow) switch is driven by the CARD's own width
  * via a container query -- NOT the viewport -- so it is correct in any embed
- * context (full-width Modify or a small Results inspector card).  Fold collapses
- * the panel so the viewer reclaims the space. */
+ * context (full-width Modify or a small Results inspector card). */
 
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
@@ -13,9 +12,8 @@
 
 .molview-body {
     display: flex;
-    flex-direction: row;           /* WIDE: viewer | fold | panel, side by side */
+    flex-direction: row;           /* WIDE: viewer | handle | panel, side by side */
     align-items: stretch;
-    gap: 0.4rem;
     width: 100%;
 }
 
@@ -26,35 +24,70 @@
 }
 
 .molview-panel {
-    flex: 0 0 320px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    flex-basis: 320px;
     max-width: 45%;
-    overflow: auto;
+    overflow: hidden;
+    /* smooth collapse instead of display:none */
+    transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
 }
 
+/* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
 .molview-fold-btn {
     flex: 0 0 auto;
-    align-self: center;
-    padding: 0.25rem 0.4rem;
+    align-self: stretch;
+    width: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
     cursor: pointer;
-    border: 1px solid var(--border, #cbd5e1);
-    background: var(--surface, #f7f7f7);
-    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: var(--muted, #94a3b8);
+    font-size: 0.85rem;
     line-height: 1;
-    transition: transform 0.15s ease;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease,
+                transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.molview-fold-btn:hover {
+    background: var(--surface-hover, rgba(100, 116, 139, 0.12));
+    color: var(--text, #475569);
+}
+.molview-fold-btn:active { background: var(--surface-active, rgba(100, 116, 139, 0.2)); }
+.molview-fold-btn:focus-visible {
+    outline: 2px solid var(--accent, #3b82f6);
+    outline-offset: -2px;
 }
 
-/* Folded: hide the panel; the viewer flexes to fill; flip the chevron. */
-.molview-card.is-folded .molview-panel { display: none; }
+/* Folded: collapse the panel width smoothly + flip the chevron. */
+.molview-card.is-folded .molview-panel {
+    flex-basis: 0;
+    opacity: 0;
+    pointer-events: none;
+}
 .molview-card.is-folded .molview-fold-btn { transform: rotate(180deg); }
 
-/* NARROW: the CARD is below the breakpoint -> stack, panel drops to the BOTTOM. */
+/* ---- NARROW: the CARD is below the breakpoint -> stack; panel to the BOTTOM.
+   The handle becomes a horizontal bar; fold collapses the panel HEIGHT. ---- */
 @container (max-width: 640px) {
     .molview-body { flex-direction: column; }
     .molview-panel {
-        flex: 0 0 auto;
         max-width: none;
         width: auto;
+        flex-basis: auto;
         max-height: 45vh;
+        transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
-    .molview-fold-btn { align-self: stretch; }
+    .molview-fold-btn {
+        align-self: stretch;
+        width: auto;
+        height: 22px;
+        transform: rotate(90deg);              /* chevron points down toward the panel */
+    }
+    .molview-card.is-folded .molview-panel { flex-basis: 0; max-height: 0; }
+    .molview-card.is-folded .molview-fold-btn { transform: rotate(-90deg); }
 }
