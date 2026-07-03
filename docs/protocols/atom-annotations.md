@@ -225,11 +225,18 @@ UI; (4d) server value-channel payload + `by_value`. Each is testable on its own.
 
 ## 6. Fused viewer + selection module + responsive UI
 
-**Every** molview-embedding tab uses the **one** fused module — selection is
-**always mounted** (not an opt-out). Selection is not just for editing: it
-drives filtering + highlighting during build, modify, AND results inspection,
-so it's valuable everywhere. Per-tab behavior is confined by **arguments**, not
-by omitting selection.
+Every molview tab **whose job is atom work** (build, modify, structure /
+trajectory inspection) uses the **one** fused module — selection is **always
+mounted** (not an opt-out), because it drives filtering + highlighting + editing
+everywhere those tabs live. Per-tab behavior is confined by **arguments**, not by
+omitting selection.
+
+**Exception — specialized viewers.** A viewer whose job is *not* atom selection
+stays its **own** module; we don't force one molview to fit every need. The
+**spectra** inspector (a vibrational-*mode* viewer — its "selection" is which
+mode, not which atoms) is deliberately **left independent** (`spectra/core.js`),
+not migrated. The fused module targets the general structure-editing/inspection
+tabs; trajectory is absorbed via the § 6.3 render pipeline (it *is* atom work).
 
 - **Data:** the workspace selection store stays the single source of truth (no
   second copy — avoids the two-writer class we fixed); the fused module owns the
