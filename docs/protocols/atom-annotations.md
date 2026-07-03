@@ -1,6 +1,6 @@
 # Unified atom annotations + fused viewer/selection — design
 
-**Status: IN PROGRESS (2026-07-01). Phases 1-3 SHIPPED (Structure layer + sidecar v4 + fdf registry); Phases 4-6 remain — see §7.** Authoritative for
+**Status: IN PROGRESS (2026-07-02). Phases 1-3 + 4a-4c SHIPPED (annotations model, sidecar v4, fdf registry, JS channel model + filter); 4d DEFERRED (no value-channel producer yet); Phases 5-6 remain — see §7.** Authoritative for
 the work that (1) unifies per-atom metadata into one extensible model, (2) makes
 selection always-available + filterable by any metadata, and (3) fuses the
 MolViewer and atom-selection into one responsive component. Implement in the
@@ -9,6 +9,7 @@ phases in §7; each phase is test-gated + committed.
 **Companions:** `types/structure.md` (the `Structure` dataclass this extends),
 `atom-selection-guide.md` / `molviewer-guide.md` (the modules being fused),
 `sidecar-contract.md` + `data-vocabulary.md` (the `.molstruct.json` persistence),
+`working-copy-persistence.md` (the module's load/edit/save, §6.1),
 `engines/siesta.md` (the fdf emission this feeds).
 
 ---
@@ -307,8 +308,7 @@ crash-recovery); this section says only how the fused module *uses* it.
 4. **JS unified `Atom` + channel filter** — layered (§5). **4a SHIPPED
    (2026-07-01):** pure L1 channel model `lib/workspace/_atom-channels.js`
    (atomChannels/channelKinds; browser global + node export; node-unit-tested,
-   no browser).  **4b SHIPPED (2026-07-01):** store `knownChannels()` (L2 via L1) + panel `knownLabels` refactored onto L1 (behavior-preserving, extensible) + L1 wired into the template. 4c
-   panel UI; 4d server value-channel payload + `by_value`.
+   no browser).  **4b SHIPPED (2026-07-01):** store `knownChannels()` (L2 via L1) + panel `knownLabels` refactored onto L1 (behavior-preserving, extensible) + L1 wired into the template. **4c SHIPPED (2026-07-02):** panel "By residue" filter kind (category channel) → the existing server `by_residue_name` rule; E2E-verified. **4d DEFERRED:** server value-channel payload + `by_value` — no value-channel *producer* exists yet, so it'd be filtering data that isn't generated (YAGNI); slots in when one arrives.
 5. **Fused module + migrate ALL molview tabs** — embed mounts viewer+panel+
    adapter with the § 6 `mode`/`persistence` args; **every** molview-embedding
    tab moves to it (selection always mounted): Modify/Molbuilder =
