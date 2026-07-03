@@ -427,6 +427,43 @@ The UI consumes only the common surface (`modes`, `equilibrium_*`,
 `methods_text`, `bibliography_keys`).  `engine_metadata` is for
 debugging / future tools and is **not** rendered by default.
 
+### 5.1 Atom-index contract (validatable)
+
+This module is **independent** of the fused molview+selection module
+(`atom-annotations.md § 6` — spectra's "selection" is a *mode*, not atoms), but
+isolation must **not** fork indexing: it shares the system-wide atom-index
+contract (`data-vocabulary.md § 3.1 / § 3.2`). Two 0-based index spaces coexist
+here — mixing them is the silent-corruption hazard, so state them explicitly.
+
+**Two 0-based index spaces:**
+- **Global atom index** — over all `n_atoms_total` atoms, in the structure's
+  0-based CARRIED order (`§ 3.2`), pinned by `structure_hash`.
+  `equilibrium.elements[i]` / `positions_ang[i]` are **global atom `i`**.
+- **Free-atom row** — over the `n_free` free atoms only.
+  `ModeData.eigenvector_{display,canonical}` are shape `(n_free, 3)`; **row `k`
+  is NOT global atom `k`** — it is global atom `free_atom_idxs[k]`. Frozen atoms
+  have no eigenvector row (they don't move).
+
+**Invariants — a conforming `SpectraResults` MUST satisfy (each is a test):**
+1. `free_atom_idxs` and `frozen_atom_idxs` are 0-based global indices that
+   **partition** `range(n_atoms_total)` (disjoint; union = every atom).
+2. `len(eigenvector_display) == len(eigenvector_canonical) == len(free_atom_idxs)`
+   for every mode.
+3. The animation displaces global atom `free_atom_idxs[k]` by row `k`; every
+   atom **not** in `free_atom_idxs` stays at zero. *(Frontend `_startAnimation`
+   builds a length-`n_atoms_total` zero-filled displacement array, then scatters
+   free rows by `free_atom_idxs` — that scatter IS the check.)*
+4. Any atom index shown to the **user** goes through `atomIndexModel.toDisplay`
+   (1-based, `§ 3.1`). `ModeData.index_1based` is the **mode** number (already
+   1-based), **not** an atom index — don't confuse the two.
+
+**Why it matters:** with frozen atoms present, applying `eigenvector_display[i]`
+to global atom `i` would silently displace the **wrong atoms**. Invariant 3 (the
+`free_atom_idxs` scatter, not a positional `[i]`) is the guard. A test loads a
+`SpectraResults` with a non-trivial frozen set and asserts the built displacement
+array is zero on `frozen_atom_idxs` and equals the eigenvector on
+`free_atom_idxs`.
+
 ## 6. `<job>.spectra.json` — on-disk schema
 
 The script writes exactly one JSON file per run:

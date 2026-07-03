@@ -235,7 +235,9 @@ omitting selection.
 stays its **own** module; we don't force one molview to fit every need. The
 **spectra** inspector (a vibrational-*mode* viewer — its "selection" is which
 mode, not which atoms) is deliberately **left independent** (`spectra/core.js`),
-not migrated. The fused module targets the general structure-editing/inspection
+not migrated — its own contract is `docs/tabs/spectra/spec.md` (see **§ 5.1** for
+the atom-index invariants it *shares* with the system: isolation doesn't fork
+indexing). The fused module targets the general structure-editing/inspection
 tabs; trajectory is absorbed via the § 6.3 render pipeline (it *is* atom work).
 
 - **Data:** the workspace selection store stays the single source of truth (no
@@ -513,9 +515,9 @@ Audit of the **5** current `viewer.embed` sites and what full integration needs
 | Tab / embed | today | target args | changes needed |
 |---|---|---|---|
 | **Modify/Molbuilder** (`modify/viewer.js`) | full edit; selection wired *externally* via `selection-bootstrap.js` (mounts panel + attaches adapter) | `mode:modify, persistence:workspace` | **interface**: the embed mounts the panel+adapter itself; delete the manual bootstrap wiring. **logic**: none new (behavior preserved). |
-| **Results · structure** (`inspectors/structure.js`) | bare + already uses `selection.measurements` (pick→distance/angle chip) | `mode:readonly, persistence:ephemeral` | **gains** the selection panel + filter (module-provided). Pick/measure already present. |
-| **Results · trajectory** (`trajectory/core.js`) | bare + `pick:triple` + measurements + animation | `mode:readonly, persistence:ephemeral` (keep `pick:triple`, animation) | **gains** panel+filter; keep animation + triple-pick. |
-| **Results · spectra** (`spectra/core.js`) | bare + **`pick:{mode:"none"}`** (vibrational-mode viewer) | `mode:readonly, persistence:ephemeral, pick:none` | selection panel present but **pick stays off**; filter/highlight only. |
+| **Results · structure** (`inspectors/structure.js`) | **DONE (Phase 5 S3):** readonly + ephemeral panel (list + click-select + filter + highlight; measurement chip kept) | `mode:readonly` + `createEphemeralStore()` | shipped; browser E2E pending. |
+| **Results · trajectory** (`trajectory/core.js`) | **NOT bare** — bespoke Inspect atom-list + `pick:triple` + animation | absorbed via the **§ 6.3 render pipeline** (FrameSet + k-grid), *not* a second panel | replace the bespoke list; port arrows/scrub/polling; `frozen`→channel. |
+| **Results · spectra** (`spectra/core.js`) | vibrational-**mode** viewer (`pick:none`) — its "selection" is a *mode*, not atoms | **NOT migrated — stays an independent module** (`docs/tabs/spectra/spec.md`) | none; shares only the atom-index contract (spec § 5.1). |
 | *(future build/other)* | — | per case | assess when added. |
 
 **Current-state finding (2026-07-02 audit — narrows Phase 5):** the Modify tab
@@ -523,11 +525,12 @@ Audit of the **5** current `viewer.embed` sites and what full integration needs
 `.workspace-grid` (viewer / selection / modify as separate cards, `@media`
 768/640px breakpoints) with selection **always present** and the panel+adapter
 already composed (via `viewer.js` + `selection-bootstrap.js`). So Phase 5's real
-remaining work is: **(i)** extract that modify-specific composition into a
-**reusable module** so other tabs can use it; **(ii)** apply it to the 3 Results
-inspectors (they're the ones still BARE — this is where selection is genuinely
-NEW, `mode:readonly`); **(iii)** minor polish — tabbed-on-narrow (today it
-stacks) + matching-height. The big win is (ii): selection in the inspectors.
+remaining work is: **(i)** extract the composition into a **reusable module**
+(DONE — S1 store-param + S2 `mountPanel`); **(ii)** the inspectors —
+**structure DONE (S3)**; **trajectory** absorbed via the § 6.3 render pipeline
+(bespoke Inspect list + animation, *not* an additive panel); **spectra** stays
+**independent** (its job is a *mode*, not atoms); **(iii)** minor polish —
+tabbed-on-narrow (today it stacks) + matching-height.
 
 **Key findings driving the design:**
 - **The fused module must OWN the panel host** — render the selection panel
@@ -536,8 +539,9 @@ stacks) + matching-height. The big win is (ii): selection in the inspectors.
   Making the module render the panel means *any* embed gets selection without
   each host shipping a `#selection-host`.
 - **Three orthogonal args compose** — `mode` (edit vs readonly), `persistence`
-  (workspace vs ephemeral), and the **existing `pick` opt** (spectra needs
-  `pick:none` even in readonly). So "selection always mounted" ≠ "pick always
+  (workspace vs ephemeral), and the **existing `pick` opt** (structure +
+  trajectory keep their triple-pick measurement; `readonly` just stops the
+  adapter hijacking it). So "selection always mounted" ≠ "pick always
   on": the panel/filter is always available; click-pick is governed by `pick`.
 - **No data-structure change for inspectors** — their structures come from
   parsed results and may carry no annotations; the filter still works on the
