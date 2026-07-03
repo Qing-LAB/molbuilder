@@ -221,7 +221,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 69 routes
+## 2. Endpoint index — all 76 routes
 
 ```mermaid
 flowchart LR
@@ -843,6 +843,24 @@ recomputed against the on-disk bytes. Used by Save-as to
 propagate the workspace's labels to a new destination cleanly.
 See [`save-flow.md`](save-flow.md) § 4.2 / § 4.3 for the
 Save vs. Save-as label-propagation contracts.
+
+### 6.1b Working-copy endpoints (`/api/workingcopy/*`)
+
+Load / edit (draft) / save for the structure editor — the working-copy core
+([`working-copy-persistence.md`](working-copy-persistence.md)): `open` loads,
+`update` mirrors edits to a draft (survives reload/crash), `save` writes the
+`.xyz`+`.json` pair (overwrite, or save-as via `target`); `orphans` / `recover` /
+`clean` are the explicit crash-recovery.
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/workingcopy/open` | POST | `{path}` | `{ok, session, source, data}` |
+| `/api/workingcopy/update` | POST | `{source, data}` | `{ok}` |
+| `/api/workingcopy/save` | POST | `{source, target?, data}` | `{ok, saved}` |
+| `/api/workingcopy/discard` | POST | `{source}` | `{ok}` |
+| `/api/workingcopy/orphans` | POST | `{path}` | `{ok, orphans: [{scratch, source, session, ts}]}` |
+| `/api/workingcopy/recover` | POST | `{scratch}` | `{ok, source, data}` |
+| `/api/workingcopy/clean` | POST | `{path}` | `{ok, removed}` |
 
 ### 6.2 Atom row shape (`/api/selection/atoms`)
 

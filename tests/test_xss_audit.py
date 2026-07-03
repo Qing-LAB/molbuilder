@@ -249,6 +249,12 @@ class TestNoUnsafeInnerHTML:
             # render of ``_spectra_inspector.html``) to host.innerHTML.
             # Same trust boundary; same justification.
             ("lib/inspectors/spectra.js", "host.innerHTML = partialHtml"),
+            # Fused molview selection-panel mount (Phase 5): assigns the response
+            # body of GET /partials/selection-panel (Jinja-autoescaped render of
+            # ``_selection_panel.html``, no user data) to host.innerHTML -- the
+            # SAME trust boundary + pattern as the inspector partials above and
+            # the modify selection-bootstrap.
+            ("lib/selection/mount-panel.js", "host.innerHTML = await r.text()"),
             # Markdown inspector: the live-preview pane assigns
             # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
             # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes

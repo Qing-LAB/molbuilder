@@ -875,21 +875,24 @@
         on(els.isolateChk, "change", (e) => {
             store.setIsolate(!!e.target.checked);
         });
-        // Auto-clear the toggle when the selection empties: the adapter render
-        // ignores isolate with no selection, but leaving the FLAG on would snap
-        // the viewer into isolate on the next single pick (the template's
-        // "auto-disables when the selection becomes empty" contract).  Also
-        // keeps the checkbox in sync with the store flag (e.g. an external
-        // setIsolate / the embed handle's isolate API).  Captured so dispose()
-        // can detach it (audit #352: don't strand the subscriber across mounts).
+        // Auto-clear the toggle ONLY when a non-empty selection just became
+        // empty (deselect-all while isolating) -- NOT when isolate is enabled
+        // with an already-empty selection (a valid inert state; the render
+        // ignores isolate when nothing is selected).  Enabling-then-selecting
+        // must work, so we gate on the empty TRANSITION (n===0 && prev>0), not
+        // on emptiness alone -- else checking the box with no selection would
+        // clear itself on the same notify.  Also keeps the checkbox in sync with
+        // the store flag.  Captured so dispose() can detach it (audit #352).
+        let _prevSelCount = 0;
         const _isolateUnsubscribe = store.subscribe((s) => {
             if (!els.isolateChk) return;
-            const empty = !s.indices || s.indices.length === 0;
-            if (empty && s.isolate) {
+            const n = (s.indices || []).length;
+            if (n === 0 && _prevSelCount > 0 && s.isolate) {
                 store.setIsolate(false);   // re-notifies; the box syncs next tick
             } else {
                 els.isolateChk.checked = !!s.isolate;
             }
+            _prevSelCount = n;
         });
         cleanups.push(() => {
             try { _isolateUnsubscribe(); } catch (_) { /* ignore */ }

@@ -962,6 +962,12 @@ class TestPartialSelectionPanelEndpoint:
         # panel v3; lib/selection-panel.js queries both by id).
         "selection-invert-btn",
         "selection-isolate-checkbox",
+        # k-grid display control (Phase 5 § 6.3; lib/selection-panel.js
+        # drives store.setKgrid from the enable checkbox + [nx,ny,nz]).
+        "selection-kgrid-checkbox",
+        "selection-kgrid-nx",
+        "selection-kgrid-ny",
+        "selection-kgrid-nz",
         # Region-label definitions popover (Phase 2a transport UI
         # shipped 2026-06-18; lib/region-label-definitions.js
         # toggles aria-expanded on the button + un-hides the panel).
