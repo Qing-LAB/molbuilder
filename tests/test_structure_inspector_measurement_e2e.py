@@ -1,16 +1,17 @@
-"""End-to-end pin for the /results Structure inspector's
-measurement chip (xyz / distance / angle).
+"""End-to-end pins for the /results Structure inspector's molview module
+(atom-annotations.md § 6.3 / § 6.4).
 
-Task #300 added click-pick + halo + chip on the structure
-inspector but shipped without a Playwright e2e — the chip's
-behaviour was only verified by the matching Modify-tab test.
-Task #307 closes the gap.
+Covers the shipped module surfaces (the old triple-pick measurement CHIP was
+retired; this file was renamed off it):
+  * the measurement OVERLAY — selection-driven xyz / distance / angle (§ 6.4);
+  * viewer clicks feeding the ephemeral store (decision A);
+  * B0 — an extended-XYZ ``Lattice=`` line reaching the viewer (getLattice);
+  * B1 — enabling k-grid tiles the supercell (atom count 2 -> 4 -> 2).
 
-Drives picks via the embed handle's ``setPickedIndices`` (the
-chip's ``onPick`` consumes that the same way a real canvas click
-would).  Function-scoped flask_server so each test can register
-its own ``tmp_path`` as a Capabilities picker root — module-
-scoped servers can't see test-time monkeypatches.
+Drives the ephemeral store via the ``__molbuilder_test_store`` hook on the viewer
+slot (selection + setKgrid).  Function-scoped flask_server so each test can
+register its own ``tmp_path`` as a Capabilities picker root — module-scoped
+servers can't see test-time monkeypatches.
 """
 from __future__ import annotations
 

@@ -728,7 +728,7 @@ change them** — they guard current behavior until the slice ships.
 | `test_hide_frozen_toggle_e2e.py` — trajectory's bespoke hide-frozen toggle | **Trajectory pipeline (§ 6.3)** — `frozen` folds into the store channel + isolate; the bespoke toggle is retired. |
 
 **✅ New surfaces — now have LIVE browser e2e (2026-07-03):**
-`test_structure_inspector_chip_e2e.py` was rewritten off the retired chip; it now
+`test_structure_inspector_measurement_e2e.py` (renamed off the retired chip); it now
 covers, on the structure inspector: the **measurement overlay** (selection-driven
 xyz/distance/angle), **clicks → ephemeral store** (decision A), **extxyz `Lattice=`
 → viewer** (B0), and **k-grid enable tiles the supercell** 2→4→2 (B1). Store-level

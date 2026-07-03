@@ -262,7 +262,7 @@
                                     // the result file directly (by-element etc.;
                                     // by-residue needs a sidecar it won't have).
                                     sourceFile: file,
-                                    atoms: elems.map((el, i) => ({ index: i, element: el || "?" })),
+                                    atoms: elems.map((el, i) => ({ index: i, element: el || "X" })),
                                     selection: [],
                                 });
                             } catch (_) { /* panel just shows an empty list */ }

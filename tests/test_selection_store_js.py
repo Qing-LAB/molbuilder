@@ -859,8 +859,10 @@ class TestEphemeralStore:
             const a = sel.createEphemeralStore();
             const b = sel.createEphemeralStore();
             // Every method selection-panel + viewer-adapter call on the store.
+            // Canonical invert name is ``invert`` (the redundant invertSelection
+            // alias was retired 2026-07-03; the panel calls store.invert()).
             const need = ["add","addFilter","all","applyFilter","clear",
-                          "getState","invert","invertSelection","removeFilter",
+                          "getState","invert","removeFilter",
                           "setCombinator","setMode","subscribe","toggle",
                           "updateFilter","writeLabel"];
             a.toggle(3); a.toggle(1);

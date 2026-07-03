@@ -358,40 +358,14 @@
      * around ``ws.selection.subscribe(fn)`` so subscribers + direct
      * readers see identical objects.
      *
-     * Returns a fresh defensive copy; mutating the returned object
-     * does not leak back into the store.
+     * Delegates to the ONE surface-snapshot shaper in
+     * _selection-store-impl.js (loaded first) — was a hand-maintained
+     * character-identical twin of that function; now a single source so a
+     * new store field can't be mirrored into one copy but not the other.
+     * Returns a fresh defensive copy.
      */
     function _selectionSnapshot(st) {
-        if (!st) {
-            return {
-                indices: [], mode: "click", isolate: false,
-                kgrid: { enabled: false, dims: [1, 1, 1], source: "free" },
-                filters: [],
-                combinator: "or", loading: false, error: null,
-                atoms: [], sourceFile: null, pickOrder: [],
-            };
-        }
-        return {
-            indices:    Array.isArray(st.selection)
-                            ? st.selection.slice() : [],
-            mode:       st.mode || "click",
-            isolate:    !!st.isolate,
-            kgrid:      st.kgrid
-                            ? { enabled: !!st.kgrid.enabled,
-                                dims: (st.kgrid.dims || [1, 1, 1]).slice(),
-                                source: st.kgrid.source || "free" }
-                            : { enabled: false, dims: [1, 1, 1], source: "free" },
-            filters:    (st.filters || []).map(function (f) {
-                return Object.assign({}, f);
-            }),
-            combinator: st.combinator || "or",
-            loading:    !!st.loading,
-            error:      st.error || null,
-            atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
-            sourceFile: st.sourceFile || null,
-            pickOrder:  Array.isArray(st.pickOrder)
-                            ? st.pickOrder.slice() : [],
-        };
+        return root.molbuilder.selection._surfaceSnapshot(st);
     }
 
     var selection = {

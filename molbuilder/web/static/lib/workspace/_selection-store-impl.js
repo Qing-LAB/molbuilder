@@ -1017,10 +1017,16 @@
 
     // Phase 5 (fused module): the ws.selection SURFACE, built around ANY raw
     // store.  selection-panel + viewer-adapter consume the renamed surface
-    // (toggle/all/clear/... + an ``indices``-shaped getState/subscribe), which
-    // the dispatcher builds around the singleton.  This mirrors that wrapper
-    // so a readonly/ephemeral inspector can own an ISOLATED selection.  Keep
-    // in sync with dispatcher.js::_selectionSnapshot + the ws.selection object.
+    // (toggle/all/clear/invert/... + an ``indices``-shaped getState/subscribe)
+    // so a readonly/ephemeral inspector can own an ISOLATED selection.
+    //
+    // This is the SHARED-CONSUMER subset.  The dispatcher's ws.selection is a
+    // SUPERSET: it adds workspace-lifecycle methods (getAtoms, setSourceFile,
+    // refreshAtoms) that the singleton needs but readonly inspectors do not —
+    // the shared consumers (panel/adapter/mount-panel) call only the common set,
+    // so the ephemeral surface intentionally omits those.  The snapshot shape is
+    // a single source: ws.selection delegates to _surfaceSnapshot (below), so
+    // there is no twin to keep in sync.
     function _ephemeralSnapshot(st) {
         if (!st) {
             return { indices: [], mode: "click", isolate: false,
@@ -1055,7 +1061,6 @@
             remove:          function (ix)    { return s.removeFromSelection(ix); },
             all:             function ()      { return s.selectAll(); },
             invert:          function ()      { return s.invertSelection(); },
-            invertSelection: function ()      { return s.invertSelection(); },
             clear:           function ()      { return s.clearSelection(); },
             setMode:         function (m)     { return s.setMode(m); },
             setIsolate:      function (on)    { return s.setIsolate(on); },
@@ -1083,4 +1088,8 @@
     root.molbuilder.selection.createEphemeralStore = function () {
         return _surface(_create());
     };
+    // The ONE surface-snapshot shaper (raw state -> the {indices,...} surface
+    // shape).  The dispatcher's ws.selection.getState/subscribe delegate to THIS
+    // (was a hand-maintained character-identical twin -- now a single source).
+    root.molbuilder.selection._surfaceSnapshot = _ephemeralSnapshot;
 })(typeof window !== "undefined" ? window : globalThis);

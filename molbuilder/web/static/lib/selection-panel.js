@@ -858,15 +858,10 @@
         });
         on(els.applyFilterBtn,  "click",  () => store.applyFilter());
         on(els.clearBtn,        "click",  () => store.clear());
-        // 2026-06-12: Invert flips selected ↔ unselected.  The
-        // store exposes ``invert`` (via ws.selection) which calls
-        // the underlying ``invertSelection`` mutator.
-        on(els.invertBtn, "click", () => {
-            if (typeof store.invert === "function") store.invert();
-            else if (typeof store.invertSelection === "function") {
-                store.invertSelection();
-            }
-        });
+        // Invert flips selected ↔ unselected.  Both surfaces (ws.selection +
+        // the ephemeral surface) expose ``invert`` -> the ``invertSelection``
+        // mutator; no fallback needed.
+        on(els.invertBtn, "click", () => store.invert());
         // Phase 5 (fused module): "Show selected only" is STORE state (the
         // single source of truth).  The checkbox drives ``store.setIsolate`` and
         // reflects ``state.isolate``; the viewer adapter reads the same flag
