@@ -42,6 +42,20 @@
         ];
     }
 
+    // Build an .xyz body from a render-pipeline result: positions[m] gets its
+    // element from the unit-cell atom sourceIndex[m] (k-grid images share their
+    // unit-cell atom's element).  Lattice is passed separately via setStructure.
+    function _buildXyz(elements, positions, sourceIndex) {
+        const n = positions.length;
+        const out = [String(n), "kgrid"];
+        for (let m = 0; m < n; m++) {
+            const el = elements[sourceIndex[m]] || "X";
+            const p = positions[m];
+            out.push(el + " " + p[0] + " " + p[1] + " " + p[2]);
+        }
+        return out.join("\n");
+    }
+
     const inspector = {
         name:        "structure",
         displayName: "Structure preview",
@@ -137,6 +151,7 @@
                 ? selApi.createEphemeralStore() : null;
             let   panelMount = null;
             let   measOverlay = null;
+            let   kgUnsub = null;
             const panelHost  = document.createElement("div");
             panelHost.className = "structure-selection-host molview-panel";
 
@@ -268,6 +283,35 @@
                         // Test hook: expose the ephemeral store so e2e can drive
                         // the selection (replaces the retired chip pick hooks).
                         viewerSlot.__molbuilder_test_store = selStore;
+
+                        // Phase 5 (§ 6.3, Option 1): the k-grid controller.
+                        // Capture the UNIT-CELL coords/elements ONCE (before any
+                        // tiling -- getAtomCoords changes after setStructure). On
+                        // k-grid enable, tile getLattice() -> setStructure the
+                        // supercell; on disable, restore the original unit cell.
+                        // isolate still FILTERS the tiled set (computeRender
+                        // layer 2); halos + measurement stand down meanwhile.
+                        if (selStore && lattice && typeof mvApi.computeRender === "function") {
+                            const _unitCoords   = handle.getAtomCoords();
+                            const _unitElements = handle.getElements();
+                            const _origXyz      = r.text;
+                            let   _kgActive     = false;
+                            kgUnsub = selStore.subscribe(function (s) {
+                                if (disposed) return;
+                                const kg = (s && s.kgrid) || {};
+                                if (kg.enabled) {
+                                    const out = mvApi.computeRender(_unitCoords, s, lattice);
+                                    handle.setStructure({
+                                        xyz: _buildXyz(_unitElements, out.positions, out.sourceIndex),
+                                        lattice: lattice,
+                                    });
+                                    _kgActive = true;
+                                } else if (_kgActive) {
+                                    handle.setStructure({ xyz: _origXyz, lattice: lattice });
+                                    _kgActive = false;
+                                }
+                            });   // fires immediately (k-grid off -> no-op)
+                        }
                         // Signal "first render visible" so the
                         // /results tab-level picker drops its
                         // "Parsing…" status.  Deferred via double-rAF
@@ -333,6 +377,7 @@
             return {
                 dispose() {
                     disposed = true;
+                    if (kgUnsub) { try { kgUnsub(); } catch (_) {} }
                     if (measOverlay && typeof measOverlay.dispose === "function") {
                         try { measOverlay.dispose(); } catch (_) {}
                     }

@@ -158,6 +158,16 @@
         // pure consumer -- it exposes NO isolate control of its own (§ 6.2).
 
         function render(s) {
+            // Option 1 (§ 6.3): while k-grid is on, the viewer shows the TILED
+            // supercell -- overlay entries are keyed by unit-cell index and would
+            // land on the wrong copies, so the adapter stands its overlays down
+            // (the isolate FILTER still applies, via the k-grid controller's
+            // computeRender; only the halos pause).  Cleared, restored on k-grid off.
+            if (s && s.kgrid && s.kgrid.enabled) {
+                try { handle.setOverlays(null); } catch (_) { /* already clear */ }
+                return;
+            }
+
             const atoms = [];
 
             // 2026-06-12: isolate mode setup.

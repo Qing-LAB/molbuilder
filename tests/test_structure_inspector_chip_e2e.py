@@ -186,6 +186,42 @@ def test_extxyz_lattice_reaches_the_viewer(
     assert lat is not None, "getLattice() should return the parsed cell"
 
 
+def test_kgrid_enable_tiles_the_supercell(
+        page, flask_server, tmp_path, monkeypatch):
+    """B1 (Option 1): enabling k-grid tiles the cell -> the viewer's atom count
+    jumps to natoms * nx*ny*nz (copies offset by the lattice); disabling restores
+    the unit cell."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "periodic.xyz"
+    xyz.write_text(
+        '2\n'
+        'Lattice="10 0 0 0 10 0 0 0 20" Properties=species:S:1:pos:R:3\n'
+        'C 0 0 0\n'
+        'H 1 0 0\n'
+    )
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+    slot = ".structure-viewer-slot"
+    _count = (f"() => document.querySelector('{slot}')"
+              "  .__molbuilder_test_handle.getAtomCount()")
+
+    assert page.evaluate(_count) == 2                    # unit cell
+
+    # enable k-grid 2x1x1 -> 2 copies of 2 atoms = 4
+    page.evaluate(
+        f"() => {{ const st = document.querySelector('{slot}').__molbuilder_test_store;"
+        "  st.setKgrid({ dims: [2, 1, 1] }); st.setKgrid({ enabled: true }); }"
+    )
+    page.wait_for_function(f"{_count} === 4", timeout=8000)
+
+    # disable -> restore the unit cell
+    page.evaluate(
+        f"() => document.querySelector('{slot}')"
+        "  .__molbuilder_test_store.setKgrid({ enabled: false })"
+    )
+    page.wait_for_function(f"{_count} === 2", timeout=8000)
+
+
 def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
     """Under decision A the adapter wires viewer clicks to the store (single

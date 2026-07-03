@@ -42,6 +42,14 @@
 
         function render() {
             const s = store.getState() || {};
+            // Option 1 (§ 6.3): while k-grid is on we show the tiled supercell,
+            // not the unit cell -- per-unit-cell-index readout doesn't map, so
+            // the measurement stands down until k-grid is off.
+            if (s.kgrid && s.kgrid.enabled) {
+                el.hidden = true;
+                el.textContent = "";
+                return;
+            }
             // Ordered picks: pickOrder (click order -> angle vertex) else indices.
             const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
                 ? s.pickOrder
