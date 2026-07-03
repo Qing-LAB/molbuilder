@@ -874,6 +874,14 @@
         // non-selected atoms; the checkbox just flips the mode flag
         // and triggers a re-render.
         function _isolateAdapter() {
+            // Phase 5 (fused module): prefer the PER-MOUNT adapter handle
+            // (mountPanel fills opts.adapterHolder.handle after it attaches the
+            // adapter) so each panel drives ITS OWN viewer -- the global is a
+            // single slot that can't distinguish panels.  Fall back to the
+            // legacy global that Modify's bootstrap sets, so Modify is unchanged.
+            if (opts && opts.adapterHolder && opts.adapterHolder.handle) {
+                return opts.adapterHolder.handle;
+            }
             return root.molbuilder
                 && root.molbuilder.selection
                 && root.molbuilder.selection.viewerAdapterHandle;
