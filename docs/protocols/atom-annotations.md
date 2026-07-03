@@ -467,6 +467,58 @@ parallel; keep the current `trajectory/core.js` isolated as the working fallback
 verify end-to-end (frame scrub, arrows, measurement, frozen, k-grid); **retire
 the old module only on confirmation** — no flag-day.
 
+### 6.4 Measurement overlay (a module decoration — position / distance / angle)
+
+The measurement readout (1 atom → position, 2 → distance, 3 → angle) moves **out
+of the per-inspector chips/readouts** (`structure.js`'s `#structure-measurement`,
+trajectory's Inspect readout) and **into the fused module** as a **decoration**
+(§ 6.3 layer 4), painted as overlay text inside the viewer. Any molview gets it;
+the inspectors drop their bespoke copies. The math stays in the shared
+`lib/selection/measurements.js` (unchanged).
+
+**Model — measurement is derived from the SELECTION (decision A, unified).**
+There is no separate measurement pick: the *ordered* selected atoms drive it.
+
+| selected (n) | overlay shows |
+|---|---|
+| 1 | the atom's position `(x, y, z)` |
+| 2 | the distance |
+| 3 | the angle (vertex = the **2nd** pick) |
+| 0 or ≥ 4 | hidden |
+
+Order comes from the store's **`pickOrder`** (click order, falls back to
+`indices`); geometry is computed against the **current-frame coords** so it is
+correct on a trajectory. Consequence: viewer clicks feed the **store** selection
+(this reverses S3's readonly "skip clicks" — under A there's no pick/selection
+conflict to protect), so clicks *and* panel row-clicks both drive one input. (A
+"measure without disturbing my region-selection" mode is a future Modify opt-in.)
+
+**API (module feature):**
+```
+molview.mountMeasurementOverlay(viewerHost, { store, coordsProvider }) -> { render, dispose }
+  viewerHost     : the viewer element; the overlay is absolutely positioned within it
+  store          : the selection store — getState() -> { pickOrder, indices, atoms },
+                   subscribe(fn)  (drives repaint on selection change)
+  coordsProvider : () -> per-atom [x,y,z] for the CURRENT frame
+  render()       : recompute + repaint (call on a frame tick)
+  dispose()      : detach the subscription + remove the overlay element
+```
+
+**Data structures:**
+- **`Measurement`** (produced by `measurements.js`): `{ kind: "position" | "distance"
+  | "angle", display: string }`, or `null` when n∉{1,2,3}.
+- Composed inputs: **`picks`** = `store.pickOrder` (ordered; else `indices`);
+  **`atomsMeta`** = `store.atoms` (element / name, for the label); **`coords`** =
+  `coordsProvider()`.
+
+**Key design choice — `coordsProvider`, not store coords.** The store is
+frame-INDEPENDENT (§ 6.3): it carries identity + selection, *never* coordinates.
+So the overlay pulls coords from the **same source the render pipeline uses** (the
+`FrameSet`'s current frame, or the live viewer handle) via a `coordsProvider`
+callback. This keeps the store clean and makes measurement correct at whatever
+frame is on screen — the overlay `render()` is re-run on the frame tick alongside
+the pipeline.
+
 ---
 
 ## 7. Phased implementation plan (each: implement → test → commit)
@@ -527,8 +579,10 @@ the old module only on confirmation** — no flag-day.
      it into an inspector is the next step. **(b) the k-grid layer — compute
      BUILT (`lib/molview/kgrid.js` `tileKgrid`, node-tested) + the parameter is
      store view-state (`setKgrid`, node-tested); remaining: the UI control
-     (enable + [nx,ny,nz]) + wiring into the render.** (c) port trajectory
-     decorations (arrows) +
+     (enable + [nx,ny,nz]) + wiring into the render.** (c) decorations (§ 6.3
+     layer 4): the **measurement overlay** (§ 6.4 — `mountMeasurementOverlay`,
+     replaces `structure.js`'s chip + trajectory's Inspect readout), plus port
+     trajectory's arrows +
      frame-scrub UI + live polling onto the pipeline; (d) `frozen` → the
      `frozen` channel (retire the bespoke hide-frozen). Build
      in parallel; **retire `trajectory/core.js` only on E2E confirmation.**
