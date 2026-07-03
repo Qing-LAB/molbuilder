@@ -51,7 +51,7 @@ flowchart LR
     F -- "open (load)" --> WC
     WC -- "edit" --> WC
     WC -- "update (auto)" --> D
-    D -. "reload / crash restores" .-> WC
+    D -. "crash / restart recovers" .-> WC
     WC == "save (overwrite / save-as)" ==> F
     classDef store fill:#eef,stroke:#557;
     class F,D store;
@@ -76,14 +76,14 @@ sequenceDiagram
     U->>B: open mol.xyz
     B->>B: load structure + labels
     U->>B: tag atoms 1-3 = L-electrode
-    B->>DR: update (draft)
+    B->>DR: update (server draft, for crash-safety)
     Note over F: untouched
     U->>B: reload the tab
-    DR-->>B: draft restores the tags
+    Note over B: edits restored from the browser's own copy (§9)
     U->>B: Save
     B->>F: write mol.xyz + mol.molstruct.json (overwrite)
     B->>DR: drop draft
-    Note over U: "Save As" writes to a NEW path instead
+    Note over DR: a CRASH instead recovers the edits from the server draft (§7)
 ```
 
 ---
@@ -136,14 +136,20 @@ and **project files change only on an explicit Save.**
 
 ## 7. Draft & crash recovery
 
-- The draft lives in `<project>/.molbuilder_workspace/<stem>.<session>.wc.json`
-  (a JSON envelope `{schema, source, session, ts, blob}`, written atomically),
-  keyed by **session** (the server-side session — the login when authenticated,
-  else a stable per-server-run id for no-auth localhost).
-- A crash (or, for no-auth, a server restart) leaves a draft its session can no
-  longer clean. `list_orphans` surfaces them; the user **recovers** or
-  **discards** — the core never auto-deletes unsaved work or auto-adopts stale
-  work. Cleanup is otherwise on `save` or session-end (no time-based sweep).
+Unsaved edits are kept safe two ways:
+- **Same-tab reload** → restored instantly from the **browser's own copy**
+  (`sessionStorage`, part of the `/modify` wiring, §9) — no server round-trip.
+- **Crash / server restart** (the browser copy is gone, or the session changed)
+  → the **server draft** below is the backstop.
+
+The server draft lives in `<project>/.molbuilder_workspace/<stem>.<session>.wc.json`
+(a JSON envelope `{schema, source, session, ts, blob}`, written atomically on
+each `update`), keyed by **session** (the server-side session — the login when
+authenticated, else a stable per-server-run id for no-auth localhost). A crash
+(or, for no-auth, a server restart) leaves a draft its session can no longer
+clean; `list_orphans` surfaces them and the user **recovers** or **discards** —
+the core never auto-deletes unsaved work or auto-adopts stale work. Otherwise
+cleanup is on `save` or session-end (no time-based sweep).
 
 ---
 
