@@ -90,12 +90,12 @@
                 + "load lib/workspace/dispatcher.js first"
             );
         }
-        // Phase 5 (fused module): a ``readonly`` mount PAINTS the store's
-        // selection onto the viewer but does NOT hijack viewer clicks -- the
-        // embed keeps its own pick mode (e.g. the structure inspector's
-        // triple-pick measurement chip).  Selection comes from the panel
-        // (row-click / filter) instead.  Default (Modify) wires clicks as before.
-        const _mode = (opts && opts.mode) || null;
+        // Phase 5 (fused module, decision A / § 6.4): viewer clicks ALWAYS feed
+        // the store selection -- including a ``readonly`` mount.  There is no
+        // pick-vs-selection conflict to protect anymore: the measurement overlay
+        // derives from the selection, so a click that toggles the store is what
+        // drives the readout.  (S3 used to skip clicks in readonly to preserve a
+        // separate triple-pick chip; that chip is retired.)
 
         // ----- click wiring --------------------------------------- //
         //
@@ -124,19 +124,17 @@
                 prevClicked = idx;
             }
         }
-        if (_mode !== "readonly") {
-            try {
-                handle.setPick({
-                    mode:   "single",
-                    halo:   false,
-                    label:  false,
-                    onPick: onPick,
-                });
-            } catch (e) {
-                if (root.console) root.console.warn(
-                    "[viewer-adapter] setPick failed", e
-                );
-            }
+        try {
+            handle.setPick({
+                mode:   "single",
+                halo:   false,
+                label:  false,
+                onPick: onPick,
+            });
+        } catch (e) {
+            if (root.console) root.console.warn(
+                "[viewer-adapter] setPick failed", e
+            );
         }
 
         // ----- render ---------------------------------------------- //

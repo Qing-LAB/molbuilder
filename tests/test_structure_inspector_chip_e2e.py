@@ -85,37 +85,37 @@ def _mount_structure(page, file_path):
         "}",
         str(file_path),
     )
+    # Wait for the ephemeral store hook (set in onReady, after the atoms are
+    # adopted + the measurement overlay is mounted).
     page.wait_for_function(
         "() => {"
         "  const slot = document.querySelector('.structure-viewer-slot');"
-        "  return slot && slot.__molbuilder_test_handle !== undefined;"
+        "  return slot && slot.__molbuilder_test_store;"
         "}",
         timeout=10000,
     )
 
 
-def _pick(page, indices):
-    """Drive the embed's setPickedIndices AND fire the chip-refresh
-    closure manually — the embed deliberately doesn't call
-    ``onPick`` from ``setPickedIndices`` so the chip update has to
-    be triggered separately when the test bypasses canvas clicks."""
+def _select(page, indices):
+    """Drive the ephemeral store selection (input order becomes pickOrder), which
+    drives the measurement overlay (§ 6.4) -- decision A: measurement = f(selection)."""
     page.evaluate(
-        "(indices) => {"
-        "  const slot = document.querySelector('.structure-viewer-slot');"
-        "  slot.__molbuilder_test_handle.setPickedIndices(indices);"
-        "  slot.__molbuilder_test_refreshChip();"
-        "}",
+        "(indices) => document.querySelector('.structure-viewer-slot')"
+        "  .__molbuilder_test_store.set(indices)",
         list(indices),
     )
 
 
-def test_chip_renders_xyz_distance_and_angle_via_pick(
+# The measurement readout is now the module overlay, not a #structure-measurement chip.
+_OVL = ".molview-measurement-overlay"
+
+
+def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
         page, flask_server, tmp_path, monkeypatch):
-    """1 atom → xyz, 2 atoms → distance, 3 atoms → angle with
-    vertex = user's 2nd click.  Geometry is a right triangle
-    where the geometric vertex (origin) ≠ middle-click vertex
-    in the test below — guards against the same false-positive
-    that hid the pickOrder snapshot blocker (task #304)."""
+    """The measurement overlay (§ 6.4) is SELECTION-driven: 1 atom → xyz, 2 →
+    distance, 3 → angle (vertex = 2nd SELECTED, via pickOrder), 0 → hidden.
+    Right-triangle geometry so the geometric vertex ≠ the middle-selection vertex
+    (guards the pickOrder false-positive that hid task #304)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = tmp_path / "right_triangle.xyz"
     xyz.write_text(
@@ -124,84 +124,63 @@ def test_chip_renders_xyz_distance_and_angle_via_pick(
         "N 0.000 0.000 0.000\n"
         "O 0.000 1.000 0.000\n"
     )
-
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
 
+    import re
     # 1 atom → xyz of the C atom (+x).
-    _pick(page, [0])
+    _select(page, [0])
     page.wait_for_function(
-        "() => !document.getElementById('structure-measurement').hidden"
+        f"() => {{ const o = document.querySelector('{_OVL}'); return o && !o.hidden; }}"
     )
-    text = page.locator("#structure-measurement").inner_text()
+    text = page.locator(_OVL).inner_text()
     assert text.startswith("C #1"), text
     assert "(1.000, 0.000, 0.000)" in text, text
-    assert page.evaluate(
-        "() => document.getElementById('structure-measurement').dataset.kind"
-    ) == "xyz"
+    assert page.evaluate(f"() => document.querySelector('{_OVL}').dataset.kind") == "xyz"
 
     # 2 atoms → distance C–O = sqrt(2) ≈ 1.4142.
-    _pick(page, [0, 2])
-    page.wait_for_function(
-        "() => document.getElementById('structure-measurement')"
-        "  .dataset.kind === 'distance'"
-    )
-    text = page.locator("#structure-measurement").inner_text()
+    _select(page, [0, 2])
+    page.wait_for_function(f"() => document.querySelector('{_OVL}').dataset.kind === 'distance'")
+    text = page.locator(_OVL).inner_text()
     assert "C #1" in text and "O #3" in text, text
-    import re
     m = re.search(r"=\s*([0-9.]+)\s*Å", text)
     assert m and 1.40 <= float(m.group(1)) <= 1.43, text
 
-    # 3 atoms → angle.  Click order [O, N, C] = [2, 1, 0]:
-    # vertex is N (origin, the 2nd click) → 90°.
-    _pick(page, [2, 1, 0])
-    page.wait_for_function(
-        "() => document.getElementById('structure-measurement')"
-        "  .dataset.kind === 'angle'"
-    )
-    text = page.locator("#structure-measurement").inner_text()
-    m = re.match(
-        r"∠\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)",
-        text,
-    )
+    # 3 atoms → angle.  Selection order [O, N, C] = [2, 1, 0]:
+    # vertex is N (origin, the 2nd selected) → 90°.
+    _select(page, [2, 1, 0])
+    page.wait_for_function(f"() => document.querySelector('{_OVL}').dataset.kind === 'angle'")
+    text = page.locator(_OVL).inner_text()
+    m = re.match(r"∠\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)", text)
     assert m, text
     assert m.group(2).startswith("N "), (
-        f"vertex should be N (2nd click); got {m.group(2)!r} in {text!r}"
+        f"vertex should be N (2nd selected); got {m.group(2)!r} in {text!r}"
     )
     deg = re.search(r"=\s*([0-9.]+)°", text)
     assert deg and 89.0 <= float(deg.group(1)) <= 91.0, text
 
-    # 0 atoms → chip hides.
-    _pick(page, [])
-    page.wait_for_function(
-        "() => document.getElementById('structure-measurement').hidden"
-    )
+    # 0 atoms → overlay hides.
+    _select(page, [])
+    page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
-def test_chip_pick_mode_is_triple(
+def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
-    """The structure inspector configures the embed with
-    ``pick.mode = "triple"`` (task #300).  Pin the mode end-to-end
-    so a regression where the inspector silently downgrades to
-    ``pair`` or ``single`` surfaces here.  FIFO drop semantics
-    are covered by the embed's own JS unit tests
-    (tests/test_mol_viewer_embed_js.py) — they exercise
-    ``_togglePick`` directly, the click code path that
-    ``setPickedIndices`` cannot reach."""
+    """Under decision A the adapter wires viewer clicks to the store (single
+    pick) instead of a separate triple-pick — the measurement derives from the
+    selection.  Pin the embed's pick mode as 'single' (adapter-set)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = tmp_path / "small.xyz"
-    xyz.write_text(
-        "2\nsmall\n"
-        "H 0 0 0\n"
-        "H 1 0 0\n"
-    )
+    xyz.write_text("2\nsmall\nH 0 0 0\nH 1 0 0\n")
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
-    mode = page.evaluate(
-        "() => document.querySelector('.structure-viewer-slot')"
-        "  .__molbuilder_test_handle.getPick().mode"
-    )
-    assert mode == "triple", (
-        f"structure inspector should configure pick.mode='triple'; "
-        f"got {mode!r}"
+    # The adapter attaches asynchronously via mountPanel; wait for single-pick.
+    # Null-safe: getPick() is undefined until the adapter runs setPick.
+    page.wait_for_function(
+        "() => {"
+        "  const h = document.querySelector('.structure-viewer-slot').__molbuilder_test_handle;"
+        "  const p = h && h.getPick && h.getPick();"
+        "  return p && p.mode === 'single';"
+        "}",
+        timeout=8000,
     )

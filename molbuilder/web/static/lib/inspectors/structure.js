@@ -103,11 +103,8 @@
             // ``card.height`` opt below).
             const viewerSlot = document.createElement("div");
             viewerSlot.className = "structure-viewer-slot molview-viewer";
-            const chip = document.createElement("div");
-            chip.id = "structure-measurement";
-            chip.className = "selection-measurement-overlay";
-            chip.hidden = true;
-            viewerSlot.appendChild(chip);
+            // The measurement readout is now the module overlay (§ 6.4),
+            // mounted into viewerSlot in onReady -- no bespoke chip here.
 
             // -- Phase 5 (fused module): a readonly selection panel driven by
             // an ISOLATED ephemeral store -- the inspector owns its own
@@ -118,6 +115,7 @@
             const selStore = (typeof selApi.createEphemeralStore === "function")
                 ? selApi.createEphemeralStore() : null;
             let   panelMount = null;
+            let   measOverlay = null;
             const panelHost  = document.createElement("div");
             panelHost.className = "structure-selection-host molview-panel";
 
@@ -173,43 +171,6 @@
                     status.classList.add("inspector-inline-error");
                     return;
                 }
-                const _meas = (root.molbuilder
-                               && root.molbuilder.selection
-                               && root.molbuilder.selection.measurements);
-                const _updateChip = (handle) => {
-                    if (!handle || disposed) return;
-                    const pa = handle.getPickedIndices();
-                    if (!_meas || pa.length === 0) {
-                        chip.hidden = true;
-                        chip.textContent = "";
-                        return;
-                    }
-                    const positions = handle.getAtomCoords();
-                    const elements  = handle.getElements();
-                    // Build a tiny atomsMeta array on the fly —
-                    // the inspector doesn't have residue context
-                    // (that lives in a .molstruct.json sidecar,
-                    // which Results doesn't fetch by design); the
-                    // element + 1-based index is the right label
-                    // for a static-structure peek.
-                    const atomsMeta = elements.map(
-                        (el, i) => ({ index: i, element: el || "?" }));
-                    // pickedIndices preserves click order in the
-                    // embed (pair / triple modes append in order);
-                    // pass it through as both selection AND
-                    // pickOrder so the angle vertex matches the
-                    // user's 2nd click.
-                    const result = _meas.compute(
-                        pa, atomsMeta, positions, pa);
-                    if (result) {
-                        chip.hidden = false;
-                        chip.dataset.kind = result.kind;
-                        chip.textContent  = result.display;
-                    } else {
-                        chip.hidden = true;
-                        chip.textContent = "";
-                    }
-                };
                 const opts = {
                     // Source data flows in through the API; the
                     // viewer doesn't fetch.
@@ -233,19 +194,9 @@
                     // knob bar's Axes button.
                     axes:   false,
                     export: { defaultName: r.basename || "structure" },
-                    // 3-atom pick with halos drives the measurement
-                    // chip — click 1 atom for xyz, 2 for distance,
-                    // 3 for ∠A-B-C (vertex = 2nd click).  Halo is
-                    // the same yellow sphere overlay the trajectory
-                    // inspector uses.
-                    pick: {
-                        mode:  "triple",
-                        halo:  true,
-                        label: false,
-                        onPick() {
-                            _updateChip(viewerHandle);
-                        },
-                    },
+                    // No embed pick here: the viewer-adapter wires clicks ->
+                    // store.toggle (single pick), and the measurement overlay
+                    // (§ 6.4) + selection halos derive from the store.
                     onReady: function (handle) {
                         if (disposed) return;
                         const n = handle.getAtomCount();
@@ -272,6 +223,22 @@
                                 });
                             } catch (_) { /* panel just shows an empty list */ }
                         }
+                        // Phase 5 (§ 6.4): the measurement overlay -- it derives
+                        // position/distance/angle from the SELECTION (viewer
+                        // clicks + panel both feed the store), with coords from
+                        // this static structure's viewer handle.
+                        const mvApi = (root.molbuilder && root.molbuilder.molview) || {};
+                        if (selStore && typeof mvApi.mountMeasurementOverlay === "function") {
+                            try {
+                                measOverlay = mvApi.mountMeasurementOverlay(viewerSlot, {
+                                    store: selStore,
+                                    coordsProvider: () => handle.getAtomCoords(),
+                                });
+                            } catch (_) { /* overlay absent -> no readout */ }
+                        }
+                        // Test hook: expose the ephemeral store so e2e can drive
+                        // the selection (replaces the retired chip pick hooks).
+                        viewerSlot.__molbuilder_test_store = selStore;
                         // Signal "first render visible" so the
                         // /results tab-level picker drops its
                         // "Parsing…" status.  Deferred via double-rAF
@@ -320,26 +287,13 @@
                             }
                         });
                     }
-                    // Test hooks (no production reader): stash the
-                    // embed handle + chip-update closure on the
-                    // viewer slot DOM node so Playwright e2e can
-                    // drive setPickedIndices + refresh the chip
-                    // without simulating canvas-pixel clicks.  The
-                    // embed deliberately suppresses ``onPick`` on
-                    // ``setPickedIndices`` (avoids feedback loops),
-                    // so test code that drives picks externally
-                    // must trigger the chip update directly via
-                    // ``__molbuilder_test_refreshChip()``.  The
-                    // double-underscore prefix marks "test only";
-                    // properties hang off the slot rather than
-                    // ``window`` to avoid global collisions when
-                    // multiple inspectors mount in the same run.
-                    // Disposed implicitly when the inspector tears
-                    // the host down.
+                    // Test hook (no production reader): stash the embed handle on
+                    // the slot so Playwright e2e can drive the viewer without
+                    // canvas-pixel clicks.  The store hook (set in onReady) lets
+                    // e2e drive the SELECTION, which now drives the measurement
+                    // overlay (§ 6.4).  Double-underscore = test-only; hung off
+                    // the slot (not window) to avoid multi-inspector collisions.
                     viewerSlot.__molbuilder_test_handle = viewerHandle;
-                    viewerSlot.__molbuilder_test_chip   = chip;
-                    viewerSlot.__molbuilder_test_refreshChip =
-                        () => _updateChip(viewerHandle);
                 } catch (e) {
                     status.textContent = "Viewer failed: "
                                        + (e && e.message ? e.message : String(e));
@@ -350,6 +304,9 @@
             return {
                 dispose() {
                     disposed = true;
+                    if (measOverlay && typeof measOverlay.dispose === "function") {
+                        try { measOverlay.dispose(); } catch (_) {}
+                    }
                     if (panelMount && panelMount.panel
                         && typeof panelMount.panel.dispose === "function") {
                         try { panelMount.panel.dispose(); } catch (_) {}
