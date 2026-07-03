@@ -234,8 +234,14 @@ by omitting selection.
 - **Data:** the workspace selection store stays the single source of truth (no
   second copy — avoids the two-writer class we fixed); the fused module owns the
   viewer + panel + adapter + the unified API, over the § 2 annotation channels.
-- **API:** `viewer.embed(host, opts) → handle`; the handle exposes view +
-  selection/filter ops.
+- **API (as built, Phase 5 S1–S3):** the viewer stays a **pure viewer**
+  (`viewer.embed(host, opts) → handle`); selection is **composed alongside** it
+  by `selection.mountPanel(host, {viewerHandle, store, mode})`, which fetches the
+  panel partial → `selectionPanel.mount(host, {store, mode})` →
+  `viewerAdapter.attach(handle, {store, mode})`. Keeping the viewer unaware of
+  selection is what lets *any* viewer (Modify's or an inspector's) gain a panel.
+  *(This supersedes the earlier sketch of `viewer.embed` mounting the panel
+  itself — composition, not coupling.)*
 - **Persistence:** load / edit / save is the **working-copy** (§6.1,
   `working-copy-persistence.md`) — `open` loads the structure+sidecar, edits
   `update` a draft (survives reload/crash), and **Save / Save As** writes the
@@ -250,6 +256,16 @@ by omitting selection.
 |---|---|---|
 | `mode` | `"modify"` \| `"readonly"` | `modify`: full structure-edit ops + selection editing. `readonly`: view + selection for **filter/highlight/inspect only** — no edit ops, no writes (the Results inspectors). |
 | `persistence` | `"workspace"` \| `"ephemeral"` | `workspace`: this view's structure+selection+annotations **are** the workspace — held in the working copy, drafted so they survive reload/crash, written only on explicit Save (§6.1) (the Molbuilder/Modify tab). `ephemeral`: a transient view **re-derived from its source each mount** — owns no data, never saved (the Results inspectors, driven by the selected result file). |
+
+**How the args map in code (Phase 5 S1–S3):** `mode` is passed straight through
+`mountPanel` to the panel + adapter — `readonly` hides the panel's assign/write
+controls and stops the adapter hijacking the viewer's clicks (the inspector's
+own pick/measurement stays). There is **no literal `persistence` param** — it is
+realized by **which store you pass**: `workspace` = the default singleton
+(`ws.selection`); `ephemeral` = a fresh `selection.createEphemeralStore()`
+(isolated selection, populated via `adoptSession({sourceFile, atoms})`, never
+touching the workspace). The readonly filter needs `sourceFile` (server eval via
+`/api/selection/eval`).
 
 ### 6.1 Load / edit / save (via the working-copy)
 
@@ -327,6 +343,14 @@ crash-recovery); this section says only how the fused module *uses* it.
      phase wires the module to them and deletes the three old save paths
      (`writeLabel` auto-save, viewer save-to-project, dispatcher commit).
      `mode:readonly` (inspectors) loads via `open` only — no draft, no save.
+   - **Built so far (2026-07-02):** **S1** store-parameterized `panel.mount`/
+     `adapter.attach` + `selection.createEphemeralStore()` (Modify unchanged, via
+     the default singleton). **S2** reusable `selection.mountPanel(host,
+     {viewerHandle, store, mode})`. **S3** the **structure** inspector mounts a
+     `readonly`+ephemeral panel (list + click-select + filter + highlight; the
+     triple-pick measurement chip stays). Node-verified; **browser E2E pending.**
+     Remaining: trajectory + spectra inspectors, **S4** working-copy wiring for
+     Modify, **S5** responsive 2-card↔tabbed + the E2E gate.
 6. **Docs + data-vocabulary v4** — register the sidecar v4 shape; merge
    `molviewer-guide.md` + `atom-selection-guide.md` into one; update
    `embedded-viewer.md`, `atom-selection.md`, `types/structure.md`,

@@ -235,6 +235,13 @@
                             try {
                                 const elems = handle.getElements() || [];
                                 selStore.adoptSession({
+                                    // sourceFile is REQUIRED for the panel's
+                                    // filter: applyFilter posts {structure_path}
+                                    // to /api/selection/eval and refuses without
+                                    // it ("no source file").  The server reads
+                                    // the result file directly (by-element etc.;
+                                    // by-residue needs a sidecar it won't have).
+                                    sourceFile: file,
                                     atoms: elems.map((el, i) => ({ index: i, element: el || "?" })),
                                     selection: [],
                                 });
