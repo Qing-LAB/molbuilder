@@ -278,8 +278,10 @@ tabs; trajectory is absorbed via the § 6.3 render pipeline (it *is* atom work).
 
 **How the args map in code (Phase 5 S1–S3):** `mode` is passed straight through
 `mountPanel` to the panel + adapter — `readonly` hides the panel's assign/write
-controls and stops the adapter hijacking the viewer's clicks (the inspector's
-own pick/measurement stays). There is **no literal `persistence` param** — it is
+controls. (Per **decision A / § 6.4**, viewer clicks now **always** feed the store
+selection, in readonly too — the old S3 "readonly skips clicks to protect a
+separate pick" was reversed when the measurement chip became the selection-driven
+overlay.) There is **no literal `persistence` param** — it is
 realized by **which store you pass**: `workspace` = the default singleton
 (`ws.selection`); `ephemeral` = a fresh `selection.createEphemeralStore()`
 (isolated selection, populated via `adoptSession({sourceFile, atoms})`, never
@@ -380,17 +382,19 @@ labels/`frozen` + `selection` + `filters` + `isolate` — a *selection is a set 
 indices*, computed once, valid for every frame. A static structure is just the
 1-frame case.
 
-**The module owns a `FrameSet`** — the dynamic coordinates, separate from the
-store:
+**Coordinates are frame-indexed, separate from the store** (which holds identity
++ selection, never coords). The *design* is a `FrameSet` abstraction:
 
 ```
 FrameSet = { nframes, currentFrame, coordsAt(t) -> Float32[natoms*3] }
 ```
 
-Static structure ⇒ a 1-frame FrameSet (time-index coerced to 0). Trajectory ⇒
-`nframes > 1` (index clamped to `[0, nframes-1]`). Trajectory's current
-`state.data.frames[t][atom] = [el,x,y,z]` is lifted into this: `el` → the store's
-identity, `xyz` → the FrameSet.
+Static structure ⇒ 1 frame (the viewer handle's coords); trajectory ⇒ `nframes >
+1` (index clamped to `[0, nframes-1]`, `state.data.frames[t][atom] = [el,x,y,z]`
+lifted in — `el` → store identity, `xyz` → the coords). **Status:** the shipped
+static path uses the viewer handle's coords directly (via a coords-provider); the
+generalized `FrameSet` module is **deferred to trajectory migration** (see the
+"Deferred" note below), which is its real multi-frame consumer.
 
 **Render is an ordered pipeline** between coordinate extraction and the embed:
 
@@ -415,9 +419,10 @@ flowchart LR
    select/measure the *unit cell*; tiling is pure render, with a `sourceIndex`
    mapping each image back to its unit-cell atom for element/style lookup).
 
-   **The `cell` is molview's EXISTING lattice** — the unit-cell / lattice display
-   is already a molview option (kept); k-grid tiles *that* lattice. No new cell
-   plumbing: the controller reads the lattice molview already holds.
+   **The `cell` is the lattice the viewer holds** (`handle.getLattice()` /
+   `opts.lattice`); k-grid tiles *that*. On the structure inspector the lattice is
+   supplied by parsing the extended-XYZ `Lattice=` line into `opts.lattice` (see
+   B0 below) — a small parse, but the cell still lives in the viewer, not the store.
 
    **The `[nx,ny,nz]` setting has two modes (2026-07-03):**
    - **Fixed (supplied by the `.fdf` result):** on Results, the `.fdf` inspector
@@ -468,33 +473,49 @@ pick cap. **`frozen`** folds in cleanly: trajectory's `runtime_info.frozen_atoms
 → the store's `frozen` flag channel, so the module's frozen display + isolate
 replace the bespoke hide-frozen toggle.
 
-**Pieces (BUILT, node-tested):** `FrameSet` (`lib/molview/frameset.js`, layer 1)
-· `tileKgrid` (`lib/molview/kgrid.js`, layer 3 compute) · **`computeRender(coords,
-view, cell)`** (`lib/molview/render-pipeline.js`) — the pure **compose**: layer 2
-(selection/isolate → visible global indices) → layer 3 (k-grid tile), returning
-`{positions, sourceIndex}` where `sourceIndex[m]` is the global atom each drawn
-position belongs to (element/label/arrow lookup; k-grid images share their
-unit-cell atom) · **`createRenderController({handle, frameSet, store, elements,
-cell})`** (`lib/molview/render-controller.js`) — the loop that RUNS the compose:
-on store change (selection/isolate/kgrid) or `setFrame`, resolve the frame
-coords, run `computeRender`, rebuild the structure (`elements[sourceIndex[m]]` at
-`positions[m]`), hand it to the embed via `setStructure`; `dispose` detaches.
-Node-tested against a stub embed + the real compose layers (initial render,
-k-grid re-tile, isolate filter, frame scrub, dispose).
+**Pieces — what's BUILT + WIRED (2026-07-03):**
+- **`tileKgrid`** (`lib/molview/kgrid.js`, layer 3 compute) + **`computeRender(coords,
+  view, cell)`** (`lib/molview/render-pipeline.js`) — the pure **compose**: layer 2
+  (selection/isolate → visible global indices) → layer 3 (k-grid tile), returning
+  `{positions, sourceIndex}` where `sourceIndex[m]` is the global atom each drawn
+  position belongs to (element/label/arrow lookup; k-grid images share their
+  unit-cell atom). **Both node-tested + LIVE** on the structure inspector.
+- **The k-grid controller is currently INLINE in `inspectors/structure.js`** (not a
+  separate module): on store change it captures the unit-cell coords once, runs
+  `computeRender`, rebuilds the xyz (`elements[sourceIndex[m]]` at `positions[m]`),
+  and `setStructure`s the supercell; on k-grid-off it restores the original.
+  See § 6.3 "B0 / B1" below.
 
-**Remaining: the LIVE wiring** — mount the controller in an inspector (static
-structure = 1-frame proof) and **coordinate isolate**: the controller FILTERS
-isolate (the structure carries only the selected atoms), so a pipeline-driven
-view must NOT also run the viewer-adapter's isolate-OVERLAY (double-handling) —
-the adapter keeps selection halos + click wiring; the controller owns the
-structure. Decorations (labels/arrows) key off `sourceIndex`. This is the
-browser-E2E-gated step. Re-runs on store change + frame tick + cell/kgrid change
-(the animation-acceleration boundary).
+**Deferred (NOT built — was prematurely coded, then retired 2026-07-03):** a
+generalized **`FrameSet`** (time-index coords abstraction) and a reusable
+**`createRenderController`** module. They were written + node-tested ahead of a
+consumer, but the one live consumer (the structure inspector) needed a
+coords-provider + a k-grid-off restore that the FrameSet-mandatory controller
+didn't fit, so it inlined the loop and the two modules sat dead. **Retired to
+avoid a divergent second compose path**; rebuild them *when trajectory migrates*
+(that's the real consumer — it needs multi-frame coords), shaped by that need.
 
-**Migration.** Build FrameSet + pipeline + decorations into the module in
-parallel; keep the current `trajectory/core.js` isolated as the working fallback;
-verify end-to-end (frame scrub, arrows, measurement, frozen, k-grid); **retire
-the old module only on confirmation** — no flag-day.
+**B0 — the cell (shipped).** k-grid tiles the lattice the **viewer** holds
+(`handle.getLattice()` / `opts.lattice`). The structure inspector supplies it by
+parsing the **extended-XYZ `Lattice="…"`** comment line
+(`_parseExtxyzLattice`, molbuilder's `to_xyz` writes it) → `opts.lattice`. A plain
+`.xyz` with no `Lattice=` → no cell → k-grid inert. (So there *is* a small parse;
+the cell still lives in the viewer, not the store.)
+
+**B1 — the live controller (shipped, Option 1).** The inline controller tiles on
+k-grid enable and restores on disable. **isolate still FILTERS** the tiled set
+(`computeRender` layer 2), so isolate+k-grid tiles only the selected atoms; but
+per **Option 1** the viewer-adapter's selection **halos** and the measurement
+**overlay stand down** while k-grid is on (unit-cell-index overlays don't map onto
+a supercell), rather than the controller taking over overlays. Turning k-grid off
+restores them.
+
+**Trajectory migration (future).** When trajectory moves onto this pipeline,
+build the real `FrameSet` (multi-frame coords) + a reusable controller that takes
+a **coords-provider** (not a mandatory FrameSet) and supports the k-grid-off
+restore; keep `trajectory/core.js` as the working fallback; verify end-to-end
+(scrub, arrows, measurement, frozen, k-grid); **retire the old module only on
+confirmation** — no flag-day.
 
 ### 6.4 Measurement overlay (a module decoration — position / distance / angle)
 
@@ -594,21 +615,24 @@ the pipeline.
      the default singleton). **S2** reusable `selection.mountPanel(host,
      {viewerHandle, store, mode})`. **S3** the **structure** inspector mounts a
      `readonly`+ephemeral panel (list + click-select + filter + highlight; the
-     triple-pick measurement chip stays). Node-verified; **browser E2E pending.**
-     Remaining: trajectory + spectra inspectors, **S4** working-copy wiring for
-     Modify, **S5** responsive 2-card↔tabbed + the E2E gate.
+     measurement readout is now the module **overlay**, § 6.4 — the old triple-pick
+     chip was retired). **Browser E2E green** (measurement overlay, extxyz-lattice,
+     k-grid tiling, clicks→store). Remaining: trajectory + spectra inspectors,
+     **S4** working-copy wiring for Modify, **S5** responsive 2-card↔tabbed.
    - **Trajectory via the render pipeline (§ 6.3):** trajectory + spectra are
      NOT bare (bespoke Inspect atom-list / vibrational-mode viewer), so a second
      panel would duplicate. Instead, absorb trajectory by giving the module a
      **module-owned `FrameSet`** (dynamic coords) + the ordered render pipeline
      (time-index → selection/isolate → **k-grid slot** → decorations), with the
      k-grid slot designed in from the start (general — the static inspector uses
-     it too). Sub-slices: **(a) `FrameSet` + time-index layer — BUILT
-     (`lib/molview/frameset.js`, node-tested; static = 1-frame proof);** wiring
-     it into an inspector is the next step. **(b) the k-grid layer — compute
-     BUILT (`lib/molview/kgrid.js` `tileKgrid`, node-tested) + the parameter is
-     store view-state (`setKgrid`, node-tested); remaining: the UI control
-     (enable + [nx,ny,nz]) + wiring into the render.** (c) decorations (§ 6.3
+     it too). Sub-slices: **(a) FrameSet + time-index layer — DEFERRED to
+     trajectory migration** (the premature `frameset.js` module was retired
+     2026-07-03; the static path uses the viewer handle's coords directly). **(b)
+     the k-grid layer — BUILT + WIRED + LIVE** (`kgrid.js` `tileKgrid` +
+     `render-pipeline.js` `computeRender`; store view-state `setKgrid` with
+     free/fixed `source` + copy cap; the panel UI enable + [nx,ny,nz] read-only in
+     fixed; the inline controller in `structure.js` tiles `getLattice()` on enable,
+     restores on disable; browser e2e green). (c) decorations (§ 6.3
      layer 4): the **measurement overlay** (§ 6.4 — `mountMeasurementOverlay`) —
      **BUILT + WIRED into the structure inspector** (selection-driven, viewer
      clicks → store, chip retired; browser e2e green); remaining: port
@@ -640,7 +664,7 @@ Audit of the **5** current `viewer.embed` sites and what full integration needs
 | Tab / embed | today | target args | changes needed |
 |---|---|---|---|
 | **Modify/Molbuilder** (`modify/viewer.js`) | full edit; selection wired *externally* via `selection-bootstrap.js` (mounts panel + attaches adapter) | `mode:modify, persistence:workspace` | **interface**: the embed mounts the panel+adapter itself; delete the manual bootstrap wiring. **logic**: none new (behavior preserved). |
-| **Results · structure** (`inspectors/structure.js`) | **DONE (Phase 5 S3):** readonly + ephemeral panel (list + click-select + filter + highlight; measurement chip kept) | `mode:readonly` + `createEphemeralStore()` | shipped; browser E2E pending. |
+| **Results · structure** (`inspectors/structure.js`) | **DONE (Phase 5 S3 + B0/B1):** readonly + ephemeral panel (list + click-select + filter + highlight); measurement **overlay** (§ 6.4, chip retired); **k-grid tiling live** | `mode:readonly` + `createEphemeralStore()` + inline k-grid controller | shipped; **browser E2E green** (4 tests). |
 | **Results · trajectory** (`trajectory/core.js`) | **NOT bare** — bespoke Inspect atom-list + `pick:triple` + animation | absorbed via the **§ 6.3 render pipeline** (FrameSet + k-grid), *not* a second panel | replace the bespoke list; port arrows/scrub/polling; `frozen`→channel. |
 | **Results · spectra** (`spectra/core.js`) | vibrational-**mode** viewer (`pick:none`) — its "selection" is a *mode*, not atoms | **NOT migrated — stays an independent module** (`docs/tabs/spectra/spec.md`) | none; shares only the atom-index contract (spec § 5.1). |
 | *(future build/other)* | — | per case | assess when added. |
@@ -663,11 +687,12 @@ tabbed-on-narrow (today it stacks) + matching-height.
   `_trajectory_inspector.html` have panel/host partials; the inspectors don't.
   Making the module render the panel means *any* embed gets selection without
   each host shipping a `#selection-host`.
-- **Three orthogonal args compose** — `mode` (edit vs readonly), `persistence`
-  (workspace vs ephemeral), and the **existing `pick` opt** (structure +
-  trajectory keep their triple-pick measurement; `readonly` just stops the
-  adapter hijacking it). So "selection always mounted" ≠ "pick always
-  on": the panel/filter is always available; click-pick is governed by `pick`.
+- **Two orthogonal args compose** — `mode` (edit vs readonly) and `persistence`
+  (workspace vs ephemeral). (Historical note: an early S3 design kept a separate
+  `pick:triple` measurement on inspectors and had `readonly` skip clicks to
+  protect it; decision A / § 6.4 retired that — the **structure** inspector now
+  drives measurement from the store selection, so clicks always feed the store.
+  `trajectory/core.js` still has its own `pick:triple` until it migrates.)
 - **No data-structure change for inspectors** — their structures come from
   parsed results and may carry no annotations; the filter still works on the
   always-present element/residue channels, plus any annotations that are there.
@@ -702,9 +727,15 @@ change them** — they guard current behavior until the slice ships.
 | `test_molbuilder_e2e.py` save suite — `test_save_writes_to_source_and_clears_dirty`, `test_save_as_propagates_labels_to_new_sidecar`, `test_save_as_reanchors_selection_store_sourceFile`, the overwrite/rename dialog pair, **and the `writeLabel` → `/api/selection/save` auto-save test** | **Working-copy wiring (§ 6.1 / Phase 3)** — collapses the 3 scattered save paths + kills the auto-save; save-as stops re-anchoring the store. These tests move to the `open/update/save` contract. |
 | `test_hide_frozen_toggle_e2e.py` — trajectory's bespoke hide-frozen toggle | **Trajectory pipeline (§ 6.3)** — `frozen` folds into the store channel + isolate; the bespoke toggle is retired. |
 
-**🕳 New surfaces — node-tested, no e2e yet (add when wired to an embed):**
-- structure inspector's readonly selection panel + ephemeral-store isolation (S3;
-  `test_structure_inspector_chip_e2e.py` still covers only the chip);
-- isolate-via-store render on an inspector; the **k-grid** control + tiling;
-  **FrameSet** time-index; the **working-copy** `/api/workingcopy/*` surface —
-  all await the render-pipeline controller landing in a live embed.
+**✅ New surfaces — now have LIVE browser e2e (2026-07-03):**
+`test_structure_inspector_chip_e2e.py` was rewritten off the retired chip; it now
+covers, on the structure inspector: the **measurement overlay** (selection-driven
+xyz/distance/angle), **clicks → ephemeral store** (decision A), **extxyz `Lattice=`
+→ viewer** (B0), and **k-grid enable tiles the supercell** 2→4→2 (B1). Store-level
+surfaces (`setKgrid` free/fixed + cap, isolate, snapshots) are node-tested.
+
+**🕳 Still node-tested only (no e2e — await their consumer):**
+- the generalized **FrameSet** + reusable render-controller — deferred to
+  trajectory migration (retired the premature modules 2026-07-03);
+- the **working-copy** `/api/workingcopy/*` surface (§ 6.1 / Phase 3);
+- isolate + k-grid *combined* on a live inspector (each is covered alone).

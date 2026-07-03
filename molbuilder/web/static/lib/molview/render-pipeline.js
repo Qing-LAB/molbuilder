@@ -2,8 +2,9 @@
  * positions the viewer draws (docs/protocols/atom-annotations.md § 6.3).
  *
  * The store is frame-INDEPENDENT; the caller resolves the current frame's coords
- * (FrameSet.coordsAt, layer 1) and passes the store view snapshot + the lattice
- * cell.  This composes the remaining layers, PURELY:
+ * (layer 1 -- e.g. the viewer handle's getAtomCoords, or a trajectory's frame)
+ * and passes the store view snapshot + the lattice cell.  This composes the
+ * remaining layers, PURELY:
  *
  *   2 selection / isolate -> which GLOBAL atom indices are visible
  *   3 k-grid tiling        -> duplicate the visible atoms by the lattice

@@ -8,7 +8,7 @@
  *   molview.mountMeasurementOverlay(viewerHost, { store, coordsProvider }) -> { render, dispose }
  *     viewerHost     : the viewer element; the overlay is absolutely positioned in it
  *     store          : selection store -- getState() -> { pickOrder, indices, atoms }, subscribe(fn)
- *     coordsProvider : () -> per-atom [x,y,z] for the CURRENT frame (FrameSet/viewer, NOT the store)
+ *     coordsProvider : () -> per-atom [x,y,z] for the CURRENT frame (the viewer handle / a trajectory frame, NOT the store)
  *   render()  : recompute + repaint (call on a frame tick)
  *   dispose() : detach the subscription + remove the overlay element
  *
