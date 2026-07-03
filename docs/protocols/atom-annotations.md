@@ -436,6 +436,19 @@ flowchart LR
    flag always; the `[nx,ny,nz]` inputs are **read-only in `fixed`**, editable +
    capped in `free`. k-grid is **not** trajectory-specific — the static structure
    inspector uses it too.
+
+   **Composition with isolate (important):** because layer 2 runs *before* layer
+   3, **isolate ON + k-grid ON tiles ONLY the selected atoms** — the isolated
+   selection repeats across the grid (select an electrode region → isolate →
+   tile → only that region, copied). Verified in `computeRender`
+   (`test_render_pipeline_js.py::test_isolate_then_kgrid_tiles_only_selected_with_global_source`).
+
+   **Option 1 render (chosen 2026-07-03):** while k-grid is on, the atom SET is
+   still isolate-filtered (above), but the selection **halos** + the measurement
+   overlay **stand down** — on a tiled supercell, per-unit-cell-index highlighting
+   / readout don't map, and k-grid is a periodicity-validation view. Turning
+   k-grid off restores halos + measurement. (Option 2 — highlight/measure *on*
+   the supercell via `sourceIndex` — is a later opt-in.)
 4. **Decorations** — index labels + force arrows etc., built last on the
    resolved set.
 
