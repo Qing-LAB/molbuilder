@@ -164,6 +164,28 @@ def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
     page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
+def test_extxyz_lattice_reaches_the_viewer(
+        page, flask_server, tmp_path, monkeypatch):
+    """B0 (§ 6.3): an extended-XYZ Lattice= line is parsed by the inspector and
+    passed as opts.lattice, so the embed's getLattice() returns the cell — the
+    prerequisite for k-grid tiling.  A plain .xyz (no Lattice=) yields null."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "periodic.xyz"
+    xyz.write_text(
+        '2\n'
+        'Lattice="10 0 0 0 10 0 0 0 20" Properties=species:S:1:pos:R:3\n'
+        'C 0 0 0\n'
+        'H 1 0 0\n'
+    )
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+    lat = page.evaluate(
+        "() => document.querySelector('.structure-viewer-slot')"
+        "  .__molbuilder_test_handle.getLattice()"
+    )
+    assert lat is not None, "getLattice() should return the parsed cell"
+
+
 def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
     """Under decision A the adapter wires viewer clicks to the store (single

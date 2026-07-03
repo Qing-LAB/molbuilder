@@ -21,6 +21,27 @@
 (function (root) {
     "use strict";
 
+    // Extended-XYZ carries the cell on the comment line (line 2) as
+    // Lattice="ax ay az bx by bz cx cy cz" -- molbuilder's Structure.to_xyz /
+    // `molbuilder xyz` write it.  The embed does NOT parse it (it only takes
+    // opts.lattice), so the inspector parses it here and passes opts.lattice ->
+    // getLattice() works (k-grid can tile the cell) + the cell wireframe can
+    // show.  Returns a 3x3 row-vector matrix [[ax,ay,az],[bx,by,bz],[cx,cy,cz]]
+    // or null for a plain .xyz with no Lattice= (then k-grid stays inert).
+    function _parseExtxyzLattice(text) {
+        const lines = String(text || "").split(/\r?\n/);
+        if (lines.length < 2) return null;
+        const m = lines[1].match(/Lattice\s*=\s*"([^"]+)"/i);
+        if (!m) return null;
+        const nums = m[1].trim().split(/\s+/).map(Number);
+        if (nums.length < 9 || nums.some((n) => !isFinite(n))) return null;
+        return [
+            [nums[0], nums[1], nums[2]],
+            [nums[3], nums[4], nums[5]],
+            [nums[6], nums[7], nums[8]],
+        ];
+    }
+
     const inspector = {
         name:        "structure",
         displayName: "Structure preview",
@@ -160,6 +181,11 @@
                 }
                 const fmt = file.toLowerCase().endsWith(".pdb")
                     ? "pdb" : "xyz";
+                // Parse the cell from an extended-XYZ Lattice= line (molbuilder
+                // writes it).  Passing opts.lattice makes getLattice() work
+                // (k-grid tiling) + lets the cell wireframe show.  null for a
+                // plain .xyz -> no cell -> k-grid stays inert.
+                const lattice = (fmt === "xyz") ? _parseExtxyzLattice(r.text) : null;
                 const embedApi = (root.molbuilder
                                   && root.molbuilder.viewer
                                   && root.molbuilder.viewer.embed);
@@ -175,6 +201,9 @@
                     // Source data flows in through the API; the
                     // viewer doesn't fetch.
                     [fmt]: r.text,
+                    // Cell from the extended-XYZ Lattice= line (if any) -> the
+                    // cell wireframe can show + k-grid can tile getLattice().
+                    lattice: lattice || undefined,
                     // Style matches the legacy structure inspector's
                     // ball-and-stick rendering.
                     style: { rep: "ball-and-stick", radiusScale: 1.0 },
@@ -329,6 +358,8 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.structureInspector = inspector;
+    // Test hook (no production reader): the extended-XYZ Lattice= parser.
+    inspector._parseExtxyzLattice = _parseExtxyzLattice;
     if (root.molbuilder.inspectors.register) {
         root.molbuilder.inspectors.register(inspector);
     }
