@@ -486,10 +486,12 @@ the old module only on confirmation** — no flag-day.
      **module-owned `FrameSet`** (dynamic coords) + the ordered render pipeline
      (time-index → selection/isolate → **k-grid slot** → decorations), with the
      k-grid slot designed in from the start (general — the static inspector uses
-     it too). Sub-slices: (a) `FrameSet` + time-index layer (static = 1 frame);
-     (b) the k-grid tiling layer (display-only images); (c) port trajectory
-     decorations (arrows) + frame-scrub UI + live polling onto the pipeline;
-     (d) `frozen` → the `frozen` channel (retire the bespoke hide-frozen). Build
+     it too). Sub-slices: **(a) `FrameSet` + time-index layer — BUILT
+     (`lib/molview/frameset.js`, node-tested; static = 1-frame proof);** wiring
+     it into an inspector is the next step. (b) the k-grid tiling layer
+     (display-only images); (c) port trajectory decorations (arrows) +
+     frame-scrub UI + live polling onto the pipeline; (d) `frozen` → the
+     `frozen` channel (retire the bespoke hide-frozen). Build
      in parallel; **retire `trajectory/core.js` only on E2E confirmation.**
      **Spectra:** keep as the mode viewer (atom-selection adds little); revisit
      a read-only highlight later.
