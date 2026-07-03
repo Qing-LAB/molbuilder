@@ -193,6 +193,7 @@
    (selection.createEphemeralStore()).  The workspace dispatcher (the singleton
    store + Molbuilder glue) is intentionally NOT loaded here -- inspectors own
    their own selection and never touch a workspace singleton. #}
+<script src="{{ url_for('static', filename='lib/workspace/_atom-index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>

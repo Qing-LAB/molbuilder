@@ -1210,6 +1210,14 @@
         refreshAtomListHighlights();
     }
 
+    // 1-based display via the ONE shared rule (data-vocabulary § 3.1), not an
+    // ad-hoc i+1, so the trajectory atom-list # column agrees with the selector
+    // + viewer overlays.  Falls back to i+1 if _atom-index.js isn't loaded.
+    function _toDisplayIndex(i) {
+        const m = window.molbuilder && window.molbuilder.atomIndexModel;
+        return (m && typeof m.toDisplay === "function") ? m.toDisplay(i) : i + 1;
+    }
+
     // Build the atom-list table inside the Inspect panel.  One row
     // per atom: index, element, current-frame (x, y, z).  Rendered
     // once per ``rebuildModel`` (atom identity is fixed across a
@@ -1252,7 +1260,7 @@
             // innerHTML interpolation.  textContent escapes the value.
             const cellIdx = document.createElement("td");
             cellIdx.className = "col-idx";
-            cellIdx.textContent = String(i + 1);
+            cellIdx.textContent = String(_toDisplayIndex(i));
             const cellEl = document.createElement("td");
             cellEl.className = "col-el";
             cellEl.textContent = r[0] || "?";

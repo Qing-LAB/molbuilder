@@ -92,15 +92,23 @@
      * Always 1-based to match the indices the user sees in the
      * atom list and the viewer overlays.
      */
+    // 1-based display goes through the ONE shared rule (data-vocabulary § 3.1),
+    // not an ad-hoc idx+1, so every surface agrees.  Falls back to idx+1 only
+    // when the model isn't loaded (e.g. a pure node measurement-math test).
+    function _toDisplay(idx) {
+        const m = root && root.molbuilder && root.molbuilder.atomIndexModel;
+        return (m && typeof m.toDisplay === "function") ? m.toDisplay(idx) : idx + 1;
+    }
+
     function labelOf(idx, atomsMeta) {
         const a = atomsMeta && atomsMeta[idx];
         if (a) {
             const name = (a.atom_name || a.atomName || "").toString().trim();
-            if (name) return name + " #" + (idx + 1);
+            if (name) return name + " #" + _toDisplay(idx);
             const el = (a.element || "").toString().trim();
-            if (el) return el + " #" + (idx + 1);
+            if (el) return el + " #" + _toDisplay(idx);
         }
-        return "#" + (idx + 1);
+        return "#" + _toDisplay(idx);
     }
 
     function _fmtCoord(v) {
