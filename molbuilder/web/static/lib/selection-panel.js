@@ -873,52 +873,28 @@
         // adapter does the actual setOverlays-with-hidden=true for
         // non-selected atoms; the checkbox just flips the mode flag
         // and triggers a re-render.
-        function _isolateAdapter() {
-            // Phase 5 (fused module): prefer the PER-MOUNT adapter handle
-            // (mountPanel fills opts.adapterHolder.handle after it attaches the
-            // adapter) so each panel drives ITS OWN viewer -- the global is a
-            // single slot that can't distinguish panels.  Fall back to the
-            // legacy global that Modify's bootstrap sets, so Modify is unchanged.
-            if (opts && opts.adapterHolder && opts.adapterHolder.handle) {
-                return opts.adapterHolder.handle;
-            }
-            return root.molbuilder
-                && root.molbuilder.selection
-                && root.molbuilder.selection.viewerAdapterHandle;
-        }
+        // Phase 5 (fused module): "Show selected only" is STORE state (the
+        // single source of truth).  The checkbox drives ``store.setIsolate`` and
+        // reflects ``state.isolate``; the viewer adapter reads the same flag
+        // from its own subscription.  No cross-module adapter-handle reach --
+        // that's why the global viewerAdapterHandle / per-mount holder are gone.
         on(els.isolateChk, "change", (e) => {
-            const adapter = _isolateAdapter();
-            if (adapter && typeof adapter.setIsolateMode === "function") {
-                adapter.setIsolateMode(!!e.target.checked);
-            }
+            store.setIsolate(!!e.target.checked);
         });
-        // Auto-uncheck the "Show selected only" toggle when the
-        // selection becomes empty.  Without this, the adapter
-        // correctly disables isolate at the overlay level (it
-        // requires a non-empty selection set), but the checkbox
-        // stays visually checked — so the next time the user picks
-        // a single atom, the viewer snaps into isolate-mode with no
-        // input from them.  The template's tooltip says the toggle
-        // "auto-disables when the selection becomes empty"; this
-        // wires up that contract.
-        const _isolateSubscribed = { last: false };
-        // Capture the unsubscribe so dispose() can detach this
-        // subscriber.  Audit #352 caught this leak — the auto-
-        // uncheck wiring used to fire-and-forget the subscription,
-        // so each /modify mount→dispose cycle stranded a closure
-        // that kept the panel's els.isolateChk reference + the
-        // _isolateAdapter() lookup alive across navigations.
+        // Auto-clear the toggle when the selection empties: the adapter render
+        // ignores isolate with no selection, but leaving the FLAG on would snap
+        // the viewer into isolate on the next single pick (the template's
+        // "auto-disables when the selection becomes empty" contract).  Also
+        // keeps the checkbox in sync with the store flag (e.g. an external
+        // setIsolate / the embed handle's isolate API).  Captured so dispose()
+        // can detach it (audit #352: don't strand the subscriber across mounts).
         const _isolateUnsubscribe = store.subscribe((s) => {
-            const empty = !s.indices || s.indices.length === 0;
             if (!els.isolateChk) return;
-            const adapter = _isolateAdapter();
-            if (empty && els.isolateChk.checked) {
-                els.isolateChk.checked = false;
-                if (adapter
-                    && typeof adapter.setIsolateMode === "function") {
-                    adapter.setIsolateMode(false);
-                }
-                _isolateSubscribed.last = false;
+            const empty = !s.indices || s.indices.length === 0;
+            if (empty && s.isolate) {
+                store.setIsolate(false);   // re-notifies; the box syncs next tick
+            } else {
+                els.isolateChk.checked = !!s.isolate;
             }
         });
         cleanups.push(() => {

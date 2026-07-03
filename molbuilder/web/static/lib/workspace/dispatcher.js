@@ -364,7 +364,7 @@
     function _selectionSnapshot(st) {
         if (!st) {
             return {
-                indices: [], mode: "click", filters: [],
+                indices: [], mode: "click", isolate: false, filters: [],
                 combinator: "or", loading: false, error: null,
                 atoms: [], sourceFile: null, pickOrder: [],
             };
@@ -373,6 +373,7 @@
             indices:    Array.isArray(st.selection)
                             ? st.selection.slice() : [],
             mode:       st.mode || "click",
+            isolate:    !!st.isolate,
             filters:    (st.filters || []).map(function (f) {
                 return Object.assign({}, f);
             }),
@@ -418,6 +419,10 @@
         setMode:         function (mode) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setMode(mode);
+        },
+        setIsolate:      function (on) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.setIsolate(on);
         },
         setFilters:      function (filters) {
             var s = _store(); if (!s) throw _missing("selection store");

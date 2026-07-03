@@ -128,6 +128,7 @@ class TestStoreAPISurface:
             "                  typeof store.adoptAtoms === 'function' && "
             "                  typeof store.setLoader === 'function',\n"
             "  mode:          typeof store.setMode === 'function',\n"
+            "  isolate:       typeof store.setIsolate === 'function',\n"
             "  click_editing: typeof store.toggleAtom === 'function' && "
             "                  typeof store.setSelection === 'function' && "
             "                  typeof store.addToSelection === 'function' && "
@@ -167,6 +168,10 @@ class TestInitialState:
             # below.
             "pickOrder":  [],
             "mode":       "click",
+            # ``isolate`` ("show selected only") moved into the store
+            # (Phase 5) so the panel checkbox + viewer adapter drive/read
+            # it through the store instead of a cross-module handle.
+            "isolate":    False,
             "filters":    [],
             "combinator": "or",
             "loading":    False,

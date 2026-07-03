@@ -91,6 +91,12 @@
             // invertSelection (no user picks ⇒ atom-index order).
             pickOrder:  [],
             mode:       "click",
+            // "Show selected only" -- a view flag that lives in the store (the
+            // single source of truth) so the panel checkbox + the viewer
+            // adapter both drive/read it through the store, not a cross-module
+            // handle.  Isolate only takes visual effect with a non-empty
+            // selection (the adapter render gates on selSet.size > 0).
+            isolate:    false,
             filters:    [],
             combinator: "or",
             loading:    false,
@@ -251,6 +257,7 @@
                 // selection has.
                 pickOrder:  state.pickOrder.slice(),
                 mode:       state.mode,
+                isolate:    state.isolate,
                 filters:    state.filters.slice(),
                 combinator: state.combinator,
                 loading:    state.loading,
@@ -521,6 +528,16 @@
             state.mode = mode;
             _notify();
             return Promise.resolve();
+        }
+
+        // "Show selected only".  Synchronous view-flag mutator (no server):
+        // set the flag + notify; the viewer adapter re-renders from the
+        // snapshot and the panel checkbox reflects state.isolate.
+        function setIsolate(on) {
+            const next = !!on;
+            if (next === state.isolate) return;
+            state.isolate = next;
+            _notify();
         }
 
         // ----------------------------------------------------------- //
@@ -894,6 +911,7 @@
             setLoader:          setLoader,
             // mode
             setMode:            setMode,
+            setIsolate:         setIsolate,
             // selection editing
             toggleAtom:         toggleAtom,
             setSelection:       setSelection,
@@ -935,13 +953,14 @@
     // in sync with dispatcher.js::_selectionSnapshot + the ws.selection object.
     function _ephemeralSnapshot(st) {
         if (!st) {
-            return { indices: [], mode: "click", filters: [], combinator: "or",
-                     loading: false, error: null, atoms: [], sourceFile: null,
-                     pickOrder: [] };
+            return { indices: [], mode: "click", isolate: false, filters: [],
+                     combinator: "or", loading: false, error: null, atoms: [],
+                     sourceFile: null, pickOrder: [] };
         }
         return {
             indices:    Array.isArray(st.selection) ? st.selection.slice() : [],
             mode:       st.mode || "click",
+            isolate:    !!st.isolate,
             filters:    (st.filters || []).map(function (f) { return Object.assign({}, f); }),
             combinator: st.combinator || "or",
             loading:    !!st.loading,
@@ -962,6 +981,7 @@
             invertSelection: function ()      { return s.invertSelection(); },
             clear:           function ()      { return s.clearSelection(); },
             setMode:         function (m)     { return s.setMode(m); },
+            setIsolate:      function (on)    { return s.setIsolate(on); },
             setFilters:      function (f)     { return s.setFilters(f); },
             addFilter:       function (f)     { return s.addFilter(f); },
             removeFilter:    function (i)     { return s.removeFilter(i); },

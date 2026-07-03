@@ -80,16 +80,14 @@
         const ok = await _fetchPartial(host, opts.partialUrl || DEFAULT_PARTIAL);
         if (!ok) return { panel: null, adapterHandle: null };
 
-        // 2. mount the panel against the store.  The adapter attaches AFTER the
-        // panel mounts, so hand the panel a holder it reads lazily for its
-        // "Show selected only" isolate toggle -- per-mount, not a shared global.
+        // 2. mount the panel against the store.  The panel + adapter share ALL
+        // state through the store (selection, filters, isolate), so the panel
+        // needs no reference to the adapter -- no handle threading.
         if (!mb.selectionPanel || typeof mb.selectionPanel.mount !== "function") {
             _renderFailure(host, "selectionPanel module missing");
             return { panel: null, adapterHandle: null };
         }
-        const adapterHolder = {};
-        const panel = mb.selectionPanel.mount(
-            host, { store: store, mode: opts.mode, adapterHolder: adapterHolder });
+        const panel = mb.selectionPanel.mount(host, { store: store, mode: opts.mode });
 
         // 3. attach the viewer-adapter to the viewer handle.
         let adapterHandle = null;
@@ -97,7 +95,6 @@
         const handle = await _resolveHandle(opts);
         if (adapter && typeof adapter.attach === "function" && handle) {
             adapterHandle = adapter.attach(handle, { store: store, mode: opts.mode });
-            adapterHolder.handle = adapterHandle;   // panel's isolate toggle finds it here
         }
         return { panel: panel, adapterHandle: adapterHandle };
     }

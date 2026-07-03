@@ -63,11 +63,6 @@ def test_mountpanel_forwards_store_and_attaches_handle():
                 attach:        calls.attach,
                 panel:         r.panel && r.panel._tag,
                 adapter:       r.adapterHandle && r.adapterHandle._tag,
-                // the panel got a holder that mountPanel filled after attach
-                // (so the isolate toggle finds THIS mount's adapter, not a global)
-                holderFilled:  calls.mount && calls.mount.adapterHolder
-                                 && calls.mount.adapterHolder.handle
-                                 && calls.mount.adapterHolder.handle._tag,
             }));
         })();
     """)
@@ -78,7 +73,6 @@ def test_mountpanel_forwards_store_and_attaches_handle():
     assert out["attach"] == {"handle": "viewer", "store": "ephemeral", "mode": "readonly"}
     assert out["panel"] == "panel"
     assert out["adapter"] == "adapter"
-    assert out["holderFilled"] == "adapter"   # per-mount isolate wiring, not a global
 
 
 def test_mountpanel_renders_banner_on_fetch_failure():

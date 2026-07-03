@@ -154,16 +154,13 @@
         // visually hides them while keeping the model coherent for
         // picking + measurements).  Selection halos draw on top in
         // the existing order so the surviving atoms are obvious.
-        let isolateMode = false;
-        function setIsolateMode(on) {
-            const next = !!on;
-            if (next === isolateMode) return;
-            isolateMode = next;
-            // Re-render against the current store snapshot — the
-            // overlay set depends on isolateMode.
-            try { render(store.getState()); } catch (_) {}
-        }
-        function getIsolateMode() { return isolateMode; }
+        // "Show selected only" is STORE state (the single source of truth) --
+        // the panel drives it via store.setIsolate and the render reads
+        // ``s.isolate`` from the subscription (line ~306).  These stay as thin
+        // store-delegating accessors so the embed handle's isolate API + the
+        // e2e hooks keep working; store.setIsolate notifies -> render re-runs.
+        function setIsolateMode(on) { store.setIsolate(!!on); }
+        function getIsolateMode() { return !!store.getState().isolate; }
 
         function render(s) {
             const atoms = [];
@@ -185,7 +182,7 @@
             //       solid atoms plus a forest of halo ghosts".
             const selSet = new Set(
                 Array.isArray(s.indices) ? s.indices : []);
-            const isolating = isolateMode && selSet.size > 0;
+            const isolating = s.isolate && selSet.size > 0;
 
             function maybeFilter(indices) {
                 if (!isolating) return indices;
