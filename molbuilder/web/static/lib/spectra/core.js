@@ -2351,20 +2351,14 @@
         _stopAnimation();
         if (els.animToggle) els.animToggle.textContent = "Pause";
 
-        // Build the per-atom displacement vector.  Free atoms
-        // get the mode's eigenvector entry; frozen atoms stay
-        // at zero (no motion, anchors the visualisation).
-        const free       = state.results.free_atom_idxs || [];
-        const evec_free  = mode.eigenvector_display;
-        const nAtoms     = geom.elements.length;
-        const displacements = new Array(nAtoms);
-        for (let i = 0; i < nAtoms; i++) displacements[i] = [0, 0, 0];
-        for (let k = 0; k < free.length; k++) {
-            const atomIdx = free[k];
-            if (atomIdx >= 0 && atomIdx < nAtoms) {
-                displacements[atomIdx] = evec_free[k].slice();
-            }
-        }
+        // Build the per-atom displacement vector.  Eigenvectors are indexed by
+        // FREE-atom ROW, not global atom index (spec.md § 5.1 invariant 3):
+        // scatter row k -> global atom free_atom_idxs[k]; frozen atoms stay at
+        // zero (no motion, anchors the visualisation).
+        const displacements = _scatterModeDisplacements(
+            state.results.free_atom_idxs,
+            mode.eigenvector_display,
+            geom.elements.length);
 
         // Build the equilibrium-structure xyz text and mount it
         // as the embed's baseline.  The vibration loop applies
@@ -3016,6 +3010,26 @@
 
     }   // ----- end of mountInspector(rootEl, opts) -----
 
+    // ----- spec.md § 5.1 invariant 3: free-row -> global-atom scatter ----- //
+    // Eigenvectors are shape (n_free, 3), indexed by FREE-atom ROW.  Map them
+    // onto a full length-nAtoms per-global-atom displacement array: free row k
+    // -> global atom freeAtomIdxs[k]; every atom NOT in freeAtomIdxs (i.e.
+    // frozen) stays at [0,0,0].  Pure + engine-agnostic; exported for the unit
+    // test that pins the invariant.
+    function _scatterModeDisplacements(freeAtomIdxs, eigenvectorFree, nAtoms) {
+        const out = new Array(nAtoms);
+        for (let i = 0; i < nAtoms; i++) out[i] = [0, 0, 0];
+        const free = freeAtomIdxs || [];
+        for (let k = 0; k < free.length; k++) {
+            const atomIdx = free[k];
+            const row = eigenvectorFree && eigenvectorFree[k];
+            if (atomIdx >= 0 && atomIdx < nAtoms && Array.isArray(row)) {
+                out[atomIdx] = row.slice();
+            }
+        }
+        return out;
+    }
+
     // Export for both consumers (spectra/viewer.js bootstrap on
     // /spectra, lib/inspectors/spectra.js on /results).  Each
     // consumer is responsible for picking when + where to mount;
@@ -3023,6 +3037,7 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
+        _scatterModeDisplacements: _scatterModeDisplacements,  // spec.md § 5.1 (test hook)
         /**
          * Push raw structure bytes into the module's in-memory
          * holder so Generate / Methods read them via

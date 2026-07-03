@@ -554,11 +554,20 @@ class SpectraResults:
                 f"SpectraResults: free_atom_idxs and frozen_atom_idxs overlap "
                 f"at indices {sorted(free_set & frozen_set)}"
             )
-        if len(free_set) + len(frozen_set) != self.n_atoms_total:
+        # True partition: the union must be EXACTLY range(n_atoms_total).  A
+        # count-only check passed an out-of-range index (e.g. free=[0,1,5],
+        # frozen=[], n=3) -- which would then silently drop that atom's
+        # displacement in the frontend scatter (spec.md § 5.1 invariant 1).
+        expected = set(range(self.n_atoms_total))
+        union    = free_set | frozen_set
+        if union != expected:
+            missing = sorted(expected - union)
+            extra   = sorted(union - expected)
             raise ValueError(
-                f"SpectraResults: free ({len(free_set)}) + frozen "
-                f"({len(frozen_set)}) atom counts != n_atoms_total "
-                f"({self.n_atoms_total})"
+                f"SpectraResults: free_atom_idxs + frozen_atom_idxs must "
+                f"partition range({self.n_atoms_total}) "
+                f"(spec.md § 5.1 invariant 1); "
+                f"missing={missing} out-of-range/extra={extra}"
             )
         # Phase status validation.
         for name, val in (("phase_frequencies", self.phase_frequencies),

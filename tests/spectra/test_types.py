@@ -517,7 +517,7 @@ class TestPostInitValidation:
 
     def test_free_fixed_partition_complete(self):
         """Free + fixed must cover all atoms exactly once."""
-        with pytest.raises(ValueError, match="!= n_atoms_total"):
+        with pytest.raises(ValueError, match="partition"):
             SpectraResults(
                 schema_version             = SCHEMA_VERSION,
                 engine                     = "pyscf",
