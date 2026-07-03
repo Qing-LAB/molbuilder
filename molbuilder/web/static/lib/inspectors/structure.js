@@ -21,26 +21,12 @@
 (function (root) {
     "use strict";
 
-    // Extended-XYZ carries the cell on the comment line (line 2) as
-    // Lattice="ax ay az bx by bz cx cy cz" -- molbuilder's Structure.to_xyz /
-    // `molbuilder xyz` write it.  The embed does NOT parse it (it only takes
-    // opts.lattice), so the inspector parses it here and passes opts.lattice ->
-    // getLattice() works (k-grid can tile the cell) + the cell wireframe can
-    // show.  Returns a 3x3 row-vector matrix [[ax,ay,az],[bx,by,bz],[cx,cy,cz]]
-    // or null for a plain .xyz with no Lattice= (then k-grid stays inert).
-    function _parseExtxyzLattice(text) {
-        const lines = String(text || "").split(/\r?\n/);
-        if (lines.length < 2) return null;
-        const m = lines[1].match(/Lattice\s*=\s*"([^"]+)"/i);
-        if (!m) return null;
-        const nums = m[1].trim().split(/\s+/).map(Number);
-        if (nums.length < 9 || nums.some((n) => !isFinite(n))) return null;
-        return [
-            [nums[0], nums[1], nums[2]],
-            [nums[3], nums[4], nums[5]],
-            [nums[6], nums[7], nums[8]],
-        ];
-    }
+    // NOTE: this inspector is a VIEWER glue layer -- it must NOT parse structure
+    // files or .fdf for the cell / k-grid.  molbuilder/parse/ already extracts
+    // those (StructureResult.cell + the fdf kgrid diagonal); the results tab is
+    // responsible for concentrating them and passing them in as params
+    // (ctx.viewParams).  The viewer only cares whether a cell / kgrid was handed
+    // to it or not.  See Slice C.
 
     // Build an .xyz body from a render-pipeline result: positions[m] gets its
     // element from the unit-cell atom sourceIndex[m] (k-grid images share their
@@ -196,11 +182,13 @@
                 }
                 const fmt = file.toLowerCase().endsWith(".pdb")
                     ? "pdb" : "xyz";
-                // Parse the cell from an extended-XYZ Lattice= line (molbuilder
-                // writes it).  Passing opts.lattice makes getLattice() work
-                // (k-grid tiling) + lets the cell wireframe show.  null for a
-                // plain .xyz -> no cell -> k-grid stays inert.
-                const lattice = (fmt === "xyz") ? _parseExtxyzLattice(r.text) : null;
+                // The cell (and the fixed k-grid, if any) come from the RESULTS
+                // TAB via ctx.viewParams -- concentrated by molbuilder/parse/
+                // (StructureResult.cell + fdf kgrid diagonal).  The viewer does
+                // NOT parse them.  Absent (e.g. a plain .xyz with no parsed cell)
+                // -> no cell -> k-grid stays inert.  Wired in Slice C.
+                const viewParams = (ctx && ctx.viewParams) || {};
+                const lattice = viewParams.cell || null;
                 const embedApi = (root.molbuilder
                                   && root.molbuilder.viewer
                                   && root.molbuilder.viewer.embed);
@@ -403,8 +391,6 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.structureInspector = inspector;
-    // Test hook (no production reader): the extended-XYZ Lattice= parser.
-    inspector._parseExtxyzLattice = _parseExtxyzLattice;
     if (root.molbuilder.inspectors.register) {
         root.molbuilder.inspectors.register(inspector);
     }
