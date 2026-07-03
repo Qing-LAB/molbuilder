@@ -926,4 +926,60 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.selection = root.molbuilder.selection || {};
     root.molbuilder.selection._createStore = _create;
+
+    // Phase 5 (fused module): the ws.selection SURFACE, built around ANY raw
+    // store.  selection-panel + viewer-adapter consume the renamed surface
+    // (toggle/all/clear/... + an ``indices``-shaped getState/subscribe), which
+    // the dispatcher builds around the singleton.  This mirrors that wrapper
+    // so a readonly/ephemeral inspector can own an ISOLATED selection.  Keep
+    // in sync with dispatcher.js::_selectionSnapshot + the ws.selection object.
+    function _ephemeralSnapshot(st) {
+        if (!st) {
+            return { indices: [], mode: "click", filters: [], combinator: "or",
+                     loading: false, error: null, atoms: [], sourceFile: null,
+                     pickOrder: [] };
+        }
+        return {
+            indices:    Array.isArray(st.selection) ? st.selection.slice() : [],
+            mode:       st.mode || "click",
+            filters:    (st.filters || []).map(function (f) { return Object.assign({}, f); }),
+            combinator: st.combinator || "or",
+            loading:    !!st.loading,
+            error:      st.error || null,
+            atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
+            sourceFile: st.sourceFile || null,
+            pickOrder:  Array.isArray(st.pickOrder) ? st.pickOrder.slice() : [],
+        };
+    }
+    function _surface(s) {
+        return {
+            toggle:          function (i)     { return s.toggleAtom(i); },
+            set:             function (ix)    { return s.setSelection(ix); },
+            add:             function (ix)    { return s.addToSelection(ix); },
+            remove:          function (ix)    { return s.removeFromSelection(ix); },
+            all:             function ()      { return s.selectAll(); },
+            invert:          function ()      { return s.invertSelection(); },
+            invertSelection: function ()      { return s.invertSelection(); },
+            clear:           function ()      { return s.clearSelection(); },
+            setMode:         function (m)     { return s.setMode(m); },
+            setFilters:      function (f)     { return s.setFilters(f); },
+            addFilter:       function (f)     { return s.addFilter(f); },
+            removeFilter:    function (i)     { return s.removeFilter(i); },
+            updateFilter:    function (i, p)  { return s.updateFilter(i, p); },
+            setCombinator:   function (c)     { return s.setCombinator(c); },
+            applyFilter:     function ()      { return s.applyFilter(); },
+            writeLabel:      function (t, ix) { return s.writeLabel(t, ix); },
+            setLoader:       function (fn)    { return s.setLoader(fn); },
+            getState:        function ()      { return _ephemeralSnapshot(s.getState()); },
+            subscribe:       function (fn)    {
+                return s.subscribe(function (st) { fn(_ephemeralSnapshot(st)); });
+            },
+        };
+    }
+    // Public factory for a fresh, ISOLATED selection with the ws.selection
+    // surface — pass it to selectionPanel.mount(host,{store}) +
+    // viewerAdapter.attach(handle,{store}).
+    root.molbuilder.selection.createEphemeralStore = function () {
+        return _surface(_create());
+    };
 })(typeof window !== "undefined" ? window : globalThis);

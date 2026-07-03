@@ -66,7 +66,7 @@
         return _fallbackColor(label);
     }
 
-    function attach(handle) {
+    function attach(handle, opts) {
         if (!handle || typeof handle.setOverlays !== "function") {
             throw new Error(
                 "viewer-adapter.attach: expected an embed handle "
@@ -77,7 +77,11 @@
         // not the legacy selection.store global.  ws.selection
         // exposes the full toggle/subscribe/getState surface used
         // by this adapter.
-        const store = (root.molbuilder
+        // Phase 5 (fused module): a caller MAY pass its own store instance
+        // (``opts.store``) so a readonly/ephemeral inspector paints from an
+        // ISOLATED selection; defaults to the workspace singleton (Modify
+        // unchanged).
+        const store = (opts && opts.store) || (root.molbuilder
                        && root.molbuilder.workspace
                        && root.molbuilder.workspace.selection);
         if (!store) {

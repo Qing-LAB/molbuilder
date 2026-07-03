@@ -60,7 +60,7 @@
     const FROZEN_TAG_LABEL = "frozen";
     const FROZEN_TARGET    = "frozen_atoms";
 
-    function mount(rootEl) {
+    function mount(rootEl, opts) {
         rootEl = rootEl || document;
         // Phase 10 (workspace-contract.md §5): the panel drives the
         // unified ws.selection namespace, not the legacy
@@ -71,7 +71,12 @@
         // from store→ws (toggleAtom→toggle, selectAll→all,
         // clearSelection→clear) are renamed at the call sites
         // below.
-        const store = (root.molbuilder
+        // Phase 5 (fused module): a caller MAY pass its own store instance
+        // (``opts.store``) so a readonly/ephemeral inspector mounts an
+        // ISOLATED selection that never touches the workspace.  Defaults to
+        // the workspace singleton, so Modify (which calls ``mount(host)``)
+        // is unchanged.
+        const store = (opts && opts.store) || (root.molbuilder
                        && root.molbuilder.workspace
                        && root.molbuilder.workspace.selection);
         if (!store) {

@@ -835,3 +835,35 @@ class TestSubscribe:
             f"subscriber B should have fired despite A's exception; "
             f"counts: {out!r}"
         )
+
+
+class TestEphemeralStore:
+    """Phase 5 (fused module): ``createEphemeralStore`` builds an ISOLATED
+    selection carrying the ws.selection surface (renamed methods +
+    ``indices``-shaped getState), so a readonly inspector owns its own
+    selection without touching the workspace singleton."""
+
+    def test_isolated_instances_with_panel_surface(self):
+        out = _run_node("""
+            const sel = window.molbuilder.selection;
+            const a = sel.createEphemeralStore();
+            const b = sel.createEphemeralStore();
+            // Every method selection-panel + viewer-adapter call on the store.
+            const need = ["add","addFilter","all","applyFilter","clear",
+                          "getState","invert","invertSelection","removeFilter",
+                          "setCombinator","setMode","subscribe","toggle",
+                          "updateFilter","writeLabel"];
+            a.toggle(3); a.toggle(1);
+            console.log(JSON.stringify({
+                surface: need.every(k => typeof a[k] === "function"),
+                distinct: a !== b,
+                aIndices: a.getState().indices,
+                bIndices: b.getState().indices,          // isolation check
+                indicesShape: "indices" in a.getState(), // NOT legacy "selection"
+            }));
+        """)
+        assert out["surface"] is True
+        assert out["distinct"] is True
+        assert out["aIndices"] == [1, 3]
+        assert out["bIndices"] == []          # b untouched by a's edits
+        assert out["indicesShape"] is True
