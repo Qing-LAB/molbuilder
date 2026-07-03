@@ -720,3 +720,21 @@
 
 /* `.sr-only` (visually-hidden but screen-reader announced) lives in
  * lib/page-shell.css — every page loads it from there. */
+
+/* k-grid display control (§ 6.3, atom-annotations.md): compact enable toggle +
+   nx × ny × nz inputs.  Drives store.setKgrid; the render pipeline tiles. */
+.selection-kgrid {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.35rem;
+}
+.selection-kgrid-dims {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.selection-kgrid-dims input[type="number"] {
+    width: 3.4em;
+}

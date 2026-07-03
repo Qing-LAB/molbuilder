@@ -894,6 +894,37 @@
         cleanups.push(() => {
             try { _isolateUnsubscribe(); } catch (_) { /* ignore */ }
         });
+
+        // k-grid display control (§ 6.3): the enable checkbox + [nx,ny,nz]
+        // inputs drive store.setKgrid; the subscription reflects state.kgrid
+        // back.  A VIEW control -- stays available in readonly (unlike assign),
+        // since validating a periodic model matters on the Results inspectors.
+        const _kgChk = $("selection-kgrid-checkbox");
+        const _kgNx  = $("selection-kgrid-nx");
+        const _kgNy  = $("selection-kgrid-ny");
+        const _kgNz  = $("selection-kgrid-nz");
+        function _kgDim(el) {
+            const v = Math.floor(Number(el && el.value));
+            return (isFinite(v) && v >= 1) ? v : 1;
+        }
+        function _pushKgridDims() {
+            store.setKgrid({ dims: [_kgDim(_kgNx), _kgDim(_kgNy), _kgDim(_kgNz)] });
+        }
+        on(_kgChk, "change", (e) => store.setKgrid({ enabled: !!e.target.checked }));
+        on(_kgNx, "change", _pushKgridDims);
+        on(_kgNy, "change", _pushKgridDims);
+        on(_kgNz, "change", _pushKgridDims);
+        const _kgridUnsub = store.subscribe((s) => {
+            const kg = s.kgrid || { enabled: false, dims: [1, 1, 1] };
+            const d  = kg.dims || [1, 1, 1];
+            if (_kgChk) _kgChk.checked = !!kg.enabled;
+            // Don't clobber an input the user is actively editing.
+            const _set = (el, val) => {
+                if (el && document.activeElement !== el) el.value = String(val);
+            };
+            _set(_kgNx, d[0]); _set(_kgNy, d[1]); _set(_kgNz, d[2]);
+        });
+        cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);
         on(els.addBtn,          "click",  onAddToTarget);

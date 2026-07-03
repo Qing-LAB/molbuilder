@@ -174,6 +174,27 @@
       <input type="checkbox" id="selection-isolate-checkbox">
       <span>Show selected only</span>
     </label>
+    {#- k-grid display (§ 6.3): tile the unit cell by the lattice to validate a
+        periodic model -- vacuum spacing, orientation, boundary match.  Enable +
+        [nx,ny,nz] drive store.setKgrid; the render pipeline tiles.  Display-only
+        (images never enter the selection).  See lib/molview/kgrid.js. -#}
+    <div class="selection-kgrid" role="group" aria-label="k-grid display">
+      <label class="selection-kgrid-toggle"
+             title="Tile the unit cell by the lattice to check vacuum spacing, orientation, and cell boundaries.">
+        <input type="checkbox" id="selection-kgrid-checkbox">
+        <span>k-grid display</span>
+      </label>
+      <span class="selection-kgrid-dims">
+        <input type="number" id="selection-kgrid-nx" min="1" step="1" value="1"
+               aria-label="k-grid repetitions along a">
+        <span aria-hidden="true">×</span>
+        <input type="number" id="selection-kgrid-ny" min="1" step="1" value="1"
+               aria-label="k-grid repetitions along b">
+        <span aria-hidden="true">×</span>
+        <input type="number" id="selection-kgrid-nz" min="1" step="1" value="1"
+               aria-label="k-grid repetitions along c">
+      </span>
+    </div>
   </div>
 
   <!-- Bulk label operations on the current selection.  Three verbs
