@@ -970,6 +970,9 @@
             applyFilter:     function ()      { return s.applyFilter(); },
             writeLabel:      function (t, ix) { return s.writeLabel(t, ix); },
             setLoader:       function (fn)    { return s.setLoader(fn); },
+            // Install atoms directly (readonly inspectors pass atoms built from
+            // the viewer handle; providing ``atoms`` skips any server fetch).
+            adoptSession:    function (o)     { return s.adoptSession(o); },
             getState:        function ()      { return _ephemeralSnapshot(s.getState()); },
             subscribe:       function (fn)    {
                 return s.subscribe(function (st) { fn(_ephemeralSnapshot(st)); });

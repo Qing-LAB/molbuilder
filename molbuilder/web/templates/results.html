@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory-inspector.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/markdown.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
 {# Spectra inspector styles.  When the spectra-inspector lift lands
    (#58 step 2.4), lib/inspectors/spectra.js fetches
@@ -187,6 +188,17 @@
 {# Shared xyz / distance / angle math — read by trajectory + structure
    inspectors below (and by /molbuilder; same pure module). #}
 <script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
+{# Phase 5 (fused module): selection modules so the structure inspector can
+   mount a READONLY selection panel driven by an ISOLATED ephemeral store
+   (selection.createEphemeralStore()).  The workspace dispatcher (the singleton
+   store + Molbuilder glue) is intentionally NOT loaded here -- inspectors own
+   their own selection and never touch a workspace singleton. #}
+<script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>

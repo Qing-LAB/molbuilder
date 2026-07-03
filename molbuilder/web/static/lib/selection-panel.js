@@ -92,6 +92,15 @@
         // prior anchor.
         let _anchorIndex = null;
 
+        // Phase 5 (fused module): a ``readonly`` mount (the Results inspectors)
+        // is view + filter/highlight ONLY -- no writes.  Hide the assign-label
+        // section (the only mutation path in the panel); click-select + filter
+        // + highlight all stay.
+        if (opts && opts.mode === "readonly") {
+            const assign = rootEl.querySelector(".selection-assign");
+            if (assign) assign.hidden = true;
+        }
+
         const $ = (id) => rootEl.querySelector("#" + id);
         const els = {
             modeClick:       $("selection-mode-click"),

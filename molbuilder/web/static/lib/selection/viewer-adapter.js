@@ -90,6 +90,12 @@
                 + "load lib/workspace/dispatcher.js first"
             );
         }
+        // Phase 5 (fused module): a ``readonly`` mount PAINTS the store's
+        // selection onto the viewer but does NOT hijack viewer clicks -- the
+        // embed keeps its own pick mode (e.g. the structure inspector's
+        // triple-pick measurement chip).  Selection comes from the panel
+        // (row-click / filter) instead.  Default (Modify) wires clicks as before.
+        const _mode = (opts && opts.mode) || null;
 
         // ----- click wiring --------------------------------------- //
         //
@@ -118,17 +124,19 @@
                 prevClicked = idx;
             }
         }
-        try {
-            handle.setPick({
-                mode:   "single",
-                halo:   false,
-                label:  false,
-                onPick: onPick,
-            });
-        } catch (e) {
-            if (root.console) root.console.warn(
-                "[viewer-adapter] setPick failed", e
-            );
+        if (_mode !== "readonly") {
+            try {
+                handle.setPick({
+                    mode:   "single",
+                    halo:   false,
+                    label:  false,
+                    onPick: onPick,
+                });
+            } catch (e) {
+                if (root.console) root.console.warn(
+                    "[viewer-adapter] setPick failed", e
+                );
+            }
         }
 
         // ----- render ---------------------------------------------- //

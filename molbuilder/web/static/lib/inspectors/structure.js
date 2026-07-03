@@ -112,6 +112,19 @@
 
             host.appendChild(card);
 
+            // -- Phase 5 (fused module): a readonly selection panel driven by
+            // an ISOLATED ephemeral store -- the inspector owns its own
+            // selection/filter; nothing touches the Molbuilder workspace.  If
+            // the selection modules aren't on the page (createEphemeralStore
+            // absent), the inspector degrades to the plain viewer + chip.
+            const selApi   = (root.molbuilder && root.molbuilder.selection) || {};
+            const selStore = (typeof selApi.createEphemeralStore === "function")
+                ? selApi.createEphemeralStore() : null;
+            let   panelMount = null;
+            const panelHost  = document.createElement("div");
+            panelHost.className = "structure-selection-host";
+            if (selStore) card.appendChild(panelHost);
+
             let viewerHandle = null;
             let disposed     = false;
 
@@ -214,6 +227,19 @@
                         status.textContent = n > 0
                             ? "Loaded " + n + " atoms."
                             : "Loaded.";
+                        // Phase 5: feed the isolated store the loaded atoms so
+                        // the panel's list renders.  Providing ``atoms`` skips
+                        // any server fetch (readonly result files aren't
+                        // selection sources server-side).
+                        if (selStore && typeof selStore.adoptSession === "function") {
+                            try {
+                                const elems = handle.getElements() || [];
+                                selStore.adoptSession({
+                                    atoms: elems.map((el, i) => ({ index: i, element: el || "?" })),
+                                    selection: [],
+                                });
+                            } catch (_) { /* panel just shows an empty list */ }
+                        }
                         // Signal "first render visible" so the
                         // /results tab-level picker drops its
                         // "Parsing…" status.  Deferred via double-rAF
@@ -242,6 +268,26 @@
                 };
                 try {
                     viewerHandle = embedApi(viewerSlot, opts);
+                    // Phase 5: mount the readonly selection panel against the
+                    // isolated store + this viewer handle.  ``mode: readonly``
+                    // makes the adapter PAINT selection onto the viewer while
+                    // leaving the triple-pick measurement clicks untouched, and
+                    // hides the panel's assign (write) controls.
+                    if (selStore && typeof selApi.mountPanel === "function") {
+                        selApi.mountPanel(panelHost, {
+                            store:        selStore,
+                            viewerHandle: viewerHandle,
+                            mode:         "readonly",
+                        }).then((m) => {
+                            panelMount = m;
+                            // Disposed before the async mount resolved -> tear
+                            // the just-mounted panel down immediately.
+                            if (disposed && m && m.panel
+                                && typeof m.panel.dispose === "function") {
+                                try { m.panel.dispose(); } catch (_) {}
+                            }
+                        });
+                    }
                     // Test hooks (no production reader): stash the
                     // embed handle + chip-update closure on the
                     // viewer slot DOM node so Playwright e2e can
@@ -272,6 +318,10 @@
             return {
                 dispose() {
                     disposed = true;
+                    if (panelMount && panelMount.panel
+                        && typeof panelMount.panel.dispose === "function") {
+                        try { panelMount.panel.dispose(); } catch (_) {}
+                    }
                     if (viewerHandle && typeof viewerHandle.dispose === "function") {
                         try { viewerHandle.dispose(); }
                         catch (_) { /* already torn down */ }
