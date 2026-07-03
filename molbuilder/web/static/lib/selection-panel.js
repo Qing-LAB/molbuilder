@@ -867,12 +867,6 @@
                 store.invertSelection();
             }
         });
-        // 2026-06-12: "Show selected only" toggle.  Routes through
-        // the viewer-adapter handle that selection-bootstrap exposes
-        // on window.molbuilder.selection.viewerAdapterHandle.  The
-        // adapter does the actual setOverlays-with-hidden=true for
-        // non-selected atoms; the checkbox just flips the mode flag
-        // and triggers a re-render.
         // Phase 5 (fused module): "Show selected only" is STORE state (the
         // single source of truth).  The checkbox drives ``store.setIsolate`` and
         // reflects ``state.isolate``; the viewer adapter reads the same flag

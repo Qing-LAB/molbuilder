@@ -302,6 +302,48 @@ A `persistence: ephemeral` (read-only inspector) view **owns no data** — it
 `working-copy-persistence.md` is authoritative for the mechanics (draft, save,
 crash-recovery); this section says only how the fused module *uses* it.
 
+### 6.2 State & API contract (what's internal vs exposed)
+
+**One rule: all shared state lives in the store; the outside touches it only
+through the store API.** Nothing else holds a copy of module state, and no view
+flag lives outside the store.
+
+**Internal state — the store (single source of truth).** `selection`,
+`pickOrder`, `atoms`, `mode`, **`isolate`** ("show selected only"), `filters`,
+`combinator`, `sourceFile`, `loading`, `error`. It is:
+- **mutated ONLY** through the store's mutators — `toggle` / `set` / `add` /
+  `remove` / `all` / `invert` / `clear` / `setMode` / **`setIsolate`** /
+  `addFilter` / `removeFilter` / `updateFilter` / `setCombinator` / `applyFilter`
+  / `writeLabel` / `adoptSession`;
+- **read ONLY** through `getState()` (a defensive snapshot) or `subscribe(fn)`.
+
+The panel and the viewer adapter are **pure consumers**: they render from the
+snapshot and route input back through the mutators. Neither keeps a parallel
+copy, and **no view flag lives in a consumer** — that was the isolate bug
+(isolate lived in the adapter and the panel reached a *global handle* to toggle
+it; now it is `store.setIsolate` / `state.isolate` like every other field).
+
+**Public API — functions only (no raw state/handles exported):**
+
+| Export | What |
+|---|---|
+| `selection.mountPanel(host, opts)` | mount the panel + attach the adapter to a viewer |
+| `selectionPanel.mount(host, {store, mode})` | mount just the panel |
+| `selection.viewerAdapter.attach(handle, {store, mode})` | attach just the adapter |
+| `selection.createEphemeralStore()` | a fresh **isolated** store (the ws.selection surface) |
+| the store surface (`ws.selection` / ephemeral) | the mutators + `getState` / `subscribe` |
+
+**Not allowed:** exporting a live handle or a mutable flag as a global for
+another module (or a test) to poke. The store API is the only channel.
+
+**Known debt (screen, 2026-07-02):**
+`window.molbuilder.selection.viewerAdapterHandle` (set by the Modify bootstrap)
+violates this — a raw adapter handle exposed globally. Now that isolate is store
+state, **only the isolate e2e still reads it**; retire it by migrating that e2e
+to `ws.selection.setIsolate` / `getState().isolate` and dropping the global.
+`selectionPanel.forceRenderMode` is a *documented debug override* (render-mode
+only, also settable via `sessionStorage` / URL) — a knob, not shared state.
+
 ---
 
 ## 7. Phased implementation plan (each: implement → test → commit)
