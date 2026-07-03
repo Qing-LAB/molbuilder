@@ -918,9 +918,13 @@
         on(_kgNy, "change", _pushKgridDims);
         on(_kgNz, "change", _pushKgridDims);
         const _kgridUnsub = store.subscribe((s) => {
-            const kg = s.kgrid || { enabled: false, dims: [1, 1, 1] };
+            const kg = s.kgrid || { enabled: false, dims: [1, 1, 1], source: "free" };
             const d  = kg.dims || [1, 1, 1];
             if (_kgChk) _kgChk.checked = !!kg.enabled;
+            // Fixed mode (dims from a .fdf) -> the [nx,ny,nz] inputs are
+            // read-only; only the enable toggle works.  Free mode -> editable.
+            const fixed = kg.source === "fixed";
+            [_kgNx, _kgNy, _kgNz].forEach((el) => { if (el) el.disabled = fixed; });
             // Don't clobber an input the user is actively editing.
             const _set = (el, val) => {
                 if (el && document.activeElement !== el) el.value = String(val);

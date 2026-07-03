@@ -365,7 +365,8 @@
         if (!st) {
             return {
                 indices: [], mode: "click", isolate: false,
-                kgrid: { enabled: false, dims: [1, 1, 1] }, filters: [],
+                kgrid: { enabled: false, dims: [1, 1, 1], source: "free" },
+                filters: [],
                 combinator: "or", loading: false, error: null,
                 atoms: [], sourceFile: null, pickOrder: [],
             };
@@ -377,8 +378,9 @@
             isolate:    !!st.isolate,
             kgrid:      st.kgrid
                             ? { enabled: !!st.kgrid.enabled,
-                                dims: (st.kgrid.dims || [1, 1, 1]).slice() }
-                            : { enabled: false, dims: [1, 1, 1] },
+                                dims: (st.kgrid.dims || [1, 1, 1]).slice(),
+                                source: st.kgrid.source || "free" }
+                            : { enabled: false, dims: [1, 1, 1], source: "free" },
             filters:    (st.filters || []).map(function (f) {
                 return Object.assign({}, f);
             }),
