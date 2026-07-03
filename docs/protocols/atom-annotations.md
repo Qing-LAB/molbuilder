@@ -255,9 +255,19 @@ tabs; trajectory is absorbed via the § 6.3 render pipeline (it *is* atom work).
   `working-copy-persistence.md`) — `open` loads the structure+sidecar, edits
   `update` a draft (survives reload/crash), and **Save / Save As** writes the
   pair. One flow replacing the three scattered save paths.
-- **UI (responsive):** **wide** → viewer + selection as **two matching-height
-  cards**; **narrow** → **one card with two tabs** (View / Selection). Uses the
-  responsive-grid floor from `mobile-layout.md`.
+- **UI (responsive, ONE fused card — revised 2026-07-03):** the viewer + the
+  selection panel live in **one card**, not two cards and not two tabs. The
+  selection panel is **foldable**:
+  - **wide** → a collapsible **side** panel beside the viewer (fold ⇒ the viewer
+    reclaims the width);
+  - **narrow** → a collapsible **bottom** panel below the viewer.
+  The side↔bottom switch is driven by the **card's own width** (CSS container
+  query / `container-type: inline-size`), NOT the viewport — so it's correct in
+  any embed context (full-width Modify or a small Results inspector card).
+  Defaults (tunable): switch to bottom below **container width 640 px**; whole
+  card **`min-width: 320 px`** for readable visibility; fold is a chevron toggle,
+  state is local UI (not store — it's layout, not shared data). Supersedes the
+  earlier two-cards / two-tabs sketch + the `mobile-layout.md` grid floor.
 
 **The two behavior-confining args (this is what differs per tab):**
 

@@ -1,0 +1,60 @@
+/* Fused molview card: the viewer + the selection panel in ONE card, with a
+ * foldable panel (atom-annotations.md § 6, revised 2026-07-03).
+ *
+ * The side (wide) <-> bottom (narrow) switch is driven by the CARD's own width
+ * via a container query -- NOT the viewport -- so it is correct in any embed
+ * context (full-width Modify or a small Results inspector card).  Fold collapses
+ * the panel so the viewer reclaims the space. */
+
+.molview-card {
+    container-type: inline-size;   /* enables the @container query below */
+    min-width: 320px;              /* readable-visibility floor for the whole card */
+}
+
+.molview-body {
+    display: flex;
+    flex-direction: row;           /* WIDE: viewer | fold | panel, side by side */
+    align-items: stretch;
+    gap: 0.4rem;
+    width: 100%;
+}
+
+.molview-body > .molview-viewer {
+    flex: 1 1 auto;
+    min-width: 0;                  /* let the viewer shrink; the 3Dmol canvas reflows */
+    position: relative;            /* anchors the measurement-chip overlay */
+}
+
+.molview-panel {
+    flex: 0 0 320px;
+    max-width: 45%;
+    overflow: auto;
+}
+
+.molview-fold-btn {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 0.25rem 0.4rem;
+    cursor: pointer;
+    border: 1px solid var(--border, #cbd5e1);
+    background: var(--surface, #f7f7f7);
+    border-radius: 4px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+}
+
+/* Folded: hide the panel; the viewer flexes to fill; flip the chevron. */
+.molview-card.is-folded .molview-panel { display: none; }
+.molview-card.is-folded .molview-fold-btn { transform: rotate(180deg); }
+
+/* NARROW: the CARD is below the breakpoint -> stack, panel drops to the BOTTOM. */
+@container (max-width: 640px) {
+    .molview-body { flex-direction: column; }
+    .molview-panel {
+        flex: 0 0 auto;
+        max-width: none;
+        width: auto;
+        max-height: 45vh;
+    }
+    .molview-fold-btn { align-self: stretch; }
+}

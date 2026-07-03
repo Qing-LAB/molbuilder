@@ -102,15 +102,12 @@
             // card body fills the slot at 420 px height per the
             // ``card.height`` opt below).
             const viewerSlot = document.createElement("div");
-            viewerSlot.className = "structure-viewer-slot";
-            card.appendChild(viewerSlot);
+            viewerSlot.className = "structure-viewer-slot molview-viewer";
             const chip = document.createElement("div");
             chip.id = "structure-measurement";
             chip.className = "selection-measurement-overlay";
             chip.hidden = true;
             viewerSlot.appendChild(chip);
-
-            host.appendChild(card);
 
             // -- Phase 5 (fused module): a readonly selection panel driven by
             // an ISOLATED ephemeral store -- the inspector owns its own
@@ -122,8 +119,36 @@
                 ? selApi.createEphemeralStore() : null;
             let   panelMount = null;
             const panelHost  = document.createElement("div");
-            panelHost.className = "structure-selection-host";
-            if (selStore) card.appendChild(panelHost);
+            panelHost.className = "structure-selection-host molview-panel";
+
+            if (selStore) {
+                // ONE fused card: viewer + foldable selection panel.  Side
+                // (wide) / bottom (narrow) is CSS (fused-layout.css container
+                // query); the fold chevron is local UI layout state, not the
+                // store.  DOM built BEFORE embedding so the 3Dmol canvas is never
+                // reparented (see § 6).
+                card.classList.add("molview-card");
+                const body = document.createElement("div");
+                body.className = "molview-body";
+                body.appendChild(viewerSlot);
+                const foldBtn = document.createElement("button");
+                foldBtn.type = "button";
+                foldBtn.className = "molview-fold-btn";
+                foldBtn.setAttribute("aria-label", "Fold or unfold the selection panel");
+                foldBtn.setAttribute("aria-expanded", "true");
+                foldBtn.textContent = "❯";
+                foldBtn.addEventListener("click", () => {
+                    const folded = card.classList.toggle("is-folded");
+                    foldBtn.setAttribute("aria-expanded", String(!folded));
+                });
+                body.appendChild(foldBtn);
+                body.appendChild(panelHost);
+                card.appendChild(body);
+            } else {
+                card.appendChild(viewerSlot);   // no selection modules -> plain viewer
+            }
+
+            host.appendChild(card);
 
             let viewerHandle = null;
             let disposed     = false;
