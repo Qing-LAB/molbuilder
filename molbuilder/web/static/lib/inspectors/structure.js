@@ -1,7 +1,7 @@
 /* Structure-preview inspector: read-only 3-D view of a .xyz / .pdb
  * file.  Loads the file via ``ctx.readFile`` and hands the text +
  * format to the standard embedded MolViewer (lib/mol-viewer-embed.js,
- * contract: docs/protocols/embedded-viewer.md).
+ * contract: docs/protocols/molview-module.md).
  *
  * No frame playback, no force overlay -- that's the trajectory
  * inspector's job.  This is a static-structure peek.  An atom-pick

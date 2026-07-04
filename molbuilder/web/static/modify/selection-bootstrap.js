@@ -12,7 +12,7 @@
  *
  * That's it.  All HTTP wiring, rule translation, save dispatch and
  * label bookkeeping lives in the store.  See
- * docs/protocols/atom-selection.md for the full architecture.
+ * docs/protocols/molview-module.md for the full architecture.
  */
 (function () {
     "use strict";

@@ -22,7 +22,7 @@
  * a raw viewer now error at attach time so script-order bugs
  * surface immediately rather than silently degrading.
  *
- * Full spec: docs/protocols/atom-selection.md
+ * Full spec: docs/protocols/molview-module.md
  */
 (function (root) {
     "use strict";

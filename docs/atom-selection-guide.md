@@ -5,7 +5,7 @@ one **store** holds the selection; a **panel** shows it; a **viewer-adapter**
 paints it in the 3D viewer and turns clicks back into selection. Three consumers,
 one source of truth.
 
-**What this is NOT.** The authoritative spec. `protocols/atom-selection.md` pins
+**What this is NOT.** The authoritative spec. `protocols/molview-module.md` pins
 the data structures, the full store API, the event protocol, and the scenarios.
 The store itself is part of the workspace store — see `workspace-guide.md` for
 its `ws.selection.*` mutators. This guide teaches how the pieces fit.
@@ -65,7 +65,7 @@ flowchart TD
 - **regions + frozen** — from the `.molstruct.json` sidecar (named regions,
   frozen-atom lists).
 
-Full shapes: `atom-selection.md` §2.
+Full shapes: `molview-module.md` §2.
 
 ---
 
@@ -119,7 +119,7 @@ store.
 
 ## 7. Where the authority lives (+ a heads-up)
 
-- **`protocols/atom-selection.md`** — the spec: data structures (§2), store API
+- **`protocols/molview-module.md`** — the spec: data structures (§2), store API
   (§3), event protocol (§4), dependency diagram (§5), information-flow scenarios
   (§6).
 - **`workspace-guide.md`** — the store + `ws.selection.*` mutators.

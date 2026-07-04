@@ -5,7 +5,7 @@
  * mutators.  No internal state: every render reads from the store,
  * every user action calls a mutator.
  *
- * Full spec: docs/protocols/atom-selection.md
+ * Full spec: docs/protocols/molview-module.md
  *
  * Public surface:
  *

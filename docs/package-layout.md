@@ -198,12 +198,12 @@ docs/
   protocols/                      # cross-cutting interfaces (HTTP/JS/test/on-disk)
     web-api.md                    # HTTP /api/* endpoint reference
     projects-sidebar.md           # sidebar architecture + projects.* API + lock model
-    atom-selection.md             # selection store + .molstruct.json sidecar shape
+    molview-module.md             # selection store + .molstruct.json sidecar shape
     selection.md                  # Python selection rule grammar
     results-tab.md                # /results dispatch architecture
     runtime-registry.md           # molbuilder-runtime.js (register / whenReady)
     inspector-registry.md         # inspector mount/dispose + pageshow refresh
-    embedded-viewer.md            # viewer.embed(host, opts) → handle contract
+    molview-module.md            # viewer.embed(host, opts) → handle contract
     playwright-tests.md           # test patterns + anti-patterns
     job-layout.md                 # on-disk basename + -runN.out convention
     cli.md                        # click-based CLI surface

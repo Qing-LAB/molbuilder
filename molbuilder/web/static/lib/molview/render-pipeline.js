@@ -1,5 +1,5 @@
 /* Render pipeline compose -- assembles the § 6.3 layers into the set of
- * positions the viewer draws (docs/protocols/atom-annotations.md § 6.3).
+ * positions the viewer draws (molview-module.md).
  *
  * The store is frame-INDEPENDENT; the caller resolves the current frame's coords
  * (layer 1 -- e.g. the viewer handle's getAtomCoords, or a trajectory's frame)

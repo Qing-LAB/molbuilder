@@ -1,5 +1,5 @@
 /* k-grid tiling -- render-pipeline layer 3 of the fused molview
- * (docs/protocols/atom-annotations.md § 6.3).
+ * (molview-module.md).
  *
  * Duplicates the unit cell (the already-selected/visible atoms) in space by the
  * lattice vectors, nx*ny*nz times, so a designed periodic model can be visually

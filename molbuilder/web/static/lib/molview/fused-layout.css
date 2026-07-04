@@ -1,5 +1,5 @@
 /* Fused molview card: the viewer + the selection panel in ONE card, with a
- * foldable panel (atom-annotations.md § 6, revised 2026-07-03).
+ * foldable panel (molview-module.md, revised 2026-07-03).
  *
  * The side (wide) <-> bottom (narrow) switch is driven by the CARD's own width
  * via a container query -- NOT the viewport -- so it is correct in any embed

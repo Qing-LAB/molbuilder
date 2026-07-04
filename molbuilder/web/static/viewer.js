@@ -60,7 +60,7 @@
     };
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
-    // docs/protocols/embedded-viewer.md).  Site migration #202
+    // docs/protocols/molview-module.md).  Site migration #202
     // landed 2026-06-03 — Build now uses the standard knob bar
     // (Style / Labels / Axes / Reset / PNG / Background / Export)
     // owned by the embed.  The bespoke <details> Style block in

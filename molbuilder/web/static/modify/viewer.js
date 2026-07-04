@@ -88,7 +88,7 @@
     //  Embedded MolViewer.                                             //
     //                                                                  //
     //  Migrated to the standard embeddable viewer (#198, 2026-06-02;   //
-    //  contract: docs/protocols/embedded-viewer.md).  The handle's     //
+    //  contract: docs/protocols/molview-module.md).  The handle's     //
     //  declarative API drives style / axes / index labels; the raw    //
     //  3Dmol viewer (handle._viewer3dmol()) is still used directly    //
     //  for two things the embed contract doesn't cover:               //

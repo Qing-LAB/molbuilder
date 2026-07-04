@@ -18,7 +18,7 @@
  * mutators on user actions.  No module talks directly to any other;
  * every cross-module signal goes through this store.
  *
- * Full spec:  docs/protocols/atom-selection.md
+ * Full spec:  docs/protocols/molview-module.md
  *
  * State shape:
  *

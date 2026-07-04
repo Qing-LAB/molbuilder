@@ -1,3 +1,9 @@
+> **ARCHIVED / SUPERSEDED 2026-07-03 by [`docs/protocols/molview-module.md`](../protocols/molview-module.md).**
+>
+> Reason: The viewer is part of the one MolView module (viewer + selection). Its contract folded into molview-module.md verbatim-in-spirit; nothing lost.
+>
+> Kept for history only. Do not treat as current. Code is the standard; molview-module.md tracks it.
+
 # Embedded MolViewer — the standard structure viewer component
 
 <!-- ROUTE-RENAME-BANNER -->

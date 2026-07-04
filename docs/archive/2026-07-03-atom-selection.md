@@ -1,3 +1,9 @@
+> **ARCHIVED / SUPERSEDED 2026-07-03 by [`docs/protocols/molview-module.md`](../protocols/molview-module.md).**
+>
+> Reason: Selection is part of the one MolView module. Folded into molview-module.md. Its §404 (isolate on the adapter + global handle) was already superseded by isolate-in-the-store.
+>
+> Kept for history only. Do not treat as current. Code is the standard; molview-module.md tracks it.
+
 # Spec — Atom-selection module
 
 Persistent reference for the JS modules that let a user pick atoms in

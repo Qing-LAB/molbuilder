@@ -14,8 +14,8 @@ of the working-copy core** — no separate contract of its own:
 - **The codec** (`.xyz` + `.molstruct.json`) — `molbuilder/workingcopy_structure.py`.
 - **The browser wiring** (hold labels in the working copy; Save / Save As →
   `/api/workingcopy/save`; this *replaces* the `writeLabel` auto-save) — designed
-  in [`atom-annotations.md` §6.1](atom-annotations.md) as part of the fused
-  molview+selection module (Phase 5). Not yet built.
+  in [`molview-module.md`](molview-module.md) (the MolView module) +
+  `working-copy-persistence.md`. Not yet built.
 
 There is **no** hash-gate, **no** "commit vs save" distinction, and **no**
 source-hash carried by the browser. Save writes the pair — overwrite, or save-as.

@@ -10,7 +10,7 @@ prone to.
 **What this is NOT.** The authoritative contract. For exact return shapes,
 error semantics, and test-pinned clauses, `protocols/workspace-contract.md`
 is the sole source of truth; this guide teaches and points there.
-`protocols/atom-selection.md` covers the atom-selection modules in depth;
+`protocols/molview-module.md` covers the atom-selection modules in depth;
 `protocols/workspace-state.md` is the history behind the design.
 
 ---
@@ -150,6 +150,6 @@ those are explicit intent and must load.
 
 - **`protocols/workspace-contract.md`** — the contract: exact `ws.*` shapes,
   persistence, the mount-restore ownership rule (§4.5), test IDs.
-- **`protocols/atom-selection.md`** — the atom-selection modules in depth.
+- **`protocols/molview-module.md`** — the atom-selection modules in depth.
 - **`protocols/workspace-state.md`** — the history / why behind the design.
 - **`protocols/web-api.md`** — the HTTP shapes the store consumes.

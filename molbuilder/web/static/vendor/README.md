@@ -51,7 +51,7 @@ renders.
 | License | MIT — see banner in `gif.min.js.LICENSE.txt` |
 
 Powers the GIF format of the embedded viewer's `handle.exportAnimation`
-(see `docs/protocols/embedded-viewer.md` § 3.2). Loaded lazily on first
+(see `docs/protocols/molview-module.md` § 3.2). Loaded lazily on first
 use via `/static/vendor/gif.min.js`; the main library spawns a Web
 Worker that loads `/static/vendor/gif.worker.min.js` to do the LZW
 encoding off the main thread. Both files must be present together

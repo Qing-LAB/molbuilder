@@ -577,7 +577,7 @@ enumerates the tests that need to land alongside each step.
 ## 10. Process
 
 Per `design.md` § 7, this doc lands first; subsystem docs
-(`protocols/atom-selection.md`, `tabs/architecture.md` §5.3,
+(`protocols/molview-module.md`, `tabs/architecture.md` §5.3,
 `protocols/web-api.md`) point at this one for the cross-cutting
 contract.  When a migration phase lands, this doc gets struck
 through with the section that's been retired; the per-tab specs

@@ -6,7 +6,7 @@ component every tab drops in to show a molecule, and the rule for using it
 correctly is simple: **drive it through the declarative handle; never touch the
 raw 3Dmol object.** This guide shows how.
 
-**What this is NOT.** The authoritative contract. `protocols/embedded-viewer.md`
+**What this is NOT.** The authoritative contract. `protocols/molview-module.md`
 is the clause-pinned source of truth (every opt, every handle method, the
 isolation contract, error codes). This guide teaches and points there; it won't
 drift.
@@ -118,7 +118,7 @@ const handle = window.molbuilder.viewer.embed(hostDiv, {
 
 ## 6. Where the authority lives
 
-- **`protocols/embedded-viewer.md`** — the contract: `ViewerOpts` (§3.1),
+- **`protocols/molview-module.md`** — the contract: `ViewerOpts` (§3.1),
   `ViewerHandle` (§3.2), `StyleOpts`/`AxesOpts`/`OverlaySpec`/… , the isolation
   contract (§2), error codes (§5), required external modules (§2.5).
 - **`results-tab-guide.md`** — how the trajectory inspector embeds + disposes the

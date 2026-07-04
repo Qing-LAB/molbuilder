@@ -1,6 +1,6 @@
 /* mol-viewer-embed.css — card chrome for the embedded MolViewer.
  *
- * Contract: docs/protocols/embedded-viewer.md § 4 "Card structure".
+ * Contract: docs/protocols/molview-module.md § 4 "Card structure".
  * Theme through the standard tokens (tokens.css); per-tab overrides
  * via opts.card.className from the embed call site.
  */
