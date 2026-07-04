@@ -294,6 +294,16 @@ class Structure:
     # default to "no lattice" so every existing call site is unchanged.
     cell:          Optional[np.ndarray]            = None
     pbc:           Optional[Tuple[bool, bool, bool]] = None
+    # Per-axis periodicity KIND (structure-periodicity.md) -- the authoritative
+    # periodicity field.  Values: "periodic" (k-sampled / tileable lattice),
+    # "isolated" (vacuum box), "transport" (electrode-matched, semi-infinite).
+    # ``pbc`` above is the DERIVED ASE view (periodic|transport -> True,
+    # isolated -> False).  None -> derived from ``pbc``/``cell`` in __post_init__.
+    axis_kind:     Optional[Tuple[str, str, str]] = None
+    # Isolation padding (Å) on isolated axes; Monkhorst-Pack / display grid.
+    # Defaults keep every existing call site unchanged.
+    vacuum:        Tuple[float, float, float]  = (0.0, 0.0, 0.0)
+    kgrid:         Tuple[int, int, int]        = (1, 1, 1)
     # Extensible per-atom annotations (atom-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
     # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
@@ -359,12 +369,68 @@ class Structure:
                 )
             self.pbc = pbc
 
+        # Reconcile axis_kind <-> pbc (structure-periodicity.md).  axis_kind is
+        # authoritative; pbc is its derived ASE view.  "transport" can't be
+        # recovered from a boolean, so legacy pbc-only callers get
+        # periodic/isolated; a builder sets transport explicitly.
+        _KINDS = ("periodic", "isolated", "transport")
+        if self.axis_kind is None:
+            self.axis_kind = tuple("periodic" if b else "isolated"
+                                   for b in self.pbc)
+        else:
+            ak = tuple(str(k) for k in self.axis_kind)
+            if len(ak) != 3 or any(k not in _KINDS for k in ak):
+                raise ValueError(
+                    f"Structure.axis_kind must be exactly 3 of {_KINDS}; "
+                    f"got {self.axis_kind!r}"
+                )
+            self.axis_kind = ak
+            self.pbc = tuple(k != "isolated" for k in ak)   # pbc DERIVED
+        # Shape/clamp vacuum + kgrid.
+        self.vacuum = tuple(float(v) for v in self.vacuum)
+        if len(self.vacuum) != 3:
+            raise ValueError("Structure.vacuum must have exactly 3 entries")
+        self.kgrid = tuple(max(1, int(k)) for k in self.kgrid)
+        if len(self.kgrid) != 3:
+            raise ValueError("Structure.kgrid must have exactly 3 entries")
+
         # Validate transport metadata.  Both fields default to empty,
         # so a caller that doesn't care about regions / frozen atoms
         # sees no behaviour change.
         self._validate_regions(n)
         self._validate_frozen_atoms(n)
         self._validate_annotations(n)
+
+    def resolve_cell(self) -> Optional[np.ndarray]:
+        """The 3x3 lattice for this structure (structure-periodicity.md § 3).
+
+        An explicit ``self.cell`` (imported / captured at construction / user
+        override) wins verbatim.  Otherwise derive per ``axis_kind``:
+
+          * ``isolated``  -> bbox + vacuum (a box; vacuum >= 0)
+          * ``transport`` -> bbox (matched device length; vacuum ignored)
+          * ``periodic``  -> ERROR -- a periodic axis needs a commensurate
+            lattice from construction/import, never a bounding box.
+
+        Assumes a block-orthogonal cell (per-axis diagonal); a general triclinic
+        cell must arrive explicit.  Returns None for an empty structure.
+        """
+        if self.cell is not None:
+            return self.cell
+        if len(self.positions) == 0:
+            return None
+        extent = self.positions.max(axis=0) - self.positions.min(axis=0)
+        out = np.zeros((3, 3), dtype=float)
+        for i, kind in enumerate(self.axis_kind):
+            if kind == "periodic":
+                raise ValueError(
+                    f"axis {i} is 'periodic' but Structure.cell is None; a "
+                    f"periodic axis needs a commensurate lattice from "
+                    f"construction/import (never a bounding box)."
+                )
+            pad = self.vacuum[i] if kind == "isolated" else 0.0
+            out[i, i] = float(extent[i]) + pad
+        return out
 
     def _validate_regions(self, n: int) -> None:
         """Per-atom index in [0, n); region names are non-empty
