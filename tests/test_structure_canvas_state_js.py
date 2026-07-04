@@ -185,6 +185,7 @@ class TestSetStructure:
         assert out["isDirty"] is False
         assert out["getStructure"] == {
             "source_format": "pdb", "text": "HETATM...",
+            "periodicity": None,   # no periodicity supplied to setStructure
         }
         assert out["getSource"] == {
             "kind": "smiles",
@@ -235,6 +236,33 @@ class TestSetStructure:
             console.log(JSON.stringify(threw));
         ''')
         assert out is True
+
+    def test_periodicity_rides_with_geometry(self):
+        """Periodicity travels with the geometry (workspace-contract.md §4.0):
+        setStructure stores it; a text-only replaceContent KEEPS it; a modify op
+        that recaptured a cell passes new periodicity and replaces it."""
+        out = _run_node('''
+            canvas.setStructure(
+                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n",
+                  periodicity: { cell: [[5,0,0],[0,5,0],[0,0,10]],
+                                 axis_kind: ["periodic","periodic","transport"],
+                                 vacuum: [0,0,0], kgrid: [4,4,1] } },
+                { kind: "file", file: "/p/a.xyz" }
+            );
+            const afterSet = canvas.getStructure().periodicity;
+            canvas.replaceContent("2\\nC2\\nC 0 0 0\\nC 0 0 1\\n");   // text only
+            const afterTextEdit = canvas.getStructure().periodicity;
+            canvas.replaceContent("2\\nC2\\nC 0 0 0\\nC 0 0 1\\n",
+                { cell: [[6,0,0],[0,6,0],[0,0,12]], axis_kind: null,
+                  vacuum: [1,1,1], kgrid: [2,2,1] });               // modify op
+            const afterModify = canvas.getStructure().periodicity;
+            console.log(JSON.stringify({afterSet, afterTextEdit, afterModify}));
+        ''')
+        assert out["afterSet"]["kgrid"] == [4, 4, 1]
+        assert out["afterSet"]["axis_kind"] == ["periodic", "periodic", "transport"]
+        assert out["afterTextEdit"]["kgrid"] == [4, 4, 1]      # text edit kept it
+        assert out["afterModify"]["kgrid"] == [2, 2, 1]        # modify replaced it
+        assert out["afterModify"]["cell"] == [[6, 0, 0], [0, 6, 0], [0, 0, 12]]
 
 
 # ----- markDirty ------------------------------------------------- #

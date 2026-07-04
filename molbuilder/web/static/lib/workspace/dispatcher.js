@@ -164,16 +164,22 @@
         var cs = _canvas();
         var st = _store();
         if (!cs || cs.isEmpty()) return null;
-        var canvas = cs.getStructure();   // {source_format, text}
+        var canvas = cs.getStructure();   // {source_format, text, periodicity}
         if (!canvas) return null;
         var s = st ? st.getState() : null;
+        var per = canvas.periodicity || null;
         return {
             text:          canvas.text,
             source_format: canvas.source_format,
             title:         (s && s.title) || "",
             n_atoms:       s ? s.atoms.length : 0,
             atoms:         s ? s.atoms.slice() : [],
-            lattice:       null,    // Structure has no lattice today
+            // Periodicity rides with the geometry (structure-periodicity.md):
+            // `lattice` = the cell (kept for existing consumers); `periodicity`
+            // carries the full cell/axis_kind/vacuum/kgrid so a save writes the
+            // whole structure (workspace-contract.md §4.0).
+            lattice:       per ? per.cell : null,
+            periodicity:   per,
         };
     }
 

@@ -74,7 +74,13 @@ type WorkspaceState = {
     title:         string,
     n_atoms:       number,
     atoms:         Atom[],        // per-atom rows (see §7.2)
-    lattice:       number[][] | null,  // 3x3 or null
+    lattice:       number[][] | null,  // 3x3 = periodicity.cell (kept for consumers)
+    periodicity: {                     // full periodicity — rides with the geometry
+      cell:      number[][] | null,    //   so a save writes the whole structure (§4.0).
+      axis_kind: [string,string,string] | null,  // periodic|isolated|transport
+      vacuum:    [number,number,number],
+      kgrid:     [number,number,number],
+    } | null,                          // see structure-periodicity.md
   } | null,
 
   source: {

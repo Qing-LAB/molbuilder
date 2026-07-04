@@ -71,6 +71,7 @@
         return {
             source_format: null,
             text:          null,
+            periodicity:   null,
             source: {
                 kind:             "blank",
                 file:             null,
@@ -78,6 +79,21 @@
             },
             dirty:        false,
             last_save_to: null,
+        };
+    }
+
+    // Normalise a periodicity object to the canonical shape, or null.
+    // structure-periodicity.md: cell (3x3 | null), axis_kind
+    // ([str,str,str] | null), vacuum ([n,n,n]), kgrid ([n,n,n]).  This
+    // rides ALONGSIDE the geometry so a save writes the whole structure
+    // (workspace-contract.md §4.0).
+    function _normPeriodicity(p) {
+        if (!p || typeof p !== "object") return null;
+        return {
+            cell:      p.cell || null,
+            axis_kind: p.axis_kind || null,
+            vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
+            kgrid:     Array.isArray(p.kgrid)  ? p.kgrid.slice(0, 3)  : [1, 1, 1],
         };
     }
 
@@ -118,6 +134,7 @@
         return {
             source_format: struct.source_format || null,
             text:          struct.text,
+            periodicity:   _normPeriodicity(struct.periodicity),
             source:        Object.assign({}, empty.source, st.source || {}),
             dirty:         !!st.dirty,
             last_save_to:  st.last_save_to || null,
@@ -179,6 +196,7 @@
         _state = {
             source_format: fmt,
             text:          structure.text,
+            periodicity:   _normPeriodicity(structure.periodicity),
             source: {
                 kind:            src.kind,
                 file:            src.file != null ? String(src.file) : null,
@@ -201,7 +219,7 @@
      *
      * No-op on an empty canvas (nothing to replace).
      */
-    function replaceContent(text) {
+    function replaceContent(text, periodicity) {
         _ensureInit();
         if (_state.text == null) return;
         if (typeof text !== "string" || !text) {
@@ -209,6 +227,12 @@
                 "replaceContent: text must be a non-empty string");
         }
         _state.text  = text;
+        // A modifier op that changed the cell (e.g. add-electrodes captures a
+        // lattice) passes the new periodicity; a text-only edit omits it and
+        // the existing periodicity is kept.  Pass null to explicitly clear.
+        if (periodicity !== undefined) {
+            _state.periodicity = _normPeriodicity(periodicity);
+        }
         _state.dirty = true;
         _notify();
     }
@@ -262,6 +286,7 @@
         return {
             source_format: _state.source_format,
             text:          _state.text,
+            periodicity:   _state.periodicity || null,
         };
     }
     function getLastSavedTo(){ _ensureInit(); return _state.last_save_to; }
