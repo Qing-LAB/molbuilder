@@ -948,6 +948,27 @@ def add_electrode_slab(
     # Assemble metadata for the new metal atoms.
     n_new = metal_pos.shape[0]
     new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
+
+    # Capture the electrode's cell (structure-periodicity.md § 4 -- fixes the old
+    # discard).  In-plane (x,y) = the ASE slab's lattice (rows 0,1; hexagonal for
+    # fcc(111)); z = the DEVICE length (combined atom extent), NOT the slab's
+    # periodic z.  axis_kind = (periodic, periodic, transport): the transport z is
+    # electrode-matched, never tiled/k-sampled.  Overwrites any prior cell -- the
+    # electrode defines the junction's in-plane periodicity.  Skipped if the z
+    # extent is degenerate (would make a singular cell); the caller can set one.
+    all_pos = np.vstack([struct.positions, metal_pos])
+    z_extent = float(all_pos[:, 2].max() - all_pos[:, 2].min())
+    slab_cell = np.asarray(full.get_cell(), dtype=float)
+    elc_cell = None
+    elc_axis_kind = None
+    if z_extent > 1e-6:
+        elc_cell = np.array([
+            [slab_cell[0, 0], slab_cell[0, 1], 0.0],
+            [slab_cell[1, 0], slab_cell[1, 1], 0.0],
+            [0.0, 0.0, z_extent],
+        ], dtype=float)
+        elc_axis_kind = ("periodic", "periodic", "transport")
+
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
     # Existing frozen_atoms + region indices carry through unchanged; the
     # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
@@ -955,6 +976,8 @@ def add_electrode_slab(
     return Structure(
         elements=list(struct.elements) + [element] * n_new,
         positions=np.vstack([struct.positions, metal_pos]),
+        cell=elc_cell,
+        axis_kind=elc_axis_kind,
         atom_names=list(struct.atom_names) + [element] * n_new,
         residue_ids=list(struct.residue_ids) + [new_residue_id] * n_new,
         residue_names=list(struct.residue_names) + ["ELC"] * n_new,

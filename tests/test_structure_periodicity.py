@@ -117,3 +117,19 @@ class TestSidecarRoundTrip:
                                   "frozen_atoms": []})
         assert s.kgrid == (1, 1, 1)
         assert s.axis_kind == ("isolated", "isolated", "isolated")
+
+
+class TestElectrodeCaptureCell:
+    """The electrode builder captures its ASE cell + sets axis_kind
+    (structure-periodicity.md § 4 -- fixes the modify.py:955 discard)."""
+
+    def test_add_electrode_slab_captures_cell_and_axis_kind(self):
+        from molbuilder.modify import add_electrode_slab
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        out = add_electrode_slab(dev, "Au", "111", (2, 2, 3), anchor_index=0)
+        assert out.cell is not None, "electrode cell must be captured, not discarded"
+        assert out.axis_kind == ("periodic", "periodic", "transport")
+        assert out.pbc == (True, True, True)          # transport -> True
+        assert out.cell[2, 2] > 0.0                   # z = device extent
+        # in-plane vectors are non-degenerate (hexagonal for fcc111)
+        assert abs(float(np.linalg.det(out.cell))) > 1e-6

@@ -69,4 +69,7 @@ class StructureCodec:
             annotations    = annotations_to_json(struct.annotations),
             cell           = struct.cell.tolist() if struct.cell is not None else None,
             pbc            = [bool(x) for x in struct.pbc] if struct.pbc is not None else None,
+            axis_kind      = list(struct.axis_kind) if struct.axis_kind is not None else None,
+            vacuum         = list(struct.vacuum),
+            kgrid          = list(struct.kgrid),
         )
