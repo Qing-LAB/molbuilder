@@ -278,6 +278,44 @@ atom.
 
 ## §4 Persistence contract
 
+### 4.0 First principle — the store is the truth; a save writes it whole
+
+**The in-memory store (§1.2) is the single true state the user sees and edits.**
+Every persisted form is a **complete serialization of that store**, written in one
+shot. Nothing is persisted that isn't already in the store, and no save writes only
+part of it.
+
+Two persisted forms, one rule:
+
+| Form | Holds | Written when |
+|---|---|---|
+| `sessionStorage` (§4.1) | the whole state slice | every tick (debounced) |
+| the **files** — `<stem>.xyz` + `<stem>.molstruct.json` | `.xyz` = geometry (atoms); `.json` = everything else — `cell`, `axis_kind`, `vacuum`, `kgrid`, `regions`, `frozen_atoms`, + a `structure_hash` tying the two | an explicit save, or a commit that must persist |
+
+**The rule for both: write the entire in-memory state. NEVER re-open the old
+target, read it back, and merge or pick-and-choose which fields to keep.** That
+re-read-and-merge is precisely what silently drops fields. The store is complete
+and authoritative; the file follows the store, never the reverse. There is no merge
+path.
+
+**Worked example.** You build Au electrodes, tag the left ones `L-electrode`, and
+set a 4×4×1 k-grid — all of it lives in the store. A save writes `.xyz` (the atoms)
++ `.json` (`cell` + `axis_kind=(periodic,periodic,transport)` + `kgrid=[4,4,1]` +
+`regions.L-electrode=[…]` + hash) — the whole thing at once. Later you tag another
+region: that updates the **store**, and the next save writes the **whole** store
+again. It does **not** re-open the old `.json` and graft the new label onto it.
+
+**Consequence for the store shape.** Because a save writes the whole store, the
+`structure` slice MUST carry the full periodicity — `cell`, `axis_kind`, `vacuum`,
+`kgrid` (not only `lattice`) — so the file never needs a field the store lacks.
+Those fields' meaning is defined in
+[`structure-periodicity.md`](structure-periodicity.md).
+
+**Persistence = full writes at the right moments.** The file stays consistent not
+by magic but because the entire store is written at each save moment (an explicit
+Save; a commit such as assign-label or change-periodicity). `dirty` tracks whether
+the store has changes not yet written; a save writes everything and clears it.
+
 ### 4.1 The single key
 
 ```
