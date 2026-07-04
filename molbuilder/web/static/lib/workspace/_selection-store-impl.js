@@ -69,7 +69,6 @@
 
     const EVAL_URL    = "/api/selection/eval";
     const ATOMS_URL   = "/api/selection/atoms";
-    const SAVE_URL    = "/api/selection/save";
     const FILES_READ  = "/api/files/read";
 
     function _initialState() {
@@ -858,6 +857,23 @@
         //  PUBLIC: label writes (sidecar) -- selection unchanged      //
         // ----------------------------------------------------------- //
 
+        // Gather the current per-atom labels back into the {regions, frozen}
+        // shape, so writeLabel can apply a REPLACE-per-target change locally.
+        function _currentLabels() {
+            const regions = {};
+            const frozen = [];
+            for (let i = 0; i < state.atoms.length; i++) {
+                const a = state.atoms[i];
+                if (!a) continue;
+                (a.labels || []).forEach((L) => {
+                    if (!regions[L]) regions[L] = [];
+                    regions[L].push(i);
+                });
+                if (a.isFrozen) frozen.push(i);
+            }
+            return { regions, frozen };
+        }
+
         function writeLabel(target, indices) {
             if (!target || typeof target !== "string") {
                 return Promise.reject(new TypeError("target required"));
@@ -865,47 +881,29 @@
             if (!Array.isArray(indices)) {
                 return Promise.reject(new TypeError("indices must be array"));
             }
-            return _run(async (signal) => {
-                if (!state.sourceFile) {
-                    state.error = "no source file";
-                    return;
-                }
-                // 2026-06-09 (modify-then-label fix): pass the
-                // workspace's IN-MEMORY atom count so the server
-                // validates against the workspace state, not the
-                // disk file.  Without this, a user who added
-                // electrodes (workspace n=11) then labelled an
-                // electrode atom (idx=5) got rejected because the
-                // disk file still had n=3 — forcing Save-first.
-                const { ok, body } = await _postJson(SAVE_URL, {
-                    structure_path: state.sourceFile,
-                    target:         target,
-                    indices:        indices,
-                    n_atoms:        Array.isArray(state.atoms)
-                                        ? state.atoms.length : 0,
-                }, signal);
-                if (!ok) {
-                    state.error = (body && body.error) || "save failed";
-                    return;
-                }
-                // 2026-06-09: previously we re-fetched the WHOLE
-                // atom list from /api/selection/atoms here, which
-                // reads from disk + adopts the disk atoms — that
-                // silently rolled back the workspace from the in-
-                // memory state (e.g. 11 atoms after an electrode
-                // op) to the stale disk state (3 atoms).
-                //
-                // Instead: the response carries the canonical
-                // ``regions`` + ``frozen_atoms`` after the write,
-                // which is everything we need to update the per-
-                // atom labels in-place.  No HTTP round-trip, no
-                // disk read, no destruction of in-memory work.
-                state.error = null;
-                _applyLabelsFromSidecar(
-                    body && body.regions,
-                    body && body.frozen_atoms,
-                );
-            });
+            // §4.0 / save-flow §1: assigning a label is an IN-MEMORY edit, like
+            // every other modify op -- it does NOT touch disk.  The
+            // .molstruct.json is written only on explicit Save, which serialises
+            // the whole store (regions + frozen + periodicity).  Previously this
+            // POSTed /api/selection/save on every Assign, silently rewriting the
+            // LOADED file's sidecar before the user ever saved.
+            //
+            // Compute the new state from the current atoms + this REPLACE-per-
+            // target change, then apply in place (no HTTP, no disk read).
+            const cur = _currentLabels();
+            const idx = indices
+                .filter((i) => Number.isInteger(i))
+                .sort((a, b) => a - b);
+            if (target === "frozen_atoms") {
+                cur.frozen = idx;
+            } else if (idx.length === 0) {
+                delete cur.regions[target];    // empty -> remove the region
+            } else {
+                cur.regions[target] = idx;     // REPLACE that region's members
+            }
+            state.error = null;
+            _applyLabelsFromSidecar(cur.regions, cur.frozen);
+            return Promise.resolve({ ok: true });
         }
 
         /**

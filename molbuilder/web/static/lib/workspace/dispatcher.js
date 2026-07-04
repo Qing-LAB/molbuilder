@@ -446,7 +446,11 @@
         },
         writeLabel:      function (target, indices) {
             var s = _store(); if (!s) throw _missing("selection store");
-            return s.writeLabel(target, indices);
+            var p = s.writeLabel(target, indices);
+            // §4.0: assigning a label is an in-memory edit -> the workspace is
+            // now dirty (unsaved); it reaches disk only on explicit Save.
+            try { markDirty(); } catch (_) { /* empty/absent canvas -> no-op */ }
+            return p;
         },
         // workspace-contract.md §5.3 — alias for ws.getAtoms() so
         // call sites that read ``selection.store.getState().atoms``

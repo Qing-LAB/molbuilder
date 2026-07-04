@@ -935,3 +935,59 @@ class TestKgridState:
             console.log(JSON.stringify({ extra: n - base }));
         """)
         assert out["extra"] == 0
+
+
+class TestWriteLabelInMemory:
+    """save-flow.md §1 / workspace-contract.md §4.0: writeLabel is an IN-MEMORY
+    edit -- it applies the label to the atoms with NO HTTP/disk write.  The
+    .molstruct.json is written only on explicit Save (whole-store)."""
+
+    def test_assign_region_applies_in_memory_no_fetch(self):
+        out = _run_node(
+            "let fetched = false;\n"
+            "window.fetch = () => { fetched = true;\n"
+            "  return Promise.reject(new Error('writeLabel must not fetch')); };\n"
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptAtoms([\n"
+            "  {index: 0, element: 'Au', regions: [], is_frozen: false},\n"
+            "  {index: 1, element: 'Au', regions: [], is_frozen: false},\n"
+            "  {index: 2, element: 'S',  regions: [], is_frozen: false},\n"
+            "]);\n"
+            "store.writeLabel('L-electrode', [0, 1]).then((r) => {\n"
+            "  console.log(JSON.stringify({\n"
+            "    ok: r.ok, fetched: fetched,\n"
+            "    labels: store.getState().atoms.map(a => a.labels),\n"
+            "  }));\n"
+            "});"
+        )
+        assert out["ok"] is True
+        assert out["fetched"] is False               # NO network call
+        assert out["labels"] == [["L-electrode"], ["L-electrode"], []]
+
+    def test_replace_then_remove_region(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptAtoms([\n"
+            "  {index: 0, element: 'Au', regions: ['L-electrode'], is_frozen: false},\n"
+            "  {index: 1, element: 'Au', regions: ['L-electrode'], is_frozen: false},\n"
+            "]);\n"
+            "store.writeLabel('L-electrode', [1]).then(() =>\n"
+            "  store.writeLabel('L-electrode', [])).then(() => {\n"
+            "  console.log(JSON.stringify(store.getState().atoms.map(a => a.labels)));\n"
+            "});"
+        )
+        # REPLACE to [1] drops atom 0; empty indices removes the region entirely.
+        assert out == [[], []]
+
+    def test_frozen_atoms_target_in_memory(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptAtoms([\n"
+            "  {index: 0, element: 'C', regions: [], is_frozen: false},\n"
+            "  {index: 1, element: 'C', regions: [], is_frozen: false},\n"
+            "]);\n"
+            "store.writeLabel('frozen_atoms', [1]).then(() => {\n"
+            "  console.log(JSON.stringify(store.getState().atoms.map(a => a.isFrozen)));\n"
+            "});"
+        )
+        assert out == [False, True]
