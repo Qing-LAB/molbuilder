@@ -121,7 +121,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`projects-sidebar.md`](protocols/projects-sidebar.md) | Sidebar architecture, public `projects.*` API, lock model, capability table |
 | [`selection.md`](protocols/selection.md) | Python selection rule grammar (`by_element`, `by_index_range`, …) |
 | [`sidecar-contract.md`](protocols/sidecar-contract.md) | Three-stage UI → config → script contract for sidecar-driven boundary conditions |
-| [`structure-periodicity.md`](protocols/structure-periodicity.md) | Periodicity `(cell, pbc, vacuum, kgrid)` on the `.xyz`+`.json` dataset: `resolve_cell` precedence (explicit/lattice/bbox+vacuum), pbc-gated k-grid (no junction-z overlaps), capture-at-construction (electrode cell), the 3×3 override.  Read by molview + fdf + transport |
+| [`structure-periodicity.md`](protocols/structure-periodicity.md) | Periodicity `(cell, axis_kind{periodic/isolated/transport}, vacuum, kgrid)` on the `.xyz`+`.json` dataset: `resolve_cell` per axis_kind, axis_kind-gated k-grid (no junction-z overlaps), capture-at-construction, the 3×3 override.  Read by molview + fdf + transport |
 | [`script-contract.md`](protocols/script-contract.md) | Generated-script in-body block contract: HEADER / PROVENANCE / BENCH-MARKS / ATOM-METADATA / USER-CUSTOM |
 | [`script-execution.md`](protocols/script-execution.md) | Runwrap + warm-restart + cold-restart inventories per engine; ``--cold`` glob coverage rule (must ship with every warm-restart hook) |
 | [`bundle-contract.md`](protocols/bundle-contract.md) | Workflow-handoff RunBundle: fuses final structure + labels + user-custom from a finished run into a portable `.xyz` + `.molstruct.json` pair for the next stage |

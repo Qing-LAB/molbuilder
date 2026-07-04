@@ -217,9 +217,9 @@ not read files, does not associate a `.fdf`, does not extract a k-grid.
 
 `molbuilder/parse/` is the sole parser (see `parse-module.md` § 9). No parsing
 lives in this module. How the host **resolves** `cell` + `kgrid` (the
-`resolve_cell` precedence, per-axis `pbc`, the pbc-gated k-grid rule, bbox+vacuum
-only on non-periodic axes) is defined in **`structure-periodicity.md`** — the
-module just receives the result.
+`resolve_cell` precedence, the `axis_kind` enum `{periodic, isolated, transport}`,
+the axis_kind-gated k-grid rule — k-grid > 1 only on a `periodic` axis) is defined
+in **`structure-periodicity.md`** — the module just receives the result.
 
 ## 9. Atom-index display rule
 

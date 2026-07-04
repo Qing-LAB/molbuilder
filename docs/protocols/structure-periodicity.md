@@ -1,6 +1,8 @@
-# Structure periodicity — cell / pbc / vacuum / kgrid (the periodicity contract)
+# Structure periodicity — cell / axis_kind / vacuum / kgrid (the periodicity contract)
 
-**Status:** v1 proposal, 2026-07-03.
+**Status:** v2, 2026-07-04. (v1 2026-07-03 used a boolean `pbc`; v2 replaces it with
+the `axis_kind` enum — a boolean can't distinguish an *isolated* axis from a
+*transport* one, which need different cells, vacuum, and k-treatment.)
 
 **Position.** Periodicity is part of the **structure dataset** (`<stem>.xyz` +
 `<stem>.molstruct.json`), alongside geometry + regions + frozen. It is **read** by
@@ -16,167 +18,148 @@ re-derived downstream, never hand-fed as a side file.
 
 ---
 
-## 1. The four fields
-
-The structure dataset carries four periodicity fields (on `Structure` + persisted
-in the `.molstruct.json` sidecar):
+## 1. The fields
 
 | Field | Shape | Meaning | Default |
 |---|---|---|---|
-| `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
-| `pbc` | 3 bools | axis *i* is **k-sampled / tileable** (a real periodic-lattice direction) — see note | `(True,True,True)` if a cell is present, else all-`False` |
-| `vacuum` | 3 floats (Å) | **isolation** padding on an *isolate* axis (molecule / slab vacuum); **0 on a transport axis** | `(0, 0, 0)` |
-| `kgrid` | `[nx, ny, nz]` ints | Monkhorst–Pack **k-point** grid (reciprocal); the display *reuses* the dims to draw the Born–von Kármán supercell | `[1, 1, 1]` |
+| `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 3) |
+| **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 1.1) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
+| `pbc` | 3 bools — **DERIVED, not stored** | ASE-interop view: `periodic\|transport → True`, `isolated → False` | from `axis_kind` |
+| `vacuum` | 3 floats (Å) | isolation padding — **nonzero only on an `isolated` axis** | `(0, 0, 0)` |
+| `kgrid` | `[nx, ny, nz]` ints | Monkhorst–Pack **k-point** grid (reciprocal); **>1 only on a `periodic` axis**; the display *reuses* the dims to draw the Born–von Kármán supercell | `[1, 1, 1]` |
 
-`cell` + `pbc` already exist on `Structure` (`structure.py`) and the sidecar
-(`sidecars/molstruct.py::normalise_cell_pbc`, schema v3, additive). **`vacuum` +
-`kgrid` are the new persisted fields.**
+`cell` already exists on `Structure` (`structure.py`) + the sidecar
+(`normalise_cell_pbc`, schema v3). **`axis_kind`, `vacuum`, `kgrid` are new.** The
+boolean `pbc` on `Structure`/ASE stays as a **derived property** of `axis_kind`
+(so `normalise_cell_pbc` / ASE interop are unchanged).
 
-> **Two clarifications the physics forces:**
-> - **`kgrid` is a reciprocal-space (k-point) parameter, not a real-space copy
+### 1.1 The three axis kinds — the whole model in one table
+
+| kind | cell vector on axis *i* | `vacuum[i]` | `kgrid[i]` / k-sampling | tileable (display) | derived ASE `pbc[i]` | fdf |
+|---|---|---|---|---|---|---|
+| **periodic** | commensurate lattice (construction / import) | 0 | `≥ 1` (sampled) | **yes** | `True` | k-sampled |
+| **isolated** | `bbox[i] + vacuum[i]` | **> 0** | `1` (Γ) | no | `False` | Γ box |
+| **transport** (semi-infinite) | matched **device length** (captured at construction) | **0** | `1` (Γ) | no | `True` | Γ + electrode self-energy |
+
+Every consumer branches on this one field: `resolve_cell` (§ 3), the k-grid clamp
+(§ 5), the vacuum rule, and the fdf treatment.
+
+> **Two physics points the enum encodes (that a boolean could not):**
+> - **`kgrid` is a reciprocal-space k-point parameter, not a real-space copy
 >   count.** The display tiles by the same dims *only* because tiling the cell
 >   N₁×N₂×N₃ shows the **Born–von Kármán supercell** the k-sampling makes the
->   wavefunctions periodic over — a legitimate "what does my k-grid mean in real
->   space" view, not the k-points themselves.
-> - **`pbc` here gates *k-sampling + tiling*, not the emission of a lattice
->   vector.** SIESTA emits `LatticeVectors` for **all three axes** (a molecule
->   gets a box; a junction's z gets a length). `pbc[i]=False` means "Γ-only, don't
->   tile axis i," **not** "no cell vector." A junction's z is physically a periodic
->   box that is Γ-sampled and electrode-matched; we mark it `pbc=False` so k-grid
->   clamps it, but it still carries a `LatticeVectors` row.
+>   wavefunctions periodic over — a "what does my k-grid mean in real space" view.
+> - **A `transport` axis is a *periodic box that is Γ-sampled***. SIESTA emits a
+>   `LatticeVectors` row for it (and for a molecule's box), so its ASE `pbc` is
+>   `True` — yet it is never tiled or k-sampled (the semi-infinite leads replace
+>   its periodic images). A boolean `pbc` cannot hold "periodic box **but** Γ-only,
+>   electrode-matched"; `axis_kind = transport` says it exactly. `isolated` derives
+>   `pbc = False`; only `periodic` is tileable.
 
-## 2. `bbox` is min/max only — it is NOT a lattice
+## 2. `bbox` is min/max only — used ONLY on an `isolated` axis
 
-`bbox` (bounding box) = the per-axis extent of the atoms:
-`bbox[i] = max_i(positions) − min_i(positions)`. It carries **no crystal
-information**; it just wraps the atoms present.
-
-**This is categorically different from a construction lattice**, in two ways:
+`bbox[i] = max_i(positions) − min_i(positions)` — the extent of the atoms. It
+carries **no crystal information**, and it is **categorically not a lattice**, in
+two ways:
 
 - **Wrong size.** For a slab with in-plane surface spacing `d` and `m` repeats, the
-  true period is `m·d`, but the atoms' bbox is `(m−1)·d`-ish (first atom to last) —
-  **short by ~one spacing, non-commensurate.** Tiling it overlaps/gaps the atoms at
-  the seam. (Note `d` is the *surface* spacing, **not** the cubic constant `a` in
-  `fcc_lattice.json`: for fcc, `d = a/√2` — e.g. Au `a≈4.08 Å` but in-plane
-  `d≈2.88 Å`. Using `a` as the in-plane period is itself a √2 error.)
-- **Wrong shape (worse).** bbox is **axis-aligned → orthorhombic only** (a
-  diagonal matrix). A **hexagonal** lattice (fcc(111)'s in-plane cell — vectors at
-  120°, "hexagonal parallelogram" per `modify.py:815`), or any monoclinic/triclinic
-  cell, has **non-orthogonal vectors an axis-aligned box cannot represent at all.**
-  The `cell` field is a full 3×3 precisely to carry those angles; only
-  construction (ASE gives fcc(111) its 120° cell) or import fills it — bbox never
-  can.
+  true period is `m·d`, but the atoms' bbox is `(m−1)·d`-ish — **short by ~one
+  spacing, non-commensurate.** Tiling it overlaps/gaps atoms at the seam. (`d` is
+  the *surface* spacing, **not** the cubic constant `a` in `fcc_lattice.json`: for
+  fcc, `d = a/√2` — Au `a≈4.08 Å` but in-plane `d≈2.88 Å`. Using `a` is a √2 error.)
+- **Wrong shape (worse).** bbox is **axis-aligned → orthorhombic only**. A
+  **hexagonal** lattice (fcc(111)'s 120° in-plane cell, `modify.py:815`) or any
+  monoclinic/triclinic cell has **non-orthogonal vectors an axis-aligned box cannot
+  represent at all.** The full 3×3 `cell` carries those angles; only construction
+  (ASE gives fcc(111) its 120° cell) or import fills it — bbox never can.
 
-Therefore:
+Therefore **bbox+vacuum is the derivation for `isolated` axes only.** `periodic`
+axes use the commensurate lattice (construction/import — no detection from raw
+coordinates, which is ill-posed). `transport` axes use the captured device length
+(§ 4), never bbox — padding a transport axis breaks the electrode matching.
 
-- **bbox is used ONLY on non-periodic axes** (`pbc[i] = False`) — and the two kinds
-  of non-periodic axis are **not** the same:
-  - **Isolate axis** (a molecule; a slab's vacuum direction): cell = `bbox +
-    vacuum`, with **vacuum > 0** to separate the system from its periodic images.
-    This is the bbox+vacuum *derivation* fallback (§ 4).
-  - **Transport axis** (a junction's z): the cell length is the **matched device
-    length** (electrode–device–electrode), **vacuum = 0** — the electrodes *are*
-    the boundaries and TranSIESTA matches the scattering region to the semi-infinite
-    electrodes at the cell edge; padding it inserts a gap and breaks the matching.
-    A transport axis' cell therefore comes from **construction** (captured, § 4),
-    **never** from the bbox+vacuum fallback.
-- **Periodic axes (`pbc[i] = True`) NEVER use bbox.** Their cell vector is the
-  commensurate lattice, which comes from **construction** (the builder's lattice
-  constant × repeats) or **import** (`.XV` / `.fdf` / CIF). No detection from raw
-  coordinates (ill-posed — see the decisions log).
-
-## 3. `resolve_cell` — the one resolver, precedence-ordered
+## 3. `resolve_cell` — branch on `axis_kind`
 
 ```
-resolve_cell(structure, vacuum, pbc) -> 3x3 | None
-  1. EXPLICIT cell present  -> use it verbatim.
-        (user-edited 3x3 override, OR imported .XV/.fdf/CIF, OR captured
-         from a builder — all land in structure.cell)
-  2. else, per axis i:
-        pbc[i] == True   -> the commensurate lattice vector for axis i
-                            (from construction/import; error if unknown —
-                             we do NOT bbox a periodic axis)
-        pbc[i] == False  -> bbox[i] + vacuum[i]   (an ISOLATE box; vacuum>0)
-                            NB: a TRANSPORT axis is not derived here -- its
-                            length is captured at construction (branch 1),
-                            vacuum=0 (§ 2).
+resolve_cell(structure) -> 3x3 | None
+  1. EXPLICIT cell present -> use it verbatim
+        (user-edited 3x3 override, imported .XV/.fdf/CIF, or captured
+         from a builder -- all land in structure.cell)
+  2. else, per axis i by axis_kind[i]:
+        periodic  -> commensurate lattice vector (construction/import;
+                     error if unknown -- we do NOT bbox a periodic axis)
+        isolated  -> bbox[i] + vacuum[i]        (vacuum > 0)
+        transport -> the captured device length (in practice branch 1;
+                     never derived here, vacuum = 0)
 ```
 
-An **explicit cell always wins** — that is the customization escape hatch (§ 6),
-and the path a *transport* axis always takes (its length is constructed, not
-derived). Absent an explicit cell, each axis is filled by its `pbc` type; a
-fully non-periodic structure (`pbc` all-False) gets an all-orthorhombic
-`bbox+vacuum` box for a Γ-point DFT calc.
+An **explicit cell always wins** — the customization escape hatch (§ 6), and the
+path a `transport` axis always takes.
 
 > **Scope of the per-axis form.** Branch 2 assumes the cell is **block-orthogonal**
 > — a periodic sub-block (e.g. a hexagonal in-plane pair) orthogonal to the
-> non-periodic axis (z). That covers slabs and junctions. A fully general triclinic
-> cell mixed with a non-periodic direction is not separable per-axis; such a cell
-> must arrive **explicit** (branch 1), not derived.
+> non-periodic axis. That covers slabs and junctions. A fully general triclinic cell
+> mixed with a non-periodic direction is not separable per-axis; it must arrive
+> **explicit** (branch 1).
 
 ## 4. Capture-at-construction (fix the electrode discard)
 
-`modify.py::add_electrode_slab` builds the slab with ASE's `fcc{100,110,111}`
-using the lattice constant from `data/fcc_lattice.json` — so ASE **knows the
-correct in-plane cell** (comment at `modify.py:923`). But the assembly
-(`return Structure(...)`, `modify.py:955`) **keeps only the atom positions and
-drops the cell.** That discard is why the transport flow has to be hand-fed a
-separate `cell_fdf` (`transport/_cli.py::_load_device(..., cell_fdf)`).
+`modify.py::add_electrode_slab` builds the slab with ASE's `fcc{100,110,111}` from
+the lattice constant in `data/fcc_lattice.json` — so ASE **knows the correct
+in-plane cell** (comment `modify.py:923`) — but the assembly (`return
+Structure(...)`, `modify.py:955`) **keeps only atom positions and drops the cell.**
+That discard is why transport is hand-fed a separate `cell_fdf`
+(`transport/_cli.py::_load_device(..., cell_fdf)`).
 
 **The builder must capture what it built:**
 
-- `add_electrode_slab` / `add_symmetric_electrodes` set `Structure.cell` from the
-  ASE slab's in-plane lattice + the z-extent, and set **`pbc = (True, True,
-  False)`** (in-plane periodic; z = transport, non-periodic).
+- `add_electrode_slab` / `add_symmetric_electrodes` set `Structure.cell` (in-plane
+  lattice + captured z device length) and **`axis_kind = (periodic, periodic,
+  transport)`**.
 - `fcc_lattice.json` carries per-functional constants (`a_experimental`, `a_pbe`,
-  `a_pbe_siesta_psml`); the captured cell records the constant actually used, so
-  the lattice matches the DFT setup.
+  `a_pbe_siesta_psml`); the captured cell records the one used, so the lattice
+  matches the DFT setup.
 
-Then transport, molview, and the fdf all read `Structure.cell` from the dataset —
-no `cell_fdf`.
+Then transport, molview, and the fdf read `Structure.cell` + `axis_kind` from the
+dataset — no `cell_fdf`.
 
-## 5. k-grid is gated by `pbc` (this is what prevents overlaps)
+## 5. k-grid is gated by `axis_kind` (this prevents overlaps)
 
-A junction's z is **not a lattice period** — its length (electrode + gap + molecule
-+ gap + electrode) is not commensurate with the electrode spacing. Tiling it would
-overlap/gap the atoms at the seam. So:
+- **`kgrid` dims are clamped to 1 unless `axis_kind[i] == periodic`.** A junction's
+  z (`transport`) and a molecule's/slab's box (`isolated`) are never tiled. (`kz=1`
+  on those axes is the convention; this model enforces it — SIESTA does not.)
+- k-grid > 1 is valid only where the axis is `periodic` **and** the cell vector is
+  the true commensurate lattice (§ 2). Then tiling reproduces the crystal exactly:
+  a boundary atom's copy lands on the next cell's equivalent atom — **provided
+  atoms are stored half-open `[0, L)`** (an atom on both faces doubles at the seam).
 
-- **`kgrid` dims are clamped to 1 on every non-periodic axis:** `dims[i] = 1`
-  wherever `pbc[i] = False`. A junction is only ever tiled in-plane; its z is never
-  tiled. (By convention `kz=1` on a transport/isolate axis — SIESTA does not
-  enforce it, this periodicity model does.)
-- k-grid > 1 is valid **only** where `pbc[i] = True` **and** the cell vector is the
-  true commensurate lattice (§ 2). Then tiling reproduces the crystal exactly:
-  a boundary atom's copy lands on the next cell's equivalent atom — **provided atoms
-  are stored half-open `[0, L)`** (no atom on both faces, or the boundary doubles).
-
-This clamp is enforced both in the k-grid UI (non-periodic dims disabled) and in the
-render/`tileKgrid` path, so neither Modify nor Results can produce overlapping copies.
+Enforced in the k-grid UI (non-`periodic` dims disabled) and the render/`tileKgrid`
+path, so neither Modify nor Results can produce overlapping copies.
 
 ## 6. The Modify periodicity panel — two views of one thing
 
 Modify exposes periodicity (new; none today). Two coupled views of the same
-`(cell, pbc, vacuum, kgrid)`:
+`(cell, axis_kind, vacuum, kgrid)`:
 
-- **Convenient (default path):** `pbc` per-axis toggles · `vacuum[x,y,z]` (default
-  0) · `kgrid[nx,ny,nz]` (default 1×1×1, non-periodic dims greyed). Set vacuum, the
-  cell derives (§ 3).
+- **Convenient (default path):** per-axis **`axis_kind` selector**
+  (periodic / isolated / transport) · `vacuum[x,y,z]` (enabled only on `isolated`
+  axes, default 0) · `kgrid[nx,ny,nz]` (default 1×1×1; non-`periodic` dims greyed).
+  Set the kinds + vacuum, the cell derives (§ 3).
 - **Raw / override (customization):** the **3×3 lattice matrix, shown live and
-  editable.** Editing it **pins** the cell as explicit (`structure.cell` set
-  directly), so it wins over derivation and later atom edits don't silently
-  recompute it. A **"reset to derived"** clears the override → back to bbox+vacuum.
+  editable.** Editing **pins** the cell explicit (`structure.cell` set directly),
+  winning over derivation so later atom edits don't silently recompute it. A
+  **"reset to derived"** clears the override.
 
 ## 7. Persistence + the data-flow loop
 
-`(cell, pbc, vacuum, kgrid)` persist in the `.molstruct.json` sidecar (schema bump;
-additive). The `.xyz`+`.json` set is the source of truth, and periodicity flows
-one way, read at each stage:
+`(cell, axis_kind, vacuum, kgrid)` persist in the `.molstruct.json` sidecar (schema
+bump; additive; `pbc` stays derived). Periodicity flows one way, read at each stage:
 
 ```
-.xyz + .json  (cell/pbc/vacuum/kgrid)
-   │  ├─ molview: cell wireframe (opts.lattice) + pbc-gated k-grid tiling
+.xyz + .json  (cell / axis_kind / vacuum / kgrid)
+   │  ├─ molview: cell wireframe (opts.lattice) + axis_kind-gated k-grid tiling
    │  ├─ fdf generator: LatticeVectors (from cell) + kgrid_Monkhorst_Pack (from kgrid)
-   │  └─ transport: reads Structure.cell (no cell_fdf)
+   │  └─ transport: reads Structure.cell + axis_kind (no cell_fdf)
    ▼
  .fdf (carries LatticeVectors + kgrid + geometry)
    ▼
@@ -197,22 +180,23 @@ The molview module never parses; the host supplies `cell` + `kgrid`:
 | `.fdf` | `parse/` (LatticeVectors + `kgrid_Monkhorst_Pack`) |
 
 > `kgrid` is the **diagonal** `(kx,ky,kz)` of the Monkhorst–Pack block — what
-> molbuilder writes. A general *non-diagonal* MP grid (off-diagonal 3×3) is not
-> representable as a single `[nx,ny,nz]`; an imported fdf with one would need the
-> full block preserved (out of scope for the dims used by display + the generator).
+> molbuilder writes. A general *non-diagonal* MP grid is not representable as a
+> single `[nx,ny,nz]`; an imported fdf with one needs the full block preserved
+> (out of scope for the dims used by display + the generator).
 
 ## 9. Current state vs. to-build
 
 | Piece | Now | To build |
 |---|---|---|
-| `Structure.cell` + `pbc` | ✓ | — |
+| `Structure.cell` | ✓ | — |
+| `Structure.axis_kind` (+ derived `pbc`) | ✗ (only boolean `pbc`) | add enum; make `pbc` derived |
 | `Structure.vacuum` + `kgrid` | ✗ | add fields |
 | sidecar `cell` + `pbc` | ✓ (`normalise_cell_pbc`) | — |
-| sidecar `vacuum` + `kgrid` | ✗ | add (schema bump) |
-| electrode builder captures cell + sets pbc | ✗ (discards, `modify.py:955`) | capture |
-| `resolve_cell` (explicit / lattice / bbox+vacuum, pbc-typed) | ✗ | add |
-| k-grid pbc-gating (clamp dims=1 on non-periodic axes) | ✗ | add (store + UI + render) |
-| Modify periodicity panel (pbc + vacuum + kgrid + 3×3 override) | ✗ | add |
+| sidecar `axis_kind` + `vacuum` + `kgrid` | ✗ | add (schema bump) |
+| electrode builder captures cell + sets `axis_kind` | ✗ (discards, `modify.py:955`) | capture |
+| `resolve_cell` (explicit / per-`axis_kind`) | ✗ | add |
+| k-grid clamp (dims=1 unless `periodic`) | ✗ | add (store + UI + render) |
+| Modify periodicity panel (axis_kind + vacuum + kgrid + 3×3 override) | ✗ | add |
 | molview reads cell+kgrid from dataset | ✗ (`ctx.viewParams` unwired) | wire |
 | fdf reads kgrid from dataset | ✗ (from CLI `Config`) | switch source |
 | transport reads `Structure.cell` | ✗ (separate `cell_fdf`) | switch source |
@@ -221,5 +205,6 @@ The molview module never parses; the host supplies `cell` + `kgrid`:
 
 | Date | Decision |
 |---|---|
-| 2026-07-04 | **Scientific-review corrections.** (1) `kgrid` is a *reciprocal-space* Monkhorst–Pack k-point grid; the display *reuses* the dims to draw the Born–von Kármán supercell — not a raw real-space copy count. (2) `pbc` gates k-sampling/tiling **only**; `LatticeVectors` are emitted for every axis (a junction's z has a cell vector, Γ-sampled). (3) A **transport** axis (junction z) is the electrode-matched **device length with vacuum = 0**, captured at construction — NOT the `bbox+vacuum` *isolate* fallback (which is vacuum > 0, for molecules / slab vacuum). (4) fcc in-plane surface spacing is `a/√2`, not the cubic `a`. Per-axis derivation assumes block-orthogonality (general triclinic must arrive explicit); `kgrid` captures the MP **diagonal** only. |
-| 2026-07-03 | Periodicity is `(cell, pbc, vacuum, kgrid)` on the `.xyz`+`.json` dataset. `resolve_cell` precedence: explicit cell wins, else per-axis (periodic → commensurate lattice from construction/import; non-periodic → bbox+vacuum). **bbox = min/max only, used ONLY on non-periodic axes — never for a periodic axis** (non-commensurate → overlaps). No lattice detection from raw coordinates (ill-posed; crystals come from builders that know the lattice). k-grid clamped to 1 on non-periodic axes (junction z never tiled → no seam overlaps). Electrode builder captures its ASE cell + sets `pbc=(T,T,F)` (fixes the discard → transport drops `cell_fdf`). Modify exposes the 3×3 as an editable override on top of the vacuum/kgrid convenience. |
+| 2026-07-04 | **`axis_kind` enum replaces boolean `pbc`.** A boolean overloaded "not periodic" to mean two physically different axes; the enum makes `{periodic, isolated, transport}` first-class. Treatment is per-kind (§ 1.1): cell source (lattice / bbox+vacuum / captured length), `vacuum` (only `isolated`, >0), `kgrid`>1 + tiling (only `periodic`). `pbc` becomes a **derived** ASE view (`periodic\|transport → True`, `isolated → False`) — which also fixes the boolean ambiguity that a `transport` axis is a periodic box (ASE `pbc=True`, has `LatticeVectors`) yet Γ-only and not tileable. |
+| 2026-07-04 | **Scientific-review corrections** (folded into v2). `kgrid` = reciprocal MP grid; display reuses dims for the Born–von Kármán supercell. `LatticeVectors` emitted on every axis. Transport axis = electrode-matched device length, vacuum=0, captured (not bbox+vacuum). fcc in-plane spacing is `a/√2` not the cubic `a`. Per-axis derivation assumes block-orthogonality (general triclinic must arrive explicit); `kgrid` captures the MP diagonal only. |
+| 2026-07-03 | Initial contract: periodicity `(cell, pbc, vacuum, kgrid)` on the `.xyz`+`.json` dataset; `resolve_cell` precedence (explicit → lattice → bbox+vacuum); bbox = min/max only, never a periodic axis; capture-at-construction (electrode discard fix); the 3×3 override. |
