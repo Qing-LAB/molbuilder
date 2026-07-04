@@ -372,13 +372,38 @@ class TestAtomsEndpoint:
         })
         assert r.get_json()["cell"] == cell
 
+    def test_periodicity_from_sidecar_for_path_based_load(
+            self, web, selection_root):
+        """structure-periodicity.md: /api/selection/atoms returns the full
+        `periodicity` {cell, axis_kind, vacuum, kgrid} so the Modify path-based
+        load restores a reopened structure's periodicity (the .json sits next to
+        the .xyz on the server)."""
+        import hashlib
+        import json as _json
+        xyz_bytes = (selection_root / "junction.xyz").read_bytes()
+        struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
+        cell = [[10.0, 0.0, 0.0], [0.0, 11.0, 0.0], [0.0, 0.0, 22.0]]
+        (selection_root / "junction.molstruct.json").write_text(_json.dumps({
+            "schema_version": 4, "n_atoms_total": 11,
+            "structure_hash": struct_hash, "regions": {}, "frozen_atoms": [],
+            "cell": cell, "axis_kind": ["periodic", "periodic", "transport"],
+            "kgrid": [4, 4, 1], "selection_rules": {},
+        }))
+        per = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        }).get_json()["periodicity"]
+        assert per["cell"] == cell
+        assert per["axis_kind"] == ["periodic", "periodic", "transport"]
+        assert per["kgrid"] == [4, 4, 1]
+
     def test_cell_null_without_sidecar(self, web, selection_root):
-        """No sidecar next to the .xyz -> `cell` is null, not an error."""
+        """No sidecar next to the .xyz -> `cell` + `periodicity` null, not error."""
         r = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
         })
         body = r.get_json()
         assert body["ok"] is True and body["cell"] is None
+        assert body["periodicity"] is None
 
     def test_missing_path_returns_400(self, web):
         r = web.post("/api/selection/atoms", json={})

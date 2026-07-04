@@ -346,19 +346,30 @@ def selection_atoms():
         # so modifier ops left it stale.
         from ._shared import atoms_list as _atoms_list
         rows = _atoms_list(struct)
-        # Phase 1 (structure-periodicity.md): surface the sidecar's `cell` (the
-        # 3x3 lattice, Å) so the viewer can draw the unit-cell box + tile k-grid.
-        # The viewer never parses -- the host reads it here and hands it over.
-        # Absent / malformed sidecar or no cell -> null (no box, k-grid inert).
+        # structure-periodicity.md: surface the sidecar's periodicity so a
+        # reopened structure restores it (the .json sits next to the .xyz on the
+        # server; the viewer never parses -- the host reads it here).  `cell` is
+        # kept for the Phase 1 Results-viewer consumer; `periodicity` is the full
+        # {cell, axis_kind, vacuum, kgrid} the Modify path-based load reads.
+        # Absent / malformed sidecar -> both null.
         cell = None
+        periodicity = None
         try:
             _sc = molstruct_json.sidecar_path_for(_resolve_within_roots(path))
             if _sc.exists():
-                cell = molstruct_json.load(_sc).get("cell")
+                _sd = molstruct_json.load(_sc)
+                cell = _sd.get("cell")
+                periodicity = {
+                    "cell":      cell,
+                    "axis_kind": _sd.get("axis_kind"),
+                    "vacuum":    _sd.get("vacuum"),
+                    "kgrid":     _sd.get("kgrid"),
+                }
         except Exception:
             cell = None
-        return jsonify({"ok": True, "n_atoms": len(rows),
-                        "atoms": rows, "cell": cell})
+            periodicity = None
+        return jsonify({"ok": True, "n_atoms": len(rows), "atoms": rows,
+                        "cell": cell, "periodicity": periodicity})
     except _PickerError as exc:
         return _bad_request(exc.message, exc.status)
 

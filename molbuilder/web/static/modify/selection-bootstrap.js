@@ -320,8 +320,25 @@
             }
             const format = path.toLowerCase().endsWith(".pdb")
                 ? "pdb" : "xyz";
+            // Path-based load (structure-periodicity.md): read the sidecar's
+            // periodicity by PATH so a reopened saved structure restores its
+            // cell/axis_kind/vacuum/kgrid.  This is why the open flow must be
+            // path-based -- /api/build/load only sees the text, never the .json
+            // sidecar that sits next to the .xyz on the server.  Absent -> null.
+            let periodicity = null;
+            try {
+                const pr = await fetch("/api/selection/atoms", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ structure_path: path }),
+                });
+                if (pr.ok) {
+                    const pj = await pr.json();
+                    if (pj && pj.ok) periodicity = pj.periodicity || null;
+                }
+            } catch (_) { periodicity = null; }
             const gate = await sp.loadIntoCanvas(
-                { source_format: format, text: r.text },
+                { source_format: format, text: r.text, periodicity: periodicity },
                 { kind: "file", file: path }
             );
             if (!gate.ok) return;  // cancelled — leave viewer alone
