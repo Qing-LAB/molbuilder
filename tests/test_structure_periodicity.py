@@ -80,3 +80,40 @@ class TestResolveCell:
 
     def test_empty_structure_returns_none(self):
         assert Structure(elements=[], positions=np.zeros((0, 3))).resolve_cell() is None
+
+
+class TestSidecarRoundTrip:
+    """axis_kind / vacuum / kgrid persist through the .molstruct.json sidecar
+    (structure-periodicity.md § 7; additive @ schema v4)."""
+
+    def test_round_trip_through_to_dict_and_apply(self):
+        from molbuilder.sidecars import molstruct as ms
+        d = ms.to_dict(
+            n_atoms_total=2, structure_hash="a" * 64,
+            cell=[[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+            axis_kind=["periodic", "periodic", "transport"],
+            vacuum=[0.0, 0.0, 0.0], kgrid=[4, 4, 1],
+        )
+        assert d["axis_kind"] == ["periodic", "periodic", "transport"]
+        assert d["vacuum"] == [0.0, 0.0, 0.0]
+        assert d["kgrid"] == [4, 4, 1]
+
+        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
+        ms.apply_to_structure(s, d)
+        assert s.axis_kind == ("periodic", "periodic", "transport")
+        assert s.kgrid == (4, 4, 1)
+        assert s.pbc == (True, True, True)   # derived: transport -> True
+
+    def test_invalid_axis_kind_rejected_at_build(self):
+        from molbuilder.sidecars import molstruct as ms
+        with pytest.raises(ms.MolstructJsonError, match="axis_kind"):
+            ms.to_dict(n_atoms_total=1, structure_hash="a" * 64,
+                       axis_kind=["periodic", "nope", "isolated"])
+
+    def test_v3_sidecar_absent_fields_keeps_defaults(self):
+        from molbuilder.sidecars import molstruct as ms
+        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
+        ms.apply_to_structure(s, {"n_atoms_total": 2, "regions": {},
+                                  "frozen_atoms": []})
+        assert s.kgrid == (1, 1, 1)
+        assert s.axis_kind == ("isolated", "isolated", "isolated")

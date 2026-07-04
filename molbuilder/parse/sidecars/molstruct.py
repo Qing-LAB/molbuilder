@@ -50,6 +50,9 @@ def _normalised_dict(
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
     pbc: Optional[Any] = None,
+    axis_kind: Optional[Any] = None,
+    vacuum: Optional[Any] = None,
+    kgrid: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
@@ -135,6 +138,28 @@ def _normalised_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
+    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
+    _KINDS = ("periodic", "isolated", "transport")
+    normed_axis_kind = None
+    if axis_kind is not None:
+        ak = [str(k) for k in axis_kind]
+        if len(ak) != 3 or any(k not in _KINDS for k in ak):
+            raise MolstructJsonError(
+                f"axis_kind must be exactly 3 of {_KINDS}; got {axis_kind!r}")
+        normed_axis_kind = ak
+    normed_vacuum = None
+    if vacuum is not None:
+        v = [float(x) for x in vacuum]
+        if len(v) != 3:
+            raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
+        normed_vacuum = v
+    normed_kgrid = None
+    if kgrid is not None:
+        kg = [max(1, int(x)) for x in kgrid]
+        if len(kg) != 3:
+            raise MolstructJsonError(f"kgrid must have 3 entries; got {kgrid!r}")
+        normed_kgrid = kg
+
     # Extensible annotation channels (schema v4; atom-annotations.md § 3).
     # Absent on v3.  Round-trip each channel through AtomChannel so a
     # hand-edited sidecar is validated + normalised here (clear error at
@@ -169,6 +194,9 @@ def _normalised_dict(
         "selection_rules": normed_rules,
         "cell":            normed_cell,
         "pbc":             normed_pbc,
+        "axis_kind":       normed_axis_kind,
+        "vacuum":          normed_vacuum,
+        "kgrid":           normed_kgrid,
         "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at,
@@ -253,6 +281,9 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
             selection_rules = data.get("selection_rules"),
             cell            = data.get("cell"),
             pbc             = data.get("pbc"),
+            axis_kind       = data.get("axis_kind"),
+            vacuum          = data.get("vacuum"),
+            kgrid           = data.get("kgrid"),
             annotations     = data.get("annotations"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),

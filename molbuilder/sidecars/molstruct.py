@@ -195,6 +195,9 @@ def to_dict(
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
     pbc: Optional[Any] = None,
+    axis_kind: Optional[Any] = None,
+    vacuum: Optional[Any] = None,
+    kgrid: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
@@ -286,6 +289,29 @@ def to_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
+    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
+    # axis_kind is authoritative; pbc above is its derived ASE view.
+    _KINDS = ("periodic", "isolated", "transport")
+    normed_axis_kind = None
+    if axis_kind is not None:
+        ak = [str(k) for k in axis_kind]
+        if len(ak) != 3 or any(k not in _KINDS for k in ak):
+            raise MolstructJsonError(
+                f"axis_kind must be exactly 3 of {_KINDS}; got {axis_kind!r}")
+        normed_axis_kind = ak
+    normed_vacuum = None
+    if vacuum is not None:
+        v = [float(x) for x in vacuum]
+        if len(v) != 3:
+            raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
+        normed_vacuum = v
+    normed_kgrid = None
+    if kgrid is not None:
+        kg = [max(1, int(x)) for x in kgrid]
+        if len(kg) != 3:
+            raise MolstructJsonError(f"kgrid must have 3 entries; got {kgrid!r}")
+        normed_kgrid = kg
+
     # Extensible per-atom annotation channels (schema v4; atom-annotations.md
     # § 3).  Additive alongside regions/frozen_atoms (which are still written
     # -- "dual-write" so v3 readers keep working).  Accepts a mapping of
@@ -314,6 +340,9 @@ def to_dict(
         "selection_rules": normed_rules,
         "cell":            normed_cell,
         "pbc":             normed_pbc,
+        "axis_kind":       normed_axis_kind,
+        "vacuum":          normed_vacuum,
+        "kgrid":           normed_kgrid,
         "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
@@ -476,6 +505,18 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     elif pbc_raw is not None:
         # pbc without a cell is unusual but legal (records intent).
         struct.pbc = tuple(norm_pbc)
+
+    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
+    # Stored consistently with pbc above; absent -> keep the Structure defaults.
+    ak = sidecar_data.get("axis_kind")
+    if ak is not None:
+        struct.axis_kind = tuple(str(k) for k in ak)
+    vac = sidecar_data.get("vacuum")
+    if vac is not None:
+        struct.vacuum = tuple(float(x) for x in vac)
+    kg = sidecar_data.get("kgrid")
+    if kg is not None:
+        struct.kgrid = tuple(max(1, int(x)) for x in kg)
 
 
 def load(sidecar_path):
