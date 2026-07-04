@@ -318,9 +318,27 @@ Those fields' meaning is defined in
 [`structure-periodicity.md`](structure-periodicity.md).
 
 **Persistence = full writes at the right moments.** The file stays consistent not
-by magic but because the entire store is written at each save moment (an explicit
-Save; a commit such as assign-label or change-periodicity). `dirty` tracks whether
-the store has changes not yet written; a save writes everything and clears it.
+by magic but because the entire store is written at each save moment. `dirty` tracks
+whether the store has changes not yet written; a save writes everything and clears it.
+
+### 4.0.1 Saving to disk — the rules
+
+Saving belongs to **editing** (the Modify tab). A **view-only** surface (the Results
+inspector, an embedded viewer) **never saves** — there is nothing to persist. When
+you do save, you are always writing a **modified version** of what you loaded, so:
+
+- **Only on explicit Save.** Not on every in-memory edit (e.g. assigning a label
+  does NOT touch disk). The store carries unsaved edits across reloads via §4.1;
+  disk is written only when the user hits Save.
+- **Target = the current project directory.** Never an arbitrary path.
+- **The user names the output; there is no default name** — and it does **not**
+  default to the loaded file's name. You loaded a structure in order to *change* it,
+  so a save is a **save-as** to a file you name, not an overwrite of the source.
+- **Overwrite is always checked.** If that name already exists in the project dir,
+  the user must confirm before it is replaced.
+- **The `.xyz` and its `.molstruct.json` are written together, atomically**, with
+  the json's `structure_hash` = the sha256 of the `.xyz` just written — the two are
+  never left out of sync. This is the whole-store write of §4.0, landed on disk.
 
 ### 4.1 The single key
 
