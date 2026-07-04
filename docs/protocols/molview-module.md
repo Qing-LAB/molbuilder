@@ -216,7 +216,10 @@ not read files, does not associate a `.fdf`, does not extract a k-grid.
   `parse/dirs/job.py` already extracts), or `"free"` when the user experiments.
 
 `molbuilder/parse/` is the sole parser (see `parse-module.md` § 9). No parsing
-lives in this module.
+lives in this module. How the host **resolves** `cell` + `kgrid` (the
+`resolve_cell` precedence, per-axis `pbc`, the pbc-gated k-grid rule, bbox+vacuum
+only on non-periodic axes) is defined in **`structure-periodicity.md`** — the
+module just receives the result.
 
 ## 9. Atom-index display rule
 
