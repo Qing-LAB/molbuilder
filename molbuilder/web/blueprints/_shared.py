@@ -351,6 +351,16 @@ def structure_to_dict(
         "n_atoms":       base["n_atoms"],
         "atoms":         base["atoms"],
         "lattice":       base["lattice"],
+        # Full periodicity (structure-periodicity.md) so it rides with the
+        # geometry into the store -- a captured electrode cell survives the
+        # modify op (workspace-contract.md §4.0).  `lattice` above stays as the
+        # cell alias for existing consumers.
+        "periodicity": {
+            "cell":      struct.cell.tolist() if struct.cell is not None else None,
+            "axis_kind": list(struct.axis_kind) if struct.axis_kind is not None else None,
+            "vacuum":    list(struct.vacuum),
+            "kgrid":     list(struct.kgrid),
+        },
         "issues":        base["issues"],
         "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers

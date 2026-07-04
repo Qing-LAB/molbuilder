@@ -716,11 +716,15 @@
         var preSelection = (st && typeof st.getState === "function")
             ? st.getState().selection.slice() : [];
 
-        // 1. Canvas-state — text + dirty bit.
+        // 1. Canvas-state — text + periodicity + dirty bit.  A modifier op that
+        //    recaptured a cell (e.g. add-electrodes) carries `periodicity` in the
+        //    payload; passing it keeps the store's periodicity in step with the
+        //    new geometry (workspace-contract.md §4.0).  Omitted -> kept as-is.
         var cs = _canvas();
         if (touchCanvas && cs && text
                 && typeof cs.replaceContent === "function") {
-            try { cs.replaceContent(text); } catch (_) { /* swallow */ }
+            try { cs.replaceContent(text, payload && payload.periodicity); }
+            catch (_) { /* swallow */ }
         }
 
         // 2. modify-tab applyStructure hook (IIFE state.* + 3Dmol
