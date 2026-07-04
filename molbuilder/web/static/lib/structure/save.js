@@ -362,22 +362,14 @@
             });
         }
 
-        // Default filename: basename of the workspace's existing
-        // target path (if any) so "save back to source" stays a
-        // one-click flow.  For generator workspaces, derive a
-        // sensible default from the source kind.  The user can
-        // always override in the dialog.
+        // save-flow.md §1: NO default filename.  The Modify tab exists to
+        // MODIFY the structure, so a Save is a save-AS to a file the user names;
+        // we never pre-fill the loaded file's name (that invites silently
+        // overwriting the source).  Blank box -> the dialog keeps Save disabled
+        // until the user types a name.  ``path`` (the loaded source) is still
+        // threaded below, only for provenance (sidecar propagation).
         var path = targetPath();
         var initial = "";
-        if (path) {
-            initial = _basename(path);
-        } else {
-            var src = (_workspace
-                       && typeof _workspace.getSource === "function")
-                ? _workspace.getSource() : null;
-            var kind = (src && src.kind) || "structure";
-            initial = kind + ".xyz";
-        }
 
         // Route the Save click through the confirm-name dialog so
         // the user can edit the filename + see what they're about
@@ -387,12 +379,11 @@
         // existing source (= clicking Save back to the file we
         // loaded from, in the same directory).
         if (!dialog || typeof dialog.chooseSaveName !== "function") {
-            // No dialog mounted (tests / legacy contexts).  Use the
-            // default name + sidebar dir.
-            var fallbackFinal = dir + "/" + initial;
-            return _writeWithOverwriteGate(fallbackFinal, struct.text, {
-                overwriteAlreadyConfirmed: fallbackFinal === path,
-                sourcePath:                path,
+            // No dialog mounted.  With no default filename (§1) there is no name
+            // to save to without the dialog, so the save cannot proceed.
+            return Promise.resolve({
+                ok: false,
+                error: "Save needs the name dialog to choose a filename.",
             });
         }
         return dialog.chooseSaveName(initial).then(function (chosen) {
@@ -411,7 +402,9 @@
             // propagation logic (save-flow.md §4.3) knows whether
             // this is a Save-as or save-back-to-source.
             return _writeWithOverwriteGate(finalPath, struct.text, {
-                overwriteAlreadyConfirmed: finalPath === path,
+                // save-flow.md §1: overwrite is ALWAYS confirmed -- no
+                // save-back-to-source skip.  Any existing name re-prompts.
+                overwriteAlreadyConfirmed: false,
                 sourcePath:                path,
             });
         });

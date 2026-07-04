@@ -75,6 +75,25 @@ def _run_node(snippet: str) -> object:
                 _calls:      () => calls.slice(),
             }};
         }}
+        // save-flow.md §1: a Save now REQUIRES the name dialog (no default
+        // filename).  Mount a fake that returns ``chosenName`` and records the
+        // ``initial`` it was shown (must be blank) + overwrite confirmations.
+        function _mountDialog(chosenName, opts) {{
+            opts = opts || {{}};
+            const calls = {{ chooseSaveName: [], confirmOverwrite: [] }};
+            global.molbuilder = global.molbuilder || {{}};
+            global.molbuilder.structureSaveDialog = {{
+                chooseSaveName: (initial) => {{
+                    calls.chooseSaveName.push(initial);
+                    return Promise.resolve(chosenName);
+                }},
+                confirmOverwrite: (basename) => {{
+                    calls.confirmOverwrite.push(basename);
+                    return Promise.resolve(opts.confirmOverwrite !== false);
+                }},
+            }};
+            return calls;
+        }}
         const save = require({json.dumps(str(module_path))});
         try {{
             (async () => {{
@@ -197,7 +216,9 @@ class TestTargetPath:
 
 class TestSaveFlow:
 
-    def test_writes_to_source_file_and_marks_saved(self):
+    def test_writes_named_file_and_marks_saved(self):
+        """§1: the user names the file in the dialog; the save writes it into
+        the sidebar's current dir (never a default/source name)."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
@@ -210,6 +231,7 @@ class TestSaveFlow:
                 (path, text) => ({ok: true, path, size: text.length,
                                   mtime: 123}));
             const sp = _mkFakeStructurePage();
+            _mountDialog("water-modified.xyz");
             save.configure({canvas: c, projects: p, structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({
@@ -219,21 +241,17 @@ class TestSaveFlow:
             }));
         ''')
         assert out["envelope"] == {
-            "ok": True, "path": "/projects/p/water.xyz"}
-        # Wrote canvas text to source file.
+            "ok": True, "path": "/projects/p/water-modified.xyz"}
         assert out["writeCalls"] == [{
-            "path": "/projects/p/water.xyz",
+            "path": "/projects/p/water-modified.xyz",
             "text": "3\nH2O\nO 0 0 0\nH 1 0 0\nH 0 1 0\n",
         }]
-        # Orchestrator was told the save landed.
-        assert out["markSavedCalls"] == ["/projects/p/water.xyz"]
+        assert out["markSavedCalls"] == ["/projects/p/water-modified.xyz"]
 
-    def test_uses_last_save_to_basename_when_set(self):
-        """A prior Save sets last_save_to; subsequent Save writes
-        to the SIDEBAR'S current dir with the BASENAME of the
-        last-saved path (per the 2026-06-09 design — sidebar dir
-        always wins, basename roundtrips from last_save_to when
-        present)."""
+    def test_no_default_filename_dialog_gets_blank(self):
+        """§1: NO default filename -- even with a prior last_save_to, the dialog
+        opens BLANK (the Modify tab makes a modified version; we never pre-fill
+        the loaded/last-saved name)."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
@@ -241,22 +259,20 @@ class TestSaveFlow:
                 source: {kind: "file", file: "/projects/p/orig.xyz"},
                 lastSaveTo: "/projects/p/renamed.xyz",
             });
-            const p = _mkFakeProjects(
-                (path, text) => ({ok: true, path}));
+            const p = _mkFakeProjects((path, text) => ({ok: true, path}));
             const sp = _mkFakeStructurePage();
+            const dlg = _mountDialog("chosen.xyz");
             save.configure({canvas: c, projects: p, structurePage: sp});
-            const r = await save.save();
+            await save.save();
             console.log(JSON.stringify({
-                envelopePath:   r.path,
-                writePath:      p._calls()[0].path,
-                markSavedPath:  sp._calls()[0],
+                initialShown: dlg.chooseSaveName,
+                writePath:    p._calls()[0].path,
             }));
         ''')
-        # Sidebar dir (/projects/p from the fake's getCurrentDir) +
-        # basename of last_save_to (renamed.xyz).
-        assert out["envelopePath"] == "/projects/p/renamed.xyz"
-        assert out["writePath"] == "/projects/p/renamed.xyz"
-        assert out["markSavedPath"] == "/projects/p/renamed.xyz"
+        # Dialog was shown a BLANK initial -- no default, not the source name.
+        assert out["initialShown"] == [""]
+        # Writes to the sidebar dir + the user-chosen name.
+        assert out["writePath"] == "/projects/p/chosen.xyz"
 
 
 # ----- Refusal paths --------------------------------------------- #
@@ -321,6 +337,7 @@ class TestErrorPaths:
             const p = _mkFakeProjects(
                 () => ({ok: false, error: "permission denied"}));
             const sp = _mkFakeStructurePage();
+            _mountDialog("f.xyz");
             save.configure({canvas: c, projects: p, structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({
@@ -346,6 +363,7 @@ class TestErrorPaths:
                 getCurrentDir: () => "/projects/p",
             };
             const sp = _mkFakeStructurePage();
+            _mountDialog("f.xyz");
             save.configure({canvas: c, projects: p, structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({

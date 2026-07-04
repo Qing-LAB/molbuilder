@@ -24,10 +24,11 @@
 Three rules govern the Save flow.  They are intentionally simple
 so the user always knows where their work lands:
 
-1. **The user confirms the filename.**  Every Save click opens a
-   dialog with the destination filename pre-filled.  The user can
-   accept the default by pressing Enter or clicking Save, or edit
-   the name before confirming.
+1. **The user names the file — there is no default.**  Every Save click opens a
+   dialog with a **blank** filename box; Save stays disabled until the user types
+   a name.  The Modify tab exists to *modify* the structure, so a save is a
+   **save-as** to a file the user names — we never pre-fill the loaded (or
+   last-saved) name, which would invite silently overwriting the source.
 
 2. **The directory is always the sidebar's current project dir.**
    There is no "Save back to original location" semantic.  If the
@@ -35,15 +36,14 @@ so the user always knows where their work lands:
    goes to the new project.  If the user wants to save back where
    they loaded from, they navigate the sidebar there first.
 
-3. **Overwriting an existing file requires explicit confirmation.**
-   The exception is "Save back to the workspace's current source
-   file" (same dir + same name as `last_save_to`) — that's
-   unambiguous and skips the second confirm.
+3. **Overwriting an existing file is ALWAYS confirmed.**  If the chosen name
+   already exists in the project dir, the user must confirm before it is
+   replaced — there is **no** save-back-to-source skip.
 
 These rules make the Save semantics one-line learnable:
 
 > "Save commits the current workspace into the project I'm looking
-> at, using the filename I confirm."
+> at, under a filename I type; replacing an existing file is always confirmed."
 
 ---
 
