@@ -173,7 +173,7 @@
             let viewerHandle = null;
             let disposed     = false;
 
-            ctx.readFile(file).then((r) => {
+            ctx.readFile(file).then(async (r) => {
                 if (disposed) return;
                 if (!r.ok) {
                     status.textContent = "Error: " + (r.error || "unknown");
@@ -182,13 +182,27 @@
                 }
                 const fmt = file.toLowerCase().endsWith(".pdb")
                     ? "pdb" : "xyz";
-                // The cell (and the fixed k-grid, if any) come from the RESULTS
-                // TAB via ctx.viewParams -- concentrated by molbuilder/parse/
-                // (StructureResult.cell + fdf kgrid diagonal).  The viewer does
-                // NOT parse them.  Absent (e.g. a plain .xyz with no parsed cell)
-                // -> no cell -> k-grid stays inert.  Wired in Slice C.
-                const viewParams = (ctx && ctx.viewParams) || {};
-                const lattice = viewParams.cell || null;
+                // Phase 1 (structure-periodicity.md): the cell comes from the
+                // dataset, read server-side and handed to the viewer -- the viewer
+                // NEVER parses.  ctx.viewParams.cell wins if the host already
+                // supplied it; otherwise fetch it from the .xyz's sidecar via
+                // /api/selection/atoms (which loads the structure + sidecar).
+                // Absent -> null: no unit-cell box, k-grid stays inert.
+                let lattice = (ctx && ctx.viewParams && ctx.viewParams.cell) || null;
+                if (!lattice && fmt === "xyz") {
+                    try {
+                        const cr = await fetch("/api/selection/atoms", {
+                            method:  "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body:    JSON.stringify({ structure_path: file }),
+                        });
+                        if (cr.ok) {
+                            const cj = await cr.json();
+                            if (cj && cj.ok && cj.cell) lattice = cj.cell;
+                        }
+                    } catch (_) { /* no cell -> no box, k-grid inert */ }
+                    if (disposed) return;
+                }
                 const embedApi = (root.molbuilder
                                   && root.molbuilder.viewer
                                   && root.molbuilder.viewer.embed);
@@ -204,8 +218,8 @@
                     // Source data flows in through the API; the
                     // viewer doesn't fetch.
                     [fmt]: r.text,
-                    // Cell from the extended-XYZ Lattice= line (if any) -> the
-                    // cell wireframe can show + k-grid can tile getLattice().
+                    // Cell from the dataset (fetched above) -> the unit-cell
+                    // wireframe can show + k-grid can tile getLattice().
                     lattice: lattice || undefined,
                     // Style matches the legacy structure inspector's
                     // ball-and-stick rendering.

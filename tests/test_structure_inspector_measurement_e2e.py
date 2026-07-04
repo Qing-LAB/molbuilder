@@ -165,12 +165,53 @@ def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
     page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
-# NOTE: the B0/B1 e2e (extxyz-Lattice-reaches-viewer, k-grid-tiles-supercell) were
-# removed 2026-07-03 -- they drove the cell through an inline parser bolted onto the
-# inspector, which was retired (the viewer must NOT parse; the cell + kgrid come
-# from the results tab via ctx.viewParams, sourced from molbuilder/parse/).  Re-add
-# them driving ctx.viewParams once the results-tab -> viewer param path (Slice C)
-# lands.
+def _write_xyz_with_cell_sidecar(tmp_path, cell):
+    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell` (the dataset
+    the host reads periodicity from -- structure-periodicity.md § 8)."""
+    import hashlib
+    import json
+    xyz = tmp_path / "periodic.xyz"
+    xyz.write_text("2\nperiodic\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\n")
+    (tmp_path / "periodic.molstruct.json").write_text(json.dumps({
+        "schema_version": 3, "n_atoms_total": 2,
+        "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
+        "regions": {}, "frozen_atoms": [], "cell": cell, "selection_rules": {},
+    }))
+    return xyz
+
+
+def test_sidecar_cell_reaches_viewer_and_kgrid_tiles(
+        page, flask_server, tmp_path, monkeypatch):
+    """Phase 1 (structure-periodicity.md): a .xyz whose `.molstruct.json` sidecar
+    carries a `cell` -> the host reads it server-side (/api/selection/atoms), hands
+    it to the viewer -> `getLattice()` returns it (unit-cell box) AND k-grid tiles
+    the supercell.  The viewer never parses; the cell rides the dataset."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = _write_xyz_with_cell_sidecar(tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+    slot = ".structure-viewer-slot"
+
+    # the cell reached the viewer (box can draw)
+    lat = page.evaluate(
+        f"() => document.querySelector('{slot}').__molbuilder_test_handle.getLattice()"
+    )
+    assert lat is not None, "sidecar cell should reach getLattice()"
+
+    # k-grid tiles: 2 atoms -> 2x1x1 -> 4 -> disable -> 2
+    _count = (f"() => document.querySelector('{slot}')"
+              "  .__molbuilder_test_handle.getAtomCount()")
+    assert page.evaluate(_count) == 2
+    page.evaluate(
+        f"() => {{ const st = document.querySelector('{slot}').__molbuilder_test_store;"
+        "  st.setKgrid({ dims: [2, 1, 1] }); st.setKgrid({ enabled: true }); }"
+    )
+    page.wait_for_function(f"{_count} === 4", timeout=8000)
+    page.evaluate(
+        f"() => document.querySelector('{slot}')"
+        "  .__molbuilder_test_store.setKgrid({ enabled: false })"
+    )
+    page.wait_for_function(f"{_count} === 2", timeout=8000)
 
 
 def test_viewer_clicks_are_wired_to_the_store(

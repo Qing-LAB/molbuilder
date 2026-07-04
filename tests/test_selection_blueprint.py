@@ -348,6 +348,38 @@ class TestAtomsEndpoint:
         assert atoms[10]["is_frozen"] is True
         assert atoms[0]["is_frozen"] is False
 
+    def test_cell_from_sidecar_surfaces_in_atoms_response(
+            self, web, selection_root):
+        """Phase 1 (structure-periodicity.md): the sidecar's 3x3 `cell` is
+        returned by /api/selection/atoms so the viewer can draw the unit-cell
+        box + tile k-grid.  The viewer never parses -- the host reads it here."""
+        import hashlib
+        import json as _json
+        xyz_bytes = (selection_root / "junction.xyz").read_bytes()
+        struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
+        cell = [[10.0, 0.0, 0.0], [0.0, 11.0, 0.0], [0.0, 0.0, 22.0]]
+        (selection_root / "junction.molstruct.json").write_text(_json.dumps({
+            "schema_version": 3,
+            "n_atoms_total":  11,
+            "structure_hash": struct_hash,
+            "regions":        {},
+            "frozen_atoms":   [],
+            "cell":           cell,
+            "selection_rules": {},
+        }))
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.get_json()["cell"] == cell
+
+    def test_cell_null_without_sidecar(self, web, selection_root):
+        """No sidecar next to the .xyz -> `cell` is null, not an error."""
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        body = r.get_json()
+        assert body["ok"] is True and body["cell"] is None
+
     def test_missing_path_returns_400(self, web):
         r = web.post("/api/selection/atoms", json={})
         assert r.status_code == 400

@@ -150,6 +150,13 @@ Modify exposes periodicity (new; none today). Two coupled views of the same
   winning over derivation so later atom edits don't silently recompute it. A
   **"reset to derived"** clears the override.
 
+**`axis_kind` round-trips.** It is **initialized from construction** (§ 4 — an
+electrode junction arrives as `(periodic, periodic, transport)`) or the resolve
+default; the panel **shows** it, the user **overrides** it, and it **persists in
+the sidecar** (§ 7) — a customized value survives reload, and every consumer (cell
+derivation, k-grid gating, fdf, transport) reads the one field. The boolean `pbc`
+is never edited directly; it is derived from `axis_kind`.
+
 ## 7. Persistence + the data-flow loop
 
 `(cell, axis_kind, vacuum, kgrid)` persist in the `.molstruct.json` sidecar (schema
