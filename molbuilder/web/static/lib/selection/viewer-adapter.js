@@ -112,6 +112,12 @@
         let prevClicked = null;
         function onPick(curr) {
             if (!Array.isArray(curr)) return;
+            // § 7.1 (molview-module.md): in-window picking is DISABLED while k-grid
+            // is on -- a click on a tiled copy has no unambiguous unit-cell atom.
+            // The selection panel (unit-cell atom list) still edits the selection;
+            // only viewer clicks are gated here.
+            const st = store.getState();
+            if (st && st.kgrid && st.kgrid.enabled) { prevClicked = null; return; }
             if (curr.length === 0) {
                 // Single-mode deselect: same atom clicked twice.
                 if (prevClicked !== null) {

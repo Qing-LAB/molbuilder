@@ -178,9 +178,29 @@ k-grid display = **copies of the atoms offset by the lattice vectors**. Pure com
 
 The current live path (structure inspector) tiles inline: on `store.setKgrid`
 change it runs `computeRender` against the unit-cell coords + the lattice and calls
-`handle.setStructure(supercell)`; disabling restores the unit cell. While k-grid is
-on, selection halos + the measurement overlay stand down (unit-cell-index overlays
-don't map onto a supercell).
+`handle.setStructure(supercell)`; disabling restores the unit cell.
+
+### 7.1 In-window picking is disabled while k-grid is on; the panel still works (agreed behavior)
+
+**With many duplicated atoms on screen, a mouse click inside the molview window is
+ambiguous and messy** — "which copy did you pick?" has no answer. So while
+`kgrid.enabled`:
+
+- **In-window picking is disabled** — clicking an atom in the 3-D molview does
+  **not** toggle the selection. Selection halos + the measurement overlay also
+  stand down in the window (they are keyed by unit-cell index and can't map onto
+  copies).
+- **The selection PANEL stays fully functional** — filter and click-select on the
+  atom *list* work normally, because the list is the original unit-cell atoms
+  (no ambiguity). The selection is still curated there, and the render re-tiles on
+  change.
+- **The selection is recorded internally** (never cleared) — so with **isolate ON
+  + k-grid ON the render copies/duplicates ONLY the selected atoms** across the
+  grid (§ 7 above). Turning k-grid off restores in-window picking, halos, and
+  measurement.
+
+So k-grid disables *pointing at the 3-D view*, not *selecting*: you keep curating
+the selection through the panel; you just can't click the copies.
 
 ## 8. The k-grid / cell parameter boundary (host supplies; module never parses)
 
