@@ -1249,6 +1249,28 @@ class TestSaveSidecar:
         assert on_disk["regions"] == {"L-electrode": [0, 1]}
         assert on_disk["frozen_atoms"] == [10]
 
+    def test_periodicity_persists_in_saved_sidecar(self, web, selection_root):
+        """workspace-contract.md §4.0: the whole-store save writes the
+        periodicity into the sidecar alongside regions/frozen."""
+        from molbuilder.sidecars import molstruct as msj
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {},
+            "frozen_atoms":   [],
+            "periodicity": {
+                "cell":      [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+                "axis_kind": ["periodic", "periodic", "transport"],
+                "vacuum":    [0, 0, 0],
+                "kgrid":     [4, 4, 1],
+            },
+        })
+        assert r.status_code == 200, r.data
+        on_disk = msj.load(msj.sidecar_path_for(Path(_path(selection_root))))
+        assert on_disk["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 10]]
+        assert on_disk["axis_kind"] == ["periodic", "periodic", "transport"]
+        assert on_disk["kgrid"] == [4, 4, 1]
+
     def test_replaces_existing_sidecar_does_not_merge(
             self, web, selection_root):
         """Core contract: prior regions/frozen_atoms in the existing

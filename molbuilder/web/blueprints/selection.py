@@ -851,6 +851,15 @@ def selection_save_sidecar():
             validated_frozen.append(idx)
         validated_frozen = sorted(set(validated_frozen))
 
+        # Periodicity (structure-periodicity.md) rides with the whole-store save
+        # (workspace-contract.md §4.0).  Optional dict {cell, axis_kind, vacuum,
+        # kgrid}; to_dict validates the values.  Absent -> written as null.
+        per = payload.get("periodicity") or {}
+        if not isinstance(per, dict):
+            return _bad_request(
+                "'periodicity' must be a dict when provided; "
+                f"got {type(per).__name__}")
+
         resolved = _resolve_within_roots(path)
         if not resolved.exists():
             return _bad_request(f"file not found: {resolved}", 404)
@@ -873,6 +882,10 @@ def selection_save_sidecar():
                     structure_hash  = new_hash,
                     regions         = validated_regions,
                     frozen_atoms    = validated_frozen,
+                    cell            = per.get("cell"),
+                    axis_kind       = per.get("axis_kind"),
+                    vacuum          = per.get("vacuum"),
+                    kgrid           = per.get("kgrid"),
                     # Save-as starts fresh — no rule carries over,
                     # since the user's intent is "snapshot the
                     # current workspace labels into a new sidecar".

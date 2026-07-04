@@ -118,7 +118,7 @@
      */
     function _gatherLabelsFromWorkspace() {
         if (!_workspace || typeof _workspace.getAtoms !== "function") {
-            return { regions: {}, frozen: [] };
+            return { regions: {}, frozen: [], periodicity: null };
         }
         var atoms  = _workspace.getAtoms() || [];
         var regions = {};
@@ -134,7 +134,15 @@
             }
             if (a.isFrozen) frozen.push(i);
         }
-        return { regions: regions, frozen: frozen };
+        // Periodicity rides with the whole-store save (workspace-contract.md
+        // §4.0): read it from the store so Save writes the same cell/axis_kind/
+        // vacuum/kgrid the user sees.
+        var per = null;
+        if (typeof _workspace.getStructure === "function") {
+            var s = _workspace.getStructure();
+            per = (s && s.periodicity) || null;
+        }
+        return { regions: regions, frozen: frozen, periodicity: per };
     }
 
     /**
@@ -161,6 +169,7 @@
                 n_atoms:        nAtoms,
                 regions:        labels.regions,
                 frozen_atoms:   labels.frozen,
+                periodicity:    labels.periodicity,
             }),
         }).then(function (r) { return r.json(); })
           .catch(function () { /* non-fatal */ });
@@ -205,7 +214,8 @@
         // whatever writeLabel had already applied in-place.
         var labels = (_workspace
                       && typeof _workspace.getAtoms === "function")
-            ? _gatherLabelsFromWorkspace() : { regions: {}, frozen: [] };
+            ? _gatherLabelsFromWorkspace()
+            : { regions: {}, frozen: [], periodicity: null };
         var nAtoms = (_workspace
                       && typeof _workspace.getAtoms === "function")
             ? (_workspace.getAtoms() || []).length : 0;
@@ -228,22 +238,15 @@
 
         if (!root.fetch) return { ok: true, path: path };
 
-        var labelsPromise;
-        if (isSaveAs) {
-            // Propagate workspace labels to the destination.  See
-            // save-flow.md §4.3.  ``labels`` + ``nAtoms`` were
-            // captured BEFORE the adoptSession abort (see the
-            // IMPORTANT note above).
-            // Always send the bulk-replace call on Save-as, even when
-            // the workspace has no labels — this WIPES any stale
-            // sidecar that happened to exist at the destination so
-            // the user's authoritative state (no labels) is reflected.
-            // Without this, an empty workspace saved to a previously-
-            // labelled file would keep showing the old labels on next
-            // Load.
-            labelsPromise = _persistLabelsToDestination(
-                path, labels, nAtoms);
-        }
+        // §4.0: EVERY save writes the WHOLE store's sidecar (regions + frozen +
+        // periodicity) from memory -- not just on save-as.  The store is the
+        // truth, so we bulk-REPLACE the destination sidecar unconditionally
+        // (this also WIPES any stale sidecar at the destination).  ``labels`` +
+        // ``nAtoms`` were captured BEFORE the adoptSession abort (see above).
+        // ``isSaveAs`` no longer gates the write; it is kept only for callers
+        // that read the return provenance.
+        void isSaveAs;
+        var labelsPromise = _persistLabelsToDestination(path, labels, nAtoms);
 
         function _fireRefreshHash() {
             return root.fetch("/api/selection/refresh-hash", {
