@@ -306,31 +306,6 @@ def workspace_payload(
     }
 
 
-def periodicity_dict(struct: Structure) -> Dict[str, Any]:
-    """The periodicity payload for a Structure (structure-periodicity.md).
-
-    ``cell`` is the EFFECTIVE cell (``resolve_cell``): the explicit lattice if the
-    structure has one, else the derived box (bbox + vacuum for isolated axes) so a
-    plain molecule still has lattice vectors for the unit-cell box + k-grid.
-    ``cell_explicit`` tells the UI whether the cell is user/construction-set (an
-    override to keep) or derived (recomputes on edit; "reset to derived").  A
-    periodic axis with no cell can't be derived -> ``cell`` falls back to the
-    explicit value (possibly null) and ``resolve_cell``'s error is swallowed.
-    """
-    explicit = struct.cell
-    try:
-        effective = struct.resolve_cell()
-    except Exception:
-        effective = explicit
-    return {
-        "cell":          effective.tolist() if effective is not None else None,
-        "cell_explicit": explicit is not None,
-        "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
-        "vacuum":        list(struct.vacuum),
-        "kgrid":         list(struct.kgrid),
-    }
-
-
 def structure_to_dict(
     struct: Structure,
     *,
@@ -380,7 +355,12 @@ def structure_to_dict(
         # geometry into the store -- a captured electrode cell survives the
         # modify op (workspace-contract.md §4.0).  `lattice` above stays as the
         # cell alias for existing consumers.
-        "periodicity": periodicity_dict(struct),
+        "periodicity": {
+            "cell":      struct.cell.tolist() if struct.cell is not None else None,
+            "axis_kind": list(struct.axis_kind) if struct.axis_kind is not None else None,
+            "vacuum":    list(struct.vacuum),
+            "kgrid":     list(struct.kgrid),
+        },
         "issues":        base["issues"],
         "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers

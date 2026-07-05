@@ -84,73 +84,6 @@
         if (s) s.clear();
     }
 
-    // ---- k-grid display render (structure-periodicity.md §5) -------- //
-    // Tiles the unit cell into the supercell when k-grid is enabled AND a cell is
-    // available (state.cell = the effective cell from the payload's periodicity).
-    // Images are DISPLAY-ONLY -- each copies a unit-cell atom.  Without a cell, or
-    // with k-grid off, the unit cell renders as-is.
-    function _kgridXyz(positions, sourceIndex) {
-        const out = [String(positions.length), "kgrid"];
-        for (let m = 0; m < positions.length; m++) {
-            const el = state.elements[sourceIndex[m]] || "X";
-            const p = positions[m];
-            out.push(el + " " + p[0] + " " + p[1] + " " + p[2]);
-        }
-        return out.join("\n") + "\n";
-    }
-    // The authoritative cell is the STORE's (workspace-contract.md §4.0): on a
-    // reopen it holds the sidecar's SAVED cell, on a modify op the captured cell.
-    // The applyStructure payload's cell is only a fallback -- for a loaded file
-    // it is the bbox parsed from the .xyz text (the .xyz carries no lattice).
-    function _storeCell() {
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        if (ws && typeof ws.getStructure === "function") {
-            const s = ws.getStructure();
-            return (s && s.periodicity && s.periodicity.cell) || null;
-        }
-        return null;
-    }
-    function _renderModel() {
-        if (!state.xyz) return;
-        const store = _selStore();
-        const mv = window.molbuilder && window.molbuilder.molview;
-        const view = store ? store.getState() : null;
-        const kg = (view && view.kgrid) || {};
-        const cell = _storeCell() || state.cell;   // store is authoritative
-        if (kg.enabled && cell
-                && mv && typeof mv.computeRender === "function"
-                && state.positions.length === state.n_atoms) {
-            const out = mv.computeRender(state.positions, view, cell);
-            _handle.setStructure({
-                xyz:     _kgridXyz(out.positions, out.sourceIndex),
-                lattice: cell,
-            });
-        } else {
-            _handle.setStructure({
-                xyz:     state.xyz,
-                lattice: cell || undefined,
-            });
-        }
-        _handle.refit();
-    }
-    // Re-render on k-grid changes only (not every selection tick).  Wired lazily
-    // on the first applyStructure, when ws.selection is definitely mounted.
-    let _kgridSubbed = false;
-    function _wireKgridSub() {
-        if (_kgridSubbed) return;
-        const store = _selStore();
-        if (!store || typeof store.subscribe !== "function") return;
-        _kgridSubbed = true;
-        let last = "";
-        store.subscribe(function (s) {
-            const kg = (s && s.kgrid) || {};
-            const sig = (kg.enabled ? "1" : "0") + ":" + (kg.dims || []).join(",");
-            if (sig === last) return;
-            last = sig;
-            _renderModel();
-        });
-    }
-
     // --------------------------------------------------------------- //
     //  Embedded MolViewer.                                             //
     //                                                                  //
@@ -524,10 +457,6 @@
         state.residue_names = Array.isArray(r.residue_names) ? r.residue_names : [];
         state.chain_ids     = Array.isArray(r.chain_ids)     ? r.chain_ids     : [];
         state.title         = r.title || "";
-        // Effective cell from the payload's periodicity (structure-periodicity.md
-        // -- resolve_cell: explicit lattice, else bbox+vacuum).  Drives the
-        // unit-cell box + k-grid tiling.  null -> no box, k-grid inert.
-        state.cell          = (r.periodicity && r.periodicity.cell) || null;
         state.n_atoms       = Number(r.n_atoms || state.elements.length || 0);
         // Parse positions from the xyz string so the per-op anchor
         // readouts can show coordinates without an extra server
@@ -572,12 +501,16 @@
         // toggle-driven state below; setStructure leaves those
         // settings intact so they re-render against the new atoms.
         if (state.xyz) {
-            // Wire the k-grid subscription once (ws.selection is mounted by now),
-            // then render: the unit cell, or the tiled supercell if k-grid is on.
-            // Style / labels / axes are owned by the standard knob bar (#203);
-            // setStructure (inside _renderModel) leaves those intact.
-            _wireKgridSub();
-            _renderModel();
+            _handle.setStructure({ xyz: state.xyz });
+            // Style / labels / axes are owned by the standard knob
+            // bar after #203; setStructure leaves the current settings
+            // intact so they re-render against the new atoms.
+            // Default fit shows the whole structure (atoms + slabs)
+            // so the user always sees what's in the model after a
+            // refresh.  The Focus-molecule toolbar button switches to
+            // a molecule-anchored pivot for smooth zoom on the small
+            // molecule when slabs are present.
+            _handle.refit();
         }
         // No else-branch needed: applyStructure is only called with
         // an xyz from a successful /api/build/load response; the
