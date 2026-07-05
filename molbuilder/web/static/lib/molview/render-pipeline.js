@@ -58,10 +58,79 @@
         return { positions: visibleCoords, sourceIndex: visible.slice() };
     }
 
+    // Build an .xyz body from a computeRender result: positions[m] takes its
+    // element from the unit-cell atom sourceIndex[m] (k-grid images share their
+    // unit-cell atom's element).  The lattice rides separately on setStructure.
+    function _buildXyz(elements, positions, sourceIndex) {
+        const n = positions.length;
+        const out = [String(n), "kgrid"];
+        for (let m = 0; m < n; m++) {
+            const el = (elements && elements[sourceIndex[m]]) || "X";
+            const p = positions[m];
+            out.push(el + " " + p[0] + " " + p[1] + " " + p[2]);
+        }
+        return out.join("\n");
+    }
+
+    // The ONE k-grid render controller (molview-module.md § 7).  Subscribes to the
+    // store; on k-grid enable it tiles the unit cell via computeRender and calls
+    // handle.setStructure(supercell); on disable it restores the unit cell.  Every
+    // host uses THIS -- no host hand-writes the loop.
+    //
+    //   handle : the viewer handle (setStructure)
+    //   store  : the selection store (kgrid / isolate / selection)
+    //   opts.getUnit() -> { coords:[[x,y,z]...], elements:[...], xyz:"<unit xyz>" }
+    //            the CURRENT unit-cell structure (host-owned; captured BEFORE any
+    //            tiling so it never reads back a supercell from the handle).
+    //   opts.getCell() -> 3x3 lattice | null  (host supplies the cell, § 8; e.g.
+    //            ws.getStructure().periodicity.cell on Modify, or opts.lattice).
+    // Returns { refresh, dispose }.  Call refresh() after a base render / structure
+    // change; call dispose() to unsubscribe.
+    function mountKgridRender(handle, store, opts) {
+        opts = opts || {};
+        const getUnit = typeof opts.getUnit === "function"
+            ? opts.getUnit : function () { return null; };
+        const getCell = typeof opts.getCell === "function"
+            ? opts.getCell : function () { return null; };
+        let active = false;
+        let disposed = false;
+
+        function _render() {
+            if (disposed) return;
+            const unit = getUnit();
+            if (!unit || !Array.isArray(unit.coords)) return;
+            const view = store.getState();
+            const kg = (view && view.kgrid) || {};
+            const cell = getCell();
+            if (kg.enabled && cell) {
+                const out = computeRender(unit.coords, view, cell);
+                handle.setStructure({
+                    xyz: _buildXyz(unit.elements, out.positions, out.sourceIndex),
+                    lattice: cell,
+                });
+                active = true;
+            } else if (active) {
+                handle.setStructure({ xyz: unit.xyz, lattice: cell || undefined });
+                active = false;
+            }
+        }
+
+        const unsub = store.subscribe(function () { _render(); });
+        return {
+            refresh: function () { _render(); },
+            dispose: function () {
+                disposed = true;
+                try { unsub(); } catch (_) { /* already gone */ }
+            },
+        };
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview.computeRender = computeRender;
+    root.molbuilder.molview.mountKgridRender = mountKgridRender;
     if (typeof module !== "undefined" && module.exports) {
-        module.exports = { computeRender: computeRender };
+        module.exports = { computeRender: computeRender,
+                           mountKgridRender: mountKgridRender };
     }
 })(typeof window !== "undefined" ? window : globalThis);

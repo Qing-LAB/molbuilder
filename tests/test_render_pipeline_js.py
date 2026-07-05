@@ -81,3 +81,55 @@ def test_isolate_then_kgrid_tiles_only_selected_with_global_source():
     # tile-local 0.
     assert out["positions"] == [[1, 0, 0], [11, 0, 0]]
     assert out["sourceIndex"] == [1, 1]
+
+
+# ---- mountKgridRender: THE module k-grid render controller ---------- #
+
+_CTL_SETUP = """
+    function makeStore(initial) {
+        let state = initial; const subs = [];
+        return {
+            getState: () => state,
+            subscribe: (fn) => { subs.push(fn); return () => {
+                const i = subs.indexOf(fn); if (i >= 0) subs.splice(i, 1); }; },
+            _set: (p) => { state = Object.assign({}, state, p); subs.forEach(fn => fn(state)); },
+            _subCount: () => subs.length,
+        };
+    }
+    const store = makeStore({ kgrid: { enabled: false, dims: [2,1,1] },
+                              indices: [], isolate: false });
+    const handleCalls = [];
+    const handle = { setStructure: (o) => handleCalls.push(o) };
+    const ctl = global.molbuilder.molview.mountKgridRender(handle, store, {
+        getUnit: () => ({ coords: [[0,0,0],[1,0,0]], elements: ['C','H'], xyz: 'UNIT' }),
+        getCell: () => [[10,0,0],[0,10,0],[0,0,10]],
+    });
+"""
+
+
+def test_mount_kgrid_render_tiles_on_enable_restores_on_disable():
+    out = _run_node(_CTL_SETUP + """
+        const afterMount = handleCalls.length;                     // off -> no-op
+        store._set({ kgrid: { enabled: true, dims: [2,1,1] } });   // enable -> tile
+        const enabledN = handleCalls[handleCalls.length-1].xyz.split('\\n')[0];
+        store._set({ kgrid: { enabled: false, dims: [2,1,1] } });  // disable -> restore
+        const restored = handleCalls[handleCalls.length-1].xyz;
+        ctl.dispose();
+        console.log(JSON.stringify({
+            afterMount, enabledN, restored, subs: store._subCount(),
+        }));
+    """)
+    assert out["afterMount"] == 0        # k-grid off at mount -> no render
+    assert out["enabledN"] == "4"        # 2 unit atoms x 2x1x1 = 4-atom supercell
+    assert out["restored"] == "UNIT"     # disable restores the unit-cell xyz
+    assert out["subs"] == 0              # dispose() unsubscribed
+
+
+def test_mount_kgrid_render_no_cell_does_not_tile():
+    out = _run_node(_CTL_SETUP.replace(
+        "getCell: () => [[10,0,0],[0,10,0],[0,0,10]],",
+        "getCell: () => null,") + """
+        store._set({ kgrid: { enabled: true, dims: [2,1,1] } });   // enabled but no cell
+        console.log(JSON.stringify({ calls: handleCalls.length }));
+    """)
+    assert out["calls"] == 0             # no cell -> nothing tiles (inert, not crash)
