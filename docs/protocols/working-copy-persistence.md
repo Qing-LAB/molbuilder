@@ -165,7 +165,7 @@ cleanup is on `save` or session-end (no time-based sweep).
 ## 9. Remaining work
 
 Wire the `/modify` tab to it: hold labels in the working copy + `update` on edit
-(which mirrors to the server draft, §7, instead of auto-POSTing
-`/api/selection/save`), and add an explicit **Save** / **Save As** that calls
-`/api/workingcopy/save`. The browser may also keep a `sessionStorage` copy for
+(which mirrors to the server draft, §7; label edits are already in-memory and
+the sidecar is written only on explicit Save), and add an explicit **Save** /
+**Save As** that calls `/api/workingcopy/save`. The browser may also keep a `sessionStorage` copy for
 instant same-tab restore, but the server draft (§7) is what survives a crash.

@@ -83,74 +83,57 @@ if not dir:
     refuse with "Pick a project directory in the sidebar before saving."
 ```
 
-### §3.2 Resolve default filename
+### §3.2 Open the name dialog — BLANK (§1)
+
+There is **no default filename**.  The Modify tab makes a modified version, so the
+user names a new file — never the loaded/last-saved name.
 
 ```
-path = workspace.last_save_to or source.file
-if path:
-    default_name = basename(path)        # e.g. "water.xyz"
-else:
-    src = workspace.source
-    default_name = src.kind + ".xyz"     # e.g. "smiles.xyz"
+saveDialog.chooseSaveName("")     # empty box; Save disabled until a name is typed
 ```
 
-### §3.3 Show the confirm-name dialog
-
-`saveDialog.chooseSaveName(default_name)` opens a modal with:
-
-* a single text input pre-filled with `default_name` (auto-focused,
-  auto-selected so Enter accepts or typing replaces)
-* Cancel + Save buttons
-* an inline error slot for validation messages
-
-The dialog enforces these filename rules:
+The dialog enforces:
 
 | Rule | Why |
 |---|---|
-| Non-empty (after trim) | Empty path clobbers nothing useful |
-| No `/` or `\` | Path-separator → user should navigate sidebar instead |
+| Non-empty (after trim) | The user must name the file |
+| No `/` or `\` | Path-separator → navigate the sidebar instead |
 | Not `.` or `..` | Reserved names |
 
-The Save button + Enter key both validate before resolving.
+If no dialog is mounted the save cannot proceed (there is no name to save to).
 
-### §3.4 Compute final path
+### §3.3 Compute final path
 
 ```
 final_path = dir + "/" + chosen_name
 ```
 
-### §3.5 Write with the overwrite gate
+### §3.4 Write with the overwrite gate — ALWAYS confirmed (§1)
 
 ```
-pre_confirmed = (final_path == path)   # exactly the source file
-write_envelope = projects.writeFile(final_path, struct.text, {
-    overwrite: pre_confirmed,
-})
-if write_envelope.status == 409:
-    # File exists, overwrite was false
+write_envelope = projects.writeFile(final_path, struct.text, { overwrite: false })
+if write_envelope.status == 409:                 # file already exists
     proceed = await saveDialog.confirmOverwrite(basename(final_path))
     if not proceed:
         return {ok: false, cancelled: true}
-    write_envelope = projects.writeFile(final_path, struct.text, {
-        overwrite: true,
-    })
+    write_envelope = projects.writeFile(final_path, struct.text, { overwrite: true })
 ```
 
-The `pre_confirmed` rule: clicking Save with the EXACT same path
-the workspace was loaded from (or last saved to) is unambiguous —
-no second confirm needed.  Any other path (renamed, different
-sidebar dir, generator save-as) routes through the confirm gate.
+Overwrite is **always** confirmed — there is no save-back-to-source skip.  Any
+chosen name that already exists re-prompts.
 
-### §3.6 Post-write sync
+### §3.5 Post-write — write the WHOLE store's sidecar (§4)
 
 On `write_envelope.ok`:
 
 ```
-structurePage.markSavedTo(final_path)
-# Workspace dirty bit clears + last_save_to records final_path.
+structurePage.markSavedTo(final_path)     # dirty clears + last_save_to = final_path
 
-# Sidecar housekeeping — see §4.
-fetch("/api/selection/refresh-hash", {structure_path: final_path})
+# §4 / workspace-contract.md §4.0: write the WHOLE store's sidecar, hash-tied.
+POST /api/selection/save-sidecar {
+    structure_path: final_path, n_atoms,
+    regions, frozen_atoms, periodicity,     # gathered from ws.getAtoms()/getStructure()
+}
 ```
 
 ---
@@ -164,62 +147,37 @@ indexed against the XYZ.  See
 ### §4.1 Live label edits while modifying
 
 When the user clicks Assign / Add to target / Remove from target
-in the selection panel, `selection.store::writeLabel` POSTs
-`/api/selection/save` with the workspace's `n_atoms` so the server
-validates indices against IN-MEMORY state (not disk).  The server
-writes the sidecar AT THE WORKSPACE'S CURRENT SOURCE PATH.  The
-in-memory atoms are updated in place from the server's response
-(no `_fetchAtoms()` disk re-read — that would clobber unsaved
-modifier ops).
+in the selection panel, `selection.store::writeLabel` applies the
+label change PURELY IN MEMORY — no HTTP, no disk write.  Like every
+other modify op, the change stays in the store until an explicit
+Save serialises the whole store (regions + frozen + periodicity)
+into the sidecar.  The in-memory atoms are updated in place (no
+`_fetchAtoms()` disk re-read — that would clobber unsaved modifier
+ops).
 
-### §4.2 Save back to source (same path)
+### §4.2 Every save writes the WHOLE store's sidecar
 
-When `final_path == workspace.source.file`, the sidecar at that
-path already exists (it's the one writeLabel wrote to).  After
-the XYZ write, `/api/selection/refresh-hash` recomputes the
-sidecar's `structure_hash` against the just-written XYZ bytes,
-preserving regions + frozen_atoms verbatim.  The XYZ + sidecar
-end up fully coherent.
+There is **no** save-back-vs-save-as distinction (workspace-contract.md §4.0 — the
+store is the truth; a save writes it whole).  After the XYZ write,
+`_postWriteSuccess` **always** writes the destination sidecar from the in-memory
+store:
 
-### §4.3 Save-as (new path) — label propagation
+1. Gather from the store:
+   * `regions: {label: [indices]}` — from each atom's `labels[]` (`ws.getAtoms()`)
+   * `frozen: [indices]` — atoms with `isFrozen=true`
+   * `periodicity: {cell, axis_kind, vacuum, kgrid}` — from `ws.getStructure()`
+2. POST `/api/selection/save-sidecar` with `{structure_path, n_atoms, regions,
+   frozen_atoms, periodicity}` — the server **REPLACES** the entire sidecar
+   atomically and recomputes `structure_hash` from the just-written XYZ, so the
+   `.xyz` + `.json` pair is always coherent (no merge with prior contents).
 
-When `final_path != workspace.source.file` (any rename or different
-sidebar dir), `_postWriteSuccess` propagates the workspace's
-in-memory labels to the destination's sidecar atomically via the
-bulk-replace endpoint `/api/selection/save-sidecar`:
+This fires on EVERY save, even with no labels — it wipes any stale sidecar at the
+destination so the store's authoritative state (including "no labels") is what
+lands.  The write is fire-and-forget on the XYZ success: a partial sidecar failure
+doesn't unwind the XYZ write — the panel reports "Saved" once the XYZ lands, and
+the user can re-Save.
 
-1. Traverse `ws.getAtoms()` to gather:
-   * `regions: {label: [indices]}` — one entry per atom's `labels[]`
-   * `frozen:  [indices]` — atoms with `isFrozen=true`
-2. POST `/api/selection/save-sidecar` with `{structure_path,
-   n_atoms, regions, frozen_atoms}` — server **REPLACES** the
-   entire sidecar atomically (no merge with prior contents).
-   The workspace is the authoritative source; any stale labels
-   that pre-existed at the destination's sidecar are wiped.
-3. THEN fire `/api/selection/refresh-hash` so the destination
-   sidecar's `structure_hash` matches the just-written XYZ.  The
-   refresh sequences AFTER the label write via Promise chaining.
-
-The bulk-replace call ALWAYS fires on Save-as, even when the
-workspace has no labels — this wipes any stale sidecar at the
-destination so the user's authoritative state is reflected.
-Without this, saving an unlabelled workspace to a previously-
-labelled file would silently preserve the old labels.
-
-**Why bulk-replace instead of N+1 per-target calls:**
-`/api/selection/save` has REPLACE-per-target semantics (only the
-named region/frozen_atoms is replaced; other regions are
-preserved).  Per-target writes from a Save-as would MERGE the
-workspace's labels with whatever was already at the destination
-— silently wrong.  The bulk endpoint takes the full sidecar
-payload and writes it atomically.
-
-The label propagation is fire-and-forget; a partial failure
-doesn't unwind the successful XYZ write — the status panel reports
-"Saved" as soon as the XYZ lands, and the user can re-Save if a
-label call fails.
-
-### §4.4 The atomic-write contract
+### §4.3 The atomic-write contract
 
 `/api/files/write` (and every JSON sidecar writer in `molbuilder/sidecars/`)
 follows the atomic-write pattern:

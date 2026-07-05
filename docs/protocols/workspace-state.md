@@ -313,7 +313,7 @@ ws.selection.setCombinator("or" | "and");
 
 // ── Selection eval + sidecar writes ──────────────────────────────
 ws.selection.applyFilter();               // → /api/selection/eval
-ws.selection.writeLabel(target, indices); // → /api/selection/save
+ws.selection.writeLabel(target, indices); // in-memory; sidecar written on Save
 
 // ── View chrome (camera / style / overlays) ──────────────────────
 ws.view.applyState(patch);                // delegates to embed
@@ -459,7 +459,7 @@ reason about index shifts.
 | `/api/modify/<op>` | Mutate Structure → Structure | `selection_remap` (when applicable), `op`, `args` |
 | `/api/selection/atoms` (legacy) | Atoms only, no text | **Active**.  Scheduled for deprecation in migration § 6 step 10 (currently deferred — selection store still calls it from `_fetchAtoms` / `setSourceFile` / `refreshAtoms`; the legacy `tests/test_pdb_workflow_integration.py` integration suite also exercises it).  Once Phase 9 folds the selection store into the dispatcher, this endpoint becomes deletable. |
 | `/api/selection/eval` | Selection indices only | unchanged — selection-only endpoint, doesn't return a Structure |
-| `/api/selection/save` | Sidecar writes | unchanged — selection-only |
+| `/api/selection/save-sidecar` | Sidecar writes (whole-store REPLACE, on Save) | unchanged — selection-only |
 
 `/api/selection/atoms` becomes redundant once `WorkspacePayload`
 ships across the load + build + modify endpoints.  Removing it is

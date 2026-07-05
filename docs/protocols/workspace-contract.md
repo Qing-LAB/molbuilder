@@ -468,7 +468,7 @@ Each mutator fires `notify()` exactly once.
 | Method | Server route | Returns | Effect |
 |---|---|---|---|
 | `ws.selection.applyFilter()` | POST `/api/selection/eval` | `Promise<number[]>` | Sends current filters + combinator to server; replaces selection with result; preserves mode. |
-| `ws.selection.writeLabel(target, indices)` | POST `/api/selection/save` | `Promise<void>` | Writes a sidecar label.  `target` is `"frozen_atoms"` or one of the region names. |
+| `ws.selection.writeLabel(target, indices)` | *(in-memory)* | `Promise<void>` | Applies a REPLACE-per-target label change to the store in memory — no HTTP, no disk write.  The sidecar is written only on explicit Save (via `/api/selection/save-sidecar`).  `target` is `"frozen_atoms"` or one of the region names. |
 | `ws.selection.refreshAtoms()` | POST `/api/selection/atoms` | `Promise<void>` | Refetch atoms for the current `sourceFile`.  Overlays the `.molstruct.json` sidecar (frozen_atoms + regions) — needed after `adoptSession({atoms})` installs build-load atoms which lack sidecar enrichment.  No-op when `sourceFile` is null. |
 
 ### 5.3 Atoms accessor

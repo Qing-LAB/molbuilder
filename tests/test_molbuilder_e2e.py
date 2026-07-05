@@ -2392,9 +2392,8 @@ def test_panel_assign_works_on_dirty_workspace_after_electrode(
     "L-electrode") BEFORE saving — that's the whole point of the
     modify-then-label workflow.
 
-    Fix (this commit): server-side /api/selection/save accepts
-    ``n_atoms`` from the client; client-side ``writeLabel`` passes
-    it + updates labels in-place from the server response (no more
+    Fix: client-side ``writeLabel`` updates labels in-place in the
+    in-memory selection store (no HTTP round-trip on Assign, no
     disk-refetch that silently rolls back the workspace).
     """
     _open_modify(page, flask_server)
@@ -2441,7 +2440,7 @@ def test_panel_assign_works_on_dirty_workspace_after_electrode(
     )
     assert n_atoms_after == 11, (
         f"workspace lost the electrode atoms after writeLabel: "
-        f"expected 11, got {n_atoms_after}.  The /api/selection/save "
+        f"expected 11, got {n_atoms_after}.  The Assign / writeLabel "
         f"success path must NOT trigger a disk-refetch when the "
         f"workspace is dirty."
     )

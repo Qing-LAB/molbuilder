@@ -34,34 +34,11 @@ Endpoints
     The panel fetches this once per structure load to populate the
     card's scrollable atom list.
 
-``POST /api/selection/save``
-    Persist a materialised selection into the structure's
-    ``.molstruct.json`` sidecar.  Body:
-
-        {
-          "structure_path": "...",
-          "target":         "L-electrode" | "R-electrode" | "bridge"
-                            | "frozen_atoms" | "<new region label>",
-          "indices":        [0, 1, 2, ...],
-          "rule":           {<rule-json>}   # optional, stored as
-                                            # selection_rules[target]
-        }
-
-    Behaviour:
-      * Creates the sidecar from scratch if none exists.
-      * Assigning to a region SETS that region's membership to the
-        given indices (REPLACE semantics) -- but does NOT remove
-        those atoms from other regions.  An atom may carry
-        multiple labels (e.g. ``"L-electrode"`` + ``"interface"``).
-        Use the per-tag × button in the atom list to remove a
-        single atom from one label.
-      * ``frozen_atoms`` is independent of regions; assigning to
-        it overwrites the existing frozen-atom list verbatim.
-      * Empty ``indices`` removes the target region (or clears
-        frozen_atoms) entirely.
-      * Writes atomically via ``parsers.molstruct_json.save``.
-      * Returns the updated sidecar dict so the client can refresh
-        its atom list without an extra round-trip.
+``POST /api/selection/save-sidecar``
+    Atomically REPLACE the whole ``.molstruct.json`` sidecar with a
+    client-provided payload (``regions`` + ``frozen_atoms`` +
+    optional ``periodicity``).  See the endpoint docstring for the
+    body shape + behaviour contract.
 
 ``POST /api/selection/eval``
     Evaluate a rule against a structure on disk.
@@ -251,8 +228,8 @@ def _expose_frozen_as_region(struct) -> None:
     this just before ``evaluate``.
 
     Mutates ``struct.regions`` in place.  ``frozen_atoms`` is
-    reserved as a sidecar target name (``selection_save`` treats
-    it specially), so a user-defined region with that name can't
+    reserved as a sidecar key (the sidecar keeps it separate from
+    ``regions``), so a user-defined region with that name can't
     exist — ``setdefault`` is enough.
     """
     frozen = list(getattr(struct, "frozen_atoms", []) or [])
@@ -374,223 +351,6 @@ def selection_atoms():
         return _bad_request(exc.message, exc.status)
 
 
-@bp.route("/api/selection/save", methods=["POST"])
-def selection_save():
-    """Persist a materialised selection into the .molstruct.json
-    sidecar next to the structure XYZ.  See module docstring for
-    the body shape + behaviour contract."""
-    try:
-        payload = _parse_request_payload(request)
-        path = payload.get("structure_path")
-        if not isinstance(path, str) or not path:
-            return _bad_request("missing 'structure_path'")
-
-        target = payload.get("target")
-        if not isinstance(target, str) or not target.strip():
-            return _bad_request("missing or empty 'target'")
-        target = target.strip()
-
-        indices = payload.get("indices")
-        if not isinstance(indices, list):
-            return _bad_request("'indices' must be a list of ints")
-        # ``int(i)`` would silently truncate floats (``int(1.7) -> 1``)
-        # and accept numeric strings, both of which let bad client
-        # input quietly land in the sidecar.  Require true ints (and
-        # explicitly reject bool, since ``isinstance(True, int)`` is
-        # True in Python but ``True`` is never a meaningful atom
-        # index).
-        for i in indices:
-            if not isinstance(i, int) or isinstance(i, bool):
-                return _bad_request(
-                    "'indices' must contain ints only; "
-                    f"got {type(i).__name__}={i!r}"
-                )
-        indices = sorted(set(indices))
-
-        rule_payload = payload.get("rule")  # optional
-
-        # 2026-06-09 (modify-then-label fix): the client MAY pass
-        # ``n_atoms`` (the workspace's in-memory atom count).  When
-        # provided, the server validates indices against THAT instead
-        # of the on-disk file.  Before this change, a user who added
-        # electrodes (workspace n=11) then labelled an electrode atom
-        # (idx=5) got a 400 because the disk file still had n=3 —
-        # forcing a Save-first workflow that defeats the point of
-        # in-memory edits.  With the client-provided n_atoms the
-        # sidecar can be written for the workspace state directly;
-        # on Save the XYZ + sidecar persist together.
-        client_n_atoms = payload.get("n_atoms")
-        if client_n_atoms is not None:
-            # Strict type check first — bool slips past ``isinstance(x, int)``
-            # in Python because True == 1, so guard explicitly.
-            if (not isinstance(client_n_atoms, int)
-                    or isinstance(client_n_atoms, bool)):
-                return _bad_request(
-                    "'n_atoms' must be an integer when provided; "
-                    f"got {type(client_n_atoms).__name__}={client_n_atoms!r}"
-                )
-            # Reject negatives + cap at a generous-but-defensible maximum
-            # so a hostile / buggy client can't poison the sidecar with
-            # ``n_atoms_total = 999_999_999``, which would (a) bloat the
-            # JSON, (b) fail every future apply_to_structure n_atoms check,
-            # and (c) brick the file until manual sidecar cleanup.
-            # 1,000,000 atoms is well above any realistic chemistry use
-            # case (Au-BDT-Au junctions are ~10²-10³ atoms; the largest
-            # systems molbuilder is intended for are ~10⁴-10⁵ atoms).
-            if not 0 <= client_n_atoms <= 1_000_000:
-                return _bad_request(
-                    f"'n_atoms' out of range [0, 1_000_000]: "
-                    f"got {client_n_atoms}"
-                )
-
-        resolved = _resolve_within_roots(path)
-        if not resolved.exists():
-            return _bad_request(f"file not found: {resolved}", 404)
-        if resolved.suffix.lower() not in _SUPPORTED_STRUCTURE_SUFFIXES:
-            return _bad_request(
-                f"unsupported structure extension {resolved.suffix!r}; "
-                f"selection/save accepts "
-                f"{list(_SUPPORTED_STRUCTURE_SUFFIXES)}"
-            )
-
-        if client_n_atoms is not None:
-            # Trust the client's atom count — the workspace is the
-            # source of truth for the in-memory state.  Hash will be
-            # recomputed from disk for the sidecar's stored hash
-            # (matches whatever is on disk now; will be re-stored on
-            # the next save if the user persists the modified XYZ).
-            n_atoms = client_n_atoms
-        else:
-            # Legacy path: validate against the file on disk.  Kept
-            # for callers (CLI, tests) that don't know n_atoms ahead
-            # of time.
-            try:
-                struct = _parse_structure_text(
-                    resolved, resolved.read_text())
-            except _PickerError as exc:
-                return _bad_request(exc.message, exc.status)
-            n_atoms = len(struct.elements)
-
-        for idx in indices:
-            if not 0 <= idx < n_atoms:
-                return _bad_request(
-                    f"indices contain out-of-range value {idx} "
-                    f"(structure has {n_atoms} atoms)"
-                )
-
-        sidecar_path = molstruct_json.sidecar_path_for(resolved)
-        new_hash = molstruct_json.sha256_of_file(resolved)
-
-        # Serialise the read-modify-write cycle.  Two concurrent saves
-        # on the same sidecar otherwise lose one update: both read the
-        # same starting state, both compute disjoint mutations, the
-        # second write clobbers the first.  See
-        # ``molstruct_json.with_lock`` for the full rationale.  The
-        # lock spans EVERY operation that reads or writes
-        # ``sidecar_path`` -- ``load``, the in-memory mutation, and
-        # ``save`` -- so a concurrent saver waits for our write to
-        # commit and then reads the merged state.
-        with molstruct_json.with_lock(sidecar_path):
-            # Load existing sidecar if present.  A hash mismatch means
-            # the user edited the XYZ since last save; we let the new
-            # hash win (the sidecar's regions might be stale but we
-            # don't have enough context to recover them, so the
-            # honest answer is "the user's most recent action takes
-            # precedence").
-            existing_regions: Dict[str, list] = {}
-            existing_frozen: list = []
-            existing_rules: Dict[str, Any] = {}
-            existing_cell = None
-            existing_pbc = None
-            if sidecar_path.exists():
-                try:
-                    existing = molstruct_json.load(sidecar_path)
-                    existing_regions = dict(existing.get("regions") or {})
-                    existing_frozen  = list(existing.get("frozen_atoms") or [])
-                    existing_rules   = dict(existing.get("selection_rules") or {})
-                    existing_cell    = existing.get("cell")
-                    existing_pbc     = existing.get("pbc")
-                except molstruct_json.MolstructJsonError as e:
-                    # A corrupt sidecar carries user work the server
-                    # cannot read but ALSO cannot replace safely: writing
-                    # a fresh sidecar here would overwrite the user's
-                    # prior regions / frozen_atoms / rules with only the
-                    # current save's target, silently destroying
-                    # everything else.  Refuse the save and ask the user
-                    # to rename / inspect the file -- their action ("save
-                    # my work") fails loudly instead of erasing data.
-                    return jsonify({
-                        "ok":    False,
-                        "error": (
-                            f"sidecar at {sidecar_path.name} is unreadable "
-                            f"({e}); rename or delete it before saving, "
-                            f"or restore it from version control"
-                        ),
-                    }), 409
-
-            # Apply the assignment.  Multi-label model: regions are
-            # freeform tags; assigning to one does NOT remove atoms
-            # from other regions.  An atom can carry both
-            # ``"L-electrode"`` and ``"interface"``.  Engines that
-            # need disjoint regions (e.g. transport) enforce that as a
-            # separate preflight at engine-load time.
-            if target == "frozen_atoms":
-                existing_frozen = indices
-                if rule_payload is not None:
-                    existing_rules["frozen_atoms"] = rule_payload
-                elif not indices:
-                    # Clearing frozen_atoms drops the stale rule too --
-                    # otherwise next-load re-evaluating the rule would
-                    # silently undo the clear.
-                    existing_rules.pop("frozen_atoms", None)
-            else:
-                if indices:
-                    # Assign = SET the region's membership to the given
-                    # indices (REPLACE semantics).  No prune from other
-                    # regions: overlap is allowed.  To remove a single
-                    # atom from a region, use the per-tag × button in
-                    # the atom list which POSTs the new list directly.
-                    existing_regions[target] = indices
-                    if rule_payload is not None:
-                        existing_rules[target] = rule_payload
-                else:
-                    # Assigning empty = remove this region entirely.
-                    existing_regions.pop(target, None)
-                    existing_rules.pop(target, None)
-
-            try:
-                new_payload = molstruct_json.to_dict(
-                    n_atoms_total   = n_atoms,
-                    structure_hash  = new_hash,
-                    regions         = existing_regions,
-                    frozen_atoms    = existing_frozen,
-                    selection_rules = existing_rules,
-                    # carry the lattice through the load-modify-write so a
-                    # region edit doesn't strip an existing cell.
-                    cell            = existing_cell,
-                    pbc             = existing_pbc,
-                    created_by      = "molbuilder selection panel",
-                )
-            except molstruct_json.MolstructJsonError as exc:
-                return _bad_request(f"sidecar build failed: {exc}")
-
-            try:
-                molstruct_json.save(sidecar_path, new_payload)
-            except OSError as exc:
-                return _bad_request(f"sidecar write failed: {exc}", 500)
-
-        return jsonify({
-            "ok":              True,
-            "sidecar_path":    str(sidecar_path),
-            "n_atoms_total":   n_atoms,
-            "regions":         new_payload["regions"],
-            "frozen_atoms":    new_payload["frozen_atoms"],
-            "selection_rules": new_payload["selection_rules"],
-        })
-    except _PickerError as exc:
-        return _bad_request(exc.message, exc.status)
-
-
 @bp.route("/api/selection/refresh-hash", methods=["POST"])
 def selection_refresh_hash():
     """Recompute the sidecar's ``structure_hash`` against the
@@ -662,7 +422,7 @@ def selection_refresh_hash():
         new_n_atoms = len(new_struct.elements)
 
         # Serialise the read-modify-write cycle against concurrent
-        # /api/selection/save writers — same lock as selection_save.
+        # sidecar writers — same lock as selection_save_sidecar.
         with molstruct_json.with_lock(sidecar_path):
             try:
                 existing = molstruct_json.load(sidecar_path)
@@ -783,7 +543,7 @@ def selection_save_sidecar():
         if not isinstance(path, str) or not path:
             return _bad_request("missing 'structure_path'")
 
-        # n_atoms validation mirrors /api/selection/save's gate.
+        # n_atoms validation: type + range gate.
         n_atoms = payload.get("n_atoms")
         if (not isinstance(n_atoms, int)
                 or isinstance(n_atoms, bool)):
@@ -873,7 +633,7 @@ def selection_save_sidecar():
         sidecar_path = molstruct_json.sidecar_path_for(resolved)
         new_hash = molstruct_json.sha256_of_file(resolved)
 
-        # Serialise under the same with_lock that /api/selection/save
+        # Serialise under the same with_lock that refresh-hash
         # uses so concurrent writers don't race.
         with molstruct_json.with_lock(sidecar_path):
             try:

@@ -184,10 +184,11 @@ class TestEval:
         returns no atoms" bug.
         """
         # 1. Save: tag atoms 0..3 as L-electrode.
-        save = web.post("/api/selection/save", json={
+        save = web.post("/api/selection/save-sidecar", json={
             "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1, 2, 3],
+            "n_atoms":        11,
+            "regions":        {"L-electrode": [0, 1, 2, 3]},
+            "frozen_atoms":   [],
         })
         assert save.status_code == 200
         # 2. Eval: ask the server to return atoms with that label.
@@ -214,11 +215,12 @@ class TestEval:
         sidecar on save (the on-disk file's ``regions`` block stays
         user-defined).
         """
-        # Save frozen_atoms via the dedicated target.
-        save = web.post("/api/selection/save", json={
+        # Save frozen_atoms via the whole-sidecar writer.
+        save = web.post("/api/selection/save-sidecar", json={
             "structure_path": _path(selection_root),
-            "target":         "frozen_atoms",
-            "indices":        [5, 6, 7],
+            "n_atoms":        11,
+            "regions":        {},
+            "frozen_atoms":   [5, 6, 7],
         })
         assert save.status_code == 200
         # Eval ``frozen_atoms`` via the standard by_region rule.
@@ -237,10 +239,11 @@ class TestEval:
         the (correct) ``is_frozen`` flag AND a (duplicate)
         ``frozen_atoms`` tag in the panel's atom rows.
         """
-        web.post("/api/selection/save", json={
+        web.post("/api/selection/save-sidecar", json={
             "structure_path": _path(selection_root),
-            "target":         "frozen_atoms",
-            "indices":        [5, 6, 7],
+            "n_atoms":        11,
+            "regions":        {},
+            "frozen_atoms":   [5, 6, 7],
         })
         r = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
@@ -493,337 +496,6 @@ class TestAtomsEndpoint:
             assert a["is_frozen"] is False
 
 
-class TestSaveEndpoint:
-    """Pin /api/selection/save: writes the materialised selection
-    into the .molstruct.json sidecar, removing the assigned indices
-    from every other region (mutual-exclusion invariant)."""
-
-    def _sidecar_path(self, root):
-        return root / "junction.molstruct.json"
-
-    def test_creates_sidecar_when_absent(self, web, selection_root):
-        assert not self._sidecar_path(selection_root).exists()
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1, 2, 3],
-        })
-        assert r.status_code == 200
-        j = r.get_json()
-        assert j["ok"] is True
-        assert j["regions"]["L-electrode"] == [0, 1, 2, 3]
-        assert self._sidecar_path(selection_root).exists()
-
-    def test_assigning_region_does_not_remove_from_other_regions(
-        self, web, selection_root,
-    ):
-        """Multi-label model: assigning to one region does NOT prune
-        the atom from other regions.  The user must explicitly
-        remove a label (e.g. via the per-tag × button)."""
-        # Seed: bridge has atoms 4-6.
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "bridge",
-            "indices":        [4, 5, 6],
-        })
-        # Now ALSO assign 5 to L-electrode -- atom 5 should end up
-        # in BOTH regions.
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [5],
-        })
-        j = r.get_json()
-        assert j["regions"]["L-electrode"] == [5]
-        assert j["regions"]["bridge"] == [4, 5, 6]  # unchanged
-
-    def test_frozen_atoms_independent_of_regions(
-        self, web, selection_root,
-    ):
-        # Atoms can be in a region AND frozen (e.g. electrode buffer
-        # layers); frozen_atoms shouldn't reshape the regions map.
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1],
-        })
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "frozen_atoms",
-            "indices":        [0, 1],
-        })
-        j = r.get_json()
-        assert j["regions"]["L-electrode"] == [0, 1]
-        assert j["frozen_atoms"] == [0, 1]
-
-    def test_empty_indices_removes_region(self, web, selection_root):
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1],
-        })
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [],
-        })
-        j = r.get_json()
-        assert "L-electrode" not in j["regions"]
-
-    def test_rule_persisted_in_selection_rules(
-        self, web, selection_root,
-    ):
-        rule = {"op": "by_element", "elements": ["C"]}
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "bridge",
-            "indices":        [4, 5, 6],
-            "rule":           rule,
-        })
-        j = r.get_json()
-        assert j["selection_rules"]["bridge"]["op"] == "by_element"
-        assert j["selection_rules"]["bridge"]["elements"] == ["C"]
-
-    def test_out_of_range_index_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [99],
-        })
-        assert r.status_code == 400
-
-    def test_missing_target_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "indices":        [0],
-        })
-        assert r.status_code == 400
-
-    def test_float_indices_rejected_not_truncated(
-        self, web, selection_root,
-    ):
-        """``int(1.5) -> 1`` is a silent-truncation bug.  Float
-        indices in the request body must be rejected with a 400, not
-        quietly turned into integers -- otherwise a JS-side bug that
-        sent floats would land bogus indices in the sidecar.
-
-        Bool also slips through ``isinstance(x, int)`` in Python
-        (``True == 1``), so the endpoint also rejects bool indices
-        explicitly.
-        """
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1.5, 2],
-        })
-        assert r.status_code == 400, (
-            f"float index should be rejected; got {r.status_code} "
-            f"with body {r.get_json()!r}"
-        )
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, True, 2],
-        })
-        assert r.status_code == 400, (
-            f"bool index should be rejected; got {r.status_code} "
-            f"with body {r.get_json()!r}"
-        )
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        ["1", "2"],
-        })
-        assert r.status_code == 400, (
-            "numeric string index should be rejected; "
-            "got " + str(r.status_code)
-        )
-
-    def test_corrupt_sidecar_rejects_save_without_destroying_data(
-        self, web, selection_root,
-    ):
-        """A corrupt sidecar carries user work the server can neither
-        read nor safely overwrite.  Writing a fresh sidecar from the
-        current save's target would silently destroy every OTHER
-        region / frozen_atoms / rule the user had set previously.
-        The endpoint must refuse the save (409 Conflict) so the user
-        can rename / recover the file -- their action fails loudly
-        instead of erasing data.
-
-        Pinned against the 2026-05-20 regression where the endpoint
-        silently caught MolstructJsonError, started with empty
-        defaults, and overwrote the corrupt sidecar with a fresh one
-        containing only the current target.
-        """
-        sidecar = self._sidecar_path(selection_root)
-        sidecar.write_text("{not valid json")
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1, 2],
-        })
-        assert r.status_code == 409, (
-            f"expected 409 Conflict on corrupt sidecar; got {r.status_code} "
-            f"with body {r.get_json()!r}"
-        )
-        j = r.get_json()
-        assert j["ok"] is False
-        assert "sidecar" in j["error"].lower(), (
-            f"error message should mention the sidecar; got {j['error']!r}"
-        )
-        # The corrupt file is left in place for the user to inspect
-        # (NOT silently overwritten).
-        assert sidecar.read_text() == "{not valid json"
-
-    def test_multi_label_round_trip_via_atoms(
-        self, web, selection_root,
-    ):
-        """Atoms endpoint surfaces ALL region labels an atom belongs
-        to, not just the most recently assigned."""
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1, 2, 3],
-        })
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "interface",
-            "indices":        [3, 4],
-        })
-        r = web.post("/api/selection/atoms", json={
-            "structure_path": _path(selection_root),
-        })
-        atoms = r.get_json()["atoms"]
-        # Atom 3 should carry BOTH labels (order is insertion order):
-        assert set(atoms[3]["regions"]) == {"L-electrode", "interface"}
-        # Atoms 0-2 only L-electrode:
-        assert atoms[0]["regions"] == ["L-electrode"]
-        # Atom 4 only interface:
-        assert atoms[4]["regions"] == ["interface"]
-
-    def test_atoms_endpoint_reflects_saved_regions(
-        self, web, selection_root,
-    ):
-        """Round-trip: save a region, then GET /api/selection/atoms
-        and verify the atoms list carries the new label."""
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1, 2, 3],
-        })
-        r = web.post("/api/selection/atoms", json={
-            "structure_path": _path(selection_root),
-        })
-        atoms = r.get_json()["atoms"]
-        assert atoms[0]["regions"] == ["L-electrode"]
-        assert atoms[4]["regions"] == []   # bridge atoms still bare
-
-
-# --------------------------------------------------------------------- #
-#  /api/selection/save  -- concurrency (task #148)                      #
-# --------------------------------------------------------------------- #
-
-
-class TestSaveConcurrency:
-    """Integration test for the sidecar lock added 2026-06-02.
-
-    Two concurrent saves on different region keys MUST both land
-    in the sidecar -- the lock around the read-modify-write window
-    in ``api_selection_save`` serialises them so the second writer
-    sees the first writer's update.  Without the lock, the
-    second-arriving response clobbers the first.
-    """
-
-    def test_two_parallel_saves_both_persist(
-            self, selection_root, tmp_path):
-        """Spin up a real WSGI server (the Flask test_client is not
-        designed for true concurrent use across threads; using a
-        werkzeug server matches the production wire-up).  Fire two
-        POSTs to /api/selection/save in parallel from worker threads,
-        each tagging a different region.  After both complete, the
-        sidecar must hold both."""
-        pytest.importorskip("flask")
-        import threading
-        import urllib.request
-        import urllib.parse
-        import json as _json
-        from werkzeug.serving import make_server
-        from molbuilder.web.app import create_app
-
-        app = create_app(config={})
-        server = make_server("127.0.0.1", 0, app, threaded=True)
-        port = server.server_port
-        srv_thread = threading.Thread(
-            target=server.serve_forever, daemon=True)
-        srv_thread.start()
-
-        try:
-            base = f"http://127.0.0.1:{port}"
-
-            def _save(region_name, indices, out):
-                """Worker: POST one save with a small artificial
-                slow-down to widen the race window between the
-                client-side read and write so an unsynchronised
-                server-side RMW would reliably lose one of them."""
-                body = _json.dumps({
-                    "structure_path": _path(selection_root),
-                    "target":         region_name,
-                    "indices":        indices,
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    base + "/api/selection/save",
-                    data=body,
-                    headers={"Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    out.append(_json.loads(r.read()))
-
-            results_a, results_b = [], []
-            t1 = threading.Thread(target=_save,
-                                  args=("L-electrode", [0, 1], results_a))
-            t2 = threading.Thread(target=_save,
-                                  args=("R-electrode", [7, 8], results_b))
-            t1.start()
-            t2.start()
-            t1.join(timeout=15)
-            t2.join(timeout=15)
-
-            assert not t1.is_alive(), "save #1 still running"
-            assert not t2.is_alive(), "save #2 still running"
-            assert results_a and results_a[0].get("ok") is True, (
-                f"save #1 response: {results_a!r}")
-            assert results_b and results_b[0].get("ok") is True, (
-                f"save #2 response: {results_b!r}")
-
-            # The DEFINITIVE check: read the sidecar back via the
-            # atoms endpoint and verify BOTH regions landed.  If the
-            # lock wasn't in place, only the later writer's region
-            # would survive on disk and atoms[0]['regions'] would NOT
-            # include "L-electrode".
-            req = urllib.request.Request(
-                base + "/api/selection/atoms",
-                data=_json.dumps({
-                    "structure_path": _path(selection_root),
-                }).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                body = _json.loads(r.read())
-            atoms = body["atoms"]
-
-            assert "L-electrode" in atoms[0]["regions"], (
-                f"L-electrode lost from sidecar after concurrent save; "
-                f"atoms[0]={atoms[0]!r}"
-            )
-            assert "R-electrode" in atoms[7]["regions"], (
-                f"R-electrode lost from sidecar after concurrent save; "
-                f"atoms[7]={atoms[7]!r}"
-            )
-        finally:
-            server.shutdown()
-            srv_thread.join(timeout=5)
-
-
 class TestStateless:
     def test_same_request_yields_same_response(self, web, selection_root):
         """No server-side state between identical requests."""
@@ -840,7 +512,7 @@ class TestStateless:
 #  Error-path coverage gaps (task #147)                                 #
 #                                                                       #
 #  Each endpoint has 3-5 error branches.  Pre-existing test classes    #
-#  (TestEval, TestAtomsEndpoint, TestSaveEndpoint)                     #
+#  (TestEval, TestAtomsEndpoint, TestSaveSidecar)                      #
 #  cover the happy path + a few of the most common bad inputs.  This   #
 #  class fills the gaps so every error branch in the blueprint has    #
 #  at least one test pinning its status code + message shape.          #
@@ -918,149 +590,6 @@ class TestAtomsErrorPaths:
         assert a0.get("chain_id")     == "A"
 
 
-class TestSaveErrorPaths:
-    """Error branches in ``api_selection_save`` beyond the happy
-    path + the existing missing_target / out_of_range tests."""
-
-    def test_n_atoms_rejected_when_huge(self, web, selection_root):
-        """Regression for 2026-06-09 audit: the client_n_atoms parameter
-        (used to validate indices against in-memory workspace state
-        instead of disk) must be capped.  Without the cap, a malicious
-        client could send ``n_atoms: 999_999_999`` and poison the sidecar
-        with that value as ``n_atoms_total`` — bricking the file until
-        manual cleanup (every future apply_to_structure fails the
-        n_atoms_total != struct.n_atoms check).
-        """
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0],
-            "n_atoms":        999_999_999,
-        })
-        assert r.status_code == 400
-        body = r.get_json()
-        assert "n_atoms" in body["error"].lower()
-
-    def test_n_atoms_rejected_when_negative(self, web, selection_root):
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0],
-            "n_atoms":        -1,
-        })
-        assert r.status_code == 400
-
-    def test_n_atoms_rejected_when_bool(self, web, selection_root):
-        """Python's ``True == 1`` would slip past a naive int check."""
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0],
-            "n_atoms":        True,
-        })
-        assert r.status_code == 400
-
-    def test_n_atoms_accepted_at_cap(self, web, selection_root):
-        """The cap (1_000_000) is INCLUSIVE — exactly the cap is fine,
-        only over-cap is rejected.  Use a small indices list so the
-        index validation doesn't pin against an unrealistic n_atoms."""
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0],
-            "n_atoms":        1_000_000,
-        })
-        # Should accept the n_atoms; succeed (200) since idx=0 is in range.
-        assert r.status_code == 200
-
-    def test_path_traversal_rejected(self, web):
-        r = web.post("/api/selection/save", json={
-            "structure_path": "/etc/passwd",
-            "target":         "L-electrode",
-            "indices":        [0],
-        })
-        assert r.status_code in (400, 403)
-
-    def test_non_structure_extension_rejected(
-            self, web, selection_root):
-        bad = selection_root / "junk.out"
-        bad.write_text("not a structure\n")
-        r = web.post("/api/selection/save", json={
-            "structure_path": str(bad),
-            "target":         "L-electrode",
-            "indices":        [0],
-        })
-        # Save validates extension via its own check (different
-        # message); 400 either way.
-        assert r.status_code == 400
-
-    def test_file_not_found_returns_404(self, web, selection_root):
-        r = web.post("/api/selection/save", json={
-            "structure_path": str(selection_root / "no-such.xyz"),
-            "target":         "L-electrode",
-            "indices":        [0],
-        })
-        assert r.status_code == 404
-
-    def test_missing_indices_returns_400(self, web, selection_root):
-        """Omitting ``indices`` entirely is a 400 (the shape contract
-        requires it; a missing key means the client is broken, not
-        that the user wants to clear the region -- that's
-        ``indices: []``)."""
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            # no "indices" key
-        })
-        assert r.status_code == 400
-        body = r.get_json()
-        assert "indices" in body.get("error", "").lower()
-
-    def test_indices_not_a_list_returns_400(self, web, selection_root):
-        for bad in ("not a list", 42, {"0": 1}, None):
-            r = web.post("/api/selection/save", json={
-                "structure_path": _path(selection_root),
-                "target":         "L-electrode",
-                "indices":        bad,
-            })
-            assert r.status_code == 400, (
-                f"expected 400 for indices={bad!r}; got {r.status_code}"
-            )
-
-    def test_target_must_be_string(self, web, selection_root):
-        """Non-string / empty target = 400.  The existing
-        ``test_missing_target_returns_400`` covers the absent-key
-        case; this covers the wrong-type + whitespace-only cases."""
-        for bad in (42, None, [1], "", "   "):
-            r = web.post("/api/selection/save", json={
-                "structure_path": _path(selection_root),
-                "target":         bad,
-                "indices":        [0],
-            })
-            assert r.status_code == 400, (
-                f"expected 400 for target={bad!r}; got {r.status_code}"
-            )
-
-    def test_hash_recorded_in_new_sidecar(self, web, selection_root):
-        """When the sidecar is freshly created, ``structure_hash`` in
-        the JSON must match the XYZ's sha256.  Lets a later loader
-        detect "the user edited the structure since this sidecar
-        was saved" without re-hashing the XYZ on every read."""
-        r = web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1],
-        })
-        assert r.status_code == 200
-        # Read back the sidecar JSON directly to verify the hash.
-        from molbuilder.sidecars import molstruct as msj
-        side = msj.sidecar_path_for(Path(_path(selection_root)))
-        saved = msj.load(side)
-        expected_hash = msj.sha256_of_file(
-            Path(_path(selection_root)))
-        assert saved["structure_hash"] == expected_hash
-
-
 class TestRefreshHash:
     """``/api/selection/refresh-hash`` keeps the sidecar's
     ``structure_hash`` in sync with the XYZ bytes after a Save
@@ -1089,19 +618,14 @@ class TestRefreshHash:
         refresh-hash must update the sidecar's hash + leave
         regions/frozen_atoms/rules unchanged."""
         from molbuilder.sidecars import molstruct as msj
-        # Seed a sidecar with regions + frozen + a rule via the
-        # selection_save path (so we test the integration, not a
-        # hand-rolled sidecar).
-        web.post("/api/selection/save", json={
+        # Seed a sidecar with regions + frozen via the save-sidecar
+        # path (so we test the integration, not a hand-rolled
+        # sidecar).
+        web.post("/api/selection/save-sidecar", json={
             "structure_path": _path(selection_root),
-            "target":         "L-electrode",
-            "indices":        [0, 1],
-            "rule":           {"op": "by_element", "elements": ["Au"]},
-        })
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "frozen_atoms",
-            "indices":        [10],
+            "n_atoms":        11,
+            "regions":        {"L-electrode": [0, 1]},
+            "frozen_atoms":   [10],
         })
         side = msj.sidecar_path_for(Path(_path(selection_root)))
         before = msj.load(side)
@@ -1274,22 +798,17 @@ class TestSaveSidecar:
     def test_replaces_existing_sidecar_does_not_merge(
             self, web, selection_root):
         """Core contract: prior regions/frozen_atoms in the existing
-        sidecar are WIPED, not merged with the new payload.  This is
-        the difference from /api/selection/save which has REPLACE-
-        per-target semantics.
+        sidecar are WIPED, not merged with the new payload.  A second
+        save-sidecar REPLACES the whole prior sidecar rather than
+        merging into it.
         """
         from molbuilder.sidecars import molstruct as msj
-        # Seed an existing sidecar with stale labels via the
-        # per-target endpoint.
-        web.post("/api/selection/save", json={
+        # Seed an existing sidecar with stale labels.
+        web.post("/api/selection/save-sidecar", json={
             "structure_path": _path(selection_root),
-            "target":         "stale-region",
-            "indices":        [0, 1, 2],
-        })
-        web.post("/api/selection/save", json={
-            "structure_path": _path(selection_root),
-            "target":         "frozen_atoms",
-            "indices":        [9, 10],
+            "n_atoms":        11,
+            "regions":        {"stale-region": [0, 1, 2]},
+            "frozen_atoms":   [9, 10],
         })
         # Bulk-replace with the workspace's "authoritative" state.
         r = web.post("/api/selection/save-sidecar", json={
@@ -1395,7 +914,7 @@ class TestCrossCutting:
 
     @pytest.mark.parametrize("endpoint", [
         "/api/selection/atoms",
-        "/api/selection/save",
+        "/api/selection/save-sidecar",
         "/api/selection/eval",
     ])
     def test_non_json_body_returns_400(self, web, endpoint):
@@ -1411,7 +930,7 @@ class TestCrossCutting:
 
     @pytest.mark.parametrize("endpoint", [
         "/api/selection/atoms",
-        "/api/selection/save",
+        "/api/selection/save-sidecar",
         "/api/selection/eval",
     ])
     def test_top_level_not_object_returns_400(self, web, endpoint):

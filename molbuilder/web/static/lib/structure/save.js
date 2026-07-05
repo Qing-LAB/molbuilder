@@ -146,18 +146,13 @@
     }
 
     /**
-     * Atomically REPLACE the destination sidecar with the
-     * workspace's labels.  Single HTTP call via
-     * ``/api/selection/save-sidecar`` — replaces the prior
-     * N+1-POST loop (one per region + one for frozen_atoms)
-     * that merged with any stale sidecar at the destination.
+     * Atomically REPLACE the destination sidecar with the whole store
+     * (regions + frozen + periodicity).  Single HTTP call via
+     * ``/api/selection/save-sidecar`` (REPLACE-all).
      *
-     * Save-as semantics: workspace state is authoritative; any
-     * pre-existing sidecar at the destination is wiped before
-     * the workspace labels are written.  Without this, a user
-     * who Save-as's to a previously-labelled file would get a
-     * silent MERGE (per /api/selection/save's REPLACE-per-
-     * target semantics) instead of the expected REPLACE-all.
+     * workspace-contract.md §4.0: the store is authoritative -- a save writes
+     * the whole store, wiping any stale sidecar at the destination.  Fires on
+     * EVERY save (see _postWriteSuccess), not just save-as.
      */
     function _persistLabelsToDestination(path, labels, nAtoms) {
         if (!root.fetch) return Promise.resolve();

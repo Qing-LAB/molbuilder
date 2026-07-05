@@ -273,7 +273,6 @@ flowchart LR
     end
     subgraph "Selection"
         s_atoms["POST /api/selection/atoms"]
-        s_save["POST /api/selection/save"]
         s_eval["POST /api/selection/eval"]
         s_rhash["POST /api/selection/refresh-hash"]
         s_ssc["POST /api/selection/save-sidecar"]
@@ -824,7 +823,6 @@ lives in [`molview-module.md`](molview-module.md).
 |---|---|---|---|
 | `/api/selection/atoms` | POST | `{structure_path}` | `{ok, n_atoms, atoms: [{index, element, atom_name?, residue_name?, chain_id?, is_frozen, regions}]}` |
 | `/api/selection/eval` | POST | `{structure_path, rule}` | `{ok, selected_indices, count, n_atoms_total}` |
-| `/api/selection/save` | POST | `{structure_path, rule, target}` | `{ok, sidecar_path, schema_version}` |
 | `/api/selection/refresh-hash` | POST | `{structure_path}` | `{ok, refreshed, structure_hash}` |
 | `/api/selection/save-sidecar` | POST | `{structure_path, n_atoms, regions?, frozen_atoms?}` | `{ok, sidecar_path, n_atoms_total, regions, frozen_atoms}` |
 
