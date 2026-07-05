@@ -98,24 +98,37 @@
         }
         return out.join("\n") + "\n";
     }
+    // The authoritative cell is the STORE's (workspace-contract.md §4.0): on a
+    // reopen it holds the sidecar's SAVED cell, on a modify op the captured cell.
+    // The applyStructure payload's cell is only a fallback -- for a loaded file
+    // it is the bbox parsed from the .xyz text (the .xyz carries no lattice).
+    function _storeCell() {
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        if (ws && typeof ws.getStructure === "function") {
+            const s = ws.getStructure();
+            return (s && s.periodicity && s.periodicity.cell) || null;
+        }
+        return null;
+    }
     function _renderModel() {
         if (!state.xyz) return;
         const store = _selStore();
         const mv = window.molbuilder && window.molbuilder.molview;
         const view = store ? store.getState() : null;
         const kg = (view && view.kgrid) || {};
-        if (kg.enabled && state.cell
+        const cell = _storeCell() || state.cell;   // store is authoritative
+        if (kg.enabled && cell
                 && mv && typeof mv.computeRender === "function"
                 && state.positions.length === state.n_atoms) {
-            const out = mv.computeRender(state.positions, view, state.cell);
+            const out = mv.computeRender(state.positions, view, cell);
             _handle.setStructure({
                 xyz:     _kgridXyz(out.positions, out.sourceIndex),
-                lattice: state.cell,
+                lattice: cell,
             });
         } else {
             _handle.setStructure({
                 xyz:     state.xyz,
-                lattice: state.cell || undefined,
+                lattice: cell || undefined,
             });
         }
         _handle.refit();
