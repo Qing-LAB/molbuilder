@@ -710,6 +710,10 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{# molview k-grid: the render controller (mountKgridRender) + tiling compute.
+   render-pipeline depends on kgrid, so kgrid loads first. #}
+<script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Selection store + canvas-state — internal implementation

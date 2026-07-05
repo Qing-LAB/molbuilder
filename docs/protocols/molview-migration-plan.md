@@ -113,7 +113,10 @@ that wants k-grid must re-implement the controller. That is the core defect.
 - **Check:** (a) enabling k-grid in Modify tiles the supercell (manual on a real
   celled structure + an e2e if feasible); (b) `grep` shows ZERO hand-crafted
   k-grid/cell/tiling in `modify/viewer.js` — the render loop is the module's.
-- **Status:** ☐
+- **Status:** ◐ code done 2026-07-05 — Modify's `applyStructure` renders the base
+  cell from the store (`_cellFromStore`) + hands k-grid to `mountKgridRender`; (b)
+  verified (grep clean); panel + controller confirmed sharing `ws.selection`.
+  **(a) awaiting the user's manual confirm** that k-grid tiles in Modify.
 
 ### Step 3 — Modify composes the panel + viewer through the module (fixes G2: unify)
 - **Do:** replace Modify's bespoke panel mount with `selection.mountPanel(host,

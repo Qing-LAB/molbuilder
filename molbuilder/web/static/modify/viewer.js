@@ -84,6 +84,36 @@
         if (s) s.clear();
     }
 
+    // The cell comes from the workspace data model (ws.getStructure().periodicity)
+    // -- the single source.  One accessor, used for the base render's wireframe AND
+    // by the module k-grid controller (getCell).  No hand-read of a load response.
+    function _cellFromStore() {
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        const s = (ws && typeof ws.getStructure === "function")
+            ? ws.getStructure() : null;
+        return (s && s.periodicity && s.periodicity.cell) || null;
+    }
+
+    // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop
+    // here.  Mounted once; getUnit hands it Modify's current unit-cell state,
+    // getCell hands it the store's cell.  applyStructure calls _kgCtl.refresh()
+    // after a base render so the module re-tiles on a structure change.
+    let _kgCtl = null;
+    function _wireKgrid() {
+        if (_kgCtl) return;
+        const mv = window.molbuilder && window.molbuilder.molview;
+        const store = _selStore();
+        if (!mv || typeof mv.mountKgridRender !== "function" || !store) return;
+        _kgCtl = mv.mountKgridRender(_handle, store, {
+            getUnit: function () {
+                return { coords:   state.positions,
+                         elements: state.elements,
+                         xyz:      state.xyz };
+            },
+            getCell: _cellFromStore,
+        });
+    }
+
     // --------------------------------------------------------------- //
     //  Embedded MolViewer.                                             //
     //                                                                  //
@@ -501,16 +531,18 @@
         // toggle-driven state below; setStructure leaves those
         // settings intact so they re-render against the new atoms.
         if (state.xyz) {
-            _handle.setStructure({ xyz: state.xyz });
-            // Style / labels / axes are owned by the standard knob
-            // bar after #203; setStructure leaves the current settings
-            // intact so they re-render against the new atoms.
-            // Default fit shows the whole structure (atoms + slabs)
-            // so the user always sees what's in the model after a
-            // refresh.  The Focus-molecule toolbar button switches to
-            // a molecule-anchored pivot for smooth zoom on the small
-            // molecule when slabs are present.
+            // Base render: the unit cell + its wireframe (cell from the store).
+            // Style / labels / axes are owned by the standard knob bar (#203);
+            // setStructure leaves them intact.
+            _handle.setStructure({
+                xyz:     state.xyz,
+                lattice: _cellFromStore() || undefined,
+            });
             _handle.refit();
+            // Hand the k-grid render to the module (mounted once); re-tile if
+            // k-grid is on.  The module owns the tiling loop -- none here.
+            _wireKgrid();
+            if (_kgCtl) _kgCtl.refresh();
         }
         // No else-branch needed: applyStructure is only called with
         // an xyz from a successful /api/build/load response; the
