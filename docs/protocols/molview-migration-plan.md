@@ -261,8 +261,17 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
   uses `/api/workingcopy/open` -> the store. Delete the file-open `/api/build/load`
   call + the `/api/selection/atoms` cell fetch.
 - **Check:** opening a saved structure loads atoms + labels + cell in ONE call; grep:
-  no `/api/build/load` or `/api/selection/atoms` in the Modify file-open path.
-- **Status:** ☐
+  no `/api/selection/atoms` in the Modify file-open path.
+- **Status:** ☑ done 2026-07-05. `/api/workingcopy/open` extended to return `atoms`
+  (per-atom rows via the shared `atoms_list`, sidecar regions/frozen applied by
+  `codec.load`) + `periodicity`. `_commitFile` takes its DATA from ONE
+  `/api/workingcopy/open` call; both `/api/selection/atoms` reads (periodicity fetch
+  + the `refreshAtoms` sidecar overlay) are gone. **Scope note:** `/api/build/load`
+  (the viewer `loadStructureText`) STAYS as the RENDER pipeline only — its atoms are
+  discarded in favour of the framework's; removing it is a separate viewer-render
+  change, not a data-path one. Atoms normalise via `_normaliseAtom` (labels/isFrozen)
+  exactly as the old path did. Test: `open` returns sidecar regions/frozen + kgrid;
+  126 store/dispatcher/atom-list/workingcopy/shared tests pass.
 
 ### A3 — draft + discard through the framework (decision-gated)
 - **Do:** decide whether the crash-surviving draft moves from `sessionStorage` to

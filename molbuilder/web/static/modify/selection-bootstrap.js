@@ -320,23 +320,27 @@
             }
             const format = path.toLowerCase().endsWith(".pdb")
                 ? "pdb" : "xyz";
-            // Path-based load (structure-periodicity.md): read the sidecar's
-            // periodicity by PATH so a reopened saved structure restores its
-            // cell/axis_kind/vacuum/kgrid.  This is why the open flow must be
-            // path-based -- /api/build/load only sees the text, never the .json
-            // sidecar that sits next to the .xyz on the server.  Absent -> null.
-            let periodicity = null;
+            // A6 (molview-migration-plan): load the workspace DATA through the
+            // working-copy framework in ONE call -- the per-atom rows (element +
+            // the sidecar's regions/frozen, applied server-side by codec.load) +
+            // the full periodicity (cell/axis_kind/vacuum/kgrid).  This is the
+            // store's single source; the ad-hoc /api/selection/atoms disk reads
+            // (periodicity + the frozen/region overlay) are gone.  /api/build/load
+            // (viewerLoader, below) now only RENDERS the bytes; its atoms are
+            // discarded in favour of the framework's.
+            let opened = null;
             try {
-                const pr = await fetch("/api/selection/atoms", {
+                const or = await fetch("/api/workingcopy/open", {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ structure_path: path }),
+                    body:    JSON.stringify({ path: path }),
                 });
-                if (pr.ok) {
-                    const pj = await pr.json();
-                    if (pj && pj.ok) periodicity = pj.periodicity || null;
+                if (or.ok) {
+                    const oj = await or.json();
+                    if (oj && oj.ok) opened = oj;
                 }
-            } catch (_) { periodicity = null; }
+            } catch (_) { opened = null; }
+            const periodicity = (opened && opened.periodicity) || null;
             const gate = await sp.loadIntoCanvas(
                 { source_format: format, text: r.text, periodicity: periodicity },
                 { kind: "file", file: path }
@@ -384,33 +388,22 @@
             // them just sequences atom-install completion against
             // _commitFile's return.
             if (typeof store.adoptSession === "function") {
+                // A6: adopt the FRAMEWORK's atoms -- they already carry the
+                // sidecar's regions + frozen_atoms (codec.load applied the
+                // ``.molstruct.json`` when opening), so there is no
+                // /api/selection/atoms refetch to overlay.  The atom rows are the
+                // same wire shape /api/build/load returns, plus the sidecar data.
+                // Fall back to the viewer payload's (plain) atoms only if the
+                // open call itself failed.
                 await store.adoptSession({
                     sourceFile: path,
                     selection:  [],
-                    atoms:      (loaded && Array.isArray(loaded.atoms))
-                                  ? loaded.atoms
-                                  : undefined,
+                    atoms:      (opened && Array.isArray(opened.atoms))
+                                  ? opened.atoms
+                                  : ((loaded && Array.isArray(loaded.atoms))
+                                       ? loaded.atoms
+                                       : undefined),
                 });
-                // 2026-06-09 audit BLOCKER: /api/build/load does NOT
-                // apply the ``.molstruct.json`` sidecar, so the atoms
-                // we just adopted from ``loaded`` have no frozen_atoms
-                // / regions data.  Overlay sidecar data via
-                // /api/selection/atoms (which DOES apply the sidecar)
-                // so the panel's frozen badges + the viewer-adapter's
-                // region tints render correctly on sidebar load.
-                //
-                // Awaited so it sequences against ``_commitFile``'s
-                // return — same anti-race argument as the adoptSession
-                // await (no chance of a user click landing between
-                // build-load atoms and sidecar-enriched atoms with
-                // wrong-state UI mid-flight).
-                if (typeof store.refreshAtoms === "function") {
-                    try { await store.refreshAtoms(); }
-                    catch (_) { /* non-fatal — leave plain atoms in
-                                   place; the user gets the structure
-                                   without sidecar enrichment.  Better
-                                   than reverting the whole load. */ }
-                }
             } else {
                 await store.setSourceFile(path);  // legacy fallback
             }

@@ -69,8 +69,25 @@ def wc_open():
         return _bad(e.message, e.status)
     w = wc.WorkingCopy.open(src, _CODEC, session=_session(),
                             project_dir=src.parent)
-    return jsonify({"ok": True, "session": w.session, "source": str(w.source),
-                    "data": _CODEC.scratch_blob(w.data)})
+    blob = _CODEC.scratch_blob(w.data)
+    sc = blob.get("sidecar") or {}
+    # A6 (molview-migration-plan): the Modify load takes its DATA from HERE in ONE
+    # call -- the per-atom rows (element + labels + is_frozen, sidecar already
+    # applied by codec.load) + the full periodicity -- so the load needs no
+    # /api/selection/atoms disk read.  ``atoms_list`` is the shared wire-shape
+    # builder (same rows /api/selection/atoms + every /api/modify/* response emit).
+    from ._shared import atoms_list
+    return jsonify({
+        "ok": True, "session": w.session, "source": str(w.source),
+        "data": blob,
+        "atoms": atoms_list(w.data),
+        "periodicity": {
+            "cell":      sc.get("cell"),
+            "axis_kind": sc.get("axis_kind"),
+            "vacuum":    sc.get("vacuum"),
+            "kgrid":     sc.get("kgrid"),
+        },
+    })
 
 
 @bp.route("/api/workingcopy/update", methods=["POST"])

@@ -43,6 +43,27 @@ def test_open_update_save(client_project):
     assert json.loads((proj / "mol.molstruct.json").read_text())["frozen_atoms"] == [1]
 
 
+def test_open_returns_atoms_and_periodicity_for_the_store(client_project):
+    """A6: /api/workingcopy/open returns the per-atom rows (WITH the sidecar's
+    regions + frozen) + the full periodicity in ONE call, so the Modify load takes
+    its DATA from the framework, not /api/selection/atoms."""
+    from molbuilder.sidecars import molstruct as _msj
+    client, proj = client_project
+    xyz = proj / "mol.xyz"
+    _msj.save(_msj.sidecar_path_for(xyz), _msj.to_dict(
+        n_atoms_total=5, structure_hash=_msj.sha256_of_file(xyz),
+        regions={"L-electrode": [0, 1]}, frozen_atoms=[0],
+        cell=[[40, 0, 0], [0, 40, 0], [0, 0, 40]],
+        axis_kind=["periodic", "periodic", "periodic"], kgrid=[2, 2, 2]))
+    r = _json(client.post("/api/workingcopy/open", json={"path": str(xyz)}))
+    assert r["ok"]
+    assert len(r["atoms"]) == 5
+    assert "L-electrode" in r["atoms"][0]["regions"]      # sidecar region on the atom
+    assert r["atoms"][0]["is_frozen"] is True             # sidecar frozen on the atom
+    assert r["periodicity"]["kgrid"] == [2, 2, 2]         # periodicity carried
+    assert r["periodicity"]["axis_kind"] == ["periodic", "periodic", "periodic"]
+
+
 def test_update_sourceless_drafts_under_projects_root(client_project, monkeypatch):
     """A brand-new molecule (NO source file) STILL gets a transient draft -- the
     contract persists ANY in-memory data, no project dir required.  Home = the
