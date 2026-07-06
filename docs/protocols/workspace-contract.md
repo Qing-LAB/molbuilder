@@ -258,17 +258,18 @@ internal layout is never exposed):
 | `ws.getElements()` | `string[]` | Element symbol per atom, in index order. `[]` when empty. |
 | `ws.getCoordinates()` | `number[][]` | `[[x,y,z], …]` — all coordinates. The ONLY way to read geometry; never parse `structure.text`. |
 | `ws.getUnitCell()` / `ws.getLattice()` | `number[][] \| null` | The 3×3 cell (alias pair). `null` when non-periodic/absent. |
-| `ws.getAxisKind()` | `[string,string,string]` | Per-axis `periodic\|isolated\|transport`. **Default when unset:** all `periodic` if a cell exists, else all `isolated`. |
+| `ws.getAxisKind()` | `[string,string,string] \| null` | Per-axis `periodic\|isolated\|transport`. **NOT defaulted** — `axis_kind` is a scientific choice (periodic vs transport can't be guessed), so `null` when unset; the consumer must resolve it. |
 | `ws.getVacuum()` | `[number,number,number]` | Per-axis vacuum padding. **Default `[0,0,0]`.** |
 | `ws.getKgrid()` | `[number,number,number]` | k-point grid. **Default `[1,1,1]` (gamma).** |
 | `ws.getAtomsByLabel(label)` | `number[]` | Atom indices carrying `label` — a **direct** label→indices lookup, no scan. |
 | `ws.getFrozen()` | `number[]` | Indices of frozen atoms. |
 | `ws.atomFor3Dmol(i)` | `{elem,x,y,z} \| null` | One atom in 3Dmol's shape (numbers). |
 | `ws.toAddAtoms()` | `[{elem,x,y,z}, …]` | Whole model in 3Dmol's shape, for `model.addAtoms(...)`. The render path uses THIS, never `addModel(string)`. |
-| `ws.getMetadata(key?)` | `any` | Generic metadata (extensibility): the value for `key`, or — with no argument — a copy of the whole map. `null` for a missing key. |
 
-Key fields always return a usable value (the defaults above), so a consumer never
-special-cases "unset."
+Only the SAFE-to-default fields (`kgrid` → gamma, `vacuum` → 0) return a usable value
+when unset; `axis_kind` (scientifically loaded) returns `null`. (Generic key-value
+metadata was removed — it was an unpersisted data-loss sink; persisting it is a
+designed sidecar-schema follow-up, not an accessor.)
 
 ### 2.1 Subscriptions
 
@@ -343,8 +344,7 @@ next Save). Each is the mirror of its read accessor:
 | `ws.setKgrid(dims)` | `void` | Sets the k-point grid `[nx,ny,nz]`; marks dirty. |
 | `ws.setAxisKind(kinds)` | `void` | Sets per-axis `periodic\|isolated\|transport`; marks dirty. |
 | `ws.setVacuum(vac)` | `void` | Sets per-axis vacuum padding; marks dirty. |
-| `ws.setLabel(label, indices)` | `Promise` | REPLACE-per-label: `label` now tags exactly `indices` (in-memory; the sidecar is written on Save). |
-| `ws.setMetadata(key, value)` | `void` | Generic metadata write (extensibility — a new field needs no new accessor); marks dirty. |
+| `ws.setLabel(label, indices)` | `Promise` | REPLACE-per-label: `label` now tags exactly `indices` (in-memory, **marks dirty** so the edit survives reload; the sidecar is written on Save). |
 
 **Adding/deleting ATOMS is NOT a granular accessor** — geometry mutation goes through
 `ws.applyOp(op, args)` (the server modify pipeline above), so bonds + validation stay

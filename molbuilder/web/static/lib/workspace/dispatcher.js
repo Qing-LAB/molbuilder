@@ -211,15 +211,7 @@
         var per = _periodicityInternal();
         return (per && per.cell) || null;
     }
-    // Defaults for unset key fields (§1.2.1): a consumer always gets a usable value.
-    function getAxisKind() {
-        var per = _periodicityInternal();
-        if (per && per.axis_kind) return per.axis_kind;
-        // Default: periodic on every axis when a cell exists, else isolated.
-        return getUnitCell()
-            ? ["periodic", "periodic", "periodic"]
-            : ["isolated", "isolated", "isolated"];
-    }
+    // Defaults for SAFE-to-default fields only (§1.2.1): kgrid -> gamma, vacuum -> 0.
     function getVacuum() {
         var per = _periodicityInternal();
         return (per && per.vacuum) || [0, 0, 0];
@@ -227,6 +219,15 @@
     function getKgrid() {
         var per = _periodicityInternal();
         return (per && per.kgrid) || [1, 1, 1];   // gamma-point default
+    }
+    // axis_kind is NOT safe to default: periodic vs isolated vs transport is a
+    // scientific choice (guessing periodic would generate a WRONG PBC/transport
+    // boundary for a transport cell).  Return the explicit value, or null when unset
+    // -- the consumer must resolve an unspecified periodicity, never get a guess.
+    // Review finding a3.
+    function getAxisKind() {
+        var per = _periodicityInternal();
+        return (per && per.axis_kind) || null;
     }
     // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
     // a plain ``regions[label]`` read once D4 makes the internals columnar -- the
@@ -291,21 +292,18 @@
     // Save).  Routes to the selection store's label writer.
     function setLabel(label, indices) {
         var st = _store();
-        if (st && typeof st.writeLabel === "function") {
-            return st.writeLabel(label, indices);
-        }
+        if (!st || typeof st.writeLabel !== "function") return;
+        var p = st.writeLabel(label, indices);
+        // MUST mark dirty (like ws.selection.writeLabel) -- else the restore gate
+        // (dirty || !source.file) refetches disk atoms on reload and the label is
+        // silently lost.  Review finding a1.
+        try { markDirty(); } catch (_) { /* empty/absent canvas -> no-op */ }
+        return p;
     }
-    // Generic metadata (extensibility): add a field without adding an accessor.
-    function setMetadata(key, value) {
-        var cs = _canvas();
-        if (cs && typeof cs.setMetadata === "function") cs.setMetadata(key, value);
-    }
-    function getMetadata(key) {
-        var cs = _canvas();
-        return (cs && typeof cs.getMetadata === "function")
-            ? cs.getMetadata(key)
-            : (key === undefined ? {} : null);
-    }
+    // NOTE: generic key-value metadata was REMOVED (review finding a2): the accessor
+    // wrote to an in-memory map that no persisted form carried -> a silent data-loss
+    // sink.  Persisting it needs a real sidecar schema field (`metadata` on Structure
+    // + molstruct + the codec); that is a designed follow-up, not a bug-fix bolt-on.
     // NOTE: adding/deleting ATOMS is a geometry mutation -- it goes through the §3
     // write mutator ``ws.applyOp(op, args)`` (the server modify pipeline), NOT a
     // direct accessor, so the geometry stays consistent with bonds/validation.
@@ -1295,7 +1293,6 @@
         getRegions:            getRegions,
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
-        getMetadata:           getMetadata,
         getScratchBlob:        _scratchBlob,   // the ONE save/draft serialiser
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         setUnitCell:           setUnitCell,
@@ -1304,7 +1301,6 @@
         setAxisKind:           setAxisKind,
         setVacuum:             setVacuum,
         setLabel:              setLabel,
-        setMetadata:           setMetadata,
         mountRestoreTarget:    mountRestoreTarget,
         isDirty:               isDirty,
         isEmpty:               isEmpty,

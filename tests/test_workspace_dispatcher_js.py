@@ -402,28 +402,45 @@ class TestReads:
             "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
             "ws.setAxisKind(['periodic','periodic','transport']);\n"
             "ws.setVacuum([0,0,10]);\n"
-            "ws.setMetadata('note', 'hello');\n"
             "Promise.resolve(ws.setLabel('L-electrode', [0])).then(() => {\n"
             "  console.log(JSON.stringify({\n"
             "    defaults: defaults,\n"
             "    kgrid: ws.getKgrid(), cell: ws.getUnitCell(),\n"
             "    axisKind: ws.getAxisKind(), vacuum: ws.getVacuum(),\n"
             "    byLabel: ws.getAtomsByLabel('L-electrode'),\n"
-            "    meta: ws.getMetadata('note'), metaAll: ws.getMetadata(),\n"
             "  }));\n"
             "});"
         )
         assert out["defaults"]["kgrid"] == [1, 1, 1]              # gamma default
         assert out["defaults"]["vacuum"] == [0, 0, 0]
-        assert out["defaults"]["axisKind"] == ["isolated", "isolated", "isolated"]
+        # axis_kind is NOT defaulted (scientifically loaded); null when unset (a3).
+        assert out["defaults"]["axisKind"] is None
         assert out["defaults"]["cell"] is None
         assert out["kgrid"] == [2, 2, 2]                          # writes reflected
         assert out["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
         assert out["axisKind"] == ["periodic", "periodic", "transport"]
         assert out["vacuum"] == [0, 0, 10]
         assert out["byLabel"] == [0]
-        assert out["meta"] == "hello"
-        assert out["metaAll"] == {"note": "hello"}
+
+    def test_setLabel_marks_dirty_so_labels_survive_reload(self):
+        """Review a1: ws.setLabel MUST mark dirty (like ws.selection.writeLabel) --
+        else the restore gate (dirty || !source.file) refetches disk atoms on reload
+        and the label is silently lost."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz', text:'1\\nx\\nC 0 0 0\\n'},\n"
+            "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "cs.markSaved('/tmp/x.xyz');\n"           # clear dirty to isolate setLabel
+            "const before = ws.isDirty();\n"
+            "Promise.resolve(ws.setLabel('bridge', [0])).then(() => {\n"
+            "  console.log(JSON.stringify({before: before, after: ws.isDirty()}));\n"
+            "});"
+        )
+        assert out["before"] is False
+        assert out["after"] is True                   # setLabel marked dirty
 
     def test_getSource_returns_kind_file_generator_input(self):
         out = _run_node(

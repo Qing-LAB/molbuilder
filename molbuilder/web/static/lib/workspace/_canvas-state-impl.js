@@ -72,7 +72,6 @@
             source_format: null,
             text:          null,
             periodicity:   null,
-            metadata:      {},        // generic extensibility store (§1.2.1)
             source: {
                 kind:             "blank",
                 file:             null,
@@ -263,29 +262,6 @@
     }
 
     /**
-     * Generic metadata store (extensibility, §1.2.1): key -> JSON value, riding with
-     * the structure.  For information the typed accessors don't cover, so a new field
-     * needs no new accessor.  ``getMetadata()`` (no key) returns a copy of the whole
-     * map; ``getMetadata(key)`` returns one value or null.
-     */
-    function setMetadata(key, value) {
-        _ensureInit();
-        if (typeof key !== "string" || !key) {
-            throw new TypeError("setMetadata: key must be a non-empty string");
-        }
-        if (!_state.metadata) _state.metadata = {};
-        _state.metadata[key] = value;
-        _state.dirty = true;
-        _notify();
-    }
-    function getMetadata(key) {
-        _ensureInit();
-        var m = _state.metadata || {};
-        if (key === undefined) return Object.assign({}, m);
-        return (key in m) ? m[key] : null;
-    }
-
-    /**
      * Mark the canvas dirty.  Call after any modifier op (delete,
      * add, orient, region-tag, etc.) that changed the on-disk bytes.
      */
@@ -370,8 +346,6 @@
         setStructure:      setStructure,
         replaceContent:    replaceContent,
         setPeriodicity:    setPeriodicity,
-        setMetadata:       setMetadata,
-        getMetadata:       getMetadata,
         markDirty:         markDirty,
         markSaved:         markSaved,
         clear:             clear,
