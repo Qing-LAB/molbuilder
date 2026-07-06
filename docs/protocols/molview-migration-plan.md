@@ -334,7 +334,13 @@ whole class structurally impossible.
   in the accessor, not stored.
 - **Check:** each accessor returns the right view on a known structure; unit tests pin
   the surface; `getAtomsByLabel` is a direct `regions` lookup (no scan).
-- **Status:** ☐ (next)
+- **Status:** ☑ done 2026-07-06. `dispatcher` exposes `getElements`, `getCoordinates`,
+  `getUnitCell`/`getLattice`, `getAxisKind`/`getVacuum`/`getKgrid`, `getAtomsByLabel`,
+  `getFrozen`, `atomFor3Dmol`, `toAddAtoms` on `ws.*` (materialised from the internal
+  model — `_atomsInternal`/`_periodicityInternal`; per-atom layout today, the accessor
+  hides it). Test `test_accessor_api_materialises_views_from_the_model`; 26 dispatcher
+  tests pass. NOTE: `getAtomsByLabel` scans the per-atom layout now; becomes a direct
+  `regions[label]` read at D4 — callers never see the change.
 
 ### D3 — route EVERY consumer through the API; seal the internals
 - **Do:** rewire render (`toAddAtoms` → `model.addAtoms`, drop `addModel(string)` +

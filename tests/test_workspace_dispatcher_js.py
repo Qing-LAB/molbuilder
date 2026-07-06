@@ -335,6 +335,53 @@ class TestReads:
         assert out["head"] == "3"
         assert out["isEmpty"] is False
 
+    def test_accessor_api_materialises_views_from_the_model(self):
+        """§1.2.1: the accessor API is the read surface -- each accessor
+        materialises a view from the concealed model.  Consumers call these,
+        never reach into the raw store (getAtomsByLabel is a direct label lookup;
+        toAddAtoms/atomFor3Dmol hand 3Dmol numbers, not a string)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure(\n"
+            "  {source_format: 'xyz', text: '2\\nx\\nAu 0 0 0\\nS 1 0 0\\n',\n"
+            "   periodicity: {cell: [[10,0,0],[0,10,0],[0,0,10]],\n"
+            "                 axis_kind: ['periodic','periodic','transport'],\n"
+            "                 vacuum: [0,0,15], kgrid: [4,4,1]}},\n"
+            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
+            ");\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'Au', x:0, y:0, z:0, regions:['L-electrode'], is_frozen:true},\n"
+            "  {index:1, element:'S',  x:1, y:0, z:0, regions:['BDT'], is_frozen:false},\n"
+            "]);\n"
+            "console.log(JSON.stringify({\n"
+            "  elements:    ws.getElements(),\n"
+            "  coordinates: ws.getCoordinates(),\n"
+            "  byLabel:     ws.getAtomsByLabel('L-electrode'),\n"
+            "  frozen:      ws.getFrozen(),\n"
+            "  unitCell:    ws.getUnitCell(),\n"
+            "  lattice:     ws.getLattice(),\n"
+            "  kgrid:       ws.getKgrid(),\n"
+            "  axisKind:    ws.getAxisKind(),\n"
+            "  vacuum:      ws.getVacuum(),\n"
+            "  addAtoms:    ws.toAddAtoms(),\n"
+            "  atom0:       ws.atomFor3Dmol(0),\n"
+            "}));"
+        )
+        assert out["elements"] == ["Au", "S"]
+        assert out["coordinates"] == [[0, 0, 0], [1, 0, 0]]
+        assert out["byLabel"] == [0]                    # direct label lookup
+        assert out["frozen"] == [0]
+        assert out["unitCell"] == [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+        assert out["lattice"] == out["unitCell"]        # getLattice is the alias
+        assert out["kgrid"] == [4, 4, 1]
+        assert out["axisKind"] == ["periodic", "periodic", "transport"]
+        assert out["vacuum"] == [0, 0, 15]
+        assert out["addAtoms"] == [
+            {"elem": "Au", "x": 0, "y": 0, "z": 0},
+            {"elem": "S", "x": 1, "y": 0, "z": 0}]
+        assert out["atom0"] == {"elem": "Au", "x": 0, "y": 0, "z": 0}
+
     def test_getSource_returns_kind_file_generator_input(self):
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"

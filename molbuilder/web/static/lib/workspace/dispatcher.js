@@ -183,6 +183,80 @@
         };
     }
 
+    // --------------------------------------------------------------- //
+    //  §1.2.1 accessor API -- the ONLY way consumers read the model.  //
+    //  The internal layout (per-atom atoms today, columnar later) is  //
+    //  CONCEALED behind these; each materialises the view the caller  //
+    //  needs.  No consumer hand-crafts extraction (no state.xyz.split,//
+    //  no atoms[i].labels scan) -- they call these.                   //
+    // --------------------------------------------------------------- //
+    function _atomsInternal() {
+        var st = _store();
+        var s = st ? st.getState() : null;
+        return (s && s.atoms) || [];
+    }
+    function _periodicityInternal() {
+        var cs = _canvas();
+        if (!cs || cs.isEmpty()) return null;
+        var canvas = cs.getStructure ? cs.getStructure() : null;
+        return (canvas && canvas.periodicity) || null;
+    }
+    function getElements() {
+        return _atomsInternal().map(function (a) { return a.element; });
+    }
+    function getCoordinates() {
+        return _atomsInternal().map(function (a) { return [a.x, a.y, a.z]; });
+    }
+    function getUnitCell() {
+        var per = _periodicityInternal();
+        return (per && per.cell) || null;
+    }
+    function getAxisKind() {
+        var per = _periodicityInternal();
+        return (per && per.axis_kind) || null;
+    }
+    function getVacuum() {
+        var per = _periodicityInternal();
+        return (per && per.vacuum) || null;
+    }
+    function getKgrid() {
+        var per = _periodicityInternal();
+        return (per && per.kgrid) || null;
+    }
+    // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
+    // a plain ``regions[label]`` read once D4 makes the internals columnar -- the
+    // caller never sees the difference, which is the point of the accessor.)
+    function getAtomsByLabel(label) {
+        var atoms = _atomsInternal();
+        var out = [];
+        for (var i = 0; i < atoms.length; i++) {
+            var labels = (atoms[i] && atoms[i].labels) || [];
+            if (labels.indexOf(label) !== -1) out.push(i);
+        }
+        return out;
+    }
+    function getFrozen() {
+        var atoms = _atomsInternal();
+        var out = [];
+        for (var i = 0; i < atoms.length; i++) {
+            if (atoms[i] && atoms[i].isFrozen) out.push(i);
+        }
+        return out;
+    }
+    // 3Dmol's atom shape for ONE atom -- materialised at the render boundary so the
+    // viewer never touches a string (workspace-contract.md §1.2.1 rule 2/3).
+    function atomFor3Dmol(i) {
+        var a = _atomsInternal()[i];
+        if (!a) return null;
+        return { elem: a.element, x: a.x, y: a.y, z: a.z };
+    }
+    // The whole model in 3Dmol's shape, for ``model.addAtoms(...)``.
+    function toAddAtoms() {
+        return _atomsInternal().map(function (a) {
+            return { elem: a.element, x: a.x, y: a.y, z: a.z };
+        });
+    }
+
     function getSource() {
         var cs = _canvas();
         if (!cs) return {kind: "blank", file: null, generator_input: null};
@@ -1164,6 +1238,18 @@
         getLastSavedTo:        getLastSavedTo,
         getSelection:          getSelection,
         getAtoms:              getAtoms,
+        // §1.2.1 accessor API -- the concealed model's ONLY read surface.
+        getElements:           getElements,
+        getCoordinates:        getCoordinates,
+        getUnitCell:           getUnitCell,
+        getLattice:            getUnitCell,   // alias
+        getAxisKind:           getAxisKind,
+        getVacuum:             getVacuum,
+        getKgrid:              getKgrid,
+        getAtomsByLabel:       getAtomsByLabel,
+        getFrozen:             getFrozen,
+        atomFor3Dmol:          atomFor3Dmol,
+        toAddAtoms:            toAddAtoms,
         mountRestoreTarget:    mountRestoreTarget,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
