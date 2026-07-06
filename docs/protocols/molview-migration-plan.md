@@ -156,6 +156,70 @@ that wants k-grid must re-implement the controller. That is the core defect.
 
 ---
 
+## Track A — Persistence: ADOPT the existing working-copy framework (DATA-LOSS + architecture; PRIORITY)
+
+**Finding (2026-07-05 audit).** A full persistence framework already exists and is
+tested, but is **orphaned from the UI** — I never wired it, and instead the frontend
+grew a parallel ad-hoc path. That parallel path is the bug.
+
+*Already built + tested (`test_workingcopy{,_api,_structure}.py`):*
+- `molbuilder/workingcopy.py` (core): `_atomic_write_bytes` + `WorkingCopy.save()`
+  writes EVERY codec file (`.xyz` **and** `.json`) atomically in ONE call;
+  `stage()` = crash-surviving draft; `discard()`.
+- `StructureCodec` (`workingcopy_structure.py`): `.files()` → the `[(xyz),(json)]`
+  pair; `_sidecar_dict` writes the FULL periodicity (cell/axis_kind/vacuum/kgrid) +
+  hash = sha256 of the `.xyz`.
+- Endpoints `/api/workingcopy/{save,discard,orphans}`.
+
+*What the frontend uses instead (the parallel path to delete):*
+- **Save** = `projects.writeFile` (`.xyz`) + `save-sidecar` (`.json`) — TWO calls,
+  non-atomic, the second fire-and-forget with a swallowed error → the crystal saved
+  with no `.json`. **Violates §4.0.1**, which the contract claimed but the code never
+  honored.
+- **Draft** = ad-hoc `sessionStorage` (`molbuilder.workspace.v1`).
+
+The fix is to **adopt the framework**, not build a third thing.
+
+### A1 — verify the framework is correct for our needs
+- **Do:** confirm `/api/workingcopy/save` writes both files atomically + hash-tied
+  with the FULL periodicity; confirm `scratch_blob`/`from_scratch` round-trip
+  regions + frozen + periodicity; confirm save-as (new `target`) + same-path
+  overwrite semantics.
+- **Check:** a test posts a scratch blob carrying a cell → BOTH files written; the
+  `.json` has cell/axis_kind/kgrid and hash = sha256 of the written `.xyz`.
+- **Status:** ☐
+
+### A2 — route SAVE through `/api/workingcopy/save` (delete the two-call split)
+- **Do:** `save.js` serialises the STORE (`ws.*`) into the working-copy scratch blob
+  (`{xyz, sidecar:{regions,frozen,periodicity,...}}`) and POSTs
+  `/api/workingcopy/save {source, data, target}` ONCE. Delete `writeFile` +
+  `save-sidecar`. The overwrite CONFIRM stays in the frontend (the endpoint has no
+  gate). A failure is SURFACED, never swallowed.
+- **Check:** (a) saving a celled crystal writes BOTH files (json carries the cell)
+  in ONE call; (b) grep: no `writeFile`+`save-sidecar` split in `save.js`; (c) a
+  write failure raises a visible error.
+- **Status:** ☐
+
+### A3 — draft + discard through the framework (decision-gated)
+- **Do:** decide whether the crash-surviving draft moves from `sessionStorage` to
+  `/api/workingcopy/stage`+`discard`, or they coexist. Wire it if adopted.
+- **Check:** an unsaved edit survives reload via the chosen mechanism; discard clears
+  it. **Design decision first — may stay `sessionStorage`.**
+- **Status:** ☐ (needs a decision)
+
+### A4 — define it in the docs
+- **Do:** molview-module.md + workspace-contract.md + save-flow.md + working-copy-
+  persistence.md state plainly: the Modify tab **persists via the working-copy
+  framework** (save/draft/discard) into the project-sidebar dir; `ws.*` is the
+  in-memory truth; molview only DISPLAYS. Remove the save-sidecar-based §4.3 + the
+  two-call story.
+- **Check:** the docs describe the shipped single-call framework path; no doc still
+  claims `writeFile`+`save-sidecar`.
+- **Status:** ☐
+
+> Track A runs BEFORE the remaining Track B molview steps — it's the data-loss fix.
+> The molview k-grid Steps 1–2 (done) stand; Steps 3–6 below become Track B.
+
 ## 5. Standing guardrails (apply to every step)
 - No structure/cell/kgrid read or write outside `ws.*` / the store / the module API.
 - One k-grid render loop, in the module, forever (after Step 1).
