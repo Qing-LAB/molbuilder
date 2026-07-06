@@ -1,5 +1,8 @@
 # Browser-owned transient data — the structure app (working-copy)
 
+> **ARCHIVED — merged into [`../workspace-contract.md`](../workspace-contract.md).**
+> Kept for history only; the sole source of truth is workspace-contract.md.
+
 > **SUPERSEDED / REDUCED (2026-07-02).** This doc originally specified a
 > "changed-underneath" hash-gate + a laundering analysis for the structure
 > editor. That premise was wrong — a save writes the whole self-consistent

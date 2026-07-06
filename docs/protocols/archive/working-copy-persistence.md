@@ -1,5 +1,9 @@
 # Working-copy persistence — load, edit, save
 
+> **ARCHIVED — merged into [`../workspace-contract.md`](../workspace-contract.md)
+> (§4 + §4.6).** Kept for history only; the sole source of truth is
+> workspace-contract.md. Relative links below point at the pre-move layout.
+
 **Status: IMPLEMENTED (2026-07-02).** `molbuilder/workingcopy.py` (core, L1) +
 `workingcopy_structure.py` (the `.xyz`+`.json` codec) + `web/blueprints/
 workingcopy.py` (`/api/workingcopy/*`). Tested. **Not yet wired to the browser**

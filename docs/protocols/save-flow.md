@@ -1,15 +1,20 @@
-# Save-flow contract — sole source of truth
+# Save-flow contract — the Save-panel UI
 
-> **This document is the authoritative contract for the Save panel
-> + dialog + sidecar handling.**  The Save button on the Modify
-> tab MUST behave exactly as specified here.  Code that diverges
-> is incorrect by definition; the contract is right and the code is
-> wrong.
+> **The persistence MODEL is defined in
+> [`workspace-contract.md`](workspace-contract.md) (§4 — memory is the truth; the
+> server draft, the `sessionStorage` cache, and the durable files; §4.6 — the
+> working-copy mechanism).** This doc does **not** restate the model; it is the
+> authoritative contract for the **Save-panel UI only** — the dialog, the
+> overwrite-confirm, and the button states on the Modify tab. Where the two touch
+> (what a Save writes, and when), workspace-contract.md governs and this doc defers.
+>
+> The Save button on the Modify tab MUST behave exactly as specified here. Code that
+> diverges is incorrect by definition; the contract is right and the code is wrong.
 >
 > **Companion docs:**
 >
-> * [`workspace-contract.md`](workspace-contract.md) — `ws.*` API
->   surface, including `ws.save()` and `ws.getStructure()`.
+> * [`workspace-contract.md`](workspace-contract.md) — the persistence model +
+>   the `ws.*` API surface, including `ws.save()` and `ws.getStructure()`.
 > * [`sidecar-contract.md`](sidecar-contract.md) — `.molstruct.json`
 >   on-disk schema + region/frozen_atoms semantics.
 > * [`projects-sidebar.md`](projects-sidebar.md) — sidebar's current

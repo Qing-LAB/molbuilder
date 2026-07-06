@@ -284,25 +284,19 @@ atom.
 
 ## §4 Persistence contract
 
-### 4.0 First principle — the store is the truth; a save writes it whole
+### 4.0 First principle — memory is the truth; a save writes it whole
 
 **The in-memory store (§1.2) is the single true state the user sees and edits.**
-Every persisted form is a **complete serialization of that store**, written in one
-shot. Nothing is persisted that isn't already in the store, and no save writes only
-part of it.
+Every read, every filter, every edit, every measurement goes through `ws.*`;
+**nothing reads disk for live workspace data.** Every persisted form (§4.1) is a
+**complete serialization of that store**, written in one shot. Nothing is persisted
+that isn't already in the store, and no save writes only part of it.
 
-Two persisted forms, one rule:
-
-| Form | Holds | Written when |
-|---|---|---|
-| `sessionStorage` (§4.1) | the whole state slice | every tick (debounced) |
-| the **files** — `<stem>.xyz` + `<stem>.molstruct.json` | `.xyz` = geometry (atoms); `.json` = everything else — `cell`, `axis_kind`, `vacuum`, `kgrid`, `regions`, `frozen_atoms`, + a `structure_hash` tying the two | an explicit save, or a commit that must persist |
-
-**The rule for both: write the entire in-memory state. NEVER re-open the old
-target, read it back, and merge or pick-and-choose which fields to keep.** That
-re-read-and-merge is precisely what silently drops fields. The store is complete
-and authoritative; the file follows the store, never the reverse. There is no merge
-path.
+**The rule for every persisted form: write the entire in-memory state. NEVER
+re-open the old target, read it back, and merge or pick-and-choose which fields to
+keep.** That re-read-and-merge is precisely what silently drops fields. The store is
+complete and authoritative; the persisted form follows the store, never the reverse.
+There is no merge path.
 
 **Worked example.** You build Au electrodes, tag the left ones `L-electrode`, and
 set a 4×4×1 k-grid — all of it lives in the store. A save writes `.xyz` (the atoms)
@@ -317,11 +311,59 @@ again. It does **not** re-open the old `.json` and graft the new label onto it.
 Those fields' meaning is defined in
 [`structure-periodicity.md`](structure-periodicity.md).
 
-**Persistence = full writes at the right moments.** The file stays consistent not
-by magic but because the entire store is written at each save moment. `dirty` tracks
-whether the store has changes not yet written; a save writes everything and clears it.
+### 4.1 Three persistence surfaces
 
-### 4.0.1 Saving to disk — the rules
+Memory is the truth (§4.0); it is backed by **three** persistence surfaces, each
+with a distinct role. Only two of them are automatic; the files are written **only**
+on an explicit Save.
+
+| Surface | Role | Authoritative? | Written when | Where it lives |
+|---|---|---|---|---|
+| **Server draft** | crash-safe transient | **YES** — the transient of record | **every edit** (the working-copy `update`) | `<project>/.molbuilder_workspace/<stem>.<session>.wc.json` — or, **sourceless**, `projects_root()/.molbuilder_workspace/` (§4.1.1) |
+| **`sessionStorage`** | fast same-tab-reload cache | no — an optional layer on top | every `notify()` tick (debounced 100 ms) | `sessionStorage["molbuilder.workspace.v1"]` (§4.4) |
+| **Files** — `<stem>.xyz` + `<stem>.molstruct.json` | the durable copy | the durable save | **only** an explicit Save (`/api/workingcopy/save`) | the project directory |
+
+- **Server draft = the authoritative crash-safe transient.** Mirrored to disk on
+  **every** edit (the working-copy `update`, §4.6). It is what survives a crash or a
+  server restart. It exists for **any** workspace that holds data.
+- **`sessionStorage` = a fast same-tab-reload cache** layered on top. Optional, NOT
+  authoritative — it exists so a same-tab reload rehydrates instantly with no server
+  round-trip.
+- **Files = the durable copy**, written only on an explicit Save — one atomic call
+  that writes both files from the store's scratch blob. `.xyz` = geometry (atoms);
+  `.json` = everything else — `cell`, `axis_kind`, `vacuum`, `kgrid`, `regions`,
+  `frozen_atoms`, + a `structure_hash` tying the two.
+
+`dirty` tracks whether the store has edits not yet written to the **files**; a Save
+writes everything and clears it. (The draft and the sessionStorage cache always
+mirror memory regardless of `dirty`.)
+
+#### 4.1.1 The draft needs NO project directory
+
+The server draft exists for **any** workspace that holds data — **a project
+directory is NOT required**:
+
+- A workspace **opened from a file** drafts **next to it**, in that file's
+  `<project>/.molbuilder_workspace/`.
+- A **brand-new unsaved molecule** (a SMILES/name/DNA build, a blank canvas — no
+  source file yet) drafts to the **top-level** `projects_root()/.molbuilder_workspace/`,
+  keyed by a **stable client workspace id** (so its draft is findable across a
+  reload/crash before it has ever been saved).
+
+Either way an edit is crash-safe from the first keystroke, before the user has
+chosen where (or whether) to save.
+
+### 4.2 The two recovery paths
+
+Unsaved edits are recovered by **exactly one** of two paths, depending on what was
+lost:
+
+| What happened | Recovered from | How |
+|---|---|---|
+| **Same-tab reload** (the tab's JS heap is gone, the server is fine) | **`sessionStorage`** | instant, no server round-trip — the cache (§4.4) rehydrates the store on mount |
+| **Crash / server restart / new tab** (the sessionStorage cache is gone, or the session changed) | **the server draft** | `list_orphans` surfaces drafts whose session can no longer clean them; the user **recovers** or **discards** (§4.6). The core never auto-deletes unsaved work or auto-adopts stale work. |
+
+### 4.3 Saving to disk — the rules
 
 Saving belongs to **editing** (the Modify tab). A **view-only** surface (the Results
 inspector, an embedded viewer) **never saves** — there is nothing to persist. When
@@ -340,7 +382,13 @@ you do save, you are always writing a **modified version** of what you loaded, s
   the json's `structure_hash` = the sha256 of the `.xyz` just written — the two are
   never left out of sync. This is the whole-store write of §4.0, landed on disk.
 
-### 4.1 The single key
+### 4.4 The `sessionStorage` cache
+
+The same-tab-reload cache (§4.1) is a single key holding the whole state slice. It
+is **not** authoritative — it is a convenience layer so a reload rehydrates without a
+server round-trip. The authoritative transient is the server draft (§4.1, §4.6).
+
+#### 4.4.1 The single key
 
 ```
 sessionStorage["molbuilder.workspace.v1"] = JSON.stringify({
@@ -363,13 +411,13 @@ sessionStorage["molbuilder.workspace.v1"] = JSON.stringify({
 `molbuilder.panelMode`) are deleted as of Phase 10; restoring code
 that reads them is incorrect.
 
-### 4.2 Write cadence
+#### 4.4.2 Write cadence
 
 - Debounced 100ms after every `notify()` tick.
 - Final flush on `pagehide` event (no debounce).
 - Errors (quota exceeded, storage disabled) are logged + swallowed.
 
-### 4.3 Read at restore
+#### 4.4.3 Read at restore
 
 ```js
 const snap = ws.readPersistedSnapshot();    // null if missing/corrupt
@@ -383,7 +431,7 @@ Contract:
   memory (dirty=true, or non-file source).  Decision logic is in
   `persistence.js::shouldRefetchFromDisk(snap)`.
 
-### 4.4 What's NOT persisted
+#### 4.4.4 What's NOT persisted
 
 `loading`, `inFlight`, `error`, `history`.  These are transient
 runtime state; restoring them would be incorrect (e.g.
@@ -395,7 +443,7 @@ runtime state; restoring them would be incorrect (e.g.
 that wants to hydrate the workspace from persisted state:
 
 - `viewer.js::restoreModifyState` restores the full snapshot
-  (structure **+ selection** + camera + chrome) from §4.1.
+  (structure **+ selection** + camera + chrome) from §4.4.
 - `selection-bootstrap.js` re-commits `projects.getCurrentFile()` for a
   genuine cross-tab handoff.
 - (future) any new tab/surface that loads-on-mount.
@@ -441,6 +489,154 @@ must load.
 selection **last / authoritatively** for its file; a redundant fresh-load
 of an already-owned file is a coordination error at the *caller*, prevented
 by the rule above rather than papered over inside the store.
+
+---
+
+## §4.6 The working-copy persistence mechanism
+
+> **Folded in from the former `working-copy-persistence.md`** (now
+> [archived](archive/working-copy-persistence.md)). This is the server-side
+> mechanism that implements the **server draft** and the **files** surfaces of §4.1
+> — the generic core (`molbuilder/workingcopy.py`, L1) + the structure codec
+> (`workingcopy_structure.py`) + the `/api/workingcopy/*` routes. The client model
+> above (§4.0–§4.5) is what a browser surface honors; this is what it calls.
+
+**The whole idea, one sentence:**
+
+> **Load an artifact into the browser, edit it, and write it back to files only when
+> the user hits Save (overwrite, or save-as). A draft keeps unsaved edits safe
+> across a reload or crash. That's it — no gate, no hashing.**
+
+### 4.6.1 Goal & boundary
+
+**Goal.** Two guarantees:
+1. **Don't lose edits** on a reload or crash → keep a **draft** of the working data.
+2. **Don't touch the project files on every edit** → write them **only on an
+   explicit Save.**
+
+**This IS:** load → edit-in-browser → save (overwrite or save-as), plus a draft for
+crash-safety. **Format-agnostic** — an application plugs in a **codec** (§4.6.4).
+The core never learns what an atom is; it is **generic and reusable beyond
+structures** (a config/script editor reuses it unchanged, §4.6.8).
+
+**This is NOT:**
+- a **gate / integrity check** — you own the data you loaded; a save just writes it.
+  (An earlier version added a "did the file change underneath?" gate; that was
+  solving a non-problem, because a save writes the whole self-consistent pair, so
+  the on-disk file is simply overwritten. **No gate, no hashing.** This is what
+  superseded the old `browser-data-contract.md`.)
+- **version history / undo** — one live working copy, not a version stack.
+- **the artifact's format** — that's the codec.
+- **multi-user / concurrent editing** — single-user, isolated.
+
+### 4.6.2 The flow
+
+```mermaid
+flowchart LR
+    F[("project files<br/>&lt;stem&gt;.xyz + .molstruct.json")]
+    WC["working copy<br/>(structure + labels, in the browser)"]
+    D[("draft<br/>.molbuilder_workspace/")]
+    F -- "open (load)" --> WC
+    WC -- "edit" --> WC
+    WC -- "update (auto)" --> D
+    D -. "crash / restart recovers" .-> WC
+    WC == "save (overwrite / save-as)" ==> F
+    classDef store fill:#eef,stroke:#557;
+    class F,D store;
+```
+
+- **open** reads the files into a working copy.
+- **update** (on every edit) writes a **draft** — the *only* automatic server write,
+  and it goes to `.molbuilder_workspace/`, never the project files. The draft needs
+  no project dir (§4.1.1).
+- **save** writes the project files (both, together): same path = overwrite, new
+  path = save-as. Then the draft is dropped.
+
+### 4.6.3 Worked example (the structure app)
+
+```mermaid
+sequenceDiagram
+    actor U as User (/modify)
+    participant B as Browser (working copy)
+    participant DR as Draft
+    participant F as Project files
+    U->>B: open mol.xyz
+    B->>B: load structure + labels
+    U->>B: tag atoms 1-3 = L-electrode
+    B->>DR: update (server draft, for crash-safety)
+    Note over F: untouched
+    U->>B: reload the tab
+    Note over B: edits restored from the browser's own sessionStorage cache (§4.2)
+    U->>B: Save
+    B->>F: write mol.xyz + mol.molstruct.json (overwrite)
+    B->>DR: drop draft
+    Note over DR: a CRASH instead recovers the edits from the server draft (§4.2/§4.6.6)
+```
+
+### 4.6.4 The codec (the only format-specific part)
+
+```
+codec.load(source_path)   -> data              # read the file(s) into working data
+codec.files(data, target) -> [(path, bytes)]   # the file(s) a save writes
+codec.scratch_blob(data)  -> json              # how the working copy sits in the draft
+codec.from_scratch(blob)  -> data              # inverse (reload / crash recovery)
+```
+
+The `.xyz`+`.json` codec (`workingcopy_structure.py`): `load` reads the `.xyz` + its
+sidecar → a `Structure`; `files` returns `[(<stem>.xyz, …), (<stem>.molstruct.json,
+…)]`. **The core never learns what an atom is.**
+
+### 4.6.5 The API
+
+```
+WorkingCopy.open(source, codec, session, project_dir)   # load
+WorkingCopy.new(codec, session, project_dir, data)      # a fresh artifact (save-as on first save)
+WorkingCopy.recover(draft_record, codec, project_dir)   # adopt a crashed session's draft
+wc.update(data)                                         # edit -> draft
+wc.save(target)               -> Path                   # write files (overwrite / save-as); drop draft
+wc.discard()                                            # drop draft, write nothing
+list_orphans / discard_orphan / clean_all               # crash-recovery housekeeping
+```
+
+`/api/workingcopy/*` is a thin wrapper: `open` · `update` · `save` · `discard` ·
+`orphans` · `recover` · `clean`. Paths go through `_resolve_within_roots`.
+
+### 4.6.6 Draft envelope & crash recovery
+
+The server draft lives at
+`.molbuilder_workspace/<stem>.<session>.wc.json` — a JSON envelope
+`{schema, source, session, ts, blob}`, written **atomically on each `update`**,
+keyed by **session** (the server-side session — the login when authenticated, else a
+stable per-server-run id for no-auth localhost). It sits **next to the source file**
+for a file-backed workspace, or under `projects_root()/.molbuilder_workspace/` for a
+sourceless one (§4.1.1).
+
+A crash (or, for no-auth, a server restart) leaves a draft its session can no longer
+clean. `list_orphans` surfaces them and the user **recovers** or **discards** — the
+core **never auto-deletes** unsaved work or **auto-adopts** stale work. Otherwise
+cleanup is on `save` or session-end (no time-based sweep). See §4.2 for how this
+pairs with the `sessionStorage` same-tab path.
+
+### 4.6.7 Use contract
+
+**An application MUST:** supply a codec; `open` on load, `update` on **every** edit,
+`save` **only** on an explicit user Save, `discard` to abandon.
+
+**An application MUST NOT:** write a project file outside `save`; auto-save on every
+edit; delete a draft behind the user (only `save` success, session-end, or explicit
+cleanup removes it).
+
+Follow those and the two guarantees hold: **unsaved edits survive reload/crash**, and
+**project files change only on an explicit Save.**
+
+### 4.6.8 Applications
+
+| Application | `files()` writes | Codec |
+|---|---|---|
+| **Structure + sidecar** | `<stem>.xyz` + `<stem>.molstruct.json` | `workingcopy_structure.py` |
+| *(future)* config / script | its file(s) | reuse this core unchanged |
+
+The core is generic and **codec-pluggable**; nothing in it is structure-specific.
 
 ---
 

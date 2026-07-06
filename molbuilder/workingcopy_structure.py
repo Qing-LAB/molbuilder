@@ -1,5 +1,5 @@
 """Structure + sidecar codec — the first application of the working-copy core
-(working-copy-persistence.md § 11).
+(workspace-contract.md §4.6 — the persistence mechanism).
 
 Loads/saves a structure as the pair ``<stem>.xyz`` (coordinates) +
 ``<stem>.molstruct.json`` (labels/annotations).  The working ``data`` is a

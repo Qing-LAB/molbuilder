@@ -17,7 +17,7 @@ phases in §7; each phase is test-gated + committed.
 **Companions:** `types/structure.md` (the `Structure` dataclass this extends),
 `atom-selection-guide.md` / `molviewer-guide.md` (the modules being fused),
 `sidecar-contract.md` + `data-vocabulary.md` (the `.molstruct.json` persistence),
-`working-copy-persistence.md` (the module's load/edit/save, §6.1),
+`workspace-contract.md` (the module's load/edit/save persistence — §4 + §4.6),
 `engines/siesta.md` (the fdf emission this feeds).
 
 ---

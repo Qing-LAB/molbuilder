@@ -209,7 +209,7 @@ The fix is to **adopt the framework**, not build a third thing.
   38 save/workingcopy/dialog tests pass. **NOTE:** `/api/selection/save-sidecar` +
   `/api/selection/refresh-hash` now have no frontend caller — dead, remove in A4.
 
-**Memory model (the contract, working-copy-persistence.md).** "Memory" is NOT
+**Memory model (the contract, workspace-contract.md §4).** "Memory" is NOT
 browser-only: every edit auto-writes a **transient draft** (`<project>/.molbuilder_
 workspace/`) kept consistent with the in-memory data (`update` = the only automatic
 write); `save` promotes it to the real file + drops it; a crash recovers from it.
@@ -225,10 +225,13 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
 - **Check:** after assigning a label (no Save), the project's `.molbuilder_workspace/`
   draft reflects it; a reload/crash recovers it via the framework.
 - **Status:** ◐ code done 2026-07-05. `dispatcher._scratchBlob` + `_persistDraft`
-  POST `/api/workingcopy/update {source, data}` in the debounced persist (alongside
-  sessionStorage), on every edit; skipped when there's no source file. Syntax OK +
-  25 dispatcher tests pass. **Browser check pending** (the `.molbuilder_workspace/`
-  draft appears + updates).
+  POST `/api/workingcopy/update` in the debounced persist (alongside sessionStorage),
+  on every edit. **Sourceless fix (2026-07-05):** the draft is written for ANY
+  workspace with data — a project dir is NOT required (workspace-contract.md §4.1.1);
+  a brand-new molecule drafts to `projects_root()/.molbuilder_workspace/` keyed by a
+  stable `workspace_id` (was wrongly skipped when no source file). 32 workingcopy +
+  dispatcher tests pass. **Browser check pending** (the `.molbuilder_workspace/`
+  draft appears + updates for both a loaded file and a new molecule).
 
 ### A5b — SELECTION + FILTER read the workspace, not the STALE saved file (BUG FIX)
 - **Why:** the Modify filter-by-label posts `/api/selection/eval`, which reads the
@@ -276,7 +279,7 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
   `/api/selection/eval` + `/api/selection/atoms` (after A5); the file-open
   `/api/build/load` path (after A6). Migrate/retire their tests. Then define the
   ONE model in molview-module.md + workspace-contract.md + save-flow.md +
-  working-copy-persistence.md: ws.* in memory is the truth; the working-copy
+  workspace-contract.md §4/§4.6: ws.* in memory is the truth; the working-copy
   framework (open/save/draft/discard) is the ONLY thing that touches disk for the
   workspace; molview only DISPLAYS.
 - **Check:** grep -- no Modify-tab code reads disk for regions/atoms/cell outside the

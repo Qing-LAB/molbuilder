@@ -835,7 +835,7 @@ Save vs. Save-as label-propagation contracts.
 ### 6.1b Working-copy endpoints (`/api/workingcopy/*`)
 
 Load / edit (draft) / save for the structure editor — the working-copy core
-([`working-copy-persistence.md`](working-copy-persistence.md)): `open` loads,
+([`workspace-contract.md`](workspace-contract.md) §4.6): `open` loads,
 `update` mirrors edits to a draft (survives reload/crash), `save` writes the
 `.xyz`+`.json` pair (overwrite, or save-as via `target`); `orphans` / `recover` /
 `clean` are the explicit crash-recovery.

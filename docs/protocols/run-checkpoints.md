@@ -5,8 +5,8 @@
 > user can checkpoint/restore/branch a *job's* state. It is **NOT** a general
 > data-persistence layer, and has **ZERO** relation to browser-owned or
 > user-edited data, the workspace/selection state, or transient working copies.
-> Do **not** connect it to `working-copy-persistence.md` or
-> `browser-data-contract.md` — different domain, different layer. If you are
+> Do **not** connect it to `workspace-contract.md` (the browser workspace /
+> working-copy persistence model) — different domain, different layer. If you are
 > reasoning about "saving what the user edited in a browser tab," this is the
 > wrong document.
 
