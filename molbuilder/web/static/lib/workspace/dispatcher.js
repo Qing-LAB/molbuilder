@@ -1203,7 +1203,9 @@
                 // F1: re-emit the annotation channels carried opaquely from load, so
                 // a Modify Save preserves them instead of clobbering to {}.
                 annotations:     s.annotations || {},
-                selection_rules: {},
+                // F2: `selection_rules` is NOT a working-copy field -- the codec
+                // neither reads it on open nor writes it on save, so emitting an
+                // empty {} was meaningless noise.  Dropped.
             },
         };
     }
@@ -1251,7 +1253,21 @@
         }).catch(function () { /* draft is best-effort crash-safety */ });
     }
 
+    // F4: persistence is SUSPENDED across a multi-step load (_commitFile sets the
+    // canvas text, then adopts the store atoms a network-round-trip later).  A
+    // persist tick in that window would write a draft pairing the NEW geometry with
+    // the PREVIOUS file's regions/frozen (the atom-count invariant only catches a
+    // count change, not a same-count swap).  Suspend around the load; resume writes
+    // the now-consistent state once.
+    var _persistSuspended = 0;
+    function suspendPersist() { _persistSuspended++; }
+    function resumePersist() {
+        if (_persistSuspended > 0) _persistSuspended--;
+        if (_persistSuspended === 0) _schedulePersist();
+    }
+
     function _schedulePersist() {
+        if (_persistSuspended > 0) return;
         if (!root.sessionStorage && !root.fetch) return;
         if (_persistDeadline) clearTimeout(_persistDeadline);
         _persistDeadline = setTimeout(function () {
@@ -1338,6 +1354,8 @@
         toAddAtoms:            toAddAtoms,
         getScratchBlob:        _scratchBlob,   // the ONE save/draft serialiser
         draftIdentity:         draftIdentity,  // the draft key a Save must drop (b1)
+        suspendPersist:        suspendPersist, // F4: bracket a multi-step load
+        resumePersist:         resumePersist,
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias

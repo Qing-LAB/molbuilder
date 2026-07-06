@@ -344,12 +344,20 @@
             // F1: carry the annotation channels opaquely so a later Save re-emits
             // them (Modify doesn't edit annotations, but must not clobber them).
             const annotations = (opened && opened.annotations) || null;
+            // F4: suspend persistence across the text->atoms window so no draft is
+            // written pairing the new geometry with the PREVIOUS file's labels; resume
+            // at every exit (one resume per path).
+            const _wsD = window.molbuilder && window.molbuilder.workspace;
+            const _resumeLoad = () => {
+                if (_wsD && typeof _wsD.resumePersist === "function") _wsD.resumePersist();
+            };
+            if (_wsD && typeof _wsD.suspendPersist === "function") _wsD.suspendPersist();
             const gate = await sp.loadIntoCanvas(
                 { source_format: format, text: r.text, periodicity: periodicity,
                   annotations: annotations },
                 { kind: "file", file: path }
             );
-            if (!gate.ok) return;  // cancelled — leave viewer alone
+            if (!gate.ok) { _resumeLoad(); return; }  // cancelled — leave viewer alone
             // Drive the viewer with the bytes we already have.
             // ``viewerLoader`` (= modify-tab's loadStructureText)
             // returns the canonical workspace payload — capture it
@@ -367,6 +375,7 @@
                             + (e && e.message ? e.message : String(e));
                         s.className = "status error";
                     }
+                    _resumeLoad();
                     return;
                 }
             }
@@ -411,6 +420,7 @@
             } else {
                 await store.setSourceFile(path);  // legacy fallback
             }
+            _resumeLoad();   // F4: load done -> resume + write the consistent state
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));
