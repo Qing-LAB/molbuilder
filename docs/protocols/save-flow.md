@@ -108,33 +108,39 @@ If no dialog is mounted the save cannot proceed (there is no name to save to).
 final_path = dir + "/" + chosen_name
 ```
 
-### §3.4 Write with the overwrite gate — ALWAYS confirmed (§1)
+### §3.4 Save the dataset — ONE atomic call, overwrite ALWAYS confirmed (§1)
+
+`save.js::_saveDataset` serialises the WHOLE store into the working-copy scratch
+blob (`_buildScratchBlob` → `{xyz, sidecar:{regions, frozen_atoms, cell, axis_kind,
+vacuum, kgrid}}`) and writes it with a SINGLE `/api/workingcopy/save` call — the
+server writes the `.xyz` + `.molstruct.json` pair atomically (§4).
 
 ```
-write_envelope = projects.writeFile(final_path, struct.text, { overwrite: false })
-if write_envelope.status == 409:                 # file already exists
+env = POST /api/workingcopy/save {source, target: final_path, data: blob, overwrite: false}
+if env.status == 409:                            # file already exists
     proceed = await saveDialog.confirmOverwrite(basename(final_path))
     if not proceed:
         return {ok: false, cancelled: true}
-    write_envelope = projects.writeFile(final_path, struct.text, { overwrite: true })
+    env = POST /api/workingcopy/save {source, target: final_path, data: blob, overwrite: true}
 ```
 
 Overwrite is **always** confirmed — there is no save-back-to-source skip.  Any
-chosen name that already exists re-prompts.
+chosen name that already exists re-prompts.  A failure is **surfaced** (the save
+returns `{ok:false, error}`), never swallowed.
 
-### §3.5 Post-write — write the WHOLE store's sidecar (§4)
+### §3.5 Post-save — mark saved
 
-On `write_envelope.ok`:
+On `env.ok`:
 
 ```
 structurePage.markSavedTo(final_path)     # dirty clears + last_save_to = final_path
 ```
 
-The `.xyz` + `.molstruct.json` pair is written together by the single
+The `.xyz` + `.molstruct.json` pair was already written together by the single
 `/api/workingcopy/save` call in §3.4 (§4 / workspace-contract.md §4.0: the
 WHOLE store's sidecar, hash-tied — regions + frozen_atoms + periodicity
 gathered from `ws.getAtoms()` / `ws.getStructure()`).  There is no separate
-sidecar POST after the XYZ write.
+sidecar POST.
 
 ---
 
@@ -158,27 +164,25 @@ ops).
 ### §4.2 Every save writes the WHOLE store's sidecar
 
 There is **no** save-back-vs-save-as distinction (workspace-contract.md §4.0 — the
-store is the truth; a save writes it whole).  After the XYZ write,
-`_postWriteSuccess` **always** writes the destination sidecar from the in-memory
-store:
+store is the truth; a save writes it whole).  `save.js::_saveDataset` serialises the
+store into the scratch blob (`_buildScratchBlob`):
 
 1. Gather from the store:
    * `regions: {label: [indices]}` — from each atom's `labels[]` (`ws.getAtoms()`)
-   * `frozen: [indices]` — atoms with `isFrozen=true`
+   * `frozen_atoms: [indices]` — atoms with `isFrozen=true`
    * `periodicity: {cell, axis_kind, vacuum, kgrid}` — from `ws.getStructure()`
-2. The single `/api/workingcopy/save` call carries `{regions, frozen_atoms,
-   periodicity}` alongside the XYZ text — the server writes the `.xyz` then
-   **REPLACES** the entire sidecar atomically, recomputing `structure_hash`
-   from the just-written XYZ, so the `.xyz` + `.json` pair is always coherent
-   (no merge with prior contents).  (Before the 2026-06 unification this was a
-   separate `/api/selection/save-sidecar` POST after the XYZ write; that
-   endpoint has been removed.)
+2. The single `/api/workingcopy/save` call carries the whole blob (`{xyz, sidecar}`)
+   — the server writes the `.xyz` then **REPLACES** the entire sidecar atomically,
+   recomputing `structure_hash` from the just-written XYZ, so the `.xyz` + `.json`
+   pair is always coherent (no merge with prior contents).  (Before the 2026-06
+   unification this was a separate `/api/selection/save-sidecar` POST after a
+   `writeFile`; both were removed.)
 
 This fires on EVERY save, even with no labels — it wipes any stale sidecar at the
 destination so the store's authoritative state (including "no labels") is what
-lands.  The write is fire-and-forget on the XYZ success: a partial sidecar failure
-doesn't unwind the XYZ write — the panel reports "Saved" once the XYZ lands, and
-the user can re-Save.
+lands.  Unlike the old fire-and-forget sidecar POST, a failure now **fails the whole
+save** (`{ok:false, error}`) — `markSavedTo` runs only on success, so a lost `.json`
+can never be silent.
 
 ### §4.3 The atomic-write contract
 
