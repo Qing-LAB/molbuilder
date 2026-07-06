@@ -115,10 +115,12 @@ final_path = dir + "/" + chosen_name
 
 ### §3.4 Save the dataset — ONE atomic call, overwrite ALWAYS confirmed (§1)
 
-`save.js::_saveDataset` serialises the WHOLE store into the working-copy scratch
-blob (`_buildScratchBlob` → `{xyz, sidecar:{regions, frozen_atoms, cell, axis_kind,
-vacuum, kgrid}}`) and writes it with a SINGLE `/api/workingcopy/save` call — the
-server writes the `.xyz` + `.molstruct.json` pair atomically (§4).
+`save.js::_saveDataset` asks the workspace to serialise ITSELF via
+`ws.getScratchBlob()` → `{xyz, sidecar:{regions, frozen_atoms, cell, axis_kind,
+vacuum, kgrid}}` (built from the §1.2.1 accessors — save.js no longer hand-rolls the
+scan) and writes it with a SINGLE `/api/workingcopy/save` call, identifying the draft
+to drop via `ws.draftIdentity()` — the server writes the `.xyz` + `.molstruct.json`
+pair (§4).
 
 ```
 env = POST /api/workingcopy/save {source, target: final_path, data: blob, overwrite: false}
@@ -169,8 +171,8 @@ ops).
 ### §4.2 Every save writes the WHOLE store's sidecar
 
 There is **no** save-back-vs-save-as distinction (workspace-contract.md §4.0 — the
-store is the truth; a save writes it whole).  `save.js::_saveDataset` serialises the
-store into the scratch blob (`_buildScratchBlob`):
+store is the truth; a save writes it whole).  `ws.getScratchBlob()` serialises the
+store (the ONE serialiser, shared by save + the crash-draft):
 
 1. Gather from the store:
    * `regions: {label: [indices]}` — from each atom's `labels[]` (`ws.getAtoms()`)

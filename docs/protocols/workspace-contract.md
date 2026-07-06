@@ -120,11 +120,12 @@ type WorkspaceState = {
 the important one.
 
 **(A) ONE encapsulated in-memory model holds the whole molecule.** Its internal
-LAYOUT is an implementation detail, chosen for efficiency — today **columnar**
-(struct-of-arrays):
+LAYOUT is an implementation detail, chosen for efficiency — the TARGET is **columnar**
+(struct-of-arrays), landed by Track D4. *(Today it is still a per-atom `atoms[]`;
+because of rule B, that transition changes no consumer — see Migration status below.)*
 
 ```js
-// INTERNAL layout -- consumers never see this directly (rule B).
+// TARGET internal layout (Track D4) -- consumers never see this directly (rule B).
 {
   elements:  string[],                         // ["Au","Au","S", …]
   positions: number[][],                       // [[x,y,z], …]  -- ONE coordinate table
@@ -323,7 +324,7 @@ mutator leaves partial state.
 
 | Method | Server route | Returns | Side effects |
 |---|---|---|---|
-| `ws.loadFromFile(path)` | POST `/api/build/load` | `Promise<WorkspacePayload>` | Replaces structure + source.kind="file" + source.file=path; resets selection to `[]`; resets dirty to `false` |
+| `ws.loadFromFile(path)` | → `molbuilderTab.commitFile` → POST `/api/workingcopy/open` | `Promise<WorkspacePayload>` | Replaces structure + source.kind="file" + source.file=path; resets selection to `[]`; resets dirty to `false`. (A6: the load takes its DATA from the working-copy framework, not the ad-hoc `/api/build/load`.) |
 | `ws.loadFromText(text, filename)` | POST `/api/build/load` | `Promise<WorkspacePayload>` | Same as loadFromFile but with in-memory text.  source.kind="file" iff filename is a real path; resetSelection=true; touchCanvas=false (caller is responsible for canvas-state.dirty) |
 | `ws.generate(kind, input, opts)` | POST `/api/build/molecule` | `Promise<WorkspacePayload>` | Replaces structure + source.kind=kind + source.generator_input=input; resets selection to `[]`; dirty=true |
 | `ws.applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Replaces structure; pushes pre-op snapshot to `history`; applies selection_remap per §3.4; dirty=true |
@@ -331,7 +332,7 @@ mutator leaves partial state.
 | `ws.installStructure(structure, source)` | (none — in-memory) | `void` | Lower-level install for callers that already have a `Structure` object + a `Source` discriminant in hand (the structure tab's CLI-result path uses this).  Equivalent to `applyPayload` minus the WorkspacePayload envelope conventions; resets selection to `[]`, marks dirty=true |
 | `ws.markDirty()` | (none) | `void` | Flips the `dirty` flag without changing structure or source.  Used by callers that mutate the canvas directly (e.g. modify-tab style swaps that don't round-trip through `applyOp`) so the unsaved-changes guard fires correctly |
 | `ws.markSaved(path)` | (none) | `void` | Flips `dirty=false` and records `last_save_to=path`.  Used by save flows that bypass `ws.save` (e.g. the structure tab's `structureSave.save` already wrote the file and just needs to clear the dirty bit) |
-| `ws.save(opts)` | POST `/api/files/write` | `Promise<void>` | Writes structure.text to opts.path; sets dirty=false, last_save_to=opts.path |
+| `ws.save(opts)` | → `structureSave.save` → POST `/api/workingcopy/save` | `Promise<void>` | Writes the whole dataset (`.xyz` + `.molstruct.json`) atomically from the scratch blob (§4.3); sets dirty=false, last_save_to=opts.path. (NOT `/api/files/write` — that writes only `.fdf`/wrapper artifacts.) |
 | `ws.discard()` | (none) | `void` | Sets structure=null, source={kind:"blank",...}, selection={indices:[],...}, dirty=false.  **Unconditional** — caller MUST gate on warning modal first. |
 | `ws.undo()` | (none) | `void` | Pops last entry from `history`, calls `applyPayload(snap, {touchCanvas: true})`.  No-op when history is empty. |
 

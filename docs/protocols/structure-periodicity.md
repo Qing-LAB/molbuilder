@@ -196,10 +196,10 @@ The molview module never parses; the host supplies `cell` + `kgrid`:
 | Piece | Now | To build |
 |---|---|---|
 | `Structure.cell` | ✓ | — |
-| `Structure.axis_kind` (+ derived `pbc`) | ✗ (only boolean `pbc`) | add enum; make `pbc` derived |
-| `Structure.vacuum` + `kgrid` | ✗ | add fields |
+| `Structure.axis_kind` (+ derived `pbc`) | ✓ (enum field; `pbc` derived) | — |
+| `Structure.vacuum` + `kgrid` | ✓ (fields present) | — |
 | sidecar `cell` + `pbc` | ✓ (`normalise_cell_pbc`) | — |
-| sidecar `axis_kind` + `vacuum` + `kgrid` | ✗ | add (schema bump) |
+| sidecar `axis_kind` + `vacuum` + `kgrid` | ✓ (`molstruct.to_dict`) | — |
 | electrode builder captures cell + sets `axis_kind` | ✗ (discards, `modify.py:955`) | capture |
 | `resolve_cell` (explicit / per-`axis_kind`) | ✗ | add |
 | k-grid clamp (dims=1 unless `periodic`) | ✗ | add (store + UI + render) |
