@@ -672,16 +672,60 @@ def selection_save_sidecar():
         return _bad_request(exc.message, exc.status)
 
 
+def _struct_from_atoms(atoms: list) -> Structure:
+    """Build a Structure from the workspace's IN-MEMORY atom list (the store's
+    ``atoms``) so a filter evaluates against MEMORY, not the stale saved file
+    (molview-migration-plan.md A5b). The filter rules are label/element/index/
+    residue only -- no geometry -- so positions are placeholders. The workspace
+    module (ws.*) is the single source of truth."""
+    if not isinstance(atoms, list):
+        raise ValueError("'atoms' must be a list")
+    elements: list = []
+    regions: Dict[str, list] = {}
+    frozen: list = []
+    residue_names: list = []
+    for i, a in enumerate(atoms):
+        if not isinstance(a, dict):
+            raise ValueError(f"atoms[{i}] must be an object")
+        elements.append(str(a.get("element") or "X"))
+        for label in (a.get("labels") or a.get("regions") or []):
+            if isinstance(label, str) and label:
+                regions.setdefault(label, []).append(i)
+        if a.get("isFrozen") or a.get("is_frozen"):
+            frozen.append(i)
+        residue_names.append(
+            str(a.get("residueName") or a.get("residue_name") or "MOL"))
+    n = len(elements)
+    return Structure(
+        elements=elements,
+        positions=[[0.0, 0.0, 0.0] for _ in range(n)],
+        regions={k: sorted(set(v)) for k, v in regions.items()},
+        frozen_atoms=sorted(set(frozen)),
+        residue_names=residue_names,
+    )
+
+
 @bp.route("/api/selection/eval", methods=["POST"])
 def selection_eval():
-    """Evaluate a rule against a structure; return the selected
-    indices + count.  See module docstring for body shape."""
+    """Evaluate a rule against the workspace and return the selected indices.
+
+    Preferred body (Modify): ``{atoms: [...store atoms...], rule}`` -- evaluate
+    against the IN-MEMORY workspace (molview-migration-plan.md A5b), so filters
+    reflect unsaved edits.  Legacy/Results body ``{structure_path, rule}`` still
+    loads the file on disk (a saved result legitimately lives there)."""
     try:
         payload = _parse_request_payload(request)
-        path = payload.get("structure_path")
-        if not isinstance(path, str) or not path:
-            return _bad_request("missing 'structure_path'")
-        struct = _load_structure(path)
+        atoms = payload.get("atoms")
+        if isinstance(atoms, list):
+            try:
+                struct = _struct_from_atoms(atoms)
+            except ValueError as exc:
+                return _bad_request(f"invalid 'atoms': {exc}")
+        else:
+            path = payload.get("structure_path")
+            if not isinstance(path, str) or not path:
+                return _bad_request("missing 'atoms' or 'structure_path'")
+            struct = _load_structure(path)
         _expose_frozen_as_region(struct)
         rule = _load_rule_from_payload(payload)
         try:

@@ -242,7 +242,12 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
   this is the editable Modify workspace.)
 - **Check:** assign a label -> filter by it finds those atoms WITHOUT saving first;
   a modified/unsaved structure filters against its current (draft/memory) atoms.
-- **Status:** ☐ (fixes the user bug; depends on A5a)
+- **Status:** ☑ done 2026-07-05. `applyFilter` sends the store's `atoms` (not
+  `structure_path`); `/api/selection/eval` evaluates against them via
+  `_struct_from_atoms` (label/element/index/residue rules need no geometry) instead
+  of `_load_structure` (disk). Guard now checks `state.atoms`, not `sourceFile`.
+  Test: eval finds an in-memory "L-electrode" label with NO disk file. 66 tests
+  pass. (Results `{structure_path}` path kept for viewing saved files.)
 
 ### A6 — LOAD a file through the framework (not the ad-hoc file-open)
 - **Why:** opening a file uses the ad-hoc path -- `/api/build/load` (reads only the

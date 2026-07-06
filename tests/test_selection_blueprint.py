@@ -85,6 +85,25 @@ class TestEval:
         assert j["count"] == 8
         assert j["n_atoms_total"] == 11
 
+    def test_eval_against_in_memory_atoms_reflects_unsaved_labels(self, web):
+        """A5b: eval against the workspace's IN-MEMORY atoms (the store), NOT disk,
+        so a filter finds a label assigned in the panel but never saved.  Direct
+        repro of the user bug: 'L-electrode' assigned in memory is found here even
+        though disk has only 'BDT'.  No structure_path -- pure in-memory."""
+        atoms = [
+            {"index": 0, "element": "Au", "labels": ["L-electrode"], "is_frozen": True},
+            {"index": 1, "element": "Au", "labels": ["L-electrode"], "is_frozen": True},
+            {"index": 2, "element": "S",  "labels": ["BDT"], "is_frozen": False},
+        ]
+        r = web.post("/api/selection/eval", json={
+            "atoms": atoms,
+            "rule": {"op": "by_region", "name": "L-electrode"},
+        })
+        assert r.status_code == 200, r.get_json()
+        j = r.get_json()
+        assert j["selected_indices"] == [0, 1]      # the in-memory-labelled Au
+        assert j["n_atoms_total"] == 3
+
     def test_by_index_range(self, web, selection_root):
         r = web.post("/api/selection/eval", json={
             "structure_path": _path(selection_root),

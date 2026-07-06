@@ -790,8 +790,8 @@
 
         function applyFilter() {
             return _run(async (signal) => {
-                if (!state.sourceFile) {
-                    state.error = "no source file";
+                if (!Array.isArray(state.atoms) || state.atoms.length === 0) {
+                    state.error = "no atoms to filter";
                     return;
                 }
                 const rule = _filtersToRule(state.filters, state.combinator);
@@ -802,9 +802,12 @@
                     state.error     = null;
                     return;
                 }
+                // A5b: evaluate against the IN-MEMORY workspace atoms (the store),
+                // NOT a disk read -- so filters see unsaved labels/edits.  The
+                // store's atoms carry element + labels + isFrozen + residue.
                 const { ok, body } = await _postJson(EVAL_URL, {
-                    structure_path: state.sourceFile,
-                    rule:           rule,
+                    atoms: state.atoms,
+                    rule:  rule,
                 }, signal);
                 if (!ok) {
                     state.error = (body && body.error)
