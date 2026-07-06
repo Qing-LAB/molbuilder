@@ -204,6 +204,30 @@ accessors.
 3Dmol embed handle and selection-panel DOM are *renderings*, not
 copies.
 
+### 1.4 Encapsulation contract — the module is sealed (MANDATORY)
+
+**External code touches the workspace ONLY through the `ws.*` API** — the §2 read
+getters (including the §1.2.1 accessors), the §3 write mutators, and the
+`ws.selection.*` / `ws.view.*` sub-namespaces. That is the entire, exhaustive access
+surface. Everything else is private.
+
+**These internals are OFF-LIMITS — no consumer, ever, reaches into them:**
+
+| Private internal | Use the API instead |
+|---|---|
+| `ws._canvasState` / the canvas-state store | `ws.getStructure()` / `ws.installStructure()` |
+| the selection store's raw `state.atoms` | `ws.getAtoms()` / `ws.getCoordinates()` / `ws.getElements()` |
+| `structure.text` (the xyz/pdb string) | `ws.getCoordinates()` / `ws.toAddAtoms()` — **never parse the string** |
+| a structure's raw `regions` map | `ws.getAtomsByLabel(label)` |
+| `periodicity.cell` / `.kgrid` off a raw object | `ws.getUnitCell()` / `ws.getKgrid()` / … |
+
+**Why it is a hard rule (§1.2.1):** the internal layout is deliberately free to change
+(per-atom → columnar → typed arrays); that stays safe *only* if every consumer goes
+through the API. One consumer reaching in re-couples the whole module to the layout and
+re-opens the exact bug class this contract closes — the disk-reading filter, the
+string-parsing viewer, the hand-rolled save. **If the API doesn't expose what you need,
+ADD an accessor — never reach past it.**
+
 ---
 
 ## §2 Read API — `ws.*` getters
@@ -225,6 +249,22 @@ represented as `null` or empty.
 | `ws.getSourceFile()` | `string \| null` | Convenience: equivalent to `getSource().file`.  Used by selection-panel + viewer-adapter (current code reads `selection.store.getState().sourceFile`). |
 | `ws.getLastSavedTo()` | `string \| null` | The disk path the workspace was last successfully saved to this session.  Returns `null` until the first `save()` call lands.  Used by `structureSave.targetPath()` to resolve the natural save destination and by modify-viewer's Send-to-Optimization gate to require a saved-and-clean state. |
 | `ws.mountRestoreTarget()` | `string \| null` | The source-file a mount-time snapshot restore will hydrate (structure + selection), or `null` when the snapshot carries no restorable structure.  **Mount-time writers MUST consult this and defer when it equals the file they were about to load — see §4.5 (single-authority mount restore).**  Order-independent: derived from the persisted snapshot, not from whether the restore has run yet. |
+
+**§1.2.1 accessors — the concealed model's read surface** (materialise a view; the
+internal layout is never exposed):
+
+| Method | Returns | Contract |
+|---|---|---|
+| `ws.getElements()` | `string[]` | Element symbol per atom, in index order. `[]` when empty. |
+| `ws.getCoordinates()` | `number[][]` | `[[x,y,z], …]` — all coordinates. The ONLY way to read geometry; never parse `structure.text`. |
+| `ws.getUnitCell()` / `ws.getLattice()` | `number[][] \| null` | The 3×3 cell (alias pair). `null` when non-periodic/absent. |
+| `ws.getAxisKind()` | `[string,string,string] \| null` | Per-axis `periodic\|isolated\|transport`. |
+| `ws.getVacuum()` | `[number,number,number] \| null` | Per-axis vacuum padding. |
+| `ws.getKgrid()` | `[number,number,number] \| null` | k-point grid. |
+| `ws.getAtomsByLabel(label)` | `number[]` | Atom indices carrying `label` — a **direct** label→indices lookup, no scan. |
+| `ws.getFrozen()` | `number[]` | Indices of frozen atoms. |
+| `ws.atomFor3Dmol(i)` | `{elem,x,y,z} \| null` | One atom in 3Dmol's shape (numbers). |
+| `ws.toAddAtoms()` | `[{elem,x,y,z}, …]` | Whole model in 3Dmol's shape, for `model.addAtoms(...)`. The render path uses THIS, never `addModel(string)`. |
 
 ### 2.1 Subscriptions
 
