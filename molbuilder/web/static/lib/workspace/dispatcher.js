@@ -1152,9 +1152,33 @@
     // §1.2.1 accessors (getRegions/getFrozen) -- no hand-rolled scan.  The periodicity
     // is persisted RAW (null when truly unset) so the file is truthful; a reader gets
     // the defaults from the accessors.
+    // The declared atom count on the xyz's first line (the geometry's own N), or
+    // null if unparseable.  Used only for the serialise-time invariant below.
+    function _xyzAtomCount(text) {
+        var first = String(text).split("\n", 1)[0];
+        var n = parseInt(first, 10);
+        return (isFinite(n) && String(n) === first.trim()) ? n : null;
+    }
+
     function _scratchBlob() {
         var s = getStructure();
         if (!s || !s.text) return null;
+        // INVARIANT (review c): the geometry (xyz, from the canvas store) and the
+        // labels/frozen (indices, from the selection store) live in two stores.  They
+        // MUST index the same atom set.  If they desync, refuse to serialise -- a
+        // mismatched .xyz/.json pair (regions pointing outside the geometry) must
+        // NEVER reach disk.  Surfaces the bug instead of silently corrupting.
+        var nXyz = _xyzAtomCount(s.text);
+        var nStore = getElements().length;
+        if (nXyz !== null && nStore !== nXyz) {
+            if (root.console && root.console.error) {
+                root.console.error(
+                    "workspace: atom-count desync -- xyz declares " + nXyz
+                    + " atoms but the store holds " + nStore
+                    + "; refusing to serialise a mismatched .xyz/.json pair.");
+            }
+            return null;
+        }
         var per = s.periodicity || {};
         return {
             xyz: s.text,

@@ -442,6 +442,23 @@ class TestReads:
         assert out["before"] is False
         assert out["after"] is True                   # setLabel marked dirty
 
+    def test_scratch_blob_refuses_atom_count_desync(self):
+        """Review c: geometry (canvas xyz) + labels (selection store) live in two
+        stores; if their atom counts desync, getScratchBlob refuses to serialise a
+        mismatched .xyz/.json pair (regions pointing outside the geometry)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz',\n"
+            "  text:'3\\nx\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n'},\n"
+            "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"   # only 2 atoms -> desync
+            "  {index:0, element:'O', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
+            "  {index:1, element:'H', x:1, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "console.log(JSON.stringify({blob: ws.getScratchBlob()}));"
+        )
+        assert out["blob"] is None      # refused -- no mismatched pair reaches disk
+
     def test_getSource_returns_kind_file_generator_input(self):
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"
