@@ -5,10 +5,11 @@ one **store** holds the selection; a **panel** shows it; a **viewer-adapter**
 paints it in the 3D viewer and turns clicks back into selection. Three consumers,
 one source of truth.
 
-**What this is NOT.** The authoritative spec. `protocols/molview-module.md` pins
-the data structures, the full store API, the event protocol, and the scenarios.
-The store itself is part of the workspace store — see `workspace-guide.md` for
-its `ws.selection.*` mutators. This guide teaches how the pieces fit.
+**What this is NOT.** The authoritative spec. `protocols/workspace-contract.md`
+**Part II** (the MolView module) pins the data structures, the full store API,
+the event protocol, and the scenarios. The store itself is part of the workspace
+store — see `workspace-guide.md` for its `ws.selection.*` mutators. This guide
+teaches how the pieces fit.
 
 ---
 
@@ -59,13 +60,22 @@ flowchart TD
 
 - **`Atom[]`** — per-atom rows (element, name, residue, region, frozen…).
 - **selection `indices`** — the currently-selected atoms (sorted, unique).
+- **`pickOrder`** — the same atoms in **click order** (the angle-measurement
+  vertex is `pickOrder[1]`); kept in lock-step with `indices`.
 - **`mode`** — `"click"` (pick atoms) or `"filter"` (select by rule).
-- **`filters`** — element / index-range / region-label rules (evaluated in
-  filter mode).
+- **`filters`** + **`combinator`** (`"or"`/`"and"`) — element / index-range /
+  region-label rules (evaluated in filter mode) and how they combine.
+- **`isolate`** (boolean) + **`kgrid`** (`{enabled, dims, source}`) — VIEW state
+  that lives in the store: "show selected only" and the k-grid tiling the panel
+  drives (not the adapter, not a global handle).
 - **regions + frozen** — from the `.molstruct.json` sidecar (named regions,
   frozen-atom lists).
 
-Full shapes: `molview-module.md` §2.
+The singleton store is `ws.selection`; **`createEphemeralStore()`** mints an
+isolated instance with the same surface (minus the workspace-lifecycle methods)
+for a readonly inspector.
+
+Full shapes: `workspace-contract.md` Part II §12 (the store `_initialState`).
 
 ---
 
@@ -119,13 +129,16 @@ store.
 
 ## 7. Where the authority lives (+ a heads-up)
 
-- **`protocols/molview-module.md`** — the spec: data structures (§2), store API
-  (§3), event protocol (§4), dependency diagram (§5), information-flow scenarios
-  (§6).
+- **`protocols/workspace-contract.md` Part II** — the spec: the store
+  `_initialState` + surfaces (§12), the panel/adapter composition via `mountPanel`
+  (§13), the k-grid rule (§14), measurement (§15). The `ws.selection.*` mutators
+  are in §5.
 - **`workspace-guide.md`** — the store + `ws.selection.*` mutators.
 - **`molviewer-guide.md`** — the viewer the adapter drives (overlays/picks).
 
-> **Heads-up (planned):** this module (store + panel + viewer-adapter) and the
-> MolViewer are slated to be **merged into one integrated module** with a unified
-> data/UI/API. This guide's store↔panel↔adapter↔viewer seam is the map for that
-> work. See the `project-viewer-selection-merge` plan.
+> **Shipped:** this module (store + panel + viewer-adapter) and the MolViewer
+> **are one integrated MolView module** — the viewer + selection + k-grid +
+> measurement share one contract and one in-memory model. The store↔panel↔adapter↔viewer
+> seam described in this guide is that module. See `workspace-contract.md` Part II
+> for the unified contract; remaining consumer-migration work (e.g. Modify adopting
+> `mountPanel` + the fused layout) is tracked in `protocols/molview-migration-plan.md`.

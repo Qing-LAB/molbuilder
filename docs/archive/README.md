@@ -24,6 +24,10 @@ Each archived doc has either been:
 | `2026-06-02-REVIEW_FINDINGS.md` | One-shot code-review log; work landed | n/a (historical) |
 | `2026-06-02-watch-api.md` | `/api/watch/*` HTTP reference | [`../protocols/web-api.md`](../protocols/web-api.md) § 8 — endpoint table, Mode A / Mode B distinction, full `/api/watch/data` shape, `MOLBUILDER_WATCH_ROOT`, concurrency contract, security model |
 | `2026-06-02-tabs-watch.md` | Legacy `/watch` UI spec; trajectory inspector lives on `/results` post-2026-05-19 | [`../protocols/inspector-registry.md`](../protocols/inspector-registry.md) § 6 — partial layout, engine-specific UI adaptation, state invariants, polling cadence, dual-mode loader, status messages, forbidden patterns. Cross-cutting front-end conventions (3Dmol CDN pin, textContent rule, theme) → `web-api.md` § 14.4 |
+| `2026-07-03-embedded-viewer.md` | **Superseded** — the standalone embedded-viewer contract | folded into the MolView module, now [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (§13 the viewer / handle) |
+| `2026-07-03-atom-selection.md` | **Superseded** — the standalone atom-selection module spec | folded into the MolView module, now [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (§12 store, §13 composition, §15 measurement) |
+| `2026-07-06-workspace-state.md` | **Closed** — the 2026-06-07 workspace-unification audit + Phases 1–9 migration log (all shipped) | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) (the live model + persistence contract; this file kept for the *why*) |
+| `../protocols/archive/molview-module.md` | **Superseded** — the standalone MolView module design+contract (2026-07-03) | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (the whole MolView module: viewer + selection + k-grid + measurement). *(Lives under `protocols/archive/`, alongside the other protocol-doc snapshots.)* |
 
 ## Audit principle
 

@@ -683,7 +683,7 @@ D last — depends on patterns from B (form-schema-driven tabs)
 |---|---|---|
 | Form schema | `form-schema.js` (no doc; pattern) | New TransportConfig form (Phase D) |
 | Projects sidebar | `protocols/projects-sidebar.md` | No contract change.  Selection still drives file-picker; the difference is callers (task tabs require explicit confirmation; Molbuilder tab requires an explicit Load button). |
-| Embedded viewer | `protocols/molview-module.md` | No contract change.  Molbuilder tab uses the embed with the standard handle. |
+| Embedded viewer | `protocols/workspace-contract.md` (Part II) | No contract change.  Molbuilder tab uses the embed with the standard handle. |
 | Inspector registry | `protocols/inspector-registry.md` | New inspector for `.pyscf.log` (Phase C). |
 | Web API | `protocols/web-api.md` | New `/api/transport/schema` endpoint (Phase D); existing build-API generator endpoints either move to `/api/molbuilder/*` or get aliased (Phase B). |
 | Tabs index | `design.md` § 0 (UI tabs) | New per-tab specs land here as phases complete. |

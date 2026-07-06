@@ -4,7 +4,7 @@
 >
 > The fused viewer/selection design that had accreted here (former §§ 6–9) was
 > **removed** 2026-07-03. The molview module — the viewer + selection, k-grid,
-> measurement — is defined in [`molview-module.md`](molview-module.md).
+> measurement — is defined in [`workspace-contract.md`](workspace-contract.md) (Part II).
 
 # Unified atom annotations — the per-atom annotation channels model
 

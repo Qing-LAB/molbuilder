@@ -132,4 +132,7 @@ race — one authoritative path, honored by all callers.)
 - **`engines/builders.md`** — the server-side builders (peptide / nucleic /
   SMILES, H-placement heuristics, X3DNA quirks).
 - **`protocols/sidecar-contract.md`** — the `.molstruct.json` three-stage flow.
+- **`protocols/structure-periodicity.md`** — the periodicity the structure carries
+  and a save writes: `(cell, axis_kind, vacuum, kgrid)`, `resolve_cell`, the
+  axis_kind-gated k-grid.
 - **`workspace-guide.md`** — the workspace store the canvas/selection live in.

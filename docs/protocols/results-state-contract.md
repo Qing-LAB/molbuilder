@@ -661,7 +661,7 @@ contract tests so a regression in any phase fails immediately.
   Generate, SIESTA/PySCF Generate). Those have their own
   workspace + form-dirty contracts (`workspace-contract.md`).
 - Workspace/structure state in `/molbuilder`. That's
-  `workspace-state.md` + `workspace-contract.md`.
+  `workspace-contract.md` (the MolView + Workspace core contract).
 - The file-picker's in-memory cache. Out of scope here because the
   picker is sidebar-level, not inspector-level. If the picker
   cache bug (audit 5) needs a fix, it gets its own contract entry

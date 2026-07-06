@@ -9,7 +9,7 @@ contract.
 Public surface here
 -------------------
 
-* :data:`SCHEMA_VERSION`            — current on-disk schema (3).
+* :data:`SCHEMA_VERSION`            — current on-disk schema (4).
 * :exc:`MolstructJsonError`         — raised on malformed input or
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct

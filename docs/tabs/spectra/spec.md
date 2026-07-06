@@ -430,7 +430,7 @@ debugging / future tools and is **not** rendered by default.
 ### 5.1 Atom-index contract (validatable)
 
 This module is **independent** of the fused molview+selection module
-(`molview-module.md` — spectra's "selection" is a *mode*, not atoms), but
+(`workspace-contract.md` Part II — spectra's "selection" is a *mode*, not atoms), but
 isolation must **not** fork indexing: it shares the system-wide atom-index
 contract (`data-vocabulary.md § 3.1 / § 3.2`). Two 0-based index spaces coexist
 here — mixing them is the silent-corruption hazard, so state them explicitly.
