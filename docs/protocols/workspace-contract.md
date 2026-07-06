@@ -114,50 +114,64 @@ type WorkspaceState = {
 }
 ```
 
-### 1.2.1 The uniform in-memory structure — MANDATORY
+### 1.2.1 The uniform in-memory structure — MANDATORY (one model, one accessor API)
 
-**This is the mandatory data-model contract for molview. Code that stores geometry
-any other way is wrong by definition; this contract is right and the code is wrong.**
+**This is the mandatory data-model contract for molview.** Two rules; the second is
+the important one.
 
-The molecule is held as **ONE structured object — never as a string.** Every atom is
-a structured record that carries **its own coordinates as numbers**:
+**(A) ONE encapsulated in-memory model holds the whole molecule.** Its internal
+LAYOUT is an implementation detail, chosen for efficiency — today **columnar**
+(struct-of-arrays):
 
 ```js
-type Atom = {
-  index:     number,                    // 0-based, stable
-  element:   string,                    // "Au", "S", "C", …
-  x: number, y: number, z: number,      // COORDINATES -- numbers, ON the atom
-  labels:    string[],                  // region tags, e.g. ["L-electrode"]
-  isFrozen:  boolean,
-  atomName?: string, residueName?: string, chainId?: string,   // PDB metadata
-}
-type Structure = {
-  atoms: Atom[],                        // geometry + chemistry + labels, all here
-  cell, axis_kind, vacuum, kgrid,       // periodicity (§1.2 / structure-periodicity.md)
+// INTERNAL layout -- consumers never see this directly (rule B).
+{
+  elements:  string[],                         // ["Au","Au","S", …]
+  positions: number[][],                       // [[x,y,z], …]  -- ONE coordinate table
+  regions:   { [label: string]: number[] },    // label -> atom indices (the label INDEX)
+  frozen:    number[],                         // frozen atom indices
+  cell, axis_kind, vacuum, kgrid,              // periodicity (structure-periodicity.md)
 }
 ```
+Columnar because: coordinates pack tightly (a table is ~12 bytes/atom vs ~50–100 for
+a per-atom JS object), and **selection-by-label is a direct `regions[label]` lookup,
+never an O(N) scan** of every atom's labels. Same shape as the backend `Structure` +
+the sidecar. But this is a *choice* — it can change (typed arrays, etc.) freely,
+because of rule B.
 
-**The rules (mandatory):**
+**(B) A UNIFIED ACCESSOR API is the ONLY way any consumer reads or writes the model.**
+No consumer hand-crafts extraction — no `state.xyz.split()`, no `atoms[i].labels`
+scan, no reaching into the raw arrays. The API materializes whatever VIEW the caller
+needs from the internal layout:
 
-1. **The `atoms` array is the single geometric truth.** Coordinates live on the atom
-   (`atom.x/y/z`) — NOT in a text blob, NOT in a parallel `positions[]` array.
-2. **The xyz/pdb string exists ONLY at the file boundary.** Load PARSES the two files
-   (`.xyz` + `.json`) into this object; Save SERIALIZES this object back into them
-   (atomically, §4). In between there is **no canonical string** and nothing
-   re-parses text to recover coordinates.
-3. **Rendering reads the object.** 3Dmol is fed the atoms as NUMBERS via
-   `model.addAtoms([{elem, x, y, z}, …])` — **never** `addModel(xyzString)`.
-   Serializing to a string so the renderer can re-parse it is forbidden (it is a
-   serialize→parse round-trip on every draw).
-4. **Filtering, measuring, and every processing op read this same object** — no disk
-   read, no string re-parse (§4.0 memory-is-the-truth).
+```
+getElements()            -> string[]
+getCoordinates()         -> number[][]            // all coordinates
+getLattice() / getUnitCell() -> number[][] | null // the cell
+getAxisKind() / getVacuum() / getKgrid()
+getAtomsByLabel(label)   -> number[]              // indices -- direct regions lookup
+getFrozen()              -> number[]
+atomFor3Dmol(i)          -> {elem, x, y, z}       // one atom, 3Dmol's shape
+toAddAtoms()             -> [{elem, x, y, z}, …]   // whole model, for model.addAtoms
+```
+Because access is ONLY through the API, the storage layout can change without touching
+a single consumer. **The API is the contract; the layout is free.**
 
-**Migration status (molview-migration-plan.md step D).** Today geometry still lives
-in `structure.text` (a string), `atoms` lack coordinates, and the viewer re-parses a
-`positions[]` array out of the string then feeds 3Dmol via `addModel(text)` — the
-legacy split this contract replaces. Step D lands the model above end-to-end; until
-it completes, `structure.text` is tolerated as the transitional geometry carrier but
-is being removed as the source of truth.
+**Consequences (mandatory):**
+1. **The xyz/pdb string exists ONLY at the file boundary** — load parses it into the
+   model, save serializes the model back out (atomically, §4). No consumer ever gets
+   geometry from a string.
+2. **Rendering calls `toAddAtoms()` / `atomFor3Dmol()`** — never `addModel(xyzString)`,
+   never parses text.
+3. **Filter / measure call the API** (`getAtomsByLabel`, `getCoordinates`) — no disk
+   read, no hand-crafted scan (§4.0 memory-is-the-truth).
+
+**Migration status (molview-migration-plan.md Track D).** Today geometry lives in
+`structure.text` (a string) behind a per-atom `atoms[]` wire shape, consumers reach in
+by hand (`state.xyz.split`, `atoms[i].labels`), and the viewer feeds 3Dmol
+`addModel(text)`. Track D lands the model + API above; until it completes, the per-atom
+`atoms[]` + `structure.text` are tolerated as transitional carriers behind the new
+accessors.
 
 ### 1.3 The flow
 

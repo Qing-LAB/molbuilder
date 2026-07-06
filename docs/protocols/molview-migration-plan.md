@@ -304,49 +304,53 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
 > Track A runs BEFORE the remaining Track B molview steps — it's the data-loss fix.
 > The molview k-grid Steps 1–2 (done) stand; Steps 3–6 below become Track B.
 
-## Track D — the uniform structured in-memory model (FOUNDATION; the MANDATORY contract)
+## Track D — conceal the model, expose ONE accessor API (FOUNDATION; the MANDATORY contract)
 
-**Contract:** workspace-contract.md §1.2.1 — ONE structured object holds the molecule;
-each atom carries its own coordinates (`atom.x/y/z`); the xyz/pdb string exists ONLY
-at the file boundary; 3Dmol renders the atoms as NUMBERS via `addAtoms`, never
-`addModel(string)`; filter/measure/render all read this one object. This is the
-foundation the rest of the tangle (A6's kept `/api/build/load`, the double
-atom-install, the `positions[]` re-parse) was working around.
+**The principle (workspace-contract.md §1.2.1):** molview owns ONE encapsulated
+in-memory model. Its layout is a *concealed* implementation detail (today columnar,
+free to change). A **unified accessor API is the ONLY way any consumer reads/writes
+it** — `getCoordinates()`, `getLattice()`, `getAtomsByLabel()`, `toAddAtoms()`, … No
+consumer hand-crafts extraction. This buys flexibility (change internals freely), bug
+isolation (data logic in one place), and conflict avoidance.
 
-**Today's legacy (what this replaces):** geometry lives in `structure.text` (a
-string); the store's `atoms` lack coordinates; the viewer re-parses `positions[]` out
-of the string (`state.xyz.split("\n")`, viewer.js:491) and feeds 3Dmol
-`addModel(text, "xyz")` — a serialize→parse round-trip on every draw.
+**Why it matters — every bug this session was a consumer hand-crafting access:** the
+filter reading disk (A5b), the viewer `state.xyz.split()`-ing the string, the save
+gathering labels its own way, the double atom-install. A single API surface makes that
+whole class structurally impossible.
 
-### D1 — atoms carry coordinates end-to-end
-- **Do:** the server atom-list wire shape (`_shared.atoms_list`) includes `x/y/z`; the
-  store's `_normaliseAtom` keeps `x/y/z`; every atoms-returning endpoint
-  (`/api/workingcopy/open`, `/api/selection/atoms`, every `/api/modify/*` via
-  `structure_to_dict`) emits them. §7.2 wire shape updated.
-- **Check:** open a structure → `ws.getAtoms()[i]` has numeric `x/y/z` matching the
-  file; a modify op preserves them; unit tests on `atoms_list` + `_normaliseAtom`.
+### D1 — coordinates in memory (done; transitional per-atom carrier)
+- **Do:** the wire (`_shared.atoms_list`) + store `_normaliseAtom` carry `x/y/z`, so
+  geometry reaches memory (not trapped in a string). §7.2 updated. *(Per-atom shape is
+  transitional — D3 seals it behind the API over the columnar layout.)*
 - **Status:** ☑ done 2026-07-06. `_shared.atoms_list` emits `x/y/z` (from
-  `struct.positions`) on every row → carried by `/api/workingcopy/open`,
-  `/api/selection/atoms`, every `/api/modify/*` (`structure_to_dict`). Store
-  `_normaliseAtom` keeps numeric `x/y/z`. §7.2 wire shape updated. Test:
-  `test_atoms_carry_coordinates_on_the_atom`; 136 shared/selection/workingcopy/store
-  tests pass (coords additive, nothing broke).
+  `struct.positions`); store keeps numeric `x/y/z`. Test:
+  `test_atoms_carry_coordinates_on_the_atom`; 136 tests pass.
 
-### D2 — the viewer renders from the atoms (numbers), not a string
-- **Do:** the embed feeds 3Dmol via `model.addAtoms([{elem,x,y,z}, …])` from the
-  store's atoms; wire up bond perception (explicit bonds or 3Dmol distance-based).
-  `addModel(text, format)` removed from the render path.
-- **Check:** a structure draws with correct geometry + bonds from the atoms alone (no
-  xyz string passed to the viewer); manual browser confirm.
+### D2 — define + build the unified accessor API (the public surface)
+- **Do:** the store/module exposes the §1.2.1 accessors (`getElements`,
+  `getCoordinates`, `getLattice`/`getUnitCell`, `getAxisKind`/`getVacuum`/`getKgrid`,
+  `getAtomsByLabel`, `getFrozen`, `atomFor3Dmol`, `toAddAtoms`) over the internal
+  model. Backed by the columnar layout internally; per-atom/3Dmol shapes materialized
+  in the accessor, not stored.
+- **Check:** each accessor returns the right view on a known structure; unit tests pin
+  the surface; `getAtomsByLabel` is a direct `regions` lookup (no scan).
+- **Status:** ☐ (next)
+
+### D3 — route EVERY consumer through the API; seal the internals
+- **Do:** rewire render (`toAddAtoms` → `model.addAtoms`, drop `addModel(string)` +
+  `/api/build/load` + the double atom-install), filter/measure (`getAtomsByLabel`,
+  `getCoordinates` — drop `state.xyz.split`), save (`getElements`/`getCoordinates`/
+  regions via the API). Make the raw store fields private; `structure.text` becomes
+  boundary-only (codec on save/load).
+- **Check:** grep — no `state.xyz.split`, no `addModel(`, no `/api/build/load` in the
+  Modify path, no consumer reaching past the accessors into raw arrays.
 - **Status:** ☐
 
-### D3 — delete the string-as-truth + `/api/build/load` + the `positions[]` re-parse
-- **Do:** the Modify load drives the viewer from the in-memory structure (no
-  `/api/build/load`, no double atom-install); `state.positions` comes from
-  `atom.x/y/z`, not a string split; `structure.text` becomes boundary-only (produced
-  by the codec on save, consumed on load).
-- **Check:** grep — no `state.xyz.split`, no `addModel(` in the render path, no
-  `/api/build/load` in the Modify load; measurements read `atom.x/y/z`.
+### D4 — columnar internals (the concealed layout)
+- **Do:** the internal model IS columnar (`elements[]`, `positions[][]`, `regions`
+  map, `frozen[]`) — never surfaced directly; only the D2 accessors touch it.
+- **Check:** the store holds no per-atom `atoms[]` as canonical; the panel's list rows
+  are materialized via the API.
 - **Status:** ☐
 
 ## 5. Standing guardrails (apply to every step)
