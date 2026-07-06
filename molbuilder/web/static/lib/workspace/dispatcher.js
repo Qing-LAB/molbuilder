@@ -1018,12 +1018,67 @@
         }
     }
 
+    // The working-copy scratch blob {xyz, sidecar} from the store -- the codec
+    // shape /api/workingcopy/{save,update} consume.  ONE serialisation of the
+    // workspace, for BOTH the durable save and the transient draft.
+    function _scratchBlob() {
+        var s = getStructure();
+        if (!s || !s.text) return null;
+        var atoms = s.atoms || [];
+        var regions = {}, frozen = [];
+        for (var i = 0; i < atoms.length; i++) {
+            var a = atoms[i];
+            if (!a) continue;
+            var labels = a.labels || [];
+            for (var j = 0; j < labels.length; j++) {
+                if (!regions[labels[j]]) regions[labels[j]] = [];
+                regions[labels[j]].push(i);
+            }
+            if (a.isFrozen) frozen.push(i);
+        }
+        var per = s.periodicity || {};
+        return {
+            xyz: s.text,
+            sidecar: {
+                n_atoms_total:   atoms.length || s.n_atoms || 0,
+                structure_hash:  "",
+                regions:         regions,
+                frozen_atoms:    frozen,
+                cell:            per.cell || null,
+                axis_kind:       per.axis_kind || null,
+                vacuum:          per.vacuum || null,
+                kgrid:           per.kgrid || null,
+                selection_rules: {},
+            },
+        };
+    }
+
+    // A5a (working-copy-persistence.md): keep the transient DRAFT in sync with
+    // memory on every edit -- the contract's "update = the only automatic write"
+    // to ``<project>/.molbuilder_workspace/``.  Best-effort crash-safety; skipped
+    // when there is no source file yet (a fresh generated structure has no draft
+    // home until it is saved).
+    function _persistDraft() {
+        if (!root.fetch) return;
+        var src = getSource();
+        var sourceFile = src && src.file;
+        if (!sourceFile) return;
+        var blob = _scratchBlob();
+        if (!blob) return;
+        root.fetch("/api/workingcopy/update", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ source: sourceFile, data: blob }),
+        }).catch(function () { /* draft is best-effort crash-safety */ });
+    }
+
     function _schedulePersist() {
-        if (!root.sessionStorage) return;
+        if (!root.sessionStorage && !root.fetch) return;
         if (_persistDeadline) clearTimeout(_persistDeadline);
         _persistDeadline = setTimeout(function () {
             _persistDeadline = null;
-            _persistToSession();
+            _persistToSession();    // browser draft (fast restore)
+            _persistDraft();        // on-disk transient draft (the contract)
         }, 100);
     }
 

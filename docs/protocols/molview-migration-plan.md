@@ -224,7 +224,11 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
   the framework). Load establishes the working copy; discard drops the draft.
 - **Check:** after assigning a label (no Save), the project's `.molbuilder_workspace/`
   draft reflects it; a reload/crash recovers it via the framework.
-- **Status:** ☐
+- **Status:** ◐ code done 2026-07-05. `dispatcher._scratchBlob` + `_persistDraft`
+  POST `/api/workingcopy/update {source, data}` in the debounced persist (alongside
+  sessionStorage), on every edit; skipped when there's no source file. Syntax OK +
+  25 dispatcher tests pass. **Browser check pending** (the `.molbuilder_workspace/`
+  draft appears + updates).
 
 ### A5b — SELECTION + FILTER read the workspace, not the STALE saved file (BUG FIX)
 - **Why:** the Modify filter-by-label posts `/api/selection/eval`, which reads the
