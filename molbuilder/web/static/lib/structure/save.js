@@ -292,7 +292,7 @@
     var _wired = false;
     var _unsubCanvas = null;
     // 2026-06-12: while a Save click is in flight, the workspace's
-    // subscriber callback fires DURING ``_postWriteSuccess`` (because
+    // subscriber callback fires DURING ``_postSaveSuccess`` (because
     // ``markSavedTo`` + ``adoptSession`` both call ws.notify()).  The
     // subscriber re-runs ``refreshState`` mid-save, which would re-
     // enable the button on a successful write — letting the user

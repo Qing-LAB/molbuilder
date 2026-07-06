@@ -593,8 +593,13 @@
         const regions = {};
         for (let i = 0; i < _atoms.length; i++) {
             const a = _atoms[i] || {};
-            if (a.is_frozen) frozen_atoms.push(i);
-            const labels = a.regions || [];
+            // Store atoms are normalised to camelCase (isFrozen/labels) by
+            // _normaliseAtom -- reading snake_case (is_frozen/regions) here yielded
+            // ALWAYS-empty frozen/regions, and the server treats present-but-empty as
+            // "explicitly clear", so every modify op silently wiped frozen + labels
+            // (review data-loss #1).
+            if (a.isFrozen) frozen_atoms.push(i);
+            const labels = a.labels || [];
             for (const label of labels) {
                 if (!regions[label]) regions[label] = [];
                 regions[label].push(i);
