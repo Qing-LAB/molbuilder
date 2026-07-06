@@ -156,7 +156,15 @@
         var blob = (_workspace && typeof _workspace.getScratchBlob === "function")
             ? _workspace.getScratchBlob() : null;
         if (!blob) {
-            return Promise.resolve({ ok: false, error: "save: workspace has no data" });
+            // getScratchBlob returns null for BOTH an empty workspace and a caught
+            // atom-count desync -- distinguish them so the user isn't told the
+            // opposite of what happened (review c-msg).
+            var hasData = _workspace
+                && typeof _workspace.getStructure === "function"
+                && _workspace.getStructure();
+            return Promise.resolve({ ok: false, error: hasData
+                ? "save: workspace state is inconsistent (atom-count desync); reload before saving."
+                : "save: workspace has no data" });
         }
         // b1: identify the workspace by the SAME key its draft was written under
         // ({source} or {workspace_id}) so the server drops the RIGHT draft; the file

@@ -40,13 +40,6 @@ class ScratchRecord:
     blob: Any
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
-
-
 def _scratch_dir(project_dir: Path) -> Path:
     return Path(project_dir) / SCRATCH_DIR
 
@@ -130,14 +123,25 @@ class WorkingCopy:
         target = Path(target_path).resolve()
         old_scratch = self._scratch_file()
         staged: List[Tuple[Path, Path]] = []
-        for path, blob in self.codec.files(self.data, target):
-            p = Path(path)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            tmp = p.with_name(p.name + ".tmp")
-            tmp.write_bytes(blob)
-            staged.append((tmp, p))
-        for tmp, dest in staged:                 # renames only -- no I/O between
-            os.replace(tmp, dest)
+        try:
+            for path, blob in self.codec.files(self.data, target):
+                p = Path(path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                tmp = p.with_name(p.name + ".tmp")
+                tmp.write_bytes(blob)
+                staged.append((tmp, p))
+            for tmp, dest in staged:             # renames only -- no I/O between
+                os.replace(tmp, dest)
+        finally:
+            # A rename that never ran (a mid-commit failure) leaves its .tmp behind;
+            # a renamed temp no longer exists.  Clean any leftover so a failed save
+            # doesn't litter the project dir (review b-nit).
+            for tmp, _dest in staged:
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except OSError:
+                    pass
         self.source = target
         self.dirty = False
         if old_scratch.exists():

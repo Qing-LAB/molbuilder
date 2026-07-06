@@ -1152,28 +1152,36 @@
     // §1.2.1 accessors (getRegions/getFrozen) -- no hand-rolled scan.  The periodicity
     // is persisted RAW (null when truly unset) so the file is truthful; a reader gets
     // the defaults from the accessors.
-    // The declared atom count on the xyz's first line (the geometry's own N), or
-    // null if unparseable.  Used only for the serialise-time invariant below.
-    function _xyzAtomCount(text) {
-        var first = String(text).split("\n", 1)[0];
-        var n = parseInt(first, 10);
-        return (isFinite(n) && String(n) === first.trim()) ? n : null;
+    // The geometry's own atom count from the text, or null if unparseable.  Handles
+    // both source formats (review c-PDB: a PDB has no leading count line, so the
+    // xyz-only parse skipped the invariant).
+    function _geometryAtomCount(text, format) {
+        if (format === "pdb") {
+            var n = 0, lines = String(text).split("\n");
+            for (var i = 0; i < lines.length; i++) {
+                if (/^(ATOM|HETATM)/.test(lines[i])) n++;
+            }
+            return n;
+        }
+        var first = String(text).split("\n", 1)[0];   // xyz: first line = atom count
+        var c = parseInt(first, 10);
+        return (isFinite(c) && String(c) === first.trim()) ? c : null;
     }
 
     function _scratchBlob() {
         var s = getStructure();
         if (!s || !s.text) return null;
-        // INVARIANT (review c): the geometry (xyz, from the canvas store) and the
+        // INVARIANT (review c): the geometry (text, from the canvas store) and the
         // labels/frozen (indices, from the selection store) live in two stores.  They
         // MUST index the same atom set.  If they desync, refuse to serialise -- a
         // mismatched .xyz/.json pair (regions pointing outside the geometry) must
         // NEVER reach disk.  Surfaces the bug instead of silently corrupting.
-        var nXyz = _xyzAtomCount(s.text);
+        var nGeom = _geometryAtomCount(s.text, s.source_format);
         var nStore = getElements().length;
-        if (nXyz !== null && nStore !== nXyz) {
+        if (nGeom !== null && nStore !== nGeom) {
             if (root.console && root.console.error) {
                 root.console.error(
-                    "workspace: atom-count desync -- xyz declares " + nXyz
+                    "workspace: atom-count desync -- geometry has " + nGeom
                     + " atoms but the store holds " + nStore
                     + "; refusing to serialise a mismatched .xyz/.json pair.");
             }

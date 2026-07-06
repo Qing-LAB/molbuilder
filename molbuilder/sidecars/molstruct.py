@@ -501,16 +501,26 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     if norm_cell is not None:
         import numpy as _np
         struct.cell = _np.asarray(norm_cell, dtype=float)
-        struct.pbc  = tuple(norm_pbc)
-    elif pbc_raw is not None:
-        # pbc without a cell is unusual but legal (records intent).
-        struct.pbc = tuple(norm_pbc)
 
-    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
-    # Stored consistently with pbc above; absent -> keep the Structure defaults.
+    # axis_kind is AUTHORITATIVE (structure-periodicity.md); pbc is its DERIVED view.
+    # Resolve axis_kind: explicit wins; else a present cell => periodic-all (the
+    # convention a bare celled structure follows); else a bare pbc records intent;
+    # else keep the Structure's own default.  Then re-derive pbc FROM it so the two
+    # can NEVER contradict (review F3 / a-c#1 — pbc used to be set from cell-presence
+    # and could disagree with an isolated/transport axis_kind).
+    # Precedence: explicit axis_kind > explicit pbc (derive axis_kind from it) >
+    # a bare cell (periodic-all convention).  Explicit pbc MUST win over the cell
+    # convention, else a stored pbc=(T,T,F) is clobbered to all-periodic.
     ak = sidecar_data.get("axis_kind")
     if ak is not None:
         struct.axis_kind = tuple(str(k) for k in ak)
+    elif norm_pbc is not None:
+        struct.axis_kind = tuple("periodic" if b else "isolated" for b in norm_pbc)
+    elif norm_cell is not None:
+        struct.axis_kind = ("periodic", "periodic", "periodic")
+    if struct.axis_kind is not None:
+        struct.pbc = tuple(k != "isolated" for k in struct.axis_kind)
+
     vac = sidecar_data.get("vacuum")
     if vac is not None:
         struct.vacuum = tuple(float(x) for x in vac)

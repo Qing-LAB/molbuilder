@@ -140,6 +140,8 @@ def wc_save():
     if blob is None:
         return _bad("missing 'data'")
     source, ws_id = b.get("source"), b.get("workspace_id")
+    if b.get("target") is not None and not isinstance(b["target"], str):
+        return _bad("'target' must be a string")   # else _resolve() -> 500 (b-nit)
     # Build the working copy under the DRAFT's identity -- {source} for a loaded file,
     # {workspace_id} for a not-yet-saved molecule -- so save() drops the RIGHT draft
     # (review finding b1).  The file is written to ``target`` (the save-as path).

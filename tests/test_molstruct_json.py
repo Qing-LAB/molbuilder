@@ -541,3 +541,25 @@ class TestStructureHashInvariant:
         a.write_text(text)
         b.write_text(text)
         assert msj.sha256_of_file(a) == msj.sha256_of_file(b)
+
+
+class TestPbcFollowsAxisKind:
+    """Review F3: pbc is the DERIVED view of axis_kind, not of cell-presence."""
+
+    def test_isolated_axis_keeps_pbc_false_despite_cell(self):
+        d = msj.to_dict(n_atoms_total=2, structure_hash="0" * 32,
+                        cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+                        axis_kind=["periodic", "periodic", "isolated"])
+        s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
+        msj.apply_to_structure(s, d)
+        assert tuple(s.axis_kind) == ("periodic", "periodic", "isolated")
+        # pbc follows axis_kind -- NOT all-True from cell-presence (the F3 bug)
+        assert tuple(bool(x) for x in s.pbc) == (True, True, False)
+
+    def test_celled_without_axis_kind_or_pbc_is_periodic(self):
+        d = msj.to_dict(n_atoms_total=2, structure_hash="0" * 32,
+                        cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]])
+        s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
+        msj.apply_to_structure(s, d)
+        assert tuple(s.axis_kind) == ("periodic", "periodic", "periodic")
+        assert tuple(bool(x) for x in s.pbc) == (True, True, True)
