@@ -43,6 +43,33 @@ def test_open_update_save(client_project):
     assert json.loads((proj / "mol.molstruct.json").read_text())["frozen_atoms"] == [1]
 
 
+def test_update_sourceless_drafts_under_projects_root(client_project, monkeypatch):
+    """A brand-new molecule (NO source file) STILL gets a transient draft -- the
+    contract persists ANY in-memory data, no project dir required.  Home = the
+    top-level projects-root draft dir, keyed by ``workspace_id``."""
+    client, proj = client_project
+    # projects_root() is the sourceless draft home; isolate it to tmp.
+    import molbuilder.web.blueprints.workingcopy as wcbp
+    monkeypatch.setattr(wcbp, "projects_root", lambda: proj)
+    blob = _json(client.post("/api/workingcopy/open",
+                             json={"path": str(proj / "mol.xyz")}))["data"]
+    r = client.post("/api/workingcopy/update",
+                    json={"workspace_id": "ws-abc123", "data": blob})
+    assert _json(r)["ok"]
+    drafts = list((proj / ".molbuilder_workspace").glob("new-ws-abc123.*.wc.json"))
+    assert len(drafts) == 1                      # the sourceless draft exists
+
+
+def test_update_sourceless_without_id_is_400(client_project):
+    """No source AND no workspace_id -> the server can't place the draft."""
+    client, proj = client_project
+    blob = _json(client.post("/api/workingcopy/open",
+                             json={"path": str(proj / "mol.xyz")}))["data"]
+    r = client.post("/api/workingcopy/update", json={"data": blob})
+    assert r.status_code == 400
+    assert "workspace_id" in _json(r)["error"]
+
+
 def test_save_refuses_existing_target_without_overwrite(client_project):
     """Overwrite gate (§1): saving onto an existing file without overwrite=true is
     409 -- the caller must confirm first."""

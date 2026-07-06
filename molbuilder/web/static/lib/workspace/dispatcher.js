@@ -983,8 +983,11 @@
         // ``atoms[]``, so nulling it broke the IIFE state restore
         // (empty Anchor readouts, broken refreshSelectionUI).
         return {
-            v:        1,
-            saved_at: new Date().toISOString(),
+            v:            1,
+            saved_at:     new Date().toISOString(),
+            // Keep the sourceless-workspace draft id stable across a same-tab
+            // reload (so we recover the same server draft, not a fresh orphan).
+            workspace_id: _workspaceId,
             state: {
                 structure:    getStructure(),
                 source:       getSource(),
@@ -1053,22 +1056,39 @@
         };
     }
 
-    // A5a (working-copy-persistence.md): keep the transient DRAFT in sync with
-    // memory on every edit -- the contract's "update = the only automatic write"
-    // to ``<project>/.molbuilder_workspace/``.  Best-effort crash-safety; skipped
-    // when there is no source file yet (a fresh generated structure has no draft
-    // home until it is saved).
+    // A stable id for a SOURCELESS workspace's draft, so repeated updates hit the
+    // SAME draft file and a same-tab reload keeps it (not a fresh orphan each time).
+    var _workspaceId = null;
+    function _ensureWorkspaceId() {
+        if (_workspaceId) return _workspaceId;
+        var snap = readPersistedSnapshot();      // reuse across same-tab reload
+        if (snap && snap.workspace_id) {
+            _workspaceId = snap.workspace_id;
+            return _workspaceId;
+        }
+        _workspaceId = "ws-" + Date.now().toString(36) + "-"
+                     + Math.random().toString(36).slice(2, 10);
+        return _workspaceId;
+    }
+
+    // Keep the transient DRAFT in sync with memory on every edit -- the contract's
+    // "update = the only automatic disk write" (workspace-contract.md).  The draft
+    // exists for ANY workspace with data, NO project dir required: a loaded file
+    // drafts next to itself; a brand-new molecule drafts to the top-level
+    // projects-root, keyed by ``workspace_id``.  Best-effort crash-safety.
     function _persistDraft() {
         if (!root.fetch) return;
+        var blob = _scratchBlob();
+        if (!blob) return;                       // no structure yet -> nothing to draft
         var src = getSource();
         var sourceFile = src && src.file;
-        if (!sourceFile) return;
-        var blob = _scratchBlob();
-        if (!blob) return;
+        var body = sourceFile
+            ? { source: sourceFile, data: blob }
+            : { workspace_id: _ensureWorkspaceId(), data: blob };
         root.fetch("/api/workingcopy/update", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ source: sourceFile, data: blob }),
+            body:    JSON.stringify(body),
         }).catch(function () { /* draft is best-effort crash-safety */ });
     }
 

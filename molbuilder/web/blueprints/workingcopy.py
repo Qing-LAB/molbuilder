@@ -15,6 +15,7 @@ from flask import Blueprint, g, jsonify, request
 
 from molbuilder import persist
 from molbuilder import workingcopy as wc
+from molbuilder.projects import projects_root
 from molbuilder.workingcopy_structure import StructureCodec
 
 from .files import _PickerError, _resolve_within_roots
@@ -22,6 +23,15 @@ from .files import _PickerError, _resolve_within_roots
 bp = Blueprint("workingcopy", __name__)
 _CODEC = StructureCodec()
 _SERVER_SESSION = None
+
+
+def _default_draft_dir():
+    """Draft home for a SOURCELESS workspace (a brand-new molecule not yet
+    saved).  The contract persists ANY in-memory data -- a project dir is NOT
+    required (workspace-contract.md) -- so a sourceless draft lives at the
+    top-level ``projects_root()/.molbuilder_workspace/``, keyed by the client's
+    stable workspace id.  ``update`` creates the dir lazily."""
+    return projects_root()
 
 
 def _session() -> str:
@@ -65,20 +75,36 @@ def wc_open():
 
 @bp.route("/api/workingcopy/update", methods=["POST"])
 def wc_update():
+    """Mirror the in-memory workspace to a transient draft (crash-safety), the
+    only automatic disk write.  Two workspace shapes:
+
+    * loaded from a file -> ``{source, data}``; draft next to the file.
+    * a brand-new molecule not yet saved -> ``{workspace_id, data}``; draft at
+      the top-level ``projects_root()/.molbuilder_workspace/``.  A project dir is
+      NOT required -- the contract persists ANY in-memory data.
+    """
     b = _body()
     source, blob = b.get("source"), b.get("data")
-    if not isinstance(source, str) or blob is None:
-        return _bad("missing 'source' or 'data'")
-    try:
-        src = _resolve(source)
-    except _PickerError as e:
-        return _bad(e.message, e.status)
+    if blob is None:
+        return _bad("missing 'data'")
     try:
         data = _CODEC.from_scratch(blob)
     except Exception as e:  # noqa: BLE001 -- malformed body -> 400
         return _bad(f"malformed working-copy body: {e}", 400)
-    wc.WorkingCopy(codec=_CODEC, session=_session(), project_dir=src.parent,
-                   data=data, source=src).update(data)
+    if isinstance(source, str) and source:
+        try:
+            src = _resolve(source)
+        except _PickerError as e:
+            return _bad(e.message, e.status)
+        wc.WorkingCopy(codec=_CODEC, session=_session(), project_dir=src.parent,
+                       data=data, source=src).update(data)
+    else:
+        ws_id = b.get("workspace_id")
+        if not isinstance(ws_id, str) or not ws_id:
+            return _bad("missing 'source' or 'workspace_id'")
+        wc.WorkingCopy(codec=_CODEC, session=_session(),
+                       project_dir=_default_draft_dir(), data=data,
+                       source=None, new_id=ws_id).update(data)
     return jsonify({"ok": True})
 
 
