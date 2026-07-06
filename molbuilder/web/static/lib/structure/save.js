@@ -146,77 +146,46 @@
     }
 
     /**
-     * Atomically REPLACE the destination sidecar with the whole store
-     * (regions + frozen + periodicity).  Single HTTP call via
-     * ``/api/selection/save-sidecar`` (REPLACE-all).
-     *
-     * workspace-contract.md §4.0: the store is authoritative -- a save writes
-     * the whole store, wiping any stale sidecar at the destination.  Fires on
-     * EVERY save (see _postWriteSuccess), not just save-as.
+     * Serialise the whole STORE into the working-copy scratch blob -- the codec's
+     * ``{xyz, sidecar}`` shape (StructureCodec.scratch_blob).  ONE payload; the
+     * server writes the .xyz + .json pair from it atomically
+     * (/api/workingcopy/save).  workspace-contract.md §4.0/§4.0.1: the store is
+     * the truth; the persistence framework (molbuilder.workingcopy) writes it.
      */
-    function _persistLabelsToDestination(path, labels, nAtoms) {
-        if (!root.fetch) return Promise.resolve();
-        return root.fetch("/api/selection/save-sidecar", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-                structure_path: path,
-                n_atoms:        nAtoms,
-                regions:        labels.regions,
-                frozen_atoms:   labels.frozen,
-                periodicity:    labels.periodicity,
-            }),
-        }).then(function (r) { return r.json(); })
-          .catch(function () { /* non-fatal */ });
+    function _buildScratchBlob() {
+        var struct = (_workspace && typeof _workspace.getStructure === "function")
+            ? (_workspace.getStructure() || {}) : {};
+        var labels = (_workspace && typeof _workspace.getAtoms === "function")
+            ? _gatherLabelsFromWorkspace()
+            : { regions: {}, frozen: [], periodicity: null };
+        var per = labels.periodicity || {};
+        var nAtoms = Number(struct.n_atoms
+            || (_workspace.getAtoms && (_workspace.getAtoms() || []).length) || 0);
+        return {
+            xyz: struct.text || "",
+            sidecar: {
+                n_atoms_total:   nAtoms,     // apply_to_structure validates vs the .xyz
+                structure_hash:  "",         // recomputed server-side from the .xyz
+                regions:         labels.regions,
+                frozen_atoms:    labels.frozen,
+                cell:            per.cell || null,
+                axis_kind:       per.axis_kind || null,
+                vacuum:          per.vacuum || null,
+                kgrid:           per.kgrid || null,
+                selection_rules: {},
+            },
+        };
     }
 
     /**
-     * Common post-write success path.  Clears dirty + fires the
-     * sidecar housekeeping.  Returns the user-facing ok envelope.
-     *
-     * Sidecar handling per save-flow.md §4:
-     *   * Save back to source (final == source) — refresh-hash on
-     *     the existing sidecar.
-     *   * Save-as (final != source) — propagate workspace labels
-     *     to a new sidecar at the destination, THEN refresh-hash
-     *     so the hash field matches the just-written XYZ.
+     * Post-save housekeeping.  The DATA is already on disk -- both files, written
+     * atomically by /api/workingcopy/save.  Here we only mark saved + re-anchor
+     * the selection store's sourceFile to the just-written path (so later label
+     * edits target the NEW location).
      */
-    function _postWriteSuccess(path, opts) {
-        opts = opts || {};
-        var sourcePath = opts.sourcePath || null;
-        var isSaveAs = !!sourcePath && path !== sourcePath;
-
+    function _postSaveSuccess(path) {
         _structurePage.markSavedTo(path);
-
-        // 2026-06-09: re-anchor the selection store's ``sourceFile`` to
-        // the just-written path so subsequent panel label writes
-        // (writeLabel) target the NEW location's sidecar.  Without
-        // this, ``state.sourceFile`` keeps pointing at the original
-        // load path (/A/water.xyz) even after Save-as to /B — and any
-        // label added afterwards lands at /A's sidecar, surprising
-        // the user who thinks they're editing /B.
-        //
-        // ``adoptSession`` with the workspace's CURRENT atoms +
-        // selection preserves the in-memory state (no _fetchAtoms
-        // disk re-read that would clobber unsaved modifier ops).
-        //
-        // IMPORTANT: adoptSession's internal ``_run`` calls
-        // ``_newSignal`` which ABORTS any in-flight operation in the
-        // selection store.  Capture labels BEFORE calling it so a
-        // user who clicked Assign + Save in rapid succession doesn't
-        // lose the just-assigned label to the abort — the labels
-        // gathered from ws.getAtoms() before adoptSession reflect
-        // whatever writeLabel had already applied in-place.
-        var labels = (_workspace
-                      && typeof _workspace.getAtoms === "function")
-            ? _gatherLabelsFromWorkspace()
-            : { regions: {}, frozen: [], periodicity: null };
-        var nAtoms = (_workspace
-                      && typeof _workspace.getAtoms === "function")
-            ? (_workspace.getAtoms() || []).length : 0;
-
-        if (_workspace
-                && _workspace.selection
+        if (_workspace && _workspace.selection
                 && typeof _workspace.selection.adoptSession === "function") {
             var currentSel = (_workspace.getSelection
                               && _workspace.getSelection().indices) || [];
@@ -228,93 +197,63 @@
                     selection:  currentSel,
                     atoms:      currentAtoms,
                 });
-            } catch (_) { /* non-fatal — selection re-anchor is housekeeping */ }
+            } catch (_) { /* non-fatal -- selection re-anchor is housekeeping */ }
         }
-
-        if (!root.fetch) return { ok: true, path: path };
-
-        // §4.0: EVERY save writes the WHOLE store's sidecar (regions + frozen +
-        // periodicity) from memory -- not just on save-as.  The store is the
-        // truth, so we bulk-REPLACE the destination sidecar unconditionally
-        // (this also WIPES any stale sidecar at the destination).  ``labels`` +
-        // ``nAtoms`` were captured BEFORE the adoptSession abort (see above).
-        // ``isSaveAs`` no longer gates the write; it is kept only for callers
-        // that read the return provenance.
-        void isSaveAs;
-        var labelsPromise = _persistLabelsToDestination(path, labels, nAtoms);
-
-        function _fireRefreshHash() {
-            return root.fetch("/api/selection/refresh-hash", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ structure_path: path }),
-            }).catch(function () { /* non-fatal */ });
-        }
-
-        if (labelsPromise) {
-            // refresh-hash AFTER labels land so the sidecar's
-            // structure_hash matches the just-written XYZ.
-            labelsPromise.then(_fireRefreshHash);
-        } else {
-            _fireRefreshHash();
-        }
-
         return { ok: true, path: path };
     }
 
     /**
-     * Inner write loop: POST writeFile with ``overwrite=false``;
-     * on 409 (file-exists), show the confirm-overwrite dialog and
-     * retry with ``overwrite=true`` if the user confirms.
+     * THE save (workspace-contract.md §4.0.1): ONE call to /api/workingcopy/save
+     * writes the WHOLE dataset -- ``.xyz`` + ``.molstruct.json`` -- atomically from
+     * the store's scratch blob, via the working-copy persistence framework.  No
+     * more two-call writeFile + save-sidecar split.
      *
-     * Used by both ``save()`` (current target) and any future
-     * Save-as path (user-typed name).  Returns the user-facing ok
-     * envelope.
+     * Overwrite gate: post overwrite=false; on 409 (exists), confirm + retry
+     * overwrite=true.  A failure is SURFACED (returned), NEVER swallowed -- a lost
+     * ``.json`` can no longer be silent.
      */
-    function _writeWithOverwriteGate(path, text, opts) {
-        opts = opts || {};
-        var alreadyConfirmed = !!opts.overwriteAlreadyConfirmed;
-        var sourcePath = opts.sourcePath || null;
-        var postOpts = { sourcePath: sourcePath };
-        var dialog = root.molbuilder
-                  && root.molbuilder.structureSaveDialog;
-        return _projects.writeFile(path, text, {
-            overwrite: alreadyConfirmed,
-        }).then(function (r) {
-            if (r && r.ok) return _postWriteSuccess(path, postOpts);
-            // 409 (file exists, overwrite was false).  Re-prompt.
-            if (r && (r.status === 409
-                    || /already exists/i.test(r.error || ""))
-                    && !alreadyConfirmed
-                    && dialog
+    function _saveDataset(path) {
+        if (!root.fetch) {
+            return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
+        }
+        var blob = _buildScratchBlob();
+        var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
+        function _post(overwrite) {
+            return root.fetch("/api/workingcopy/save", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    source: path, target: path, data: blob,
+                    overwrite: !!overwrite,
+                }),
+            }).then(function (res) {
+                return res.json().then(function (j) {
+                    return { status: res.status, body: j };
+                }, function () {
+                    return { status: res.status, body: null };
+                });
+            });
+        }
+        return _post(false).then(function (r) {
+            if (r.body && r.body.ok) return _postSaveSuccess(path);
+            if (r.status === 409 && dialog
                     && typeof dialog.confirmOverwrite === "function") {
-                return dialog.confirmOverwrite(_basename(path))
-                    .then(function (proceed) {
-                        if (!proceed) {
-                            return { ok: false, cancelled: true,
-                                     error: "Save cancelled." };
-                        }
-                        return _projects.writeFile(path, text, {
-                            overwrite: true,
-                        }).then(function (r2) {
-                            if (r2 && r2.ok) return _postWriteSuccess(path, postOpts);
-                            return {
-                                ok:    false,
-                                error: (r2 && r2.error) || "Save failed.",
-                            };
-                        });
+                return dialog.confirmOverwrite(_basename(path)).then(function (proceed) {
+                    if (!proceed) {
+                        return { ok: false, cancelled: true, error: "Save cancelled." };
+                    }
+                    return _post(true).then(function (r2) {
+                        if (r2.body && r2.body.ok) return _postSaveSuccess(path);
+                        return { ok: false,
+                                 error: (r2.body && r2.body.error) || "Save failed." };
                     });
+                });
             }
-            return {
-                ok:    false,
-                error: (r && r.error) || "Save failed.",
-            };
+            return { ok: false, error: (r.body && r.body.error) || "Save failed." };
         }, function (err) {
-            return {
-                ok:    false,
-                error: "Save failed: "
-                     + (err && err.message ? err.message : String(err)),
-            };
+            return { ok: false,
+                     error: "Save failed: "
+                          + (err && err.message ? err.message : String(err)) };
         });
     }
 
@@ -325,9 +264,9 @@
                 "save: workspace not configured"));
         }
         if (!_projects
-            || typeof _projects.writeFile !== "function") {
+            || typeof _projects.getCurrentDir !== "function") {
             return Promise.reject(new Error(
-                "save: projects.writeFile not configured"));
+                "save: projects.getCurrentDir not configured"));
         }
         if (!_structurePage) {
             return Promise.reject(new Error(
@@ -390,21 +329,10 @@
                          error: "Save cancelled." };
             }
             var finalPath = dir + "/" + chosen;
-            // Pre-confirm overwrite ONLY when the chosen final path
-            // exactly matches the workspace's existing source file
-            // — clicking Save back to the file we loaded from (same
-            // dir + same name) is unambiguous.  Any other path
-            // (renamed, different sidebar dir, generator save-as)
-            // routes through the overwrite-gate.  ``sourcePath`` is
-            // threaded into _postWriteSuccess so the sidecar-
-            // propagation logic (save-flow.md §4.3) knows whether
-            // this is a Save-as or save-back-to-source.
-            return _writeWithOverwriteGate(finalPath, struct.text, {
-                // save-flow.md §1: overwrite is ALWAYS confirmed -- no
-                // save-back-to-source skip.  Any existing name re-prompts.
-                overwriteAlreadyConfirmed: false,
-                sourcePath:                path,
-            });
+            // ONE unified save (§4.0.1): writes the whole dataset (.xyz + .json)
+            // atomically via /api/workingcopy/save.  Overwrite is ALWAYS confirmed
+            // inside _saveDataset (409 -> confirm -> retry); no save-back skip.
+            return _saveDataset(finalPath);
         });
     }
 

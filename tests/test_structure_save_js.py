@@ -94,6 +94,25 @@ def _run_node(snippet: str) -> object:
             }};
             return calls;
         }}
+        // The unified save posts /api/workingcopy/save via global.fetch.  Mount a
+        // fake returning {{status, json}} (or {{throw}}) + record the calls.
+        function _mountFetch(responder) {{
+            const calls = [];
+            global.fetch = (url, opts) => {{
+                let body = null;
+                try {{ body = opts && opts.body ? JSON.parse(opts.body) : null; }}
+                catch (_) {{ body = null; }}
+                calls.push({{ url, body }});
+                const res = responder ? responder(calls.length - 1, body)
+                                      : {{ status: 200, json: {{ ok: true, saved: url }} }};
+                if (res.throw) return Promise.reject(new TypeError(res.throw));
+                return Promise.resolve({{
+                    status: res.status,
+                    json: () => Promise.resolve(res.json),
+                }});
+            }};
+            return {{ calls: () => calls.slice() }};
+        }}
         const save = require({json.dumps(str(module_path))});
         try {{
             (async () => {{
@@ -216,9 +235,10 @@ class TestTargetPath:
 
 class TestSaveFlow:
 
-    def test_writes_named_file_and_marks_saved(self):
-        """§1: the user names the file in the dialog; the save writes it into
-        the sidebar's current dir (never a default/source name)."""
+    def test_writes_named_file_via_one_workingcopy_save(self):
+        """§4.0.1: the user names the file; the save makes ONE POST to
+        /api/workingcopy/save carrying the whole dataset (xyz + sidecar) + target
+        in the sidebar's current dir."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
@@ -227,25 +247,27 @@ class TestSaveFlow:
                 source: {kind: "file", file: "/projects/p/water.xyz"},
                 lastSaveTo: null,
             });
-            const p = _mkFakeProjects(
-                (path, text) => ({ok: true, path, size: text.length,
-                                  mtime: 123}));
             const sp = _mkFakeStructurePage();
             _mountDialog("water-modified.xyz");
-            save.configure({canvas: c, projects: p, structurePage: sp});
+            const f = _mountFetch(() => ({status: 200,
+                json: {ok: true, saved: "/projects/p/water-modified.xyz"}}));
+            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
+                            structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({
-                envelope:        r,
-                writeCalls:      p._calls(),
-                markSavedCalls:  sp._calls(),
+                envelope:       r,
+                fetch:          f.calls(),
+                markSavedCalls: sp._calls(),
             }));
         ''')
         assert out["envelope"] == {
             "ok": True, "path": "/projects/p/water-modified.xyz"}
-        assert out["writeCalls"] == [{
-            "path": "/projects/p/water-modified.xyz",
-            "text": "3\nH2O\nO 0 0 0\nH 1 0 0\nH 0 1 0\n",
-        }]
+        assert len(out["fetch"]) == 1                 # ONE call, not two
+        call = out["fetch"][0]
+        assert call["url"] == "/api/workingcopy/save"
+        assert call["body"]["target"] == "/projects/p/water-modified.xyz"
+        assert call["body"]["data"]["xyz"] == "3\nH2O\nO 0 0 0\nH 1 0 0\nH 0 1 0\n"
+        assert call["body"]["overwrite"] is False     # first try is no-clobber
         assert out["markSavedCalls"] == ["/projects/p/water-modified.xyz"]
 
     def test_no_default_filename_dialog_gets_blank(self):
@@ -259,20 +281,21 @@ class TestSaveFlow:
                 source: {kind: "file", file: "/projects/p/orig.xyz"},
                 lastSaveTo: "/projects/p/renamed.xyz",
             });
-            const p = _mkFakeProjects((path, text) => ({ok: true, path}));
-            const sp = _mkFakeStructurePage();
             const dlg = _mountDialog("chosen.xyz");
-            save.configure({canvas: c, projects: p, structurePage: sp});
+            const f = _mountFetch(() => ({status: 200,
+                json: {ok: true, saved: "/projects/p/chosen.xyz"}}));
+            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
+                            structurePage: _mkFakeStructurePage()});
             await save.save();
             console.log(JSON.stringify({
                 initialShown: dlg.chooseSaveName,
-                writePath:    p._calls()[0].path,
+                target:       f.calls()[0].body.target,
             }));
         ''')
         # Dialog was shown a BLANK initial -- no default, not the source name.
         assert out["initialShown"] == [""]
-        # Writes to the sidebar dir + the user-chosen name.
-        assert out["writePath"] == "/projects/p/chosen.xyz"
+        # Saves to the sidebar dir + the user-chosen name.
+        assert out["target"] == "/projects/p/chosen.xyz"
 
 
 # ----- Refusal paths --------------------------------------------- #
@@ -328,17 +351,20 @@ class TestRefusals:
 class TestErrorPaths:
 
     def test_server_error_surfaces(self):
+        """A save-sidecar/write failure is SURFACED (returned), never swallowed --
+        the whole point of the unification (no more silent lost .json)."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
                 structure: {source_format: "xyz", text: "x"},
                 source: {kind: "file", file: "/p/f.xyz"},
             });
-            const p = _mkFakeProjects(
-                () => ({ok: false, error: "permission denied"}));
             const sp = _mkFakeStructurePage();
             _mountDialog("f.xyz");
-            save.configure({canvas: c, projects: p, structurePage: sp});
+            _mountFetch(() => ({status: 500,
+                json: {ok: false, error: "permission denied"}}));
+            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
+                            structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({
                 envelope: r,
@@ -357,14 +383,11 @@ class TestErrorPaths:
                 structure: {source_format: "xyz", text: "x"},
                 source: {kind: "file", file: "/p/f.xyz"},
             });
-            const p = {
-                writeFile: () => Promise.reject(
-                    new TypeError("Failed to fetch")),
-                getCurrentDir: () => "/projects/p",
-            };
             const sp = _mkFakeStructurePage();
             _mountDialog("f.xyz");
-            save.configure({canvas: c, projects: p, structurePage: sp});
+            _mountFetch(() => ({throw: "Failed to fetch"}));
+            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
+                            structurePage: sp});
             const r = await save.save();
             console.log(JSON.stringify({
                 envelope: r,
@@ -421,7 +444,7 @@ class TestConfigurationErrors:
             });
             save.configure({
                 canvas: c,
-                projects: {writeFile: () => Promise.resolve({ok:true})},
+                projects: {getCurrentDir: () => "/projects/p"},
                 // structurePage MISSING
             });
             const p = save.save();

@@ -201,7 +201,13 @@ The fix is to **adopt the framework**, not build a third thing.
 - **Check:** (a) saving a celled crystal writes BOTH files (json carries the cell)
   in ONE call; (b) grep: no `writeFile`+`save-sidecar` split in `save.js`; (c) a
   write failure raises a visible error.
-- **Status:** ☐
+- **Status:** ☑ done 2026-07-05. Backend gate (A2a) + `save.js` rewired: `save()` →
+  `_saveDataset` → ONE POST `/api/workingcopy/save` with the store's scratch blob
+  (`_buildScratchBlob`); `_writeWithOverwriteGate`/`_persistLabelsToDestination`/
+  `_postWriteSuccess` deleted. (a) A1 test + the one-call save-js test; (b) grep
+  clean; (c) `test_server_error_surfaces`/`test_network_throw_surfaces_envelope`.
+  38 save/workingcopy/dialog tests pass. **NOTE:** `/api/selection/save-sidecar` +
+  `/api/selection/refresh-hash` now have no frontend caller — dead, remove in A4.
 
 ### A3 — draft + discard through the framework (decision-gated)
 - **Do:** decide whether the crash-surviving draft moves from `sessionStorage` to
