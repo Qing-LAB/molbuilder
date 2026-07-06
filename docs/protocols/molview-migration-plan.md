@@ -209,22 +209,36 @@ The fix is to **adopt the framework**, not build a third thing.
   38 save/workingcopy/dialog tests pass. **NOTE:** `/api/selection/save-sidecar` +
   `/api/selection/refresh-hash` now have no frontend caller — dead, remove in A4.
 
-### A5 — SELECTION + FILTER read the workspace (memory), not disk (BUG FIX — do first)
-- **Why:** assigning a label is in-memory (change C), but the Modify filter-by-label
-  posts `/api/selection/eval`, which reads the DISK structure + sidecar -> it sees
-  only disk labels. Repro (user-reported): assign "L-electrode" in the panel (shows
-  in the click list) then filter by it -> `no region labelled "L-electrode"
-  (known: ['BDT'])`. The atom LIST has the same disease (`/api/selection/atoms` reads
-  disk). This is the concrete "still on disk, not the workspace" failure.
-- **Do:** in Modify, the filter + atom list operate on the STORE (memory). Either
-  evaluate the rule against the store's atoms client-side, OR have
-  `/api/selection/eval` evaluate against the workspace state the client SENDS
-  (atoms + regions) instead of loading disk. The atom list comes from the store, not
-  a disk read. (Results, which VIEWS a file on disk, may keep reading disk — that's
-  legitimate; this is about the editable Modify workspace.)
-- **Check:** assign a label in the panel -> filter by it finds those atoms WITHOUT
-  saving first; a modified/unsaved structure filters against its in-memory atoms.
-- **Status:** ☐ (fixes the user bug)
+**Memory model (the contract, working-copy-persistence.md).** "Memory" is NOT
+browser-only: every edit auto-writes a **transient draft** (`<project>/.molbuilder_
+workspace/`) kept consistent with the in-memory data (`update` = the only automatic
+write); `save` promotes it to the real file + drops it; a crash recovers from it.
+The frontend currently VIOLATES this — it uses `sessionStorage` and never calls
+`/api/workingcopy/update`, so the transient draft never exists. That's why there's no
+temp file, and why the server-side filter has nothing memory-consistent to read.
+
+### A5a — keep the transient draft in sync on every edit (the contract; PREREQUISITE)
+- **Do:** the Modify store calls `/api/workingcopy/update` on every edit (label,
+  geometry, periodicity) so `.molbuilder_workspace/` always mirrors memory. Replace
+  the ad-hoc `sessionStorage`-only draft with the framework draft (or back it with
+  the framework). Load establishes the working copy; discard drops the draft.
+- **Check:** after assigning a label (no Save), the project's `.molbuilder_workspace/`
+  draft reflects it; a reload/crash recovers it via the framework.
+- **Status:** ☐
+
+### A5b — SELECTION + FILTER read the workspace, not the STALE saved file (BUG FIX)
+- **Why:** the Modify filter-by-label posts `/api/selection/eval`, which reads the
+  saved DISK structure + sidecar -> it sees only saved labels. Repro (user): assign
+  "L-electrode" (shows in the click list) then filter -> `no region labelled
+  "L-electrode" (known: ['BDT'])`. Same for the atom LIST (`/api/selection/atoms`).
+- **Do:** the filter + atom list read the CURRENT workspace, not the saved file.
+  With A5a the draft mirrors memory, so the server reads the DRAFT (memory-consistent)
+  -- or the client evaluates against the store's atoms. Either way, not the stale
+  saved file. (Results VIEWS a saved file on disk -- reading disk there is legitimate;
+  this is the editable Modify workspace.)
+- **Check:** assign a label -> filter by it finds those atoms WITHOUT saving first;
+  a modified/unsaved structure filters against its current (draft/memory) atoms.
+- **Status:** ☐ (fixes the user bug; depends on A5a)
 
 ### A6 — LOAD a file through the framework (not the ad-hoc file-open)
 - **Why:** opening a file uses the ad-hoc path -- `/api/build/load` (reads only the
