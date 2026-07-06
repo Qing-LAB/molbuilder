@@ -248,6 +248,22 @@
         }
         return out;
     }
+    // The FULL label -> indices map (all regions) -- the single place per-atom labels
+    // are gathered for save/draft serialisation (kills the duplicate scans that used
+    // to live in both save.js and _scratchBlob).  A plain ``regions`` read once D4
+    // makes the internals columnar.
+    function getRegions() {
+        var atoms = _atomsInternal();
+        var regions = {};
+        for (var i = 0; i < atoms.length; i++) {
+            var labels = (atoms[i] && atoms[i].labels) || [];
+            for (var j = 0; j < labels.length; j++) {
+                if (!regions[labels[j]]) regions[labels[j]] = [];
+                regions[labels[j]].push(i);
+            }
+        }
+        return regions;
+    }
     // 3Dmol's atom shape for ONE atom -- materialised at the render boundary so the
     // viewer never touches a string (workspace-contract.md §1.2.1 rule 2/3).
     function atomFor3Dmol(i) {
@@ -1132,32 +1148,23 @@
         }
     }
 
-    // The working-copy scratch blob {xyz, sidecar} from the store -- the codec
-    // shape /api/workingcopy/{save,update} consume.  ONE serialisation of the
-    // workspace, for BOTH the durable save and the transient draft.
+    // The working-copy scratch blob {xyz, sidecar} -- the codec shape
+    // /api/workingcopy/{save,update} consume.  ONE serialisation of the workspace,
+    // for BOTH the durable save AND the transient draft, built entirely through the
+    // §1.2.1 accessors (getRegions/getFrozen) -- no hand-rolled scan.  The periodicity
+    // is persisted RAW (null when truly unset) so the file is truthful; a reader gets
+    // the defaults from the accessors.
     function _scratchBlob() {
         var s = getStructure();
         if (!s || !s.text) return null;
-        var atoms = s.atoms || [];
-        var regions = {}, frozen = [];
-        for (var i = 0; i < atoms.length; i++) {
-            var a = atoms[i];
-            if (!a) continue;
-            var labels = a.labels || [];
-            for (var j = 0; j < labels.length; j++) {
-                if (!regions[labels[j]]) regions[labels[j]] = [];
-                regions[labels[j]].push(i);
-            }
-            if (a.isFrozen) frozen.push(i);
-        }
         var per = s.periodicity || {};
         return {
             xyz: s.text,
             sidecar: {
-                n_atoms_total:   atoms.length || s.n_atoms || 0,
+                n_atoms_total:   getElements().length || s.n_atoms || 0,
                 structure_hash:  "",
-                regions:         regions,
-                frozen_atoms:    frozen,
+                regions:         getRegions(),
+                frozen_atoms:    getFrozen(),
                 cell:            per.cell || null,
                 axis_kind:       per.axis_kind || null,
                 vacuum:          per.vacuum || null,
@@ -1285,9 +1292,11 @@
         getKgrid:              getKgrid,
         getAtomsByLabel:       getAtomsByLabel,
         getFrozen:             getFrozen,
+        getRegions:            getRegions,
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
         getMetadata:           getMetadata,
+        getScratchBlob:        _scratchBlob,   // the ONE save/draft serialiser
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias

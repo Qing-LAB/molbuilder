@@ -350,7 +350,14 @@ whole class structurally impossible.
   boundary-only (codec on save/load).
 - **Check:** grep — no `state.xyz.split`, no `addModel(`, no `/api/build/load` in the
   Modify path, no consumer reaching past the accessors into raw arrays.
-- **Status:** ☐
+- **Status:** ◐ in progress 2026-07-06. **Save/draft done:** added `ws.getRegions()` +
+  `ws.getScratchBlob()` (the ONE serialiser, built from the accessors); `save.js`
+  routes through `ws.getScratchBlob()` and its hand-rolled `_gatherLabelsFromWorkspace`
+  + `_buildScratchBlob` are deleted; the dispatcher `_scratchBlob` uses
+  `getRegions`/`getFrozen`. 49 save/dispatcher/workingcopy tests pass. **Remaining
+  (browser-verified):** the RENDER — `viewer.js` `state.xyz.split` positions re-parse +
+  the embed `addModel(string)` → `toAddAtoms()`/`model.addAtoms`; drop `/api/build/load`
+  from the Modify load.
 
 ### D4 — columnar internals (the concealed layout)
 - **Do:** the internal model IS columnar (`elements[]`, `positions[][]`, `regions`

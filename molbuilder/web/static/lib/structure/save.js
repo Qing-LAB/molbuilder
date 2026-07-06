@@ -106,76 +106,11 @@
         return ix > 0 ? p.slice(0, ix) : "";
     }
 
-    /**
-     * Gather regions + frozen_atoms from the workspace's current
-     * atom list.  Used by ``_postWriteSuccess`` to propagate
-     * workspace labels into the destination sidecar on Save-as
-     * (different path from the source).
-     *
-     * Returns ``{regions: {label: [indices]}, frozen: [indices]}``.
-     * Skips atoms without labels + non-frozen atoms; the result
-     * is empty when the workspace has no label data.
-     */
-    function _gatherLabelsFromWorkspace() {
-        if (!_workspace || typeof _workspace.getAtoms !== "function") {
-            return { regions: {}, frozen: [], periodicity: null };
-        }
-        var atoms  = _workspace.getAtoms() || [];
-        var regions = {};
-        var frozen  = [];
-        for (var i = 0; i < atoms.length; i++) {
-            var a = atoms[i];
-            if (!a) continue;
-            var labels = a.labels || [];
-            for (var j = 0; j < labels.length; j++) {
-                var L = labels[j];
-                if (!regions[L]) regions[L] = [];
-                regions[L].push(i);
-            }
-            if (a.isFrozen) frozen.push(i);
-        }
-        // Periodicity rides with the whole-store save (workspace-contract.md
-        // §4.0): read it from the store so Save writes the same cell/axis_kind/
-        // vacuum/kgrid the user sees.
-        var per = null;
-        if (typeof _workspace.getStructure === "function") {
-            var s = _workspace.getStructure();
-            per = (s && s.periodicity) || null;
-        }
-        return { regions: regions, frozen: frozen, periodicity: per };
-    }
-
-    /**
-     * Serialise the whole STORE into the working-copy scratch blob -- the codec's
-     * ``{xyz, sidecar}`` shape (StructureCodec.scratch_blob).  ONE payload; the
-     * server writes the .xyz + .json pair from it atomically
-     * (/api/workingcopy/save).  workspace-contract.md §4.0/§4.0.1: the store is
-     * the truth; the persistence framework (molbuilder.workingcopy) writes it.
-     */
-    function _buildScratchBlob() {
-        var struct = (_workspace && typeof _workspace.getStructure === "function")
-            ? (_workspace.getStructure() || {}) : {};
-        var labels = (_workspace && typeof _workspace.getAtoms === "function")
-            ? _gatherLabelsFromWorkspace()
-            : { regions: {}, frozen: [], periodicity: null };
-        var per = labels.periodicity || {};
-        var nAtoms = Number(struct.n_atoms
-            || (_workspace.getAtoms && (_workspace.getAtoms() || []).length) || 0);
-        return {
-            xyz: struct.text || "",
-            sidecar: {
-                n_atoms_total:   nAtoms,     // apply_to_structure validates vs the .xyz
-                structure_hash:  "",         // recomputed server-side from the .xyz
-                regions:         labels.regions,
-                frozen_atoms:    labels.frozen,
-                cell:            per.cell || null,
-                axis_kind:       per.axis_kind || null,
-                vacuum:          per.vacuum || null,
-                kgrid:           per.kgrid || null,
-                selection_rules: {},
-            },
-        };
-    }
+    // D3 (workspace-contract §1.4): the workspace serialises itself via
+    // ``ws.getScratchBlob()`` (built from the §1.2.1 accessors).  save.js no longer
+    // hand-rolls the regions/frozen scan -- the old ``_gatherLabelsFromWorkspace`` +
+    // ``_buildScratchBlob`` were exactly the duplicate-of-the-dispatcher access this
+    // contract removes.
 
     /**
      * Post-save housekeeping.  The DATA is already on disk -- both files, written
@@ -216,7 +151,13 @@
         if (!root.fetch) {
             return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
         }
-        var blob = _buildScratchBlob();
+        // D3: the workspace serialises ITSELF via the accessor API (ws.getScratchBlob)
+        // -- save.js no longer hand-rolls the regions/frozen scan.
+        var blob = (_workspace && typeof _workspace.getScratchBlob === "function")
+            ? _workspace.getScratchBlob() : null;
+        if (!blob) {
+            return Promise.resolve({ ok: false, error: "save: workspace has no data" });
+        }
         var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
         function _post(overwrite) {
             return root.fetch("/api/workingcopy/save", {

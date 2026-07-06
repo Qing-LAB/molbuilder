@@ -43,6 +43,15 @@ def _run_node(snippet: str) -> object:
                 isEmpty:        () => state.empty,
                 isDirty:        () => state.dirty,
                 getStructure:   () => state.structure,
+                // D3: save.js serialises via ws.getScratchBlob() (the accessor
+                // builder), not its own scan.  The fake returns the codec shape
+                // from its structure so the save-flow tests exercise the same path.
+                getScratchBlob: () => (state.structure ? {{
+                    xyz: (state.structure.text || ""),
+                    sidecar: {{ n_atoms_total: 0, structure_hash: "", regions: {{}},
+                               frozen_atoms: [], cell: null, axis_kind: null,
+                               vacuum: null, kgrid: null, selection_rules: {{}} }},
+                }} : null),
                 getSource:      () => state.source,
                 getLastSavedTo: () => state.lastSaveTo,
                 // Phase 10 — workspace-contract.md §2.1 — fake the
