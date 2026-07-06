@@ -1192,19 +1192,26 @@
     // exists for ANY workspace with data, NO project dir required: a loaded file
     // drafts next to itself; a brand-new molecule drafts to the top-level
     // projects-root, keyed by ``workspace_id``.  Best-effort crash-safety.
+    // The identity the transient draft is keyed under: the source file, or a stable
+    // workspace_id for a not-yet-saved molecule.  A Save MUST use THIS to drop the
+    // right draft -- review finding b1: the save used to send the target path, so it
+    // dropped a phantom and the real (source-keyed) draft leaked as a permanent
+    // orphan.  Mirrors _persistDraft's key exactly.
+    function draftIdentity() {
+        var src = getSource();
+        var sourceFile = src && src.file;
+        return sourceFile ? { source: sourceFile }
+                          : { workspace_id: _ensureWorkspaceId() };
+    }
+
     function _persistDraft() {
         if (!root.fetch) return;
         var blob = _scratchBlob();
         if (!blob) return;                       // no structure yet -> nothing to draft
-        var src = getSource();
-        var sourceFile = src && src.file;
-        var body = sourceFile
-            ? { source: sourceFile, data: blob }
-            : { workspace_id: _ensureWorkspaceId(), data: blob };
         root.fetch("/api/workingcopy/update", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(body),
+            body:    JSON.stringify(Object.assign(draftIdentity(), { data: blob })),
         }).catch(function () { /* draft is best-effort crash-safety */ });
     }
 
@@ -1294,6 +1301,7 @@
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
         getScratchBlob:        _scratchBlob,   // the ONE save/draft serialiser
+        draftIdentity:         draftIdentity,  // the draft key a Save must drop (b1)
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias

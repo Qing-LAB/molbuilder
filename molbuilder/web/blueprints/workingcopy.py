@@ -136,12 +136,26 @@ def wc_save():
     ``/api/files/write``.  A symlink at the target is always refused.
     """
     b = _body()
-    source, blob = b.get("source"), b.get("data")
-    if not isinstance(source, str) or blob is None:
-        return _bad("missing 'source' or 'data'")
+    blob = b.get("data")
+    if blob is None:
+        return _bad("missing 'data'")
+    source, ws_id = b.get("source"), b.get("workspace_id")
+    # Build the working copy under the DRAFT's identity -- {source} for a loaded file,
+    # {workspace_id} for a not-yet-saved molecule -- so save() drops the RIGHT draft
+    # (review finding b1).  The file is written to ``target`` (the save-as path).
     try:
-        src = _resolve(source)
-        target = _resolve(b["target"]) if b.get("target") else src
+        if isinstance(source, str) and source:
+            src = _resolve(source)
+            target = _resolve(b["target"]) if b.get("target") else src
+            project_dir, new_id = src.parent, None
+        else:
+            if not b.get("target"):
+                return _bad("missing 'target' (sourceless save)")
+            if not isinstance(ws_id, str) or not ws_id:
+                return _bad("missing 'source' or 'workspace_id'")
+            src = None
+            target = _resolve(b["target"])
+            project_dir, new_id = _default_draft_dir(), ws_id
     except _PickerError as e:
         return _bad(e.message, e.status)
     overwrite = bool(b.get("overwrite", False))
@@ -157,8 +171,8 @@ def wc_save():
     except Exception as e:  # noqa: BLE001
         return _bad(f"malformed working-copy body: {e}", 400)
     saved = wc.WorkingCopy(codec=_CODEC, session=_session(),
-                           project_dir=src.parent, data=data,
-                           source=src).save(target)
+                           project_dir=project_dir, data=data,
+                           source=src, new_id=new_id).save(target)
     return jsonify({"ok": True, "saved": str(saved)})
 
 

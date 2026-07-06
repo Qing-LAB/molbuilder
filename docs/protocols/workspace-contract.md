@@ -482,7 +482,7 @@ lost:
 | What happened | Recovered from | How |
 |---|---|---|
 | **Same-tab reload** (the tab's JS heap is gone, the server is fine) | **`sessionStorage`** | instant, no server round-trip — the cache (§4.4) rehydrates the store on mount |
-| **Crash / server restart / new tab** (the sessionStorage cache is gone, or the session changed) | **the server draft** | `list_orphans` surfaces drafts whose session can no longer clean them; the user **recovers** or **discards** (§4.6). The core never auto-deletes unsaved work or auto-adopts stale work. |
+| **Crash / server restart / new tab** (the sessionStorage cache is gone, or the session changed) | **the server draft** | `list_orphans` (server) can surface drafts whose session can no longer clean them, for the user to **recover** or **discard** (`/api/workingcopy/{orphans,recover,discard,clean}`). The core never auto-deletes unsaved work or auto-adopts stale work. **STATUS: the endpoints exist but are NOT yet wired to a UI** — crash-recovery is available at the API layer only; a recovery prompt is unbuilt (see molview-migration-plan Track b). |
 
 ### 4.3 Saving to disk — the rules
 
@@ -549,8 +549,11 @@ Contract:
 - `null` covers: no key, malformed JSON, schema version mismatch.
 - The caller (page bootstrap) decides whether to re-fetch from
   disk (dirty=false, source.kind=file) or atomic-replace from
-  memory (dirty=true, or non-file source).  Decision logic is in
-  `persistence.js::shouldRefetchFromDisk(snap)`.
+  memory (dirty=true, or non-file source).  The decision lives in
+  the modify-tab restore gate — `viewer.js::restoreModifyState`
+  (`shouldUseSavedAtoms = dirty || !source.file`), NOT a
+  `persistence.js` module (there is none; the dispatcher owns the
+  debounced write).
 
 #### 4.4.4 What's NOT persisted
 
@@ -733,9 +736,11 @@ for a file-backed workspace, or under `projects_root()/.molbuilder_workspace/` f
 sourceless one (§4.1.1).
 
 A crash (or, for no-auth, a server restart) leaves a draft its session can no longer
-clean. `list_orphans` surfaces them and the user **recovers** or **discards** — the
-core **never auto-deletes** unsaved work or **auto-adopts** stale work. Otherwise
-cleanup is on `save` or session-end (no time-based sweep). See §4.2 for how this
+clean. `list_orphans` **can** surface them for the user to **recover** or **discard**
+— the core **never auto-deletes** unsaved work or **auto-adopts** stale work. Normal
+cleanup is on `save` (the draft is dropped, keyed by the workspace's identity — b1) or
+session-end (no time-based sweep). **The orphan/recover path is API-only today; no UI
+invokes it yet** (Track b). See §4.2 for how this
 pairs with the `sessionStorage` same-tab path.
 
 ### 4.6.7 Use contract

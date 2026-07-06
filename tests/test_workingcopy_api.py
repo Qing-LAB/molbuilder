@@ -81,6 +81,40 @@ def test_update_sourceless_drafts_under_projects_root(client_project, monkeypatc
     assert len(drafts) == 1                      # the sourceless draft exists
 
 
+def test_save_as_drops_the_source_keyed_draft(client_project):
+    """Review b1: a save-as writes to a NEW name but MUST drop the draft keyed by the
+    ORIGINAL source -- else the draft leaks as a permanent orphan and a later recover
+    surfaces phantom 'unsaved edits' for a file the user saved."""
+    client, proj = client_project
+    xyz = str(proj / "mol.xyz")
+    blob = _json(client.post("/api/workingcopy/open", json={"path": xyz}))["data"]
+    client.post("/api/workingcopy/update", json={"source": xyz, "data": blob})
+    assert len(list((proj / ".molbuilder_workspace").glob("mol.*.wc.json"))) == 1
+    r = _json(client.post("/api/workingcopy/save",
+                          json={"source": xyz, "target": str(proj / "final.xyz"),
+                                "data": blob}))
+    assert r["ok"] and (proj / "final.xyz").exists()
+    # the source-keyed draft is dropped, not leaked
+    assert list((proj / ".molbuilder_workspace").glob("mol.*.wc.json")) == []
+
+
+def test_sourceless_save_drops_the_workspace_id_draft(client_project, monkeypatch):
+    """Review b1: a new molecule's draft (new-<id>) must be dropped when it's saved
+    to a real path -- else every new-molecule session leaves a permanent orphan."""
+    import molbuilder.web.blueprints.workingcopy as wcbp
+    client, proj = client_project
+    monkeypatch.setattr(wcbp, "projects_root", lambda: proj)
+    blob = _json(client.post("/api/workingcopy/open",
+                             json={"path": str(proj / "mol.xyz")}))["data"]
+    client.post("/api/workingcopy/update", json={"workspace_id": "ws-xyz", "data": blob})
+    assert list((proj / ".molbuilder_workspace").glob("new-ws-xyz.*.wc.json"))
+    r = _json(client.post("/api/workingcopy/save",
+                          json={"workspace_id": "ws-xyz", "target": str(proj / "new.xyz"),
+                                "data": blob}))
+    assert r["ok"] and (proj / "new.xyz").exists()
+    assert list((proj / ".molbuilder_workspace").glob("new-ws-xyz.*.wc.json")) == []
+
+
 def test_update_sourceless_without_id_is_400(client_project):
     """No source AND no workspace_id -> the server can't place the draft."""
     client, proj = client_project

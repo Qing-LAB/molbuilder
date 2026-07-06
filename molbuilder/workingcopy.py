@@ -119,11 +119,25 @@ class WorkingCopy:
     def save(self, target_path) -> Path:
         """Write the working copy to ``target_path`` — same path overwrites, a
         new path is a save-as.  Writes all of the artifact's files, then drops
-        the draft.  No gate: this overwrites whatever is on disk."""
+        the draft.  No gate: this overwrites whatever is on disk.
+
+        The multi-file commit writes ALL temp files first, then does ALL the
+        ``os.replace`` renames back-to-back — so the window in which the
+        ``.xyz`` and ``.molstruct.json`` could be mismatched (a crash between the
+        two writes) shrinks to just the two renames, with no I/O between
+        (review finding b2).  True cross-file atomicity isn't available on the
+        filesystem; this makes a half-written pair near-impossible."""
         target = Path(target_path).resolve()
         old_scratch = self._scratch_file()
+        staged: List[Tuple[Path, Path]] = []
         for path, blob in self.codec.files(self.data, target):
-            _atomic_write_bytes(Path(path), blob)
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_name(p.name + ".tmp")
+            tmp.write_bytes(blob)
+            staged.append((tmp, p))
+        for tmp, dest in staged:                 # renames only -- no I/O between
+            os.replace(tmp, dest)
         self.source = target
         self.dirty = False
         if old_scratch.exists():

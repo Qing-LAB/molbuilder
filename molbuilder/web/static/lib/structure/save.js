@@ -158,15 +158,19 @@
         if (!blob) {
             return Promise.resolve({ ok: false, error: "save: workspace has no data" });
         }
+        // b1: identify the workspace by the SAME key its draft was written under
+        // ({source} or {workspace_id}) so the server drops the RIGHT draft; the file
+        // is written to ``target`` (the user-named save-as path).
+        var ident = (_workspace && typeof _workspace.draftIdentity === "function")
+            ? _workspace.draftIdentity() : {};
         var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
         function _post(overwrite) {
             return root.fetch("/api/workingcopy/save", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    source: path, target: path, data: blob,
-                    overwrite: !!overwrite,
-                }),
+                body:    JSON.stringify(Object.assign({}, ident, {
+                    target: path, data: blob, overwrite: !!overwrite,
+                })),
             }).then(function (res) {
                 return res.json().then(function (j) {
                     return { status: res.status, body: j };
