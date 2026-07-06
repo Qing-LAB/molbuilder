@@ -325,7 +325,12 @@ of the string (`state.xyz.split("\n")`, viewer.js:491) and feeds 3Dmol
   `structure_to_dict`) emits them. §7.2 wire shape updated.
 - **Check:** open a structure → `ws.getAtoms()[i]` has numeric `x/y/z` matching the
   file; a modify op preserves them; unit tests on `atoms_list` + `_normaliseAtom`.
-- **Status:** ☐ (start here)
+- **Status:** ☑ done 2026-07-06. `_shared.atoms_list` emits `x/y/z` (from
+  `struct.positions`) on every row → carried by `/api/workingcopy/open`,
+  `/api/selection/atoms`, every `/api/modify/*` (`structure_to_dict`). Store
+  `_normaliseAtom` keeps numeric `x/y/z`. §7.2 wire shape updated. Test:
+  `test_atoms_carry_coordinates_on_the_atom`; 136 shared/selection/workingcopy/store
+  tests pass (coords additive, nothing broke).
 
 ### D2 — the viewer renders from the atoms (numbers), not a string
 - **Do:** the embed feeds 3Dmol via `model.addAtoms([{elem,x,y,z}, …])` from the

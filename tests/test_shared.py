@@ -119,6 +119,20 @@ class TestWorkspacePayloadCanonicalKeys:
             assert "regions" in row
             assert "is_frozen" in row
 
+    def test_atoms_carry_coordinates_on_the_atom(self):
+        """workspace-contract.md §1.2.1 (MANDATORY): each atom row carries its own
+        x/y/z as numbers -- the atom is the geometric truth, not a re-parsed xyz
+        string."""
+        s = _h2o()
+        atoms = workspace_payload(s)["atoms"]
+        for i, row in enumerate(atoms):
+            assert isinstance(row["x"], float)
+            assert isinstance(row["y"], float)
+            assert isinstance(row["z"], float)
+            assert (row["x"], row["y"], row["z"]) == (
+                float(s.positions[i][0]), float(s.positions[i][1]),
+                float(s.positions[i][2]))
+
     def test_atoms_matches_atoms_list_helper(self):
         """One source of truth — workspace_payload routes through
         atoms_list rather than building per-atom rows itself."""

@@ -185,6 +185,9 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
         {
             "index":         int,
             "element":       "C" | "H" | ...,
+            "x": float, "y": float, "z": float,   # COORDS -- the atom carries its
+                                                  # own geometry (workspace-contract
+                                                  # §1.2.1); no string re-parse
             "regions":       [str, ...],     # from struct.regions
             "is_frozen":     bool,           # from struct.frozen_atoms
             "atom_name":     "CA" | ...,     # optional, PDB-derived
@@ -204,12 +207,19 @@ def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
     atom_names    = struct.atom_names    or []
     residue_names = struct.residue_names or []
     chain_ids     = struct.chain_ids     or []
+    positions     = struct.positions
 
     rows: List[Dict[str, Any]] = []
     for i in range(n):
+        # Coordinates ride ON the atom (workspace-contract.md §1.2.1 -- the atom is
+        # the geometric truth, not a re-parsed xyz string).
+        pos = positions[i]
         row: Dict[str, Any] = {
             "index":     i,
             "element":   struct.elements[i],
+            "x":         float(pos[0]),
+            "y":         float(pos[1]),
+            "z":         float(pos[2]),
             "regions":   atom_to_regions.get(i, []),
             "is_frozen": i in frozen_set,
         }

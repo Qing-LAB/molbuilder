@@ -191,6 +191,11 @@
             isFrozen: raw.is_frozen !== undefined ? !!raw.is_frozen
                       : !!raw.isFrozen,
         };
+        // Coordinates ride ON the atom (workspace-contract.md §1.2.1 -- the atom is
+        // the geometric truth, not a re-parsed xyz string).  Kept as numbers.
+        if (raw.x !== undefined && raw.x !== null) out.x = Number(raw.x);
+        if (raw.y !== undefined && raw.y !== null) out.y = Number(raw.y);
+        if (raw.z !== undefined && raw.z !== null) out.z = Number(raw.z);
         // Accept both snake_case (wire) and camelCase (in-memory)
         // metadata fields — same idempotence reasoning.
         if (raw.atom_name)    out.atomName    = raw.atom_name;
