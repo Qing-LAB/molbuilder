@@ -341,8 +341,12 @@
                 }
             } catch (_) { opened = null; }
             const periodicity = (opened && opened.periodicity) || null;
+            // F1: carry the annotation channels opaquely so a later Save re-emits
+            // them (Modify doesn't edit annotations, but must not clobber them).
+            const annotations = (opened && opened.annotations) || null;
             const gate = await sp.loadIntoCanvas(
-                { source_format: format, text: r.text, periodicity: periodicity },
+                { source_format: format, text: r.text, periodicity: periodicity,
+                  annotations: annotations },
                 { kind: "file", file: path }
             );
             if (!gate.ok) return;  // cancelled — leave viewer alone

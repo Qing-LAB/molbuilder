@@ -186,6 +186,7 @@ class TestSetStructure:
         assert out["getStructure"] == {
             "source_format": "pdb", "text": "HETATM...",
             "periodicity": None,   # no periodicity supplied to setStructure
+            "annotations": None,   # F1: opaque carrier, absent here
         }
         assert out["getSource"] == {
             "kind": "smiles",

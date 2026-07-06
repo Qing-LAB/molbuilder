@@ -72,6 +72,7 @@
             source_format: null,
             text:          null,
             periodicity:   null,
+            annotations:   null,      // F1: opaque annotation-channels carrier
             source: {
                 kind:             "blank",
                 file:             null,
@@ -135,6 +136,7 @@
             source_format: struct.source_format || null,
             text:          struct.text,
             periodicity:   _normPeriodicity(struct.periodicity),
+            annotations:   struct.annotations || null,   // F1: survive reload restore
             source:        Object.assign({}, empty.source, st.source || {}),
             dirty:         !!st.dirty,
             last_save_to:  st.last_save_to || null,
@@ -197,6 +199,9 @@
             source_format: fmt,
             text:          structure.text,
             periodicity:   _normPeriodicity(structure.periodicity),
+            // F1: annotation channels ride opaquely (Modify doesn't edit them but
+            // must re-emit them on Save so they aren't clobbered).
+            annotations:   structure.annotations || null,
             source: {
                 kind:            src.kind,
                 file:            src.file != null ? String(src.file) : null,
@@ -311,6 +316,7 @@
             source_format: _state.source_format,
             text:          _state.text,
             periodicity:   _state.periodicity || null,
+            annotations:   _state.annotations || null,   // F1: opaque carry
         };
     }
     function getLastSavedTo(){ _ensureInit(); return _state.last_save_to; }

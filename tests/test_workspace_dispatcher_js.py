@@ -442,6 +442,24 @@ class TestReads:
         assert out["before"] is False
         assert out["after"] is True                   # setLabel marked dirty
 
+    def test_scratch_blob_carries_annotations(self):
+        """F1: annotation channels carried opaquely from load are re-emitted in the
+        save/draft blob -- NOT clobbered to {} (which wiped them on every Modify Save)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz',\n"
+            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 0.74\\n',\n"
+            "  annotations:{charge:{dtype:'float',values:[0.1,-0.1]}}},\n"
+            "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0,element:'H',x:0,y:0,z:0,regions:[],is_frozen:false},\n"
+            "  {index:1,element:'H',x:0,y:0,z:0.74,regions:[],is_frozen:false}]);\n"
+            "const blob = ws.getScratchBlob();\n"
+            "console.log(JSON.stringify({ann: blob && blob.sidecar.annotations}));"
+        )
+        assert out["ann"] == {"charge": {"dtype": "float", "values": [0.1, -0.1]}}
+
     def test_scratch_blob_refuses_atom_count_desync(self):
         """Review c: geometry (canvas xyz) + labels (selection store) live in two
         stores; if their atom counts desync, getScratchBlob refuses to serialise a

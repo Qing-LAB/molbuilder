@@ -180,6 +180,7 @@
             // whole structure (workspace-contract.md §4.0).
             lattice:       per ? per.cell : null,
             periodicity:   per,
+            annotations:   canvas.annotations || null,   // F1: opaque carry
         };
     }
 
@@ -1199,6 +1200,9 @@
                 axis_kind:       per.axis_kind || null,
                 vacuum:          per.vacuum || null,
                 kgrid:           per.kgrid || null,
+                // F1: re-emit the annotation channels carried opaquely from load, so
+                // a Modify Save preserves them instead of clobbering to {}.
+                annotations:     s.annotations || {},
                 selection_rules: {},
             },
         };

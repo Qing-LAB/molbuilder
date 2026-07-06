@@ -87,6 +87,9 @@ def wc_open():
             "vacuum":    sc.get("vacuum"),
             "kgrid":     sc.get("kgrid"),
         },
+        # F1: the per-atom annotation channels (atom-annotations.md) ride opaquely
+        # through the frontend so a Modify Save doesn't clobber them to {}.
+        "annotations": sc.get("annotations") or {},
     })
 
 
