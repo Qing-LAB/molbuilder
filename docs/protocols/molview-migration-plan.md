@@ -209,6 +209,35 @@ The fix is to **adopt the framework**, not build a third thing.
   38 save/workingcopy/dialog tests pass. **NOTE:** `/api/selection/save-sidecar` +
   `/api/selection/refresh-hash` now have no frontend caller — dead, remove in A4.
 
+### A5 — SELECTION + FILTER read the workspace (memory), not disk (BUG FIX — do first)
+- **Why:** assigning a label is in-memory (change C), but the Modify filter-by-label
+  posts `/api/selection/eval`, which reads the DISK structure + sidecar -> it sees
+  only disk labels. Repro (user-reported): assign "L-electrode" in the panel (shows
+  in the click list) then filter by it -> `no region labelled "L-electrode"
+  (known: ['BDT'])`. The atom LIST has the same disease (`/api/selection/atoms` reads
+  disk). This is the concrete "still on disk, not the workspace" failure.
+- **Do:** in Modify, the filter + atom list operate on the STORE (memory). Either
+  evaluate the rule against the store's atoms client-side, OR have
+  `/api/selection/eval` evaluate against the workspace state the client SENDS
+  (atoms + regions) instead of loading disk. The atom list comes from the store, not
+  a disk read. (Results, which VIEWS a file on disk, may keep reading disk — that's
+  legitimate; this is about the editable Modify workspace.)
+- **Check:** assign a label in the panel -> filter by it finds those atoms WITHOUT
+  saving first; a modified/unsaved structure filters against its in-memory atoms.
+- **Status:** ☐ (fixes the user bug)
+
+### A6 — LOAD a file through the framework (not the ad-hoc file-open)
+- **Why:** opening a file uses the ad-hoc path -- `/api/build/load` (reads only the
+  `.xyz` TEXT, no sidecar) + a separate `/api/selection/atoms` fetch for the cell.
+  The framework already has `/api/workingcopy/open`, which loads the `.xyz` + `.json`
+  pair (regions + frozen + periodicity) in ONE call.
+- **Do:** the Modify open-a-file flow (`selection-bootstrap.commitFile` / `file.js`)
+  uses `/api/workingcopy/open` -> the store. Delete the file-open `/api/build/load`
+  call + the `/api/selection/atoms` cell fetch.
+- **Check:** opening a saved structure loads atoms + labels + cell in ONE call; grep:
+  no `/api/build/load` or `/api/selection/atoms` in the Modify file-open path.
+- **Status:** ☐
+
 ### A3 — draft + discard through the framework (decision-gated)
 - **Do:** decide whether the crash-surviving draft moves from `sessionStorage` to
   `/api/workingcopy/stage`+`discard`, or they coexist. Wire it if adopted.
@@ -216,14 +245,20 @@ The fix is to **adopt the framework**, not build a third thing.
   it. **Design decision first — may stay `sessionStorage`.**
 - **Status:** ☐ (needs a decision)
 
-### A4 — define it in the docs
-- **Do:** molview-module.md + workspace-contract.md + save-flow.md + working-copy-
-  persistence.md state plainly: the Modify tab **persists via the working-copy
-  framework** (save/draft/discard) into the project-sidebar dir; `ws.*` is the
-  in-memory truth; molview only DISPLAYS. Remove the save-sidecar-based §4.3 + the
-  two-call story.
-- **Check:** the docs describe the shipped single-call framework path; no doc still
-  claims `writeFile`+`save-sidecar`.
+### A4 — REMOVE the obsolete disk-based code + define the architecture
+- **Do:** delete every endpoint that read/wrote disk for what is now in-memory
+  Modify-workspace data, ONCE its callers are gone (verify no OTHER caller — e.g.
+  Results legitimately viewing disk — before deleting): `/api/selection/save-sidecar`
+  + `/api/selection/refresh-hash` (dead after A2); the Modify uses of
+  `/api/selection/eval` + `/api/selection/atoms` (after A5); the file-open
+  `/api/build/load` path (after A6). Migrate/retire their tests. Then define the
+  ONE model in molview-module.md + workspace-contract.md + save-flow.md +
+  working-copy-persistence.md: ws.* in memory is the truth; the working-copy
+  framework (open/save/draft/discard) is the ONLY thing that touches disk for the
+  workspace; molview only DISPLAYS.
+- **Check:** grep -- no Modify-tab code reads disk for regions/atoms/cell outside the
+  working-copy framework; no obsolete endpoint remains with a live caller; docs
+  describe the single model.
 - **Status:** ☐
 
 > Track A runs BEFORE the remaining Track B molview steps — it's the data-loss fix.
