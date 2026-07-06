@@ -19,10 +19,9 @@ package hold the page + API routes for the other tabs:
                         /api/transport/* endpoints
   * ``results.py``   -- /results page + /partials/* partials +
                         /api/results/bundle (Step-3 PR-E)
-  * ``selection.py`` -- /api/selection/eval + /api/selection/atoms +
-                        /api/selection/save + /api/selection/save-sidecar
-                        + /api/selection/refresh-hash (atom-selection rule
-                        eval + atom list + sidecar I/O; Pattern C:
+  * ``selection.py`` -- /api/selection/eval + /api/selection/atoms
+                        (atom-selection rule
+                        eval + atom list; Pattern C:
                         stateless, JS holds the rule tree, Python
                         canonicalises + evaluates.  Click-toggle is
                         handled client-side in the selection store)

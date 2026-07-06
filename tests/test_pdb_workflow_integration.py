@@ -11,8 +11,10 @@ What it pins (in order):
 
   1.  /api/selection/atoms reads the PDB and returns the per-atom
       metadata table (element, residue_name, chain_id, ...).
-  2.  /api/selection/save-sidecar writes a v4 sidecar with
-      ``frozen_atoms`` + ``regions``, keyed by the PDB's stem.
+  2.  A v4 sidecar with ``frozen_atoms`` + ``regions`` is written
+      directly via the molstruct codec (keyed by the PDB's stem) --
+      formerly seeded via /api/selection/save-sidecar before that
+      endpoint was removed.
   3.  /api/selection/atoms re-read picks up the sidecar (atoms now
       carry the new region tags + is_frozen flags).
   4.  GET /api/build/schema/spectra?structure_path=<.pdb> pre-fills
@@ -67,6 +69,22 @@ _SYNTHETIC_PDB = (
     "ATOM     15  OG  SER A   3       6.900   6.300  -0.200  1.00  0.00           O\n"
     "END\n"
 )
+
+
+def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
+    """Write a ``.molstruct.json`` sidecar next to ``struct_path`` DIRECTLY
+    via the codec.  Formerly seeded with a ``POST /api/selection/save-sidecar``
+    before that endpoint was removed (the save was unified onto
+    ``/api/workingcopy/save``).  ``save-sidecar`` was REPLACE-all, so one
+    ``to_dict`` mirrors a single endpoint call."""
+    from molbuilder.sidecars import molstruct as _msj
+    payload = _msj.to_dict(
+        n_atoms_total=n_atoms,
+        structure_hash=_msj.sha256_of_file(struct_path),
+        regions=regions or {},
+        frozen_atoms=frozen or [],
+    )
+    _msj.save(_msj.sidecar_path_for(struct_path), payload)
 
 
 @pytest.fixture
@@ -157,7 +175,7 @@ class TestPdbWorkflowEndToEnd:
             f"PDB-loaded atom 0 missing PDB metadata: {first}"
         )
 
-    # ----- Step 2: assign frozen_atoms + a region via /save-sidecar - #
+    # ----- Step 2: assign frozen_atoms + a region via the codec ----- #
 
     def test_step_2_save_writes_v4_sidecar(
         self, web, pdb_under_root,
@@ -168,24 +186,16 @@ class TestPdbWorkflowEndToEnd:
         frozen_indices = [0, 1, 2]
         region_indices = [3, 4]
 
-        # save-sidecar is REPLACE-ALL: the whole sidecar (regions +
+        # The sidecar write is REPLACE-ALL: the whole sidecar (regions +
         # frozen) is written in one shot.
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {"L-electrode": region_indices},
-            "frozen_atoms":   frozen_indices,
-        })
-        assert r.status_code == 200, r.data
-        j = r.get_json()
-        assert j["ok"] is True
-        assert j["frozen_atoms"] == frozen_indices
-        assert j["regions"]["L-electrode"] == region_indices
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
+                          regions={"L-electrode": region_indices},
+                          frozen=frozen_indices)
 
         # The sidecar lands on disk next to the PDB, keyed by stem.
         sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
         assert sidecar.exists(), (
-            f"selection/save-sidecar didn't write the sidecar at {sidecar}"
+            f"the codec sidecar seed didn't write the sidecar at {sidecar}"
         )
         on_disk = json.loads(sidecar.read_text())
         assert on_disk["schema_version"] == 4
@@ -200,12 +210,8 @@ class TestPdbWorkflowEndToEnd:
     ):
         pdb_path, n_atoms, _ = pdb_under_root
         # Re-run step 2's save so this test is self-contained.
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {"L-electrode": [3, 4]},
-            "frozen_atoms":   [0, 1, 2],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
+                          regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
 
         r = web.post("/api/selection/atoms", json={
             "structure_path": self._path(pdb_path),
@@ -230,12 +236,7 @@ class TestPdbWorkflowEndToEnd:
         self, web, pdb_under_root,
     ):
         pdb_path, n_atoms, _ = pdb_under_root
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {},
-            "frozen_atoms":   [0, 1, 2],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
 
         r = web.get(
             f"/api/build/schema/spectra?structure_path={self._path(pdb_path)}"
@@ -264,12 +265,8 @@ class TestPdbWorkflowEndToEnd:
     ):
         pdb_path, n_atoms, _ = pdb_under_root
         # Sidecar with frozen + a region.
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {"L-electrode": [3, 4]},
-            "frozen_atoms":   [0, 1, 2],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms,
+                          regions={"L-electrode": [3, 4]}, frozen=[0, 1, 2])
 
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
@@ -320,12 +317,7 @@ class TestPdbWorkflowEndToEnd:
         # Sidecar says [0,1,2]; form says [5,6].  The script MUST
         # honor the FORM, not the sidecar (form is authoritative
         # per the three-stage contract).
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {},
-            "frozen_atoms":   [0, 1, 2],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
@@ -364,12 +356,7 @@ class TestPdbWorkflowEndToEnd:
         # Sidecar marks atoms 0,1,2 frozen.  User clears the form
         # field deliberately.  Render must honor "no atoms frozen"
         # AND fire Pattern A so the user can't be surprised later.
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": self._path(pdb_path),
-            "n_atoms":        n_atoms,
-            "regions":        {},
-            "frozen_atoms":   [0, 1, 2],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=n_atoms, frozen=[0, 1, 2])
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
@@ -415,8 +402,8 @@ def simple_pdb_under_root(tmp_path, monkeypatch):
     RENDERERS SUCCEED so the test isolates the sidecar-wiring
     regression from emitter bugs.
 
-    Repoints picker root at tmp_path so /api/selection/save-sidecar
-    accepts the path under the security gate."""
+    Repoints picker root at tmp_path so the build/spectra endpoints
+    accept the path under the security gate."""
     pdb_text = (
         "REMARK 1 synthetic chon for sidecar wiring test\n"
         "ATOM      1  C   MOL A   1       0.000   0.000   0.000  1.00  0.00           C\n"
@@ -452,13 +439,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
 
     def test_step_a_save_writes_sidecar(self, web, simple_pdb_under_root):
         pdb_path = simple_pdb_under_root
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": str(pdb_path.resolve()),
-            "n_atoms":        10,
-            "regions":        {},
-            "frozen_atoms":   [0, 4, 7],
-        })
-        assert r.status_code == 200, r.data
+        _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
         # Sidecar exists with the right indices.
         sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
         assert sidecar.exists()
@@ -474,12 +455,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
         pdb_path = simple_pdb_under_root
         # Re-save sidecar (this test runs independently of step_a in
         # principle, though pytest's order makes it sequential here).
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": str(pdb_path.resolve()),
-            "n_atoms":        10,
-            "regions":        {},
-            "frozen_atoms":   [0, 4, 7],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
         # Read PDB text the way viewer.js does.
         pdb_text = pdb_path.read_text()
         # Need a "xyz" body field for the parser; XYZ form derived
@@ -521,12 +497,7 @@ class TestBuildSiestaHonorsSidecarFrozenAtoms:
     def test_step_c_build_pyscf_also_sees_sidecar(self, web, simple_pdb_under_root):
         """Same wiring check for PySCF Build."""
         pdb_path = simple_pdb_under_root
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": str(pdb_path.resolve()),
-            "n_atoms":        10,
-            "regions":        {},
-            "frozen_atoms":   [0, 4, 7],
-        })
+        _seed_sidecar_for(pdb_path, n_atoms=10, frozen=[0, 4, 7])
         from molbuilder.structure import Structure
         struct = Structure.from_pdb(pdb_path.read_text())
         xyz = struct.to_xyz()

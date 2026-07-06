@@ -351,7 +351,7 @@ class TestRefusals:
 class TestErrorPaths:
 
     def test_server_error_surfaces(self):
-        """A save-sidecar/write failure is SURFACED (returned), never swallowed --
+        """A sidecar/write failure is SURFACED (returned), never swallowed --
         the whole point of the unification (no more silent lost .json)."""
         out = _run_node('''
             const c = _mkFakeCanvas({

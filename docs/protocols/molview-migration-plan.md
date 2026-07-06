@@ -271,8 +271,8 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
 ### A4 — REMOVE the obsolete disk-based code + define the architecture
 - **Do:** delete every endpoint that read/wrote disk for what is now in-memory
   Modify-workspace data, ONCE its callers are gone (verify no OTHER caller — e.g.
-  Results legitimately viewing disk — before deleting): `/api/selection/save-sidecar`
-  + `/api/selection/refresh-hash` (dead after A2); the Modify uses of
+  Results legitimately viewing disk — before deleting): ~~`/api/selection/save-sidecar`
+  + `/api/selection/refresh-hash`~~ (dead after A2; **removed 2026-07-05**); the Modify uses of
   `/api/selection/eval` + `/api/selection/atoms` (after A5); the file-open
   `/api/build/load` path (after A6). Migrate/retire their tests. Then define the
   ONE model in molview-module.md + workspace-contract.md + save-flow.md +
@@ -282,7 +282,12 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
 - **Check:** grep -- no Modify-tab code reads disk for regions/atoms/cell outside the
   working-copy framework; no obsolete endpoint remains with a live caller; docs
   describe the single model.
-- **Status:** ☐
+- **Status:** ◑ partial. `/api/selection/save-sidecar` + `/api/selection/refresh-hash`
+  removed 2026-07-05 (their `selection.py` routes + docstrings deleted; `TestSaveSidecar`
+  + `TestRefreshHash` deleted; the seed-only usages in `test_selection_blueprint.py` +
+  `test_pdb_workflow_integration.py` migrated to direct codec sidecar writes; docs
+  updated). The `eval`/`atoms` (after A5) + `build/load` (after A6) removals + the
+  single-model doc definition remain open.
 
 > Track A runs BEFORE the remaining Track B molview steps — it's the data-loss fix.
 > The molview k-grid Steps 1–2 (done) stand; Steps 3–6 below become Track B.

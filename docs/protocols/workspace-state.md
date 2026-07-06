@@ -459,7 +459,7 @@ reason about index shifts.
 | `/api/modify/<op>` | Mutate Structure → Structure | `selection_remap` (when applicable), `op`, `args` |
 | `/api/selection/atoms` (legacy) | Atoms only, no text | **Active**.  Scheduled for deprecation in migration § 6 step 10 (currently deferred — selection store still calls it from `_fetchAtoms` / `setSourceFile` / `refreshAtoms`; the legacy `tests/test_pdb_workflow_integration.py` integration suite also exercises it).  Once Phase 9 folds the selection store into the dispatcher, this endpoint becomes deletable. |
 | `/api/selection/eval` | Selection indices only | unchanged — selection-only endpoint, doesn't return a Structure |
-| `/api/selection/save-sidecar` | Sidecar writes (whole-store REPLACE, on Save) | unchanged — selection-only |
+| `/api/workingcopy/save` | Sidecar writes (whole-store REPLACE, on Save; writes `.xyz` + `.json` together) | superseded `/api/selection/save-sidecar` + `/api/selection/refresh-hash`, both removed |
 
 `/api/selection/atoms` becomes redundant once `WorkspacePayload`
 ships across the load + build + modify endpoints.  Removing it is

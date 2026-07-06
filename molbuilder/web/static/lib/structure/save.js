@@ -343,8 +343,8 @@
     // ``markSavedTo`` + ``adoptSession`` both call ws.notify()).  The
     // subscriber re-runs ``refreshState`` mid-save, which would re-
     // enable the button on a successful write — letting the user
-    // click Save AGAIN before the first save's label propagation +
-    // refresh-hash had finished and triggering a second dialog/POST
+    // click Save AGAIN before the first save's /api/workingcopy/save
+    // call had finished and triggering a second dialog/POST
     // for the same workspace.  Track the in-flight state at module
     // scope and OR it into the disabled computation so the button
     // stays disabled until the click handler's .then() clears the

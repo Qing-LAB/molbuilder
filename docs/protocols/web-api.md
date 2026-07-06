@@ -274,8 +274,6 @@ flowchart LR
     subgraph "Selection"
         s_atoms["POST /api/selection/atoms"]
         s_eval["POST /api/selection/eval"]
-        s_rhash["POST /api/selection/refresh-hash"]
-        s_ssc["POST /api/selection/save-sidecar"]
     end
     subgraph "Spectra"
         sp_schema["GET /api/build/schema/spectra"]
@@ -823,23 +821,15 @@ lives in [`molview-module.md`](molview-module.md).
 |---|---|---|---|
 | `/api/selection/atoms` | POST | `{structure_path}` | `{ok, n_atoms, atoms: [{index, element, atom_name?, residue_name?, chain_id?, is_frozen, regions}]}` |
 | `/api/selection/eval` | POST | `{structure_path, rule}` | `{ok, selected_indices, count, n_atoms_total}` |
-| `/api/selection/refresh-hash` | POST | `{structure_path}` | `{ok, refreshed, structure_hash}` |
-| `/api/selection/save-sidecar` | POST | `{structure_path, n_atoms, regions?, frozen_atoms?}` | `{ok, sidecar_path, n_atoms_total, regions, frozen_atoms}` |
 
-`refresh-hash` rewrites the sidecar's `structure_hash` against the
-current on-disk XYZ bytes; `regions` / `frozen_atoms` /
-`selection_rules` are preserved verbatim.  Returns
-`refreshed: false, structure_hash: null` when no sidecar exists
-(no-op, so callers can fire-and-forget without a preflight). Used
-by `structureSave.save()` to keep the sidecar's hash in sync after
-a modifier-op save persists fresh XYZ bytes.
-
-`save-sidecar` REPLACES the entire sidecar with the supplied
-payload (no merge with any prior sidecar at that path);
-`selection_rules` is reset to `{}` and `structure_hash` is
-recomputed against the on-disk bytes. Used by Save-as to
-propagate the workspace's labels to a new destination cleanly.
-See [`save-flow.md`](save-flow.md) § 4.2 / § 4.3 for the
+Sidecar writes (regions / frozen_atoms / periodicity) now go
+through the unified `/api/workingcopy/save` (§ 6.1b), which writes
+the `.xyz` + `.json` pair in one call and recomputes the sidecar's
+`structure_hash` against the bytes it just wrote.  The former
+`/api/selection/save-sidecar` + `/api/selection/refresh-hash`
+endpoints were removed once that unification landed (they had no
+remaining frontend caller).  See
+[`save-flow.md`](save-flow.md) § 4.2 / § 4.3 for the
 Save vs. Save-as label-propagation contracts.
 
 ### 6.1b Working-copy endpoints (`/api/workingcopy/*`)

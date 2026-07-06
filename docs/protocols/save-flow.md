@@ -128,13 +128,13 @@ On `write_envelope.ok`:
 
 ```
 structurePage.markSavedTo(final_path)     # dirty clears + last_save_to = final_path
-
-# §4 / workspace-contract.md §4.0: write the WHOLE store's sidecar, hash-tied.
-POST /api/selection/save-sidecar {
-    structure_path: final_path, n_atoms,
-    regions, frozen_atoms, periodicity,     # gathered from ws.getAtoms()/getStructure()
-}
 ```
+
+The `.xyz` + `.molstruct.json` pair is written together by the single
+`/api/workingcopy/save` call in §3.4 (§4 / workspace-contract.md §4.0: the
+WHOLE store's sidecar, hash-tied — regions + frozen_atoms + periodicity
+gathered from `ws.getAtoms()` / `ws.getStructure()`).  There is no separate
+sidecar POST after the XYZ write.
 
 ---
 
@@ -166,10 +166,13 @@ store:
    * `regions: {label: [indices]}` — from each atom's `labels[]` (`ws.getAtoms()`)
    * `frozen: [indices]` — atoms with `isFrozen=true`
    * `periodicity: {cell, axis_kind, vacuum, kgrid}` — from `ws.getStructure()`
-2. POST `/api/selection/save-sidecar` with `{structure_path, n_atoms, regions,
-   frozen_atoms, periodicity}` — the server **REPLACES** the entire sidecar
-   atomically and recomputes `structure_hash` from the just-written XYZ, so the
-   `.xyz` + `.json` pair is always coherent (no merge with prior contents).
+2. The single `/api/workingcopy/save` call carries `{regions, frozen_atoms,
+   periodicity}` alongside the XYZ text — the server writes the `.xyz` then
+   **REPLACES** the entire sidecar atomically, recomputing `structure_hash`
+   from the just-written XYZ, so the `.xyz` + `.json` pair is always coherent
+   (no merge with prior contents).  (Before the 2026-06 unification this was a
+   separate `/api/selection/save-sidecar` POST after the XYZ write; that
+   endpoint has been removed.)
 
 This fires on EVERY save, even with no labels — it wipes any stale sidecar at the
 destination so the store's authoritative state (including "no labels") is what
@@ -227,7 +230,6 @@ Every clause is pinned by a test ID:
 | §2 button enablement | `test_save_button_disabled_for_smiles_without_prior_save` |
 | §3.3 filename input rules | `test_rejects_path_separators`, `test_empty_name_keeps_save_disabled` |
 | §3.5 pre-confirm same-path | inlined in `test_writes_to_source_file_and_marks_saved` |
-| §3.6 sidecar refresh-hash | `tests/test_selection_blueprint.py::TestRefreshHash` |
 | §4.1 label writes preserve workspace | `test_panel_assign_works_on_dirty_workspace_after_electrode` |
 | §4.3 Save-as sidecar propagation | `test_save_as_propagates_labels_to_new_sidecar` |
 | §4.4 atomic write | tested implicitly via `tests/test_web_files.py` |
@@ -245,16 +247,17 @@ Every clause is pinned by a test ID:
    only the XYZ; the sidecar gets silently rewritten by the §4.3
    label propagation.
 
-2. **Bulk sidecar-write endpoint.**  §4.3 issues N+1 HTTP calls
-   (one per region label + one for frozen_atoms).  A new
-   `/api/selection/save-sidecar` endpoint that accepts the full
-   sidecar payload `{regions, frozen_atoms, n_atoms}` in one shot
-   would be faster + atomic from the client's perspective.
+2. **Bulk sidecar-write endpoint.** *(Done — superseded.)* The
+   whole-store sidecar is now written in one shot by
+   `/api/workingcopy/save` (which carries `{regions, frozen_atoms,
+   periodicity}` alongside the XYZ). The interim
+   `/api/selection/save-sidecar` + `/api/selection/refresh-hash`
+   endpoints have been removed.
 
 3. **Sidebar locked during in-flight save.**  Per
    `projects-sidebar.md` § C2, file-list mutations are gated on
    the sidebar lock.  Save should acquire the lock for the
-   duration of the writeFile + refresh-hash sequence so concurrent
+   duration of the `/api/workingcopy/save` call so concurrent
    file mutations can't race.
 
 ---

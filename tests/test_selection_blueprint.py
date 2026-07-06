@@ -68,6 +68,24 @@ def _path(root, name="junction.xyz"):
     return str((root / name).resolve())
 
 
+def _seed_sidecar(root, *, n_atoms, regions=None, frozen=None,
+                  name="junction.xyz"):
+    """Write a ``.molstruct.json`` sidecar next to ``name`` DIRECTLY via
+    the codec.  This is the seed path formerly done with a
+    ``POST /api/selection/save-sidecar`` before that endpoint was removed
+    (the save was unified onto ``/api/workingcopy/save``).  ``save-sidecar``
+    was REPLACE-all, so a single ``to_dict`` mirrors one endpoint call."""
+    from molbuilder.sidecars import molstruct as _msj
+    xyz = root / name
+    payload = _msj.to_dict(
+        n_atoms_total=n_atoms,
+        structure_hash=_msj.sha256_of_file(xyz),
+        regions=regions or {},
+        frozen_atoms=frozen or [],
+    )
+    _msj.save(_msj.sidecar_path_for(xyz), payload)
+
+
 # --------------------------------------------------------------------- #
 #  /api/selection/eval                                                  #
 # --------------------------------------------------------------------- #
@@ -203,13 +221,8 @@ class TestEval:
         returns no atoms" bug.
         """
         # 1. Save: tag atoms 0..3 as L-electrode.
-        save = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"L-electrode": [0, 1, 2, 3]},
-            "frozen_atoms":   [],
-        })
-        assert save.status_code == 200
+        _seed_sidecar(selection_root, n_atoms=11,
+                      regions={"L-electrode": [0, 1, 2, 3]})
         # 2. Eval: ask the server to return atoms with that label.
         r = web.post("/api/selection/eval", json={
             "structure_path": _path(selection_root),
@@ -235,13 +248,7 @@ class TestEval:
         user-defined).
         """
         # Save frozen_atoms via the whole-sidecar writer.
-        save = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {},
-            "frozen_atoms":   [5, 6, 7],
-        })
-        assert save.status_code == 200
+        _seed_sidecar(selection_root, n_atoms=11, frozen=[5, 6, 7])
         # Eval ``frozen_atoms`` via the standard by_region rule.
         r = web.post("/api/selection/eval", json={
             "structure_path": _path(selection_root),
@@ -258,12 +265,7 @@ class TestEval:
         the (correct) ``is_frozen`` flag AND a (duplicate)
         ``frozen_atoms`` tag in the panel's atom rows.
         """
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {},
-            "frozen_atoms":   [5, 6, 7],
-        })
+        _seed_sidecar(selection_root, n_atoms=11, frozen=[5, 6, 7])
         r = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
         })
@@ -531,7 +533,7 @@ class TestStateless:
 #  Error-path coverage gaps (task #147)                                 #
 #                                                                       #
 #  Each endpoint has 3-5 error branches.  Pre-existing test classes    #
-#  (TestEval, TestAtomsEndpoint, TestSaveSidecar)                      #
+#  (TestEval, TestAtomsEndpoint)                                       #
 #  cover the happy path + a few of the most common bad inputs.  This   #
 #  class fills the gaps so every error branch in the blueprint has    #
 #  at least one test pinning its status code + message shape.          #
@@ -609,305 +611,6 @@ class TestAtomsErrorPaths:
         assert a0.get("chain_id")     == "A"
 
 
-class TestRefreshHash:
-    """``/api/selection/refresh-hash`` keeps the sidecar's
-    ``structure_hash`` in sync with the XYZ bytes after a Save
-    rewrites the XYZ.  Used by structureSave.save() to close the
-    modify-then-label-then-save hash drift.
-    """
-
-    def test_no_op_when_sidecar_missing(self, web, selection_root):
-        """No sidecar on disk -> ok=true, refreshed=false (so the
-        client can fire-and-forget without a preflight check)."""
-        from molbuilder.sidecars import molstruct as msj
-        side = msj.sidecar_path_for(Path(_path(selection_root)))
-        assert not side.exists()
-        r = web.post("/api/selection/refresh-hash", json={
-            "structure_path": _path(selection_root),
-        })
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["refreshed"] is False
-        assert body["structure_hash"] is None
-
-    def test_rewrites_hash_preserving_regions_and_frozen(
-            self, web, selection_root):
-        """After Save, the XYZ on disk has new bytes (new hash).
-        refresh-hash must update the sidecar's hash + leave
-        regions/frozen_atoms/rules unchanged."""
-        from molbuilder.sidecars import molstruct as msj
-        # Seed a sidecar with regions + frozen via the save-sidecar
-        # path (so we test the integration, not a hand-rolled
-        # sidecar).
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"L-electrode": [0, 1]},
-            "frozen_atoms":   [10],
-        })
-        side = msj.sidecar_path_for(Path(_path(selection_root)))
-        before = msj.load(side)
-        # Mutate the XYZ on disk (simulating a Save with new atoms).
-        xyz_path = Path(_path(selection_root))
-        original = xyz_path.read_text()
-        xyz_path.write_text(original + "\n")    # bytewise different
-        new_hash = msj.sha256_of_file(xyz_path)
-        assert new_hash != before["structure_hash"], (
-            "test setup: post-modification XYZ should differ"
-        )
-        r = web.post("/api/selection/refresh-hash", json={
-            "structure_path": _path(selection_root),
-        })
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["refreshed"] is True
-        assert body["structure_hash"] == new_hash
-        # Verify the sidecar on disk matches.
-        after = msj.load(side)
-        assert after["structure_hash"] == new_hash
-        # And the user data is intact verbatim.
-        assert after["regions"] == before["regions"]
-        assert after["frozen_atoms"] == before["frozen_atoms"]
-        assert after["selection_rules"] == before["selection_rules"]
-        assert after["n_atoms_total"] == before["n_atoms_total"]
-
-    def test_missing_structure_returns_404(self, web, selection_root):
-        r = web.post("/api/selection/refresh-hash", json={
-            "structure_path": str(selection_root / "no-such.xyz"),
-        })
-        assert r.status_code == 404
-
-    def test_updates_n_atoms_total_when_xyz_grew(
-            self, web, selection_root):
-        """2026-06-12 regression: refresh-hash must keep
-        ``n_atoms_total`` in sync with the on-disk XYZ.
-
-        Before the fix, a Save after a modifier op (3 atoms -> 11)
-        without a prior Assign left the sidecar claiming the OLD
-        atom count.  Next load's ``apply_to_structure`` then raised
-        on mismatch and ``_load_structure`` silently swallowed —
-        the user's labels disappeared.  Refresh-hash must re-read
-        the XYZ and update ``n_atoms_total`` so the sidecar stays
-        coherent with the file it lives next to.
-        """
-        from molbuilder.sidecars import molstruct as msj
-        xyz_path = Path(_path(selection_root))
-        side = msj.sidecar_path_for(xyz_path)
-        # Hand-craft a sidecar that claims 11 atoms (the original
-        # junction.xyz's count) with regions referencing low indices
-        # that survive a shrink to 3 atoms.
-        msj.save(side, msj.to_dict(
-            n_atoms_total  = 11,
-            structure_hash = msj.sha256_of_file(xyz_path),
-            regions        = {"L-electrode": [0, 1]},
-            frozen_atoms   = [0],
-            created_by     = "test setup",
-        ))
-        # Shrink the XYZ to 3 atoms (simulating an inverse modifier
-        # op).  Sidecar's n_atoms_total=11 is now stale vs 3 on disk.
-        xyz_path.write_text(
-            "3\nshrunk\n"
-            "Au 0 0 0\n" "Au 1 0 0\n" "Au 2 0 0\n"
-        )
-        r = web.post("/api/selection/refresh-hash", json={
-            "structure_path": _path(selection_root),
-        })
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["refreshed"] is True
-        # n_atoms_total now matches the new XYZ's atom count, not
-        # the sidecar's stale claim.
-        after = msj.load(side)
-        assert after["n_atoms_total"] == 3
-        # The surviving in-range labels carry through; indices ≥ 3
-        # would have been dropped (none here — [0, 1] all in range).
-        assert after["regions"] == {"L-electrode": [0, 1]}
-        assert after["frozen_atoms"] == [0]
-
-    def test_drops_out_of_range_indices_on_shrink(
-            self, web, selection_root):
-        """When the new XYZ has fewer atoms than the sidecar
-        references, drop the indices that no longer exist rather
-        than failing the rebuild.  The user's modifier op shrunk
-        the structure; orphan labels can't reference atoms that
-        aren't there."""
-        from molbuilder.sidecars import molstruct as msj
-        xyz_path = Path(_path(selection_root))
-        side = msj.sidecar_path_for(xyz_path)
-        msj.save(side, msj.to_dict(
-            n_atoms_total  = 11,
-            structure_hash = msj.sha256_of_file(xyz_path),
-            # Mix of in-range (0, 1) and out-of-range-after-shrink
-            # (7, 10) indices.
-            regions        = {"L-electrode": [0, 1], "R-electrode": [7, 10]},
-            frozen_atoms   = [0, 10],
-            created_by     = "test setup",
-        ))
-        xyz_path.write_text(
-            "3\nshrunk\n"
-            "Au 0 0 0\n" "Au 1 0 0\n" "Au 2 0 0\n"
-        )
-        r = web.post("/api/selection/refresh-hash", json={
-            "structure_path": _path(selection_root),
-        })
-        assert r.status_code == 200, r.data
-        after = msj.load(side)
-        assert after["n_atoms_total"] == 3
-        # L-electrode survives entirely (indices 0, 1).
-        # R-electrode's indices 7, 10 are both out of range and
-        # would empty the region — empty regions are dropped.
-        assert after["regions"] == {"L-electrode": [0, 1]}
-        # Frozen drops out-of-range 10 but keeps 0.
-        assert after["frozen_atoms"] == [0]
-
-
-class TestSaveSidecar:
-    """``/api/selection/save-sidecar`` — atomic REPLACE of the entire
-    sidecar from a client-provided payload.  Used by the Save-as flow
-    (save-flow.md §4.3) to propagate workspace labels to a new
-    destination without merging with whatever stale sidecar was
-    already there.
-    """
-
-    def test_creates_sidecar_when_absent(self, web, selection_root):
-        from molbuilder.sidecars import molstruct as msj
-        side = msj.sidecar_path_for(Path(_path(selection_root)))
-        assert not side.exists()
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"L-electrode": [0, 1]},
-            "frozen_atoms":   [10],
-        })
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["n_atoms_total"] == 11
-        assert body["regions"] == {"L-electrode": [0, 1]}
-        assert body["frozen_atoms"] == [10]
-        on_disk = msj.load(side)
-        assert on_disk["regions"] == {"L-electrode": [0, 1]}
-        assert on_disk["frozen_atoms"] == [10]
-
-    def test_periodicity_persists_in_saved_sidecar(self, web, selection_root):
-        """workspace-contract.md §4.0: the whole-store save writes the
-        periodicity into the sidecar alongside regions/frozen."""
-        from molbuilder.sidecars import molstruct as msj
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {},
-            "frozen_atoms":   [],
-            "periodicity": {
-                "cell":      [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
-                "axis_kind": ["periodic", "periodic", "transport"],
-                "vacuum":    [0, 0, 0],
-                "kgrid":     [4, 4, 1],
-            },
-        })
-        assert r.status_code == 200, r.data
-        on_disk = msj.load(msj.sidecar_path_for(Path(_path(selection_root))))
-        assert on_disk["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 10]]
-        assert on_disk["axis_kind"] == ["periodic", "periodic", "transport"]
-        assert on_disk["kgrid"] == [4, 4, 1]
-
-    def test_replaces_existing_sidecar_does_not_merge(
-            self, web, selection_root):
-        """Core contract: prior regions/frozen_atoms in the existing
-        sidecar are WIPED, not merged with the new payload.  A second
-        save-sidecar REPLACES the whole prior sidecar rather than
-        merging into it.
-        """
-        from molbuilder.sidecars import molstruct as msj
-        # Seed an existing sidecar with stale labels.
-        web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"stale-region": [0, 1, 2]},
-            "frozen_atoms":   [9, 10],
-        })
-        # Bulk-replace with the workspace's "authoritative" state.
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"L-electrode": [0, 1]},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 200, r.data
-        body = r.get_json()
-        # stale-region must be gone (REPLACE-all semantics).
-        assert body["regions"] == {"L-electrode": [0, 1]}
-        assert body["frozen_atoms"] == []
-        # Verify on disk matches.
-        side = msj.sidecar_path_for(Path(_path(selection_root)))
-        on_disk = msj.load(side)
-        assert "stale-region" not in on_disk["regions"]
-        assert on_disk["frozen_atoms"] == []
-        # selection_rules is reset to {} per the contract.
-        assert on_disk["selection_rules"] == {}
-
-    def test_rejects_unbounded_n_atoms(self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        999_999_999,
-            "regions":        {"L-electrode": [0]},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 400
-        assert "n_atoms" in r.get_json()["error"].lower()
-
-    def test_rejects_negative_n_atoms(self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        -1,
-            "regions":        {},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 400
-
-    def test_rejects_out_of_range_region_index(
-            self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"L-electrode": [0, 99]},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 400
-        assert "out of range" in r.get_json()["error"].lower()
-
-    def test_rejects_out_of_range_frozen_index(
-            self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {},
-            "frozen_atoms":   [-1],
-        })
-        assert r.status_code == 400
-
-    def test_rejects_non_string_region_key(self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": _path(selection_root),
-            "n_atoms":        11,
-            "regions":        {"": [0]},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 400
-
-    def test_missing_structure_returns_404(self, web, selection_root):
-        r = web.post("/api/selection/save-sidecar", json={
-            "structure_path": str(selection_root / "no-such.xyz"),
-            "n_atoms":        3,
-            "regions":        {},
-            "frozen_atoms":   [],
-        })
-        assert r.status_code == 404
-
-
 class TestEvalErrorPaths:
     """Eval branches not covered by ``TestEval``."""
 
@@ -933,7 +636,6 @@ class TestCrossCutting:
 
     @pytest.mark.parametrize("endpoint", [
         "/api/selection/atoms",
-        "/api/selection/save-sidecar",
         "/api/selection/eval",
     ])
     def test_non_json_body_returns_400(self, web, endpoint):
@@ -949,7 +651,6 @@ class TestCrossCutting:
 
     @pytest.mark.parametrize("endpoint", [
         "/api/selection/atoms",
-        "/api/selection/save-sidecar",
         "/api/selection/eval",
     ])
     def test_top_level_not_object_returns_400(self, web, endpoint):
