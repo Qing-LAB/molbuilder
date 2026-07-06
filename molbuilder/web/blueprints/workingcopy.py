@@ -84,8 +84,14 @@ def wc_update():
 
 @bp.route("/api/workingcopy/save", methods=["POST"])
 def wc_save():
-    """Write the artifact to `target` (overwrite the same path, or save-as a new
-    one).  `data` is the browser's working copy; there is no gate."""
+    """Write the artifact (the `.xyz` + `.molstruct.json` pair) to `target` --
+    overwrite the same path, or save-as a new one.  `data` is the browser's working
+    copy.
+
+    Overwrite gate (save-flow.md §1 / §4.0.1): an existing `target` is refused with
+    409 unless ``overwrite: true`` -- the caller confirms first, exactly like
+    ``/api/files/write``.  A symlink at the target is always refused.
+    """
     b = _body()
     source, blob = b.get("source"), b.get("data")
     if not isinstance(source, str) or blob is None:
@@ -95,6 +101,14 @@ def wc_save():
         target = _resolve(b["target"]) if b.get("target") else src
     except _PickerError as e:
         return _bad(e.message, e.status)
+    overwrite = bool(b.get("overwrite", False))
+    if target.exists() and not overwrite:
+        return _bad(f"file already exists: {target}", 409)
+    try:
+        if target.is_symlink():
+            return _bad(f"refusing to write through a symlink at {target}", 400)
+    except OSError as e:
+        return _bad(f"symlink check failed: {e}", 500)
     try:
         data = _CODEC.from_scratch(blob)
     except Exception as e:  # noqa: BLE001

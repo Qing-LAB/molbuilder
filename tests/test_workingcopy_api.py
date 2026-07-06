@@ -38,9 +38,23 @@ def test_open_update_save(client_project):
     assert (proj / ".molbuilder_workspace").exists()
     assert not (proj / "mol.molstruct.json").exists()   # not saved yet
     r = _json(client.post("/api/workingcopy/save",
-                          json={"source": xyz, "data": blob}))
+                          json={"source": xyz, "data": blob, "overwrite": True}))
     assert r["ok"]
     assert json.loads((proj / "mol.molstruct.json").read_text())["frozen_atoms"] == [1]
+
+
+def test_save_refuses_existing_target_without_overwrite(client_project):
+    """Overwrite gate (§1): saving onto an existing file without overwrite=true is
+    409 -- the caller must confirm first."""
+    client, proj = client_project
+    xyz = str(proj / "mol.xyz")           # exists (the fixture wrote it)
+    blob = _json(client.post("/api/workingcopy/open", json={"path": xyz}))["data"]
+    r = client.post("/api/workingcopy/save", json={"source": xyz, "data": blob})
+    assert r.status_code == 409
+    # with overwrite=true it goes through
+    r2 = _json(client.post("/api/workingcopy/save",
+                           json={"source": xyz, "data": blob, "overwrite": True}))
+    assert r2["ok"]
 
 
 def test_save_as_new_path(client_project):
@@ -70,7 +84,7 @@ def test_save_writes_full_periodicity_and_hash_tie(client_project):
     blob["sidecar"]["axis_kind"] = ["periodic", "periodic", "transport"]
     blob["sidecar"]["kgrid"] = [4, 4, 1]
     r = _json(client.post("/api/workingcopy/save",
-                          json={"source": xyz, "data": blob}))
+                          json={"source": xyz, "data": blob, "overwrite": True}))
     assert r["ok"]
     # BOTH files exist (the atomic pair).
     assert (proj / "mol.xyz").exists()
