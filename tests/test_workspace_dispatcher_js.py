@@ -382,6 +382,49 @@ class TestReads:
             {"elem": "S", "x": 1, "y": 0, "z": 0}]
         assert out["atom0"] == {"elem": "Au", "x": 0, "y": 0, "z": 0}
 
+    def test_accessor_defaults_and_write_accessors(self):
+        """§1.2.1: unset key fields have sensible defaults (kgrid gamma, vacuum 0,
+        axis_kind isolated); write accessors mutate through the API and reads reflect
+        it; metadata is a generic extensibility store."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure(\n"
+            "  {source_format: 'xyz', text: '1\\nx\\nC 0 0 0\\n'},\n"
+            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
+            ");\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
+            "]);\n"
+            "const defaults = {kgrid: ws.getKgrid(), vacuum: ws.getVacuum(),\n"
+            "                  axisKind: ws.getAxisKind(), cell: ws.getUnitCell()};\n"
+            "ws.setKgrid([2,2,2]);\n"
+            "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
+            "ws.setAxisKind(['periodic','periodic','transport']);\n"
+            "ws.setVacuum([0,0,10]);\n"
+            "ws.setMetadata('note', 'hello');\n"
+            "Promise.resolve(ws.setLabel('L-electrode', [0])).then(() => {\n"
+            "  console.log(JSON.stringify({\n"
+            "    defaults: defaults,\n"
+            "    kgrid: ws.getKgrid(), cell: ws.getUnitCell(),\n"
+            "    axisKind: ws.getAxisKind(), vacuum: ws.getVacuum(),\n"
+            "    byLabel: ws.getAtomsByLabel('L-electrode'),\n"
+            "    meta: ws.getMetadata('note'), metaAll: ws.getMetadata(),\n"
+            "  }));\n"
+            "});"
+        )
+        assert out["defaults"]["kgrid"] == [1, 1, 1]              # gamma default
+        assert out["defaults"]["vacuum"] == [0, 0, 0]
+        assert out["defaults"]["axisKind"] == ["isolated", "isolated", "isolated"]
+        assert out["defaults"]["cell"] is None
+        assert out["kgrid"] == [2, 2, 2]                          # writes reflected
+        assert out["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+        assert out["axisKind"] == ["periodic", "periodic", "transport"]
+        assert out["vacuum"] == [0, 0, 10]
+        assert out["byLabel"] == [0]
+        assert out["meta"] == "hello"
+        assert out["metaAll"] == {"note": "hello"}
+
     def test_getSource_returns_kind_file_generator_input(self):
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"

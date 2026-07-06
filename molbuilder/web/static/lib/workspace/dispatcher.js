@@ -211,17 +211,22 @@
         var per = _periodicityInternal();
         return (per && per.cell) || null;
     }
+    // Defaults for unset key fields (§1.2.1): a consumer always gets a usable value.
     function getAxisKind() {
         var per = _periodicityInternal();
-        return (per && per.axis_kind) || null;
+        if (per && per.axis_kind) return per.axis_kind;
+        // Default: periodic on every axis when a cell exists, else isolated.
+        return getUnitCell()
+            ? ["periodic", "periodic", "periodic"]
+            : ["isolated", "isolated", "isolated"];
     }
     function getVacuum() {
         var per = _periodicityInternal();
-        return (per && per.vacuum) || null;
+        return (per && per.vacuum) || [0, 0, 0];
     }
     function getKgrid() {
         var per = _periodicityInternal();
-        return (per && per.kgrid) || null;
+        return (per && per.kgrid) || [1, 1, 1];   // gamma-point default
     }
     // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
     // a plain ``regions[label]`` read once D4 makes the internals columnar -- the
@@ -256,6 +261,38 @@
             return { elem: a.element, x: a.x, y: a.y, z: a.z };
         });
     }
+
+    // --- WRITE accessors (§1.2.1) -- the ONLY way consumers mutate the model. --- //
+    function _setPeriodicity(patch) {
+        var cs = _canvas();
+        if (cs && typeof cs.setPeriodicity === "function") cs.setPeriodicity(patch);
+    }
+    function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }      // getLattice's pair
+    function setKgrid(dims)     { _setPeriodicity({ kgrid: dims }); }
+    function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
+    function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
+    // Assign/replace a region label on a set of atom indices (in-memory; persists on
+    // Save).  Routes to the selection store's label writer.
+    function setLabel(label, indices) {
+        var st = _store();
+        if (st && typeof st.writeLabel === "function") {
+            return st.writeLabel(label, indices);
+        }
+    }
+    // Generic metadata (extensibility): add a field without adding an accessor.
+    function setMetadata(key, value) {
+        var cs = _canvas();
+        if (cs && typeof cs.setMetadata === "function") cs.setMetadata(key, value);
+    }
+    function getMetadata(key) {
+        var cs = _canvas();
+        return (cs && typeof cs.getMetadata === "function")
+            ? cs.getMetadata(key)
+            : (key === undefined ? {} : null);
+    }
+    // NOTE: adding/deleting ATOMS is a geometry mutation -- it goes through the §3
+    // write mutator ``ws.applyOp(op, args)`` (the server modify pipeline), NOT a
+    // direct accessor, so the geometry stays consistent with bonds/validation.
 
     function getSource() {
         var cs = _canvas();
@@ -1250,6 +1287,15 @@
         getFrozen:             getFrozen,
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
+        getMetadata:           getMetadata,
+        // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
+        setUnitCell:           setUnitCell,
+        setLattice:            setUnitCell,   // alias
+        setKgrid:              setKgrid,
+        setAxisKind:           setAxisKind,
+        setVacuum:             setVacuum,
+        setLabel:              setLabel,
+        setMetadata:           setMetadata,
         mountRestoreTarget:    mountRestoreTarget,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
