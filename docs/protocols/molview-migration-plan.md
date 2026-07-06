@@ -187,7 +187,10 @@ The fix is to **adopt the framework**, not build a third thing.
   overwrite semantics.
 - **Check:** a test posts a scratch blob carrying a cell → BOTH files written; the
   `.json` has cell/axis_kind/kgrid and hash = sha256 of the written `.xyz`.
-- **Status:** ☐
+- **Status:** ☑ done 2026-07-05. `test_save_writes_full_periodicity_and_hash_tie`:
+  save writes both files, `.json` carries cell/axis_kind/kgrid + hash-tie. Framework
+  is correct. **Open A2 question flagged below:** the endpoint requires a `source`
+  path — must confirm it handles a GENERATED structure (no on-disk source).
 
 ### A2 — route SAVE through `/api/workingcopy/save` (delete the two-call split)
 - **Do:** `save.js` serialises the STORE (`ws.*`) into the working-copy scratch blob

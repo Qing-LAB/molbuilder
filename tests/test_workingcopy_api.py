@@ -57,6 +57,33 @@ def test_save_as_new_path(client_project):
     assert json.loads((proj / "copy.molstruct.json").read_text())["regions"] == {"L-electrode": [0]}
 
 
+def test_save_writes_full_periodicity_and_hash_tie(client_project):
+    """A1 (molview-migration-plan): the working-copy save writes the WHOLE dataset
+    atomically -- .xyz + .json TOGETHER, the .json carrying the full periodicity
+    (cell/axis_kind/kgrid) and structure_hash = sha256 of the just-written .xyz."""
+    import hashlib
+    client, proj = client_project
+    xyz = str(proj / "mol.xyz")
+    blob = _json(client.post("/api/workingcopy/open", json={"path": xyz}))["data"]
+    # The store would carry periodicity in the sidecar blob:
+    blob["sidecar"]["cell"] = [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 10.0]]
+    blob["sidecar"]["axis_kind"] = ["periodic", "periodic", "transport"]
+    blob["sidecar"]["kgrid"] = [4, 4, 1]
+    r = _json(client.post("/api/workingcopy/save",
+                          json={"source": xyz, "data": blob}))
+    assert r["ok"]
+    # BOTH files exist (the atomic pair).
+    assert (proj / "mol.xyz").exists()
+    assert (proj / "mol.molstruct.json").exists()
+    sidecar = json.loads((proj / "mol.molstruct.json").read_text())
+    assert sidecar["cell"] == [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 10.0]]
+    assert sidecar["axis_kind"] == ["periodic", "periodic", "transport"]
+    assert sidecar["kgrid"] == [4, 4, 1]
+    # Hash-tie: the .json's structure_hash matches the just-written .xyz.
+    xyz_bytes = (proj / "mol.xyz").read_bytes()
+    assert sidecar["structure_hash"] == hashlib.sha256(xyz_bytes).hexdigest()
+
+
 def test_orphans_and_clean(client_project):
     client, proj = client_project
     xyz = str(proj / "mol.xyz")
