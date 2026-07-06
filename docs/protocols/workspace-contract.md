@@ -69,11 +69,13 @@ subscribers exactly once per mutation.
 // state.js shape (TypeScript-style for docs only — code is plain JS)
 type WorkspaceState = {
   structure: {
-    text:          string,        // canonical XYZ or PDB bytes
+    text:          string,        // BOUNDARY-ONLY serialization (§1.2.1); NOT the
+                                  //   geometric truth -- the atoms are (see below).
     source_format: "xyz" | "pdb",
     title:         string,
     n_atoms:       number,
-    atoms:         Atom[],        // per-atom rows (see §7.2)
+    atoms:         Atom[],        // the geometric + chemical truth, coords included
+                                  //   (§1.2.1, §7.2)
     lattice:       number[][] | null,  // 3x3 = periodicity.cell (kept for consumers)
     periodicity: {                     // full periodicity — rides with the geometry
       cell:      number[][] | null,    //   so a save writes the whole structure (§4.0).
@@ -111,6 +113,51 @@ type WorkspaceState = {
   history:  WorkspaceSnapshot[],
 }
 ```
+
+### 1.2.1 The uniform in-memory structure — MANDATORY
+
+**This is the mandatory data-model contract for molview. Code that stores geometry
+any other way is wrong by definition; this contract is right and the code is wrong.**
+
+The molecule is held as **ONE structured object — never as a string.** Every atom is
+a structured record that carries **its own coordinates as numbers**:
+
+```js
+type Atom = {
+  index:     number,                    // 0-based, stable
+  element:   string,                    // "Au", "S", "C", …
+  x: number, y: number, z: number,      // COORDINATES -- numbers, ON the atom
+  labels:    string[],                  // region tags, e.g. ["L-electrode"]
+  isFrozen:  boolean,
+  atomName?: string, residueName?: string, chainId?: string,   // PDB metadata
+}
+type Structure = {
+  atoms: Atom[],                        // geometry + chemistry + labels, all here
+  cell, axis_kind, vacuum, kgrid,       // periodicity (§1.2 / structure-periodicity.md)
+}
+```
+
+**The rules (mandatory):**
+
+1. **The `atoms` array is the single geometric truth.** Coordinates live on the atom
+   (`atom.x/y/z`) — NOT in a text blob, NOT in a parallel `positions[]` array.
+2. **The xyz/pdb string exists ONLY at the file boundary.** Load PARSES the two files
+   (`.xyz` + `.json`) into this object; Save SERIALIZES this object back into them
+   (atomically, §4). In between there is **no canonical string** and nothing
+   re-parses text to recover coordinates.
+3. **Rendering reads the object.** 3Dmol is fed the atoms as NUMBERS via
+   `model.addAtoms([{elem, x, y, z}, …])` — **never** `addModel(xyzString)`.
+   Serializing to a string so the renderer can re-parse it is forbidden (it is a
+   serialize→parse round-trip on every draw).
+4. **Filtering, measuring, and every processing op read this same object** — no disk
+   read, no string re-parse (§4.0 memory-is-the-truth).
+
+**Migration status (molview-migration-plan.md step D).** Today geometry still lives
+in `structure.text` (a string), `atoms` lack coordinates, and the viewer re-parses a
+`positions[]` array out of the string then feeds 3Dmol via `addModel(text)` — the
+legacy split this contract replaces. Step D lands the model above end-to-end; until
+it completes, `structure.text` is tolerated as the transitional geometry carrier but
+is being removed as the source of truth.
 
 ### 1.3 The flow
 
@@ -716,10 +763,17 @@ Routes that emit this shape (per `web-api.md`):
 
 ### 7.2 Atom row shape
 
+The wire shape carries **coordinates** (§1.2.1 — the atom is the geometric truth);
+the client normalises `regions`/`is_frozen` (snake) → `labels`/`isFrozen` (camel) and
+keeps `x`/`y`/`z` as-is.
+
 ```json
 {
   "index":         12,
   "element":       "C",
+  "x":             1.204,        // coordinates -- numbers, on the atom (§1.2.1)
+  "y":             0.0,
+  "z":            -0.512,
   "atom_name":     "CA",         // PDB only; absent for XYZ-origin atoms
   "residue_id":    42,
   "residue_name":  "ALA",

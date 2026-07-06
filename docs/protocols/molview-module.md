@@ -91,8 +91,10 @@ functions: `mountPanel`, `measurements`, `viewerAdapter`, `_createStore`,
 ```
 {
   sourceFile:  null | string      // absolute structure path
-  atoms:       Atom[]             // {index(0-based), element, atomName?, residueName?,
-                                  //  chainId?, labels[], isFrozen}
+  atoms:       Atom[]             // {index(0-based), element, x, y, z, labels[],
+                                  //  isFrozen, atomName?, residueName?, chainId?}
+                                  //  COORDS on the atom -- the mandatory uniform
+                                  //  structure (workspace-contract.md §1.2.1)
   selection:   number[]           // THE selection set (sorted; the canonical state)
   pickOrder:   number[]           // same atoms in click order (angle vertex = pickOrder[1])
   mode:        "click" | "filter"

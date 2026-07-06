@@ -304,6 +304,46 @@ temp file, and why the server-side filter has nothing memory-consistent to read.
 > Track A runs BEFORE the remaining Track B molview steps — it's the data-loss fix.
 > The molview k-grid Steps 1–2 (done) stand; Steps 3–6 below become Track B.
 
+## Track D — the uniform structured in-memory model (FOUNDATION; the MANDATORY contract)
+
+**Contract:** workspace-contract.md §1.2.1 — ONE structured object holds the molecule;
+each atom carries its own coordinates (`atom.x/y/z`); the xyz/pdb string exists ONLY
+at the file boundary; 3Dmol renders the atoms as NUMBERS via `addAtoms`, never
+`addModel(string)`; filter/measure/render all read this one object. This is the
+foundation the rest of the tangle (A6's kept `/api/build/load`, the double
+atom-install, the `positions[]` re-parse) was working around.
+
+**Today's legacy (what this replaces):** geometry lives in `structure.text` (a
+string); the store's `atoms` lack coordinates; the viewer re-parses `positions[]` out
+of the string (`state.xyz.split("\n")`, viewer.js:491) and feeds 3Dmol
+`addModel(text, "xyz")` — a serialize→parse round-trip on every draw.
+
+### D1 — atoms carry coordinates end-to-end
+- **Do:** the server atom-list wire shape (`_shared.atoms_list`) includes `x/y/z`; the
+  store's `_normaliseAtom` keeps `x/y/z`; every atoms-returning endpoint
+  (`/api/workingcopy/open`, `/api/selection/atoms`, every `/api/modify/*` via
+  `structure_to_dict`) emits them. §7.2 wire shape updated.
+- **Check:** open a structure → `ws.getAtoms()[i]` has numeric `x/y/z` matching the
+  file; a modify op preserves them; unit tests on `atoms_list` + `_normaliseAtom`.
+- **Status:** ☐ (start here)
+
+### D2 — the viewer renders from the atoms (numbers), not a string
+- **Do:** the embed feeds 3Dmol via `model.addAtoms([{elem,x,y,z}, …])` from the
+  store's atoms; wire up bond perception (explicit bonds or 3Dmol distance-based).
+  `addModel(text, format)` removed from the render path.
+- **Check:** a structure draws with correct geometry + bonds from the atoms alone (no
+  xyz string passed to the viewer); manual browser confirm.
+- **Status:** ☐
+
+### D3 — delete the string-as-truth + `/api/build/load` + the `positions[]` re-parse
+- **Do:** the Modify load drives the viewer from the in-memory structure (no
+  `/api/build/load`, no double atom-install); `state.positions` comes from
+  `atom.x/y/z`, not a string split; `structure.text` becomes boundary-only (produced
+  by the codec on save, consumed on load).
+- **Check:** grep — no `state.xyz.split`, no `addModel(` in the render path, no
+  `/api/build/load` in the Modify load; measurements read `atom.x/y/z`.
+- **Status:** ☐
+
 ## 5. Standing guardrails (apply to every step)
 - No structure/cell/kgrid read or write outside `ws.*` / the store / the module API.
 - One k-grid render loop, in the module, forever (after Step 1).
