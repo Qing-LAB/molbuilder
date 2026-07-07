@@ -1087,6 +1087,77 @@ Existing fixtures in this repo that bundle this registration:
 `water_xyz_file`, `ss_pair_xyz_file`, `watch_log_file`,
 `watch_log_file_finished`, `watch_log_file_with_forces`.
 
+### 9.8 Scientific backends in e2e — skip or dispatch, never bake into the env
+
+The browser E2E env (`molbuilder-tests`) carries **browser tooling only** — no
+rdkit / openbabel / biopython / sisl / pyscf (see
+[`test-strategy.md` § 4a](test-strategy.md)).  So an e2e case that needs a generator
+backend must NOT assume the backend is importable, and you must **never** add a
+backend to an env to make a case run.
+
+Two established mechanisms:
+
+1. **Declare the dependency + skip when absent.**  A parametrized generator case
+   declares which dependency(ies) it needs (`backends_any` in `_LOAD_PATH_CASES`,
+   `tests/test_molbuilder_e2e.py`) and skips if none are present.  Beware the two
+   dependency KINDS: `available_backends()` covers the nucleic-acid **backends**
+   (`threedna` / `amber` / `rdkit`), but a builder whose dependency is a plain
+   host-env Python **library** — `peptide` → `PeptideBuilder` — has NO key in
+   `available_backends()` and is checked by import instead:
+
+   ```python
+   def _dep_present(name):
+       if name == "peptidebuilder":
+           try: import PeptideBuilder; return True
+           except ImportError: return False
+       return avail.get(name, False)
+   if not any(_dep_present(b) for b in backends_any):
+       pytest.skip(f"none of {list(backends_any)} deps installed")
+   ```
+
+   (SMILES-only standalone tests use the simpler `try: import rdkit / except
+   ImportError: pytest.skip(...)`.)  Either way the case degrades to a skip when its
+   dependency is absent — it does not fail.
+
+2. **Let the app dispatch to the backend's own env.**  For the nucleic-acid builders,
+   when a backend IS present the app runs the heavy build by dispatching
+   `conda run -n <backend-env> <tool>` — a DNA/RNA helix via `tleap`
+   (`molbuilder-MDtools`, the `amber` backend) or 3DNA's `fiber` (`threedna`) — never
+   in the e2e env itself.  (Peptides do NOT use this path: they build **in-process**
+   via the `PeptideBuilder` host-env library, `backend_used=None`.)
+
+**Naming matters — get the dependency right.**  A SMILES case is `rdkit`, DNA/RNA are
+`threedna`/`amber`/`rdkit`, and a **peptide case is `peptidebuilder`** (the host-env
+library), NOT `amber`.  This is a real trap, not hypothetical: the peptide case was
+mistagged `("amber",)`, so on a machine that had the amber env but not PeptideBuilder
+the guard said "amber present → run", the build failed on the missing PeptideBuilder,
+and the `500` looked like a bug.  After the retag it was proven both ways — with
+PeptideBuilder present the case PASSES; with it absent it SKIPS ("none of
+['peptidebuilder'] deps installed").
+
+**When a backend case DOES fail, read the server-side error — don't presume.**  A
+generator route returning `500` is meaningless on its own; the cause is in the Flask
+traceback (captured in the e2e run's log, or reproduce the build via the Flask test
+client in the host env).  See § 9.9.
+
+### 9.9 Reading a generator `500` — get the traceback, never guess the cause
+
+`POST /api/build/molecule → 500` tells you nothing by itself.  Before theorising
+(missing backend? dispatch failure? bad input?), get the actual error:
+
+- **From the e2e run:** the `flask_server` fixture runs the app in-process, so the
+  Flask traceback is in pytest's **captured log** for the failing test — run that one
+  test with `-o log_cli=true --tb=long` (do NOT pipe the run through `tail` and lose
+  it).
+- **Reproduce directly:** in the **host env** (which has the app + backends), POST the
+  same body via `create_app().test_client()` and print the response body — the build
+  blueprint surfaces the error message in the JSON payload — or call the underlying
+  builder so the exception propagates with its full stack.
+
+Only once you have the real message do you decide whether it's a mis-tagged backend, a
+real build bug, or an env-dispatch problem.  Guessing "it must be biopython" from a
+bare `500` is how you end up patching the wrong thing.
+
 ---
 
 ## 10. Test review checklist

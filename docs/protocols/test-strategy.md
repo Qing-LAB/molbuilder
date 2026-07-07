@@ -184,6 +184,40 @@ horizontal scroll appears.
 
 ---
 
+## 4a. Test environments — design tests AROUND the envs, never the reverse
+
+molbuilder's conda envs are an authoritative, **test-locked** part of the
+deployment: [`README_install.md` §The-envs](../README_install.md) is the human
+doc, `molbuilder/envs/recipes.py` is the machine source of truth, and
+`tests/test_envs_*.py` (esp. `test_envs_readme_consistency.py`) fails if the two
+drift.  The env layout is FIXED; **tests conform to the envs, never the reverse.**
+
+**HARD RULE — never change an env to make a test run.**  Do not install/remove
+packages in any conda env, and do not edit `recipes.py` / `README_install.md` /
+`deployment.md`, to get a test to pass.  Any env or deployment change goes through
+documented discussion + explicit approval FIRST.  If a test needs something an env
+lacks, the *test* is wrong — or it's a design discussion — not the env.  Also:
+**never mix conda + pip** (pip only where a recipe's `pip_packages` requires it — a
+package genuinely not on conda; mixing corrupts native ABIs).
+
+**Env roles for tests:**
+
+- **L1–L4** (unit / module / interface / integration) — the **host env**, which
+  carries the full app runtime + all science backends.
+- **L5 e2e** (Playwright) — the browser env (`molbuilder-tests`), whose designed
+  contents are **browser tooling only** (playwright + pytest-playwright + Chromium).
+
+**Scientific backends never enter the browser E2E env.**  rdkit / openbabel /
+biopython / sisl / pyscf live only in the host + their own backend envs.  A
+backend-dependent e2e case must **skip** when the backend is absent, or let the app
+**dispatch** the heavy build to the backend's own env (`conda run -n <env>`).  See
+[`playwright-tests.md` § 9.8](playwright-tests.md) for the `backends_any` +
+`available_backends()` skip pattern.  Baking a backend into the browser env to make a
+case run is both wrong (contaminates a lean, conflict-avoiding env) and pointless
+(the case is built to skip).
+
+---
+
 ## 5. Source-text invariant tests (a special L2 pattern)
 
 Some invariants live in JS / CSS files we can't easily exercise
