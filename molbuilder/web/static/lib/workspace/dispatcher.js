@@ -235,28 +235,13 @@
     // set, else the explicit value.  `value` is always a usable number.
     function getUnitCellInfo() {
         var per = _periodicityInternal() || {};
-        if (per.cell) return { value: per.cell, isDefault: false };   // explicit wins (§3)
-        // Default: resolve per-axis from bbox + vacuum (mirrors resolve_cell, §3a) ON
-        // READ -- so the value stays FRESH after a client-only vacuum/geometry edit and
-        // needs no stored derived field.  isDefault = true.
-        var coords = getCoordinates();
-        if (!coords.length) return { value: null, isDefault: true };
-        var ak  = per.axis_kind || ["isolated", "isolated", "isolated"];
-        var vac = per.vacuum || [0, 0, 0];
-        var mn = [Infinity, Infinity, Infinity];
-        var mx = [-Infinity, -Infinity, -Infinity];
-        for (var j = 0; j < coords.length; j++) {
-            for (var i = 0; i < 3; i++) {
-                if (coords[j][i] < mn[i]) mn[i] = coords[j][i];
-                if (coords[j][i] > mx[i]) mx[i] = coords[j][i];
-            }
-        }
-        var cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-        for (var k = 0; k < 3; k++) {
-            if (ak[k] === "periodic") return { value: null, isDefault: true }; // needs lattice
-            cell[k][k] = (mx[k] - mn[k]) + (ak[k] === "isolated" ? (vac[k] || 0) : 0);
-        }
-        return { value: cell, isDefault: true };
+        // ONE resolver: the SERVER (struct.resolve_cell §3a) computes the effective
+        // cell and sends it as periodicity.resolved_cell; this accessor only SURFACES
+        // it -- no re-implemented bbox math on the client.  Explicit cell wins, else
+        // the resolved bbox+vacuum default.  (A periodicity edit re-resolves through
+        // the server, so resolved_cell stays consistent with cell/vacuum/axis_kind.)
+        var explicit = per.cell || null;
+        return { value: explicit || per.resolved_cell || null, isDefault: !explicit };
     }
     function getVacuumInfo() {
         var v = getVacuum();

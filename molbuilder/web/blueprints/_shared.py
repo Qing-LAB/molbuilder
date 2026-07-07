@@ -353,6 +353,15 @@ def structure_to_dict(
     """
     extras = dict(extra) if extra else {}
     base = workspace_payload(struct, extra=extras)
+    # The ONE resolver (§ 3a): struct.resolve_cell() -- an explicit cell wins, else
+    # per-axis bbox+vacuum.  Sent as `resolved_cell` so the client render / k-grid + the
+    # display accessor surface it WITHOUT re-implementing the math (single source of
+    # truth, shared with the fdf/save path).  None only when unresolvable.
+    try:
+        _rc = struct.resolve_cell()
+        _resolved_cell = _rc.tolist() if _rc is not None else None
+    except Exception:  # noqa: BLE001 -- periodic axis w/o lattice -> no resolved box
+        _resolved_cell = None
     return {
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
@@ -366,14 +375,11 @@ def structure_to_dict(
         # modify op (workspace-contract.md §4.0).  `lattice` above stays as the
         # cell alias for existing consumers.
         "periodicity": {
-            # Raw explicit cell only (null = default).  The RESOLVED (effective) cell
-            # is computed ON READ by the client accessor ws.getUnitCellInfo() (§3a/§3b)
-            # so it stays fresh after a client-only vacuum/geometry edit -- no stored
-            # derived field.  Server-side consumers call struct.resolve_cell() directly.
-            "cell":      struct.cell.tolist() if struct.cell is not None else None,
-            "axis_kind": list(struct.axis_kind) if struct.axis_kind is not None else None,
-            "vacuum":    list(struct.vacuum),
-            "kgrid":     list(struct.kgrid),
+            "cell":          struct.cell.tolist() if struct.cell is not None else None,
+            "resolved_cell": _resolved_cell,   # § 3a effective cell (server-resolved)
+            "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
+            "vacuum":        list(struct.vacuum),
+            "kgrid":         list(struct.kgrid),
         },
         "issues":        base["issues"],
         "extra":         base["extra"],

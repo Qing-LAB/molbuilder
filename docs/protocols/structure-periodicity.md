@@ -121,20 +121,23 @@ display, the box render, and the fdf work on a blank molecule.
 obtained ONLY through the unified accessor **`ws.getUnitCellInfo().value`** — never a
 hand-read of `getStructure().periodicity.cell` (the encapsulation contract: consumers
 go through `ws.*`, not the raw in-memory fields).  `periodicity.cell` stays the raw
-explicit cell (`null` = default); the accessor computes the bbox+vacuum default **on
-read, client-side**, so a blank `isolated` molecule with `vacuum = 0` yields its
-bounding box (`max − min` per axis) and the k-grid tiles it immediately.  A consumer
-that hand-reads `periodicity.cell` and short-circuits on `cell == null` is the exact bug
-this section prevents ("k-grid has no effect on a new molecule").
+explicit cell (`null` = default); the accessor surfaces `periodicity.resolved_cell` —
+the effective bbox+vacuum box for a cell-less molecule — so the k-grid tiles it
+immediately.  A consumer that hand-reads `periodicity.cell` and short-circuits on
+`cell == null` is the exact bug this section prevents ("k-grid has no effect on a new
+molecule").
 
-**Why computed on read, never stored:** committing the bbox to `struct.cell` would
-masquerade as a user-chosen lattice and defeat the explicit-override escape hatch
-(§ 6); storing it as a separate derived field (`resolved_cell`) would go **stale** the
-moment a client-only `ws.setVacuum` / geometry edit changes the inputs without a server
-round-trip.  So the resolved cell is derived on every read — the accessor mirrors
-`resolve_cell` (§ 3) on the client (fresh, always correct), while the server exposes
-`struct.resolve_cell()` for its own consumers (fdf, save).  The moment the user calls
-`ws.setUnitCell` / `ws.setVacuum` / `ws.setAxisKind`, that explicit value replaces the
+**One resolver, no duplication:** the resolved cell is computed in exactly ONE place —
+`struct.resolve_cell()` on the **server** (§ 3), the same function the fdf/save use.  The
+server sends the result as `periodicity.resolved_cell`; the client accessor only
+surfaces it (no re-implemented bbox math on the client).  A periodicity edit
+(`ws.setUnitCell` / `ws.setVacuum` / `ws.setAxisKind`, via the Cell page's Update)
+re-resolves **through the server**, so `resolved_cell` stays consistent with
+cell/vacuum/axis_kind for one data structure.  `resolved_cell` is DERIVED — never saved
+(the save writes the raw `cell`) and never committed to `struct.cell` (which would
+masquerade as a user-chosen lattice and defeat the override hatch, § 6).  The moment the
+user calls `ws.setUnitCell` / `ws.setVacuum` / `ws.setAxisKind`, that explicit value
+replaces the
 default and persists (capture-at-construction, § 4).
 
 ## 3b. Where periodicity is displayed vs edited (the UI contract)
