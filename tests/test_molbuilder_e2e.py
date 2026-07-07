@@ -2109,6 +2109,35 @@ def test_fused_fold_no_overlap_when_narrow(
         f"the fold handle must not overlap the panel; {geom}")
 
 
+def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
+        page, flask_server, tmp_path, monkeypatch):
+    """Stage 1 (structure-periodicity.md § 3a): a cell-less molecule surfaces its
+    RESOLVED cell (bbox), so enabling the k-grid tiles it — WITHOUT the user setting
+    any cell.  Root-cause fix for 'k-grid has no effect on a new molecule'."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer()"
+        "        .selectedAtoms({}).length") == 3
+    # No EXPLICIT cell, but a RESOLVED (bbox) cell is surfaced.
+    per = page.evaluate(
+        "() => window.molbuilder.workspace.getStructure().periodicity")
+    assert per["cell"] is None, f"precondition: no explicit cell; got {per['cell']!r}"
+    assert per["resolved_cell"] is not None, (
+        f"a cell-less molecule must surface a resolved (bbox) cell; got {per!r}")
+    # Enable a 2×1×1 k-grid via the UI — the user sets NO cell.
+    page.locator("#selection-kgrid-nx").fill("2")
+    page.locator("#selection-kgrid-checkbox").check()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getViewer()"
+        "        .selectedAtoms({}).length === 6",
+        timeout=5000)
+
+
 def test_save_button_disabled_for_smiles_without_prior_save(
         page, flask_server):
     """A SMILES-generated structure has no source.file and no
