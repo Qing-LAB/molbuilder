@@ -56,6 +56,18 @@
         const _mounted = await selApi.mountPanel(host, { mode: "modify" });
         if (!_mounted || !_mounted.panel) return;   // mountPanel rendered its own banner
 
+        // Fused-card fold handle (fused-layout.css): collapse the panel so the viewer
+        // gets the full card.  Mirrors the Results inspector's inline wiring
+        // (lib/inspectors/structure.js) -- local layout state, not store state.
+        const _foldBtn = document.getElementById("molview-fold");
+        const _card = host.closest(".molview-card");
+        if (_foldBtn && _card) {
+            _foldBtn.addEventListener("click", function () {
+                const folded = _card.classList.toggle("is-folded");
+                _foldBtn.setAttribute("aria-expanded", String(!folded));
+            });
+        }
+
         // 2b. Inject the viewer-specific XYZ loader into the store so
         // the store doesn't reach into ``window.molbuilder`` to do
         // its own file-load (spec §5 rule 3: the store has no DOM

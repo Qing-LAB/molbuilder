@@ -174,46 +174,25 @@ header .tagline {
  */
 .workspace-grid {
     display: grid;
-    /* ``minmax(min(360px, 100%), 1fr)`` not bare ``minmax(360px,
-     * 1fr)`` — the ``min(360px, 100%)`` floor lets a column SHRINK
-     * below 360px when the container itself is narrower than that,
-     * so a 360px phone viewport (which after body+main padding
-     * leaves ~316px of usable width) doesn't force a horizontal
-     * scrollbar.  Pre-fix the bare-360 minimum overflowed by 6-44
-     * px on every phone-width viewport.  See docs/protocols/
-     * mobile-layout.md for the responsive-grid pattern. */
-    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+    /* Layout v4 (2026-07-07): TWO cards -- the fused molview card (viewer + selection
+     * panel; the primary workspace) in a WIDE column, and the Modify op controls in a
+     * narrower secondary column beside it (design choice: keep ops visible without
+     * scrolling).  Stacks to one column when the row can't hold both at a usable
+     * width; the fused card's own @container query (fused-layout.css) then stacks
+     * viewer-over-panel.  See docs/protocols/mobile-layout.md. */
+    grid-template-columns: minmax(0, 2.4fr) minmax(300px, 1fr);
     gap: var(--gap);
     align-items: start;
-    /* Cap the total grid width so at very wide screens the three
-     * panels stay visually attached.  Pre-fix the grid filled the
-     * full viewport; viewer caps at 600 px (see below) but
-     * selection + modify had NO max-width, so at >1800 px the
-     * three columns each grew to ~600+ px, leaving the panels
-     * looking detached from each other (selection ↔ modify gap
-     * grew to >100 px on a 24" monitor).  ``max-width: 1840px``
-     * keeps the grid at "comfortable 3-column" sizing — 600 px
-     * viewer + 600 px selection + 600 px modify + 2× gap — and
-     * ``margin: 0 auto`` centres it in the viewport.  Reported
-     * by the user 2026-06-13. */
-    max-width: calc(600px * 3 + var(--gap) * 2);
+    max-width: 1680px;
     margin-inline: auto;
     width: 100%;
 }
-.workspace-viewer    { min-width: 360px; }
-.workspace-selection { min-width: 320px; }
-.workspace-modify    { min-width: 360px; }
-/* Viewer needs a max so its canvas doesn't dwarf the other
- * panels when the row reflows to a single 1200-px column.  The
- * 560-px cap matches the prior viewer-wrap max-width. */
-.workspace-viewer { max-width: 600px; }
+.workspace-modify { min-width: 300px; }
 
-/* When a single column reflow happens, drop max + min to let
- * everything fill cleanly. */
-@media (max-width: 768px) {
-    .workspace-viewer,
-    .workspace-selection,
-    .workspace-modify { min-width: 0; max-width: none; }
+/* Narrow: stack the fused card over the op controls, each full width. */
+@media (max-width: 900px) {
+    .workspace-grid   { grid-template-columns: 1fr; }
+    .workspace-modify { min-width: 0; }
 }
 
 /* Modify section: now hosts ONLY the op-tabs (the selection

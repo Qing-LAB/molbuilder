@@ -50,8 +50,16 @@
     font-size: 0.85rem;
     line-height: 1;
     border-radius: 6px;
-    transition: background 0.15s ease, color 0.15s ease,
-                transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+/* The chevron GLYPH rotates -- NOT the button box.  Rotating the box would swap its
+ * width/height in narrow (column) mode, turning a full-width bar into a tall rail
+ * that overlaps the viewer + panel.  Keeping rotation on the glyph leaves the
+ * button's layout box stable at every width. */
+.molview-fold-chevron {
+    display: inline-block;
+    line-height: 1;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .molview-fold-btn:hover {
     background: var(--surface-hover, rgba(100, 116, 139, 0.12));
@@ -63,13 +71,13 @@
     outline-offset: -2px;
 }
 
-/* Folded: collapse the panel width smoothly + flip the chevron. */
+/* Folded: collapse the panel width smoothly + flip the chevron (glyph only). */
 .molview-card.is-folded .molview-panel {
     flex-basis: 0;
     opacity: 0;
     pointer-events: none;
 }
-.molview-card.is-folded .molview-fold-btn { transform: rotate(180deg); }
+.molview-card.is-folded .molview-fold-chevron { transform: rotate(180deg); }
 
 /* ---- NARROW: the CARD is below the breakpoint -> stack; panel to the BOTTOM.
    The handle becomes a horizontal bar; fold collapses the panel HEIGHT. ---- */
@@ -85,9 +93,10 @@
     .molview-fold-btn {
         align-self: stretch;
         width: auto;
-        height: 22px;
-        transform: rotate(90deg);              /* chevron points down toward the panel */
+        height: 22px;                          /* a full-width horizontal bar */
     }
+    /* chevron points DOWN toward the panel -- rotate the glyph, not the box. */
+    .molview-fold-chevron { transform: rotate(90deg); }
     .molview-card.is-folded .molview-panel { flex-basis: 0; max-height: 0; }
-    .molview-card.is-folded .molview-fold-btn { transform: rotate(-90deg); }
+    .molview-card.is-folded .molview-fold-chevron { transform: rotate(-90deg); }
 }

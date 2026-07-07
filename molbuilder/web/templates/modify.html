@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
@@ -271,40 +272,46 @@
       lets the user keep the viewer steady while editing
       filters or applying ops. -#}
   <div class="workspace-grid">
-  <section class="card viewer-section workspace-viewer">
+  {#- 2+3. Structure & selection — the FUSED molview card: the viewer and the
+      selection panel share ONE card with a foldable panel (fused-layout.css,
+      molview-module.md).  Same composition as the Results structure inspector
+      (lib/inspectors/structure.js): molview-card > molview-body >
+      (molview-viewer | molview-fold-btn | molview-panel). -#}
+  <section class="card molview-card viewer-section">
     <header class="card-header">
-      <h2>2. Viewer</h2>
+      <h2>2. Structure &amp; selection</h2>
       <span id="title-readout" class="muted"></span>
     </header>
-    <div class="viewer-wrap">
-      <div id="viewer" class="viewer"></div>
-      {# Selection-driven measurement chip — xyz / distance / angle.
-         Floats over the 3Dmol canvas (top-right) so the readout sits
-         next to the structure it describes.  Filled live by
-         lib/selection-panel.js's renderMeasurement; hidden when
-         the selection is empty or 4+ atoms. #}
-      <div id="selection-measurement-overlay"
-           class="selection-measurement-overlay"
-           hidden></div>
-    </div>
-    <div class="viewer-controls">
-      <button id="focus-molecule" class="ghost"
-        title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
+    <div class="molview-body">
+      <div class="molview-viewer">
+        <div class="viewer-wrap">
+          <div id="viewer" class="viewer"></div>
+          {# Selection-driven measurement chip — xyz / distance / angle.
+             Floats over the 3Dmol canvas (top-right) so the readout sits
+             next to the structure it describes.  Filled live by
+             lib/selection-panel.js's renderMeasurement; hidden when
+             the selection is empty or 4+ atoms. #}
+          <div id="selection-measurement-overlay"
+               class="selection-measurement-overlay"
+               hidden></div>
+        </div>
+        <div class="viewer-controls">
+          <button id="focus-molecule" class="ghost"
+            title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
 Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding box
 is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus molecule</button>
-      <button id="clear-selection" class="ghost">Clear selection</button>
+          <button id="clear-selection" class="ghost">Clear selection</button>
+        </div>
+      </div>
+      {# Fold handle — collapses the panel so the viewer gets the full card
+         (fused-layout.css .molview-fold-btn / .is-folded; wired in
+         selection-bootstrap.js, mirroring the Results inspector). #}
+      <button type="button" id="molview-fold" class="molview-fold-btn"
+              aria-label="Fold or unfold the selection panel"
+              aria-expanded="true"><span class="molview-fold-chevron">›</span></button>
+      {# Selection panel host (filled by selection-bootstrap.js via mountPanel). #}
+      <div id="selection-host" class="selection-host molview-panel"></div>
     </div>
-  </section>
-
-  <!-- 3. Selection — atom list + filter + assign verbs.  Hosts
-       the partial mounted by selection-bootstrap.js. -->
-  <section class="card workspace-selection">
-    <header class="card-header">
-      <h2>3. Selection</h2>
-      <span class="muted">pick atoms by click or filter</span>
-    </header>
-    {# Selection panel host (filled by selection-bootstrap.js). #}
-    <div id="selection-host" class="selection-host"></div>
   </section>
 
   <!-- 4. Modify — atom/pose/geom/junction op-tabs.  Now its own

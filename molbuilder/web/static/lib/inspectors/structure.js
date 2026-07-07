@@ -142,7 +142,13 @@
                 foldBtn.className = "molview-fold-btn";
                 foldBtn.setAttribute("aria-label", "Fold or unfold the selection panel");
                 foldBtn.setAttribute("aria-expanded", "true");
-                foldBtn.textContent = "›";   // › -- light chevron; CSS rotates it on fold
+                // Chevron lives in its OWN span so CSS rotates the glyph, not the
+                // button box (fused-layout.css .molview-fold-chevron) -- a rotated
+                // box overlaps neighbours in narrow/column mode.
+                const foldChevron = document.createElement("span");
+                foldChevron.className = "molview-fold-chevron";
+                foldChevron.textContent = "›";
+                foldBtn.appendChild(foldChevron);
                 foldBtn.addEventListener("click", () => {
                     const folded = card.classList.toggle("is-folded");
                     foldBtn.setAttribute("aria-expanded", String(!folded));
