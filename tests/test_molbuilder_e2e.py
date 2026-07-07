@@ -2131,6 +2131,10 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
     info = page.evaluate("() => window.molbuilder.workspace.getUnitCellInfo()")
     assert info["isDefault"] is True and info["value"] is not None, (
         f"a cell-less molecule must resolve a bbox cell via the accessor; got {info!r}")
+    # The k-grid control lives on the Cell page (§3b) -- switch to it first.
+    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.wait_for_function(
+        "() => !document.getElementById('panel-page-cell').hidden")
     # Enable a 2×1×1 k-grid via the UI — the user sets NO cell.
     page.locator("#selection-kgrid-nx").fill("2")
     page.locator("#selection-kgrid-checkbox").check()
@@ -2138,6 +2142,35 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
         "() => window.__molbuilder_modify_test.getViewer()"
         "        .selectedAtoms({}).length === 6",
         timeout=5000)
+
+
+def test_cell_page_displays_periodicity(
+        page, flask_server, tmp_path, monkeypatch):
+    """Stage 2-UI (§3b): the [Selection|Cell] page switch reveals a Cell page that
+    displays axis-kind / vacuum / resolved cell with "(default)" tags for a fresh
+    molecule, and hosts the (moved) k-grid control."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # Selection page shown by default; Cell page hidden.
+    assert page.locator("#panel-page-cell").is_hidden()
+    # Switch to the Cell page (click the label -- the radio is CSS-hidden).
+    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.wait_for_function(
+        "() => !document.getElementById('panel-page-cell').hidden")
+    # A fresh molecule: everything is (default); vacuum 0/0/0, cell = resolved bbox.
+    vac  = page.locator("#cell-vacuum-value").inner_text()
+    axis = page.locator("#cell-axis-value").inner_text()
+    cell = page.locator("#cell-matrix-value").inner_text()
+    assert "(default)" in vac and "[0, 0, 0]" in vac, f"vacuum readout: {vac!r}"
+    assert "(default)" in axis and "isolated" in axis, f"axis readout: {axis!r}"
+    assert "(default)" in cell and "[" in cell, f"cell readout: {cell!r}"
+    # The k-grid control now lives on the Cell page.
+    assert page.locator(
+        "#panel-page-cell #selection-kgrid-checkbox").count() == 1
 
 
 def test_save_button_disabled_for_smiles_without_prior_save(
