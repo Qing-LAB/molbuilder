@@ -265,34 +265,15 @@
       getVacuumInfo / getKgridInfo / getAxisKindInfo) and show "(default)" when the
       parameter was never set.  Edit inputs + an Update button land in stage 3. -#}
   <div id="panel-page-cell" class="panel-page" hidden>
-    {#- EDIT: axis-kind + vacuum inputs staged locally; the "Update" button commits
-        them to the in-memory structure via ws.commitPeriodicity (which re-resolves the
-        cell through the server, § 3b).  No auto-commit. -#}
-    <div class="cell-edit">
-      <div class="cell-field">
-        <label class="cell-field-label">Axis (pbc)</label>
-        <div class="cell-triple">
-          <select id="cell-axis-0" class="cell-axis-sel" aria-label="axis a"></select>
-          <select id="cell-axis-1" class="cell-axis-sel" aria-label="axis b"></select>
-          <select id="cell-axis-2" class="cell-axis-sel" aria-label="axis c"></select>
-        </div>
-      </div>
-      <div class="cell-field">
-        <label class="cell-field-label">Vacuum (Å)</label>
-        <div class="cell-triple">
-          <input type="number" id="cell-vac-0" step="0.5" min="0"
-                 class="cell-num" aria-label="vacuum a">
-          <input type="number" id="cell-vac-1" step="0.5" min="0"
-                 class="cell-num" aria-label="vacuum b">
-          <input type="number" id="cell-vac-2" step="0.5" min="0"
-                 class="cell-num" aria-label="vacuum c">
-        </div>
-      </div>
-      <button type="button" id="cell-update-btn" class="cell-update-btn"
-              title="Apply the axis + vacuum edits to the structure (re-resolves the cell).">
-        Update
-      </button>
-    </div>
+    {#- MolView is DISPLAY-ONLY: it mirrors the in-memory periodicity, tagging a
+        never-set parameter "(default)".  Editing lives in the Modify functions
+        (per-group Update), NOT here. -#}
+    <dl class="cell-readout">
+      <dt>Axis (pbc)</dt>
+      <dd><span id="cell-axis-value" class="cell-value">—</span></dd>
+      <dt>Vacuum (Å)</dt>
+      <dd><span id="cell-vacuum-value" class="cell-value">—</span></dd>
+    </dl>
 
     {#- Resolved unit cell as an aligned 3x3 matrix (display; reflects the vacuum). -#}
     <div class="cell-matrix-block">

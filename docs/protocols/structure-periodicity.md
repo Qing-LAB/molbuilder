@@ -144,30 +144,34 @@ default and persists (capture-at-construction, § 4).
 
 The periodicity parameters surface in two kinds of place with different jobs:
 
-**Display (read, mirrors in-memory) — the MolView "Cell" page.** The molview panel has
-two switchable pages, `[ Selection | Cell ]`, sharing the panel.  The **Cell page**
-shows vacuum (x/y/z), the unit cell as a **3×3 matrix** (non-orthogonal-ready),
-axis_kind/pbc per axis, and the k-grid (a display toggle + the dims).  Each field is
-read through the molview read API and shows **"(default)" + the resolved value** when
-unset (vacuum `0`, cell = bbox a/b/c, kgrid `1×1×1`), or the explicit value once set.
-The read accessor returns `{ value, isDefault }` so the page can render the "(default)"
-tag while still handing out a usable number.
+**Display (read-only, mirrors in-memory) — the MolView "Cell" page.** The molview panel
+has two switchable pages, `[ Selection | Cell ]` as header tabs, sharing the panel.  The
+**Cell page is DISPLAY-ONLY**: it shows vacuum (x/y/z), the unit cell as a **3×3 matrix**
+(non-orthogonal-ready), axis_kind/pbc per axis, and the k-grid (a display toggle + the
+dims).  Each field is read through the molview read API and shows **"(default)" + the
+resolved value** when unset (vacuum `0`, cell = bbox a/b/c, kgrid `1×1×1`), or the
+explicit value once set.  The read accessor returns `{ value, isDefault }` so the page
+can render the "(default)" tag while still handing out a usable number.  The MolView
+provides **no Update button** — it never writes; it only mirrors the in-memory data.
 
-**Edit (write, via the set-API + an explicit Update) — the Cell page inputs + the
-fdf / structure-optimization tabs.** Editing a field STAGES a change; it does NOT touch
-the in-memory structure until the user presses an explicit **"Update"** button, which
-commits the staged values via `ws.setVacuum / setUnitCell / setAxisKind / setKgrid`.
-Until Update, the structure keeps its computed defaults and no set-API is called.  The
-3×3 cell is populated either by adding metal atoms (as a lattice, § 4) or edited
-manually.  The fdf / structure-optimization tabs expose the same vacuum + cell (+ kgrid
-for DFT) against the same set-API.
+**Edit (write, via the set-API + per-group Update) — the Modify functions.** Editing
+lives in the Modify functions, NOT in the MolView.  Each parameter GROUP — vacuum, pbc
+(axis_kind), unit cell, k-grid — has its **own explicit "Update" button**, so each group
+can independently stay at its default or be committed.  Editing a group STAGES a change;
+it does NOT touch the in-memory structure until that group's Update is pressed, which
+commits via `ws.commitPeriodicity` (vacuum / pbc / cell — re-resolving the effective cell
+through the ONE server resolver, § 3a) or `ws.setKgrid` (k-grid — no re-resolve needed).
+Until a group's Update, that group keeps its computed default and no set-API is called
+for it.  The 3×3 cell is populated either by adding metal atoms (as a lattice, § 4) or
+edited manually.  The fdf / structure-optimization tabs expose the same groups against
+the same set-API.
 
-**The k-grid is ONE value, not two.** The tiling shown by the Cell page's k-grid
-display uses the structure's `periodicity.kgrid` — the SAME value the DFT k-point
-sampling uses.  Default `1×1×1` (Γ) → the tiling view has no visible effect.  It becomes
-non-trivial only when set via the API (the Cell page's Update, or the DFT-calculation
-setup), and that one value is both displayed and used by the render/tiling step.  There
-is no separate view-only tiling count.
+**The k-grid is ONE value, not two.** The tiling shown by the Cell page's k-grid display
+uses the structure's `periodicity.kgrid` — the SAME value the DFT k-point sampling uses.
+Default `1×1×1` (Γ) → the tiling view has no visible effect.  It becomes non-trivial only
+when set via the API (the Modify k-grid Update, or the DFT-calculation setup), and that
+one value is both displayed and used by the render/tiling step.  There is no separate
+view-only tiling count.
 
 ## 4. Capture-at-construction (fix the electrode discard)
 
