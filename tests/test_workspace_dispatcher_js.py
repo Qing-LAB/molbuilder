@@ -467,10 +467,12 @@ class TestReads:
             "const ws = window.molbuilder.workspace;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz',\n"
-            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
-            "  periodicity:{cell:null, resolved_cell:[[3,0,0],[0,3,0],[0,0,3]],\n"
-            "    axis_kind:null, vacuum:[0,0,0], kgrid:[1,1,1]}},\n"
+            "  text:'2\\nx\\nH 0 0 0\\nH 2 3 4\\n',\n"
+            "  periodicity:{cell:null, axis_kind:null, vacuum:[0,0,0], kgrid:[1,1,1]}},\n"
             "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0,element:'H',x:0,y:0,z:0,regions:[],is_frozen:false},\n"
+            "  {index:1,element:'H',x:2,y:3,z:4,regions:[],is_frozen:false}]);\n"
             "const dflt = {cell: ws.getUnitCellInfo(), vac: ws.getVacuumInfo(),\n"
             "  kg: ws.getKgridInfo(), ak: ws.getAxisKindInfo()};\n"
             "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
@@ -481,8 +483,9 @@ class TestReads:
             "console.log(JSON.stringify({dflt, expl}));"
         )
         d, e = out["dflt"], out["expl"]
-        # default -> isDefault true; cell value is the resolved bbox
-        assert d["cell"] == {"value": [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+        # default -> isDefault true; cell value is the bbox computed on read
+        # (atoms at (0,0,0)+(2,3,4) -> extent 2,3,4; isolated, vacuum 0)
+        assert d["cell"] == {"value": [[2, 0, 0], [0, 3, 0], [0, 0, 4]],
                              "isDefault": True}
         assert d["vac"] == {"value": [0, 0, 0], "isDefault": True}
         assert d["kg"] == {"value": [1, 1, 1], "isDefault": True}

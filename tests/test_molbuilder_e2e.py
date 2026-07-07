@@ -2123,12 +2123,14 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
     assert page.evaluate(
         "() => window.__molbuilder_modify_test.getViewer()"
         "        .selectedAtoms({}).length") == 3
-    # No EXPLICIT cell, but a RESOLVED (bbox) cell is surfaced.
+    # No EXPLICIT cell...
     per = page.evaluate(
         "() => window.molbuilder.workspace.getStructure().periodicity")
     assert per["cell"] is None, f"precondition: no explicit cell; got {per['cell']!r}"
-    assert per["resolved_cell"] is not None, (
-        f"a cell-less molecule must surface a resolved (bbox) cell; got {per!r}")
+    # ...but the unified accessor resolves a bbox cell on read (isDefault=true).
+    info = page.evaluate("() => window.molbuilder.workspace.getUnitCellInfo()")
+    assert info["isDefault"] is True and info["value"] is not None, (
+        f"a cell-less molecule must resolve a bbox cell via the accessor; got {info!r}")
     # Enable a 2×1×1 k-grid via the UI — the user sets NO cell.
     page.locator("#selection-kgrid-nx").fill("2")
     page.locator("#selection-kgrid-checkbox").check()
