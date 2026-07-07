@@ -216,6 +216,36 @@ backend-dependent e2e case must **skip** when the backend is absent, or let the 
 case run is both wrong (contaminates a lean, conflict-avoiding env) and pointless
 (the case is built to skip).
 
+### 4a.1 Calling code that lives in another env — the two kinds
+
+The core rule: **a test runs in ONE env and never reaches across envs itself.**  It
+does not import a backend that lives in another env, and it does not get that backend
+installed into its own env to make it run.  A dependency that lives "elsewhere" is
+reached in exactly one of two ways, and picking the right one is a real correctness
+concern (mixing them up is what turned a missing dependency into a bug-looking `500`):
+
+**Kind 1 — a backend TOOL/binary in its own env** (`tleap`, `siesta`, `pyscf`).  These
+live in dedicated envs (`molbuilder-MDtools` / `-siesta` / `-pySCF`) because of hard
+conflicts.  The test never calls them; the **app** does, at runtime, by dispatching
+into their env (`conda run -n <backend-env> <tool>`).  The test drives the app and
+**gates on `available_backends()`** — a probe of whether the tool is reachable (e.g.
+`"amber"` = "`tleap` on PATH").  The tool's env is NOT a dependency of the test process.
+
+**Kind 2 — an in-process Python LIBRARY** (`PeptideBuilder`, `rdkit`).  These are
+imported by the app **in the same process**, so they must be present in the env the
+test runs in (the host env).  The test **gates by import**:
+`try: import PeptideBuilder / except ImportError: pytest.skip(...)`.
+
+Same symptom, different gate — so tag each case by the RIGHT kind.  The peptide
+builder is Kind 2 (`PeptideBuilder`, an in-process host-env library), NOT Kind 1
+(`amber`/tleap): tagging it `("amber",)` let the guard pass on a box that had the amber
+env but not PeptideBuilder, and the build then failed on the missing import.
+
+**One line:** never bring the backend to the test — bring the test to where the app
+already reaches the backend.  In-process libs are import-gated; separate-env tools are
+dispatch-and-`available_backends()`-gated; either way a missing dependency is a
+**skip**, never a reason to touch an env.  (E2e mechanics: `playwright-tests.md` § 9.8.)
+
 ---
 
 ## 5. Source-text invariant tests (a special L2 pattern)
