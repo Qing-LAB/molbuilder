@@ -1227,10 +1227,11 @@ _LOAD_PATH_CASES = [
     # RNA "ACGU" → A-form helix via 3DNA/Amber/RDKit (≥50 atoms).
     ("rna_ACGU_aform", "rna", "ACGU", ">= 50", ("ACGU", "A-form"),
      ("threedna", "amber", "rdkit")),
-    # Peptide "AC" → alanine-cysteine via tleap.  Floor of 20 atoms
-    # — a future tleap force-field tweak can change exact caps.
+    # Peptide "AC" → alanine-cysteine via the PeptideBuilder library
+    # (molbuilder/peptide.py — a host-env Python dep, NOT the amber/tleap
+    # backend; available_backends() has no peptide key).  Floor of 20 atoms.
     ("peptide_AC_dipeptide", "peptide", "AC", ">= 20", ("AC",),
-     ("amber",)),
+     ("peptidebuilder",)),
     # Sidebar Load button — water.xyz fixture (3 atoms).  No backend
     # gate, no status text (no #sidebar-status element).
     ("sidebar_water_xyz", "_sidebar", None, "=== 3", (), ()),
@@ -1258,9 +1259,23 @@ def test_load_path_renders_structure_and_populates_selection_store(
         except ImportError:
             pytest.skip("molbuilder.backends import failed")
         avail = available_backends()
-        if not any(avail.get(b, False) for b in backends_any):
+
+        def _dep_present(name):
+            # available_backends() covers only the nucleic-acid backends
+            # (threedna / amber / rdkit).  A builder whose dependency is a
+            # plain host-env Python library — peptide → PeptideBuilder — is
+            # checked by import, since it is NOT one of those backends.
+            if name == "peptidebuilder":
+                try:
+                    import PeptideBuilder  # noqa: F401
+                    return True
+                except ImportError:
+                    return False
+            return avail.get(name, False)
+
+        if not any(_dep_present(b) for b in backends_any):
             pytest.skip(
-                f"none of {list(backends_any)} backends installed"
+                f"none of {list(backends_any)} deps installed"
             )
 
     _open_modify(page, flask_server)
@@ -1471,15 +1486,28 @@ def test_save_writes_to_source_and_clears_dirty(
     ) is True
     # Expand the Save panel + click Save.
     page.locator("#save-to-source-btn").click()
-    # 2026-06-09: Save now opens a confirm-name dialog.  Accept the
-    # pre-filled name (the file's basename) to proceed — no overwrite
-    # confirm fires because the name is unchanged from the source.
+    # Save now opens a BLANK confirm-name dialog (save-flow.md §1: there is no
+    # default/pre-filled name -- every save is a save-as).  Type the file's
+    # basename to save back to it; because water.xyz already exists on disk, the
+    # overwrite-confirm ALWAYS fires (save-flow.md §3.4) -- accept it.
     page.wait_for_function(
         "() => document.querySelector('.molbuilder-save-name-modal')"
         "        !== null"
     )
     page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("water.xyz")
+    page.locator(
         '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    page.wait_for_function(
+        "() => document.querySelector("
+        "  '.molbuilder-save-overwrite-modal'"
+        ") !== null",
+        timeout=5000,
+    )
+    page.locator(
+        '.molbuilder-save-overwrite-modal [data-action="overwrite"]'
     ).click()
     # Wait until the inflight save resolves (status leaves "Saving…").
     page.wait_for_function(
@@ -1688,14 +1716,15 @@ def test_save_as_propagates_labels_to_new_sidecar(
 
 def test_save_as_reanchors_selection_store_sourceFile(
         page, flask_server, tmp_path, monkeypatch):
-    """Save-as must update the selection store's ``sourceFile`` to
-    the new path so subsequent panel label writes target the NEW
-    location's sidecar — not the original load location.
+    """Save-as must re-anchor the selection store's ``sourceFile`` to the
+    new path, so that the workspace's next Save — which persists the
+    in-memory labels — targets the NEW location's sidecar, not the original.
 
-    Without this re-anchor, a user who Save-as's to /B/renamed.xyz
-    and then adds a label via the panel would have the label
-    written to /A/water.molstruct.json (the original source) —
-    silently surprising.
+    (Working-copy model: a panel label write is in-memory; it reaches disk
+    only on the next Save.  So the guarantee is "after Save-as, a later Save
+    writes to the renamed path".)  Without the re-anchor, a user who
+    Save-as's to /B/renamed.xyz, adds a label, and saves would have it
+    written to /A/water.molstruct.json (the original source) — surprising.
     """
     from pathlib import Path as _P
     import json as _json
@@ -1732,12 +1761,13 @@ def test_save_as_reanchors_selection_store_sourceFile(
         f'        {_json.dumps(str(project_dir / "renamed.xyz"))}',
         timeout=2000,
     )
-    # Now add a label via the panel — it should land at the NEW
-    # location's sidecar, not the original.
+    # Add a label via the panel.  In the working-copy model this is an
+    # IN-MEMORY write (writeLabel; save-flow.md) -- NOT flushed to disk until
+    # the next Save.
     _set_selection(page, [0])
     page.locator("#selection-assign-target").select_option("L-electrode")
     page.locator("#selection-assign-btn").click()
-    # Wait for the label tag to render.
+    # Wait for the label tag to render (confirms the in-memory write took).
     page.wait_for_function(
         '() => {'
         '  const r = document.querySelector('
@@ -1745,11 +1775,38 @@ def test_save_as_reanchors_selection_store_sourceFile(
         '  return r && r.textContent.includes("L-electrode");'
         '}'
     )
+    # Save the labelled workspace.  Because Save-as re-anchored sourceFile to
+    # renamed.xyz, this Save must persist the label into renamed.molstruct.json
+    # (the NEW location) -- not the original water.molstruct.json.
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("renamed.xyz")
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    page.wait_for_function(
+        "() => document.querySelector("
+        "  '.molbuilder-save-overwrite-modal'"
+        ") !== null",
+        timeout=5000,
+    )
+    page.locator(
+        '.molbuilder-save-overwrite-modal [data-action="overwrite"]'
+    ).click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
     # Read the sidecar at the NEW location: it must carry the label.
     renamed_sidecar = project_dir / "renamed.molstruct.json"
     assert renamed_sidecar.exists(), (
-        "renamed.molstruct.json should exist after the panel label "
-        "write targets the re-anchored path"
+        "renamed.molstruct.json should exist after saving the labelled "
+        "workspace to the re-anchored path"
     )
     data = _json.loads(renamed_sidecar.read_text())
     assert data["regions"].get("L-electrode") == [0], (
