@@ -40,31 +40,21 @@
             return;
         }
 
-        // 1. Fetch + insert the partial.  Same-origin, autoescaped
-        // Jinja render, no user data -> innerHTML is safe.
-        let html;
-        try {
-            const r = await fetch(PARTIAL_URL);
-            if (!r.ok) {
-                console.error("[selection-bootstrap] partial fetch returned "
-                            + r.status);
-                _renderFailure(host, "HTTP " + r.status + " from " + PARTIAL_URL);
-                return;
-            }
-            html = await r.text();
-        } catch (e) {
-            console.error("[selection-bootstrap] partial fetch threw", e);
-            _renderFailure(host, (e && e.message) ? e.message : String(e));
+        // 1+2. Fetch the partial + mount the panel via the SHARED composition
+        // (selection.mountPanel) -- the same helper the Results inspectors use, so
+        // Modify no longer hand-rolls the fetch+mount (Track B / UI unification).
+        // Default store = the workspace singleton.  NOTE: no viewerHandleKey here on
+        // purpose -- the viewer-adapter attach stays below on Modify's RESILIENT
+        // runtime.whenReady("modify.handle"), so the Load button + mount-restore glue
+        // never block on (or hang waiting for) the viewer handle.
+        const selApi = window.molbuilder && window.molbuilder.selection;
+        if (!selApi || typeof selApi.mountPanel !== "function") {
+            console.error("[selection-bootstrap] selection.mountPanel missing");
+            _renderFailure(host, "selection.mountPanel module missing");
             return;
         }
-        host.innerHTML = html;
-
-        // 2. Mount the panel.
-        if (!window.molbuilder || !window.molbuilder.selectionPanel) {
-            console.error("[selection-bootstrap] selectionPanel module missing");
-            return;
-        }
-        window.molbuilder.selectionPanel.mount(host);
+        const _mounted = await selApi.mountPanel(host, { mode: "modify" });
+        if (!_mounted || !_mounted.panel) return;   // mountPanel rendered its own banner
 
         // 2b. Inject the viewer-specific XYZ loader into the store so
         // the store doesn't reach into ``window.molbuilder`` to do
