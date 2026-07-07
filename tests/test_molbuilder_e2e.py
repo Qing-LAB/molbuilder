@@ -1815,6 +1815,225 @@ def test_save_as_reanchors_selection_store_sourceFile(
     )
 
 
+def test_modify_open_edit_save_preserves_annotations(
+        page, flask_server, tmp_path, monkeypatch):
+    """F1 end-to-end: a Modify open → edit → Save must NOT clobber the per-atom
+    annotation channels (atom-annotations.md v4).  Seed a file whose
+    .molstruct.json carries a 'charge' channel, open it, assign a label (an
+    in-memory edit that marks dirty without changing atoms), Save, and assert the
+    re-written sidecar still carries BOTH the annotation channel AND the label.
+
+    Regression guard for the bug where the frontend scratch blob dropped
+    annotations, so every Modify Save wrote annotations:{}."""
+    from pathlib import Path as _P
+    import json as _json
+    from molbuilder.structure import AtomChannel
+    from molbuilder.sidecars import molstruct as _msj
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = project_dir / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    # Seed the sidecar with a per-atom annotation channel.
+    sidecar = _msj.sidecar_path_for(water_xyz)
+    _msj.save(sidecar, _msj.to_dict(
+        n_atoms_total=3, structure_hash=_msj.sha256_of_file(water_xyz),
+        annotations={"charge": AtomChannel("value", {0: -0.8, 1: 0.4, 2: 0.4})}))
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, str(water_xyz))
+    _wait_panel_ready(page)
+    # In-memory edit: assign a label (marks dirty, atom count unchanged).
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => { const r = document.querySelector('
+        '  \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  return r && r.textContent.includes("L-electrode"); }'
+    )
+    # Save (overwrite water.xyz).
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal') !== null")
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]').fill("water.xyz")
+    page.locator('.molbuilder-save-name-modal [data-action="save"]').click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-overwrite-modal') !== null",
+        timeout=5000)
+    page.locator(
+        '.molbuilder-save-overwrite-modal [data-action="overwrite"]').click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')")
+    # The re-written sidecar must carry BOTH the carried annotation AND the label.
+    data = _json.loads(sidecar.read_text())
+    assert data.get("annotations", {}).get("charge") == {
+        "kind": "value", "data": {"0": -0.8, "1": 0.4, "2": 0.4}}, (
+        f"F1: annotation channel clobbered on Save; got "
+        f"{data.get('annotations')!r}")
+    assert data["regions"].get("L-electrode") == [0], (
+        f"label should persist alongside annotations; got {data['regions']!r}")
+
+
+def test_edit_writes_workspace_draft(
+        page, flask_server, tmp_path, monkeypatch):
+    """Working-copy contract: an in-memory edit is mirrored to a transient on-disk
+    draft (crash-safety) under .molbuilder_workspace/ — WITHOUT an explicit Save.
+    Load a file, make an edit, assert a `<stem>.<session>.wc.json` draft appears."""
+    import time
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = project_dir / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, str(water_xyz))
+    _wait_panel_ready(page)
+    # In-memory edit → the store change schedules the debounced draft write
+    # (POST /api/workingcopy/update).  No Save.
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    # The draft write is debounced + async; poll the filesystem for it (there is no
+    # DOM signal for a disk side-effect).
+    ws_dir = project_dir / ".molbuilder_workspace"
+    drafts = []
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        if ws_dir.exists():
+            drafts = list(ws_dir.glob("water.*.wc.json"))
+            if drafts:
+                break
+        time.sleep(0.1)
+    assert drafts, (
+        "an edit must write a transient draft under .molbuilder_workspace/ "
+        "(none appeared within 8s)")
+
+
+def test_filter_by_label_reads_in_memory_without_saving(
+        page, flask_server, tmp_path, monkeypatch):
+    """A5b end-to-end: a label assigned IN MEMORY is filterable immediately, with no
+    Save — the filter (POST /api/selection/eval) evaluates against the store's
+    in-memory atoms, not a disk sidecar.  Regression guard for the filter-reads-disk
+    bug (assign a label, filter can't find it because the filter re-read the file)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = project_dir / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, str(water_xyz))
+    _wait_panel_ready(page)
+    # Assign L-electrode to atom 0 — IN MEMORY (no Save).
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => { const r = document.querySelector('
+        '  \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  return r && r.textContent.includes("L-electrode"); }')
+    # The real sidecar is NOT written until Save — prove the label is in-memory only.
+    assert not (project_dir / "water.molstruct.json").exists(), (
+        "precondition: the in-memory label must not be on disk before Save")
+    # Move the selection AWAY, then filter by the label via the store's real filter
+    # API (drives POST /api/selection/eval with the in-memory atoms).  A correct
+    # result re-selects the labelled atom purely from the filter.
+    sel = page.evaluate("""async () => {
+        const ws = window.molbuilder.workspace.selection;
+        await ws.set([2]);
+        await ws.setFilters([{ kind: "by_label", value: "L-electrode" }]);
+        await ws.applyFilter();
+        return ws.getState().indices;   // ws.selection snapshot exposes selection as `indices`
+    }""")
+    assert sel == [0], (
+        f"filter by an in-memory label must select the labelled atom without a "
+        f"Save; got selection {sel!r}")
+
+
+def test_modify_op_preserves_frozen_and_labels(
+        page, flask_server, tmp_path, monkeypatch):
+    """facc86a regression: a geometry op sends the current per-atom state
+    (currentStateBody) so the op result keeps frozen flags + region labels.  The
+    original bug read the wrong field names (a.is_frozen / a.regions instead of
+    a.isFrozen / a.labels), silently wiping both on every op.  Freeze one atom,
+    label another, rotate, and assert both survive on the post-op store atoms."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    diag_xyz = tmp_path / "diag.xyz"
+    diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
+    _open_modify(page, flask_server)
+    _load_file(page, str(diag_xyz), expected_atoms=4)
+    _wait_panel_ready(page)
+    # Freeze atom 2 (assign the special "frozen_atoms" target).
+    _set_selection(page, [2])
+    page.locator("#selection-assign-target").select_option("frozen_atoms")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => window.molbuilder.workspace.selection.getState()'
+        '        .atoms[2].isFrozen === true')
+    # Label atom 0 L-electrode.
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => (window.molbuilder.workspace.selection.getState()'
+        '        .atoms[0].labels || []).includes("L-electrode")')
+    # Run a rotate op (routes through currentStateBody → /api/modify/rotate).
+    _open_op_tab(page, "pose")
+    page.locator("#rotate-angle").evaluate(
+        "(el) => { el.value = '90'; "
+        "el.dispatchEvent(new Event('input', {bubbles: true})); }")
+    page.locator("#rotate-apply").click()
+    page.wait_for_function(
+        "() => /Rotated/.test(document.querySelector('#edit-status').textContent)")
+    # After the op the store atoms MUST still carry the frozen flag + the label.
+    state = page.evaluate("""() => {
+        const atoms = window.molbuilder.workspace.selection.getState().atoms;
+        return { n: atoms.length, frozen2: atoms[2].isFrozen,
+                 labels0: atoms[0].labels || [] };
+    }""")
+    assert state["n"] == 4, state
+    assert state["frozen2"] is True, (
+        f"rotate must preserve the frozen flag on atom 2; got {state!r}")
+    assert "L-electrode" in state["labels0"], (
+        f"rotate must preserve the label on atom 0; got {state!r}")
+
+
+def test_kgrid_tiles_in_modify(page, flask_server, tmp_path, monkeypatch):
+    """molview k-grid: with a cell set + k-grid enabled, the Modify viewer TILES.
+    The module render controller (mountKgridRender, subscribed to the selection
+    store) replaces the unit cell with a supercell via setStructure, so the viewer
+    shows base_atoms × product(dims) atoms.  Pins the one-render-loop-in-the-module
+    design (no bespoke tiling in the Modify tab)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # Base render: 3 atoms in the viewer model.
+    base = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().selectedAtoms({}).length")
+    assert base == 3, f"expected 3 base atoms, got {base}"
+    # Set a cell (tiling needs lattice vectors) + enable a 2×1×1 k-grid.  The cell
+    # rides on the canvas periodicity (read by the controller's getCell); the k-grid
+    # enable rides on the selection store (the controller subscribes to it).
+    page.evaluate("""() => {
+        const ws = window.molbuilder.workspace;
+        ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);
+        ws.selection.setKgrid({ enabled: true, dims: [2,1,1] });
+    }""")
+    # The controller re-tiles on the store change → viewer model = 3 × 2 = 6 atoms.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getViewer()"
+        "        .selectedAtoms({}).length === 6",
+        timeout=5000)
+    tiled = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().selectedAtoms({}).length")
+    assert tiled == 6, (
+        f"k-grid 2×1×1 must tile 3 atoms into 6; viewer shows {tiled}")
+
+
 def test_save_button_disabled_for_smiles_without_prior_save(
         page, flask_server):
     """A SMILES-generated structure has no source.file and no
