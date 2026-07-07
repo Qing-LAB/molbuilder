@@ -92,6 +92,9 @@
         if (!p || typeof p !== "object") return null;
         return {
             cell:      p.cell || null,
+            // §3a RESOLVED (effective) cell -- DERIVED (bbox+vacuum default), carried
+            // for the render / k-grid.  Never saved: the save writes the raw `cell`.
+            resolved_cell: p.resolved_cell || null,
             axis_kind: p.axis_kind || null,
             vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
             kgrid:     Array.isArray(p.kgrid)  ? p.kgrid.slice(0, 3)  : [1, 1, 1],

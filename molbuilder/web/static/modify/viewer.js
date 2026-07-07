@@ -91,7 +91,10 @@
         const ws = window.molbuilder && window.molbuilder.workspace;
         const s = (ws && typeof ws.getStructure === "function")
             ? ws.getStructure() : null;
-        return (s && s.periodicity && s.periodicity.cell) || null;
+        const p = s && s.periodicity;
+        // structure-periodicity.md § 3a: prefer the RESOLVED (effective) cell so a
+        // cell-less structure still surfaces a box + tiles; fall back to explicit.
+        return (p && (p.resolved_cell || p.cell)) || null;
     }
 
     // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop
