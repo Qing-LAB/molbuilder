@@ -821,3 +821,40 @@
     font: 12px/1.5 ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
 }
+
+/* Cell page edit form -- axis dropdowns + vacuum inputs + Update (§3b). */
+.cell-edit { margin: 0 0 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.cell-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.cell-field-label {
+    color: var(--ps-fg-dim);
+    font: 600 11px/1.4 system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.cell-triple { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; }
+.cell-num, .cell-axis-sel {
+    width: 100%;
+    background: var(--ps-bg-deep);
+    color: var(--ps-fg);
+    border: 1px solid var(--ps-border);
+    border-radius: 3px;
+    padding: 0.25rem 0.4rem;
+    font: 12px ui-monospace, monospace;
+    text-align: right;
+}
+.cell-axis-sel { font-family: system-ui, sans-serif; text-align: left; }
+.cell-update-btn {
+    align-self: flex-start;
+    padding: 0.35rem 0.9rem;
+    background: var(--sp-accent-bg-mid);
+    color: var(--sp-accent-fg);
+    border: 1px solid var(--sp-accent);
+    border-radius: 3px;
+    font: 600 12px/1.2 system-ui, sans-serif;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.cell-update-btn:hover {
+    background: var(--sp-accent); color: var(--ps-selected-fg);
+    border-color: var(--sp-accent-strong);
+}

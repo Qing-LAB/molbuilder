@@ -587,6 +587,27 @@ def api_build_molecule():
     })
 
 
+@bp.route("/api/structure/resolve-cell", methods=["POST"])
+def api_resolve_cell():
+    """Return the resolved (effective) cell for a working-copy blob -- the ONE resolver,
+    ``struct.resolve_cell()`` (structure-periodicity.md § 3a).  The Cell page's Update
+    calls this after a vacuum / axis-kind edit so the surfaced ``resolved_cell`` stays
+    consistent with the new periodicity (a `setUnitCell` explicit cell needs no
+    re-resolve -- explicit wins).  Body: ``{"data": <working-copy scratch blob>}``."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    body = request.get_json(silent=True) or {}
+    blob = body.get("data")
+    if blob is None:
+        return jsonify({"ok": False, "error": "missing 'data'"}), 400
+    try:
+        struct = StructureCodec().from_scratch(blob)
+        rc = struct.resolve_cell()
+        resolved = rc.tolist() if rc is not None else None
+    except Exception as exc:  # noqa: BLE001 -- malformed blob / unresolvable -> 400
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "resolved_cell": resolved})
+
+
 @bp.route("/api/build/load", methods=["POST"])
 def api_build_load():
     """Accept either:

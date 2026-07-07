@@ -130,10 +130,11 @@
             pageRadioCell:   $("panel-page-radio-cell"),
             pageSel:         $("panel-page-selection"),
             pageCell:        $("panel-page-cell"),
-            cellAxis:        $("cell-axis-value"),
-            cellVacuum:      $("cell-vacuum-value"),
             cellMatrix:      $("cell-matrix-value"),
             cellTag:         $("cell-matrix-tag"),
+            cellUpdateBtn:   $("cell-update-btn"),
+            cellAxisSel:     [$("cell-axis-0"), $("cell-axis-1"), $("cell-axis-2")],
+            cellVacIn:       [$("cell-vac-0"), $("cell-vac-1"), $("cell-vac-2")],
             // Measurement readout lives OUTSIDE the panel partial —
             // it's a chip overlay on the 3D viewer canvas (placed
             // in the page template, not the partial).  Page-wide
@@ -944,20 +945,34 @@
         // and tags a never-set value "(default)".  Stage 2 is display; edit + Update
         // land in stage 3.
         function _round(n) { return Math.round(Number(n) * 1000) / 1000; }
-        function _fmtVec(v) { return "[" + v.map(_round).join(", ") + "]"; }
-        function _tag(isDefault) { return isDefault ? "  (default)" : ""; }
+        var _AXIS_KINDS = ["isolated", "periodic", "transport"];
+        function _fillAxisOptions() {
+            els.cellAxisSel.forEach(function (sel) {
+                if (!sel || sel.options.length) return;
+                _AXIS_KINDS.forEach(function (k) {
+                    var o = document.createElement("option");
+                    o.value = k; o.textContent = k;
+                    sel.appendChild(o);
+                });
+            });
+        }
         function renderCell() {
             const ws = root.molbuilder && root.molbuilder.workspace;
             if (!ws || !els.pageCell) return;
-            if (els.cellAxis && ws.getAxisKindInfo) {
-                const a = ws.getAxisKindInfo();
-                els.cellAxis.textContent =
-                    ((a.value || []).join(" / ") || "—") + _tag(a.isDefault);
+            _fillAxisOptions();
+            // Fill the axis dropdowns + vacuum inputs from the accessors (don't clobber
+            // a field the user is actively editing).
+            if (ws.getAxisKindInfo) {
+                (ws.getAxisKindInfo().value || []).forEach(function (k, i) {
+                    var sel = els.cellAxisSel[i];
+                    if (sel && document.activeElement !== sel) sel.value = k;
+                });
             }
-            if (els.cellVacuum && ws.getVacuumInfo) {
-                const v = ws.getVacuumInfo();
-                els.cellVacuum.textContent =
-                    _fmtVec(v.value || [0, 0, 0]) + _tag(v.isDefault);
+            if (ws.getVacuumInfo) {
+                (ws.getVacuumInfo().value || [0, 0, 0]).forEach(function (n, i) {
+                    var inp = els.cellVacIn[i];
+                    if (inp && document.activeElement !== inp) inp.value = _round(n);
+                });
             }
             if (els.cellMatrix && ws.getUnitCellInfo) {
                 const c = ws.getUnitCellInfo();
@@ -984,6 +999,23 @@
         }
         on(els.pageRadioSel,  "change", () => _switchPage(false));
         on(els.pageRadioCell, "change", () => _switchPage(true));
+
+        // §3b: the Update button commits the staged axis + vacuum edits to the in-memory
+        // structure (ws.commitPeriodicity applies them + re-resolves the cell through the
+        // ONE server resolver), then refreshes the readout from the accessors.
+        on(els.cellUpdateBtn, "click", function () {
+            const ws = root.molbuilder && root.molbuilder.workspace;
+            if (!ws || typeof ws.commitPeriodicity !== "function") return;
+            const axis = els.cellAxisSel.map(function (s) {
+                return s ? s.value : "isolated";
+            });
+            const vac = els.cellVacIn.map(function (i) {
+                const v = Number(i && i.value);
+                return (isFinite(v) && v >= 0) ? v : 0;
+            });
+            Promise.resolve(ws.commitPeriodicity({ axis_kind: axis, vacuum: vac }))
+                .then(renderCell);
+        });
         renderCell();   // initial fill (page is hidden until switched to)
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);

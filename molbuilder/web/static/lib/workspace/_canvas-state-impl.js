@@ -259,9 +259,15 @@
             throw new TypeError("setPeriodicity: patch must be an object");
         }
         var cur = _state.periodicity
-            || { cell: null, axis_kind: null, vacuum: [0, 0, 0], kgrid: [1, 1, 1] };
+            || { cell: null, resolved_cell: null, axis_kind: null,
+                 vacuum: [0, 0, 0], kgrid: [1, 1, 1] };
         _state.periodicity = _normPeriodicity({
             cell:      "cell"      in patch ? patch.cell      : cur.cell,
+            // resolved_cell is DERIVED -- written back after the server re-resolves an
+            // edit (§3a); an explicit `cell` set clears the stale resolved value.
+            resolved_cell: "cell" in patch ? null
+                           : ("resolved_cell" in patch ? patch.resolved_cell
+                              : cur.resolved_cell),
             axis_kind: "axis_kind" in patch ? patch.axis_kind : cur.axis_kind,
             vacuum:    "vacuum"    in patch ? patch.vacuum    : cur.vacuum,
             kgrid:     "kgrid"     in patch ? patch.kgrid     : cur.kgrid,

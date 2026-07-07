@@ -319,6 +319,27 @@
     function setKgrid(dims)     { _setPeriodicity({ kgrid: dims }); }
     function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
     function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
+    // §3b: the Cell page's "Update" commit -- apply an explicit periodicity edit, then
+    // re-resolve the effective cell through the ONE server resolver (§3a) and write the
+    // fresh resolved_cell back so the render + display stay consistent.  Returns a
+    // promise.  An explicit `cell` wins (no re-resolve); a vacuum / axis_kind / cleared
+    // cell edit needs the server to recompute the bbox+vacuum default.
+    function commitPeriodicity(patch) {
+        patch = patch || {};
+        if ("cell"      in patch) setUnitCell(patch.cell);
+        if ("vacuum"    in patch) setVacuum(patch.vacuum);
+        if ("axis_kind" in patch) setAxisKind(patch.axis_kind);
+        if (patch.cell) return Promise.resolve();   // explicit cell wins
+        var blob = _scratchBlob();
+        if (!blob || !root.fetch) return Promise.resolve();
+        return root.fetch("/api/structure/resolve-cell", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ data: blob }),
+        }).then(function (r) { return r.json(); }).then(function (j) {
+            if (j && j.ok) _setPeriodicity({ resolved_cell: j.resolved_cell });
+        }).catch(function () { /* best-effort; the explicit edit already landed */ });
+    }
     // Assign/replace a region label on a set of atom indices (in-memory; persists on
     // Save).  Routes to the selection store's label writer.
     function setLabel(label, indices) {
@@ -1392,6 +1413,7 @@
         suspendPersist:        suspendPersist, // F4: bracket a multi-step load
         resumePersist:         resumePersist,
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
+        commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias
         setKgrid:              setKgrid,
