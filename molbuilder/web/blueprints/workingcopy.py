@@ -77,23 +77,17 @@ def wc_open():
     # /api/selection/atoms disk read.  ``atoms_list`` is the shared wire-shape
     # builder (same rows /api/selection/atoms + every /api/modify/* response emit).
     from ._shared import atoms_list
-    # Resolved (effective) cell -- structure-periodicity.md § 3a -- so a cell-less
-    # structure still surfaces a box (bbox+vacuum) for the render / k-grid.
-    try:
-        _rc = w.data.resolve_cell()
-        _resolved_cell = _rc.tolist() if _rc is not None else None
-    except Exception:  # noqa: BLE001 -- periodic axis w/o lattice -> no resolved box
-        _resolved_cell = None
     return jsonify({
         "ok": True, "session": w.session, "source": str(w.source),
         "data": blob,
         "atoms": atoms_list(w.data),
+        # Raw explicit cell only; the resolved (bbox+vacuum) cell is computed on read
+        # by ws.getUnitCellInfo() (§3a/§3b), never stored.
         "periodicity": {
-            "cell":          sc.get("cell"),
-            "resolved_cell": _resolved_cell,
-            "axis_kind":     sc.get("axis_kind"),
-            "vacuum":        sc.get("vacuum"),
-            "kgrid":         sc.get("kgrid"),
+            "cell":      sc.get("cell"),
+            "axis_kind": sc.get("axis_kind"),
+            "vacuum":    sc.get("vacuum"),
+            "kgrid":     sc.get("kgrid"),
         },
         # F1: the per-atom annotation channels (atom-annotations.md) ride opaquely
         # through the frontend so a Modify Save doesn't clobber them to {}.

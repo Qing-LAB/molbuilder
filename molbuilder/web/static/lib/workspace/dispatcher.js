@@ -235,9 +235,28 @@
     // set, else the explicit value.  `value` is always a usable number.
     function getUnitCellInfo() {
         var per = _periodicityInternal() || {};
-        var explicit = per.cell || null;
-        // Default -> the RESOLVED (bbox+vacuum) cell so a,b,c are still shown (§3a).
-        return { value: explicit || per.resolved_cell || null, isDefault: !explicit };
+        if (per.cell) return { value: per.cell, isDefault: false };   // explicit wins (§3)
+        // Default: resolve per-axis from bbox + vacuum (mirrors resolve_cell, §3a) ON
+        // READ -- so the value stays FRESH after a client-only vacuum/geometry edit and
+        // needs no stored derived field.  isDefault = true.
+        var coords = getCoordinates();
+        if (!coords.length) return { value: null, isDefault: true };
+        var ak  = per.axis_kind || ["isolated", "isolated", "isolated"];
+        var vac = per.vacuum || [0, 0, 0];
+        var mn = [Infinity, Infinity, Infinity];
+        var mx = [-Infinity, -Infinity, -Infinity];
+        for (var j = 0; j < coords.length; j++) {
+            for (var i = 0; i < 3; i++) {
+                if (coords[j][i] < mn[i]) mn[i] = coords[j][i];
+                if (coords[j][i] > mx[i]) mx[i] = coords[j][i];
+            }
+        }
+        var cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        for (var k = 0; k < 3; k++) {
+            if (ak[k] === "periodic") return { value: null, isDefault: true }; // needs lattice
+            cell[k][k] = (mx[k] - mn[k]) + (ak[k] === "isolated" ? (vac[k] || 0) : 0);
+        }
+        return { value: cell, isDefault: true };
     }
     function getVacuumInfo() {
         var v = getVacuum();

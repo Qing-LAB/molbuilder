@@ -88,13 +88,13 @@
     // -- the single source.  One accessor, used for the base render's wireframe AND
     // by the module k-grid controller (getCell).  No hand-read of a load response.
     function _cellFromStore() {
+        // The RESOLVED (effective) cell via the UNIFIED accessor (§3a/§3b) -- NOT a
+        // hand-read of getStructure().periodicity.  getUnitCellInfo().value is the
+        // explicit cell when set, else the bbox+vacuum default (computed on read).
         const ws = window.molbuilder && window.molbuilder.workspace;
-        const s = (ws && typeof ws.getStructure === "function")
-            ? ws.getStructure() : null;
-        const p = s && s.periodicity;
-        // structure-periodicity.md § 3a: prefer the RESOLVED (effective) cell so a
-        // cell-less structure still surfaces a box + tiles; fall back to explicit.
-        return (p && (p.resolved_cell || p.cell)) || null;
+        const info = (ws && typeof ws.getUnitCellInfo === "function")
+            ? ws.getUnitCellInfo() : null;
+        return (info && info.value) || null;
     }
 
     // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop

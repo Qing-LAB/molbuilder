@@ -117,17 +117,23 @@ display, the box render, and the fdf work on a blank molecule.
 | **axis_kind** (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` (§ 1) | `ws.setAxisKind([...])` — mark an axis `periodic` / `transport` |
 | **kgrid** | `(1, 1, 1)` (Γ) | literal Γ | `ws.setKgrid([...])` |
 
-**The load-bearing rule:** the cell SURFACED to the renderer / k-grid / store
-(`periodicity.cell`) is the **resolved** cell (`resolve_cell()`), NOT the raw
-`struct.cell`.  So a blank `isolated` molecule with `vacuum = 0` surfaces its
-**bounding box** (`max − min` per axis) — a box that wraps the atoms — and the k-grid
-tiles it immediately.  A consumer that reads the raw field and short-circuits on
-`cell == null` is the exact bug this section prevents: the k-grid "has no effect" on a
-new molecule because the render saw a null cell instead of resolving the default.
+**The load-bearing rule:** the cell the renderer / k-grid use is the **resolved** cell,
+obtained ONLY through the unified accessor **`ws.getUnitCellInfo().value`** — never a
+hand-read of `getStructure().periodicity.cell` (the encapsulation contract: consumers
+go through `ws.*`, not the raw in-memory fields).  `periodicity.cell` stays the raw
+explicit cell (`null` = default); the accessor computes the bbox+vacuum default **on
+read, client-side**, so a blank `isolated` molecule with `vacuum = 0` yields its
+bounding box (`max − min` per axis) and the k-grid tiles it immediately.  A consumer
+that hand-reads `periodicity.cell` and short-circuits on `cell == null` is the exact bug
+this section prevents ("k-grid has no effect on a new molecule").
 
-**Why not eagerly store the computed box:** committing the bbox to `struct.cell` would
+**Why computed on read, never stored:** committing the bbox to `struct.cell` would
 masquerade as a user-chosen lattice and defeat the explicit-override escape hatch
-(§ 6).  The default stays **computed on read**; the moment the user calls
+(§ 6); storing it as a separate derived field (`resolved_cell`) would go **stale** the
+moment a client-only `ws.setVacuum` / geometry edit changes the inputs without a server
+round-trip.  So the resolved cell is derived on every read — the accessor mirrors
+`resolve_cell` (§ 3) on the client (fresh, always correct), while the server exposes
+`struct.resolve_cell()` for its own consumers (fdf, save).  The moment the user calls
 `ws.setUnitCell` / `ws.setVacuum` / `ws.setAxisKind`, that explicit value replaces the
 default and persists (capture-at-construction, § 4).
 
