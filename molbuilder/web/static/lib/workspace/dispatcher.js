@@ -254,7 +254,11 @@
     function getAxisKindInfo() {
         var per = _periodicityInternal() || {};
         var ak = per.axis_kind || null;
-        return { value: ak || ["isolated", "isolated", "isolated"], isDefault: !ak };
+        var val = ak || ["isolated", "isolated", "isolated"];
+        // Default = the isolated vacuum box (§3a): unset, or every axis isolated (the
+        // loader sets isolated on a fresh molecule; that's still the default config).
+        var isDefault = !ak || val.every(function (k) { return k === "isolated"; });
+        return { value: val, isDefault: isDefault };
     }
     // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
     // a plain ``regions[label]`` read once D4 makes the internals columnar -- the

@@ -90,11 +90,19 @@
     function _cellFromStore() {
         // The RESOLVED (effective) cell via the UNIFIED accessor (§3a/§3b) -- NOT a
         // hand-read of getStructure().periodicity.  getUnitCellInfo().value is the
-        // explicit cell when set, else the bbox+vacuum default (computed on read).
+        // explicit cell when set, else the bbox+vacuum default.  Used by the k-grid
+        // controller so tiling works on a cell-less molecule.
         const ws = window.molbuilder && window.molbuilder.workspace;
         const info = (ws && typeof ws.getUnitCellInfo === "function")
             ? ws.getUnitCellInfo() : null;
         return (info && info.value) || null;
+    }
+    function _explicitCell() {
+        // The EXPLICIT cell only (raw) -- the BASE render draws a wireframe box only for
+        // a user/imported cell, NOT for a fresh molecule's resolved bbox (that box is
+        // the k-grid render's concern via getCell, only when k-grid is enabled).
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        return (ws && typeof ws.getUnitCell === "function" && ws.getUnitCell()) || null;
     }
 
     // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop
@@ -539,7 +547,9 @@
             // setStructure leaves them intact.
             _handle.setStructure({
                 xyz:     state.xyz,
-                lattice: _cellFromStore() || undefined,
+                // Base wireframe box = the EXPLICIT cell only; a cell-less molecule
+                // draws no box here (its resolved bbox is the k-grid render's concern).
+                lattice: _explicitCell() || undefined,
             });
             _handle.refit();
             // Hand the k-grid render to the module (mounted once); re-tile if

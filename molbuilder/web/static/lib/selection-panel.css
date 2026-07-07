@@ -738,3 +738,59 @@
 .selection-kgrid-dims input[type="number"] {
     width: 3.4em;
 }
+
+/* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
+.panel-page-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin: 0 0 0.6rem;
+    padding: 2px;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+}
+.panel-page-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.panel-page-option:hover { background: var(--ps-hover); }
+.panel-page-option:has(input:checked) {
+    background: var(--sp-accent-bg);
+    box-shadow: inset 0 0 0 1px var(--sp-accent);
+}
+.panel-page-option input[type="radio"] {
+    position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.panel-page-option > span {
+    color: var(--ps-fg-dim);
+    font: 600 12px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.panel-page-option:has(input:checked) > span { color: var(--sp-accent-fg); }
+
+/* Cell readout -- read-only display of the resolved periodicity (stage 2). */
+.cell-readout {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.3rem 0.6rem;
+    margin: 0 0 0.6rem;
+}
+.cell-readout dt {
+    color: var(--ps-fg-dim);
+    font: 600 11px/1.4 system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.cell-readout dd { margin: 0; }
+.cell-value {
+    color: var(--ps-fg);
+    font: 12px/1.4 ui-monospace, monospace;
+    word-break: break-word;
+}

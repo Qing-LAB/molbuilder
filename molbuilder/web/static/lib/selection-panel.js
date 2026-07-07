@@ -125,6 +125,14 @@
             addBtn:          $("selection-add-btn"),
             removeBtn:       $("selection-remove-btn"),
             errorEl:         $("selection-error"),
+            // Cell page (structure-periodicity.md § 3b) -- read-only display (stage 2).
+            pageRadioSel:    $("panel-page-radio-selection"),
+            pageRadioCell:   $("panel-page-radio-cell"),
+            pageSel:         $("panel-page-selection"),
+            pageCell:        $("panel-page-cell"),
+            cellAxis:        $("cell-axis-value"),
+            cellVacuum:      $("cell-vacuum-value"),
+            cellMatrix:      $("cell-matrix-value"),
             // Measurement readout lives OUTSIDE the panel partial —
             // it's a chip overlay on the 3D viewer canvas (placed
             // in the page template, not the partial).  Page-wide
@@ -925,8 +933,45 @@
                 if (el && document.activeElement !== el) el.value = String(val);
             };
             _set(_kgNx, d[0]); _set(_kgNy, d[1]); _set(_kgNz, d[2]);
+            renderCell();   // §3b: refresh the Cell readout on any store change
         });
         cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
+
+        // --- Cell page (structure-periodicity.md § 3b): page switch + read-only
+        // periodicity readout.  Reads ONLY the molview accessors (getUnitCellInfo /
+        // getVacuumInfo / getAxisKindInfo) -- no hand-read of the in-memory data --
+        // and tags a never-set value "(default)".  Stage 2 is display; edit + Update
+        // land in stage 3.
+        function _round(n) { return Math.round(Number(n) * 1000) / 1000; }
+        function _fmtVec(v) { return "[" + v.map(_round).join(", ") + "]"; }
+        function _tag(isDefault) { return isDefault ? "  (default)" : ""; }
+        function renderCell() {
+            const ws = root.molbuilder && root.molbuilder.workspace;
+            if (!ws || !els.pageCell) return;
+            if (els.cellAxis && ws.getAxisKindInfo) {
+                const a = ws.getAxisKindInfo();
+                els.cellAxis.textContent =
+                    ((a.value || []).join(" / ") || "—") + _tag(a.isDefault);
+            }
+            if (els.cellVacuum && ws.getVacuumInfo) {
+                const v = ws.getVacuumInfo();
+                els.cellVacuum.textContent =
+                    _fmtVec(v.value || [0, 0, 0]) + _tag(v.isDefault);
+            }
+            if (els.cellMatrix && ws.getUnitCellInfo) {
+                const c = ws.getUnitCellInfo();
+                els.cellMatrix.textContent =
+                    (c.value ? c.value.map(_fmtVec).join("  ") : "—") + _tag(c.isDefault);
+            }
+        }
+        function _switchPage(toCell) {
+            if (els.pageSel)  els.pageSel.hidden  = toCell;
+            if (els.pageCell) els.pageCell.hidden = !toCell;
+            if (toCell) renderCell();
+        }
+        on(els.pageRadioSel,  "change", () => _switchPage(false));
+        on(els.pageRadioCell, "change", () => _switchPage(true));
+        renderCell();   // initial fill (page is hidden until switched to)
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);
         on(els.addBtn,          "click",  onAddToTarget);
