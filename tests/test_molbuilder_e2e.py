@@ -2034,6 +2034,81 @@ def test_kgrid_tiles_in_modify(page, flask_server, tmp_path, monkeypatch):
         f"k-grid 2×1×1 must tile 3 atoms into 6; viewer shows {tiled}")
 
 
+def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
+    """Track B: the Modify viewer + selection panel share ONE molview-card
+    (fused-layout.css), body = viewer | fold-handle | panel, the fold handle works,
+    the panel still mounts + functions, and there's no horizontal overflow."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # ONE fused card: body holds the viewer, the fold handle, and the panel host.
+    shape = page.evaluate("""() => {
+        const card = document.querySelector('.molview-card');
+        const body = card && card.querySelector('.molview-body');
+        return {
+            card: !!card,
+            viewer: !!(body && body.querySelector('.molview-viewer #viewer')),
+            fold:   !!(body && body.querySelector('#molview-fold.molview-fold-btn')),
+            panel:  !!(body && body.querySelector('#selection-host.molview-panel')),
+        };
+    }""")
+    assert shape == {"card": True, "viewer": True, "fold": True, "panel": True}, shape
+    # Fold handle toggles the collapsed state.
+    page.locator("#molview-fold").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molview-card').classList.contains('is-folded')")
+    page.locator("#molview-fold").click()
+    page.wait_for_function(
+        "() => !document.querySelector('.molview-card').classList.contains('is-folded')")
+    # The panel still works inside the fused card: assign a label.
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => (window.molbuilder.workspace.selection.getState()'
+        '        .atoms[0].labels || []).includes("L-electrode")')
+    # No horizontal overflow at the default desktop viewport.
+    overflow = page.evaluate(
+        "() => document.documentElement.scrollWidth > "
+        "      document.documentElement.clientWidth")
+    assert overflow is False, "fused layout must not cause horizontal overflow"
+
+
+def test_fused_fold_no_overlap_when_narrow(
+        page, flask_server, tmp_path, monkeypatch):
+    """Framework fix (fused-layout.css): in NARROW/column mode the fold handle is a
+    horizontal BAR that rotates only the chevron GLYPH -- the button box does NOT
+    rotate into a tall rail overlapping the panel (the bug that made the panel's
+    Add-filter button unclickable)."""
+    page.set_viewport_size({"width": 600, "height": 900})
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    geom = page.evaluate("""() => {
+        const body = document.querySelector('.molview-body');
+        const fold = document.querySelector('#molview-fold');
+        const panel = document.querySelector('#selection-host');
+        const fr = fold.getBoundingClientRect();
+        const pr = panel.getBoundingClientRect();
+        return {
+            column: getComputedStyle(body).flexDirection === 'column',
+            foldW: Math.round(fr.width), foldH: Math.round(fr.height),
+            foldBottom: Math.round(fr.bottom), panelTop: Math.round(pr.top),
+        };
+    }""")
+    assert geom["column"], f"narrow viewport should give column mode; {geom}"
+    assert geom["foldW"] > geom["foldH"], (
+        f"column-mode fold must be a horizontal BAR (w>h), not a tall rail; {geom}")
+    assert geom["foldBottom"] <= geom["panelTop"] + 2, (
+        f"the fold handle must not overlap the panel; {geom}")
+
+
 def test_save_button_disabled_for_smiles_without_prior_save(
         page, flask_server):
     """A SMILES-generated structure has no source.file and no
