@@ -40,8 +40,23 @@
     Adding an id here means the JS can $() it on every consumer.
 -#}
 <section class="card selection-card" id="selection-card">
-  <header class="card-header">
-    <h2 class="card-title">Selection</h2>
+  {#- The page switch IS the card title -- tabs (§ 3b): SELECTION (atoms / filter /
+      assign) vs CELL (unit cell / vacuum / axis-kind + k-grid).  No separate title;
+      the active tab names the sub-panel.  JS toggles the page divs. -#}
+  <header class="card-header selection-header-tabs">
+    <fieldset class="panel-page-switch" aria-label="Panel page">
+      <label class="panel-page-option" title="Select + label atoms.">
+        <input type="radio" name="panel-page" value="selection"
+               id="panel-page-radio-selection" checked>
+        <span>Selection</span>
+      </label>
+      <label class="panel-page-option"
+             title="View the unit cell, vacuum, and k-grid.">
+        <input type="radio" name="panel-page" value="cell"
+               id="panel-page-radio-cell">
+        <span>Cell</span>
+      </label>
+    </fieldset>
     <div class="selection-status">
       <span id="selection-count" class="selection-count">no structure</span>
       <span id="selection-loading" class="selection-loading" hidden>
@@ -49,23 +64,6 @@
       </span>
     </div>
   </header>
-
-  {#- Page switch: this card hosts two pages -- SELECTION (atoms, filter, assign) and
-      CELL (periodicity: unit cell / vacuum / axis-kind + k-grid).  structure-
-      periodicity.md § 3b.  Radios give mutual-exclusion; JS toggles the page divs. -#}
-  <fieldset class="panel-page-switch" aria-label="Panel page">
-    <label class="panel-page-option" title="Select + label atoms.">
-      <input type="radio" name="panel-page" value="selection"
-             id="panel-page-radio-selection" checked>
-      <span>Selection</span>
-    </label>
-    <label class="panel-page-option"
-           title="View the unit cell, vacuum, and k-grid.">
-      <input type="radio" name="panel-page" value="cell"
-             id="panel-page-radio-cell">
-      <span>Cell</span>
-    </label>
-  </fieldset>
 
   <div id="panel-page-selection" class="panel-page">
 
@@ -272,9 +270,16 @@
       <dd><span id="cell-axis-value" class="cell-value">—</span></dd>
       <dt>Vacuum (Å)</dt>
       <dd><span id="cell-vacuum-value" class="cell-value">—</span></dd>
-      <dt>Unit cell (Å)</dt>
-      <dd><span id="cell-matrix-value" class="cell-value cell-matrix">—</span></dd>
     </dl>
+
+    {#- Unit cell as an aligned 3x3 matrix (JS fills nine right-aligned cells). -#}
+    <div class="cell-matrix-block">
+      <div class="cell-matrix-label">Unit cell (Å)
+        <span id="cell-matrix-tag" class="cell-tag"></span>
+      </div>
+      <div id="cell-matrix-value" class="cell-matrix-grid"
+           aria-label="unit cell as a 3 by 3 matrix">—</div>
+    </div>
 
     {#- k-grid display: tile the unit cell by the lattice to validate a periodic model
         (vacuum spacing, orientation, boundary match).  Enable + [nx,ny,nz] drive

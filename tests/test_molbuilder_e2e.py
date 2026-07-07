@@ -2164,10 +2164,12 @@ def test_cell_page_displays_periodicity(
     # A fresh molecule: everything is (default); vacuum 0/0/0, cell = resolved bbox.
     vac  = page.locator("#cell-vacuum-value").inner_text()
     axis = page.locator("#cell-axis-value").inner_text()
-    cell = page.locator("#cell-matrix-value").inner_text()
     assert "(default)" in vac and "[0, 0, 0]" in vac, f"vacuum readout: {vac!r}"
     assert "(default)" in axis and "isolated" in axis, f"axis readout: {axis!r}"
-    assert "(default)" in cell and "[" in cell, f"cell readout: {cell!r}"
+    # The unit cell renders as an aligned 3x3 matrix (9 cells) + a separate (default) tag.
+    assert page.locator("#cell-matrix-value .cell-matrix-cell").count() == 9, (
+        "unit cell should render as a 3x3 matrix (9 cells)")
+    assert page.locator("#cell-matrix-tag").inner_text() == "(default)"
     # The k-grid control now lives on the Cell page.
     assert page.locator(
         "#panel-page-cell #selection-kgrid-checkbox").count() == 1

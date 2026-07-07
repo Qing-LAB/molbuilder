@@ -133,6 +133,7 @@
             cellAxis:        $("cell-axis-value"),
             cellVacuum:      $("cell-vacuum-value"),
             cellMatrix:      $("cell-matrix-value"),
+            cellTag:         $("cell-matrix-tag"),
             // Measurement readout lives OUTSIDE the panel partial —
             // it's a chip overlay on the 3D viewer canvas (placed
             // in the page template, not the partial).  Page-wide
@@ -960,8 +961,20 @@
             }
             if (els.cellMatrix && ws.getUnitCellInfo) {
                 const c = ws.getUnitCellInfo();
-                els.cellMatrix.textContent =
-                    (c.value ? c.value.map(_fmtVec).join("  ") : "—") + _tag(c.isDefault);
+                _renderMatrix(els.cellMatrix, c.value);
+                if (els.cellTag) els.cellTag.textContent = c.isDefault ? "(default)" : "";
+            }
+        }
+        function _renderMatrix(el, m) {
+            el.textContent = "";
+            if (!m) { el.textContent = "—"; return; }
+            for (var r = 0; r < 3; r++) {
+                for (var col = 0; col < 3; col++) {
+                    var cell = document.createElement("span");
+                    cell.className = "cell-matrix-cell";
+                    cell.textContent = _round(m[r][col]).toFixed(3);
+                    el.appendChild(cell);
+                }
             }
         }
         function _switchPage(toCell) {

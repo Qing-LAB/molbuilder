@@ -740,16 +740,17 @@
 }
 
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
+.selection-header-tabs { align-items: center; }
 .panel-page-switch {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: inline-flex;      /* tabs at the title position, sized to content */
     gap: 0;
-    margin: 0 0 0.6rem;
+    margin: 0;
     padding: 2px;
     background: var(--ps-bg-deep);
     border: 1px solid var(--ps-border);
     border-radius: 4px;
 }
+.panel-page-option { min-width: 4.5rem; }
 .panel-page-option {
     display: flex;
     align-items: center;
@@ -793,4 +794,30 @@
     color: var(--ps-fg);
     font: 12px/1.4 ui-monospace, monospace;
     word-break: break-word;
+}
+
+/* Unit-cell 3x3 matrix -- aligned, right-justified tabular numbers (§3b). */
+.cell-matrix-block { margin: 0 0 0.6rem; }
+.cell-matrix-label {
+    color: var(--ps-fg-dim);
+    font: 600 11px/1.4 system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.25rem;
+}
+.cell-tag { text-transform: none; color: var(--ps-fg-dim); font-weight: 400; }
+.cell-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px 0.5rem;
+    padding: 0.35rem 0.5rem;
+    background: var(--ps-bg-deep);
+    border: 1px solid var(--ps-border);
+    border-radius: 4px;
+}
+.cell-matrix-cell {
+    text-align: right;
+    color: var(--ps-fg);
+    font: 12px/1.5 ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
 }
