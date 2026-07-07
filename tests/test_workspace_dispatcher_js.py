@@ -460,6 +460,42 @@ class TestReads:
         )
         assert out["ann"] == {"charge": {"dtype": "float", "values": [0.1, -0.1]}}
 
+    def test_periodicity_info_accessors_default_and_explicit(self):
+        """§3b Cell-page display accessors return { value, isDefault }: default ->
+        isDefault true + the resolved/literal-default value; explicit -> the set value."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz',\n"
+            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
+            "  periodicity:{cell:null, resolved_cell:[[3,0,0],[0,3,0],[0,0,3]],\n"
+            "    axis_kind:null, vacuum:[0,0,0], kgrid:[1,1,1]}},\n"
+            "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "const dflt = {cell: ws.getUnitCellInfo(), vac: ws.getVacuumInfo(),\n"
+            "  kg: ws.getKgridInfo(), ak: ws.getAxisKindInfo()};\n"
+            "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
+            "ws.setVacuum([1,2,3]); ws.setKgrid([2,2,1]);\n"
+            "ws.setAxisKind(['periodic','periodic','isolated']);\n"
+            "const expl = {cell: ws.getUnitCellInfo(), vac: ws.getVacuumInfo(),\n"
+            "  kg: ws.getKgridInfo(), ak: ws.getAxisKindInfo()};\n"
+            "console.log(JSON.stringify({dflt, expl}));"
+        )
+        d, e = out["dflt"], out["expl"]
+        # default -> isDefault true; cell value is the resolved bbox
+        assert d["cell"] == {"value": [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+                             "isDefault": True}
+        assert d["vac"] == {"value": [0, 0, 0], "isDefault": True}
+        assert d["kg"] == {"value": [1, 1, 1], "isDefault": True}
+        assert d["ak"] == {"value": ["isolated", "isolated", "isolated"],
+                           "isDefault": True}
+        # explicit -> isDefault false; the set value
+        assert e["cell"] == {"value": [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+                             "isDefault": False}
+        assert e["vac"] == {"value": [1, 2, 3], "isDefault": False}
+        assert e["kg"] == {"value": [2, 2, 1], "isDefault": False}
+        assert e["ak"] == {"value": ["periodic", "periodic", "isolated"],
+                           "isDefault": False}
+
     def test_scratch_blob_refuses_atom_count_desync(self):
         """Review c: geometry (canvas xyz) + labels (selection store) live in two
         stores; if their atom counts desync, getScratchBlob refuses to serialise a

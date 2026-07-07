@@ -230,6 +230,28 @@
         var per = _periodicityInternal();
         return (per && per.axis_kind) || null;
     }
+    // --- §3b display accessors: { value, isDefault } for the Cell page --------- //
+    // The Cell page shows "(default)" + the resolved value when a parameter was never
+    // set, else the explicit value.  `value` is always a usable number.
+    function getUnitCellInfo() {
+        var per = _periodicityInternal() || {};
+        var explicit = per.cell || null;
+        // Default -> the RESOLVED (bbox+vacuum) cell so a,b,c are still shown (§3a).
+        return { value: explicit || per.resolved_cell || null, isDefault: !explicit };
+    }
+    function getVacuumInfo() {
+        var v = getVacuum();
+        return { value: v, isDefault: (v[0] === 0 && v[1] === 0 && v[2] === 0) };
+    }
+    function getKgridInfo() {
+        var k = getKgrid();
+        return { value: k, isDefault: (k[0] === 1 && k[1] === 1 && k[2] === 1) };
+    }
+    function getAxisKindInfo() {
+        var per = _periodicityInternal() || {};
+        var ak = per.axis_kind || null;
+        return { value: ak || ["isolated", "isolated", "isolated"], isDefault: !ak };
+    }
     // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
     // a plain ``regions[label]`` read once D4 makes the internals columnar -- the
     // caller never sees the difference, which is the point of the accessor.)
@@ -1347,6 +1369,11 @@
         getAxisKind:           getAxisKind,
         getVacuum:             getVacuum,
         getKgrid:              getKgrid,
+        // §3b display accessors ({ value, isDefault }) for the Cell page:
+        getUnitCellInfo:       getUnitCellInfo,
+        getVacuumInfo:         getVacuumInfo,
+        getKgridInfo:          getKgridInfo,
+        getAxisKindInfo:       getAxisKindInfo,
         getAtomsByLabel:       getAtomsByLabel,
         getFrozen:             getFrozen,
         getRegions:            getRegions,
