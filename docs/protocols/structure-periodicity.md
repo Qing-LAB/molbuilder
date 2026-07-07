@@ -102,6 +102,35 @@ path a `transport` axis always takes.
 > mixed with a non-periodic direction is not separable per-axis; it must arrive
 > **explicit** (branch 1).
 
+## 3a. The "default" state — parameters resolve through the default API, never absent
+
+Every periodicity parameter has an explicit **default** initial state (a fresh /
+generated structure starts entirely in it).  A consumer must **translate the default
+through the canonical resolver**, NOT read the raw stored field and treat a missing
+value as "no box / no periodicity."  This is the contract that makes the k-grid
+display, the box render, and the fdf work on a blank molecule.
+
+| Parameter | Default initial state | Resolver (translates default → concrete) | Explicit override (resets the default) |
+|---|---|---|---|
+| **cell** (a, b, c) | `struct.cell is None` | `resolve_cell()` — per axis: `isolated → bbox[i] + vacuum[i]`, `transport → bbox[i]`, `periodic → commensurate lattice` (§ 3) | `ws.setUnitCell(3×3)` / import / capture → `struct.cell` wins verbatim |
+| **vacuum** | `(0, 0, 0)` | literal `0` per axis (feeds `resolve_cell`) | `ws.setVacuum([x,y,z])` — grows each isolated axis's box |
+| **axis_kind** (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` (§ 1) | `ws.setAxisKind([...])` — mark an axis `periodic` / `transport` |
+| **kgrid** | `(1, 1, 1)` (Γ) | literal Γ | `ws.setKgrid([...])` |
+
+**The load-bearing rule:** the cell SURFACED to the renderer / k-grid / store
+(`periodicity.cell`) is the **resolved** cell (`resolve_cell()`), NOT the raw
+`struct.cell`.  So a blank `isolated` molecule with `vacuum = 0` surfaces its
+**bounding box** (`max − min` per axis) — a box that wraps the atoms — and the k-grid
+tiles it immediately.  A consumer that reads the raw field and short-circuits on
+`cell == null` is the exact bug this section prevents: the k-grid "has no effect" on a
+new molecule because the render saw a null cell instead of resolving the default.
+
+**Why not eagerly store the computed box:** committing the bbox to `struct.cell` would
+masquerade as a user-chosen lattice and defeat the explicit-override escape hatch
+(§ 6).  The default stays **computed on read**; the moment the user calls
+`ws.setUnitCell` / `ws.setVacuum` / `ws.setAxisKind`, that explicit value replaces the
+default and persists (capture-at-construction, § 4).
+
 ## 4. Capture-at-construction (fix the electrode discard)
 
 `modify.py::add_electrode_slab` builds the slab with ASE's `fcc{100,110,111}` from
