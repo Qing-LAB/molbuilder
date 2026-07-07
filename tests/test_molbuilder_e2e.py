@@ -2162,45 +2162,15 @@ def test_cell_page_displays_periodicity(
     page.wait_for_function(
         "() => !document.getElementById('panel-page-cell').hidden")
     # A fresh molecule: everything is (default); vacuum 0/0/0, cell = resolved bbox.
-    # Fresh molecule: axis dropdowns default to isolated, vacuum inputs to 0.
-    for i in range(3):
-        assert page.locator(f"#cell-axis-{i}").input_value() == "isolated"
-        assert float(page.locator(f"#cell-vac-{i}").input_value() or "0") == 0.0
-    # The unit cell renders as an aligned 3x3 matrix (9 cells) + a separate (default) tag.
+    # MolView is display-only: axis + vacuum read out with "(default)" for a fresh
+    # molecule; the unit cell is an aligned 3x3 matrix (9 cells) + a separate tag.
+    vac  = page.locator("#cell-vacuum-value").inner_text()
+    axis = page.locator("#cell-axis-value").inner_text()
+    assert "(default)" in vac and "[0, 0, 0]" in vac, f"vacuum readout: {vac!r}"
+    assert "(default)" in axis and "isolated" in axis, f"axis readout: {axis!r}"
     assert page.locator("#cell-matrix-value .cell-matrix-cell").count() == 9, (
         "unit cell should render as a 3x3 matrix (9 cells)")
     assert page.locator("#cell-matrix-tag").inner_text() == "(default)"
-
-
-def test_cell_page_edit_vacuum_re_resolves(
-        page, flask_server, tmp_path, monkeypatch):
-    """Stage 3 (§3b): editing vacuum on the Cell page + Update commits it and
-    re-resolves the cell through the ONE server resolver -- the resolved 3x3 grows by
-    the vacuum on each axis."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water_xyz = tmp_path / "water.xyz"
-    water_xyz.write_text(_H2O_XYZ)
-    _open_modify(page, flask_server)
-    _load_file(page, str(water_xyz), expected_atoms=3)
-    _wait_panel_ready(page)
-    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
-    page.wait_for_function(
-        "() => !document.getElementById('panel-page-cell').hidden")
-    base = page.evaluate(
-        "() => window.molbuilder.workspace.getUnitCellInfo().value")
-    # Set vacuum = 2 Å on each axis, then Update.
-    for i in range(3):
-        page.locator(f"#cell-vac-{i}").fill("2")
-    page.locator("#cell-update-btn").click()
-    # After the server re-resolve, the resolved cell diagonal grew by 2 per axis.
-    page.wait_for_function(
-        """(base) => {
-            const c = window.molbuilder.workspace.getUnitCellInfo().value;
-            return c && Math.abs(c[0][0] - (base[0][0] + 2)) < 1e-6
-                     && Math.abs(c[1][1] - (base[1][1] + 2)) < 1e-6
-                     && Math.abs(c[2][2] - (base[2][2] + 2)) < 1e-6;
-        }""",
-        arg=base, timeout=5000)
     # The k-grid control now lives on the Cell page.
     assert page.locator(
         "#panel-page-cell #selection-kgrid-checkbox").count() == 1
