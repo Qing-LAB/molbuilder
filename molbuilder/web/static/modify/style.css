@@ -137,10 +137,10 @@ header .tagline {
     max-width: 560px;
     aspect-ratio: 1 / 1;
     min-height: 320px;
-    /* Shares the fused card's ONE height contract (fused-layout.css --molview-h) so the
-     * canvas cap and the card-body height can never drift apart.  Keeps the 560 perf
+    /* Height cap == the fused card's viewer-edge (fused-layout.css --viewer-edge) so the
+     * square canvas and the layout's square bound never drift apart.  Keeps the 560 perf
      * cap (see note above); do not lift without a perf budget. */
-    max-height: var(--molview-h, min(60vh, 560px));
+    max-height: var(--viewer-edge, min(60vh, 560px));
     margin: 0 auto;
 }
 /* Match the dark UI: 3Dmol renders into the inner canvas with a

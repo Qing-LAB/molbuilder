@@ -2079,10 +2079,10 @@ def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
 
 def test_fused_card_height_stable_across_fold(
         page, flask_server, tmp_path, monkeypatch):
-    """Aspect stability (fused-layout.css --molview-h): the card height is VIEWER-owned,
-    so retracting the selection panel changes only the WIDTH, not the height -- no
-    dramatic aspect swing."""
-    page.set_viewport_size({"width": 1280, "height": 900})
+    """Aspect stability: in SIDE-BY-SIDE (a wide card) retracting the selection panel is
+    WIDTH-only -- the panel collapses to zero width and the card height stays put (the
+    viewer is a fixed-size square, not height-driven)."""
+    page.set_viewport_size({"width": 1920, "height": 1000})
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water_xyz = tmp_path / "water.xyz"
     water_xyz.write_text(_H2O_XYZ)
@@ -2090,27 +2090,46 @@ def test_fused_card_height_stable_across_fold(
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
     body = page.locator(".molview-body")
-    viewer = page.locator(".molview-viewer")
-    # Precondition: at this width the card is SIDE-BY-SIDE (viewer beside panel), not
-    # stacked -- the row layout is where a fold is width-only.
-    assert viewer.bounding_box()["width"] < body.bounding_box()["width"] - 100, (
-        "expected side-by-side layout (viewer narrower than the body)")
+    panel = page.locator(".molview-panel")
+    # Precondition: a wide card -> side-by-side with a visible panel beside the viewer.
+    assert panel.bounding_box()["width"] > 200, (
+        "expected side-by-side layout with a visible panel")
     h_before = body.bounding_box()["height"]
-    w_viewer_before = viewer.bounding_box()["width"]
-    # Fold the panel; wait for the flex-basis transition (viewer widens) to settle.
+    # Fold the panel; it collapses to zero width (width-only), height unchanged.
     page.locator(".molview-fold-btn").click()
     page.wait_for_function(
         "() => document.querySelector('.molview-card').classList.contains('is-folded')")
     page.wait_for_function(
-        "(w0) => document.querySelector('.molview-viewer')"
-        ".getBoundingClientRect().width > w0 + 100",
-        arg=w_viewer_before, timeout=3000)
+        "() => document.querySelector('.molview-panel')"
+        ".getBoundingClientRect().width < 20", timeout=3000)
     h_after = body.bounding_box()["height"]
-    # Height barely moves (viewer-owned, fixed envelope); the viewer clearly widened.
     assert abs(h_after - h_before) < 12, (
         f"card height should stay stable across fold: {h_before} -> {h_after}")
-    assert viewer.bounding_box()["width"] > w_viewer_before + 100, (
-        "the viewer should widen when the panel folds")
+
+
+def test_fused_no_overflow_when_squeezed(
+        page, flask_server, tmp_path, monkeypatch):
+    """As the window is squeezed the card STACKS (viewer over panel) before the row could
+    overflow -- the viewer never crosses the card boundary (the '3D view floats over /
+    crosses the boundary' bug)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    for w in (1600, 1000, 760, 680, 640, 560, 460):
+        page.set_viewport_size({"width": w, "height": 900})
+        page.wait_for_timeout(150)   # let the container-query reflow settle
+        ovf = page.evaluate("""() => {
+            const card = document.querySelector('.molview-card').getBoundingClientRect();
+            const vw = document.querySelector('.molview-viewer').getBoundingClientRect();
+            const pn = document.querySelector('.molview-panel').getBoundingClientRect();
+            const R = Math.round;
+            return R(vw.right) > R(card.right) + 1 || R(pn.right) > R(card.right) + 1
+                || R(vw.left) < R(card.left) - 1;
+        }""")
+        assert not ovf, f"viewer/panel overflow the card at viewport {w}px"
 
 
 def test_fused_fold_no_overlap_when_narrow(
@@ -3476,7 +3495,12 @@ def test_focus_molecule_no_op_without_structure(page, flask_server):
     """Clicking Focus-molecule with no structure loaded must not
     raise a JS error.  The handler returns early."""
     errors = _open_modify(page, flask_server)
-    page.locator("#focus-molecule").click()
+    # With no structure the init-structure card is prominent, so the viewer controls sit
+    # below the fold -- scroll the button in before clicking (the controls are irrelevant
+    # until a structure loads).  This test only asserts the handler no-ops without error.
+    btn = page.locator("#focus-molecule")
+    btn.scroll_into_view_if_needed()
+    btn.click()
     page.wait_for_timeout(100)
     assert errors == [], f"JS error on focus-molecule no-op: {errors}"
 
@@ -5880,3 +5904,4 @@ def test_atom_index_display_is_1_based(page, flask_server, water_xyz_file):
     assert _get_selection(page) == [0, 1], (
         "by_index '1-2' (1-based) should select internal indices [0,1]; "
         f"got {_get_selection(page)}")
+

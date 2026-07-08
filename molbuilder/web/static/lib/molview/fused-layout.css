@@ -1,54 +1,62 @@
-/* Fused molview card: the viewer + the selection panel in ONE card, with a
- * foldable panel (molview-module.md, revised 2026-07-03).
+/* Fused molview card: the viewer (a fixed 1:1 SQUARE) + the selection/cell panel in ONE
+ * card, with a foldable panel (molview-module.md).
  *
- * The side (wide) <-> bottom (narrow) switch is driven by the CARD's own width
- * via a container query -- NOT the viewport -- so it is correct in any embed
- * context (full-width Modify or a small Results inspector card). */
+ * The model (simple, container-query driven -- correct in any embed width):
+ *   - VIEWER: a 1:1 square, bounded [--viewer-min, --viewer-edge].  It never stretches to
+ *     fill the card ("won't occupy the full width"); leftover width goes to the panel.
+ *   - PANEL: takes the leftover width, with its OWN --panel-min.
+ *   - WIDE: viewer | handle | panel, side by side.
+ *   - STACK (viewer on top): the moment the card can't hold --viewer-min + --panel-min
+ *     side by side (the container query below), so the viewer never overflows the card.
+ *   - FOLD: show/hide the panel -- width-only when wide, height-only when stacked. */
 
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
-    min-width: 320px;              /* readable-visibility floor for the whole card */
+    min-width: 340px;              /* whole-card floor (>= --viewer-min) */
 
-    /* ONE height contract for the whole fused card (§ aspect stability).  The VIEWER
-     * owns the card's height; the panel is a sidebar that fits inside it.  Referenced
-     * by the body height, the panel cap, AND the viewer-wrap cap (modify/style.css)
-     * so there is a single source of truth -- no magic-number duplication. */
-    --molview-h: min(60vh, 560px);
-    --molview-h-min: 480px;
+    /* ONE source of truth for the square's size + the stack threshold. */
+    --viewer-edge: min(60vh, 560px);   /* max square edge (== the viewer's max-height) */
+    --viewer-min: 320px;               /* min square width */
+    --panel-min:  320px;               /* min panel width */
 }
 
-/* WIDE (row) layout.  The body height is the VIEWER's envelope, NOT the tallest child
- * -- so retracting the panel changes only the WIDTH, never the height.  Without this
- * the panel's content height drove the card, and folding swung both axes (the "aspect
- * fluctuates a lot" report). */
+/* WIDE (row): viewer | handle | panel. */
 .molview-body {
     display: flex;
-    flex-direction: row;           /* WIDE: viewer | handle | panel, side by side */
-    align-items: stretch;
+    flex-direction: row;
+    align-items: flex-start;
     width: 100%;
-    height: var(--molview-h);
-    min-height: var(--molview-h-min);
 }
 
+/* Viewer: a 1:1 square (aspect-ratio lives on .viewer-wrap in the page CSS).  max-width
+ * caps it at --viewer-edge so it never fills the card; min-width is its floor.  The
+ * container query stacks BEFORE the slot can fall below --viewer-min, so it never
+ * overflows. */
 .molview-body > .molview-viewer {
     flex: 1 1 auto;
-    min-width: 0;                  /* let the viewer shrink; the 3Dmol canvas reflows */
+    min-width: var(--viewer-min);
+    max-width: var(--viewer-edge);
     position: relative;            /* anchors the measurement-chip overlay */
 }
 
+/* Panel: the leftover width, with its own min-width.  overflow-x hidden keeps the fold
+ * width-collapse clean; overflow-y auto scrolls a tall panel rather than forcing the card
+ * wider. */
 .molview-panel {
-    flex-grow: 0;
-    flex-shrink: 0;
-    flex-basis: 320px;
-    max-width: 45%;
-    /* A sidebar never dictates the card height: it fills the viewer-owned height and
-     * scrolls its own overflow.  overflow-x stays hidden so the fold width-collapse is
-     * clean; overflow-y scrolls a tall panel instead of stretching the card. */
+    /* A fixed-width column (grow:0) so the VIEWER grows to its max square first; the panel
+     * then keeps a stable width.  => once the card is wide enough for a full-size viewer,
+     * folding the panel is purely width (the viewer is already maxed, so it can't grow). */
+    flex: 0 1 var(--panel-min);
+    min-width: var(--panel-min);
+    /* Never taller than the viewer square (+ its controls row): a long panel SCROLLS
+     * rather than growing the card -- so unfolding never "adds height". */
+    max-height: calc(var(--viewer-edge) + 3.25rem);
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    /* smooth collapse instead of display:none */
-    transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+    transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.15s ease;
 }
 
 /* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
@@ -71,9 +79,9 @@
     transition: background 0.15s ease, color 0.15s ease;
 }
 /* The chevron GLYPH rotates -- NOT the button box.  Rotating the box would swap its
- * width/height in narrow (column) mode, turning a full-width bar into a tall rail
- * that overlaps the viewer + panel.  Keeping rotation on the glyph leaves the
- * button's layout box stable at every width. */
+ * width/height in narrow (column) mode, turning a full-width bar into a tall rail that
+ * overlaps the viewer + panel.  Keeping rotation on the glyph leaves the button's layout
+ * box stable at every width. */
 .molview-fold-chevron {
     display: inline-block;
     line-height: 1;
@@ -89,31 +97,30 @@
     outline-offset: -2px;
 }
 
-/* Folded: collapse the panel width smoothly + flip the chevron (glyph only). */
+/* Folded (wide): collapse the panel to zero width; the viewer stays put. */
 .molview-card.is-folded .molview-panel {
-    flex-basis: 0;
+    flex: 0 0 0;
+    min-width: 0;
     opacity: 0;
     pointer-events: none;
 }
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(180deg); }
 
-/* ---- NARROW: the CARD is below the breakpoint -> stack; panel to the BOTTOM.
-   The handle becomes a horizontal bar; fold collapses the panel HEIGHT.
-
-   Breakpoint 520px (was 640): at a normal desktop the workspace grid gives this card
-   ~610px, which was JUST under 640 -> it stacked, so folding swung the HEIGHT (the
-   dramatic aspect change).  520 keeps side-by-side down to a genuinely small card (a
-   Results inspector) while letting the Modify card stay side-by-side, where the fold is
-   width-only (stable height, --molview-h).  Below 520 the viewer would be too narrow to
-   sit beside a 45%-capped panel, so we stack. ---- */
-@container (max-width: 520px) {
-    /* NARROW: viewer + panel STACK, so the card height is naturally the sum -- drop the
-     * wide-mode fixed height and let the column grow (the panel keeps its own 45vh cap). */
-    .molview-body { flex-direction: column; height: auto; }
+/* ---- STACK: the card can't hold --viewer-min + handle + --panel-min side by side
+   (320 + 22 + 320 ~= 662).  Viewer on top (a centred square, never full-width), panel
+   below; the handle becomes a horizontal bar; fold collapses the panel HEIGHT. ---- */
+@container (max-width: 664px) {
+    .molview-body { flex-direction: column; align-items: center; }
+    .molview-body > .molview-viewer {
+        flex: 0 0 auto;
+        width: min(var(--viewer-edge), 100%);   /* centred square, capped at the card */
+        max-width: 100%;
+    }
     .molview-panel {
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
         max-width: none;
-        width: auto;
-        flex-basis: auto;
         max-height: 45vh;
         transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
@@ -124,6 +131,6 @@
     }
     /* chevron points DOWN toward the panel -- rotate the glyph, not the box. */
     .molview-fold-chevron { transform: rotate(90deg); }
-    .molview-card.is-folded .molview-panel { flex-basis: 0; max-height: 0; }
+    .molview-card.is-folded .molview-panel { max-height: 0; min-width: 0; }
     .molview-card.is-folded .molview-fold-chevron { transform: rotate(-90deg); }
 }
