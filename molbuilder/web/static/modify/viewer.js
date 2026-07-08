@@ -610,28 +610,16 @@
     //  applyStructure() and the UI updates atomically.                 //
     // --------------------------------------------------------------- //
     function currentStateBody() {
-        // Bundle the canonical state for an /api/modify/* request.  We
-        // ALWAYS send the full metadata bundle so the new structure
-        // returned by the server preserves it (xyz alone would lose
-        // atom_names / residue_ids -- per spec § 5).
-        const _s = _selStore();
-        const _atoms = _s ? (_s.getState().atoms || []) : [];
-        const frozen_atoms = [];
-        const regions = {};
-        for (let i = 0; i < _atoms.length; i++) {
-            const a = _atoms[i] || {};
-            // Store atoms are normalised to camelCase (isFrozen/labels) by
-            // _normaliseAtom -- reading snake_case (is_frozen/regions) here yielded
-            // ALWAYS-empty frozen/regions, and the server treats present-but-empty as
-            // "explicitly clear", so every modify op silently wiped frozen + labels
-            // (review data-loss #1).
-            if (a.isFrozen) frozen_atoms.push(i);
-            const labels = a.labels || [];
-            for (const label of labels) {
-                if (!regions[label]) regions[label] = [];
-                regions[label].push(i);
-            }
-        }
+        // Bundle the canonical state for an /api/modify/* request.  We ALWAYS send the
+        // full metadata bundle so the new structure returned by the server preserves it
+        // (xyz alone would lose atom_names / residue_ids -- per spec § 5).
+        //
+        // frozen_atoms + regions come from the SHARED accessors (D3) -- NOT a hand-scan
+        // here -- so the frozen/label gathering has ONE implementation (getFrozen /
+        // getRegions), which is also what save/draft serialisation uses.  The hand-scan
+        // this replaced is where the camelCase-vs-snake_case data-loss #1 bug lived; the
+        // accessors read the store's normalised atoms correctly by construction.
+        const ws = window.molbuilder && window.molbuilder.workspace;
         return {
             xyz:           state.xyz || "",
             atom_names:    state.atom_names,
@@ -639,8 +627,8 @@
             residue_names: state.residue_names,
             chain_ids:     state.chain_ids,
             title:         state.title,
-            frozen_atoms:  frozen_atoms,
-            regions:       regions,
+            frozen_atoms:  (ws && ws.getFrozen)  ? ws.getFrozen()  : [],
+            regions:       (ws && ws.getRegions) ? ws.getRegions() : {},
         };
     }
 
