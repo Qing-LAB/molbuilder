@@ -192,6 +192,10 @@ def test_sidecar_cell_reaches_viewer_and_kgrid_tiles(
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
 
+    # the shared view-controls bar (isolate / k-grid toggles) renders in THIS card too.
+    assert page.locator(f"{slot} .viewer-toggles .vc-isolate").count() == 1
+    assert page.locator(f"{slot} .viewer-toggles .vc-kgrid").count() == 1
+
     # the cell reached the viewer (box can draw)
     lat = page.evaluate(
         f"() => document.querySelector('{slot}').__molbuilder_test_handle.getLattice()"

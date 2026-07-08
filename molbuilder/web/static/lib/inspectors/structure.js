@@ -278,6 +278,22 @@
                         // the selection (replaces the retired chip pick hooks).
                         viewerSlot.__molbuilder_test_store = selStore;
 
+                        // View-controls bar (Show selected only / Show k-grid) in THIS
+                        // card's viewer, bound to its OWN ephemeral store -- same shared
+                        // module Modify uses (molview.mountViewControls).  Appended below
+                        // the canvas; state lives in the card's store, not a parallel one.
+                        if (selStore && typeof mvApi.mountViewControls === "function") {
+                            try {
+                                const ctrls = document.createElement("div");
+                                ctrls.className = "viewer-controls";
+                                const vcHost = document.createElement("span");
+                                vcHost.className = "viewer-toggles";
+                                ctrls.appendChild(vcHost);
+                                viewerSlot.appendChild(ctrls);
+                                mvApi.mountViewControls(vcHost, selStore);
+                            } catch (_) { /* no toggles -> panel still has them */ }
+                        }
+
                         // k-grid render: THE module controller (molview-module.md
                         // § 7) -- no inline loop here.  Capture the UNIT-CELL
                         // coords/elements/xyz ONCE (before any tiling; getAtomCoords
