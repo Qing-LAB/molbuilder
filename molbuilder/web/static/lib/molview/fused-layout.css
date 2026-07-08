@@ -8,13 +8,26 @@
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
     min-width: 320px;              /* readable-visibility floor for the whole card */
+
+    /* ONE height contract for the whole fused card (§ aspect stability).  The VIEWER
+     * owns the card's height; the panel is a sidebar that fits inside it.  Referenced
+     * by the body height, the panel cap, AND the viewer-wrap cap (modify/style.css)
+     * so there is a single source of truth -- no magic-number duplication. */
+    --molview-h: min(60vh, 560px);
+    --molview-h-min: 480px;
 }
 
+/* WIDE (row) layout.  The body height is the VIEWER's envelope, NOT the tallest child
+ * -- so retracting the panel changes only the WIDTH, never the height.  Without this
+ * the panel's content height drove the card, and folding swung both axes (the "aspect
+ * fluctuates a lot" report). */
 .molview-body {
     display: flex;
     flex-direction: row;           /* WIDE: viewer | handle | panel, side by side */
     align-items: stretch;
     width: 100%;
+    height: var(--molview-h);
+    min-height: var(--molview-h-min);
 }
 
 .molview-body > .molview-viewer {
@@ -28,7 +41,12 @@
     flex-shrink: 0;
     flex-basis: 320px;
     max-width: 45%;
-    overflow: hidden;
+    /* A sidebar never dictates the card height: it fills the viewer-owned height and
+     * scrolls its own overflow.  overflow-x stays hidden so the fold width-collapse is
+     * clean; overflow-y scrolls a tall panel instead of stretching the card. */
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     /* smooth collapse instead of display:none */
     transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
 }
@@ -80,9 +98,18 @@
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(180deg); }
 
 /* ---- NARROW: the CARD is below the breakpoint -> stack; panel to the BOTTOM.
-   The handle becomes a horizontal bar; fold collapses the panel HEIGHT. ---- */
-@container (max-width: 640px) {
-    .molview-body { flex-direction: column; }
+   The handle becomes a horizontal bar; fold collapses the panel HEIGHT.
+
+   Breakpoint 520px (was 640): at a normal desktop the workspace grid gives this card
+   ~610px, which was JUST under 640 -> it stacked, so folding swung the HEIGHT (the
+   dramatic aspect change).  520 keeps side-by-side down to a genuinely small card (a
+   Results inspector) while letting the Modify card stay side-by-side, where the fold is
+   width-only (stable height, --molview-h).  Below 520 the viewer would be too narrow to
+   sit beside a 45%-capped panel, so we stack. ---- */
+@container (max-width: 520px) {
+    /* NARROW: viewer + panel STACK, so the card height is naturally the sum -- drop the
+     * wide-mode fixed height and let the column grow (the panel keeps its own 45vh cap). */
+    .molview-body { flex-direction: column; height: auto; }
     .molview-panel {
         max-width: none;
         width: auto;

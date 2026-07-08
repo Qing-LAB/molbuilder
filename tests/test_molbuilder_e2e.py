@@ -2077,13 +2077,51 @@ def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
     assert overflow is False, "fused layout must not cause horizontal overflow"
 
 
+def test_fused_card_height_stable_across_fold(
+        page, flask_server, tmp_path, monkeypatch):
+    """Aspect stability (fused-layout.css --molview-h): the card height is VIEWER-owned,
+    so retracting the selection panel changes only the WIDTH, not the height -- no
+    dramatic aspect swing."""
+    page.set_viewport_size({"width": 1280, "height": 900})
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    body = page.locator(".molview-body")
+    viewer = page.locator(".molview-viewer")
+    # Precondition: at this width the card is SIDE-BY-SIDE (viewer beside panel), not
+    # stacked -- the row layout is where a fold is width-only.
+    assert viewer.bounding_box()["width"] < body.bounding_box()["width"] - 100, (
+        "expected side-by-side layout (viewer narrower than the body)")
+    h_before = body.bounding_box()["height"]
+    w_viewer_before = viewer.bounding_box()["width"]
+    # Fold the panel; wait for the flex-basis transition (viewer widens) to settle.
+    page.locator(".molview-fold-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molview-card').classList.contains('is-folded')")
+    page.wait_for_function(
+        "(w0) => document.querySelector('.molview-viewer')"
+        ".getBoundingClientRect().width > w0 + 100",
+        arg=w_viewer_before, timeout=3000)
+    h_after = body.bounding_box()["height"]
+    # Height barely moves (viewer-owned, fixed envelope); the viewer clearly widened.
+    assert abs(h_after - h_before) < 12, (
+        f"card height should stay stable across fold: {h_before} -> {h_after}")
+    assert viewer.bounding_box()["width"] > w_viewer_before + 100, (
+        "the viewer should widen when the panel folds")
+
+
 def test_fused_fold_no_overlap_when_narrow(
         page, flask_server, tmp_path, monkeypatch):
     """Framework fix (fused-layout.css): in NARROW/column mode the fold handle is a
     horizontal BAR that rotates only the chevron GLYPH -- the button box does NOT
     rotate into a tall rail overlapping the panel (the bug that made the panel's
     Add-filter button unclickable)."""
-    page.set_viewport_size({"width": 600, "height": 900})
+    # 460px viewport -> the fused card's content-box is below the 520px @container
+    # breakpoint, so it stacks (column mode) -- the case this test guards.
+    page.set_viewport_size({"width": 460, "height": 900})
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water_xyz = tmp_path / "water.xyz"
     water_xyz.write_text(_H2O_XYZ)
