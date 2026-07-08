@@ -78,20 +78,26 @@
     // host uses THIS -- no host hand-writes the loop.
     //
     //   handle : the viewer handle (setStructure)
-    //   store  : the selection store (kgrid / isolate / selection)
+    //   store  : the selection store -- supplies the k-grid ENABLE toggle
+    //            (view.kgrid.enabled, a view preference) + selection/isolate.
     //   opts.getUnit() -> { coords:[[x,y,z]...], elements:[...], xyz:"<unit xyz>" }
     //            the CURRENT unit-cell structure (host-owned; captured BEFORE any
     //            tiling so it never reads back a supercell from the handle).
-    //   opts.getCell() -> 3x3 lattice | null  (host supplies the cell, § 8; e.g.
-    //            ws.getStructure().periodicity.cell on Modify, or opts.lattice).
-    // Returns { refresh, dispose }.  Call refresh() after a base render / structure
-    // change; call dispose() to unsubscribe.
+    //   opts.getCell() -> 3x3 lattice | null  (host supplies the cell, § 8).
+    //   opts.getKgridDims() -> [nx,ny,nz]  the k-grid DIMS.  UNIFIED (§ 3b): this is the
+    //            structure's `periodicity.kgrid` -- the SAME value the DFT sampling uses --
+    //            NOT a separate view count.  Omit -> fall back to view.kgrid.dims
+    //            (back-compat for a host not yet unified).
+    // Returns { refresh, dispose }.  Call refresh() after a base render / structure /
+    // periodicity change; call dispose() to unsubscribe.
     function mountKgridRender(handle, store, opts) {
         opts = opts || {};
         const getUnit = typeof opts.getUnit === "function"
             ? opts.getUnit : function () { return null; };
         const getCell = typeof opts.getCell === "function"
             ? opts.getCell : function () { return null; };
+        const getKgridDims = typeof opts.getKgridDims === "function"
+            ? opts.getKgridDims : null;
         let active = false;
         let disposed = false;
 
@@ -99,11 +105,17 @@
             if (disposed) return;
             const unit = getUnit();
             if (!unit || !Array.isArray(unit.coords)) return;
-            const view = store.getState();
-            const kg = (view && view.kgrid) || {};
+            const view = store.getState() || {};
+            const kg = view.kgrid || {};
+            // ENABLE = the store view toggle; DIMS = periodicity.kgrid (the ONE value)
+            // when the host supplies getKgridDims, else the store's dims (back-compat).
+            const dims = getKgridDims ? getKgridDims() : (kg.dims || [1, 1, 1]);
             const cell = getCell();
             if (kg.enabled && cell) {
-                const out = computeRender(unit.coords, view, cell);
+                const effView = Object.assign({}, view, {
+                    kgrid: { enabled: true, dims: dims },
+                });
+                const out = computeRender(unit.coords, effView, cell);
                 handle.setStructure({
                     xyz: _buildXyz(unit.elements, out.positions, out.sourceIndex),
                     lattice: cell,

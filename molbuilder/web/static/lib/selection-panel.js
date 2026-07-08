@@ -902,41 +902,30 @@
             try { _isolateUnsubscribe(); } catch (_) { /* ignore */ }
         });
 
-        // k-grid display control (§ 6.3): the enable checkbox + [nx,ny,nz]
-        // inputs drive store.setKgrid; the subscription reflects state.kgrid
-        // back.  A VIEW control -- stays available in readonly (unlike assign),
-        // since validating a periodic model matters on the Results inspectors.
+        // k-grid display control (§3b, UNIFIED): the enable CHECKBOX is a VIEW toggle
+        // (store.setKgrid{enabled} -> the render tiles); the [nx,ny,nz] are a READ-ONLY
+        // mirror of the structure's `periodicity.kgrid` -- the ONE value, the SAME the DFT
+        // sampling uses, set via the Modify Cell op-tab / DFT setup, never here (MolView is
+        // display-only).  A VIEW control -- stays available in readonly.
         const _kgChk = $("selection-kgrid-checkbox");
         const _kgNx  = $("selection-kgrid-nx");
         const _kgNy  = $("selection-kgrid-ny");
         const _kgNz  = $("selection-kgrid-nz");
-        function _kgDim(el) {
-            const v = Math.floor(Number(el && el.value));
-            return (isFinite(v) && v >= 1) ? v : 1;
-        }
-        function _pushKgridDims() {
-            store.setKgrid({ dims: [_kgDim(_kgNx), _kgDim(_kgNy), _kgDim(_kgNz)] });
-        }
+        [_kgNx, _kgNy, _kgNz].forEach((el) => { if (el) el.readOnly = true; });
         on(_kgChk, "change", (e) => store.setKgrid({ enabled: !!e.target.checked }));
-        on(_kgNx, "change", _pushKgridDims);
-        on(_kgNy, "change", _pushKgridDims);
-        on(_kgNz, "change", _pushKgridDims);
         const _kgridUnsub = store.subscribe((s) => {
-            const kg = s.kgrid || { enabled: false, dims: [1, 1, 1], source: "free" };
-            const d  = kg.dims || [1, 1, 1];
-            if (_kgChk) _kgChk.checked = !!kg.enabled;
-            // Fixed mode (dims from a .fdf) -> the [nx,ny,nz] inputs are
-            // read-only; only the enable toggle works.  Free mode -> editable.
-            const fixed = kg.source === "fixed";
-            [_kgNx, _kgNy, _kgNz].forEach((el) => { if (el) el.disabled = fixed; });
-            // Don't clobber an input the user is actively editing.
-            const _set = (el, val) => {
-                if (el && document.activeElement !== el) el.value = String(val);
-            };
-            _set(_kgNx, d[0]); _set(_kgNy, d[1]); _set(_kgNz, d[2]);
-            renderCell();   // §3b: refresh the Cell readout on any store change
+            if (_kgChk) _kgChk.checked = !!(s.kgrid && s.kgrid.enabled);
+            renderCell();   // §3b: refresh the Cell readout (dims come from periodicity)
         });
         cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
+        // Live-refresh the Cell display on PERIODICITY changes (kgrid dims / cell / vacuum)
+        // too -- ws.subscribe fires on canvas changes; store.subscribe alone misses them
+        // (e.g. the Modify Cell op-tab's Update k-grid).
+        const _wsw = root.molbuilder && root.molbuilder.workspace;
+        if (_wsw && typeof _wsw.subscribe === "function") {
+            const _wsUnsub = _wsw.subscribe(function () { renderCell(); });
+            cleanups.push(() => { try { _wsUnsub(); } catch (_) { /* ignore */ } });
+        }
 
         // --- Cell page (structure-periodicity.md § 3b): page switch + read-only
         // periodicity readout.  Reads ONLY the molview accessors (getUnitCellInfo /
@@ -966,6 +955,13 @@
                 const c = ws.getUnitCellInfo();
                 _renderMatrix(els.cellMatrix, c.value);
                 if (els.cellTag) els.cellTag.textContent = c.isDefault ? "(default)" : "";
+            }
+            // k-grid dims: read-only mirror of periodicity.kgrid (the ONE value, §3b).
+            if (ws.getKgridInfo) {
+                const kd = ws.getKgridInfo().value || [1, 1, 1];
+                if (_kgNx) _kgNx.value = String(kd[0]);
+                if (_kgNy) _kgNy.value = String(kd[1]);
+                if (_kgNz) _kgNz.value = String(kd[2]);
             }
         }
         function _renderMatrix(el, m) {

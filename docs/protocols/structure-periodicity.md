@@ -173,6 +173,14 @@ when set via the API (the Modify k-grid Update, or the DFT-calculation setup), a
 one value is both displayed and used by the render/tiling step.  There is no separate
 view-only tiling count.
 
+**Implemented** (2026-07-08): the render controller `mountKgridRender`
+(`lib/molview/render-pipeline.js`) takes the tiling DIMS from `opts.getKgridDims()` =
+`ws.getKgrid()` = `periodicity.kgrid`; the ENABLE toggle stays a view state on the
+selection store.  The MolView Cell page's `[nx,ny,nz]` are a **read-only mirror** of
+`periodicity.kgrid`; the value is set in the Modify Cell op-tab (`ws.setKgrid`).  The
+viewer re-tiles on a periodicity change (viewer.js subscribes `ws.subscribe →
+_kgCtl.refresh()`).
+
 ## 4. Capture-at-construction (fix the electrode discard)
 
 `modify.py::add_electrode_slab` builds the slab with ASE's `fcc{100,110,111}` from

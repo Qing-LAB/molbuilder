@@ -122,7 +122,21 @@
                          xyz:      state.xyz };
             },
             getCell: _cellFromStore,
+            // UNIFIED k-grid (§3b): the tiling dims ARE periodicity.kgrid (the DFT value),
+            // not a separate view count.  The store still owns the enable TOGGLE.
+            getKgridDims: function () {
+                const ws = window.molbuilder && window.molbuilder.workspace;
+                return (ws && typeof ws.getKgrid === "function" && ws.getKgrid())
+                    || [1, 1, 1];
+            },
         });
+        // Re-tile when periodicity changes (kgrid dims / cell) -- e.g. the Modify Cell
+        // op-tab's Update k-grid.  ws.subscribe fires on canvas changes; atom ops already
+        // refresh via applyStructure, so a redundant same-tick refresh there is harmless.
+        const wsApi = window.molbuilder && window.molbuilder.workspace;
+        if (wsApi && typeof wsApi.subscribe === "function") {
+            wsApi.subscribe(function () { if (_kgCtl) _kgCtl.refresh(); });
+        }
     }
 
     // --------------------------------------------------------------- //
