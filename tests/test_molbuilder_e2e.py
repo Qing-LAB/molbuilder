@@ -2015,13 +2015,14 @@ def test_kgrid_tiles_in_modify(page, flask_server, tmp_path, monkeypatch):
     base = page.evaluate(
         "() => window.__molbuilder_modify_test.getViewer().selectedAtoms({}).length")
     assert base == 3, f"expected 3 base atoms, got {base}"
-    # Set a cell (tiling needs lattice vectors) + enable a 2×1×1 k-grid.  The cell
-    # rides on the canvas periodicity (read by the controller's getCell); the k-grid
-    # enable rides on the selection store (the controller subscribes to it).
+    # Set a cell (tiling needs lattice vectors) + a 2×1×1 k-grid.  UNIFIED (§3b): the
+    # DIMS are periodicity.kgrid (ws.setKgrid -- the same value the DFT sampling uses),
+    # NOT a separate view count; only the enable TOGGLE rides on the selection store.
     page.evaluate("""() => {
         const ws = window.molbuilder.workspace;
         ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);
-        ws.selection.setKgrid({ enabled: true, dims: [2,1,1] });
+        ws.setKgrid([2,1,1]);                      // periodicity.kgrid -- the ONE dims
+        ws.selection.setKgrid({ enabled: true });  // the view toggle
     }""")
     # The controller re-tiles on the store change → viewer model = 3 × 2 = 6 atoms.
     page.wait_for_function(
@@ -2217,13 +2218,55 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
     page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
     page.wait_for_function(
         "() => !document.getElementById('panel-page-cell').hidden")
-    # Enable a 2×1×1 k-grid via the UI — the user sets NO cell.
-    page.locator("#selection-kgrid-nx").fill("2")
+    # Set the k-grid dims to 2×1×1 (periodicity.kgrid -- the ONE value; the MolView
+    # inputs are a READ-ONLY mirror), then enable the tiling toggle.  User sets NO cell.
+    page.evaluate("() => window.molbuilder.workspace.setKgrid([2,1,1])")
+    # The read-only MolView input mirrors periodicity.kgrid.
+    page.wait_for_function(
+        "() => document.getElementById('selection-kgrid-nx').value === '2'")
+    assert page.locator("#selection-kgrid-nx").get_attribute("readonly") is not None, (
+        "MolView k-grid dims must be read-only (set via Modify, not here)")
     page.locator("#selection-kgrid-checkbox").check()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getViewer()"
         "        .selectedAtoms({}).length === 6",
         timeout=5000)
+
+
+def test_kgrid_unified_modify_drives_tiling_and_display(
+        page, flask_server, tmp_path, monkeypatch):
+    """k-grid unification (§3b): ONE value (periodicity.kgrid).  Editing it in the Modify
+    Cell op-tab drives BOTH the viewer tiling AND the MolView k-grid display -- there is no
+    separate view-only count."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # A cell + the tiling toggle ON (dims still default 1×1×1 -> no visible tiling yet).
+    page.evaluate("""() => {
+        const ws = window.molbuilder.workspace;
+        ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);
+        ws.selection.setKgrid({ enabled: true });
+    }""")
+    # Set the k-grid in the MODIFY Cell op-tab -> Update k-grid.
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_function(
+        "() => document.getElementById('optab-panel-cell').classList.contains('is-active')")
+    page.locator("#pv-kg-a").fill("3")
+    page.locator("#pv-kg-b").fill("1")
+    page.locator("#pv-kg-c").fill("1")
+    page.locator("#pv-kg-update").click()
+    # The viewer re-tiles from periodicity.kgrid -> 3 atoms × 3 = 9.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getViewer()"
+        "        .selectedAtoms({}).length === 9",
+        timeout=5000)
+    # ...and the MolView k-grid display mirrors the SAME value.
+    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.wait_for_function(
+        "() => document.getElementById('selection-kgrid-nx').value === '3'")
 
 
 def test_modify_cell_tab_vacuum_editor(
