@@ -79,11 +79,6 @@
         const s = _selStore();
         return s ? s.getState().indices.slice() : [];
     }
-    function clearStoreSelection() {
-        const s = _selStore();
-        if (s) s.clear();
-    }
-
     // The cell comes from the workspace data model (ws.getStructure().periodicity)
     // -- the single source.  One accessor, used for the base render's wireframe AND
     // by the module k-grid controller (getCell).  No hand-read of a load response.
@@ -1321,11 +1316,8 @@
         // standard knob bar owns those controls now.  The bespoke
         // #rep / #show-indices / #show-axes HTML inputs are gone from
         // modify.html.
-        $("clear-selection").addEventListener("click", () => {
-            // Delegate to the selection store; its subscriber will
-            // re-run refreshSelectionUI automatically.
-            clearStoreSelection();
-        });
+        // (The old viewer-bar "Clear selection" button was removed -- it duplicated the
+        // selection panel's own Clear.  Clearing is the panel's job.)
         const undoBtn = $("undo-op");
         if (undoBtn) undoBtn.addEventListener("click", applyUndo);
 

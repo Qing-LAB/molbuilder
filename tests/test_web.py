@@ -830,7 +830,6 @@ def test_molbuilder_page_loads(web_client):
         # knob bar, not in the page template.
         'id="viewer"',
         'id="selection-host"',
-        'id="clear-selection"',
         # All five edit ops are wired by the JS.
         'id="delete-apply"',
         'id="add-apply"',
