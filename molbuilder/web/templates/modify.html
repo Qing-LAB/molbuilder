@@ -801,6 +801,8 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_atom-index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
+{# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
+<script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface

@@ -1201,19 +1201,10 @@
     }
 
     function _persistToSession() {
-        if (!root.sessionStorage) return;
-        try {
-            root.sessionStorage.setItem(
-                STORAGE_KEY, JSON.stringify(_serialise()));
-        } catch (e) {
-            // Quota exceeded or storage disabled.  Same handling
-            // as canvas-state.js / modify-state — log + skip.
-            if (root.console && root.console.warn) {
-                root.console.warn(
-                    "workspace dispatcher: could not persist:",
-                    e && e.message);
-            }
-        }
+        // The shared snapshot IO (snapshot-io.js) owns the sessionStorage write -- the
+        // SAME module canvas-state reads on reload, so there is one key + one format.
+        var io = root.molbuilder && root.molbuilder.workspaceSnapshot;
+        if (io && typeof io.write === "function") io.write(_serialise());
     }
 
     // The working-copy scratch blob {xyz, sidecar} -- the codec shape
@@ -1354,18 +1345,10 @@
      * can read it during the migration window.
      */
     function readPersistedSnapshot() {
-        if (!root.sessionStorage) return null;
-        var raw;
-        try { raw = root.sessionStorage.getItem(STORAGE_KEY); }
-        catch (_) { return null; }
-        if (!raw) return null;
-        try {
-            var parsed = JSON.parse(raw);
-            if (!parsed || parsed.v !== 1) return null;
-            return parsed;
-        } catch (_) {
-            return null;
-        }
+        // Delegates to the shared snapshot IO (snapshot-io.js) -- the ONE owner of the
+        // sessionStorage read, shared with canvas-state's reload restore.
+        var io = root.molbuilder && root.molbuilder.workspaceSnapshot;
+        return (io && typeof io.read === "function") ? io.read() : null;
     }
 
     /**

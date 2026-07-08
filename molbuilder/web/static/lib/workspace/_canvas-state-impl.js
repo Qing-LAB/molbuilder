@@ -128,29 +128,27 @@
     var _subscribers = [];
 
     function _restoreFromSession() {
-        // Read the workspace dispatcher's unified snapshot under
-        // ``molbuilder.workspace.v1`` (workspace-contract.md §4.1 —
-        // the sole persistence key).  Empty state when the dispatcher
-        // hasn't persisted anything yet.
-        var fromDispatcher = _restoreFromDispatcherSnapshot();
-        _state = fromDispatcher || _emptyState();
+        // Restore from the unified snapshot under ``molbuilder.workspace.v1``
+        // (workspace-contract.md §4.1 — the sole persistence key), read via the shared
+        // snapshot IO.  Empty state when nothing has been persisted yet.
+        var restored = _restoreFromSnapshot();
+        _state = restored || _emptyState();
     }
 
     /**
-     * Map the dispatcher's canonical snapshot
-     * (``ws.readPersistedSnapshot()``) into this module's internal
-     * state shape.  Returns null when the snapshot is absent or
-     * doesn't carry a structure.  Lazy resolution: dispatcher.js
-     * loads after canvas-state.js, but _ensureInit runs on first
-     * read (post-DOMContentLoaded), by which point dispatcher's
-     * mount has run.
+     * Map the persisted snapshot (read from the shared snapshot-io.js) into this module's
+     * internal state shape.  Returns null when the snapshot is absent or carries no
+     * structure.  Reads sessionStorage DIRECTLY (not through the dispatcher), so it does
+     * not depend on the dispatcher having mounted -- an honest, deterministic reload.
      */
-    function _restoreFromDispatcherSnapshot() {
-        var ws = root.molbuilder && root.molbuilder.workspace;
-        if (!ws || typeof ws.readPersistedSnapshot !== "function") {
-            return null;
-        }
-        var snap = ws.readPersistedSnapshot();
+    function _restoreFromSnapshot() {
+        // Read the persisted snapshot DIRECTLY from the shared IO (snapshot-io.js) -- NOT
+        // "up" through the dispatcher.  sessionStorage is always available and needs no
+        // module mounted, so the reload restore is deterministic: it no longer silently
+        // drops your unsaved edits when a canvas read runs before the dispatcher has
+        // mounted (an honest reload).
+        var io = root.molbuilder && root.molbuilder.workspaceSnapshot;
+        var snap = (io && typeof io.read === "function") ? io.read() : null;
         if (!snap || !snap.state) return null;
         var st = snap.state;
         var struct = st.structure;

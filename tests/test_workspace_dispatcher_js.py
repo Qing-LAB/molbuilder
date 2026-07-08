@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
 STORE_PATH      = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
 CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl.js"
+SNAPSHOT_IO_PATH = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -60,6 +61,8 @@ def _run_node(snippet: str) -> object:
         pytest.skip("node not available")
 
     bootstrap = (
+        # Shared snapshot IO -- loads first (canvas + dispatcher both read/write through it).
+        "require(" + json.dumps(str(SNAPSHOT_IO_PATH)) + ");\n"
         "window.molbuilder.structureCanvas = require("
         + json.dumps(str(CANVAS_PATH)) + ");\n"
         "require(" + json.dumps(str(STORE_PATH))      + ");\n"
