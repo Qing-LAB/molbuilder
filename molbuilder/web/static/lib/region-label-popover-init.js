@@ -28,10 +28,12 @@
         defs.init(function () {
             try {
                 var ws = ns && ns.workspace;
-                var s = (ws && typeof ws.getStructure === "function")
-                    ? ws.getStructure() : null;
-                var regions = (s && s.regions) || {};
-                return new Set(Object.keys(regions));
+                // Use the dedicated accessor: getStructure() carries no `regions` field
+                // (its `s.regions` was always undefined -> the popover always showed "no
+                // labels").  getRegions() is the single per-atom-label gatherer.
+                var regions = (ws && typeof ws.getRegions === "function")
+                    ? ws.getRegions() : {};
+                return new Set(Object.keys(regions || {}));
             } catch (_err) {
                 // Workspace not yet up, or getStructure threw —
                 // popover degrades to "no labels present" which is

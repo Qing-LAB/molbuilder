@@ -102,6 +102,26 @@
         };
     }
 
+    // Deep copy for the READ boundary (§1.2.1 concealment).  getStructure() hands callers
+    // a periodicity they CANNOT use to mutate _state in place -- matrices copied row-wise,
+    // flat arrays sliced.  Without this every `ws.getUnitCellInfo().value` / `.periodicity`
+    // was a live reference into the store (the "defensive copies" the header promises).
+    function _clonePeriodicity(p) {
+        if (!p) return null;
+        var mat = function (m) {
+            return Array.isArray(m)
+                ? m.map(function (r) { return Array.isArray(r) ? r.slice() : r; })
+                : null;
+        };
+        return {
+            cell:          mat(p.cell),
+            resolved_cell: mat(p.resolved_cell),
+            axis_kind:     Array.isArray(p.axis_kind) ? p.axis_kind.slice() : null,
+            vacuum:        Array.isArray(p.vacuum) ? p.vacuum.slice() : null,
+            kgrid:         Array.isArray(p.kgrid) ? p.kgrid.slice() : null,
+        };
+    }
+
     // Private state.  Initialised by ``_restoreFromSession`` on first
     // public-API call; further mutations go through the setters below.
     var _state = null;
@@ -325,7 +345,7 @@
         return {
             source_format: _state.source_format,
             text:          _state.text,
-            periodicity:   _state.periodicity || null,
+            periodicity:   _clonePeriodicity(_state.periodicity),   // defensive copy
             annotations:   _state.annotations || null,   // F1: opaque carry
         };
     }

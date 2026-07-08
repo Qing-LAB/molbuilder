@@ -5,16 +5,22 @@
  * truth for the read/write API — §1 architecture, §2 reads, §3
  * writes, §4 persistence, §5 selection, §6 view, §7 wire shape).
  * docs/protocols/workspace-state.md is the historical audit + the
- * design rationale.  Public surface, current as of 2026-06-09:
+ * design rationale.  Public surface (indicative -- the `api` object at the
+ * END of this file is authoritative; keep that in sync, not this list):
  *
  *   window.molbuilder.workspace.{
  *     // Reads + subscription
  *     subscribe, getState, getStructure, getSource, getSelection,
- *     isDirty, isEmpty,
+ *     getRegions, getFrozen, getElements, getCoordinates, isDirty, isEmpty,
+ *     // Periodicity (structure-periodicity.md): raw reads, {value,isDefault}
+ *     // display accessors, setters, + the server-resolved commit
+ *     getUnitCell, getVacuum, getKgrid, getAxisKind,
+ *     getUnitCellInfo, getVacuumInfo, getKgridInfo, getAxisKindInfo,
+ *     setUnitCell, setVacuum, setKgrid, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
  *     loadFromFile, generate, applyOp, save, discard, undo,
- *     // Internal pipeline exposed for the modify-tab loader
- *     applyPayload,
+ *     // Serialisation / pipeline for the modify-tab loader
+ *     getScratchBlob, applyPayload,
  *     // Persistence
  *     readPersistedSnapshot, STORAGE_KEY,
  *     // Sub-namespaces
@@ -208,6 +214,9 @@
     function getCoordinates() {
         return _atomsInternal().map(function (a) { return [a.x, a.y, a.z]; });
     }
+    // RAW explicit cell -- null when unset.  Used by the render's base wireframe (draw a
+    // box only for a REAL cell).  For DISPLAY / k-grid tiling use getUnitCellInfo().value,
+    // which falls back to the server-resolved bbox.  The two INTENTIONALLY differ.
     function getUnitCell() {
         var per = _periodicityInternal();
         return (per && per.cell) || null;
@@ -231,8 +240,17 @@
         return (per && per.axis_kind) || null;
     }
     // --- §3b display accessors: { value, isDefault } for the Cell page --------- //
-    // The Cell page shows "(default)" + the resolved value when a parameter was never
-    // set, else the explicit value.  `value` is always a usable number.
+    // ONE contract across all four: `isDefault` = the parameter is in its DEFAULT state
+    // (no meaningful user override); `value` is what to DISPLAY either way.  The default
+    // STATE differs per parameter because each default differs:
+    //   cell      -> no explicit cell   (value = server-resolved bbox; may be null pre-
+    //                                     first-resolve, so cell `value` alone can be null)
+    //   vacuum    -> [0,0,0]            (no padding)
+    //   kgrid     -> [1,1,1]            (Gamma point)
+    //   axis_kind -> every axis isolated (the vacuum box)
+    // Value-based defaults (vacuum/kgrid/axis_kind) can't tell "user set the default
+    // value" from "never set" -- intentional: the tag reflects the DISPLAYED value being
+    // the default, not its provenance.
     function getUnitCellInfo() {
         var per = _periodicityInternal() || {};
         // ONE resolver: the SERVER (struct.resolve_cell §3a) computes the effective
