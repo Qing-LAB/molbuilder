@@ -360,6 +360,10 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
                 role="tab" type="button"
                 id="optab-btn-junction" aria-controls="optab-panel-junction"
                 aria-selected="false">4. Junction</button>
+        <button class="optab" data-op-tab="cell"
+                role="tab" type="button"
+                id="optab-btn-cell" aria-controls="optab-panel-cell"
+                aria-selected="false">5. Cell</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->
@@ -675,6 +679,67 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
       </fieldset>
 
       </div><!-- /.optab-panel data-op-panel="junction" -->
+
+      <!-- Cell: per-GROUP periodicity editors (structure-periodicity.md § 3b).  MolView
+           only DISPLAYS periodicity; the actual edits live here, one Update per group so
+           each (vacuum / pbc / unit cell / k-grid) can independently stay default or be
+           committed.  Wired by modify/periodicity.js via ws.commitPeriodicity /
+           ws.setKgrid (the server re-resolves the effective cell). -->
+      <div class="optab-panel" data-op-panel="cell" role="tabpanel"
+           id="optab-panel-cell" aria-labelledby="optab-btn-cell">
+
+        <p class="op-hint" id="pv-empty-hint">Load a structure to edit its cell.</p>
+
+        <fieldset class="op-block">
+          <legend>Vacuum (Å) <span id="pv-vac-tag" class="pv-tag"></span></legend>
+          <div class="op-row pv-triple">
+            <input type="number" id="pv-vac-a" class="pv-num" step="0.5" min="0"
+                   aria-label="vacuum a">
+            <input type="number" id="pv-vac-b" class="pv-num" step="0.5" min="0"
+                   aria-label="vacuum b">
+            <input type="number" id="pv-vac-c" class="pv-num" step="0.5" min="0"
+                   aria-label="vacuum c">
+          </div>
+          <button id="pv-vac-update" class="full-btn" type="button">Update vacuum</button>
+        </fieldset>
+
+        <fieldset class="op-block">
+          <legend>Periodicity per axis <span id="pv-axis-tag" class="pv-tag"></span></legend>
+          <div class="op-row pv-triple">
+            <select id="pv-axis-a" class="pv-sel" aria-label="axis a"></select>
+            <select id="pv-axis-b" class="pv-sel" aria-label="axis b"></select>
+            <select id="pv-axis-c" class="pv-sel" aria-label="axis c"></select>
+          </div>
+          <button id="pv-axis-update" class="full-btn" type="button">Update periodicity</button>
+        </fieldset>
+
+        <fieldset class="op-block">
+          <legend>Unit cell (Å) <span id="pv-cell-tag" class="pv-tag"></span></legend>
+          {#- 3x3 lattice-vector matrix; nine inputs built by periodicity.js. -#}
+          <div id="pv-cell-grid" class="pv-matrix" aria-label="unit cell 3x3"></div>
+          <div class="op-row pv-cell-actions">
+            <button id="pv-cell-update" class="full-btn" type="button">Update cell</button>
+            <button id="pv-cell-reset" class="ghost" type="button"
+                    title="Clear the explicit cell -- fall back to the default bounding-box + vacuum.">
+              Use default
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset class="op-block">
+          <legend>k-grid (DFT sampling) <span id="pv-kg-tag" class="pv-tag"></span></legend>
+          <div class="op-row pv-triple">
+            <input type="number" id="pv-kg-a" class="pv-num" step="1" min="1"
+                   aria-label="k-grid a">
+            <input type="number" id="pv-kg-b" class="pv-num" step="1" min="1"
+                   aria-label="k-grid b">
+            <input type="number" id="pv-kg-c" class="pv-num" step="1" min="1"
+                   aria-label="k-grid c">
+          </div>
+          <button id="pv-kg-update" class="full-btn" type="button">Update k-grid</button>
+        </fieldset>
+
+      </div><!-- /.optab-panel data-op-panel="cell" -->
     </div>
   </aside>
 
@@ -723,6 +788,8 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
+{# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell/k-grid). #}
+<script src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
 {# Selection store + canvas-state — internal implementation
    modules behind the workspace dispatcher.  Loaded FIRST so the
    dispatcher (loaded immediately after) has them to delegate to.

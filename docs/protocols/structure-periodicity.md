@@ -272,9 +272,9 @@ The molview module never parses; the host supplies `cell` + `kgrid`:
 | sidecar `cell` + `pbc` | ✓ (`normalise_cell_pbc`) | — |
 | sidecar `axis_kind` + `vacuum` + `kgrid` | ✓ (`molstruct.to_dict`) | — |
 | electrode builder captures cell + sets `axis_kind` | ✗ (discards, `modify.py:955`) | capture |
-| `resolve_cell` (explicit / per-`axis_kind`) | ✗ | add |
+| `resolve_cell` (explicit / per-`axis_kind`) | ✓ (`structure.py`; server, surfaced as `resolved_cell`) | — |
 | k-grid clamp (dims=1 unless `periodic`) | ✗ | add (store + UI + render) |
-| Modify periodicity panel (axis_kind + vacuum + kgrid + 3×3 override) | ✗ | add |
+| Modify periodicity panel (axis_kind + vacuum + kgrid + 3×3 override) | ✓ (Modify "Cell" op-tab, `modify/periodicity.js`; per-group Update via `ws.commitPeriodicity`/`setKgrid`) | — |
 | molview reads cell+kgrid from dataset | ✗ (`ctx.viewParams` unwired) | wire |
 | fdf reads kgrid from dataset | ✗ (from CLI `Config`) | switch source |
 | transport reads `Structure.cell` | ✗ (separate `cell_fdf`) | switch source |

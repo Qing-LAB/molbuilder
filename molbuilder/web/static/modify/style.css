@@ -653,3 +653,36 @@ footer a:hover { color: var(--accent-hover); }
     opacity: 0.55;
     cursor: not-allowed;
 }
+
+/* Cell op-tab -- per-group periodicity editors (modify/periodicity.js). */
+.op-hint {
+    color: var(--text-muted);
+    font: italic 12px/1.4 system-ui, sans-serif;
+    margin: 0 0 0.6rem;
+}
+.pv-tag {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.85em;
+    margin-left: 0.4rem;
+}
+.pv-triple,
+.pv-matrix {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+.pv-num,
+.pv-sel {
+    width: 100%;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 0.3rem 0.4rem;
+    font: 13px ui-monospace, monospace;
+    text-align: right;
+}
+.pv-sel { font-family: system-ui, sans-serif; text-align: left; }
+.pv-cell-actions { display: flex; gap: 0.4rem; }
