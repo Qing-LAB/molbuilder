@@ -204,3 +204,30 @@ button:disabled {
     border: 2px solid var(--bg-page);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* ---------------------------------------------------------------------------
+ * .card-row -- a RESPONSIVE ROW OF CARDS.  Reusable by any tab (modify, results,
+ * spectra, ...): put `class="card-row"` on the container.
+ *
+ * Children sit side by side while each one's min-width fits, then WRAP to a new
+ * row automatically -- content-driven, NO media-query breakpoint.  A card can
+ * never be squeezed below its min-width into its neighbour (the crush/overlap
+ * failure mode of a fixed grid-template with a too-small track min).
+ *
+ * Each child tunes ITSELF with three custom properties (named, not magic
+ * literals buried in the layout rule):
+ *   --card-weight : flex-grow emphasis for spare width          (default 1)
+ *   --card-basis  : preferred width before growing/shrinking     (default 320px)
+ *   --card-min    : hard minimum; the sum of these is the wrap point (default 300px)
+ * ------------------------------------------------------------------------- */
+.card-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--card-row-gap, var(--gap, 1rem));
+    align-items: flex-start;
+    width: 100%;
+}
+.card-row > * {
+    flex: var(--card-weight, 1) 1 var(--card-basis, 320px);
+    min-width: var(--card-min, 300px);
+}

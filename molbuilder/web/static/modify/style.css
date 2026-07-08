@@ -156,47 +156,20 @@ header .tagline {
     background: transparent;
 }
 
-/* 2026-06-12 layout v3 — Workspace grid: three independent
- * cards (viewer, selection, modify) laid out side-by-side on wide
- * viewports.  Each carries its own min-width so the grid track
- * collapses to the next breakpoint cleanly rather than letting
- * any panel get unusably narrow.
- *
- * Breakpoints (driven by min-width sums, not media queries — the
- * grid's ``auto-fit`` ensures the row reflows automatically):
- *
- *   wide   (≥ ~1340 px workspace width): 3 columns
- *                viewer (~480) + selection (~360) + modify (~400)
- *   medium (≥ ~860 px):                  2 columns, modify wraps
- *                                         to its own row below
- *   narrow (< ~860 px):                  1 column, all stacked
- *
- * The reflow uses ``grid-template-columns: repeat(auto-fit,
- * minmax(MIN, 1fr))`` so the browser decides between 1, 2, and 3
- * columns based on available room and the MIN we declare.
- */
+/* Workspace layout (v5, 2026-07-08): the fused molview card (viewer + selection/cell
+ * panel) beside the Modify op-controls card.  The reflow is the shared, content-driven
+ * `.card-row` primitive (page-shell.css) -- NO page-specific media breakpoint.  This rule
+ * only adds the page's own max-width/centring; each card declares its width policy via the
+ * three --card-* vars, so the row wraps the modify card below the instant both min-widths
+ * stop fitting (never crushing one card into the other).  See docs/protocols/mobile-layout.md. */
 .workspace-grid {
-    display: grid;
-    /* Layout v4 (2026-07-07): TWO cards -- the fused molview card (viewer + selection
-     * panel; the primary workspace) in a WIDE column, and the Modify op controls in a
-     * narrower secondary column beside it (design choice: keep ops visible without
-     * scrolling).  Stacks to one column when the row can't hold both at a usable
-     * width; the fused card's own @container query (fused-layout.css) then stacks
-     * viewer-over-panel.  See docs/protocols/mobile-layout.md. */
-    grid-template-columns: minmax(0, 2.4fr) minmax(300px, 1fr);
-    gap: var(--gap);
-    align-items: start;
     max-width: 1680px;
     margin-inline: auto;
-    width: 100%;
 }
-.workspace-modify { min-width: 300px; }
-
-/* Narrow: stack the fused card over the op controls, each full width. */
-@media (max-width: 900px) {
-    .workspace-grid   { grid-template-columns: 1fr; }
-    .workspace-modify { min-width: 0; }
-}
+/* Primary card: wide + heavy grow; min == the fused card's own stacked min-width. */
+.workspace-grid > .molview-card    { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
+/* Secondary card: keeps the op controls at a usable width. */
+.workspace-grid > .workspace-modify { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
 
 /* Modify section: now hosts ONLY the op-tabs (the selection
  * panel moved to its own workspace card in layout v3, 2026-

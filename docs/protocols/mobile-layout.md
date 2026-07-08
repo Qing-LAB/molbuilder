@@ -41,12 +41,40 @@ which we already require.
 
 | File | Selector | Track `<N>` |
 |---|---|---|
-| `web/static/modify/style.css` | `.workspace-grid` | 360 px |
 | `web/static/lib/form-schema.css` | `.param-grid` (default) | 340 px |
 | `web/static/lib/form-schema.css` | `.param-grid` (≤1100 px) | 300 px |
 
 If you add a new `repeat(auto-fit, minmax(...))` grid anywhere
 under `molbuilder/web/static/`, use the `min()` floor.
+
+---
+
+## `.card-row` — asymmetric card rows (2026-07-08)
+
+`repeat(auto-fit, minmax(...))` is for grids of **equal** tracks.  A row of
+cards with **different** widths + grow-weights (e.g. a wide primary card beside
+a narrower secondary one) uses the shared `.card-row` primitive in
+`lib/page-shell.css` instead — a `flex-wrap` row, still **content-driven with no
+media breakpoint**:
+
+    .card-row { display: flex; flex-wrap: wrap; ... }
+    .card-row > * { flex: var(--card-weight,1) 1 var(--card-basis,320px);
+                    min-width: var(--card-min,300px); }
+
+Each child sets three vars; the row keeps children side by side while their
+`--card-min`s fit and **wraps** the overflow to a new row the instant they
+don't — so a card can never be squeezed below its min-width and overflow INTO
+its neighbour (the crush/overlap failure of a `grid-template` whose track min is
+smaller than the card's content min).
+
+Any tab can reuse it: add `class="card-row"` and set `--card-weight/-basis/-min`
+per card.  Used by `.workspace-grid` (modify): molview card `2.4 / 640 / 340`,
+op-controls card `1 / 320 / 300`.  Guarded by
+`tests/…::test_workspace_cards_never_overlap`.
+
+**Don't** re-introduce a fixed `grid-template-columns: A B` + a `@media
+(max-width: …)` stack for a card row — the media number never matches the real
+content minimums and leaves an overlap gap between them.
 
 ---
 

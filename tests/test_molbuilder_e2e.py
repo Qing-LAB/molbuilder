@@ -2132,6 +2132,31 @@ def test_fused_no_overflow_when_squeezed(
         assert not ovf, f"viewer/panel overflow the card at viewport {w}px"
 
 
+def test_workspace_cards_never_overlap(
+        page, flask_server, tmp_path, monkeypatch):
+    """The Modify op-controls card WRAPS to its own row (flex-wrap, content-driven) rather
+    than crushing/overlapping the molview card as the window shrinks -- no magic media
+    breakpoint, no track shrinking a card below its min-width into its neighbour."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    for w in (1600, 1400, 1200, 1000, 950, 905, 820, 700):
+        page.set_viewport_size({"width": w, "height": 900})
+        page.wait_for_timeout(150)   # let the flex reflow settle
+        bad = page.evaluate("""() => {
+            const mv = document.querySelector('.molview-card').getBoundingClientRect();
+            const md = document.querySelector('.modify-section').getBoundingClientRect();
+            const R = Math.round;
+            // Only an overlap ON THE SAME ROW counts -- once wrapped they're stacked.
+            const sameRow = Math.abs(R(mv.top) - R(md.top)) < 40;
+            return sameRow && R(mv.right) > R(md.left) + 1;
+        }""")
+        assert not bad, f"molview + modify cards overlap on the same row at {w}px"
+
+
 def test_fused_fold_no_overlap_when_narrow(
         page, flask_server, tmp_path, monkeypatch):
     """Framework fix (fused-layout.css): in NARROW/column mode the fold handle is a
@@ -5904,4 +5929,6 @@ def test_atom_index_display_is_1_based(page, flask_server, water_xyz_file):
     assert _get_selection(page) == [0, 1], (
         "by_index '1-2' (1-based) should select internal indices [0,1]; "
         f"got {_get_selection(page)}")
+
+
 
