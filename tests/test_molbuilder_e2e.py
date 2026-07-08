@@ -2226,6 +2226,88 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
         timeout=5000)
 
 
+def test_modify_cell_tab_vacuum_editor(
+        page, flask_server, tmp_path, monkeypatch):
+    """Modify 'Cell' op-tab (§3b): editing vacuum + 'Update vacuum' commits it through
+    ws.commitPeriodicity (server re-resolve) -- the resolved cell grows, AND the read-only
+    MolView Cell display refreshes to match (the display reacts to the edit)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # Open the Modify Cell op-tab.
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_function(
+        "() => document.getElementById('optab-panel-cell').classList.contains('is-active')")
+    base = page.evaluate(
+        "() => window.molbuilder.workspace.getUnitCellInfo().value")
+    # Fresh molecule -> vacuum reads 0 with a (default) tag.
+    for ax in ("a", "b", "c"):
+        assert float(page.locator(f"#pv-vac-{ax}").input_value() or "0") == 0.0
+    assert page.locator("#pv-vac-tag").inner_text() == "(default)"
+    # Set vacuum 2 on each axis, then Update vacuum.
+    for ax in ("a", "b", "c"):
+        page.locator(f"#pv-vac-{ax}").fill("2")
+    page.locator("#pv-vac-update").click()
+    # The resolved cell diagonal grew by 2 per axis (server re-resolve).
+    page.wait_for_function(
+        """(base) => {
+            const c = window.molbuilder.workspace.getUnitCellInfo().value;
+            return c && Math.abs(c[0][0]-(base[0][0]+2))<1e-6
+                     && Math.abs(c[1][1]-(base[1][1]+2))<1e-6
+                     && Math.abs(c[2][2]-(base[2][2]+2))<1e-6;
+        }""", arg=base, timeout=5000)
+    # The MolView Cell display (read-only) reflects it: switch to the Cell page + check
+    # the top-left matrix cell equals the grown value.
+    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
+    page.wait_for_function(
+        "() => !document.getElementById('panel-page-cell').hidden")
+    page.wait_for_function(
+        """(base) => {
+            const cells = document.querySelectorAll(
+                '#cell-matrix-value .cell-matrix-cell');
+            return cells.length === 9
+                && Math.abs(parseFloat(cells[0].textContent) - (base[0][0]+2)) < 0.01;
+        }""", arg=base, timeout=3000)
+
+
+def test_modify_cell_tab_kgrid_cell_reset(
+        page, flask_server, tmp_path, monkeypatch):
+    """Modify 'Cell' op-tab: the k-grid group (ws.setKgrid), the explicit unit-cell group
+    (ws.commitPeriodicity{cell}), and 'Use default' (clears the explicit cell)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    page.locator("#optab-btn-cell").click()
+    page.wait_for_function(
+        "() => document.getElementById('optab-panel-cell').classList.contains('is-active')")
+    # k-grid 2x2x1 -> Update k-grid.
+    page.locator("#pv-kg-a").fill("2")
+    page.locator("#pv-kg-b").fill("2")
+    page.locator("#pv-kg-c").fill("1")
+    page.locator("#pv-kg-update").click()
+    page.wait_for_function(
+        "() => { const k = window.molbuilder.workspace.getKgridInfo().value;"
+        "  return k[0]===2 && k[1]===2 && k[2]===1; }", timeout=3000)
+    # Explicit 3x3 cell -> Update cell; getUnitCell (raw) returns it, not null.
+    cell = page.locator("#pv-cell-grid .pv-num")
+    for i, v in enumerate([5, 0, 0, 0, 6, 0, 0, 0, 7]):
+        cell.nth(i).fill(str(v))
+    page.locator("#pv-cell-update").click()
+    page.wait_for_function(
+        "() => { const c = window.molbuilder.workspace.getUnitCell();"
+        "  return c && c[0][0]===5 && c[1][1]===6 && c[2][2]===7; }", timeout=5000)
+    # Use default -> explicit cell cleared.
+    page.locator("#pv-cell-reset").click()
+    page.wait_for_function(
+        "() => window.molbuilder.workspace.getUnitCell() === null", timeout=5000)
+
+
 def test_cell_page_displays_periodicity(
         page, flask_server, tmp_path, monkeypatch):
     """Stage 2-UI (§3b): the [Selection|Cell] page switch reveals a Cell page that
