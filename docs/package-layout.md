@@ -198,13 +198,13 @@ docs/
   protocols/                      # cross-cutting interfaces (HTTP/JS/test/on-disk)
     web-api.md                    # HTTP /api/* endpoint reference
     projects-sidebar.md           # sidebar architecture + projects.* API + lock model
-    workspace-contract.md         # MolView + Workspace core contract (ws.* model +
-                                  #   persistence §§1-10; viewer/selection/k-grid Part II)
+    workspace-contract.md         # Workspace data-model contract (L1): ws.* model +
+                                  #   persistence (the MolView UI is molview-module.md)
     selection.md                  # Python selection rule grammar
     results-tab.md                # /results dispatch architecture
     runtime-registry.md           # molbuilder-runtime.js (register / whenReady)
     inspector-registry.md         # inspector mount/dispose + pageshow refresh
-    molview-module.md            # redirect stub → workspace-contract.md Part II
+    molview-module.md            # MolView module contract (L2 UI; uses workspace L1)
     playwright-tests.md           # test patterns + anti-patterns
     job-layout.md                 # on-disk basename + -runN.out convention
     cli.md                        # click-based CLI surface

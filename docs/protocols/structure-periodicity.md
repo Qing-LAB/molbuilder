@@ -9,7 +9,7 @@ the `axis_kind` enum — a boolean can't distinguish an *isolated* axis from a
 several consumers — the molview module (cell wireframe + k-grid display), the fdf
 generator (`LatticeVectors` + `kgrid_Monkhorst_Pack`), and transport — but **owned
 by none of them.** This doc is the source of truth for how the cell is resolved,
-gated, persisted, and edited. workspace-contract.md (Part II — the MolView module),
+gated, persisted, and edited. molview-module.md (the MolView module),
 the SIESTA emitter, and the transport flow reference it; they do not re-derive it.
 
 **Rule of the whole doc:** periodicity is computed/captured **once, at the source

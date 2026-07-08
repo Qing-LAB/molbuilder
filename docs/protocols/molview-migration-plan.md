@@ -15,7 +15,7 @@ contract):
 - **Persistence via the working-copy framework** (Track A design): core **§4.0–§4.6**
   (memory-is-the-truth; server draft + `sessionStorage` + files; the working-copy
   mechanism `open/update/save/discard`).
-- **The k-grid render controller in the module** (Steps 1–2 design): core Part II
+- **The k-grid render controller in the module** (Steps 1–2 design): molview-module.md
   **§14.1** (`molview.mountKgridRender` — the one render loop) + **§14.2** (in-window
   picking disabled while k-grid is on).
 
@@ -31,7 +31,7 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
 ## Shipped (for orientation — design in the core, do not re-open)
 
 - **Steps 1–2** — the k-grid render controller moved INTO the module
-  (`molview.mountKgridRender`, core Part II §14.1); Results #1 rewired to it, its
+  (`molview.mountKgridRender`, molview-module.md §14.1); Results #1 rewired to it, its
   inline controller deleted. *(Step 2 residual: ◐ awaiting the user's manual
   confirm that k-grid tiles in Modify.)*
 - **Track A A1/A2/A5a/A5b/A6** — SAVE + LOAD + filter + draft routed through the
@@ -46,7 +46,7 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
 
 ### Track B — Modify consumes the MolView module (finish G2)
 
-> Design: core Part II §12–§14 (the store, composition via `mountPanel`, the k-grid
+> Design: molview-module.md §12–§14 (the store, composition via `mountPanel`, the k-grid
 > controller). Each step reads/writes structure data ONLY through `ws.*` / the store
 > and the module API.
 
@@ -102,7 +102,7 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
   **Check:** grep — no Modify-tab code reads disk for regions/atoms/cell outside the
   working-copy framework; no obsolete endpoint remains with a live caller.
   **Status:** ◑ partial. (The single-model doc definition it also called for is now
-  DONE — folded into the core §4/§4.6 + Part II by the 2026-07-06 doc consolidation.)
+  DONE — folded into the core §4/§4.6 + molview-module.md by the 2026-07-06 doc consolidation.)
 
 ### Track D — conceal the model, remaining
 
@@ -150,6 +150,6 @@ Remaining, confirmed-but-not-yet-done:
 ## Standing guardrails (apply to every open step)
 
 - No structure/cell/kgrid read or write outside `ws.*` / the store / the module API.
-- One k-grid render loop, in the module, forever (core Part II §14.1).
+- One k-grid render loop, in the module, forever (molview-module.md §14.1).
 - Each step ends GREEN (its Check) before the next begins.
 - Update this doc's ☐/◐/☑ as steps complete; if reality diverges, fix the doc first.

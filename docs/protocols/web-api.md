@@ -5,7 +5,7 @@ Every Flask route, request shape, and response envelope is
 documented here. Per-tab UI behaviour lives in `docs/tabs/*.md`;
 the JS contracts the responses feed are in
 [`projects-sidebar.md`](projects-sidebar.md) and
-[`workspace-contract.md`](workspace-contract.md) (Part II — the MolView module).
+[`molview-module.md`](molview-module.md).
 
 **Implementation**: `molbuilder/web/blueprints/{build,files,modify,results,selection,spectra,watch,checkpoint}.py`
 plus the dispatcher in `molbuilder/web/app.py`.
@@ -813,7 +813,7 @@ underlying Structure copy/concat contract.
 Implementation: `molbuilder/web/blueprints/selection.py`.
 The Python selection rule grammar lives in
 [`selection.md`](selection.md); the JS selection store on top
-lives in [`workspace-contract.md`](workspace-contract.md) (Part II §12).
+lives in [`molview-module.md`](molview-module.md) §12.
 
 ### 6.1 Endpoint table
 
@@ -1644,7 +1644,7 @@ All tabs share these conventions:
   figures) pass `style.background: "#ffffff"` at mount or pick the
   white preset from the Background submenu (View → Background).
   This default flipped in Phase 6 (2026-06-04) from `#ffffff` to
-  `#1d2128` — see `workspace-contract.md` Part II (the MolView module) + decisions log.
+  `#1d2128` — see `molview-module.md` (the MolView module) + decisions log.
 - Every dynamic insertion uses `textContent` (not `innerHTML`)
   for any user-supplied string.
 

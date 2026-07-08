@@ -103,19 +103,19 @@ subsystem-specific decisions land in the subsystem doc.
 | [`workspace-guide.md`](workspace-guide.md) | Developer guide — the client-side workspace store (mental model, `ws.*` API, mount-restore rule, gotchas); plain-language companion to `protocols/workspace-contract.md` |
 | [`projects-sidebar-guide.md`](projects-sidebar-guide.md) | Developer guide — the projects sidebar for tab authors (`projects.*` API, `onChange` vs `onCommit`, gotchas); plain-language companion to `protocols/projects-sidebar.md` |
 | [`results-tab-guide.md`](results-tab-guide.md) | Developer guide — the Results tab & inspectors (dispatch, how to write an inspector, the state-machine invariants + refresh rules, gotchas); plain-language companion to `protocols/{inspector-registry,results-state-contract,results-tab}.md` |
-| [`molviewer-guide.md`](molviewer-guide.md) | Developer guide — the MolView module (`viewer.embed`/handle boundary, API cheat-sheet, drive-via-handle rule, gotchas); plain-language companion to `protocols/workspace-contract.md` (Part II) |
+| [`molviewer-guide.md`](molviewer-guide.md) | Developer guide — the MolView module (`viewer.embed`/handle boundary, API cheat-sheet, drive-via-handle rule, gotchas); plain-language companion to `protocols/molview-module.md` |
 | [`checkpoints-guide.md`](checkpoints-guide.md) | Developer/user guide — run checkpoints (git + big-binary archive; CLI/API/sidebar; restore-safety rules); plain-language companion to `protocols/run-checkpoints.md` |
 | [`structure-guide.md`](structure-guide.md) | Developer guide — client-side structure build+save (the load gate, Source panels, save+sidecar, gotchas); companion to `protocols/save-flow.md` + `engines/builders.md` |
 | [`runtime-registry-guide.md`](runtime-registry-guide.md) | Developer guide — the module registry (`register`/`whenReady` vs polling, gotchas); plain-language companion to `protocols/runtime-registry.md` |
 | [`form-schema-guide.md`](form-schema-guide.md) | Developer guide — schema-driven Build forms (dataclass→schema→render→collect round-trip, field kinds, the dataclass-is-truth rule); the only doc dedicated to `lib/form-schema.js` |
-| [`atom-selection-guide.md`](atom-selection-guide.md) | Developer guide — atom selection (one store, three consumers: panel + viewer-adapter + measurements; how to wire it, gotchas); companion to `protocols/workspace-contract.md` (Part II) |
+| [`atom-selection-guide.md`](atom-selection-guide.md) | Developer guide — atom selection (one store, three consumers: panel + viewer-adapter + measurements; how to wire it, gotchas); companion to `protocols/molview-module.md` |
 | [`transport-guide.md`](transport-guide.md) | Developer/user guide — conductance runs (3 coupled SIESTA runs from one labeled device; the `molbuilder transport` CLI; the consistency contract; shipped-vs-coming); companion to `protocols/transiesta-workflow.md` |
 
 ### Protocols — wire / JS / test contracts (`docs/protocols/`)
 
 | Doc | Owns |
 |---|---|
-| [`molview-module.md`](protocols/molview-module.md) | **MERGED** (2026-07-06) into [`workspace-contract.md`](protocols/workspace-contract.md) **Part II** — the MolView module (viewer + selection + panel/adapter + measurement + k-grid) now shares one core contract with the workspace model.  A redirect stub; full original at `protocols/archive/molview-module.md`. |
+| [`molview-module.md`](protocols/molview-module.md) | **The MolView module contract (L2 UI)** — the 3-D viewer + atom selection + panel/adapter + measurement + k-grid.  It *uses* the workspace data model (L1, [`workspace-contract.md`](protocols/workspace-contract.md)) via `ws.*`; different layer, different doc (split back out 2026-07-08 after a mistaken 2026-07-06 merge). |
 | [`atom-annotations.md`](protocols/atom-annotations.md) | The per-atom annotation *channels* model — schema-v4 `.molstruct.json` channels + JS mirror; the data model `structure.py` / `sidecars` / `parse` / `siesta` depend on |
 | [`web-api.md`](protocols/web-api.md) | HTTP `/api/*` endpoint reference (request/response shapes) |
 | [`projects-sidebar.md`](protocols/projects-sidebar.md) | Sidebar architecture, public `projects.*` API, lock model, capability table |
@@ -129,7 +129,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`web-ui-coherence.md`](protocols/web-ui-coherence.md) | Cross-surface coherence rules (analyzer / chip / validator / palette must agree); five-rule contract per the 2026-06-13 audit |
 | [`chemistry-correctness.md`](protocols/chemistry-correctness.md) | Open-shell-metals set + closed-shell cluster carve-outs |
 | [`region-labels.md`](protocols/region-labels.md) | Region-label vocabulary used across sidebar + transport + sidecar |
-| [`workspace-contract.md`](protocols/workspace-contract.md) | **MolView + Workspace core contract** — the SOLE source for both the workspace data model + persistence (`ws.*` public API, §§1–10) AND the MolView module (viewer + selection + k-grid + measurement, Part II).  Absorbs the former `molview-module.md`; supersedes `workspace-state.md`. |
+| [`workspace-contract.md`](protocols/workspace-contract.md) | **Workspace data-model contract (L1)** — the SOLE source for the workspace data model + persistence (`ws.*` public API, §§1–10).  The MolView module (L2 UI that *uses* this) is a separate doc, [`molview-module.md`](protocols/molview-module.md).  Supersedes `workspace-state.md`. |
 | `workspace-state.md` | **Archived** → [`archive/2026-07-06-workspace-state.md`](archive/2026-07-06-workspace-state.md).  The 2026-06-07 workspace-unification audit + Phases 1–9 migration log (all shipped); the live model is `workspace-contract.md`.  A redirect stub remains at the old path. |
 | [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
 | [`run-checkpoints.md`](protocols/run-checkpoints.md) | Git-based working-dir state management.  Every `projects/<dir>` is a nested git repo; the wrapper auto-commits pre/post each run; big binaries (.DM, .TSHS) are archived by SHA in `.binsnapshots/`.  Sidebar surfaces commit history, branches, tags, and a graph viewer.  Pre-implementation as of 2026-06-25. |
@@ -633,7 +633,7 @@ docstring tweaked.
 The UI calls the same Python API the CLI calls.  It contains no logic
 that isn't trivially also exposed elsewhere.  Every tab shares the
 standard embeddable 3D viewer
-([`workspace-contract.md`](protocols/workspace-contract.md) Part II), the
+([`workspace-contract.md`](protocols/workspace-contract.md) molview-module.md), the
 field-metadata-driven form renderer, the projects sidebar
 ([`projects-sidebar.md`](protocols/projects-sidebar.md)), and the
 common CSS shell.

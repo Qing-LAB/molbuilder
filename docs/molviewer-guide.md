@@ -7,7 +7,7 @@ correctly is simple: **drive it through the declarative handle; never touch the
 raw 3Dmol object.** This guide shows how.
 
 **What this is NOT.** The authoritative contract. `protocols/workspace-contract.md`
-**Part II** (the MolView module) is the clause-pinned source of truth (every opt,
+**molview-module.md** (the MolView module) is the clause-pinned source of truth (every opt,
 every handle method, the isolation contract, error codes). This guide teaches and
 points there; it won't drift.
 
@@ -118,7 +118,7 @@ const handle = window.molbuilder.viewer.embed(hostDiv, {
 
 ## 6. Where the authority lives
 
-- **`protocols/workspace-contract.md` Part II** — the contract: the viewer
+- **`protocols/molview-module.md`** — the contract: the viewer
   `embed()`/handle surface and the host↔module boundary (§13 / §11.1), the
   `setOverlays` selection-painting layer, the k-grid render pipeline (§14), and
   measurement (§15). §12 is the selection store the viewer-adapter overlays come from.

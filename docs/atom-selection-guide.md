@@ -6,7 +6,7 @@ paints it in the 3D viewer and turns clicks back into selection. Three consumers
 one source of truth.
 
 **What this is NOT.** The authoritative spec. `protocols/workspace-contract.md`
-**Part II** (the MolView module) pins the data structures, the full store API,
+**molview-module.md** (the MolView module) pins the data structures, the full store API,
 the event protocol, and the scenarios. The store itself is part of the workspace
 store — see `workspace-guide.md` for its `ws.selection.*` mutators. This guide
 teaches how the pieces fit.
@@ -75,7 +75,7 @@ The singleton store is `ws.selection`; **`createEphemeralStore()`** mints an
 isolated instance with the same surface (minus the workspace-lifecycle methods)
 for a readonly inspector.
 
-Full shapes: `workspace-contract.md` Part II §12 (the store `_initialState`).
+Full shapes: `molview-module.md` §12 (the store `_initialState`).
 
 ---
 
@@ -129,7 +129,7 @@ store.
 
 ## 7. Where the authority lives (+ a heads-up)
 
-- **`protocols/workspace-contract.md` Part II** — the spec: the store
+- **`protocols/molview-module.md`** — the spec: the store
   `_initialState` + surfaces (§12), the panel/adapter composition via `mountPanel`
   (§13), the k-grid rule (§14), measurement (§15). The `ws.selection.*` mutators
   are in §5.
@@ -139,6 +139,6 @@ store.
 > **Shipped:** this module (store + panel + viewer-adapter) and the MolViewer
 > **are one integrated MolView module** — the viewer + selection + k-grid +
 > measurement share one contract and one in-memory model. The store↔panel↔adapter↔viewer
-> seam described in this guide is that module. See `workspace-contract.md` Part II
+> seam described in this guide is that module. See `molview-module.md`
 > for the unified contract; remaining consumer-migration work (e.g. Modify adopting
 > `mountPanel` + the fused layout) is tracked in `protocols/molview-migration-plan.md`.
