@@ -186,8 +186,10 @@ text JS agreement.
 
 ## What this document does NOT cover
 
-* Visual design (colors, spacing, typography) — those live in
-  `lib/tokens.css` and `lib/form-schema.css`.
+* Visual design + layout structure (tokens, cards, responsive
+  reflow, the CSS layering) — those are the STRUCTURAL UI contract,
+  [`ui-design-contract.md`](ui-design-contract.md) (colours/spacing
+  live in `lib/tokens.css`).
 * Script-emission rules (FDF / PySCF script generation) — those live
   in `docs/engines/siesta.md` and `docs/engines/pyscf.md`.
 * Live-watch and trajectory inspector contracts — those live in
