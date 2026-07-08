@@ -496,6 +496,34 @@ class TestReads:
         assert e["ak"] == {"value": ["periodic", "periodic", "isolated"],
                            "isDefault": False}
 
+    def test_periodicity_accessors_return_defensive_copies(self):
+        """§1.2.1 concealment: mutating a returned periodicity value must NOT corrupt the
+        in-memory _state -- the accessors hand out defensive copies, not live refs."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz',\n"
+            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
+            "  periodicity:{cell:[[5,0,0],[0,5,0],[0,0,5]], resolved_cell:null,\n"
+            "    axis_kind:['periodic','periodic','isolated'], vacuum:[1,2,3],\n"
+            "    kgrid:[2,2,1]}},\n"
+            "  {kind:'file', file:'/tmp/x.xyz'});\n"
+            "// mutate every returned value in place -- must not reach _state\n"
+            "ws.getUnitCellInfo().value[0][0] = 999;\n"
+            "ws.getUnitCell()[1][1] = 999;\n"
+            "ws.getVacuumInfo().value[0] = 999;\n"
+            "ws.getKgridInfo().value[0] = 999;\n"
+            "ws.getAxisKindInfo().value[0] = 'BROKEN';\n"
+            "ws.getStructure().periodicity.cell[2][2] = 999;\n"
+            "const after = {cell: ws.getUnitCell(), vac: ws.getVacuumInfo().value,\n"
+            "  kg: ws.getKgridInfo().value, ak: ws.getAxisKindInfo().value};\n"
+            "console.log(JSON.stringify(after));"
+        )
+        assert out["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 5]], out
+        assert out["vac"] == [1, 2, 3]
+        assert out["kg"] == [2, 2, 1]
+        assert out["ak"] == ["periodic", "periodic", "isolated"]
+
     def test_scratch_blob_refuses_atom_count_desync(self):
         """Review c: geometry (canvas xyz) + labels (selection store) live in two
         stores; if their atom counts desync, getScratchBlob refuses to serialise a
