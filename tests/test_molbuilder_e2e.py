@@ -884,13 +884,13 @@ def test_show_selected_only_toggle_wires_isolate_mode(
     assert page.evaluate(
         "() => window.molbuilder.workspace.selection.getState().isolate"
     ) is False
-    # Toggle on.
-    page.locator("#selection-isolate-checkbox").check()
+    # Toggle on (via the viewer-controls bar -- on Modify the toggle lives there now).
+    page.locator("#viewer-view-controls .vc-isolate").check()
     page.wait_for_function(
         "() => window.molbuilder.workspace.selection.getState().isolate === true"
     )
     # Toggle off.
-    page.locator("#selection-isolate-checkbox").uncheck()
+    page.locator("#viewer-view-controls .vc-isolate").uncheck()
     page.wait_for_function(
         "() => window.molbuilder.workspace.selection.getState().isolate === false"
     )
@@ -1999,6 +1999,30 @@ def test_modify_op_preserves_frozen_and_labels(
         f"rotate must preserve the label on atom 0; got {state!r}")
 
 
+def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
+    """The viewer-controls bar hosts the view toggles ("Show selected only" / "Show
+    k-grid"), bound to ws.selection -- toggling them drives the STORE (the state lives in
+    the workspace store, not a parallel one)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    water_xyz = tmp_path / "water.xyz"
+    water_xyz.write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_file(page, str(water_xyz), expected_atoms=3)
+    _wait_panel_ready(page)
+    # The bar rendered both toggles in the viewer control bar.
+    assert page.locator("#viewer-view-controls .vc-isolate").count() == 1
+    assert page.locator("#viewer-view-controls .vc-kgrid").count() == 1
+    # Toggling k-grid via the bar flips the STORE's view flag.
+    page.locator("#viewer-view-controls .vc-kgrid").check()
+    page.wait_for_function(
+        "() => window.molbuilder.workspace.selection.getState().kgrid.enabled === true")
+    # Select an atom, then isolate via the bar -> the STORE's isolate flag flips.
+    page.evaluate("() => window.molbuilder.workspace.selection.toggle(0)")
+    page.locator("#viewer-view-controls .vc-isolate").check()
+    page.wait_for_function(
+        "() => window.molbuilder.workspace.selection.getState().isolate === true")
+
+
 def test_kgrid_tiles_in_modify(page, flask_server, tmp_path, monkeypatch):
     """molview k-grid: with a cell set + k-grid enabled, the Modify viewer TILES.
     The module render controller (mountKgridRender, subscribed to the selection
@@ -2226,7 +2250,8 @@ def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
         "() => document.getElementById('selection-kgrid-nx').value === '2'")
     assert page.locator("#selection-kgrid-nx").get_attribute("readonly") is not None, (
         "MolView k-grid dims must be read-only (set via Modify, not here)")
-    page.locator("#selection-kgrid-checkbox").check()
+    # Enable tiling via the viewer-controls bar (the toggle moved there).
+    page.locator("#viewer-view-controls .vc-kgrid").check()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getViewer()"
         "        .selectedAtoms({}).length === 6",
@@ -2378,9 +2403,10 @@ def test_cell_page_displays_periodicity(
     assert page.locator("#cell-matrix-value .cell-matrix-cell").count() == 9, (
         "unit cell should render as a 3x3 matrix (9 cells)")
     assert page.locator("#cell-matrix-tag").inner_text() == "(default)"
-    # The k-grid control now lives on the Cell page.
-    assert page.locator(
-        "#panel-page-cell #selection-kgrid-checkbox").count() == 1
+    # The k-grid DIMS display (read-only mirror) is on the Cell page; the enable TOGGLE
+    # moved to the viewer-controls bar.
+    assert page.locator("#panel-page-cell #selection-kgrid-nx").count() == 1
+    assert page.locator("#viewer-view-controls .vc-kgrid").count() == 1
 
 
 def test_save_button_disabled_for_smiles_without_prior_save(

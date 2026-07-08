@@ -56,6 +56,18 @@
         const _mounted = await selApi.mountPanel(host, { mode: "modify" });
         if (!_mounted || !_mounted.panel) return;   // mountPanel rendered its own banner
 
+        // View-controls bar (Show selected only / Show k-grid) in the viewer's control
+        // bar, bound to the SAME store (ws.selection) as the panel.  The toggle STATE is
+        // workspace store state (persisted with the store); this bar only drives it via
+        // the store API -- no parallel state.
+        const _vcHost  = document.getElementById("viewer-view-controls");
+        const _vcStore = window.molbuilder && window.molbuilder.workspace
+                       && window.molbuilder.workspace.selection;
+        const _mv = window.molbuilder && window.molbuilder.molview;
+        if (_vcHost && _vcStore && _mv && typeof _mv.mountViewControls === "function") {
+            _mv.mountViewControls(_vcHost, _vcStore);
+        }
+
         // Fused-card fold handle (fused-layout.css): collapse the panel so the viewer
         // gets the full card.  Mirrors the Results inspector's inline wiring
         // (lib/inspectors/structure.js) -- local layout state, not store state.

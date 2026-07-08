@@ -101,6 +101,18 @@
             if (assign) assign.hidden = true;
         }
 
+        // The view TOGGLES (isolate + k-grid enable) live in the viewer-controls bar
+        // (molview.mountViewControls) on Modify, so hide the panel's copies in "modify"
+        // mode -- no duplication.  The k-grid DIMS display stays (read-only mirror of
+        // periodicity.kgrid).  (Transitional: readonly/Results still shows them in the
+        // panel until it gets its own viewer bar; then they leave the panel entirely.)
+        if (opts && opts.mode === "modify") {
+            const iso = rootEl.querySelector(".selection-isolate-toggle");
+            if (iso) iso.hidden = true;
+            const kgToggle = rootEl.querySelector(".selection-kgrid-toggle");
+            if (kgToggle) kgToggle.hidden = true;
+        }
+
         const $ = (id) => rootEl.querySelector("#" + id);
         const els = {
             modeClick:       $("selection-mode-click"),

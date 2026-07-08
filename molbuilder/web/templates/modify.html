@@ -300,6 +300,10 @@
             title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
 Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding box
 is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus molecule</button>
+          {#- View toggles ("Show selected only" / "Show k-grid") -- filled by
+              molview.mountViewControls, bound to ws.selection (the state lives in the
+              workspace store, not here). -#}
+          <span id="viewer-view-controls" class="viewer-toggles"></span>
         </div>
       </div>
       {# Fold handle — collapses the panel so the viewer gets the full card
@@ -785,6 +789,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    render-pipeline depends on kgrid, so kgrid loads first. #}
 <script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell/k-grid). #}
