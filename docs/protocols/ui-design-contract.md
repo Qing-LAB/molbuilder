@@ -35,6 +35,22 @@ Rule: a pattern used by **more than one tab** is a primitive in `page-shell.css`
 not copy-pasted per page. A pattern is a **module** if it's a component; a
 **page** rule only wires modules/primitives together.
 
+### 2.1 A repeated visual pattern is ONE shared class — never a duplicated rule
+
+Tokens (§1) stop duplicated *values*; this stops duplicated *rules*. If two elements
+should look the same — a caption, a pill, a mini-control — they share **one class**.
+You never re-declare the same `font:` / `padding:` / `text-transform:` block under a
+second selector. Two selectors with the same declarations is the drift this rule exists
+to catch.
+
+- **Captions / small labels** (uppercase 11px muted) → **`.selection-mini-label`**.
+  Do NOT add `.foo-label { font: 600 11px…; text-transform: uppercase }`.
+- **Before writing a rule, grep for the pattern** (`grep "600 11px"`,
+  `grep "text-transform: uppercase"`, `grep "aspect-ratio"`). If a class already has
+  it, reuse the class. If the block is already copied in ≥2 places, promote it to one
+  shared class and delete the copies.
+- A genuinely unique one-off gets its own class; a pattern that appears twice does not.
+
 ## 3. Responsive layout is CONTENT-driven, never viewport-magic-numbers
 
 The failure mode we keep hitting: a hardcoded `@media (max-width: 900px)` that
@@ -110,23 +126,61 @@ Reuse these; don't reinvent them per tab.
   returns **defensive copies** ([`workspace-contract.md`](workspace-contract.md)
   § 1.2.1) — a UI surface can't mutate the store by holding a returned value.
 
-## 7. Checklist — adding or changing a UI surface
+## 7. Per-module UI systems — the spec each panel follows (don't drift)
+
+Each module that owns a UI panel declares **here** the exact system it uses — its CSS
+file, tokens, layout mechanism, and shared classes — so a change stays *inside* that
+system instead of inventing a parallel one. **Adding a module with a panel? Add a
+subsection.** Editing one? Read its subsection first.
+
+### 7.1 MolView — the fused card · `lib/molview/fused-layout.css`
+
+- **Layout:** `.molview-card` is `container-type: inline-size`, with ONE source of truth
+  for size in three named vars — `--viewer-edge` (`min(60vh, 560px)`), `--viewer-min`
+  (`320px`), `--panel-min` (`320px`). A single `@container (max-width: 664px)` query
+  (= `viewer-min + handle + panel-min`, shown in the comment) flips side-by-side ↔
+  stacked. **No `@media`, no other breakpoint, no second magic number.**
+- **Viewer:** a 1:1 square (`aspect-ratio`), floored by `--viewer-min`, capped by
+  `--viewer-edge`; it never fills the card (leftover width → panel).
+- **Viewer-controls bar:** the view toggles (isolate / k-grid) are `.viewer-toggle`
+  (**one shared class both molviews use**), mounted by `molview.mountViewControls`
+  ([`molview-module.md`](molview-module.md)) — never re-styled per page.
+- **Reuse:** Modify and every Results structure card mount the SAME card; a card change
+  is one edit here, not per consumer.
+
+### 7.2 Selection / Cell panel · `lib/selection-panel.css`
+
+- **Tokens:** the panel's own `--ps-*` scale (`--ps-fg`, `--ps-fg-dim`, `--ps-bg-deep`,
+  `--ps-border`, `--ps-hover`, `--ps-selected-*`). Panel rules use these — never raw hex.
+- **Captions:** `.selection-mini-label` is THE small-caps caption (k-grid label,
+  "Combine", "Target"). **Never re-declare the 600/11px/uppercase block** (§2.1).
+- **Header tabs:** `[Selection|Cell]` = `.panel-page-switch` / `.panel-page-option`
+  (radio-driven page swap); pages `#panel-page-selection` / `#panel-page-cell`.
+- **Cell readout:** display-only (§6) — `#cell-*-value` spans + the `.cell-matrix` 3×3
+  grid; filled by `renderCell` from the `ws.get*Info()` accessors.
+- **Display-only:** the panel never edits periodicity, and the view TOGGLES are NOT here
+  — they live in the viewer bar (§7.1). Editing periodicity is the Modify Cell op-tab.
+
+## 8. Checklist — adding or changing a UI surface
 
 1. **Tokens** — colours/spacing come from `var(--token)`; no literals.
-2. **Reuse a primitive** — `.card`, `.card-row`, the auto-fit grid, the fused
+2. **No duplicate rule** (§2.1) — grep the pattern first; reuse the shared class
+   (`.selection-mini-label`, `.viewer-toggle`, `.card`) instead of re-declaring it.
+3. **Reuse a primitive** — `.card`, `.card-row`, the auto-fit grid, the fused
    card. Don't hand-roll a layout another tab already has.
-3. **Content-driven reflow** — wrap/stack from content min-widths; **no** new
+4. **Content-driven reflow** — wrap/stack from content min-widths; **no** new
    `@media (max-width: …)` for a card row.
-4. **Embeddable? Use `@container`**, not `@media` — so it's correct at any width.
-5. **Expose tuning as vars**, keep the layout rule literal-free.
-6. **Right layer** (§2) — primitive → `page-shell.css`; component → module CSS;
+5. **Embeddable? Use `@container`**, not `@media` — so it's correct at any width.
+6. **Expose tuning as vars**, keep the layout rule literal-free.
+7. **Right layer** (§2) — primitive → `page-shell.css`; component → module CSS;
    only composition in `<tab>/style.css`.
-7. **Display surfaces are read-only** through accessors (§6); edits are explicit.
-8. **Add a layout regression test** — e.g. sweep widths and assert no
-   overlap/overflow (`test_workspace_cards_never_overlap`,
-   `test_fused_no_overflow_when_squeezed`).
+8. **Follow the module's §7 subsection** — if the panel has one, stay in its system.
+9. **Display surfaces are read-only** through accessors (§6); edits are explicit.
+10. **Add a layout regression test** — e.g. sweep widths and assert no
+    overlap/overflow (`test_workspace_cards_never_overlap`,
+    `test_fused_no_overflow_when_squeezed`).
 
-## 8. What this document does NOT cover
+## 9. What this document does NOT cover
 
 - **Data/logic coherence** (two surfaces agreeing about a structure) →
   [`web-ui-coherence.md`](web-ui-coherence.md).
