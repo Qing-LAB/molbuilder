@@ -141,9 +141,12 @@
     margin-top: 0.5rem;
 }
 
-/* Used by both Combine and Target labels: small, muted, fixed-width
- * caption that introduces a dropdown/input. */
-.selection-mini-label {
+/* THE small-caps caption for the whole panel (§2.1 shared class -- ui-design-contract):
+ * Combine/Target/k-grid mini-labels AND the Cell-page captions (readout dt + the unit-cell
+ * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
+.selection-mini-label,
+.cell-readout dt,
+.cell-matrix-label {
     color: var(--ps-fg-dim);
     font: 600 11px/1.2 system-ui, sans-serif;
     letter-spacing: 0.04em;
@@ -770,12 +773,7 @@
     gap: 0.3rem 0.6rem;
     margin: 0 0 0.6rem;
 }
-.cell-readout dt {
-    color: var(--ps-fg-dim);
-    font: 600 11px/1.4 system-ui, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
+/* .cell-readout dt caption style comes from the shared .selection-mini-label rule (§2.1). */
 .cell-readout dd { margin: 0; }
 .cell-value {
     color: var(--ps-fg);
@@ -785,13 +783,8 @@
 
 /* Unit-cell 3x3 matrix -- aligned, right-justified tabular numbers (§3b). */
 .cell-matrix-block { margin: 0 0 0.6rem; }
-.cell-matrix-label {
-    color: var(--ps-fg-dim);
-    font: 600 11px/1.4 system-ui, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    margin-bottom: 0.25rem;
-}
+/* caption style from the shared .selection-mini-label rule (§2.1); only the layout delta here. */
+.cell-matrix-label { margin-bottom: 0.25rem; }
 .cell-tag { text-transform: none; color: var(--ps-fg-dim); font-weight: 400; }
 .cell-matrix-grid {
     display: grid;
