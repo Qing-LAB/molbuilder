@@ -304,7 +304,7 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
 - **`opts.lattice`** (3×3 row vectors) → `getLattice()` returns it and k-grid
   tiling uses it (§14). The **cell wireframe** draws only when **`opts.cell`** is
   also set (`_redrawCell` gates on `state.current.cell`). The viewer does **not**
-  parse a lattice from the file text; the host passes it (§14).
+  parse a lattice from the file text; molview passes it in (having read it from storage, §14).
 - **`setOverlays(spec)`** is how selection is painted (halos, region tints,
   isolate opacity). **`setStructure({xyz, lattice})`** is how the displayed
   atoms are replaced (e.g. a k-grid supercell, §14).
@@ -332,8 +332,9 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
   viewer clicks to `store.toggle`.
 - Panel and adapter never reference each other. `mode:"readonly"` hides the
   panel's write controls; clicks still feed the store.
-- `fused-layout.css` lets the host place the panel as a foldable side/bottom
-  region of the viewer card (host layout choice; the viewer offers no layout API).
+- `fused-layout.css` is how **molview's composition layer** places the panel as a foldable
+  side/bottom region of the viewer card (molview owns this layout + the fold, §18.2; the
+  viewer itself offers no layout API).
 
 ## §14 k-grid & the render pipeline
 
@@ -448,7 +449,7 @@ result from storage.
   {render, dispose}`** paints that readout as text in the viewer card, derived from
   the store selection. Coords come from `coordsProvider()` (the current frame /
   the viewer handle) — the store never holds coordinates. Hidden while k-grid is on
-  (§14.2).
+  (§14.3).
 
 ## §16 Atom-index display rule
 
@@ -466,7 +467,7 @@ converted via `lib/workspace/_atom-index.js` `toDisplay` at the edge. Never let 
   (`tests/test_{kgrid,render_pipeline,measurement_overlay}_js.py`), the store
   (`test_selection_store_js.py`), the dispatcher (`test_workspace_dispatcher_js.py`).
 - Browser e2e (structure inspector): measurement overlay, clicks→store, and (when
-  the host supplies a cell) k-grid tiling — `tests/test_structure_inspector_measurement_e2e.py`.
+  a cell is present in storage) k-grid tiling — `tests/test_structure_inspector_measurement_e2e.py`.
 - The inspector exposes `viewerSlot.__molbuilder_test_handle` + `__molbuilder_test_store`
   (test-only) so e2e drives the viewer + store without canvas clicks.
 
