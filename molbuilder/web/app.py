@@ -392,6 +392,14 @@ def create_app(*, config=None) -> Flask:
         # template).
         return render_template("modify.html")
 
+    @app.route("/molview-demo")
+    def molview_demo_page():
+        # Standalone MolView component demo (molview-module.md §18): mounts the FULL
+        # component via molview.mount's empty-host build path -- viewer + panel + toggles
+        # + live render, all through ws.*, with NO modify-specific code.  A UI-evaluation
+        # surface + the real integration test of the assembly.
+        return render_template("molview_demo.html")
+
     @app.route("/structure-optimization")
     def structure_optimization_page():
         # Structure-optimization tab: SIESTA / PySCF script

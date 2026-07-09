@@ -114,10 +114,22 @@
                 // Wire the render loop once the viewer handle is ready; molview owns it.
                 viewer.embed(built.viewerHost, {
                     onReady: function (h) {
+                        // Test hook: expose the viewer handle so e2e can read what was drawn
+                        // (the owner never sees it -- it's not on the returned handle).
+                        built.viewerHost.__molview_test_handle = h;
                         if (mvApi && typeof mvApi.mountRender === "function") {
                             const rc = mvApi.mountRender(h, workspace, store,
                                                          { viewerHost: built.viewerHost });
                             cleanups.push(function () { try { rc.dispose(); } catch (_) {} });
+                        }
+                        // Viewer-adapter: selection halos + isolate opacity + click-to-select
+                        // reach the viewer (the same attach mountPanel does, §13.2).
+                        const adapter = selApi && selApi.viewerAdapter;
+                        if (adapter && typeof adapter.attach === "function") {
+                            const ah = adapter.attach(h, { store: store, mode: mode });
+                            cleanups.push(function () {
+                                try { ah && ah.dispose && ah.dispose(); } catch (_) {}
+                            });
                         }
                     },
                 });

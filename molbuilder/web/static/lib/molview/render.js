@@ -31,15 +31,25 @@
 
         // ---- Everything read through ws.* -- never a local copy (§14.0) ---------------- //
 
-        // The clean unit cell, straight from the data model.
+        // Build an xyz body from the atoms THEMSELVES -- never a canvas text that a
+        // store-only load (loadFromText, touchCanvas:false) leaves stale.
+        function _buildXyz(elements, coords) {
+            var lines = [String(coords.length), "molview"];
+            for (var i = 0; i < coords.length; i++) {
+                var p = coords[i];
+                lines.push((elements[i] || "X") + " " + p[0] + " " + p[1] + " " + p[2]);
+            }
+            return lines.join("\n");
+        }
+        // The clean unit cell, read from the STORE -- the SAME atoms the panel lists, so the
+        // viewer and the panel can never diverge (the data-consistency the design mandates).
         function getUnit() {
-            var s = (typeof workspace.getStructure === "function") ? workspace.getStructure() : null;
-            if (!s || !Array.isArray(s.atoms)) return null;
-            return {
-                coords:   s.atoms.map(function (a) { return [a.x, a.y, a.z]; }),
-                elements: s.atoms.map(function (a) { return a.element; }),
-                xyz:      s.text,
-            };
+            var st = store.getState();
+            var atoms = (st && Array.isArray(st.atoms)) ? st.atoms : [];
+            if (!atoms.length) return null;
+            var coords   = atoms.map(function (a) { return [a.x, a.y, a.z]; });
+            var elements = atoms.map(function (a) { return a.element; });
+            return { coords: coords, elements: elements, xyz: _buildXyz(elements, coords) };
         }
         // The resolved lattice (explicit cell, or bbox+vacuum) via the accessor.
         function getCell() {
@@ -56,14 +66,13 @@
 
         // ---- The pipeline -> one draw ------------------------------------------------- //
 
-        // Base draw: the current unit cell.  k-grid tiles ON TOP of this when enabled.
+        // Base draw: the current structure (from the store atoms).  k-grid tiles ON TOP.
         function drawBase() {
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
                 handle.setStructure({ xyz: u.xyz, lattice: getCell() || undefined });
             }
         }
-        drawBase();
 
         // k-grid controller: tiles the CLEAN unit cell by periodicity.kgrid when the store's
         // enable toggle is on (§14.2).  We hand it getKgridDims so dims come from the data
@@ -85,16 +94,40 @@
               })
             : { dispose: _noop };
 
-        // Re-draw on every workspace change (a load, an edit): base then re-tile.
-        function refresh() {
+        // Re-draw the BASE only when the STRUCTURE (atoms or cell) changes -- NOT on every
+        // selection click.  Selection/isolate overlays are the viewer-adapter's job; k-grid
+        // is kg's.  A store-only load fires store.subscribe; a periodicity edit fires
+        // ws.subscribe; a plain click fires store.subscribe but leaves the signature the same.
+        var _prevSig = null;
+        function _structureSig() {
+            var st = store.getState();
+            var atoms = (st && st.atoms) || [];
+            var sig = String(atoms.length);
+            for (var i = 0; i < atoms.length; i++) {
+                var a = atoms[i];
+                sig += "|" + a.element + "," + a.x + "," + a.y + "," + a.z;
+            }
+            var cell = getCell();
+            return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none");
+        }
+        function redrawIfStructureChanged() {
+            var sig = _structureSig();
+            if (sig === _prevSig) return;
+            _prevSig = sig;
             drawBase();
             if (kg && typeof kg.refresh === "function") kg.refresh();
         }
-        var wsUnsub = (typeof workspace.subscribe === "function") ? workspace.subscribe(refresh) : _noop;
+        redrawIfStructureChanged();   // initial draw
+
+        var storeUnsub = (typeof store.subscribe === "function")
+            ? store.subscribe(redrawIfStructureChanged) : _noop;
+        var wsUnsub = (typeof workspace.subscribe === "function")
+            ? workspace.subscribe(redrawIfStructureChanged) : _noop;
 
         return {
-            refresh: refresh,
+            refresh: redrawIfStructureChanged,
             dispose: function () {
+                try { storeUnsub(); } catch (_) {}
                 try { wsUnsub(); } catch (_) {}
                 try { kg.dispose(); } catch (_) {}
                 try { meas.dispose(); } catch (_) {}

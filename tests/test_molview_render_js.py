@@ -2,8 +2,9 @@
 
 Node integration test: loads the REAL kgrid + render-pipeline + render modules and drives
 mountRender with a stubbed viewer handle + workspace + store.  Pins that the render reads
-the structure through ws.* (no local copy), draws on mount, re-draws on a workspace change,
-and tiles by the WORKSPACE's k-grid dims (not the store's).
+the atoms from the STORE (the same source the panel lists -- so viewer and panel can never
+diverge), builds the xyz from those atoms (not a stale canvas text), re-draws only when the
+STRUCTURE changes (not on a selection click), and tiles by the WORKSPACE's k-grid dims.
 """
 import json
 import shutil
@@ -34,18 +35,17 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# A stubbed viewer handle + workspace + store.  The workspace returns a 2-atom unit cell +
-# k-grid dims [2,1,1]; the store's kgrid.dims is deliberately [1,1,1] so the test proves the
-# tiling dims come from ws.getKgrid(), not the store.  subscribe()s are recorded, not fired.
+# Stub handle + workspace + store.  The ATOMS live on the STORE (as they do in the real
+# store snapshot) -- getUnit reads them there.  The workspace supplies the cell + k-grid dims
+# [2,1,1] (deliberately != the store's kgrid.dims, to prove dims come from the workspace).
 _HARNESS = """
     const calls = [];
     const handle = { setStructure: (o) => calls.push(o), getAtomCoords: () => [[0,0,0],[1,0,0]] };
     const wsSubs = [], storeSubs = [];
-    let storeState = { kgrid: { enabled: false, dims: [1,1,1] }, indices: [], isolate: false };
+    let storeState = { kgrid: { enabled: false, dims: [1,1,1] }, indices: [], isolate: false,
+                       atoms: [{ element:'C', x:0, y:0, z:0 }, { element:'H', x:1, y:0, z:0 }] };
     const cell = [[10,0,0],[0,10,0],[0,0,10]];
     const workspace = {
-        getStructure: () => ({ text: '2\\nx\\nC 0 0 0\\nH 1 0 0\\n',
-                               atoms: [{element:'C',x:0,y:0,z:0},{element:'H',x:1,y:0,z:0}] }),
         getUnitCellInfo: () => ({ value: cell }),
         getKgrid: () => [2, 1, 1],
         subscribe: (fn) => { wsSubs.push(fn);
@@ -60,44 +60,54 @@ _HARNESS = """
 """
 
 
-def test_render_draws_the_unit_cell_from_the_workspace_on_mount():
+def test_render_draws_the_structure_from_the_store_atoms_on_mount():
     out = _run_node(_HARNESS + """
         mountRender(handle, workspace, store, {});
         console.log(JSON.stringify({ n: calls.length, head: calls[0].xyz.split('\\n')[0] }));
     """)
     assert out["n"] == 1              # one base draw
-    assert out["head"] == "2"        # the 2-atom unit cell, read from ws.getStructure()
+    assert out["head"] == "2"        # 2 atoms, read from the STORE (not workspace.getStructure)
 
 
-def test_render_redraws_on_workspace_change():
+def test_render_redraws_on_structure_change_not_on_selection_click():
     out = _run_node(_HARNESS + """
         mountRender(handle, workspace, store, {});
         const afterMount = calls.length;
-        wsSubs.forEach((fn) => fn());   // a workspace change (load / edit)
-        console.log(JSON.stringify({ afterMount, afterChange: calls.length }));
+        // selection-only change (same atoms) -> must NOT redraw the base
+        storeState = Object.assign({}, storeState, { indices: [0] });
+        storeSubs.forEach((fn) => fn());
+        const afterClick = calls.length;
+        // an atoms change (a load) -> MUST redraw, from the new atoms
+        storeState = Object.assign({}, storeState, { atoms: [{ element:'O', x:5, y:0, z:0 }] });
+        storeSubs.forEach((fn) => fn());
+        console.log(JSON.stringify({ afterMount, afterClick, afterLoad: calls.length,
+                                     loadHead: calls[calls.length-1].xyz.split('\\n')[0] }));
     """)
     assert out["afterMount"] == 1
-    assert out["afterChange"] == 2   # re-drew on the workspace change
+    assert out["afterClick"] == 1     # a selection click did NOT redraw the base
+    assert out["afterLoad"] == 2      # an atoms change (load) DID redraw
+    assert out["loadHead"] == "1"    # the new 1-atom structure
 
 
 def test_render_tiles_when_kgrid_enabled_using_workspace_dims():
     out = _run_node(_HARNESS + """
         mountRender(handle, workspace, store, {});
-        storeState = { kgrid: { enabled: true, dims: [1,1,1] }, indices: [], isolate: false };
+        storeState = Object.assign({}, storeState, { kgrid: { enabled: true, dims: [1,1,1] } });
         storeSubs.forEach((fn) => fn());   // enable toggle -> tile
         console.log(JSON.stringify({ head: calls[calls.length-1].xyz.split('\\n')[0] }));
     """)
-    # dims come from ws.getKgrid()=[2,1,1], NOT the store's [1,1,1]: 2 unit atoms x 2 = 4
+    # dims come from ws.getKgrid()=[2,1,1], NOT the store's [1,1,1]: 2 store atoms x 2 = 4
     assert out["head"] == "4"
 
 
 def test_render_dispose_unsubscribes_everything():
     out = _run_node(_HARNESS + """
         const r = mountRender(handle, workspace, store, {});
-        const beforeWs = wsSubs.length, beforeStore = storeSubs.length;
+        const beforeStore = storeSubs.length, beforeWs = wsSubs.length;
         r.dispose();
-        console.log(JSON.stringify({ beforeWs, beforeStore,
-                                     afterWs: wsSubs.length, afterStore: storeSubs.length }));
+        console.log(JSON.stringify({ beforeStore, beforeWs,
+                                     afterStore: storeSubs.length, afterWs: wsSubs.length }));
     """)
-    assert out["beforeWs"] == 1 and out["afterWs"] == 0        # ws subscription torn down
-    assert out["beforeStore"] == 1 and out["afterStore"] == 0  # k-grid's store sub torn down
+    # kg + the structure-redraw both subscribe to the store; the redraw also subscribes to ws
+    assert out["beforeStore"] == 2 and out["afterStore"] == 0
+    assert out["beforeWs"] == 1 and out["afterWs"] == 0

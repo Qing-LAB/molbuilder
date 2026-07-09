@@ -139,7 +139,8 @@ _BUILD_HARNESS = """
     } };
     global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
     const workspace = {
-        selection: { getState: () => ({ indices: [], kgrid: { enabled: false, dims: [1,1,1] }, isolate: false }),
+        selection: { getState: () => ({ indices: [], kgrid: { enabled: false, dims: [1,1,1] }, isolate: false,
+                                atoms: [{ element: 'O', x: 0, y: 0, z: 0 }] }),
                      subscribe: () => (() => {}) },
         getStructure: () => ({ text: '1\\nx\\nO 0 0 0\\n', atoms: [{ element: 'O', x: 0, y: 0, z: 0 }] }),
         getUnitCellInfo: () => ({ value: null }),

@@ -1,0 +1,79 @@
+{#- Standalone MolView component demo (molview-module.md §18).
+
+    This page mounts the FULL molview component via the EMPTY-HOST build path:
+    molview.mount(host, ws, {...}) builds the fused card, embeds the viewer, and owns the
+    render loop -- everything through ws.*.  It exists to (a) let you evaluate the component's
+    UI in isolation and (b) be the real integration test of the assembly (real viewer + real
+    workspace, no stubs).  Nothing Modify-specific is loaded. -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MolView component demo</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
+<style>
+  body { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+  .demo-head { margin-bottom: 1rem; }
+  .demo-head h1 { margin: 0 0 0.25rem; font-size: 1.2rem; }
+  .demo-bar { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0; }
+  .demo-bar button { padding: 0.35rem 0.8rem; cursor: pointer; }
+  #demo-status { color: var(--text-secondary, #888); font: 12px/1.4 system-ui, sans-serif; }
+  #molview-demo-host { margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <div class="demo-head">
+    <h1>MolView component — standalone demo</h1>
+    <p id="demo-status">loading…</p>
+  </div>
+
+  <div class="demo-bar">
+    <span>Load a sample:</span>
+    <button id="demo-water" type="button">Water</button>
+    <button id="demo-benzene" type="button">Benzene</button>
+    <button id="demo-au-cell" type="button">Au (with cell → try k-grid)</button>
+    <span style="margin-left:1rem;">Console: <code>__molview.getStructure()</code>,
+      <code>__molview.getSelection()</code>, <code>__molview.onChange(fn)</code></span>
+  </div>
+
+  {#- EMPTY host -> molview builds everything into it (the full-component build path). -#}
+  <div id="molview-demo-host"></div>
+
+  {#- ---- The molview + workspace stack (NO modify-specific scripts) ---- -#}
+  <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/_atom-index.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
+  <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
+
+  {#- External file (not inline) so it satisfies the app CSP script-src 'self'. -#}
+  <script src="{{ url_for('static', filename='molview/demo.js') }}"></script>
+</body>
+</html>
