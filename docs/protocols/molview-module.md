@@ -341,66 +341,61 @@ converted via `lib/workspace/_atom-index.js` `toDisplay` at the edge. Never let 
 
 ---
 
-## §18 The unified mount — `molview.mount(host, opts)` (proposed)
+## §18 The unified mount — `molview.mount(host, workspace, opts)`
 
-Today the fused card is assembled **twice**, with the same chrome:
-
-- **Modify** — the card DOM is in `modify.html`; `selection-bootstrap.js` mounts the panel
-  + view-controls + fold; `viewer.js` embeds the viewer + k-grid + measurement.
-- **Results** — `inspectors/structure.js` builds the same DOM in JS and wires the same
-  pieces, against an ephemeral store.
-
-`molview.mount` folds that duplicated assembly into ONE call. The card **chrome** (DOM +
-panel + view-controls + fold) is identical; only the **store**, **mode**, and the
-**viewer-embed + data source** differ — so those are `opts`, and everything else lives in
-the mount.
+Today the fused card is assembled **twice** (Modify: `modify.html` DOM + `selection-bootstrap.js`
++ `viewer.js`; Results: `inspectors/structure.js`). `molview.mount` folds that into ONE
+**fully-concealed** call: the caller hands molview a **workspace** — the uniform data
+interface — and molview owns everything else. No loader hooks, no embed hooks; molview does
+not know or care where the data lives.
 
 ### 18.1 API
 
 ```
-molview.mount(hostEl, opts) -> handle
-
-opts = {
-  store,          // a selection store -- ws.selection, OR
-                  //   molbuilder.selection.createEphemeralStore().  REQUIRED: the mount
-                  //   never invents state; the caller owns WHICH store (§12 single-source).
-  mode,           // "modify" | "readonly"  (panel write-ness)
-  focus,          // bool -- include the "Focus molecule" button (Modify only)
-  embed,          // (viewerHost) -> Promise<viewerHandle>.  The caller's embed strategy:
-                  //   Modify = the resilient runtime.whenReady attach; Results = inline
-                  //   embed with card.height.  The mount builds the host + calls this.
-  data,           // { getUnit(), getCell(), getKgridDims() } -- the k-grid render hooks
-                  //   (Modify = ws accessors; Results = the result sidecar + its store).
-}
-
-handle = { dispose(), els:{card, viewerHost, panelHost, controlsBar}, store, viewerHandle }
+molview.mount(hostEl, workspace, opts) -> handle
 ```
 
-### 18.2 What the mount OWNS (the concealed assembly)
+- **`workspace`** — the uniform DATA interface: the `ws.*` API (structure, selection,
+  periodicity, and *save*). molview **reads** through the accessors (which return defensive
+  copies — the store can't be mutated by holding a value) and **writes** through the
+  mutators (which the workspace persists). molview holds **no data of its own** and takes
+  **no** loader/embed/data hooks.
+- **`opts`** = `{ mode: "modify" | "readonly", focus?: bool }`.
+- **`handle`** = `{ dispose(), els, viewerHandle }`.
 
-- Builds the fused-card DOM (`fused-layout.css`): `body > [ viewer (wrap + controls bar) |
-  fold | panel host ]` — the ONE DOM builder, retiring the template card + the
-  `structure.js` build.
-- `selection.mountPanel(panelHost, {store, mode})`; `molview.mountViewControls(controlsBar,
-  store)`; wires the fold button.
-- `await opts.embed(viewerHost)`; then `mountKgridRender` + `mountMeasurementOverlay` on the
-  returned handle, using `opts.data`.
-- `dispose()` tears all of it down (panel, controls, overlays, k-grid, subscriptions).
+The caller's ONLY job is to pass the right workspace + mode. **Protection, uniform access,
+and persistence are the workspace's concern** — molview just uses it.
 
-### 18.3 What stays with the CALLER (the data seam)
+### 18.2 molview OWNS the whole assembly
 
-The viewer **embed** and the **data** differ by consumer, so they're `opts` hooks, not
-baked in: Modify feeds the live workspace (resilient attach); Results feeds a static result
-file (`adoptSession`). Everything else is identical and lives in the mount.
+- Builds the fused-card DOM (`fused-layout.css`).
+- **Embeds the viewer itself** and **subscribes to the workspace** — when the structure
+  changes (a load, an edit), molview re-renders. So "Load a new file" stops being special
+  glue: it is a workspace write molview reacts to.
+- `selection.mountPanel(workspace.selection, {mode})`; `molview.mountViewControls`; wires
+  the fold; `mountKgridRender` (cell/dims from `workspace.get*` accessors);
+  `mountMeasurementOverlay`.
+- `dispose()` tears it all down (panel, controls, overlays, k-grid, subscriptions).
 
-### 18.4 Migration (one consumer at a time, regression at each)
+### 18.3 Persistence is the WORKSPACE's, not molview's
 
-1. Build `molview.mount` + unit-test the DOM/wiring against a stub store + stub embed.
-2. **Modify**: template card → an empty host; `selection-bootstrap.js` calls `molview.mount`
-   (`focus:true`, `store: ws.selection`, `mode:"modify"`, `embed:` the whenReady attach).
-3. **Results**: `structure.js` calls `molview.mount` (`store:` ephemeral, `mode:"readonly"`,
-   `embed:` inline).
-4. Delete the two hand-assemblies.
+Pass the **real** workspace (Modify) → edits persist to disk. Pass a **throwaway** workspace
+(a Results card) → the same `ws.*` API, never saved. molview can't tell the difference and
+doesn't need to — that is the concealment. It also means molview can never leak or corrupt
+data: every read is a copy, every write goes through the workspace's own persistence.
 
-> **Status: PROPOSED — not yet built.** Steps 1–3 of the viewer-controls-bar work (the
-> shared `.viewer-toggle` bar) shipped 2026-07-08; this mount is the next consolidation.
+### 18.4 Migration — ONE TAB AT A TIME (best-practice-first)
+
+Prove the pattern on **Modify** first, with the real workspace singleton; leave every other
+consumer on its current code until Modify validates the design, then migrate each correctly.
+
+1. **Modify** (current step): `molview.mount(host, ws, {mode:"modify", focus:true})` replaces
+   the template card DOM + `selection-bootstrap.js` + `viewer.js` assembly. `ws` = the
+   existing workspace singleton (already persisted) — **no new infrastructure needed**.
+2. **Results** (LATER): needs a throwaway workspace, so first make the workspace
+   **instantiable** (a factory minting a non-persisted instance with the full `ws.*` API);
+   then `molview.mount(host, ephemeralWs, {mode:"readonly"})`. Until then Results keeps its
+   current hand-assembly, **untouched**.
+
+> **Status: Modify in progress; Results (and any other consumer) deferred until Modify
+> establishes the pattern — they need the workspace factory (§18.4 step 2).**
