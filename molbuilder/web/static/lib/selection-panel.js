@@ -232,13 +232,14 @@
 
         function renderStatus(s) {
             if (!els.count) return;
-            if (!s.sourceFile) {
+            // Gate on the ATOMS (the structure content the list also shows), NOT sourceFile:
+            // a structure loaded from text has atoms but no file path, and the count must stay
+            // in sync with the list rather than reporting "no structure" for a loaded molecule.
+            var n = (s.atoms && s.atoms.length) || 0;
+            if (n === 0) {
                 els.count.textContent = "no structure";
-            } else if (s.atoms.length === 0) {
-                els.count.textContent = "0 atoms";
             } else {
-                els.count.textContent =
-                    s.indices.length + " / " + s.atoms.length + " atoms";
+                els.count.textContent = s.indices.length + " / " + n + " atoms";
             }
             if (els.loading) els.loading.hidden = !s.loading;
             if (els.errorEl) {

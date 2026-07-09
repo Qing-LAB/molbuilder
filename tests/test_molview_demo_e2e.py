@@ -74,6 +74,14 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.locator("#demo-benzene").click()
     page.wait_for_function(_viewer_atoms_is(12), timeout=10000)
 
+    # the header count reflects the loaded structure (regression: it was gated on sourceFile,
+    # so a text-loaded molecule stayed stuck at "no structure").
+    page.wait_for_function(
+        "() => /12 atoms/.test(document.querySelector('#molview-demo-host #selection-count')"
+        "        .textContent)", timeout=5000)
+    count = page.locator("#molview-demo-host #selection-count").inner_text()
+    assert "no structure" not in count, f"count out of sync with the loaded structure: {count!r}"
+
     assert not errors, f"console/page errors during mount + load: {errors}"
 
 
