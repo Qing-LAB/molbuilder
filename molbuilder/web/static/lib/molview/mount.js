@@ -23,14 +23,53 @@
  * driven by this owner -- molview never keys storage itself.  Absent owner => the
  * workspace's default namespace (today's single global slot; unchanged for Modify).
  *
- * INCREMENTAL BUILD (2026-07-08, §18.5): step 4a wires the VIEW-CHROME -- the panel, the
- * view-controls bar, and the fold handle -- against the workspace's store.  The viewer embed
- * + k-grid + measurement (today in modify/viewer.js) fold in at step 4b; the DOM build +
- * Focus-molecule at 4c.  Until then the host must already carry the fused-card DOM
- * (fused-layout.css: .molview-card > .molview-body > viewer | fold | .molview-panel).
+ * ASSEMBLY -- two paths, chosen by the host you pass:
+ *  - EMPTY host  -> molview BUILDS the fused card, EMBEDS the viewer, and OWNS the render
+ *    loop (molview.mountRender): the full component.  This is the target every consumer
+ *    converges to.
+ *  - PRE-BUILT card (a host already carrying .molview-card > .molview-panel, e.g. Modify's
+ *    template today) -> molview only wires the existing panel / toggles / fold; that host
+ *    still owns its own viewer + render.  Transitional -- retired when the consumer passes an
+ *    empty host and lets molview own everything.
  */
 (function (root) {
     "use strict";
+
+    function _el(tag, cls) {
+        const e = root.document.createElement(tag);
+        if (cls) e.className = cls;
+        return e;
+    }
+
+    // Build the fused-card DOM (fused-layout.css) into hostEl.  Returns the sub-hosts by
+    // DIRECT reference -- molview created them, so no querySelector is needed.
+    function _buildCard(hostEl) {
+        const card       = _el("div", "molview-card");
+        const body       = _el("div", "molview-body");
+        const viewerCol  = _el("div", "molview-viewer");
+        const wrap       = _el("div", "viewer-wrap");
+        const viewerHost = _el("div", "viewer");
+        wrap.appendChild(viewerHost);
+        const controls   = _el("div", "viewer-controls");
+        const vcHost     = _el("span", "viewer-toggles");
+        controls.appendChild(vcHost);
+        viewerCol.appendChild(wrap);
+        viewerCol.appendChild(controls);
+        const foldBtn    = _el("button", "molview-fold-btn");
+        foldBtn.setAttribute("type", "button");
+        foldBtn.setAttribute("aria-expanded", "true");
+        const chevron    = _el("span", "molview-fold-chevron");
+        chevron.textContent = "›";   // ›
+        foldBtn.appendChild(chevron);
+        const panelHost  = _el("div", "molview-panel");
+        body.appendChild(viewerCol);
+        body.appendChild(foldBtn);
+        body.appendChild(panelHost);
+        card.appendChild(body);
+        hostEl.appendChild(card);
+        return { card: card, panelHost: panelHost, vcHost: vcHost,
+                 foldBtn: foldBtn, viewerHost: viewerHost };
+    }
 
     async function mount(hostEl, workspace, opts) {
         opts = opts || {};
@@ -53,15 +92,37 @@
             workspace.useNamespace(owner);
         }
 
-        // Resolve the fused card + its sub-hosts (fused-layout.css structure).
-        const card = hostEl.classList && hostEl.classList.contains("molview-card")
-            ? hostEl
-            : ((hostEl.closest && hostEl.closest(".molview-card")) || hostEl);
-        const panelHost = card.querySelector(".molview-panel") || hostEl;
-        const vcHost    = card.querySelector(".viewer-toggles");
-        const foldBtn   = card.querySelector(".molview-fold-btn");
-
         const cleanups = [];
+
+        // Resolve the fused card + its sub-hosts.  PRE-BUILT card (Modify's template) -> wire
+        // the existing panel/toggles/fold; that host owns its own viewer + render.  EMPTY
+        // host -> molview BUILDS the card, EMBEDS the viewer, and OWNS the render loop.
+        let card = hostEl.classList && hostEl.classList.contains("molview-card")
+            ? hostEl
+            : ((hostEl.closest && hostEl.closest(".molview-card")) || null);
+        let panelHost = card && card.querySelector(".molview-panel");
+        let vcHost    = card && card.querySelector(".viewer-toggles");
+        let foldBtn   = card && card.querySelector(".molview-fold-btn");
+
+        if (!panelHost) {
+            // EMPTY host: build the DOM, embed the viewer, own the render (the full component).
+            const built = _buildCard(hostEl);
+            card = built.card; panelHost = built.panelHost;
+            vcHost = built.vcHost; foldBtn = built.foldBtn;
+            const viewer = mb.viewer;
+            if (viewer && typeof viewer.embed === "function") {
+                // Wire the render loop once the viewer handle is ready; molview owns it.
+                viewer.embed(built.viewerHost, {
+                    onReady: function (h) {
+                        if (mvApi && typeof mvApi.mountRender === "function") {
+                            const rc = mvApi.mountRender(h, workspace, store,
+                                                         { viewerHost: built.viewerHost });
+                            cleanups.push(function () { try { rc.dispose(); } catch (_) {} });
+                        }
+                    },
+                });
+            }
+        }
 
         // Panel (atom selection + the Cell page), bound to the workspace's store.
         const panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
