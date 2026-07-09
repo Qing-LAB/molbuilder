@@ -112,6 +112,31 @@ def test_overlay_hidden_while_kgrid_enabled():
     assert out["hidden"] is True     # valid 2-atom pick, but k-grid on -> hidden
 
 
+def test_measurement_works_under_isolate_via_global_rekey():
+    """molview-module.md §14.3: under ISOLATE the viewer draws ONLY the selected atoms, so
+    coordsProvider() returns them in visible (filtered) order.  The overlay must RE-KEY those
+    coords back to GLOBAL atom index so the distance is between the right atoms -- isolate
+    KEEPS the measurement (only k-grid pauses it).
+
+    Select global atoms 1 & 2 -- coords (1,0,0) and (0,1,0) -- with isolate on; the viewer
+    then draws just those two, so coordsProvider returns [[1,0,0],[0,1,0]] (visible order).
+    The distance must be |(1,0,0)-(0,1,0)| = sqrt(2) ~ 1.414, proving the re-key mapped the
+    filtered coords onto picks 1 & 2 (a naive positions[1]/positions[2] read of the filtered
+    array would measure the wrong pair or hide)."""
+    out = _run_node(_HARNESS + """
+        // isolate on, atoms 1 & 2 selected -> viewer draws only those, in visible order.
+        const filtered = [coords[1], coords[2]];   // what getAtomCoords returns under isolate
+        const store = makeStore({ pickOrder: [1,2], indices: [1,2], atoms,
+                                  isolate: true, kgrid: { enabled: false } });
+        mk(viewerHost, { store, coordsProvider: () => filtered });
+        console.log(JSON.stringify(snap()));
+    """)
+    assert out["hidden"] is False, "measurement must stay visible under isolate"
+    assert out["kind"] == "distance"
+    assert "1.41" in out["text"], (
+        f"distance must be sqrt(2)~1.414 (re-keyed to atoms 1 & 2); got {out['text']!r}")
+
+
 def test_angle_vertex_is_pickOrder_second_not_index_order():
     """molview-module.md §15: the angle VERTEX is pickOrder[1] -- the 2nd atom the
     user CLICKED -- not the middle-by-index.  Same three atoms, two different click

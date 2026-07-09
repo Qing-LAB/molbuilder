@@ -42,15 +42,12 @@
 
         function render() {
             const s = store.getState() || {};
-            // §14.3 (molview-module.md): while the viewer shows a DERIVED list -- isolate
-            // (only the selected atoms drawn) OR k-grid (tiled supercell) -- the drawn
-            // coords no longer line up with the unit-cell index the readout is keyed on,
-            // so the measurement stands down until both are off.  (coordsProvider() returns
-            // the DERIVED list's coords in these modes; reading it by unit-cell index would
-            // measure the wrong atoms.)
-            const isolating = !!s.isolate
-                && (Array.isArray(s.indices) ? s.indices.length : 0) > 0;
-            if ((s.kgrid && s.kgrid.enabled) || isolating) {
+            // k-grid tiles the unit cell into a supercell -- a per-unit-cell-index readout
+            // can't map onto the duplicated copies, so the measurement stands down until
+            // k-grid is off.  ISOLATE, by contrast, keeps working: the drawn atoms ARE the
+            // selected atoms, the readout is derived from the selection (still curated via
+            // the panel), and we simply re-key the coords below (§14.3, molview-module.md).
+            if (s.kgrid && s.kgrid.enabled) {
                 el.hidden = true;
                 el.textContent = "";
                 return;
@@ -64,7 +61,26 @@
                 el.textContent = "";
                 return;
             }
-            const coords = coordsProvider() || [];
+            // meas.compute indexes positions[] by GLOBAL atom index.  When isolate is on the
+            // viewer draws ONLY the selected atoms, so coordsProvider() returns them in the
+            // render controller's VISIBLE order (= s.indices filtered to valid, matching
+            // computeRender's isolate filter in render-pipeline.js).  Re-key that filtered
+            // list back to global index so each pick reads the right atom's coords.  (Kept
+            // in lock-step with computeRender's isolate order.)
+            let coords = coordsProvider() || [];
+            const isolating = !!s.isolate
+                && Array.isArray(s.indices) && s.indices.length > 0;
+            if (isolating) {
+                const natoms = (s.atoms || []).length;
+                const visible = s.indices.filter(function (i) {
+                    return i >= 0 && i < natoms;
+                });
+                const byGlobal = [];
+                for (let m = 0; m < visible.length; m++) {
+                    byGlobal[visible[m]] = coords[m];
+                }
+                coords = byGlobal;
+            }
             const result = meas.compute(picks, s.atoms || [], coords, picks);
             if (result && result.display) {
                 el.hidden = false;

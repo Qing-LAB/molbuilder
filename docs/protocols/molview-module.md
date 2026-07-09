@@ -376,10 +376,11 @@ rest of §14 depends on:
 - **A derived view is display-only for selection (§14.3).** While isolate OR k-grid is on,
   the drawn list is a *derived* list (filtered / tiled), so the drawn atom index no longer
   equals the unit-cell index — a click in the 3-D window would be ambiguous. In-window
-  click-select is therefore **disabled**, and the index-keyed decorations (selection /
-  region / frozen halos, the measurement readout) **pause**; the **panel atom list** is the
-  selection surface in these modes. Turn both off → the plain full-list base draw returns and
-  everything restores.
+  click-select is therefore **disabled** and the selection / region / frozen **halos pause**
+  (under isolate the drawn atoms already *are* the selection); the **panel atom list** is the
+  selection surface in these modes. The **measurement readout keeps working under isolate**
+  (re-keyed to global index) and pauses only under k-grid. Turn both off → the plain
+  full-list base draw returns and everything restores. (§14.3.)
 - **Two different things are both called "k-grid":** the **dims** `[nx,ny,nz]` — how many
   repeats, which is the structure's DFT k-grid, stored in periodicity and written with
   **`ws.setKgrid(dims)`**; and the **enable toggle** — a view preference (show the tiling or
@@ -434,9 +435,14 @@ is on:
 - **In-window picking is disabled** — clicking an atom in the 3-D molview does **not** toggle
   the selection. This same guard also drops the programmatic empty-pick that a resized
   `setStructure` fires, so re-deriving the view **never clobbers the store selection**.
-- **The index-keyed decorations stand down in the window** — selection / region / frozen
-  halos and the measurement readout pause (they are keyed by unit-cell index and can't map
-  onto a filtered or tiled list).
+- **Halos stand down in the window** — the selection / region / frozen halos pause. Under
+  isolate the drawn atoms already ARE the selection, so there is nothing to distinguish;
+  under k-grid they can't map onto the copies.
+- **The measurement readout keeps working under isolate** — the selection is still curated
+  (via the panel), and the readout is derived from it. The drawn list is only the selected
+  atoms, so the overlay re-keys `coordsProvider()`'s filtered coords back to global atom
+  index (matching `computeRender`'s isolate order) before the geometry math. It pauses only
+  under **k-grid** (the tiled copies have no single unit-cell coordinate).
 - **The selection PANEL stays fully functional** — filter and click-select on the atom
   *list* work normally, because the list is always the original unit-cell atoms (no
   ambiguity). The selection is curated there, and the render re-derives on change.
