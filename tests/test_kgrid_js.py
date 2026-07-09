@@ -1,4 +1,4 @@
-"""k-grid tiling -- render-pipeline layer 3 (atom-annotations.md § 6.3).
+"""k-grid tiling -- render-pipeline layer 3 (molview-module.md §14).
 
 Node unit test for the pure compute: identity for [1,1,1], correct lattice
 offsets, image ordering (original cell first), sourceIndex back-mapping, dim

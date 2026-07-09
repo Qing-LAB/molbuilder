@@ -1,5 +1,5 @@
-"""Render-pipeline compose -- assembles § 6.3 layers 2-3 (selection/isolate +
-k-grid) into the displayed positions + a global sourceIndex.
+"""Render-pipeline compose -- assembles molview-module.md §14 layers (selection/isolate
+then k-grid) into the displayed positions + a global sourceIndex.
 
 Node unit test: selection/isolate filtering, k-grid tiling of the visible set,
 and the LOCAL->GLOBAL sourceIndex remap so element/decoration lookup stays right.
@@ -133,3 +133,55 @@ def test_mount_kgrid_render_no_cell_does_not_tile():
         console.log(JSON.stringify({ calls: handleCalls.length }));
     """)
     assert out["calls"] == 0             # no cell -> nothing tiles (inert, not crash)
+
+
+def test_mount_kgrid_render_dims_from_getKgridDims_not_store():
+    """molview-module.md §14.0: the tiling DIMS come from getKgridDims() (the
+    structure's periodicity k-grid, set via ws.setKgrid) -- NOT the store's
+    kgrid.dims.  The store owns only the ENABLE toggle now.  Keep the store dims at
+    [1,1,1] but hand getKgridDims -> [3,1,1]; enabling must tile by 3, proving the
+    dims are read from getKgridDims and not the store."""
+    out = _run_node("""
+        let state = { kgrid: { enabled: false, dims: [1,1,1] }, indices: [], isolate: false };
+        const subs = [];
+        const store = { getState: () => state,
+            subscribe: (fn) => { subs.push(fn); return () => {}; },
+            _set: (p) => { state = Object.assign({}, state, p); subs.forEach(fn => fn(state)); } };
+        const handleCalls = [];
+        const handle = { setStructure: (o) => handleCalls.push(o) };
+        global.molbuilder.molview.mountKgridRender(handle, store, {
+            getUnit: () => ({ coords: [[0,0,0],[1,0,0]], elements: ['C','H'], xyz: 'UNIT' }),
+            getCell: () => [[10,0,0],[0,10,0],[0,0,10]],
+            getKgridDims: () => [3,1,1],
+        });
+        store._set({ kgrid: { enabled: true, dims: [1,1,1] } });   // store dims stay 1x1x1
+        console.log(JSON.stringify({ n: handleCalls[handleCalls.length-1].xyz.split('\\n')[0] }));
+    """)
+    assert out["n"] == "6"   # 2 unit atoms x 3x1x1 from getKgridDims -- NOT the store's 1x1x1
+
+
+def test_mount_kgrid_render_recomputes_from_clean_unit_never_a_tiled_list():
+    """molview-module.md §14.0: the render ALWAYS re-tiles the CLEAN unit cell,
+    never a list it already tiled.  Enable [2,1,1] (-> 4 atoms), then change dims to
+    [3,1,1] while STILL enabled: it must be 6 (2 unit x 3), not 12 (a tile of the
+    4-atom tile)."""
+    out = _run_node("""
+        let state = { kgrid: { enabled: false, dims: [2,1,1] }, indices: [], isolate: false };
+        const subs = [];
+        const store = { getState: () => state,
+            subscribe: (fn) => { subs.push(fn); return () => {}; },
+            _set: (p) => { state = Object.assign({}, state, p); subs.forEach(fn => fn(state)); } };
+        const handleCalls = [];
+        const handle = { setStructure: (o) => handleCalls.push(o) };
+        global.molbuilder.molview.mountKgridRender(handle, store, {
+            getUnit: () => ({ coords: [[0,0,0],[1,0,0]], elements: ['C','H'], xyz: 'UNIT' }),
+            getCell: () => [[10,0,0],[0,10,0],[0,0,10]],
+        });
+        store._set({ kgrid: { enabled: true, dims: [2,1,1] } });
+        const first = handleCalls[handleCalls.length-1].xyz.split('\\n')[0];
+        store._set({ kgrid: { enabled: true, dims: [3,1,1] } });   // re-tile while enabled
+        const second = handleCalls[handleCalls.length-1].xyz.split('\\n')[0];
+        console.log(JSON.stringify({ first, second }));
+    """)
+    assert out["first"] == "4"    # 2 unit x 2x1x1
+    assert out["second"] == "6"   # 2 unit x 3x1x1 -- from the CLEAN unit, NOT 12 (a re-tiled tile)

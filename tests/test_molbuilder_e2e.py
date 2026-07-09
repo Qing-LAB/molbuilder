@@ -866,13 +866,14 @@ def test_show_selected_only_visually_hides_non_selected_atoms(
 
 def test_show_selected_only_toggle_wires_isolate_mode(
         page, flask_server, water_xyz_file):
-    """The "Show selected only" checkbox drives the isolate flag, which is
-    STORE state (Phase 5): the checkbox calls ws.selection.setIsolate and the
-    viewer adapter reads state.isolate from its subscription.
+    """The "Show selected only" toggle in the viewer-controls BAR (molview.mountViewControls,
+    not the panel anymore) drives the isolate flag, which is STORE state: the bar calls
+    ws.selection.setIsolate and the viewer adapter reads state.isolate from its subscription.
 
-    This e2e pins the panel checkbox -> store.isolate path so a future rename /
-    re-wiring fails loudly here.  (The setOverlays + 3Dmol setStyle rendering is
-    covered by the isolate-mode e2e above + the viewer-adapter unit tests.)
+    This e2e pins the bar-toggle -> store.isolate path across BOTH check and uncheck, so a
+    future rename / re-wiring fails loudly here.  (The broader bar test
+    test_modify_view_controls_bar covers both toggles + their existence; this one focuses on
+    the isolate on/off round-trip, incl. the uncheck path it uniquely covers.)
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)

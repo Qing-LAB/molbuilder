@@ -2,7 +2,7 @@
 
 Task #146 — Phase B.1.15.  The selection store is the canonical
 state holder for the /modify selection panel (see
-``docs/protocols/atom-selection.md`` for the full spec).  Until
+``docs/protocols/molview-module.md §12`` for the full spec).  Until
 this commit it was covered ONLY by the Playwright e2e tests in
 ``test_molbuilder_e2e.py``, which exercise the store via the panel
 DOM -- expensive (~5-10 s per test) and they can't isolate the
@@ -110,13 +110,17 @@ def _with_store(setup: str, body: str) -> str:
 
 
 class TestStoreAPISurface:
-    """Pin the public API surface so a future refactor that drops a
-    method (without bumping the contract version) fails CI."""
+    """Pin the RAW store impl's method surface (the names on _createStore's return)
+    so a refactor that drops one fails CI.  NOTE: the PUBLIC surface consumers hold
+    (``ws.selection`` / ``createEphemeralStore``) RENAMES these -- toggle/set/invert/all
+    /clear (molview-module.md §12.2) -- and is pinned separately by TestEphemeralStore.
+    This class pins the impl, not the documented public contract."""
 
     def test_exposes_documented_methods(self):
-        """Every method documented in atom-selection.md must be
-        present on the store instance.  Catches accidental drops
-        + renames before they surface in the Playwright tests."""
+        """Every RAW-impl method (toggleAtom, setSelection, invertSelection, ...) must be
+        present on the _createStore() instance.  Catches accidental drops/renames in the
+        impl before they surface in the Playwright tests.  (The public renamed surface is
+        TestEphemeralStore's job.)"""
         out = _run_node(
             "const store = window.molbuilder.selection._createStore();\n"
             "console.log(JSON.stringify({\n"
@@ -150,7 +154,7 @@ class TestStoreAPISurface:
 
 
 class TestInitialState:
-    """The initial state shape pins atom-selection.md § 2."""
+    """The initial state shape pins molview-module.md §12.1."""
 
     def test_initial_state_shape(self):
         out = _run_node(
@@ -165,7 +169,7 @@ class TestInitialState:
             # (2026-06-09) — the click-order shadow for the
             # measurement-readout angle vertex.  Empty on fresh
             # store; updated in lock-step with selection by every
-            # mutator.  See atom-selection.md § 2 + TestPickOrderSnapshot
+            # mutator.  See molview-module.md §12.1 + TestPickOrderSnapshot
             # below.
             "pickOrder":  [],
             "mode":       "click",
@@ -556,7 +560,7 @@ class TestSetMode:
         assert out == "click"
 
     def test_switching_mode_preserves_selection(self):
-        """Selection is shared across modes per atom-selection.md §3."""
+        """Selection is shared across modes per molview-module.md §12."""
         out = _run_node(
             "const store = window.molbuilder.selection._createStore();\n"
             "store.setSelection([1, 2, 3])\n"
@@ -764,7 +768,7 @@ class TestPickOrderSnapshot:
 class TestSubscribe:
 
     def test_subscribe_fires_immediately_with_state(self):
-        """Per atom-selection.md § 4: subscribe MUST fire once
+        """Per molview-module.md §12: subscribe MUST fire once
         synchronously (well, via microtask) with the current state
         so the subscriber can render its initial UI without a
         separate getState() call."""
@@ -881,9 +885,47 @@ class TestEphemeralStore:
         assert out["indicesShape"] is True
 
 
+class TestIsolateState:
+    """molview-module.md §12.1: ``isolate`` ("show selected only") is VIEW state in
+    the store.  setIsolate flips it, notifies ON a real change, and is a NO-OP (no
+    notify) when the value is unchanged."""
+
+    def test_set_isolate_flips_state(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.setIsolate(true);\n"
+            "console.log(JSON.stringify(store.getState().isolate));"
+        )
+        assert out is True
+
+    def test_set_isolate_notifies_on_change_and_noops_when_unchanged(self):
+        # _notify() is async + coalesced (Promise.resolve().then), so await a tick after
+        # each mutation to let the (possibly coalesced) notification flush.
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "let n = 0;\n"
+            "store.subscribe(() => { n++; });\n"
+            "const tick = () => new Promise((r) => setTimeout(r, 0));\n"
+            "(async () => {\n"
+            "  await tick();                          // registration notify flushes\n"
+            "  const afterSub = n;\n"
+            "  store.setIsolate(true);  await tick(); // real change -> notify\n"
+            "  const afterOn = n;\n"
+            "  store.setIsolate(true);  await tick(); // unchanged -> NO notify\n"
+            "  const afterAgain = n;\n"
+            "  store.setIsolate(false); await tick(); // real change -> notify\n"
+            "  const afterOff = n;\n"
+            "  console.log(JSON.stringify({ afterSub, afterOn, afterAgain, afterOff }));\n"
+            "})();\n"
+        )
+        assert out["afterOn"] == out["afterSub"] + 1        # enabling notified once
+        assert out["afterAgain"] == out["afterOn"]          # no-op did NOT notify
+        assert out["afterOff"] == out["afterAgain"] + 1     # disabling notified once
+
+
 class TestKgridState:
-    """k-grid view-state (Phase 5 § 6.3) lives in the store: setKgrid merges an
-    ``{enabled?, dims?}`` patch, floors + clamps dims to >= 1, appears in the
+    """k-grid view-state (molview-module.md §12.1/§14) lives in the store: setKgrid
+    merges an ``{enabled?, dims?}`` patch, floors + clamps dims to >= 1, appears in the
     snapshot, and only notifies on a real change."""
 
     def test_setkgrid_merges_enable_and_normalizes_dims(self):

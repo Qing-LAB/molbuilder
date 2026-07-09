@@ -218,6 +218,39 @@ def test_sidecar_cell_reaches_viewer_and_kgrid_tiles(
     page.wait_for_function(f"{_count} === 2", timeout=8000)
 
 
+def test_results_view_controls_bar_drives_store(
+        page, flask_server, tmp_path, monkeypatch):
+    """The shared view-controls bar (.vc-isolate / .vc-kgrid, molview.mountViewControls)
+    drives the CARD's OWN store on Results too -- not just Modify.  Clicking the bar's
+    k-grid toggle enables tiling; clicking isolate flips the isolate flag.  (The sidecar
+    test above drives the same store via its API; THIS proves the bar's CLICKS reach it.)"""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = _write_xyz_with_cell_sidecar(tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+    slot = ".structure-viewer-slot"
+    _count = (f"() => document.querySelector('{slot}')"
+              "  .__molbuilder_test_handle.getAtomCount()")
+    assert page.evaluate(_count) == 2
+    # dims come from the card's own store here; set them, then CLICK the bar to enable.
+    page.evaluate(
+        f"() => document.querySelector('{slot}')"
+        "  .__molbuilder_test_store.setKgrid({ dims: [2, 1, 1] })"
+    )
+    page.locator(f"{slot} .viewer-toggles .vc-kgrid").check()
+    page.wait_for_function(
+        f"() => document.querySelector('{slot}')"
+        "  .__molbuilder_test_store.getState().kgrid.enabled === true")
+    page.wait_for_function(f"{_count} === 4", timeout=8000)   # the bar click tiled 2 -> 4
+    # isolate: select an atom, then CLICK the bar's isolate toggle -> store.isolate flips.
+    page.evaluate(
+        f"() => document.querySelector('{slot}').__molbuilder_test_store.set([0])")
+    page.locator(f"{slot} .viewer-toggles .vc-isolate").check()
+    page.wait_for_function(
+        f"() => document.querySelector('{slot}')"
+        "  .__molbuilder_test_store.getState().isolate === true")
+
+
 def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
     """Under decision A the adapter wires viewer clicks to the store (single

@@ -1,4 +1,4 @@
-"""Measurement overlay -- module decoration (atom-annotations.md § 6.4).
+"""Measurement overlay -- module decoration (molview-module.md §15).
 
 Node unit test: driven by the SELECTION (pickOrder), it shows position / distance
 / angle for 1 / 2 / 3 atoms and hides for 0 or >=4; coords come from a
@@ -97,3 +97,33 @@ def test_dispose_removes_the_overlay():
         console.log(JSON.stringify({ before, after: overlays.length }));
     """)
     assert out["before"] == 1 and out["after"] == 0
+
+
+def test_overlay_hidden_while_kgrid_enabled():
+    """molview-module.md §14.3/§15: the measurement overlay STANDS DOWN while k-grid
+    tiling is on -- the duplicated atoms make a unit-cell-indexed readout meaningless.
+    A valid 2-atom pick that WOULD show a distance must stay hidden when kgrid.enabled."""
+    out = _run_node(_HARNESS + """
+        const store = makeStore({ pickOrder: [0,1], indices: [0,1], atoms,
+                                  kgrid: { enabled: true } });
+        mk(viewerHost, { store, coordsProvider: () => coords });
+        console.log(JSON.stringify(snap()));
+    """)
+    assert out["hidden"] is True     # valid 2-atom pick, but k-grid on -> hidden
+
+
+def test_angle_vertex_is_pickOrder_second_not_index_order():
+    """molview-module.md §15: the angle VERTEX is pickOrder[1] -- the 2nd atom the
+    user CLICKED -- not the middle-by-index.  Same three atoms, two different click
+    orders => two different angles (45 vs 90 deg), proving the vertex follows the
+    pick order.  coords: 0=(0,0,0) 1=(1,0,0) 2=(0,1,0)."""
+    out = _run_node(_HARNESS + """
+        const store = makeStore({ pickOrder: [0,1,2], indices: [0,1,2], atoms });
+        mk(viewerHost, { store, coordsProvider: () => coords });
+        const vAt1 = snap().text;                              // vertex = atom 1 -> 45 deg
+        store.set({ pickOrder: [1,0,2], indices: [0,1,2], atoms });
+        const vAt0 = snap().text;                              // vertex = atom 0 (2nd pick) -> 90 deg
+        console.log(JSON.stringify({ vAt1, vAt0 }));
+    """)
+    assert "45" in out["vAt1"], f"vertex=atom1 should give 45 deg; got {out['vAt1']!r}"
+    assert "90" in out["vAt0"], f"vertex=atom0 (2nd pick) should give 90 deg; got {out['vAt0']!r}"
