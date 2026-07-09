@@ -75,7 +75,10 @@
     flex-direction: column;
 }
 .molview-panel .selection-card > .card-header { flex: 0 0 auto; }
-.molview-panel .selection-card > .panel-page {
+/* :not([hidden]) is CRITICAL: `display: flex` would otherwise override the [hidden]
+ * attribute's display:none and show BOTH the Selection AND Cell pages at once (so the tab
+ * switch would appear to do nothing). */
+.molview-panel .selection-card > .panel-page:not([hidden]) {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -89,8 +92,8 @@
  * Clear/Invert + assign right beneath it) but SHRINKS when the content can't fit -- flex:
  * 0 1 auto, not 1 1 (which would force-fill and leave a tall empty list).  When it shrinks,
  * the atom list inside scrolls; the header + actions + assign always stay visible. */
-.molview-panel .panel-page > #selection-click-section,
-.molview-panel .panel-page > #selection-filter-section {
+.molview-panel .panel-page > #selection-click-section:not([hidden]),
+.molview-panel .panel-page > #selection-filter-section:not([hidden]) {
     flex: 0 1 auto;
     min-height: 0;
     display: flex;

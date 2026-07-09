@@ -75,3 +75,29 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_function(_viewer_atoms_is(12), timeout=10000)
 
     assert not errors, f"console/page errors during mount + load: {errors}"
+
+
+def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):
+    """Regression: a stray `display:flex` on .panel-page once overrode the [hidden]
+    attribute, so BOTH the Selection and Cell pages rendered at once and the tab switch did
+    nothing.  Pin that exactly ONE page shows and clicking a tab swaps them."""
+    page.goto(f"{flask_server}/molview-demo")
+    sel = "#molview-demo-host #panel-page-selection"
+    cell = "#molview-demo-host #panel-page-cell"
+    page.wait_for_selector(sel, timeout=20000)
+    # on mount: Selection visible, Cell hidden
+    assert page.locator(sel).is_visible() and not page.locator(cell).is_visible()
+    # click the Cell tab -> Cell visible, Selection hidden
+    page.locator("#molview-demo-host .panel-page-option:has(#panel-page-radio-cell)").click()
+    page.wait_for_function(
+        "() => { const c = document.querySelector('#molview-demo-host #panel-page-cell');"
+        "  const s = document.querySelector('#molview-demo-host #panel-page-selection');"
+        "  return c && s && c.offsetParent !== null && s.offsetParent === null; }",
+        timeout=5000)
+    # and back
+    page.locator("#molview-demo-host .panel-page-option:has(#panel-page-radio-selection)").click()
+    page.wait_for_function(
+        "() => { const c = document.querySelector('#molview-demo-host #panel-page-cell');"
+        "  const s = document.querySelector('#molview-demo-host #panel-page-selection');"
+        "  return c && s && s.offsetParent !== null && c.offsetParent === null; }",
+        timeout=5000)
