@@ -52,12 +52,36 @@
      * rather than growing the card -- so unfolding never "adds height". */
     max-height: calc(var(--viewer-edge) + 3.25rem);
     min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+    /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
+     * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
+     * kills the redundant outer scrollbar the panel used to add on top of the atom list. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                 min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.15s ease;
 }
+
+/* The panel's single scroll region = the active [Selection|Cell] page.  The tabs header
+ * stays put; the page body scrolls when it's taller than the panel; the panel itself and the
+ * inner atom-list no longer each add their own bar.  Scoped to .molview-panel so a
+ * stand-alone selection-panel (outside a fused card) is unaffected. */
+.molview-panel .selection-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+.molview-panel .selection-card > .card-header { flex: 0 0 auto; }
+.molview-panel .selection-card > .panel-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+/* the inner atom-list's own cap is redundant once the page scrolls -- let it grow. */
+.molview-panel .selection-list-wrap { max-height: none; overflow: visible; }
 
 /* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
 .molview-fold-btn {
