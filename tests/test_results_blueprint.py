@@ -958,13 +958,11 @@ class TestPartialSelectionPanelEndpoint:
         "selection-add-btn",
         "selection-remove-btn",
         "selection-error",
-        # Isolate-mode toggle + Invert button (2026-06-12 selection
-        # panel v3; lib/selection-panel.js queries both by id).
+        # Invert button.  (Clear + Invert stay in the panel; the isolate + k-grid
+        # VIEW toggles moved to the viewer-controls bar -- molview.mountViewControls.)
         "selection-invert-btn",
-        "selection-isolate-checkbox",
-        # k-grid display control (Phase 5 § 6.3; lib/selection-panel.js
-        # drives store.setKgrid from the enable checkbox + [nx,ny,nz]).
-        "selection-kgrid-checkbox",
+        # k-grid DIMS readout -- a read-only mirror of periodicity.kgrid (the enable
+        # toggle lives in the viewer bar now, not here).
         "selection-kgrid-nx",
         "selection-kgrid-ny",
         "selection-kgrid-nz",
@@ -973,6 +971,16 @@ class TestPartialSelectionPanelEndpoint:
         # toggles aria-expanded on the button + un-hides the panel).
         "selection-target-info-btn",
         "selection-target-info-panel",
+        # [Selection|Cell] page switch + Cell-page periodicity readout (§3b;
+        # lib/selection-panel.js renderCell fills these; MolView is display-only).
+        "panel-page-radio-selection",
+        "panel-page-radio-cell",
+        "panel-page-selection",
+        "panel-page-cell",
+        "cell-axis-value",
+        "cell-vacuum-value",
+        "cell-matrix-value",
+        "cell-matrix-tag",
     )
 
     def test_endpoint_returns_html_200(self, web):

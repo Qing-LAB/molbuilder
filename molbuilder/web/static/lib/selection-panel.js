@@ -101,17 +101,8 @@
             if (assign) assign.hidden = true;
         }
 
-        // The view TOGGLES (isolate + k-grid enable) live in the viewer-controls bar
-        // (molview.mountViewControls) in EVERY molview now -- Modify AND the Results
-        // cards.  Hide the panel's copies everywhere so they aren't duplicated; the
-        // k-grid DIMS display stays (read-only mirror of periodicity.kgrid).  (The panel
-        // HTML for the toggles is retired in a later cleanup; hiding keeps this small.)
-        {
-            const iso = rootEl.querySelector(".selection-isolate-toggle");
-            if (iso) iso.hidden = true;
-            const kgToggle = rootEl.querySelector(".selection-kgrid-toggle");
-            if (kgToggle) kgToggle.hidden = true;
-        }
+        // (The isolate + k-grid view TOGGLES were removed from the panel -- they live in
+        // the viewer-controls bar now, molview.mountViewControls.)
 
         const $ = (id) => rootEl.querySelector("#" + id);
         const els = {
@@ -125,7 +116,6 @@
             applyFilterBtn:  $("selection-apply-filter"),
             clearBtn:        $("selection-clear-btn"),
             invertBtn:       $("selection-invert-btn"),
-            isolateChk:      $("selection-isolate-checkbox"),
             count:           $("selection-count"),
             loading:         $("selection-loading"),
             atomList:        $("selection-atom-list"),
@@ -883,52 +873,17 @@
         // the ephemeral surface) expose ``invert`` -> the ``invertSelection``
         // mutator; no fallback needed.
         on(els.invertBtn, "click", () => store.invert());
-        // Phase 5 (fused module): "Show selected only" is STORE state (the
-        // single source of truth).  The checkbox drives ``store.setIsolate`` and
-        // reflects ``state.isolate``; the viewer adapter reads the same flag
-        // from its own subscription.  No cross-module adapter-handle reach --
-        // that's why the global viewerAdapterHandle / per-mount holder are gone.
-        on(els.isolateChk, "change", (e) => {
-            store.setIsolate(!!e.target.checked);
-        });
-        // Auto-clear the toggle ONLY when a non-empty selection just became
-        // empty (deselect-all while isolating) -- NOT when isolate is enabled
-        // with an already-empty selection (a valid inert state; the render
-        // ignores isolate when nothing is selected).  Enabling-then-selecting
-        // must work, so we gate on the empty TRANSITION (n===0 && prev>0), not
-        // on emptiness alone -- else checking the box with no selection would
-        // clear itself on the same notify.  Also keeps the checkbox in sync with
-        // the store flag.  Captured so dispose() can detach it (audit #352).
-        let _prevSelCount = 0;
-        const _isolateUnsubscribe = store.subscribe((s) => {
-            if (!els.isolateChk) return;
-            const n = (s.indices || []).length;
-            if (n === 0 && _prevSelCount > 0 && s.isolate) {
-                store.setIsolate(false);   // re-notifies; the box syncs next tick
-            } else {
-                els.isolateChk.checked = !!s.isolate;
-            }
-            _prevSelCount = n;
-        });
-        cleanups.push(() => {
-            try { _isolateUnsubscribe(); } catch (_) { /* ignore */ }
-        });
+        // "Show selected only" (isolate) + "Show k-grid" (tiling) are VIEW toggles that
+        // now live in the viewer-controls bar (molview.mountViewControls), by the viewer
+        // they affect -- not in this panel.  The isolate auto-clear-on-empty is handled
+        // there.  Both still drive the SAME store; the panel just no longer hosts them.
 
-        // k-grid display control (§3b, UNIFIED): the enable CHECKBOX is a VIEW toggle
-        // (store.setKgrid{enabled} -> the render tiles); the [nx,ny,nz] are a READ-ONLY
-        // mirror of the structure's `periodicity.kgrid` -- the ONE value, the SAME the DFT
-        // sampling uses, set via the Modify Cell op-tab / DFT setup, never here (MolView is
-        // display-only).  A VIEW control -- stays available in readonly.
-        const _kgChk = $("selection-kgrid-checkbox");
-        const _kgNx  = $("selection-kgrid-nx");
-        const _kgNy  = $("selection-kgrid-ny");
-        const _kgNz  = $("selection-kgrid-nz");
-        [_kgNx, _kgNy, _kgNz].forEach((el) => { if (el) el.readOnly = true; });
-        on(_kgChk, "change", (e) => store.setKgrid({ enabled: !!e.target.checked }));
-        const _kgridUnsub = store.subscribe((s) => {
-            if (_kgChk) _kgChk.checked = !!(s.kgrid && s.kgrid.enabled);
-            renderCell();   // §3b: refresh the Cell readout (dims come from periodicity)
-        });
+        // k-grid DIMS: a READ-ONLY mirror of periodicity.kgrid (the ONE value; set via the
+        // Modify Cell op-tab / DFT setup).  Filled by renderCell from getKgridInfo.
+        const _kgNx = $("selection-kgrid-nx");
+        const _kgNy = $("selection-kgrid-ny");
+        const _kgNz = $("selection-kgrid-nz");
+        const _kgridUnsub = store.subscribe(function () { renderCell(); });
         cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
         // Live-refresh the Cell display on PERIODICITY changes (kgrid dims / cell / vacuum)
         // too -- ws.subscribe fires on canvas changes; store.subscribe alone misses them

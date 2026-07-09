@@ -181,16 +181,8 @@
         Invert
       </button>
     </div>
-    {#- 2026-06-12: hide non-selected atoms in the 3D viewer so the
-        currently-selected atoms are visible without obstruction.
-        Auto-disables when the selection becomes empty (no point
-        isolating nothing).  See lib/selection/viewer-adapter.js for
-        the overlay-side wiring. -#}
-    <label class="selection-isolate-toggle"
-           title="Hide unselected atoms in the viewer so the current selection is clearly visible.">
-      <input type="checkbox" id="selection-isolate-checkbox">
-      <span>Show selected only</span>
-    </label>
+    {#- "Show selected only" (isolate) moved to the viewer-controls bar
+        (molview.mountViewControls) -- it's a VIEW toggle, so it lives by the viewer. -#}
   </div>
 
   <!-- Bulk label operations on the current selection.  Three verbs
@@ -284,24 +276,20 @@
            aria-label="unit cell as a 3 by 3 matrix">—</div>
     </div>
 
-    {#- k-grid display: tile the unit cell by the lattice to validate a periodic model
-        (vacuum spacing, orientation, boundary match).  Enable + [nx,ny,nz] drive
-        store.setKgrid; the render pipeline tiles.  See lib/molview/kgrid.js. -#}
-    <div class="selection-kgrid" role="group" aria-label="k-grid display">
-      <label class="selection-kgrid-toggle"
-             title="Tile the unit cell by the lattice to check vacuum spacing, orientation, and cell boundaries.">
-        <input type="checkbox" id="selection-kgrid-checkbox">
-        <span>k-grid display</span>
-      </label>
+    {#- k-grid dims -- a READ-ONLY mirror of periodicity.kgrid (the ONE value; set via the
+        Modify Cell op-tab / DFT setup).  The "Show k-grid" tiling TOGGLE is in the
+        viewer-controls bar (molview.mountViewControls), not here (MolView is display-only). -#}
+    <div class="selection-kgrid" role="group" aria-label="k-grid">
+      <span class="selection-mini-label">k-grid</span>
       <span class="selection-kgrid-dims">
-        <input type="number" id="selection-kgrid-nx" min="1" step="1" value="1"
-               aria-label="k-grid repetitions along a">
+        <input type="number" id="selection-kgrid-nx" min="1" step="1" value="1" readonly
+               aria-label="k-grid along a">
         <span aria-hidden="true">×</span>
-        <input type="number" id="selection-kgrid-ny" min="1" step="1" value="1"
-               aria-label="k-grid repetitions along b">
+        <input type="number" id="selection-kgrid-ny" min="1" step="1" value="1" readonly
+               aria-label="k-grid along b">
         <span aria-hidden="true">×</span>
-        <input type="number" id="selection-kgrid-nz" min="1" step="1" value="1"
-               aria-label="k-grid repetitions along c">
+        <input type="number" id="selection-kgrid-nz" min="1" step="1" value="1" readonly
+               aria-label="k-grid along c">
       </span>
     </div>
   </div>{#- /#panel-page-cell -#}

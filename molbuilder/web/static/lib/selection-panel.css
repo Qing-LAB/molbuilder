@@ -440,22 +440,8 @@
  * atoms in the 3D viewer via opacity:0 overlays.  Aligned to the
  * Clear button's baseline; the inline checkbox + label form a
  * single click target. */
-.selection-isolate-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font: 12px/1.2 system-ui, sans-serif;
-    color: var(--ps-fg);
-    cursor: pointer;
-    user-select: none;
-}
-.selection-isolate-toggle input[type="checkbox"] {
-    accent-color: var(--warning);
-    cursor: pointer;
-}
-.selection-isolate-toggle:hover {
-    color: var(--ps-selected-fg);
-}
+/* (.selection-isolate-toggle removed -- the "Show selected only" toggle moved to the
+   viewer-controls bar; see lib/molview/fused-layout.css .viewer-toggle.) */
 
 /* Shared base for every action button (Clear, Assign, Add, Remove,
  * Add-filter).  The verb buttons in the 3-col Assign row sit on
@@ -721,8 +707,8 @@
 /* `.sr-only` (visually-hidden but screen-reader announced) lives in
  * lib/page-shell.css — every page loads it from there. */
 
-/* k-grid display control (§ 6.3, atom-annotations.md): compact enable toggle +
-   nx × ny × nz inputs.  Drives store.setKgrid; the render pipeline tiles. */
+/* k-grid DIMS readout (§3b): a small label + read-only nx × ny × nz mirror of
+   periodicity.kgrid.  The enable TOGGLE moved to the viewer-controls bar. */
 .selection-kgrid {
     display: flex;
     align-items: center;
@@ -730,6 +716,7 @@
     flex-wrap: wrap;
     margin-top: 0.35rem;
 }
+/* (k-grid label reuses the shared .selection-mini-label caption class -- no duplicate.) */
 .selection-kgrid-dims {
     display: inline-flex;
     align-items: center;
