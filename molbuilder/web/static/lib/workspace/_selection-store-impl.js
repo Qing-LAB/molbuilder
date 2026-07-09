@@ -1033,6 +1033,18 @@
     // so the ephemeral surface intentionally omits those.  The snapshot shape is
     // a single source: ws.selection delegates to _surfaceSnapshot (below), so
     // there is no twin to keep in sync.
+    // Defensive per-atom copy for the read surface (workspace-contract.md §1.2.1).  The
+    // snapshot slices the atoms ARRAY, but the atom OBJECTS must be copies too -- otherwise a
+    // consumer mutating ``getState().atoms[i].x`` (or ``getStructure().atoms[i]``, which
+    // reads through this same snapshot) would leak straight into the store.  The atom shape
+    // is flat scalars + a nested ``labels`` array (the only nested field), so a shallow
+    // object copy + a ``labels`` slice is a full defensive copy.
+    function _cloneAtom(a) {
+        if (!a || typeof a !== "object") return a;
+        var c = Object.assign({}, a);
+        if (Array.isArray(a.labels)) c.labels = a.labels.slice();
+        return c;
+    }
     function _ephemeralSnapshot(st) {
         if (!st) {
             return { indices: [], mode: "click", isolate: false,
@@ -1054,7 +1066,7 @@
             combinator: st.combinator || "or",
             loading:    !!st.loading,
             error:      st.error || null,
-            atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
+            atoms:      Array.isArray(st.atoms) ? st.atoms.map(_cloneAtom) : [],
             sourceFile: st.sourceFile || null,
             pickOrder:  Array.isArray(st.pickOrder) ? st.pickOrder.slice() : [],
         };
@@ -1098,4 +1110,8 @@
     // shape).  The dispatcher's ws.selection.getState/subscribe delegate to THIS
     // (was a hand-maintained character-identical twin -- now a single source).
     root.molbuilder.selection._surfaceSnapshot = _ephemeralSnapshot;
+    // Exposed so the dispatcher's getStructure() (which reads the RAW store snapshot, not
+    // this surface shaper) can apply the SAME defensive per-atom copy -- workspace-contract
+    // §1.2.1 immutable reads, one shared helper.
+    root.molbuilder.selection._cloneAtom = _cloneAtom;
 })(typeof window !== "undefined" ? window : globalThis);

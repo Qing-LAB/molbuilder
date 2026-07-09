@@ -338,6 +338,40 @@ class TestReads:
         assert out["head"] == "3"
         assert out["isEmpty"] is False
 
+    def test_reads_return_defensive_atom_copies(self):
+        """§1.2.1 (immutable reads): a read returns COPIES.  Mutating an atom
+        object from getStructure().atoms OR ws.selection.getState().atoms must NOT
+        leak into the store.  Regression: the atoms ARRAY was sliced but the atom
+        OBJECTS were shared references, so atoms[i].x = ... / labels.push(...) wrote
+        straight through to the store."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure(\n"
+            "  {source_format: 'xyz', text: '1\\nx\\nO 1.5 0 0\\n'},\n"
+            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
+            ");\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'O', x:1.5, y:0, z:0, regions:['R1'], is_frozen:false},\n"
+            "]);\n"
+            "// Mutate the atom object returned from BOTH read paths + its labels array.\n"
+            "const gsA = ws.getStructure().atoms[0];\n"
+            "gsA.x = 999; gsA.labels.push('MUT');\n"
+            "const selA = ws.selection.getState().atoms[0];\n"
+            "selA.x = 888; selA.labels.push('MUT2');\n"
+            "// Re-read: the store must be untouched by either mutation.\n"
+            "const gs2 = ws.getStructure().atoms[0];\n"
+            "const sel2 = ws.selection.getState().atoms[0];\n"
+            "console.log(JSON.stringify({\n"
+            "  gsX: gs2.x, gsLabels: gs2.labels,\n"
+            "  selX: sel2.x, selLabels: sel2.labels,\n"
+            "}));"
+        )
+        assert out["gsX"] == 1.5, "getStructure().atoms[i].x mutation leaked into the store"
+        assert out["gsLabels"] == ["R1"], "getStructure().atoms[i].labels mutation leaked"
+        assert out["selX"] == 1.5, "ws.selection.getState().atoms[i].x mutation leaked"
+        assert out["selLabels"] == ["R1"], "ws.selection.getState().atoms[i].labels mutation leaked"
+
     def test_accessor_api_materialises_views_from_the_model(self):
         """§1.2.1: the accessor API is the read surface -- each accessor
         materialises a view from the concealed model.  Consumers call these,

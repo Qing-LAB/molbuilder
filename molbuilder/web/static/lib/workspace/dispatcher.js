@@ -174,12 +174,18 @@
         if (!canvas) return null;
         var s = st ? st.getState() : null;
         var per = canvas.periodicity || null;
+        // Defensive per-atom copy (workspace-contract.md §1.2.1): the store snapshot shares
+        // the atom OBJECTS, so without cloning them a consumer mutating
+        // getStructure().atoms[i].x would leak straight into the store.  Reuse the selection
+        // module's shared _cloneAtom (same copy the ws.selection.getState() surface uses).
+        var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
+                   || function (a) { return a; };
         return {
             text:          canvas.text,
             source_format: canvas.source_format,
             title:         (s && s.title) || "",
             n_atoms:       s ? s.atoms.length : 0,
-            atoms:         s ? s.atoms.slice() : [],
+            atoms:         s ? s.atoms.map(_clone) : [],
             // Periodicity rides with the geometry (structure-periodicity.md):
             // `lattice` = the cell (kept for existing consumers); `periodicity`
             // carries the full cell/axis_kind/vacuum/kgrid so a save writes the
