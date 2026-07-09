@@ -100,6 +100,18 @@
         return (ws && typeof ws.getUnitCell === "function" && ws.getUnitCell()) || null;
     }
 
+    // The plain BASE draw: all atoms of the current unit cell + the explicit-cell wireframe
+    // (a cell-less molecule draws no box).  Shared by applyStructure (a new structure, which
+    // then refits) AND the k-grid controller's RESTORE path when isolate + k-grid both go
+    // off -- so "plain molecule" looks identical however you got there.  No refit: a view
+    // toggle must not move the camera.
+    function _drawBase() {
+        _handle.setStructure({
+            xyz:     state.xyz,
+            lattice: _explicitCell() || undefined,
+        });
+    }
+
     // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop
     // here.  Mounted once; getUnit hands it Modify's current unit-cell state,
     // getCell hands it the store's cell.  applyStructure calls _kgCtl.refresh()
@@ -117,6 +129,10 @@
                          xyz:      state.xyz };
             },
             getCell: _cellFromStore,
+            // Restore path (isolate + k-grid both off) -> Modify's plain base draw, so the
+            // explicit-cell-only wireframe rule is preserved (a cell-less molecule draws no
+            // box).  No refit here -- a VIEW toggle must not reframe the camera.
+            drawBase: _drawBase,
             // UNIFIED k-grid (§3b): the tiling dims ARE periodicity.kgrid (the DFT value),
             // not a separate view count.  The store still owns the enable TOGGLE.
             getKgridDims: function () {
@@ -551,18 +567,13 @@
         // toggle-driven state below; setStructure leaves those
         // settings intact so they re-render against the new atoms.
         if (state.xyz) {
-            // Base render: the unit cell + its wireframe (cell from the store).
-            // Style / labels / axes are owned by the standard knob bar (#203);
-            // setStructure leaves them intact.
-            _handle.setStructure({
-                xyz:     state.xyz,
-                // Base wireframe box = the EXPLICIT cell only; a cell-less molecule
-                // draws no box here (its resolved bbox is the k-grid render's concern).
-                lattice: _explicitCell() || undefined,
-            });
+            // Base render: the unit cell + its wireframe.  A new structure DOES reframe
+            // (refit); the shared _drawBase (also the controller's restore path) does not.
+            _drawBase();
             _handle.refit();
-            // Hand the k-grid render to the module (mounted once); re-tile if
-            // k-grid is on.  The module owns the tiling loop -- none here.
+            // Hand the render to the module controller (mounted once).  It REPLACES the
+            // base draw with the derived list when isolate/k-grid is on; the module owns
+            // that loop -- none here.
             _wireKgrid();
             if (_kgCtl) _kgCtl.refresh();
         }

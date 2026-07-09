@@ -795,73 +795,44 @@ def test_kebab_view_selection_capped_at_max_lines(
     )
 
 
-def test_show_selected_only_visually_hides_non_selected_atoms(
+def test_show_selected_only_filters_the_render_list(
         page, flask_server, water_xyz_file):
-    """2026-06-12: isolate mode must reach all the way down to the
-    3Dmol model — non-selected atoms get an empty stylespec
-    (``{}``) so their spheres + sticks + bonds disappear, not just
-    blanked rep opacity (which leaves bond geometry behind as ghost
-    lines).
+    """Isolate ("show selected only") is a REAL filter on the render list, NOT a
+    visibility flag: when it is on, the 3Dmol model contains ONLY the selected atoms
+    -- the non-selected atoms are absent from the drawn list entirely, and turning
+    isolate off restores the full structure (molview-module.md §14.3; the render is a
+    read-only view derivation of the stored atoms).
 
-    Earlier prototype used ``style: {opacity: 0}``; the user
-    reported "does not work" because the bonds connecting the
-    visible selection to the hidden atoms still drew at full
-    opacity.  Fix wires ``style: {hidden: true}`` through the
-    overlay system to ``setStyle(sel, {})`` in mol-viewer-embed.
+    Supersedes the earlier ``..._visually_hides_non_selected_atoms`` test, which pinned
+    the ``hidden:true`` mechanism -- non-selected atoms staying IN the model with an
+    empty stylespec.  That "present but hidden" behavior was replaced by genuine
+    filtering in the render controller (a click in the 3-D window is disabled in this
+    mode, so there is no ambiguity to resolve -- selection is curated via the panel).
 
-    Pin: after enabling isolate with atom 0 selected on a 3-atom
-    water, the 3Dmol model reports the selected atom with its
-    normal stick+sphere style and the non-selected atoms with
-    ``style: {}`` (no rep at all).
+    Pin: 3-atom water, atom 0 selected -> isolate ON draws exactly 1 atom; OFF restores 3.
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # Adapter attaches when the modify viewer handle is ready; isolate is store
-    # state, so we drive it through ws.selection (no viewerAdapterHandle global).
     page.wait_for_function(
         "() => window.molbuilder.workspace"
         "      && window.molbuilder.workspace.selection"
         "      && window.molbuilder.modify && window.molbuilder.modify.handle"
     )
-    page.evaluate("() => window.molbuilder.workspace.selection.set([0])")
-    page.wait_for_function(
-        "() => window.molbuilder.workspace.selection.getState().indices.length === 1"
-    )
-    page.evaluate(
-        "() => window.molbuilder.workspace.selection.setIsolate(true)"
-    )
-    # Settle the redraw + setStyle pipeline.
-    page.wait_for_timeout(300)
-    styles = page.evaluate(
-        "() => {"
-        "  const h = window.molbuilder.modify && window.molbuilder.modify.handle;"
+    drawn_count = (
+        "() => { const h = window.molbuilder.modify && window.molbuilder.modify.handle;"
         "  if (!h || typeof h._viewer3dmol !== 'function') return null;"
-        "  const v = h._viewer3dmol();"
-        "  const model = v.getModel();"
-        "  if (!model) return null;"
-        "  return model.selectedAtoms({}).map((a) => ({"
-        "    serial: a.serial, style: a.style,"
-        "  }));"
-        "}"
+        "  const m = h._viewer3dmol().getModel();"
+        "  return m ? m.selectedAtoms({}).length : null; }"
     )
-    assert styles is not None, (
-        "could not read atom styles from 3Dmol — viewer not mounted?"
-    )
-    selected = [s for s in styles if s["serial"] == 0]
-    hidden   = [s for s in styles if s["serial"] != 0]
-    assert selected, "atom 0 missing from model"
-    assert hidden, "non-selected atoms missing — model only has 1 atom?"
-    # Selected atom has a non-empty rep (any of stick/sphere/line).
-    sel_style = selected[0]["style"] or {}
-    assert any(k in sel_style for k in ("stick", "sphere", "line")), (
-        f"selected atom should have a visible rep; got {sel_style!r}"
-    )
-    # Hidden atoms have the empty stylespec {} — no rep, no bonds.
-    for h in hidden:
-        assert h["style"] == {} or h["style"] is None, (
-            f"non-selected atom should be hidden via empty rep; "
-            f"got {h['style']!r}"
-        )
+    # Baseline: the full 3-atom water is drawn.
+    page.wait_for_function(f"() => ({drawn_count})() === 3", timeout=5000)
+    # Select atom 0, enable isolate -> ONLY the selected atom is in the render list.
+    page.evaluate("() => window.molbuilder.workspace.selection.set([0])")
+    page.evaluate("() => window.molbuilder.workspace.selection.setIsolate(true)")
+    page.wait_for_function(f"() => ({drawn_count})() === 1", timeout=5000)
+    # Disable isolate -> the full structure is restored (all 3 atoms drawn again).
+    page.evaluate("() => window.molbuilder.workspace.selection.setIsolate(false)")
+    page.wait_for_function(f"() => ({drawn_count})() === 3", timeout=5000)
 
 
 def test_show_selected_only_toggle_wires_isolate_mode(

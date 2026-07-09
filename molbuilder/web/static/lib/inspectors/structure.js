@@ -310,6 +310,11 @@
                             kgCtl = mvApi.mountKgridRender(handle, selStore, {
                                 getUnit: function () { return _unit; },
                                 getCell: function () { return lattice; },
+                                // Restore (isolate + k-grid both off) -> the plain
+                                // result structure + its cell wireframe.
+                                drawBase: function () {
+                                    handle.setStructure({ xyz: _unit.xyz, lattice: lattice });
+                                },
                             });
                         }
                         // Signal "first render visible" so the

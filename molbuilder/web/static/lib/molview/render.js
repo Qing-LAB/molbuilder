@@ -5,10 +5,14 @@
  * (no local structure copy; that is the data-unification the design mandates, §14.0 "always
  * recompute from the CLEAN unit cell" = the data model).
  *
- * The render is ONE coordinate pipeline -> ONE 3dmol draw (§14.0):
- *   ws.getStructure()      -> the clean unit-cell atoms (the source of truth)
- *   handle.setStructure(..) -> base draw of that unit cell
- *   mountKgridRender(..)    -> k-grid tiling on top when the store's enable toggle is on (§14.2)
+ * The render is ONE coordinate pipeline -> ONE 3dmol draw (§14.0).  It is a READ-ONLY view
+ * derivation: it GENERATES the coordinate list 3dmol draws from the stored atoms; it never
+ * writes the data (isolate/k-grid change the render list, never the dataset).
+ *   ws / store atoms       -> the clean unit-cell atoms (the source of truth)
+ *   drawBase()             -> the plain unit cell (when neither isolate nor k-grid is on)
+ *   mountKgridRender(..)   -> REPLACES it with the derived list when isolate (filtered to the
+ *                             selected atoms) or k-grid (tiled) is on -- one setStructure, the
+ *                             derived list instead of the base, NOT a second draw on top (§14.2)
  * plus the measurement overlay (mountMeasurementOverlay, §15), coords read from the handle.
  *
  *   molview.mountRender(handle, workspace, store, { viewerHost }) -> { refresh, dispose }
@@ -66,7 +70,8 @@
 
         // ---- The pipeline -> one draw ------------------------------------------------- //
 
-        // Base draw: the current structure (from the store atoms).  k-grid tiles ON TOP.
+        // Base draw: the plain current structure (all atoms, from the store).  When isolate
+        // or k-grid is on, mountKgridRender REPLACES this with the derived list (§14.2).
         function drawBase() {
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
@@ -80,6 +85,8 @@
         var kg = (typeof mv.mountKgridRender === "function")
             ? mv.mountKgridRender(handle, store, {
                   getUnit: getUnit, getCell: getCell, getKgridDims: getKgridDims,
+                  // Restore path (isolate + k-grid both off) -> the plain base draw.
+                  drawBase: drawBase,
               })
             : { refresh: _noop, dispose: _noop };
 

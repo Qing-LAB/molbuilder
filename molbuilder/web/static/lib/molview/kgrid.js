@@ -1,5 +1,5 @@
-/* k-grid tiling -- render-pipeline layer 3 of the fused molview
- * (molview-module.md).
+/* k-grid tiling -- the k-grid STEP of the render pipeline
+ * (molview-module.md §14).
  *
  * Duplicates the unit cell (the already-selected/visible atoms) in space by the
  * lattice vectors, nx*ny*nz times, so a designed periodic model can be visually

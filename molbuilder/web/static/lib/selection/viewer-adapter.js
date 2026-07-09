@@ -112,12 +112,16 @@
         let prevClicked = null;
         function onPick(curr) {
             if (!Array.isArray(curr)) return;
-            // § 7.1 (molview-module.md): in-window picking is DISABLED while k-grid
-            // is on -- a click on a tiled copy has no unambiguous unit-cell atom.
-            // The selection panel (unit-cell atom list) still edits the selection;
-            // only viewer clicks are gated here.
-            const st = store.getState();
-            if (st && st.kgrid && st.kgrid.enabled) { prevClicked = null; return; }
+            // §14.3 (molview-module.md): in-window picking is DISABLED while the viewer
+            // shows a DERIVED list -- isolate (only the selected atoms are drawn) OR k-grid
+            // (tiled copies): a click then has no unambiguous unit-cell atom.  This same
+            // guard also DROPS the programmatic onPick([]) that a resized setStructure
+            // fires, so re-deriving the view never clobbers the store selection.  The
+            // selection panel (unit-cell atom list) still edits the selection.
+            const st = store.getState() || {};
+            const isolating = !!st.isolate
+                && (Array.isArray(st.indices) ? st.indices.length : 0) > 0;
+            if ((st.kgrid && st.kgrid.enabled) || isolating) { prevClicked = null; return; }
             if (curr.length === 0) {
                 // Single-mode deselect: same atom clicked twice.
                 if (prevClicked !== null) {
@@ -145,86 +149,39 @@
 
         // ----- render ---------------------------------------------- //
         //
-        // Build an OverlaySpec from the store state.  Layering rules
-        // from § 3.12 process entries in array order; later halos
-        // sit on top so we push selection LAST (brightest yellow,
-        // largest radius -> the "live" set reads above the frozen +
-        // region halos at every overlap).
-
-        // 2026-06-12: "Show selected only" mode.  When true AND the
-        // selection is non-empty, the overlay set prepends an entry
-        // that styles non-selected atoms with ``opacity: 0`` (3Dmol
-        // has no native ``hidden`` flag, but a zero-opacity stylespec
-        // visually hides them while keeping the model coherent for
-        // picking + measurements).  Selection halos draw on top in
-        // the existing order so the surviving atoms are obvious.
-        // "Show selected only" is STORE state (the single source of truth): the
-        // panel drives it via store.setIsolate and the render below reads
-        // ``s.isolate`` from the subscription (line ~306).  The adapter is a
-        // pure consumer -- it exposes NO isolate control of its own (§ 6.2).
+        // Build an OverlaySpec from the store state.  Overlay entries process in array
+        // order; later halos sit on top, so selection is pushed LAST (brightest yellow,
+        // largest radius -> the "live" set reads above the frozen + region halos).
+        //
+        // The adapter paints halos ONLY on the plain, full-list base draw, where the drawn
+        // atom index equals the unit-cell index the halos are keyed on.  "Show selected
+        // only" (isolate) is a REAL list filter in the render controller (mountKgridRender),
+        // NOT an opacity/hidden trick here -- so when isolate (or k-grid) is on the adapter
+        // stands its overlays down entirely (the derived list has a different index space).
+        // isolate is STORE state (the single source of truth): the panel/view-controls drive
+        // it via store.setIsolate; this adapter is a pure consumer with no isolate control
+        // of its own.
 
         function render(s) {
-            // Option 1 (§ 6.3): while k-grid is on, the viewer shows the TILED
-            // supercell -- overlay entries are keyed by unit-cell index and would
-            // land on the wrong copies, so the adapter stands its overlays down
-            // (the isolate FILTER still applies, via the k-grid controller's
-            // computeRender; only the halos pause).  Cleared, restored on k-grid off.
-            if (s && s.kgrid && s.kgrid.enabled) {
+            s = s || {};
+            // DISPLAY-ONLY view (molview-module.md §14.3): while isolate OR k-grid is on,
+            // the viewer shows a DERIVED atom list -- isolate FILTERS it to the selected
+            // atoms (a real filter, in the render controller -- NOT a hidden/opacity trick),
+            // k-grid TILES it.  Either way the drawn atom index no longer equals the
+            // unit-cell index, so these overlay entries (keyed by unit-cell index) would
+            // land on the wrong atoms.  Stand every overlay down; the panel is the
+            // selection surface in these modes.  The render controller (mountKgridRender)
+            // owns the derived draw; the adapter paints halos only on the plain, full-list
+            // base draw, where drawn index == unit-cell index.
+            const isolating = !!s.isolate
+                && (Array.isArray(s.indices) ? s.indices.length : 0) > 0;
+            const tiling = !!(s.kgrid && s.kgrid.enabled);
+            if (isolating || tiling) {
                 try { handle.setOverlays(null); } catch (_) { /* already clear */ }
                 return;
             }
 
             const atoms = [];
-
-            // 2026-06-12: isolate mode setup.
-            //
-            // When isolating, two things have to happen together:
-            //   (a) non-selected atoms become invisible — ``style:
-            //       {opacity: 0}`` overlay applied to the rep style
-            //       so the underlying spheres + sticks paint
-            //       transparent.
-            //   (b) halo entries (region tints, frozen markers,
-            //       selection halo) skip non-selected atoms — halos
-            //       draw as separate 3Dmol shapes that are NOT gated
-            //       by the rep-style opacity, so without this filter
-            //       a hidden atom would still show its region halo
-            //       and the user wouldn't actually see "only the
-            //       selected" — they'd see "only the selected
-            //       solid atoms plus a forest of halo ghosts".
-            const selSet = new Set(
-                Array.isArray(s.indices) ? s.indices : []);
-            const isolating = s.isolate && selSet.size > 0;
-
-            function maybeFilter(indices) {
-                if (!isolating) return indices;
-                return indices.filter((i) => selSet.has(i));
-            }
-
-            // 0. Isolate mode: hide non-selected atoms.  Pushed FIRST
-            //    so subsequent overlay entries (region tints, frozen
-            //    markers, selection halo) override its opacity:0 for
-            //    the atoms that should be visible.  3Dmol's setStyle
-            //    is last-write-wins; the iteration order in
-            //    ``_redrawOverlayStyles`` matches array order here.
-            if (isolating) {
-                const hidden = [];
-                for (const a of (s.atoms || [])) {
-                    if (!selSet.has(a.index)) hidden.push(a.index);
-                }
-                if (hidden.length) {
-                    atoms.push({
-                        indices: hidden,
-                        // ``hidden: true`` makes 3Dmol drop ALL drawing
-                        // (sphere + stick + bonds) for these atoms.
-                        // ``opacity: 0`` was insufficient — it blanks
-                        // the per-atom rep but leaves bonds connecting
-                        // hidden atoms to visible ones drawn at full
-                        // opacity, so the user saw ghost lines
-                        // radiating out from the visible selection.
-                        style:   { hidden: true },
-                    });
-                }
-            }
 
             // 1. Region tints -- group by first label so each atom
             //    gets exactly one tint.  (An atom can carry multiple
@@ -253,7 +210,7 @@
                 bucket.push(a.index);
             });
             byRegion.forEach((indices, label) => {
-                const filtered = maybeFilter(indices);
+                const filtered = indices;
                 if (!filtered.length) return;
                 atoms.push({
                     indices: filtered,
@@ -269,7 +226,7 @@
             const frozenIdx = (s.atoms || [])
                 .filter((a) => a.isFrozen)
                 .map((a) => a.index);
-            const frozenFiltered = maybeFilter(frozenIdx);
+            const frozenFiltered = frozenIdx;
             if (frozenFiltered.length) {
                 atoms.push({
                     indices: frozenFiltered,

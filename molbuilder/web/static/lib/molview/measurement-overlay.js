@@ -1,4 +1,4 @@
-/* Measurement overlay -- a module decoration (§ 6.3 layer 4 / § 6.4).
+/* Measurement overlay -- a module decoration (molview-module.md §15).
  *
  * Paints the geometry readout (1 atom -> position, 2 -> distance, 3 -> angle) as
  * overlay text inside the viewer, derived from the SELECTION (decision A: no
@@ -42,10 +42,15 @@
 
         function render() {
             const s = store.getState() || {};
-            // Option 1 (§ 6.3): while k-grid is on we show the tiled supercell,
-            // not the unit cell -- per-unit-cell-index readout doesn't map, so
-            // the measurement stands down until k-grid is off.
-            if (s.kgrid && s.kgrid.enabled) {
+            // §14.3 (molview-module.md): while the viewer shows a DERIVED list -- isolate
+            // (only the selected atoms drawn) OR k-grid (tiled supercell) -- the drawn
+            // coords no longer line up with the unit-cell index the readout is keyed on,
+            // so the measurement stands down until both are off.  (coordsProvider() returns
+            // the DERIVED list's coords in these modes; reading it by unit-cell index would
+            // measure the wrong atoms.)
+            const isolating = !!s.isolate
+                && (Array.isArray(s.indices) ? s.indices.length : 0) > 0;
+            if ((s.kgrid && s.kgrid.enabled) || isolating) {
                 el.hidden = true;
                 el.textContent = "";
                 return;

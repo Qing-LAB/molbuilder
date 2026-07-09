@@ -131,9 +131,10 @@
     cursor: pointer;
     border: none;
     /* A resting SHADE (not transparent) so the rail is visually identifiable as the
-     * fold/unfold affordance against the card background -- hover/active deepen it. */
-    background: var(--surface-sunken, rgba(100, 116, 139, 0.11));
-    color: var(--muted, #94a3b8);
+     * fold/unfold affordance against the card background -- hover/active deepen it.
+     * Design tokens (tokens.css), with hex fallbacks for embeds that lack the sheet. */
+    background: var(--bg-input, #262b33);
+    color: var(--text-muted, #6c7280);
     font-size: 0.85rem;
     line-height: 1;
     border-radius: 6px;
@@ -155,10 +156,10 @@
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .molview-fold-btn:hover {
-    background: var(--surface-hover, rgba(100, 116, 139, 0.2));
-    color: var(--text, #475569);
+    background: var(--bg-input-focus, #2c323b);
+    color: var(--text-secondary, #a8aebb);
 }
-.molview-fold-btn:active { background: var(--surface-active, rgba(100, 116, 139, 0.28)); }
+.molview-fold-btn:active { background: var(--border-strong, #3a3f48); }
 .molview-fold-btn:focus-visible {
     outline: 2px solid var(--accent, #3b82f6);
     outline-offset: -2px;

@@ -345,6 +345,13 @@ SINGLE 3dmol draw.** Every step before 3dmol does nothing but compute *which coo
 should be shown*. k-grid is the **last** such step. There is **no second render and
 nothing is layered "on top."**
 
+**The whole pipeline is a READ-ONLY view derivation.** It *generates* the coordinate list
+3dmol draws **from** the stored atoms; it **never writes the data**. Selection, isolate, and
+k-grid shape the render list only — the stored dataset (`ws`) is untouched, so **export /
+save read the data and are unaffected by what the view shows** (only real edit ops mutate
+`ws`, through their own API). "isolate removes atoms" means removes them *from the render
+list*, not from the structure.
+
 ```
    source atom coords  (the current frame, from the data model — the CLEAN unit cell)
         │
@@ -366,6 +373,13 @@ rest of §14 depends on:
   viewer currently shows.
 - **The steps are ordered:** selection/isolate first, then k-grid. So **isolate ON + k-grid
   ON tiles only the selected atoms.**
+- **A derived view is display-only for selection (§14.3).** While isolate OR k-grid is on,
+  the drawn list is a *derived* list (filtered / tiled), so the drawn atom index no longer
+  equals the unit-cell index — a click in the 3-D window would be ambiguous. In-window
+  click-select is therefore **disabled**, and the index-keyed decorations (selection /
+  region / frozen halos, the measurement readout) **pause**; the **panel atom list** is the
+  selection surface in these modes. Turn both off → the plain full-list base draw returns and
+  everything restores.
 - **Two different things are both called "k-grid":** the **dims** `[nx,ny,nz]` — how many
   repeats, which is the structure's DFT k-grid, stored in periodicity and written with
   **`ws.setKgrid(dims)`**; and the **enable toggle** — a view preference (show the tiling or
@@ -384,40 +398,54 @@ rest of §14 depends on:
 
 ### 14.2 The render controller lives in the module — `mountKgridRender`
 
-The one k-grid render **controller** — the live loop that subscribes to the store,
-runs `computeRender`, and calls `handle.setStructure(supercell)` — is in the
-module, not hand-written per host:
+The one **view-render controller** — the live loop that subscribes to the store, runs
+`computeRender`, and draws its result — is in the module, not hand-written per host. It is
+what makes §14.0 literally true: ONE `computeRender` → ONE `setStructure` of the derived
+list, which **replaces** the base draw (never a second draw layered on it).
 
-- **`molview.mountKgridRender(handle, store, {getUnit, getCell, getKgridDims}) → {refresh, dispose}`**
-  subscribes to the store; on each change it takes the **clean unit cell** from
-  `getUnit()` (`{coords, elements, xyz}`), the lattice from `getCell()`, and the dims from
-  `getKgridDims()`, runs `computeRender`, and calls `handle.setStructure(supercell)` on
-  enable / restores the unit cell on disable. `refresh()` re-runs it after a structure
-  change; `dispose()` unsubscribes. It is the **ONLY** k-grid render loop in the
-  codebase (the former inline controller in the Results structure inspector was
-  deleted when this landed — molview-migration-plan Steps 1–2).
+- **`molview.mountKgridRender(handle, store, {getUnit, getCell, getKgridDims, drawBase}) → {refresh, dispose}`**
+  subscribes to the store and, on each change, picks which list to draw from the store's
+  `isolate` flag + `kgrid.enabled` toggle:
+  - **neither on →** the host's plain base draw, via the **`drawBase()`** callback (all
+    atoms, the host's own wireframe-cell rule + refit). The controller does **not** reinvent
+    the base draw — the host owns its nuances (e.g. Modify boxes only an *explicit* cell, not
+    a fresh molecule's bbox).
+  - **isolate on →** `computeRender` filters the list to the selected atoms and the
+    controller `setStructure`s that — a **real filter**: the non-selected atoms are **absent
+    from the drawn model**, not hidden in place.
+  - **k-grid on →** `computeRender` tiles the list; **both on →** the selected atoms, tiled.
 
-### 14.3 In-window picking is disabled while k-grid is on; the panel still works
+  It reads the **clean unit cell** from `getUnit()` (captured before any derivation, so it
+  never tiles an already-tiled list), the resolved lattice from `getCell()`, and the dims
+  from `getKgridDims()` (= `periodicity.kgrid`). A **signature guard** redraws only when the
+  derived list actually changes, so a selection click while *not* isolating never rebuilds
+  the structure. `refresh()` re-runs it after a structure / periodicity change; `dispose()`
+  unsubscribes. It is the **ONLY** structure-view render loop in the codebase (the former
+  inline controller in the Results structure inspector was deleted when this landed —
+  molview-migration-plan Steps 1–2).
 
-**With many duplicated atoms on screen, a mouse click inside the molview window is
-ambiguous and messy** — "which copy did you pick?" has no answer. So while
-`kgrid.enabled`:
+### 14.3 A derived view (isolate OR k-grid) is display-only; the panel still works
 
-- **In-window picking is disabled** — clicking an atom in the 3-D molview does
-  **not** toggle the selection. Selection halos + the measurement overlay also
-  stand down in the window (they are keyed by unit-cell index and can't map onto
-  copies).
-- **The selection PANEL stays fully functional** — filter and click-select on the
-  atom *list* work normally, because the list is the original unit-cell atoms
-  (no ambiguity). The selection is still curated there, and the render re-tiles on
-  change.
-- **The selection is recorded internally** (never cleared) — so with **isolate ON
-  + k-grid ON the render copies/duplicates ONLY the selected atoms** across the
-  grid (§14 above). Turning k-grid off restores in-window picking, halos, and
-  measurement.
+**When the window shows a DERIVED list, a mouse click inside it is ambiguous** — under
+k-grid, "which copy did you pick?" has no answer; under isolate, the drawn atom index no
+longer equals the unit-cell index the store speaks. So while **`isolate` OR `kgrid.enabled`**
+is on:
 
-So k-grid disables *pointing at the 3-D view*, not *selecting*: you keep curating
-the selection through the panel; you just can't click the copies.
+- **In-window picking is disabled** — clicking an atom in the 3-D molview does **not** toggle
+  the selection. This same guard also drops the programmatic empty-pick that a resized
+  `setStructure` fires, so re-deriving the view **never clobbers the store selection**.
+- **The index-keyed decorations stand down in the window** — selection / region / frozen
+  halos and the measurement readout pause (they are keyed by unit-cell index and can't map
+  onto a filtered or tiled list).
+- **The selection PANEL stays fully functional** — filter and click-select on the atom
+  *list* work normally, because the list is always the original unit-cell atoms (no
+  ambiguity). The selection is curated there, and the render re-derives on change.
+- **The selection is recorded internally** (never cleared) — so with **isolate ON + k-grid ON
+  the render tiles ONLY the selected atoms** (§14.0). Turning both off restores the plain
+  full-list base draw: in-window picking, halos, and measurement all return.
+
+So a derived view disables *pointing at the 3-D window*, not *selecting*: you keep curating
+the selection through the panel; you just can't click the derived geometry.
 
 ### 14.4 Where the `cell` and `k-grid` come from — storage, never a parse in molview
 

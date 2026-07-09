@@ -1,5 +1,5 @@
-/* Render pipeline compose -- assembles the § 6.3 layers into the set of
- * positions the viewer draws (molview-module.md).
+/* Render pipeline compose -- assembles the render steps (molview-module.md §14) into the
+ * set of positions the viewer draws.
  *
  * The store is frame-INDEPENDENT; the caller resolves the current frame's coords
  * (layer 1 -- e.g. the viewer handle's getAtomCoords, or a trajectory's frame)
@@ -72,22 +72,50 @@
         return out.join("\n");
     }
 
-    // The ONE k-grid render controller (molview-module.md § 7).  Subscribes to the
-    // store; on k-grid enable it tiles the unit cell via computeRender and calls
-    // handle.setStructure(supercell); on disable it restores the unit cell.  Every
-    // host uses THIS -- no host hand-writes the loop.
+    // A cheap-but-exact fingerprint of the derived render list's INPUTS, so the
+    // controller redraws only when the list it would produce actually changes --
+    // NOT on every selection click (§14.2).  Inputs: the unit-cell geometry, the
+    // isolate flag, the selection WHEN isolating (it changes which atoms survive),
+    // the k-grid enable + dims, and the cell.
+    function _renderSig(unit, effView, cell) {
+        let s = "n:" + unit.coords.length;
+        for (let i = 0; i < unit.coords.length; i++) {
+            const p = unit.coords[i];
+            s += "|" + (unit.elements[i] || "X") + "," + p[0] + "," + p[1] + "," + p[2];
+        }
+        s += "|iso:" + (effView.isolate ? "1" : "0");
+        if (effView.isolate) s += "|sel:" + (effView.indices || []).join(",");
+        s += "|kg:" + (effView.kgrid.enabled ? "1" : "0") + ":" + effView.kgrid.dims.join(",");
+        s += "|cell:" + (cell ? JSON.stringify(cell) : "none");
+        return s;
+    }
+
+    // The ONE structure-view render controller (molview-module.md §14.2).  The render
+    // is a READ-ONLY view derivation: it takes the stored unit cell and GENERATES the
+    // coordinate list for 3dmol -- it never writes the data.  ONE pipeline (computeRender)
+    // -> ONE setStructure:
+    //   * neither isolate nor k-grid  -> the host's plain base draw (drawBase()).
+    //   * isolate on                  -> the list is FILTERED to the selected atoms
+    //                                    (a real filter -- not an opacity/hidden trick;
+    //                                    the hidden atoms are absent from the drawn list).
+    //   * k-grid on                   -> the list is the tiled supercell.
+    //   * both                        -> the selected atoms, tiled (§14.3).
+    // While a derived list is shown the 3-D window is DISPLAY-ONLY for selection:
+    // in-window picking + index-keyed decorations stand down (the adapter/measurement
+    // gate on the same isolate||kgrid), so nothing needs a drawn->global index map.
     //
     //   handle : the viewer handle (setStructure)
-    //   store  : the selection store -- supplies the k-grid ENABLE toggle
-    //            (view.kgrid.enabled, a view preference) + selection/isolate.
+    //   store  : the selection store -- isolate flag + k-grid ENABLE toggle + selection.
     //   opts.getUnit() -> { coords:[[x,y,z]...], elements:[...], xyz:"<unit xyz>" }
     //            the CURRENT unit-cell structure (host-owned; captured BEFORE any
-    //            tiling so it never reads back a supercell from the handle).
-    //   opts.getCell() -> 3x3 lattice | null  (host supplies the cell, § 8).
-    //   opts.getKgridDims() -> [nx,ny,nz]  the k-grid DIMS.  UNIFIED (§ 3b): this is the
-    //            structure's `periodicity.kgrid` -- the SAME value the DFT sampling uses --
-    //            NOT a separate view count.  Omit -> fall back to view.kgrid.dims
-    //            (back-compat for a host not yet unified).
+    //            derivation so it never reads back a supercell from the handle).
+    //   opts.getCell() -> 3x3 lattice | null  (the RESOLVED cell, for tiling).
+    //   opts.getKgridDims() -> [nx,ny,nz]  the k-grid DIMS = periodicity.kgrid (the DFT
+    //            value, unified -- structure-periodicity.md §3b), NOT a view count.
+    //            Omit -> fall back to view.kgrid.dims.
+    //   opts.drawBase() -> the host's plain base draw (all atoms, its own wireframe
+    //            cell + refit).  Called to RESTORE when isolate + k-grid both go off,
+    //            so the host keeps its base-draw nuances (e.g. explicit-cell-only box).
     // Returns { refresh, dispose }.  Call refresh() after a base render / structure /
     // periodicity change; call dispose() to unsubscribe.
     function mountKgridRender(handle, store, opts) {
@@ -98,7 +126,9 @@
             ? opts.getCell : function () { return null; };
         const getKgridDims = typeof opts.getKgridDims === "function"
             ? opts.getKgridDims : null;
+        const drawBase = typeof opts.drawBase === "function" ? opts.drawBase : null;
         let active = false;
+        let prevSig = null;
         let disposed = false;
 
         function _render() {
@@ -107,23 +137,36 @@
             if (!unit || !Array.isArray(unit.coords)) return;
             const view = store.getState() || {};
             const kg = view.kgrid || {};
-            // ENABLE = the store view toggle; DIMS = periodicity.kgrid (the ONE value)
-            // when the host supplies getKgridDims, else the store's dims (back-compat).
             const dims = getKgridDims ? getKgridDims() : (kg.dims || [1, 1, 1]);
             const cell = getCell();
-            if (kg.enabled && cell) {
-                const effView = Object.assign({}, view, {
-                    kgrid: { enabled: true, dims: dims },
-                });
+            const indices = Array.isArray(view.indices) ? view.indices : [];
+            // isolate with an EMPTY selection derives nothing (there is no "selected
+            // only" of zero atoms) -> fall through to the plain base draw.
+            const isolate = !!view.isolate && indices.length > 0;
+            const tiling  = !!kg.enabled && !!cell;
+            const derived = isolate || tiling;
+
+            if (derived) {
+                const effView = {
+                    indices: indices,
+                    isolate: isolate,
+                    kgrid:   { enabled: tiling, dims: dims },
+                };
+                const sig = _renderSig(unit, effView, cell);
+                if (active && sig === prevSig) return;   // derived list unchanged -> no redraw
+                prevSig = sig;
                 const out = computeRender(unit.coords, effView, cell);
                 handle.setStructure({
                     xyz: _buildXyz(unit.elements, out.positions, out.sourceIndex),
-                    lattice: cell,
+                    lattice: cell || undefined,
                 });
                 active = true;
             } else if (active) {
-                handle.setStructure({ xyz: unit.xyz, lattice: cell || undefined });
+                // Derived view just turned off -> restore the host's plain base draw.
                 active = false;
+                prevSig = null;
+                if (drawBase) drawBase();
+                else handle.setStructure({ xyz: unit.xyz, lattice: cell || undefined });
             }
         }
 
