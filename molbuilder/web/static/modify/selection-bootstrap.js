@@ -61,7 +61,6 @@
         }
         const _mounted = await _mv.mount(host, window.molbuilder.workspace, {
             mode: "modify",
-            focus: true,
             owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
         });
         if (!_mounted) return;   // mount rendered its own banner / prerequisites absent

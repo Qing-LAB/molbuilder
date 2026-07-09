@@ -7,8 +7,11 @@
  * persistence.  Pass the real workspace (edits persist) or a throwaway one (they don't) --
  * molview can't tell the difference and doesn't need to.
  *
- *   molview.mount(hostEl, workspace, { mode, focus, owner }) -> Promise<handle>
- *   handle = { dispose(), els, owner }
+ *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
+ *   handle = { dispose() }
+ *     The §D owner-facing API -- load / getStructure / getSelection / save / undo / onChange
+ *     -- is the outstanding single-door build (see §18 + molview-migration-plan.md).  The
+ *     handle intentionally exposes NO internals: not the viewer, not the store, not DOM refs.
  *
  * OWNER (molview is aware of its user).  `owner` is this molview's identity -- the tab /
  * consumer it belongs to (e.g. "modify", "results:<id>").  molview forwards it to the
@@ -81,7 +84,6 @@
         }
 
         return {
-            els: { card: card, panelHost: panelHost, panel: panelMount.panel },
             dispose: function () {
                 cleanups.forEach(function (fn) { try { fn(); } catch (_) {} });
             },
