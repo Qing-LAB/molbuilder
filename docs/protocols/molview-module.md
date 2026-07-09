@@ -338,3 +338,69 @@ converted via `lib/workspace/_atom-index.js` `toDisplay` at the edge. Never let 
 | 2026-07-08 | MolView module doc **split back out** of `workspace-contract.md`. Workspace is **L1 (data)** and MolView is **L2 (UI that uses L1)** — different layers, so they must not share one doc. `molview-module.md` is again the standalone MolView contract; `workspace-contract.md` is the workspace data model only. (Reverses the 2026-07-06 merge below.) |
 | 2026-07-06 | MolView module doc merged into the workspace contract as "Part II" (viewer + selection + workspace model in one doc). **Reversed 2026-07-08** — see above. |
 | 2026-07-03 | One doc for the MolView module (viewer + selection as one). Code is the standard. isolate + kgrid live in the store (view-state). k-grid: host supplies cell+kgrid; the module tiles, never parses. `embedded-viewer.md`/`atom-selection.md` archived; the fused-viewer material was pulled out of `atom-annotations.md` (its channels model stays live). |
+
+---
+
+## §18 The unified mount — `molview.mount(host, opts)` (proposed)
+
+Today the fused card is assembled **twice**, with the same chrome:
+
+- **Modify** — the card DOM is in `modify.html`; `selection-bootstrap.js` mounts the panel
+  + view-controls + fold; `viewer.js` embeds the viewer + k-grid + measurement.
+- **Results** — `inspectors/structure.js` builds the same DOM in JS and wires the same
+  pieces, against an ephemeral store.
+
+`molview.mount` folds that duplicated assembly into ONE call. The card **chrome** (DOM +
+panel + view-controls + fold) is identical; only the **store**, **mode**, and the
+**viewer-embed + data source** differ — so those are `opts`, and everything else lives in
+the mount.
+
+### 18.1 API
+
+```
+molview.mount(hostEl, opts) -> handle
+
+opts = {
+  store,          // a selection store -- ws.selection, OR
+                  //   molbuilder.selection.createEphemeralStore().  REQUIRED: the mount
+                  //   never invents state; the caller owns WHICH store (§12 single-source).
+  mode,           // "modify" | "readonly"  (panel write-ness)
+  focus,          // bool -- include the "Focus molecule" button (Modify only)
+  embed,          // (viewerHost) -> Promise<viewerHandle>.  The caller's embed strategy:
+                  //   Modify = the resilient runtime.whenReady attach; Results = inline
+                  //   embed with card.height.  The mount builds the host + calls this.
+  data,           // { getUnit(), getCell(), getKgridDims() } -- the k-grid render hooks
+                  //   (Modify = ws accessors; Results = the result sidecar + its store).
+}
+
+handle = { dispose(), els:{card, viewerHost, panelHost, controlsBar}, store, viewerHandle }
+```
+
+### 18.2 What the mount OWNS (the concealed assembly)
+
+- Builds the fused-card DOM (`fused-layout.css`): `body > [ viewer (wrap + controls bar) |
+  fold | panel host ]` — the ONE DOM builder, retiring the template card + the
+  `structure.js` build.
+- `selection.mountPanel(panelHost, {store, mode})`; `molview.mountViewControls(controlsBar,
+  store)`; wires the fold button.
+- `await opts.embed(viewerHost)`; then `mountKgridRender` + `mountMeasurementOverlay` on the
+  returned handle, using `opts.data`.
+- `dispose()` tears all of it down (panel, controls, overlays, k-grid, subscriptions).
+
+### 18.3 What stays with the CALLER (the data seam)
+
+The viewer **embed** and the **data** differ by consumer, so they're `opts` hooks, not
+baked in: Modify feeds the live workspace (resilient attach); Results feeds a static result
+file (`adoptSession`). Everything else is identical and lives in the mount.
+
+### 18.4 Migration (one consumer at a time, regression at each)
+
+1. Build `molview.mount` + unit-test the DOM/wiring against a stub store + stub embed.
+2. **Modify**: template card → an empty host; `selection-bootstrap.js` calls `molview.mount`
+   (`focus:true`, `store: ws.selection`, `mode:"modify"`, `embed:` the whenReady attach).
+3. **Results**: `structure.js` calls `molview.mount` (`store:` ephemeral, `mode:"readonly"`,
+   `embed:` inline).
+4. Delete the two hand-assemblies.
+
+> **Status: PROPOSED — not yet built.** Steps 1–3 of the viewer-controls-bar work (the
+> shared `.viewer-toggle` bar) shipped 2026-07-08; this mount is the next consolidation.
