@@ -360,11 +360,11 @@ molview.mount(hostEl, workspace, opts) -> handle
   copies — the store can't be mutated by holding a value) and **writes** through the
   mutators (which the workspace persists). molview holds **no data of its own** and takes
   **no** loader/embed/data hooks.
-- **`opts`** = `{ mode: "modify" | "readonly", focus?: bool }`.
-- **`handle`** = `{ dispose(), els, viewerHandle }`.
+- **`opts`** = `{ mode: "modify" | "readonly", focus?: bool, owner?: string }`.
+- **`handle`** = `{ dispose(), els, viewerHandle, owner }`.
 
-The caller's ONLY job is to pass the right workspace + mode. **Protection, uniform access,
-and persistence are the workspace's concern** — molview just uses it.
+The caller's ONLY job is to pass the right workspace + mode (+ owner). **Protection, uniform
+access, and persistence are the workspace's concern** — molview just uses it.
 
 ### 18.2 molview OWNS the whole assembly
 
@@ -384,7 +384,32 @@ Pass the **real** workspace (Modify) → edits persist to disk. Pass a **throwaw
 doesn't need to — that is the concealment. It also means molview can never leak or corrupt
 data: every read is a copy, every write goes through the workspace's own persistence.
 
-### 18.4 Migration — ONE TAB AT A TIME (best-practice-first)
+### 18.4 `owner` — molview is aware of its user, so persistence is namespaced
+
+A molview belongs to a **user** — a tab / consumer — and it knows which (`opts.owner`, e.g.
+`"modify"`, `"results:<id>"`). molview forwards that `owner` to the workspace so **the
+workspace namespaces its saving points by it**: the sessionStorage snapshot key becomes
+`molbuilder.workspace.<owner>.v1` and the server draft id gains the `<owner>` prefix. Two
+molviews therefore persist to **separate** slots and never collide on the single global one
+— clean isolation between tabs when needed.
+
+Two rules keep this correct:
+
+- **The namespacing lives in the workspace persistence layer** (`snapshot-io.js` + the
+  dispatcher draft id) — it owns the saving points. molview only *tells* the workspace its
+  `owner` (via `workspace.useNamespace(owner)`); molview never keys storage itself
+  (no reinvented persistence).
+- **Default = today's single global slot.** With no `owner`, the key is unchanged
+  (`molbuilder.workspace.v1`) — so single-consumer Modify is byte-for-byte unaffected until
+  a second consumer needs isolation.
+
+> **Data-safety note.** Saving-point keys gate reload-restore of unsaved work
+> ([`workspace-contract.md`](workspace-contract.md) §4). Changing them is data-safety
+> critical, so the workspace-side namespacing is specified in that contract and lands as a
+> deliberate, tested step — not a drive-by. `molview.mount` already carries `owner`
+> (feature-detected `workspace.useNamespace`), so the molview side is ready.
+
+### 18.5 Migration — ONE TAB AT A TIME (best-practice-first)
 
 Prove the pattern on **Modify** first, with the real workspace singleton; leave every other
 consumer on its current code until Modify validates the design, then migrate each correctly.
@@ -398,4 +423,4 @@ consumer on its current code until Modify validates the design, then migrate eac
    current hand-assembly, **untouched**.
 
 > **Status: Modify in progress; Results (and any other consumer) deferred until Modify
-> establishes the pattern — they need the workspace factory (§18.4 step 2).**
+> establishes the pattern — they need the workspace factory (§18.5 step 2).**

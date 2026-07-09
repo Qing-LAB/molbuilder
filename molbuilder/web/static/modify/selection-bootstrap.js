@@ -47,38 +47,24 @@
         // purpose -- the viewer-adapter attach stays below on Modify's RESILIENT
         // runtime.whenReady("modify.handle"), so the Load button + mount-restore glue
         // never block on (or hang waiting for) the viewer handle.
-        const selApi = window.molbuilder && window.molbuilder.selection;
-        if (!selApi || typeof selApi.mountPanel !== "function") {
-            console.error("[selection-bootstrap] selection.mountPanel missing");
-            _renderFailure(host, "selection.mountPanel module missing");
+        // Mount the WHOLE view-chrome through the embeddable molview component
+        // (molview.mount, molview-module.md §18): the panel + the view-controls bar + the
+        // fold handle, all bound to the workspace.  We hand it the workspace object (the
+        // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
+        // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview
+        // reacts to the workspace it was given.
+        const _mv = window.molbuilder && window.molbuilder.molview;
+        if (!_mv || typeof _mv.mount !== "function") {
+            console.error("[selection-bootstrap] molview.mount missing");
+            _renderFailure(host, "molview.mount module missing");
             return;
         }
-        const _mounted = await selApi.mountPanel(host, { mode: "modify" });
-        if (!_mounted || !_mounted.panel) return;   // mountPanel rendered its own banner
-
-        // View-controls bar (Show selected only / Show k-grid) in the viewer's control
-        // bar, bound to the SAME store (ws.selection) as the panel.  The toggle STATE is
-        // workspace store state (persisted with the store); this bar only drives it via
-        // the store API -- no parallel state.
-        const _vcHost  = document.getElementById("viewer-view-controls");
-        const _vcStore = window.molbuilder && window.molbuilder.workspace
-                       && window.molbuilder.workspace.selection;
-        const _mv = window.molbuilder && window.molbuilder.molview;
-        if (_vcHost && _vcStore && _mv && typeof _mv.mountViewControls === "function") {
-            _mv.mountViewControls(_vcHost, _vcStore);
-        }
-
-        // Fused-card fold handle (fused-layout.css): collapse the panel so the viewer
-        // gets the full card.  Mirrors the Results inspector's inline wiring
-        // (lib/inspectors/structure.js) -- local layout state, not store state.
-        const _foldBtn = document.getElementById("molview-fold");
-        const _card = host.closest(".molview-card");
-        if (_foldBtn && _card) {
-            _foldBtn.addEventListener("click", function () {
-                const folded = _card.classList.toggle("is-folded");
-                _foldBtn.setAttribute("aria-expanded", String(!folded));
-            });
-        }
+        const _mounted = await _mv.mount(host, window.molbuilder.workspace, {
+            mode: "modify",
+            focus: true,
+            owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
+        });
+        if (!_mounted) return;   // mount rendered its own banner / prerequisites absent
 
         // 2b. Inject the viewer-specific XYZ loader into the store so
         // the store doesn't reach into ``window.molbuilder`` to do
