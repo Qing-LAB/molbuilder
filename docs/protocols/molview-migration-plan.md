@@ -16,7 +16,7 @@ contract):
   (memory-is-the-truth; server draft + `sessionStorage` + files; the working-copy
   mechanism `open/update/save/discard`).
 - **The k-grid render controller in the module** (Steps 1–2 design): molview-module.md
-  **§14.1** (`molview.mountKgridRender` — the one render loop) + **§14.2** (in-window
+  **§14.2** (`molview.mountKgridRender` — the one render loop) + **§14.3** (in-window
   picking disabled while k-grid is on).
 
 Also companion: [`structure-periodicity.md`](structure-periodicity.md)
@@ -31,7 +31,7 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
 ## Shipped (for orientation — design in the core, do not re-open)
 
 - **Steps 1–2** — the k-grid render controller moved INTO the module
-  (`molview.mountKgridRender`, molview-module.md §14.1); Results #1 rewired to it, its
+  (`molview.mountKgridRender`, molview-module.md §14.2); Results #1 rewired to it, its
   inline controller deleted. *(Step 2 residual: ◐ awaiting the user's manual
   confirm that k-grid tiles in Modify.)*
 - **Track A A1/A2/A5a/A5b/A6** — SAVE + LOAD + filter + draft routed through the
@@ -150,6 +150,6 @@ Remaining, confirmed-but-not-yet-done:
 ## Standing guardrails (apply to every open step)
 
 - No structure/cell/kgrid read or write outside `ws.*` / the store / the module API.
-- One k-grid render loop, in the module, forever (molview-module.md §14.1).
+- One k-grid render loop, in the module, forever (molview-module.md §14.2).
 - Each step ends GREEN (its Check) before the next begins.
 - Update this doc's ☐/◐/☑ as steps complete; if reality diverges, fix the doc first.

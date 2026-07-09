@@ -13,97 +13,215 @@
 
 ---
 
-## At a glance (developer orientation)
+## For developers — start here
 
-**What it is:** one L2 component = 3-D viewer + selection panel + k-grid + measurement,
-all wired through ONE selection store.  It reads/writes structure + periodicity from the
-L1 workspace via `ws.*`; it never fetches or parses.
+MolView is a **self-contained, embeddable 3-D structure component**. You drop it onto a
+page; it shows the molecule, the selection / Cell panel, and the view toggles as one unit.
+It is the **single gateway to the molecule** — every read, write, and redraw of it goes
+through molview — and it owns the display. You drive it through **one small API**; you never
+wire its internals and never touch storage yourself. (The molecule *data* lives in storage,
+the workspace; molview is the only thing that operates on it.)
 
-**Internal composition** — every part talks to the store, never to each other:
+This section is the whole mental model in four pictures, then the API and the rules. The
+numbered sections (§11+) are the precise reference behind it.
+
+### A. Architecture — ONE door (owner → molview → storage)
+
+The page that uses molview (the **owner**) talks **only** to molview. molview is the **only**
+thing that talks to storage (the workspace) about the molecule. The owner never reaches
+around molview to storage for molecule data.
 
 ```mermaid
 flowchart TD
-    PANEL["selection panel<br/>list · filter · Cell page"]
-    ADAPTER["viewer-adapter<br/>clicks in / overlays out"]
-    VIEWER["3-D viewer embed<br/>(3Dmol handle)"]
-    KG["k-grid render controller"]
-    STORE(["selection store = ws.selection<br/>selection · isolate · kgrid.enabled"])
-    WS["workspace (L1)<br/>structure · periodicity · persistence"]
-
-    PANEL -->|mutators| STORE
-    ADAPTER -->|toggle on pick| STORE
-    STORE -->|subscribe| ADAPTER
-    STORE -->|subscribe| KG
-    ADAPTER -->|setOverlays| VIEWER
-    KG -->|setStructure| VIEWER
-    VIEWER -->|onPick| ADAPTER
-    STORE -. "same instance" .- WS
-    KG -->|"getCell/getKgridDims via ws.*"| WS
+    OWNER["OWNER — the page / tab<br/>Modify, a Results card, ...<br/>wires its buttons to molview"]
+    MV["MolView component<br/>shows molecule + panel + toggles<br/>SOLE gateway to the molecule + owns the render"]
+    WS["Storage — the workspace<br/>holds + saves the molecule data, keeps history"]
+    OWNER -->|"asks: load / edit / save / what is selected?"| MV
+    MV -->|"reads + writes the molecule"| WS
+    MV -.->|"notifies: something changed"| OWNER
 ```
 
-**Data it touches — always through `ws.*` (L1), never a raw field:**
+One door means the owner can't corrupt or desync molview's data by poking storage behind
+its back, and any page reuses molview by learning one small API. (The owner may still use
+the workspace for its *own* other data — just never for molview's molecule.)
 
-| Concern | Read | Write |
-|---|---|---|
-| structure + periodicity | `ws.getStructure()`, `ws.getUnitCellInfo()/getVacuumInfo()/getAxisKindInfo()/getKgridInfo()` (`{value,isDefault}`) | `ws.setVacuum/setUnitCell/setAxisKind/setKgrid`, `ws.commitPeriodicity` |
-| selection + view toggles | `ws.selection.getState()` (`{indices, isolate, kgrid, …}`) | `ws.selection.toggle/setIsolate/setKgrid({enabled})` |
+### B. The render — ONE coordinate pipeline → ONE draw
 
-**Example — compose the module around a store:**
+molview turns the stored molecule into pixels with a **pipeline of coordinate steps** that
+ends in a **single 3dmol draw**. Every step only computes *which coordinates to show*;
+k-grid is the **last** step. There is **no second render and nothing layered on top.**
 
-```js
-const store = ws.selection;                 // or molbuilder.selection.createEphemeralStore()
-// panel + viewer-adapter, both bound to the SAME store:
-molbuilder.selection.mountPanel(panelHost, { store, viewerHandle, mode: "click" });
-// k-grid tiling: dims come from periodicity.kgrid (the ONE value), cell from the resolver:
-molbuilder.molview.mountKgridRender(viewerHandle, store, {
-    getUnit:      () => currentUnitCell(),          // host-owned unit-cell coords/elements
-    getCell:      () => ws.getUnitCellInfo().value, // resolved (explicit or bbox+vacuum)
-    getKgridDims: () => ws.getKgrid(),              // == periodicity.kgrid
-});
-store.subscribe((s) => repaint(s.indices));         // react to selection changes
+```mermaid
+flowchart LR
+    SRC["source atom coords<br/>clean unit cell, from storage"]
+    SEL["step: selection / isolate<br/>which atoms are visible"]
+    KG["step: k-grid tiling<br/>repeat by the lattice — LAST step"]
+    DRAW["3dmol draws — ONCE"]
+    SRC --> SEL --> KG --> DRAW
 ```
 
-> The parts above are composed by each host today (Modify, the Results structure card).
-> Unifying that assembly behind a single `molview.mount(host)` is proposed follow-up work
-> — it does not change the boundary or the store-is-single-source rule below.
+"k-grid ON" only means the final list is the *repeated* unit cell instead of the bare one —
+3dmol still draws that one list once. It **always recomputes from the clean unit cell** in
+storage (never from an already-tiled list). Full detail: §14.
+
+### C. How molview uses storage (the workspace)
+
+molview reads and writes the molecule **only through the workspace `ws.*` API** — it never
+keys sessionStorage and never hits the server itself. Reads return **copies** (molview can't
+mutate storage by holding a value); writes go through the workspace, which **persists** them.
+When the data changes, molview **re-runs the render pipeline (§B) and redraws**.
+
+```mermaid
+flowchart TD
+    MV["MolView"]
+    RD["READ — returns copies<br/>getStructure · getUnitCellInfo · getKgrid · selection.getState"]
+    WR["WRITE — workspace persists it<br/>setUnitCell · setKgrid · commitPeriodicity · selection.toggle"]
+    SUB["subscribe(fn) — 'data changed'"]
+    MV -->|read| RD
+    MV -->|write| WR
+    SUB -->|redraw| MV
+```
+
+**Persistence is namespaced by the owner** (§18.4): molview passes its `owner` to the
+workspace, which keys its saving points by it — so two tabs' molviews never collide.
+
+### D. The API — what the owner calls (the contract with the owner)
+
+The owner uses only these; it never sees storage:
+
+| Call | Plain meaning |
+|---|---|
+| `molview.mount(host, workspace, {mode, owner})` → `handle` | Put a molview on the page, backed by `workspace`, identified by `owner`. |
+| `handle.load(fileOrText)` | "Load this molecule." |
+| `handle.getStructure()` / `handle.getSelection()` | "Give me the current molecule / what's selected" — a **copy**. |
+| `handle.save()` / `handle.undo()` | "Save it" / "undo the last change." |
+| `handle.onChange(fn)` | "Tell me when something changed," so the page can refresh its own bits. |
+| `handle.dispose()` | Remove the molview and release everything. |
+
+`mode` = `"modify"` (editable) or `"readonly"` (view + inspect). `owner` = this molview's
+identity (e.g. `"modify"`, `"results:<id>"`) for namespaced persistence.
+
+### E. Read/write protocol — the rules that keep it safe
+
+1. **One door.** Every molecule read/write goes through molview's API; the owner never
+   touches storage for the molecule.
+2. **Reads are copies.** Every read hands back a defensive copy; holding it can't mutate the
+   store ([`workspace-contract.md`](workspace-contract.md) §1.2.1).
+3. **Writes persist.** Every write goes through the workspace, which saves it; molview never
+   writes storage keys itself.
+4. **Change → redraw.** molview subscribes to the workspace; any data change re-runs the
+   render pipeline (§B) and redraws. The owner does not trigger redraws.
+5. **Owner-namespaced.** `owner` isolates this molview's saved data from other tabs' (§18.4).
+
+### F. How to use MolView — a walkthrough
+
+You are the **owner** (a page or tab). Using molview is five steps; you never write storage
+or 3-D code yourself.
+
+1. Put an **empty host element** where the molview should sit.
+2. Get the **workspace** it should use — the real one (edits persist) or a throwaway (a
+   read-only view that saves nothing).
+3. **`mount`** molview into the host.
+4. Wire **your page's buttons to the handle's API** (`load` / `save` / `undo`) — never to
+   storage.
+5. React to **`onChange`** to refresh your page's own bits; **`dispose`** on teardown.
+
+```mermaid
+sequenceDiagram
+    participant Owner as Owner (page)
+    participant MV as MolView
+    participant WS as Storage (workspace)
+    Owner->>MV: mount(host, workspace, {mode, owner})
+    Note over Owner,MV: user clicks "Load"
+    Owner->>MV: handle.load(file)
+    MV->>WS: write the molecule
+    MV->>MV: run render pipeline → draw once
+    MV-->>Owner: onChange fires
+    Note over Owner,MV: user clicks "Save"
+    Owner->>MV: handle.save()
+    MV->>WS: persist
+    Owner->>MV: handle.dispose()  (leaving the page)
+```
+
+Owner code, in plain shape:
+
+```
+// 2-3: get the workspace, mount molview into the host
+const handle = await molview.mount(hostEl, workspace, { mode: "modify", owner: "modify" });
+
+// 4: wire page buttons to the API — NOT to storage
+loadButton.onclick = () => handle.load(pickedFile);
+saveButton.onclick = () => handle.save();
+undoButton.onclick = () => handle.undo();
+
+// 5: react to changes, and clean up on the way out
+handle.onChange(() => refreshTitle(handle.getStructure()));
+onPageLeave(() => handle.dispose());
+```
+
+**The two real ways it's used** (same component, different workspace + mode):
+
+| Scenario | workspace | mode | owner | Effect |
+|---|---|---|---|---|
+| **Modify tab** | the **real** workspace | `"modify"` | `"modify"` | full editing; edits persist to disk |
+| **Results card** | a **throwaway** workspace | `"readonly"` | `"results:<id>"` | shows a computed structure; saves nothing; isolated slot |
+
+The owner picks the workspace + mode + owner; **everything else is identical**, because the
+component is the same. That is what "fully concealed and reusable" buys.
+
+> **This document is the DESIGN — the contract the code must comply with.** It describes
+> MolView as it is *meant to be*: one component, one door, one render pipeline. Where the
+> current code diverges (e.g. Modify still drives some storage directly instead of asking
+> molview), **the code is wrong and gets fixed to match this** — the design is never watered
+> down to match the code. Migration status (what's already brought into compliance) is
+> tracked separately in [`molview-migration-plan.md`](molview-migration-plan.md), not here.
 
 ---
 
 ## §11 The MolView module — what it is + the boundary
 
-**MolView is one module: the structure viewer, with atom selection as part of
-it.** Selection, measurement, and k-grid display are not bolted-on neighbours —
-they are parts of this module. The module renders a structure, lets the user
-pick/filter atoms, reads off geometry, and displays the periodic tiling.
+**MolView is ONE component: the 3-D viewer, the atom selection, the Cell/periodicity
+panel, measurement, and k-grid display — as one thing.** These are not bolted-on
+neighbours; they are parts of the same component. It renders the molecule, lets the user
+pick/filter atoms, reads off geometry, edits periodicity, and shows the periodic tiling —
+all behind the one API (§D).
 
-Two hard rules define the whole module:
+Two rules define the whole component:
 
-1. **Data and parameters come IN through the API. The module never fetches and
-   never parses.** Structure text, the lattice `cell`, and the k-grid `dims` are
-   handed to the module by the host; the module draws them. Reading files,
-   associating a `.fdf` with a structure, and extracting a cell/k-grid are the
-   **host's** job (the results tab, backed by `molbuilder/parse/`; or a designed
-   structure on Modify). See §14.
-2. **The store is the single source of truth for selection state.** The panel,
-   the viewer-adapter, and the viewer never talk to each other directly — they
-   all go through the store (§13). This is the SAME store as `ws.selection` (workspace-contract.md §5).
+1. **MolView reads and writes its data through STORAGE; it never does I/O or parsing
+   itself.** The molecule (atoms + text), the lattice `cell`, and the k-grid `dims` live in
+   the workspace (storage). molview reads them through `ws.*` and draws them, and writes
+   changes back through `ws.*`. Reading files, associating a `.fdf`, and extracting a
+   cell/k-grid happen **upstream** (the results tab / `molbuilder/parse/`) and are written
+   *into* storage — never by molview, and **never handed to molview directly by the owner**
+   (§A, the single door). See §14.
+2. **The selection store is the single source of truth for selection + view state.** The
+   panel, the viewer-adapter, and the viewer never talk to each other directly — they all
+   go through the store (§13). That store **is** `ws.selection` (workspace-contract.md §5).
 
-### 11.1 Boundary — who owns what
+### 11.1 Boundary — molview vs. the owner vs. storage
 
-| The module owns | The host owns |
+Three parties, one door between each (§A):
+
+| MolView owns (inside the component) | Outside molview |
 |---|---|
-| 3-D rendering + the viewer card chrome (style / labels / axes / reset / screenshot / background / export) | Page layout, where the card sits |
-| Overlay state: axes, **cell wireframe** (given a lattice), labels, arrows, atom overlays, pick halos, animation frame, camera | **Data fetching** (`/api/*`, sidebar reads, polling) |
-| The **selection store** + the selection panel + the viewer-adapter | The **cell + k-grid parameters** it supplies to the module (§14) |
-| Measurement math + readout overlay; k-grid tiling compute | Project context (current dir, file naming) |
+| 3-D rendering + the render pipeline (§14) + the viewer card chrome (style / labels / axes / reset / screenshot / background / export) | **Owner:** page layout, where the card sits, and wiring page buttons to molview's API |
+| The selection store + panel + viewer-adapter; measurement; k-grid tiling; overlays (halos, cell wireframe, labels, arrows, camera) | **Owner:** its own *non-molecule* data + page chrome |
+| Reading + writing the molecule **through `ws.*`** (structure, periodicity, selection) | **Storage (workspace):** holds + persists the molecule, keeps history; the namespace it saves under |
+| Namespacing its saved data by `owner` (§18.4) | **Upstream (parse / results):** fetching files, parsing formats, extracting cell/k-grid *into* storage |
 
 Crossing the boundary:
-- **Host → module (mutate):** `handle.setStructure/setStyle/setAxes/setOverlays/setPick…`; `store.setSelection/setIsolate/setKgrid/…`.
-- **Host → module (read):** `handle.getAtomCount/getAtomCoords/getElements/getLattice/getCell/getPickedIndices/getCamera`; `store.getState()`.
-- **Module → host (events):** `opts.onReady(handle)`, `opts.onError`, `opts.pick.onPick`, `opts.export.onExport`, `opts.animation.onFrame`; `store.subscribe(fn)`.
+- **Owner → molview:** the API only (§D) — `mount / load / getStructure / getSelection / save / undo / onChange / dispose`. The owner never calls the viewer handle or the store directly.
+- **molview → storage:** `ws.*` reads (return copies) + writes (persisted) — §C.
+- **Internal wiring** (maintainers, not the owner): molview drives the viewer via its handle
+  (`setStructure/setStyle/setAxes/setOverlays/setPick`, readers `getAtomCount/getAtomCoords/
+  getElements/getLattice/getCell/getPickedIndices/getCamera`) and the store (`set/toggle/
+  setIsolate/setKgrid/subscribe`); the viewer reports back via `opts.onReady/onError/
+  pick.onPick/export.onExport/animation.onFrame`. These live *inside* molview (§13) — the
+  owner never sees them.
 
-The host never reads 3Dmol objects directly; the module never reads host DOM
-outside its own card.
+molview never reads 3Dmol objects outside its own handle; it never reads owner DOM outside
+its own card.
 
 ## §12 The selection store — `ws.selection`
 
@@ -133,7 +251,7 @@ functions: `mountPanel`, `measurements`, `viewerAdapter`, `_createStore`,
   isolate:     boolean            // "show selected only" — VIEW state (was the
                                   //  adapter's setIsolateMode; moved into the store)
   kgrid:       { enabled: boolean, dims: [nx,ny,nz], source: "free" | "fixed" }
-  filters:     Filter[]           // {kind: by_element|by_index|by_label, value}
+  filters:     Filter[]           // {kind: by_element|by_index|by_residue|by_label, value}
   combinator:  "or" | "and"
   loading:     boolean
   error:       null | string
@@ -172,7 +290,9 @@ Consumers never touch the raw store; they use a renamed **surface**:
 
 `window.molbuilder.viewer.embed(host, opts)` mounts the viewer card and returns a
 **handle**. Structure text (`opts.xyz` / `opts.pdb`) + a declarative options object
-come in through the call; the viewer maintains the drawing. Handle methods (exact):
+come in through the call; the viewer maintains the drawing. The handle methods molview
+relies on (the full handle in `mol-viewer-embed.js` exposes roughly twice these — style /
+labels / arrows / animation / knobs getters+setters — but these are the load-bearing ones):
 
 ```
 setStructure  setStyle  setAxes  setOverlays  setPick  setPickedIndices
@@ -217,32 +337,66 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
 
 ## §14 k-grid & the render pipeline
 
-k-grid display = **copies of the atoms offset by the lattice vectors**. Pure compute:
+### 14.0 The mental model — READ THIS FIRST
+
+**Rendering the structure is ONE pipeline of coordinate-computing steps that ends in a
+SINGLE 3dmol draw.** Every step before 3dmol does nothing but compute *which coordinates
+should be shown*. k-grid is the **last** such step. There is **no second render and
+nothing is layered "on top."**
+
+```
+   source atom coords  (the current frame, from the data model — the CLEAN unit cell)
+        │
+        ▼   step: selection / isolate   → which atoms are visible
+        │
+        ▼   step: k-grid tiling         → repeat the visible atoms by the lattice
+        │                                  (the LAST coordinate step)
+        ▼
+   final list of coordinates   →   3dmol draws it, ONCE
+```
+
+So "k-grid ON" only means the final coordinate list is the **repeated** unit cell instead
+of the bare unit cell — 3dmol still renders that one list, once. Two consequences that the
+rest of §14 depends on:
+
+- **Always recompute from the CLEAN unit cell.** The pipeline starts from the data model's
+  unit-cell coords every time — never from an already-tiled list (or you would tile a
+  tile). Whoever drives the render must hand it the unit cell, not read back whatever the
+  viewer currently shows.
+- **The steps are ordered:** selection/isolate first, then k-grid. So **isolate ON + k-grid
+  ON tiles only the selected atoms.**
+- **Two different things are both called "k-grid":** the **dims** `[nx,ny,nz]` — how many
+  repeats, which is the structure's DFT k-grid, stored in periodicity and written with
+  **`ws.setKgrid(dims)`**; and the **enable toggle** — a view preference (show the tiling or
+  not), held in the selection store and flipped with **`ws.selection.setKgrid({enabled})`**.
+  The pipeline tiles by the dims *only when the toggle is on*. (Likewise `ws.getKgrid()`
+  reads the dims; the `kgrid.enabled` in `ws.selection.getState()` is the toggle.)
+
+### 14.1 The code that runs the pipeline
 
 - **`molview.tileKgrid(coords, cell, [nx,ny,nz]) → {positions, sourceIndex, nimages}`**
-  — the tiling.
-- **`molview.computeRender(coords, view, cell) → {positions, sourceIndex}`** — the
-  ordered pipeline: layer 2 (selection/**isolate** → visible global indices) →
-  layer 3 (k-grid tile). Because isolate runs before tiling, **isolate ON + k-grid
-  ON tiles only the selected atoms.** `sourceIndex[m]` maps each drawn position
-  back to its unit-cell atom (element/label lookup; images share their unit-cell
-  atom's identity).
+  — the tiling step (repeat the atoms by the lattice).
+- **`molview.computeRender(coords, view, cell) → {positions, sourceIndex}`** — runs the
+  whole pipeline above (selection/isolate → k-grid) and returns the final coordinates.
+  `sourceIndex[m]` maps each drawn position back to its unit-cell atom (element/label
+  lookup; k-grid copies share their unit-cell atom's identity).
 
-### 14.1 The render controller lives in the module — `mountKgridRender`
+### 14.2 The render controller lives in the module — `mountKgridRender`
 
 The one k-grid render **controller** — the live loop that subscribes to the store,
 runs `computeRender`, and calls `handle.setStructure(supercell)` — is in the
 module, not hand-written per host:
 
-- **`molview.mountKgridRender(handle, store, {coords, elements}) → {dispose}`**
-  subscribes to the store, runs `computeRender` with the cell **read from the
-  store** (never from a load response or a per-render hand-read), calls
-  `handle.setStructure(supercell)` on enable, restores the unit cell on disable,
-  and unsubscribes on `dispose`. It is the **ONLY** k-grid render loop in the
+- **`molview.mountKgridRender(handle, store, {getUnit, getCell, getKgridDims}) → {refresh, dispose}`**
+  subscribes to the store; on each change it takes the **clean unit cell** from
+  `getUnit()` (`{coords, elements, xyz}`), the lattice from `getCell()`, and the dims from
+  `getKgridDims()`, runs `computeRender`, and calls `handle.setStructure(supercell)` on
+  enable / restores the unit cell on disable. `refresh()` re-runs it after a structure
+  change; `dispose()` unsubscribes. It is the **ONLY** k-grid render loop in the
   codebase (the former inline controller in the Results structure inspector was
   deleted when this landed — molview-migration-plan Steps 1–2).
 
-### 14.2 In-window picking is disabled while k-grid is on; the panel still works
+### 14.3 In-window picking is disabled while k-grid is on; the panel still works
 
 **With many duplicated atoms on screen, a mouse click inside the molview window is
 ambiguous and messy** — "which copy did you pick?" has no answer. So while
@@ -264,25 +418,26 @@ ambiguous and messy** — "which copy did you pick?" has no answer. So while
 So k-grid disables *pointing at the 3-D view*, not *selecting*: you keep curating
 the selection through the panel; you just can't click the copies.
 
-### 14.3 The k-grid / cell parameter boundary (host supplies; module never parses)
+### 14.4 Where the `cell` and `k-grid` come from — storage, never a parse in molview
 
-The module **only cares whether a `cell` and a `kgrid` were handed to it.** It does
-not read files, does not associate a `.fdf`, does not extract a k-grid.
+molview **reads** the `cell` and the `k-grid` from **storage** (`ws.*`); it never reads
+files, associates a `.fdf`, or extracts a k-grid itself. Whoever put them *into* storage did
+the parsing — molview only draws what storage holds.
 
-- The **cell** is passed as `opts.lattice` (viewer) — the host obtains it. For a
-  result, that's `molbuilder/parse/` (`StructureResult.cell` / `JobResult`
-  geometry) surfaced by the **results tab**; on Modify, it's the structure being
-  designed (read from the store — `ws.getUnitCell()`, workspace-contract.md §2).
-- The **k-grid** reaches the store as `setKgrid({source:"fixed", dims})` when the
-  host supplies it (the results tab, from the `.fdf` kgrid diagonal that
-  `parse/dirs/job.py` already extracts), or `"free"` when the user experiments.
+- The **cell** comes from `ws.getUnitCellInfo()` (the resolved lattice). Upstream, a computed
+  result got its cell from `molbuilder/parse/` (`StructureResult.cell` / `JobResult`
+  geometry) written into storage; on Modify it is the structure being designed. molview does
+  not know or care which — it reads the resolved cell.
+- The **k-grid dims** come from `ws.getKgrid()`. Upstream wrote them (`source:"fixed"` from a
+  result's `.fdf` k-grid diagonal that `parse/dirs/job.py` extracts, or `"free"` when the
+  user experiments on Modify). Again molview just reads.
 
-`molbuilder/parse/` is the sole parser (see `parse-module.md`). No parsing
-lives in this module. How the host **resolves** `cell` + `kgrid` (the
-`resolve_cell` precedence, the `axis_kind` enum `{periodic, isolated, transport}`,
-the axis_kind-gated k-grid rule — k-grid > 1 only on a `periodic` axis) is defined
-in **[`structure-periodicity.md`](structure-periodicity.md)** — the module just
-receives the result.
+`molbuilder/parse/` is the sole parser (see `parse-module.md`) — **no parsing lives in
+molview**. How the `cell` + `k-grid` are *resolved* before they land in storage (the
+`resolve_cell` precedence, the `axis_kind` enum `{periodic, isolated, transport}`, and the
+axis_kind-gated k-grid rule — k-grid > 1 only on a `periodic` axis) is defined in
+**[`structure-periodicity.md`](structure-periodicity.md)**; molview reads the resolved
+result from storage.
 
 ## §15 Measurement — `measurements.compute` + the overlay
 
@@ -356,12 +511,15 @@ molview.mount(hostEl, workspace, opts) -> handle
 ```
 
 - **`workspace`** — the uniform DATA interface: the `ws.*` API (structure, selection,
-  periodicity, and *save*). molview **reads** through the accessors (which return defensive
-  copies — the store can't be mutated by holding a value) and **writes** through the
-  mutators (which the workspace persists). molview holds **no data of its own** and takes
-  **no** loader/embed/data hooks.
-- **`opts`** = `{ mode: "modify" | "readonly", focus?: bool, owner?: string }`.
-- **`handle`** = `{ dispose(), els, viewerHandle, owner }`.
+  periodicity, save). molview **reads** through the accessors (which return copies — the
+  store can't be mutated by holding a value) and **writes** through the mutators (which the
+  workspace persists). molview holds **no data of its own** and takes **no** loader / embed /
+  data hooks.
+- **`opts`** = `{ mode: "modify" | "readonly", owner?: string }`.
+- **`handle`** — the **owner-facing API of §D**: `{ load, getStructure, getSelection, save,
+  undo, onChange, dispose }`. It exposes **no internals** — not the viewer handle, not the
+  store, not DOM refs. (Maintainers reach the internal composition through the module itself,
+  §13; the owner never does.)
 
 The caller's ONLY job is to pass the right workspace + mode (+ owner). **Protection, uniform
 access, and persistence are the workspace's concern** — molview just uses it.
@@ -372,9 +530,9 @@ access, and persistence are the workspace's concern** — molview just uses it.
 - **Embeds the viewer itself** and **subscribes to the workspace** — when the structure
   changes (a load, an edit), molview re-renders. So "Load a new file" stops being special
   glue: it is a workspace write molview reacts to.
-- `selection.mountPanel(workspace.selection, {mode})`; `molview.mountViewControls`; wires
-  the fold; `mountKgridRender` (cell/dims from `workspace.get*` accessors);
-  `mountMeasurementOverlay`.
+- `selection.mountPanel(panelHost, {store: workspace.selection, mode})`;
+  `molview.mountViewControls`; wires the fold; `mountKgridRender` (unit cell / dims from the
+  `workspace.get*` accessors, §14.2); `mountMeasurementOverlay`.
 - `dispose()` tears it all down (panel, controls, overlays, k-grid, subscriptions).
 
 ### 18.3 Persistence is the WORKSPACE's, not molview's
@@ -409,18 +567,17 @@ Two rules keep this correct:
 > deliberate, tested step — not a drive-by. `molview.mount` already carries `owner`
 > (feature-detected `workspace.useNamespace`), so the molview side is ready.
 
-### 18.5 Migration — ONE TAB AT A TIME (best-practice-first)
+### 18.5 Two consumers, one component — and the one piece of new infrastructure
 
-Prove the pattern on **Modify** first, with the real workspace singleton; leave every other
-consumer on its current code until Modify validates the design, then migrate each correctly.
+The same `molview.mount` serves every consumer; only the **workspace + mode + owner** differ
+(§F). Modify passes the **real** workspace; a Results card passes a **throwaway** one. That
+throwaway is the single new thing this design needs beyond the component itself:
 
-1. **Modify** (current step): `molview.mount(host, ws, {mode:"modify", focus:true})` replaces
-   the template card DOM + `selection-bootstrap.js` + `viewer.js` assembly. `ws` = the
-   existing workspace singleton (already persisted) — **no new infrastructure needed**.
-2. **Results** (LATER): needs a throwaway workspace, so first make the workspace
-   **instantiable** (a factory minting a non-persisted instance with the full `ws.*` API);
-   then `molview.mount(host, ephemeralWs, {mode:"readonly"})`. Until then Results keeps its
-   current hand-assembly, **untouched**.
+- **The workspace must be instantiable** — a factory that mints a **non-persisted** instance
+  exposing the full `ws.*` API, so a Results card gets its own isolated data + selection
+  without touching Modify's. (Modify uses the existing singleton; Results uses a minted one.)
 
-> **Status: Modify in progress; Results (and any other consumer) deferred until Modify
-> establishes the pattern — they need the workspace factory (§18.5 step 2).**
+Rolling this out one consumer at a time is a delivery choice, not part of the design — which
+consumer is already on `molview.mount` and which still hand-assembles is tracked in
+[`molview-migration-plan.md`](molview-migration-plan.md), per the framing note at the top of
+this document. The design here is the target every consumer converges to.
