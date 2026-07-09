@@ -8,10 +8,11 @@
  * molview can't tell the difference and doesn't need to.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
- *   handle = { dispose() }
- *     The §D owner-facing API -- load / getStructure / getSelection / save / undo / onChange
- *     -- is the outstanding single-door build (see §18 + molview-migration-plan.md).  The
- *     handle intentionally exposes NO internals: not the viewer, not the store, not DOM refs.
+ *   handle = { getStructure(), getSelection(), onChange(fn), dispose() }
+ *     The READ + notify side of the §D API is built (B1): the owner reads the molecule +
+ *     subscribes to changes THROUGH the handle, never storage.  The WRITE side -- load /
+ *     save / undo -- is the remaining single-door build (B2).  The handle exposes NO
+ *     internals: not the viewer, not the store, not DOM refs.
  *
  * OWNER (molview is aware of its user).  `owner` is this molview's identity -- the tab /
  * consumer it belongs to (e.g. "modify", "results:<id>").  molview forwards it to the
@@ -83,8 +84,32 @@
             cleanups.push(function () { foldBtn.removeEventListener("click", onFold); });
         }
 
+        // ---- The owner-facing handle (§D) --------------------------------------------- //
+        // The owner reads the molecule + reacts to changes THROUGH molview -- never storage
+        // directly (§A single door).  Reads return copies (the workspace accessors
+        // defensive-copy, workspace-contract §1.2.1).  `onChange` is the ONE change channel
+        // (§E rule 4): the owner subscribes here instead of reaching for ws.subscribe /
+        // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
+        const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
+            getStructure: function () {
+                return (typeof workspace.getStructure === "function")
+                    ? workspace.getStructure() : null;
+            },
+            getSelection: function () {
+                const s = store.getState();
+                return (s && Array.isArray(s.indices)) ? s.indices.slice() : [];
+            },
+            onChange: function (fn) {
+                if (typeof fn !== "function" || typeof workspace.subscribe !== "function") {
+                    return function () {};
+                }
+                const off = workspace.subscribe(fn);
+                _offs.push(off);
+                return off;
+            },
             dispose: function () {
+                _offs.forEach(function (off) { try { off(); } catch (_) {} });
                 cleanups.forEach(function (fn) { try { fn(); } catch (_) {} });
             },
         };
