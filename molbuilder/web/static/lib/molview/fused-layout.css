@@ -85,9 +85,13 @@
 /* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
  * filter body, which flexes to fill the panel and holds the single scroll region. */
 .molview-panel .panel-page > * { flex: 0 0 auto; }
+/* The click/filter body sizes to its CONTENT (so a short list is compact, with the
+ * Clear/Invert + assign right beneath it) but SHRINKS when the content can't fit -- flex:
+ * 0 1 auto, not 1 1 (which would force-fill and leave a tall empty list).  When it shrinks,
+ * the atom list inside scrolls; the header + actions + assign always stay visible. */
 .molview-panel .panel-page > #selection-click-section,
 .molview-panel .panel-page > #selection-filter-section {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;

@@ -209,8 +209,8 @@
 
 .selection-apply-filter-btn {
     flex: 1;
-    padding: 0.35rem 0.6rem;
-    font: 600 12px/1.2 system-ui, sans-serif;
+    padding: 0.18rem 0.5rem;
+    font: 600 11px/1.15 system-ui, sans-serif;
     background: var(--sp-accent-bg-mid);
     color: var(--sp-accent-fg);
     border: 1px solid var(--sp-accent);
@@ -459,8 +459,8 @@
     color: var(--ps-fg);
     border: 1px solid var(--ps-border-strong);
     border-radius: 3px;
-    padding: 0.35rem 0.6rem;
-    font: 600 12px/1.2 system-ui, sans-serif;
+    padding: 0.18rem 0.5rem;
+    font: 600 11px/1.15 system-ui, sans-serif;
     letter-spacing: 0.02em;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -554,8 +554,8 @@
     color: var(--ps-fg);
     border: 1px solid var(--ps-border);
     border-radius: 3px;
-    padding: 0.25rem 0.4rem;
-    font: 12px system-ui, sans-serif;
+    padding: 0.18rem 0.4rem;
+    font: 11px system-ui, sans-serif;
     min-width: 0;
 }
 .selection-new-label {
