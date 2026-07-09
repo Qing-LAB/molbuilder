@@ -54,7 +54,7 @@ k-grid is the **last** step. There is **no second render and nothing layered on 
 ```mermaid
 flowchart LR
     SRC["source atom coords<br/>clean unit cell, from storage"]
-    SEL["step: selection / isolate<br/>which atoms are visible"]
+    SEL["step: isolate<br/>selected-only → which atoms are drawn"]
     KG["step: k-grid tiling<br/>repeat by the lattice — LAST step"]
     DRAW["3dmol draws — ONCE"]
     SRC --> SEL --> KG --> DRAW
@@ -305,22 +305,40 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
   tiling uses it (§14). The **cell wireframe** draws only when **`opts.cell`** is
   also set (`_redrawCell` gates on `state.current.cell`). The viewer does **not**
   parse a lattice from the file text; molview passes it in (having read it from storage, §14).
-- **`setOverlays(spec)`** is how selection is painted (halos, region tints,
-  isolate opacity). **`setStructure({xyz, lattice})`** is how the displayed
-  atoms are replaced (e.g. a k-grid supercell, §14).
+- **`setOverlays(spec)`** paints the selection **highlights** on the drawn atoms (selection /
+  region / frozen halos). **`setStructure({xyz, lattice})`** replaces the displayed atom
+  *list* — the plain unit cell, the isolate-**filtered** subset, or a k-grid supercell (§14).
+  Isolate is a render-list filter done through `setStructure`, **not** an overlay.
 - Hard deps (`embed()` throws if absent): `$3Dmol`, `molbuilder.viewer.create`,
   `molbuilder.fmt`. Soft deps degrade silently: `molbuilder.axes`, `molbuilder.style`.
 
 ### 13.2 Composition — panel + adapter + viewer
 
-```
-        selection-panel.js            viewer-adapter.js
-        (DOM: list/filter/            (paints overlays via
-         checkboxes)                   handle.setOverlays;
-              │                        forwards viewer clicks
-              │                        to store.toggle)
-              └────────► STORE ◄───────────┘
-                     (single source)
+Every part talks **only** to the store — never to each other. Writers push mutations in;
+readers subscribe and react. The store is the one hub; the viewer handle is the one surface
+everything draws onto.
+
+```mermaid
+flowchart TB
+    ST["<b>ws.selection — THE STORE</b><br/>single source of truth<br/>state: indices · pickOrder · isolate · kgrid · atoms · filters · mode"]
+    PANEL["selection-panel<br/>atom list / filters"]
+    VC["view-controls<br/>Show selected only · Show k-grid"]
+    ADAPT["viewer-adapter<br/>selection / region / frozen halos"]
+    MEAS["measurement-overlay<br/>distance / angle readout"]
+    CTRL["mountKgridRender<br/>render controller"]
+    VIEWER["viewer handle (3dmol)"]
+
+    PANEL -->|"WRITE: toggle/set/filter/setIsolate/setKgrid"| ST
+    VC -->|"WRITE: setIsolate / setKgrid(enabled)"| ST
+    ST -->|subscribe| PANEL
+    ST -->|subscribe| ADAPT
+    ST -->|subscribe| MEAS
+    ST -->|subscribe| CTRL
+    ADAPT -->|"setOverlays (halos)"| VIEWER
+    MEAS -->|"reads coordsProvider()"| VIEWER
+    CTRL -->|"computeRender → setStructure (base / filtered / tiled)"| VIEWER
+    VIEWER -.->|"click → onPick"| ADAPT
+    ADAPT -.->|"store.toggle<br/>(disabled while isolate/k-grid on)"| ST
 ```
 
 - **`selection.mountPanel(host, {store, viewerHandle, mode})`** fetches the panel
@@ -328,8 +346,10 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
   — both bound to the given `store` (the singleton or an ephemeral one).
 - The **panel** renders from `store.getState()` and calls mutators on input
   (toggle, filter, `setIsolate`, `setKgrid`). The **adapter** subscribes to the
-  store and paints halos/region-tints/isolate via `setOverlays`; it forwards
-  viewer clicks to `store.toggle`.
+  store and paints selection / region / frozen **halos** via `setOverlays`, and forwards
+  viewer clicks to `store.toggle`. While isolate OR k-grid is on it **stands its overlays
+  down and drops clicks** — the window is display-only then (§14.3); isolate itself is a
+  render-list filter in the controller (§14.2), not an overlay.
 - Panel and adapter never reference each other. `mode:"readonly"` hides the
   panel's write controls; clicks still feed the store.
 - `fused-layout.css` is how **molview's composition layer** places the panel as a foldable
@@ -355,9 +375,9 @@ list*, not from the structure.
 ```
    source atom coords  (the current frame, from the data model — the CLEAN unit cell)
         │
-        ▼   step: selection / isolate   → which atoms are visible
-        │
-        ▼   step: k-grid tiling         → repeat the visible atoms by the lattice
+        ▼   step: isolate                → selected-only: which atoms are drawn
+        │                                  (off → all atoms; selection alone only highlights)
+        ▼   step: k-grid tiling          → repeat the visible atoms by the lattice
         │                                  (the LAST coordinate step)
         ▼
    final list of coordinates   →   3dmol draws it, ONCE
@@ -425,6 +445,21 @@ list, which **replaces** the base draw (never a second draw layered on it).
   inline controller in the Results structure inspector was deleted when this landed —
   molview-migration-plan Steps 1–2).
 
+```mermaid
+flowchart TD
+    EV["store change (subscribe)"] --> RD["read: isolate flag · kgrid.enabled<br/>getUnit() · getCell() · getKgridDims()"]
+    RD --> SIG{"derived list changed?<br/>(signature guard)"}
+    SIG -->|no| SKIP["skip — no redraw<br/>(e.g. a click while not isolating)"]
+    SIG -->|yes| DEC{"isolate? &nbsp; k-grid?"}
+    DEC -->|neither| BASE["drawBase() — host's plain full-list draw + its cell wireframe"]
+    DEC -->|isolate only| FILT["computeRender: filter to selected atoms"]
+    DEC -->|k-grid only| TILE["computeRender: tile all atoms"]
+    DEC -->|both| BOTH["computeRender: filter → tile (selected, tiled)"]
+    FILT --> DRAW["handle.setStructure(derived list) — ONE draw, REPLACES the base"]
+    TILE --> DRAW
+    BOTH --> DRAW
+```
+
 ### 14.3 A derived view (isolate OR k-grid) is display-only; the panel still works
 
 **When the window shows a DERIVED list, a mouse click inside it is ambiguous** — under
@@ -482,8 +517,11 @@ result from storage.
 - **`molview.mountMeasurementOverlay(viewerHost, {store, coordsProvider}) →
   {render, dispose}`** paints that readout as text in the viewer card, derived from
   the store selection. Coords come from `coordsProvider()` (the current frame /
-  the viewer handle) — the store never holds coordinates. Hidden while k-grid is on
-  (§14.3).
+  the viewer handle) — the store never holds coordinates. **Under isolate** the drawn list is
+  only the selected atoms, so the overlay re-keys those filtered coords back to global atom
+  index (matching `computeRender`'s isolate order) and the readout **keeps working**. It is
+  **hidden only while k-grid is on** (§14.3 — the tiled copies have no single unit-cell
+  coordinate).
 
 ## §16 Atom-index display rule
 
@@ -497,13 +535,22 @@ converted via `lib/workspace/_atom-index.js` `toDisplay` at the edge. Never let 
 
 ### 17.1 Test affordances
 
-- Node-tested pure modules: `tileKgrid`, `computeRender`, `mountMeasurementOverlay`
-  (`tests/test_{kgrid,render_pipeline,measurement_overlay}_js.py`), the store
-  (`test_selection_store_js.py`), the dispatcher (`test_workspace_dispatcher_js.py`).
-- Browser e2e (structure inspector): measurement overlay, clicks→store, and (when
-  a cell is present in storage) k-grid tiling — `tests/test_structure_inspector_measurement_e2e.py`.
-- The inspector exposes `viewerSlot.__molbuilder_test_handle` + `__molbuilder_test_store`
-  (test-only) so e2e drives the viewer + store without canvas clicks.
+- Node-tested pure modules: `tileKgrid`, `computeRender`, `mountMeasurementOverlay` (incl.
+  the isolate re-key), `mountRender`
+  (`tests/test_{kgrid,render_pipeline,measurement_overlay,molview_render}_js.py`), the store
+  (`test_selection_store_js.py`), the dispatcher (`test_workspace_dispatcher_js.py`),
+  `molview.mount` (`test_molview_mount_js.py`).
+- Browser e2e:
+  - **`molview.mount` full component** — `test_molview_demo_e2e.py` (the `/molview-demo` page:
+    the empty-host build path, viewer tracks the loaded structure, Selection/Cell tab switch).
+  - **Modify** — `test_molbuilder_e2e.py`: **isolate genuinely FILTERS the render list**
+    (`test_show_selected_only_filters_the_render_list`: 3 atoms → isolate ON draws 1 → OFF
+    restores 3), the isolate/k-grid toggles, k-grid tiling.
+  - **Structure inspector** — `test_structure_inspector_measurement_e2e.py`: measurement
+    overlay (incl. under isolate), clicks→store, and (when a cell is in storage) k-grid tiling.
+- The inspector exposes `viewerSlot.__molbuilder_test_handle` + `__molbuilder_test_store`; the
+  demo exposes `.viewer.__molview_test_handle` (test-only) so e2e drives the viewer + store
+  without canvas clicks.
 
 ### 17.2 What this doc supersedes
 
