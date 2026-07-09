@@ -1,9 +1,9 @@
 """molview.mount -- the owner-facing handle (molview-module.md §18 / §D).
 
-Node unit test with a STUBBED workspace + panel: the handle's read/notify surface
-(getStructure / getSelection / onChange) reads the molecule THROUGH the workspace and
-gives the owner ONE change channel -- exposing NO internals (no els / store / viewer).
-The WRITE side (load / save / undo) lands in B2.
+Node unit test with a STUBBED workspace + panel.  The handle is the full §D surface:
+WRITE (load / save / undo) + READ (getStructure / getSelection) + notify (onChange) +
+dispose.  Every call goes THROUGH the workspace (the single door) and the handle exposes
+NO internals (no els / store / viewer).
 """
 import json
 import shutil
@@ -40,6 +40,7 @@ def _run_node(snippet: str) -> object:
 # fixed data the handle must surface.
 _HARNESS = """
     const wsSubs = [];
+    const calls = [];   // records the WRITE-side delegations (load/save/undo)
     const structure = { text: 'XYZ', atoms: [{ index: 0, x: 1 }] };
     const store = { getState: () => ({ indices: [1, 2] }), subscribe: () => (() => {}) };
     const workspace = {
@@ -47,6 +48,10 @@ _HARNESS = """
         getStructure: () => structure,
         subscribe: (fn) => { wsSubs.push(fn);
             return () => { const i = wsSubs.indexOf(fn); if (i >= 0) wsSubs.splice(i, 1); }; },
+        loadFromFile: (p) => { calls.push(['loadFromFile', p]); return Promise.resolve('file'); },
+        loadFromText: (t, f) => { calls.push(['loadFromText', t, f]); return Promise.resolve('text'); },
+        save: () => { calls.push(['save']); return Promise.resolve('saved'); },
+        undo: () => { calls.push(['undo']); return Promise.resolve('undone'); },
     };
     // Stub the panel module mount() composes (view-controls host is absent in the stub).
     global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
@@ -66,8 +71,33 @@ def test_handle_exposes_only_the_read_notify_surface_no_internals():
         });
     """)
     assert out["text"] == "XYZ"                      # getStructure reads through the workspace
-    # ONLY the §D surface -- no els / store / viewerHandle leaked
-    assert out["keys"] == ["dispose", "getSelection", "getStructure", "onChange"]
+    # The full §D surface -- and ONLY that: no els / store / viewerHandle leaked
+    assert out["keys"] == ["dispose", "getSelection", "getStructure",
+                           "load", "onChange", "save", "undo"]
+
+
+def test_handle_write_side_delegates_to_the_workspace():
+    """§D WRITE side: load / save / undo go THROUGH the workspace (the single door) -- the
+    handle never touches storage or the server itself.  A path string routes to loadFromFile;
+    { text, filename } routes to loadFromText; save / undo forward straight through; each
+    returns the workspace's own promise."""
+    out = _run_node(_HARNESS + """
+        mount(host, workspace, { mode: 'modify' }).then(async (h) => {
+            const r1 = await h.load('/path/to.xyz');                   // path -> loadFromFile
+            const r2 = await h.load({ text: 'XYZ', filename: 'm.xyz' }); // obj  -> loadFromText
+            const r3 = await h.save();
+            const r4 = await h.undo();
+            console.log(JSON.stringify({ calls, r1, r2, r3, r4 }));
+        });
+    """)
+    assert out["calls"] == [
+        ["loadFromFile", "/path/to.xyz"],
+        ["loadFromText", "XYZ", "m.xyz"],
+        ["save"],
+        ["undo"],
+    ]
+    assert out["r1"] == "file" and out["r2"] == "text"      # returns the ws promise's value
+    assert out["r3"] == "saved" and out["r4"] == "undone"
 
 
 def test_handle_getSelection_returns_a_copy():
@@ -169,5 +199,6 @@ def test_empty_host_builds_card_embeds_viewer_and_owns_render():
     assert out["embedded"] is True      # it embedded the viewer itself
     assert out["baseDrawn"] is True     # the render loop drew the structure (mountRender)
     assert out["baseHead"] == "1"      # the 1-atom unit cell, read from ws.getStructure()
-    # still ONLY the read/notify handle surface -- no internals leaked by the build path
-    assert out["handleKeys"] == ["dispose", "getSelection", "getStructure", "onChange"]
+    # still ONLY the §D handle surface -- no internals leaked by the build path
+    assert out["handleKeys"] == ["dispose", "getSelection", "getStructure",
+                                 "load", "onChange", "save", "undo"]

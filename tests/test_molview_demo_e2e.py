@@ -61,11 +61,13 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     assert page.locator("#molview-demo-host .viewer-toggles .vc-isolate").count() == 1
     assert page.locator("#molview-demo-host .viewer-toggles .vc-kgrid").count() == 1
 
-    # the handle exposes ONLY the §D read/notify surface.
+    # the handle exposes the full §D surface (load/save/undo + getStructure/getSelection +
+    # onChange + dispose) -- and only that (no internals).
     page.wait_for_function(
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
-    assert keys == ["dispose", "getSelection", "getStructure", "onChange"]
+    assert keys == ["dispose", "getSelection", "getStructure",
+                    "load", "onChange", "save", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)

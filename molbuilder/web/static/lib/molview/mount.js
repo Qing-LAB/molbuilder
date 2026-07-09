@@ -8,11 +8,12 @@
  * molview can't tell the difference and doesn't need to.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
- *   handle = { getStructure(), getSelection(), onChange(fn), dispose() }
- *     The READ + notify side of the §D API is built (B1): the owner reads the molecule +
- *     subscribes to changes THROUGH the handle, never storage.  The WRITE side -- load /
- *     save / undo -- is the remaining single-door build (B2).  The handle exposes NO
- *     internals: not the viewer, not the store, not DOM refs.
+ *   handle = { load(fileOrText), save(), undo(),
+ *              getStructure(), getSelection(), onChange(fn), dispose() }
+ *     The full §D owner-facing API: WRITE (load / save / undo) + READ (getStructure /
+ *     getSelection) + notify (onChange) + dispose.  Every call goes through the WORKSPACE
+ *     (the single door); the render reacts to workspace changes (§18.2).  The handle exposes
+ *     NO internals: not the viewer, not the store, not DOM refs.
  *
  * OWNER (molview is aware of its user).  `owner` is this molview's identity -- the tab /
  * consumer it belongs to (e.g. "modify", "results:<id>").  molview forwards it to the
@@ -165,6 +166,36 @@
         // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
         const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
+            // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
+            // WORKSPACE (the single door) and the render reacts to the resulting workspace
+            // change (§18.2) -- the owner never touches storage or triggers a redraw itself.
+            load: function (fileOrText) {
+                // "Load this molecule."  A path STRING -> the file loader; raw structure text
+                // as { text, filename } -> the text loader.
+                if (fileOrText && typeof fileOrText === "object"
+                        && typeof fileOrText.text === "string") {
+                    return (typeof workspace.loadFromText === "function")
+                        ? workspace.loadFromText(fileOrText.text, fileOrText.filename)
+                        : Promise.reject(new Error("molview.load: workspace.loadFromText missing"));
+                }
+                if (typeof fileOrText === "string" && fileOrText) {
+                    return (typeof workspace.loadFromFile === "function")
+                        ? workspace.loadFromFile(fileOrText)
+                        : Promise.reject(new Error("molview.load: workspace.loadFromFile missing"));
+                }
+                return Promise.reject(new TypeError(
+                    "molview.load(fileOrText): pass a path string or { text, filename }"));
+            },
+            save: function () {
+                return (typeof workspace.save === "function")
+                    ? workspace.save()
+                    : Promise.reject(new Error("molview.save: workspace.save missing"));
+            },
+            undo: function () {
+                return (typeof workspace.undo === "function")
+                    ? workspace.undo()
+                    : Promise.reject(new Error("molview.undo: workspace.undo missing"));
+            },
             getStructure: function () {
                 return (typeof workspace.getStructure === "function")
                     ? workspace.getStructure() : null;
