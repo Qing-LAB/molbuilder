@@ -78,10 +78,29 @@
 .molview-panel .selection-card > .panel-page {
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;   /* the page itself doesn't scroll -- only the list body inside does */
+}
+/* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
+ * filter body, which flexes to fill the panel and holds the single scroll region. */
+.molview-panel .panel-page > * { flex: 0 0 auto; }
+.molview-panel .panel-page > #selection-click-section,
+.molview-panel .panel-page > #selection-filter-section {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+/* The atom list / filter rows ARE the scroll region -- its fixed cap is replaced by the flex
+ * fill, so the list scrolls while the header + Clear/Invert + assign stay pinned. */
+.molview-panel .selection-list-wrap,
+.molview-panel .selection-filter-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
 }
-/* the inner atom-list's own cap is redundant once the page scrolls -- let it grow. */
-.molview-panel .selection-list-wrap { max-height: none; overflow: visible; }
 
 /* ---- Fold handle: a slim, full-height splitter rail (not a bordered box) ---- */
 .molview-fold-btn {
