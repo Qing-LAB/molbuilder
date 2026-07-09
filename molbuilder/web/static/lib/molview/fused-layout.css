@@ -87,6 +87,15 @@
 }
 /* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
  * filter body, which flexes to fill the panel and holds the single scroll region. */
+/* The Cell page is ALL read-only info (no action buttons to keep on screen), so unlike the
+ * Selection page it may simply SCROLL as a whole when it's taller than the panel -- it sizes
+ * to its content (compact when short), then scrolls.  (ID selector wins over the .panel-page
+ * rule above, so `overflow: hidden` there doesn't clip it.) */
+.molview-panel .selection-card > #panel-page-cell:not([hidden]) {
+    flex: 0 1 auto;
+    overflow-y: auto;
+}
+
 .molview-panel .panel-page > * { flex: 0 0 auto; }
 /* The click/filter body sizes to its CONTENT (so a short list is compact, with the
  * Clear/Invert + assign right beneath it) but SHRINKS when the content can't fit -- flex:
