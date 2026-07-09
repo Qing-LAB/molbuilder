@@ -130,7 +130,9 @@
     margin: 0;
     cursor: pointer;
     border: none;
-    background: transparent;
+    /* A resting SHADE (not transparent) so the rail is visually identifiable as the
+     * fold/unfold affordance against the card background -- hover/active deepen it. */
+    background: var(--surface-sunken, rgba(100, 116, 139, 0.11));
     color: var(--muted, #94a3b8);
     font-size: 0.85rem;
     line-height: 1;
@@ -140,17 +142,23 @@
 /* The chevron GLYPH rotates -- NOT the button box.  Rotating the box would swap its
  * width/height in narrow (column) mode, turning a full-width bar into a tall rail that
  * overlaps the viewer + panel.  Keeping rotation on the glyph leaves the button's layout
- * box stable at every width. */
+ * box stable at every width.
+ *
+ * DIRECTION = where the panel will MOVE when clicked (the effect's direction).  WIDE, panel
+ * on the right: UNFOLDED points LEFT (`›` rotated 180° -> `‹`) = "collapse the panel away";
+ * FOLDED points RIGHT = "reveal the panel out to the right".  (Stacked flips to up/down in
+ * the @container block below.) */
 .molview-fold-chevron {
     display: inline-block;
     line-height: 1;
+    transform: rotate(180deg);   /* unfolded (wide): point LEFT -- clicking folds the panel away */
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .molview-fold-btn:hover {
-    background: var(--surface-hover, rgba(100, 116, 139, 0.12));
+    background: var(--surface-hover, rgba(100, 116, 139, 0.2));
     color: var(--text, #475569);
 }
-.molview-fold-btn:active { background: var(--surface-active, rgba(100, 116, 139, 0.2)); }
+.molview-fold-btn:active { background: var(--surface-active, rgba(100, 116, 139, 0.28)); }
 .molview-fold-btn:focus-visible {
     outline: 2px solid var(--accent, #3b82f6);
     outline-offset: -2px;
@@ -163,7 +171,7 @@
     opacity: 0;
     pointer-events: none;
 }
-.molview-card.is-folded .molview-fold-chevron { transform: rotate(180deg); }
+.molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
 /* ---- STACK: the card can't hold --viewer-min + handle + --panel-min side by side
    (320 + 22 + 320 ~= 662).  Viewer on top (a centred square, never full-width), panel
@@ -188,10 +196,11 @@
         width: auto;
         height: 22px;                          /* a full-width horizontal bar */
     }
-    /* chevron points DOWN toward the panel -- rotate the glyph, not the box. */
-    .molview-fold-chevron { transform: rotate(90deg); }
+    /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
+     * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
+    .molview-fold-chevron { transform: rotate(-90deg); }
     .molview-card.is-folded .molview-panel { max-height: 0; min-width: 0; }
-    .molview-card.is-folded .molview-fold-chevron { transform: rotate(-90deg); }
+    .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
 }
 
 /* Viewer view-controls toggles (view-controls.js) -- the "Show selected only" /
