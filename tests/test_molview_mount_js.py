@@ -74,7 +74,8 @@ def test_handle_exposes_only_the_read_notify_surface_no_internals():
     # The full §D surface -- and ONLY that: no els / store / viewerHandle leaked
     assert out["keys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "undo"]
+                    "onChange", "pause", "play", "save", "setFrame", "showForces",
+                    "showIndices", "undo"]
 
 
 def test_handle_write_side_delegates_to_the_workspace():
@@ -203,4 +204,5 @@ def test_empty_host_builds_card_embeds_viewer_and_owns_render():
     # still ONLY the §D handle surface -- no internals leaked by the build path
     assert out["handleKeys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "undo"]
+                    "onChange", "pause", "play", "save", "setFrame", "showForces",
+                    "showIndices", "undo"]

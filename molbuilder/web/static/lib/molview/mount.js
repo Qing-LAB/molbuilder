@@ -11,6 +11,7 @@
  *   handle = { load(fileOrText), save(), undo(),                       // WRITE
  *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
+ *              showForces(on), showIndices(on),                       //   frame overlays (§14.5.1)
  *              getStructure(), getSelection(),                         // READ
  *              onChange(fn), dispose() }                               // notify + teardown
  *     The full §D owner-facing API + the frame axis (§14.5).  Every call goes through the
@@ -98,6 +99,10 @@
 
         const cleanups = [];
 
+        // Frame-overlay toggles (§14.5.1) -- molview-local view state (like isolate/k-grid);
+        // the frame-overlay controller reads them + the handle's showForces/showIndices flip them.
+        let _showForces = false, _showIndices = false, _frameOverlays = null;
+
         // Resolve the fused card + its sub-hosts.  PRE-BUILT card (Modify's template) -> wire
         // the existing panel/toggles/fold; that host owns its own viewer + render.  EMPTY
         // host -> molview BUILDS the card, EMBEDS the viewer, and OWNS the render loop.
@@ -133,6 +138,17 @@
                             const ah = adapter.attach(h, { store: store, mode: mode });
                             cleanups.push(function () {
                                 try { ah && ah.dispose && ah.dispose(); } catch (_) {}
+                            });
+                        }
+                        // Frame-scoped overlays (§14.5.1): force arrows (per-frame) + atom-index
+                        // labels for the current frame; gated by the showForces/showIndices flags.
+                        if (mvApi && typeof mvApi.mountFrameOverlays === "function") {
+                            _frameOverlays = mvApi.mountFrameOverlays(h, workspace, store, {
+                                getShowForces:  function () { return _showForces; },
+                                getShowIndices: function () { return _showIndices; },
+                            });
+                            cleanups.push(function () {
+                                try { _frameOverlays && _frameOverlays.dispose(); } catch (_) {}
                             });
                         }
                     },
@@ -232,6 +248,15 @@
             },
             pause: function () { _stopPlay(); },
             isPlaying: function () { return _playTimer != null; },
+            // Frame-overlay view toggles (§14.5.1) -- force arrows + atom-index labels.
+            showForces: function (on) {
+                _showForces = !!on;
+                if (_frameOverlays) _frameOverlays.refresh();
+            },
+            showIndices: function (on) {
+                _showIndices = !!on;
+                if (_frameOverlays) _frameOverlays.refresh();
+            },
             getStructure: function () {
                 return (typeof workspace.getStructure === "function")
                     ? workspace.getStructure() : null;

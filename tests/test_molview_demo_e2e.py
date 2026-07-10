@@ -68,7 +68,8 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
     assert keys == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "undo"]
+                    "onChange", "pause", "play", "save", "setFrame", "showForces",
+                    "showIndices", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)
@@ -126,7 +127,14 @@ def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_serv
     page.evaluate("() => window.__molview.setFrame(0)")
     page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 0) < 1e-6", timeout=5000)
 
-    assert not errors, f"console/page errors during frame navigation: {errors}"
+    # Frame overlays (§14.5.1): force arrows + atom-index labels on the REAL embed -- turning
+    # them on (and swapping frames with them on) must not error.  A frame with forces exists.
+    page.evaluate("() => { window.__molview.showForces(true); window.__molview.showIndices(true); }")
+    page.evaluate("() => window.__molview.setFrame(2)")
+    page.wait_for_timeout(150)          # let the overlay redraw settle
+    page.evaluate("() => { window.__molview.showForces(false); window.__molview.showIndices(false); }")
+
+    assert not errors, f"console/page errors during frame navigation + overlays: {errors}"
 
 
 def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):
