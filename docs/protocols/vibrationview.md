@@ -78,20 +78,25 @@ vibrationview.mount(hostEl, opts) -> handle
 - **`hostEl`** — an empty element; VibrationView builds the animated **viewer** into it. It
   renders **no control widgets** — the host owns the play/amplitude/speed UI and wires it to
   the handle (§1) methods.
-- **`opts`**:
-  - `geometry` — `{ elements: string[], positions: [x,y,z][] }` — the equilibrium structure
+- **`opts`** (all optional — the structure may instead travel with the mode, below):
+  - `geometry?` — `{ elements: string[], positions: [x,y,z][] }` — the equilibrium structure
     (global atom order).
   - `frozenAtomIdx?` — `number[]` (0-based global) — drawn greyed, never moved.
   - `freeAtomIdx?` — `number[]` (0-based global) — the map from an eigenvector's **free-atom
-    row** to a **global** atom (see §2). Omit when a mode already carries global-length
-    displacements.
+    row** to a **global** atom (see §2). Omit when a mode carries global-length displacements.
   - `amplitude?` / `speedHz?` — initial control values (defaults `0.15` Å, `1.0` Hz).
+
+A **mode is defined against a structure**, so `geometry` / `freeAtomIdx` / `frozenAtomIdx` may
+be passed at mount (one structure, browse its modes) **or carried on each `showMode`** (the
+structure differs between results). Per-mode fields override the mount defaults. The
+equilibrium baseline is (re)drawn **only when the geometry or frozen set actually changes** —
+browsing modes of one structure never rebuilds it.
 
 `handle`:
 
 | Call | Meaning |
 |---|---|
-| `showMode(mode)` | Animate `mode` — `{ index, displacements }` (see §2). Rebuilds the oscillation from the new vector; starts playing. |
+| `showMode(mode)` | Animate `mode` — `{ index, displacements, geometry?, freeAtomIdx?, frozenAtomIdx? }` (see §2). Adopts any structure it carries, (re)draws the baseline if it changed, then oscillates. |
 | `play()` / `pause()` / `isPlaying()` | Playback control + state. |
 | `setAmplitude(å)` / `setSpeed(hz)` | Live control — no structure rebuild. |
 | `getMode()` | The currently-shown mode index (or `null`). |

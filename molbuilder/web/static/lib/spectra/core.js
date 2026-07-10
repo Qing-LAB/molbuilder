@@ -225,11 +225,11 @@
             // five-bucket contract shape holds; tests can pin it.
         },
 
-        // 3Dmol mode-animation viewer handle.  Embed-owned; cleared
-        // by renderResults on geometry change and by dispose() on
-        // unmount.  Lives at the top level of `state` (not in any
-        // bucket) because it's a wrapper-managed external resource.
-        handle:         null,
+        // The VibrationView handle (vibrationview.md) -- the concealed normal-mode viewer.
+        // Cleared by renderResults on geometry change and by dispose() on unmount.  Lives at
+        // the top level of `state` (not in any bucket) because it's a wrapper-managed
+        // external resource.
+        vib:            null,
     };
 
     // Backward-compat aliases.  ~3000 lines of existing render +
@@ -1621,16 +1621,13 @@
         // Geometry changed (new results loaded) -- discard the old
         // 3Dmol viewer so the next render rebuilds with the fresh
         // structure.
-        if (state.handle) {
+        if (state.vib) {
             _stopAnimation();
-            // #206 / #232 cleanup: handle.dispose() tears down the
-            // standard knob bar DOM + ResizeObserver + the embed's
-            // vibration loop.  state.viewer was a redundant alias
-            // for state.handle._viewer3dmol() left over from the
-            // pre-Part-B path; #232 review collapses to the handle.
-            try { state.handle.dispose(); }
+            // Dispose VibrationView (tears down the knob bar DOM + ResizeObserver + the
+            // embed's vibration loop) so the next render rebuilds with the fresh structure.
+            try { state.vib.dispose(); }
             catch (_) {}
-            state.handle = null;
+            state.vib = null;
             if (els.modeViewer) els.modeViewer.innerHTML = "";
         }
         renderModeViewer();
@@ -2259,53 +2256,23 @@
     }
 
     function _ensureViewer() {
-        // Create the embed handle ONCE per mount.  Owns the canvas
-        // + standard knob bar + vibration animation; mode swaps
-        // re-run setStructure + setAnimation without re-mounting.
-        if (state.handle) return;
+        // Mount the concealed VibrationView package ONCE per mount (vibrationview.md).  It
+        // owns the canvas + standard knob bar + the vibration animation; mode swaps go through
+        // vib.showMode without re-mounting.  Spectra no longer drives setStructure /
+        // setAnimation on a raw viewer -- it asks VibrationView.  The viewer options (stick
+        // style, pick: none, axes off, "Vibrational mode" card, "vibration" export) + the
+        // frozen-atom greying + the eigenvector scatter now live inside vibrationview.mount.
+        if (state.vib) return;
         els.modeViewer.innerHTML = "";
-        // #206 Part A migration: mount via the standard embed so
-        // the knob bar (Style / Labels / Axes / Reset / PNG /
-        // Background / Export) appears above the mode-viewer
-        // canvas, matching every other tab.  ``_viewer3dmol()``
-        // returns the underlying 3Dmol viewer so the existing
-        // vibration machinery (addModelsAsFrames + setFrame +
-        // amplitude/speed loop in _startAnimation) continues
-        // untouched.
-        //
-        // Part B (#231, landed 2026-06-03): vibration playback now
-        // goes through the embed's ``animation: {kind: "vibration",
-        // displacements}`` per § 3.9 — the bespoke
-        // ANIM_FRAMES_PER_CYCLE pre-computed sine cycle + raw
-        // setFrame loop are gone.  Frozen-atom greying goes through
-        // ``handle.setOverlays({atoms: [{indices, style}]})`` per
-        // § 3.12.
-        state.handle = window.molbuilder.viewer.embed(
-            els.modeViewer, {
-                // Phase 6: ``#1d2128`` is now the embed-wide default
-                // background; spectra no longer needs to override it
-                // explicitly (or widen the preset list — the default
-                // list is ["#1d2128", "#ffffff", "transparent"]).
-                // Project-wide default rep is "stick" (2026-06-13
-                // cross-tab consistency); the vibrational-mode
-                // viewer used "ball-and-stick" before — users can
-                // switch via the knob bar's Style menu.
-                style:  { rep: "stick", radiusScale: 1.0 },
-                pick:   { mode: "none" },
-                card:   { title: "Vibrational mode",
-                          showInfoLine: false,
-                          height: "100%" },
-                // Axes default OFF (2026-06-13) — consistent across
-                // viewer mount sites; opt in via the knob bar.
-                axes:   false,
-                export: { defaultName: "vibration" },
-                onError(err) {
-                    try { console.warn("[spectra.inspector]",
-                                        err.code, err.message); }
-                    catch (_) {}
-                },
-            }
-        );
+        const vv = window.molbuilder && window.molbuilder.vibrationview;
+        if (!vv || typeof vv.mount !== "function") {
+            setStatus(els.viewerStatus, "vibration viewer unavailable", "muted");
+            return;
+        }
+        state.vib = vv.mount(els.modeViewer, {
+            amplitude: state.animAmplitude,
+            speedHz:   state.animSpeed,
+        });
     }
 
     // _buildFrameMovie removed by #231 Part B.  The embed's
@@ -2317,88 +2284,29 @@
     // amplitude / speedHz changes are partial-update opts on
     // setAnimation, no frame rebuild needed.
 
-    function _applyModeViewerStyle() {
-        // #231 Part B: base style flows through the embed's
-        // handle.setStyle (ball-and-stick) -- already set at
-        // mount time.  Frozen atoms grey out via the OverlaySpec
-        // per-atom style override per § 3.12.  Replaces the raw
-        // viewer.setStyle({serial: idx+1}, ...) per-atom loop.
-        const frozen = (state.results.frozen_atom_idxs || []).map(Number);
-        if (frozen.length) {
-            state.handle.setOverlays({
-                atoms: [{
-                    indices: frozen,
-                    style:   { color: "#555" },
-                }],
-            });
-        } else {
-            // Clear any prior frozen-atom overlay so a mode swap
-            // doesn't leave stale greys when the new geometry has
-            // no frozen atoms.
-            state.handle.setOverlays(null);
-        }
-    }
-
     function _startAnimation(geom, mode) {
-        // #231 Part B: vibration playback is the embed's
-        // ``animation: {kind: "vibration", displacements,
-        // amplitude, speedHz, paused}`` contract per § 3.9.
-        // The embed's loop computes pos_i(φ) = baseline_i +
-        // amplitude · cos(φ) · displacement_i; the previous
-        // bespoke ANIM_FRAMES_PER_CYCLE pre-computed sine cycle
-        // produces the same visible oscillation (sin vs cos is
-        // a 90° phase shift the user can't see).
-        _stopAnimation();
+        // Drive the mode through VibrationView (vibrationview.md): hand it the equilibrium
+        // geometry + the mode's eigenvector (free-atom-indexed, spec.md § 5.1 invariant 3) +
+        // the free/frozen partition.  VibrationView scatters the eigenvector to global order,
+        // greys the frozen atoms, (re)draws the baseline only when the structure changed, and
+        // runs pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i.  Amplitude/speed
+        // edits below are live (vib.setAmplitude / setSpeed); a mode swap re-calls showMode
+        // with the new eigenvector.
+        if (!state.vib) return;
         if (els.animToggle) els.animToggle.textContent = "Pause";
-
-        // Build the per-atom displacement vector.  Eigenvectors are indexed by
-        // FREE-atom ROW, not global atom index (spec.md § 5.1 invariant 3):
-        // scatter row k -> global atom free_atom_idxs[k]; frozen atoms stay at
-        // zero (no motion, anchors the visualisation).
-        const displacements = _scatterModeDisplacements(
-            state.results.free_atom_idxs,
-            mode.eigenvector_display,
-            geom.elements.length);
-
-        // Build the equilibrium-structure xyz text and mount it
-        // as the embed's baseline.  The vibration loop applies
-        // amplitude · cos(φ) · displacement on top of these
-        // baseline coordinates.
-        const lines = [String(nAtoms), ""];
-        for (let i = 0; i < nAtoms; i++) {
-            const p = geom.positions[i];
-            lines.push(
-                geom.elements[i]
-                + " " + p[0].toFixed(6)
-                + " " + p[1].toFixed(6)
-                + " " + p[2].toFixed(6)
-            );
-        }
-        state.handle.setStructure({ xyz: lines.join("\n") });
-        _applyModeViewerStyle();
-        state.handle.refit();
-
-        // Hand the vibration to the embed.  Amplitude + speedHz
-        // changes after this point just call ``setAnimation`` with
-        // a partial payload (see onAnimAmplitudeChange + speed
-        // listener); the displacements stay until a new mode is
-        // selected, when the whole vibration is re-set with the
-        // new eigenvector.
-        state.handle.setAnimation({
-            kind:          "vibration",
-            displacements: displacements,
-            amplitude:     state.animAmplitude,
-            speedHz:       state.animSpeed,
-            paused:        false,
+        state.vib.showMode({
+            index:         mode.index_1based,
+            displacements: mode.eigenvector_display,
+            geometry:      { elements: geom.elements, positions: geom.positions },
+            freeAtomIdx:   state.results.free_atom_idxs,
+            frozenAtomIdx: state.results.frozen_atom_idxs,
         });
     }
 
     function _stopAnimation() {
-        // Cancel embed-driven vibration playback.  The handle's
-        // pauseAnimation tears down the rAF loop the embed runs.
-        if (state.handle
-            && typeof state.handle.pauseAnimation === "function") {
-            try { state.handle.pauseAnimation(); } catch (_) {}
+        // Pause VibrationView playback (pauses the embed's vibration loop under the hood).
+        if (state.vib && typeof state.vib.pause === "function") {
+            try { state.vib.pause(); } catch (_) {}
         }
     }
 
@@ -2410,10 +2318,8 @@
         // #231 Part B: amplitude is a partial-update field on the
         // embed's vibration animation.  No frame rebuild needed --
         // the embed's loop reads amplitude live.
-        if (state.handle && state.results && state.selectedMode != null) {
-            try {
-                state.handle.setAnimation({ amplitude: v });
-            } catch (_) {}
+        if (state.vib && state.results && state.selectedMode != null) {
+            try { state.vib.setAmplitude(v); } catch (_) {}
         }
     }
     function onAnimSpeedChange() {
@@ -2421,10 +2327,8 @@
         if (Number.isFinite(v)) state.animSpeed = v;
         if (els.animSpeedVal)
             els.animSpeedVal.textContent = v.toFixed(1) + "×";
-        if (state.handle && state.results && state.selectedMode != null) {
-            try {
-                state.handle.setAnimation({ speedHz: v });
-            } catch (_) {}
+        if (state.vib && state.results && state.selectedMode != null) {
+            try { state.vib.setSpeed(v); } catch (_) {}
         }
     }
     function onAnimToggle() {
@@ -2433,11 +2337,11 @@
         // mirror.  Without B-1 the mirror would silently drift
         // every time _setMode forced playback via
         // setAnimation({paused: false}).
-        if (!state.handle) return;
-        const wasPlaying = state.handle.isAnimationPlaying();
+        if (!state.vib) return;
+        const wasPlaying = state.vib.isPlaying();
         try {
-            if (wasPlaying) state.handle.pauseAnimation();
-            else            state.handle.playAnimation();
+            if (wasPlaying) state.vib.pause();
+            else            state.vib.play();
         } catch (_) {}
         if (els.animToggle) {
             els.animToggle.textContent = wasPlaying ? "Play" : "Pause";
@@ -2983,9 +2887,9 @@
             // Embed handle is not bucket-owned; tear it down
             // separately.  #231 Part B: handle.dispose() releases
             // the embed's vibration loop + WebGL refs.
-            if (state.handle) {
-                try { state.handle.dispose(); } catch (_) {}
-                state.handle = null;
+            if (state.vib) {
+                try { state.vib.dispose(); } catch (_) {}
+                state.vib = null;
             }
             if (typeof Plotly !== "undefined" && els.spectrumChart) {
                 try { Plotly.purge(els.spectrumChart); } catch (_) {}
@@ -3010,25 +2914,9 @@
 
     }   // ----- end of mountInspector(rootEl, opts) -----
 
-    // ----- spec.md § 5.1 invariant 3: free-row -> global-atom scatter ----- //
-    // Eigenvectors are shape (n_free, 3), indexed by FREE-atom ROW.  Map them
-    // onto a full length-nAtoms per-global-atom displacement array: free row k
-    // -> global atom freeAtomIdxs[k]; every atom NOT in freeAtomIdxs (i.e.
-    // frozen) stays at [0,0,0].  Pure + engine-agnostic; exported for the unit
-    // test that pins the invariant.
-    function _scatterModeDisplacements(freeAtomIdxs, eigenvectorFree, nAtoms) {
-        const out = new Array(nAtoms);
-        for (let i = 0; i < nAtoms; i++) out[i] = [0, 0, 0];
-        const free = freeAtomIdxs || [];
-        for (let k = 0; k < free.length; k++) {
-            const atomIdx = free[k];
-            const row = eigenvectorFree && eigenvectorFree[k];
-            if (atomIdx >= 0 && atomIdx < nAtoms && Array.isArray(row)) {
-                out[atomIdx] = row.slice();
-            }
-        }
-        return out;
-    }
+    // The free-row -> global-atom eigenvector scatter (spec.md § 5.1 invariant 3) moved to
+    // lib/vibrationview/mode-math.js (molbuilder.vibrationview.scatterDisplacements) when the
+    // vibration view was carved into its own concealed package (vibrationview.md).
 
     // Export for both consumers (spectra/viewer.js bootstrap on
     // /spectra, lib/inspectors/spectra.js on /results).  Each
@@ -3037,7 +2925,6 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
-        _scatterModeDisplacements: _scatterModeDisplacements,  // spec.md § 5.1 (test hook)
         /**
          * Push raw structure bytes into the module's in-memory
          * holder so Generate / Methods read them via

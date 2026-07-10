@@ -102,6 +102,30 @@ def test_amplitude_and_speed_are_live_partial_updates():
     assert ["setAnimation", {"speedHz": 2.0}] in out
 
 
+def test_showMode_carries_geometry_and_redraws_only_on_change():
+    """The spectra flow: the viewer is mounted WITHOUT a geometry; each showMode carries the
+    equilibrium structure + free/frozen (a mode is defined against its structure).  The
+    baseline is drawn on the first mode, NOT redrawn for the next mode of the SAME structure
+    (browsing modes), but redrawn when the structure changes (a different result)."""
+    out = _run_node(_HARNESS + """
+        const vib = mount(host, {});                            // no geometry at mount
+        capturedOnReady(h);                                     // ready, nothing to draw yet
+        const g1 = { elements:['H','H'], positions:[[0,0,0],[1,0,0]] };
+        vib.showMode({ index:1, displacements:[[1,0,0],[0,0,1]], geometry:g1, freeAtomIdx:[0,1] });
+        const afterFirst = calls.map(c => c[0]); calls.length = 0;
+        vib.showMode({ index:2, displacements:[[0,1,0],[0,0,1]], geometry:g1, freeAtomIdx:[0,1] });
+        const afterSameGeom = calls.map(c => c[0]); calls.length = 0;
+        const g2 = { elements:['O','H','H'], positions:[[0,0,0],[1,0,0],[0,1,0]] };
+        vib.showMode({ index:5, displacements:[[1,0,0],[0,1,0],[0,0,1]], geometry:g2, freeAtomIdx:[0,1,2] });
+        const afterNewGeom = calls.map(c => c[0]);
+        console.log(JSON.stringify({ afterFirst, afterSameGeom, afterNewGeom }));
+    """)
+    assert "setStructure" in out["afterFirst"] and "setAnimation" in out["afterFirst"]
+    assert "setStructure" not in out["afterSameGeom"]   # same structure -> no rebuild
+    assert "setAnimation" in out["afterSameGeom"]       # but the new mode still animates
+    assert "setStructure" in out["afterNewGeom"]        # new structure -> redraw the baseline
+
+
 def test_play_pause_dispose_delegate_to_the_embed():
     out = _run_node(_HARNESS + """
         const geom = { elements:['H'], positions:[[0,0,0]] };
