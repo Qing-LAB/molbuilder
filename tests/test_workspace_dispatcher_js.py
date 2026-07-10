@@ -32,6 +32,7 @@ DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
 STORE_PATH      = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
 CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl.js"
 SNAPSHOT_IO_PATH = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
+FRAME_SERIES_PATH = ROOT / "molbuilder/web/static/lib/workspace/_frame-series.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -79,6 +80,9 @@ def _run_node(snippet: str) -> object:
         #       instead of creating a separate one.
         "window.molbuilder.selection.store = "
         "  window.molbuilder.selection._createStore();\n"
+        # Frame-series factory (workspace §1.5) mounts on molbuilder.workspace BEFORE the
+        # dispatcher, which merges its api onto the same object (preserving _createFrameSeries).
+        "require(" + json.dumps(str(FRAME_SERIES_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
     )
@@ -917,3 +921,75 @@ class TestSelectionPassthrough:
         )
         assert out["exposed"] is True
         assert out["delegated"] == 1
+
+
+class TestFrames:
+    """Frames — the coordinate time axis wired through the dispatcher (workspace §1.5).
+
+    setFrame swaps ONLY the atoms' coordinates (identity + selection survive); add/reload
+    enforce the same-atoms invariant against the loaded structure; forces ride per frame.
+    """
+
+    _ATOMS2 = (
+        "window.molbuilder.selection.store.adoptAtoms([\n"
+        "  {index:0, element:'O', x:0, y:0, z:0},\n"
+        "  {index:1, element:'H', x:1, y:0, z:0}\n"
+        "]);\n"
+    )
+
+    def test_reloadFrames_then_setFrame_swaps_coords_and_keeps_selection(self):
+        out = _run_node(
+            self._ATOMS2 +
+            "const ws = window.molbuilder.workspace;\n"
+            "window.molbuilder.selection.store.setSelection([1]);\n"   # select atom 1
+            "const nf = ws.reloadFrames([\n"
+            "  [[0,0,0],[1,0,0]],\n"     # frame 0
+            "  [[0,0,0],[2,0,0]],\n"     # frame 1
+            "  [[0,0,0],[3,0,0]]\n"      # frame 2 (H at x=3)
+            "]);\n"
+            "const f0 = ws.getAtoms().map(a => a.x);\n"       # reload -> frame 0 => [0,1]
+            "ws.setFrame(2);\n"
+            "const f2 = ws.getAtoms().map(a => a.x);\n"       # frame 2 => [0,3]
+            "const sel = window.molbuilder.selection.store.getState().selection;\n"
+            "console.log(JSON.stringify({ nf, frameCount: ws.frameCount(),\n"
+            "  currentFrame: ws.currentFrame(), f0, f2, sel }));\n"
+        )
+        assert out["nf"] == 3 and out["frameCount"] == 3
+        assert out["f0"] == [0, 1]                 # reload lands on frame 0
+        assert out["currentFrame"] == 2
+        assert out["f2"] == [0, 3]                 # setFrame(2) swapped the coords
+        assert out["sel"] == [1]                   # selection survived the frame swap
+
+    def test_addFrame_appends_and_wrong_atom_count_is_a_hard_error(self):
+        out = _run_node(
+            self._ATOMS2 +
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.reloadFrames([[[0,0,0],[1,0,0]]]);\n"          # 1 frame / 2 atoms
+            "const c1 = ws.addFrame([[0,1,0],[1,1,0]]);\n"     # OK -> 2 frames
+            "let threw = false;\n"
+            "try { ws.addFrame([[0,0,0],[1,0,0],[2,0,0]]); } catch(_) { threw = true; }\n"
+            "console.log(JSON.stringify({ c1, after: ws.frameCount(), threw }));\n"
+        )
+        assert out["c1"] == 2
+        assert out["threw"] is True                # 3 atoms vs 2 -> rejected
+        assert out["after"] == 2                   # not appended
+
+    def test_forces_ride_per_frame(self):
+        out = _run_node(
+            self._ATOMS2 +
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.reloadFrames([[[0,0,0],[1,0,0]],[[0,0,0],[2,0,0]]],\n"
+            "  { forces: [ [[0.1,0,0],[0,0.2,0]], [[0.3,0,0],[0,0.4,0]] ] });\n"
+            "ws.setFrame(1);\n"
+            "console.log(JSON.stringify({ f: ws.currentForces() }));\n"
+        )
+        assert out["f"] == [[0.3, 0, 0], [0, 0.4, 0]]
+
+    def test_frame_methods_exposed_on_the_surface(self):
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "console.log(JSON.stringify(['reloadFrames','addFrame','addFrames','setFrame',\n"
+            "  'getFrame','getForces','currentForces','currentFrame','frameCount']\n"
+            "  .map(m => typeof ws[m] === 'function')));\n"
+        )
+        assert all(out)                            # every frame method present + a function

@@ -530,6 +530,30 @@
             _notify();
         }
 
+        /**
+         * Swap the atoms' COORDINATES in place — the frame/time axis
+         * (workspace-contract.md §1.5): a new frame is the SAME atoms at new
+         * positions.  Keeps identity, labels, frozen, selection, filters, and
+         * mode intact — only x/y/z change.  Requires exactly one [x,y,z] per
+         * existing atom (the caller — the dispatcher's frame API — validates
+         * the count against the structure first).  Synchronous publication.
+         */
+        function setCoords(coords) {
+            if (!Array.isArray(coords) || coords.length !== state.atoms.length) {
+                throw new Error(
+                    "setCoords: one [x,y,z] per atom required (have "
+                    + state.atoms.length + " atoms, got "
+                    + (Array.isArray(coords) ? coords.length : typeof coords) + ")");
+            }
+            for (let i = 0; i < state.atoms.length; i++) {
+                const p = coords[i];
+                state.atoms[i].x = Number(p[0]);
+                state.atoms[i].y = Number(p[1]);
+                state.atoms[i].z = Number(p[2]);
+            }
+            _notify();
+        }
+
         // ----------------------------------------------------------- //
         //  PUBLIC: UI mode  (just controls which editor is visible)   //
         //  Switching modes does NOT touch state.selection.            //
@@ -982,6 +1006,7 @@
             setSourceFile:      setSourceFile,
             refreshAtoms:       refreshAtoms,
             adoptAtoms:         adoptAtoms,
+            setCoords:          setCoords,        // frame coord-swap (workspace §1.5)
             adoptSession:       adoptSession,
             setLoader:          setLoader,
             // mode

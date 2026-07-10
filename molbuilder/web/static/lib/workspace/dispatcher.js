@@ -141,6 +141,17 @@
         }
         return _selectionStore;
     }
+    // The coordinate time axis (workspace-contract.md §1.5).  Lazily minted from the
+    // _frame-series.js factory; the frame API below (ws.addFrame / reloadFrames / setFrame /
+    // …) drives it, and setFrame pushes the current frame's coords onto the selection store.
+    let _frames = null;
+    function _frameSeries() {
+        if (_frames) return _frames;
+        const factory = root.molbuilder && root.molbuilder.workspace
+                     && root.molbuilder.workspace._createFrameSeries;
+        if (typeof factory === "function") _frames = factory();
+        return _frames;
+    }
     function _handle() {
         return (root.molbuilder
                 && root.molbuilder.modify
@@ -1122,6 +1133,71 @@
         });
     }
 
+    // ─── Frames — the coordinate time axis (workspace-contract.md §1.5) ─────── //
+    // The caller (a Results trajectory inspector, a live-job stream) decides the op; the
+    // workspace validates the same-atoms invariant + applies it.  setFrame pushes the current
+    // frame's coords onto the selection store's atoms (a coords-only swap) so the render (which
+    // reads store atoms) shows that frame.  Persistence (extxyz) is a later step; these are the
+    // in-memory ops.  Synchronous — they throw on a violation (not a rejected promise).
+
+    function _atomCount() {
+        const st = _store();
+        const s = st && st.getState();
+        return (s && Array.isArray(s.atoms)) ? s.atoms.length : 0;
+    }
+    // Guard the STRUCTURE-identity (count) on top of the frame-series' internal-consistency
+    // check: a frame's atom count must match the loaded structure.  (Element-order identity is
+    // enforced upstream at parse time — an in-memory coords frame carries no elements.)
+    function _requireMatch(coords, label) {
+        const n = _atomCount();
+        if (n === 0) throw new Error(label + ": load a structure first (no atoms)");
+        if (Array.isArray(coords) && coords.length !== n) {
+            throw new Error(label + ": frame atom count " + coords.length
+                + " does not match the loaded structure's " + n + " atoms (§1.5)");
+        }
+    }
+    function _pushCurrentFrame() {
+        const fs = _frameSeries(), st = _store();
+        if (!fs || !st || typeof st.setCoords !== "function") return;
+        const coords = fs.currentCoords();
+        if (coords) st.setCoords(coords);   // coords-only swap + notify -> render reacts
+    }
+    function reloadFrames(frames, opts) {
+        const fs = _frameSeries();
+        if (!fs) throw _missing("workspace._createFrameSeries");
+        _requireMatch(Array.isArray(frames) ? frames[0] : null, "reloadFrames");
+        fs.reset(frames, opts);   // HARD reload -> resets to frame 0
+        _pushCurrentFrame();
+        return fs.frameCount();
+    }
+    function addFrame(coords, opts) {
+        const fs = _frameSeries();
+        if (!fs) throw _missing("workspace._createFrameSeries");
+        _requireMatch(coords, "addFrame");
+        fs.addFrame(coords, opts);   // append; does NOT change the current view
+        return fs.frameCount();
+    }
+    function addFrames(list, opts) {
+        opts = opts || {};
+        const forcesList = Array.isArray(opts.forces) ? opts.forces : null;
+        (Array.isArray(list) ? list : []).forEach(function (coords, i) {
+            addFrame(coords, { forces: forcesList ? forcesList[i] : undefined });
+        });
+        return frameCount();
+    }
+    function setFrame(i) {
+        const fs = _frameSeries();
+        if (!fs) throw _missing("workspace._createFrameSeries");
+        fs.setFrame(i);            // throws if out of range
+        _pushCurrentFrame();
+        return fs.currentFrame();
+    }
+    function getFrame(i)     { const fs = _frameSeries(); return fs ? fs.getFrame(i) : null; }
+    function getForces(i)    { const fs = _frameSeries(); return fs ? fs.getForces(i) : null; }
+    function currentForces() { const fs = _frameSeries(); return fs ? fs.currentForces() : null; }
+    function currentFrame()  { const fs = _frameSeries(); return fs ? fs.currentFrame() : 0; }
+    function frameCount()    { const fs = _frameSeries(); return fs ? fs.frameCount() : 0; }
+
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
 
     /**
@@ -1441,6 +1517,16 @@
         save:                  save,
         discard:               discard,
         undo:                  undo,
+        // Frames — the coordinate time axis (workspace-contract.md §1.5)
+        reloadFrames:          reloadFrames,
+        addFrame:              addFrame,
+        addFrames:             addFrames,
+        setFrame:              setFrame,
+        getFrame:              getFrame,
+        getForces:             getForces,
+        currentForces:         currentForces,
+        currentFrame:          currentFrame,
+        frameCount:            frameCount,
         selection:             selection,
         view:                  view,
         // Phase 8 — persistence:

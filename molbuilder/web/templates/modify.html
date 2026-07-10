@@ -808,6 +808,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 {# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/_frame-series.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface
    for workspace state.  Loaded AFTER its internal stores
