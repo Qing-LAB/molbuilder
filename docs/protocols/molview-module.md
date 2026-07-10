@@ -515,23 +515,27 @@ MolView renders a **trajectory** — a coordinate time series
 ([`workspace-contract.md`](workspace-contract.md) §1.5) — by adding **ONE step at the FRONT**
 of the pipeline: **frame-select**. Everything downstream is unchanged.
 
-```
-   frames[currentFrame]   ← STEP 0: pick the frame's coords (default 0; setFrame(i) picks another)
-        │
-        ▼   isolate         → selected-only
-        ▼   k-grid tiling
-        ▼
-   final coords   →   3dmol draws it
+```mermaid
+flowchart LR
+    FR["STEP 0 — frame-select<br/>frames[currentFrame]<br/>(default 0; setFrame(i) picks another)"]
+    ISO["isolate → selected-only"]
+    KG["k-grid tiling"]
+    DRAW["3dmol draws — ONCE"]
+    FR --> ISO --> KG --> DRAW
 ```
 
 The atoms' IDENTITY (element, labels, frozen, index) is frame-independent, so **selection,
 isolate, k-grid, and measurement all keep working across frames for free** — they key off the
 atom index (stable); only the coordinates they read come from the selected frame.
 
-**Navigation:** `setFrame(i)` selects the frame; `frameCount` / `getFrame(i)` read; `play()` /
-`pause()` step through. The host renders the slider/buttons and wires them (exactly like
-VibrationView's controls). Single door: the host asks MolView; MolView reads the frames from
-the workspace.
+**The handle's frame API** — the host drives these; MolView reads the workspace + renders (the
+host renders its own slider/buttons/checkboxes, exactly like VibrationView's controls):
+
+| Call | Meaning |
+|---|---|
+| `setFrame(i)` / `frameCount()` / `getFrame(i)` | select / count / read a frame (delegates to `ws`, workspace §1.5.3). |
+| `play()` / `pause()` / `isPlaying()` | step through frames + state. |
+| `showForces(on)` / `showIndices(on)` | view toggles (like isolate/k-grid) — per-frame force arrows / atom-index labels. |
 
 #### 14.5.1 Frame-scoped overlays — index labels follow, forces ride along
 
@@ -560,13 +564,37 @@ Scrubbing/playing is the hot path, so MolView uses 3dmol's **native frame buffer
 - **Pipeline SHAPE changed** (isolate/k-grid toggle, dims, selection-while-isolating, or a
   new/streamed frame set): MolView recomputes the per-frame coordinate lists under the new view
   and reloads the native-frame set (`addModelsAsFrames`). This is the two-tier extension of the
-  §14.2 signature guard: **index moved → `setFrame`; shape changed → reload.**
+  §14.2 signature guard.
+
+```mermaid
+flowchart TD
+    CH["a change fires (frame / view / data)"] --> Q{"what changed?"}
+    Q -->|"only currentFrame<br/>(pipeline shape stable)"| SF["viewer.setFrame(i)<br/>coordinate-buffer swap — NO rebuild<br/>+ redraw overlays for the frame"]
+    Q -->|"pipeline SHAPE<br/>(isolate / k-grid / selection /<br/>new or streamed frames)"| RL["recompute all frames under the view<br/>+ addModelsAsFrames (reload)"]
+```
 
 **Caveats:** native frames assume constant **topology** (correct for MD; bond-breaking is out
 of scope) and a fixed drawn atom set across the loaded frames (guaranteed by the same-atoms
 invariant, workspace §1.5). Under k-grid the pre-tiled frame set is `frames × atoms × tiling`
 — gate it on a size cap (extend the existing k-grid `natoms · nx·ny·nz ≤ 20000` clamp by frame
 count) and fall back to per-frame recompute when too large.
+
+#### 14.5.3 Example — the trajectory inspector uses it
+
+```js
+// The workspace already holds the trajectory frames (workspace §1.5); mount MolView read-only.
+const view = await molview.mount(host, ws, { mode: "readonly", owner: "results:traj" });
+
+// The inspector renders its OWN widgets and wires them to the handle (MolView renders no
+// controls itself — same split as VibrationView):
+frameSlider.oninput   = e => view.setFrame(+e.target.value);       // scrub → native setFrame
+playButton.onclick    = () => view.isPlaying() ? view.pause() : view.play();
+forcesToggle.onchange = e => view.showForces(e.target.checked);    // per-frame force arrows
+indexToggle.onchange  = e => view.showIndices(e.target.checked);   // atom-index labels
+
+// Per-frame SCALARS (energy / step) are the inspector's plot — NOT MolView's data:
+energyPlot.render(results.energies);
+```
 
 ## §15 Measurement — `measurements.compute` + the overlay
 
