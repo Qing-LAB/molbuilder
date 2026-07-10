@@ -217,3 +217,36 @@
     user-select: none;
 }
 .viewer-toggle input { margin: 0; cursor: pointer; }
+
+/* Frame controls bar (§14.5) -- the trajectory playback UI molview renders in the controls
+ * area.  Hidden via the [hidden] attribute until a trajectory is loaded (frameCount > 1);
+ * :not([hidden]) is required so `display: flex` doesn't override that. */
+.molview-frame-controls:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
+    font: 12px/1.2 system-ui, sans-serif;
+    color: var(--text-secondary, #a8aebb);
+}
+.mvf-toggle {
+    display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; user-select: none;
+}
+.mvf-toggle input { margin: 0; cursor: pointer; }
+.mvf-play {
+    padding: 0.1rem 0.5rem;
+    font-size: 11px; line-height: 1.4;
+    cursor: pointer;
+    background: var(--bg-input, #262b33);
+    color: var(--text-secondary, #a8aebb);
+    border: 1px solid var(--border-soft, #2c313a);
+    border-radius: 4px;
+}
+.mvf-play:hover { background: var(--bg-input-focus, #2c323b); }
+.mvf-slider {
+    flex: 1 1 8rem; min-width: 6rem;
+    accent-color: var(--accent, #5fb6ff);
+    cursor: pointer;
+}
+.mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }

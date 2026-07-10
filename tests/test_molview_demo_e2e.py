@@ -137,6 +137,59 @@ def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_serv
     assert not errors, f"console/page errors during frame navigation + overlays: {errors}"
 
 
+def test_molview_demo_frame_controls_bar_drives_the_trajectory(page, flask_server):
+    """The frame controls bar MolView renders (§14.5): load a 3-frame trajectory and the bar
+    (slider + play + counter + Forces/Indices toggles) appears and drives the render.  Dragging
+    the slider moves the DRAWN atom + updates the counter; play advances the frame; the toggles
+    draw arrows/labels -- all on the REAL embed, no other tab."""
+    errors = []
+
+    def on_console(m):
+        if m.type == "error" and not any(s in m.text for s in _IGNORE):
+            errors.append(m.text)
+
+    page.on("console", on_console)
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    page.goto(f"{flask_server}/molview-demo")
+    page.wait_for_function(
+        "() => window.__molview && typeof window.__molview.setFrame === 'function'", timeout=20000)
+
+    bar = "#molview-demo-host .molview-frame-controls"
+    # A single structure on mount -> the frame bar is hidden (frames are a trajectory concept).
+    assert page.locator(bar).is_hidden()
+
+    # Load the 3-frame trajectory -> the bar appears + the counter reads "1 / 3".
+    page.locator("#demo-trajectory").click()
+    page.wait_for_selector(f"{bar}:not([hidden])", timeout=10000)
+    page.wait_for_function(
+        f"() => document.querySelector('{bar} .mvf-counter').textContent.trim() === '1 / 3'",
+        timeout=5000)
+
+    drawn_x0 = ("() => { const v = document.querySelector('#molview-demo-host .viewer');"
+                "  const c = v && v.__molview_test_handle && v.__molview_test_handle.getAtomCoords();"
+                "  return (c && c[0]) ? c[0][0] : null; }")
+
+    # Drag the slider to frame 2 -> drawn atom 0 moves to x = 2, counter -> "3 / 3".
+    page.locator(f"{bar} .mvf-slider").fill("2")
+    page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 2) < 1e-6", timeout=5000)
+    page.wait_for_function(
+        f"() => document.querySelector('{bar} .mvf-counter').textContent.trim() === '3 / 3'",
+        timeout=5000)
+
+    # Play -> the frame advances (wraps past 2); then pause.
+    page.locator(f"{bar} .mvf-play").click()
+    page.wait_for_function("() => window.__molview.currentFrame() !== 2", timeout=5000)
+    page.locator(f"{bar} .mvf-play").click()   # pause
+
+    # The Forces + Indices toggles draw arrows/labels on the REAL embed (no error).
+    page.locator(f"{bar} .mvf-forces").check()
+    page.locator(f"{bar} .mvf-indices").check()
+    page.wait_for_timeout(150)
+
+    assert not errors, f"console/page errors driving the frame bar: {errors}"
+
+
 def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):
     """Regression: a stray `display:flex` on .panel-page once overrode the [hidden]
     attribute, so BOTH the Selection and Cell pages rendered at once and the tab switch did

@@ -58,6 +58,9 @@
         const controls   = _el("div", "viewer-controls");
         const vcHost     = _el("span", "viewer-toggles");
         controls.appendChild(vcHost);
+        const fcHost     = _el("div", "molview-frame-controls");   // trajectory bar (§14.5)
+        fcHost.hidden = true;   // shown by mountFrameControls only when a trajectory is loaded
+        controls.appendChild(fcHost);
         viewerCol.appendChild(wrap);
         viewerCol.appendChild(controls);
         const foldBtn    = _el("button", "molview-fold-btn");
@@ -72,7 +75,7 @@
         body.appendChild(panelHost);
         card.appendChild(body);
         hostEl.appendChild(card);
-        return { card: card, panelHost: panelHost, vcHost: vcHost,
+        return { card: card, panelHost: panelHost, vcHost: vcHost, fcHost: fcHost,
                  foldBtn: foldBtn, viewerHost: viewerHost };
     }
 
@@ -111,13 +114,14 @@
             : ((hostEl.closest && hostEl.closest(".molview-card")) || null);
         let panelHost = card && card.querySelector(".molview-panel");
         let vcHost    = card && card.querySelector(".viewer-toggles");
+        let fcHost    = card && card.querySelector(".molview-frame-controls");
         let foldBtn   = card && card.querySelector(".molview-fold-btn");
 
         if (!panelHost) {
             // EMPTY host: build the DOM, embed the viewer, own the render (the full component).
             const built = _buildCard(hostEl);
             card = built.card; panelHost = built.panelHost;
-            vcHost = built.vcHost; foldBtn = built.foldBtn;
+            vcHost = built.vcHost; fcHost = built.fcHost; foldBtn = built.foldBtn;
             const viewer = mb.viewer;
             if (viewer && typeof viewer.embed === "function") {
                 // Wire the render loop once the viewer handle is ready; molview owns it.
@@ -167,6 +171,30 @@
             cleanups.push(function () { try { vc.dispose && vc.dispose(); } catch (_) {} });
         }
 
+        // Frame controls bar (§14.5) -- slider + play/pause + force/index toggles.  MolView
+        // renders it (like the view-toggles); it stays hidden until a trajectory is loaded
+        // (frameCount > 1).  Drives the workspace frame API + molview's playback/toggle helpers.
+        if (fcHost && mvApi && typeof mvApi.mountFrameControls === "function") {
+            const fc = mvApi.mountFrameControls(fcHost, {
+                setFrame:       function (i) { return workspace.setFrame(i); },
+                frameCount:     function () {
+                    return (typeof workspace.frameCount === "function") ? workspace.frameCount() : 0;
+                },
+                currentFrame:   function () {
+                    return (typeof workspace.currentFrame === "function") ? workspace.currentFrame() : 0;
+                },
+                play:           _play,
+                pause:          _stopPlay,
+                isPlaying:      function () { return _playTimer != null; },
+                setShowForces:  _setShowForces,
+                setShowIndices: _setShowIndices,
+                hasForces:      function () {
+                    return !!(typeof workspace.currentForces === "function" && workspace.currentForces());
+                },
+            }, store);
+            cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
+        }
+
         // Fold handle -- local layout state (fused-layout.css .is-folded), not store state.
         if (foldBtn) {
             const onFold = function () {
@@ -183,11 +211,25 @@
         // defensive-copy, workspace-contract §1.2.1).  `onChange` is the ONE change channel
         // (§E rule 4): the owner subscribes here instead of reaching for ws.subscribe /
         // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
-        // Frame playback timer -- MolView owns it; navigation delegates to the workspace.
+        // Frame playback + overlay-toggle helpers -- MolView owns them; both the returned
+        // handle AND the frame-controls bar (mountFrameControls) drive them.
         let _playTimer = null;
         function _stopPlay() {
             if (_playTimer != null) { root.clearInterval(_playTimer); _playTimer = null; }
         }
+        function _play(opts) {
+            opts = opts || {};
+            if (typeof workspace.frameCount !== "function" || workspace.frameCount() <= 1) return;
+            const fps = (typeof opts.fps === "number" && opts.fps > 0) ? opts.fps : 10;
+            _stopPlay();
+            _playTimer = root.setInterval(function () {
+                const n = workspace.frameCount();
+                if (n <= 1) { _stopPlay(); return; }
+                workspace.setFrame((workspace.currentFrame() + 1) % n);
+            }, 1000 / fps);
+        }
+        function _setShowForces(on)  { _showForces  = !!on; if (_frameOverlays) _frameOverlays.refresh(); }
+        function _setShowIndices(on) { _showIndices = !!on; if (_frameOverlays) _frameOverlays.refresh(); }
         const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
@@ -235,28 +277,12 @@
             currentFrame: function () {
                 return (typeof workspace.currentFrame === "function") ? workspace.currentFrame() : 0;
             },
-            play: function (opts) {
-                opts = opts || {};
-                if (typeof workspace.frameCount !== "function" || workspace.frameCount() <= 1) return;
-                const fps = (typeof opts.fps === "number" && opts.fps > 0) ? opts.fps : 10;
-                _stopPlay();
-                _playTimer = root.setInterval(function () {
-                    const n = workspace.frameCount();
-                    if (n <= 1) { _stopPlay(); return; }
-                    workspace.setFrame((workspace.currentFrame() + 1) % n);
-                }, 1000 / fps);
-            },
+            play:  function (opts) { _play(opts); },
             pause: function () { _stopPlay(); },
             isPlaying: function () { return _playTimer != null; },
             // Frame-overlay view toggles (§14.5.1) -- force arrows + atom-index labels.
-            showForces: function (on) {
-                _showForces = !!on;
-                if (_frameOverlays) _frameOverlays.refresh();
-            },
-            showIndices: function (on) {
-                _showIndices = !!on;
-                if (_frameOverlays) _frameOverlays.refresh();
-            },
+            showForces:  function (on) { _setShowForces(on); },
+            showIndices: function (on) { _setShowIndices(on); },
             getStructure: function () {
                 return (typeof workspace.getStructure === "function")
                     ? workspace.getStructure() : null;

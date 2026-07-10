@@ -528,8 +528,12 @@ The atoms' IDENTITY (element, labels, frozen, index) is frame-independent, so **
 isolate, k-grid, and measurement all keep working across frames for free** — they key off the
 atom index (stable); only the coordinates they read come from the selected frame.
 
-**The handle's frame API** — the host drives these; MolView reads the workspace + renders (the
-host renders its own slider/buttons/checkboxes, exactly like VibrationView's controls):
+**MolView renders a frame controls bar itself** — a slider + play/pause + Forces/Indices
+toggles in its controls area, exactly like it renders the isolate/k-grid view-toggles. It is
+**shown only when a trajectory is loaded** (`frameCount > 1`); a single static structure has no
+bar. So a consumer that hands MolView a trajectory gets the whole navigation UI for free. The
+same operations are also on the **handle API**, exposed for programmatic control + custom
+widgets:
 
 | Call | Meaning |
 |---|---|
@@ -585,14 +589,13 @@ count) and fall back to per-frame recompute when too large.
 // The workspace already holds the trajectory frames (workspace §1.5); mount MolView read-only.
 const view = await molview.mount(host, ws, { mode: "readonly", owner: "results:traj" });
 
-// The inspector renders its OWN widgets and wires them to the handle (MolView renders no
-// controls itself — same split as VibrationView):
-frameSlider.oninput   = e => view.setFrame(+e.target.value);       // scrub → native setFrame
-playButton.onclick    = () => view.isPlaying() ? view.pause() : view.play();
-forcesToggle.onchange = e => view.showForces(e.target.checked);    // per-frame force arrows
-indexToggle.onchange  = e => view.showIndices(e.target.checked);   // atom-index labels
+// The frame controls bar (slider + play/pause + Forces/Indices toggles) appears AUTOMATICALLY
+// when frameCount > 1 — the consumer renders no viewer controls itself.  The handle API is
+// still there for programmatic control / extra widgets, e.g.:
+view.setFrame(3); view.play(); view.showForces(true);
 
-// Per-frame SCALARS (energy / step) are the inspector's plot — NOT MolView's data:
+// The consumer only adds its OWN, non-viewer UI — the per-frame SCALARS (energy / step) are
+// the inspector's plot, NOT MolView's data:
 energyPlot.render(results.energies);
 ```
 
