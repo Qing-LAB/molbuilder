@@ -66,8 +66,9 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_function(
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
-    assert keys == ["dispose", "getSelection", "getStructure",
-                    "load", "onChange", "save", "undo"]
+    assert keys == ["currentFrame", "dispose", "frameCount", "getFrame",
+                    "getSelection", "getStructure", "isPlaying", "load",
+                    "onChange", "pause", "play", "save", "setFrame", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)
@@ -85,6 +86,47 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     assert "no structure" not in count, f"count out of sync with the loaded structure: {count!r}"
 
     assert not errors, f"console/page errors during mount + load: {errors}"
+
+
+def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_server):
+    """Multi-frame trajectory, exercised on /molview-demo ALONE (no other tab): load a 3-frame
+    trajectory where atom 0 slides x = 0 -> 1 -> 2, then handle.setFrame swaps the DRAWN atom's
+    coordinates (the store coord-swap flows through to the render).  Pins the workspace §1.5 +
+    molview §14.5 frame path end-to-end."""
+    errors = []
+
+    def on_console(m):
+        if m.type == "error" and not any(s in m.text for s in _IGNORE):
+            errors.append(m.text)
+
+    page.on("console", on_console)
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    page.goto(f"{flask_server}/molview-demo")
+    page.wait_for_function(
+        "() => window.__molview && typeof window.__molview.setFrame === 'function'",
+        timeout=20000)
+
+    # Load the 3-frame trajectory.
+    page.locator("#demo-trajectory").click()
+    page.wait_for_function("() => window.__molview.frameCount() === 3", timeout=10000)
+
+    # Read the DRAWN x of atom 0 from the viewer handle (what 3dmol actually holds).
+    drawn_x0 = ("() => { const v = document.querySelector('#molview-demo-host .viewer');"
+                "  const c = v && v.__molview_test_handle && v.__molview_test_handle.getAtomCoords();"
+                "  return (c && c[0]) ? c[0][0] : null; }")
+
+    # Frame 0 -> atom 0 drawn at x = 0.
+    page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 0) < 1e-6", timeout=5000)
+    # setFrame(2) -> atom 0 drawn at x = 2 (the coord swap reached the viewer).
+    page.evaluate("() => window.__molview.setFrame(2)")
+    page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 2) < 1e-6", timeout=5000)
+    assert page.evaluate("() => window.__molview.currentFrame()") == 2
+    # setFrame(0) -> back to x = 0.
+    page.evaluate("() => window.__molview.setFrame(0)")
+    page.wait_for_function(f"() => Math.abs(({drawn_x0})() - 0) < 1e-6", timeout=5000)
+
+    assert not errors, f"console/page errors during frame navigation: {errors}"
 
 
 def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):

@@ -16,6 +16,24 @@
         auCell:  "4\nAu fcc\nAu 0 0 0\nAu 2.04 2.04 0\nAu 2.04 0 2.04\nAu 0 2.04 2.04\n",
     };
 
+    // A 3-frame trajectory of water (workspace-contract.md §1.5) -- atom 0 (O) slides along +x
+    // (0 -> 1 -> 2) so a frame swap is trivially verifiable in the viewer; per-frame forces on
+    // O grow with the displacement.  Frame 0 IS the loaded structure.  Lets multi-frame be
+    // exercised on /molview-demo alone, without touching the trajectory inspector or any tab.
+    var TRAJECTORY = {
+        text:   SAMPLES.water,
+        frames: [
+            [[0, 0, 0], [0.757, 0.586, 0], [-0.757, 0.586, 0]],
+            [[1, 0, 0], [0.757, 0.586, 0], [-0.757, 0.586, 0]],
+            [[2, 0, 0], [0.757, 0.586, 0], [-0.757, 0.586, 0]],
+        ],
+        forces: [
+            [[0.0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            [[0.5, 0, 0], [0, 0, 0], [0, 0, 0]],
+            [[1.0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        ],
+    };
+
     function ready(fn) {
         if (document.readyState !== "loading") fn();
         else document.addEventListener("DOMContentLoaded", fn);
@@ -39,6 +57,14 @@
                 .catch(function (e) { say("load failed: " + (e && e.message)); });
         }
 
+        // Load the structure (frame 0) then hand the workspace the full frame series.
+        function loadTrajectory() {
+            return ws.loadFromText(TRAJECTORY.text, "demo-traj.xyz").then(function () {
+                var n = ws.reloadFrames(TRAJECTORY.frames, { forces: TRAJECTORY.forces });
+                say("loaded a " + n + "-frame trajectory — use __molview.setFrame(i) / play().");
+            }).catch(function (e) { say("trajectory load failed: " + (e && e.message)); });
+        }
+
         // Load a first sample, THEN mount the full component (its render loop draws it on
         // onReady + re-draws whenever the workspace changes).
         load("water").then(function () {
@@ -50,6 +76,8 @@
             document.getElementById("demo-water").addEventListener("click", function () { load("water"); });
             document.getElementById("demo-benzene").addEventListener("click", function () { load("benzene"); });
             document.getElementById("demo-au-cell").addEventListener("click", function () { load("auCell"); });
+            var trajBtn = document.getElementById("demo-trajectory");
+            if (trajBtn) trajBtn.addEventListener("click", loadTrajectory);
         }).catch(function (e) {
             say("mount failed: " + (e && e.message));
             if (window.console) window.console.error("[molview-demo]", e);

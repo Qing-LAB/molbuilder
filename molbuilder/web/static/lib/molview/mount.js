@@ -8,12 +8,15 @@
  * molview can't tell the difference and doesn't need to.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
- *   handle = { load(fileOrText), save(), undo(),
- *              getStructure(), getSelection(), onChange(fn), dispose() }
- *     The full §D owner-facing API: WRITE (load / save / undo) + READ (getStructure /
- *     getSelection) + notify (onChange) + dispose.  Every call goes through the WORKSPACE
- *     (the single door); the render reacts to workspace changes (§18.2).  The handle exposes
- *     NO internals: not the viewer, not the store, not DOM refs.
+ *   handle = { load(fileOrText), save(), undo(),                       // WRITE
+ *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
+ *              play(opts), pause(), isPlaying(),                       //   navigation + playback
+ *              getStructure(), getSelection(),                         // READ
+ *              onChange(fn), dispose() }                               // notify + teardown
+ *     The full §D owner-facing API + the frame axis (§14.5).  Every call goes through the
+ *     WORKSPACE (the single door); the render reacts to workspace changes (§18.2).  A frame's
+ *     coord swap notifies the store, so the render redraws on its own; MolView owns only the
+ *     playback timer.  The handle exposes NO internals: not the viewer, not the store, not DOM.
  *
  * OWNER (molview is aware of its user).  `owner` is this molview's identity -- the tab /
  * consumer it belongs to (e.g. "modify", "results:<id>").  molview forwards it to the
@@ -164,6 +167,11 @@
         // defensive-copy, workspace-contract §1.2.1).  `onChange` is the ONE change channel
         // (§E rule 4): the owner subscribes here instead of reaching for ws.subscribe /
         // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
+        // Frame playback timer -- MolView owns it; navigation delegates to the workspace.
+        let _playTimer = null;
+        function _stopPlay() {
+            if (_playTimer != null) { root.clearInterval(_playTimer); _playTimer = null; }
+        }
         const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
@@ -196,6 +204,34 @@
                     ? workspace.undo()
                     : Promise.reject(new Error("molview.undo: workspace.undo missing"));
             },
+            // ---- Frames -- the coordinate time axis (workspace §1.5, molview §14.5) -------- //
+            // Navigation delegates to the workspace (the data owner); MolView owns the playback
+            // timer.  A frame's coord swap notifies the store, so the render redraws on its own.
+            setFrame: function (i) {
+                return (typeof workspace.setFrame === "function") ? workspace.setFrame(i) : undefined;
+            },
+            getFrame: function (i) {
+                return (typeof workspace.getFrame === "function") ? workspace.getFrame(i) : null;
+            },
+            frameCount: function () {
+                return (typeof workspace.frameCount === "function") ? workspace.frameCount() : 0;
+            },
+            currentFrame: function () {
+                return (typeof workspace.currentFrame === "function") ? workspace.currentFrame() : 0;
+            },
+            play: function (opts) {
+                opts = opts || {};
+                if (typeof workspace.frameCount !== "function" || workspace.frameCount() <= 1) return;
+                const fps = (typeof opts.fps === "number" && opts.fps > 0) ? opts.fps : 10;
+                _stopPlay();
+                _playTimer = root.setInterval(function () {
+                    const n = workspace.frameCount();
+                    if (n <= 1) { _stopPlay(); return; }
+                    workspace.setFrame((workspace.currentFrame() + 1) % n);
+                }, 1000 / fps);
+            },
+            pause: function () { _stopPlay(); },
+            isPlaying: function () { return _playTimer != null; },
             getStructure: function () {
                 return (typeof workspace.getStructure === "function")
                     ? workspace.getStructure() : null;
@@ -213,6 +249,7 @@
                 return off;
             },
             dispose: function () {
+                _stopPlay();
                 _offs.forEach(function (off) { try { off(); } catch (_) {} });
                 cleanups.forEach(function (fn) { try { fn(); } catch (_) {} });
             },

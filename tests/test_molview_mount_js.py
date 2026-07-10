@@ -72,8 +72,9 @@ def test_handle_exposes_only_the_read_notify_surface_no_internals():
     """)
     assert out["text"] == "XYZ"                      # getStructure reads through the workspace
     # The full §D surface -- and ONLY that: no els / store / viewerHandle leaked
-    assert out["keys"] == ["dispose", "getSelection", "getStructure",
-                           "load", "onChange", "save", "undo"]
+    assert out["keys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
+                    "getSelection", "getStructure", "isPlaying", "load",
+                    "onChange", "pause", "play", "save", "setFrame", "undo"]
 
 
 def test_handle_write_side_delegates_to_the_workspace():
@@ -200,5 +201,6 @@ def test_empty_host_builds_card_embeds_viewer_and_owns_render():
     assert out["baseDrawn"] is True     # the render loop drew the structure (mountRender)
     assert out["baseHead"] == "1"      # the 1-atom unit cell, read from ws.getStructure()
     # still ONLY the §D handle surface -- no internals leaked by the build path
-    assert out["handleKeys"] == ["dispose", "getSelection", "getStructure",
-                                 "load", "onChange", "save", "undo"]
+    assert out["handleKeys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
+                    "getSelection", "getStructure", "isPlaying", "load",
+                    "onChange", "pause", "play", "save", "setFrame", "undo"]
