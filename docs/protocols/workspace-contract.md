@@ -393,7 +393,9 @@ flowchart LR
 - **`name.xyz` = multi-frame extended-XYZ (extxyz).** One XYZ block per frame; the comment line
   carries `Lattice="…"`, `energy=…`, and a `Properties=species:S:1:pos:R:3:forces:R:3` spec so
   **forces ride as extra per-atom columns**. Standard + tool-interoperable (ASE / OVITO / VMD);
-  the trajectory inspector already emits multi-frame xyz.
+  the trajectory inspector already emits multi-frame xyz. The read/write codec is **ASE**
+  (`ase.io.extxyz`) — already a host-env dependency (`molbuilder/envs/recipes.py`; README_install
+  §host env), so no new dependency is introduced.
 - **`name.molstruct.json` = the single annotation set + a FRAME MANIFEST.** The atom annotations
   (labels, frozen, channels — [`atom-annotations.md`](atom-annotations.md)) are stored **once**
   (identical every frame — the invariant). The sidecar **also records** `n_frames`, `n_atoms`,
