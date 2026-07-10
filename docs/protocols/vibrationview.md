@@ -64,8 +64,54 @@ equilibrium position along the mode's displacement vector:
   the excursion. Both are **live** — changing them does not rebuild the structure.
 - **Frozen atoms have a zero displacement vector** → they stay put, and are drawn greyed so
   the moving (free) atoms read clearly.
-- Selecting a different mode swaps in that mode's displacement vector (and re-frames); the
-  equilibrium geometry is unchanged.
+- Selecting a different mode swaps in that mode's displacement vector; the equilibrium
+  geometry is unchanged, so **the camera stays where you left it** — VibrationView re-frames
+  only when a *different* structure loads, not on every mode swap.
+
+### C. The data — from the results to a moving atom
+
+The inspector holds the spectra results and hands VibrationView one mode at a time.
+VibrationView does the scatter + the per-frame math; none of the science lives here.
+
+```mermaid
+flowchart LR
+    R["Spectra results (from the backend)<br/>equilibrium: elements[] + positions[]<br/>modes[]: index · frequency · eigenvector_display<br/>free_atom_idxs[] · frozen_atom_idxs[]"]
+    I["Inspector<br/>user picks mode M"]
+    SM["vibrationview.showMode({<br/>index, displacements = eigenvector_display,<br/>geometry, freeAtomIdx, frozenAtomIdx })"]
+    SC["scatter (mode-math.js)<br/>free-row k → global atom freeAtomIdx[k]<br/>frozen → [0,0,0]"]
+    F["per animation frame<br/>pos_i = equilibrium_i + amplitude·cos(φ)·disp_i"]
+    D["3Dmol draws the moved atoms"]
+    R -->|pick| I --> SM --> SC --> F --> D
+```
+
+### D. A session — how the inspector uses it
+
+You are the inspector; VibrationView is a black box you drive through its API. Five moments:
+
+1. **Mount** it into an empty host (once).
+2. **User picks a mode** → `showMode(mode)` with the geometry + eigenvector + free/frozen.
+3. **User drags a slider** → `setAmplitude` / `setSpeed` (live; no rebuild).
+4. **User clicks play / pause** → `play()` / `pause()`.
+5. **Leaving the tab, or new results load** → `dispose()`.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant I as Inspector (spectra)
+    participant V as VibrationView
+    participant E as 3Dmol embed
+    I->>V: mount(host, {amplitude, speedHz})
+    U->>I: click mode #7
+    I->>V: showMode({index:7, displacements, geometry, free/frozen})
+    V->>V: scatter eigenvector → global
+    V->>E: setStructure(equilibrium) + grey frozen (first time / new structure only)
+    V->>E: run the cos(φ) oscillation
+    U->>I: drag amplitude slider
+    I->>V: setAmplitude(0.2)
+    V->>E: live amplitude (no structure rebuild)
+    U->>I: leave the tab
+    I->>V: dispose()
+```
 
 ---
 
@@ -145,9 +191,14 @@ animation). This is the first shippable step.
 
 **Phase 2 — extract (later).** Move the vibration oscillation loop **out of** the shared
 `mol-viewer-embed.js` into VibrationView, so the shared viewer (and therefore MolView) no
-longer carries a vibration concern at all. Trajectory-frame playback is a **separate** case
-(a future `trajectoryview`, same pattern) — Phase 2 does not touch it. This is also what lets
-the vibration animation be tested in isolation from the shared-viewer e2e suite.
+longer carries a vibration concern at all. This is also what lets the vibration animation be
+tested in isolation from the shared-viewer e2e suite.
+
+> **Trajectory (MD frames) is NOT a VibrationView sibling.** VibrationView is *display-only
+> motion* (no interaction). A trajectory viewer, by contrast, wants MolView's full inspection
+> — select atoms, measure, k-grid — but across a **sequence of frames**. So trajectory is
+> better modeled as an **expansion of MolView** (a frame dimension), not a separate
+> display-only package. See `molview-module.md` for that direction.
 
 ## §5 Test affordances
 
