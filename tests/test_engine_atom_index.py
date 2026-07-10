@@ -19,7 +19,7 @@ def test_pyscf_mol_atom_is_0based_identity():
 
 _NODE = shutil.which("node")
 _JS = (Path(__file__).resolve().parent.parent
-       / "molbuilder/web/static/lib/workspace/_atom-index.js")
+       / "molbuilder/web/static/lib/molview/_atom-index.js")
 
 
 @pytest.mark.skipif(_NODE is None, reason="node not available")

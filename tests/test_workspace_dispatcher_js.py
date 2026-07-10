@@ -29,10 +29,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
-STORE_PATH      = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
-CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl.js"
+STORE_PATH      = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
+CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
 SNAPSHOT_IO_PATH = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
-FRAME_SERIES_PATH = ROOT / "molbuilder/web/static/lib/workspace/_frame-series.js"
+FRAME_SERIES_PATH = ROOT / "molbuilder/web/static/lib/molview/_frame-series.js"
+DATA_MODEL_PATH = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -43,7 +44,7 @@ def _run_node(snippet: str) -> object:
     Mocks ``window`` + ``document`` + ``sessionStorage`` so the
     canvas-state + selection store + dispatcher IIFEs can load
     without a real browser.  Tests then drive the public surface
-    via ``window.molbuilder.workspace.*`` and assert on JSON
+    via ``window.molbuilder.molview.data.*`` and assert on JSON
     snapshots emitted to stdout.
 
     Load order: canvas-state impl → selection-store impl →
@@ -80,9 +81,13 @@ def _run_node(snippet: str) -> object:
         #       instead of creating a separate one.
         "window.molbuilder.selection.store = "
         "  window.molbuilder.selection._createStore();\n"
-        # Frame-series factory (workspace §1.5) mounts on molbuilder.workspace BEFORE the
-        # dispatcher, which merges its api onto the same object (preserving _createFrameSeries).
+        # Frame-series factory is MolView's data model (molview-module.md §14.5): it mounts on
+        # molbuilder.molview._createFrameSeries; the dispatcher reads it from there for its
+        # (transitional) frame methods until the frame API moves fully into MolView.
         "require(" + json.dumps(str(FRAME_SERIES_PATH)) + ");\n"
+        # MolView data model (molview.data) — the data surface; loads before the workspace
+        # persistence dispatcher, which it hands serialised bytes to via ws.persist().
+        "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
     )
@@ -155,12 +160,12 @@ class TestPublicSurface:
     def test_workspace_namespace_exists_on_window(self):
         out = _run_node(
             "console.log(JSON.stringify("
-            "  typeof window.molbuilder.workspace));")
+            "  typeof window.molbuilder.molview.data));")
         assert out == "object"
 
     def test_top_level_methods_are_functions(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify({\n"
             "  subscribe:    typeof ws.subscribe,\n"
             "  getState:     typeof ws.getState,\n"
@@ -182,7 +187,7 @@ class TestPublicSurface:
 
     def test_selection_sub_namespace_methods_are_functions(self):
         out = _run_node(
-            "const sel = window.molbuilder.workspace.selection;\n"
+            "const sel = window.molbuilder.molview.data.selection;\n"
             "console.log(JSON.stringify({\n"
             "  toggle:        typeof sel.toggle,\n"
             "  set:           typeof sel.set,\n"
@@ -203,7 +208,7 @@ class TestPublicSurface:
 
     def test_view_sub_namespace_methods_are_functions(self):
         out = _run_node(
-            "const view = window.molbuilder.workspace.view;\n"
+            "const view = window.molbuilder.molview.data.view;\n"
             "console.log(JSON.stringify({\n"
             "  applyState: typeof view.applyState,\n"
             "  getState:   typeof view.getState,\n"
@@ -227,7 +232,7 @@ class TestSubscribe:
 
     def test_subscribe_fires_once_on_registration_with_current_state(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "let calls = 0; let last = null;\n"
             "ws.subscribe((s) => { calls++; last = s; });\n"
             "console.log(JSON.stringify({\n"
@@ -240,7 +245,7 @@ class TestSubscribe:
 
     def test_subscribe_fires_on_selection_store_mutation(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "let calls = 0;\n"
             "// Skip the on-subscribe fire.\n"
             "ws.subscribe(() => { calls++; });\n"
@@ -262,7 +267,7 @@ class TestSubscribe:
 
     def test_unsubscribe_stops_notifications(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "let calls = 0;\n"
             "const unsub = ws.subscribe(() => { calls++; });\n"
             "Promise.resolve().then(() => {\n"
@@ -282,7 +287,7 @@ class TestSubscribe:
         """A subscriber that throws must not stop other
         subscribers from receiving the notification."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "let good = 0;\n"
             "ws.subscribe(() => { throw new Error('boom'); });\n"
             "ws.subscribe(() => { good++; });\n"
@@ -312,7 +317,7 @@ class TestReads:
 
     def test_initial_state_is_empty(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify({\n"
             "  isEmpty:   ws.isEmpty(),\n"
             "  isDirty:   ws.isDirty(),\n"
@@ -325,7 +330,7 @@ class TestReads:
 
     def test_getStructure_reads_canvas_text_after_setStructure(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure(\n"
             "  {source_format: 'xyz', text: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n'},\n"
@@ -349,7 +354,7 @@ class TestReads:
         OBJECTS were shared references, so atoms[i].x = ... / labels.push(...) wrote
         straight through to the store."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure(\n"
             "  {source_format: 'xyz', text: '1\\nx\\nO 1.5 0 0\\n'},\n"
@@ -382,7 +387,7 @@ class TestReads:
         never reach into the raw store (getAtomsByLabel is a direct label lookup;
         toAddAtoms/atomFor3Dmol hand 3Dmol numbers, not a string)."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure(\n"
             "  {source_format: 'xyz', text: '2\\nx\\nAu 0 0 0\\nS 1 0 0\\n',\n"
@@ -428,7 +433,7 @@ class TestReads:
         axis_kind isolated); write accessors mutate through the API and reads reflect
         it; metadata is a generic extensibility store."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure(\n"
             "  {source_format: 'xyz', text: '1\\nx\\nC 0 0 0\\n'},\n"
@@ -468,7 +473,7 @@ class TestReads:
         else the restore gate (dirty || !source.file) refetches disk atoms on reload
         and the label is silently lost."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz', text:'1\\nx\\nC 0 0 0\\n'},\n"
             "  {kind:'file', file:'/tmp/x.xyz'});\n"
@@ -487,7 +492,7 @@ class TestReads:
         """F1: annotation channels carried opaquely from load are re-emitted in the
         save/draft blob -- NOT clobbered to {} (which wiped them on every Modify Save)."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz',\n"
             "  text:'2\\nx\\nH 0 0 0\\nH 0 0 0.74\\n',\n"
@@ -505,7 +510,7 @@ class TestReads:
         """§3b Cell-page display accessors return { value, isDefault }: default ->
         isDefault true + the resolved/literal-default value; explicit -> the set value."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz',\n"
             "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
@@ -541,7 +546,7 @@ class TestReads:
         """§1.2.1 concealment: mutating a returned periodicity value must NOT corrupt the
         in-memory _state -- the accessors hand out defensive copies, not live refs."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz',\n"
             "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
@@ -570,7 +575,7 @@ class TestReads:
         stores; if their atom counts desync, getScratchBlob refuses to serialise a
         mismatched .xyz/.json pair (regions pointing outside the geometry)."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure({source_format:'xyz',\n"
             "  text:'3\\nx\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n'},\n"
@@ -584,7 +589,7 @@ class TestReads:
 
     def test_getSource_returns_kind_file_generator_input(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "const cs = window.molbuilder.structureCanvas;\n"
             "cs.setStructure(\n"
             "  {source_format: 'xyz', text: '1\\nC\\nC 0 0 0\\n'},\n"
@@ -610,7 +615,7 @@ class TestPersistRoundtrip:
 
     def test_getState_selection_indices_is_a_copy(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
@@ -638,7 +643,7 @@ class TestPersistRoundtrip:
         flush path by simulating a state change and waiting for
         the debounce timer."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "]);\n"
@@ -646,7 +651,7 @@ class TestPersistRoundtrip:
             "// into the dispatcher's _notify → _schedulePersist.\n"
             "// Wait for the 100ms debounce.\n"
             "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
             "  const parsed = JSON.parse(raw);\n"
             "  console.log(JSON.stringify({\n"
             "    v:     parsed.v,\n"
@@ -672,12 +677,12 @@ class TestPersistRoundtrip:
 
     def test_readPersistedSnapshot_returns_parsed_snapshot(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
-            "sessionStorage.setItem(ws.STORAGE_KEY, JSON.stringify({\n"
+            "const ws = window.molbuilder.molview.data;\n"
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY, JSON.stringify({\n"
             "  v: 1, saved_at: '2026-06-07T00:00:00Z',\n"
             "  state: {source: {kind: 'smiles', file: null}},\n"
             "}));\n"
-            "console.log(JSON.stringify(ws.readPersistedSnapshot()));"
+            "console.log(JSON.stringify(window.molbuilder.workspace.readPersistedSnapshot()));"
         )
         assert out["v"] == 1
         assert out["state"]["source"]["kind"] == "smiles"
@@ -687,11 +692,11 @@ class TestPersistRoundtrip:
         saves cleanly.  Pins that the dispatcher rejects v=99
         rather than silently passing it through."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
-            "sessionStorage.setItem(ws.STORAGE_KEY, JSON.stringify({\n"
+            "const ws = window.molbuilder.molview.data;\n"
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY, JSON.stringify({\n"
             "  v: 99, state: {}\n"
             "}));\n"
-            "console.log(JSON.stringify(ws.readPersistedSnapshot()));"
+            "console.log(JSON.stringify(window.molbuilder.workspace.readPersistedSnapshot()));"
         )
         assert out is None
 
@@ -701,13 +706,13 @@ class TestPersistRoundtrip:
         round-trip so the modify viewer can rehydrate the canvas
         on revisit."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "ws.installStructure(\n"
             "  {source_format: 'xyz', text: '2\\nH2\\nH 0 0 0\\nH 0 0 0.74\\n'},\n"
             "  {kind: 'file', file: '/tmp/h2.xyz', generator_input: null}\n"
             ");\n"
             "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
             "  const parsed = JSON.parse(raw);\n"
             "  console.log(JSON.stringify({\n"
             "    text:   parsed.state.structure.text,\n"
@@ -726,13 +731,13 @@ class TestPersistRoundtrip:
         dirty + last_save_to + selection.  view is environmental
         (depends on whether a view module is mounted)."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "ws.installStructure(\n"
             "  {source_format: 'xyz', text: '1\\n\\nH 0 0 0\\n'},\n"
             "  {kind: 'smiles', file: null, generator_input: '[H]'}\n"
             ");\n"
             "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
             "  const p = JSON.parse(raw);\n"
             "  console.log(JSON.stringify({\n"
             "    hasStructure:   !!p.state.structure,\n"
@@ -756,14 +761,14 @@ class TestPersistRoundtrip:
         the 100ms debounce timer would have fired, and confirming
         sessionStorage already has the snapshot."""
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "ws.installStructure(\n"
             "  {source_format: 'xyz', text: '1\\nflush_test\\nH 0 0 0\\n'},\n"
             "  {kind: 'load', file: null, generator_input: null}\n"
             ");\n"
             "// Fire pagehide SYNCHRONOUSLY before the 100ms timer.\n"
             "window.__fireEvent('pagehide');\n"
-            "const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
             "const parsed = JSON.parse(raw);\n"
             "console.log(JSON.stringify({\n"
             "  written: !!parsed,\n"
@@ -790,7 +795,7 @@ class TestSelectionPassthrough:
 
     def test_set_lands_on_underlying_store(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
@@ -808,7 +813,7 @@ class TestSelectionPassthrough:
 
     def test_toggle_via_dispatcher_lands_on_underlying_store(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
@@ -833,7 +838,7 @@ class TestSelectionPassthrough:
         legacy store passes ``selection`` to its subscribers.
         """
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
@@ -874,7 +879,7 @@ class TestSelectionPassthrough:
         UI rendered "undefined / 3 atoms" in the count readout.
         """
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
@@ -908,7 +913,7 @@ class TestSelectionPassthrough:
         data because /api/build/load doesn't apply it.
         """
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "let calls = 0;\n"
             "window.molbuilder.selection.store.refreshAtoms = "
             "  () => { calls++; return Promise.resolve(); };\n"
@@ -940,7 +945,7 @@ class TestFrames:
     def test_reloadFrames_then_setFrame_swaps_coords_and_keeps_selection(self):
         out = _run_node(
             self._ATOMS2 +
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.setSelection([1]);\n"   # select atom 1
             "const nf = ws.reloadFrames([\n"
             "  [[0,0,0],[1,0,0]],\n"     # frame 0
@@ -963,7 +968,7 @@ class TestFrames:
     def test_addFrame_appends_and_wrong_atom_count_is_a_hard_error(self):
         out = _run_node(
             self._ATOMS2 +
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "ws.reloadFrames([[[0,0,0],[1,0,0]]]);\n"          # 1 frame / 2 atoms
             "const c1 = ws.addFrame([[0,1,0],[1,1,0]]);\n"     # OK -> 2 frames
             "let threw = false;\n"
@@ -977,7 +982,7 @@ class TestFrames:
     def test_forces_ride_per_frame(self):
         out = _run_node(
             self._ATOMS2 +
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "ws.reloadFrames([[[0,0,0],[1,0,0]],[[0,0,0],[2,0,0]]],\n"
             "  { forces: [ [[0.1,0,0],[0,0.2,0]], [[0.3,0,0],[0,0.4,0]] ] });\n"
             "ws.setFrame(1);\n"
@@ -987,9 +992,100 @@ class TestFrames:
 
     def test_frame_methods_exposed_on_the_surface(self):
         out = _run_node(
-            "const ws = window.molbuilder.workspace;\n"
+            "const ws = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify(['reloadFrames','addFrame','addFrames','setFrame',\n"
             "  'getFrame','getForces','currentForces','currentFrame','frameCount']\n"
             "  .map(m => typeof ws[m] === 'function')));\n"
         )
         assert all(out)                            # every frame method present + a function
+
+
+# --------------------------------------------------------------------- #
+#  TestWorkspacePersistenceContract — POST-CARVE drift-guards           #
+#                                                                        #
+#  The workspace (window.molbuilder.workspace) is the PERSISTENCE layer  #
+#  ONLY; the in-memory DATA model is window.molbuilder.molview.data.     #
+#  These pins fail loudly if a data method leaks back onto the           #
+#  workspace, if it stops being format-blind, or if the persist          #
+#  inversion breaks (workspace-contract.md §4 / molview-module.md §18).  #
+# --------------------------------------------------------------------- #
+
+
+class TestWorkspacePersistenceContract:
+    _PERSIST_SURFACE = ["STORAGE_KEY", "mountRestoreTarget", "persist",
+                        "readPersistedSnapshot", "workspaceId"]
+
+    def test_workspace_public_surface_is_persistence_only(self):
+        """(a) The workspace exposes EXACTLY the persistence surface (private _-slots the
+        store impls mount are allowed; no DATA method is)."""
+        out = _run_node(
+            "console.log(JSON.stringify("
+            "  Object.keys(window.molbuilder.workspace)"
+            "    .filter(k => k[0] !== '_').sort()));")
+        assert out == self._PERSIST_SURFACE
+
+    def test_no_data_methods_leaked_onto_workspace(self):
+        """(a) Explicit negative drift-guard: the data API is ABSENT on the workspace -- it
+        moved to molbuilder.molview.data."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "console.log(JSON.stringify("
+            "  ['getStructure','getAtoms','getSelection','getCoordinates','installStructure',"
+            "   'applyOp','applyPayload','setFrame','addFrame','reloadFrames','discard','undo',"
+            "   'selection','view','getScratchBlob','loadFromText','setUnitCell']"
+            "  .filter(k => k in ws)));")
+        assert out == [], f"data methods leaked onto window.molbuilder.workspace: {out}"
+
+    def test_persist_is_format_blind(self):
+        """(d) workspace.persist writes the session bytes VERBATIM -- it never parses or
+        interprets them (they need not be a structure at all)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.persist({foo: 1, bar: 'x', not_a_structure: true}, null, {source: '/x'});\n"
+            "const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "console.log(JSON.stringify(JSON.parse(raw)));")
+        assert out == {"foo": 1, "bar": "x", "not_a_structure": True}
+
+    def test_data_change_drives_the_persist_inversion(self):
+        """(c) A molview.data change SERIALISES and calls ws.persist(sessionBytes, draftBlob,
+        identity); the workspace never reads the data back."""
+        out = _run_node(
+            "const calls = [];\n"
+            "window.molbuilder.workspace.persist = function (s, d, id) {\n"
+            "  calls.push([typeof s, (d === null ? 'null' : typeof d), typeof id]); };\n"
+            "window.molbuilder.selection.store.adoptAtoms("
+            "  [{index:0, element:'H', regions:[], is_frozen:false}]);\n"
+            "window.molbuilder.molview.data.installStructure(\n"
+            "  {source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'smiles', file:null});\n"
+            "setTimeout(() => { console.log(JSON.stringify(calls)); }, 200);")
+        assert len(out) >= 1, "a data change did not trigger ws.persist (inversion broken)"
+        assert out[0][0] == "object"    # sessionBytes (the serialised snapshot)
+        assert out[0][2] == "object"    # identity
+
+    @pytest.mark.xfail(reason="KNOWN GAP: setFrame currently persists via the store "
+                              "subscription (setCoords -> _notify -> _schedulePersist). The "
+                              "frames-render-only rework will make frame-SELECT a no-persist "
+                              "VIEW op per molview-module.md §18.3 (only addFrame/reloadFrames "
+                              "persist).", strict=False)
+    def test_setFrame_is_a_view_op_and_does_not_persist(self):
+        """(e1) Contract: frame-SELECT saves nothing; a data change (reloadFrames) persists."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "window.molbuilder.selection.store.adoptAtoms("
+            "  [{index:0, element:'H', regions:[], is_frozen:false}]);\n"
+            "d.installStructure({source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'x', file:null});\n"
+            "setTimeout(() => {\n"
+            "  let n = 0;\n"
+            "  window.molbuilder.workspace.persist = function () { n++; };\n"
+            "  d.reloadFrames([[[0,0,0]], [[1,0,0]]]);\n"        # DATA change -> persists
+            "  setTimeout(() => {\n"
+            "    const afterReload = n;\n"
+            "    d.setFrame(1);\n"                                # VIEW change -> must NOT persist
+            "    setTimeout(() => {\n"
+            "      console.log(JSON.stringify("
+            "        {afterReload: afterReload >= 1, setFrameAddedPersist: n > afterReload}));\n"
+            "    }, 200);\n"
+            "  }, 200);\n"
+            "}, 200);")
+        assert out["afterReload"] is True
+        assert out["setFrameAddedPersist"] is False   # xfails today (setFrame persists)

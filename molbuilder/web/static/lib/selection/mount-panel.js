@@ -74,7 +74,7 @@
         opts = opts || {};
         if (!host) throw new Error("selection.mountPanel: host is required");
         const mb = _mb();
-        const store = opts.store || (mb.workspace && mb.workspace.selection);
+        const store = opts.store || (mb.molview && mb.molview.data && mb.molview.data.selection);
 
         // 1. fetch + insert the partial.
         const ok = await _fetchPartial(host, opts.partialUrl || DEFAULT_PARTIAL);

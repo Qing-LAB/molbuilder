@@ -141,9 +141,10 @@
     background:     var(--bg-card, #1d2128);
     border-bottom:  1px solid var(--border-soft, rgba(255,255,255,0.06));
     /* Compact base: the View/Export triggers + every menu item inherit this, so the viewer
-       chrome sits at the same small scale as the surrounding controls (the ~12px toggles,
-       11px panel buttons) instead of overpowering them at 14px. */
-    font-size:      var(--text-xs, 0.78rem);
+       chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
+       11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
+       buttons. */
+    font-size:      var(--text-2xs, 0.6875rem);
     color:          var(--text-primary, #e6e9ee);
 }
 

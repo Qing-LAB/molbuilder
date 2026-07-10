@@ -9,11 +9,11 @@ globals are:
 
   * lib/workspace/dispatcher.js — delegates to them as internal
     implementation
-  * lib/workspace/_canvas-state-impl.js — Phase 9 (2026-06-13)
+  * lib/molview/_canvas-state-impl.js — Phase 9 (2026-06-13)
     moved out of lib/structure/canvas-state.js; no longer mounts
     the structureCanvas global, but places the singleton on the
     private workspace._canvasState slot the dispatcher consumes
-  * lib/workspace/_selection-store-impl.js — Phase 9 (2026-06-13)
+  * lib/molview/_selection-store-impl.js — Phase 9 (2026-06-13)
     moved out of lib/selection/store.js; no longer mounts the
     selection.store global, but exposes the _createStore factory
     the dispatcher consumes
@@ -45,8 +45,9 @@ ALLOW_LIST = {
     # these modules + inline their logic into the dispatcher, but
     # the dispatcher itself is permitted to know about them.
     "lib/workspace/dispatcher.js",
-    "lib/workspace/_canvas-state-impl.js",
-    "lib/workspace/_selection-store-impl.js",
+    "lib/molview/data-model.js",
+    "lib/molview/_canvas-state-impl.js",
+    "lib/molview/_selection-store-impl.js",
     # The runtime registry's module docstring lists every mounted
     # name including the deprecated ones.  The list is documentation,
     # not consumption.
@@ -279,3 +280,78 @@ def test_allow_list_files_exist():
         f"ALLOW_LIST contains paths that no longer exist: {missing}.  "
         "Remove them from the list."
     )
+
+
+# --------------------------------------------------------------------- #
+#  POST-CARVE guard (2026-07): the workspace is the PERSISTENCE layer;   #
+#  the in-memory DATA model is window.molbuilder.molview.data.  Reading  #
+#  a DATA method off window.molbuilder.workspace.* is a contract breach  #
+#  (workspace-contract.md §4).  This is the automated enforcement of     #
+#  "the workspace has zero data methods."                                #
+# --------------------------------------------------------------------- #
+
+# Methods that moved OFF the workspace onto molview.data.  (Persistence methods --
+# persist / workspaceId / readPersistedSnapshot / mountRestoreTarget / STORAGE_KEY
+# -- are NOT here; they legitimately stay on the workspace.)
+_WORKSPACE_DATA_METHODS = (
+    "getStructure|getAtoms|getSelection|getCoordinates|getElements|getUnitCell|"
+    "getUnitCellInfo|getLattice|getKgrid|getKgridInfo|getAxisKind|getAxisKindInfo|"
+    "getVacuum|getVacuumInfo|getFrozen|getRegions|getAtomsByLabel|atomFor3Dmol|"
+    "toAddAtoms|getSource|getSourceFile|getLastSavedTo|getState|isDirty|isEmpty|"
+    "installStructure|applyOp|applyPayload|setUnitCell|setLattice|setKgrid|"
+    "setAxisKind|setVacuum|setLabel|commitPeriodicity|loadFromFile|loadFromText|"
+    "generate|discard|undo|save|setFrame|addFrame|addFrames|reloadFrames|getFrame|"
+    "getForces|currentForces|currentFrame|frameCount|getScratchBlob|draftIdentity|"
+    "suspendPersist|resumePersist|markDirty|markSaved|selection|view"
+)
+WORKSPACE_DATA_PATTERN = re.compile(
+    r"\b(window|root|mb|globalThis)\.molbuilder\.workspace\."
+    r"(?:" + _WORKSPACE_DATA_METHODS + r")\b"
+)
+
+# Tab consumers still reading data off the workspace -- being migrated to
+# molbuilder.molview.data in task #42.  This allows the KNOWN files so the guard
+# enforces "no NEW violators" during the migration; the second assertion below
+# keeps it EXACT, so the set can only SHRINK (each file leaves as #42 rewires it).
+WORKSPACE_DATA_MIGRATING = {
+    "lib/selection-panel.js",
+    "modify/selection-bootstrap.js",
+    "modify/viewer.js",
+}
+
+
+def _scan_file_for(path: Path, pattern) -> list[tuple[int, str]]:
+    hits = []
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.lstrip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        m = pattern.search(line)
+        if not m or _is_in_comment(line, m.start()):
+            continue
+        hits.append((line_no, line.rstrip()))
+    return hits
+
+
+def test_data_is_not_read_off_the_workspace_persistence_layer():
+    """POST-CARVE drift-guard (workspace-contract.md §4): the workspace is the
+    persistence layer; read data from molbuilder.molview.data, NOT
+    molbuilder.workspace.*.  Only the KNOWN tab consumers being migrated (task #42)
+    may still do so; a NEW such read fails here.  The migrating set is also kept
+    EXACT, so it can only shrink."""
+    actual: dict[str, list] = {}
+    for path in STATIC.rglob("*.js"):
+        rel = path.relative_to(STATIC).as_posix()
+        hits = _scan_file_for(path, WORKSPACE_DATA_PATTERN)
+        if hits:
+            actual[rel] = hits
+    offenders = set(actual) - WORKSPACE_DATA_MIGRATING
+    assert not offenders, (
+        "workspace-contract.md §4 violation: read data from molbuilder.molview.data, "
+        "not molbuilder.workspace.* (the workspace is persistence-only):\n\n"
+        + "\n".join(f"{f}:{ln}: {l.strip()}"
+                    for f in sorted(offenders) for ln, l in actual[f]))
+    finished = WORKSPACE_DATA_MIGRATING - set(actual)
+    assert not finished, (
+        "WORKSPACE_DATA_MIGRATING is stale -- task #42 finished these; remove them "
+        f"from the set: {sorted(finished)}")

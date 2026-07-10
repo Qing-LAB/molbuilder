@@ -6,7 +6,7 @@ import pytest
 
 _NODE = shutil.which("node")
 _MODULE = (Path(__file__).resolve().parent.parent
-           / "molbuilder/web/static/lib/workspace/_atom-index.js")
+           / "molbuilder/web/static/lib/molview/_atom-index.js")
 pytestmark = pytest.mark.skipif(_NODE is None, reason="node not available")
 
 

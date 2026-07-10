@@ -802,12 +802,12 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    instead. #}
 {# Pure per-atom channel model (atom-annotations.md §5, L1) + atom index-base
    helper (data-vocabulary.md §3.1) — loaded BEFORE the store/panel. #}
-<script src="{{ url_for('static', filename='lib/workspace/_atom-channels.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/_atom-index.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_atom-channels.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_atom-index.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
 {# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface
    for workspace state.  Loaded AFTER its internal stores
@@ -815,6 +815,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    (page.js, save.js, selection-panel.js, viewer-adapter.js,
    selection-bootstrap.js) so each consumer's IIFE can bind
    against ws.* immediately. #}
+<script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 {# Warning modal — independent primitive used by page.js's gate. #}
 <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>

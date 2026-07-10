@@ -230,13 +230,12 @@
     font: 12px/1.2 system-ui, sans-serif;
     color: var(--text-secondary, #a8aebb);
 }
-.mvf-toggle {
-    display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; user-select: none;
-}
-.mvf-toggle input { margin: 0; cursor: pointer; }
+/* The Forces/Indices toggles reuse .viewer-toggle (the isolate/k-grid toggle class) -- no
+ * bespoke .mvf-toggle.  Only the genuinely-new controls (play button, slider, counter) get
+ * their own classes below. */
 .mvf-play {
     padding: 0.1rem 0.5rem;
-    font-size: 11px; line-height: 1.4;
+    font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
     cursor: pointer;
     background: var(--bg-input, #262b33);
     color: var(--text-secondary, #a8aebb);

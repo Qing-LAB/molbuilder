@@ -11,7 +11,7 @@
  *   handle = { load(fileOrText), save(), undo(),                       // WRITE
  *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
- *              showForces(on), showIndices(on),                       //   frame overlays (§14.5.1)
+ *              setArrows(arrows), setLabels(labels),                  //   overlays (§14.5.1)
  *              getStructure(), getSelection(),                         // READ
  *              onChange(fn), dispose() }                               // notify + teardown
  *     The full §D owner-facing API + the frame axis (§14.5).  Every call goes through the
@@ -61,8 +61,11 @@
         const fcHost     = _el("div", "molview-frame-controls");   // trajectory bar (§14.5)
         fcHost.hidden = true;   // shown by mountFrameControls only when a trajectory is loaded
         controls.appendChild(fcHost);
-        viewerCol.appendChild(wrap);
+        // Controls ABOVE the viewer so molview's chrome (isolate/k-grid toggles + the trajectory
+        // bar) sits directly beside the embed's View/Export knob bar (which renders at the top of
+        // the viewer) -- all the controls grouped in one strip at the same (viewer) width.
         viewerCol.appendChild(controls);
+        viewerCol.appendChild(wrap);
         const foldBtn    = _el("button", "molview-fold-btn");
         foldBtn.setAttribute("type", "button");
         foldBtn.setAttribute("aria-expanded", "true");
@@ -86,7 +89,9 @@
         const mb     = root.molbuilder || {};
         const selApi = mb.selection;
         const mvApi  = mb.molview;
-        const store  = workspace && workspace.selection;
+        // DATA comes from MolView's own data model; `workspace` is only the persistence layer.
+        const data   = (mb.molview && mb.molview.data) || workspace;
+        const store  = data && data.selection;
 
         if (!hostEl || !workspace || !store) return null;
         if (!selApi || typeof selApi.mountPanel !== "function") return null;
@@ -102,9 +107,9 @@
 
         const cleanups = [];
 
-        // Frame-overlay toggles (§14.5.1) -- molview-local view state (like isolate/k-grid);
-        // the frame-overlay controller reads them + the handle's showForces/showIndices flip them.
-        let _showForces = false, _showIndices = false, _frameOverlays = null;
+        // Overlay controller (§14.5.1): MolView DRAWS overlays the consumer hands it (arrows /
+        // labels, via the handle's setArrows/setLabels) -- it never generates them.
+        let _overlays = null;
 
         // Resolve the fused card + its sub-hosts.  PRE-BUILT card (Modify's template) -> wire
         // the existing panel/toggles/fold; that host owns its own viewer + render.  EMPTY
@@ -131,7 +136,7 @@
                         // (the owner never sees it -- it's not on the returned handle).
                         built.viewerHost.__molview_test_handle = h;
                         if (mvApi && typeof mvApi.mountRender === "function") {
-                            const rc = mvApi.mountRender(h, workspace, store,
+                            const rc = mvApi.mountRender(h, data, store,
                                                          { viewerHost: built.viewerHost });
                             cleanups.push(function () { try { rc.dispose(); } catch (_) {} });
                         }
@@ -144,15 +149,13 @@
                                 try { ah && ah.dispose && ah.dispose(); } catch (_) {}
                             });
                         }
-                        // Frame-scoped overlays (§14.5.1): force arrows (per-frame) + atom-index
-                        // labels for the current frame; gated by the showForces/showIndices flags.
-                        if (mvApi && typeof mvApi.mountFrameOverlays === "function") {
-                            _frameOverlays = mvApi.mountFrameOverlays(h, workspace, store, {
-                                getShowForces:  function () { return _showForces; },
-                                getShowIndices: function () { return _showIndices; },
-                            });
+                        // Overlay controller (§14.5.1): MolView draws the arrows/labels the
+                        // CONSUMER hands it (handle.setArrows / setLabels) and re-applies them
+                        // across per-frame redraws -- it never generates or normalizes them.
+                        if (mvApi && typeof mvApi.mountOverlays === "function") {
+                            _overlays = mvApi.mountOverlays(h, store);
                             cleanups.push(function () {
-                                try { _frameOverlays && _frameOverlays.dispose(); } catch (_) {}
+                                try { _overlays && _overlays.dispose(); } catch (_) {}
                             });
                         }
                     },
@@ -171,26 +174,21 @@
             cleanups.push(function () { try { vc.dispose && vc.dispose(); } catch (_) {} });
         }
 
-        // Frame controls bar (§14.5) -- slider + play/pause + force/index toggles.  MolView
-        // renders it (like the view-toggles); it stays hidden until a trajectory is loaded
-        // (frameCount > 1).  Drives the workspace frame API + molview's playback/toggle helpers.
+        // Frame controls bar (§14.5) -- play/pause + slider + counter.  MolView renders it (like
+        // the view-toggles); hidden until a trajectory is loaded (frameCount > 1).  Overlays are
+        // NOT here: they are the consumer's (handle.setArrows / setLabels), not a viewer toggle.
         if (fcHost && mvApi && typeof mvApi.mountFrameControls === "function") {
             const fc = mvApi.mountFrameControls(fcHost, {
-                setFrame:       function (i) { return workspace.setFrame(i); },
-                frameCount:     function () {
-                    return (typeof workspace.frameCount === "function") ? workspace.frameCount() : 0;
+                setFrame:     function (i) { return data.setFrame(i); },
+                frameCount:   function () {
+                    return (typeof data.frameCount === "function") ? data.frameCount() : 0;
                 },
-                currentFrame:   function () {
-                    return (typeof workspace.currentFrame === "function") ? workspace.currentFrame() : 0;
+                currentFrame: function () {
+                    return (typeof data.currentFrame === "function") ? data.currentFrame() : 0;
                 },
-                play:           _play,
-                pause:          _stopPlay,
-                isPlaying:      function () { return _playTimer != null; },
-                setShowForces:  _setShowForces,
-                setShowIndices: _setShowIndices,
-                hasForces:      function () {
-                    return !!(typeof workspace.currentForces === "function" && workspace.currentForces());
-                },
+                play:      _play,
+                pause:     _stopPlay,
+                isPlaying: function () { return _playTimer != null; },
             }, store);
             cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
         }
@@ -219,17 +217,15 @@
         }
         function _play(opts) {
             opts = opts || {};
-            if (typeof workspace.frameCount !== "function" || workspace.frameCount() <= 1) return;
+            if (typeof data.frameCount !== "function" || data.frameCount() <= 1) return;
             const fps = (typeof opts.fps === "number" && opts.fps > 0) ? opts.fps : 10;
             _stopPlay();
             _playTimer = root.setInterval(function () {
-                const n = workspace.frameCount();
+                const n = data.frameCount();
                 if (n <= 1) { _stopPlay(); return; }
-                workspace.setFrame((workspace.currentFrame() + 1) % n);
+                data.setFrame((data.currentFrame() + 1) % n);
             }, 1000 / fps);
         }
-        function _setShowForces(on)  { _showForces  = !!on; if (_frameOverlays) _frameOverlays.refresh(); }
-        function _setShowIndices(on) { _showIndices = !!on; if (_frameOverlays) _frameOverlays.refresh(); }
         const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
@@ -240,62 +236,64 @@
                 // as { text, filename } -> the text loader.
                 if (fileOrText && typeof fileOrText === "object"
                         && typeof fileOrText.text === "string") {
-                    return (typeof workspace.loadFromText === "function")
-                        ? workspace.loadFromText(fileOrText.text, fileOrText.filename)
+                    return (typeof data.loadFromText === "function")
+                        ? data.loadFromText(fileOrText.text, fileOrText.filename)
                         : Promise.reject(new Error("molview.load: workspace.loadFromText missing"));
                 }
                 if (typeof fileOrText === "string" && fileOrText) {
-                    return (typeof workspace.loadFromFile === "function")
-                        ? workspace.loadFromFile(fileOrText)
+                    return (typeof data.loadFromFile === "function")
+                        ? data.loadFromFile(fileOrText)
                         : Promise.reject(new Error("molview.load: workspace.loadFromFile missing"));
                 }
                 return Promise.reject(new TypeError(
                     "molview.load(fileOrText): pass a path string or { text, filename }"));
             },
             save: function () {
-                return (typeof workspace.save === "function")
-                    ? workspace.save()
+                return (typeof data.save === "function")
+                    ? data.save()
                     : Promise.reject(new Error("molview.save: workspace.save missing"));
             },
             undo: function () {
-                return (typeof workspace.undo === "function")
-                    ? workspace.undo()
+                return (typeof data.undo === "function")
+                    ? data.undo()
                     : Promise.reject(new Error("molview.undo: workspace.undo missing"));
             },
             // ---- Frames -- the coordinate time axis (workspace §1.5, molview §14.5) -------- //
             // Navigation delegates to the workspace (the data owner); MolView owns the playback
             // timer.  A frame's coord swap notifies the store, so the render redraws on its own.
             setFrame: function (i) {
-                return (typeof workspace.setFrame === "function") ? workspace.setFrame(i) : undefined;
+                return (typeof data.setFrame === "function") ? data.setFrame(i) : undefined;
             },
             getFrame: function (i) {
-                return (typeof workspace.getFrame === "function") ? workspace.getFrame(i) : null;
+                return (typeof data.getFrame === "function") ? data.getFrame(i) : null;
             },
             frameCount: function () {
-                return (typeof workspace.frameCount === "function") ? workspace.frameCount() : 0;
+                return (typeof data.frameCount === "function") ? data.frameCount() : 0;
             },
             currentFrame: function () {
-                return (typeof workspace.currentFrame === "function") ? workspace.currentFrame() : 0;
+                return (typeof data.currentFrame === "function") ? data.currentFrame() : 0;
             },
             play:  function (opts) { _play(opts); },
             pause: function () { _stopPlay(); },
             isPlaying: function () { return _playTimer != null; },
-            // Frame-overlay view toggles (§14.5.1) -- force arrows + atom-index labels.
-            showForces:  function (on) { _setShowForces(on); },
-            showIndices: function (on) { _setShowIndices(on); },
+            // Overlay API (§14.5.1) -- the consumer hands MolView what to DRAW; MolView draws it
+            // and re-applies it across per-frame redraws (it never generates arrows/labels).
+            // `arrows` = [{start,end,color,radius}, …]; `labels` = a setLabels spec (or false).
+            setArrows: function (arrows) { if (_overlays) _overlays.setArrows(arrows); },
+            setLabels: function (labels) { if (_overlays) _overlays.setLabels(labels); },
             getStructure: function () {
-                return (typeof workspace.getStructure === "function")
-                    ? workspace.getStructure() : null;
+                return (typeof data.getStructure === "function")
+                    ? data.getStructure() : null;
             },
             getSelection: function () {
                 const s = store.getState();
                 return (s && Array.isArray(s.indices)) ? s.indices.slice() : [];
             },
             onChange: function (fn) {
-                if (typeof fn !== "function" || typeof workspace.subscribe !== "function") {
+                if (typeof fn !== "function" || typeof data.subscribe !== "function") {
                     return function () {};
                 }
-                const off = workspace.subscribe(fn);
+                const off = data.subscribe(fn);
                 _offs.push(off);
                 return off;
             },

@@ -1,15 +1,15 @@
-/* Frame series -- the coordinate time axis for the workspace (workspace-contract.md §1.5).
+/* Frame series -- the coordinate time axis (MolView's in-memory data model, molview-module.md
+ * §14.5).  This is MolView's own data, NOT the workspace's: the workspace is persistence only
+ * (workspace-contract.md), so the coordinate time series lives here in the molview module.
  *
  * PURE (no DOM, no stores): manages frames[] + optional forces[] + a currentFrame pointer,
  * enforcing the SAME-ATOMS invariant -- every frame has the same atom count.  A single static
- * structure is just the one-frame case.  The dispatcher (§1.5.3) wires this into the ws.* API
- * and, on setFrame, pushes the current frame's coordinates onto the selection store's atoms.
+ * structure is just the one-frame case.
  *
  * This layer validates INTERNAL consistency (all frames same count).  The structure-identity
- * check (element order matches the loaded atoms) lives one layer up, in the dispatcher, where
- * the atoms are known.
+ * check (element order matches the loaded atoms) lives one layer up, where the atoms are known.
  *
- *   molbuilder.workspace._createFrameSeries() -> series
+ *   molbuilder.molview._createFrameSeries() -> series
  *   series = { reset, reloadFrames, addFrame, addFrames, setFrame, getFrame, getForces,
  *              currentCoords, currentForces, currentFrame, frameCount, atomCount, clear }
  */
@@ -117,8 +117,8 @@
     }
 
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.workspace = root.molbuilder.workspace || {};
-    root.molbuilder.workspace._createFrameSeries = createFrameSeries;
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview._createFrameSeries = createFrameSeries;
     if (typeof module !== "undefined" && module.exports) {
         module.exports = { createFrameSeries: createFrameSeries };
     }

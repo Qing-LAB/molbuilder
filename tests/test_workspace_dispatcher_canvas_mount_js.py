@@ -46,8 +46,9 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
 
 WORKSPACE_FILES = [
-    STATIC / "lib/workspace/_selection-store-impl.js",
-    STATIC / "lib/workspace/_canvas-state-impl.js",
+    STATIC / "lib/molview/_selection-store-impl.js",
+    STATIC / "lib/molview/_canvas-state-impl.js",
+    STATIC / "lib/molview/data-model.js",
     STATIC / "lib/workspace/dispatcher.js",
 ]
 
@@ -91,6 +92,9 @@ def _bootstrap_js() -> str:
         }}
         const ws = sandbox.window.molbuilder
                 && sandbox.window.molbuilder.workspace;
+        const data = sandbox.window.molbuilder
+                && sandbox.window.molbuilder.molview
+                && sandbox.window.molbuilder.molview.data;
     """)
 
 
@@ -104,8 +108,8 @@ def test_canvas_state_mount_survives_dispatcher_load():
         console.log(JSON.stringify({
             workspace_present:   !!ws,
             canvas_state_present: !!(ws && ws._canvasState),
-            install_present:     typeof (ws && ws.installStructure),
-            isEmpty_present:     typeof (ws && ws.isEmpty),
+            install_present:     typeof (data && data.installStructure),
+            isEmpty_present:     typeof (data && data.isEmpty),
         }));
     """))
     assert out["workspace_present"] is True
@@ -125,15 +129,15 @@ def test_install_structure_actually_drives_canvas_state():
     of installStructure."""
     out = _run_node(_bootstrap_js() + dedent("""
         try {
-            ws.installStructure(
+            data.installStructure(
                 { source_format: "xyz",
                   text: "1\\n\\nH 0 0 0\\n" },
                 { kind: "smiles" }
             );
-            const s = ws.getStructure();
+            const s = data.getStructure();
             console.log(JSON.stringify({
                 ok: true,
-                is_empty_after: ws.isEmpty(),
+                is_empty_after: data.isEmpty(),
                 source_format:  s && s.source_format,
                 text_prefix:    s && s.text && s.text.slice(0, 1),
             }));

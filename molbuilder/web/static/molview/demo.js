@@ -40,27 +40,28 @@
     }
 
     ready(function () {
-        var ws   = window.molbuilder && window.molbuilder.workspace;
+        var ws   = window.molbuilder && window.molbuilder.workspace;     // persistence layer
         var mv   = window.molbuilder && window.molbuilder.molview;
+        var data = mv && mv.data;                                        // the in-memory DATA model
         var host = document.getElementById("molview-demo-host");
         var statusEl = document.getElementById("demo-status");
         function say(m) { if (statusEl) statusEl.textContent = m; }
 
-        if (!ws || !mv || typeof mv.mount !== "function" || !host) {
+        if (!ws || !mv || !data || typeof mv.mount !== "function" || !host) {
             say("molview / workspace failed to load — check the console.");
             return;
         }
 
         function load(name) {
-            return ws.loadFromText(SAMPLES[name], "demo-" + name + ".xyz")
+            return data.loadFromText(SAMPLES[name], "demo-" + name + ".xyz")
                 .then(function () { say("loaded " + name + " — panel + render updated."); })
                 .catch(function (e) { say("load failed: " + (e && e.message)); });
         }
 
-        // Load the structure (frame 0) then hand the workspace the full frame series.
+        // Load the structure (frame 0) then hand MolView's data model the full frame series.
         function loadTrajectory() {
-            return ws.loadFromText(TRAJECTORY.text, "demo-traj.xyz").then(function () {
-                var n = ws.reloadFrames(TRAJECTORY.frames, { forces: TRAJECTORY.forces });
+            return data.loadFromText(TRAJECTORY.text, "demo-traj.xyz").then(function () {
+                var n = data.reloadFrames(TRAJECTORY.frames, { forces: TRAJECTORY.forces });
                 say("loaded a " + n + "-frame trajectory — use __molview.setFrame(i) / play().");
             }).catch(function (e) { say("trajectory load failed: " + (e && e.message)); });
         }
@@ -72,7 +73,7 @@
         }).then(function (handle) {
             window.__molview = handle;   // poke the §D API from the console
             say("Mounted. Try the panel (Selection ↔ Cell tabs), the view toggles, and the "
-                + "sample buttons; the render reacts through ws.*.  __molview holds the handle.");
+                + "sample buttons; the render reacts through molview.data.  __molview holds the handle.");
             document.getElementById("demo-water").addEventListener("click", function () { load("water"); });
             document.getElementById("demo-benzene").addEventListener("click", function () { load("benzene"); });
             document.getElementById("demo-au-cell").addEventListener("click", function () { load("auCell"); });

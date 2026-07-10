@@ -1,30 +1,65 @@
-# Workspace — data-model contract (L1)
+# Workspace — session state & file-access contract (the persistence layer)
 
-> **This is the sole source of truth for the WORKSPACE DATA MODEL + persistence** — the
-> client-side `ws.*` state, its reads/writes, and how it is persisted (server draft +
-> `sessionStorage` + files via the working-copy framework).  Every read, write,
-> persistence action, and server-response shape MUST match this contract; code that
-> diverges is incorrect by definition.
+> **This is the sole source of truth for the WORKSPACE — the client-side PERSISTENCE layer.**
+> The workspace does **exactly two things**, and nothing else — both **automatic + internal**:
+> 1. **Automatic session persistence** — it transparently keeps a tab/session's working data
+>    recoverable across a reload / crash / revisit (crash-safe server draft + fast `sessionStorage`
+>    mirror), fired on a data change. The consumer gives it the identifiers — **session, tab, data
+>    file name** — so different tabs never mix.
+> 2. **Concealed byte file-access** — the consumer never touches files directly; the workspace is
+>    the *means* to **sync** the working data to its draft/session store and **reload** it back,
+>    moving **opaque bytes** it never interprets.
 >
-> **Layer.** The workspace is **L1 — data**.  It knows nothing about the 3-D viewer or
-> any UI.  The **MolView module** (viewer · selection · k-grid · measurement) is a
-> **separate L2 UI component** that *depends on* this workspace — exactly like any other
-> feature module — and has its own contract, [`molview-module.md`](molview-module.md).
-> MolView uses the workspace; they are different layers and live in different docs (do
-> not re-merge them — that conflates a UI component with the data model it consumes).
+> Every persistence action and server-response shape MUST match this contract; code that diverges
+> is incorrect by definition.
+>
+> **The workspace is NOT the in-memory data model — do not make it one.** It never holds or
+> interprets the working data. It does not know what an atom, a structure, a frame, a force, a
+> selection, or a k-grid is. It gets involved **only** on persistence: sync the consumer's data to
+> disk, or reload it — storing/returning it **format-blind** (it moves bytes; the consumer owns the
+> format). This is deliberate and load-bearing: *session + concealed file-access is a fixed, finite
+> job, so the workspace stays a **stable** layer.* The moment it knows a data type, every new type
+> widens its surface (`getStructure`, `getFrame`, `currentForces`, `maxForceMagnitude`, …) and it
+> never stops growing. That bloat is the anti-pattern this contract exists to prevent.
+>
+> **Who owns the data, then.** The **consumer** owns its data in memory — it holds it, knows its
+> structure, and owns its format. For the structure app that consumer is the **MolView module**
+> ([`molview-module.md`](molview-module.md)): a **self-contained module that conceals BOTH its
+> in-memory data AND its API**. MolView holds the loaded structure / selection / periodicity /
+> frames in memory and processes them itself; it calls the workspace **only** to sync those bytes
+> to disk or reload them. The two are different layers in different docs — do not re-merge them.
+>
+> > **⚠ TWO different "saves" — never mix them; this contract is ONLY the second.**
+> > - **User file-save** (e.g. "save this trajectory frame to a file") is a **user operation** and is
+> >   **NOT the workspace's job.** The UI gets the data it wants from **MolView's API**
+> >   ([`molview-module.md`](molview-module.md)), then writes the file through the **project
+> >   sidebar's** file contract ([`projects-sidebar.md`](projects-sidebar.md)) — its own logic, its
+> >   own module. The workspace is **not in that path at all**; MolView is only the data source.
+> > - **Automatic persistence** (THIS doc) is the transparent, internal draft/session recovery
+> >   described above — opaque bytes, fired on a data change, never a user "save to this file."
 >
 > ```mermaid
 > flowchart TD
->     subgraph L2["L2 — UI / feature modules"]
->       MV["MolView module<br/>viewer + selection + k-grid + measurement<br/>(molview-module.md)"]
->       OTHER["other tabs / features<br/>build forms, results, spectra, ..."]
+>     subgraph CONS["CONSUMER — owns the data + its API (e.g. MolView, molview-module.md)"]
+>       DATA["in-memory data model<br/>structure · selection · periodicity · frames<br/>(the consumer knows the schema + format)"]
 >     end
->     subgraph L1["L1 — data model — THIS doc"]
->       WS["workspace &nbsp;ws.*&nbsp;<br/>state · reads · writes · persistence"]
+>     subgraph PERSIST["PERSISTENCE layer — THIS doc"]
+>       WS["workspace &nbsp;ws.*&nbsp;<br/>session state (tab-isolated) · concealed file access<br/>sync / reload BYTES — format-blind"]
 >     end
->     MV -->|reads/writes via ws.*| WS
->     OTHER -->|reads/writes via ws.*| WS
+>     DATA -->|"sync: serialized bytes + {session, tab, file}"| WS
+>     WS -->|"reload: bytes back (restore)"| DATA
+>     WS -->|"draft · sessionStorage · files"| DISK[("disk")]
 > ```
+>
+> **The data-model sections have MOVED (2026-07 — "the carve", done).** §1.2–§1.5, §2, §3, §5,
+> §6, §7 below used to document the in-memory data model (accessors, mutators, frames, selection,
+> view, wire shape) as a `ws.*` surface. That model **now lives on
+> `window.molbuilder.molview.data`** (`lib/molview/data-model.js`) and its contract is owned by
+> [`molview-module.md`](molview-module.md) — it is **not** a workspace surface. Those sections are
+> now **one-line redirects** into molview-module.md; **do not** read them as the workspace's API.
+> The workspace's own contract is **§3.5 (the persistence surface)** + **§4 (persistence)** +
+> **§4.5 (mount-restore)** + **§4.6 (working-copy mechanism)** — the surface being
+> `persist` / `workspaceId` / `readPersistedSnapshot` / `mountRestoreTarget` / `STORAGE_KEY`.
 >
 > **How the project sidebar relates.** The projects sidebar is a
 > **separate** subsystem ([`projects-sidebar.md`](projects-sidebar.md) /
@@ -47,8 +82,9 @@
 >   companions to molview-module.md (the viewer handle boundary; the store→panel→adapter
 >   wiring).
 > * [`web-api.md`](web-api.md) — every HTTP endpoint.  This
->   contract specifies the client-side `ws.*` surface; web-api.md
->   specifies the wire shape it consumes.
+>   contract specifies the client-side persistence surface (§3.5);
+>   the data-model wire shape it consumes is molview-module.md §21,
+>   and web-api.md specifies the endpoints behind both.
 > * **history / why:** see
 >   [`archive/2026-07-06-workspace-state.md`](../archive/2026-07-06-workspace-state.md)
 >   (the 2026-06-07 audit + Phases 1–9 migration log that motivated this
@@ -57,9 +93,11 @@
 >
 > **How to use this doc:**
 >
-> 1. New code consuming workspace state MUST go through `ws.*` —
->    no direct reads of `structureCanvas`, `selection.store`, or
->    the modify-tab IIFE state are permitted.
+> 1. **Persistence** goes through the workspace `ws.*` persistence surface (§3.5) — `persist`
+>    of serialized bytes / `readPersistedSnapshot` on restore, never a direct file read.
+>    **In-memory data access** is the consumer's own — **`molview.data.*`**
+>    ([`molview-module.md`](molview-module.md) §19), NOT `ws.*`. No direct reads of the
+>    canvas-state / selection stores or the modify-tab IIFE state are permitted.
 > 2. Review against this doc, not git blame.  If a behaviour in
 >    code doesn't match a contract here, either the code is wrong
 >    (fix it) or the contract is wrong (PR the doc + code together).
@@ -71,566 +109,146 @@
 
 ## §1 Architecture overview
 
+> **The data model moved out (§1.2–§1.5, §2, §3, §5, §6, §7 are now redirects).** The single
+> in-memory state, the uniform structure + accessors, the frame axis, and the
+> read/write/selection/view/wire surfaces are the **in-memory DATA MODEL** — the consumer's
+> (MolView's) concern, on `molview.data` ([`molview-module.md`](molview-module.md)), **not** the
+> workspace's. The workspace's *own* contract is **§3.5** (the persistence surface) + **§4 / §4.6**
+> (persistence + the working-copy mechanism) and the session/tab identity that scopes them.
+
 ### 1.1 Modular layout
 
-The workspace is composed of a **dispatcher** that assembles the public
-`ws.*` surface around two internal store singletons plus a pair of atom
-helpers. All of it composes into one mounted object:
-`window.molbuilder.workspace` (aliased as `ws` throughout this doc).
+The **in-memory data model lives entirely in the MolView module** (`lib/molview/`, on
+`window.molbuilder.molview.data`). What remains in `lib/workspace/` is **only the persistence
+machinery** — the dispatcher (the `persist`/`workspaceId`/`readPersistedSnapshot`/`mountRestoreTarget`
+surface, format-blind) and the snapshot IO. The dispatcher exposes **no data accessors**.
 
 ```
-molbuilder/web/static/lib/workspace/
-├── dispatcher.js               ── the public ws.* surface (§2/§3/§5/§6)
-│                                  + module assembly + the §1.2.1 accessors
-│                                  + persistence orchestration (draft + sessionStorage)
-├── _selection-store-impl.js    ── the selection store singleton (§5, molview-module.md §12)
-├── _canvas-state-impl.js       ── the canvas/geometry store: text + source +
-│                                  periodicity + dirty/last_save + persistence
+molbuilder/web/static/lib/workspace/         ── PERSISTENCE layer (this doc)
+├── dispatcher.js               ── window.molbuilder.workspace: persist(sessionBytes, draftBlob,
+│                                  identity) / workspaceId / readPersistedSnapshot / mountRestoreTarget.
+│                                  Format-blind — NO data accessors.
+└── snapshot-io.js              ── the sessionStorage snapshot read/write (molbuilder.workspaceSnapshot)
+
+molbuilder/web/static/lib/molview/           ── MolView module: the in-memory DATA MODEL (molview-module.md)
+├── data-model.js               ── window.molbuilder.molview.data: the accessors/mutators/frames/
+│                                  selection/view + serialization; calls ws.persist() on a data change
+├── _selection-store-impl.js    ── the selection store singleton (molview-module.md §12)
+├── _canvas-state-impl.js       ── the canvas/geometry store: text + source + periodicity + dirty
+├── _frame-series.js            ── the coordinate time axis / frames (molview-module.md §14.5)
 ├── _atom-channels.js           ── per-atom annotation channels (atom-annotations.md)
 └── _atom-index.js              ── 0-based↔1-based display conversion (molview-module.md §16)
 ```
 
-The `_`-prefixed impl files are **workspace-internal** — the dispatcher
-builds its selection-store singleton via the `_createStore` factory at
-module init and reads the canvas-state singleton from its private mount
-(`ws._canvasState`). No consumer touches them directly (§1.4). The legacy
-public globals `window.molbuilder.structureCanvas` +
-`window.molbuilder.selection.store` are retired (§8).
+The `_`-prefixed store files + `data-model.js` are **MolView-internal**; `data-model.js` reads the
+stores and serves the data API on `molview.data`. The dispatcher (persistence) never reads them.
+No consumer touches the stores directly. The legacy public globals `window.molbuilder.structureCanvas`
++ `window.molbuilder.selection.store` are retired (§8).
 
 ### 1.2 Single in-memory state
 
-There is **one** workspace state object, owned by `state.js`.
-Every read returns a defensive copy; every write mutates it
-through a single helper (`state.replace(slice)`) that fires
-subscribers exactly once per mutation.
+→ **Now MolView's.** The single in-memory state object + its shape are `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19.1.
 
-```js
-// state.js shape (TypeScript-style for docs only — code is plain JS)
-type WorkspaceState = {
-  structure: {
-    text:          string,        // BOUNDARY-ONLY serialization (§1.2.1); NOT the
-                                  //   geometric truth -- the atoms are (see below).
-    source_format: "xyz" | "pdb",
-    title:         string,
-    n_atoms:       number,
-    atoms:         Atom[],        // the geometric + chemical truth, coords included
-                                  //   (§1.2.1, §7.2)
-    lattice:       number[][] | null,  // 3x3 = periodicity.cell (kept for consumers)
-    periodicity: {                     // full periodicity — rides with the geometry
-      cell:      number[][] | null,    //   so a save writes the whole structure (§4.0).
-      axis_kind: [string,string,string] | null,  // periodic|isolated|transport
-      vacuum:    [number,number,number],
-      kgrid:     [number,number,number],
-    } | null,                          // see structure-periodicity.md
-  } | null,
+### 1.2.1 The uniform in-memory structure — the accessor API
 
-  source: {
-    kind: "file"|"smiles"|"name"|"dna"|"rna"|"peptide"|"blank",
-    file: string | null,
-    generator_input: object | null,
-  },
-
-  dirty:        boolean,
-  last_save_to: string | null,
-
-  selection: {
-    indices:    number[],         // sorted-ascending (raw store field: `selection`)
-    pickOrder:  number[],         // same atoms in CLICK order (angle vertex = pickOrder[1])
-    mode:       "click"|"filter",
-    filters:    Filter[],
-    combinator: "or"|"and",
-    isolate:    boolean,          // "show selected only" — VIEW state (molview-module.md §12)
-    kgrid: {                      // k-grid display state — VIEW state (molview-module.md §14)
-      enabled: boolean,
-      dims:    [number,number,number],
-      source:  "free"|"fixed",
-    },
-  },
-
-  view: {
-    camera?: object,   axes?: boolean,
-    style?:  object,   labels?: boolean,
-  } | null,
-
-  // Transient — never persisted, never restored:
-  loading:  boolean,
-  inFlight: boolean,
-  error:    string | null,
-  history:  WorkspaceSnapshot[],
-}
-```
-
-### 1.2.1 The uniform in-memory structure — MANDATORY (one model, one accessor API)
-
-**This is the mandatory data-model contract for molview.** Two rules; the second is
-the important one.
-
-**(A) ONE encapsulated in-memory model holds the whole molecule.** Its internal
-LAYOUT is an implementation detail, chosen for efficiency — the TARGET is **columnar**
-(struct-of-arrays), landed by Track D4. *(Today it is still a per-atom `atoms[]`;
-because of rule B, that transition changes no consumer — see Migration status below.)*
-
-```js
-// TARGET internal layout (Track D4) -- consumers never see this directly (rule B).
-{
-  elements:  string[],                         // ["Au","Au","S", …]
-  positions: number[][],                       // [[x,y,z], …]  -- ONE coordinate table
-  regions:   { [label: string]: number[] },    // label -> atom indices (the label INDEX)
-  frozen:    number[],                         // frozen atom indices
-  cell, axis_kind, vacuum, kgrid,              // periodicity (structure-periodicity.md)
-}
-```
-Columnar because: coordinates pack tightly (a table is ~12 bytes/atom vs ~50–100 for
-a per-atom JS object), and **selection-by-label is a direct `regions[label]` lookup,
-never an O(N) scan** of every atom's labels. Same shape as the backend `Structure` +
-the sidecar. But this is a *choice* — it can change (typed arrays, etc.) freely,
-because of rule B.
-
-**(B) A UNIFIED ACCESSOR API is the ONLY way any consumer reads or writes the model.**
-No consumer hand-crafts extraction — no `state.xyz.split()`, no `atoms[i].labels`
-scan, no reaching into the raw arrays. The API materializes whatever VIEW the caller
-needs from the internal layout:
-
-```
-getElements()            -> string[]
-getCoordinates()         -> number[][]            // all coordinates
-getLattice() / getUnitCell() -> number[][] | null // the cell
-getAxisKind() / getVacuum() / getKgrid()
-getAtomsByLabel(label)   -> number[]              // indices -- direct regions lookup
-getFrozen()              -> number[]
-atomFor3Dmol(i)          -> {elem, x, y, z}       // one atom, 3Dmol's shape
-toAddAtoms()             -> [{elem, x, y, z}, …]   // whole model, for model.addAtoms
-```
-Because access is ONLY through the API, the storage layout can change without touching
-a single consumer. **The API is the contract; the layout is free.**
-
-**Consequences (mandatory):**
-1. **The xyz/pdb string exists ONLY at the file boundary** — load parses it into the
-   model, save serializes the model back out (atomically, §4). No consumer ever gets
-   geometry from a string.
-2. **Rendering calls `toAddAtoms()` / `atomFor3Dmol()`** — never `addModel(xyzString)`,
-   never parses text.
-3. **Filter / measure call the API** (`getAtomsByLabel`, `getCoordinates`) — no disk
-   read, no hand-crafted scan (§4.0 memory-is-the-truth).
-
-**Migration status (molview-migration-plan.md Track D).** Today geometry lives in
-`structure.text` (a string) behind a per-atom `atoms[]` wire shape, consumers reach in
-by hand (`state.xyz.split`, `atoms[i].labels`), and the viewer feeds 3Dmol
-`addModel(text)`. Track D lands the model + API above; until it completes, the per-atom
-`atoms[]` + `structure.text` are tolerated as transitional carriers behind the new
-accessors.
+→ **Now MolView's.** The one-model / one-accessor-API contract (the columnar target, the read
+surface, and the encapsulation rule) is `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19.1–§19.2.
 
 ### 1.3 The flow
 
-```
-                              ┌──────────────────────────┐
-   User UI input              │                          │
-   ────────────────►          │      ws.* WRITE API      │ (§3, §5)
-                              │ loadFromFile, applyOp,   │
-                              │ selection.toggle, ...    │
-                              │                          │
-                              └────────────┬─────────────┘
-                                           │  fetch + payload pipeline
-                                           ▼
-                              ┌──────────────────────────┐
-                              │   state.js replace()     │ (§1.2)
-                              │   atomic mutation        │
-                              └────────────┬─────────────┘
-                                           │  notify
-                                           ▼
-              ┌────────────────────────────┼────────────────────────────┐
-              ▼                            ▼                            ▼
-   ┌──────────────────┐    ┌──────────────────────────┐  ┌──────────────────────────┐
-   │ subscribers      │    │ persistence.js           │  │ readers via ws.* READ    │
-   │ (UI panels       │    │ debounced sessionStorage │  │ API (§2): selection-panel,│
-   │  refreshing)     │    │ write                    │  │  viewer-adapter, save    │
-   └──────────────────┘    └──────────────────────────┘  └──────────────────────────┘
-```
+→ **Now MolView's.** The write → model → notify → render/persist flow is `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19 (and §B for the render pipeline).
 
-**No store outside `state.js` may hold a copy of workspace data.**  The
-3Dmol embed handle and selection-panel DOM are *renderings*, not
-copies.
+### 1.4 Encapsulation contract — the module is sealed
 
-### 1.4 Encapsulation contract — the module is sealed (MANDATORY)
-
-**External code touches the workspace ONLY through the `ws.*` API** — the §2 read
-getters (including the §1.2.1 accessors), the §3 write mutators, and the
-`ws.selection.*` / `ws.view.*` sub-namespaces. That is the entire, exhaustive access
-surface. Everything else is private.
-
-**These internals are OFF-LIMITS — no consumer, ever, reaches into them:**
-
-| Private internal | Use the API instead |
-|---|---|
-| `ws._canvasState` / the canvas-state store | `ws.getStructure()` / `ws.installStructure()` |
-| the selection store's raw `state.atoms` | `ws.getAtoms()` / `ws.getCoordinates()` / `ws.getElements()` |
-| `structure.text` (the xyz/pdb string) | `ws.getCoordinates()` / `ws.toAddAtoms()` — **never parse the string** |
-| a structure's raw `regions` map | `ws.getAtomsByLabel(label)` |
-| `periodicity.cell` / `.kgrid` off a raw object | `ws.getUnitCell()` / `ws.getKgrid()` / … |
-
-**Why it is a hard rule (§1.2.1):** the internal layout is deliberately free to change
-(per-atom → columnar → typed arrays); that stays safe *only* if every consumer goes
-through the API. One consumer reaching in re-couples the whole module to the layout and
-re-opens the exact bug class this contract closes — the disk-reading filter, the
-string-parsing viewer, the hand-rolled save. **If the API doesn't expose what you need,
-ADD an accessor — never reach past it.**
+→ **Now MolView's.** The sealed-module / off-limits-internals contract is `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19.1.
 
 ---
 
 ### 1.5 Frames — the coordinate time axis
 
-A structure's **coordinates** may be a **time series** — a trajectory (relaxation steps, an MD
-run). The atoms are **the same across every frame**: same count, same elements, same order,
-same annotations. Only the coordinates (and optional per-frame forces) change. A single static
-structure is just the one-frame case (frame 0).
-
-### 1.5.1 In-memory shape
-
-The uniform structure (§1.2.1) gains a **frame axis**. Split by *"does it change per frame?"*:
-the atom **identity + annotations** and the **cell** are stored **once**; only **coordinates**
-(and optional **forces**) are per-frame.
-
-```
-// frame-INDEPENDENT (stored ONCE — the SAME-ATOMS invariant):
-atoms / columns   // identity + annotations: element, labels, isFrozen, ... (§1.2.1)
-cell              // lattice (single; a per-frame cell for NPT is a future extension)
-
-// per-frame (the time axis):
-frames:       Coords[]      // frames[t] = [[x,y,z]...]; length == atom count; length >= 1 (frame 0 = the structure)
-forces?:      Vec3[][]      // forces[t] = [[fx,fy,fz]...] (optional; drawn as arrows — molview-module.md §14.5)
-currentFrame: number        // the selected frame; default 0
-```
-
-```mermaid
-flowchart TB
-    subgraph ONCE["frame-INDEPENDENT — stored once"]
-      ID["atoms: element · labels · isFrozen · index<br/>(identity + annotations)"]
-      CELL["cell (lattice)"]
-    end
-    subgraph SERIES["per-frame — the time axis"]
-      F0["frame 0<br/>coords [+ forces]"]
-      F1["frame 1<br/>coords [+ forces]"]
-      FN["frame t<br/>coords [+ forces]"]
-    end
-    CUR(["currentFrame → the frame every ws.* accessor returns"])
-    ID -.->|"identity applies to ALL frames"| SERIES
-    CELL -.-> SERIES
-    F0 --> CUR
-    F1 --> CUR
-    FN --> CUR
-```
-
-A **single static structure is just the one-frame case** (`frames.length === 1`). The §1.2.1
-accessors always return the **current frame** — `ws.getStructure()` gives frame `currentFrame`.
-
-**Per-frame SCALARS are NOT workspace data.** Energy, max-force, and step number belong to the
-consuming inspector's plot, not the structure — the workspace holds only coordinates + optional
-force *vectors*.
-
-### 1.5.2 The contract & the information flow
-
-The **same-atoms invariant** is the linchpin every other guarantee rests on:
-
-> **Every frame has the same atoms** — same count, same element order, same identity. Only the
-> coordinates (and optional matching forces) differ. A frame that violates this is **rejected
-> with an error, never coerced.**
-
-That one rule buys three things: selection / measurement / k-grid **compose across frames for
-free** (they key off the atom *index*, which never changes); the fast native-frame render is
-**safe** (a fixed atom set across frames — molview-module.md §14.5); and the two on-disk files
-stay **cross-checkable** (§1.5.4).
-
-The flow is one-directional and single-door: the **caller decides** the operation, the
-**workspace validates + applies + persists**, and **MolView only reads** the current frame.
-
-```mermaid
-flowchart LR
-    CALLER["CALLER (decides what to do)<br/>Results tab · running-job stream"]
-    API["ws frame API (§1.5.3)<br/>loadFromText · reloadFrames · addFrame · setFrame"]
-    VAL{"same-atoms<br/>invariant holds?"}
-    ERR["ERROR — rejected<br/>(not coerced)"]
-    MEM["in-memory<br/>frames[] · forces[] · currentFrame"]
-    DISK["on disk (§1.5.4)<br/>multi-frame .xyz + .molstruct.json"]
-    MV["MolView (§14.5)<br/>reads currentFrame → renders"]
-    CALLER --> API --> VAL
-    VAL -->|no| ERR
-    VAL -->|yes| MEM
-    MEM -->|"workspace persists (both files)"| DISK
-    MEM -->|"getStructure / getFrame"| MV
-```
-
-**In-memory ↔ disk consistency is the workspace's job**: every op keeps both in sync, and the
-manifest cross-check (§1.5.4) guards every load. Over the wire (§7) frames arrive as JSON
-(`frames`, `forces`) — the wire format is unchanged; only the on-disk file gains the multi-frame
-form.
-
-### 1.5.3 The frame API
-
-Reads join §2, mutators join §3. `addFrame` / `reloadFrames` **enforce the same-atoms
-invariant** — a mismatch is a **hard error** (same class as the atom-count guard, §1.2.1 / §9).
-
-| Call | Kind | Meaning |
-|---|---|---|
-| `loadFromText(text)` | replace | Load from a file — single-frame `.xyz` → one frame; **multi-frame** `.xyz` → all frames. |
-| `reloadFrames(frames, {forces?})` | replace | **Hard reload** — discard the current frames, recreate the whole set. New data invalidated the old (a job re-ran). |
-| `addFrame(coords, {forces?})` / `addFrames([...])` | append | Add frame(s) to the existing set. A running job **streams** new steps. |
-| `setFrame(i)` | select | Make frame `i` current (MolView's navigation reads through here → subscribers re-render). |
-| `getFrame(i)` / `currentFrame` / `frameCount` | read | One frame's coords (a copy) / the current index / the number of frames. |
-
-### 1.5.4 Persistence — multi-frame extxyz + the molstruct sidecar (no new format)
-
-On disk, a multi-frame structure **extends the existing single-frame pattern**
-(`name.xyz` + `name.molstruct.json`) — no new format is invented:
-
-```mermaid
-flowchart LR
-    XYZ["<b>name.xyz</b> — multi-frame extended-XYZ<br/>one block per frame<br/>coords + force columns + energy/Lattice in the comment"]
-    JSON["<b>name.molstruct.json</b><br/>ONE annotation set (labels/frozen/channels)<br/>+ FRAME MANIFEST: n_frames · n_atoms · steps[]"]
-    JSON ==>|"cross-check n_frames × n_atoms on load"| XYZ
-    XYZ -.->|"mismatch → LOAD ERRORS (§4.0)"| STOP(["refuse — do not guess"])
-```
-
-- **`name.xyz` = multi-frame extended-XYZ (extxyz).** One XYZ block per frame; the comment line
-  carries `Lattice="…"`, `energy=…`, and a `Properties=species:S:1:pos:R:3:forces:R:3` spec so
-  **forces ride as extra per-atom columns**. Standard + tool-interoperable (ASE / OVITO / VMD);
-  the trajectory inspector already emits multi-frame xyz. The read/write codec is **ASE**
-  (`ase.io.extxyz`) — already a host-env dependency (`molbuilder/envs/recipes.py`; README_install
-  §host env), so no new dependency is introduced.
-- **`name.molstruct.json` = the single annotation set + a FRAME MANIFEST.** The atom annotations
-  (labels, frozen, channels — [`atom-annotations.md`](atom-annotations.md)) are stored **once**
-  (identical every frame — the invariant). The sidecar **also records** `n_frames`, `n_atoms`,
-  and per-frame `steps`, so it is **cross-checked against the `.xyz`** on load: manifest vs
-  block count/atom count must agree, or the load **errors** (§4.0: memory is the truth; a
-  stale/mismatched pair is refused, not guessed).
-
-**Consistency is the workspace's job.** Every op (load / reload / add) keeps memory ↔ disk in
-sync — it persists coords → `.xyz` and manifest+annotations → `.json`, and the cross-check
-guards every load. The caller decides *what*; the workspace guarantees the result is
-**consistent + persistent**.
-
-### 1.5.5 Use-case examples
-
-```js
-// (a) Results tab — load a finished trajectory (multi-frame .xyz + sidecar) and view it.
-await ws.loadFromText(multiFrameXyzText);       // frames[] populated; currentFrame = 0
-ws.setFrame(3);                                  // frame 3 becomes current → subscribers re-render
-
-// (b) Live job — stream new steps as they arrive (APPEND; same atoms enforced).
-socket.onStep(step => {
-  ws.addFrame(step.coords, { forces: step.forces });   // throws if the atom set differs
-});
-
-// (c) The run restarted / new data invalidates everything — HARD reload (recreate the set).
-ws.reloadFrames(rerun.frames, { forces: rerun.forces });
-
-// (d) Read side — the render reads the current frame; per-frame SCALARS stay in the inspector.
-const coords = ws.getFrame(ws.currentFrame);     // current frame's coords (a defensive copy)
-energyPlot.render(energies, ws.frameCount());    // energy/step live in the INSPECTOR, not ws
-```
+→ **Now MolView's.** The frame/trajectory data model — the *same-atoms invariant*, the frame axis,
+and the `loadFromText` / `reloadFrames` / `addFrame` / `addFrames` / `setFrame` / `getFrame` /
+`currentFrame` / `frameCount` API — **and** the on-disk multi-frame `.xyz` + `.molstruct.json`
+FORMAT are MolView's; see [`molview-module.md`](molview-module.md) §14.5 (on-disk format §14.5.0).
+The workspace stores those bytes **format-blind**, like any other persisted state (§3.5, §4).
 
 ---
 
-## §2 Read API — `ws.*` getters
+## §2 Read API — the data-model getters
 
-Every getter returns a **defensive copy** (or a freshly-built
-object): mutating the returned value does NOT mutate the
-underlying state.  Read API never throws — missing state is
-represented as `null` or empty.
-
-| Method | Returns | Contract |
-|---|---|---|
-| `ws.getState()` | `WorkspaceState` (deep-cloned) | Composite snapshot.  Atomic — every nested field reflects the same `notify()` tick.  Use sparingly; prefer narrow getters. |
-| `ws.getStructure()` | `{text, source_format, title, n_atoms, atoms, lattice}` or `null` | Returns `null` iff workspace is empty (§2.4).  `atoms` is a slice of the underlying array.  Never returns partial state — if `text` is present, `atoms` is consistent with it. |
-| `ws.getSource()` | `{kind, file, generator_input}` | Always returns an object.  Empty workspace returns `{kind: "blank", file: null, generator_input: null}`. |
-| `ws.getSelection()` | `{indices, pickOrder, mode, filters, combinator, isolate, kgrid}` | `indices` always sorted ascending, no duplicates; `pickOrder` is the same set in click order. `filters` defensive-copied (each filter object cloned). `isolate`/`kgrid` are the view-state (molview-module.md §12). (`ws.selection.getState()` returns the same shape with the raw `selection` field renamed to `indices`.) |
-| `ws.isDirty()` | `boolean` | True iff text has been mutated since last `save()`.  Set by `applyOp` / generators / undo.  Cleared by `save()`. |
-| `ws.isEmpty()` | `boolean` | True iff there is no structure loaded.  Equivalent to `getStructure() === null`. |
-| `ws.getAtoms()` | `Atom[]` (slice) | Direct atom-array accessor for hot paths (filter/picker).  Returns `[]` when empty.  Always reflects current state — never stale relative to `getStructure().atoms`. |
-| `ws.getSourceFile()` | `string \| null` | Convenience: equivalent to `getSource().file`.  Used by selection-panel + viewer-adapter (current code reads `selection.store.getState().sourceFile`). |
-| `ws.getLastSavedTo()` | `string \| null` | The disk path the workspace was last successfully saved to this session.  Returns `null` until the first `save()` call lands.  Used by `structureSave.targetPath()` to resolve the natural save destination and by modify-viewer's Send-to-Optimization gate to require a saved-and-clean state. |
-| `ws.mountRestoreTarget()` | `string \| null` | The source-file a mount-time snapshot restore will hydrate (structure + selection), or `null` when the snapshot carries no restorable structure.  **Mount-time writers MUST consult this and defer when it equals the file they were about to load — see §4.5 (single-authority mount restore).**  Order-independent: derived from the persisted snapshot, not from whether the restore has run yet. |
-
-**§1.2.1 accessors — the concealed model's read surface** (materialise a view; the
-internal layout is never exposed):
-
-| Method | Returns | Contract |
-|---|---|---|
-| `ws.getElements()` | `string[]` | Element symbol per atom, in index order. `[]` when empty. |
-| `ws.getCoordinates()` | `number[][]` | `[[x,y,z], …]` — all coordinates. The ONLY way to read geometry; never parse `structure.text`. |
-| `ws.getUnitCell()` / `ws.getLattice()` | `number[][] \| null` | The 3×3 cell (alias pair). `null` when non-periodic/absent. |
-| `ws.getAxisKind()` | `[string,string,string] \| null` | Per-axis `periodic\|isolated\|transport`. **NOT defaulted** — `axis_kind` is a scientific choice (periodic vs transport can't be guessed), so `null` when unset; the consumer must resolve it. |
-| `ws.getVacuum()` | `[number,number,number]` | Per-axis vacuum padding. **Default `[0,0,0]`.** |
-| `ws.getKgrid()` | `[number,number,number]` | k-point grid. **Default `[1,1,1]` (gamma).** |
-| `ws.getAtomsByLabel(label)` | `number[]` | Atom indices carrying `label` — a **direct** label→indices lookup, no scan. |
-| `ws.getFrozen()` | `number[]` | Indices of frozen atoms. |
-| `ws.atomFor3Dmol(i)` | `{elem,x,y,z} \| null` | One atom in 3Dmol's shape (numbers). |
-| `ws.toAddAtoms()` | `[{elem,x,y,z}, …]` | Whole model in 3Dmol's shape, for `model.addAtoms(...)`. The render path uses THIS, never `addModel(string)`. |
-
-Only the SAFE-to-default fields (`kgrid` → gamma, `vacuum` → 0) return a usable value
-when unset; `axis_kind` (scientifically loaded) returns `null`. (Generic key-value
-metadata was removed — it was an unpersisted data-loss sink; persisting it is a
-designed sidecar-schema follow-up, not an accessor.)
-
-### 2.1 Subscriptions
-
-```js
-const unsub = ws.subscribe(fn);   // returns unsubscribe function
-```
-
-Contract:
-
-- `fn` is called **once immediately** on subscribe with the current
-  `getState()` snapshot.
-- `fn` is called **once after each `notify()` tick** with a fresh
-  snapshot.
-- Subscriber errors are **caught** — they do not prevent other
-  subscribers from running and do not throw out of `notify()`.
-- Calling `unsub()` is idempotent; calling it from inside `fn`
-  is safe (uses iteration-time copy).
-
-### 2.2 Atomicity
-
-All reads within one `notify()` tick observe the same snapshot.
-The only way to violate this is to mutate `ws` mid-tick from a
-subscriber — **don't do that**.  Subscribers should mutate via
-`ws.*` writes; chained mutations from a subscriber serialize on
-the next microtask.
-
-### 2.3 What gets persisted
-
-`persistence.js` writes the workspace state minus `loading` /
-`inFlight` / `error` / `history` on every `notify()` (debounced 100ms).
-See §4 for the full persistence contract.
-
-### 2.4 What "empty workspace" means
-
-```js
-ws.isEmpty()        === true
-ws.getStructure()   === null
-ws.getAtoms()       === []                       // not null
-ws.getSource()      === {kind:"blank", file:null, generator_input:null}
-ws.getSelection()   === {indices:[], pickOrder:[], mode:"click", filters:[],
-                         combinator:"or", isolate:false,
-                         kgrid:{enabled:false, dims:[1,1,1], source:"free"}}
-ws.isDirty()        === false
-```
+→ **Now MolView's.** The `getState` / `getStructure` / `getSource` / `getAtoms` / `getElements` /
+`getCoordinates` / `getUnitCell*` / `getKgrid*` / `getAxisKind*` / `getVacuum*` / `getSelection` /
+`getRegions` / `getFrozen` / `getAtomsByLabel` / `atomFor3Dmol` / `toAddAtoms` / `isDirty` /
+`isEmpty` / `subscribe` read surface is `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19.2.
 
 ---
 
-## §3 Write API — `ws.*` mutators
+## §3 Write API — the data-model mutators
 
-Every mutator either succeeds (state replaced atomically, `notify()`
-fires once) or rejects (state unchanged, no notification).  No
-mutator leaves partial state.
+→ **Now MolView's.** The `loadFromFile` / `loadFromText` / `generate` / `applyOp` / `applyPayload` /
+`installStructure` / `save` / `discard` / `undo` mutators, the granular `setUnitCell` / `setKgrid` /
+`setAxisKind` / `setVacuum` / `commitPeriodicity` / `setLabel` write accessors, `markDirty` /
+`markSaved`, and the payload pipeline (incl. `selection_remap`) are `molview.data`'s; see
+[`molview-module.md`](molview-module.md) §19.3.
 
-| Method | Server route | Returns | Side effects |
-|---|---|---|---|
-| `ws.loadFromFile(path)` | → `molbuilderTab.commitFile` → POST `/api/workingcopy/open` | `Promise<WorkspacePayload>` | Replaces structure + source.kind="file" + source.file=path; resets selection to `[]`; resets dirty to `false`. (A6: the load takes its DATA from the working-copy framework, not the ad-hoc `/api/build/load`.) |
-| `ws.loadFromText(text, filename)` | POST `/api/build/load` | `Promise<WorkspacePayload>` | Same as loadFromFile but with in-memory text.  source.kind="file" iff filename is a real path; resetSelection=true; touchCanvas=false (caller is responsible for canvas-state.dirty) |
-| `ws.generate(kind, input, opts)` | POST `/api/build/molecule` | `Promise<WorkspacePayload>` | Replaces structure + source.kind=kind + source.generator_input=input; resets selection to `[]`; dirty=true |
-| `ws.applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Replaces structure; pushes pre-op snapshot to `history`; applies selection_remap per §3.4; dirty=true |
-| `ws.applyPayload(payload, opts)` | (none — in-memory) | `void` | Direct atomic install (used internally by every HTTP mutator; exposed for restore paths).  `opts.touchCanvas`, `opts.resetSelection` per §3.3 |
-| `ws.installStructure(structure, source)` | (none — in-memory) | `void` | Lower-level install for callers that already have a `Structure` object + a `Source` discriminant in hand (the structure tab's CLI-result path uses this).  Equivalent to `applyPayload` minus the WorkspacePayload envelope conventions; resets selection to `[]`, marks dirty=true |
-| `ws.markDirty()` | (none) | `void` | Flips the `dirty` flag without changing structure or source.  Used by callers that mutate the canvas directly (e.g. modify-tab style swaps that don't round-trip through `applyOp`) so the unsaved-changes guard fires correctly |
-| `ws.markSaved(path)` | (none) | `void` | Flips `dirty=false` and records `last_save_to=path`.  Used by save flows that bypass `ws.save` (e.g. the structure tab's `structureSave.save` already wrote the file and just needs to clear the dirty bit) |
-| `ws.save(opts)` | → `structureSave.save` → POST `/api/workingcopy/save` | `Promise<void>` | Writes the whole dataset (`.xyz` + `.molstruct.json`) atomically from the scratch blob (§4.3); sets dirty=false, last_save_to=opts.path. (NOT `/api/files/write` — that writes only `.fdf`/wrapper artifacts.) |
-| `ws.discard()` | (none) | `void` | Sets structure=null, source={kind:"blank",...}, selection={indices:[],...}, dirty=false.  **Unconditional** — caller MUST gate on warning modal first. |
-| `ws.undo()` | (none) | `void` | Pops last entry from `history`, calls `applyPayload(snap, {touchCanvas: true})`.  No-op when history is empty. |
+---
 
-**§1.2.1 write accessors** — the granular mutation surface (in-memory; persists on the
-next Save). Each is the mirror of its read accessor:
+## §3.5 The workspace's ACTUAL surface — `window.molbuilder.workspace`
 
-| Method | Returns | Side effect |
+The workspace exposes **only** the persistence surface (`lib/workspace/dispatcher.js`). It has
+**no data accessors**; it never reads or interprets what it stores.
+
+| Method | Signature | Contract |
 |---|---|---|
-| `ws.setUnitCell(cell)` / `ws.setLattice(cell)` | `void` | Sets the 3×3 cell (rest of periodicity kept); marks dirty. |
-| `ws.setKgrid(dims)` | `void` | Sets the k-point grid `[nx,ny,nz]`; marks dirty. |
-| `ws.setAxisKind(kinds)` | `void` | Sets per-axis `periodic\|isolated\|transport`; marks dirty. |
-| `ws.setVacuum(vac)` | `void` | Sets per-axis vacuum padding; marks dirty. |
-| `ws.setLabel(label, indices)` | `Promise` | REPLACE-per-label: `label` now tags exactly `indices` (in-memory, **marks dirty** so the edit survives reload; the sidecar is written on Save). |
+| `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk transient draft (`/api/workingcopy/update`) keyed by `identity`. **Format-blind** — the consumer already serialised; this just writes bytes. |
+| `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
+| `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
+| `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
+| `ws.STORAGE_KEY` | `string` | The `sessionStorage` key (`molbuilder.workspace.v1`; shared constant `SS_WORKSPACE`). |
 
-**Adding/deleting ATOMS is NOT a granular accessor** — geometry mutation goes through
-`ws.applyOp(op, args)` (the server modify pipeline above), so bonds + validation stay
-consistent.
-
-### 3.1 Error handling
-
-HTTP mutators reject with `Error(message)` where `message` comes
-from:
-- The server's `{ok: false, error}` envelope's `error` field
-  (§7.4), OR
-- A clean network-error message (`"network: timeout"`, etc.)
-
-Rejection leaves state unchanged.  The caller is responsible for
-displaying the error to the user.
-
-### 3.2 The payload pipeline
-
-`applyPayload(payload, opts)` is the **single sync point** for all
-state replacement.  It performs in order:
-
-1. Capture `preSelection` (before any mutation).
-2. Replace `state.structure.text` (and dirty bit) when
-   `opts.touchCanvas !== false`.
-3. Replace `state.structure.atoms` from `payload.atoms`.
-4. Apply selection remap (§3.4) or reset selection when
-   `opts.resetSelection`.
-5. Replace `state.structure.title`, `n_atoms`, `lattice` from
-   payload.
-6. Fire `notify()` exactly once.
-
-The pipeline is the only place that touches state.atoms.  Every
-public write method ends in `applyPayload`.
-
-### 3.3 `applyPayload` options
-
-| Option | Default | Effect when set |
-|---|---|---|
-| `touchCanvas` | `true` | When `false`, skip the dirty-bit update (caller has already set it; used by load paths that pre-marked clean) |
-| `resetSelection` | `false` | When `true`, clear selection unconditionally (used by load/generate; modifier ops use selection_remap instead) |
-
-### 3.4 Per-op selection rule
-
-| Op class | Selection update |
-|---|---|
-| `loadFromFile` / `loadFromText` / `generate` | `resetSelection: true` → indices=[] |
-| `applyOp(delete)` / `applyOp(add_atom)` | Apply `payload.extra.selection_remap` (§7.3) |
-| `applyOp(translate)` / `applyOp(rotate)` / etc. (atom count unchanged) | Preserve as-is (no opt set; pipeline leaves it alone) |
-| `discard` | indices=[] |
-| `undo` | Restored from snapshot.selected |
-
-`selection_remap` is a flat list per §7.3.  When the server sends
-it, the dispatcher MUST use it instead of the naive in-range
-filter, otherwise Delete-of-low-index silently drops the wrong
-atom.
+**The seam (who does what).** The consumer (MolView) owns *when* and *what*: on a data change its
+data model debounces (100 ms) + serialises (`molview.data._serialise` for the session bytes,
+`getScratchBlob()` for the draft blob, `draftIdentity()` for the key — molview-module.md §19.4)
+and calls `ws.persist(sessionBytes, draftBlob, identity)`. The workspace owns *where*: it writes
+the two surfaces format-blind. **The debounce + suspend/resume live in the data model, not the
+workspace** — the workspace `persist()` is a synchronous write of the bytes it is handed.
 
 ---
 
 ## §4 Persistence contract
 
-### 4.0 First principle — memory is the truth; a save writes it whole
+### 4.0 First principle — the consumer's memory is the truth; a save writes it whole
 
-**The in-memory store (§1.2) is the single true state the user sees and edits.**
-Every read, every filter, every edit, every measurement goes through `ws.*`;
-**nothing reads disk for live workspace data.** Every persisted form (§4.1) is a
-**complete serialization of that store**, written in one shot. Nothing is persisted
-that isn't already in the store, and no save writes only part of it.
+**The consumer's in-memory data is the single true state the user sees and edits** — for the
+structure app, that is MolView's in-memory model (`molview.data`, molview-module.md §19), NOT a
+workspace store. **Nothing reads disk for live data.** When the consumer needs to persist, it
+serialises its whole state (`molview.data.getScratchBlob()`, molview-module.md §19.4) and hands
+the workspace those bytes via `ws.persist(...)`; every persisted form (§4.1) is that **complete
+serialization, written in one shot**. Nothing is persisted that the consumer didn't put in the
+blob, and no save writes only part of it. The workspace stores the bytes **format-blind** — it
+does not read or interpret them; the durable file's format (§4.6.4 codec) is the consumer's.
 
 **The rule for every persisted form: write the entire in-memory state. NEVER
 re-open the old target, read it back, and merge or pick-and-choose which fields to
-keep.** That re-read-and-merge is precisely what silently drops fields. The store is
-complete and authoritative; the persisted form follows the store, never the reverse.
+keep.** That re-read-and-merge is precisely what silently drops fields. The model is
+complete and authoritative; the persisted form follows the model, never the reverse.
 There is no merge path.
 
 **Worked example.** You build Au electrodes, tag the left ones `L-electrode`, and
-set a 4×4×1 k-grid — all of it lives in the store. A save writes `.xyz` (the atoms)
+set a 4×4×1 k-grid — all of it lives in MolView's model. A save writes `.xyz` (the atoms)
 + `.json` (`cell` + `axis_kind=(periodic,periodic,transport)` + `kgrid=[4,4,1]` +
 `regions.L-electrode=[…]` + hash) — the whole thing at once. Later you tag another
-region: that updates the **store**, and the next save writes the **whole** store
+region: that updates the **model**, and the next save writes the **whole** model
 again. It does **not** re-open the old `.json` and graft the new label onto it.
 
-**Consequence for the store shape.** Because a save writes the whole store, the
+**Consequence for the model shape.** Because a save writes the whole model, MolView's
 `structure` slice MUST carry the full periodicity — `cell`, `axis_kind`, `vacuum`,
-`kgrid` (not only `lattice`) — so the file never needs a field the store lacks.
+`kgrid` (not only `lattice`) — so the file never needs a field the model lacks.
 Those fields' meaning is defined in
 [`structure-periodicity.md`](structure-periodicity.md).
 
@@ -736,8 +354,11 @@ that reads them is incorrect.
 
 #### 4.4.2 Write cadence
 
-- Debounced 100ms after every `notify()` tick.
-- Final flush on `pagehide` event (no debounce).
+- The **data model** debounces 100 ms after every data change, then calls `ws.persist(...)`;
+  the workspace writes the session bytes to this key via `snapshot-io.js` (§3.5). The debounce
+  lives in the data model (molview-module.md §19.4), not the workspace.
+- Final flush on `pagehide` (no debounce) — the data model forces a `persist` so a
+  last-microtask change isn't lost on navigation.
 - Errors (quota exceeded, storage disabled) are logged + swallowed.
 
 #### 4.4.3 Read at restore
@@ -753,9 +374,11 @@ Contract:
   disk (dirty=false, source.kind=file) or atomic-replace from
   memory (dirty=true, or non-file source).  The decision lives in
   the modify-tab restore gate — `viewer.js::restoreModifyState`
-  (`shouldUseSavedAtoms = dirty || !source.file`), NOT a
-  `persistence.js` module (there is none; the dispatcher owns the
-  debounced write).
+  (`shouldUseSavedAtoms = dirty || !source.file`).  The read itself
+  is owned by `snapshot-io.js` (`molbuilder.workspaceSnapshot.read`),
+  which `ws.readPersistedSnapshot()` delegates to; the debounced
+  WRITE that produced the snapshot lives in the data model (§4.4.2),
+  never in a `persistence.js`/`state.js` module (there are none).
 
 #### 4.4.4 What's NOT persisted
 
@@ -766,7 +389,7 @@ runtime state; restoring them would be incorrect (e.g.
 ### 4.5 Mount-time restore ownership (single-authority rule)
 
 **Why this exists.**  On a page mount there can be MORE THAN ONE surface
-that wants to hydrate the workspace from persisted state:
+that wants to hydrate the data model from the persisted snapshot:
 
 - `viewer.js::restoreModifyState` restores the full snapshot
   (structure **+ selection** + camera + chrome) from §4.4.
@@ -774,9 +397,9 @@ that wants to hydrate the workspace from persisted state:
   genuine cross-tab handoff.
 - (future) any new tab/surface that loads-on-mount.
 
-The workspace store is a **shared, mutable, async** module: its mutators
-(`adoptSession`, `setSourceFile`, `set`, …) all write the one `state` and,
-under the hood, race with last-writer-wins.  If two of the surfaces above
+The selection store (`molview.data.selection`) is a **shared, mutable, async**
+module: its mutators (`adoptSession`, `setSourceFile`, `set`, …) all write the one
+`state` and, under the hood, race with last-writer-wins.  If two of the surfaces above
 both write on mount for the **same file**, the later write wins
 nondeterministically.  A fresh-load commit carries `selection:[]`, so when
 it lands *after* the snapshot restore it **silently clobbers the restored
@@ -968,138 +591,28 @@ The core is generic and **codec-pluggable**; nothing in it is structure-specific
 
 ---
 
-## §5 Selection sub-namespace — `ws.selection.*`
+## §5 Selection sub-namespace — the data model's `selection`
 
-### 5.1 Local mutators (no HTTP)
-
-| Method | Effect |
-|---|---|
-| `ws.selection.toggle(i)` | Toggle atom `i` in selection.  Out-of-range indices ignored. |
-| `ws.selection.set(indices)` | Replace selection with sorted-unique copy of `indices`.  Out-of-range filtered out. |
-| `ws.selection.add(indices)` | Union with current selection.  Sort + dedup. |
-| `ws.selection.remove(indices)` | Subtract from current selection. |
-| `ws.selection.all()` | Select every atom (`0..n_atoms-1`). |
-| `ws.selection.invert()` | Replace with complement. |
-| `ws.selection.clear()` | Empty the selection. |
-| `ws.selection.setMode(mode)` | Sets mode to `"click"` or `"filter"`.  Throws on invalid value. |
-| `ws.selection.setFilters(filters)` | Replaces filter list.  Does NOT eval — call `applyFilter()` separately. |
-| `ws.selection.addFilter(filter)` | Appends one filter to the list. |
-| `ws.selection.removeFilter(i)` | Removes the filter at index `i`. |
-| `ws.selection.updateFilter(i, filter)` | Replaces the filter at index `i`. |
-| `ws.selection.setCombinator(c)` | Sets combinator to `"or"` or `"and"`. |
-| `ws.selection.setIsolate(on)` | Sets the "show selected only" VIEW flag (molview-module.md §12). |
-| `ws.selection.setKgrid(patch)` | Patches the k-grid VIEW state (`{enabled, dims, source}`). `source`-aware (molview-module.md §12/§14): in `"fixed"` a bare `dims` edit is ignored; in `"free"` `dims` is clamped so `natoms·nx·ny·nz ≤ 20000`; `enabled` always applies. |
-
-Each mutator fires `notify()` exactly once.
-
-**Lifecycle + read on the sub-namespace:** `ws.selection.getState()`
-(the `{indices, pickOrder, mode, filters, combinator, isolate, kgrid, …}`
-snapshot — raw `selection` renamed to `indices`), `ws.selection.subscribe(fn)`
-(store-scoped subscription), and `ws.selection.adoptSession({sourceFile, atoms})`
-/ `setSourceFile` / `setLoader` (workspace-lifecycle wiring). The full store
-surface + its `_initialState` shape are specified in **molview-module.md §12**.
-
-### 5.2 Server-backed selection ops
-
-| Method | Server route | Returns | Effect |
-|---|---|---|---|
-| `ws.selection.applyFilter()` | POST `/api/selection/eval` | `Promise<number[]>` | Sends current filters + combinator to server; replaces selection with result; preserves mode. |
-| `ws.selection.writeLabel(target, indices)` | *(in-memory)* | `Promise<void>` | Applies a REPLACE-per-target label change to the store in memory — no HTTP, no disk write.  The sidecar is written only on explicit Save (via `/api/workingcopy/save`, which writes the `.xyz` + `.json` pair together).  `target` is `"frozen_atoms"` or one of the region names. |
-| `ws.selection.refreshAtoms()` | POST `/api/selection/atoms` | `Promise<void>` | Refetch atoms for the current `sourceFile`.  Overlays the `.molstruct.json` sidecar (frozen_atoms + regions) — needed after `adoptSession({atoms})` installs build-load atoms which lack sidecar enrichment.  No-op when `sourceFile` is null. |
-
-### 5.3 Atoms accessor
-
-`ws.selection.getAtoms()` is an alias for `ws.getAtoms()` —
-provided so existing call sites that read `selection.store.getState().atoms`
-have a 1-line migration target.
+→ **Now MolView's.** `molview.data.selection.*` (toggle / set / add / remove / all / invert / clear /
+setMode / setFilters / addFilter / removeFilter / updateFilter / setCombinator / setIsolate /
+setKgrid / writeLabel / applyFilter / refreshAtoms / getState / subscribe / adoptSession /
+setSourceFile / setLoader / getAtoms) is MolView's; see [`molview-module.md`](molview-module.md)
+§12 (method table §12.2.1).
 
 ---
 
-## §6 View sub-namespace — `ws.view.*`
+## §6 View sub-namespace — the data model's `view`
 
-| Method | Effect |
-|---|---|
-| `ws.view.applyState(patch)` | Merges `patch` into view state; delegates camera/style updates to the 3Dmol embed handle. |
-| `ws.view.getState()` | Returns the current view state (camera + style + axes + labels).  Always returns an object (never null) — empty view returns `{}`. |
-
-The 3Dmol embed handle is a *rendering target*, not a store.  View
-state in `state.js::state.view` is the source of truth; the embed
-mirrors it.  This contract is maintained by `view.js`.
+→ **Now MolView's.** `molview.data.view.applyState` / `getState` is MolView's; see
+[`molview-module.md`](molview-module.md) §20.
 
 ---
 
-## §7 Wire contract (server → client)
+## §7 Wire contract (server → the data model)
 
-### 7.1 WorkspacePayload — every Structure-returning endpoint
-
-```json
-{
-  "ok":            true,
-  "text":          "...",       // canonical XYZ or PDB bytes
-  "source_format": "xyz",       // "xyz" | "pdb"
-  "title":         "...",
-  "n_atoms":       42,
-  "atoms":         [ /* per §7.2 */ ],
-  "lattice":       null,        // or 3×3 array
-  "issues":        [ /* Issue records */ ],
-  "extra":         { /* per-endpoint additions */ }
-}
-```
-
-Routes that emit this shape (per `web-api.md`):
-
-| Route | `extra` keys |
-|---|---|
-| POST `/api/build/load` | `pdb`, `source_format`, `n_residues`, `summary` |
-| POST `/api/build/molecule` | `backend_used`, `add_hydrogens_mode`, `pdb`, `summary` |
-| POST `/api/modify/<op>` | `selection_remap` (when applicable), `op`, `args` |
-
-### 7.2 Atom row shape
-
-The wire shape carries **coordinates** (§1.2.1 — the atom is the geometric truth);
-the client normalises `regions`/`is_frozen` (snake) → `labels`/`isFrozen` (camel) and
-keeps `x`/`y`/`z` as-is.
-
-```json
-{
-  "index":         12,
-  "element":       "C",
-  "x":             1.204,        // coordinates -- numbers, on the atom (§1.2.1)
-  "y":             0.0,
-  "z":            -0.512,
-  "atom_name":     "CA",         // PDB only; absent for XYZ-origin atoms
-  "residue_id":    42,
-  "residue_name":  "ALA",
-  "chain_id":      "A",
-  "regions":       ["bridge"],
-  "is_frozen":     false
-}
-```
-
-### 7.3 selection_remap (in `extra`)
-
-Flat list of `length = pre-op atom count`.
-
-```json
-"selection_remap": [null, 0, 1]      // delete index 0
-"selection_remap": [0, 1, 2]         // add atom (identity, new atom at index 3)
-"selection_remap": [0, 1, 2, 3]      // no-shift op (identity)
-```
-
-`remap[old_index] === new_index` (or `null` when the atom was removed).
-
-### 7.4 Error envelope
-
-```json
-{
-  "ok":     false,
-  "error":  "human-readable message",
-  "issues": [ /* optional issue records */ ]
-}
-```
-
-The client surfaces `error` to the user.  When `issues` is
-present, the panel renders them too (per per-tab convention).
+→ **Now MolView's.** The WorkspacePayload / atom-row / `selection_remap` / error-envelope shapes are
+the server → `molview.data` contract; see [`molview-module.md`](molview-module.md) §21. (HTTP
+endpoint specs: [`web-api.md`](web-api.md).)
 
 ---
 
@@ -1109,56 +622,44 @@ The following surfaces existed pre-Phase-10 but are now **deleted**:
 
 | Deprecated surface | Replacement |
 |---|---|
-| `window.molbuilder.structureCanvas.*` | `ws.getStructure()` / `ws.isDirty()` / `ws.getSource()` |
-| `window.molbuilder.selection.store.*` | `ws.selection.*` + `ws.getAtoms()` / `ws.getSelection()` |
-| `window.molbuilder.modify.state` (IIFE) | `ws.getStructure()` |
+| `window.molbuilder.structureCanvas.*` | `molview.data.getStructure()` / `isDirty()` / `getSource()` |
+| `window.molbuilder.selection.store.*` | `molview.data.selection.*` + `molview.data.getAtoms()` / `getSelection()` |
+| `window.molbuilder.modify.state` (IIFE) | `molview.data.getStructure()` |
 | `sessionStorage["molbuilder.structure_canvas"]` | `sessionStorage["molbuilder.workspace.v1"]` |
 | `sessionStorage["modify-state"]` | `sessionStorage["molbuilder.workspace.v1"]` |
 | `sessionStorage["molbuilder.panelMode"]` | `sessionStorage["molbuilder.workspace.v1"].selection.mode` |
 
-A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/workspace/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py` (shipped 2026-06-09 with Phase 10 Fix 4).
+A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/molview/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py` (shipped 2026-06-09 with Phase 10 Fix 4).
 
-**Implementation status (Phase 9, 2026-06-13):** the legacy module paths `lib/structure/canvas-state.js` + `lib/selection/store.js` are GONE.  Their bodies live at `lib/workspace/_canvas-state-impl.js` + `lib/workspace/_selection-store-impl.js` — workspace-internal helpers the dispatcher loads to build its singletons.
+**Implementation status:** the legacy module paths `lib/structure/canvas-state.js` + `lib/selection/store.js` are GONE.  Their bodies live at `lib/molview/_canvas-state-impl.js` + `lib/molview/_selection-store-impl.js` — **MolView-internal** helpers the data model (`data-model.js`) loads to build its singletons.
 
-* Every consumer goes through `ws.*` — enforced by `tests/test_no_legacy_store_consumers.py`.
-* `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` are NO LONGER mounted in production.  The dispatcher reads from the private `window.molbuilder.workspace._canvasState` slot (canvas-state) and constructs its selection-store singleton via the `_createStore` factory at module init.
-* Test escape hatch: dispatcher `_canvas()` + `_store()` honour pre-mounted legacy globals if a harness installs them before the dispatcher loads.  Production templates never do.
+* Every consumer goes through `molview.data.*` (for the molecule) / `ws.*` (for persistence) — enforced by `tests/test_no_legacy_store_consumers.py`.
+* `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` are NO LONGER mounted in production.  The data model reads canvas-state from the private `window.molbuilder.workspace._canvasState` slot (still where `_canvas-state-impl.js` mounts it) and constructs its selection-store singleton via the `_createStore` factory at module init.
+* Test escape hatch: the data model's `_canvas()` + `_store()` honour pre-mounted legacy globals if a harness installs them before it loads.  Production templates never do.
 * `runtime.register("selection.store", …)` + `runtime.register("structure.canvas", …)` are GONE — no consumer ever called `whenReady` on them.
 
 ---
 
 ## §9 Compliance map (tests pin every clause)
 
+This map pins the **workspace's own (persistence) clauses**. The data-model clauses that used to
+live here (former §1.2 / §2 / §3 / §5 / §6 / §7) **moved to MolView** — they are pinned by MolView's
+own tests, catalogued in [`molview-module.md`](molview-module.md) §17.1 (`test_workspace_dispatcher_js.py`
+`::TestReads` / `::TestSubscribe` / `::TestSelectionPassthrough` / `::TestFrames`, plus
+`test_modify.py` / `test_web.py` for the `selection_remap` wire shape). They are no longer workspace
+clauses.
+
 | Contract clause | Pinning test |
 |---|---|
-| §1.2 single state | `tests/test_workspace_dispatcher_js.py::TestPublicSurface` (the dispatcher IS the single state) |
-| §2 each `ws.*` getter exists + returns documented shape | `tests/test_workspace_dispatcher_js.py::TestPublicSurface`, `::TestReads` |
-| §2.1 subscribe contract | `tests/test_workspace_dispatcher_js.py::TestSubscribe` |
-| §2.2 atomicity | `tests/test_workspace_dispatcher_js.py::TestReads` (each read returns one tick's snapshot) |
-| §2.4 empty workspace shape | `tests/test_workspace_dispatcher_js.py::TestReads` (empty-mount cases) |
-| §3 each `ws.*` mutator routes through `applyPayload` | `tests/test_workspace_dispatcher_js.py` + downstream modify/build/spectra blueprint tests that exercise the mutator + assert workspace state |
-| §3.2 payload-pipeline order | `tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough` (the `preSelection` capture order is observable via selection_remap on Delete) |
-| §3.4 per-op selection rule | `tests/test_modify.py::TestComputeSelectionRemapAfterDelete`, `::TestComputeSelectionRemapAfterAdd` + `tests/test_web.py::test_modify_delete_returns_selection_remap` |
-| §4 persistence contract | `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip` |
-| §5 selection sub-API | `tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough` |
-| §6 view sub-API | `tests/test_workspace_dispatcher_js.py::TestPublicSurface` (view passthrough) |
-| §7.1 wire shape | `tests/test_shared.py::TestStructureToDictExtraThreading` + `tests/test_web.py::test_build_load_returns_workspace_payload` |
-| §7.3 selection_remap shape | `tests/test_modify.py::TestComputeSelectionRemapAfterDelete`, `::TestComputeSelectionRemapAfterAdd` |
+| §3.5 workspace surface is persistence-only (no data methods leaked) | `tests/test_workspace_dispatcher_js.py::TestWorkspacePersistenceContract::test_workspace_public_surface_is_persistence_only`, `::test_no_data_methods_leaked_onto_workspace` |
+| §3.5 `persist` is format-blind; a data change drives the persist inversion | `::TestWorkspacePersistenceContract::test_persist_is_format_blind`, `::test_data_change_drives_the_persist_inversion` |
+| §4.4 `sessionStorage` cache round-trip + key + shape | `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip` (`::test_storage_key_is_v1`, `::test_persist_writes_to_unified_sessionStorage_key`, `::test_readPersistedSnapshot_*`, `::test_pagehide_flushes_pending_debounce`) |
+| §4 / §18.3 a VIEW change (e.g. `setFrame`) persists nothing | `::TestWorkspacePersistenceContract::test_setFrame_is_a_view_op_and_does_not_persist` |
+| §4.5 mount-restore ownership (`mountRestoreTarget`) | `tests/test_workspace_dispatcher_js.py` (mount-restore cases) + the workspace-mount-restore e2e |
 | §8 zero legacy-store consumers | `tests/test_no_legacy_store_consumers.py` ✅ shipped 2026-06-09 |
 
-**Coverage gaps (future PRs should close these):**
-
-* No dedicated test for §1.2 (single in-memory state — currently
-  implicit in the dispatcher's interface tests).
-* No dedicated test for §3.2 payload-pipeline ORDER (the order is
-  observable via the selection_remap pre-capture but not directly
-  pinned).
-* ✅ §5 ``ws.selection.getState()`` shape + subscribe-vs-getState
-  identity invariant — pinned 2026-06-09 by
-  ``tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough::test_getState_returns_contract_shape_with_indices_not_selection``
-  and ``::test_subscribe_callback_receives_contract_shape_not_legacy``.
-
-A new test ID appears in this column iff a new clause is added.  A clause without a pinning test ID is a contract gap.
+A new test ID appears in this column iff a new **workspace** clause is added.  A clause without a
+pinning test ID is a contract gap.
 
 ---
 
@@ -1177,7 +678,7 @@ A new test ID appears in this column iff a new clause is added.  A clause withou
 
 ## The MolView module is a separate doc
 
-The **MolView module** (viewer · selection · k-grid · measurement) is the **L2 UI
-component** that *uses* this workspace data model.  It has its own contract:
-[`molview-module.md`](molview-module.md).  Workspace = **L1 data**; MolView = **L2 UI**
-that consumes L1 — different layers, different docs.
+The **MolView module** (the in-memory data model · viewer · selection · k-grid · measurement)
+owns the molecule and its API on `molview.data`.  It has its own contract:
+[`molview-module.md`](molview-module.md).  MolView = **the data model + UI**; the workspace =
+**the persistence layer** MolView calls to store bytes — different layers, different docs.

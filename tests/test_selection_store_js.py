@@ -1,4 +1,4 @@
-"""Unit tests for ``lib/workspace/_selection-store-impl.js`` driven via Node.
+"""Unit tests for ``lib/molview/_selection-store-impl.js`` driven via Node.
 
 Task #146 — Phase B.1.15.  The selection store is the canonical
 state holder for the /modify selection panel (see
@@ -31,7 +31,7 @@ import pytest
 
 
 ROOT   = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
+MODULE = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
 
 
 def _run_node(snippet: str) -> object:

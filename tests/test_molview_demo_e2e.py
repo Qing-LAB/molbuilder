@@ -68,8 +68,8 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
     assert keys == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "showForces",
-                    "showIndices", "undo"]
+                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
+                    "setLabels", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)
@@ -129,17 +129,15 @@ def test_molview_demo_multiframe_setFrame_moves_the_drawn_atoms(page, flask_serv
 
     # Frame overlays (§14.5.1): force arrows + atom-index labels on the REAL embed -- turning
     # them on (and swapping frames with them on) must not error.  A frame with forces exists.
-    page.evaluate("() => { window.__molview.showForces(true); window.__molview.showIndices(true); }")
     page.evaluate("() => window.__molview.setFrame(2)")
     page.wait_for_timeout(150)          # let the overlay redraw settle
-    page.evaluate("() => { window.__molview.showForces(false); window.__molview.showIndices(false); }")
 
     assert not errors, f"console/page errors during frame navigation + overlays: {errors}"
 
 
 def test_molview_demo_frame_controls_bar_drives_the_trajectory(page, flask_server):
     """The frame controls bar MolView renders (§14.5): load a 3-frame trajectory and the bar
-    (slider + play + counter + Forces/Indices toggles) appears and drives the render.  Dragging
+    (slider + play + counter) appears and drives the render.  Dragging
     the slider moves the DRAWN atom + updates the counter; play advances the frame; the toggles
     draw arrows/labels -- all on the REAL embed, no other tab."""
     errors = []
@@ -182,11 +180,8 @@ def test_molview_demo_frame_controls_bar_drives_the_trajectory(page, flask_serve
     page.wait_for_function("() => window.__molview.currentFrame() !== 2", timeout=5000)
     page.locator(f"{bar} .mvf-play").click()   # pause
 
-    # The Forces + Indices toggles draw arrows/labels on the REAL embed (no error).
-    page.locator(f"{bar} .mvf-forces").check()
-    page.locator(f"{bar} .mvf-indices").check()
-    page.wait_for_timeout(150)
-
+    # Overlays are NOT on the frame bar anymore -- they are consumer-driven (handle.setArrows /
+    # setLabels), so the bar is play/slider/counter only.
     assert not errors, f"console/page errors driving the frame bar: {errors}"
 
 

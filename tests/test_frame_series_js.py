@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD = ROOT / "molbuilder/web/static/lib/workspace/_frame-series.js"
+MOD = ROOT / "molbuilder/web/static/lib/molview/_frame-series.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -27,7 +27,7 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-_NEW = "const s = global.molbuilder.workspace._createFrameSeries();"
+_NEW = "const s = global.molbuilder.molview._createFrameSeries();"
 
 
 def test_reset_populates_frames_and_defaults_to_frame_0():

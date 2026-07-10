@@ -30,7 +30,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl.js"
+MODULE = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
 
 
 def _run_node(snippet: str, *, prelude: str = "") -> object:

@@ -1,85 +1,62 @@
-/* Frame-scoped overlays for MolView (molview-module.md §14.5.1).
+/* Overlay controller for MolView (molview-module.md §14.5.1).
  *
- * Two overlays that decorate the CURRENT frame, both via the embed's existing declarative API
- * (setLabels / setArrows) -- no reinvented 3Dmol:
- *   - atom-index LABELS: frame-independent data (the label "3" is always atom 3), positioned
- *     at the atoms -> they auto-follow the frame.  A showIndices toggle turns them on/off.
- *   - force ARROWS: per-frame VALUES (workspace.currentForces()), so they are rebuilt on every
- *     frame change: an arrow from each atom along its force.  A showForces toggle gates them.
+ * MolView is a VIEWER: it DRAWS overlays it is HANDED — it does NOT generate them.  The
+ * CONSUMER computes WHAT to draw (e.g. force arrows from its own force data, with its OWN
+ * scaling/normalization; or atom-index labels) and pushes it in via the handle's
+ * `setArrows` / `setLabels`.  This controller only:
+ *   - forwards the consumer's arrows/labels to the embed (`handle.setArrows` / `handle.setLabels`),
+ *   - REMEMBERS the last set and re-applies it after an internal redraw — a per-frame
+ *     `setStructure` clears the embed's overlays, so re-applying keeps the consumer's overlay
+ *     visible across frame changes WITHOUT the viewer knowing what it means.
  *
- * The host owns the toggle widgets; MolView owns the drawing.  This controller subscribes to
- * the store (a frame's coord swap notifies it) and redraws.
+ * It reads NO force data and synthesizes NO geometry.  An "arrow" here is an opaque spec the
+ * embed understands (`{start,end,color,radius}`); a "label" spec is whatever `setLabels` takes.
+ * MolView neither builds nor normalizes them — that is the consumer's logic and needs.
  *
- *   molview.mountFrameOverlays(handle, workspace, store, { getShowForces, getShowIndices, scale })
- *     -> { refresh, dispose }
+ *   molview.mountOverlays(handle, store) -> { setArrows, setLabels, refresh, dispose }
  */
 (function (root) {
     "use strict";
 
-    var FORCE_COLOR = "#f0a020";
+    function _noop() {}
 
-    function mountFrameOverlays(handle, workspace, store, opts) {
-        opts = opts || {};
-        if (!handle || !store || typeof store.subscribe !== "function") {
-            return { refresh: function () {}, dispose: function () {} };
+    function mountOverlays(handle, store) {
+        if (!handle) {
+            return { setArrows: _noop, setLabels: _noop, refresh: _noop, dispose: _noop };
         }
-        var getForces  = typeof opts.getShowForces === "function"
-            ? opts.getShowForces : function () { return false; };
-        var getIndices = typeof opts.getShowIndices === "function"
-            ? opts.getShowIndices : function () { return false; };
-        var scale = (typeof opts.scale === "number" && opts.scale > 0) ? opts.scale : 1.0;
+        var _arrows = null;      // last arrow set the CONSUMER handed us (opaque specs)
+        var _labels = null;      // last label spec the CONSUMER handed us
         var disposed = false;
 
-        // The CURRENT frame's coords are the store atoms (setFrame swapped them, workspace §1.5).
-        function _coords() {
-            var st = store.getState();
-            var atoms = (st && st.atoms) || [];
-            return atoms.map(function (a) { return [a.x, a.y, a.z]; });
+        function _drawArrows() {
+            if (typeof handle.setArrows === "function") handle.setArrows(_arrows || []);
+        }
+        function _drawLabels() {
+            if (typeof handle.setLabels === "function") handle.setLabels(_labels || false);
         }
 
-        // One arrow per atom that has a non-negligible force, from the atom along the vector.
-        function _forceArrows(coords, forces) {
-            var arrows = [];
-            for (var i = 0; i < coords.length && i < forces.length; i++) {
-                var f = forces[i];
-                if (!Array.isArray(f)) continue;
-                var mag = Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
-                if (mag < 1e-9) continue;               // no arrow for a ~zero force
-                var p = coords[i];
-                arrows.push({
-                    start: [p[0], p[1], p[2]],
-                    end:   [p[0] + f[0] * scale, p[1] + f[1] * scale, p[2] + f[2] * scale],
-                    color: FORCE_COLOR,
-                    radius: 0.05,
-                });
-            }
-            return arrows;
+        // ── Consumer API: draw EXACTLY what you're handed (no interpretation) ──
+        function setArrows(arrows) {
+            _arrows = Array.isArray(arrows) ? arrows.slice() : [];
+            if (!disposed) _drawArrows();
         }
-
-        function render() {
-            if (disposed) return;
-            // Index labels -- re-applied to match the toggle (idempotent; they follow the atoms).
-            if (typeof handle.setLabels === "function") {
-                handle.setLabels(getIndices()
-                    ? { atoms: "all", format: "index" }
-                    : false);
-            }
-            // Force arrows -- per-frame values, rebuilt each change.
-            if (typeof handle.setArrows === "function") {
-                var forces = (typeof workspace.currentForces === "function")
-                    ? workspace.currentForces() : null;
-                handle.setArrows(
-                    (getForces() && Array.isArray(forces))
-                        ? _forceArrows(_coords(), forces)
-                        : []);
-            }
+        function setLabels(labels) {
+            _labels = labels || false;
+            if (!disposed) _drawLabels();
         }
+        function refresh() { if (!disposed) { _drawArrows(); _drawLabels(); } }
 
-        var unsub = store.subscribe(render);
-        render();   // initial
+        // A store change means the render may have re-drawn (a per-frame setStructure clears
+        // embed overlays) — re-apply the consumer's last-set overlays so they survive.  We do
+        // NOT recompute them; they are exactly what the consumer last handed us.
+        var unsub = (store && typeof store.subscribe === "function")
+            ? store.subscribe(function () { if (!disposed) { _drawArrows(); _drawLabels(); } })
+            : _noop;
 
         return {
-            refresh: render,
+            setArrows: setArrows,
+            setLabels: setLabels,
+            refresh:   refresh,
             dispose: function () {
                 disposed = true;
                 try { unsub(); } catch (_) {}
@@ -91,8 +68,8 @@
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.molview = root.molbuilder.molview || {};
-    root.molbuilder.molview.mountFrameOverlays = mountFrameOverlays;
+    root.molbuilder.molview.mountOverlays = mountOverlays;
     if (typeof module !== "undefined" && module.exports) {
-        module.exports = { mountFrameOverlays: mountFrameOverlays };
+        module.exports = { mountOverlays: mountOverlays };
     }
 })(typeof window !== "undefined" ? window : this);

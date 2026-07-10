@@ -1,5 +1,5 @@
 """Phase 4a (atom-annotations.md § 5): the PURE L1 channel model
-(lib/workspace/_atom-channels.js).  Runs under Node (no browser) since the
+(lib/molview/_atom-channels.js).  Runs under Node (no browser) since the
 module is pure logic — deterministic, no E2E flakiness."""
 import json
 import shutil
@@ -10,7 +10,7 @@ import pytest
 
 _NODE = shutil.which("node")
 _MODULE = (Path(__file__).resolve().parent.parent
-           / "molbuilder/web/static/lib/workspace/_atom-channels.js")
+           / "molbuilder/web/static/lib/molview/_atom-channels.js")
 
 pytestmark = pytest.mark.skipif(_NODE is None, reason="node not available")
 

@@ -74,8 +74,8 @@ def test_handle_exposes_only_the_read_notify_surface_no_internals():
     # The full §D surface -- and ONLY that: no els / store / viewerHandle leaked
     assert out["keys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "showForces",
-                    "showIndices", "undo"]
+                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
+                    "setLabels", "undo"]
 
 
 def test_handle_write_side_delegates_to_the_workspace():
@@ -204,5 +204,71 @@ def test_empty_host_builds_card_embeds_viewer_and_owns_render():
     # still ONLY the §D handle surface -- no internals leaked by the build path
     assert out["handleKeys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
                     "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setFrame", "showForces",
-                    "showIndices", "undo"]
+                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
+                    "setLabels", "undo"]
+
+
+# ---- gap (f): the DATA↔PERSISTENCE split -- mount reads data from molview.data, uses the ----
+#      workspace ONLY for persistence (molview-module.md §18 / §C, post-carve contract).
+
+_SPLIT_HARNESS = """
+    const dataCalls = [];    // molbuilder.molview.data (the DATA layer) receives these
+    const wsDataTrap = [];   // the persistence workspace must NEVER receive a data call
+    const structure = { text: 'XYZ', atoms: [{ index: 0, x: 1 }] };
+    const store = { getState: () => ({ indices: [1, 2] }), subscribe: () => (() => {}) };
+
+    // THE DATA MODEL -- molbuilder.molview.data.  mount MUST route every data op here.
+    global.molbuilder = global.molbuilder || {};
+    global.molbuilder.molview = global.molbuilder.molview || {};
+    global.molbuilder.molview.data = {
+        selection:     store,
+        getStructure:  () => { dataCalls.push('getStructure'); return structure; },
+        subscribe:     (fn) => (() => {}),
+        loadFromFile:  (p)    => { dataCalls.push(['loadFromFile', p]);    return Promise.resolve('file'); },
+        loadFromText:  (t, f) => { dataCalls.push(['loadFromText', t, f]); return Promise.resolve('text'); },
+        save:          ()     => { dataCalls.push('save'); return Promise.resolve('saved'); },
+        undo:          ()     => { dataCalls.push('undo'); return Promise.resolve('undone'); },
+        setFrame:      (i)    => { dataCalls.push(['setFrame', i]); return i; },
+        frameCount:    () => 3, currentFrame: () => 0, currentForces: () => null,
+        getFrame:      (i) => [[0, 0, 0]],
+    };
+
+    // THE PERSISTENCE WORKSPACE -- has NO business serving data.  Every data method here is a
+    // TRAP: if mount ever reaches for data on the workspace, it's a contract breach and recorded.
+    const workspace = {
+        owner: 'modify', persist: () => {}, workspaceId: () => 'ws-x',
+        selection:    { getState: () => { wsDataTrap.push('selection'); return { indices: [] }; },
+                        subscribe: () => (() => {}) },
+        getStructure: () => { wsDataTrap.push('getStructure'); return null; },
+        loadFromFile: () => { wsDataTrap.push('loadFromFile'); return Promise.resolve(); },
+        loadFromText: () => { wsDataTrap.push('loadFromText'); return Promise.resolve(); },
+        save:         () => { wsDataTrap.push('save'); return Promise.resolve(); },
+        undo:         () => { wsDataTrap.push('undo'); return Promise.resolve(); },
+        setFrame:     () => { wsDataTrap.push('setFrame'); },
+    };
+    global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
+    const host = { classList: { contains: () => true },
+                   querySelector: (sel) => (sel === '.molview-panel' ? {} : null) };
+    const mount = global.molbuilder.molview.mount;
+"""
+
+
+def test_mount_routes_data_to_molview_data_and_never_to_the_workspace():
+    """gap (f) drift-guard: with a distinct molview.data (data) and a persistence-only
+    workspace, EVERY handle data op (getStructure / load / save / undo / setFrame) must hit
+    molview.data; the workspace's data traps must stay empty."""
+    out = _run_node(_SPLIT_HARNESS + """
+        mount(host, workspace, { mode: 'modify' }).then(async (h) => {
+            const text = h.getStructure().text;
+            await h.load('/p.xyz');
+            await h.load({ text: 'T', filename: 'm.xyz' });
+            await h.save();
+            await h.undo();
+            h.setFrame(1);
+            console.log(JSON.stringify({ text, dataCalls, wsDataTrap }));
+        });
+    """)
+    assert out["text"] == "XYZ"                       # read came from molview.data
+    assert out["dataCalls"] == ["getStructure", ["loadFromFile", "/p.xyz"],
+                                ["loadFromText", "T", "m.xyz"], "save", "undo", ["setFrame", 1]]
+    assert out["wsDataTrap"] == []                    # workspace NEVER served data

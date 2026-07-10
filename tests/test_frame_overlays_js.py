@@ -1,9 +1,11 @@
-"""Frame-scoped overlays for MolView (molview-module.md §14.5.1).
+"""Overlay controller for MolView (molview-module.md §14.5.1).
 
-Node unit test with a STUBBED embed handle (records setArrows/setLabels) + store + workspace.
-Pins: force arrows are built from the current frame's forces (start=atom, end=atom+force,
-gated by showForces + presence of forces); index labels toggle via setLabels; a store change
-(a frame swap) rebuilds; dispose clears both.
+MolView is a VIEWER: it DRAWS overlays it is HANDED; it does NOT generate them.  The consumer
+computes arrows (from its own force data, with its OWN normalization) + labels and pushes them
+via setArrows / setLabels; this controller forwards them to the embed verbatim and re-applies
+them across a redraw (a per-frame setStructure clears embed overlays).  These tests pin:
+draw-what-handed (verbatim), persist-across-redraw, dispose clears + stops re-applying, and that
+the controller reads NO force data / synthesizes NO geometry (the design the viewer must NOT do).
 """
 import json
 import shutil
@@ -28,72 +30,79 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# A stubbed handle (records the last setArrows/setLabels), a sync-notify store whose atoms are
-# the current frame's coords, and a workspace whose currentForces() returns the frame's forces.
+# A stubbed embed handle (records the last setArrows/setLabels) + a sync-notify store.  The
+# overlay controller takes ONLY (handle, store) -- no workspace, no force data.
 _HARNESS = """
     const handle = { arrows: null, labels: null,
         setArrows: (a) => { handle.arrows = a; },
         setLabels: (l) => { handle.labels = l; } };
-    let _atoms  = [{x:0,y:0,z:0},{x:1,y:0,z:0}];
-    let _forces = [[0.5,0,0],[0,0,0]];
     const subs = [];
-    const store = { getState: () => ({ atoms: _atoms }),
-                    subscribe: (fn) => { subs.push(fn); return () => {}; },
+    const store = { subscribe: (fn) => { subs.push(fn); return () => {}; },
                     notify: () => subs.forEach(fn => fn()) };
-    const workspace = { currentForces: () => _forces };
-    let showForces = false, showIndices = false;
-    const mount = global.molbuilder.molview.mountFrameOverlays;
-    const ov = mount(handle, workspace, store,
-        { getShowForces: () => showForces, getShowIndices: () => showIndices });
+    const ov = global.molbuilder.molview.mountOverlays(handle, store);
 """
 
 
-def test_force_arrows_built_from_the_current_frames_forces_when_on():
+def test_setArrows_draws_exactly_what_it_is_handed():
+    """The consumer hands opaque arrow specs; the viewer draws them VERBATIM (no build, no
+    normalize)."""
     out = _run_node(_HARNESS + """
-        showForces = true; ov.refresh();
+        const arrows = [{start:[0,0,0], end:[1,0,0], color:'#f0a020', radius:0.05}];
+        ov.setArrows(arrows);
         console.log(JSON.stringify(handle.arrows));
     """)
-    # atom 0 has force [0.5,0,0] -> arrow start (0,0,0) -> end (0.5,0,0); atom 1's force is ~0.
-    assert len(out) == 1
-    assert out[0]["start"] == [0, 0, 0] and out[0]["end"] == [0.5, 0, 0]
+    assert out == [{"start": [0, 0, 0], "end": [1, 0, 0], "color": "#f0a020", "radius": 0.05}]
 
 
-def test_forces_off_clears_the_arrows():
+def test_setLabels_draws_exactly_what_it_is_handed():
     out = _run_node(_HARNESS + """
-        showForces = true; ov.refresh();
-        showForces = false; ov.refresh();
-        console.log(JSON.stringify({ arrows: handle.arrows }));
-    """)
-    assert out["arrows"] == []
-
-
-def test_index_labels_toggle_via_setLabels():
-    out = _run_node(_HARNESS + """
-        showIndices = true; ov.refresh();  const on = handle.labels;
-        showIndices = false; ov.refresh(); const off = handle.labels;
-        console.log(JSON.stringify({ on, off }));
+        ov.setLabels({atoms:'all', format:'index'});
+        const on = handle.labels;
+        ov.setLabels(false);
+        console.log(JSON.stringify({on, off: handle.labels}));
     """)
     assert out["on"] == {"atoms": "all", "format": "index"}
     assert out["off"] is False
 
 
-def test_a_frame_swap_rebuilds_the_arrows_from_the_new_frame():
+def test_overlays_persist_verbatim_across_a_redraw():
+    """A per-frame setStructure clears the embed's overlays; a store change re-applies the
+    CONSUMER's last-set arrows/labels EXACTLY -- the controller never recomputes them."""
     out = _run_node(_HARNESS + """
-        showForces = true; ov.refresh();
-        // simulate setFrame: new coords + new forces, then the store notifies.
-        _atoms  = [{x:2,y:0,z:0},{x:1,y:0,z:0}];
-        _forces = [[1.0,0,0],[0,0,0]];
-        store.notify();
-        console.log(JSON.stringify(handle.arrows));
+        ov.setArrows([{start:[0,0,0], end:[2,0,0]}]);
+        ov.setLabels({atoms:'all', format:'index'});
+        handle.arrows = 'CLEARED'; handle.labels = 'CLEARED';   // the redraw wiped them
+        store.notify();                                          // a redraw happened
+        console.log(JSON.stringify({arrows: handle.arrows, labels: handle.labels}));
     """)
-    # atom 0 now at x=2 with force 1.0 -> arrow (2,0,0) -> (3,0,0)
-    assert out[0]["start"] == [2, 0, 0] and out[0]["end"] == [3, 0, 0]
+    assert out["arrows"] == [{"start": [0, 0, 0], "end": [2, 0, 0]}]
+    assert out["labels"] == {"atoms": "all", "format": "index"}
 
 
-def test_dispose_clears_arrows_and_labels():
+def test_controller_reads_no_force_data_and_synthesizes_nothing():
+    """(task e2) The viewer must NOT pull force data or build arrow geometry.  Even with a
+    workspace exposing currentForces present, the controller never touches it, and with no
+    consumer-set overlay the drawn arrows stay empty."""
     out = _run_node(_HARNESS + """
-        showForces = true; showIndices = true; ov.refresh();
+        let forcesRead = 0;
+        global.workspace = { currentForces: () => { forcesRead++; return [[1,0,0]]; } };
+        store.notify(); store.notify();       // redraws, but the consumer set NO overlay
+        console.log(JSON.stringify({forcesRead, arrows: handle.arrows}));
+    """)
+    assert out["forcesRead"] == 0             # never reached for force data
+    assert out["arrows"] == []                # nothing synthesized (empty, not computed)
+
+
+def test_dispose_clears_overlays_and_stops_reapplying():
+    out = _run_node(_HARNESS + """
+        ov.setArrows([{start:[0,0,0], end:[1,0,0]}]);
+        ov.setLabels({atoms:'all', format:'index'});
         ov.dispose();
-        console.log(JSON.stringify({ arrows: handle.arrows, labels: handle.labels }));
+        const cleared = {arrows: handle.arrows, labels: handle.labels};
+        handle.arrows = 'X'; handle.labels = 'X';
+        store.notify();                        // must NOT re-apply after dispose
+        console.log(JSON.stringify({cleared,
+            afterNotify: {arrows: handle.arrows, labels: handle.labels}}));
     """)
-    assert out["arrows"] == [] and out["labels"] is False
+    assert out["cleared"] == {"arrows": [], "labels": False}
+    assert out["afterNotify"] == {"arrows": "X", "labels": "X"}

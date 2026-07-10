@@ -83,7 +83,8 @@
         // unchanged).
         const store = (opts && opts.store) || (root.molbuilder
                        && root.molbuilder.workspace
-                       && root.molbuilder.workspace.selection);
+                       && root.molbuilder.molview && root.molbuilder.molview.data
+                       && root.molbuilder.molview.data.selection);
         if (!store) {
             throw new Error(
                 "viewer-adapter.attach: ws.selection missing; "
