@@ -21,24 +21,54 @@
         if (!hostEl || !api) return { refresh: function () {}, dispose: function () {} };
 
         hostEl.innerHTML =
-            '<button type="button" class="mvf-play" title="Play / pause the trajectory."'
-          + ' aria-label="Play / pause">&#9654;</button>'
+            '<span class="mvf-transport">'
+          +   '<button type="button" class="mvf-step mvf-prev" title="Previous frame"'
+          +   ' aria-label="Previous frame">&#8249;</button>'
+          +   '<button type="button" class="mvf-play" title="Play / pause."'
+          +   ' aria-label="Play / pause">&#9654;</button>'
+          +   '<button type="button" class="mvf-step mvf-next" title="Next frame"'
+          +   ' aria-label="Next frame">&#8250;</button>'
+          + '</span>'
+          + '<label class="mvf-loop" title="Loop at the ends (play + step wrap around).">'
+          +   '<input type="checkbox" class="mvf-loop-cb"><span>loop</span></label>'
           + '<input type="range" class="mvf-slider" min="0" step="1" value="0"'
           + ' aria-label="Frame">'
           + '<span class="mvf-counter" aria-live="polite"></span>';
 
+        var prevBtn = hostEl.querySelector(".mvf-prev");
+        var nextBtn = hostEl.querySelector(".mvf-next");
         var playBtn = hostEl.querySelector(".mvf-play");
+        var loopCb  = hostEl.querySelector(".mvf-loop-cb");
         var slider  = hostEl.querySelector(".mvf-slider");
         var counter = hostEl.querySelector(".mvf-counter");
         var doc     = root.document;
 
+        function _loop() { return (typeof api.getLoop === "function") ? api.getLoop() : true; }
         function _syncPlay() {
             var on = api.isPlaying();
             playBtn.innerHTML = on ? "&#10073;&#10073;" : "&#9654;";   // ⏸ / ▶
             playBtn.setAttribute("aria-pressed", String(on));
         }
+        // Single-step (‹ / ›) -- wraps when 'loop' is on, clamps at the ends when off.  Pauses
+        // playback so the step sticks.
+        function _step(delta) {
+            var n = api.frameCount();
+            if (n <= 1) return;
+            if (api.isPlaying()) { api.pause(); _syncPlay(); }
+            var next = api.currentFrame() + delta;
+            next = _loop() ? ((next % n) + n) % n : Math.max(0, Math.min(n - 1, next));
+            api.setFrame(next);
+        }
 
         slider.addEventListener("input", function (e) { api.setFrame(Number(e.target.value) || 0); });
+        prevBtn.addEventListener("click", function () { _step(-1); });
+        nextBtn.addEventListener("click", function () { _step(1); });
+        if (loopCb) {
+            loopCb.checked = _loop();
+            loopCb.addEventListener("change", function (e) {
+                if (typeof api.setLoop === "function") api.setLoop(!!e.target.checked);
+            });
+        }
         playBtn.addEventListener("click", function () {
             if (api.isPlaying()) api.pause(); else api.play();
             _syncPlay();

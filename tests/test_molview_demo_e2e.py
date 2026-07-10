@@ -209,3 +209,40 @@ def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):
         "  const s = document.querySelector('#molview-demo-host #panel-page-selection');"
         "  return c && s && s.offsetParent !== null && c.offsetParent === null; }",
         timeout=5000)
+
+
+def test_molview_demo_view_menu_layout(page, flask_server):
+    """Pin the View-menu structure the user asked for: Reset is the FIRST item, and the
+    display toggles (axes / labels / overlay / unit cell + MolView's injected 'selected only'
+    and 'k-grid') live in ONE untitled group -- no per-toggle subheadings.  Also that the
+    'unit cell' toggle actually flips (draws the cell wireframe from the fed lattice)."""
+    page.goto(f"{flask_server}/molview-demo")
+    page.wait_for_selector("#molview-demo-host .mol-viewer-menu-view", timeout=20000)
+    # Load the trajectory so the injected isolate/k-grid toggles are present in the group.
+    page.click("#demo-trajectory")
+
+    view = "#molview-demo-host .mol-viewer-menu-view .mol-viewer-menu-body"
+    # 1. Reset is the first item of the menu body.
+    first_action = page.evaluate(
+        "() => { const b = document.querySelector('" + view + "');"
+        "  return b.firstElementChild.querySelector('[data-action]').getAttribute('data-action'); }")
+    assert first_action == "reset"
+
+    # 2. One untitled toggle group carrying all six toggles (no heading inside it).
+    grp = "#molview-demo-host .mol-viewer-menu-view .mol-viewer-menu-toggles"
+    page.wait_for_function(
+        "() => { const g = document.querySelector('" + grp + "');"
+        "  return g && g.querySelectorAll('.viewer-toggle').length === 2; }",
+        timeout=5000)
+    actions = page.eval_on_selector_all(
+        grp + " .mol-viewer-toggle", "els => els.map(e => e.getAttribute('data-action'))")
+    assert actions == ["axes", "labels", "overlay", "cell"]
+    assert page.locator(grp + " .mol-viewer-menu-heading").count() == 0
+
+    # 3. The 'unit cell' toggle flips its pressed state on click (open the menu first: the
+    #    View <details> dropdown is collapsed, so the toggle isn't clickable until expanded).
+    cell = grp + ' .mol-viewer-toggle[data-action="cell"]'
+    assert page.locator(cell).get_attribute("aria-pressed") == "false"
+    page.locator("#molview-demo-host .mol-viewer-menu-view > summary").click()
+    page.locator(cell).click()
+    assert page.locator(cell).get_attribute("aria-pressed") == "true"

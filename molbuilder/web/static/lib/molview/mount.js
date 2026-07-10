@@ -55,16 +55,13 @@
         const wrap       = _el("div", "viewer-wrap");
         const viewerHost = _el("div", "viewer");
         wrap.appendChild(viewerHost);
-        const controls   = _el("div", "viewer-controls");
+        // The viewer chrome -- isolate/k-grid toggles + the trajectory bar -- is PLACED INTO the
+        // embed's knob bar (the View/Export row) after the viewer embeds (see onReady), so it
+        // lines up on ONE row with View/Export, within the viewer width.  Created here, parented
+        // there.  Gated: shown ONLY for a trajectory (frameCount > 1).
         const vcHost     = _el("span", "viewer-toggles");
-        controls.appendChild(vcHost);
         const fcHost     = _el("div", "molview-frame-controls");   // trajectory bar (§14.5)
         fcHost.hidden = true;   // shown by mountFrameControls only when a trajectory is loaded
-        controls.appendChild(fcHost);
-        // Controls ABOVE the viewer so molview's chrome (isolate/k-grid toggles + the trajectory
-        // bar) sits directly beside the embed's View/Export knob bar (which renders at the top of
-        // the viewer) -- all the controls grouped in one strip at the same (viewer) width.
-        viewerCol.appendChild(controls);
         viewerCol.appendChild(wrap);
         const foldBtn    = _el("button", "molview-fold-btn");
         foldBtn.setAttribute("type", "button");
@@ -110,6 +107,9 @@
         // Overlay controller (§14.5.1): MolView DRAWS overlays the consumer hands it (arrows /
         // labels, via the handle's setArrows/setLabels) -- it never generates them.
         let _overlays = null;
+        // Frame playback state -- declared HERE (before mountFrameControls, which reads _loop via
+        // its getLoop callback during setup) to avoid a temporal-dead-zone on _loop.
+        let _playTimer = null, _loop = true;   // _loop: playback + single-step wrap at the ends
 
         // Resolve the fused card + its sub-hosts.  PRE-BUILT card (Modify's template) -> wire
         // the existing panel/toggles/fold; that host owns its own viewer + render.  EMPTY
@@ -158,6 +158,19 @@
                                 try { _overlays && _overlays.dispose(); } catch (_) {}
                             });
                         }
+                        // isolate/k-grid toggles join the embed's untitled toggle group in the
+                        // View menu (one group with Show axes/labels/overlay/unit cell).  The
+                        // trajectory bar goes on the knob-bar ROW next to View/Export (one line),
+                        // shown only for a trajectory (frame-controls gates itself on frameCount).
+                        const knobs = built.viewerHost.querySelector(".mol-viewer-knobs");
+                        const toggleGroup = built.viewerHost.querySelector(
+                            ".mol-viewer-menu-view .mol-viewer-menu-toggles");
+                        const viewMenuBody = built.viewerHost.querySelector(
+                            ".mol-viewer-menu-view .mol-viewer-menu-body");
+                        if (toggleGroup)       { toggleGroup.appendChild(vcHost); }
+                        else if (viewMenuBody) { viewMenuBody.appendChild(vcHost); }
+                        else if (knobs)        { knobs.appendChild(vcHost); }   // fallback: no View menu
+                        if (knobs) { knobs.appendChild(fcHost); }
                     },
                 });
             }
@@ -189,6 +202,8 @@
                 play:      _play,
                 pause:     _stopPlay,
                 isPlaying: function () { return _playTimer != null; },
+                getLoop:   function () { return _loop; },
+                setLoop:   function (on) { _loop = !!on; },
             }, store);
             cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
         }
@@ -211,7 +226,6 @@
         // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
         // Frame playback + overlay-toggle helpers -- MolView owns them; both the returned
         // handle AND the frame-controls bar (mountFrameControls) drive them.
-        let _playTimer = null;
         function _stopPlay() {
             if (_playTimer != null) { root.clearInterval(_playTimer); _playTimer = null; }
         }
@@ -223,7 +237,10 @@
             _playTimer = root.setInterval(function () {
                 const n = data.frameCount();
                 if (n <= 1) { _stopPlay(); return; }
-                data.setFrame((data.currentFrame() + 1) % n);
+                const next = data.currentFrame() + 1;
+                if (next < n) { data.setFrame(next); }
+                else if (_loop) { data.setFrame(0); }            // loop: wrap to the start
+                else { data.setFrame(n - 1); _stopPlay(); }      // no loop: stop at the last frame
             }, 1000 / fps);
         }
         const _offs = [];   // onChange subscriptions, torn down on dispose

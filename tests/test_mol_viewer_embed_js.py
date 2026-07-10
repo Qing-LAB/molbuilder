@@ -88,6 +88,7 @@ class TestNormaliseOpts:
             "labels", "arrows", "pick", "lattice",
             "overlays", "knobs",
             "projection",   # added 2026-06-13 — perspective / orthographic
+            "overlayOn",    # overlay redesign — the consumer-handed-arrows on/off flag
         ])
 
     def test_xyz_string_passes_through(self):

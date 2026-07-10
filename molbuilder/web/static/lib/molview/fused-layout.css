@@ -207,6 +207,8 @@
 /* Viewer view-controls toggles (view-controls.js) -- the "Show selected only" /
  * "Show k-grid" checkboxes that live in EVERY molview's viewer control bar. */
 .viewer-toggles { display: inline-flex; gap: 0.9rem; align-items: center; flex-wrap: wrap; }
+/* [hidden] must win over the display above (the chrome is gated to trajectories, mount.js). */
+.viewer-toggles[hidden] { display: none; }
 .viewer-toggle {
     display: inline-flex;
     align-items: center;
@@ -224,17 +226,15 @@
 .molview-frame-controls:not([hidden]) {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    margin-top: 0.4rem;
-    font: 12px/1.2 system-ui, sans-serif;
+    gap: 0.3rem;
+    flex-wrap: nowrap;            /* the trajectory bar stays on the ONE knob-bar row */
+    flex: 1 1 auto; min-width: 0;
+    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
     color: var(--text-secondary, #a8aebb);
 }
-/* The Forces/Indices toggles reuse .viewer-toggle (the isolate/k-grid toggle class) -- no
- * bespoke .mvf-toggle.  Only the genuinely-new controls (play button, slider, counter) get
- * their own classes below. */
-.mvf-play {
-    padding: 0.1rem 0.5rem;
+/* Playback buttons -- ‹ prev, ▶/⏸ play-loop, › next (frame-controls.js). */
+.mvf-play, .mvf-step {
+    padding: 0.1rem 0.45rem;
     font-size: var(--text-2xs, 0.6875rem); line-height: 1.4;
     cursor: pointer;
     background: var(--bg-input, #262b33);
@@ -242,10 +242,33 @@
     border: 1px solid var(--border-soft, #2c313a);
     border-radius: 4px;
 }
-.mvf-play:hover { background: var(--bg-input-focus, #2c323b); }
+.mvf-play:hover, .mvf-step:hover { background: var(--bg-input-focus, #2c323b); }
 .mvf-slider {
-    flex: 1 1 8rem; min-width: 6rem;
+    flex: 1 1 4rem; min-width: 3rem;
     accent-color: var(--accent, #5fb6ff);
     cursor: pointer;
 }
-.mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+
+/* Transport buttons ‹ ▶ › -- a tight segmented group (shared/collapsed borders). */
+.mvf-transport { display: inline-flex; }
+.mvf-transport > button { border-radius: 0; margin-left: -1px; }
+.mvf-transport > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.mvf-transport > button:last-child  { border-radius: 0 4px 4px 0; }
+.mvf-transport > button:hover { position: relative; z-index: 1; }   /* keep the hovered border on top */
+
+/* "loop" checkbox -- small; play + ‹/› wrap at the ends when checked. */
+.mvf-loop {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: var(--text-2xs, 0.6875rem); cursor: pointer; user-select: none;
+}
+.mvf-loop input { margin: 0; cursor: pointer; }
+
+/* isolate / k-grid toggles are injected INTO the embed's View menu (mount.js) -- stack them
+ * as menu rows so they group with Labels / Overlay. */
+.mol-viewer-menu-view .viewer-toggles {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+}

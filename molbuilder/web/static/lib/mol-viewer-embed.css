@@ -136,6 +136,8 @@
 .mol-viewer-knobs {
     display:        flex;
     align-items:    center;
+    flex-wrap:      nowrap;   /* ONE line: View, Export, and the trajectory bar (which flexes to
+                                 fill).  isolate/k-grid live inside the View menu, not on the row. */
     gap:            var(--space-sm, 0.5rem);
     padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
     background:     var(--bg-card, #1d2128);
@@ -205,11 +207,12 @@
     z-index:        1000;
     top:            -9999px;
     left:           -9999px;
-    min-width:      14rem;
-    max-width:      min(22rem, calc(100vw - 2rem));
+    min-width:      11.5rem;
+    max-width:      min(20rem, calc(100vw - 2rem));
     max-height:     min(28rem, calc(100vh - 8rem));
     overflow:       auto;
-    padding:        0.5rem;
+    padding:        0.3rem 0.4rem;
+    font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
     background:     var(--bg-card-hover, #232831);
     color:          var(--text-primary, #e6e9ee);
     border:         1px solid var(--border-strong, rgba(255,255,255,0.12));
@@ -219,17 +222,24 @@
 
 /* Sections inside a menu body ------------------------------- */
 .mol-viewer-menu-section {
-    padding:        0.4rem 0.25rem;
+    padding:        0.28rem 0.15rem;
     border-top:     1px solid var(--border-soft, rgba(255,255,255,0.06));
 }
 .mol-viewer-menu-section:first-child {
     border-top:     none;
 }
+/* Untitled display-toggle group: the axes / labels / overlay / unit-cell buttons
+   (plus MolView's injected isolate + k-grid checkboxes) stacked with a small gap. */
+.mol-viewer-menu-toggles {
+    display:        flex;
+    flex-direction: column;
+    gap:            0.28rem;
+}
 .mol-viewer-menu-heading {
-    margin:         0 0 0.35rem 0;
-    font-size:      var(--text-xs, 0.75rem);
+    margin:         0 0 0.2rem 0;
+    font-size:      var(--text-2xs, 0.6875rem);
     font-weight:    600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     color:          var(--text-muted, #97a0ad);
 }

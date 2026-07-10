@@ -180,6 +180,7 @@
             cell:       _normaliseCell(opts.cell),
             labels:     _normaliseLabels(opts.labels),
             arrows:     Array.isArray(opts.arrows) ? opts.arrows.slice() : [],
+            overlayOn:  opts.overlayOn === true,   // force-arrow overlay visibility (View menu toggle)
             pick:       _normalisePick(opts.pick),
             lattice:    _normaliseLattice(opts.lattice),
             overlays:   _normaliseOverlays(opts.overlays),
@@ -514,8 +515,13 @@
             export:     opts.export     !== false,
             style:      opts.style      !== false,
             labels:     opts.labels     !== false,
+            overlay:    opts.overlay    !== false,
             background: opts.background !== false,
             axes:       opts.axes       !== false,
+            // "Show unit cell" toggle -- draws the cell wireframe from the
+            // lattice the consumer feeds via setStructure({lattice}) (the
+            // resolved cell: explicit, or default bbox).  data-action="cell".
+            cell:       opts.cell       !== false,
             // Projection knob added 2026-06-13.  Defaults to true so
             // every embed gains the perspective/orthographic toggle in
             // the View menu without each mount site opting in.
@@ -648,6 +654,38 @@
         const body = document.createElement("div");
         body.className = "mol-viewer-menu-body";
 
+        // Reset -- the first item.
+        if (knobs.reset) {
+            const rs = _menuSection("reset", null);
+            const rb = document.createElement("button");
+            rb.type = "button";
+            rb.className = "mol-viewer-action";
+            rb.setAttribute("data-action", "reset");
+            rb.textContent = "Reset view";
+            rs.appendChild(rb);
+            body.appendChild(rs);
+        }
+
+        // Display toggles -- ONE untitled group.  axes / labels / overlay / unit cell here;
+        // MolView injects "selection only" + "k-grid" into the SAME group (mount.js).
+        const toggles = _menuSection("toggles", null);
+        toggles.classList.add("mol-viewer-menu-toggles");
+        function _addToggle(action, label, on) {
+            if (!on) return;
+            const tb = document.createElement("button");
+            tb.type = "button";
+            tb.className = "mol-viewer-toggle";
+            tb.setAttribute("data-action", action);
+            tb.setAttribute("aria-pressed", "false");
+            tb.textContent = label;
+            toggles.appendChild(tb);
+        }
+        _addToggle("axes",    "Show axes",      knobs.axes);
+        _addToggle("labels",  "Show labels",    knobs.labels);
+        _addToggle("overlay", "Show overlay",   knobs.overlay);
+        _addToggle("cell",    "Show unit cell", knobs.cell);
+        body.appendChild(toggles);
+
         if (knobs.style) {
             const sect = _menuSection("style", "Style");
             const row = document.createElement("div");
@@ -698,18 +736,6 @@
             body.appendChild(sect);
         }
 
-        if (knobs.labels) {
-            const sect = _menuSection("labels", "Labels");
-            const b = document.createElement("button");
-            b.type = "button";
-            b.className = "mol-viewer-toggle";
-            b.setAttribute("data-action", "labels");
-            b.setAttribute("aria-pressed", "false");
-            b.textContent = "Show labels";
-            sect.appendChild(b);
-            body.appendChild(sect);
-        }
-
         if (knobs.background) {
             const sect = _menuSection("background", "Background");
             const row = document.createElement("div");
@@ -749,18 +775,6 @@
             body.appendChild(sect);
         }
 
-        if (knobs.axes) {
-            const sect = _menuSection("axes", "Axes");
-            const b = document.createElement("button");
-            b.type = "button";
-            b.className = "mol-viewer-toggle";
-            b.setAttribute("data-action", "axes");
-            b.setAttribute("aria-pressed", "false");
-            b.textContent = "Show axes";
-            sect.appendChild(b);
-            body.appendChild(sect);
-        }
-
         if (knobs.projection) {
             // Camera-projection selector (2026-06-13).  3Dmol supports
             // perspective (the default) and orthographic.  The latter
@@ -789,17 +803,6 @@
             // any setProjection() call.
             sel.value = "perspective";
             sect.appendChild(sel);
-            body.appendChild(sect);
-        }
-
-        if (knobs.reset) {
-            const sect = _menuSection("reset", null);
-            const b = document.createElement("button");
-            b.type = "button";
-            b.className = "mol-viewer-action";
-            b.setAttribute("data-action", "reset");
-            b.textContent = "Reset view";
-            sect.appendChild(b);
             body.appendChild(sect);
         }
 
@@ -1846,6 +1849,22 @@
             });
         }
 
+        // Overlay toggle -- show/hide the (consumer-supplied) force-arrow overlay.  MolView draws
+        // what the consumer handed via setArrows; this just gates its visibility (§14.5.1).
+        const overlayBtn = bar.querySelector(
+            '.mol-viewer-toggle[data-action="overlay"]');
+        if (overlayBtn) {
+            overlayBtn.addEventListener("click", () => {
+                state.current.overlayOn = !state.current.overlayOn;
+                overlayBtn.setAttribute("aria-pressed",
+                    state.current.overlayOn ? "true" : "false");
+                _redrawArrows(state);
+                if (state.viewer && typeof state.viewer.render === "function") {
+                    state.viewer.render();
+                }
+            });
+        }
+
         // Background: preset swatches + styled custom-colour chip.
         for (const btn of bar.querySelectorAll(".mol-viewer-bg-swatch")) {
             btn.addEventListener("click", () => {
@@ -1866,6 +1885,19 @@
         if (axesBtn) {
             axesBtn.addEventListener("click", () => {
                 handle.setAxes(state.current.axes ? false : true);
+            });
+        }
+
+        // Unit cell: toggle the cell wireframe.  Draws from the lattice the
+        // consumer already fed via setStructure({lattice}) (resolved cell:
+        // explicit or default bbox).  With no lattice, _redrawCell is a no-op.
+        const cellBtn = bar.querySelector(
+            '.mol-viewer-toggle[data-action="cell"]');
+        if (cellBtn) {
+            cellBtn.addEventListener("click", () => {
+                const on = !state.current.cell;
+                handle.setCell(on ? true : false);
+                cellBtn.setAttribute("aria-pressed", String(on));
             });
         }
 
@@ -2566,7 +2598,7 @@
         }
         state.arrowShapes = [];
         state.arrowLabels = [];
-        if (!state.current.arrows.length) return;
+        if (!state.current.overlayOn || !state.current.arrows.length) return;
         const out = _drawArrows(state.viewer, state.current.arrows);
         state.arrowShapes = out.shapes;
         state.arrowLabels = out.labels;
