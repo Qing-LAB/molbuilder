@@ -110,13 +110,14 @@ inspector drives modes through this API only.
 A **mode** is `{ index, displacements, frequency? }`:
 
 - `index` — the mode's identity (the spectra results' `index_1based`).
-- `displacements` — **per-atom** `[dx,dy,dz][]`. Two accepted forms:
-  - **global-length** (`geometry.elements.length` rows): used directly.
-  - **free-atom-length** (one row per free atom): VibrationView **scatters** it to global
-    order using `freeAtomIdx` — row `k` → global atom `freeAtomIdx[k]`; every frozen atom
-    gets `[0,0,0]`. This is the spectra invariant (eigenvectors are free-atom-indexed;
-    `docs/tabs/spectra/spec.md` §5.1) — VibrationView owns the scatter so the inspector hands
+- `displacements` — `[dx,dy,dz][]`:
+  - **with a `freeAtomIdx` map** (the spectra case): the rows are **free-atom-indexed** and
+    the map is **authoritative** — row `k` scatters to global atom `freeAtomIdx[k]`, and every
+    frozen / un-mapped atom gets `[0,0,0]` (correct even if the free set is a permutation, not
+    just a length shortcut). This is the spectra invariant (eigenvectors are free-atom-indexed;
+    `docs/tabs/spectra/spec.md` §5.1) — VibrationView owns the scatter, so the inspector hands
     over the raw `eigenvector_display` and nothing else.
+  - **without a map**: the rows are already in **global** order (one per atom), used directly.
 
 VibrationView **does not compute modes** — the eigenvectors, frequencies, and free/frozen
 partition come from the spectra backend via `molbuilder/parse/`; the inspector holds the

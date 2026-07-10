@@ -24,20 +24,23 @@
         var out = [];
         for (var i = 0; i < n; i++) out.push([0, 0, 0]);
         if (!Array.isArray(displacements)) return out;
-        // Already GLOBAL-length -> per-atom rows in global order, use directly.
-        if (displacements.length === n) {
-            for (var g = 0; g < n; g++) {
-                if (Array.isArray(displacements[g])) out[g] = _copy3(displacements[g]);
-            }
-            return out;
-        }
-        // FREE-length -> scatter free-row k to global atom freeAtomIdx[k]; the rest stay [0,0,0].
+        // A free-atom MAP is authoritative when present: scatter free-row k to global atom
+        // freeAtomIdx[k] (the rest -- frozen / un-mapped -- stay [0,0,0]).  This matches the
+        // original spectra scatter and stays correct even if the free set is a non-identity
+        // permutation (a length==natoms shortcut would mis-order it).
         if (Array.isArray(freeAtomIdx)) {
             for (var k = 0; k < freeAtomIdx.length && k < displacements.length; k++) {
                 var gi = Math.floor(Number(freeAtomIdx[k]));
                 if (gi >= 0 && gi < n && Array.isArray(displacements[k])) {
                     out[gi] = _copy3(displacements[k]);
                 }
+            }
+            return out;
+        }
+        // No map -> the rows are already in GLOBAL order (one per atom); use them directly.
+        if (displacements.length === n) {
+            for (var g = 0; g < n; g++) {
+                if (Array.isArray(displacements[g])) out[g] = _copy3(displacements[g]);
             }
         }
         return out;

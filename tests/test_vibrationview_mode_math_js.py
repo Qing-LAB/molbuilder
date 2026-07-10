@@ -39,12 +39,24 @@ def test_free_length_eigenvector_scatters_to_global_frozen_zero():
 
 
 def test_global_length_vector_passes_through():
-    # displacements.length == natoms -> already global order, used directly.
+    # No free map + one row per atom -> already global order, used directly.
     out = _run_node("""
         const s = global.molbuilder.vibrationview.scatterDisplacements;
-        console.log(JSON.stringify(s([[1,1,1],[2,2,2],[3,3,3]], [0,1,2], 3)));
+        console.log(JSON.stringify(s([[1,1,1],[2,2,2],[3,3,3]], null, 3)));
     """)
     assert out == [[1, 1, 1], [2, 2, 2], [3, 3, 3]]
+
+
+def test_free_map_is_authoritative_even_when_all_atoms_free():
+    # All 3 atoms free but the map is a PERMUTATION [2,0,1]: free row 0 -> global 2, row 1 ->
+    # global 0, row 2 -> global 1.  The map must win -- a naive "length==natoms -> use as
+    # global" would leave the rows mis-ordered (the original spectra scatter always followed
+    # the map).
+    out = _run_node("""
+        const s = global.molbuilder.vibrationview.scatterDisplacements;
+        console.log(JSON.stringify(s([[1,0,0],[0,1,0],[0,0,1]], [2,0,1], 3)));
+    """)
+    assert out == [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
 
 
 def test_out_of_range_free_index_is_dropped():
