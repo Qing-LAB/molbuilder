@@ -264,11 +264,46 @@
 }
 .mvf-loop input { margin: 0; cursor: pointer; }
 
-/* isolate / k-grid toggles are injected INTO the embed's View menu (mount.js) -- stack them
- * as menu rows so they group with Labels / Overlay. */
-.mol-viewer-menu-view .viewer-toggles {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+/* The "Show ..." display-toggle group in the View menu.  The embed's own toggles
+ * (axes / labels / overlay / unit cell) AND MolView's injected isolate + k-grid share
+ * ONE compact chip style and WRAP so they share rows.  (Reset stays a plain button, above.) */
+.mol-viewer-menu-view .mol-viewer-menu-toggles {
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 0.3rem;
+}
+/* Injected wrapper: let its two labels join the wrap directly (no nested column box). */
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggles { display: contents; }
+/* One chip look for BOTH toggle kinds -- compact, auto-width, wrapping. */
+.mol-viewer-menu-view .mol-viewer-menu-toggles .mol-viewer-toggle,
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
+    color: var(--text-primary, #e6e9ee);
+    background: var(--bg-input, #262b33);
+    border: 1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+    user-select: none;
+}
+/* Hollow ○ (off) / filled ● (on) indicator -- the embed button already has one via its own
+ * ::before; give the injected checkbox label a matching one and hide the native box. */
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle input { display: none; }
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle::before {
+    content: "\25CB";            /* ○ */
+    margin-right: 0.5em;
+    color: var(--text-muted, #97a0ad);
+}
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle:has(input:checked)::before {
+    content: "\25CF";            /* ● */
+    color: var(--accent, #5fb6ff);
+}
+/* "On" chip highlight -- button reflects aria-pressed, label reflects :checked. */
+.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle:has(input:checked) {
+    border-color: var(--accent, #5fb6ff);
+    background: var(--bg-input-focus, #2c323b);
 }
