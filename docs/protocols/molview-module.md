@@ -509,6 +509,65 @@ axis_kind-gated k-grid rule — k-grid > 1 only on a `periodic` axis) is defined
 **[`structure-periodicity.md`](structure-periodicity.md)**; molview reads the resolved
 result from storage.
 
+### 14.5 The frame axis — step 0 of the render (trajectories)
+
+MolView renders a **trajectory** — a coordinate time series
+([`workspace-contract.md`](workspace-contract.md) §1.5) — by adding **ONE step at the FRONT**
+of the pipeline: **frame-select**. Everything downstream is unchanged.
+
+```
+   frames[currentFrame]   ← STEP 0: pick the frame's coords (default 0; setFrame(i) picks another)
+        │
+        ▼   isolate         → selected-only
+        ▼   k-grid tiling
+        ▼
+   final coords   →   3dmol draws it
+```
+
+The atoms' IDENTITY (element, labels, frozen, index) is frame-independent, so **selection,
+isolate, k-grid, and measurement all keep working across frames for free** — they key off the
+atom index (stable); only the coordinates they read come from the selected frame.
+
+**Navigation:** `setFrame(i)` selects the frame; `frameCount` / `getFrame(i)` read; `play()` /
+`pause()` step through. The host renders the slider/buttons and wires them (exactly like
+VibrationView's controls). Single door: the host asks MolView; MolView reads the frames from
+the workspace.
+
+#### 14.5.1 Frame-scoped overlays — index labels follow, forces ride along
+
+Overlays split into two kinds (both via the embed's existing `setOverlays` / `addLabel` /
+`addArrow`):
+
+- **Atom-index-keyed** — selection / region / frozen halos, and **atom-index labels**. The
+  data is frame-independent (the label "3" is always atom 3); only the *position* follows the
+  frame. Declared once; MolView re-places them at the selected frame's coordinates.
+- **Per-frame-value** — **force vectors**. The value differs each frame, so it rides *with* the
+  frame (`addFrame(coords, {forces})`, workspace §1.5.2). A `showForces` toggle (view state,
+  like isolate/k-grid) draws them for the selected frame: an arrow from each atom along its
+  force.
+
+The inspector supplies the per-frame data + flips the toggles; MolView owns every 3dmol call.
+
+#### 14.5.2 Rendering — native setFrame + overlay redraw (the fast path)
+
+Scrubbing/playing is the hot path, so MolView uses 3dmol's **native frame buffer**:
+
+- **Index changed, pipeline shape unchanged** (isolate / k-grid / selection stable): every
+  frame's pipeline output is already loaded into 3dmol as native frames, so MolView calls
+  **`viewer.setFrame(i)`** — a coordinate-buffer swap, **no geometry rebuild**. The overlays
+  (labels, force arrows) are separate shapes, so MolView redraws just those for the frame —
+  cheap (a handful of shapes) versus a full rebuild.
+- **Pipeline SHAPE changed** (isolate/k-grid toggle, dims, selection-while-isolating, or a
+  new/streamed frame set): MolView recomputes the per-frame coordinate lists under the new view
+  and reloads the native-frame set (`addModelsAsFrames`). This is the two-tier extension of the
+  §14.2 signature guard: **index moved → `setFrame`; shape changed → reload.**
+
+**Caveats:** native frames assume constant **topology** (correct for MD; bond-breaking is out
+of scope) and a fixed drawn atom set across the loaded frames (guaranteed by the same-atoms
+invariant, workspace §1.5). Under k-grid the pre-tiled frame set is `frames × atoms × tiling`
+— gate it on a size cap (extend the existing k-grid `natoms · nx·ny·nz ≤ 20000` clamp by frame
+count) and fall back to per-frame recompute when too large.
+
 ## §15 Measurement — `measurements.compute` + the overlay
 
 - **`selection.measurements.compute(selection, atomsMeta, positions, pickOrder)`**

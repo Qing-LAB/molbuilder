@@ -277,6 +277,87 @@ ADD an accessor — never reach past it.**
 
 ---
 
+### 1.5 Frames — the coordinate time axis
+
+A structure's **coordinates** may be a **time series** — a trajectory (relaxation steps, an MD
+run). The atoms are **the same across every frame**: same count, same elements, same order,
+same annotations. Only the coordinates (and optional per-frame forces) change. A single static
+structure is just the one-frame case (frame 0).
+
+### 1.5.1 In-memory shape
+
+The uniform structure (§1.2.1) gains a frame axis. **Frame-independent** data is stored
+**once**; only coordinates + optional forces are per-frame:
+
+```
+// frame-INDEPENDENT (stored once — the SAME-ATOMS invariant):
+atoms / columns   // identity + annotations: element, labels, isFrozen, ... (§1.2.1)
+cell              // lattice (single; a per-frame cell for NPT is a future extension)
+
+// per-frame:
+frames:       Coords[]      // frames[t] = [[x,y,z]...]; length == atom count; >= 1 (frame 0 = the structure)
+forces?:      Vec3[][]      // forces[t] = [[fx,fy,fz]...] (optional; drawn as arrows — molview-module.md)
+currentFrame: number        // the selected frame; default 0
+```
+
+The **same-atoms invariant** is the linchpin: every frame has the same atom count + identity,
+and `forces[t]` (when present) matches. It is what lets selection / measurement / k-grid
+compose across frames — they key off the atom *index*, which never changes — and what makes
+the fast native-frame render safe (molview-module.md §14).
+
+**Per-frame SCALARS are NOT workspace data.** Energy, max-force, and step number belong to the
+consuming inspector (the trajectory's plot), not the structure. The workspace holds only
+coordinates + optional force *vectors*.
+
+The §1.2.1 accessors return the **current frame**: `ws.getStructure()` gives frame
+`currentFrame`. Frame-aware reads (`getFrame(i)`, `frameCount`) join §2; the frame mutators
+join §3.
+
+### 1.5.2 The frame API — the caller decides what happens to the in-memory data
+
+The consumer (the Results tab, a live-job stream, …) chooses the operation; the workspace
+**validates + applies + persists** it:
+
+- **`loadFromText(text)`** — replace everything from a file: a single-frame `.xyz` → one
+  frame; a **multi-frame** `.xyz` → all frames.
+- **`reloadFrames(frames, { forces? })`** — **HARD reload**: discard the current frames and
+  recreate the whole set. Use when new data invalidates the old (a job re-ran; forces changed).
+- **`addFrame(coords, { forces? })` / `addFrames([...])`** — **append** frame(s) to the
+  existing set. Use when a running job streams new steps.
+- **`setFrame(i)` / `getFrame(i)` / `frameCount`** — select / read a frame (molview's
+  `setFrame` navigation reads through here).
+
+**Validation — hard error on violation.** Every add/reload enforces the same-atoms invariant:
+`coords.length` must equal the atom count and the element order must match the identity;
+`forces` (if given) must match too. A mismatched frame is **rejected, not coerced** — the same
+class of guard as the atom-count invariant (§1.2.1 / §9).
+
+### 1.5.3 Persistence — multi-frame extxyz + the molstruct sidecar (no new format)
+
+On disk, a multi-frame structure **extends the existing single-frame pattern**
+(`name.xyz` + `name.molstruct.json`) — no new format is invented:
+
+- **`name.xyz` = multi-frame extended-XYZ (extxyz).** One XYZ block per frame; the comment line
+  carries `Lattice="…"`, `energy=…`, and a `Properties=species:S:1:pos:R:3:forces:R:3` spec so
+  **forces ride as extra per-atom columns**. Standard + tool-interoperable (ASE / OVITO / VMD),
+  and the trajectory inspector already emits multi-frame xyz.
+- **`name.molstruct.json` = the single annotation set + a FRAME MANIFEST.** The atom
+  annotations (labels, frozen, channels — [`atom-annotations.md`](atom-annotations.md)) are
+  stored **once** (identical every frame — the invariant). The sidecar **also records frame
+  info** — `n_frames`, `n_atoms`, and the per-frame step list — so it can be **cross-checked
+  against the `.xyz`**: if the sidecar says N frames × M atoms and the `.xyz` disagrees, the
+  pair is inconsistent and the load **errors** (§4.0: memory is the truth; a stale/mismatched
+  pair is refused, not guessed).
+
+**In-memory ↔ disk consistency is the workspace's job.** Every frame op (load / reload / add)
+keeps the two in sync: the workspace applies the in-memory change, persists both files (coords
+→ `.xyz`, manifest + annotations → `.json`), and the manifest cross-check guards every load.
+The caller decides *what* to do (reload vs add); the workspace guarantees the result is
+**consistent + persistent**. Over the wire (§7) frames arrive as JSON (`frames`, `forces`) —
+the wire format is unchanged; only the on-disk file gains the multi-frame form.
+
+---
+
 ## §2 Read API — `ws.*` getters
 
 Every getter returns a **defensive copy** (or a freshly-built
