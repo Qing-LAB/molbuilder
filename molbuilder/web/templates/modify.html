@@ -808,7 +808,6 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 {# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/_canvas-state-impl.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/_frame-series.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface
    for workspace state.  Loaded AFTER its internal stores
@@ -830,8 +829,6 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
