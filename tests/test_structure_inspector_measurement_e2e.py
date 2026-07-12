@@ -1,16 +1,21 @@
-"""End-to-end pins for the /results Structure inspector's molview module
-(atom-annotations.md § 6.3 / § 6.4).
+"""End-to-end pins for the /results Structure inspector, now mounted as the
+full MolView module READ-ONLY (molview-module.md § 18; the first Results ->
+MolView conversion).
 
 Covers the shipped module surfaces (the old triple-pick measurement CHIP was
 retired; this file was renamed off it):
   * the measurement OVERLAY — selection-driven xyz / distance / angle (§ 6.4);
-  * viewer clicks feeding the ephemeral store (decision A);
-  * B0 — an extended-XYZ ``Lattice=`` line reaching the viewer (getLattice);
+  * viewer clicks feeding the store (decision A);
+  * B0 — a sidecar ``cell`` reaching the viewer (getLattice);
   * B1 — enabling k-grid tiles the supercell (atom count 2 -> 4 -> 2).
 
-Drives the ephemeral store via the ``__molbuilder_test_store`` hook on the viewer
-slot (selection + setKgrid).  Function-scoped flask_server so each test can
-register its own ``tmp_path`` as a Capabilities picker root — module-scoped
+Post-conversion the inspector hands ``molview.mount`` a THROWAWAY workspace and
+opens the molecule through ``molview.data.openMolecule``; there is no per-slot
+ephemeral store any more.  So the driver reads/writes the GLOBAL data singleton
+``window.molbuilder.molview.data`` (``.selection`` for the selection/k-grid, the
+handle exposed by molview.mount at ``.structure-viewer-slot .viewer``'s
+``__molview_test_handle`` for viewer reads).  Function-scoped flask_server so each
+test can register its own ``tmp_path`` as a Capabilities picker root — module-scoped
 servers can't see test-time monkeypatches.
 """
 from __future__ import annotations
@@ -73,10 +78,11 @@ def _open_results(page, base_url):
 
 
 def _mount_structure(page, file_path):
-    """Mount the structure inspector via the registry API + wait
-    for the embed handle to land on the slot's test hook.  The
-    test hook (``viewerSlot.__molbuilder_test_handle``) was added
-    in task #307; no production reader."""
+    """Mount the structure inspector via the registry API + wait for the mounted
+    MolView module to (a) expose its viewer handle at ``.structure-viewer-slot
+    .viewer``'s ``__molview_test_handle`` (set by molview.mount; no production
+    reader) and (b) finish ``openMolecule`` so ``molview.data.getStructure()`` is
+    non-null."""
     page.evaluate(
         "(file) => {"
         "  const host = document.getElementById('inspector-host');"
@@ -86,25 +92,27 @@ def _mount_structure(page, file_path):
         "}",
         str(file_path),
     )
-    # Wait for the ephemeral store hook (set in onReady, after the atoms are
-    # adopted + the measurement overlay is mounted).
     page.wait_for_function(
         "() => {"
-        "  const slot = document.querySelector('.structure-viewer-slot');"
-        "  return slot && slot.__molbuilder_test_store;"
+        "  const v = document.querySelector('.structure-viewer-slot .viewer');"
+        "  const d = window.molbuilder && window.molbuilder.molview"
+        "            && window.molbuilder.molview.data;"
+        "  return v && v.__molview_test_handle && d && d.getStructure();"
         "}",
         timeout=10000,
     )
 
 
+# The mounted module's viewer handle (molview.mount exposes it here; the owner
+# never sees it) and the GLOBAL data singleton's selection store.
+_VH = "document.querySelector('.structure-viewer-slot .viewer').__molview_test_handle"
+_SEL = "window.molbuilder.molview.data.selection"
+
+
 def _select(page, indices):
-    """Drive the ephemeral store selection (input order becomes pickOrder), which
-    drives the measurement overlay (§ 6.4) -- decision A: measurement = f(selection)."""
-    page.evaluate(
-        "(indices) => document.querySelector('.structure-viewer-slot')"
-        "  .__molbuilder_test_store.set(indices)",
-        list(indices),
-    )
+    """Drive the module's selection (input order becomes pickOrder), which drives
+    the measurement overlay (§ 6.4) -- decision A: measurement = f(selection)."""
+    page.evaluate(f"(indices) => {_SEL}.set(indices)", list(indices))
 
 
 # The measurement readout is now the module overlay, not a #structure-measurement chip.
@@ -165,90 +173,90 @@ def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
     page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
-def _write_xyz_with_cell_sidecar(tmp_path, cell):
-    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell` (the dataset
-    the host reads periodicity from -- structure-periodicity.md § 8)."""
+def _write_xyz_with_cell_sidecar(tmp_path, cell, kgrid=None):
+    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell` (+ optional
+    `kgrid` dims).  This is the dataset the host reads periodicity from
+    (structure-periodicity.md § 8); post-MolView-conversion the k-grid DIMS come
+    from this periodicity (molview.data.getKgrid()), NOT the selection store."""
     import hashlib
     import json
     xyz = tmp_path / "periodic.xyz"
     xyz.write_text("2\nperiodic\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0\n")
-    (tmp_path / "periodic.molstruct.json").write_text(json.dumps({
+    sidecar = {
         "schema_version": 3, "n_atoms_total": 2,
         "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
         "regions": {}, "frozen_atoms": [], "cell": cell, "selection_rules": {},
-    }))
+    }
+    if kgrid is not None:
+        sidecar["kgrid"] = kgrid
+    (tmp_path / "periodic.molstruct.json").write_text(json.dumps(sidecar))
     return xyz
 
 
 def test_sidecar_cell_reaches_viewer_and_kgrid_tiles(
         page, flask_server, tmp_path, monkeypatch):
     """Phase 1 (structure-periodicity.md): a .xyz whose `.molstruct.json` sidecar
-    carries a `cell` -> the host reads it server-side (/api/selection/atoms), hands
-    it to the viewer -> `getLattice()` returns it (unit-cell box) AND k-grid tiles
-    the supercell.  The viewer never parses; the cell rides the dataset."""
+    carries a `cell` (+ `kgrid`) -> the host reads it server-side
+    (/api/selection/atoms), opens the molecule through molview.data.openMolecule
+    with that periodicity -> `getLattice()` returns the cell (unit-cell box) AND
+    enabling k-grid tiles the supercell by the periodicity's dims.  The viewer
+    never parses; the cell + dims ride the dataset (molview.data), and the store
+    only holds the ENABLE toggle (render.js § 14.0)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    xyz = _write_xyz_with_cell_sidecar(tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
+    xyz = _write_xyz_with_cell_sidecar(
+        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]], kgrid=[2, 1, 1])
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
 
-    # the shared view-controls bar (isolate / k-grid toggles) renders in THIS card too.
+    # the shared view-controls (isolate / k-grid toggles) render in THIS card's View menu.
     assert page.locator(f"{slot} .viewer-toggles .vc-isolate").count() == 1
     assert page.locator(f"{slot} .viewer-toggles .vc-kgrid").count() == 1
 
     # the cell reached the viewer (box can draw)
-    lat = page.evaluate(
-        f"() => document.querySelector('{slot}').__molbuilder_test_handle.getLattice()"
-    )
+    lat = page.evaluate(f"() => {_VH}.getLattice()")
     assert lat is not None, "sidecar cell should reach getLattice()"
+    # the dims reached the data model's periodicity
+    assert page.evaluate("() => window.molbuilder.molview.data.getKgrid()") == [2, 1, 1]
 
-    # k-grid tiles: 2 atoms -> 2x1x1 -> 4 -> disable -> 2
-    _count = (f"() => document.querySelector('{slot}')"
-              "  .__molbuilder_test_handle.getAtomCount()")
+    # k-grid tiles: 2 atoms -> enable (dims 2x1x1 from periodicity) -> 4 -> disable -> 2
+    _count = f"() => {_VH}.getAtomCount()"
     assert page.evaluate(_count) == 2
-    page.evaluate(
-        f"() => {{ const st = document.querySelector('{slot}').__molbuilder_test_store;"
-        "  st.setKgrid({ dims: [2, 1, 1] }); st.setKgrid({ enabled: true }); }"
-    )
+    page.evaluate(f"() => {_SEL}.setKgrid({{ enabled: true }})")
     page.wait_for_function(f"{_count} === 4", timeout=8000)
-    page.evaluate(
-        f"() => document.querySelector('{slot}')"
-        "  .__molbuilder_test_store.setKgrid({ enabled: false })"
-    )
+    page.evaluate(f"() => {_SEL}.setKgrid({{ enabled: false }})")
     page.wait_for_function(f"{_count} === 2", timeout=8000)
 
 
 def test_results_view_controls_bar_drives_store(
         page, flask_server, tmp_path, monkeypatch):
-    """The shared view-controls bar (.vc-isolate / .vc-kgrid, molview.mountViewControls)
-    drives the CARD's OWN store on Results too -- not just Modify.  Clicking the bar's
-    k-grid toggle enables tiling; clicking isolate flips the isolate flag.  (The sidecar
-    test above drives the same store via its API; THIS proves the bar's CLICKS reach it.)"""
+    """The shared view-controls (.vc-isolate / .vc-kgrid, molview.mountViewControls)
+    drive the module's selection store on Results too -- not just Modify.  Post-
+    conversion these toggles live in the viewer's View MENU (a collapsed <details>),
+    so open it before clicking.  Clicking k-grid enables tiling (dims from the
+    dataset periodicity); clicking isolate flips the isolate flag.  (The test above
+    drives the same store via its API; THIS proves the toggle CLICKS reach it.)"""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    xyz = _write_xyz_with_cell_sidecar(tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
+    xyz = _write_xyz_with_cell_sidecar(
+        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]], kgrid=[2, 1, 1])
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
-    _count = (f"() => document.querySelector('{slot}')"
-              "  .__molbuilder_test_handle.getAtomCount()")
+    _count = f"() => {_VH}.getAtomCount()"
     assert page.evaluate(_count) == 2
-    # dims come from the card's own store here; set them, then CLICK the bar to enable.
-    page.evaluate(
-        f"() => document.querySelector('{slot}')"
-        "  .__molbuilder_test_store.setKgrid({ dims: [2, 1, 1] })"
-    )
-    page.locator(f"{slot} .viewer-toggles .vc-kgrid").check()
+    # Open the viewer's View menu so the injected toggles are actionable, then CLICK
+    # the k-grid toggle.  The raw <input> is a CSS-hidden custom switch, so click its
+    # visible <label>.  Dims (2x1x1) come from the dataset periodicity, not the store.
+    page.locator(f"{slot} .mol-viewer-menu-view > summary").click()
+    page.locator(f"{slot} .viewer-toggles .viewer-toggle:has(.vc-kgrid)").click()
     page.wait_for_function(
-        f"() => document.querySelector('{slot}')"
-        "  .__molbuilder_test_store.getState().kgrid.enabled === true")
-    page.wait_for_function(f"{_count} === 4", timeout=8000)   # the bar click tiled 2 -> 4
-    # isolate: select an atom, then CLICK the bar's isolate toggle -> store.isolate flips.
-    page.evaluate(
-        f"() => document.querySelector('{slot}').__molbuilder_test_store.set([0])")
-    page.locator(f"{slot} .viewer-toggles .vc-isolate").check()
+        f"() => {_SEL}.getState().kgrid.enabled === true")
+    page.wait_for_function(f"{_count} === 4", timeout=8000)   # the toggle click tiled 2 -> 4
+    # isolate: select an atom, then CLICK the isolate toggle -> store.isolate flips.
+    page.evaluate(f"() => {_SEL}.set([0])")
+    page.locator(f"{slot} .viewer-toggles .viewer-toggle:has(.vc-isolate)").click()
     page.wait_for_function(
-        f"() => document.querySelector('{slot}')"
-        "  .__molbuilder_test_store.getState().isolate === true")
+        f"() => {_SEL}.getState().isolate === true")
 
 
 def test_viewer_clicks_are_wired_to_the_store(
@@ -261,13 +269,46 @@ def test_viewer_clicks_are_wired_to_the_store(
     xyz.write_text("2\nsmall\nH 0 0 0\nH 1 0 0\n")
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
-    # The adapter attaches asynchronously via mountPanel; wait for single-pick.
+    # The adapter attaches asynchronously via molview.mount; wait for single-pick.
     # Null-safe: getPick() is undefined until the adapter runs setPick.
     page.wait_for_function(
         "() => {"
-        "  const h = document.querySelector('.structure-viewer-slot').__molbuilder_test_handle;"
+        "  const v = document.querySelector('.structure-viewer-slot .viewer');"
+        "  const h = v && v.__molview_test_handle;"
         "  const p = h && h.getPick && h.getPick();"
         "  return p && p.mode === 'single';"
         "}",
         timeout=8000,
     )
+
+
+def test_results_structure_view_uses_real_workspace_persistence(
+        page, flask_server, tmp_path, monkeypatch):
+    """The Results view is a session like any other consumer (molview-module.md §18):
+    it uses the REAL workspace and its session state persists, so a reload restores what
+    you were viewing.  "Read-only" means no EDIT controls, NOT no persistence.  Pin: the
+    real persisting workspace IS loaded, and opening a molecule writes the session snapshot."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "ro.xyz"
+    xyz.write_text("2\nro\nH 0 0 0\nH 1 0 0\n")
+    _open_results(page, flask_server)
+    # The REAL persistence dispatcher IS loaded (it defines workspace.persist) -- the
+    # Results tab persists its session like every other consumer; no throwaway hack.
+    assert page.evaluate(
+        "() => typeof (window.molbuilder.workspace"
+        "  && window.molbuilder.workspace.persist) === 'function'") is True
+    _mount_structure(page, str(xyz))
+    # Opening the molecule anchored a session snapshot (persistence works like any tab),
+    # so a reload would restore this Results view.  The mirror is NAMESPACED by owner
+    # (molview-module.md §18.4): the structure inspector mounts as ``results:structure``,
+    # so its snapshot lands under ``<base>::results:structure`` -- ISOLATED from the base
+    # key Modify (and any other consumer) writes.  A base-key snapshot must NOT appear.
+    base = page.evaluate(
+        "() => (window.molbuilder.constants && window.molbuilder.constants.SS_WORKSPACE)"
+        "  || 'molbuilder.workspace.v1'")
+    ns_key = base + "::results:structure"
+    page.wait_for_function(
+        f"() => window.sessionStorage.getItem({ns_key!r}) !== null", timeout=5000)
+    assert page.evaluate(f"() => window.sessionStorage.getItem({ns_key!r})") is not None
+    # Isolation: this Results session did NOT leak into the shared base key.
+    assert page.evaluate(f"() => window.sessionStorage.getItem({base!r})") is None

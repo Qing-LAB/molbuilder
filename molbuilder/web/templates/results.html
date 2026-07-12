@@ -189,22 +189,37 @@
 {# Shared xyz / distance / angle math — read by trajectory + structure
    inspectors below (and by /molbuilder; same pure module). #}
 <script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
-{# Phase 5 (fused module): selection modules so the structure inspector can
-   mount a READONLY selection panel driven by an ISOLATED ephemeral store
-   (selection.createEphemeralStore()).  The workspace dispatcher (the singleton
-   store + Molbuilder glue) is intentionally NOT loaded here -- inspectors own
-   their own selection and never touch a workspace singleton. #}
+{# The FULL MolView module (molview-module.md §18) -- the structure inspector mounts it
+   READ-ONLY via molview.mount's empty-host build path (same script set + dependency order
+   as the /molview-demo template, molview/demo.js), including the persistence dispatcher.
+   The Results view is a session like any other consumer: its state (opened file, current
+   frame, selection, camera) persists + restores on reload.  "Read-only" means no EDIT
+   controls, NOT no persistence. #}
+{#- molview stores (back the singleton window.molbuilder.molview.data) -#}
 <script src="{{ url_for('static', filename='lib/molview/_atom-index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_atom-channels.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
+{#- snapshot-io loads BEFORE canvas-state (canvas-state reads it) -#}
+<script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_frame-series.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
+{#- selection panel + adapters (measurements.js already loaded above) -#}
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
+{#- viewer render pipeline (render.js composes kgrid + measurement overlay; loads after them) -#}
 <script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
+{#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}
+<script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/vibrationview/mode-math.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>

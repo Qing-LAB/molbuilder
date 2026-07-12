@@ -246,7 +246,7 @@
      *
      * No-op on an empty canvas (nothing to replace).
      */
-    function replaceContent(text, periodicity) {
+    function replaceContent(text, periodicity, annotations) {
         _ensureInit();
         if (_state.text == null) return;
         if (typeof text !== "string" || !text) {
@@ -259,6 +259,13 @@
         // the existing periodicity is kept.  Pass null to explicitly clear.
         if (periodicity !== undefined) {
             _state.periodicity = _normPeriodicity(periodicity);
+        }
+        // §19.3.2: a modify op reindexed the per-atom annotation channels WITH the geometry,
+        // so the op response's annotations REPLACE the canvas's (else a delete/add would
+        // leave the old, now-misaligned channels).  undefined = keep (a text/periodicity-only
+        // edit doesn't touch them).
+        if (annotations !== undefined) {
+            _state.annotations = annotations || null;
         }
         _state.dirty = true;
         _notify();

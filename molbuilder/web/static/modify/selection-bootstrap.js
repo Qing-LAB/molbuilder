@@ -18,7 +18,10 @@
     "use strict";
 
     const PARTIAL_URL = "/partials/selection-panel";
-    const HOST_ID     = "selection-host";
+    // EMPTY host: molview.mount BUILDS the whole fused card into it (viewer + panel +
+    // View-menu toggles + measurement + fold), exactly like the demo / Results.  Modify
+    // no longer hand-builds a card, so the mount takes the module's build path.
+    const HOST_ID     = "molview-host";
 
     function _renderFailure(host, message) {
         // Surface the failure inline so the user doesn't stare at a
@@ -40,14 +43,7 @@
             return;
         }
 
-        // 1+2. Fetch the partial + mount the panel via the SHARED composition
-        // (selection.mountPanel) -- the same helper the Results inspectors use, so
-        // Modify no longer hand-rolls the fetch+mount (Track B / UI unification).
-        // Default store = the workspace singleton.  NOTE: no viewerHandleKey here on
-        // purpose -- the viewer-adapter attach stays below on Modify's RESILIENT
-        // runtime.whenReady("modify.handle"), so the Load button + mount-restore glue
-        // never block on (or hang waiting for) the viewer handle.
-        // Mount the WHOLE view-chrome through the embeddable molview component
+        // 1+2. Mount the WHOLE view-chrome through the embeddable molview component
         // (molview.mount, molview-module.md §18): the panel + the view-controls bar + the
         // fold handle, all bound to the workspace.  We hand it the workspace object (the
         // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
@@ -73,15 +69,15 @@
         // DOMContentLoaded runs; if missing, the store falls back
         // to atom-list-only mode -- still functional, just no
         // viewer.
-        // Phase 10 (workspace-contract.md §5): bind through the
-        // ws.selection namespace, not the legacy selection.store
-        // global.  ws.selection.setLoader passes through to the
-        // store's same method but stays on the unified surface.
-        const _ws0 = window.molbuilder.workspace;
-        if (_ws0 && _ws0.selection
-                 && typeof _ws0.selection.setLoader === "function"
+        // Bind through the molview.data.selection namespace — the
+        // unified DATA surface.  setLoader passes through to the
+        // store's same method but keeps the legacy store private.
+        const _data0 = window.molbuilder.molview
+                    && window.molbuilder.molview.data;
+        if (_data0 && _data0.selection
+                 && typeof _data0.selection.setLoader === "function"
                  && window.molbuilder.loadStructureText) {
-            _ws0.selection.setLoader(window.molbuilder.loadStructureText);
+            _data0.selection.setLoader(window.molbuilder.loadStructureText);
         }
 
         // 3. Sidebar selection sets a CANDIDATE — does NOT commit
@@ -100,12 +96,11 @@
         // mount — the user arrived with intent ("send my structure
         // to the Molbuilder tab"), not with a stray click.
         const projects = window.molbuilder && window.molbuilder.projects;
-        // Phase 10 (workspace-contract.md §5): the bootstrap drives
-        // ws.selection (set source file, adopt session, subscribe to
-        // selection changes).  Per the contract this is the only
-        // surface; the legacy ``selection.store`` global is private
-        // implementation detail.
-        const store    = window.molbuilder.workspace.selection;
+        // The bootstrap drives molview.data.selection (set source
+        // file, adopt session, subscribe to selection changes).  This
+        // is the only surface; the legacy ``selection.store`` global
+        // is a private implementation detail.
+        const store    = window.molbuilder.molview.data.selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py
@@ -299,8 +294,6 @@
             const sp = await _resolveStructurePage();
             const projectsApi = window.molbuilder
                     && window.molbuilder.projects;
-            const viewerLoader = window.molbuilder
-                    && window.molbuilder.loadStructureText;
             if (!sp || !projectsApi
                 || typeof projectsApi.readFile !== "function") {
                 store.setSourceFile(path);
@@ -324,9 +317,10 @@
             // the sidecar's regions/frozen, applied server-side by codec.load) +
             // the full periodicity (cell/axis_kind/vacuum/kgrid).  This is the
             // store's single source; the ad-hoc /api/selection/atoms disk reads
-            // (periodicity + the frozen/region overlay) are gone.  /api/build/load
-            // (viewerLoader, below) now only RENDERS the bytes; its atoms are
-            // discarded in favour of the framework's.
+            // (periodicity + the frozen/region overlay) are gone.  loadIntoCanvas
+            // (below) routes through molview.data.openMolecule, which parses + RENDERS the
+            // bytes; those build/load atoms are then overlaid by the framework's
+            // sidecar-enriched atoms via adoptSession.
             let opened = null;
             try {
                 const or = await fetch("/api/workingcopy/open", {
@@ -346,44 +340,25 @@
             // F4: suspend persistence across the text->atoms window so no draft is
             // written pairing the new geometry with the PREVIOUS file's labels; resume
             // at every exit (one resume per path).
-            const _wsD = window.molbuilder && window.molbuilder.workspace;
+            const _dataD = window.molbuilder.molview
+                        && window.molbuilder.molview.data;
             const _resumeLoad = () => {
-                if (_wsD && typeof _wsD.resumePersist === "function") _wsD.resumePersist();
+                if (_dataD && typeof _dataD.resumePersist === "function") _dataD.resumePersist();
             };
-            if (_wsD && typeof _wsD.suspendPersist === "function") _wsD.suspendPersist();
+            if (_dataD && typeof _dataD.suspendPersist === "function") _dataD.suspendPersist();
             const gate = await sp.loadIntoCanvas(
                 { source_format: format, text: r.text, periodicity: periodicity,
                   annotations: annotations },
                 { kind: "file", file: path }
             );
             if (!gate.ok) { _resumeLoad(); return; }  // cancelled — leave viewer alone
-            // Drive the viewer with the bytes we already have.
-            // ``viewerLoader`` (= modify-tab's loadStructureText)
-            // returns the canonical workspace payload — capture it
-            // so the adoptSession call below can install the atoms
-            // directly instead of refetching them from disk.
-            // Deferred bug 2 fix (2026-06-08).
-            let loaded = null;
-            if (typeof viewerLoader === "function") {
-                try {
-                    loaded = await viewerLoader(r.text, _basename(path));
-                } catch (e) {
-                    const s = document.getElementById("status");
-                    if (s) {
-                        s.textContent = "Viewer failed: "
-                            + (e && e.message ? e.message : String(e));
-                        s.className = "status error";
-                    }
-                    _resumeLoad();
-                    return;
-                }
-            }
-            // Tell the selection store the file is now the source
-            // WITHOUT re-loading the viewer or refetching atoms.
-            // ``loaded.atoms`` (from /api/build/load via
-            // loadStructureText) is identical in shape to what
-            // /api/selection/atoms would return, so the disk refetch
-            // was pure overhead.
+            // loadIntoCanvas already routed through molview.data.openMolecule,
+            // which parsed + rendered the bytes.  The old viewerLoader
+            // second load is removed — it would double-apply the same
+            // bytes (and re-anchor the timeline a second time).
+            //
+            // Tell the selection store the file is now the source and
+            // overlay the sidecar-enriched atoms WITHOUT refetching:
             //
             // 2026-06-11: MUST await — adoptSession returns a Promise
             // that resolves once the store's atoms + selection are
@@ -405,16 +380,14 @@
                 // ``.molstruct.json`` when opening), so there is no
                 // /api/selection/atoms refetch to overlay.  The atom rows are the
                 // same wire shape /api/build/load returns, plus the sidecar data.
-                // Fall back to the viewer payload's (plain) atoms only if the
-                // open call itself failed.
+                // If the open call itself failed, pass no atoms — adoptSession then
+                // refetches them (sidecar-applied) from /api/selection/atoms.
                 await store.adoptSession({
                     sourceFile: path,
                     selection:  [],
                     atoms:      (opened && Array.isArray(opened.atoms))
                                   ? opened.atoms
-                                  : ((loaded && Array.isArray(loaded.atoms))
-                                       ? loaded.atoms
-                                       : undefined),
+                                  : undefined,
                 });
             } else {
                 await store.setSourceFile(path);  // legacy fallback
@@ -425,42 +398,12 @@
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));
         }
 
-        // 4. Attach the viewer-adapter once modify/viewer.js has
-        // registered its embed handle on the runtime registry.
-        // #246 B2: the previous 10×100ms poll for
-        // ``window.molbuilder.modify.handle`` is exactly the bug
-        // class the runtime registry exists to retire (cf.
-        // /build's runtime.whenReady("projects") pattern, see
-        // lib/molbuilder-runtime.js docstring).  modify/viewer.js
-        // calls ``runtime.register("modify.handle", _handle)`` at
-        // boot; whenReady fires synchronously if already-registered
-        // and queues otherwise.
-        const adapterModule =
-            (window.molbuilder.selection && window.molbuilder.selection.viewerAdapter)
-                ? window.molbuilder.selection.viewerAdapter : null;
-        if (!adapterModule) {
-            console.warn("[selection-bootstrap] viewerAdapter module missing");
-            return;
-        }
-        const runtime = window.molbuilder.runtime;
-        if (!runtime || typeof runtime.whenReady !== "function") {
-            console.warn(
-                "[selection-bootstrap] molbuilder.runtime unavailable; "
-              + "click integration disabled (lib/molbuilder-runtime.js "
-              + "is the hard dep that should always load first)"
-            );
-            return;
-        }
-        // Attach the viewer-adapter (paints store selection onto the viewer).
-        // No handle is exposed: the panel + adapter share ALL state (selection,
-        // filters, isolate) through the store, so nothing needs a reference to
-        // the adapter.  Phase 5 retired window.molbuilder.selection
-        // .viewerAdapterHandle + the (unconsumed) "selection.viewerAdapter
-        // .handle" runtime key -- isolate is store state now, driven via
-        // ws.selection.setIsolate (atom-annotations.md § 6.2).
-        runtime.whenReady("modify.handle").then((h) => {
-            adapterModule.attach(h);
-        });
+        // 4. Viewer-adapter (selection halos + frozen halos + click-to-select) is
+        // attached BY THE MODULE: molview.mount's built-card path calls
+        // selApi.viewerAdapter.attach(h, {store, mode}) on the viewer it embeds
+        // (mount.js §built-card onReady).  Modify no longer embeds its own viewer or
+        // attaches the adapter -- that was the pre-migration duplication.  Nothing to do
+        // here.
     }
 
     if (document.readyState === "loading") {

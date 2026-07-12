@@ -4,8 +4,9 @@
  * view toggles -- inside `hostEl`, reading and writing ONLY through the `workspace` you hand
  * it (the uniform ws.* data interface).  There are NO loader/embed/data hooks: molview holds
  * no data of its own; the workspace owns protection (defensive-copy accessors) and
- * persistence.  Pass the real workspace (edits persist) or a throwaway one (they don't) --
- * molview can't tell the difference and doesn't need to.
+ * persistence.  Pass the real workspace: every consumer persists its SESSION STATE through
+ * it (Modify + read-only Results alike).  "read-only" (opts.mode) is about edit controls,
+ * not persistence.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
  *   handle = { load(fileOrText), save(), undo(),                       // WRITE
@@ -94,10 +95,10 @@
         if (!selApi || typeof selApi.mountPanel !== "function") return null;
 
         // Tell the workspace who this molview belongs to, so IT namespaces its saving
-        // points (sessionStorage snapshot + server draft) by `owner` -- isolating this
-        // tab's persisted data from any other's.  Namespacing lives in the workspace
-        // persistence layer, not here.  Feature-detected: a no-op until that layer
-        // consumes it (workspace-contract persistence namespace work).
+        // points (sessionStorage mirror key + the on-disk state-file id) by `owner` --
+        // isolating this consumer's persisted session from any other's.  Namespacing lives
+        // in the workspace persistence layer, not here (dispatcher.useNamespace).  Feature-
+        // detected so a workspace without the method still mounts (unnamespaced).
         if (owner && workspace && typeof workspace.useNamespace === "function") {
             workspace.useNamespace(owner);
         }
@@ -248,32 +249,27 @@
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
             // WORKSPACE (the single door) and the render reacts to the resulting workspace
             // change (§18.2) -- the owner never touches storage or triggers a redraw itself.
-            load: function (fileOrText) {
-                // "Load this molecule."  A path STRING -> the file loader; raw structure text
-                // as { text, filename } -> the text loader.
-                if (fileOrText && typeof fileOrText === "object"
-                        && typeof fileOrText.text === "string") {
-                    return (typeof data.loadFromText === "function")
-                        ? data.loadFromText(fileOrText.text, fileOrText.filename)
-                        : Promise.reject(new Error("molview.load: workspace.loadFromText missing"));
-                }
-                if (typeof fileOrText === "string" && fileOrText) {
-                    return (typeof data.loadFromFile === "function")
-                        ? data.loadFromFile(fileOrText)
-                        : Promise.reject(new Error("molview.load: workspace.loadFromFile missing"));
-                }
-                return Promise.reject(new TypeError(
-                    "molview.load(fileOrText): pass a path string or { text, filename }"));
+            openMolecule: function (fileOrText) {
+                // "Open this molecule."  ONE door: data.openMolecule dispatches
+                // { text, filename } vs a project-file path string, and atomically
+                // replaces the whole model (and resets the session-state timeline).
+                // (Named to MATCH data.openMolecule -- the handle's `save`/`load`
+                // would collide with the data model's timeline save/load(delta).)
+                return (typeof data.openMolecule === "function")
+                    ? data.openMolecule(fileOrText)
+                    : Promise.reject(new Error("molview.openMolecule: data.openMolecule missing"));
             },
-            save: function () {
-                return (typeof data.save === "function")
-                    ? data.save()
-                    : Promise.reject(new Error("molview.save: workspace.save missing"));
+            exportFile: function () {
+                // "Serialize this molecule" -> {xyz, sidecar} bytes (openMolecule's inverse).
+                return (typeof data.exportFile === "function")
+                    ? Promise.resolve(data.exportFile())
+                    : Promise.reject(new Error("molview.exportFile: data.exportFile missing"));
             },
             undo: function () {
+                // Retract one session-state checkpoint (= data.load(-1); §19.5).
                 return (typeof data.undo === "function")
                     ? data.undo()
-                    : Promise.reject(new Error("molview.undo: workspace.undo missing"));
+                    : Promise.reject(new Error("molview.undo: data.undo missing"));
             },
             // ---- Frames -- the coordinate time axis (workspace §1.5, molview §14.5) -------- //
             // Navigation delegates to the workspace (the data owner); MolView owns the playback

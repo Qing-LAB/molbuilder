@@ -58,20 +58,20 @@
 (function (root) {
     "use strict";
 
-    // Phase 10 (workspace-contract.md §3): the orchestrator now
-    // binds against the unified ws.* surface, not the legacy
-    // structureCanvas store.  Public methods unchanged so existing
-    // consumers see no API drift; internals use ws.installStructure
-    // / ws.markDirty / ws.markSaved / ws.isEmpty / ws.isDirty /
-    // ws.getStructure / ws.getSource / ws.getLastSavedTo / ws.subscribe.
+    // The orchestrator binds against MolView's unified DATA model
+    // (``molbuilder.molview.data``) for DATA ops — load / markDirty /
+    // markSaved / isEmpty / isDirty / getStructure / getSource /
+    // getLastSavedTo / subscribe.  ``molbuilder.workspace`` is the
+    // persistence layer only and is no longer bound here.  Public
+    // methods are unchanged so existing consumers see no API drift.
     var _workspace = null;
     var _modal     = null;
 
     function _bind(workspaceApi, modalApi) {
         if (!workspaceApi
-                || typeof workspaceApi.installStructure !== "function") {
+                || typeof workspaceApi.openMolecule !== "function") {
             throw new Error(
-                "structure-page: ws.* API missing (installStructure)");
+                "structure-page: molview.data API missing (openMolecule)");
         }
         if (!modalApi
                 || typeof modalApi.confirmDiscardUnsaved !== "function") {
@@ -93,25 +93,40 @@
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
-        // Empty canvas — set directly; no warning.
-        if (_workspace.isEmpty()) {
-            _workspace.installStructure(structure, source);
-            return Promise.resolve({ ok: true });
+        // The ONE atomic whole-model load door (molview-module.md
+        // §19.3): it parses the text, replaces the whole model
+        // (canvas + atoms + render) and anchors the undo timeline at
+        // index 0.  Provenance + sidecar ride ON the door (no
+        // side-channel): the generator ``source`` (kind /
+        // generator_input) and any sidecar ``periodicity`` /
+        // ``annotations`` the caller resolved (that /api/build/load
+        // can't re-derive) are forwarded so the model keeps them.
+        var filename = (source && source.file) || null;
+        function _apply() {
+            return _workspace.openMolecule({
+                text:        structure.text,
+                filename:    filename,
+                source:      source || null,
+                periodicity: structure.periodicity || null,
+                annotations: structure.annotations || null,
+            }).then(function () { return { ok: true }; });
         }
-        // Clean canvas — set directly; no warning.  The user has
+        // Empty canvas — load directly; no warning.
+        if (_workspace.isEmpty()) {
+            return _apply();
+        }
+        // Clean canvas — load directly; no warning.  The user has
         // saved (or just loaded) the current canvas; overwriting it
         // does not lose modifications.
         if (!_workspace.isDirty()) {
-            _workspace.installStructure(structure, source);
-            return Promise.resolve({ ok: true });
+            return _apply();
         }
         // Dirty canvas — ask before overwriting.
         return _modal.confirmDiscardUnsaved().then(function (proceed) {
             if (!proceed) {
                 return { ok: false, cancelled: true };
             }
-            _workspace.installStructure(structure, source);
-            return { ok: true };
+            return _apply();
         });
     }
 
@@ -163,16 +178,16 @@
     } else {
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structurePage = api;
-        // Auto-bind to the production workspace dispatcher + modal
-        // when both are present.  Phase 10 (workspace-contract.md
-        // §1): the page template loads canvas-state.js +
-        // warning-modal.js + dispatcher.js (in that order) BEFORE
-        // page.js so all three are mounted at this point.  The
-        // dispatcher is what page.js binds against; canvas-state is
-        // now the dispatcher's internal implementation.
-        if (root.molbuilder.workspace
+        // Auto-bind to MolView's data model + the warning modal when
+        // both are present.  The page template loads the molview
+        // data-model (+ its stores) and warning-modal.js BEFORE
+        // page.js, so both are mounted at this point.  page.js binds
+        // against ``molview.data`` for DATA ops; ``workspace`` is the
+        // persistence layer and is not bound here.
+        if (root.molbuilder.molview
+            && root.molbuilder.molview.data
             && root.molbuilder.warningModal) {
-            _bind(root.molbuilder.workspace,
+            _bind(root.molbuilder.molview.data,
                   root.molbuilder.warningModal);
         }
         if (root.molbuilder.runtime

@@ -1,62 +1,54 @@
-/* molbuilder Modify tab.
+/* molbuilder Modify tab -- op controls + state-timeline, NO structure data of its own.
  *
- * Three-pane UI (atom list ↔ 3Dmol viewer ↔ edit panel):
+ * Post-migration (Track B + the state.* rip-out): the concealed MolView module owns the
+ * viewer, the render loop, the selection panel, AND the in-memory structure
+ * (``window.molbuilder.molview.data``).  This file holds ONLY:
  *
- *   * the atom list on the left mirrors the structure's atoms;
- *     clicking a row highlights the atom in the viewer.
- *   * the viewer in the middle renders the structure via 3Dmol; clicking
- *     an atom highlights its row in the list.  An xyz axis triad
- *     (toggle: ``Show xyz axes``) sits at the world origin for
- *     orientation reference.
- *   * the edit panel on the right hosts the live edit operations:
- *     Delete, Add atom (with offset sliders + live |offset|
- *     readout), Orient along axis (anchor pair, tilt slider, center
- *     mode), Rotate around axis.  M5's electrode panel is the only
- *     remaining placeholder.
+ *   * the edit-op controls -- Delete, Add atom, Orient/Rotate (Pose), Center/Translate
+ *     (Geom), and the electrode/anchor (Junction) panel.  Each POSTs op-PARAMS via
+ *     ``molview.data.applyOp(op, args)``; the MODULE builds the structure body from its own
+ *     data (data-model._structureBody) and applies the response atomically.  This file
+ *     never sends or holds structure geometry/metadata.
+ *   * the state timeline -- "Save state" (``data.save(1)``) / "Retract" (``data.load(-1)``)
+ *     and the reload-restore (``data.load(0)``).
+ *   * op-tab enablement + anchor readouts, read LIVE off the unified API
+ *     (``_elements`` / ``_coords`` -> getElements / getCoordinates).  There is NO local
+ *     ``state.*`` structure mirror -- the ``state`` object below is just the in-flight lock.
  *
- * Backend: file upload reuses ``POST /api/build/load``; edit ops
- * use ``POST /api/modify/{load,delete,add_atom,orient,rotate}``.
- * State is persisted across tab navigation by the workspace
- * dispatcher under ``sessionStorage["molbuilder.workspace.v1"]``
- * (workspace-contract.md §4.1); this module restores from that
- * snapshot on DOMContentLoaded so a Modify -> Watch -> Modify
- * round trip preserves the loaded structure, the selection,
- * and the 3Dmol camera.
+ * The viewer, click-select, halos, k-grid, measurement, toggles, and persistence are all the
+ * module's (mounted by modify/selection-bootstrap.js into the empty #molview-host).
  *
- * Spec: docs/tabs/molbuilder.md (M2-M4 + Phase 1 cross-tab
- * persistence as of 2026-05-09).
+ * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
  */
 (function () {
     "use strict";
 
     const $ = (id) => document.getElementById(id);
 
-    // --------------------------------------------------------------- //
-    //  Module state.  Single canonical structure (xyz string + parsed  //
-    //  atom metadata).  Selection state is NOT owned here -- it       //
-    //  lives in the singleton selection store at                      //
-    //  ``window.molbuilder.workspace.selection`` and is read on demand //
-    //  through ``selectedIndices()`` below.                           //
-    // --------------------------------------------------------------- //
+    // Transient UI state ONLY -- the in-flight op lock.  There is NO local structure
+    // mirror: every geometry/metadata read goes LIVE through the unified molview.data API
+    // (getStructure / getElements / getCoordinates), so the Modify tab holds zero copies of
+    // the structure and can never drift from the single source (the residue-across-ops /
+    // electrode None>None class of bug).  The op-REQUEST body is built inside the module
+    // (data-model.applyOp), not here.
     const state = {
-        xyz: null,
-        elements: [],          // ["C", "H", ...]
-        positions: [],         // [[x, y, z], ...]   parsed from xyz
-        atom_names: [],        // ["CA", "HB1", ...] (or [] if absent)
-        residue_ids: [],       // [1, 1, 2, ...]   (or [] if absent)
-        residue_names: [],     // ["MOL", ...]     (or [] if absent)
-        chain_ids: [],         // ["A", ...]       (or [] if absent)
-        title: "",
-        n_atoms: 0,
         inFlight: false,       // true while an /api/modify/* fetch is open
-        history: [],           // {response} snapshots; capped at HISTORY_MAX
     };
 
-    // Cap on the undo history.  Each snapshot carries the full
-    // structure response (xyz + metadata, ~50 KB for a 1k-atom
-    // junction); 20 entries = ~1 MB worst case.  Older entries fall
-    // off the bottom of the stack as new ops are pushed.
-    const HISTORY_MAX = 20;
+    // ----- Unified data model + persistence accessors ---------------- //
+    //
+    // The in-memory DATA MODEL is MolView's unified door
+    // (``window.molbuilder.molview.data``): every structure read /
+    // mutation / selection op / state-timeline call goes through it
+    // (data-model.js §19).  Persistence lives on
+    // ``window.molbuilder.workspace`` but the tab no longer touches it
+    // directly -- reload-restore is ``molview.data.load(0)`` (§19.5),
+    // which reads the session mirror inside the data model.
+    function _data() {
+        return (window.molbuilder
+                && window.molbuilder.molview
+                && window.molbuilder.molview.data) || null;
+    }
 
     // ----- Selection helpers ----------------------------------------- //
     //
@@ -65,242 +57,49 @@
     // without keeping a local mirror.  ``selectedIndices()`` returns
     // a sorted-ascending number[].
 
-    // Phase 10 (workspace-contract.md §5): selection helpers read
-    // through ws.selection, not the legacy selection.store global.
-    // Same semantics — read-live so ops see current selection
-    // without a local mirror — but the surface is unified.
+    // Selection reads/writes go through the unified model's selection
+    // sub-namespace (``molview.data.selection``) -- never a direct
+    // store reach.  Read-live so ops see the current selection without
+    // a local mirror.  getState() returns the contract snapshot with
+    // ``.indices``.
     function _selStore() {
-        return (window.molbuilder
-                && window.molbuilder.workspace
-                && window.molbuilder.workspace.selection)
-               ? window.molbuilder.workspace.selection : null;
+        const d = _data();
+        return (d && d.selection) ? d.selection : null;
     }
     function selectedIndices() {
         const s = _selStore();
         return s ? s.getState().indices.slice() : [];
     }
-    // The cell comes from the workspace data model (ws.getStructure().periodicity)
-    // -- the single source.  One accessor, used for the base render's wireframe AND
-    // by the module k-grid controller (getCell).  No hand-read of a load response.
-    function _cellFromStore() {
-        // The RESOLVED (effective) cell via the UNIFIED accessor (§3a/§3b) -- NOT a
-        // hand-read of getStructure().periodicity.  getUnitCellInfo().value is the
-        // explicit cell when set, else the bbox+vacuum default.  Used by the k-grid
-        // controller so tiling works on a cell-less molecule.
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        const info = (ws && typeof ws.getUnitCellInfo === "function")
-            ? ws.getUnitCellInfo() : null;
-        return (info && info.value) || null;
+    // Structure reads through the unified API -- the SINGLE source (no state.* mirror).
+    // Cheap accessors: getElements/getCoordinates map the store atoms without a full clone.
+    function _elements() {
+        const d = _data();
+        return (d && typeof d.getElements === "function" && d.getElements()) || [];
     }
-    function _explicitCell() {
-        // The EXPLICIT cell only (raw) -- the BASE render draws a wireframe box only for
-        // a user/imported cell, NOT for a fresh molecule's resolved bbox (that box is
-        // the k-grid render's concern via getCell, only when k-grid is enabled).
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        return (ws && typeof ws.getUnitCell === "function" && ws.getUnitCell()) || null;
+    function _nAtoms() { return _elements().length; }
+    function _coords() {
+        const d = _data();
+        return (d && typeof d.getCoordinates === "function" && d.getCoordinates()) || [];
     }
-
-    // The plain BASE draw: all atoms of the current unit cell + the explicit-cell wireframe
-    // (a cell-less molecule draws no box).  Shared by applyStructure (a new structure, which
-    // then refits) AND the k-grid controller's RESTORE path when isolate + k-grid both go
-    // off -- so "plain molecule" looks identical however you got there.  No refit: a view
-    // toggle must not move the camera.
-    function _drawBase() {
-        _handle.setStructure({
-            xyz:     state.xyz,
-            lattice: _explicitCell() || undefined,
-        });
-    }
-
-    // k-grid render = the MODULE controller (molview.mountKgridRender), not a loop
-    // here.  Mounted once; getUnit hands it Modify's current unit-cell state,
-    // getCell hands it the store's cell.  applyStructure calls _kgCtl.refresh()
-    // after a base render so the module re-tiles on a structure change.
-    let _kgCtl = null;
-    function _wireKgrid() {
-        if (_kgCtl) return;
-        const mv = window.molbuilder && window.molbuilder.molview;
-        const store = _selStore();
-        if (!mv || typeof mv.mountKgridRender !== "function" || !store) return;
-        _kgCtl = mv.mountKgridRender(_handle, store, {
-            getUnit: function () {
-                return { coords:   state.positions,
-                         elements: state.elements,
-                         xyz:      state.xyz };
-            },
-            getCell: _cellFromStore,
-            // Restore path (isolate + k-grid both off) -> Modify's plain base draw, so the
-            // explicit-cell-only wireframe rule is preserved (a cell-less molecule draws no
-            // box).  No refit here -- a VIEW toggle must not reframe the camera.
-            drawBase: _drawBase,
-            // UNIFIED k-grid (§3b): the tiling dims ARE periodicity.kgrid (the DFT value),
-            // not a separate view count.  The store still owns the enable TOGGLE.
-            getKgridDims: function () {
-                const ws = window.molbuilder && window.molbuilder.workspace;
-                return (ws && typeof ws.getKgrid === "function" && ws.getKgrid())
-                    || [1, 1, 1];
-            },
-        });
-        // Re-tile when periodicity changes (kgrid dims / cell) -- e.g. the Modify Cell
-        // op-tab's Update k-grid.  ws.subscribe fires on canvas changes; atom ops already
-        // refresh via applyStructure, so a redundant same-tick refresh there is harmless.
-        const wsApi = window.molbuilder && window.molbuilder.workspace;
-        if (wsApi && typeof wsApi.subscribe === "function") {
-            wsApi.subscribe(function () { if (_kgCtl) _kgCtl.refresh(); });
-        }
-    }
+    // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
+    // k-grid tiling controller USED to live here (`_drawBase` / `_wireKgrid` / the cell
+    // accessors).  They are gone: the concealed MolView module owns the render loop and
+    // the k-grid controller (render.js composes mountKgridRender + mountMeasurementOverlay,
+    // driven by molview.data), so Modify no longer draws anything itself.
 
     // --------------------------------------------------------------- //
-    //  Embedded MolViewer.                                             //
+    //  The 3Dmol viewer is EMBEDDED BY THE MODULE.                     //
     //                                                                  //
-    //  Migrated to the standard embeddable viewer (#198, 2026-06-02;   //
-    //  contract: docs/protocols/molview-module.md).  The handle's     //
-    //  declarative API drives style / axes / index labels; the raw    //
-    //  3Dmol viewer (handle._viewer3dmol()) is still used directly    //
-    //  for two things the embed contract doesn't cover:               //
-    //    1. The selection-store viewer-adapter (atom-pick + selection-//
-    //       halo overlays).  The adapter calls 3Dmol primitives       //
-    //       (setClickable / addSphere) on the underlying viewer.      //
-    //    2. Camera-pivot recentering (focusMolecule / pivotSelection ///
-    //       snapPivotToCenter) which needs ``viewer.zoomTo(selection)``//
-    //       semantics not exposed via the embed.                       //
+    //  Track B migration: Modify no longer calls viewer.embed itself.  //
+    //  selection-bootstrap.js mounts the concealed MolView module into //
+    //  the empty #molview-host; molview.mount BUILDS the card, embeds  //
+    //  the viewer, owns the render loop + k-grid + measurement, wires  //
+    //  the selection viewer-adapter (click + halos), and puts the      //
+    //  toggles in the View menu.  Camera pivot-recentering that used   //
+    //  to live here (focusMolecule / snapPivotToCenter, raw 3Dmol) is  //
+    //  now the View-menu "Reset view" (handle.refit).  So there is NO  //
+    //  viewer handle, no embed, and no raw-3Dmol reach in this file.   //
     //  --------------------------------------------------------------- //
-    const _viewerHost = $("viewer");
-    const _handle = window.molbuilder.viewer.embed(_viewerHost, {
-        // No xyz at mount -- /modify loads structures asynchronously
-        // via the sidebar's loadStructureText -> applyStructure path.
-        // The viewer renders an empty canvas until the first
-        // setStructure call.
-        style: {
-            rep:         "stick",
-            radiusScale: 1.0,
-        },
-        // Axes default OFF (2026-06-13) — see lib/trajectory/core.js
-        // for the cross-tab consistency rationale.  Modify still
-        // persists axes-state per session so the user's previous
-        // choice survives a tab switch; this default just sets the
-        // FIRST-mount baseline.
-        axes:    false,
-        // /modify uses the selection-store viewer-adapter for atom
-        // pick; the embed's built-in pick is NOT used here (the
-        // adapter does its own setClickable wiring + draws labelled
-        // region halos which the embed's pick mode doesn't support
-        // declaratively yet -- follow-up #203b).
-        pick:    { mode: "none" },
-        // Standard knob bar above the canvas after #203 migration.
-        // The card header is /modify's own ``card.viewer-card``
-        // (with #title-readout); the embed's knob bar slots between
-        // that header and the 3D canvas via the standard chrome.
-        // card.title: "" so the embed skips its own header — the
-        // host's <header class="card-header">Viewer</header> in
-        // modify.html already owns the title strip.  Without this
-        // the user saw stacked "Viewer" + "Structure" h2s (A2,
-        // 2026-06-04).
-        card:    { title: "", showInfoLine: false, height: "100%" },
-        export:  { defaultName: "modify" },
-        // Rotation pivot snap policy.  3Dmol's pivot is the camera
-        // lookAt; ctrl/shift-pan moves the lookAt off the molecule
-        // and a follow-up rotation orbits eccentrically.  Snapping
-        // the pivot back onto the molecule on the first drag-confirm
-        // mousemove fixes that — the snap is invisible because the
-        // user is already moving the camera at that moment.
-        // Embed owns the threshold + modifier filtering + canvas
-        // listener bookkeeping; we just pass the policy as data.
-        interaction: {
-            dragThresholdPx: 4,
-            onDragStart(ev) {
-                // Ctrl/shift/alt drags are pan/zoom gestures — leave
-                // the pivot alone.  Plain left-drag is rotation;
-                // snap.  snapPivotToCenter is defined below at the
-                // top of the IIFE.
-                if (ev.modifiers.ctrl
-                    || ev.modifiers.shift
-                    || ev.modifiers.alt) return;
-                snapPivotToCenter();
-            },
-        },
-        onError(err) {
-            // Surface viewer errors via the same status pattern
-            // /modify already uses (preflight / generator panels).
-            try { console.warn("[modify.viewer]", err.code, err.message); }
-            catch (_) {}
-        },
-    });
-    // /modify viewer.js #235 follow-up: production code uses only
-    // the handle.  Phase 5e B6 (#246) dropped the module-scope
-    // ``const viewer = _handle._viewer3dmol()`` capture — the
-    // Playwright test fixture (window.__molbuilder_modify_test.
-    // getViewer) calls _handle._viewer3dmol() at request time
-    // instead, so production code carries no production-tempting
-    // reference to the raw 3Dmol viewer.
-
-    // clearViewer() removed by #235 -- it was only callable from
-    // applyStructure's `else` branch when state.xyz is falsy, and
-    // every caller of applyStructure now passes xyz from a fresh
-    // /api/build/load response.  Label / overlay teardown on a
-    // structure swap is handled by handle.setStructure (label/axes
-    // re-apply automatically) and by the selection adapter's
-    // store-subscribe path (overlays clear on the next render).
-
-    // ----- Camera anchoring -------------------------------------- //
-    // 3Dmol's mouse-zoom and rotate-around-cursor handlers anchor on
-    // the model's PIVOT, which ``viewer.zoomTo()`` sets to the
-    // bounding-box centroid of the current selection.  When slabs
-    // are added the bounding box grows ~10x and gets dominated by
-    // the slabs; the pivot drifts off the molecule and zoom-into-
-    // the-molecule starts feeling like "the molecule slides off
-    // screen as I scroll".
-    //
-    // ``focusMolecule()`` re-anchors the pivot on the MOLECULE
-    // (everything that's not residue ``ELC``) and zooms tight on it,
-    // then pulls the camera back enough that the slabs remain in
-    // frame as periphery.  Wired to the Focus-molecule toolbar
-    // button -- the user clicks it whenever interaction feels off-
-    // centre.  ``applyStructure`` does NOT call this automatically;
-    // its default fit is a plain ``zoomTo`` showing the whole
-    // structure so a fresh render always frames everything.
-    // Indices of the "molecule" atoms (everything that isn't an
-    // ELC electrode-slab residue).  Returns ``null`` when no slabs
-    // are present — the camera ops then fall back to refit() /
-    // setPivot() with no opts (= all atoms).  Shared between
-    // focusMolecule + snapPivotToCenter so they always operate on
-    // the same selection.
-    function _moleculeIndices() {
-        const rn = state.residue_names;
-        if (!Array.isArray(rn) || rn.length === 0) return null;
-        if (rn.indexOf("ELC") === -1) return null;
-        const out = [];
-        for (let i = 0; i < rn.length; i++) {
-            if (rn[i] !== "ELC") out.push(i);
-        }
-        return out;
-    }
-
-    function focusMolecule() {
-        if (!state.xyz || state.n_atoms === 0) return;
-        const mol = _moleculeIndices();
-        if (mol) {
-            // Pivot + zoom-fit to the molecule (non-ELC atoms only).
-            // Pull back so the slabs remain visible in the periphery;
-            // without the pullback the slabs would be clipped or
-            // behind the camera.
-            _handle.refit({ indices: mol, pullback: 0.55 });
-        } else {
-            _handle.refit();
-        }
-    }
-
-    // Snap the camera lookAt onto the structure centroid without
-    // touching the zoom level.  ``handle.setPivot`` delegates to
-    // 3Dmol's ``center()`` which translates the model so the
-    // selection's centroid lands on the world origin (the rotation
-    // pivot) — the camera distance stays where the user left it.
-    // Used as a mousedown hook so every rotation drag pivots on
-    // the structure regardless of any pan the user did before.
-    function snapPivotToCenter() {
-        if (!state.xyz || state.n_atoms === 0) return;
-        _handle.setPivot({ indices: _moleculeIndices() || [] });
-    }
 
     // ----- xyz axis triad ----------------------------------------- //
     //
@@ -350,6 +149,7 @@
     function refreshSelectionUI() {
         const sel    = selectedIndices();
         const locked = state.inFlight;
+        const els    = _elements();   // LIVE elements from molview.data (no state.* mirror)
 
         // Delete: any selection + no op in flight.
         const deleteBtn = $("delete-apply");
@@ -363,7 +163,7 @@
                 const a = sel[0];
                 addBtn.disabled = locked;
                 anchorReadout.textContent =
-                    `Anchor: #${a + 1} ${state.elements[a]}`;
+                    `Anchor: #${a + 1} ${els[a]}`;
             } else {
                 addBtn.disabled = true;
                 anchorReadout.textContent =
@@ -381,8 +181,8 @@
                 const [a, b] = sel;
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
-                    `Anchors: #${a + 1} ${state.elements[a]} → ` +
-                    `#${b + 1} ${state.elements[b]}`;
+                    `Anchors: #${a + 1} ${els[a]} → ` +
+                    `#${b + 1} ${els[b]}`;
             } else {
                 orientBtn.disabled = true;
                 orientReadout.textContent =
@@ -397,11 +197,11 @@
         // Rotate / Center / Translate: no selection requirement;
         // just need a loaded structure.
         const rotateBtn = $("rotate-apply");
-        if (rotateBtn) rotateBtn.disabled = locked || state.n_atoms === 0;
+        if (rotateBtn) rotateBtn.disabled = locked || _nAtoms() === 0;
         const centerBtn = $("center-apply");
-        if (centerBtn) centerBtn.disabled = locked || state.n_atoms === 0;
+        if (centerBtn) centerBtn.disabled = locked || _nAtoms() === 0;
         const translateBtn = $("translate-apply");
-        if (translateBtn) translateBtn.disabled = locked || state.n_atoms === 0;
+        if (translateBtn) translateBtn.disabled = locked || _nAtoms() === 0;
 
         // Electrode: anchor count depends on mode.
         const elcBtn = $("elc-apply");
@@ -412,7 +212,7 @@
                 if (sel.length === 1) {
                     elcBtn.disabled = locked;
                     elcReadout.textContent =
-                        `Anchor: #${sel[0] + 1} ${state.elements[sel[0]]}.  ` +
+                        `Anchor: #${sel[0] + 1} ${els[sel[0]]}.  ` +
                         `Side determines which face the slab grows on.`;
                 } else {
                     elcBtn.disabled = true;
@@ -423,7 +223,7 @@
                 // Pair mode: 0 atoms = origin-centred (canonical),
                 // 2 atoms = legacy anchor-midpoint.  1 atom is
                 // ambiguous; rejected at apply time.
-                elcBtn.disabled = locked || state.n_atoms === 0;
+                elcBtn.disabled = locked || _nAtoms() === 0;
                 if (sel.length === 0) {
                     elcReadout.textContent =
                         "Pair mode: slabs at z = ±gap/2 around the origin.  "
@@ -431,8 +231,8 @@
                 } else if (sel.length === 2) {
                     const [a, b] = sel;
                     elcReadout.textContent =
-                        `Legacy mode: slabs flank #${a + 1} ${state.elements[a]} `
-                        + `↔ #${b + 1} ${state.elements[b]} `
+                        `Legacy mode: slabs flank #${a + 1} ${els[a]} `
+                        + `↔ #${b + 1} ${els[b]} `
                         + "(midpoint of the two anchors).";
                 } else {
                     elcBtn.disabled = true;
@@ -453,20 +253,18 @@
             // an on-disk target via ``structureSave.targetPath()``.
             // Forces the workflow (Save → Send) and eliminates the
             // sessionStorage-vs-disk conflict class.
-            // Phase 10 (workspace-contract.md §2): read dirty bit
-            // off ws, not the legacy structureCanvas global.
-            const cs = window.molbuilder
-                    && window.molbuilder.workspace;
+            // Read the dirty bit off the unified model (molview.data).
+            const d = _data();
             const save = window.molbuilder
                     && window.molbuilder.structureSave;
             const targetPath = (save && typeof save.targetPath === "function")
                 ? save.targetPath() : null;
-            const savedAndClean = !!cs
-                && typeof cs.isDirty === "function"
-                && !cs.isDirty()
+            const savedAndClean = !!d
+                && typeof d.isDirty === "function"
+                && !d.isDirty()
                 && !!targetPath;
             sendBtn.disabled = locked
-                || state.n_atoms === 0
+                || _nAtoms() === 0
                 || !savedAndClean;
             sendBtn.title = savedAndClean
                 ? "Send the saved structure to /structure-optimization."
@@ -499,252 +297,100 @@
     // text, not a File object.  Accepts XYZ and PDB content alike --
     // the server's /api/build/load sniffs the format.)
 
-    /**
-     * Replace the modify-page IIFE state + 3Dmol embed model
-     * from a server workspace payload.  Scope is intentionally
-     * narrow: state.* fields, position-array parsing, embed
-     * setStructure + refit, and UI refresh hooks.  No
-     * cross-store work (canvas-state, selection store) lives
-     * here — the workspace dispatcher's
-     * ``_applyWorkspacePayload`` owns that and calls this
-     * function as one of its steps (the modify hook).
-     *
-     * Callsites (all four currently):
-     *   * dispatcher's ``_applyWorkspacePayload`` for every
-     *     applyOp / applyPayload flow.
-     *   * ``applyUndo`` — pops a history snapshot.
-     *   * ``restoreModifyState`` — bfcache/navigation restore.
-     */
-    function applyStructure(r) {
-        state.xyz           = r.xyz || "";
-        state.elements      = Array.isArray(r.elements)      ? r.elements      : [];
-        state.atom_names    = Array.isArray(r.atom_names)    ? r.atom_names    : [];
-        state.residue_ids   = Array.isArray(r.residue_ids)   ? r.residue_ids   : [];
-        state.residue_names = Array.isArray(r.residue_names) ? r.residue_names : [];
-        state.chain_ids     = Array.isArray(r.chain_ids)     ? r.chain_ids     : [];
-        state.title         = r.title || "";
-        state.n_atoms       = Number(r.n_atoms || state.elements.length || 0);
-        // Parse positions from the xyz string so the per-op anchor
-        // readouts can show coordinates without an extra server
-        // roundtrip.  Lines after the 2-line header are
-        // ``<element>  <x>  <y>  <z>``; whitespace is forgiving.
-        state.positions = [];
-        if (state.xyz) {
-            const lines = state.xyz.split("\n").slice(2);
-            for (const line of lines) {
-                const t = line.trim();
-                if (!t) continue;
-                const parts = t.split(/\s+/);
-                if (parts.length < 4) continue;
-                state.positions.push([
-                    Number(parts[1]), Number(parts[2]), Number(parts[3]),
-                ]);
-                if (state.positions.length === state.n_atoms) break;
-            }
-        }
-        // Defensive: a malformed XYZ payload (missing column, partial
-        // line, etc.) could leave positions.length != n_atoms, which
-        // would silently mis-attribute coordinates to atom indices in
-        // the selection-info panel and the slab-placement math.  Log
-        // loudly and clear so the next op fails fast rather than
-        // emitting wrong physics.
-        if (state.positions.length !== state.n_atoms) {
-            console.warn(
-                "XYZ parse anomaly: positions=" + state.positions.length
-                + " but n_atoms=" + state.n_atoms
-                + "; clearing positions array."
-            );
-            state.positions = [];
-        }
-
-        $("title-readout").textContent =
-            state.title ? `${state.title} (${formula(state.elements)})`
-                        : formula(state.elements);
-
-        // Render via the embed.  setStructure replaces the model,
-        // re-applies style + overlays (axes / labels / etc.), and
-        // refits the camera.  Index labels + axes follow the
-        // toggle-driven state below; setStructure leaves those
-        // settings intact so they re-render against the new atoms.
-        if (state.xyz) {
-            // Base render: the unit cell + its wireframe.  A new structure DOES reframe
-            // (refit); the shared _drawBase (also the controller's restore path) does not.
-            _drawBase();
-            _handle.refit();
-            // Hand the render to the module controller (mounted once).  It REPLACES the
-            // base draw with the derived list when isolate/k-grid is on; the module owns
-            // that loop -- none here.
-            _wireKgrid();
-            if (_kgCtl) _kgCtl.refresh();
-        }
-        // No else-branch needed: applyStructure is only called with
-        // an xyz from a successful /api/build/load response; the
-        // empty-xyz path is unreachable in practice.  See #235.
-        // Atom-level clicks + halo overlays are wired by the
-        // viewer-adapter (lib/selection/viewer-adapter.js), which
-        // re-arms ``setClickable`` on every render so a model swap
-        // here doesn't drop the handler.
-
-        // Cross-store sync (adoptAtoms + clearSelection + remap)
-        // lives entirely in the workspace dispatcher's
-        // ``_applyWorkspacePayload`` (Phase 5 single-sync-point
-        // refactor; review cleanup 2026-06-08 finished the move).
-        // ``applyStructure`` is the modify-tab IIFE's state + embed
-        // updater only — it has NO knowledge of the selection store
-        // or the canvas-state dirty bit.  Callers route through
-        // ``ws.applyPayload(r, opts)`` or ``ws.applyOp(op, args)``;
-        // those pipelines call this hook for the IIFE-state work
-        // and own the cross-store work themselves.  Pre-cleanup,
-        // applyStructure ALSO did adoptAtoms + clearSelection,
-        // duplicating the dispatcher's logic and causing a double
-        // ``clearSelection`` on the loadStructureText path.
-
-        refreshSelectionUI();
-        refreshUndoButton();
-    }
-
-    // formula() lives in static/lib/mol-format.js; loaded by the
-    // template above.  Local alias keeps callers below readable.
+    // formula() lives in static/lib/mol-format.js; loaded by the template above.  Used by
+    // the #title-readout updater (wired on the molview.data subscription in DOMContentLoaded).
     const formula = (window.molbuilder && window.molbuilder.fmt
                      ? window.molbuilder.fmt.formula
                      : (els) => (els && els.length ? els.join("") : "—"));
 
-    // --------------------------------------------------------------- //
-    //  Modify ops (M3).  Each op POSTs the current canonical state +  //
-    //  op-specific args to /api/modify/<op>; on success the response   //
-    //  IS the next canonical state, so we just feed it through         //
-    //  applyStructure() and the UI updates atomically.                 //
-    // --------------------------------------------------------------- //
-    function currentStateBody() {
-        // Bundle the canonical state for an /api/modify/* request.  We ALWAYS send the
-        // full metadata bundle so the new structure returned by the server preserves it
-        // (xyz alone would lose atom_names / residue_ids -- per spec § 5).
-        //
-        // frozen_atoms + regions come from the SHARED accessors (D3) -- NOT a hand-scan
-        // here -- so the frozen/label gathering has ONE implementation (getFrozen /
-        // getRegions), which is also what save/draft serialisation uses.  The hand-scan
-        // this replaced is where the camelCase-vs-snake_case data-loss #1 bug lived; the
-        // accessors read the store's normalised atoms correctly by construction.
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        return {
-            xyz:           state.xyz || "",
-            atom_names:    state.atom_names,
-            residue_ids:   state.residue_ids,
-            residue_names: state.residue_names,
-            chain_ids:     state.chain_ids,
-            title:         state.title,
-            frozen_atoms:  (ws && ws.getFrozen)  ? ws.getFrozen()  : [],
-            regions:       (ws && ws.getRegions) ? ws.getRegions() : {},
-        };
+    // Update the section header's #title-readout from the LIVE structure (unified API).
+    function _refreshTitleReadout() {
+        const el = $("title-readout");
+        if (!el) return;
+        const d = _data();
+        const s = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
+        const title = (s && s.title) || "";
+        const f = formula(_elements());
+        el.textContent = title ? `${title} (${f})` : (s ? f : "");
     }
 
-    // ----- Undo history ------------------------------------------- //
-    // Snapshot of the canonical structure shape applyStructure() takes
-    // -- same keys as an /api/modify/* response.  Scoped to electrode
-    // (slab) ops ONLY: those are the ones the user wants to experiment
-    // with and roll back.  Other ops (delete / add atom / orient /
-    // rotate / translate / center) are committed immediately and
-    // don't push history.  ``snapshotForHistory()`` is taken BEFORE
-    // the network call; it's only pushed onto the stack AFTER a
-    // successful response so failed ops don't burn an undo slot.
-    function snapshotForHistory() {
-        if (!state.xyz) return null;
-        // Capture the selection store's atoms list + the user's
-        // current selection so ``applyUndo`` can fully restore the
-        // workspace — pre-fix the snapshot omitted both, so after
-        // undo the selection store kept the post-op atoms while
-        // the viewer showed the pre-op structure (deferred bug 3
-        // from the multi-pass review; fix landed 2026-06-08).
-        // Phase 10 (workspace-contract.md §5): ws.selection.getState()
-        // returns the CONTRACT shape with ``.indices`` (NOT the
-        // legacy ``.selection`` field name).  Pre-2026-06-09 this
-        // read ``.selection`` and silently crashed every electrode
-        // op with TypeError (.slice() on undefined) — the click did
-        // nothing because the exception bubbled out of applyElectrode
-        // before postOp ran.
-        const _s = _selStore();
-        const st = _s ? _s.getState() : null;
-        // 2026-06-09: capture the dirty-bit at snapshot time.  ``applyUndo``
-        // restores it after applyPayload so a snapshot taken from a
-        // CLEAN workspace (typical case: Load -> Save -> Modify -> Undo)
-        // doesn't end up dirty=true purely because cs.replaceContent
-        // unconditionally marks dirty.  Without this hint, the user
-        // sees the Save button enabled after undo even though the
-        // workspace text matches the file on disk.
-        const _ws = window.molbuilder && window.molbuilder.workspace;
-        const _wasDirty = _ws && typeof _ws.isDirty === "function"
-                              ? _ws.isDirty() : true;
-        return {
-            xyz:           state.xyz,
-            elements:      state.elements,
-            atom_names:    state.atom_names,
-            residue_ids:   state.residue_ids,
-            residue_names: state.residue_names,
-            chain_ids:     state.chain_ids,
-            title:         state.title,
-            n_atoms:       state.n_atoms,
-            atoms:         st && Array.isArray(st.atoms)
-                              ? st.atoms.slice() : [],
-            selected:      st && Array.isArray(st.indices)
-                              ? st.indices.slice() : [],
-            dirty:         _wasDirty,
-        };
-    }
+    // NOTE (state.* rip-out, task #42): the Modify tab used to keep a local ``state.*``
+    // mirror of the structure (xyz / elements / positions / atom_names / …), populated by an
+    // ``applyStructure`` modify-hook and re-read to build op requests.  That parallel copy is
+    // GONE: molview.data is the single source, every read goes through the unified API
+    // (getStructure / getElements / getCoordinates), and the op-REQUEST body is built INSIDE
+    // the module (data-model.applyOp._structureBody).  So there is no currentStateBody and no
+    // applyStructure here anymore -- op results flow store->UI via the molview.data
+    // subscription (refreshSelectionUI / refreshUndoButton / _refreshTitleReadout).
 
+    // ----- State timeline: Save state / Retract (§19.5) ----------- //
+    //
+    // The old in-memory undo stack is gone.  Undo is now the model's
+    // push-only state timeline (data-model.js §19.5): the user takes
+    // an explicit checkpoint with "Save state" (``save(1)``), and
+    // "Retract" (``load(-1)``) rolls the WHOLE model back to the
+    // previous checkpoint.  ``state_index`` (0 = the loaded anchor)
+    // and ``uncommitted`` (in-memory changes since the last checkpoint)
+    // are LIVE reads off ``molview.data``.
+
+    // Enable/disable the timeline controls off the model's LIVE
+    // ``state_index`` -- Retract is meaningful only above the anchor
+    // (index > 0); Save state whenever a structure is loaded.  Named
+    // refreshUndoButton for continuity with the render-hook callers.
     function refreshUndoButton() {
-        const btn = $("undo-op");
-        if (btn) btn.disabled = state.inFlight || state.history.length === 0;
+        const d = _data();
+        const idx = (d && typeof d.state_index === "number") ? d.state_index : 0;
+        const retractBtn = $("undo-op");
+        if (retractBtn) retractBtn.disabled = state.inFlight || !(idx > 0);
+        const saveBtn = $("save-state");
+        if (saveBtn) saveBtn.disabled = state.inFlight || _nAtoms() === 0;
     }
 
-    function applyUndo() {
-        if (!state.history.length) return;
-        const prev = state.history.pop();
-        // Route through the workspace dispatcher's canonical
-        // ``applyPayload`` pipeline so the selection store's atoms
-        // revert in lockstep with state.xyz + the embed model.
-        // Pre-fix applyUndo called ``applyStructure(prev)`` directly,
-        // which after the Phase 5 cleanup only updates the IIFE
-        // state + embed — leaving the selection store with the
-        // post-op atoms.  ``touchCanvas: true`` because undo of a
-        // modifier op is itself a state-diverged-from-disk event.
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        if (ws && typeof ws.applyPayload === "function") {
-            ws.applyPayload(prev, { touchCanvas: true });
-            // applyPayload does NOT restore selection from the
-            // snapshot's saved indices (its remap step is for
-            // server-emitted selection_remap, which an undo
-            // doesn't have).  Set them explicitly.
-            // Phase 10 (workspace-contract.md §5): ``_selStore()``
-            // returns ``ws.selection`` which exposes ``set(indices)``
-            // (NOT the legacy ``setSelection``).  Pre-2026-06-09 this
-            // checked for ``setSelection`` — always-false — so the
-            // selection wasn't restored on undo (the user saw the
-            // pre-op structure with cleared selection).
-            const _s = _selStore();
-            if (_s && typeof _s.set === "function"
-                  && Array.isArray(prev.selected)) {
-                _s.set(prev.selected);
-            }
-            // 2026-06-09: applyPayload's touchCanvas:true ALWAYS marks
-            // dirty (via cs.replaceContent), but the snapshot may have
-            // been taken from a CLEAN workspace (Load -> Save -> Modify
-            // -> Undo).  When the captured ``prev.dirty`` is false AND
-            // we have a last_save_to path, restore the clean bit so the
-            // Save button correctly reflects "workspace matches disk".
-            const _lastPath = (typeof ws.getLastSavedTo === "function")
-                ? ws.getLastSavedTo() : null;
-            if (prev.dirty === false && _lastPath
-                    && typeof ws.markSaved === "function") {
-                ws.markSaved(_lastPath);
-            }
-        } else {
-            applyStructure(prev);   // fallback (no dispatcher)
+    // "Save state": commit an undoable checkpoint (``save(1)``).
+    // The model persists the current snapshot and advances the index.
+    async function saveState() {
+        const d = _data();
+        if (!d || typeof d.save !== "function") return;
+        if (_nAtoms() === 0) {
+            setEditStatus("Load a structure first.", "error");
+            return;
+        }
+        try {
+            await d.save(1);
+            setEditStatus(
+                `Saved state #${d.state_index}.`, "ok");
+        } catch (e) {
+            setEditStatus(
+                `Save state failed: ${(e && e.message) || String(e)}`,
+                "error");
         }
         refreshUndoButton();
-        setEditStatus(
-            `Undid op (${prev.n_atoms} atoms restored).  ${state.history.length} step(s) left.`,
-            "ok",
-        );
+    }
+
+    // "Retract": roll back to the previous checkpoint (``load(-1)``).
+    // Gate on ``uncommitted`` -- if there are in-memory changes since
+    // the last Save state, warn (they will be discarded) before
+    // popping.  Reuses the shared discard-unsaved warning modal.
+    async function retractState() {
+        const d = _data();
+        if (!d || typeof d.load !== "function") return;
+        if (d.uncommitted) {
+            const modal = window.molbuilder && window.molbuilder.warningModal;
+            if (modal && typeof modal.confirmDiscardUnsaved === "function") {
+                const proceed = await modal.confirmDiscardUnsaved();
+                if (!proceed) return;
+            }
+        }
+        try {
+            await d.load(-1);
+            setEditStatus(
+                `Retracted to state #${d.state_index}.`, "ok");
+        } catch (e) {
+            setEditStatus(
+                `Retract failed: ${(e && e.message) || String(e)}`,
+                "error");
+        }
+        refreshUndoButton();
     }
 
     function setEditStatus(msg, kind = null) {
@@ -755,7 +401,7 @@
     }
 
     async function postOp(path, extraBody, label) {
-        // Modifier-button wrapper around ``ws.applyOp``.  Owns the
+        // Modifier-button wrapper around ``molview.data.applyOp``.  Owns the
         // UI-level concerns the dispatcher deliberately stays out
         // of: the in-flight lock (prevents double-click double-
         // fire), the edit-status text, the AbortController for the
@@ -774,7 +420,13 @@
         let r = null;
         try {
             try {
-                r = await window.molbuilder.workspace.applyOp(op, extraBody);
+                const d = _data();
+                if (!d || typeof d.applyOp !== "function") {
+                    setEditStatus(`${label} failed: data model unavailable.`,
+                        "error");
+                    return null;
+                }
+                r = await d.applyOp(op, extraBody);
             } catch (e) {
                 if (e && e.name === "AbortError") {
                     setEditStatus(`${label} cancelled.`, "muted");
@@ -801,6 +453,10 @@
             state.inFlight = false;
             state._inFlightAbort = null;
             refreshSelectionUI();
+            // The op cleared the in-flight lock + (usually) changed the model, so the
+            // state-timeline buttons must re-evaluate: an op leaves the model `uncommitted`
+            // and keeps Save state enabled; the in-flight disable is now lifted.
+            refreshUndoButton();
         }
     }
 
@@ -824,12 +480,12 @@
     // ----- Geom subtab: rigid translate ops ----------------------- //
     // Both ops route through the shared /api/modify/translate
     // endpoint; only the body changes (recenter:true vs explicit
-    // dx/dy/dz).  After the structure shifts, applyStructure() runs
-    // viewer.zoomTo() so the camera re-fits the new bounding box --
+    // dx/dy/dz).  After the structure shifts, the module's render
+    // reacts to the molview.data change and re-fits the camera --
     // there's no separate "re-fit camera" button anymore because
     // every coordinate-changing op already does the right thing.
     async function applyCenter() {
-        if (!state.xyz) {
+        if (_nAtoms() === 0) {
             setEditStatus("Load a structure first.", "error");
             return;
         }
@@ -841,7 +497,7 @@
     }
 
     async function applyTranslate() {
-        if (!state.xyz) {
+        if (_nAtoms() === 0) {
             setEditStatus("Load a structure first.", "error");
             return;
         }
@@ -957,9 +613,9 @@
     // ----- M5: electrode panel + Send-to-Build handoff ------------- //
 
     function readElcCommonBody() {
-        // Bundle the shared fields both single + symmetric modes
-        // need.  Returned as a plain object that postOp will merge
-        // into currentStateBody().
+        // Bundle the shared electrode OP-PARAMS both single + symmetric modes need
+        // (element / plane / size / orthogonal / offset / lattice_constant).  These are
+        // op-args only; the module (data-model.applyOp) merges them with the structure body.
         const m         = Number($("elc-m").value);
         const n         = Number($("elc-n").value);
         const layers    = Number($("elc-layers").value);
@@ -1122,11 +778,10 @@
         const mode = $("elc-mode").value;
         const common = readElcCommonBody();
         const gap = Number($("elc-gap").value);
-        // Snapshot the pre-op state so a successful slab op can be
-        // rolled back via Undo.  We only commit it to the history
-        // stack after the response comes back ok -- a 400 / network
-        // error must not consume an undo slot.
-        const snap = snapshotForHistory();
+        // Electrode ops are ordinary modifier ops now: the response
+        // flows through molview.data.applyOp -> the model.  If the
+        // user wants a rollback point, they take an explicit "Save
+        // state" checkpoint (§19.5) -- there is no per-op auto-push.
         let r = null;
         if (mode === "single") {
             if (sel.length !== 1) {
@@ -1165,8 +820,9 @@
             const extra = { gap: gap };
             if (sel.length === 2) {
                 const [i0, i1] = sel;
-                const z0 = state.positions[i0][2];
-                const z1 = state.positions[i1][2];
+                const coords = _coords();
+                const z0 = coords[i0][2];
+                const z1 = coords[i1][2];
                 const a_top = z0 >= z1 ? i0 : i1;
                 const a_bot = z0 >= z1 ? i1 : i0;
                 extra.anchors = [a_top, a_bot];
@@ -1177,11 +833,10 @@
                 `Added ${common.element}(${common.plane}) pair`,
             );
         }
-        if (r && snap) {
-            state.history.push(snap);
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            refreshUndoButton();
-        }
+        // Void of use: r reflects postOp success; the model already
+        // applied it.  refreshUndoButton keeps the timeline controls
+        // in step (uncommitted just flipped true).
+        if (r) refreshUndoButton();
     }
 
     function sendToBuild() {
@@ -1203,14 +858,13 @@
         // ``builder-structure`` payload — the persistence comes
         // from the project file on disk, eliminating the
         // sessionStorage-vs-disk conflict class.
-        // Phase 10 — read dirty bit through ws.* (workspace-contract.md §2).
-        const cs = window.molbuilder
-                && window.molbuilder.workspace;
+        // Read the dirty bit through the unified model (molview.data).
+        const d = _data();
         const save = window.molbuilder
                 && window.molbuilder.structureSave;
         const targetPath = (save && typeof save.targetPath === "function")
             ? save.targetPath() : null;
-        if (!cs || !targetPath || cs.isDirty()) {
+        if (!d || !targetPath || d.isDirty()) {
             setEditStatus(
                 "Save to project first — Send-to-Optimization "
               + "needs a project file as input.",
@@ -1258,59 +912,30 @@
         if (_store) {
             _store.subscribe(() => refreshSelectionUI());
         }
-        // Canvas-state subscriber — the Send-to-Optimization button's
-        // enable rule depends on canvas-state.isDirty() + getLastSavedTo(),
-        // neither of which fires through the selection store.  Without
-        // this subscription the Send button wouldn't re-enable after
-        // a successful Save (or re-disable after a modifier op flipped
-        // the dirty bit).  Task #294, 2026-06-08.
-        // Phase 10 — subscribe to ws.* notifications (contract §2.1).
-        // ws.subscribe fires on EVERY workspace-state change (canvas
-        // + selection both), so the Send button stays in lockstep
-        // with both Save and modifier ops.
-        const _cs = window.molbuilder
-                 && window.molbuilder.workspace;
-        if (_cs && typeof _cs.subscribe === "function") {
-            _cs.subscribe(() => refreshSelectionUI());
-        }
-
-        // 2026-06-09: clear the undo history when the workspace
-        // transitions to a state where in-memory + disk are about
-        // to diverge after a fresh action:
-        //   * Save (dirty -> clean, source unchanged): post-save
-        //     undo would roll the in-memory state BACK past the
-        //     just-written disk file, creating disk/memory
-        //     mismatch + leaving any sidecar regions orphaned.
-        //   * Load (source.file changed): the prior structure's
-        //     history is meaningless against the new structure.
-        //   * Discard (workspace became empty): no structure to
-        //     undo into.
-        // Without this clear, a user who does:
-        //   load -> add electrode -> save -> undo
-        // ends up with workspace=3 atoms + disk=11 atoms + sidecar
-        // referencing 11-atom indices.  Per workspace-state.md
-        // § 4.3 ("History is dropped at save time").
-        if (_cs && typeof _cs.subscribe === "function") {
-            let _prevSource = null;
-            let _prevDirty  = false;
-            _cs.subscribe(function (snap) {
-                const src   = (snap && snap.source && snap.source.file)
-                                  || null;
-                const dirty = !!(snap && snap.dirty);
-                const empty = !!(snap && (snap.loading === false)
-                                  && !(snap.structure));
-                const sourceChanged = src !== _prevSource;
-                const savedTransition = _prevDirty && !dirty
-                                        && src === _prevSource;
-                if ((sourceChanged || savedTransition || empty)
-                        && state.history.length) {
-                    state.history.length = 0;
-                    refreshUndoButton();
-                }
-                _prevSource = src;
-                _prevDirty  = dirty;
+        // Composite model subscriber — the Send-to-Optimization button's
+        // enable rule depends on isDirty() + a saved target, and the
+        // Save-state / Retract controls depend on the LIVE state_index /
+        // uncommitted timeline reads; none of those fire through the
+        // selection store alone.  ``molview.data.subscribe`` fires on
+        // EVERY model change (canvas data + selection + timeline), so
+        // both button groups stay in lockstep with Save / Load /
+        // modifier ops / checkpoints.  This is also the render-reaction
+        // hook the module contract asks consumers to use once mutations
+        // go through molview.data.
+        const _d = _data();
+        if (_d && typeof _d.subscribe === "function") {
+            _d.subscribe(() => {
+                refreshSelectionUI();
+                refreshUndoButton();
+                _refreshTitleReadout();
             });
         }
+        _refreshTitleReadout();   // initial paint (in case a structure is already loaded)
+        // The old "clear undo history on save/load/discard" subscriber
+        // is gone: the state timeline now lives on the model (§19.5),
+        // and ``openMolecule`` re-anchors it (prune + reset to index 0) while
+        // ``save(1)`` prunes any abandoned tail -- the model owns
+        // that lifecycle, so there is no in-viewer stack to clear.
 
         // (Legacy load-btn + file-picker dead-code block removed
         // 2026-05-18.  The browser-local file dialog was dropped
@@ -1329,11 +954,17 @@
         // modify.html.
         // (The old viewer-bar "Clear selection" button was removed -- it duplicated the
         // selection panel's own Clear.  Clearing is the panel's job.)
+        // State timeline (§19.5): "Retract" (undo) -> load(-1),
+        // "Save state" -> save(1).  #undo-op keeps its id for
+        // continuity; its label/title in modify.html now read
+        // "Retract".
         const undoBtn = $("undo-op");
-        if (undoBtn) undoBtn.addEventListener("click", applyUndo);
+        if (undoBtn) undoBtn.addEventListener("click", retractState);
+        const saveStateBtn = $("save-state");
+        if (saveStateBtn) saveStateBtn.addEventListener("click", saveState);
 
-        const focusBtn = $("focus-molecule");
-        if (focusBtn) focusBtn.addEventListener("click", focusMolecule);
+        // Focus-molecule is now the module's View-menu "Reset view" (handle.refit);
+        // Modify no longer owns a #focus-molecule button.
 
         // Rotation-pivot snap is now wired via opts.interaction.
         // onDragStart on the embed mount above (search for
@@ -1454,178 +1085,45 @@
         restoreModifyState();
     });
 
-    // State persistence across tab navigation is owned by the
-    // workspace dispatcher under sessionStorage["molbuilder.workspace.v1"]
-    // (workspace-contract.md §4.1 — sole persistence key).  This
-    // module's role is restore-only: translate the dispatcher snapshot
-    // into the shape applyStructure + adoptSession consume.
+    // State persistence across tab navigation is owned by the workspace
+    // PERSISTENCE layer under sessionStorage["molbuilder.workspace.v1"]
+    // (sole persistence key).  This module's role is restore-only: read
+    // the persisted snapshot, then hand the structure to the unified
+    // load door so the WHOLE model (canvas + selection-store atoms +
+    // render) rehydrates coherently.
 
-    const STATE_SCHEMA_VERSION = 1;
 
-    /**
-     * Translate the workspace dispatcher's canonical snapshot
-     * (``ws.readPersistedSnapshot()``) into the shape
-     * ``restoreModifyState`` consumes (applyStructure +
-     * adoptSession + applyState pipeline).  Returns null if the
-     * snapshot doesn't carry enough data to restore.
-     */
-    function _modifyShapeFromDispatcherSnapshot(snap) {
-        if (!snap || !snap.state) return null;
-        const s = snap.state;
-        const struct = s.structure;
-        if (!struct || !struct.text) return null;
-        const atoms = Array.isArray(struct.atoms) ? struct.atoms : [];
-        const view  = s.view || {};
-        const src   = s.source || {};
-        const sel   = s.selection || {};
-        // cd9655e dirty-gate applied at restore-time (the dispatcher
-        // snapshot itself carries atoms unconditionally; this
-        // translator decides whether the saved atoms are trustworthy
-        // or whether to refetch from disk).  When canvas is clean
-        // AND has a source file on disk, the disk is authoritative:
-        // an external editor could have replaced the file while the
-        // user was away.  Pass ``atoms === undefined`` so
-        // adoptSession falls back to its disk-fetch branch.  When
-        // dirty (modifier ops since last save) OR source-less
-        // (generator output, never saved), in-memory IS truth —
-        // install the saved atoms directly.
-        const shouldUseSavedAtoms = !!s.dirty || !src.file;
-        return {
-            v:             STATE_SCHEMA_VERSION,
-            source_file:   src.file || null,
-            xyz:           struct.text,
-            elements:      atoms.map(a => a.element),
-            atom_names:    atoms.map(a => a.atom_name || ""),
-            residue_ids:   atoms.map(
-                a => a.residue_id != null ? a.residue_id : 0),
-            residue_names: atoms.map(a => a.residue_name || ""),
-            chain_ids:     atoms.map(a => a.chain_id || ""),
-            title:         struct.title || "",
-            n_atoms:       struct.n_atoms,
-            selected:      Array.isArray(sel.indices) ? sel.indices : [],
-            atoms:         shouldUseSavedAtoms ? atoms : undefined,
-            camera:        view.camera || null,
-            show_axes:     !!view.axes,
-            show_indices:  !!view.labels,
-            rep:           (view.style && view.style.rep) || "stick",
-        };
-    }
-
-    function restoreModifyState() {
-        // Read the workspace dispatcher's unified snapshot under
-        // ``molbuilder.workspace.v1`` (workspace-contract.md §4.1 —
-        // the sole persistence key).
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        if (!ws || typeof ws.readPersistedSnapshot !== "function") return;
-        const saved = _modifyShapeFromDispatcherSnapshot(ws.readPersistedSnapshot());
-        if (!saved || saved.v !== STATE_SCHEMA_VERSION || !saved.xyz) return;
-        // Restore the chrome state via the embed batch runner
-        // (D4 — applyState canonical-order restore; D3 getX/setX
-        // round-trip pattern).  Only the fields the snapshot
-        // actually carries are passed; undefined fields skip via
-        // the applyState contract.  applyStructure() below handles
-        // the structure swap separately because it does additional
-        // /modify-side bookkeeping (atom list, info panel) that
-        // applyState({structure:...}) wouldn't touch.
-        _handle.applyState({
-            style: typeof saved.rep === "string"
-                       ? { rep: saved.rep } : undefined,
-            axes:  typeof saved.show_axes === "boolean"
-                       ? saved.show_axes : undefined,
-            labels: typeof saved.show_indices === "boolean"
-                       ? saved.show_indices : undefined,
-        });
-        // Feed the saved structure through the existing
-        // applyStructure() path so the atom list, viewer, and info
-        // panel all re-render via the same code as a fresh load.
-        applyStructure({
-            xyz:           saved.xyz,
-            elements:      saved.elements,
-            atom_names:    saved.atom_names,
-            residue_ids:   saved.residue_ids,
-            residue_names: saved.residue_names,
-            chain_ids:     saved.chain_ids,
-            title:         saved.title,
-            n_atoms:       saved.n_atoms,
-        });
-        // Hydrate canvas-state so Save / Load / Generate know
-        // there's something in the workspace.  Without this a
-        // session-restored structure leaves canvas-state empty:
-        // Save reports "No structure to save" and Load doesn't
-        // fire the warning modal even after the user makes edits.
-        //
-        // Skip setStructure when canvas-state's bytes already match the
-        // restored xyz (BOMB-2 invariant): unconditional setStructure
-        // would clear the dirty bit, silently marking unsaved modifier
-        // edits as clean.  Defensive against future bfcache paths
-        // where the dispatcher snapshot and canvas-state diverge.
-        try {
-            // Phase 10 — install via ws.* (contract §3).  Routes
-            // through the same canvas-state internally; consumer
-            // surface is now unified.
-            const cs = window.molbuilder
-                    && window.molbuilder.workspace;
-            if (cs && typeof cs.installStructure === "function"
-                   && saved.xyz) {
-                const existing = (typeof cs.getStructure === "function")
-                    ? cs.getStructure() : null;
-                const sameBytes = existing
-                    && existing.text === saved.xyz;
-                if (!sameBytes) {
-                    cs.installStructure(
-                        { source_format: "xyz", text: saved.xyz },
-                        { kind: saved.source_file ? "file" : "load",
-                          file: saved.source_file || null,
-                          generator_input: null }
-                    );
-                }
-            }
-        } catch (_) { /* canvas-state optional — UX unaffected */ }
-        // Rehydrate the store atomically.  We can't call
-        // ``setSourceFile`` here because that path would re-issue
-        // ``GET /api/files/read`` + a viewer model swap -- we just
-        // applied the structure from sessionStorage, so re-loading
-        // would discard the camera we're about to restore AND waste
-        // a round-trip.  ``adoptSession`` takes the same {sourceFile,
-        // selection} pair, skips the viewer load, and re-fetches the
-        // atom list from the server so any sidecar updates done
-        // elsewhere since the snapshot are reflected.
-        const _s = _selStore();
-        if (_s && typeof _s.adoptSession === "function") {
-            const validSelection = Array.isArray(saved.selected)
-                ? saved.selected.filter(
-                    (i) => Number.isInteger(i)
-                        && i >= 0
-                        && i < state.n_atoms
-                )
-                : [];
-            // BOMB-0 follow-up (2026-06-07): pass saved.atoms when
-            // present so adoptSession installs the in-memory post-op
-            // atoms list directly instead of going through the disk
-            // fetch.  Disk reads are stale relative to state.xyz
-            // until the user saves; without this, a Modify-tab
-            // session that did a Delete + navigated away would come
-            // back showing the PRE-delete atom list.  When atoms is
-            // absent (cross-tab handoff, pre-fix sessions still in
-            // storage), adoptSession falls back to the disk fetch.
-            _s.adoptSession({
-                sourceFile: saved.source_file || null,
-                selection:  validSelection,
-                atoms:      Array.isArray(saved.atoms)
-                              ? saved.atoms : undefined,
-            });
-        }
-        // Restore the camera AFTER applyStructure so it doesn't
-        // fight the refit() that lives inside.  Camera goes
-        // through applyState too for consistency, though a bare
-        // setCamera would be equivalent for this one field.
-        if (saved.camera) {
-            _handle.applyState({ camera: saved.camera });
-        }
+    async function restoreModifyState() {
+        // Reload-restore is the §19.5 mount-restore primitive:
+        // ``load(0)`` reloads the current committed state from the
+        // session mirror and applies it to the WHOLE model WITHOUT
+        // re-anchoring the timeline or a network round-trip (unlike
+        // ``openMolecule``, the NEW-molecule door).  The data model
+        // reads the persisted snapshot itself, so this module no
+        // longer touches the persistence layer here.  It restores
+        // structure + selection + view + dirty + timeline position into molview.data; the
+        // module's render + this file's molview.data subscription (refreshSelectionUI /
+        // refreshUndoButton / _refreshTitleReadout) update the UI as a side effect.
+        const d = _data();
+        if (!d || typeof d.load !== "function") return;
+        // Declare THIS tab's persistence namespace before the restore reads the
+        // session mirror.  The Modify tab is one consumer split across two files:
+        // selection-bootstrap.js mounts molview with ``owner:"modify"`` (which calls
+        // useNamespace), but THIS DOMContentLoaded restore runs first (viewer.js loads
+        // earlier), so it must set the same namespace itself -- otherwise it reads the
+        // un-namespaced base key and misses the ``::modify`` mirror the last visit wrote
+        // (molview-module.md §18.4).  Idempotent with the mount's later call.
+        const _ws = window.molbuilder && window.molbuilder.workspace;
+        if (_ws && typeof _ws.useNamespace === "function") _ws.useNamespace("modify");
+        await d.load(0);
+        refreshUndoButton();
+        _refreshTitleReadout();
+        // Read the restored structure LIVE from molview.data (the single source).
+        const s = (d.getStructure && d.getStructure()) || null;
+        const title = (s && s.title) ? s.title : "unnamed";
         setStatus(
-            `Restored ${state.n_atoms}-atom structure (${saved.title || "unnamed"}).`,
-            "ok",
-        );
+            `Restored ${_nAtoms()}-atom structure (${title}).`,
+            "ok");
     }
 
     // ----- Test hook ------------------------------------------------- //
@@ -1640,62 +1138,63 @@
         // Production code never has a tempting raw-viewer reference
         // to misuse, and tests still get the same object back via
         // the documented _viewer3dmol() escape (§ 2.4).
-        getViewer:   () => _handle._viewer3dmol(),
+        // The viewer is the MODULE's now.  mount.js stashes the embed handle on the
+        // built card's viewer host (viewerHost.__molview_test_handle); read it lazily so
+        // e2e still gets the raw 3Dmol viewer via the documented escape hatch.
+        getViewer:   () => {
+            const vh = document.querySelector("#molview-host .viewer");
+            const h  = vh && vh.__molview_test_handle;
+            return h ? h._viewer3dmol() : null;
+        },
         getSelected: () => selectedIndices(),
-        getNAtoms:   () => state.n_atoms,
-        // getState is read-only (we expose the raw state object,
-        // tests must not mutate it).  Used by Geom-subtab tests to
-        // probe positions after a translate / center op without
-        // round-tripping through xyz parsing.
-        getState:    () => state,
+        getNAtoms:   () => _nAtoms(),
+        // Geom-subtab tests probe coordinates after a translate / center op.  Read LIVE
+        // from molview.data (the single source) -- there is no state.* mirror to expose.
+        getState:    () => {
+            const d = _data();
+            const s = (d && d.getStructure && d.getStructure()) || null;
+            const atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+            return {
+                n_atoms:   _nAtoms(),
+                positions: _coords(),
+                // Metadata read LIVE from molview.data's atoms (the single source).
+                chain_ids: atoms.map((a) => (a.chainId != null ? a.chainId : null)),
+                residue_ids: atoms.map((a) => (a.residueId != null ? a.residueId : null)),
+            };
+        },
     };
 
     // Public loader for the Projects sidebar's onLoad callback (and
     // any future tab-coordination code).  Reuses /api/build/load's
     // JSON path so we don't need a browser File object.
     window.molbuilder = window.molbuilder || {};
-    // Expose the embed HANDLE (NOT a raw 3Dmol viewer) under the
-    // per-tab namespace.  Every consumer drives the viewer via the
-    // declarative handle API — `modify.handle.setOverlays(...)`,
-    // `modify.handle.setPick(...)`, etc.  /modify is a single-mount
-    // page (no within-page remount), so the handle reference is
-    // stable for the page lifetime.  The legacy raw-viewer slot
-    // ``modify.viewer`` was dropped in #239 (no Layer-1 self-
-    // protection: a torn-down 3Dmol viewer crashes on access;
-    // handle methods short-circuit on state.disposed).
+    // The viewer + its handle belong to the MODULE now (Track B): no ``modify.handle`` to
+    // expose, and (state.* rip-out) no ``modify.currentStateBody`` / ``modify.applyStructure``
+    // either -- the op-request body is built INSIDE the module (data-model.applyOp
+    // ._structureBody from molview.data) and the op result flows store -> UI via the
+    // molview.data subscription, not a consumer hand-off hook.
     window.molbuilder.modify = window.molbuilder.modify || {};
-    window.molbuilder.modify.handle = _handle;
-    // Workspace-state Phase 5 (2026-06-07): expose
-    // ``currentStateBody`` + ``applyStructure`` on the modify
-    // namespace so the workspace dispatcher's _applyWorkspacePayload
-    // pipeline can call them synchronously.  Pre-Phase-5 these
-    // were IIFE-private and only reachable via the modifier-button
-    // wiring; exposing them lets ``ws.applyOp`` own the
-    // fetch+state-replacement pipeline end-to-end.
-    window.molbuilder.modify.currentStateBody = currentStateBody;
-    window.molbuilder.modify.applyStructure   = applyStructure;
-    // Load a structure text blob (XYZ or PDB) via /api/build/load,
-    // which sniffs the format from the filename + content.  The
-    // function is named ``loadStructureText`` (renamed 2026-05-22
-    // from the misleading legacy ``loadXyzText``) because it
-    // genuinely accepts both formats; the field name lied about
-    // its capability and caused real bugs (see design.md decision
-    // log for the rename rationale).
-    // Back-compat alias.  The actual fetch + applyPayload pipeline
-    // moved into ``ws.loadFromText`` on 2026-06-08 so the
-    // dispatcher owns every "parse text → install workspace"
-    // entry point.  This alias stays so existing consumers
-    // (selection-bootstrap, the Sources-card generators' injected
-    // ``viewerLoader``, the page-mount test hook) keep working
-    // without coordinating a rename.  The page-mount test still
-    // waits on ``typeof window.molbuilder.loadStructureText
-    // === 'function'`` — that contract holds.
+    // Load a structure text blob (XYZ or PDB) through the UNIFIED
+    // open door (``molview.data.openMolecule({text, filename})``), which
+    // sniffs the format from the filename + content and installs the
+    // whole model atomically.  The function is named
+    // ``loadStructureText`` because it genuinely accepts both formats.
+    // This global alias stays so existing consumers (selection-
+    // bootstrap, the Sources-card generators' injected ``viewerLoader``,
+    // the selection store's setLoader, the page-mount test hook) keep
+    // working; they now flow through the unified load door rather than
+    // the old persistence-layer text loader that was removed.
     window.molbuilder.loadStructureText = async function (text, filename) {
         setStatus(`Loading ${filename}…`);
+        const d = _data();
+        if (!d || typeof d.openMolecule !== "function") {
+            const msg = "Data model unavailable; cannot load structure.";
+            setStatus(msg, "error");
+            throw new Error(msg);
+        }
         let r;
         try {
-            r = await window.molbuilder.workspace.loadFromText(
-                text, filename);
+            r = await d.openMolecule({ text: text, filename: filename });
         } catch (e) {
             const msg = (e && e.message) ? e.message : String(e);
             setStatus(msg, "error");
@@ -1708,36 +1207,18 @@
         );
         return r;
     };
-    // Module-init contract: register the modify handle with the
-    // runtime so ``selection-bootstrap`` can ``whenReady("modify.handle")``
-    // (selection-bootstrap line ~359).  Also register
-    // ``modify.applyUndo`` for the workspace dispatcher's
-    // ``ws.undo()`` method (dispatcher.js).
-    //
-    // Review cleanup 2026-06-08: dropped two registrations that had
-    // no consumers — ``modify.postOp`` (ws.applyOp is self-sufficient
-    // since Phase 5; doesn't whenReady the postOp anymore) and
-    // ``modify.loadStructureText`` (no whenReady consumer; the global
-    // ``window.molbuilder.loadStructureText`` is still used directly
-    // by selection-bootstrap + the selection store's setLoader).
-    if (window.molbuilder.runtime
-        && typeof window.molbuilder.runtime.register === "function") {
-        window.molbuilder.runtime.register(
-            "modify.handle", window.molbuilder.modify.handle);
-        window.molbuilder.runtime.register("modify.applyUndo", applyUndo);
-    }
+    // (No ``modify.handle`` runtime registration: the module owns the viewer + attaches
+    // the selection adapter to it, so selection-bootstrap no longer waits on it.)
 
-    // Selection-driven measurement readout: the panel calls this
-    // provider on every render to compute xyz / distance / angle
-    // for the current selection.  ``state.positions`` is parsed
-    // from the canonical XYZ payload above (cleared to [] on parse
-    // anomaly); returning an empty array signals "positions not
+    // Selection-driven measurement readout: the legacy panel path calls this provider to
+    // compute xyz / distance / angle for the current selection.  Coordinates come LIVE from
+    // molview.data (``_coords()`` -> getCoordinates); returning an empty array signals "positions not
     // available yet" and the panel hides the readout.  See
     // ``lib/selection/measurements.js`` for the shape and
     // ``lib/selection-panel.js`` ``renderMeasurement`` for the
     // consumer.
     window.molbuilder.selection = window.molbuilder.selection || {};
     window.molbuilder.selection.positionsProvider = function () {
-        return state.positions || [];
+        return _coords();
     };
 })();

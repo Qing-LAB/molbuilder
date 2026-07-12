@@ -16,7 +16,13 @@
     var AXIS = ["isolated", "periodic", "transport"];
 
     function $(id) { return document.getElementById(id); }
-    function ws() { return root.molbuilder && root.molbuilder.workspace; }
+    // DATA access (getStructure / get*Info / commitPeriodicity / setKgrid /
+    // subscribe) is the in-memory model on molview.data; ``workspace`` is
+    // persistence-only now.
+    function ws() {
+        return root.molbuilder && root.molbuilder.molview
+            && root.molbuilder.molview.data;
+    }
     function hasStructure() {
         var w = ws();
         return !!(w && typeof w.getStructure === "function" && w.getStructure());

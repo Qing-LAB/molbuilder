@@ -66,10 +66,9 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_function(
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
-    assert keys == ["currentFrame", "dispose", "frameCount", "getFrame",
-                    "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
-                    "setLabels", "undo"]
+    assert keys == ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
+                    "getSelection", "getStructure", "isPlaying", "onChange", "openMolecule",
+                    "pause", "play", "setArrows", "setFrame", "setLabels", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)
@@ -209,6 +208,40 @@ def test_molview_demo_selection_cell_tabs_actually_switch(page, flask_server):
         "  const s = document.querySelector('#molview-demo-host #panel-page-selection');"
         "  return c && s && s.offsetParent !== null && c.offsetParent === null; }",
         timeout=5000)
+
+
+def test_molview_demo_load_is_atomic_across_the_whole_model(page, flask_server):
+    """Contract (molview-module.md §19.3.1): a single ``loadFromText`` sets up the ENTIRE
+    model -- atoms AND structure/periodicity -- in one call.  There is no second "install
+    into the canvas" door, and no path may leave atoms present with ``getStructure()`` null.
+    Regression: /molview-demo loads via the one documented entry point and got atoms but a
+    null structure + no unit cell, because the load was split across two write paths."""
+    page.goto(f"{flask_server}/molview-demo")
+    page.wait_for_selector("#molview-demo-host .molview-viewer", timeout=20000)
+
+    def model_after_load():
+        return page.evaluate(
+            "() => { const d = window.molbuilder.molview.data; const s = d.getStructure();"
+            "  return { hasAtoms: !!(s && s.atoms && s.atoms.length),"
+            "           structureNull: s === null,"
+            "           unitCell: d.getUnitCellInfo().value }; }")
+
+    # The demo mounts by loading 'water' through loadFromText -> the whole model is coherent.
+    page.wait_for_function(
+        "() => { const d = window.molbuilder.molview.data; const s = d.getStructure();"
+        "  return !!(s && s.atoms && s.atoms.length); }", timeout=10000)
+    m = model_after_load()
+    assert m["hasAtoms"] and not m["structureNull"], m
+    # Every structure has a valid (resolved) cell -- never null while atoms exist.
+    assert m["unitCell"] is not None, m
+
+    # Switching samples through the same one door stays coherent (benzene has more atoms).
+    page.click("#demo-benzene")
+    page.wait_for_function(
+        "() => { const s = window.molbuilder.molview.data.getStructure();"
+        "  return !!(s && s.atoms && s.atoms.length === 12); }", timeout=10000)
+    m2 = model_after_load()
+    assert not m2["structureNull"] and m2["unitCell"] is not None, m2
 
 
 def test_molview_demo_view_menu_layout(page, flask_server):

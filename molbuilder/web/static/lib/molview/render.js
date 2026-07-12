@@ -55,13 +55,23 @@
             var elements = atoms.map(function (a) { return a.element; });
             return { coords: coords, elements: elements, xyz: _buildXyz(elements, coords) };
         }
-        // The resolved lattice (explicit cell, or bbox+vacuum) via the accessor.
+        // The RESOLVED lattice (explicit cell, OR the bbox+vacuum default) -- used ONLY for
+        // k-grid TILING (duplicate the unit cell by the lattice), never for the base draw.
         function getCell() {
             if (typeof workspace.getUnitCellInfo === "function") {
                 var info = workspace.getUnitCellInfo();
                 if (info && info.value) return info.value;
             }
             return (typeof workspace.getUnitCell === "function") ? workspace.getUnitCell() : null;
+        }
+        // The EXPLICIT cell ONLY (raw, null for a cell-less molecule) -- what the BASE draw
+        // passes as its lattice.  A user/imported cell draws a wireframe box + cell-scaled
+        // axes; a fresh cell-less molecule draws NO box and Cartesian FIXED-length axes.  Do
+        // NOT feed the resolved bbox here -- that would draw a spurious box + extent-scaled
+        // axes for every cell-less molecule (the bbox belongs to tiling, via getCell).
+        function getExplicitCell() {
+            return (typeof workspace.getUnitCell === "function" && workspace.getUnitCell())
+                || null;
         }
         // The k-grid DIMS = periodicity.kgrid (the ONE value, §14.0); NOT the store's dims.
         function getKgridDims() {
@@ -75,7 +85,8 @@
         function drawBase() {
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
-                handle.setStructure({ xyz: u.xyz, lattice: getCell() || undefined });
+                // EXPLICIT cell only (not the resolved bbox) -- see getExplicitCell.
+                handle.setStructure({ xyz: u.xyz, lattice: getExplicitCell() || undefined });
             }
         }
 
@@ -115,7 +126,13 @@
                 sig += "|" + a.element + "," + a.x + "," + a.y + "," + a.z;
             }
             var cell = getCell();
-            return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none");
+            // Include the k-grid DIMS: changing them (Modify's "Update k-grid") must re-tile
+            // even though the atoms + cell are unchanged.  Without this the sig gate would
+            // early-return and kg.refresh() would never fire (the pre-Track-B viewer refreshed
+            // unconditionally on every ws change; the sig gate here must not lose that).
+            var dims = getKgridDims();
+            return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none")
+                       + "|kg:" + JSON.stringify(dims);
         }
         function redrawIfStructureChanged() {
             var sig = _structureSig();

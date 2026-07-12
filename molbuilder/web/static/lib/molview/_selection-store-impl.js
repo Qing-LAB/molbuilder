@@ -204,6 +204,13 @@
         else if (raw.residueName) out.residueName = raw.residueName;
         if (raw.chain_id)     out.chainId     = raw.chain_id;
         else if (raw.chainId) out.chainId     = raw.chainId;
+        // residue_id is a NUMBER (1-based residue sequence) that can legitimately be 0,
+        // so guard with != null, not truthiness.  It reaches the atom via the payload's
+        // top-level residue_ids[] distributed per-atom in data-model _applyWorkspacePayload
+        // (the wire has no per-atom residue_id).  Carrying it here makes molview.data the
+        // COMPLETE single source -- modify ops no longer need a parallel state.* mirror.
+        if (raw.residue_id != null)      out.residueId = raw.residue_id;
+        else if (raw.residueId != null)  out.residueId = raw.residueId;
         return out;
     }
 

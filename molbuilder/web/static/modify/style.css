@@ -166,8 +166,11 @@ header .tagline {
     max-width: 1680px;
     margin-inline: auto;
 }
-/* Primary card: wide + heavy grow; min == the fused card's own stacked min-width. */
-.workspace-grid > .molview-card    { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
+/* Primary card: wide + heavy grow; min == the fused card's own stacked min-width.
+ * Targets .viewer-section -- the direct grid child that now WRAPS molview.mount's built
+ * .molview-card (Track B: the module builds its own card into the section's bare host, so
+ * the grid weight lives on the section, not the nested card). */
+.workspace-grid > .viewer-section  { --card-weight: 2.4; --card-basis: 640px; --card-min: 340px; }
 /* Secondary card: keeps the op controls at a usable width. */
 .workspace-grid > .workspace-modify { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
 

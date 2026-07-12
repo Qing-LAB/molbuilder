@@ -79,14 +79,14 @@
 
         function load(name) {
             trajLoaded = false;
-            return data.loadFromText(SAMPLES[name], "demo-" + name + ".xyz")
+            return data.openMolecule({ text: SAMPLES[name], filename: "demo-" + name + ".xyz" })
                 .then(function () { updateForceArrows(); say("loaded " + name + " — panel + render updated."); })
                 .catch(function (e) { say("load failed: " + (e && e.message)); });
         }
 
         // Load the structure (frame 0) then hand MolView's data model the full frame series.
         function loadTrajectory() {
-            return data.loadFromText(TRAJECTORY.text, "demo-traj.xyz").then(function () {
+            return data.openMolecule({ text: TRAJECTORY.text, filename: "demo-traj.xyz" }).then(function () {
                 var n = data.reloadFrames(TRAJECTORY.frames, { forces: TRAJECTORY.forces });
                 trajLoaded = true;
                 updateForceArrows();

@@ -19,8 +19,9 @@
  *                     selection.createEphemeralStore() for an isolated selection.
  *   viewerHandle    : the embed handle to attach the adapter to (inspectors pass
  *                     their embed return value directly); OR
- *   viewerHandleKey : a runtime-registry key to await for the handle (Modify
- *                     uses "modify.handle").  Ignored when viewerHandle is given.
+ *   viewerHandleKey : a runtime-registry key to await for the handle.  Ignored when
+ *                     viewerHandle is given.  (Not used by Modify anymore -- molview.mount's
+ *                     built-card path embeds the viewer + attaches the adapter itself.)
  *   mode            : "modify" | "readonly" (forwarded to mount/attach; reserved
  *                     for per-mode UI -- adapter behaviour is identical today).
  *   partialUrl      : override the panel partial URL (default below).

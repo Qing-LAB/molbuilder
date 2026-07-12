@@ -177,14 +177,15 @@ class TestInputValidation:
 class TestHappyPath:
 
     def test_successful_generate_calls_loadIntoCanvas_with_xyz(self):
-        """Pins the canvas-state contract: a successful build POST
-        routes the XYZ + source provenance through
-        ``structurePage.loadIntoCanvas``."""
+        """Pins the load contract: a successful build POST routes the
+        XYZ + source provenance through ``structurePage.loadIntoCanvas``
+        — the single load door.  There is NO second viewer load; the
+        load door parses + renders the structure itself."""
         out = _run_node('''
             let capturedUrl = null;
             let capturedBody = null;
             let canvasArgs = null;
-            let viewerArgs = null;
+            let loadCalls = 0;
             smiles.configure({
                 fetch: async (url, init) => {
                     capturedUrl = url;
@@ -201,36 +202,31 @@ class TestHappyPath:
                 },
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
+                        loadCalls++;
                         canvasArgs = {struct, src};
                         return {ok: true};
                     },
                 },
-                viewerLoader: (text, fname) => {
-                    viewerArgs = {text, fname};
-                    return Promise.resolve();
-                },
             });
             const r = await smiles.generate("CCO");
             console.log(JSON.stringify({
-                envelope: r,
-                url:      capturedUrl,
-                body:     capturedBody,
-                canvas:   canvasArgs,
-                viewer:   viewerArgs,
+                envelope:  r,
+                url:       capturedUrl,
+                body:      capturedBody,
+                canvas:    canvasArgs,
+                loadCalls: loadCalls,
             }));
         ''')
         assert out["envelope"] == {"ok": True, "n_atoms": 3}
         assert out["url"] == "/api/build/molecule"
         assert out["body"] == {"kind": "smiles", "input": "CCO"}
-        # Canvas gate receives the XYZ + source provenance.
+        # Load door receives the XYZ + source provenance...
         assert out["canvas"]["struct"]["source_format"] == "xyz"
         assert out["canvas"]["struct"]["text"].startswith("3\n")
         assert out["canvas"]["src"]["kind"] == "smiles"
         assert out["canvas"]["src"]["generator_input"]["smiles"] == "CCO"
-        # Viewer loader was called with the XYZ text + a sane
-        # filename derived from the SMILES.
-        assert out["viewer"]["text"].startswith("3\n")
-        assert "smiles-CCO" in out["viewer"]["fname"]
+        # ...exactly once — no redundant second load.
+        assert out["loadCalls"] == 1
 
     def test_smiles_input_is_trimmed_before_post(self):
         """Leading/trailing whitespace is stripped — the server
@@ -330,12 +326,11 @@ class TestErrorPaths:
 
 class TestCanvasGate:
 
-    def test_canvas_cancel_passes_through_and_skips_viewer(self):
-        """If the user cancels the warning modal, the result envelope
-        carries ``cancelled: true`` and the viewer loader is NOT
-        called (no surprise re-render of an unchanged canvas)."""
+    def test_canvas_cancel_passes_through_as_cancelled(self):
+        """If the user cancels the dirty-canvas warning modal (the
+        load door returns ``cancelled: true``), the result envelope
+        carries ``cancelled: true`` — no ``ok`` success."""
         out = _run_node('''
-            let viewerCalls = 0;
             smiles.configure({
                 fetch: async () => ({
                     ok: true,
@@ -348,25 +343,18 @@ class TestCanvasGate:
                         ok: false, cancelled: true,
                     }),
                 },
-                viewerLoader: () => {
-                    viewerCalls++;
-                    return Promise.resolve();
-                },
             });
             const r = await smiles.generate("C");
-            console.log(JSON.stringify({
-                envelope:    r,
-                viewerCalls: viewerCalls,
-            }));
+            console.log(JSON.stringify(r));
         ''')
-        assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["viewerCalls"] == 0
+        assert out == {"ok": False, "cancelled": True}
 
-    def test_no_viewer_loader_still_returns_ok_when_canvas_accepts(self):
-        """In test contexts the viewer loader may be unset; the
-        canvas gate accepting the XYZ is enough — the module
-        returns ok:true regardless of whether the viewer renders."""
+    def test_canvas_accept_returns_ok(self):
+        """The load door accepting the XYZ (loadIntoCanvas resolving
+        ok) is the whole success path — the door parses + renders
+        the structure itself, so the module returns ok:true."""
         out = _run_node('''
+            let loadCalls = 0;
             smiles.configure({
                 fetch: async () => ({
                     ok: true,
@@ -375,14 +363,14 @@ class TestCanvasGate:
                     }),
                 }),
                 structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
+                    loadIntoCanvas: async () => { loadCalls++; return {ok: true}; },
                 },
-                viewerLoader: null,
             });
             const r = await smiles.generate("C");
-            console.log(JSON.stringify(r));
+            console.log(JSON.stringify({envelope: r, loadCalls}));
         ''')
-        assert out == {"ok": True, "n_atoms": 1}
+        assert out["envelope"] == {"ok": True, "n_atoms": 1}
+        assert out["loadCalls"] == 1
 
 
 # ----- Configuration error surface ------------------------------- #

@@ -46,27 +46,118 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
 
 ### Track B — Modify consumes the MolView module (finish G2)
 
-> Design: molview-module.md §12–§14 (the store, composition via `mountPanel`, the k-grid
-> controller). Each step reads/writes structure data ONLY through `ws.*` / the store
-> and the module API.
+> **Goal in one sentence.** The Modify tab must mount the *concealed, packaged* MolView
+> module into an **empty host** — exactly as the demo (`static/molview/demo.js`) and the
+> Results structure inspector (`lib/inspectors/structure.js`) do — and **delete** every
+> line of Modify's own viewer chrome that the module now owns. When done, `modify.html`
+> hands the module one empty `<div>`, and `modify/viewer.js` contains ONLY Modify-specific
+> logic (op-tabs, the state timeline, electrode/anchor UI, the Load-button plumbing) — no
+> `embed()`, no `applyStructure` render, no toggle bar, no k-grid controller, no raw-3Dmol
+> reach.
+>
+> **Reference (the correct pattern, already shipped & green):**
+> `demo.js` → `data.openMolecule({text, filename})` then
+> `mv.mount(emptyHost, ws, {mode:"modify", owner:"molview-demo"})`. The module builds the
+> card, embeds the viewer, owns the render loop, puts the toggles in the View menu, and
+> wires click-select — all of it.
+>
+> **Anti-drift rules for THIS track (read before every step):**
+> 1. Do NOT hand-build viewer chrome anywhere. If something is missing from the built
+>    card, the fix goes in the MODULE (so the demo gets it too), never a Modify patch.
+> 2. Do NOT reach into raw 3Dmol from Modify. If a feature needs it, the module exposes
+>    it on the handle, or the feature is dropped by explicit decision (Step B0).
+> 3. Each step ends GREEN on its Check before the next begins. If a Check can't pass,
+>    STOP and fix the step — do not proceed or work around it.
+> 4. No new hacks. A relocation/patch that papers over "the module didn't do X" is a
+>    hack; the answer is always to make the module do X.
+> 5. **Missing capability → file a MODULE task, never a Modify workaround.** If Modify
+>    needs a function the module doesn't expose, you do NOT implement it in Modify and you
+>    do NOT reach around the module. You file a task/requirement AGAINST THE MODULE to add
+>    or expose the needed API / handle method / data structure. Modify only consumes that
+>    capability once the module ships it. (No raw-3Dmol reach, no bespoke overlay, no
+>    "temporary" Modify-side copy.) Every DECIDE item the built card doesn't already cover
+>    therefore resolves to a filed module-side task with the exact API/data it must add.
 
-- **Step 3 — Modify composes panel + viewer through the module.** Replace Modify's
-  bespoke panel mount with `selection.mountPanel(host, {store, viewerHandle, mode})`;
-  adopt `fused-layout.css` so viewer + panel are ONE card (as on Results).
-  **Check:** (a) Modify viewer + panel render as one fused card; (b)
-  `selection-bootstrap.js` no longer fetches/mounts the panel by hand — it goes
-  through `mountPanel`; (c) selection still works (click, filter, assign); Modify
-  selection tests pass.
-  **Status:** ☐
+#### Inventory of `modify/viewer.js` (done 2026-07-11 — the map this track works from)
 
-- **Step 4 — Modify's base render goes through the module** (optional if 1–3 suffice).
-  Retire `modify/viewer.js`'s bespoke `applyStructure` rendering in favour of the
-  module handle's `setStructure`, driven by the store — keeping only the
-  Modify-specific UI (electrode/anchor/slab controls).
-  **Check:** the Modify render path is the module's; no second copy of the structure
-  lives in `modify/viewer.js state.*` beyond what the tab's own UI needs; all Modify
-  op tests pass.
-  **Status:** ☐ (revisit scope after Step 3 — may be deferred.)
+**DELETE — the module already owns these (proven in the demo):**
+- `viewer.embed(...)` (the whole embed call) — module builds + embeds the viewer.
+- `applyStructure(r)` — the bespoke render hook; module renders from `molview.data` on change.
+- `_drawBase`, `_wireKgrid` — base render + k-grid; module owns via `mountKgridRender`.
+- `refreshSelectionUI` selection painting — module owns click + selection display.
+- `window.molbuilder.loadStructureText` — replaced by `data.openMolecule`.
+- the flat `.viewer-controls` bar + `#viewer-view-controls` toggle span (in `modify.html`).
+
+**KEEP — Modify-specific; must go through `molview.data` / the mount handle, never raw 3Dmol:**
+- Op-tabs: `postOp`, `applyDelete/Center/Translate/AddAtom/Orient/Rotate/Electrode`,
+  `readElcCommonBody`, `populateElectrodeMeta`, `renderLatticeRefRadios`, `refreshElcReadouts`.
+- State timeline: `saveState`→`data.save(1)`, `retractState`→`data.load(-1)`,
+  `restoreModifyState`→`data.load(0)`, `refreshUndoButton`, `currentStateBody`.
+- `sendToBuild`; status helpers (`setStatus`, `setEditStatus`).
+- The Load-button / sidebar-candidate plumbing in `selection-bootstrap.js` (`_commitFile` etc.).
+
+**DECIDE — RESOLVED in Step B0 (2026-07-11). Findings + decisions:**
+- **Click-to-select — COVERED by the module.** `mount.js:148` attaches `viewerAdapter` in the
+  built-card path. → Delete Modify's redundant path in B2. No module task.
+- **Region halos + frozen-atom halos + selection halo — COVERED by the module.**
+  `viewer-adapter.js:7-9` draws all three; the built card attaches the SAME adapter
+  (`mount.js:146-152`). → Delete Modify's redundant `viewerAdapter.attach(modify.handle)` in
+  `selection-bootstrap.js` (lines 405-440) in B2. No module task.
+- **Measurement chip — COVERED by the module.** `render.js:95` (via `mountRender`, called by
+  the built-card path) wires `mountMeasurementOverlay`, which builds its OWN overlay element.
+  → Delete Modify's redundant template `#selection-measurement-overlay` div in B1. No module task.
+- **`#title-readout` — Modify fills it by CONSUMING the handle (not a hack, not raw 3Dmol).**
+  The handle exposes `getStructure().title` + `onChange`; Modify keeps a tiny header updater:
+  `handle.onChange(() => title.textContent = handle.getStructure()?.title)`. No module task.
+- **Focus-molecule — COVERED by the module.** The built card's View-menu **"Reset view"**
+  calls `handle.refit()` (mol-viewer-embed.js:1919), which re-frames/re-centers on the molecule
+  — exactly what Modify's `#focus-molecule` tooltip describes. → Delete Modify's `#focus-molecule`
+  button + `focusMolecule`/`snapPivotToCenter`/`_moleculeIndices` + the `interaction` embed opts
+  in B2; users re-center via "Reset view". No module task. (Filed task #46 then deleted — no gap.)
+
+---
+
+- **Step B0 — Resolve the DECIDE list (facts + decisions, NO code changes).**
+  Read the module to answer, for each DECIDE item: does the built card already provide it,
+  does the handle expose it, or is it a Modify-only feature? Record each answer + the
+  decision (module-absorbs vs drop) in this doc. Specifically nail:
+  (a) does `mv.mount`'s built card wire click-to-select to `data.selection`? (user says yes — verify);
+  (b) does it draw region halos, or is `viewerAdapter` still needed and, if so, against which handle?;
+  (c) does the built card include the measurement chip + a title readout?;
+  (d) is there a handle/API for focus-pivot, or is `#focus-molecule` dropped?
+  **Check:** every DECIDE item has a written answer + decision in this section; no code touched.
+  **Status:** ☑ (2026-07-11) — all 5 DECIDE items resolved above; **ALL covered by the module,
+  NO gaps, NO module task, nothing blocks B2.** Click-select, all halos, measurement, and
+  focus (View-menu "Reset view" = `handle.refit()`) are module-provided; title-readout is Modify
+  consuming the handle. Track B is now a pure delete-and-mount. NO code touched.
+
+- **Step B1 — Empty host in `modify.html`.** Replace the hand-built `.molview-card` block
+  (the `#viewer` div, `.viewer-controls` bar, `#focus-molecule`, `#viewer-view-controls`,
+  `#molview-fold`, `#selection-host`) with ONE empty host `<div id="molview-host"></div>`
+  inside the numbered section. Keep the `#title-readout` header per Step B0's decision.
+  **Check:** page still loads; `node -c` clean; NO test run yet (viewer.js still references
+  the removed ids — expected; B2 fixes it). This step is not independently green — it is
+  paired with B2; land B1+B2 together.
+  **Status:** ☑ (2026-07-11)
+
+- **Step B2 — Point the mount at the empty host + strip viewer.js's chrome.**
+  In `selection-bootstrap.js`: set `HOST_ID = "molview-host"` so `mv.mount` gets an empty
+  host and BUILDS the card. In `modify/viewer.js`: delete the DELETE-list items above;
+  rewire the KEEP-list so op results and the timeline drive `molview.data` and the render
+  reacts on its own (as the demo does). Apply Step B0's decisions for the DECIDE items.
+  **Check:** `tests/test_molbuilder_e2e.py` full run GREEN (structure loads, renders,
+  selection click works, ops apply, save-state/retract work); the View toggles are inside
+  `.mol-viewer-menu-view .mol-viewer-menu-toggles` (the whole reason we started); no
+  `#viewer` / `viewer.embed` / `applyStructure` left in `modify/viewer.js`.
+  **Status:** ☑ (2026-07-11)
+
+- **Step B3 — Delete now-dead code + tests; align docs.** Remove any viewer.js helpers
+  orphaned by B2 (e.g. `_drawBase`, `_wireKgrid`, adapter glue if B0 dropped it), delete
+  the obsolete `mountViewControls`-into-flat-bar test expectations, and update
+  molview-module.md / this doc to state Modify uses the built card.
+  **Check:** full Modify + molview-demo + structure-inspector e2e GREEN; `grep` shows no
+  Modify reference to deleted seams; docs match code.
+  **Status:** ☑ (2026-07-11)
 
 - **Step 5 — cell-origin / box placement** (G4, separate track). Decide + implement
   the cell-origin convention so the wireframe wraps the atoms (draw from min corner,

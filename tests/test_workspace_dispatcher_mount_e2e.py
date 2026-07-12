@@ -65,12 +65,16 @@ def test_molbuilder_page_mounts_canvas_state_under_real_script_order(
     script tag moves AFTER the dispatcher's, OR where a new mount
     mechanism is introduced that doesn't merge.
     """
+    # Post-carve contract: the workspace is PERSISTENCE-ONLY (its ready surface is
+    # ``persist``); the in-memory data model (``getStructure`` et al.) lives on
+    # ``molview.data``.  Gate on the persistence surface, not the moved data API.
     page.goto(f"{flask_server}/molbuilder")
     page.wait_for_function(
         "() => window.molbuilder "
         "      && window.molbuilder.workspace "
-        "      && typeof window.molbuilder.workspace.getStructure "
-        "         === 'function'",
+        "      && typeof window.molbuilder.workspace.persist === 'function'"
+        "      && window.molbuilder.molview && window.molbuilder.molview.data "
+        "      && typeof window.molbuilder.molview.data.getStructure === 'function'",
         timeout=10000,
     )
     canvas_slot_present = page.evaluate(

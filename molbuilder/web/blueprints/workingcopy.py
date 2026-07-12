@@ -9,6 +9,7 @@ stable per-server-run local id for no-auth localhost.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from flask import Blueprint, g, jsonify, request
@@ -16,6 +17,7 @@ from flask import Blueprint, g, jsonify, request
 from molbuilder import persist
 from molbuilder import workingcopy as wc
 from molbuilder.projects import projects_root
+from molbuilder.workingcopy import SCRATCH_DIR
 from molbuilder.workingcopy_structure import StructureCodec
 
 from .files import _PickerError, _resolve_within_roots
@@ -23,6 +25,15 @@ from .files import _PickerError, _resolve_within_roots
 bp = Blueprint("workingcopy", __name__)
 _CODEC = StructureCodec()
 _SERVER_SESSION = None
+
+# ── State timeline (workspace-contract §4.7) — the FORMAT-BLIND indexed store ──
+# A separate concern from the structure-codec working copy above: opaque session
+# snapshots filed under ``<workspace_id>.<state_index>.wc.json`` in the SAME dir.
+# NEVER run through StructureCodec (those are richer than {xyz, sidecar}); the
+# server just moves JSON bytes.  Validate the id (no path traversal) + index.
+_WS_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")   # no dots -> unambiguous index parse
+_STATE_SUFFIX = ".wc.json"
+_STATE_WINDOW = 30                            # rolling window kept on each write
 
 
 def _default_draft_dir():
@@ -239,6 +250,111 @@ def wc_recover():
     return jsonify({"ok": True,
                     "source": str(w.source) if w.source else None,
                     "data": _CODEC.scratch_blob(w.data)})
+
+
+# ─── State timeline endpoints (§4.7) — format-blind indexed snapshots ─────── #
+def _state_dir():
+    """The state-timeline home — the SAME ``.molbuilder_workspace`` under the
+    projects root the sourceless drafts use (``_default_draft_dir()``)."""
+    return _default_draft_dir() / SCRATCH_DIR
+
+
+def _valid_ws_id(ws_id) -> bool:
+    return isinstance(ws_id, str) and bool(_WS_ID_RE.match(ws_id))
+
+
+def _state_index(v):
+    """A non-negative int (accept an int or an int-string), else None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v if v >= 0 else None
+    if isinstance(v, str) and v.isdigit():
+        return int(v)
+    return None
+
+
+def _state_path(ws_id: str, idx: int):
+    return _state_dir() / f"{ws_id}.{idx}{_STATE_SUFFIX}"
+
+
+def _state_indices(ws_id: str):
+    """Sorted list of the state indices on disk for ``ws_id`` (ascending)."""
+    d = _state_dir()
+    if not d.exists():
+        return []
+    out = []
+    prefix, suffix = ws_id + ".", _STATE_SUFFIX
+    for p in d.glob(f"{ws_id}.*{_STATE_SUFFIX}"):
+        mid = p.name[len(prefix):-len(suffix)]
+        if mid.isdigit():
+            out.append(int(mid))
+    return sorted(out)
+
+
+@bp.route("/api/workingcopy/write-state", methods=["POST"])
+def wc_write_state():
+    """Write ONE opaque session snapshot to ``<workspace_id>.<state_index>.wc.json``
+    (FORMAT-BLIND — the bytes are stored verbatim, never through StructureCodec).
+    Keeps a rolling window of the most-recent ``_STATE_WINDOW`` indices."""
+    b = _body()
+    ws_id, idx, data = b.get("workspace_id"), _state_index(b.get("state_index")), b.get("data")
+    if not _valid_ws_id(ws_id):
+        return _bad("missing or invalid 'workspace_id'")
+    if idx is None:
+        return _bad("missing or invalid 'state_index' (non-negative int)")
+    if data is None:
+        return _bad("missing 'data'")
+    d = _state_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    persist.write_json(_state_path(ws_id, idx), data)
+    # Rolling window: drop the oldest indices beyond the window.
+    for old in _state_indices(ws_id)[:-_STATE_WINDOW]:
+        try:
+            _state_path(ws_id, old).unlink()
+        except OSError:
+            pass
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/workingcopy/read-state", methods=["POST"])
+def wc_read_state():
+    """Return the opaque JSON at ``<workspace_id>.<state_index>.wc.json`` (what a
+    popState navigating to a history index fetches), or 404 with data=null."""
+    b = _body()
+    ws_id, idx = b.get("workspace_id"), _state_index(b.get("state_index"))
+    if not _valid_ws_id(ws_id):
+        return _bad("missing or invalid 'workspace_id'")
+    if idx is None:
+        return _bad("missing or invalid 'state_index' (non-negative int)")
+    p = _state_path(ws_id, idx)
+    if not p.exists():
+        return jsonify({"ok": True, "data": None}), 404
+    try:
+        return jsonify({"ok": True, "data": persist.read_json(p)})
+    except Exception as e:  # noqa: BLE001 -- corrupt file -> 500
+        return _bad(f"could not read state {ws_id}.{idx}: {e}", 500)
+
+
+@bp.route("/api/workingcopy/prune-states", methods=["POST"])
+def wc_prune_states():
+    """Tail-delete every state file whose index > ``above_index`` (the abandoned
+    tail after a popState).  ``above_index = -1`` clears the whole timeline."""
+    b = _body()
+    ws_id, above = b.get("workspace_id"), b.get("above_index")
+    if not _valid_ws_id(ws_id):
+        return _bad("missing or invalid 'workspace_id'")
+    if isinstance(above, bool) or not isinstance(above, int) or above < -1:
+        return _bad("missing or invalid 'above_index' (int >= -1)")
+    removed = 0
+    for i in _state_indices(ws_id):
+        if i > above:
+            try:
+                _state_path(ws_id, i).unlink()
+                removed += 1
+            except OSError:
+                pass
+    return jsonify({"ok": True, "removed": removed})
 
 
 @bp.route("/api/workingcopy/clean", methods=["POST"])

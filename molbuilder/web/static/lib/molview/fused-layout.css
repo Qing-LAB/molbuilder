@@ -20,11 +20,15 @@
     --panel-min:  320px;               /* min panel width */
 }
 
-/* WIDE (row): viewer | handle | panel. */
+/* WIDE (row): viewer | handle | panel.  justify-content:center so that when the card
+ * column is wider than the content needs (the viewer is capped at --viewer-edge and the
+ * panel is a fixed-width column), the leftover width splits as symmetric margin around the
+ * viewer+panel pair instead of a lopsided empty gap to the right of the panel. */
 .molview-body {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
+    justify-content: center;
     width: 100%;
 }
 

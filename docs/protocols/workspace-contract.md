@@ -190,10 +190,11 @@ The workspace stores those bytes **format-blind**, like any other persisted stat
 
 ## §3 Write API — the data-model mutators
 
-→ **Now MolView's.** The `loadFromFile` / `loadFromText` / `generate` / `applyOp` / `applyPayload` /
-`installStructure` / `save` / `discard` / `undo` mutators, the granular `setUnitCell` / `setKgrid` /
-`setAxisKind` / `setVacuum` / `commitPeriodicity` / `setLabel` write accessors, `markDirty` /
-`markSaved`, and the payload pipeline (incl. `selection_remap`) are `molview.data`'s; see
+→ **Now MolView's.** The `openMolecule` / `exportFile` / `generate` / `applyOp` (the structure-mutation
+core, molview-module.md §19.3.2) / `save(delta)` / `load(delta)` / `discard` mutators, the granular
+`setUnitCell` / `setKgrid` / `setAxisKind` / `setVacuum` / `commitPeriodicity` / `setLabel` write
+accessors, `markDirty` / `markSaved`, and the internal payload pipeline (incl. `selection_remap`) are
+`molview.data`'s; see
 [`molview-module.md`](molview-module.md) §19.3.
 
 ---
@@ -209,7 +210,8 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
 | `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
-| `ws.STORAGE_KEY` | `string` | The `sessionStorage` key (`molbuilder.workspace.v1`; shared constant `SS_WORKSPACE`). |
+| `ws.useNamespace(owner)` | `(string\|null) → void` | Declare the active consumer's `owner`, folding it into the mirror key (`<base>::<owner>`) and clearing the cached `workspace_id` so it recomputes per namespace. Set by `molview.mount`; also by any restore that runs before mount (molview-module.md §18.4). `null` → the base key. |
+| `ws.STORAGE_KEY` | `string` | The **base** `sessionStorage` key (`molbuilder.workspace.v1`; shared constant `SS_WORKSPACE`). The live key is namespaced by the active `owner` (§4.4.1). |
 
 **The seam (who does what).** The consumer (MolView) owns *when* and *what*: on a data change its
 data model debounces (100 ms) + serialises (`molview.data._serialise` for the session bytes,
@@ -329,10 +331,17 @@ The same-tab-reload cache (§4.1) is a single key holding the whole state slice.
 is **not** authoritative — it is a convenience layer so a reload rehydrates without a
 server round-trip. The authoritative transient is the server draft (§4.1, §4.6).
 
-#### 4.4.1 The single key
+#### 4.4.1 The key (namespaced by owner)
+
+The base key is `molbuilder.workspace.v1`. When a consumer declares an `owner`
+(`ws.useNamespace(owner)`, set by `molview.mount` — molview-module.md §18.4), the live key is
+suffixed: `molbuilder.workspace.v1::<owner>` (e.g. `::modify`, `::results:structure`). This
+isolates each consumer's session so a Results view never overwrites Modify's, and two
+inspectors on one page don't clobber each other. With no `owner`, the base key is used
+unchanged.
 
 ```
-sessionStorage["molbuilder.workspace.v1"] = JSON.stringify({
+sessionStorage["molbuilder.workspace.v1[::<owner>]"] = JSON.stringify({
   v:        1,                              // schema version
   saved_at: "2026-06-09T20:30:00.000Z",     // ISO 8601, UTC
   state: {                                  // NB: key is "state",
@@ -354,11 +363,12 @@ that reads them is incorrect.
 
 #### 4.4.2 Write cadence
 
-- The **data model** debounces 100 ms after every data change, then calls `ws.persist(...)`;
-  the workspace writes the session bytes to this key via `snapshot-io.js` (§3.5). The debounce
-  lives in the data model (molview-module.md §19.4), not the workspace.
-- Final flush on `pagehide` (no debounce) — the data model forces a `persist` so a
-  last-microtask change isn't lost on navigation.
+**Push-only (superseded the old per-change debounce — see §4.7).** The session mirror is written
+ONLY when the data model commits or moves a timeline checkpoint:
+- On `openMolecule` (the index-0 anchor) and on each explicit `save`/`load`, the data model calls
+  `ws.persist(...)` with the current committed snapshot + `state_index`; the workspace writes it to
+  this key via `snapshot-io.js` (§3.5). There is NO write on an ordinary data change — a mutation not
+  followed by `save` stays in memory (molview-module.md §19.5).
 - Errors (quota exceeded, storage disabled) are logged + swallowed.
 
 #### 4.4.3 Read at restore
@@ -376,8 +386,8 @@ Contract:
   the modify-tab restore gate — `viewer.js::restoreModifyState`
   (`shouldUseSavedAtoms = dirty || !source.file`).  The read itself
   is owned by `snapshot-io.js` (`molbuilder.workspaceSnapshot.read`),
-  which `ws.readPersistedSnapshot()` delegates to; the debounced
-  WRITE that produced the snapshot lives in the data model (§4.4.2),
+  which `ws.readPersistedSnapshot()` delegates to; the push-only
+  WRITE that produced the snapshot lives in the data model (§4.4.2 / §4.7),
   never in a `persistence.js`/`state.js` module (there are none).
 
 #### 4.4.4 What's NOT persisted
@@ -588,6 +598,36 @@ Follow those and the two guarantees hold: **unsaved edits survive reload/crash**
 | *(future)* config / script | its file(s) | reuse this core unchanged |
 
 The core is generic and **codec-pluggable**; nothing in it is structure-specific.
+
+### 4.7 The state timeline — indexed, push-only session persistence
+
+The automatic session draft is **not** a single file that a debounce keeps fresh. It is a **sequence
+of indexed snapshot files** — the tab's undo timeline. The data model owns the timeline semantics
+(`state_index`, `save(delta)`, `load(delta)` — molview-module.md §19.5); the workspace is the format-blind
+store for it. What the workspace must provide:
+
+- **Indexed save.** `persist(...)` files a snapshot under the identity `{workspace_id, state_index}`
+  → `<projects_root>/.molbuilder_workspace/<workspace_id>.<state_index>.wc.json`. The dispatcher
+  passes the identity through opaquely (no dispatcher change); the **server** (`/api/workingcopy/
+  update`) keys the filename on `state_index`.
+- **Read-by-index (NEW).** A door to reload the bytes at a given `{workspace_id, state_index}` — this
+  is what `load(-1)` calls to fetch a *history* snapshot from disk. Today the workspace can only read
+  the *session mirror* (`readPersistedSnapshot`); this adds a `readState(identity)` path plus a server
+  endpoint returning `<workspace_id>.<state_index>.wc.json`. The workspace stays format-blind — it
+  returns bytes; the data model interprets them.
+- **Session mirror = current committed snapshot + index.** On each `save`/`load` the current
+  snapshot and `state_index` are written to the `sessionStorage` mirror (§4.4). A **reload restores
+  from the mirror** (fast, no disk read); `readState` (disk) is only for `load(-1)` navigating to a
+  *different* index. Survives reload + crash, not tab-close (session scope).
+- **Pruning.** A rolling window of the most recent indices (default 30) is kept; older indices are
+  deleted, and a `save(1)` after a `load(-1)` deletes every index **above** the new one (the
+  abandoned tail). The timeline never grows without bound.
+
+**This supersedes the "debounce on every change" write cadence (§4.4.2):** persistence is now
+**push-only** — a write happens on `openMolecule` (the index-0 anchor) and on each explicit `save`,
+never automatically on a data change. The **snapshot** persisted here is the session state
+(`getState()`), NOT the `{xyz, sidecar}` a user's project-file save writes (two-saves-never-mix,
+§4.0 / molview-module.md §19.4).
 
 ---
 

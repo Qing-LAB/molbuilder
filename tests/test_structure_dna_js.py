@@ -394,9 +394,12 @@ class TestErrorPaths:
         assert out["ok"] is False
         assert "3DNA" in out["error"]
 
-    def test_canvas_cancel_skips_viewer(self):
+    def test_canvas_cancel_passes_through_as_cancelled(self):
+        """User cancels the dirty-canvas warning modal (load door
+        returns cancelled) → envelope carries cancelled, called
+        through the single load door exactly once."""
         out = _run_node('''
-            let viewerCalls = 0;
+            let loadCalls = 0;
             dna.configure({
                 fetch: async () => ({
                     ok: true,
@@ -406,14 +409,14 @@ class TestErrorPaths:
                     }),
                 }),
                 structurePage: {
-                    loadIntoCanvas: async () => ({
-                        ok: false, cancelled: true,
-                    }),
+                    loadIntoCanvas: async () => {
+                        loadCalls++;
+                        return { ok: false, cancelled: true };
+                    },
                 },
-                viewerLoader: () => { viewerCalls++; return Promise.resolve(); },
             });
             const r = await dna.generate("A");
-            console.log(JSON.stringify({envelope: r, viewerCalls}));
+            console.log(JSON.stringify({envelope: r, loadCalls}));
         ''')
         assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["viewerCalls"] == 0
+        assert out["loadCalls"] == 1

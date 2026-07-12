@@ -78,7 +78,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from ._shared import (
     err as _err,
@@ -652,6 +652,10 @@ def api_modify_symmetric_electrodes():
         )
     except (ValueError, NotImplementedError) as exc:
         return _err(f"add_symmetric_electrodes failed: {exc}", 400)
+    except Exception as exc:  # noqa: BLE001 -- surface the real error as JSON, not a 500 HTML page
+        current_app.logger.exception("symmetric_electrodes: unexpected error")
+        return _err(
+            f"add_symmetric_electrodes failed ({type(exc).__name__}): {exc}", 500)
     # Phase 3: identity remap for the pre-op atoms (slabs appended
     # at the end) — same rule as add_atom / electrode_slab.
     return _ok_response(new_struct, extra={

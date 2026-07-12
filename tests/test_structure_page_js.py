@@ -31,10 +31,12 @@ MODULE = ROOT / "molbuilder/web/static/lib/structure/page.js"
 # orchestrator pokes.  Kept inline in the bootstrap so each test
 # starts from a fresh state.
 _FAKES = r"""
-// Phase 10 (workspace-contract.md §1): fake the ws.* dispatcher,
-// not the legacy canvas-state.  Method names match the contract:
-// installStructure (was setStructure), subscribe (was onChange).
-// Helper preserved as _mkFakeCanvas for test-name continuity.
+// page.js binds against MolView's unified DATA model
+// (window.molbuilder.molview.data), NOT the workspace.  The gate
+// reads isEmpty/isDirty and routes through the ONE atomic load
+// door: molview.data.load({text, filename, source, periodicity,
+// annotations}).  Helper preserved as _mkFakeCanvas for
+// test-name continuity.
 function _mkFakeCanvas(initial) {
     initial = initial || {};
     let state = {
@@ -47,21 +49,26 @@ function _mkFakeCanvas(initial) {
     };
     const calls = [];
     return {
-        // Public surface page.js uses (ws.* names).
+        // Public surface page.js uses (molview.data names).
         isEmpty:        () => state.empty,
         isDirty:        () => state.dirty,
         getStructure:   () => state.structure,
         getSource:      () => state.source,
         getLastSavedTo: () => state.lastSaveTo,
-        installStructure: (s, src) => {
+        // The ONE atomic whole-model load door.  loadIntoCanvas
+        // forwards {text, filename, source, periodicity,
+        // annotations}; record the full arg so tests can assert
+        // the payload, and mirror text/source into the state so
+        // getStructure() reflects the load.
+        openMolecule: (arg) => {
             state.empty     = false;
             state.dirty     = false;
-            state.structure = s;
-            state.source    = src;
-            // Keep "setStructure" in the call log so existing
-            // test assertions reading calls[0].fn keep working
-            // through the rename window.
-            calls.push({fn: "setStructure", structure: s, source: src});
+            state.structure = { text: arg.text };
+            state.source    = arg.source;
+            calls.push({fn: "openMolecule", arg: arg,
+                        structure: { text: arg.text },
+                        source: arg.source});
+            return Promise.resolve();
         },
         markDirty: () => {
             state.dirty = true;
@@ -211,7 +218,12 @@ class TestLoadGateEmptyCanvas:
             }));
         ''')
         assert out["envelope"] == {"ok": True}
-        assert any(c["fn"] == "setStructure" for c in out["canvasCalls"])
+        # Routed through the ONE atomic load door with the text +
+        # generator source riding on the load payload.
+        loads = [c for c in out["canvasCalls"] if c["fn"] == "openMolecule"]
+        assert len(loads) == 1
+        assert loads[0]["arg"]["text"] == "1\nC\nC 0 0 0\n"
+        assert loads[0]["arg"]["source"]["kind"] == "smiles"
         # Modal NOT consulted — the empty canvas gate didn't ask.
         assert out["modalCalls"] == []
 
@@ -238,7 +250,7 @@ class TestLoadGateCleanCanvas:
                 envelope:   r,
                 modalCalls: modal._calls(),
                 lastSet:    canvas._calls().filter(
-                                c => c.fn === "setStructure"
+                                c => c.fn === "openMolecule"
                             ).pop(),
             }));
         ''')
@@ -267,7 +279,7 @@ class TestLoadGateDirtyCanvas:
                 envelope:   r,
                 modalCalls: modal._calls(),
                 lastSet:    canvas._calls().filter(
-                                c => c.fn === "setStructure"
+                                c => c.fn === "openMolecule"
                             ).pop(),
             }));
         ''')
@@ -293,7 +305,7 @@ class TestLoadGateDirtyCanvas:
                 { kind: "file", file: "/p/b.xyz" }
             );
             const setCalls = canvas._calls().filter(
-                c => c.fn === "setStructure");
+                c => c.fn === "openMolecule");
             console.log(JSON.stringify({
                 envelope:   r,
                 modalCalls: modal._calls(),
@@ -304,7 +316,7 @@ class TestLoadGateDirtyCanvas:
         ''')
         assert out["envelope"] == {"ok": False, "cancelled": True}
         assert out["modalCalls"] == ["confirmDiscardUnsaved"]
-        # No setStructure call landed — canvas is intact.
+        # No load call landed — canvas is intact.
         assert out["setCount"] == 0
         assert out["stillDirty"] is True
         assert out["stillText"] == "edited"

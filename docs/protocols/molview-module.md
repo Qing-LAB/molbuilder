@@ -108,9 +108,9 @@ The owner uses only these; it never sees storage:
 | Call | Plain meaning |
 |---|---|
 | `molview.mount(host, workspace, {mode, owner})` → `handle` | Put a molview on the page, backed by `workspace`, identified by `owner`. |
-| `handle.load(fileOrText)` | "Load this molecule." |
+| `handle.openMolecule(fileOrText)` | "Open this molecule." |
 | `handle.getStructure()` / `handle.getSelection()` | "Give me the current molecule / what's selected" — a **copy**. |
-| `handle.save()` / `handle.undo()` | "Save it" / "undo the last change." |
+| `handle.exportFile()` / `handle.undo()` | "Export its bytes" / "retract one checkpoint (= `data.load(-1)`)." |
 | `handle.onChange(fn)` | "Tell me when something changed," so the page can refresh its own bits. |
 | `handle.dispose()` | Remove the molview and release everything. |
 | **Frame axis (§14.5)** — present for trajectories, inert for a static structure: | |
@@ -143,10 +143,10 @@ You are the **owner** (a page or tab). Using molview is five steps; you never wr
 or 3-D code yourself.
 
 1. Put an **empty host element** where the molview should sit.
-2. Get the **workspace** it should use — the real one (edits persist) or a throwaway (a
-   read-only view that saves nothing).
+2. Get the **workspace** it should use — the real persistence layer. Every consumer
+   (Modify and read-only Results alike) persists its session state through it.
 3. **`mount`** molview into the host.
-4. Wire **your page's buttons to the handle's API** (`load` / `save` / `undo`) — never to
+4. Wire **your page's buttons to the handle's API** (`openMolecule` / `exportFile` / `undo`) — never to
    storage.
 5. React to **`onChange`** to refresh your page's own bits; **`dispose`** on teardown.
 
@@ -157,12 +157,12 @@ sequenceDiagram
     participant WS as Storage (workspace)
     Owner->>MV: mount(host, workspace, {mode, owner})
     Note over Owner,MV: user clicks "Load"
-    Owner->>MV: handle.load(file)
+    Owner->>MV: handle.openMolecule(file)
     MV->>WS: write the molecule
     MV->>MV: run render pipeline → draw once
     MV-->>Owner: onChange fires
     Note over Owner,MV: user clicks "Save"
-    Owner->>MV: handle.save()
+    Owner->>MV: handle.exportFile()
     MV->>WS: persist
     Owner->>MV: handle.dispose()  (leaving the page)
 ```
@@ -174,8 +174,8 @@ Owner code, in plain shape:
 const handle = await molview.mount(hostEl, workspace, { mode: "modify", owner: "modify" });
 
 // 4: wire page buttons to the API — NOT to storage
-loadButton.onclick = () => handle.load(pickedFile);
-saveButton.onclick = () => handle.save();
+openButton.onclick = () => handle.openMolecule(pickedFile);
+exportButton.onclick = () => handle.exportFile();
 undoButton.onclick = () => handle.undo();
 
 // 5: react to changes, and clean up on the way out
@@ -188,7 +188,7 @@ onPageLeave(() => handle.dispose());
 | Scenario | workspace | mode | owner | Effect |
 |---|---|---|---|---|
 | **Modify tab** | the **real** workspace | `"modify"` | `"modify"` | full editing; edits persist to disk |
-| **Results card** | a **throwaway** workspace | `"readonly"` | `"results:<id>"` | shows a computed structure; saves nothing; isolated slot |
+| **Results card** | the **real** workspace | `"readonly"` | `"results:<id>"` | read-only DISPLAY (no edit controls); its session (opened file/frame/selection) still persists + restores; isolated by `owner` |
 
 The owner picks the workspace + mode + owner; **everything else is identical**, because the
 component is the same. That is what "fully concealed and reusable" buys.
@@ -600,7 +600,7 @@ The full frame surface on `molview.data` (reads join §19.2, mutators join §19.
 
 | Call | Kind | Meaning |
 |---|---|---|
-| `loadFromText(text)` | replace | Load from a file — single-frame `.xyz` → one frame; **multi-frame** `.xyz` → all frames. |
+| `load({text})` | replace | Load from a file — single-frame `.xyz` → one frame; **multi-frame** `.xyz` → all frames. |
 | `reloadFrames(frames, {forces?})` | replace | **Hard reload** — discard the current frames, recreate the whole set (a job re-ran). Resets to frame 0. |
 | `addFrame(coords, {forces?})` / `addFrames(list, {forces?})` | append | Add frame(s) to the existing set (a running job **streams** new steps). Does not move the current frame. |
 | `setFrame(i)` | select | Make frame `i` current — pushes that frame's coords onto the store, so subscribers re-render. Throws if out of range. |
@@ -857,10 +857,14 @@ workspace to store bytes.
 
 ### 18.3 Persistence is the WORKSPACE's, not molview's
 
-Pass the **real** workspace (Modify) → edits persist to disk. Pass a **throwaway** workspace
-(a Results card) → nothing is saved. molview can't tell the difference and doesn't need to —
-that is the concealment. molview can never leak or corrupt data: every read off `molview.data`
-is a copy, and it only ever hands the workspace serialized **bytes** to store.
+**Every consumer passes the REAL workspace — persistence is universal session state, NOT a
+per-consumer opt-in.** The workspace keeps a tab's session (what you're looking at) recoverable
+across reload/crash; that is just as useful for a read-only Results view (reopen the tab → back at
+the same frame with the same selection) as for Modify. `"readonly"` (opts.mode) is about the
+absence of EDIT controls, NOT about persistence — do NOT try to suppress persistence with a
+"throwaway" workspace (there is no such thing; the workspace namespaces by `owner`, so sessions
+never mix). molview never leaks or corrupts data: every read off `molview.data` is a copy, and it
+only ever hands the workspace serialized **bytes** to store.
 
 **How persistence is guaranteed — the contract.** molview holds its data in `molview.data` and
 writes no storage keys itself. On a data change it serializes its model and calls the workspace's
@@ -880,38 +884,45 @@ a frame or reloading the set is what reaches disk.
 ### 18.4 `owner` — molview is aware of its user, so persistence is namespaced
 
 A molview belongs to a **user** — a tab / consumer — and it knows which (`opts.owner`, e.g.
-`"modify"`, `"results:<id>"`). molview forwards that `owner` to the workspace so **the
-workspace namespaces its saving points by it**: the sessionStorage snapshot key becomes
-`molbuilder.workspace.<owner>.v1` and the server draft id gains the `<owner>` prefix. Two
-molviews therefore persist to **separate** slots and never collide on the single global one
-— clean isolation between tabs when needed.
+`"modify"`, `"results:structure"`). molview forwards that `owner` to the workspace so **the
+workspace namespaces its saving points by it**:
 
-Two rules keep this correct:
+- the **sessionStorage mirror key** becomes `molbuilder.workspace.v1::<owner>`, and
+- the **on-disk state-file id** (`<workspace_id>.<state_index>.wc.json`) is isolated too —
+  indirectly: `workspaceId()` derives from the now-namespaced mirror, so a fresh namespace
+  generates its own `workspace_id` and its state files never share a name with another
+  owner's.
 
-- **The namespacing lives in the workspace persistence layer** (`snapshot-io.js` + the
-  dispatcher draft id) — it owns the saving points. molview only *tells* the workspace its
-  `owner` (via `workspace.useNamespace(owner)`); molview never keys storage itself
-  (no reinvented persistence).
-- **Default = today's single global slot.** With no `owner`, the key is unchanged
-  (`molbuilder.workspace.v1`) — so single-consumer Modify is byte-for-byte unaffected until
-  a second consumer needs isolation.
+Two molviews therefore persist to **separate** slots and never collide: a Results session
+can't overwrite Modify's saved timeline, and two inspectors on one `/results` page don't
+clobber each other. (Verified: `test_useNamespace_isolates_each_owners_session_mirror`,
+`test_results_structure_view_uses_real_workspace_persistence`.)
 
-> **Data-safety note.** Saving-point keys gate reload-restore of unsaved work
-> ([`workspace-contract.md`](workspace-contract.md) §4). Changing them is data-safety
-> critical, so the workspace-side namespacing is specified in that contract and lands as a
-> deliberate, tested step — not a drive-by. `molview.mount` already carries `owner`
-> (feature-detected `workspace.useNamespace`), so the molview side is ready.
+Three rules keep this correct:
 
-### 18.5 Two consumers, one component — and the one piece of new infrastructure
+- **The namespacing lives in the workspace persistence layer** (`snapshot-io.js`'s
+  `setNamespace` + the dispatcher's `useNamespace`, which clears the cached `workspace_id`
+  so it recomputes against the new namespace). molview only *tells* the workspace its
+  `owner` via `workspace.useNamespace(owner)` — it never keys storage itself.
+- **A single active namespace, set before the first read.** The namespace is one mutable
+  per-page value (each page mounts one active owner at a time). `mount` sets it at the top,
+  before any data-model access. **Any restore path that runs *before* `mount` must declare
+  the same namespace itself first** — e.g. Modify's `viewer.js` `DOMContentLoaded` restore
+  fires before `selection-bootstrap.js` mounts, so it calls `useNamespace("modify")` before
+  `load(0)`; otherwise it would read the un-namespaced base key and miss the `::modify`
+  mirror the last visit wrote.
+- **Default = the base slot.** With no `owner` (or before any `useNamespace`), the key is
+  the plain `molbuilder.workspace.v1` — so a consumer that never namespaces is unaffected.
 
-The same `molview.mount` serves every consumer; only the **workspace + mode + owner** differ
-(§F). Modify passes the **real** workspace; a Results card passes a **throwaway** one. That
-throwaway is the single new thing this design needs beyond the component itself:
+### 18.5 Two consumers, one component
 
-- **The workspace must be instantiable** — a factory that mints a **non-persisted** workspace
-  instance, paired with molview's own isolated data model + selection (the ephemeral store,
-  §12.2), so a Results card gets its own data without touching Modify's. (Modify uses the
-  existing singleton; Results uses a minted one.)
+The same `molview.mount` serves every consumer; only the **mode + owner** differ — the
+**workspace is always the real one**. Modify passes it and gets edit controls (`mode:"modify"`);
+a Results card passes the SAME workspace with `mode:"readonly"` (no edit controls) and its own
+`owner`. Both persist their session state through the workspace; the `owner` namespaces them so a
+Results session and a Modify session never mix. There is **no** "throwaway workspace" and no
+minted-per-consumer data model — persistence is universal session state (§18.3), and consumers
+mounting into their own hosts on separate pages already get isolated sessions.
 
 Rolling this out one consumer at a time is a delivery choice, not part of the design — which
 consumer is already on `molview.mount` and which still hand-assembles is tracked in
@@ -1043,18 +1054,35 @@ Every mutator either succeeds (state replaced atomically, `notify()` fires once)
 (state unchanged). No mutator leaves partial state. HTTP mutators reject with `Error(message)`
 from the server `{ok:false, error}` envelope (§21.4) or a network-error message.
 
+**`save` and `load` ARE the session-state timeline — one save + one load, parameterized by an
+index delta** (§19.5). They are NOT the project-file doors; those are separately named so the two
+concerns can never be confused (two-saves-never-mix):
+
+- **Session state (the undo timeline):** `save(delta)` / `load(delta)` — checkpoint / restore the
+  whole session state at `state_index + delta`. `save(1)` = the tab's "Save state"; `load(-1)` =
+  "Retract"; `load(0)` = reload. `pushState`/`popState`/`restoreSnapshot` are GONE — they were just
+  these with a fixed delta.
+- **Document + molecule:** `exportFile()` serializes the model to project-file bytes;
+  `openMolecule(input)` brings a NEW molecule in (and RESETS the timeline).
+
+Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure`, `getScratchBlob`,
+`pushState`, `popState`, `restoreSnapshot`, file-writing `save(opts)`).
+
 | Method | Server route | Returns | Side effects |
 |---|---|---|---|
-| `loadFromFile(path)` | → `molbuilderTab.commitFile` (universal commit gate) | `Promise<WorkspacePayload>` | Replaces structure; `source.kind="file"`, `source.file=path`; resets selection; dirty=false. |
-| `loadFromText(text, filename)` | POST `/api/build/load` | `Promise<WorkspacePayload>` | In-memory text load; `resetSelection=true`; `touchCanvas=false` (caller owns the dirty bit). |
-| `generate(kind, input, opts)` | via the `structure.<kind>` generator module | `Promise<WorkspacePayload>` | Dispatches by `kind` (smiles/name/dna/rna/peptide/file); replaces structure; dirty=true. |
-| `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Replaces structure; applies `selection_remap` (§21.3); dirty=true. |
-| `applyPayload(payload, opts)` | (in-memory) | `void` | THE single cross-store sync point; `opts.touchCanvas`, `opts.resetSelection` (§19.3.1). |
-| `installStructure(structure, source)` | (in-memory) | `void` | Wholesale text+source install (warning-modal gate path). |
-| `markDirty()` / `markSaved(path)` | (in-memory) | `void` | Flip the dirty bit / clear it + record `last_save_to=path`. |
-| `save(opts)` | → `structureSave.save` → POST `/api/workingcopy/save` | `Promise<void>` | Writes `.xyz` + `.molstruct.json` atomically from the scratch blob; clears dirty. |
-| `discard()` | (in-memory) | `Promise<void>` | Clears canvas + selection. **Unconditional** — caller MUST gate on the warning modal first. |
-| `undo()` | → `modify.applyUndo` | `Promise<void>` | Undo the last modifier op. |
+| **`save(delta=0)`** | → `ws.persist` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state save.** Serialize the current model (`getState`) and persist it at `state_index+delta`, moving `state_index` by `delta`. `save(1)` = a new undoable **checkpoint** ("Save state"; prunes any abandoned tail above); `save(0)` = re-save the current index in place. The explicit persist trigger (§19.5). |
+| **`load(delta=0)`** | → `ws.readState` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state restore.** Read the snapshot at `state_index+delta` and apply it to the WHOLE model, moving `state_index` by `delta`. `load(-1)` = **Retract**/undo; `load(0)` = reload / mount-restore. No-op if the target index < 0. Undo-only (a `save(1)` after a `load(-1)` overwrites the abandoned tail — no redo). Applies WITHOUT re-parsing or re-anchoring the timeline. |
+| **`openMolecule(input)`** | `{text, filename[, source, periodicity, annotations]}` → POST `/api/build/load`; a project-file path string → `molbuilderTab.commitFile` | `Promise<WorkspacePayload>` | Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune + anchor at index 0). Caller `source`/`periodicity`/`annotations` override the server-derived (generator provenance + sidecar cell/annotations). |
+| **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). Writing the bytes to disk is the consumer's job — NOT the session-state save. |
+| `generate(kind, input, opts)` | via the `structure.<kind>` generator | `Promise<WorkspacePayload>` | Produce a structure and open it (like `openMolecule`); dirty=true; resets the timeline. |
+| `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; `selection_remap` (§21.3); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |
+| `markDirty()` / `markSaved(path)` | (in-memory) | `void` | Flip / clear the dirty bit + record `last_save_to`. |
+| `discard()` | (in-memory) | `Promise<void>` | Clears canvas + selection. **Unconditional** — gate on the warning modal first. |
+
+*(The cross-store sync point `openMolecule`/`applyOp`/`load` write through is `_applyWorkspacePayload`
+— **internal**, not part of the public surface; §19.3.1 documents its steps. `applyOp` builds its
+request body from the module's OWN accessors (`_structureBody`, §19.3.2) — it does NOT reach out to
+any consumer for it.)*
 
 **The §19.1 write accessors** — the granular mutation surface (in-memory; persists on the next
 Save). Each mirrors its read accessor:
@@ -1068,45 +1096,274 @@ Save). Each mirrors its read accessor:
 | `commitPeriodicity(patch)` | `Promise` | Cell-page "Update": apply the edit, then re-resolve the effective cell through the ONE server resolver (`/api/structure/resolve-cell`) and write back `resolved_cell`. An explicit `cell` wins (no re-resolve). |
 | `setLabel(label, indices)` | `Promise` | REPLACE-per-label: `label` now tags exactly `indices` (in-memory; **marks dirty** so it survives reload; the sidecar is written on Save). |
 
-**Adding/deleting ATOMS is NOT a granular accessor** — geometry mutation goes through
-`applyOp(op, args)` (the server modify pipeline), so bonds + validation stay consistent. (Generic
-key-value metadata was removed — it was an unpersisted data-loss sink; persisting it is a designed
-sidecar-schema follow-up, not an accessor.)
+**Adding/deleting/moving ATOMS is NOT a granular accessor** — geometry mutation goes through the
+**structure-mutation API** (§19.3.2), a concealed set of typed primitives over the server modify
+pipeline, so bonds + validation + every per-atom field stay consistent. (Generic key-value metadata
+was removed — it was an unpersisted data-loss sink; persisting it is a designed sidecar-schema
+follow-up, not an accessor.)
 
 #### 19.3.1 The payload pipeline
 
-`applyPayload(payload, opts)` is the single sync point for all state replacement. In order:
-(1) capture `preSelection` before any mutation; (2) replace the canvas text + periodicity + dirty
-bit when `opts.touchCanvas !== false`; (3) run the modify-tab `applyStructure` hook (IIFE state +
-3Dmol embed); (4) adopt `payload.atoms` into the selection store; (5) apply `selection_remap`
-(§21.3) or `clearSelection` when `opts.resetSelection`; (6) fire `notify()` once. `selection_remap`
-is read from `preSelection` (captured before adoptAtoms' destructive in-range filter) so a
-Delete-of-low-index does not drop the wrong atom.
+`applyPayload(payload, opts)` is the single sync point for ALL state replacement — a file load, a
+generator result, or a modifier op's new geometry. **Loading is ONE operation: this function
+populates the WHOLE model — canvas text + periodicity AND atoms — in a single call, so the model is
+never left half-written.** In order: (1) capture `preSelection` before any mutation; (2) **write the
+canvas** — a modifier op (`touchCanvas`) replaces the text + periodicity in place (dirty=true); a
+FRESH LOAD (`installSource` set) into an empty canvas *installs* the whole structure (text +
+periodicity, dirty=false); (3) **distribute** the payload's top-level metadata arrays
+(`atom_names`/`residue_ids`/`residue_names`/`chain_ids`) onto the per-atom rows — the wire has them
+as parallel arrays, not per-atom, so this keeps molview.data the COMPLETE single source; (4) adopt
+`payload.atoms` into the selection store; (5) apply `selection_remap` (§21.3) or `clearSelection`
+when `opts.resetSelection`; (6) fire `notify()` once. There is NO consumer callback here — the module
+holds all the data and consumers react to the `notify()` (the old modify-tab `applyStructure` hook is
+gone; §19.3.2). `selection_remap` is read from
+`preSelection` (captured before adoptAtoms' destructive in-range filter) so a Delete-of-low-index
+does not drop the wrong atom.
+
+**OPENING A MOLECULE IS AN ATOMIC OPERATION.** `exportFile()` reads the ENTIRE model out to bytes
+(§19.4); `openMolecule()` writes the ENTIRE model in from bytes in one call (→ the internal sync
+point). They are inverses over the one model. Just as an export never emits
+a geometry that disagrees with its labels (it refuses a desync), **a load never leaves the model
+half-written** — it is all-or-nothing across atoms + structure + periodicity + selection, published
+on the single closing `notify()`.
+
+**COHERENCE INVARIANT — a load is atomic across the whole model.** After any load, the atoms and the
+structure/periodicity are populated **together**: `getStructure()` is non-null whenever atoms exist,
+and `getUnitCell()` / `getUnitCellInfo()` reflect the just-loaded cell (the resolved bbox+vacuum when
+no explicit cell — every structure has a valid cell). A consumer that calls the single documented
+entry point, `openMolecule`, gets the ENTIRE model set up in that one call. **There is no second
+"install into the canvas" door**, and no code path may leave atoms present with `getStructure()`
+null. This is exactly what `/molview-demo` exercises: it embeds the module the way this doc
+prescribes — one `openMolecule` — and the viewer, selection panel, Cell page, and unit-cell box are
+all live from that one call. If they are not, the contract is broken, not the demo.
 
 | Option | Default | Effect when set |
 |---|---|---|
-| `touchCanvas` | `true` | When `false`, skip the dirty-bit / text update (load paths pre-set it). |
+| `touchCanvas` | `true` | When `false` this is a LOAD, not a modifier op: the canvas text/dirty bit is not *replaced* in place; a fresh load into an empty canvas is *installed* instead (see `installSource`). |
+| `installSource` | — | `{kind, file, generator_input}` provenance for a fresh load. When set, step 2 installs the payload's structure into the canvas (text + periodicity, dirty=false), **replacing** whatever was there, so the single call populates the whole model and re-loads stay coherent (load water, then benzene → the canvas is benzene). Only `openMolecule` sets it. |
 | `resetSelection` | `false` | When `true`, clear selection unconditionally (load/generate; modifier ops use `selection_remap`). |
+
+#### 19.3.2 Structure-mutation API — one door, a declarative op registry
+
+> **Status: PARTLY SHIPPED.** The **complete round-trip** (send all fields incl. `annotations` +
+> periodicity → server reindexes → apply all fields), the **op-shape registry** (`_OP_SHAPE`), the
+> **count invariant**, module-owned **serialization** (one mutation in flight), and the **atom-count
+> selection rule** (clear on grow/shrink, keep on transform) are SHIPPED; the **annotations
+> round-trip** is DONE; the **registry-as-data** (`_OP_REGISTRY`: role / empty-policy / arity /
+> groupField / shape, all module-owned) and the **subset-transform orchestration** (extract subject →
+> existing tool → map back, with the order-preservation re-check) are SHIPPED. There is NO typed
+> sugar — `applyOp(op, args)` (args = `{indices?, ...opParams}`) is the SINGLE door, by design. The
+> one remaining refinement is a *specific-bond* pivot for true dihedral rotation (a small `rotate`
+> param, not a new op); subset rotation about the subject's own centroid works today.
+
+**Why this exists.** A structure mutation changes the atom set, and EVERY per-atom array
+(coordinates, `elements`, `atom_names`, `residue_ids`, `residue_names`, `chain_ids`, `regions`,
+`frozen_atoms`, **`annotations`**) plus periodicity must stay index-consistent through it. The only
+way to guarantee that uniformly is to conceal mutation behind ONE module door: consumers state
+intent, molview owns the complete round-trip. A per-op hand-rolled body is exactly how a field gets
+silently dropped (annotations were, pre-2026-07).
+
+**Authority (the standard).** *molview's standard IS the standard for callers.* Consumers call only
+this door + the metadata door (`setLabel`, §19.3). They never see or build an xyz / request body /
+payload — `_structureBody`, the fetch, and `_applyWorkspacePayload` are module-private. A caller
+with a special need is met by **expanding the registry / the API**, never by a caller-side workaround.
+
+**The model — an op acting through ONE target role.** Every op names its atoms via exactly one
+**role**, and the "application group" fills that role:
+
+- **`subject`** — the atoms the op *changes* (delete removes them; a subset-transform moves them).
+- **`anchor`** — *reference* atoms the op is measured against (orient's axis pair, add's attachment
+  point); the atoms themselves don't change, the structure does.
+
+An op uses one or the other, never both, so a single index group is unambiguous. Splitting subject
+from anchor is what makes "empty → all" sensible: "all" is a natural default for a **subject**
+(transform the whole structure) but meaningless for an **anchor** (you can't derive a 2-atom axis
+from "all").
+
+**The op registry — ops are DATA, not code.** Each op is one descriptor keyed by its **canonical
+name = its server route** (`op` → `POST /api/modify/<op>`; one name, no aliases). Adding an op is a
+new row, not a change to the door. `applyOp(op, args)` reads the descriptor to resolve the group,
+enforce the policy, check the invariant, place the group in the body, and route:
+
+| op (= route) | role | empty group → | arity | group → body field | shape → invariant | selection after | op params |
+|---|---|---|---|---|---|---|---|
+| `translate` | subject | **all** | any | *(subject: all→whole-structure; subset→orchestration)* | transform → count == old | **kept** | `dx,dy,dz` \| `recenter` |
+| `rotate` | subject | **all** | any | *(subject: all→whole-structure; subset→orchestration)* | transform → count == old | **kept** | `axis, angle, center?` |
+| `orient` | anchor | **reject** | 2 | `anchors` (array[2]) | transform → count == old | **kept** | `axis` |
+| `add_atom` | anchor | **reject** | 1 | `anchor_index` (scalar = group[0]) | grow → count > old | **cleared** | `element, offset, residue?` |
+| `symmetric_electrodes` | anchor | **canonical** (0 valid) | 0–2 | `anchors` (array) | grow → count > old | **cleared** | `element, plane, size, gap, …` |
+| `electrode` | anchor | 1 | 1 | `anchor_index` (scalar) | grow → count > old | **cleared** | `element, plane, size, side, …` |
+| `delete` | subject | **reject** (never all-by-accident) | any | `indices` (array) | shrink → count == old−\|group\| | **cleared** | — |
+
+Descriptor fields: `role` (subject|anchor — §"the model"), `empty` (all|reject|canonical), `arity`
+(null=any, or an int / `[min,max]`), `groupField` (the body key + scalar-vs-array shape the resolved
+group is written to; `null` for whole-structure transforms), `shape` (transform|grow|shrink →
+count invariant + the `selection after` rule).
+
+**`applyOp(op, args)` algorithm (module-owned, uniform for every op):**
+1. Look up the descriptor; an **unknown op rejects** (no fallback — strict contract).
+2. **Resolve the group**: `group = args.indices` if provided, else the current selection
+   (`molview.data.selection`), filling the op's `role`.
+3. **Enforce `empty` + `arity`** BEFORE any fetch: an empty group → `all` (replace with every index),
+   `canonical` (proceed with 0), or `reject` (throw); then an `arity` mismatch → throw. So no consumer
+   re-implements the rule, and "delete all by accident" can't happen (clearing the whole structure is
+   `discard()`, §19.3 — never `delete`). An *explicit* full index list is always honoured.
+4. **Dispatch**:
+   - `shape=transform` with a `subject` that is **all atoms** → whole-structure path (below).
+   - `shape=transform` with a `subject` **subset** → the subset orchestration (extract → same tool →
+     map back; §"Subset transforms" below).
+   - otherwise (`grow`/`shrink`, or an `anchor` op) → the whole-structure path, with the group written
+     to `groupField`.
+5. Run the one correct core.
+
+**The one correct core (whole-structure path):**
+1. build the **complete** request body (`_structureBody`: `xyz` + all per-atom arrays + `annotations`
+   + periodicity) + the resolved group + op params;
+2. POST the op route (the server is the single authority for the geometry change AND for
+   reindexing the atoms + per-atom metadata together);
+3. apply the **complete** response atomically through `_applyWorkspacePayload` (§19.3.1) — every
+   field, reindexed by the server;
+4. **verify the count invariant** from the descriptor and **reject** on violation (a transform that
+   changed the count, a delete whose count ≠ `old − |group|`, a grow that shrank).
+
+Correctness is structural: ONE serialise path, ONE apply path, all fields — no op-specific code
+touches an individual metadata array, so none can be forgotten.
+
+**Selection after a mutation — the atom-count rule (safety).**
+- **The atom count CHANGED (grow / shrink — add / delete): the selection is CLEARED.** A changed
+  atom count means every index above the change point shifted, so *any* index-based selection is now
+  suspect. Rather than remap (and risk an off-by-one pointing at the wrong atom), molview drops the
+  selection entirely — the user re-selects on the new, correct numbering. This retires the fragile
+  `selection_remap` for these ops: a cleared selection can never mis-point.
+- **The atom count is UNCHANGED (transform — translate / rotate / orient): the selection is KEPT
+  verbatim.** Indices still name the same atoms, so the current selection (empty or a set/group)
+  stays valid and is preserved through the op.
+
+So the `selection after` column above is a hard rule, not a heuristic: count change ⇒ clear, count
+same ⇒ keep.
+
+**Cross-cutting molview OWNS (else the concealment leaks):**
+- **Serialized** — at most ONE mutation in flight; a mutation while one is pending rejects (the
+  consumer's old `state.inFlight` lock moves into the module).
+- **Return** — resolves to the applied result (`{op, n_atoms, selection}`); rejects with `Error` on
+  empty-group policy violation, invariant violation, or a server `{ok:false}` / HTTP error (§21.4).
+- **No auto-checkpoint** — a mutation updates the model but does NOT push a timeline snapshot; the
+  consumer takes `save(1)` for an undo step (§19.5), so it controls where checkpoints land.
+- **Params validated** against the descriptor's schema before the fetch (a bad param is a clean
+  client-side reject, not a server 500).
+
+**ONE way, no sugar.** `applyOp(op, args)` is the SINGLE structure-mutation door. There are NO
+per-op wrapper methods (`transform`/`addAtoms`/`deleteAtoms` as functions) and no legacy aliases —
+a strict single contract so there is exactly one correct call and no old pattern to drift back to.
+Every rule (role, empty-policy, invariant, shape) lives in the registry, read by that one door.
+
+**Groups/regions are NOT a primitive.** A region is a selection concept layered on atoms:
+delete-a-region = `applyOp("deleteAtoms", {indices: getRegions()[name]})`; assign-a-region = `setLabel`
+(§19.3, metadata-only — no geometry round-trip). Only atom-set changes go through the mutation door.
+
+**Subset transforms — a MODULE orchestration over the EXISTING tool (NOT new server geometry).**
+When a `transform` op has a `subject` group smaller than all atoms ("rotate/move *these* atoms"),
+molview does NOT need a new server op. The server `rotate`/`translate` are **pure positional and
+order-preserving** (`new_pos = positions @ R.T`; `elements` rebuilt in the same order — index *i* in
+→ index *i* out; validated + `tests/test_shared.py`). So the mutation door, for a subset transform:
+1. extracts the subject atoms' coordinates into a sub-structure (in subject order);
+2. runs it through the SAME `rotate`/`translate` route (unchanged);
+3. maps the returned coordinates back into the full structure at the subject indices — the untouched
+   atoms and ALL per-atom metadata stay exactly as they were (a pure coordinate write on the subject).
+
+It is a simple index-mapping, guaranteed correct by the order-preservation invariant (which the door
+re-checks: the returned sub-structure must have the same length + element order as what was sent, else
+reject). Pivot: sending only the subject with `center:"centroid"` rotates it about the subject's own
+centroid (the natural in-place fragment rotation); a specific-bond pivot (true dihedral) is the ONE
+later refinement — pass the pivot point — and is a small `rotate` param add, not a new op.
+
+**Annotations round-trip — ✅ DONE.** `_structureBody` sends the channels, `apply_labels_to_struct`
+reads + index-validates them, the ops reindex them (`remap_annotations`/`copy_annotations`),
+`structure_to_dict` returns them, and `replaceContent` applies them on the client. Verified: a delete
+keeps annotation channels aligned to the surviving atoms
+(`tests/test_shared.py::test_annotations_survive_a_delete_op_index_aligned`).
 
 ### 19.4 Serialization + the persist seam
 
-MolView owns the `.xyz`/`.molstruct.json` format (§14.5.0). The data model serializes itself and
-hands the workspace bytes:
+MolView owns the `.xyz`/`.molstruct.json` format (§14.5.0). There are TWO distinct serializations,
+for the two saves (§19.5) — do not confuse them:
 
-- `getScratchBlob()` → `{xyz, sidecar}` — the ONE working-copy serialization, for BOTH the durable
-  save AND the transient draft, built entirely through the §19.2 accessors (`getRegions` /
-  `getFrozen` / periodicity). Refuses to serialize a geometry↔labels atom-count desync (never lets
-  a mismatched `.xyz`/`.json` pair reach disk).
-- `draftIdentity()` → the key the draft is filed under: `{source: file}`, or `{workspace_id}` for a
-  not-yet-saved molecule.
-- `suspendPersist()` / `resumePersist()` — bracket a multi-step load so a mid-load persist tick
-  can't pair the new geometry with the previous file's labels.
+- `exportFile()` → `{xyz, sidecar}` — the **document** serialization: the bytes the *consumer* writes to
+  the user's project file. Structure only (geometry + sidecar regions/frozen/periodicity, built
+  through the §19.2 accessors). Refuses a geometry↔labels atom-count desync (never lets a mismatched
+  `.xyz`/`.json` pair reach disk). NOT used for the undo timeline.
+- `getState()` → the **session snapshot** — structure + selection + view + dirty + `last_save_to`.
+  This is what a state-timeline index holds (§19.5), so `load(-1)` restores the *whole* session, not
+  just the geometry.
+- `draftIdentity()` → the key a timeline snapshot is filed under: `{workspace_id, state_index}` — the
+  tab id plus the position in the operation timeline (§19.5). No filename (two-saves-never-mix); the
+  `state_index` selects WHICH snapshot file.
+- `suspendPersist()` / `resumePersist()` — bracket a multi-step load so a mid-load read/write can't
+  pair the new geometry with the previous file's labels.
 
-**The debounce lives here, not in the workspace.** On every `notify()` the model schedules a
-debounced (100 ms) write and, on `pagehide`, a final flush; each fires
-`ws.persist(sessionBytes, draftBlob, identity)` — `sessionBytes` = the `getState`-based session
-snapshot, `draftBlob` = `getScratchBlob()`, `identity` = `draftIdentity()`. The workspace writes
-them format-blind (workspace-contract §4 / §4.5).
+**Persistence is EXPLICIT (push-only) — there is NO automatic write on change.** A data change (an
+edit, `applyOp`, a cell/label edit) updates the in-memory model but writes NOTHING to disk until the
+consumer calls `save(1)` — a checkpoint (§19.5). Automatic per-change writes are expensive, and the
+consumer knows better than the code where a meaningful checkpoint is. `save(delta)` / `load(delta)`
+are the ONLY save/load triggers; each fires `ws.persist(...)` / `ws.readState(...)` against the
+identity `{workspace_id, state_index+delta}`. The workspace writes/reads them format-blind
+(workspace-contract §4).
+
+### 19.5 The state timeline — one `save`/`load`, parameterized by an index delta
+
+The model owns a **`state_index`**: the position in the tab's operation sequence. Each index is a
+full **state snapshot** on disk (`{workspace_id}.{state_index}.wc.json`). **`save(delta)` and
+`load(delta)` ARE the timeline** — checkpoint and restore, differing only by how they move the
+index. There is no separate `pushState`/`popState`/`restoreSnapshot`; those were just these with a
+fixed delta.
+
+**A state snapshot is the SESSION state, not the project file.** A snapshot is `getState()` —
+structure + periodicity + atoms + **selection** + view + **dirty** + `last_save_to` — so `load(-1)`
+restores exactly what you had, including selection and dirty status. This is distinct from
+`exportFile()` → `{xyz, sidecar}`, the project-file bytes the *consumer* writes to disk. The timeline
+is **session** state; the project file is **document** state (two-saves-never-mix, §19.4).
+
+| Method | Effect |
+|---|---|
+| `state_index` (read) | Current position; `0` = the opened structure (the anchor). |
+| `uncommitted` (read) | `true` iff the in-memory model changed since the last `save` (what a `load(-1)` would discard). |
+| `save(delta=0)` | Serialize the current snapshot and persist it at `state_index+delta`; move `state_index` by `delta`. `save(1)` = a new checkpoint ("Save state") — advances the index and DELETES every index above it (the abandoned tail after a `load(-1)`). `save(0)` = re-save the current index in place. |
+| `load(delta=0)` | Read `{workspace_id}.{state_index+delta}` and APPLY that snapshot to the whole model (atomic) — WITHOUT re-parsing or re-anchoring the timeline; move `state_index` by `delta`. `load(-1)` = Retract/undo (no-op at 0); `load(0)` = reload / mount-restore. |
+
+**`openMolecule` resets the timeline; `load(delta)` navigates within it — do not conflate them.**
+`openMolecule(...)` starts a FRESH timeline: it PRUNES all existing `{workspace_id}.*` state files,
+resets `state_index` to `0`, and writes the opened structure as the index-0 anchor. This anchor
+write is the ONE automatic write (everything after is an explicit `save`); it guarantees `load(-1)`
+can always reach the opened state, and that a new molecule opened in the same tab never inherits the
+previous molecule's timeline files. `load(delta)` by contrast APPLIES an existing snapshot without
+pruning or re-anchoring — it moves the pointer, never resets. So `load(delta)` reuses the atomic
+apply *mechanism* of an open, but NOT `openMolecule`'s timeline-reset.
+
+**Undo-only, no redo.** After a `load(-1)` the abandoned higher index is deleted by the next
+`save(1)`'s tail-delete, so there is nothing to redo to. Self-cleaning.
+
+**`load(-1)` discards UNCOMMITTED changes.** Because checkpoints are explicit, the in-memory model
+may run *ahead* of `state_index`'s file (you edited without `save`). `load(-1)` reverts to the saved
+index, dropping those changes — hence the `uncommitted` flag; the consumer SHOULD warn before a
+`load(-1)` that would discard work.
+
+**Atomic + serialized.** `save`/`load` each do one workspace round-trip; they are SERIALIZED
+through a queue, and `state_index` advances/retreats ONLY after the save/load resolves — a failed
+write never leaves `state_index` pointing at a missing file.
+
+**Reload.** On every `save`/`load` the current committed snapshot **and** `state_index` are
+mirrored to `sessionStorage` (this is the only thing written there — no per-change writes; survives
+reload + crash, not tab-close). A reload restores from that mirror directly (fast, no disk read); the
+on-disk `{workspace_id}.{index}` files are the undo history, read only by `load(-1)`. In-flight edits
+made since the last `save` are NOT mirrored, so a reload returns to the last committed state —
+the deliberate push-only trade.
+
+**Pruning.** The workspace keeps a rolling window of the most recent indices (default 30); combined
+with the tail-delete on a divergent push, the timeline never grows without bound.
+
+**Consumer flow (the Modify tab).** A modifier op is `applyOp(...)` then `save(1)`; "Retract"
+(undo) is `load(-1)` (gated on the `uncommitted` warning); "Save state" maps to `save(1)`. A
+mutation not followed by `save` stays in memory only — the user decides what a checkpoint is.
 
 ---
 

@@ -1,9 +1,23 @@
 """molview.mount -- the owner-facing handle (molview-module.md §18 / §D).
 
-Node unit test with a STUBBED workspace + panel.  The handle is the full §D surface:
-WRITE (load / save / undo) + READ (getStructure / getSelection) + notify (onChange) +
-dispose.  Every call goes THROUGH the workspace (the single door) and the handle exposes
-NO internals (no els / store / viewer).
+Node unit test pinning the POST-CARVE contract:
+
+  * §18/§C -- mount reads DATA from ``molbuilder.molview.data`` and uses the ``workspace``
+    for PERSISTENCE only.  With a real ``molview.data`` present the handle routes every data
+    op through it and NEVER touches the persistence workspace's data methods.  (A workspace
+    fallback exists for the transitional case where ``molview.data`` is absent; it is tested
+    HERE explicitly and labelled as a fallback -- it is not the contract path.)
+  * §18.1 / §D -- the handle exposes exactly the owner-facing surface + the frame axis, and
+    NO internals (no store / viewer / DOM).
+  * §19.3 -- there is ONE open door: ``data.openMolecule`` dispatches ``{text, filename}``
+    vs a project-file path string.  The obsolete doors (loadFromFile / loadFromText /
+    installStructure / getScratchBlob / applyPayload) are GONE and no handle method reaches
+    one.
+  * §19.4 -- ``handle.exportFile()`` returns the serialized bytes via ``data.exportFile``
+    (openMolecule's inverse).
+
+The handle is exercised through a STUBBED molview.data + panel; a persistence-only workspace
+is passed alongside with its own data methods wired as TRAPS.
 """
 import json
 import shutil
@@ -20,6 +34,12 @@ MODULES = [
     ROOT / "molbuilder/web/static/lib/molview/mount.js",
 ]
 
+# The complete §18.1 handle key set (sorted): the seven core owner-API calls (§D) + the
+# frame axis (§14.5), and NOTHING else -- no store, no viewer, no DOM refs.
+HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
+               "getSelection", "getStructure", "isPlaying", "onChange", "openMolecule",
+               "pause", "play", "setArrows", "setFrame", "setLabels", "undo"]
+
 
 def _run_node(snippet: str) -> object:
     node = shutil.which("node")
@@ -35,74 +55,112 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# A stubbed workspace + panel + host, enough to drive molview.mount.  The workspace
-# records subscribe()s so the test can fire a change; getStructure/getSelection return
-# fixed data the handle must surface.
+# ---- The CONTRACT harness: a real molview.data is present (§18 / §C) ------------------- #
+#
+# ``molbuilder.molview.data`` is THE data layer.  It records every op it receives; the
+# obsolete doors it also carries are TRAPS -- if the handle ever reaches one, the contract
+# is broken.  The ``workspace`` is persistence-only; its data methods are traps too.
 _HARNESS = """
-    const wsSubs = [];
-    const calls = [];   // records the WRITE-side delegations (load/save/undo)
+    const dataCalls = [];       // ops the DATA layer (molview.data) receives
+    const obsoleteHit = [];     // an obsolete door reached == a contract breach
+    const wsTrap = [];          // the persistence workspace must NEVER serve data
+    const subs = [];            // onChange subscribers, via data.subscribe
     const structure = { text: 'XYZ', atoms: [{ index: 0, x: 1 }] };
-    const store = { getState: () => ({ indices: [1, 2] }), subscribe: () => (() => {}) };
-    const workspace = {
-        selection: store,
-        getStructure: () => structure,
-        subscribe: (fn) => { wsSubs.push(fn);
-            return () => { const i = wsSubs.indexOf(fn); if (i >= 0) wsSubs.splice(i, 1); }; },
-        loadFromFile: (p) => { calls.push(['loadFromFile', p]); return Promise.resolve('file'); },
-        loadFromText: (t, f) => { calls.push(['loadFromText', t, f]); return Promise.resolve('text'); },
-        save: () => { calls.push(['save']); return Promise.resolve('saved'); },
-        undo: () => { calls.push(['undo']); return Promise.resolve('undone'); },
+    const store = { getState: () => ({ indices: [1, 2] }),
+                    subscribe: (fn) => { subs.push(fn);
+                        return () => { const i = subs.indexOf(fn); if (i>=0) subs.splice(i,1); }; } };
+
+    // THE DATA MODEL -- molbuilder.molview.data.  (Modules already mounted molview.mount; we
+    // merge .data onto the same namespace, mirroring data-model.js.)
+    global.molbuilder = global.molbuilder || {};
+    global.molbuilder.molview = global.molbuilder.molview || {};
+    global.molbuilder.molview.data = {
+        selection:    store,
+        getStructure: () => { dataCalls.push('getStructure'); return structure; },
+        subscribe:    (fn) => store.subscribe(fn),
+        // §19.3 -- the ONE open door (dispatches {text,filename} vs a path string INSIDE data.openMolecule).
+        openMolecule: (arg) => { dataCalls.push(['openMolecule', arg]); return Promise.resolve('loaded'); },
+        // §19.4 -- exportFile serialises the whole model to bytes (openMolecule's inverse).
+        exportFile:   () => { dataCalls.push('exportFile'); return { xyz: 'XYZ-BYTES', sidecar: {} }; },
+        undo:         () => { dataCalls.push('undo'); return Promise.resolve('undone'); },
+        setFrame:     (i) => { dataCalls.push(['setFrame', i]); return i; },
+        getFrame:     (i) => [[0, 0, 0]], frameCount: () => 3, currentFrame: () => 0,
+        // OBSOLETE doors (retired at the carve) -- TRAPS: no handle method may call these.
+        loadFromFile:     () => { obsoleteHit.push('loadFromFile');    return Promise.resolve(); },
+        loadFromText:     () => { obsoleteHit.push('loadFromText');    return Promise.resolve(); },
+        installStructure: () => { obsoleteHit.push('installStructure'); },
+        getScratchBlob:   () => { obsoleteHit.push('getScratchBlob'); },
+        applyPayload:     () => { obsoleteHit.push('applyPayload'); },
     };
-    // Stub the panel module mount() composes (view-controls host is absent in the stub).
     global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
-    // A PRE-BUILT fused-card host stub (it IS the card + carries a .molview-panel), so mount
-    // takes the wire-only path -- the B1 read/notify handle is the same on both paths.
+
+    // THE PERSISTENCE WORKSPACE -- no data role.  Every data method is a TRAP.
+    const workspace = {
+        owner: 'modify', persist: () => {}, workspaceId: () => 'ws-x',
+        selection:    { getState: () => { wsTrap.push('selection'); return { indices: [] }; },
+                        subscribe: () => (() => {}) },
+        getStructure: () => { wsTrap.push('getStructure'); return null; },
+        openMolecule: () => { wsTrap.push('openMolecule'); return Promise.resolve(); },
+        exportFile:   () => { wsTrap.push('exportFile'); return Promise.resolve(); },
+        undo:         () => { wsTrap.push('undo'); return Promise.resolve(); },
+        setFrame:     () => { wsTrap.push('setFrame'); },
+    };
+    // A PRE-BUILT fused-card host (wire-only path); the handle surface is identical on the
+    // empty-host build path -- exercised in test_molview_render_js / the demo e2e.
     const host = { classList: { contains: () => true },
                    querySelector: (sel) => (sel === '.molview-panel' ? {} : null) };
     const mount = global.molbuilder.molview.mount;
 """
 
 
-def test_handle_exposes_only_the_read_notify_surface_no_internals():
-    out = _run_node(_HARNESS + """
-        mount(host, workspace, { mode: 'modify' }).then((h) => {
-            console.log(JSON.stringify({ keys: Object.keys(h).sort(),
-                                         text: h.getStructure().text }));
-        });
-    """)
-    assert out["text"] == "XYZ"                      # getStructure reads through the workspace
-    # The full §D surface -- and ONLY that: no els / store / viewerHandle leaked
-    assert out["keys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
-                    "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
-                    "setLabels", "undo"]
-
-
-def test_handle_write_side_delegates_to_the_workspace():
-    """§D WRITE side: load / save / undo go THROUGH the workspace (the single door) -- the
-    handle never touches storage or the server itself.  A path string routes to loadFromFile;
-    { text, filename } routes to loadFromText; save / undo forward straight through; each
-    returns the workspace's own promise."""
+def test_handle_surface_one_load_door_and_save_is_loads_inverse():
+    """§18.1/§D: the handle exposes exactly the owner surface + frame axis, no internals.
+    §19.3: BOTH ``load(path)`` and ``load({text,...})`` route to the SINGLE ``data.openMolecule``
+    door (no loadFromFile/loadFromText split).  §19.4: ``save()`` returns the serialized bytes
+    via ``data.exportFile``."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then(async (h) => {
-            const r1 = await h.load('/path/to.xyz');                   // path -> loadFromFile
-            const r2 = await h.load({ text: 'XYZ', filename: 'm.xyz' }); // obj  -> loadFromText
-            const r3 = await h.save();
-            const r4 = await h.undo();
-            console.log(JSON.stringify({ calls, r1, r2, r3, r4 }));
+            const keys  = Object.keys(h).sort();
+            const r1    = await h.openMolecule('/path/to.xyz');                  // path string
+            const r2    = await h.openMolecule({ text: 'T', filename: 'm.xyz' }); // {text,...}
+            const bytes = await h.exportFile();                                // openMolecule's inverse -> bytes
+            console.log(JSON.stringify({ keys, r1, r2, bytes, dataCalls, obsoleteHit }));
         });
     """)
-    assert out["calls"] == [
-        ["loadFromFile", "/path/to.xyz"],
-        ["loadFromText", "XYZ", "m.xyz"],
-        ["save"],
-        ["undo"],
-    ]
-    assert out["r1"] == "file" and out["r2"] == "text"      # returns the ws promise's value
-    assert out["r3"] == "saved" and out["r4"] == "undone"
+    assert out["keys"] == HANDLE_KEYS                 # §D surface + frame axis, no internals
+    # Both shapes hit the ONE data.openMolecule door -- the string and the {text,filename} object:
+    assert out["dataCalls"][0] == ["openMolecule", "/path/to.xyz"]
+    assert out["dataCalls"][1] == ["openMolecule", {"text": "T", "filename": "m.xyz"}]
+    assert out["dataCalls"][2] == "exportFile"
+    assert out["r1"] == "loaded" and out["r2"] == "loaded"       # returns data.openMolecule's promise
+    assert out["bytes"] == {"xyz": "XYZ-BYTES", "sidecar": {}}   # save() = serialized bytes
+    assert out["obsoleteHit"] == []                             # no handle method reached an obsolete door
+
+
+def test_all_handle_data_ops_route_to_molview_data_never_the_workspace():
+    """§18/§C drift-guard: with a real molview.data present, EVERY handle data op
+    (getStructure / openMolecule / exportFile / undo / setFrame) hits molview.data; the
+    persistence workspace's data traps stay empty."""
+    out = _run_node(_HARNESS + """
+        mount(host, workspace, { mode: 'modify' }).then(async (h) => {
+            const text = h.getStructure().text;
+            await h.openMolecule('/p.xyz');
+            await h.openMolecule({ text: 'T', filename: 'm.xyz' });
+            await h.exportFile();
+            await h.undo();
+            h.setFrame(1);
+            console.log(JSON.stringify({ text, dataCalls, wsTrap }));
+        });
+    """)
+    assert out["text"] == "XYZ"                       # read came from molview.data
+    assert out["dataCalls"] == ["getStructure", ["openMolecule", "/p.xyz"],
+                                ["openMolecule", {"text": "T", "filename": "m.xyz"}],
+                                "exportFile", "undo", ["setFrame", 1]]
+    assert out["wsTrap"] == []                        # workspace NEVER served data
 
 
 def test_handle_getSelection_returns_a_copy():
+    """§E rule 2: reads are copies -- mutating the returned array can't leak into the store."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then((h) => {
             const a = h.getSelection();
@@ -115,19 +173,21 @@ def test_handle_getSelection_returns_a_copy():
     assert out["b"] == [1, 2]              # unaffected -> getSelection returned a copy
 
 
-def test_handle_onChange_is_the_one_workspace_change_channel():
+def test_onChange_is_the_one_change_channel_through_molview_data():
+    """§E rule 4: onChange is the ONE change channel; the owner subscribes here, not to the
+    store/workspace directly.  It subscribes THROUGH molview.data.subscribe."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then((h) => {
             let n = 0;
             const off = h.onChange(() => { n++; });
-            wsSubs.forEach((fn) => fn());   // a workspace change -> owner notified
+            subs.forEach((fn) => fn());     // a data change -> owner notified
             const afterFire = n;
             off();
-            wsSubs.forEach((fn) => fn());   // no listeners now
-            console.log(JSON.stringify({ afterFire, afterOff: n, subCount: wsSubs.length }));
+            subs.forEach((fn) => fn());     // no listeners now
+            console.log(JSON.stringify({ afterFire, afterOff: n, subCount: subs.length }));
         });
     """)
-    assert out["afterFire"] == 1     # onChange fired on the workspace change
+    assert out["afterFire"] == 1     # onChange fired on the data change
     assert out["afterOff"] == 1      # off() stopped further notifications
     assert out["subCount"] == 0      # unsubscribed cleanly
 
@@ -137,138 +197,55 @@ def test_dispose_tears_down_onChange_subscriptions():
         mount(host, workspace, { mode: 'modify' }).then((h) => {
             h.onChange(() => {});
             h.onChange(() => {});
-            const before = wsSubs.length;
+            const before = subs.length;
             h.dispose();                    // must tear down onChange subs it handed out
-            console.log(JSON.stringify({ before, after: wsSubs.length }));
+            console.log(JSON.stringify({ before, after: subs.length }));
         });
     """)
     assert out["before"] == 2
     assert out["after"] == 0          # dispose() unsubscribed both onChange listeners
 
 
-# ---- The full-component path: an EMPTY host -> molview builds + embeds + owns the render -- #
-
-_BUILD_HARNESS = """
-    // Minimal DOM stub (build path uses direct refs -- no querySelector on the built tree).
-    function mkEl(tag) {
-        const el = { tagName: tag, className: '', textContent: '', children: [], parentNode: null };
-        const cls = new Set();
-        el.classList = { add: (x) => cls.add(x), contains: (x) => cls.has(x),
-            toggle: (x) => { if (cls.has(x)) { cls.delete(x); return false; } cls.add(x); return true; } };
-        el.appendChild = (c) => { el.children.push(c); c.parentNode = el; return c; };
-        el.setAttribute = () => {}; el.addEventListener = () => {}; el.removeEventListener = () => {};
-        el.querySelector = () => null; el.closest = () => null;
-        return el;
-    }
-    global.document = { createElement: mkEl };
-    // Stub the viewer: embed() synchronously reports ready with a recording handle.
-    const setStructureCalls = []; let embeddedInto = null;
-    global.molbuilder.viewer = { embed: (host, opts) => {
-        embeddedInto = host;
-        const h = { setStructure: (o) => setStructureCalls.push(o), getAtomCoords: () => [[0,0,0]] };
-        if (opts && opts.onReady) opts.onReady(h);
-        return h;
-    } };
-    global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
-    const workspace = {
-        selection: { getState: () => ({ indices: [], kgrid: { enabled: false, dims: [1,1,1] }, isolate: false,
-                                atoms: [{ element: 'O', x: 0, y: 0, z: 0 }] }),
-                     subscribe: () => (() => {}) },
-        getStructure: () => ({ text: '1\\nx\\nO 0 0 0\\n', atoms: [{ element: 'O', x: 0, y: 0, z: 0 }] }),
-        getUnitCellInfo: () => ({ value: null }),
-        getKgrid: () => [1, 1, 1],
-        subscribe: () => (() => {}),
-    };
-    const host = mkEl('div');   // EMPTY host -> full-component build path
-    const mount = global.molbuilder.molview.mount;
-"""
-
-
-def test_empty_host_builds_card_embeds_viewer_and_owns_render():
-    out = _run_node(_BUILD_HARNESS + """
-        mount(host, workspace, { mode: 'modify' }).then((h) => {
-            const card = host.children[0];
-            console.log(JSON.stringify({
-                builtCard:  !!card && card.className === 'molview-card',
-                embedded:   embeddedInto !== null,
-                baseDrawn:  setStructureCalls.length >= 1,
-                baseHead:   setStructureCalls.length ? setStructureCalls[0].xyz.split('\\n')[0] : null,
-                handleKeys: Object.keys(h).sort(),
-            }));
-        });
-    """)
-    assert out["builtCard"] is True     # molview built the fused card into the empty host
-    assert out["embedded"] is True      # it embedded the viewer itself
-    assert out["baseDrawn"] is True     # the render loop drew the structure (mountRender)
-    assert out["baseHead"] == "1"      # the 1-atom unit cell, read from ws.getStructure()
-    # still ONLY the §D handle surface -- no internals leaked by the build path
-    assert out["handleKeys"] == ["currentFrame", "dispose", "frameCount", "getFrame",
-                    "getSelection", "getStructure", "isPlaying", "load",
-                    "onChange", "pause", "play", "save", "setArrows", "setFrame",
-                    "setLabels", "undo"]
-
-
-# ---- gap (f): the DATA↔PERSISTENCE split -- mount reads data from molview.data, uses the ----
-#      workspace ONLY for persistence (molview-module.md §18 / §C, post-carve contract).
-
-_SPLIT_HARNESS = """
-    const dataCalls = [];    // molbuilder.molview.data (the DATA layer) receives these
-    const wsDataTrap = [];   // the persistence workspace must NEVER receive a data call
-    const structure = { text: 'XYZ', atoms: [{ index: 0, x: 1 }] };
-    const store = { getState: () => ({ indices: [1, 2] }), subscribe: () => (() => {}) };
-
-    // THE DATA MODEL -- molbuilder.molview.data.  mount MUST route every data op here.
+# ---- The FALLBACK path (NOT the contract): molview.data absent -> use the workspace ----- #
+#
+# §18/§C mandate molview.data as THE data layer.  mount.js still carries a transitional
+# fallback -- ``const data = (mb.molview && mb.molview.data) || workspace`` -- for the case
+# where no data model is mounted.  This is verified explicitly and labelled as a FALLBACK; it
+# is NOT the contract path (that is pinned by the two tests above).
+_FALLBACK_HARNESS = """
+    const wsCalls = [];
+    const store = { getState: () => ({ indices: [7] }), subscribe: () => (() => {}) };
+    // NO molview.data mounted -> mount falls back to the workspace as the data source.
     global.molbuilder = global.molbuilder || {};
-    global.molbuilder.molview = global.molbuilder.molview || {};
-    global.molbuilder.molview.data = {
-        selection:     store,
-        getStructure:  () => { dataCalls.push('getStructure'); return structure; },
-        subscribe:     (fn) => (() => {}),
-        loadFromFile:  (p)    => { dataCalls.push(['loadFromFile', p]);    return Promise.resolve('file'); },
-        loadFromText:  (t, f) => { dataCalls.push(['loadFromText', t, f]); return Promise.resolve('text'); },
-        save:          ()     => { dataCalls.push('save'); return Promise.resolve('saved'); },
-        undo:          ()     => { dataCalls.push('undo'); return Promise.resolve('undone'); },
-        setFrame:      (i)    => { dataCalls.push(['setFrame', i]); return i; },
-        frameCount:    () => 3, currentFrame: () => 0, currentForces: () => null,
-        getFrame:      (i) => [[0, 0, 0]],
-    };
-
-    // THE PERSISTENCE WORKSPACE -- has NO business serving data.  Every data method here is a
-    // TRAP: if mount ever reaches for data on the workspace, it's a contract breach and recorded.
-    const workspace = {
-        owner: 'modify', persist: () => {}, workspaceId: () => 'ws-x',
-        selection:    { getState: () => { wsDataTrap.push('selection'); return { indices: [] }; },
-                        subscribe: () => (() => {}) },
-        getStructure: () => { wsDataTrap.push('getStructure'); return null; },
-        loadFromFile: () => { wsDataTrap.push('loadFromFile'); return Promise.resolve(); },
-        loadFromText: () => { wsDataTrap.push('loadFromText'); return Promise.resolve(); },
-        save:         () => { wsDataTrap.push('save'); return Promise.resolve(); },
-        undo:         () => { wsDataTrap.push('undo'); return Promise.resolve(); },
-        setFrame:     () => { wsDataTrap.push('setFrame'); },
-    };
+    global.molbuilder.molview = global.molbuilder.molview || {};   // keep .mount; leave .data UNSET
     global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
+    const workspace = {
+        selection:    store,
+        getStructure: () => { wsCalls.push('getStructure'); return { text: 'WS' }; },
+        subscribe:    () => (() => {}),
+        openMolecule: (a) => { wsCalls.push(['openMolecule', a]); return Promise.resolve('ws-loaded'); },
+        exportFile:   () => { wsCalls.push('exportFile'); return 'ws-bytes'; },
+        undo:         () => { wsCalls.push('undo'); return Promise.resolve('ws-undone'); },
+    };
     const host = { classList: { contains: () => true },
                    querySelector: (sel) => (sel === '.molview-panel' ? {} : null) };
     const mount = global.molbuilder.molview.mount;
 """
 
 
-def test_mount_routes_data_to_molview_data_and_never_to_the_workspace():
-    """gap (f) drift-guard: with a distinct molview.data (data) and a persistence-only
-    workspace, EVERY handle data op (getStructure / load / save / undo / setFrame) must hit
-    molview.data; the workspace's data traps must stay empty."""
-    out = _run_node(_SPLIT_HARNESS + """
+def test_workspace_fallback_when_molview_data_absent():
+    """FALLBACK ONLY (not the contract): with no molview.data mounted, the handle routes its
+    data ops to the workspace.  Guards that the fallback branch stays wired -- while the
+    contract path (data via molview.data) is pinned separately above."""
+    out = _run_node(_FALLBACK_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then(async (h) => {
-            const text = h.getStructure().text;
-            await h.load('/p.xyz');
-            await h.load({ text: 'T', filename: 'm.xyz' });
-            await h.save();
-            await h.undo();
-            h.setFrame(1);
-            console.log(JSON.stringify({ text, dataCalls, wsDataTrap }));
+            const text  = h.getStructure().text;
+            const r     = await h.openMolecule('/f.xyz');
+            const bytes = await h.exportFile();
+            console.log(JSON.stringify({ text, r, bytes, wsCalls }));
         });
     """)
-    assert out["text"] == "XYZ"                       # read came from molview.data
-    assert out["dataCalls"] == ["getStructure", ["loadFromFile", "/p.xyz"],
-                                ["loadFromText", "T", "m.xyz"], "save", "undo", ["setFrame", 1]]
-    assert out["wsDataTrap"] == []                    # workspace NEVER served data
+    assert out["text"] == "WS"                 # read fell back to the workspace
+    assert out["r"] == "ws-loaded"
+    assert out["bytes"] == "ws-bytes"
+    assert out["wsCalls"] == ["getStructure", ["openMolecule", "/f.xyz"], "exportFile"]

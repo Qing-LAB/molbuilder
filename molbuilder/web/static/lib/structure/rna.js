@@ -138,26 +138,10 @@
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
-                if (typeof _viewerLoader === "function") {
-                    var fname = "rna-" + form + "-" + trimmed + ".xyz";
-                    try {
-                        var maybe = _viewerLoader(body.xyz, fname);
-                        if (maybe && typeof maybe.then === "function") {
-                            return maybe.then(function () {
-                                return { ok: true,
-                                         n_atoms: body.n_atoms,
-                                         backend_used: body.backend_used };
-                            });
-                        }
-                    } catch (e) {
-                        return {
-                            ok:    false,
-                            error: "Viewer failed to render: "
-                                 + (e && e.message ? e.message
-                                                    : String(e)),
-                        };
-                    }
-                }
+                // loadIntoCanvas now routes through molview.data.openMolecule,
+                // which parses + renders the structure itself.  The old
+                // viewerLoader second load is removed — it would
+                // double-apply the same bytes.
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used };
             });

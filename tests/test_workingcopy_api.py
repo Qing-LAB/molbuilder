@@ -180,6 +180,75 @@ def test_save_writes_full_periodicity_and_hash_tie(client_project):
     assert sidecar["structure_hash"] == hashlib.sha256(xyz_bytes).hexdigest()
 
 
+def test_state_timeline_roundtrip_and_prune(client_project, monkeypatch):
+    """§4.7: write-state stores an OPAQUE session snapshot format-blind under
+    <workspace_id>.<state_index>.wc.json; read-state round-trips the exact JSON
+    (NOT through the {xyz,sidecar} codec); prune tail-deletes above an index and
+    -1 clears the whole timeline."""
+    import molbuilder.web.blueprints.workingcopy as wcbp
+    client, proj = client_project
+    monkeypatch.setattr(wcbp, "projects_root", lambda: proj)
+    ws = "ws-abc123"
+    # A snapshot the structure codec would REJECT (no xyz) -> proves format-blind.
+    snap = {"state": {"frames": [1, 2], "selection": [3]}, "meta": {"tag": "opaque"}}
+    for i in (0, 1, 2):
+        s = dict(snap, idx=i)
+        r = _json(client.post("/api/workingcopy/write-state",
+                              json={"workspace_id": ws, "state_index": i, "data": s}))
+        assert r["ok"]
+    # round-trip the exact opaque bytes at a chosen index
+    r = _json(client.post("/api/workingcopy/read-state",
+                          json={"workspace_id": ws, "state_index": 1}))
+    assert r["data"] == dict(snap, idx=1)
+    # missing index -> 404 + null
+    r = client.post("/api/workingcopy/read-state",
+                    json={"workspace_id": ws, "state_index": 9})
+    assert r.status_code == 404 and _json(r)["data"] is None
+    # prune tail: drop everything above index 1
+    r = _json(client.post("/api/workingcopy/prune-states",
+                          json={"workspace_id": ws, "above_index": 1}))
+    assert r["removed"] == 1
+    d = proj / ".molbuilder_workspace"
+    assert sorted(p.name for p in d.glob(f"{ws}.*.wc.json")) == [
+        f"{ws}.0.wc.json", f"{ws}.1.wc.json"]
+    # above_index = -1 clears the whole timeline
+    r = _json(client.post("/api/workingcopy/prune-states",
+                          json={"workspace_id": ws, "above_index": -1}))
+    assert r["removed"] == 2
+    assert list(d.glob(f"{ws}.*.wc.json")) == []
+
+
+def test_state_write_keeps_rolling_window(client_project, monkeypatch):
+    """§4.7: each write keeps only the most-recent 30 indices; older ones drop."""
+    import molbuilder.web.blueprints.workingcopy as wcbp
+    client, proj = client_project
+    monkeypatch.setattr(wcbp, "projects_root", lambda: proj)
+    ws = "ws-window"
+    for i in range(35):
+        client.post("/api/workingcopy/write-state",
+                    json={"workspace_id": ws, "state_index": i, "data": {"i": i}})
+    d = proj / ".molbuilder_workspace"
+    kept = sorted(int(p.name[len(ws) + 1:-len(".wc.json")])
+                  for p in d.glob(f"{ws}.*.wc.json"))
+    assert kept == list(range(5, 35))            # oldest 5 pruned, 30 kept
+
+
+def test_state_rejects_bad_identity(client_project, monkeypatch):
+    """Path-traversal / bad index are refused with 400 (no file written)."""
+    import molbuilder.web.blueprints.workingcopy as wcbp
+    client, proj = client_project
+    monkeypatch.setattr(wcbp, "projects_root", lambda: proj)
+    assert client.post("/api/workingcopy/write-state",
+                       json={"workspace_id": "../evil", "state_index": 0,
+                             "data": {}}).status_code == 400
+    assert client.post("/api/workingcopy/write-state",
+                       json={"workspace_id": "ok", "state_index": -1,
+                             "data": {}}).status_code == 400
+    assert client.post("/api/workingcopy/write-state",
+                       json={"workspace_id": "ok", "state_index": "x",
+                             "data": {}}).status_code == 400
+
+
 def test_orphans_and_clean(client_project):
     client, proj = client_project
     xyz = str(proj / "mol.xyz")

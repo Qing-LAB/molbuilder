@@ -20,20 +20,10 @@
     function mountFrameControls(hostEl, api, store) {
         if (!hostEl || !api) return { refresh: function () {}, dispose: function () {} };
 
+        // Static template (no interpolation) -- one template literal so the XSS audit
+        // (test_xss_audit.py) sees a safe single-literal RHS, not a concatenation.
         hostEl.innerHTML =
-            '<span class="mvf-transport">'
-          +   '<button type="button" class="mvf-step mvf-prev" title="Previous frame"'
-          +   ' aria-label="Previous frame">&#8249;</button>'
-          +   '<button type="button" class="mvf-play" title="Play / pause."'
-          +   ' aria-label="Play / pause">&#9654;</button>'
-          +   '<button type="button" class="mvf-step mvf-next" title="Next frame"'
-          +   ' aria-label="Next frame">&#8250;</button>'
-          + '</span>'
-          + '<label class="mvf-loop" title="Loop at the ends (play + step wrap around).">'
-          +   '<input type="checkbox" class="mvf-loop-cb"><span>loop</span></label>'
-          + '<input type="range" class="mvf-slider" min="0" step="1" value="0"'
-          + ' aria-label="Frame">'
-          + '<span class="mvf-counter" aria-live="polite"></span>';
+            `<span class="mvf-transport"><button type="button" class="mvf-step mvf-prev" title="Previous frame" aria-label="Previous frame">‹</button><button type="button" class="mvf-play" title="Play / pause." aria-label="Play / pause">▶</button><button type="button" class="mvf-step mvf-next" title="Next frame" aria-label="Next frame">›</button></span><label class="mvf-loop" title="Loop at the ends (play + step wrap around)."><input type="checkbox" class="mvf-loop-cb"><span>loop</span></label><input type="range" class="mvf-slider" min="0" step="1" value="0" aria-label="Frame"><span class="mvf-counter" aria-live="polite"></span>`;
 
         var prevBtn = hostEl.querySelector(".mvf-prev");
         var nextBtn = hostEl.querySelector(".mvf-next");
@@ -46,7 +36,7 @@
         function _loop() { return (typeof api.getLoop === "function") ? api.getLoop() : true; }
         function _syncPlay() {
             var on = api.isPlaying();
-            playBtn.innerHTML = on ? "&#10073;&#10073;" : "&#9654;";   // ⏸ / ▶
+            playBtn.textContent = on ? "❙❙" : "▶";   // ❙❙ (pause) / ▶ (play)
             playBtn.setAttribute("aria-pressed", String(on));
         }
         // Single-step (‹ / ›) -- wraps when 'loop' is on, clamps at the ends when off.  Pauses

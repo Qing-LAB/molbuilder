@@ -28,7 +28,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import jsonify
 
-from molbuilder.structure import Structure
+from molbuilder.structure import (
+    Structure,
+    annotations_from_json,
+    annotations_to_json,
+)
 from molbuilder.validation import validate_geometry
 
 
@@ -381,10 +385,13 @@ def structure_to_dict(
             "vacuum":        list(struct.vacuum),
             "kgrid":         list(struct.kgrid),
         },
+        # Per-atom annotation channels (atom-annotations.md) ride back with the geometry so a
+        # modify op preserves them index-aligned (the op reindexed them server-side).  The
+        # canonical carrier the client's molview.data reads on apply (§19.3.2 round-trip).
+        "annotations":   annotations_to_json(struct.annotations),
         "issues":        base["issues"],
         "extra":         base["extra"],
-        # Legacy aliases for existing modify-tab consumers
-        # (applyStructure reads these directly).
+        # Legacy aliases for existing modify-tab consumers.
         "xyz":           base["text"],
         "elements":      list(struct.elements),
         "atom_names":    list(struct.atom_names),
@@ -1115,7 +1122,8 @@ def apply_labels_to_struct(struct, body):
       (atom-count mismatch) OR when the sidecar fallback couldn't.
       Caller surfaces as a preflight warn-severity Issue.
     """
-    has_in_body = ("frozen_atoms" in body) or ("regions" in body)
+    has_in_body = ("frozen_atoms" in body) or ("regions" in body) \
+        or ("annotations" in body)
     if not has_in_body:
         return apply_sidecar_if_possible(struct, body.get("structure_path"))
 
@@ -1196,10 +1204,27 @@ def apply_labels_to_struct(struct, body):
                         f"``regions[{label!r}]`` index {idx} out of "
                         f"range [0, {n_atoms})"
                     )
+        # Per-atom annotation channels (atom-annotations.md) ride opaquely through the modify
+        # round-trip so an op reindexes them WITH the geometry (the ops already call
+        # remap_annotations / copy_annotations).  The channels are index-referencing (like
+        # regions), so validate every member index is in range before committing.
+        ann_in = body.get("annotations")
+        annotations = {}
+        if ann_in is not None:
+            annotations = annotations_from_json(ann_in)
+            for name, ch in annotations.items():
+                idxs = ch.data.keys() if ch.kind == "value" else ch.data
+                for i in idxs:
+                    if not isinstance(i, int) or isinstance(i, bool) \
+                            or i < 0 or i >= n_atoms:
+                        raise ValueError(
+                            f"``annotations[{name!r}]`` index {i!r} out of "
+                            f"range [0, {n_atoms})")
         # All validated; commit atomically.  Sorted/unique applied
         # for frozen_atoms (matches the sidecar contract).
         struct.frozen_atoms = sorted(set(frozen_in))
         struct.regions      = {k: list(v) for k, v in regions_in.items()}
+        struct.annotations  = annotations
     except (ValueError, TypeError) as exc:
         return (f"in-body labels could not be applied ({exc}); "
                 f"the form's freeze rules are the sole boundary "

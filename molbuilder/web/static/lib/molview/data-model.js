@@ -22,11 +22,13 @@
  *     getUnitCellInfo, getVacuumInfo, getKgridInfo, getAxisKindInfo,
  *     setUnitCell, setVacuum, setKgrid, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
- *     loadFromFile, generate, applyOp, save, discard, undo,
+ *     openMolecule, generate, applyOp, discard, undo,
+ *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
+ *     save, load, state_index, uncommitted,
  *     // Frames (molview-module.md §14.5)
  *     reloadFrames, addFrame, setFrame, getFrame, currentFrame, frameCount, currentForces,
- *     // Serialisation (the format is MolView's) + persist trigger
- *     getScratchBlob, draftIdentity, applyPayload, suspendPersist, resumePersist,
+ *     // Serialisation (the format is MolView's): project-file export + draft key + persist bracket
+ *     exportFile, draftIdentity, suspendPersist, resumePersist,
  *     // Sub-namespaces
  *     selection.{toggle,set,add,remove,all,invert,clear,
  *                setMode,setFilters,setCombinator,
@@ -37,18 +39,18 @@
  *
  *   * Reads synthesise from canvas-state + selection store +
  *     3Dmol embed via lazy resolvers.  Defensive copies.
- *   * ``applyOp`` owns the modifier-op fetch + cross-store
- *     update pipeline (phase 5 self-sufficient).  Builds the
- *     request body via ``window.molbuilder.modify.currentStateBody``
- *     (modify-tab IIFE exposes this hook), POSTs
- *     ``/api/modify/<op>``, routes the response through
- *     ``_applyWorkspacePayload``.
- *   * ``_applyWorkspacePayload`` is THE single cross-store sync
- *     point: canvas-state.replaceContent + modify-tab
- *     applyStructure hook + selection store adoptAtoms +
- *     selection_remap (phase 3 wire shape).  Every entry point
- *     (applyOp, the modify-tab's loadStructureText) routes
- *     through it.
+ *   * ``applyOp`` owns the modifier-op fetch + cross-store update pipeline, and is FULLY
+ *     SELF-CONTAINED: it builds the op-request STRUCTURE body from THIS module's OWN
+ *     accessors (``_structureBody`` -> getStructure/getFrozen/getRegions), POSTs
+ *     ``/api/modify/<op>``, and routes the response through ``_applyWorkspacePayload``.
+ *     Consumers pass ONLY op-params as ``args`` -- the module no longer reaches out to a
+ *     ``modify.currentStateBody`` hook (that inverted the dependency; removed with the
+ *     Modify state.* rip-out).
+ *   * ``_applyWorkspacePayload`` is THE single cross-store sync point:
+ *     canvas-state.replaceContent + top-level-metadata distribution onto atoms + selection
+ *     store adoptAtoms + selection_remap, then a subscription notify.  It no longer calls any
+ *     consumer hook -- consumers read the single source through the unified API and react to
+ *     the subscription.  Every entry point (applyOp, loadFromText) routes through it.
  *   * Persistence: debounced write to
  *     ``sessionStorage["molbuilder.workspace.v1"]`` on every
  *     state change + final flush on pagehide.  Legacy mirrors
@@ -58,20 +60,16 @@
  *     they're documented in the workspace-state.md migration
  *     table as scheduled for retirement but technically active.
  *
- * Underlying stores (still active; phase 9 marked them
- * "internal" without code deletion):
+ * Underlying stores (module-internal; consumers never touch them directly):
  *
  *   - canvas-state (``window.molbuilder.structureCanvas``)
  *     - owns structure text + source provenance + dirty flag.
  *   - selection store (``window.molbuilder.selection.store``)
- *     - owns atoms list + selection + filters + mode.
- *   - modify-tab IIFE
- *     (``window.molbuilder.modify.{handle, currentStateBody,
- *       applyStructure}`` + runtime registry
- *     ``modify.handle``, ``modify.applyUndo``)
- *     - owns the 3Dmol embed model, the IIFE's per-state mirror
- *       (state.xyz / state.elements / ...), and the undo history
- *       stack.
+ *     - owns the atoms list (element + coords + per-atom metadata) + selection + filters + mode.
+ *
+ * The Modify tab is now a pure CONSUMER: it holds NO structure data (no per-state mirror,
+ * no embed handle) -- it reads the single source through this module's unified API and drives
+ * ops via ``applyOp``.  (See modify/viewer.js.)
  *
  * Loaded ONLY on /molbuilder (modify.html includes the script).
  * On task tabs (structure-optimization / spectrum-calculation /
@@ -504,6 +502,20 @@
     var _subscribers = [];
     var _wired = false;
 
+    // ─── State timeline (molview-module.md §19.5) ────────────────── //
+    // Push-only undo: the model owns a `state_index` (position in the tab's operation
+    // sequence; 0 = the opened anchor) and an `uncommitted` flag (true iff the in-memory
+    // model changed since the last `save` -- what a `load(-1)` would discard).  There is
+    // NO automatic write on change: only `openMolecule` (the ONE anchor write), `save`, and
+    // `load` touch disk.  save/load are SERIALIZED through `_pushPopChain` so the index
+    // advances/retreats only after each workspace round-trip resolves.
+    var _stateIndex = 0;
+    var _uncommitted = false;
+    // Guard set true while an internal apply (openMolecule / load snapshot application) drives
+    // the stores, so the resulting canvas/frame signals do NOT mark the model uncommitted.
+    var _applying = false;
+    var _pushPopChain = Promise.resolve();
+
     function _notify() {
         // Defensive copy: a subscriber that synchronously calls
         // subscribe()/unsubscribe()/notify() must not corrupt the
@@ -520,22 +532,27 @@
                 }
             }
         }
-        // Phase 8 — persistence.  Debounced write to the unified
-        // sessionStorage key on every state change.  Final flush
-        // on ``pagehide`` (wired below in the mount block) so a
-        // last-microtask change isn't lost when the user navigates.
-        _schedulePersist();
+        // NOTE: _notify() is RENDER-ONLY -- it fires on EVERY change (data OR view) and
+        // NEVER persists.  Persistence is push-only (§19.5): nothing reaches disk until the
+        // consumer calls pushState() (or a load anchors the timeline).  So a hundred slider
+        // drags -- and a hundred edits -- cost zero writes.
     }
 
     function _ensureSubscribed() {
         if (_wired) return;
         _wired = true;
-        // canvas-state fires on every structure change + dirty toggle.
+        // Canvas-state fires on every DATA change (text / periodicity / dirty toggle) ->
+        // render, and (when NOT inside an internal apply) mark the model uncommitted so a
+        // consumer knows a pushState would checkpoint real work.  NO auto-write (§19.5).
         var cs = _canvas();
         if (cs && typeof cs.onChange === "function") {
-            cs.onChange(_notify);
+            cs.onChange(function () {
+                _notify();
+                if (!_applying) _uncommitted = true;
+            });
         }
-        // Selection store fires on atoms / selection / filter changes.
+        // Selection store fires on atoms / selection / coords / isolate / k-grid.  Those
+        // are VIEW ops -> RE-RENDER ONLY (§18.3); they do not mark the model uncommitted.
         var st = _store();
         if (st && typeof st.subscribe === "function") {
             st.subscribe(_notify);
@@ -756,34 +773,6 @@
     // delegation becomes the dispatcher's internal write.
 
     /**
-     * Install a freshly-loaded structure into the canvas WHOLESALE
-     * (text + source + dirty=false in one atomic write).  Used by
-     * the warning-modal gate (``structurePage.loadIntoCanvas``) to
-     * actually perform the swap once the user has confirmed.
-     *
-     * ``structure`` shape per workspace-contract.md §1.2:
-     *   {source_format: "xyz"|"pdb", text: string}
-     * ``source`` shape:
-     *   {kind: string, file: string|null, generator_input: object|null}
-     *
-     * Today this delegates to ``canvas.setStructure(structure, source)``.
-     * Atoms are NOT installed here — the warning-modal gate path is
-     * text+source only; the post-modal load follow-up (sidebar
-     * commitFile → adoptSession; generator → ws.loadFromText) is
-     * what brings atoms in.  Once Phase 10 collapses the canvas
-     * store into the dispatcher, this method becomes the sync
-     * point.
-     */
-    function installStructure(structure, source) {
-        var cs = _canvas();
-        if (!cs) throw _missing("canvas store");
-        if (typeof cs.setStructure !== "function") {
-            throw _missing("canvas.setStructure");
-        }
-        return cs.setStructure(structure, source);
-    }
-
-    /**
      * Mark the workspace dirty.  Modifier panels call this after a
      * successful op so a subsequent Load / Generate triggers the
      * warning-modal gate.  Idempotent: re-marking dirty is a no-op
@@ -850,10 +839,10 @@
      * if the canvas is dirty.  Delegates to ``molbuilderTab.commitFile``
      * exposed in cd9655e.
      */
-    function loadFromFile(path) {
+    function _loadFile(path) {
         if (typeof path !== "string" || !path) {
             return Promise.reject(new TypeError(
-                "workspace.loadFromFile(path): non-empty string required"));
+                "molview.data.openMolecule(path): non-empty string required"));
         }
         var tab = _molbuilderTab();
         if (!tab || typeof tab.commitFile !== "function") {
@@ -908,9 +897,8 @@
      *      (modifier-op flow; flips the dirty bit).  Generator + sidebar
      *      flows pass ``touchCanvas: false`` because canvas-state was
      *      already set via ``structurePage.loadIntoCanvas`` (dirty=false).
-     *   2. modify-tab IIFE state + 3Dmol embed via the registered
-     *      ``window.molbuilder.modify.applyStructure`` hook.  Synchronous;
-     *      after this call state.* and the embed reflect the payload.
+     *   2. (removed) There is no longer a modify-tab ``applyStructure`` hook -- consumers
+     *      hold no mirror; the module owns the data and fires a subscription (step 5).
      *   3. ``selection_remap`` (Phase 3 wire shape) is applied to the
      *      existing selection — surviving indices remap, removed atoms
      *      drop, all in one ``setSelection`` call.
@@ -936,35 +924,77 @@
         var preSelection = (st && typeof st.getState === "function")
             ? st.getState().selection.slice() : [];
 
+        // ATOMIC load/replace (§19.3.1 + F4): suspend persistence across the WHOLE
+        // multi-store write so the intermediate steps (canvas install/replace, THEN
+        // adoptAtoms) never publish a transient geometry<->labels atom-count desync.
+        // Exactly one coherent persist fires on resume.  try/finally so a mid-write
+        // throw can never leave persistence wedged suspended.
+        suspendPersist();
+        try {
+
         // 1. Canvas-state — text + periodicity + dirty bit.  A modifier op that
         //    recaptured a cell (e.g. add-electrodes) carries `periodicity` in the
         //    payload; passing it keeps the store's periodicity in step with the
         //    new geometry (workspace-contract.md §4.0).  Omitted -> kept as-is.
         var cs = _canvas();
+        var fmt = payload && payload.source_format;
         if (touchCanvas && cs && text
                 && typeof cs.replaceContent === "function") {
-            try { cs.replaceContent(text, payload && payload.periodicity); }
-            catch (_) { /* swallow */ }
+            cs.replaceContent(text, payload && payload.periodicity,
+                              payload && payload.annotations);
+        } else if (!touchCanvas && cs && text && opts.installSource
+                && (fmt === "xyz" || fmt === "pdb")
+                && typeof cs.setStructure === "function") {
+            // A FRESH LOAD (`installSource` set): install the WHOLE structure into
+            // the canvas -- text + periodicity, dirty=false -- REPLACING whatever was
+            // there.  This is what makes loading ONE atomic operation: the SAME sync
+            // point that adopts the atoms below (step 3) also (re)writes the canvas
+            // here, so after a single call getStructure(), getUnitCell(), and
+            // getAtoms() ALL reflect the just-loaded structure and stay coherent
+            // across re-loads (load water, then benzene -> the canvas is benzene, not
+            // stuck on water).  There is no second "load into canvas" door.  Only
+            // loadFromText sets `installSource`; generator/sidebar flows install the
+            // canvas via their own path (loadIntoCanvas/adoptSession) and never reach
+            // here, so their source provenance is untouched.  A modifier op takes the
+            // replaceContent (dirty=true) branch above.
+            cs.setStructure(
+                { source_format: fmt, text: text,
+                  periodicity:   payload.periodicity || null,
+                  annotations:   payload.annotations || null },
+                opts.installSource);
         }
 
-        // 2. modify-tab applyStructure hook (IIFE state.* + 3Dmol
-        //    embed only).  This hook is the modify-tab's
-        //    self-update; it does NOT touch the selection store
-        //    or canvas-state (the dispatcher owns those).  When the
-        //    hook is absent (task tabs without a modify IIFE) the
-        //    call is a no-op.
-        var modifyHook = root.molbuilder
-                      && root.molbuilder.modify
-                      && root.molbuilder.modify.applyStructure;
-        if (typeof modifyHook === "function") {
-            try { modifyHook(payload, opts); } catch (_) { /* swallow */ }
-        }
+        // 2. (removed) The old modify-tab ``applyStructure`` hook is GONE.  The module no
+        //    longer calls OUT to a consumer to mirror the structure into a local state.*
+        //    copy -- consumers read the single source through the unified API and react to
+        //    the subscription fired below.  Keeping the module free of consumer callbacks is
+        //    the point of the concealed data model.
 
         // 3. Selection store atoms — the BOMB-0 cross-store sync.
         //    Single source of truth: this is the ONLY place the
         //    dispatcher consults ``payload.atoms``.
         if (st && Array.isArray(payload.atoms)
                 && typeof st.adoptAtoms === "function") {
+            // Distribute the payload's TOP-LEVEL metadata arrays onto each atom before it
+            // enters the store.  /api/build/load returns atom_names / residue_ids /
+            // residue_names / chain_ids as PARALLEL ARRAYS, not per-atom, so without this the
+            // store -- and thus getStructure() -- would drop them, forcing consumers to keep a
+            // parallel state.* mirror.  Distributing here makes molview.data the COMPLETE
+            // single source.  Values can be 0/"" legitimately -> guard with != null, and never
+            // overwrite an atom that already carries the field (adoptSession's per-atom shape).
+            var _META = [["residue_ids", "residue_id"], ["atom_names", "atom_name"],
+                         ["residue_names", "residue_name"], ["chain_ids", "chain_id"]];
+            for (var _mi = 0; _mi < _META.length; _mi++) {
+                var _arr = payload && payload[_META[_mi][0]];
+                if (!Array.isArray(_arr) || _arr.length !== payload.atoms.length) continue;
+                var _key = _META[_mi][1];
+                for (var _ai = 0; _ai < payload.atoms.length; _ai++) {
+                    var _at = payload.atoms[_ai];
+                    if (_at && _at[_key] == null && _arr[_ai] != null) {
+                        _at[_key] = _arr[_ai];
+                    }
+                }
+            }
             st.adoptAtoms(payload.atoms);
         }
 
@@ -972,9 +1002,15 @@
         //    before adoptAtoms' destructive filter) so a Delete op's
         //    selection_remap translates the user's ORIGINAL anchor
         //    rather than the post-filter empty set.
+        // §19.3.2 atom-count selection rule: resetSelection (a count-changing mutation, or a
+        // load) CLEARS -- it takes PRECEDENCE over any server selection_remap, which is now
+        // retired for these ops (a cleared selection can never mis-point at a shifted index).
+        // The remap branch survives only for callers that ask for it WITHOUT resetSelection.
         var remap = payload && payload.extra
                  && payload.extra.selection_remap;
-        if (Array.isArray(remap) && st
+        if (resetSelection && st && typeof st.clearSelection === "function") {
+            st.clearSelection();
+        } else if (Array.isArray(remap) && st
                 && typeof st.setSelection === "function") {
             var newSel = [];
             for (var i = 0; i < preSelection.length; i++) {
@@ -984,13 +1020,16 @@
                 if (newIdx != null) newSel.push(newIdx);
             }
             st.setSelection(newSel);
-        } else if (resetSelection && st
-                && typeof st.clearSelection === "function") {
-            st.clearSelection();
         }
 
         // 5. Notify dispatcher subscribers.
         _notify();
+
+        } finally {
+            // One coherent persist for the whole atomic load (no-op if a caller
+            // nested us inside its own suspend bracket -- the counter handles it).
+            resumePersist();
+        }
     }
 
     /**
@@ -1032,7 +1071,33 @@
      * already negotiated.  See ``_applyWorkspacePayload`` for the
      * full canvas-state contract.
      */
-    async function loadFromText(text, filename) {
+    // ---- THE openMolecule door (molview-module.md §19.3) ----------------------- //
+    // Bring a NEW molecule IN: ONE atomic operation that replaces the WHOLE model AND
+    // resets the session timeline (§19.5).  There is no other open door: `{text,
+    // filename}` parses raw structure text; a project-file path string loads a saved
+    // file.  Both land on the single sync point (_applyWorkspacePayload).
+    function openMolecule(input) {
+        if (input && typeof input === "object" && typeof input.text === "string") {
+            // `source`      -> provenance (a generator names its kind/generator_input);
+            // `periodicity` -> sidecar cell/kgrid/vacuum/axis_kind that /api/build/load
+            //                  cannot re-derive (a file-open supplies it);
+            // `annotations` -> the opaque sidecar channel carry.
+            return _loadText(input.text, input.filename, {
+                source:      input.source || null,
+                periodicity: input.periodicity || null,
+                annotations: input.annotations || null,
+            });
+        }
+        if (typeof input === "string" && input) {
+            return _loadFile(input);
+        }
+        return Promise.reject(new TypeError(
+            "molview.data.openMolecule(input): pass { text, filename[, source, periodicity, annotations] } "
+          + "or a project-file path string"));
+    }
+
+    async function _loadText(text, filename, opts) {
+        opts = opts || {};
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -1042,41 +1107,269 @@
         if (!r.ok) {
             throw new Error(r.error || "Load failed.");
         }
-        _applyWorkspacePayload(r, {
-            touchCanvas:    false,
-            resetSelection: true,
-        });
+        // Loading is ONE operation: hand the payload to the single sync point, which
+        // populates the WHOLE model (canvas text + periodicity AND atoms) coherently.
+        // Caller-supplied provenance + sidecar overrides ride on the load door itself (no
+        // side-channel, §19.3): a generator's `source` (kind/generator_input), and the
+        // sidecar `periodicity`/`annotations` a file-open carries but /api/build/load can't
+        // re-derive, are applied OVER the server-parsed payload.  `installSource` names where
+        // these bytes came from so the sync point seeds the canvas; `_applying` is held true
+        // so the driven canvas signal does not mark the fresh load uncommitted.
+        if (opts.periodicity) r.periodicity = opts.periodicity;
+        if (opts.annotations) r.annotations = opts.annotations;
+        var installSource = opts.source
+            || { kind: "file", file: filename || null, generator_input: null };
+        _applying = true;
+        try {
+            _applyWorkspacePayload(r, {
+                touchCanvas:    false,
+                resetSelection: true,
+                installSource:  installSource,
+            });
+        } finally {
+            _applying = false;
+        }
+        // Anchor a fresh timeline (§19.5): prune the previous molecule's state files, reset
+        // state_index to 0, and write this loaded structure as the index-0 anchor.
+        await _anchorTimeline();
         return r;
     }
 
-    function applyOp(op, args) {
-        if (typeof op !== "string" || !op) {
-            return Promise.reject(new TypeError(
-                "workspace.applyOp(op, args): op must be a non-empty string"));
+    // Build the op-request STRUCTURE body from molview.data's OWN accessors.  The module
+    // owns the data, so it constructs the request itself -- consumers pass ONLY op-PARAMS
+    // (element/plane/size/gap/anchor/…) as ``args``.  This replaces the old inverted
+    // dependency where applyOp reached OUT to the consumer's modify.currentStateBody (which
+    // read a parallel state.* mirror that could go stale, e.g. the electrode None>None bug).
+    // Metadata arrays are reconstructed per-atom from getStructure().atoms -- the SAME shape
+    // _scratchBlob emits -- so the request always reflects the live single source.
+    function _structureBody() {
+        var s = getStructure();
+        var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        // A metadata column is sent ONLY when EVERY atom carries it; otherwise []. NEVER a
+        // list with nulls -- the server does max(residue_ids) etc. and a null poisons the
+        // comparison (TypeError '>' between NoneType, the electrode/add-atom None>None bug).
+        // [] means "absent" and the server applies its own default (residue_id 1, atom_name
+        // = element, …), matching the pre-rip-out contract (which sent the payload array or []).
+        function _col(pick) {
+            var out = [];
+            for (var i = 0; i < atoms.length; i++) {
+                var v = pick(atoms[i]);
+                if (v == null) return [];      // incomplete -> let the server default
+                out.push(v);
+            }
+            return out;
         }
-        var csb = root.molbuilder
-               && root.molbuilder.modify
-               && root.molbuilder.modify.currentStateBody;
-        if (typeof csb !== "function") {
-            return Promise.reject(_missing("modify.currentStateBody"));
-        }
-        var body = Object.assign(csb(), args || {});
+        var body = {
+            xyz:           (s && s.text) || "",
+            title:         (s && s.title) || "",
+            atom_names:    _col(function (a) { return a.atomName; }),
+            residue_ids:   _col(function (a) { return a.residueId; }),
+            residue_names: _col(function (a) { return a.residueName; }),
+            chain_ids:     _col(function (a) { return a.chainId; }),
+            frozen_atoms:  (typeof getFrozen === "function") ? getFrozen() : [],
+            regions:       (typeof getRegions === "function") ? getRegions() : {},
+        };
+        // COMPLETE body (§19.3.2): the v4 per-atom annotation channels ride opaquely so the
+        // op reindexes them WITH the geometry.  Sent only when present.  (The server must read
+        // + reindex + return them for them to survive an add/delete -- the modify round-trip
+        // completeness step; until then this is a harmless no-op.)
+        if (s && s.annotations != null) body.annotations = s.annotations;
+        return body;
+    }
+
+    // §19.3.2 op registry -- ops are DATA (keyed by canonical name = server route).
+    //   role       "subject" (atoms that change) | "anchor" (reference atoms)
+    //   empty      "all" (empty group -> every atom) | "reject" | "canonical" (0 allowed)
+    //   arity      null (any) | int | [min,max] -- required RESOLVED group size
+    //   groupField body key the resolved group is written to (null = whole-structure transform)
+    //   scalar     true -> groupField takes a single int (group[0]), not an array
+    //   shape      "transform" (count kept, selection KEPT) | "grow" | "shrink" (count changes,
+    //              selection CLEARED) -- drives the count invariant + the atom-count selection rule
+    //   mapGroup   optional (group)->indices op-specific ordering (electrode top/bottom by z)
+    var _OP_REGISTRY = {
+        "translate": { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
+        "rotate":    { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
+        "orient":    { role: "anchor",  empty: "reject", arity: 2,      groupField: "anchors",      shape: "transform" },
+        "add_atom":  { role: "anchor",  empty: "reject", arity: 1,      groupField: "anchor_index", scalar: true, shape: "grow" },
+        "electrode": { role: "anchor",  empty: "reject", arity: 1,      groupField: "anchor_index", scalar: true, shape: "grow" },
+        "symmetric_electrodes": {
+            role: "anchor", empty: "canonical", arity: [0, 2], groupField: "anchors", shape: "grow",
+            mapGroup: function (g) {
+                if (g.length !== 2) return g;                       // 0 anchors = canonical origin
+                var c = getCoordinates();                           // else order [top, bottom] by z
+                return (c[g[0]][2] >= c[g[1]][2]) ? [g[0], g[1]] : [g[1], g[0]];
+            },
+        },
+        "delete":    { role: "subject", empty: "reject", arity: null,   groupField: "indices",      shape: "shrink" },
+    };
+    var _mutating = false;   // §19.3.2 serialize: at most ONE structure mutation in flight.
+
+    function _selectionIndices() {
+        var st = _store();
+        var s = (st && typeof st.getState === "function") ? st.getState() : null;
+        return (s && Array.isArray(s.selection)) ? s.selection.slice() : [];
+    }
+    function _range(n) { var a = []; for (var i = 0; i < n; i++) a.push(i); return a; }
+
+    // The fetch + defensive parse + (for whole-structure ops) count invariant + atomic apply.
+    // ``onOk(env.r)`` handles the applied result -- a whole-structure apply, or the subset map-back.
+    function _postOp(op, body, onOk) {
         return root.fetch("/api/modify/" + op, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(body),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
         }).then(function (resp) {
-            return resp.json().then(function (r) {
-                return { httpOk: resp.ok, r: r };
+            // TEXT-first parse: a 500/404 HTML page would make resp.json() throw the cryptic
+            // "Unexpected token '<'..."; parse defensively so the real error surfaces.
+            return resp.text().then(function (txt) {
+                var r = null; try { r = txt ? JSON.parse(txt) : null; } catch (_) { r = null; }
+                return { httpOk: resp.ok, status: resp.status, r: r };
             });
         }).then(function (env) {
             if (!env.httpOk || !env.r || !env.r.ok) {
-                throw new Error(
-                    (env.r && env.r.error) || "modify/" + op + " failed");
+                throw new Error((env.r && env.r.error)
+                    || ("modify/" + op + " failed (HTTP " + env.status + ")"));
             }
-            _applyWorkspacePayload(env.r, { touchCanvas: true });
-            return env.r;
+            return onOk(env.r);
         });
+    }
+
+    // Whole-structure path: complete body + group->groupField + POST + count invariant + apply.
+    function _wholeStructureOp(op, desc, group, opParams, oldCount) {
+        var body = _structureBody();
+        if (desc.groupField) {
+            var placed = desc.mapGroup ? desc.mapGroup(group) : group;
+            // An empty group under a "canonical" empty-policy means OMIT the field
+            // entirely so the server applies its canonical default (e.g. origin-centred
+            // electrode slabs).  Writing anchors:[] would be rejected as a bad arity.
+            if (placed.length) body[desc.groupField] = desc.scalar ? placed[0] : placed;
+        }
+        for (var k in opParams) { if (k !== "indices" && k !== undefined) body[k] = opParams[k]; }
+        return _postOp(op, body, function (r) {
+            var newCount = Array.isArray(r.atoms) ? r.atoms.length
+                         : (typeof r.n_atoms === "number" ? r.n_atoms : oldCount);
+            if (desc.shape === "transform" && newCount !== oldCount) {
+                throw new Error("applyOp(" + op + "): transform changed the atom count ("
+                    + oldCount + " -> " + newCount + ")");
+            }
+            if (desc.shape === "grow" && !(newCount > oldCount)) {
+                throw new Error("applyOp(" + op + "): grow did not add atoms ("
+                    + oldCount + " -> " + newCount + ")");
+            }
+            if (desc.shape === "shrink" && !(newCount < oldCount)) {
+                throw new Error("applyOp(" + op + "): shrink did not remove atoms ("
+                    + oldCount + " -> " + newCount + ")");
+            }
+            // §19.3.2 selection rule: count change (grow/shrink) CLEARS; transform KEEPS.
+            _applyWorkspacePayload(r, {
+                touchCanvas:    true,
+                resetSelection: (desc.shape === "grow" || desc.shape === "shrink"),
+            });
+            return r;
+        });
+    }
+
+    // §19.3.2 SUBSET transform: extract the subject atoms -> run the SAME order-preserving
+    // rotate/translate route -> map the transformed coords BACK into the full structure at the
+    // subject indices.  Untouched atoms + ALL per-atom metadata stay put (a pure coord write).
+    function _subsetTransform(op, group, opParams) {
+        var s = getStructure();
+        var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        var subXyz = group.length + "\nsubset\n";
+        for (var i = 0; i < group.length; i++) {
+            var a = atoms[group[i]];
+            subXyz += (a.element || "X") + " " + a.x + " " + a.y + " " + a.z + "\n";
+        }
+        var body = { xyz: subXyz };
+        for (var k in opParams) { if (k !== "indices") body[k] = opParams[k]; }
+        return _postOp(op, body, function (r) {
+            var sub = Array.isArray(r.atoms) ? r.atoms : [];
+            // Order-preservation re-check: the returned sub-structure MUST match what we sent,
+            // atom-for-atom, or the map-back would mis-assign coordinates.
+            if (sub.length !== group.length) {
+                throw new Error("applyOp(" + op + "): subset transform changed the atom count");
+            }
+            for (var j = 0; j < group.length; j++) {
+                if (sub[j].element !== atoms[group[j]].element) {
+                    throw new Error("applyOp(" + op
+                        + "): subset transform reordered atoms (element mismatch)");
+                }
+            }
+            // Build the full new coords (only the subject moved) and re-apply as a
+            // count-preserving, metadata-preserving transform (selection KEPT).
+            var coords = getCoordinates();               // fresh copy of the current full coords
+            var subByOrig = {};
+            for (var m = 0; m < group.length; m++) {
+                coords[group[m]] = [sub[m].x, sub[m].y, sub[m].z];
+                subByOrig[group[m]] = true;
+            }
+            var title = (s && s.title) || "";
+            var text = atoms.length + "\n" + title + "\n";
+            var fullAtoms = [];
+            for (var p = 0; p < atoms.length; p++) {
+                var at = atoms[p];
+                text += (at.element || "X") + " " + coords[p][0] + " "
+                      + coords[p][1] + " " + coords[p][2] + "\n";
+                fullAtoms.push({
+                    index: p, element: at.element,
+                    x: coords[p][0], y: coords[p][1], z: coords[p][2],
+                    regions: at.labels || [], is_frozen: !!at.isFrozen,
+                    atom_name: at.atomName, residue_name: at.residueName,
+                    chain_id: at.chainId, residue_id: at.residueId,
+                });
+            }
+            _applyWorkspacePayload({
+                text: text, source_format: (s && s.source_format) || "xyz",
+                atoms: fullAtoms, periodicity: (s && s.periodicity) || null,
+                annotations: (s && s.annotations) || null,
+            }, { touchCanvas: true });   // transform -> selection KEPT (no reset)
+            return r;
+        });
+    }
+
+    function applyOp(op, args) {
+        args = args || {};
+        var desc = _OP_REGISTRY[op];
+        if (!desc) {
+            return Promise.reject(new Error(
+                "molview.data.applyOp: unknown op '" + op + "'"));
+        }
+        if (_mutating) {
+            return Promise.reject(new Error(
+                "molview.data.applyOp: a structure mutation is already in flight"));
+        }
+        var nAll = getElements().length;
+        // Resolve the group -- explicit indices, else the current selection -- for the op's role.
+        var group = Array.isArray(args.indices) ? args.indices.slice() : _selectionIndices();
+        // Enforce the empty policy, then the arity, BEFORE any fetch.
+        if (group.length === 0) {
+            if (desc.empty === "all") group = _range(nAll);
+            else if (desc.empty === "reject") {
+                return Promise.reject(new Error("molview.data.applyOp(" + op
+                    + "): a non-empty selection is required"));
+            }
+            // "canonical": proceed with an empty group.
+        }
+        if (desc.arity != null) {
+            var lo, hi;
+            if (Array.isArray(desc.arity)) { lo = desc.arity[0]; hi = desc.arity[1]; }
+            else { lo = hi = desc.arity; }
+            if (group.length < lo || group.length > hi) {
+                return Promise.reject(new Error("molview.data.applyOp(" + op + "): needs "
+                    + (lo === hi ? lo : lo + "-" + hi) + " atom(s), got " + group.length));
+            }
+        }
+        _mutating = true;
+        var run;
+        // Dispatch: a transform on a SUBSET (subject smaller than all) uses the subset
+        // orchestration; everything else takes the whole-structure path.
+        if (desc.shape === "transform" && desc.role === "subject"
+                && group.length > 0 && group.length < nAll) {
+            run = _subsetTransform(op, group, args);
+        } else {
+            run = _wholeStructureOp(op, desc, group, args, nAll);
+        }
+        return run.then(function (r) { _mutating = false; return r; },
+                        function (e) { _mutating = false; throw e; });
     }
 
     /**
@@ -1090,13 +1383,13 @@
      * on the unified ``ws.*`` API; the dispatcher does NOT
      * re-implement the save pipeline.
      */
-    function save(opts) {
-        var saveMod = root.molbuilder && root.molbuilder.structureSave;
-        if (!saveMod || typeof saveMod.save !== "function") {
-            return Promise.reject(_missing("structureSave"));
-        }
-        return Promise.resolve(saveMod.save());
-    }
+    // ---- THE exportFile door (molview-module.md §19.4) ------------------------- //
+    // `exportFile()` = serialize the WHOLE model to PROJECT-FILE bytes ({xyz, sidecar})
+    // -- the inverse of `openMolecule`.  This is the DOCUMENT serialization: the bytes a
+    // consumer writes to the user's project file.  Writing bytes to disk is the
+    // consumer's job (the sidecar), NOT the data model's (two-saves-never-mix).  It is
+    // NOT the session-state timeline save -- that is `save(delta)` (§19.5).
+    function exportFile() { return _scratchBlob(); }
 
     /**
      * Wipe the workspace canvas + selection.  UNCONDITIONAL — the
@@ -1124,18 +1417,10 @@
      * Undo the last modifier op.  Delegates to the modify-tab's
      * ``applyUndo`` (Phase 4 exposed it on the runtime registry).
      */
-    function undo() {
-        var rt = _runtime();
-        if (!rt || typeof rt.whenReady !== "function") {
-            return Promise.reject(_missing("runtime registry"));
-        }
-        return rt.whenReady("modify.applyUndo").then(function (applyUndo) {
-            if (typeof applyUndo !== "function") {
-                throw _missing("modify.applyUndo");
-            }
-            return applyUndo();
-        });
-    }
+    // Undo IS `load(-1)` (§19.5) -- kept as an alias so the mount handle's `undo()` and any
+    // legacy caller resolve to the state-timeline retract.  The old in-memory undo stack
+    // (and its `modify.applyUndo` delegation) was retired with the state timeline.
+    function undo() { return load(-1); }
 
     // ─── Frames — the coordinate time axis (workspace-contract.md §1.5) ─────── //
     // The caller (a Results trajectory inspector, a live-job stream) decides the op; the
@@ -1172,6 +1457,7 @@
         _requireMatch(Array.isArray(frames) ? frames[0] : null, "reloadFrames");
         fs.reset(frames, opts);   // HARD reload -> resets to frame 0
         _pushCurrentFrame();
+        if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
         return fs.frameCount();
     }
     function addFrame(coords, opts) {
@@ -1179,6 +1465,7 @@
         if (!fs) throw _missing("molview._createFrameSeries");
         _requireMatch(coords, "addFrame");
         fs.addFrame(coords, opts);   // append; does NOT change the current view
+        if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
         return fs.frameCount();
     }
     function addFrames(list, opts) {
@@ -1241,12 +1528,6 @@
      * on top: it reads ``molbuilder.workspace.v1`` first; falls
      * back to the legacy mirrors when absent.
      */
-    // Shared classic-script constants — see lib/constants.js.
-    // Fallback string keeps the dispatcher functional in test
-    // contexts that don't load constants.js (e.g. the JS-unit
-    // tests that boot a minimal window stub).
-    var _persistDeadline = null;
-
     function _serialise() {
         // The snapshot always carries the full structure (including
         // ``structure.atoms``).  The cd9655e dirty-gate
@@ -1273,9 +1554,17 @@
                 last_save_to: _lastSavedTo(),
                 selection:    getSelection(),
                 view:         view.getState(),
+                // The timeline position, so a reload restores WHERE in the undo history
+                // we are (not just the geometry) -- §19.5.
+                state_index:  _stateIndex,
             },
         };
     }
+
+    // Reload-restore is now `load(0)` (§19.5): it reads the sessionStorage MIRROR
+    // (the current committed snapshot + state_index) and applies it to the WHOLE model
+    // WITHOUT re-anchoring the timeline.  The former standalone `restoreSnapshot(snap)`
+    // door was folded into that delta-parameterized `load`.
 
     function _lastSavedTo() {
         var cs = _canvas();
@@ -1356,11 +1645,15 @@
     // right draft -- review finding b1: the save used to send the target path, so it
     // dropped a phantom and the real (source-keyed) draft leaked as a permanent
     // orphan.  Mirrors _persistDraft's key exactly.
+    // The AUTOMATIC session/tab draft is opaque bytes keyed by the tab's workspace id
+    // and NOTHING else -- no filename (two-saves-never-mix).  A filename belongs ONLY to
+    // the explicit "save to a project file" action, which is a separate consumer flow
+    // through the project sidebar; it must never leak into automatic crash-safety.  (An
+    // earlier version keyed by the source file, which made the auto-persist try to
+    // resolve a load-time filename as a real project path -> a spurious 400 for anything
+    // loaded from bytes rather than an on-disk project file.)
     function draftIdentity() {
-        var src = getSource();
-        var sourceFile = src && src.file;
-        return sourceFile ? { source: sourceFile }
-                          : { workspace_id: (_ws() ? _ws().workspaceId() : null) };
+        return { workspace_id: (_ws() ? _ws().workspaceId() : null) };
     }
 
     // F4: persistence is SUSPENDED across a multi-step load (_commitFile sets the
@@ -1372,31 +1665,187 @@
     var _persistSuspended = 0;
     function suspendPersist() { _persistSuspended++; }
     function resumePersist() {
+        // Push-only (§19.5): there is NO auto-write to release on resume.  suspend/resume
+        // survive only as a coherence bracket around a multi-step apply (they suppress the
+        // interim states from a would-be reader); the counter is the whole contract now.
         if (_persistSuspended > 0) _persistSuspended--;
-        if (_persistSuspended === 0) _schedulePersist();
     }
 
     // The workspace PERSISTENCE layer (lib/workspace/dispatcher.js) -- data-model hands it
     // serialised BYTES; it never reads our data.
     function _ws() { return (root.molbuilder && root.molbuilder.workspace) || null; }
-    // Serialise the current data and hand the bytes to the workspace to write (session mirror +
-    // on-disk draft).  MolView owns the format; the workspace is format-blind.
-    function _persistNow() {
-        var ws = _ws();
-        if (ws && typeof ws.persist === "function") {
-            ws.persist(_serialise(), _scratchBlob(), draftIdentity());
+
+    // ─── The state timeline: save / load / anchor (§19.5) ─────────── //
+    //
+    // Apply a session snapshot (a `_serialise()` output) to the WHOLE model atomically,
+    // WITHOUT resetting the timeline -- the mechanism `load` and session-restore reuse.
+    // Distinct from `openMolecule`, which additionally prunes + re-anchors the timeline (§19.5).  The
+    // snapshot is the getState-based session state ({structure, source, dirty, selection,
+    // view}); restore structure + selection + view + dirty from it.  `_applying` is held true
+    // so the driven canvas/frame signals do not mark the model uncommitted.
+    function _applySnapshot(snap) {
+        if (typeof snap === "string") {
+            try { snap = JSON.parse(snap); } catch (_) { return; }
         }
-    }
-    function _schedulePersist() {
-        if (_persistSuspended > 0) return;
-        if (!root.sessionStorage && !root.fetch) return;
-        if (_persistDeadline) clearTimeout(_persistDeadline);
-        _persistDeadline = setTimeout(function () {
-            _persistDeadline = null;
-            _persistNow();
-        }, 100);
+        var s = snap && snap.state;
+        if (!s) return;
+        var structure = s.structure || null;
+        var src = s.source || {};
+        _applying = true;
+        try {
+            if (structure && structure.text) {
+                // Reuse the ONE atomic sync point (_applyWorkspacePayload) -- the same apply
+                // a fresh load runs -- but WITHOUT load's prune/re-anchor.  installSource
+                // (re)installs the whole structure into the canvas (dirty=false); we restore
+                // the snapshot's dirty bit below.
+                var _atoms = structure.atoms || [];
+                _applyWorkspacePayload({
+                    text:          structure.text,
+                    // Emit the SAME payload shape a server load returns, so ANY consumer of
+                    // the sync point gets the same payload fields on a RESTORE as on a
+                    // load.  Derived from the snapshot's atoms[] -- no server round-trip.
+                    xyz:           structure.text,
+                    source_format: structure.source_format,
+                    title:         structure.title || "",
+                    n_atoms:       (structure.n_atoms != null)
+                                       ? structure.n_atoms : _atoms.length,
+                    elements:      _atoms.map(function (a) { return a.element; }),
+                    atom_names:    _atoms.map(function (a) {
+                        return a.atom_name != null ? a.atom_name : (a.element || "");
+                    }),
+                    residue_ids:   _atoms.map(function (a) {
+                        return a.residue_id != null ? a.residue_id : null;
+                    }),
+                    residue_names: _atoms.map(function (a) {
+                        return a.residue_name != null ? a.residue_name : null;
+                    }),
+                    chain_ids:     _atoms.map(function (a) {
+                        return a.chain_id != null ? a.chain_id : null;
+                    }),
+                    periodicity:   structure.periodicity || null,
+                    annotations:   structure.annotations || null,
+                    atoms:         _atoms,
+                }, {
+                    touchCanvas:    false,
+                    resetSelection: true,
+                    installSource:  { kind:            src.kind || "file",
+                                      file:            src.file || null,
+                                      generator_input: src.generator_input || null },
+                });
+            }
+            // Restore the exact selection the snapshot held (the apply above reset it).
+            var st = _store();
+            if (st && s.selection && Array.isArray(s.selection.indices)
+                    && typeof st.setSelection === "function") {
+                st.setSelection(s.selection.indices);
+            }
+            // Restore the view (camera / style / axes / labels), best-effort.
+            if (s.view) { try { view.applyState(s.view); } catch (_) { /* no embed */ } }
+            // Restore the dirty bit (installSource set it false).
+            if (s.dirty) { try { markDirty(); } catch (_) { /* empty/absent canvas */ } }
+        } finally {
+            _applying = false;
+        }
+        _notify();
     }
 
+    // Serialize save/load through _pushPopChain so state_index advances/retreats only after
+    // each workspace round-trip resolves.  A rejected op must NOT poison the chain -- keep an
+    // error-swallowing tail as the next op's predecessor, but return the real op promise so
+    // the caller sees the rejection.
+    function _enqueue(fn) {
+        var op = _pushPopChain.then(fn);
+        _pushPopChain = op.catch(function () { /* keep the chain alive */ });
+        return op;
+    }
+
+    // save(delta=0) (§19.5): session-state save, index-delta parameterized.  Serialize the
+    // current snapshot and persist it (MIRROR + disk) at state_index+delta; ON SUCCESS move
+    // the index to that target and clear `uncommitted`.  delta>0 (a new checkpoint, e.g.
+    // save(1)="Save state") additionally tail-deletes every abandoned index above the target
+    // (the divergent tail left after a load(-1)).  delta=0 re-saves the current index in
+    // place.  A rejected persist does NOT move the index.
+    function save(delta) {
+        delta = delta || 0;
+        return _enqueue(function () {
+            var ws = _ws();
+            if (!ws || typeof ws.persist !== "function") return;
+            var wid    = ws.workspaceId();
+            var target = _stateIndex + delta;
+            var snap   = _serialise();
+            return Promise.resolve(
+                ws.persist(snap, snap, { workspace_id: wid, state_index: target })
+            ).then(function () {
+                _stateIndex  = target;
+                _uncommitted = false;
+                if (delta > 0 && typeof ws.pruneStatesAbove === "function") {
+                    ws.pruneStatesAbove(wid, target);   // drop the abandoned tail
+                }
+            });
+        });
+    }
+
+    // load(delta=0) (§19.5): session-state restore, index-delta parameterized.
+    //   delta=0  -> RELOAD / mount-restore: read the sessionStorage MIRROR (the current
+    //              committed snapshot + its state_index) and apply it.  No index move beyond
+    //              adopting the mirror's own state_index.  Synchronous mirror read.
+    //   delta!=0 -> navigate the on-disk timeline: read {workspace_id, state_index+delta},
+    //              APPLY that snapshot to the whole model, move the index to the target, and
+    //              clear `uncommitted`.  load(-1)=Retract/undo.  No-op if the target < 0 or
+    //              the snapshot is missing.  Re-mirrors the applied snapshot (MIRROR ONLY, no
+    //              disk write) so a later reload restores THIS index.  Discards uncommitted
+    //              changes.  Undo-only (a save after a load(-1) overwrites the abandoned tail).
+    function load(delta) {
+        delta = delta || 0;
+        return _enqueue(function () {
+            var ws = _ws();
+            if (!ws) return;
+            if (delta === 0) {
+                var m = (typeof ws.readPersistedSnapshot === "function")
+                    ? ws.readPersistedSnapshot() : null;
+                if (m) {
+                    _applySnapshot(m);
+                    _stateIndex = (m.state && typeof m.state.state_index === "number")
+                        ? m.state.state_index : _stateIndex;
+                    _uncommitted = false;
+                }
+                return;
+            }
+            var target = _stateIndex + delta;
+            if (target < 0) return;                    // can't go below the anchor
+            if (typeof ws.readState !== "function") return;
+            var wid = ws.workspaceId();
+            return Promise.resolve(
+                ws.readState({ workspace_id: wid, state_index: target })
+            ).then(function (snap) {
+                if (snap == null) return;   // missing history file -> no-op, index unchanged
+                _applySnapshot(snap);
+                _stateIndex  = target;
+                _uncommitted = false;
+                if (typeof ws.persist === "function") {
+                    // MIRROR ONLY (snapshotBlob=null) -- so a later reload restores THIS index.
+                    return ws.persist(snap, null, { workspace_id: wid, state_index: target });
+                }
+            });
+        });
+    }
+
+    // `openMolecule` anchors a FRESH timeline (§19.5): prune every existing {workspace_id}.* state
+    // file, reset state_index to 0, and write the loaded structure as the index-0 anchor.
+    // This is the ONE automatic write; everything after is explicit pushState.
+    function _anchorTimeline() {
+        var ws = _ws();
+        _stateIndex  = 0;
+        _uncommitted = false;
+        if (!ws || typeof ws.persist !== "function") return Promise.resolve();
+        var wid = ws.workspaceId();
+        if (typeof ws.pruneStatesAbove === "function") {
+            ws.pruneStatesAbove(wid, -1);   // clear the whole timeline
+        }
+        var snap = _serialise();
+        return Promise.resolve(
+            ws.persist(snap, snap, { workspace_id: wid, state_index: 0 }));
+    }
 
 
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
@@ -1428,7 +1877,6 @@
         getRegions:            getRegions,
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
-        getScratchBlob:        _scratchBlob,   // the ONE save/draft serialiser
         draftIdentity:         draftIdentity,  // the draft key a Save must drop (b1)
         suspendPersist:        suspendPersist, // F4: bracket a multi-step load
         resumePersist:         resumePersist,
@@ -1442,15 +1890,19 @@
         setLabel:              setLabel,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
-        installStructure:      installStructure,
         markDirty:             markDirty,
         markSaved:             markSaved,
-        loadFromFile:          loadFromFile,
-        loadFromText:          loadFromText,
+        // ---- THE molecule + document doors (molview-module.md §19.3-19.4) ---- //
+        openMolecule:          openMolecule,  // bring a NEW molecule in: {text,filename}|path -> whole model, atomic + timeline reset
+        exportFile:            exportFile,    // serialize whole model -> {xyz,sidecar} project-file bytes (openMolecule's inverse)
+        // The state timeline (§19.5): ONE save + ONE load, index-delta parameterized.
+        // `state_index` / `uncommitted` are LIVE getters (defined on the mounted object below).
+        // save(1) commits a checkpoint; load(-1) retracts to the previous index (undo-only);
+        // load(0) reloads from the mirror.
+        save:                  save,
+        load:                  load,
         generate:              generate,
         applyOp:               applyOp,
-        applyPayload:          _applyWorkspacePayload,
-        save:                  save,
         discard:               discard,
         undo:                  undo,
         // Frames — the coordinate time axis (workspace-contract.md §1.5)
@@ -1465,8 +1917,23 @@
         frameCount:            frameCount,
         selection:             selection,
         view:                  view,
-        // Phase 8 — persistence:
     };
+
+    // The state-timeline reads are LIVE getters (§19.5) -- a plain value would freeze at 0.
+    // Object.assign (used to mount below) copies a getter's VALUE, not the accessor, so the
+    // live getters must be (re)defined on the FINAL mounted object; do it via this helper so
+    // ``api`` (module.exports / runtime.register) and the mount both carry live reads.
+    function _defineTimelineGetters(target) {
+        Object.defineProperty(target, "state_index", {
+            get: function () { return _stateIndex; },
+            enumerable: true, configurable: true,
+        });
+        Object.defineProperty(target, "uncommitted", {
+            get: function () { return _uncommitted; },
+            enumerable: true, configurable: true,
+        });
+    }
+    _defineTimelineGetters(api);
 
     // UMD-ish mount: ALWAYS mount on ``root.molbuilder.workspace``
     // (browser + Node test contexts both see the global) AND ALSO
@@ -1485,25 +1952,16 @@
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview.data = Object.assign(
         root.molbuilder.molview.data || {}, api);
+    // Re-attach the LIVE timeline getters: Object.assign copied their VALUES (0 / false)
+    // as data properties, so redefine them as accessors on the mounted object.
+    _defineTimelineGetters(root.molbuilder.molview.data);
     if (_runtime() && typeof _runtime().register === "function") {
         _runtime().register("molview.data", api);
     }
 
-    // Eagerly subscribe to the underlying stores so the persistence pipeline fires on every data
-    // change, even before any UI consumer subscribes.
+    // Eagerly subscribe to the underlying stores so a data change renders (and flips the
+    // `uncommitted` flag) even before any UI consumer subscribes.  Push-only: NO auto-write.
     _ensureSubscribed();
-
-    // pagehide flush: the debounced persist may have a pending timer when the user navigates;
-    // force a final write so the next page's restore sees the latest state.
-    if (root.addEventListener) {
-        root.addEventListener("pagehide", function () {
-            if (_persistDeadline) {
-                clearTimeout(_persistDeadline);
-                _persistDeadline = null;
-            }
-            _persistNow();
-        });
-    }
 
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;

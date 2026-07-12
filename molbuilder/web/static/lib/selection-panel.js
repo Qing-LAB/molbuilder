@@ -77,12 +77,12 @@
         // the workspace singleton, so Modify (which calls ``mount(host)``)
         // is unchanged.
         const store = (opts && opts.store) || (root.molbuilder
-                       && root.molbuilder.workspace
-                       && root.molbuilder.workspace.selection);
+                       && root.molbuilder.molview && root.molbuilder.molview.data
+                       && root.molbuilder.molview.data.selection);
         if (!store) {
             throw new Error(
-                "selection-panel: ws.selection missing; "
-              + "load lib/workspace/dispatcher.js first"
+                "selection-panel: molview.data.selection missing; "
+              + "load lib/molview/data-model.js first"
             );
         }
 
@@ -137,15 +137,20 @@
             cellMatrix:      $("cell-matrix-value"),
             cellTag:         $("cell-matrix-tag"),
             // Measurement readout lives OUTSIDE the panel partial —
-            // it's a chip overlay on the 3D viewer canvas (placed
-            // in the page template, not the partial).  Page-wide
-            // lookup so the panel doesn't care which tab mounted
-            // it; both /molbuilder and /results-side inspectors
-            // register the same id, viewer.
+            // it's a chip overlay on the 3D viewer canvas.  OPTIONAL:
+            // when molview.mount builds the card it mounts its OWN
+            // measurement overlay (mountMeasurementOverlay, class
+            // ``.molview-measurement-overlay``), so no page-level
+            // ``#selection-measurement-overlay`` id exists and the
+            // panel's own renderMeasurement stands down (it null-guards).
+            // A legacy page that still provides the id keeps working.
             measurement:     document.getElementById(
                 "selection-measurement-overlay"),
         };
-        const missing = Object.keys(els).filter((k) => !els[k]);
+        // ``measurement`` is optional (the module owns it on a built card) — do NOT
+        // error when it is absent, only for the genuinely-required partial ids.
+        const missing = Object.keys(els).filter(
+            (k) => k !== "measurement" && !els[k]);
         if (missing.length) {
             if (root.console) root.console.error(
                 "[selection-panel] missing partial ids: "
@@ -887,12 +892,14 @@
         const _kgridUnsub = store.subscribe(function () { renderCell(); });
         cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
         // Live-refresh the Cell display on PERIODICITY changes (kgrid dims / cell / vacuum)
-        // too -- ws.subscribe fires on canvas changes; store.subscribe alone misses them
-        // (e.g. the Modify Cell op-tab's Update k-grid).
-        const _wsw = root.molbuilder && root.molbuilder.workspace;
-        if (_wsw && typeof _wsw.subscribe === "function") {
-            const _wsUnsub = _wsw.subscribe(function () { renderCell(); });
-            cleanups.push(() => { try { _wsUnsub(); } catch (_) { /* ignore */ } });
+        // too -- molview.data.subscribe fires on canvas changes; store.subscribe alone misses
+        // them (e.g. the Modify Cell op-tab's Update k-grid).  Periodicity accessors +
+        // subscribe live on molview.data (the carve), NOT the persistence-only workspace.
+        const _dm = root.molbuilder && root.molbuilder.molview
+                  && root.molbuilder.molview.data;
+        if (_dm && typeof _dm.subscribe === "function") {
+            const _dmUnsub = _dm.subscribe(function () { renderCell(); });
+            cleanups.push(() => { try { _dmUnsub(); } catch (_) { /* ignore */ } });
         }
 
         // --- Cell page (structure-periodicity.md § 3b): page switch + read-only
@@ -907,26 +914,27 @@
             // MolView is DISPLAY-ONLY: mirror the in-memory periodicity via the molview
             // accessors, tagging a never-set parameter "(default)".  Editing lives in the
             // Modify functions (per-group Update), not here.
-            const ws = root.molbuilder && root.molbuilder.workspace;
-            if (!ws || !els.pageCell) return;
-            if (els.cellAxis && ws.getAxisKindInfo) {
-                const a = ws.getAxisKindInfo();
+            const dm = root.molbuilder && root.molbuilder.molview
+                     && root.molbuilder.molview.data;
+            if (!dm || !els.pageCell) return;
+            if (els.cellAxis && dm.getAxisKindInfo) {
+                const a = dm.getAxisKindInfo();
                 els.cellAxis.textContent =
                     ((a.value || []).join(" / ") || "—") + _tag(a.isDefault);
             }
-            if (els.cellVacuum && ws.getVacuumInfo) {
-                const v = ws.getVacuumInfo();
+            if (els.cellVacuum && dm.getVacuumInfo) {
+                const v = dm.getVacuumInfo();
                 els.cellVacuum.textContent =
                     _fmtVec(v.value || [0, 0, 0]) + _tag(v.isDefault);
             }
-            if (els.cellMatrix && ws.getUnitCellInfo) {
-                const c = ws.getUnitCellInfo();
+            if (els.cellMatrix && dm.getUnitCellInfo) {
+                const c = dm.getUnitCellInfo();
                 _renderMatrix(els.cellMatrix, c.value);
                 if (els.cellTag) els.cellTag.textContent = c.isDefault ? "(default)" : "";
             }
             // k-grid dims: read-only mirror of periodicity.kgrid (the ONE value, §3b).
-            if (ws.getKgridInfo) {
-                const kd = ws.getKgridInfo().value || [1, 1, 1];
+            if (dm.getKgridInfo) {
+                const kd = dm.getKgridInfo().value || [1, 1, 1];
                 if (_kgNx) _kgNx.value = String(kd[0]);
                 if (_kgNy) _kgNy.value = String(kd[1]);
                 if (_kgNz) _kgNz.value = String(kd[2]);

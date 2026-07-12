@@ -157,7 +157,6 @@ class TestHappyPath:
                         return {ok: true};
                     },
                 },
-                viewerLoader: () => Promise.resolve(),
             });
             const r = await pep.generate("ACD");
             console.log(JSON.stringify({
@@ -194,9 +193,12 @@ class TestErrorPaths:
         assert out["ok"] is False
         assert "tleap" in out["error"]
 
-    def test_canvas_cancel_skips_viewer(self):
+    def test_canvas_cancel_passes_through_as_cancelled(self):
+        """User cancels the dirty-canvas warning modal (load door
+        returns cancelled) → envelope carries cancelled, called
+        through the single load door exactly once."""
         out = _run_node('''
-            let viewerCalls = 0;
+            let loadCalls = 0;
             pep.configure({
                 fetch: async () => ({
                     ok: true,
@@ -205,20 +207,17 @@ class TestErrorPaths:
                     }),
                 }),
                 structurePage: {
-                    loadIntoCanvas: async () => ({
-                        ok: false, cancelled: true,
-                    }),
-                },
-                viewerLoader: () => {
-                    viewerCalls++;
-                    return Promise.resolve();
+                    loadIntoCanvas: async () => {
+                        loadCalls++;
+                        return { ok: false, cancelled: true };
+                    },
                 },
             });
             const r = await pep.generate("A");
             console.log(JSON.stringify({
-                envelope:    r,
-                viewerCalls: viewerCalls,
+                envelope:  r,
+                loadCalls: loadCalls,
             }));
         ''')
         assert out["envelope"] == {"ok": False, "cancelled": True}
-        assert out["viewerCalls"] == 0
+        assert out["loadCalls"] == 1

@@ -1,21 +1,40 @@
-"""Unit tests for ``molbuilder/web/static/lib/workspace/dispatcher.js``.
+"""Contract tests for the MolView in-memory data model + the workspace
+persistence dispatcher (JS unit tests, run under Node).
 
-Phase 4 of the workspace-state migration (docs/protocols/
-workspace-state.md § 4.2 + § 7).  The dispatcher is the single
-client-side entry point for the Molbuilder tab's workspace state.
+Two layers, two docs, pinned here:
 
-This phase pins:
+* **MolView data model** — ``window.molbuilder.molview.data``
+  (``lib/molview/data-model.js``).  Owns the structure / selection /
+  periodicity / frames in memory and serialises itself.  Contract:
+  ``docs/protocols/molview-module.md`` §19 (§19.2 reads, §19.3 writes,
+  §19.3.1 the LOAD/SAVE atomic + coherence invariant, §19.4
+  serialisation).  The authoritative public surface is the ``api``
+  object at the end of ``data-model.js``.
 
-* TestPublicSurface — every method named in § 4.2 exists with
-  the right kind (function vs sub-namespace object).
-* TestSubscribe — subscribers fire on registration and on
-  underlying-store changes (fan-in from canvas-state + selection
-  store + future view-state notifications).
-* TestPersistRoundtrip — the dispatcher's ``getState()`` snapshot
-  is a defensive copy; mutating it does NOT leak into the
-  underlying stores.  Phase 8 of the migration will add the
-  unified sessionStorage key and extend this with a round-trip
-  through it.
+* **Workspace** — ``window.molbuilder.workspace``
+  (``lib/workspace/dispatcher.js``).  PERSISTENCE ONLY (session mirror
+  + on-disk draft), format-blind.  Contract:
+  ``docs/protocols/workspace-contract.md`` §3.5 / §4.
+
+The molecule + document doors are ``molview.data.openMolecule(input)``
+(input = ``{text, filename}`` OR a project-file path string; brings a NEW
+molecule in and RESETS the timeline) and ``molview.data.exportFile()``
+(whole model -> ``{xyz, sidecar}`` project-file bytes, openMolecule's
+inverse).  The SESSION-STATE timeline (§19.5) is ``save(delta=0)`` /
+``load(delta=0)`` -- checkpoint / restore parameterized by an index delta
+(``save(1)`` = a new checkpoint, ``load(-1)`` = Retract, ``load(0)`` =
+reload from the mirror).  The pre-carve + superseded doors are GONE and
+must never appear in a test as a call: ``loadFromText`` / ``loadFromFile``
+/ ``installStructure`` / ``getScratchBlob`` / ``applyPayload`` /
+``pushState`` / ``popState`` / ``restoreSnapshot`` / the old file-writer
+``save(opts)``.
+
+The stores the harness mounts (``structureCanvas`` = canvas-state,
+``selection.store``) are MolView-INTERNAL (molview-module.md §19).  A
+few tests drive them directly to SET UP fixture state cheaply; the
+CONTRACT under test is always read/written through the public
+``molview.data.*`` surface.  Where an open must be exercised end-to-end
+the real ``openMolecule()`` door is used with a stubbed ``/api/build/load``.
 """
 from __future__ import annotations
 
@@ -28,65 +47,43 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
-STORE_PATH      = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
-CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
-SNAPSHOT_IO_PATH = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
+DISPATCHER_PATH   = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
+STORE_PATH        = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
+CANVAS_PATH       = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
+SNAPSHOT_IO_PATH  = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
 FRAME_SERIES_PATH = ROOT / "molbuilder/web/static/lib/molview/_frame-series.js"
-DATA_MODEL_PATH = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
+DATA_MODEL_PATH   = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
 
 
 def _run_node(snippet: str) -> object:
-    """Run a Node.js snippet under a minimal stub environment that
-    mounts the workspace-internal store impls ahead of the
-    dispatcher.
+    """Run a Node snippet with the MolView data model + workspace
+    dispatcher loaded over a minimal browser stub.
 
-    Mocks ``window`` + ``document`` + ``sessionStorage`` so the
-    canvas-state + selection store + dispatcher IIFEs can load
-    without a real browser.  Tests then drive the public surface
-    via ``window.molbuilder.molview.data.*`` and assert on JSON
-    snapshots emitted to stdout.
+    Load order mirrors production: shared snapshot IO -> canvas-state
+    impl -> selection-store impl -> the selection-store singleton ->
+    frame-series factory -> the MolView data model
+    (``molview.data``) -> the workspace persistence dispatcher.  The
+    canvas-state + selection-store impls are MolView-internal; the
+    bootstrap mounts them where the data model's private escape
+    hatches (``_canvas()`` / ``_store()``) look for them so a test can
+    seed fixture state cheaply.
 
-    Load order: canvas-state impl → selection-store impl →
-    selection.store singleton mount → dispatcher.  Canvas-state's
-    UMD branch in CommonJS exports via ``module.exports`` (skipping
-    the browser mount), so the bootstrap manually mounts it on the
-    legacy ``structureCanvas`` slot the dispatcher's ``_canvas()``
-    escape hatch reads.  Selection-store's IIFE only mounts the
-    factory (``_createStore``), so the bootstrap creates the
-    singleton instance and mounts it on the legacy
-    ``selection.store`` slot the dispatcher's ``_store()`` escape
-    hatch reads.
+    The snippet drives ``window.molbuilder.molview.data.*`` (the data
+    model) and ``window.molbuilder.workspace.*`` (persistence) and
+    prints a JSON blob as its LAST stdout line.
     """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
 
     bootstrap = (
-        # Shared snapshot IO -- loads first (canvas + dispatcher both read/write through it).
         "require(" + json.dumps(str(SNAPSHOT_IO_PATH)) + ");\n"
         "window.molbuilder.structureCanvas = require("
         + json.dumps(str(CANVAS_PATH)) + ");\n"
-        "require(" + json.dumps(str(STORE_PATH))      + ");\n"
-        # Phase 9 (2026-06-13): the impl file no longer auto-mounts
-        # a singleton on ``window.molbuilder.selection.store``.
-        # The dispatcher owns the one process-wide instance and
-        # honours an existing mount if a test harness pre-installs
-        # one (see dispatcher.js ``_store()`` escape hatch).  Spin
-        # up the singleton here so:
-        #   (a) test code can read/write the same instance the
-        #       dispatcher sees via ``window.molbuilder.selection
-        #       .store.*``;
-        #   (b) the dispatcher reuses the test-installed instance
-        #       instead of creating a separate one.
+        "require(" + json.dumps(str(STORE_PATH)) + ");\n"
         "window.molbuilder.selection.store = "
         "  window.molbuilder.selection._createStore();\n"
-        # Frame-series factory is MolView's data model (molview-module.md §14.5): it mounts on
-        # molbuilder.molview._createFrameSeries; the dispatcher reads it from there for its
-        # (transitional) frame methods until the frame API moves fully into MolView.
         "require(" + json.dumps(str(FRAME_SERIES_PATH)) + ");\n"
-        # MolView data model (molview.data) — the data surface; loads before the workspace
-        # persistence dispatcher, which it hands serialised bytes to via ws.persist().
         "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
@@ -145,900 +142,172 @@ def _run_node(snippet: str) -> object:
     return json.loads(last)
 
 
+# A load fixture: stub ``/api/build/load`` so ``molview.data.openMolecule()``
+# can drive the WHOLE atomic-load pipeline (§19.3.1) without a server.  Returns
+# a 3-atom water payload in the WorkspacePayload wire shape (§21).
+_STUB_WATER_FETCH = """
+global.window.fetch = function (url, opts) {
+    return Promise.resolve({ ok: true, json: function () {
+        return Promise.resolve({
+            ok: true, source_format: "xyz", title: "h2o", n_atoms: 3,
+            text: "3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n",
+            atoms: [
+                {index:0, element:"O", x:0,      y:0,     z:0, regions:[], is_frozen:false},
+                {index:1, element:"H", x:0.957,  y:0,     z:0, regions:[], is_frozen:false},
+                {index:2, element:"H", x:-0.24,  y:0.927, z:0, regions:[], is_frozen:false},
+            ],
+        });
+    }});
+};
+"""
+
+
 # --------------------------------------------------------------------- #
-#  TestPublicSurface — every method exists with the right shape         #
+#  1. The public molview.data surface (molview-module.md §19)           #
 # --------------------------------------------------------------------- #
 
+# The authoritative surface — the sorted Object.keys of the ``api`` object
+# at the end of data-model.js.  Adding/removing a method here means the doc
+# (§19) AND this pin change together; drift breaks the test on purpose.
+_DATA_SURFACE = sorted([
+    "subscribe", "getState", "getStructure", "getSource", "getSourceFile",
+    "getLastSavedTo", "getSelection", "getAtoms", "getElements",
+    "getCoordinates", "getUnitCell", "getLattice", "getAxisKind", "getVacuum",
+    "getKgrid", "getUnitCellInfo", "getVacuumInfo", "getKgridInfo",
+    "getAxisKindInfo", "getAtomsByLabel", "getFrozen", "getRegions",
+    "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
+    "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
+    "setKgrid", "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
+    "markDirty", "markSaved", "openMolecule", "exportFile", "save", "load",
+    "generate", "applyOp",
+    "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
+    "getFrame", "getForces", "currentForces", "currentFrame", "frameCount",
+    "selection", "view",
+    # §19.5 state timeline — save(delta)/load(delta) + the two live reads.
+    "state_index", "uncommitted",
+])
 
-class TestPublicSurface:
-    """Pin the exact public surface from workspace-state.md § 4.2.
+# The pre-carve + superseded doors that the unified surface collapsed.  A
+# test that CALLS any of these is testing a surface that no longer exists.
+_OBSOLETE_DOORS = ["loadFromText", "loadFromFile", "installStructure",
+                   "getScratchBlob", "applyPayload",
+                   # §19.5 superseded the `applyState` stopgap (it also name-clashed
+                   # with view.applyState) -- it must not reappear on the surface.
+                   "applyState",
+                   # §19.5 collapsed the fixed-delta timeline doors into save/load.
+                   "pushState", "popState", "restoreSnapshot"]
 
-    Adding a new public method here updates the protocol doc AND
-    this test class — drift between the two breaks the test.
-    """
 
-    def test_workspace_namespace_exists_on_window(self):
+class TestDataModelSurface:
+    """The concealed data model exposes EXACTLY one documented surface
+    on ``molbuilder.molview.data`` — and none of the pre-carve doors."""
+
+    def test_molview_data_is_an_object_on_window(self):
         out = _run_node(
             "console.log(JSON.stringify("
             "  typeof window.molbuilder.molview.data));")
         assert out == "object"
 
-    def test_top_level_methods_are_functions(self):
+    def test_public_surface_is_exactly_the_documented_set(self):
         out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
+            "console.log(JSON.stringify("
+            "  Object.keys(window.molbuilder.molview.data).sort()));")
+        assert out == _DATA_SURFACE
+
+    def test_obsolete_doors_are_absent(self):
+        """The unified I/O is openMolecule()+exportFile()+save(delta)/
+        load(delta); the pre-carve + superseded fixed-delta timeline
+        doors must NOT be reachable on the public surface."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "console.log(JSON.stringify("
+            + json.dumps(_OBSOLETE_DOORS)
+            + ".filter(k => k in d)));")
+        assert out == [], f"obsolete door(s) still on molview.data: {out}"
+
+    def test_unified_io_and_core_methods_are_functions(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify({\n"
-            "  subscribe:    typeof ws.subscribe,\n"
-            "  getState:     typeof ws.getState,\n"
-            "  getStructure: typeof ws.getStructure,\n"
-            "  getSource:    typeof ws.getSource,\n"
-            "  getSelection: typeof ws.getSelection,\n"
-            "  isDirty:      typeof ws.isDirty,\n"
-            "  isEmpty:      typeof ws.isEmpty,\n"
-            "  loadFromFile: typeof ws.loadFromFile,\n"
-            "  generate:     typeof ws.generate,\n"
-            "  applyOp:      typeof ws.applyOp,\n"
-            "  save:         typeof ws.save,\n"
-            "  discard:      typeof ws.discard,\n"
-            "  undo:         typeof ws.undo,\n"
-            "}));"
-        )
+            "  openMolecule: typeof d.openMolecule,\n"
+            "  exportFile:   typeof d.exportFile,\n"
+            "  save:         typeof d.save,\n"
+            "  load:         typeof d.load,\n"
+            "  subscribe:    typeof d.subscribe,\n"
+            "  getState:     typeof d.getState,\n"
+            "  getStructure: typeof d.getStructure,\n"
+            "  getSource:    typeof d.getSource,\n"
+            "  getSelection: typeof d.getSelection,\n"
+            "  isDirty:      typeof d.isDirty,\n"
+            "  isEmpty:      typeof d.isEmpty,\n"
+            "  generate:     typeof d.generate,\n"
+            "  applyOp:      typeof d.applyOp,\n"
+            "  discard:      typeof d.discard,\n"
+            "  undo:         typeof d.undo,\n"
+            "  draftIdentity:  typeof d.draftIdentity,\n"
+            "  suspendPersist: typeof d.suspendPersist,\n"
+            "  resumePersist:  typeof d.resumePersist,\n"
+            "}));")
         for k, v in out.items():
             assert v == "function", f"{k} is {v!r}; expected function"
 
-    def test_selection_sub_namespace_methods_are_functions(self):
+    def test_sub_namespaces_present(self):
         out = _run_node(
-            "const sel = window.molbuilder.molview.data.selection;\n"
+            "const d = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify({\n"
-            "  toggle:        typeof sel.toggle,\n"
-            "  set:           typeof sel.set,\n"
-            "  add:           typeof sel.add,\n"
-            "  remove:        typeof sel.remove,\n"
-            "  all:           typeof sel.all,\n"
-            "  invert:        typeof sel.invert,\n"
-            "  clear:         typeof sel.clear,\n"
-            "  setMode:       typeof sel.setMode,\n"
-            "  setFilters:    typeof sel.setFilters,\n"
-            "  setCombinator: typeof sel.setCombinator,\n"
-            "  applyFilter:   typeof sel.applyFilter,\n"
-            "  writeLabel:    typeof sel.writeLabel,\n"
-            "}));"
-        )
-        for k, v in out.items():
-            assert v == "function", f"selection.{k} is {v!r}"
-
-    def test_view_sub_namespace_methods_are_functions(self):
-        out = _run_node(
-            "const view = window.molbuilder.molview.data.view;\n"
-            "console.log(JSON.stringify({\n"
-            "  applyState: typeof view.applyState,\n"
-            "  getState:   typeof view.getState,\n"
-            "}));"
-        )
-        for k, v in out.items():
-            assert v == "function", f"view.{k} is {v!r}"
-
-
-# --------------------------------------------------------------------- #
-#  TestSubscribe — fan-in from the legacy stores                        #
-# --------------------------------------------------------------------- #
-
-
-class TestSubscribe:
-    """The dispatcher's subscribe fans in changes from the
-    underlying canvas-state + selection store.  A subscriber
-    fires once on registration (current state) AND on every
-    subsequent mutation.
-    """
-
-    def test_subscribe_fires_once_on_registration_with_current_state(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "let calls = 0; let last = null;\n"
-            "ws.subscribe((s) => { calls++; last = s; });\n"
-            "console.log(JSON.stringify({\n"
-            "  calls: calls,\n"
-            "  empty: last.structure === null,\n"
-            "}));"
-        )
-        assert out["calls"] == 1
-        assert out["empty"] is True   # fresh dispatcher, no canvas
-
-    def test_subscribe_fires_on_selection_store_mutation(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "let calls = 0;\n"
-            "// Skip the on-subscribe fire.\n"
-            "ws.subscribe(() => { calls++; });\n"
-            "Promise.resolve().then(() => {\n"
-            "  calls = 0;\n"
-            "  // Drive the selection store directly — the dispatcher\n"
-            "  // forwards its subscribe to the store.\n"
-            "  window.molbuilder.selection.store.adoptAtoms([\n"
-            "    {index: 0, element: 'C', regions: [], is_frozen: false},\n"
-            "  ]);\n"
-            "  return Promise.resolve();\n"
-            "}).then(() => {\n"
-            "  console.log(JSON.stringify(calls));\n"
-            "});"
-        )
-        # Selection store batches via microtask + dispatcher forwards
-        # 1:1 — exactly one notification per adoptAtoms call.
-        assert out == 1
-
-    def test_unsubscribe_stops_notifications(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "let calls = 0;\n"
-            "const unsub = ws.subscribe(() => { calls++; });\n"
-            "Promise.resolve().then(() => {\n"
-            "  calls = 0;\n"
-            "  unsub();\n"
-            "  window.molbuilder.selection.store.adoptAtoms([\n"
-            "    {index: 0, element: 'C', regions: [], is_frozen: false},\n"
-            "  ]);\n"
-            "  return Promise.resolve();\n"
-            "}).then(() => {\n"
-            "  console.log(JSON.stringify(calls));\n"
-            "});"
-        )
-        assert out == 0
-
-    def test_subscriber_errors_do_not_wedge_the_dispatcher(self):
-        """A subscriber that throws must not stop other
-        subscribers from receiving the notification."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "let good = 0;\n"
-            "ws.subscribe(() => { throw new Error('boom'); });\n"
-            "ws.subscribe(() => { good++; });\n"
-            "Promise.resolve().then(() => {\n"
-            "  good = 0;\n"
-            "  window.molbuilder.selection.store.adoptAtoms([\n"
-            "    {index: 0, element: 'C', regions: [], is_frozen: false},\n"
-            "  ]);\n"
-            "  return Promise.resolve();\n"
-            "}).then(() => {\n"
-            "  console.log(JSON.stringify(good));\n"
-            "});"
-        )
-        # The "good" subscriber still fires once.
-        assert out == 1
-
-
-# --------------------------------------------------------------------- #
-#  TestReads — synthesised state from the legacy stores                 #
-# --------------------------------------------------------------------- #
-
-
-class TestReads:
-    """The dispatcher's getState() / getStructure() / getSource() /
-    isDirty() / isEmpty() / getSelection() synthesise from the
-    legacy stores."""
-
-    def test_initial_state_is_empty(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "console.log(JSON.stringify({\n"
-            "  isEmpty:   ws.isEmpty(),\n"
-            "  isDirty:   ws.isDirty(),\n"
-            "  structure: ws.getStructure(),\n"
-            "}));"
-        )
-        assert out["isEmpty"] is True
-        assert out["isDirty"] is False
-        assert out["structure"] is None
-
-    def test_getStructure_reads_canvas_text_after_setStructure(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure(\n"
-            "  {source_format: 'xyz', text: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n'},\n"
-            "  {kind: 'file', file: '/projects/x/water.xyz'},\n"
-            ");\n"
-            "const s = ws.getStructure();\n"
-            "console.log(JSON.stringify({\n"
-            "  fmt:  s.source_format,\n"
-            "  head: s.text.split('\\n')[0],\n"
-            "  isEmpty: ws.isEmpty(),\n"
-            "}));"
-        )
-        assert out["fmt"] == "xyz"
-        assert out["head"] == "3"
-        assert out["isEmpty"] is False
-
-    def test_reads_return_defensive_atom_copies(self):
-        """§1.2.1 (immutable reads): a read returns COPIES.  Mutating an atom
-        object from getStructure().atoms OR ws.selection.getState().atoms must NOT
-        leak into the store.  Regression: the atoms ARRAY was sliced but the atom
-        OBJECTS were shared references, so atoms[i].x = ... / labels.push(...) wrote
-        straight through to the store."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure(\n"
-            "  {source_format: 'xyz', text: '1\\nx\\nO 1.5 0 0\\n'},\n"
-            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
-            ");\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index:0, element:'O', x:1.5, y:0, z:0, regions:['R1'], is_frozen:false},\n"
-            "]);\n"
-            "// Mutate the atom object returned from BOTH read paths + its labels array.\n"
-            "const gsA = ws.getStructure().atoms[0];\n"
-            "gsA.x = 999; gsA.labels.push('MUT');\n"
-            "const selA = ws.selection.getState().atoms[0];\n"
-            "selA.x = 888; selA.labels.push('MUT2');\n"
-            "// Re-read: the store must be untouched by either mutation.\n"
-            "const gs2 = ws.getStructure().atoms[0];\n"
-            "const sel2 = ws.selection.getState().atoms[0];\n"
-            "console.log(JSON.stringify({\n"
-            "  gsX: gs2.x, gsLabels: gs2.labels,\n"
-            "  selX: sel2.x, selLabels: sel2.labels,\n"
-            "}));"
-        )
-        assert out["gsX"] == 1.5, "getStructure().atoms[i].x mutation leaked into the store"
-        assert out["gsLabels"] == ["R1"], "getStructure().atoms[i].labels mutation leaked"
-        assert out["selX"] == 1.5, "ws.selection.getState().atoms[i].x mutation leaked"
-        assert out["selLabels"] == ["R1"], "ws.selection.getState().atoms[i].labels mutation leaked"
-
-    def test_accessor_api_materialises_views_from_the_model(self):
-        """§1.2.1: the accessor API is the read surface -- each accessor
-        materialises a view from the concealed model.  Consumers call these,
-        never reach into the raw store (getAtomsByLabel is a direct label lookup;
-        toAddAtoms/atomFor3Dmol hand 3Dmol numbers, not a string)."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure(\n"
-            "  {source_format: 'xyz', text: '2\\nx\\nAu 0 0 0\\nS 1 0 0\\n',\n"
-            "   periodicity: {cell: [[10,0,0],[0,10,0],[0,0,10]],\n"
-            "                 axis_kind: ['periodic','periodic','transport'],\n"
-            "                 vacuum: [0,0,15], kgrid: [4,4,1]}},\n"
-            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
-            ");\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index:0, element:'Au', x:0, y:0, z:0, regions:['L-electrode'], is_frozen:true},\n"
-            "  {index:1, element:'S',  x:1, y:0, z:0, regions:['BDT'], is_frozen:false},\n"
-            "]);\n"
-            "console.log(JSON.stringify({\n"
-            "  elements:    ws.getElements(),\n"
-            "  coordinates: ws.getCoordinates(),\n"
-            "  byLabel:     ws.getAtomsByLabel('L-electrode'),\n"
-            "  frozen:      ws.getFrozen(),\n"
-            "  unitCell:    ws.getUnitCell(),\n"
-            "  lattice:     ws.getLattice(),\n"
-            "  kgrid:       ws.getKgrid(),\n"
-            "  axisKind:    ws.getAxisKind(),\n"
-            "  vacuum:      ws.getVacuum(),\n"
-            "  addAtoms:    ws.toAddAtoms(),\n"
-            "  atom0:       ws.atomFor3Dmol(0),\n"
-            "}));"
-        )
-        assert out["elements"] == ["Au", "S"]
-        assert out["coordinates"] == [[0, 0, 0], [1, 0, 0]]
-        assert out["byLabel"] == [0]                    # direct label lookup
-        assert out["frozen"] == [0]
-        assert out["unitCell"] == [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
-        assert out["lattice"] == out["unitCell"]        # getLattice is the alias
-        assert out["kgrid"] == [4, 4, 1]
-        assert out["axisKind"] == ["periodic", "periodic", "transport"]
-        assert out["vacuum"] == [0, 0, 15]
-        assert out["addAtoms"] == [
-            {"elem": "Au", "x": 0, "y": 0, "z": 0},
-            {"elem": "S", "x": 1, "y": 0, "z": 0}]
-        assert out["atom0"] == {"elem": "Au", "x": 0, "y": 0, "z": 0}
-
-    def test_accessor_defaults_and_write_accessors(self):
-        """§1.2.1: unset key fields have sensible defaults (kgrid gamma, vacuum 0,
-        axis_kind isolated); write accessors mutate through the API and reads reflect
-        it; metadata is a generic extensibility store."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure(\n"
-            "  {source_format: 'xyz', text: '1\\nx\\nC 0 0 0\\n'},\n"
-            "  {kind: 'file', file: '/tmp/x.xyz'},\n"
-            ");\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
-            "]);\n"
-            "const defaults = {kgrid: ws.getKgrid(), vacuum: ws.getVacuum(),\n"
-            "                  axisKind: ws.getAxisKind(), cell: ws.getUnitCell()};\n"
-            "ws.setKgrid([2,2,2]);\n"
-            "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
-            "ws.setAxisKind(['periodic','periodic','transport']);\n"
-            "ws.setVacuum([0,0,10]);\n"
-            "Promise.resolve(ws.setLabel('L-electrode', [0])).then(() => {\n"
-            "  console.log(JSON.stringify({\n"
-            "    defaults: defaults,\n"
-            "    kgrid: ws.getKgrid(), cell: ws.getUnitCell(),\n"
-            "    axisKind: ws.getAxisKind(), vacuum: ws.getVacuum(),\n"
-            "    byLabel: ws.getAtomsByLabel('L-electrode'),\n"
-            "  }));\n"
-            "});"
-        )
-        assert out["defaults"]["kgrid"] == [1, 1, 1]              # gamma default
-        assert out["defaults"]["vacuum"] == [0, 0, 0]
-        # axis_kind is NOT defaulted (scientifically loaded); null when unset (a3).
-        assert out["defaults"]["axisKind"] is None
-        assert out["defaults"]["cell"] is None
-        assert out["kgrid"] == [2, 2, 2]                          # writes reflected
-        assert out["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-        assert out["axisKind"] == ["periodic", "periodic", "transport"]
-        assert out["vacuum"] == [0, 0, 10]
-        assert out["byLabel"] == [0]
-
-    def test_setLabel_marks_dirty_so_labels_survive_reload(self):
-        """Review a1: ws.setLabel MUST mark dirty (like ws.selection.writeLabel) --
-        else the restore gate (dirty || !source.file) refetches disk atoms on reload
-        and the label is silently lost."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure({source_format:'xyz', text:'1\\nx\\nC 0 0 0\\n'},\n"
-            "  {kind:'file', file:'/tmp/x.xyz'});\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
-            "cs.markSaved('/tmp/x.xyz');\n"           # clear dirty to isolate setLabel
-            "const before = ws.isDirty();\n"
-            "Promise.resolve(ws.setLabel('bridge', [0])).then(() => {\n"
-            "  console.log(JSON.stringify({before: before, after: ws.isDirty()}));\n"
-            "});"
-        )
-        assert out["before"] is False
-        assert out["after"] is True                   # setLabel marked dirty
-
-    def test_scratch_blob_carries_annotations(self):
-        """F1: annotation channels carried opaquely from load are re-emitted in the
-        save/draft blob -- NOT clobbered to {} (which wiped them on every Modify Save)."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure({source_format:'xyz',\n"
-            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 0.74\\n',\n"
-            "  annotations:{charge:{dtype:'float',values:[0.1,-0.1]}}},\n"
-            "  {kind:'file', file:'/tmp/x.xyz'});\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index:0,element:'H',x:0,y:0,z:0,regions:[],is_frozen:false},\n"
-            "  {index:1,element:'H',x:0,y:0,z:0.74,regions:[],is_frozen:false}]);\n"
-            "const blob = ws.getScratchBlob();\n"
-            "console.log(JSON.stringify({ann: blob && blob.sidecar.annotations}));"
-        )
-        assert out["ann"] == {"charge": {"dtype": "float", "values": [0.1, -0.1]}}
-
-    def test_periodicity_info_accessors_default_and_explicit(self):
-        """§3b Cell-page display accessors return { value, isDefault }: default ->
-        isDefault true + the resolved/literal-default value; explicit -> the set value."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure({source_format:'xyz',\n"
-            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
-            "  periodicity:{cell:null, resolved_cell:[[3,0,0],[0,3,0],[0,0,3]],\n"
-            "    axis_kind:null, vacuum:[0,0,0], kgrid:[1,1,1]}},\n"
-            "  {kind:'file', file:'/tmp/x.xyz'});\n"
-            "const dflt = {cell: ws.getUnitCellInfo(), vac: ws.getVacuumInfo(),\n"
-            "  kg: ws.getKgridInfo(), ak: ws.getAxisKindInfo()};\n"
-            "ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);\n"
-            "ws.setVacuum([1,2,3]); ws.setKgrid([2,2,1]);\n"
-            "ws.setAxisKind(['periodic','periodic','isolated']);\n"
-            "const expl = {cell: ws.getUnitCellInfo(), vac: ws.getVacuumInfo(),\n"
-            "  kg: ws.getKgridInfo(), ak: ws.getAxisKindInfo()};\n"
-            "console.log(JSON.stringify({dflt, expl}));"
-        )
-        d, e = out["dflt"], out["expl"]
-        # default -> isDefault true; cell value = the server-resolved cell surfaced
-        assert d["cell"] == {"value": [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
-                             "isDefault": True}
-        assert d["vac"] == {"value": [0, 0, 0], "isDefault": True}
-        assert d["kg"] == {"value": [1, 1, 1], "isDefault": True}
-        assert d["ak"] == {"value": ["isolated", "isolated", "isolated"],
-                           "isDefault": True}
-        # explicit -> isDefault false; the set value
-        assert e["cell"] == {"value": [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
-                             "isDefault": False}
-        assert e["vac"] == {"value": [1, 2, 3], "isDefault": False}
-        assert e["kg"] == {"value": [2, 2, 1], "isDefault": False}
-        assert e["ak"] == {"value": ["periodic", "periodic", "isolated"],
-                           "isDefault": False}
-
-    def test_periodicity_accessors_return_defensive_copies(self):
-        """§1.2.1 concealment: mutating a returned periodicity value must NOT corrupt the
-        in-memory _state -- the accessors hand out defensive copies, not live refs."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure({source_format:'xyz',\n"
-            "  text:'2\\nx\\nH 0 0 0\\nH 0 0 1\\n',\n"
-            "  periodicity:{cell:[[5,0,0],[0,5,0],[0,0,5]], resolved_cell:null,\n"
-            "    axis_kind:['periodic','periodic','isolated'], vacuum:[1,2,3],\n"
-            "    kgrid:[2,2,1]}},\n"
-            "  {kind:'file', file:'/tmp/x.xyz'});\n"
-            "// mutate every returned value in place -- must not reach _state\n"
-            "ws.getUnitCellInfo().value[0][0] = 999;\n"
-            "ws.getUnitCell()[1][1] = 999;\n"
-            "ws.getVacuumInfo().value[0] = 999;\n"
-            "ws.getKgridInfo().value[0] = 999;\n"
-            "ws.getAxisKindInfo().value[0] = 'BROKEN';\n"
-            "ws.getStructure().periodicity.cell[2][2] = 999;\n"
-            "const after = {cell: ws.getUnitCell(), vac: ws.getVacuumInfo().value,\n"
-            "  kg: ws.getKgridInfo().value, ak: ws.getAxisKindInfo().value};\n"
-            "console.log(JSON.stringify(after));"
-        )
-        assert out["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 5]], out
-        assert out["vac"] == [1, 2, 3]
-        assert out["kg"] == [2, 2, 1]
-        assert out["ak"] == ["periodic", "periodic", "isolated"]
-
-    def test_scratch_blob_refuses_atom_count_desync(self):
-        """Review c: geometry (canvas xyz) + labels (selection store) live in two
-        stores; if their atom counts desync, getScratchBlob refuses to serialise a
-        mismatched .xyz/.json pair (regions pointing outside the geometry)."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure({source_format:'xyz',\n"
-            "  text:'3\\nx\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n'},\n"
-            "  {kind:'file', file:'/tmp/x.xyz'});\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"   # only 2 atoms -> desync
-            "  {index:0, element:'O', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
-            "  {index:1, element:'H', x:1, y:0, z:0, regions:[], is_frozen:false}]);\n"
-            "console.log(JSON.stringify({blob: ws.getScratchBlob()}));"
-        )
-        assert out["blob"] is None      # refused -- no mismatched pair reaches disk
-
-    def test_getSource_returns_kind_file_generator_input(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "const cs = window.molbuilder.structureCanvas;\n"
-            "cs.setStructure(\n"
-            "  {source_format: 'xyz', text: '1\\nC\\nC 0 0 0\\n'},\n"
-            "  {kind: 'smiles', generator_input: {smiles: 'C'}},\n"
-            ");\n"
-            "console.log(JSON.stringify(ws.getSource()));"
-        )
-        assert out["kind"] == "smiles"
-        assert out["file"] is None
-        assert out["generator_input"] == {"smiles": "C"}
-
-
-# --------------------------------------------------------------------- #
-#  TestPersistRoundtrip — defensive-copy contract                       #
-# --------------------------------------------------------------------- #
-
-
-class TestPersistRoundtrip:
-    """``ws.getState()`` returns a defensive snapshot — mutating
-    it must not leak into the underlying stores.  Phase 8 of the
-    migration adds the unified sessionStorage key; this class
-    extends to cover the round-trip then."""
-
-    def test_getState_selection_indices_is_a_copy(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "Promise.resolve().then(() => "
-            "  window.molbuilder.selection.store.setSelection([0, 1])\n"
-            ").then(() => {\n"
-            "  const snap = ws.getState();\n"
-            "  snap.selection.indices.push(999);   // mutate the copy\n"
-            "  const refetched = ws.getState();\n"
-            "  console.log(JSON.stringify(refetched.selection.indices));\n"
-            "});"
-        )
-        assert out == [0, 1]
-
-    def test_storage_key_is_v1(self):
-        out = _run_node(
-            "console.log(JSON.stringify(window.molbuilder.workspace.STORAGE_KEY));")
-        assert out == "molbuilder.workspace.v1"
-
-    def test_persist_writes_to_unified_sessionStorage_key(self):
-        """Phase 8 — on every state change the dispatcher writes
-        a debounced snapshot to ``molbuilder.workspace.v1``.  We
-        force a synchronous write via the dispatcher's pagehide
-        flush path by simulating a state change and waiting for
-        the debounce timer."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "// adoptAtoms fires _notify() in the store, which fans\n"
-            "// into the dispatcher's _notify → _schedulePersist.\n"
-            "// Wait for the 100ms debounce.\n"
-            "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
-            "  const parsed = JSON.parse(raw);\n"
-            "  console.log(JSON.stringify({\n"
-            "    v:     parsed.v,\n"
-            "    atoms: parsed.state.selection.indices.length === 0,\n"
-            "    hasSelectionSlot: !!parsed.state.selection,\n"
-            "    hasSourceSlot:    !!parsed.state.source,\n"
-            "  }));\n"
-            "}, 150);"
-        )
+            "  selection: typeof d.selection,\n"
+            "  view:      typeof d.view,\n"
+            "  sel_toggle: typeof d.selection.toggle,\n"
+            "  sel_set:    typeof d.selection.set,\n"
+            "  view_apply: typeof d.view.applyState,\n"
+            "  view_get:   typeof d.view.getState,\n"
+            "}));")
         assert out == {
-            "v": 1,
-            "atoms": True,
-            "hasSelectionSlot": True,
-            "hasSourceSlot":    True,
+            "selection": "object", "view": "object",
+            "sel_toggle": "function", "sel_set": "function",
+            "view_apply": "function", "view_get": "function",
         }
 
-    def test_readPersistedSnapshot_returns_null_when_no_key(self):
-        out = _run_node(
-            "console.log(JSON.stringify(\n"
-            "  window.molbuilder.workspace.readPersistedSnapshot()));"
-        )
-        assert out is None
-
-    def test_readPersistedSnapshot_returns_parsed_snapshot(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY, JSON.stringify({\n"
-            "  v: 1, saved_at: '2026-06-07T00:00:00Z',\n"
-            "  state: {source: {kind: 'smiles', file: null}},\n"
-            "}));\n"
-            "console.log(JSON.stringify(window.molbuilder.workspace.readPersistedSnapshot()));"
-        )
-        assert out["v"] == 1
-        assert out["state"]["source"]["kind"] == "smiles"
-
-    def test_readPersistedSnapshot_returns_null_on_schema_mismatch(self):
-        """Future schema bumps (v=2, v=3, …) invalidate older
-        saves cleanly.  Pins that the dispatcher rejects v=99
-        rather than silently passing it through."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY, JSON.stringify({\n"
-            "  v: 99, state: {}\n"
-            "}));\n"
-            "console.log(JSON.stringify(window.molbuilder.workspace.readPersistedSnapshot()));"
-        )
-        assert out is None
-
-    def test_persisted_snapshot_carries_structure_text_and_source(self):
-        """workspace-contract.md §4.1: the unified snapshot is the
-        sole persistence path.  Structure text + source must
-        round-trip so the modify viewer can rehydrate the canvas
-        on revisit."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "ws.installStructure(\n"
-            "  {source_format: 'xyz', text: '2\\nH2\\nH 0 0 0\\nH 0 0 0.74\\n'},\n"
-            "  {kind: 'file', file: '/tmp/h2.xyz', generator_input: null}\n"
-            ");\n"
-            "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
-            "  const parsed = JSON.parse(raw);\n"
-            "  console.log(JSON.stringify({\n"
-            "    text:   parsed.state.structure.text,\n"
-            "    source: parsed.state.source.kind,\n"
-            "    file:   parsed.state.source.file,\n"
-            "  }));\n"
-            "}, 150);"
-        )
-        assert out["text"].startswith("2\nH2\nH 0 0 0")
-        assert out["source"] == "file"
-        assert out["file"] == "/tmp/h2.xyz"
-
-    def test_persisted_snapshot_shape_carries_documented_fields(self):
-        """The snapshot must include the full state set the contract
-        names (workspace-contract.md §4.1): structure + source +
-        dirty + last_save_to + selection.  view is environmental
-        (depends on whether a view module is mounted)."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "ws.installStructure(\n"
-            "  {source_format: 'xyz', text: '1\\n\\nH 0 0 0\\n'},\n"
-            "  {kind: 'smiles', file: null, generator_input: '[H]'}\n"
-            ");\n"
-            "setTimeout(() => {\n"
-            "  const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
-            "  const p = JSON.parse(raw);\n"
-            "  console.log(JSON.stringify({\n"
-            "    hasStructure:   !!p.state.structure,\n"
-            "    hasSource:      !!p.state.source,\n"
-            "    hasDirty:       typeof p.state.dirty === 'boolean',\n"
-            "    hasLastSaveTo:  ('last_save_to' in p.state),\n"
-            "    hasSelection:   !!p.state.selection,\n"
-            "  }));\n"
-            "}, 150);"
-        )
-        for k, present in out.items():
-            assert present is True, f"snapshot field {k!r} missing"
-
-    def test_pagehide_flushes_pending_debounce(self):
-        """workspace-contract.md §4.2: the dispatcher's pagehide
-        listener flushes any pending debounced write before the
-        page unloads.  A user who navigates within 100ms of their
-        last edit must not lose it.
-
-        Verifies by making a state change, firing pagehide BEFORE
-        the 100ms debounce timer would have fired, and confirming
-        sessionStorage already has the snapshot."""
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "ws.installStructure(\n"
-            "  {source_format: 'xyz', text: '1\\nflush_test\\nH 0 0 0\\n'},\n"
-            "  {kind: 'load', file: null, generator_input: null}\n"
-            ");\n"
-            "// Fire pagehide SYNCHRONOUSLY before the 100ms timer.\n"
-            "window.__fireEvent('pagehide');\n"
-            "const raw = sessionStorage.getItem(window.molbuilder.workspace.STORAGE_KEY);\n"
-            "const parsed = JSON.parse(raw);\n"
-            "console.log(JSON.stringify({\n"
-            "  written: !!parsed,\n"
-            "  text:    parsed && parsed.state.structure.text,\n"
-            "}));"
-        )
-        assert out["written"] is True, \
-            "pagehide did not flush the pending debounced write"
-        assert "flush_test" in out["text"]
-
 
 # --------------------------------------------------------------------- #
-#  TestSelectionPassthrough — selection.* mirrors the store             #
+#  2. The workspace is PERSISTENCE-ONLY (workspace-contract.md §3.5)     #
 # --------------------------------------------------------------------- #
 
 
-class TestSelectionPassthrough:
-    """The dispatcher's selection sub-namespace is a passthrough
-    to ``window.molbuilder.selection.store``.  A mutation through
-    ``ws.selection.set([...])`` MUST land on the underlying store
-    so the existing panel + viewer-adapter (which still subscribe
-    to the store directly during the migration window) see the
-    change."""
-
-    def test_set_lands_on_underlying_store(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
-            "  {index: 2, element: 'H', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "Promise.resolve().then(() => "
-            "  ws.selection.set([0, 2])\n"
-            ").then(() => {\n"
-            "  console.log(JSON.stringify(\n"
-            "    window.molbuilder.selection.store.getState().selection\n"
-            "  ));\n"
-            "});"
-        )
-        assert out == [0, 2]
-
-    def test_toggle_via_dispatcher_lands_on_underlying_store(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "Promise.resolve().then(() => ws.selection.toggle(1))\n"
-            ".then(() => {\n"
-            "  console.log(JSON.stringify(\n"
-            "    window.molbuilder.selection.store.getState().selection\n"
-            "  ));\n"
-            "});"
-        )
-        assert out == [1]
-
-    def test_getState_returns_contract_shape_with_indices_not_selection(self):
-        """Regression for 2026-06-09 audit BLOCKER:
-        ``ws.selection.getState()`` MUST return ``indices`` (contract
-        shape, workspace-contract.md §5) — NOT ``selection`` (legacy
-        store's internal field name).
-
-        Without this contract, the panel's click handlers (which
-        call ``store.getState().indices``) silently broke when the
-        legacy store passes ``selection`` to its subscribers.
-        """
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "Promise.resolve().then(() => ws.selection.set([0, 1]))\n"
-            ".then(() => {\n"
-            "  const s = ws.selection.getState();\n"
-            "  console.log(JSON.stringify({\n"
-            "    has_indices:      Array.isArray(s.indices),\n"
-            "    indices_value:    s.indices,\n"
-            "    selection_field:  s.selection,\n"
-            "    has_mode:         typeof s.mode === 'string',\n"
-            "    has_atoms:        Array.isArray(s.atoms),\n"
-            "    has_pickOrder:    Array.isArray(s.pickOrder),\n"
-            "    has_sourceFile:   s.sourceFile === null\n"
-            "                          || typeof s.sourceFile === 'string',\n"
-            "  }));\n"
-            "});"
-        )
-        assert out["has_indices"] is True
-        assert out["indices_value"] == [0, 1]
-        # Legacy field name MUST NOT leak through.  ``undefined``
-        # values are dropped by JSON.stringify, so the contract is
-        # satisfied iff the key is absent OR null in the output.
-        assert out.get("selection_field") is None
-        # Contract shape includes mode/atoms/pickOrder/sourceFile.
-        assert out["has_mode"] is True
-        assert out["has_atoms"] is True
-        assert out["has_pickOrder"] is True
-        assert out["has_sourceFile"] is True
-
-    def test_subscribe_callback_receives_contract_shape_not_legacy(self):
-        """Regression for the same audit BLOCKER:
-        ``ws.selection.subscribe(fn)`` MUST translate the legacy
-        store's state shape to the contract shape before passing it
-        to ``fn`` — without this wrapper, panel renderers (which
-        subscribe + read ``state.indices``) saw ``undefined`` and the
-        UI rendered "undefined / 3 atoms" in the count readout.
-        """
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
-            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
-            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
-            "]);\n"
-            "let received = null;\n"
-            "ws.selection.subscribe((s) => { received = s; });\n"
-            "Promise.resolve().then(() => ws.selection.set([1]))\n"
-            ".then(() => {\n"
-            "  console.log(JSON.stringify({\n"
-            "    has_indices:    Array.isArray(received && received.indices),\n"
-            "    indices_value:  received && received.indices,\n"
-            "    legacy_field:   received && received.selection,\n"
-            "  }));\n"
-            "});"
-        )
-        assert out["has_indices"] is True
-        assert out["indices_value"] == [1]
-        # Legacy ``state.selection`` field must NOT appear on the
-        # subscriber-delivered shape — that's the whole point of the
-        # contract normalisation.  ``undefined`` is dropped by
-        # JSON.stringify so the key is absent or null.
-        assert out.get("legacy_field") is None
-
-    def test_refreshAtoms_is_exposed_and_delegates(self):
-        """Regression for the 2026-06-09 fresh-eyes audit BLOCKER:
-        ``ws.selection.refreshAtoms`` must be on the public surface +
-        delegate to the underlying store's refreshAtoms.  Used by
-        ``selection-bootstrap._commitFile`` after ``adoptSession`` to
-        overlay the ``.molstruct.json`` sidecar (frozen_atoms +
-        regions) — without it, sidebar loads silently dropped sidecar
-        data because /api/build/load doesn't apply it.
-        """
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "let calls = 0;\n"
-            "window.molbuilder.selection.store.refreshAtoms = "
-            "  () => { calls++; return Promise.resolve(); };\n"
-            "Promise.resolve()\n"
-            "  .then(() => ws.selection.refreshAtoms())\n"
-            "  .then(() => console.log(JSON.stringify({\n"
-            "    exposed:   typeof ws.selection.refreshAtoms === 'function',\n"
-            "    delegated: calls,\n"
-            "  })));"
-        )
-        assert out["exposed"] is True
-        assert out["delegated"] == 1
-
-
-class TestFrames:
-    """Frames — the coordinate time axis wired through the dispatcher (workspace §1.5).
-
-    setFrame swaps ONLY the atoms' coordinates (identity + selection survive); add/reload
-    enforce the same-atoms invariant against the loaded structure; forces ride per frame.
-    """
-
-    _ATOMS2 = (
-        "window.molbuilder.selection.store.adoptAtoms([\n"
-        "  {index:0, element:'O', x:0, y:0, z:0},\n"
-        "  {index:1, element:'H', x:1, y:0, z:0}\n"
-        "]);\n"
-    )
-
-    def test_reloadFrames_then_setFrame_swaps_coords_and_keeps_selection(self):
-        out = _run_node(
-            self._ATOMS2 +
-            "const ws = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.setSelection([1]);\n"   # select atom 1
-            "const nf = ws.reloadFrames([\n"
-            "  [[0,0,0],[1,0,0]],\n"     # frame 0
-            "  [[0,0,0],[2,0,0]],\n"     # frame 1
-            "  [[0,0,0],[3,0,0]]\n"      # frame 2 (H at x=3)
-            "]);\n"
-            "const f0 = ws.getAtoms().map(a => a.x);\n"       # reload -> frame 0 => [0,1]
-            "ws.setFrame(2);\n"
-            "const f2 = ws.getAtoms().map(a => a.x);\n"       # frame 2 => [0,3]
-            "const sel = window.molbuilder.selection.store.getState().selection;\n"
-            "console.log(JSON.stringify({ nf, frameCount: ws.frameCount(),\n"
-            "  currentFrame: ws.currentFrame(), f0, f2, sel }));\n"
-        )
-        assert out["nf"] == 3 and out["frameCount"] == 3
-        assert out["f0"] == [0, 1]                 # reload lands on frame 0
-        assert out["currentFrame"] == 2
-        assert out["f2"] == [0, 3]                 # setFrame(2) swapped the coords
-        assert out["sel"] == [1]                   # selection survived the frame swap
-
-    def test_addFrame_appends_and_wrong_atom_count_is_a_hard_error(self):
-        out = _run_node(
-            self._ATOMS2 +
-            "const ws = window.molbuilder.molview.data;\n"
-            "ws.reloadFrames([[[0,0,0],[1,0,0]]]);\n"          # 1 frame / 2 atoms
-            "const c1 = ws.addFrame([[0,1,0],[1,1,0]]);\n"     # OK -> 2 frames
-            "let threw = false;\n"
-            "try { ws.addFrame([[0,0,0],[1,0,0],[2,0,0]]); } catch(_) { threw = true; }\n"
-            "console.log(JSON.stringify({ c1, after: ws.frameCount(), threw }));\n"
-        )
-        assert out["c1"] == 2
-        assert out["threw"] is True                # 3 atoms vs 2 -> rejected
-        assert out["after"] == 2                   # not appended
-
-    def test_forces_ride_per_frame(self):
-        out = _run_node(
-            self._ATOMS2 +
-            "const ws = window.molbuilder.molview.data;\n"
-            "ws.reloadFrames([[[0,0,0],[1,0,0]],[[0,0,0],[2,0,0]]],\n"
-            "  { forces: [ [[0.1,0,0],[0,0.2,0]], [[0.3,0,0],[0,0.4,0]] ] });\n"
-            "ws.setFrame(1);\n"
-            "console.log(JSON.stringify({ f: ws.currentForces() }));\n"
-        )
-        assert out["f"] == [[0.3, 0, 0], [0, 0.4, 0]]
-
-    def test_frame_methods_exposed_on_the_surface(self):
-        out = _run_node(
-            "const ws = window.molbuilder.molview.data;\n"
-            "console.log(JSON.stringify(['reloadFrames','addFrame','addFrames','setFrame',\n"
-            "  'getFrame','getForces','currentForces','currentFrame','frameCount']\n"
-            "  .map(m => typeof ws[m] === 'function')));\n"
-        )
-        assert all(out)                            # every frame method present + a function
-
-
-# --------------------------------------------------------------------- #
-#  TestWorkspacePersistenceContract — POST-CARVE drift-guards           #
-#                                                                        #
-#  The workspace (window.molbuilder.workspace) is the PERSISTENCE layer  #
-#  ONLY; the in-memory DATA model is window.molbuilder.molview.data.     #
-#  These pins fail loudly if a data method leaks back onto the           #
-#  workspace, if it stops being format-blind, or if the persist          #
-#  inversion breaks (workspace-contract.md §4 / molview-module.md §18).  #
-# --------------------------------------------------------------------- #
-
-
-class TestWorkspacePersistenceContract:
+class TestWorkspaceIsPersistenceOnly:
     _PERSIST_SURFACE = ["STORAGE_KEY", "mountRestoreTarget", "persist",
-                        "readPersistedSnapshot", "workspaceId"]
+                        "pruneStatesAbove", "readPersistedSnapshot", "readState",
+                        "useNamespace", "workspaceId"]
 
-    def test_workspace_public_surface_is_persistence_only(self):
-        """(a) The workspace exposes EXACTLY the persistence surface (private _-slots the
-        store impls mount are allowed; no DATA method is)."""
+    def test_workspace_public_surface_is_exactly_persistence(self):
+        """§3.5: the workspace exposes EXACTLY the persistence surface
+        (private ``_``-slots the impls mount are allowed; no data
+        method is)."""
         out = _run_node(
             "console.log(JSON.stringify("
             "  Object.keys(window.molbuilder.workspace)"
             "    .filter(k => k[0] !== '_').sort()));")
         assert out == self._PERSIST_SURFACE
 
-    def test_no_data_methods_leaked_onto_workspace(self):
-        """(a) Explicit negative drift-guard: the data API is ABSENT on the workspace -- it
-        moved to molbuilder.molview.data."""
+    def test_no_data_accessors_leaked_onto_the_workspace(self):
+        """Explicit negative drift-guard: the data surface (incl. the
+        pre-carve doors) is ABSENT on the workspace — it lives on
+        ``molbuilder.molview.data``."""
+        probe = ["getStructure", "getAtoms", "getSelection", "getCoordinates",
+                 "installStructure", "loadFromText", "load", "save", "applyOp",
+                 "applyPayload", "setFrame", "addFrame", "reloadFrames",
+                 "discard", "undo", "selection", "view", "getScratchBlob",
+                 "setUnitCell"]
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"
             "console.log(JSON.stringify("
-            "  ['getStructure','getAtoms','getSelection','getCoordinates','installStructure',"
-            "   'applyOp','applyPayload','setFrame','addFrame','reloadFrames','discard','undo',"
-            "   'selection','view','getScratchBlob','loadFromText','setUnitCell']"
-            "  .filter(k => k in ws)));")
-        assert out == [], f"data methods leaked onto window.molbuilder.workspace: {out}"
+            + json.dumps(probe) + ".filter(k => k in ws)));")
+        assert out == [], f"data method(s) leaked onto the workspace: {out}"
 
     def test_persist_is_format_blind(self):
-        """(d) workspace.persist writes the session bytes VERBATIM -- it never parses or
-        interprets them (they need not be a structure at all)."""
+        """§3.5: ``persist`` writes the session bytes VERBATIM — it
+        never parses or interprets them (they need not be a structure
+        at all)."""
         out = _run_node(
             "const ws = window.molbuilder.workspace;\n"
             "ws.persist({foo: 1, bar: 'x', not_a_structure: true}, null, {source: '/x'});\n"
@@ -1046,46 +315,789 @@ class TestWorkspacePersistenceContract:
             "console.log(JSON.stringify(JSON.parse(raw)));")
         assert out == {"foo": 1, "bar": "x", "not_a_structure": True}
 
-    def test_data_change_drives_the_persist_inversion(self):
-        """(c) A molview.data change SERIALISES and calls ws.persist(sessionBytes, draftBlob,
-        identity); the workspace never reads the data back."""
+    def test_storage_key_is_the_unified_v1_key(self):
         out = _run_node(
-            "const calls = [];\n"
-            "window.molbuilder.workspace.persist = function (s, d, id) {\n"
-            "  calls.push([typeof s, (d === null ? 'null' : typeof d), typeof id]); };\n"
-            "window.molbuilder.selection.store.adoptAtoms("
-            "  [{index:0, element:'H', regions:[], is_frozen:false}]);\n"
-            "window.molbuilder.molview.data.installStructure(\n"
-            "  {source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'smiles', file:null});\n"
-            "setTimeout(() => { console.log(JSON.stringify(calls)); }, 200);")
-        assert len(out) >= 1, "a data change did not trigger ws.persist (inversion broken)"
-        assert out[0][0] == "object"    # sessionBytes (the serialised snapshot)
-        assert out[0][2] == "object"    # identity
+            "console.log(JSON.stringify(window.molbuilder.workspace.STORAGE_KEY));")
+        assert out == "molbuilder.workspace.v1"
 
-    @pytest.mark.xfail(reason="KNOWN GAP: setFrame currently persists via the store "
-                              "subscription (setCoords -> _notify -> _schedulePersist). The "
-                              "frames-render-only rework will make frame-SELECT a no-persist "
-                              "VIEW op per molview-module.md §18.3 (only addFrame/reloadFrames "
-                              "persist).", strict=False)
-    def test_setFrame_is_a_view_op_and_does_not_persist(self):
-        """(e1) Contract: frame-SELECT saves nothing; a data change (reloadFrames) persists."""
+    def test_useNamespace_isolates_each_owners_session_mirror(self):
+        """§18.4: ``useNamespace(owner)`` folds the owner into the mirror key so one
+        consumer's session never overwrites another's.  Two owners persisting in turn
+        each land under ``<base>::<owner>``; the base key stays untouched; switching back
+        to an owner still reads ITS snapshot (no clobber)."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "const io = window.molbuilder.workspaceSnapshot;\n"
+            "ws.useNamespace('owner-a');\n"
+            "ws.persist({v: 1, state: {tag: 'A'}}, null, {});\n"
+            "ws.useNamespace('owner-b');\n"
+            "ws.persist({v: 1, state: {tag: 'B'}}, null, {});\n"
+            "ws.useNamespace('owner-a');\n"
+            "console.log(JSON.stringify({\n"
+            "  aKey:  sessionStorage.getItem('molbuilder.workspace.v1::owner-a') !== null,\n"
+            "  bKey:  sessionStorage.getItem('molbuilder.workspace.v1::owner-b') !== null,\n"
+            "  base:  sessionStorage.getItem('molbuilder.workspace.v1'),\n"
+            "  aTag:  (io.read() || {}).state.tag,\n"
+            "}));")
+        assert out["aKey"] is True   # owner-a's mirror exists under its namespaced key
+        assert out["bKey"] is True   # owner-b's mirror exists under ITS namespaced key
+        assert out["base"] is None   # neither leaked into the shared base key
+        assert out["aTag"] == "A"    # switching back to owner-a reads A, not B
+
+
+# --------------------------------------------------------------------- #
+#  3. getStructure() is "null iff empty" (molview-module.md §19.2)       #
+# --------------------------------------------------------------------- #
+
+
+class TestGetStructureNullIffEmpty:
+
+    def test_null_when_empty(self):
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms("
-            "  [{index:0, element:'H', regions:[], is_frozen:false}]);\n"
-            "d.installStructure({source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'x', file:null});\n"
-            "setTimeout(() => {\n"
+            "console.log(JSON.stringify({\n"
+            "  isEmpty:   d.isEmpty(),\n"
+            "  structure: d.getStructure(),\n"
+            "  atoms:     d.getAtoms(),\n"
+            "  isDirty:   d.isDirty(),\n"
+            "}));")
+        assert out == {"isEmpty": True, "structure": None,
+                       "atoms": [], "isDirty": False}
+
+    def test_nonnull_with_atoms_after_a_load(self):
+        """§19.3.1 coherence invariant: after ONE openMolecule() the model is
+        populated across atoms + structure + periodicity together —
+        getStructure() is non-null AND carries the loaded atoms."""
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "  const s = d.getStructure();\n"
+            "  console.log(JSON.stringify({\n"
+            "    isEmpty:  d.isEmpty(),\n"
+            "    nonNull:  s !== null,\n"
+            "    nAtoms:   s ? s.atoms.length : -1,\n"
+            "    elements: d.getElements(),\n"
+            "    head:     s ? s.text.split('\\n')[0] : null,\n"
+            "  }));\n"
+            "});")
+        assert out["isEmpty"] is False
+        assert out["nonNull"] is True
+        assert out["nAtoms"] == 3
+        assert out["elements"] == ["O", "H", "H"]
+        assert out["head"] == "3"
+
+    def test_openMolecule_accepts_a_project_file_path_string(self):
+        """§19.3: openMolecule() takes either ``{text, filename}`` OR a
+        project-file path string — the string form routes through the
+        universal commit gate (``molbuilderTab.commitFile``)."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "let got = null;\n"
+            "window.molbuilder.molbuilderTab = { commitFile: (p) => { got = p; return 'committed'; } };\n"
+            "d.openMolecule('/projects/p/a.xyz').then((r) => {\n"
+            "  console.log(JSON.stringify({ got: got, r: r }));\n"
+            "});")
+        assert out == {"got": "/projects/p/a.xyz", "r": "committed"}
+
+    def test_openMolecule_rejects_a_bad_input(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule(42).then(\n"
+            "  () => console.log(JSON.stringify({ rejected: false })),\n"
+            "  (e) => console.log(JSON.stringify({ rejected: true,\n"
+            "     msg: /path string/.test(String(e.message)) })));")
+        assert out == {"rejected": True, "msg": True}
+
+
+# --------------------------------------------------------------------- #
+#  4. exportFile() = the whole-model serialisation (molview-module.md §19.4) #
+# --------------------------------------------------------------------- #
+
+
+class TestExportFile:
+    """exportFile() reads the ENTIRE model out to {xyz, sidecar}
+    project-file bytes — the inverse of openMolecule (§19.3.1 symmetry).
+    It is NOT a file writer (the old ``save(opts)`` door is gone) and it
+    is NOT the session-state timeline save; persisting the bytes is the
+    consumer's job (two-saves-never-mix)."""
+
+    def test_export_returns_xyz_and_sidecar_from_the_whole_model(self):
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "  const blob = d.exportFile();\n"
+            "  console.log(JSON.stringify({\n"
+            "    keys:       blob ? Object.keys(blob).sort() : null,\n"
+            "    xyzHead:    blob ? blob.xyz.split('\\n')[0] : null,\n"
+            "    sidecarKeys: blob ? Object.keys(blob.sidecar).sort() : null,\n"
+            "    nAtoms:     blob ? blob.sidecar.n_atoms_total : null,\n"
+            "  }));\n"
+            "});")
+        assert out["keys"] == ["sidecar", "xyz"]
+        assert out["xyzHead"] == "3"           # the whole geometry, serialised
+        assert out["nAtoms"] == 3
+        # The sidecar carries the full non-geometry state (labels/frozen +
+        # periodicity + annotations), built through the §19.2 accessors.
+        for field in ("regions", "frozen_atoms", "cell", "axis_kind",
+                      "vacuum", "kgrid", "annotations"):
+            assert field in out["sidecarKeys"], f"sidecar missing {field}"
+
+    def test_export_carries_regions_frozen_and_periodicity(self):
+        """The sidecar is assembled from the model accessors (getRegions
+        / getFrozen / periodicity) — not a re-read of any old file."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure(\n"
+            "  {source_format:'xyz', text:'2\\nx\\nAu 0 0 0\\nS 1 0 0\\n',\n"
+            "   periodicity:{cell:[[10,0,0],[0,10,0],[0,0,10]],\n"
+            "     axis_kind:['periodic','periodic','transport'],\n"
+            "     vacuum:[0,0,15], kgrid:[4,4,1]}},\n"
+            "  {kind:'file', file:'/p/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'Au', x:0, y:0, z:0, regions:['L-electrode'], is_frozen:true},\n"
+            "  {index:1, element:'S',  x:1, y:0, z:0, regions:['BDT'], is_frozen:false}]);\n"
+            "const s = d.exportFile();\n"
+            "console.log(JSON.stringify(s.sidecar));")
+        assert out["regions"] == {"L-electrode": [0], "BDT": [1]}
+        assert out["frozen_atoms"] == [0]
+        assert out["cell"] == [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+        assert out["axis_kind"] == ["periodic", "periodic", "transport"]
+        assert out["kgrid"] == [4, 4, 1]
+
+    def test_export_refuses_geometry_labels_desync_returns_null_and_logs(self):
+        """§19.4: a geometry (canvas text) ↔ labels (selection store)
+        atom-count desync must NEVER reach disk — exportFile() returns
+        null and logs, instead of emitting a mismatched .xyz/.json pair."""
+        out = _run_node(
+            "let errs = 0;\n"
+            "const _err = console.error; console.error = function(){ errs++; _err.apply(console, arguments); };\n"
+            "const d = window.molbuilder.molview.data;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz',\n"
+            "  text:'3\\nx\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n'},\n"    # geometry: 3 atoms
+            "  {kind:'file', file:'/p/x.xyz'});\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"       # store: only 2 atoms
+            "  {index:0, element:'O', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
+            "  {index:1, element:'H', x:1, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "const blob = d.exportFile();\n"
+            "console.log(JSON.stringify({ blob: blob, logged: errs >= 1 }));")
+        assert out["blob"] is None, "a mismatched .xyz/.json pair must not serialise"
+        assert out["logged"] is True, "the desync refusal must be logged"
+
+
+# --------------------------------------------------------------------- #
+#  5. draftIdentity() = {workspace_id} ONLY (molview-module.md §19.4)    #
+# --------------------------------------------------------------------- #
+
+
+class TestDraftIdentity:
+    """The AUTOMATIC crash-safe draft is keyed by the tab's workspace
+    id and NOTHING else — no filename.  A filename belongs only to the
+    explicit user "save to a project file" action (two-saves-never-mix,
+    workspace-contract intro); leaking it into the draft key is the bug
+    this pins against."""
+
+    def test_draft_identity_is_workspace_id_only_even_after_a_file_load(self):
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "  const id = d.draftIdentity();\n"
+            "  console.log(JSON.stringify({\n"
+            "    keys:      Object.keys(id).sort(),\n"
+            "    hasWsId:   typeof id.workspace_id === 'string' && id.workspace_id.length > 0,\n"
+            "    noSource:  !('source' in id),\n"
+            "    noFile:    !('file' in id) && !('filename' in id),\n"
+            "  }));\n"
+            "});")
+        assert out["keys"] == ["workspace_id"]
+        assert out["hasWsId"] is True
+        assert out["noSource"] is True
+        assert out["noFile"] is True
+
+
+# --------------------------------------------------------------------- #
+#  6. Persistence is PUSH-ONLY — a bare edit writes NOTHING (§19.5)      #
+# --------------------------------------------------------------------- #
+
+
+class TestNoAutoPersist:
+    """§19.5: persistence is EXPLICIT (push-only).  A data change (an
+    edit, a periodicity/label edit, a frame append) updates the
+    in-memory model but writes NOTHING to disk — only ``openMolecule``
+    (the anchor), ``save``, and ``load`` touch ``ws.persist`` /
+    ``ws.readState``.  suspendPersist/resumePersist survive as a
+    coherence bracket but no longer release any write."""
+
+    def test_a_bare_edit_never_calls_persist(self):
+        """A canvas DATA change (no save) must not auto-persist —
+        the old debounced auto-write is gone (§19.5)."""
+        out = _run_node(
+            "let n = 0;\n"
+            "window.molbuilder.workspace.persist = function () { n++; };\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({source_format:'xyz', text:'1\\nx\\nC 0 0 0\\n'},\n"
+            "  {kind:'file', file:'/p/x.xyz'});\n"
+            "setTimeout(() => { console.log(JSON.stringify({ persists: n })); }, 200);")
+        assert out["persists"] == 0, "a bare edit must not auto-persist (push-only)"
+
+    def test_suspend_resume_release_no_write(self):
+        """resumePersist() no longer releases a persist — under push-only
+        there is nothing to flush; it is a pure coherence bracket."""
+        out = _run_node(
+            "let n = 0;\n"
+            "window.molbuilder.workspace.persist = function () { n++; };\n"
+            "const d = window.molbuilder.molview.data;\n"
+            "d.suspendPersist();\n"
+            "window.molbuilder.selection.store.adoptAtoms(\n"
+            "  [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "d.resumePersist();\n"
+            "setTimeout(() => { console.log(JSON.stringify({ persists: n })); }, 200);")
+        assert out["persists"] == 0, "resume must not release any write (push-only)"
+
+
+# --------------------------------------------------------------------- #
+#  Persistence round-trip + restore (workspace-contract.md §4.4)        #
+# --------------------------------------------------------------------- #
+
+
+class TestPersistRoundtrip:
+
+    def test_persisted_snapshot_carries_the_documented_state_fields(self):
+        """§4.4.1: the unified snapshot carries v=1 + structure +
+        source + dirty + last_save_to + selection."""
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "  setTimeout(() => {\n"
+            "    const p = JSON.parse(sessionStorage.getItem(\n"
+            "      window.molbuilder.workspace.STORAGE_KEY));\n"
+            "    console.log(JSON.stringify({\n"
+            "      v:             p.v,\n"
+            "      hasStructure:  !!p.state.structure,\n"
+            "      text:          p.state.structure.text.split('\\n')[0],\n"
+            "      hasSource:     !!p.state.source,\n"
+            "      hasDirty:      typeof p.state.dirty === 'boolean',\n"
+            "      hasLastSaveTo: ('last_save_to' in p.state),\n"
+            "      hasSelection:  !!p.state.selection,\n"
+            "    }));\n"
+            "  }, 200);\n"
+            "});")
+        assert out["v"] == 1
+        assert out["hasStructure"] is True
+        assert out["text"] == "3"
+        assert out["hasSource"] is True
+        assert out["hasDirty"] is True
+        assert out["hasLastSaveTo"] is True
+        assert out["hasSelection"] is True
+
+    def test_readPersistedSnapshot_null_when_absent(self):
+        out = _run_node(
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.readPersistedSnapshot()));")
+        assert out is None
+
+    def test_readPersistedSnapshot_null_on_schema_mismatch(self):
+        out = _run_node(
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY,\n"
+            "  JSON.stringify({ v: 99, state: {} }));\n"
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.readPersistedSnapshot()));")
+        assert out is None
+
+    def test_mountRestoreTarget_is_the_persisted_source_file(self):
+        """§4.5: the single-authority restore target derives from the
+        SAME persisted snapshot; a mount-time writer defers when it
+        equals the file it was about to load."""
+        out = _run_node(
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY,\n"
+            "  JSON.stringify({ v: 1, state: {\n"
+            "    structure: { text: '1\\nx\\nC 0 0 0\\n' },\n"
+            "    source:    { kind: 'file', file: '/p/target.xyz' } } }));\n"
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.mountRestoreTarget()));")
+        assert out == "/p/target.xyz"
+
+    def test_mountRestoreTarget_null_when_snapshot_has_no_structure(self):
+        out = _run_node(
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY,\n"
+            "  JSON.stringify({ v: 1, state: { source: { kind: 'blank', file: null } } }));\n"
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.mountRestoreTarget()));")
+        assert out is None
+
+    def test_getState_snapshot_is_a_defensive_copy(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'O', regions:[], is_frozen:false},\n"
+            "  {index:1, element:'H', regions:[], is_frozen:false}]);\n"
+            "Promise.resolve().then(() => window.molbuilder.selection.store.setSelection([0,1]))\n"
+            ".then(() => {\n"
+            "  const snap = d.getState();\n"
+            "  snap.selection.indices.push(999);\n"       # mutate the copy
+            "  console.log(JSON.stringify(d.getState().selection.indices));\n"
+            "});")
+        assert out == [0, 1]
+
+
+# --------------------------------------------------------------------- #
+#  Subscriptions + selection passthrough (molview-module.md §12 / §19.2) #
+# --------------------------------------------------------------------- #
+
+
+class TestSubscribeAndSelection:
+
+    def test_subscribe_fires_once_immediately_with_current_state(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "let calls = 0, last = null;\n"
+            "d.subscribe((s) => { calls++; last = s; });\n"
+            "console.log(JSON.stringify({ calls: calls, empty: last.structure === null }));")
+        assert out == {"calls": 1, "empty": True}
+
+    def test_subscribe_fans_in_selection_store_changes_and_unsubscribes(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "let calls = 0, afterChange = -1;\n"
+            "const unsub = d.subscribe(() => { calls++; });\n"
+            "Promise.resolve().then(() => {\n"
+            "  calls = 0;\n"
+            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
+            "  return Promise.resolve();\n"
+            "}).then(() => {\n"
+            "  afterChange = calls;\n"
+            "  unsub();\n"
+            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
+            "  return Promise.resolve();\n"
+            "}).then(() => {\n"
+            "  console.log(JSON.stringify({ afterChange: afterChange, afterUnsub: calls }));\n"
+            "});")
+        assert out == {"afterChange": 1, "afterUnsub": 1}
+
+    def test_subscriber_error_does_not_wedge_the_others(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "let good = 0;\n"
+            "d.subscribe(() => { throw new Error('boom'); });\n"
+            "d.subscribe(() => { good++; });\n"
+            "Promise.resolve().then(() => {\n"
+            "  good = 0;\n"
+            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
+            "  return Promise.resolve();\n"
+            "}).then(() => { console.log(JSON.stringify(good)); });")
+        assert out == 1
+
+    def test_selection_mutation_lands_on_the_store_in_contract_shape(self):
+        """§12.2: ws.selection.set lands on the store; getState()
+        returns the CONTRACT shape (raw ``selection`` renamed
+        ``indices``)."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index:0, element:'O', regions:[], is_frozen:false},\n"
+            "  {index:1, element:'H', regions:[], is_frozen:false},\n"
+            "  {index:2, element:'H', regions:[], is_frozen:false}]);\n"
+            "Promise.resolve().then(() => d.selection.set([0, 2])).then(() => {\n"
+            "  const s = d.selection.getState();\n"
+            "  console.log(JSON.stringify({\n"
+            "    onStore:  window.molbuilder.selection.store.getState().selection,\n"
+            "    indices:  s.indices,\n"
+            "    hasLegacy: 'selection' in s,\n"
+            "  }));\n"
+            "});")
+        assert out["onStore"] == [0, 2]
+        assert out["indices"] == [0, 2]
+        assert out["hasLegacy"] is False   # legacy field name must not leak
+
+
+# --------------------------------------------------------------------- #
+#  Frames — the coordinate time axis (molview-module.md §14.5)           #
+# --------------------------------------------------------------------- #
+
+
+class TestFrames:
+
+    _ATOMS2 = (
+        "window.molbuilder.selection.store.adoptAtoms([\n"
+        "  {index:0, element:'O', x:0, y:0, z:0},\n"
+        "  {index:1, element:'H', x:1, y:0, z:0}]);\n"
+    )
+
+    def test_reload_then_setFrame_swaps_coords_and_keeps_selection(self):
+        out = _run_node(
+            self._ATOMS2 +
+            "const d = window.molbuilder.molview.data;\n"
+            "window.molbuilder.selection.store.setSelection([1]);\n"
+            "const nf = d.reloadFrames([[[0,0,0],[1,0,0]], [[0,0,0],[2,0,0]], [[0,0,0],[3,0,0]]]);\n"
+            "const f0 = d.getAtoms().map(a => a.x);\n"
+            "d.setFrame(2);\n"
+            "const f2 = d.getAtoms().map(a => a.x);\n"
+            "console.log(JSON.stringify({ nf, count: d.frameCount(),\n"
+            "  current: d.currentFrame(), f0, f2,\n"
+            "  sel: window.molbuilder.selection.store.getState().selection }));")
+        assert out["nf"] == 3 and out["count"] == 3
+        assert out["f0"] == [0, 1]          # reload lands on frame 0
+        assert out["current"] == 2
+        assert out["f2"] == [0, 3]          # setFrame(2) swapped the coords
+        assert out["sel"] == [1]            # selection survives the frame swap
+
+    def test_wrong_atom_count_frame_is_a_hard_error(self):
+        """§14.5 same-atoms invariant: a frame whose atom count differs
+        from the loaded structure is rejected, never coerced."""
+        out = _run_node(
+            self._ATOMS2 +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.reloadFrames([[[0,0,0],[1,0,0]]]);\n"
+            "const ok = d.addFrame([[0,1,0],[1,1,0]]);\n"
+            "let threw = false;\n"
+            "try { d.addFrame([[0,0,0],[1,0,0],[2,0,0]]); } catch(_) { threw = true; }\n"
+            "console.log(JSON.stringify({ ok, threw, after: d.frameCount() }));")
+        assert out["ok"] == 2
+        assert out["threw"] is True
+        assert out["after"] == 2            # the bad frame was not appended
+
+
+# --------------------------------------------------------------------- #
+#  §18.3 VIEW ops must NOT persist — the code violates this today.       #
+#  Pinned as xfail (NOT weakened, NOT skipped) per the contract.        #
+# --------------------------------------------------------------------- #
+
+
+class TestViewOpsMustNotPersist:
+    """molview-module.md §18.3 + §19.5: a VIEW change (frame-select,
+    selection, isolate, k-grid, style, background) changes only what is
+    DRAWN and must persist NOTHING.  Under push-only (§19.5) NOTHING
+    auto-persists — not even a DATA change (a frame append flips the
+    ``uncommitted`` flag instead of writing); persistence happens only on
+    an explicit save / load (or the openMolecule anchor).  So a view op
+    is doubly safe: it is neither data nor a checkpoint."""
+
+    def test_setFrame_does_not_persist(self):
+        out = _run_node(
+            self._boot_one_frame() +
             "  let n = 0;\n"
             "  window.molbuilder.workspace.persist = function () { n++; };\n"
-            "  d.reloadFrames([[[0,0,0]], [[1,0,0]]]);\n"        # DATA change -> persists
+            "  d.reloadFrames([[[0,0,0]], [[1,0,0]]]);\n"        # DATA change -> uncommitted, NO write
             "  setTimeout(() => {\n"
             "    const afterReload = n;\n"
             "    d.setFrame(1);\n"                                # VIEW change -> must NOT persist
             "    setTimeout(() => {\n"
-            "      console.log(JSON.stringify("
-            "        {afterReload: afterReload >= 1, setFrameAddedPersist: n > afterReload}));\n"
+            "      console.log(JSON.stringify({\n"
+            "        afterReload: afterReload,\n"
+            "        setFramePersisted: n > afterReload,\n"
+            "        uncommitted: d.uncommitted }));\n"
             "    }, 200);\n"
             "  }, 200);\n"
             "}, 200);")
-        assert out["afterReload"] is True
-        assert out["setFrameAddedPersist"] is False   # xfails today (setFrame persists)
+        assert out["afterReload"] == 0              # push-only: a frame DATA change writes NOTHING
+        assert out["setFramePersisted"] is False     # setFrame = VIEW -> zero writes (§18.3)
+        assert out["uncommitted"] is True            # but the frame DATA change IS uncommitted (§19.5)
+
+    def test_selection_change_does_not_persist(self):
+        out = _run_node(
+            self._boot_one_frame() +
+            "  window.molbuilder.selection.store.adoptAtoms([\n"
+            "    {index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
+            "    {index:1, element:'H', x:0, y:0, z:0.7, regions:[], is_frozen:false}]);\n"
+            "  setTimeout(() => {\n"
+            "    let n = 0;\n"
+            "    window.molbuilder.workspace.persist = function () { n++; };\n"
+            "    window.molbuilder.selection.store.setSelection([1]);\n"   # VIEW op
+            "    setTimeout(() => {\n"
+            "      console.log(JSON.stringify({ selectionPersisted: n > 0 }));\n"
+            "    }, 200);\n"
+            "  }, 200);\n"
+            "}, 200);")
+        assert out["selectionPersisted"] is False   # selection = VIEW -> zero writes (§18.3)
+
+    @staticmethod
+    def _boot_one_frame() -> str:
+        """Load a 1-atom structure and open the async block the xfail
+        snippets continue (they close the trailing ``}, 200);``)."""
+        return (
+            "const d = window.molbuilder.molview.data;\n"
+            "window.molbuilder.selection.store.adoptAtoms(\n"
+            "  [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "window.molbuilder.structureCanvas.setStructure(\n"
+            "  {source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'x', file:null});\n"
+            "setTimeout(() => {\n"
+        )
+
+
+# --------------------------------------------------------------------- #
+#  §19.5 The state timeline — one save/load, index-delta parameterized   #
+# --------------------------------------------------------------------- #
+
+# An in-memory stand-in for the workspace's on-disk state timeline + the
+# sessionStorage mirror.  The real ws.persist / readState /
+# readPersistedSnapshot / pruneStatesAbove are fetch/storage-backed (inert
+# under Node); these stubs capture the identities the data model sends and
+# serve them back, emulating the tail-delete so the timeline round-trips
+# like production.  ``persist(sessionBytes, snapshotBlob, id)`` writes
+# ``sessionBytes`` to the MIRROR always AND ``snapshotBlob`` to the disk
+# file for ``id.state_index`` — UNLESS ``snapshotBlob`` is null, which
+# writes the MIRROR ONLY (the ``load(delta!=0)`` re-mirror).  At a
+# ``save`` both args are the SAME snapshot, so the stub stores the blob
+# and hands it straight back.
+_STUB_TIMELINE_WS = """
+const _disk = {};
+let   _mirror = null;
+const _persistIdx = [];
+const _readIdx = [];
+const _pruneIdx = [];
+const _wsStub = window.molbuilder.workspace;
+_wsStub.workspaceId = function () { return 'ws-test'; };
+_wsStub.persist = function (sb, blob, id) {
+    _persistIdx.push(id.state_index);
+    _mirror = sb;                                    // the sessionStorage MIRROR (always)
+    if (blob != null) _disk[id.state_index] = blob;  // null => MIRROR ONLY (skip disk)
+    return Promise.resolve();
+};
+_wsStub.readState = function (id) {
+    _readIdx.push(id.state_index);
+    return Promise.resolve(_disk[id.state_index] != null ? _disk[id.state_index] : null);
+};
+_wsStub.readPersistedSnapshot = function () { return _mirror; };
+_wsStub.pruneStatesAbove = function (wid, above) {
+    _pruneIdx.push(above);
+    Object.keys(_disk).forEach(function (k) { if (Number(k) > above) delete _disk[k]; });
+    return Promise.resolve();
+};
+"""
+
+
+class TestStateTimeline:
+    """molview-module.md §19.5: the model owns a ``state_index`` (0 = the
+    opened anchor) and each index is a full ``getState()`` session
+    snapshot on disk.  ``openMolecule`` anchors a fresh timeline;
+    ``save(1)`` commits an undoable checkpoint (advance + persist +
+    tail-delete); ``load(-1)`` retracts (read index-1, apply, decrement,
+    floor at 0); ``load(0)`` reloads from the mirror.  Persistence is
+    push-only; save/load are serialized.  Built against the workspace
+    interface (persist / readState / readPersistedSnapshot /
+    pruneStatesAbove / workspaceId), stubbed here."""
+
+    def test_openMolecule_anchors_index_zero(self):
+        """§19.5: after ``openMolecule`` the timeline is reset — index 0,
+        the anchor snapshot persisted at index 0, the whole prior timeline
+        pruned (above_index = -1)."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  console.log(JSON.stringify({\n"
+            "    index:       d.state_index,\n"
+            "    uncommitted: d.uncommitted,\n"
+            "    persistIdx:  _persistIdx,\n"
+            "    pruneIdx:    _pruneIdx,\n"
+            "    diskHas0:    _disk[0] != null,\n"
+            "    mirrorHas0:  _mirror != null && _mirror.state.state_index === 0,\n"
+            "  }));\n"
+            "});")
+        assert out["index"] == 0
+        assert out["uncommitted"] is False
+        assert out["persistIdx"] == [0]      # the ONE automatic write, at index 0
+        assert out["pruneIdx"] == [-1]       # clear the whole prior timeline
+        assert out["diskHas0"] is True
+        assert out["mirrorHas0"] is True     # the anchor is mirrored too (reload target)
+
+    def test_save_checkpoint_advances_persists_and_prunes_tail(self):
+        """§19.5: ``save(1)`` persists the snapshot at index+1 (mirror +
+        disk), then on success advances the index and tail-deletes every
+        index above."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  window.molbuilder.structureCanvas.markDirty();\n"   # an edit -> uncommitted
+            "  const before = d.uncommitted;\n"
+            "  return d.save(1).then(() => {\n"
+            "    console.log(JSON.stringify({\n"
+            "      before:      before,\n"
+            "      index:       d.state_index,\n"
+            "      uncommitted: d.uncommitted,\n"
+            "      persistIdx:  _persistIdx,\n"
+            "      pruneIdx:    _pruneIdx,\n"
+            "      diskHas1:    _disk[1] != null,\n"
+            "    }));\n"
+            "  });\n"
+            "});")
+        assert out["before"] is True             # the edit marked the model uncommitted
+        assert out["index"] == 1                 # advanced only after the persist resolved
+        assert out["uncommitted"] is False       # the checkpoint cleared it
+        assert out["persistIdx"] == [0, 1]       # anchor, then the checkpoint
+        assert out["pruneIdx"] == [-1, 1]        # anchor-clear, then the divergent-tail delete
+        assert out["diskHas1"] is True
+
+    def test_save0_resaves_current_index_without_pruning(self):
+        """§19.5: ``save(0)`` re-saves the current index in place — no
+        advance, and delta==0 does NOT tail-delete."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  return d.save(0).then(() => {\n"
+            "    console.log(JSON.stringify({\n"
+            "      index:      d.state_index,\n"
+            "      persistIdx: _persistIdx,\n"
+            "      pruneIdx:   _pruneIdx,\n"
+            "    }));\n"
+            "  });\n"
+            "});")
+        assert out["index"] == 0                 # save(0) does not move the index
+        assert out["persistIdx"] == [0, 0]       # anchor, then the in-place re-save
+        assert out["pruneIdx"] == [-1]           # delta==0 -> NO extra prune
+
+    def test_save_does_not_advance_when_persist_rejects(self):
+        """§19.5 atomic: a failed write never leaves state_index pointing
+        at a missing file — the index stays put on a rejected persist."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.workspaceId = () => 'ws-test';\n"
+            "ws.pruneStatesAbove = () => Promise.resolve();\n"
+            "ws.persist = () => Promise.reject(new Error('disk full'));\n"
+            "d.save(1).then(\n"
+            "  () => console.log(JSON.stringify({ rejected:false, index:d.state_index })),\n"
+            "  () => console.log(JSON.stringify({ rejected:true,  index:d.state_index })));")
+        assert out["rejected"] is True
+        assert out["index"] == 0                 # unchanged — no advance on failure
+
+    def test_load_minus1_reads_prev_applies_it_and_decrements(self):
+        """§19.5: ``load(-1)`` reads {index-1}, APPLIES that snapshot to
+        the whole model (discarding uncommitted changes), decrements, and
+        re-mirrors that index (mirror-only)."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  return d.save(1);\n"                              # index 1 (disk[1]=water)
+            "}).then(() => {\n"
+            # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
+            "  window.molbuilder.structureCanvas.setStructure(\n"
+            "    {source_format:'xyz', text:'1\\nc\\nC 0 0 0\\n'}, {kind:'file', file:'/p/c.xyz'});\n"
+            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "    [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "  const beforeEls = d.getElements();\n"
+            "  return d.load(-1).then(() => {\n"
+            "    console.log(JSON.stringify({\n"
+            "      beforeEls: beforeEls,\n"
+            "      afterEls:  d.getElements(),\n"
+            "      head:      d.getStructure().text.split('\\n')[0],\n"
+            "      index:     d.state_index,\n"
+            "      readIdx:   _readIdx,\n"
+            "      uncommitted: d.uncommitted,\n"
+            "    }));\n"
+            "  });\n"
+            "});")
+        assert out["beforeEls"] == ["C"]         # the uncommitted edit was live
+        assert out["afterEls"] == ["O", "H", "H"]  # load(-1) restored the index-0 water
+        assert out["head"] == "3"                # whole structure re-applied
+        assert out["index"] == 0                 # decremented after the read resolved
+        assert out["readIdx"] == [0]             # read index (state_index - 1)
+        assert out["uncommitted"] is False
+
+    def test_load_minus1_is_a_noop_and_floors_at_zero(self):
+        """§19.5: ``load(-1)`` at index 0 is a no-op — the target index is
+        below the anchor, so no read; index stays 0."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  return d.load(-1).then(() => {\n"
+            "    console.log(JSON.stringify({ index:d.state_index, readIdx:_readIdx }));\n"
+            "  });\n"
+            "});")
+        assert out["index"] == 0
+        assert out["readIdx"] == []              # floored at 0 -> the timeline was never read
+
+    def test_load0_restores_from_the_mirror(self):
+        """§19.5: ``load(0)`` reloads from the sessionStorage MIRROR (the
+        current committed snapshot), discarding uncommitted changes —
+        the reload / mount-restore primitive; no disk read."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
+            "  window.molbuilder.structureCanvas.setStructure(\n"
+            "    {source_format:'xyz', text:'1\\nc\\nC 0 0 0\\n'}, {kind:'file', file:'/p/c.xyz'});\n"
+            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "    [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
+            "  const beforeEls = d.getElements();\n"
+            "  return d.load(0).then(() => {\n"
+            "    console.log(JSON.stringify({\n"
+            "      beforeEls: beforeEls,\n"
+            "      afterEls:  d.getElements(),\n"
+            "      index:     d.state_index,\n"
+            "      readIdx:   _readIdx,\n"           # load(0) reads the MIRROR, never the disk
+            "      uncommitted: d.uncommitted,\n"
+            "    }));\n"
+            "  });\n"
+            "});")
+        assert out["beforeEls"] == ["C"]         # the uncommitted edit was live
+        assert out["afterEls"] == ["O", "H", "H"]  # load(0) restored the mirrored water
+        assert out["index"] == 0                 # adopts the mirror's own state_index
+        assert out["readIdx"] == []              # mirror read, not a disk readState
+        assert out["uncommitted"] is False
+
+    def test_uncommitted_flips_on_edit_and_clears_after_save_and_load(self):
+        """§19.5: ``uncommitted`` is true iff the model changed since the
+        last ``save``; openMolecule / save / load all clear it."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  const afterOpen = d.uncommitted;\n"               # false (anchor)
+            "  d.reloadFrames([[[0,0,0],[0.9,0,0],[-0.2,0.9,0]]]);\n"  # frame DATA edit
+            "  const afterEdit = d.uncommitted;\n"                # true
+            "  return d.save(1).then(() => {\n"
+            "    const afterSave = d.uncommitted;\n"             # false
+            "    d.reloadFrames([[[0,0,0],[0.8,0,0],[-0.3,0.8,0]]]);\n"  # edit again
+            "    const afterEdit2 = d.uncommitted;\n"            # true
+            "    return d.load(-1).then(() => {\n"
+            "      console.log(JSON.stringify({\n"
+            "        afterOpen, afterEdit, afterSave, afterEdit2,\n"
+            "        afterLoad: d.uncommitted }));\n"
+            "    });\n"
+            "  });\n"
+            "});")
+        assert out["afterOpen"] is False
+        assert out["afterEdit"] is True
+        assert out["afterSave"] is False
+        assert out["afterEdit2"] is True
+        assert out["afterLoad"] is False         # load(-1) discards + clears uncommitted
+
+    def test_save_and_load_are_serialized(self):
+        """§19.5: save/load are serialized through a queue — the index
+        advances one at a time even when an earlier write resolves LATER
+        than a later one (each op computes its index only when it runs)."""
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "const ws = window.molbuilder.workspace;\n"
+            "ws.workspaceId = () => 'ws-test';\n"
+            "ws.pruneStatesAbove = () => Promise.resolve();\n"
+            "const order = [];\n"
+            # Make the FIRST checkpoint's write resolve slower than the second's:
+            # if the two ran concurrently, index 2 would land before index 1.
+            "ws.persist = (sb, blob, id) => new Promise((res) => {\n"
+            "  setTimeout(() => { order.push(id.state_index); res(); },\n"
+            "            id.state_index === 1 ? 120 : 10);\n"
+            "});\n"
+            "d.save(1);\n"
+            "d.save(1).then(() => {\n"
+            "  console.log(JSON.stringify({ order:order, index:d.state_index }));\n"
+            "});")
+        assert out["order"] == [1, 2]            # first-in first-out, not by write speed
+        assert out["index"] == 2                 # sequential advance, no interleave
+
+
+# --------------------------------------------------------------------- #

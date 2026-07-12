@@ -6,8 +6,12 @@
  * BYTES here to persist.  The workspace writes them format-blind.
  *
  * Public surface (mounted on ``window.molbuilder.workspace``):
- *   - persist(sessionBytes, draftBlob, identity)  -- write the consumer's serialised state now
- *                                                    (session mirror + on-disk transient draft).
+ *   - persist(sessionBytes, snapshotBlob, identity)  -- write the consumer's serialised state now
+ *                                                    (session mirror + on-disk indexed state file).
+ *   - readState(identity)      -- read the opaque snapshot bytes at {workspace_id, state_index}
+ *                                 from disk (a history index popState navigates to), or null.
+ *   - pruneStatesAbove(workspace_id, index)  -- tail-delete on-disk state files above ``index``
+ *                                 (index === -1 clears the whole timeline).
  *   - workspaceId()            -- the stable id a sourceless workspace's draft is keyed under.
  *   - readPersistedSnapshot()  -- the persisted session snapshot (or null).
  *   - mountRestoreTarget()     -- the source-file a mount-time restore owns (single-authority
@@ -31,6 +35,21 @@
     // functional in test contexts that don't load constants.js.
     var STORAGE_KEY = ((root.molbuilder || {}).constants || {}).SS_WORKSPACE
         || "molbuilder.workspace.v1";
+
+    // ─── Owner namespace (molview-module.md §18.4) ────────────────── //
+    // Each consumer that mounts a molview declares an ``owner`` (mount.js). We fold it into
+    // BOTH storage keys so one consumer's session never overwrites another's:
+    //   - the sessionStorage mirror key (delegated to snapshot-io's setNamespace), and
+    //   - the on-disk ``workspace_id`` -- indirectly: workspaceId() derives from the
+    //     now-namespaced mirror, so a fresh namespace generates its own id.  Switching
+    //     namespace clears the cached id so it is recomputed against the new mirror.
+    // A single active namespace is coherent: each page mounts one active owner at a time.
+    function useNamespace(owner) {
+        owner = owner || null;
+        var io = _snapshotIO();
+        if (io && typeof io.setNamespace === "function") io.setNamespace(owner);
+        _workspaceId = null;   // recompute against this namespace's mirror
+    }
 
     // ─── Session identity ─────────────────────────────────────────── //
     // A stable id for a SOURCELESS workspace's draft, so repeated updates hit the SAME draft
@@ -81,32 +100,71 @@
         if (io && typeof io.write === "function" && sessionBytes) io.write(sessionBytes);
     }
 
-    // The on-disk transient DRAFT (workspace-contract "update = the only automatic disk write").
-    // ``draftBlob`` is the consumer's already-serialised working-copy blob; ``identity`` is the
-    // key it is filed under (source path, or {workspace_id}).  Best-effort crash-safety.
-    function _persistDraft(draftBlob, identity) {
-        if (!root.fetch || !draftBlob) return;
-        root.fetch("/api/workingcopy/update", {
+    // The on-disk indexed STATE FILE (workspace-contract §4.7, the push-only state timeline).
+    // ``snapshotBlob`` is the consumer's already-serialised OPAQUE session snapshot; ``identity``
+    // = {workspace_id, state_index} keys the filename ``<workspace_id>.<state_index>.wc.json``.
+    // The server stores it FORMAT-BLIND (never through the structure codec).  Best-effort.
+    function _persistState(snapshotBlob, identity) {
+        if (!root.fetch || !snapshotBlob) return;
+        root.fetch("/api/workingcopy/write-state", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(Object.assign({}, identity || {}, { data: draftBlob })),
-        }).catch(function () { /* draft is best-effort crash-safety */ });
+            body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
+        }).catch(function () { /* state file is best-effort crash-safety */ });
     }
 
     /**
-     * Persist the consumer's serialised state NOW — the single write-in.  The data model has
-     * already debounced + serialised; this just writes the bytes, format-blind:
+     * Persist the consumer's serialised state NOW — the single write-in.  The data model owns
+     * WHEN (push-only: load anchor + each pushState); this just writes the bytes, format-blind:
      *   sessionBytes -> the sessionStorage session mirror (fast same-tab reload)
-     *   draftBlob    -> the on-disk transient working-copy draft, keyed by ``identity``
+     *   snapshotBlob -> the on-disk indexed state file, keyed by ``identity`` {workspace_id,
+     *                   state_index} -> ``<workspace_id>.<state_index>.wc.json``
      */
-    function persist(sessionBytes, draftBlob, identity) {
+    function persist(sessionBytes, snapshotBlob, identity) {
         if (!root.sessionStorage && !root.fetch) return;
         _persistToSession(sessionBytes);
-        _persistDraft(draftBlob, identity);
+        _persistState(snapshotBlob, identity);
+    }
+
+    /**
+     * Read the OPAQUE snapshot bytes on disk at {workspace_id, state_index} (§4.7 read-by-index),
+     * what popState calls to fetch a *history* index the session mirror no longer holds.  Resolves
+     * the parsed JSON, or null when the file is missing / unreadable.  Format-blind — the data
+     * model interprets what comes back.
+     */
+    function readState(identity) {
+        if (!root.fetch || !identity) return Promise.resolve(null);
+        return root.fetch("/api/workingcopy/read-state", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(identity),
+        }).then(function (res) {
+            if (!res || !res.ok) return null;          // 404 (missing) -> null
+            return res.json();
+        }).then(function (j) {
+            return (j && j.data != null) ? j.data : null;
+        }).catch(function () { return null; });
+    }
+
+    /**
+     * Tail-delete the on-disk state files whose index > ``index`` (§4.7 pruning: a pushState after
+     * a popState drops the abandoned tail).  ``index === -1`` clears the whole ``<workspace_id>.*``
+     * timeline.  Best-effort; resolves when the server has acted.
+     */
+    function pruneStatesAbove(workspace_id, index) {
+        if (!root.fetch || !workspace_id) return Promise.resolve();
+        return root.fetch("/api/workingcopy/prune-states", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),
+        }).catch(function () { /* best-effort */ });
     }
 
     var api = {
         persist:               persist,
+        readState:             readState,
+        pruneStatesAbove:      pruneStatesAbove,
+        useNamespace:          useNamespace,
         workspaceId:           workspaceId,
         readPersistedSnapshot: readPersistedSnapshot,
         mountRestoreTarget:    mountRestoreTarget,

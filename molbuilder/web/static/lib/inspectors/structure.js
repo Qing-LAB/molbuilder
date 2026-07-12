@@ -1,22 +1,27 @@
 /* Structure-preview inspector: read-only 3-D view of a .xyz / .pdb
- * file.  Loads the file via ``ctx.readFile`` and hands the text +
- * format to the standard embedded MolViewer (lib/mol-viewer-embed.js,
- * contract: docs/protocols/molview-module.md).
+ * result file.
  *
- * No frame playback, no force overlay -- that's the trajectory
- * inspector's job.  This is a static-structure peek.  An atom-pick
- * + measurement chip (xyz / distance / angle) was added 2026-06-09
- * (task #300) so users reading a result file can read off bond
- * geometry without opening it in Molbuilder; the chip uses the
- * shared ``lib/selection/measurements.js`` math + display.
+ * This is the FIRST Results -> MolView conversion (molview-module.md §18,
+ * §14.5.3).  The inspector no longer hand-assembles a viewer + an
+ * ephemeral selection store + a panel + measurement/view/k-grid
+ * controllers.  It mounts the WHOLE MolView module read-only with one
+ * call -- ``molview.mount(host, workspace, {mode:"readonly", owner})``
+ * -- which builds the fused card, embeds the viewer, and wires the
+ * selection panel + measurement overlay + view-controls + k-grid render
+ * for free.  The molecule is opened through the module's single data door,
+ * ``molview.data.openMolecule({text, filename, periodicity})``.
  *
- * The inspector owns its OWN card (with the "Open in Molbuilder"
- * link the user expects on /results); the embedded viewer mounts
- * inside that card with ``card.title: ""`` so the embed doesn't
- * render a second header — the host's card-header is the title
- * strip.  The ``card.bare`` opt was retired 2026-06-03 along with
- * the .mol-viewer-bare CSS class; ``card.title: ""`` is the
- * canonical way to skip the embed's header.
+ * READ-ONLY means no EDIT controls (no modifier ops / Save-state) -- it has
+ * NOTHING to do with persistence.  Like every other consumer, the Results
+ * view uses the REAL workspace: its session state (opened file, current
+ * frame, selection, camera) persists and RESTORES on reload, namespaced by
+ * ``owner`` so it never mixes with the Modify tab's session.
+ *
+ * The inspector still owns its OWN card chrome (title + the "Open in
+ * Molbuilder" link the user expects on /results + the status note); the
+ * MolView fused card mounts inside that card, in an empty host div (the
+ * host is NOT a .molview-card, so molview.mount takes its empty-host build
+ * path and owns the whole assembly).
  */
 (function (root) {
     "use strict";
@@ -25,8 +30,8 @@
     // files or .fdf for the cell / k-grid.  molbuilder/parse/ already extracts
     // those (StructureResult.cell + the fdf kgrid diagonal); the results tab is
     // responsible for concentrating them and passing them in as params
-    // (ctx.viewParams).  The viewer only cares whether a cell / kgrid was handed
-    // to it or not.  See Slice C.
+    // (ctx.viewParams).  MolView only cares whether a periodicity was handed to
+    // it (via openMolecule) or not.
 
     const inspector = {
         name:        "structure",
@@ -67,14 +72,7 @@
             );
             // Hand the current file off to /molbuilder via the
             // sessionStorage keys the Projects sidebar uses (see
-            // ``lib/projects/state.js`` SS_FILE / SS_DIR).
-            // The Molbuilder tab's selection-bootstrap reads SS_FILE
-            // on mount via ``projects.getCurrentFile()`` and
-            // dispatches the auto-load.  Without setting these the
-            // user would land on the tab with whatever file was
-            // previously active — or an empty viewer.  Setting both
-            // keys also makes the sidebar open to the correct folder
-            // with the file highlighted.  Closes #117.
+            // ``lib/projects/state.js`` SS_FILE / SS_DIR).  Closes #117.
             modifyLink.addEventListener("click", () => {
                 try {
                     const C = (root.molbuilder || {}).constants || {};
@@ -103,67 +101,18 @@
             status.textContent = "Loading…";
             card.appendChild(status);
 
-            // -- Slot the embedded viewer will mount into --------- //
-            // Wrapper anchors the absolute-positioned measurement
-            // chip to the viewer's actual canvas area (the embed's
-            // card body fills the slot at 420 px height per the
-            // ``card.height`` opt below).
-            const viewerSlot = document.createElement("div");
-            viewerSlot.className = "structure-viewer-slot molview-viewer";
-            // The measurement readout is now the module overlay (§ 6.4),
-            // mounted into viewerSlot in onReady -- no bespoke chip here.
-
-            // -- Phase 5 (fused module): a readonly selection panel driven by
-            // an ISOLATED ephemeral store -- the inspector owns its own
-            // selection/filter; nothing touches the Molbuilder workspace.  If
-            // the selection modules aren't on the page (createEphemeralStore
-            // absent), the inspector degrades to the plain viewer + chip.
-            const selApi   = (root.molbuilder && root.molbuilder.selection) || {};
-            const selStore = (typeof selApi.createEphemeralStore === "function")
-                ? selApi.createEphemeralStore() : null;
-            let   panelMount = null;
-            let   measOverlay = null;
-            let   kgCtl = null;
-            const panelHost  = document.createElement("div");
-            panelHost.className = "structure-selection-host molview-panel";
-
-            if (selStore) {
-                // ONE fused card: viewer + foldable selection panel.  Side
-                // (wide) / bottom (narrow) is CSS (fused-layout.css container
-                // query); the fold chevron is local UI layout state, not the
-                // store.  DOM built BEFORE embedding so the 3Dmol canvas is never
-                // reparented (see § 6).
-                card.classList.add("molview-card");
-                const body = document.createElement("div");
-                body.className = "molview-body";
-                body.appendChild(viewerSlot);
-                const foldBtn = document.createElement("button");
-                foldBtn.type = "button";
-                foldBtn.className = "molview-fold-btn";
-                foldBtn.setAttribute("aria-label", "Fold or unfold the selection panel");
-                foldBtn.setAttribute("aria-expanded", "true");
-                // Chevron lives in its OWN span so CSS rotates the glyph, not the
-                // button box (fused-layout.css .molview-fold-chevron) -- a rotated
-                // box overlaps neighbours in narrow/column mode.
-                const foldChevron = document.createElement("span");
-                foldChevron.className = "molview-fold-chevron";
-                foldChevron.textContent = "›";
-                foldBtn.appendChild(foldChevron);
-                foldBtn.addEventListener("click", () => {
-                    const folded = card.classList.toggle("is-folded");
-                    foldBtn.setAttribute("aria-expanded", String(!folded));
-                });
-                body.appendChild(foldBtn);
-                body.appendChild(panelHost);
-                card.appendChild(body);
-            } else {
-                card.appendChild(viewerSlot);   // no selection modules -> plain viewer
-            }
+            // -- Empty host the MolView module mounts into --------- //
+            // A plain div (NOT a .molview-card): molview.mount takes its
+            // empty-host build path and BUILDS the fused card (viewer +
+            // panel + fold + view-controls + measurement + k-grid) inside.
+            const molviewHost = document.createElement("div");
+            molviewHost.className = "structure-viewer-slot";
+            card.appendChild(molviewHost);
 
             host.appendChild(card);
 
-            let viewerHandle = null;
-            let disposed     = false;
+            let handle   = null;
+            let disposed = false;
 
             ctx.readFile(file).then(async (r) => {
                 if (disposed) return;
@@ -172,16 +121,18 @@
                     status.classList.add("inspector-inline-error");
                     return;
                 }
-                const fmt = file.toLowerCase().endsWith(".pdb")
-                    ? "pdb" : "xyz";
-                // Phase 1 (structure-periodicity.md): the cell comes from the
-                // dataset, read server-side and handed to the viewer -- the viewer
-                // NEVER parses.  ctx.viewParams.cell wins if the host already
-                // supplied it; otherwise fetch it from the .xyz's sidecar via
-                // /api/selection/atoms (which loads the structure + sidecar).
-                // Absent -> null: no unit-cell box, k-grid stays inert.
-                let lattice = (ctx && ctx.viewParams && ctx.viewParams.cell) || null;
-                if (!lattice && fmt === "xyz") {
+                const fmt = file.toLowerCase().endsWith(".pdb") ? "pdb" : "xyz";
+
+                // Periodicity (structure-periodicity.md): the cell / k-grid comes
+                // from the dataset, read server-side and handed to MolView via
+                // openMolecule -- MolView NEVER parses.  ctx.viewParams wins if the
+                // host already supplied it; otherwise fetch the sidecar's full
+                // periodicity ({cell, axis_kind, vacuum, kgrid}) from
+                // /api/selection/atoms.  Absent -> null: no unit-cell box, k-grid
+                // stays inert, Cell page shows defaults.
+                const vp = (ctx && ctx.viewParams) || {};
+                let periodicity = vp.periodicity || (vp.cell ? { cell: vp.cell } : null);
+                if (!periodicity && fmt === "xyz") {
                     try {
                         const cr = await fetch("/api/selection/atoms", {
                             method:  "POST",
@@ -190,188 +141,117 @@
                         });
                         if (cr.ok) {
                             const cj = await cr.json();
-                            if (cj && cj.ok && cj.cell) lattice = cj.cell;
+                            if (cj && cj.ok) {
+                                periodicity = cj.periodicity
+                                    || (cj.cell ? { cell: cj.cell } : null);
+                            }
                         }
                     } catch (_) { /* no cell -> no box, k-grid inert */ }
                     if (disposed) return;
                 }
-                const embedApi = (root.molbuilder
-                                  && root.molbuilder.viewer
-                                  && root.molbuilder.viewer.embed);
-                if (typeof embedApi !== "function") {
+
+                const mv = (root.molbuilder && root.molbuilder.molview) || null;
+                if (!mv || typeof mv.mount !== "function" || !mv.data) {
                     status.textContent = (
-                        "Viewer unavailable: lib/mol-viewer-embed.js "
-                        + "missing from the template script tags."
+                        "Viewer unavailable: the MolView module is missing "
+                        + "from the template script tags."
                     );
                     status.classList.add("inspector-inline-error");
                     return;
                 }
-                const opts = {
-                    // Source data flows in through the API; the
-                    // viewer doesn't fetch.
-                    [fmt]: r.text,
-                    // Cell from the dataset (fetched above) -> the unit-cell
-                    // wireframe can show + k-grid can tile getLattice().
-                    lattice: lattice || undefined,
-                    // Style matches the legacy structure inspector's
-                    // ball-and-stick rendering.
-                    style: { rep: "ball-and-stick", radiusScale: 1.0 },
-                    // Post-#204: standard knob bar visible above the
-                    // canvas (Style / Labels / Axes / Reset / PNG /
-                    // Background / Export).  Title suppressed because
-                    // the inspector's parent .inspector-pane already
-                    // shows the file name + status note; the embed's
-                    // info-line stays off for the same reason.
-                    card: {
-                        title:        "",
-                        showInfoLine: false,
-                        height:       "420px",
-                    },
-                    // Axes default OFF (2026-06-13) — consistent
-                    // across all viewer mount sites; opt in via the
-                    // knob bar's Axes button.
-                    axes:   false,
-                    export: { defaultName: r.basename || "structure" },
-                    // No embed pick here: the viewer-adapter wires clicks ->
-                    // store.toggle (single pick), and the measurement overlay
-                    // (§ 6.4) + selection halos derive from the store.
-                    onReady: function (handle) {
-                        if (disposed) return;
-                        const n = handle.getAtomCount();
-                        status.textContent = n > 0
-                            ? "Loaded " + n + " atoms."
-                            : "Loaded.";
-                        // Phase 5: feed the isolated store the loaded atoms so
-                        // the panel's list renders.  Providing ``atoms`` skips
-                        // any server fetch (readonly result files aren't
-                        // selection sources server-side).
-                        if (selStore && typeof selStore.adoptSession === "function") {
-                            try {
-                                const elems = handle.getElements() || [];
-                                selStore.adoptSession({
-                                    // sourceFile is REQUIRED for the panel's
-                                    // filter: applyFilter posts {structure_path}
-                                    // to /api/selection/eval and refuses without
-                                    // it ("no source file").  The server reads
-                                    // the result file directly (by-element etc.;
-                                    // by-residue needs a sidecar it won't have).
-                                    sourceFile: file,
-                                    atoms: elems.map((el, i) => ({ index: i, element: el || "X" })),
-                                    selection: [],
-                                });
-                            } catch (_) { /* panel just shows an empty list */ }
-                        }
-                        // Phase 5 (§ 6.4): the measurement overlay -- it derives
-                        // position/distance/angle from the SELECTION (viewer
-                        // clicks + panel both feed the store), with coords from
-                        // this static structure's viewer handle.
-                        const mvApi = (root.molbuilder && root.molbuilder.molview) || {};
-                        if (selStore && typeof mvApi.mountMeasurementOverlay === "function") {
-                            try {
-                                measOverlay = mvApi.mountMeasurementOverlay(viewerSlot, {
-                                    store: selStore,
-                                    coordsProvider: () => handle.getAtomCoords(),
-                                });
-                            } catch (_) { /* overlay absent -> no readout */ }
-                        }
-                        // Test hook: expose the ephemeral store so e2e can drive
-                        // the selection (replaces the retired chip pick hooks).
-                        viewerSlot.__molbuilder_test_store = selStore;
 
-                        // View-controls bar (Show selected only / Show k-grid) in THIS
-                        // card's viewer, bound to its OWN ephemeral store -- same shared
-                        // module Modify uses (molview.mountViewControls).  Appended below
-                        // the canvas; state lives in the card's store, not a parallel one.
-                        if (selStore && typeof mvApi.mountViewControls === "function") {
-                            try {
-                                const ctrls = document.createElement("div");
-                                ctrls.className = "viewer-controls";
-                                const vcHost = document.createElement("span");
-                                vcHost.className = "viewer-toggles";
-                                ctrls.appendChild(vcHost);
-                                viewerSlot.appendChild(ctrls);
-                                mvApi.mountViewControls(vcHost, selStore);
-                            } catch (_) { /* no toggles -> panel still has them */ }
-                        }
+                // The REAL workspace persistence layer.  The Results view is a
+                // session like any other consumer: its state (opened file, current
+                // frame, selection, camera) persists and RESTORES on reload.
+                // "Read-only" is about the absence of EDIT controls, NOT persistence.
+                // The workspace namespaces by ``owner`` so this inspector's session
+                // never mixes with the Modify tab's or another inspector's.
+                const ws = root.molbuilder && root.molbuilder.workspace;
+                if (!ws) {
+                    status.textContent = (
+                        "Viewer unavailable: the persistence layer "
+                        + "(workspace/dispatcher.js) is missing from the template.");
+                    status.classList.add("inspector-inline-error");
+                    return;
+                }
 
-                        // k-grid render: THE module controller (molview-module.md
-                        // § 7) -- no inline loop here.  Capture the UNIT-CELL
-                        // coords/elements/xyz ONCE (before any tiling; getAtomCoords
-                        // reads back the supercell after setStructure), and hand the
-                        // module the cell (host supplies it, § 8) + this unit.  The
-                        // module subscribes, tiles on enable, restores on disable.
-                        if (selStore && lattice
-                                && typeof mvApi.mountKgridRender === "function") {
-                            const _unit = {
-                                coords:   handle.getAtomCoords(),
-                                elements: handle.getElements(),
-                                xyz:      r.text,
-                            };
-                            kgCtl = mvApi.mountKgridRender(handle, selStore, {
-                                getUnit: function () { return _unit; },
-                                getCell: function () { return lattice; },
-                                // Restore (isolate + k-grid both off) -> the plain
-                                // result structure + its cell wireframe.
-                                drawBase: function () {
-                                    handle.setStructure({ xyz: _unit.xyz, lattice: lattice });
-                                },
-                            });
-                        }
-                        // Signal "first render visible" so the
-                        // /results tab-level picker drops its
-                        // "Parsing…" status.  Deferred via double-rAF
-                        // so the browser paints the 3Dmol canvas
-                        // before the picker meta clears -- matches
-                        // the trajectory inspector's pattern; see
-                        // ``lib/trajectory/core.js`` for the reasoning
-                        // behind the double-tick wait.
-                        try {
-                            const dispatch = () => document.dispatchEvent(
-                                new CustomEvent(
-                                    ((root.molbuilder || {}).constants || {})
-                                        .EVENT_INSPECTOR_READY
-                                    || "molbuilder:inspector:ready",
-                                    { detail: { inspector: "structure" } }
-                                )
-                            );
-                            if (typeof requestAnimationFrame === "function") {
-                                requestAnimationFrame(
-                                    () => requestAnimationFrame(dispatch));
-                            } else {
-                                dispatch();
-                            }
-                        } catch (_) { /* see core.js for context */ }
-                    },
-                };
                 try {
-                    viewerHandle = embedApi(viewerSlot, opts);
-                    // Phase 5: mount the readonly selection panel against the
-                    // isolated store + this viewer handle.  ``mode: readonly``
-                    // makes the adapter PAINT selection onto the viewer while
-                    // leaving the triple-pick measurement clicks untouched, and
-                    // hides the panel's assign (write) controls.
-                    if (selStore && typeof selApi.mountPanel === "function") {
-                        selApi.mountPanel(panelHost, {
-                            store:        selStore,
-                            viewerHandle: viewerHandle,
-                            mode:         "readonly",
-                        }).then((m) => {
-                            panelMount = m;
-                            // Disposed before the async mount resolved -> tear
-                            // the just-mounted panel down immediately.
-                            if (disposed && m && m.panel
-                                && typeof m.panel.dispose === "function") {
-                                try { m.panel.dispose(); } catch (_) {}
-                            }
+                    // ONE call mounts the whole read-only component.  The panel is
+                    // wired read-only (no assign/write controls); the measurement
+                    // overlay, view-controls (Show selected only / Show k-grid) and
+                    // the k-grid render all come for free through molview.mount.
+                    handle = await mv.mount(molviewHost, ws, {
+                        mode:  "readonly",
+                        owner: "results:structure",
+                    });
+                    if (disposed) {
+                        if (handle && typeof handle.dispose === "function") {
+                            try { handle.dispose(); } catch (_) {}
+                        }
+                        return;
+                    }
+                    if (!handle) {
+                        status.textContent = "Viewer failed: molview.mount returned null.";
+                        status.classList.add("inspector-inline-error");
+                        return;
+                    }
+
+                    // Restore vs. fresh open (single-authority mount race,
+                    // workspace-contract §4.5 -- same pattern as Modify's
+                    // selection-bootstrap).  If this owner's persisted session is for
+                    // the SAME file we're about to show, RESTORE it (``load(0)`` brings
+                    // back the selection / camera you left on reload) instead of a fresh
+                    // ``openMolecule`` (which resets the timeline and drops that state).
+                    // A different file (you picked a new one) -> open fresh.
+                    const restoreTarget =
+                        (typeof ws.mountRestoreTarget === "function")
+                            ? ws.mountRestoreTarget() : null;
+                    if (restoreTarget && restoreTarget === file) {
+                        await mv.data.load(0);
+                    } else {
+                        // Open the molecule through the ONE data door.  Periodicity rides
+                        // along so the k-grid + Cell page work.  This is a data change the
+                        // render reacts to on its own (molview owns the render loop).
+                        await mv.data.openMolecule({
+                            text:        r.text,
+                            filename:    file,
+                            periodicity: periodicity || null,
                         });
                     }
-                    // Test hook (no production reader): stash the embed handle on
-                    // the slot so Playwright e2e can drive the viewer without
-                    // canvas-pixel clicks.  The store hook (set in onReady) lets
-                    // e2e drive the SELECTION, which now drives the measurement
-                    // overlay (§ 6.4).  Double-underscore = test-only; hung off
-                    // the slot (not window) to avoid multi-inspector collisions.
-                    viewerSlot.__molbuilder_test_handle = viewerHandle;
+                    if (disposed) return;
+
+                    const elems = (typeof mv.data.getElements === "function"
+                        && mv.data.getElements()) || [];
+                    status.textContent = elems.length > 0
+                        ? "Loaded " + elems.length + " atoms."
+                        : "Loaded.";
+
+                    // Test hook (no production reader): stash the handle on the host
+                    // so Playwright e2e can drive the read-only view.  The SELECTION +
+                    // structure are read off the global molview.data singleton
+                    // (molview conceals its internals; the owner has no store ref).
+                    molviewHost.__molview_results_handle = handle;
+
+                    // Signal "first render visible" so the /results tab-level picker
+                    // drops its "Parsing…" status.  Deferred via double-rAF so the
+                    // browser paints the 3Dmol canvas before the picker meta clears
+                    // -- matches the trajectory inspector's pattern (core.js).
+                    try {
+                        const dispatch = () => document.dispatchEvent(
+                            new CustomEvent(
+                                ((root.molbuilder || {}).constants || {})
+                                    .EVENT_INSPECTOR_READY
+                                || "molbuilder:inspector:ready",
+                                { detail: { inspector: "structure" } }
+                            )
+                        );
+                        if (typeof requestAnimationFrame === "function") {
+                            requestAnimationFrame(
+                                () => requestAnimationFrame(dispatch));
+                        } else {
+                            dispatch();
+                        }
+                    } catch (_) { /* see core.js for context */ }
                 } catch (e) {
                     status.textContent = "Viewer failed: "
                                        + (e && e.message ? e.message : String(e));
@@ -382,16 +262,10 @@
             return {
                 dispose() {
                     disposed = true;
-                    if (kgCtl) { try { kgCtl.dispose(); } catch (_) {} }
-                    if (measOverlay && typeof measOverlay.dispose === "function") {
-                        try { measOverlay.dispose(); } catch (_) {}
-                    }
-                    if (panelMount && panelMount.panel
-                        && typeof panelMount.panel.dispose === "function") {
-                        try { panelMount.panel.dispose(); } catch (_) {}
-                    }
-                    if (viewerHandle && typeof viewerHandle.dispose === "function") {
-                        try { viewerHandle.dispose(); }
+                    // molview.mount's handle tears down the whole assembly (viewer,
+                    // panel, controls, overlays, k-grid, subscriptions).
+                    if (handle && typeof handle.dispose === "function") {
+                        try { handle.dispose(); }
                         catch (_) { /* already torn down */ }
                     }
                     host.innerHTML = "";

@@ -74,8 +74,11 @@
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_workspace     && root.molbuilder.workspace)
-            _workspace     = root.molbuilder.workspace;
+        // DATA reads bind to molview.data (the in-memory model); ``workspace``
+        // is now persistence-only.  Late-arriving mount: re-resolve at call time.
+        if (!_workspace     && root.molbuilder.molview
+                            && root.molbuilder.molview.data)
+            _workspace     = root.molbuilder.molview.data;
     }
 
     /**
@@ -106,8 +109,8 @@
         return ix > 0 ? p.slice(0, ix) : "";
     }
 
-    // D3 (workspace-contract §1.4): the workspace serialises itself via
-    // ``ws.getScratchBlob()`` (built from the §1.2.1 accessors).  save.js no longer
+    // D3 (workspace-contract §1.4): the model serialises itself via
+    // ``molview.data.exportFile()`` (built from the §1.2.1 accessors).  save.js no longer
     // hand-rolls the regions/frozen scan -- the old ``_gatherLabelsFromWorkspace`` +
     // ``_buildScratchBlob`` were exactly the duplicate-of-the-dispatcher access this
     // contract removes.
@@ -151,12 +154,12 @@
         if (!root.fetch) {
             return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
         }
-        // D3: the workspace serialises ITSELF via the accessor API (ws.getScratchBlob)
+        // D3: the model serialises ITSELF via molview.data.exportFile() ({xyz,sidecar})
         // -- save.js no longer hand-rolls the regions/frozen scan.
-        var blob = (_workspace && typeof _workspace.getScratchBlob === "function")
-            ? _workspace.getScratchBlob() : null;
+        var blob = (_workspace && typeof _workspace.exportFile === "function")
+            ? _workspace.exportFile() : null;
         if (!blob) {
-            // getScratchBlob returns null for BOTH an empty workspace and a caught
+            // exportFile() returns null for BOTH an empty model and a caught
             // atom-count desync -- distinguish them so the user isn't told the
             // opposite of what happened (review c-msg).
             var hasData = _workspace
@@ -419,12 +422,11 @@
         configure({
             projects:      root.molbuilder.projects,
             structurePage: root.molbuilder.structurePage,
-            // workspace-contract.md §1: the dispatcher is the unified
-            // surface; this module no longer reads structureCanvas
-            // directly.  Lazy-resolve in ``_lazyResolve`` also picks
-            // up window.molbuilder.workspace at call time so a late-
-            // arriving dispatcher mount still works.
-            workspace:     root.molbuilder.workspace,
+            // DATA surface is molview.data (the in-memory model); ``workspace``
+            // is persistence-only now.  Lazy-resolve in ``_lazyResolve`` also
+            // picks up molview.data at call time so a late-arriving mount works.
+            workspace:     root.molbuilder.molview
+                        && root.molbuilder.molview.data,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

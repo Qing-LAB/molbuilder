@@ -1,18 +1,22 @@
-"""Unit tests for the Structure-tab canvas-state primitive.
+"""Unit tests for the MolView-internal canvas-state store.
 
-Pins the public API of ``molbuilder/web/static/lib/workspace/
-_canvas-state-impl.js`` -- the in-memory state of "what's loaded
-in the Structure tab canvas."
+Pins the API of ``molbuilder/web/static/lib/molview/
+_canvas-state-impl.js`` -- the in-memory geometry store (text + source
+provenance + periodicity + dirty) that the MolView data model reads
+behind ``molview.data`` (molview-module.md §19: the ``_``-prefixed store
+files are MolView-INTERNAL).  This file scopes to that store's own
+mutation contract; the public data surface + the persistence round-trip
+are pinned in ``tests/test_workspace_dispatcher_js.py``.
 
-Persistence is the workspace dispatcher's concern
-(workspace-contract.md §4.1, sole key ``molbuilder.workspace.v1``);
-this file tests only the in-memory state-mutation contract.  The
-dispatcher's persistence round-trip lives at
-``tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip``.
+Persistence is the workspace's concern, NOT this store's
+(workspace-contract.md §4.1, sole key ``molbuilder.workspace.v1``); this
+store only reads the persisted snapshot on init (via the shared snapshot
+IO) and holds the live state.
 
 Covered:
   * Initial state (empty canvas).
   * ``setStructure`` validates + replaces wholesale + resets ``dirty``.
+  * ``replaceContent`` keeps/replaces periodicity (rides with geometry).
   * ``markDirty`` flips the dirty bit, but only once.
   * ``markSaved`` clears ``dirty`` and records ``last_save_to``.
   * ``clear`` wipes back to empty.

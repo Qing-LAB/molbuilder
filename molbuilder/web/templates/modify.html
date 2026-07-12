@@ -46,7 +46,7 @@
      compact.  Order matches docs/tabs/architecture.md § 5.1. -->
 <section class="init-structure-card card">
   <header class="card-header">
-    <h2>1. Init structure</h2>
+    <h2>Init structure</h2>
     <span id="status" class="status">No structure loaded.</span>
   </header>
 
@@ -277,44 +277,20 @@
       molview-module.md).  Same composition as the Results structure inspector
       (lib/inspectors/structure.js): molview-card > molview-body >
       (molview-viewer | molview-fold-btn | molview-panel). -#}
-  <section class="card molview-card viewer-section">
+  {#- NOT a .card: molview.mount BUILDS its own .molview-card into the bare host below
+      (exactly like the demo's bare #molview-demo-host).  Wrapping it in an outer .card
+      would double-nest card chrome and break the module card's fold/responsive layout. -#}
+  <section class="viewer-section">
     <header class="card-header">
-      <h2>2. Structure &amp; selection</h2>
+      <h2>Structure &amp; selection</h2>
       <span id="title-readout" class="muted"></span>
     </header>
-    <div class="molview-body">
-      <div class="molview-viewer">
-        <div class="viewer-wrap">
-          <div id="viewer" class="viewer"></div>
-          {# Selection-driven measurement chip — xyz / distance / angle.
-             Floats over the 3Dmol canvas (top-right) so the readout sits
-             next to the structure it describes.  Filled live by
-             lib/selection-panel.js's renderMeasurement; hidden when
-             the selection is empty or 4+ atoms. #}
-          <div id="selection-measurement-overlay"
-               class="selection-measurement-overlay"
-               hidden></div>
-        </div>
-        <div class="viewer-controls">
-          <button id="focus-molecule" class="ghost"
-            title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
-Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding box
-is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus molecule</button>
-          {#- View toggles ("Show selected only" / "Show k-grid") -- filled by
-              molview.mountViewControls, bound to ws.selection (the state lives in the
-              workspace store, not here). -#}
-          <span id="viewer-view-controls" class="viewer-toggles"></span>
-        </div>
-      </div>
-      {# Fold handle — collapses the panel so the viewer gets the full card
-         (fused-layout.css .molview-fold-btn / .is-folded; wired in
-         selection-bootstrap.js, mirroring the Results inspector). #}
-      <button type="button" id="molview-fold" class="molview-fold-btn"
-              aria-label="Fold or unfold the selection panel"
-              aria-expanded="true"><span class="molview-fold-chevron">›</span></button>
-      {# Selection panel host (filled by selection-bootstrap.js via mountPanel). #}
-      <div id="selection-host" class="selection-host molview-panel"></div>
-    </div>
+    {#- EMPTY host -> molview.mount BUILDS the whole fused card (viewer + View-menu
+        toggles incl. "Reset view" = focus-molecule + selection halos + measurement chip
+        + fold + selection/Cell panel), exactly like the molview demo and the Results
+        inspector.  Modify no longer hand-builds ANY viewer chrome; selection-bootstrap.js
+        mounts the concealed module into this div.  See molview-migration-plan.md Track B. -#}
+    <div id="molview-host"></div>
   </section>
 
   <!-- 4. Modify — atom/pose/geom/junction op-tabs.  Now its own
@@ -323,8 +299,18 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
        handoff at the bottom. -->
   <section class="card modify-section workspace-modify">
     <header class="card-header">
-      <h2>4. Modify</h2>
+      <h2>Modify</h2>
       <span id="edit-status" class="muted"></span>
+      {#- State timeline (§19.5) -- WHOLE-MODEL controls, always visible (not
+          buried in an op-subtab): "Save state" checkpoints the model
+          (molview.data.save(1)); "Retract" rolls back (molview.data.load(-1)).
+          Wired in modify/viewer.js. -#}
+      <span class="modify-timeline-actions">
+        <button id="save-state" class="ghost" disabled
+          title="Save a checkpoint of the current structure you can roll back to.">⭳ Save state</button>
+        <button id="undo-op" class="ghost" disabled
+          title="Retract: roll the whole structure back to the previous saved state.">↶ Retract</button>
+      </span>
     </header>
 
     <div class="modify-body">
@@ -675,9 +661,6 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
           <button id="elc-apply" class="full-btn" disabled>
             Add electrode
           </button>
-          <button id="undo-op" class="ghost" disabled
-            title="Roll back the most recent electrode-slab op.
-Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</button>
         </div>
       </fieldset>
 
@@ -789,6 +772,11 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    render-pipeline depends on kgrid, so kgrid loads first. #}
 <script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
+{# molview.mount's EMPTY-HOST build path (Track B) owns the render loop, so /modify now
+   loads the full render composer: measurement-overlay + render (mountRender composes
+   mountKgridRender + mountMeasurementOverlay).  render depends on measurement-overlay. #}
+<script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
@@ -830,6 +818,10 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
+{# molview.mount's build path also wires the frame overlays + the trajectory bar
+   (mountOverlays / mountFrameControls); load them before mount.js. #}
+<script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*

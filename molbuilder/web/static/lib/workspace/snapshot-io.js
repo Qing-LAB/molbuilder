@@ -17,12 +17,24 @@
     "use strict";
     root.molbuilder = root.molbuilder || {};
 
+    // Active owner namespace (molview-module.md §18.4).  A single per-page value: each page
+    // mounts exactly one active owner ("modify"; or one Results inspector at a time), so a
+    // mutable holder is coherent.  ``null`` => the un-namespaced base key.  The dispatcher's
+    // ``useNamespace(owner)`` sets this via ``setNamespace`` so the mirror key and the on-disk
+    // ``workspace_id`` stay isolated per owner -- a Results session never overwrites Modify's,
+    // and two inspectors on one page don't clobber each other's saved timeline.
+    var _ns = null;
+
     function key() {
-        return ((root.molbuilder.constants || {}).SS_WORKSPACE)
+        var base = ((root.molbuilder.constants || {}).SS_WORKSPACE)
             || "molbuilder.workspace.v1";
+        return _ns ? base + "::" + _ns : base;
     }
 
     root.molbuilder.workspaceSnapshot = {
+        // Set the active owner namespace (or null to clear).  Called by the dispatcher's
+        // useNamespace at mount, before any read/write for that owner.
+        setNamespace: function (ns) { _ns = ns || null; },
         // Parsed, version-checked snapshot, or null (absent / corrupt / wrong version).
         read: function () {
             if (!root.sessionStorage) return null;
