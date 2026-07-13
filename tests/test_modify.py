@@ -720,6 +720,24 @@ def test_symmetric_electrodes_rejects_too_small_gap(linear_dimer):
                                   anchor_indices=(5, 0), gap=1.0)
 
 
+def test_symmetric_electrodes_anchorless_rejects_off_center_molecule():
+    """Position-aware overlap guard (2026-07 fresh-eyes review): the anchorless
+    slabs sit at ABSOLUTE z = ±gap/2 and this mode does NOT move the molecule,
+    so an OFF-CENTER molecule can pass a z-EXTENT check yet still poke into a
+    slab.  z ∈ [0, 5] with gap = 8 (slabs at ±4) leaves the top at z = 5 inside
+    the +4 slab and must be rejected -- while the SAME 5 Å span CENTRED
+    (z ∈ [-2.5, 2.5]) fits and is accepted."""
+    off = Structure(elements=["S", "S"],
+                    positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 5.0]]))
+    with pytest.raises(ValueError, match="off-centre"):
+        add_symmetric_electrodes(off, "Au", "111", (2, 2, 1), gap=8.0)
+    # Same extent, centred about the origin -> clears both slabs.
+    centred = Structure(elements=["S", "S"],
+                        positions=np.array([[0.0, 0.0, -2.5], [0.0, 0.0, 2.5]]))
+    out = add_symmetric_electrodes(centred, "Au", "111", (2, 2, 1), gap=8.0)
+    assert out.n_atoms > centred.n_atoms   # slabs added, no raise
+
+
 def test_symmetric_electrodes_rejects_reversed_anchor_order(linear_dimer):
     """T1 (post-static-review): pass anchors in (a_top, a_bot) order
     where a_top has LOWER z than a_bot.  Without validation the math
