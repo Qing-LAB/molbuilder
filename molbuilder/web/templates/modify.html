@@ -33,10 +33,10 @@
 <!--             multi-select / anchor-pair selection)             -->
 <!--      MIDDLE 3Dmol viewer (click atom -> select; xyz axes      -->
 <!--             toggle drawn at world origin)                     -->
-<!--      RIGHT  edit panel: Delete + Add atom (M3); Orient +      -->
-<!--             Rotate (M4); Electrode panel (pair / single mode) -->
-<!--             + Send-to-Build handoff (M5); selection info      -->
-<!--             panel.  All M1-M5 ops now wired.                  -->
+<!--      RIGHT  edit panel: Atom (delete + add); Transform        -->
+<!--             (translate / center / rotate / orient); Junction   -->
+<!--             (electrode + Send-to-Build handoff); Cell.         -->
+<!--             All ops wired via molview.data.applyOp.            -->
 <!-- ============================================================ -->
 
 <!-- 1. Init structure — every path that brings a structure INTO
@@ -293,7 +293,7 @@
     <div id="molview-host"></div>
   </section>
 
-  <!-- 4. Modify — atom/pose/geom/junction op-tabs.  Now its own
+  <!-- 4. Modify — atom/transform/junction/cell op-tabs.  Now its own
        card so the user can keep the viewer + selection panels
        fixed while applying ops.  Save + Send-to-Optimization
        handoff at the bottom. -->
@@ -323,9 +323,9 @@
     </div>
 
     <div class="modify-body">
-      <!-- Edit (op-tabs) — the existing Atom / Pose / Geom /
-           Junction sub-tabs.  Selection is now in its own
-           panel above so this column gets the full width. -->
+      <!-- Edit (op-tabs) — Atom / Transform / Junction / Cell
+           sub-tabs.  Selection is now in its own panel above so
+           this column gets the full width. -->
       <aside class="modify-edit edit-card">
     <div class="edit-panel">
       <!-- The "Selection" summary that used to sit at the top of
@@ -335,25 +335,23 @@
            region labels; the per-op anchor readouts below populate
            themselves from the live selection store. -->
 
-      <!-- Sub-tabs split the op fieldsets into the three workflow
-           phases.  Default-open is "Atom" (the most common starting
-           point: load, then delete H caps or add a substituent).
-           User picks the tab matching the operation they need; only
-           one panel is visible at a time so the edit column doesn't
+      <!-- Sub-tabs split the op fieldsets by workflow phase.
+           Default-open is "Atom" (the most common starting point:
+           load, then delete H caps or add a substituent).  Transform
+           groups the reposition ops (translate / center / rotate /
+           orient) that never change the atom set or indices.  User
+           picks the tab matching the operation they need; only one
+           panel is visible at a time so the edit column doesn't
            sprawl down the page. -->
       <nav class="op-tabs" role="tablist" aria-label="Operations">
         <button class="optab is-active" data-op-tab="atom"
                 role="tab" type="button"
                 id="optab-btn-atom" aria-controls="optab-panel-atom"
                 aria-selected="true">Atom</button>
-        <button class="optab" data-op-tab="pose"
+        <button class="optab" data-op-tab="transform"
                 role="tab" type="button"
-                id="optab-btn-pose" aria-controls="optab-panel-pose"
-                aria-selected="false">Pose</button>
-        <button class="optab" data-op-tab="geom"
-                role="tab" type="button"
-                id="optab-btn-geom" aria-controls="optab-panel-geom"
-                aria-selected="false">Geom</button>
+                id="optab-btn-transform" aria-controls="optab-panel-transform"
+                aria-selected="false">Transform</button>
         <button class="optab" data-op-tab="junction"
                 role="tab" type="button"
                 id="optab-btn-junction" aria-controls="optab-panel-junction"
@@ -422,18 +420,107 @@
 
       </div><!-- /.optab-panel data-op-panel="atom" -->
 
-      <!-- Pose: orient + rotate (M4 ops).  These move the whole
-           molecule rigidly. -->
-      <div class="optab-panel" data-op-panel="pose" role="tabpanel"
-           id="optab-panel-pose" aria-labelledby="optab-btn-pose">
+      <!-- Transform: move / rotate / align the atoms WITHOUT changing
+           the atom set or indices.  Translate, Center, and Rotate act
+           on the current selection, or on the whole structure when
+           nothing is selected; Orient uses the two selected atoms to
+           define the axis and aligns the whole structure to it. -->
+      <div class="optab-panel" data-op-panel="transform" role="tabpanel"
+           id="optab-panel-transform" aria-labelledby="optab-btn-transform">
+
+      <p class="hint">
+        These ops reposition atoms &mdash; they never add, remove, or
+        reindex them.  Translate, Center, and Rotate act on the
+        <strong>selected atoms</strong>, or the whole structure when
+        nothing is selected.
+      </p>
+
+      <!-- Translate by offset: rigid (Δx, Δy, Δz) shift of the
+           selection (or the whole structure when nothing is picked). -->
+      <fieldset class="op-block">
+        <legend>Translate by offset</legend>
+        <p class="hint">
+          Shift the selected atoms &mdash; or the whole structure when
+          nothing is selected &mdash; by (Δx,&nbsp;Δy,&nbsp;Δz)
+          in&nbsp;Å.
+        </p>
+        <div class="op-row translate-row">
+          <label>Δx&nbsp;(Å)
+            <input id="translate-dx" type="number"
+                   step="0.1" value="0.0">
+          </label>
+          <label>Δy&nbsp;(Å)
+            <input id="translate-dy" type="number"
+                   step="0.1" value="0.0">
+          </label>
+          <label>Δz&nbsp;(Å)
+            <input id="translate-dz" type="number"
+                   step="0.1" value="0.0">
+          </label>
+        </div>
+        <button id="translate-apply" class="full-btn" disabled>
+          Apply translate
+        </button>
+      </fieldset>
+
+      <!-- Center at origin: shift so the centroid of the selection
+           (or the whole structure) sits at (0, 0, 0).  Handy after
+           adding electrodes shifts the structure off-axis. -->
+      <fieldset class="op-block">
+        <legend>Center at origin</legend>
+        <p class="hint">
+          Shift the selected atoms &mdash; or the whole structure when
+          nothing is selected &mdash; so their centroid sits at
+          (0,&nbsp;0,&nbsp;0).
+        </p>
+        <button id="center-apply" class="full-btn" disabled>
+          Center at origin
+        </button>
+      </fieldset>
+
+      <!-- Rotate around axis: a free spin around an axis, either
+           through the selection's centroid (in place) or the world
+           origin. -->
+      <fieldset class="op-block">
+        <legend>Rotate around axis</legend>
+        <div class="op-row">
+          <span class="muted">Axis</span>
+          <span class="axis-radios">
+            <label><input type="radio" name="rotate-axis" value="x">x</label>
+            <label><input type="radio" name="rotate-axis" value="y">y</label>
+            <label><input type="radio" name="rotate-axis" value="z" checked>z</label>
+          </span>
+        </div>
+        <div class="op-row">
+          <label>Pivot
+            <select id="rotate-center">
+              <option value="centroid" selected>centroid (rotate in place)</option>
+              <option value="origin">origin (world axis)</option>
+            </select>
+          </label>
+        </div>
+        <label class="slider-row">
+          <span>angle</span>
+          <input id="rotate-angle" type="range"
+                 min="-180" max="180" step="1" value="0">
+          <span id="rotate-angle-val" class="readout-inline">0°</span>
+        </label>
+        <button id="rotate-apply" class="full-btn" disabled>
+          Apply rotate
+        </button>
+      </fieldset>
 
       <!-- Orient along axis: enabled when EXACTLY TWO atoms are
-           selected (the anchor pair).  Default rotates the molecule
-           so the (a0 -> a1) vector lies along z; the angle slider
-           tilts the pair away from the axis (xz-plane for axis=z).
-           See spec § 2.1 (Tilted molecules). -->
+           selected (the anchor pair).  Rotates the WHOLE structure so
+           the (a0 -> a1) vector lies along the target axis; the tilt
+           slider angles the pair away from the axis (xz-plane for
+           axis=z).  See spec § 2.1 (Tilted molecules). -->
       <fieldset class="op-block">
         <legend>Orient along axis</legend>
+        <p class="hint">
+          Pick two atoms; the whole structure rotates so the vector
+          between them lies along the target axis.
+        </p>
         <div class="op-row">
           <span id="orient-anchor-readout" class="muted">Anchors: pick two atoms</span>
         </div>
@@ -465,86 +552,7 @@
         </button>
       </fieldset>
 
-      <!-- Rotate around axis: a free spin around an axis through the
-           origin.  Useful AFTER an orient with non-zero tilt, to swing
-           the tilt out of the default plane. -->
-      <fieldset class="op-block">
-        <legend>Rotate around axis</legend>
-        <div class="op-row">
-          <span class="muted">Axis</span>
-          <span class="axis-radios">
-            <label><input type="radio" name="rotate-axis" value="x">x</label>
-            <label><input type="radio" name="rotate-axis" value="y">y</label>
-            <label><input type="radio" name="rotate-axis" value="z" checked>z</label>
-          </span>
-        </div>
-        <div class="op-row">
-          <label>Pivot
-            <select id="rotate-center">
-              <option value="centroid" selected>centroid (rotate in place)</option>
-              <option value="origin">origin (world axis)</option>
-            </select>
-          </label>
-        </div>
-        <label class="slider-row">
-          <span>angle</span>
-          <input id="rotate-angle" type="range"
-                 min="-180" max="180" step="1" value="0">
-          <span id="rotate-angle-val" class="readout-inline">0°</span>
-        </label>
-        <button id="rotate-apply" class="full-btn" disabled>
-          Apply rotate
-        </button>
-      </fieldset>
-
-      </div><!-- /.optab-panel data-op-panel="pose" -->
-
-      <!-- Geom: rigid translates that don't depend on a selection.
-           Center-at-origin re-anchors the centroid (useful after
-           adding electrodes shifts the structure off-axis); the
-           offset row applies a free (Δx, Δy, Δz) shift. -->
-      <div class="optab-panel" data-op-panel="geom" role="tabpanel"
-           id="optab-panel-geom" aria-labelledby="optab-btn-geom">
-
-      <fieldset class="op-block">
-        <legend>Center at origin</legend>
-        <p class="hint">
-          Translate the entire structure (atoms + slabs) so its
-          centroid sits at (0,&nbsp;0,&nbsp;0).  Rotates and zooms
-          stay centred afterwards.
-        </p>
-        <button id="center-apply" class="full-btn" disabled>
-          Center at origin
-        </button>
-      </fieldset>
-
-      <fieldset class="op-block">
-        <legend>Translate by offset</legend>
-        <p class="hint">
-          Shift every atom by (Δx,&nbsp;Δy,&nbsp;Δz) in&nbsp;Å.
-          Pair with Center-at-origin to nudge the centroid to a
-          specific point.
-        </p>
-        <div class="op-row translate-row">
-          <label>Δx&nbsp;(Å)
-            <input id="translate-dx" type="number"
-                   step="0.1" value="0.0">
-          </label>
-          <label>Δy&nbsp;(Å)
-            <input id="translate-dy" type="number"
-                   step="0.1" value="0.0">
-          </label>
-          <label>Δz&nbsp;(Å)
-            <input id="translate-dz" type="number"
-                   step="0.1" value="0.0">
-          </label>
-        </div>
-        <button id="translate-apply" class="full-btn" disabled>
-          Apply translate
-        </button>
-      </fieldset>
-
-      </div><!-- /.optab-panel data-op-panel="geom" -->
+      </div><!-- /.optab-panel data-op-panel="transform" -->
 
       <!-- Junction: electrode panel + Send-to-Build handoff (M5).
            Place metal slabs around the anchor(s), then hand off the

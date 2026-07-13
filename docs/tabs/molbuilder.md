@@ -2,7 +2,7 @@
 
 > **This document is the sole source of truth for the Modify
 > feature** (atom selection, edit operations, electrode panel,
-> Geom subtab) inside the renamed `/molbuilder` tab.  The Sources
+> Transform subtab) inside the renamed `/molbuilder` tab.  The Sources
 > card on the same tab (Load + SMILES + Save) is documented in
 > [`tabs/architecture.md`](architecture.md) § 5; their wiring is
 > shared via `lib/structure/` modules.
@@ -44,22 +44,25 @@ Concretely the feature must let the user:
     b. **Add** a new atom anchored to a selected one with `(dx, dy, dz)`
        offset.  Sliders adjust the offset live; a distance readout
        updates as the slider moves.  Commits on Apply.
-4. **Pose the molecule (Pose subtab):**
-    a. **Orient anchor pair along an axis** by selecting two atoms
+4. **Transform the molecule (Transform subtab):** move / rotate /
+    align atoms **without** changing the atom set or indices.  Translate,
+    Centre, and Rotate act on the current selection, or on the whole
+    structure when nothing is selected; Orient uses the two selected
+    atoms to define the axis and aligns the whole structure to it.
+    a. **Translate by (Δx, Δy, Δz) Å** -- explicit number inputs;
+       useful for nudging the centroid to a specific point after
+       centring or before adding electrodes.
+    b. **Centre at origin** -- one button click; translates so the
+       centroid (atom-coordinate mean) of the selection (or the whole
+       structure) lands at (0, 0, 0).
+    c. **Rotate around an axis** -- spin by N° around x, y, or z,
+       pivoting on the selection's centroid (in place) or the world
+       origin.  Useful for redirecting a tilted molecule's azimuth.
+    d. **Orient anchor pair along an axis** by selecting two atoms
        and applying a rotation that places that pair on the z-axis
        (the transport-DFT convention; ±z carries the electrodes).
        A tilt slider inclines the pair away from z by 0–90°.
-    b. **Rotate around an axis** -- spin every atom by N° around x,
-       y, or z through the origin.  Useful for redirecting a tilted
-       molecule's azimuth.
-5. **Place the molecule (Geom subtab):**
-    a. **Centre at origin** -- one button click; translates the
-       structure so the geometric centroid (atom-coordinate mean)
-       lands at (0, 0, 0).
-    b. **Translate by (Δx, Δy, Δz) Å** -- explicit number inputs;
-       useful for nudging the centroid to a specific point after
-       centring or before adding electrodes.
-6. **Add electrodes (Junction subtab):** the user fills out one
+5. **Add electrodes (Junction subtab):** the user fills out one
     "stack" panel per call.  Per panel:
     * **Element** (dropdown — Au / Ag / Cu / Ni / Pt / Pd; see § 8).
     * **Crystal plane** (dropdown — 100 / 110 / 111).
@@ -76,9 +79,10 @@ Concretely the feature must let the user:
           `add_symmetric_electrodes(gap=...)` is 8.0; the UI raises
           it because most published junctions (oligophenyl, OPV3,
           alkanedithiols n=4–10) need 12–20 Å.
-        * Single-mode (one slab, one anchor): the anchor-to-closest-
-          layer contact distance; default **2.4 Å** (matches
-          `add_electrode_slab(contact_distance=2.4)`).
+        * Single-mode (one slab): the centre-to-closest-layer contact
+          distance; default **2.4 Å** (matches
+          `add_electrode_slab(contact_distance=2.4)`).  The centre is
+          the centroid of the selected atoms (or the origin).
     * **Lateral offset** Δx, Δy (two sliders, default 0.0 Å each).
       Default places the slab centroid directly under / over the
       anchor (atop site).  Adjust to park the anchor on bridge or
@@ -146,10 +150,10 @@ Walkthrough for the canonical Au-thiol-Au workflow (M6 anchorless flow):
    the **Orient axis** button enables.
 4. (Atom subtab) User clicks **Delete** to remove the two thiol H caps
    (leaving the two S atoms exposed for Au coupling).
-5. (Pose subtab) User re-selects the two S atoms (now the anchor pair)
-   and clicks **Orient along z** with `center=midpoint` (default) so
-   the S–S midpoint lands at the origin.
-6. (Geom subtab) Optional: click **Centre at origin** if the loaded
+5. (Transform subtab) User re-selects the two S atoms (now the anchor
+   pair) and clicks **Orient along z** with `center=midpoint` (default)
+   so the S–S midpoint lands at the origin.
+6. (Transform subtab) Optional: click **Centre at origin** if the loaded
    geometry was not pre-centred; this puts the molecule's centroid on
    (0, 0, 0).  After the orient step in 5, this is usually a no-op
    for symmetric molecules.
@@ -221,25 +225,38 @@ The slab-only scope matches the original requirement ("experiment
 with electrode parameters and roll back").  General undo for delete
 / rotate workflows is out of scope.
 
-### 2.4 Geom subtab (centre + translate)
+### 2.4 Transform subtab (translate / centre / rotate / orient)
 
-Two op-blocks, both rigid (preserve bonds, angles, residue
-assignments; only coordinates change):
+The Transform subtab groups every op that **repositions atoms without
+changing the atom set or their indices** -- all rigid (preserve bonds,
+angles, residue assignments; only coordinates change).  Translate,
+Centre, and Rotate act on the **current selection**, or on the whole
+structure when nothing is selected; Orient uses the two selected atoms
+to define the axis and aligns the whole structure to it.  (Merged from
+the former **Pose** and **Geom** subtabs, 2026-07.)
 
-* **Centre at origin.**  Translates the structure so its
-  *atom-coordinate mean* (geometric centroid) lands at (0, 0, 0).
-  Note: this is the unweighted mean, NOT the bounding-box centre or
-  the centre of mass.  For asymmetric molecules with a long
-  substituent (e.g. an alkyl tail off a benzenedithiol), the
-  centroid will shift toward the long substituent; if the user
-  needs the **anchor-pair midpoint** at the origin, prefer the
-  Pose-subtab `Orient along axis` op with `center='midpoint'`.
 * **Translate by (Δx, Δy, Δz) Å.**  Three number inputs; pressing
-  Apply shifts every atom by the given vector.  All-zero is
-  rejected as a no-op with an explicit error message.
+  Apply shifts the selected atoms (or the whole structure) by the
+  given vector.  All-zero is rejected as a no-op with an explicit
+  error message.
+* **Centre at origin.**  Translates so the *atom-coordinate mean*
+  (geometric centroid) of the selection (or the whole structure)
+  lands at (0, 0, 0).  Note: this is the unweighted mean, NOT the
+  bounding-box centre or the centre of mass.  For asymmetric
+  molecules with a long substituent (e.g. an alkyl tail off a
+  benzenedithiol), the centroid will shift toward the long
+  substituent; if the user needs the **anchor-pair midpoint** at the
+  origin, prefer the `Orient along axis` op with `center='midpoint'`.
+* **Rotate around axis.**  Spin the selection (or the whole structure)
+  by N° around x, y, or z, pivoting on the selection's centroid
+  (rotate in place) or the world origin.
+* **Orient along axis.**  Select two atoms; the whole structure
+  rotates so the vector between them lies along the target axis
+  (see § 2.1 for the tilt parameter).
 
-Both ops require a loaded structure (buttons disable on
-`state.n_atoms === 0`).
+All ops require a loaded structure (buttons disable on
+`state.n_atoms === 0`); Orient additionally requires exactly two
+selected atoms.
 
 ### 2.1 Tilted molecules
 
@@ -495,8 +512,8 @@ closest layer at `centre.z - gap/2`, both lateral-centred on
 generalisation of "flank the selected atoms": one selected atom →
 centre on it, two → their midpoint, N → their centroid.  With **no
 selection** (`center_indices=None` or empty) the centre falls back to
-the world origin -- the centre-and-pose-first workflow (Geom + Pose
-subtabs, then add slabs).  Implemented as two `add_electrode_slab`
+the world origin -- the centre-and-pose-first workflow (Transform
+subtab, then add slabs).  Implemented as two `add_electrode_slab`
 calls (one `+z`, one `-z`, each `contact_distance = gap/2`) around
 that shared centre, so single and pair use one identical centring rule.
 

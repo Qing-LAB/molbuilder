@@ -350,12 +350,12 @@ def _clear_selection(page):
 
 
 def _open_op_tab(page, op_tab):
-    """Click the Modify edit-panel sub-tab (one of "atom", "pose",
-    "geom", "junction") so its op-block fieldsets become visible.
-    Tests that interact with Pose-/Geom-/Junction-tab controls have
-    to activate the right sub-tab first; the Atom tab is the
+    """Click the Modify edit-panel sub-tab (one of "atom", "transform",
+    "junction", "cell") so its op-block fieldsets become visible.
+    Tests that interact with Transform-/Junction-/Cell-tab controls
+    have to activate the right sub-tab first; the Atom tab is the
     default."""
-    assert op_tab in ("atom", "pose", "geom", "junction")
+    assert op_tab in ("atom", "transform", "junction", "cell")
     page.locator(f'.optab[data-op-tab="{op_tab}"]').click()
     page.wait_for_function(
         "(t) => document.querySelector("
@@ -1942,7 +1942,7 @@ def test_modify_op_preserves_frozen_and_labels(
         '() => (window.molbuilder.molview.data.selection.getState()'
         '        .atoms[0].labels || []).includes("L-electrode")')
     # Run a rotate op (routes through currentStateBody → /api/modify/rotate).
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
     page.locator("#rotate-angle").evaluate(
         "(el) => { el.value = '90'; "
         "el.dispatchEvent(new Event('input', {bubbles: true})); }")
@@ -3819,7 +3819,7 @@ def test_geom_buttons_disabled_without_structure(page, flask_server):
     """Center-at-origin and Translate buttons start disabled before a
     structure is loaded.  Mirrors the rotate / send-to-build pattern."""
     _open_modify(page, flask_server)
-    _open_op_tab(page, "geom")
+    _open_op_tab(page, "transform")
     assert page.locator("#center-apply").is_disabled()
     assert page.locator("#translate-apply").is_disabled()
 
@@ -3833,7 +3833,7 @@ def test_orient_button_enabled_only_with_two_anchors(
         page, flask_server, water_xyz_file):
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
     btn = page.locator("#orient-apply")
     assert btn.is_disabled(), "no selection -> Orient disabled"
     _set_selection(page, [0])
@@ -3862,7 +3862,7 @@ def test_apply_orient_lays_anchor_pair_along_z(
     _load_file(page, str(diag_xyz), expected_atoms=4)
 
     _set_selection(page, [0, 3])
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
     page.locator("#orient-apply").click()
     # Wait for the response to land + UI to settle.
     page.wait_for_function(
@@ -3890,7 +3890,7 @@ def test_rotate_button_enabled_when_structure_loaded(
     non-zero angle."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
     assert page.locator("#rotate-apply").is_enabled()
 
 
@@ -3905,7 +3905,7 @@ def test_apply_rotate_z_90_centroid_default(
     diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
     _open_modify(page, flask_server)
     _load_file(page, str(diag_xyz), expected_atoms=4)
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
 
     page.locator("#rotate-angle").evaluate(
         "(el) => { el.value = '90'; "
@@ -3936,7 +3936,7 @@ def test_apply_rotate_z_90_origin_pivot(
     diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
     _open_modify(page, flask_server)
     _load_file(page, str(diag_xyz), expected_atoms=4)
-    _open_op_tab(page, "pose")
+    _open_op_tab(page, "transform")
 
     page.locator("#rotate-center").select_option("origin")
     page.locator("#rotate-angle").evaluate(
@@ -4103,13 +4103,13 @@ def test_save_state_button_stays_enabled_after_op(
 
 def test_geom_translate_then_center_returns_centroid_to_origin(
         page, flask_server, water_xyz_file):
-    """End-to-end Geom subtab: translate the structure by (5, 0, 0),
+    """End-to-end Transform subtab: translate the structure by (5, 0, 0),
     then click Center-at-origin and confirm the centroid lands on
     (0, 0, 0).  We don't assume the water fixture starts centred --
     only that Center is the inverse of any prior translate."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    _open_op_tab(page, "geom")
+    _open_op_tab(page, "transform")
     # Capture the O-atom x-coordinate before the translate so we can
     # detect when the response has been applied (xyz changes ->
     # state.positions[0] is rebuilt).
@@ -4148,7 +4148,7 @@ def test_geom_translate_zero_offset_is_rejected(
     error rather than firing a no-op POST."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    _open_op_tab(page, "geom")
+    _open_op_tab(page, "transform")
     # All defaults are 0; click Apply without changing anything.
     page.locator("#translate-apply").click()
     page.wait_for_function(
@@ -4931,10 +4931,11 @@ def test_send_to_build_disabled_when_workspace_is_dirty(
 
 def test_op_subtabs_default_to_atom_and_swap_on_click(
         page, flask_server, water_xyz_file):
-    """The edit panel splits the ops into Atom / Pose / Geom /
-    Junction sub-tabs.  Default-active is Atom (the most common
-    starting op).  Clicking Pose shows orient + rotate; clicking
-    Junction shows the electrode panel.
+    """The edit panel splits the ops into Atom / Transform /
+    Junction / Cell sub-tabs.  Default-active is Atom (the most
+    common starting op).  Clicking Transform shows translate /
+    center / rotate / orient; clicking Junction shows the
+    electrode panel.
 
     The Send-to-Build handoff is OUTSIDE the op-tabs (2026-05-21)
     so it's reachable from any sub-tab.  Pinned by
@@ -4944,15 +4945,15 @@ def test_op_subtabs_default_to_atom_and_swap_on_click(
 
     # Default visible op-panel is the atom one.
     atom_panel = page.locator('.optab-panel[data-op-panel="atom"]')
-    pose_panel = page.locator('.optab-panel[data-op-panel="pose"]')
+    transform_panel = page.locator('.optab-panel[data-op-panel="transform"]')
     junction_panel = page.locator('.optab-panel[data-op-panel="junction"]')
     assert atom_panel.is_visible()
-    assert pose_panel.is_hidden()
+    assert transform_panel.is_hidden()
     assert junction_panel.is_hidden()
 
-    # Click Pose -> only that panel becomes visible.
-    page.locator('.optab[data-op-tab="pose"]').click()
-    assert pose_panel.is_visible()
+    # Click Transform -> only that panel becomes visible.
+    page.locator('.optab[data-op-tab="transform"]').click()
+    assert transform_panel.is_visible()
     assert atom_panel.is_hidden()
     assert junction_panel.is_hidden()
     # Apply Orient is still in the DOM (just hidden was Junction tab).
@@ -4970,7 +4971,7 @@ def test_send_to_build_visible_across_all_op_subtabs(
     it lives in ``.modify-footer .modify-handoff`` at the bottom
     of the Modify section so the user can ship the current
     structure to /structure-optimization regardless of which
-    edit-panel sub-tab (Atom / Pose / Geom / Junction) is active.
+    edit-panel sub-tab (Atom / Transform / Junction / Cell) is active.
 
     Post-2026-06-08 restructure: the button moved from the
     viewer-card to the Modify section's footer, alongside the
@@ -4992,13 +4993,9 @@ def test_send_to_build_visible_across_all_op_subtabs(
     assert page.locator('.optab-panel[data-op-panel="atom"]').is_visible()
     assert send_btn.is_visible(), "Send to Build hidden on Atom sub-tab"
 
-    # Pose sub-tab.
-    page.locator('.optab[data-op-tab="pose"]').click()
-    assert send_btn.is_visible(), "Send to Build hidden on Pose sub-tab"
-
-    # Geom sub-tab.
-    page.locator('.optab[data-op-tab="geom"]').click()
-    assert send_btn.is_visible(), "Send to Build hidden on Geom sub-tab"
+    # Transform sub-tab.
+    page.locator('.optab[data-op-tab="transform"]').click()
+    assert send_btn.is_visible(), "Send to Build hidden on Transform sub-tab"
 
     # Junction sub-tab (where it used to live).
     page.locator('.optab[data-op-tab="junction"]').click()

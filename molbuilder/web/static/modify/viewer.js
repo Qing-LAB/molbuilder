@@ -4,8 +4,8 @@
  * viewer, the render loop, the selection panel, AND the in-memory structure
  * (``window.molbuilder.molview.data``).  This file holds ONLY:
  *
- *   * the edit-op controls -- Delete, Add atom, Orient/Rotate (Pose), Center/Translate
- *     (Geom), and the electrode/anchor (Junction) panel.  Each POSTs op-PARAMS via
+ *   * the edit-op controls -- Atom (Delete, Add atom), Transform (Translate, Center,
+ *     Rotate, Orient), and the electrode/anchor (Junction) panel.  Each POSTs op-PARAMS via
  *     ``molview.data.applyOp(op, args)``; the MODULE builds the structure body from its own
  *     data (data-model._structureBody) and applies the response atomically.  This file
  *     never sends or holds structure geometry/metadata.
@@ -479,7 +479,7 @@
         await postOp("/api/modify/delete", {}, "Deleted");
     }
 
-    // ----- Geom subtab: rigid translate ops ----------------------- //
+    // ----- Transform subtab: rigid translate ops ------------------ //
     // Both ops route through the shared /api/modify/translate
     // endpoint; only the body changes (recenter:true vs explicit
     // dx/dy/dz).  After the structure shifts, the module's render
@@ -967,7 +967,7 @@
         // plumbing (threshold + modifier filtering + canvas-scoped
         // listeners) so we just register the policy here as data.
 
-        // Geom subtab: center-at-origin + translate-by-offset.
+        // Transform subtab: center-at-origin + translate-by-offset.
         const centerBtn = $("center-apply");
         if (centerBtn) centerBtn.addEventListener("click", applyCenter);
         const translateBtn = $("translate-apply");
@@ -1145,7 +1145,7 @@
         },
         getSelected: () => selectedIndices(),
         getNAtoms:   () => _nAtoms(),
-        // Geom-subtab tests probe coordinates after a translate / center op.  Read LIVE
+        // Transform-subtab tests probe coordinates after a translate / center op.  Read LIVE
         // from molview.data (the single source) -- there is no state.* mirror to expose.
         getState:    () => {
             const d = _data();
