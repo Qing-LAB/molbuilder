@@ -728,6 +728,30 @@
         if (sideRow) sideRow.hidden = (mode !== "single");
     }
 
+    // The gap slider is REUSED for both modes, but they need different physical
+    // ranges.  Pair mode is the electrode-to-electrode GAP (wide, 4–30 Å).  Single
+    // mode is the anchor-to-closest-layer CONTACT distance, which must reach down to
+    // a real metal–adsorbate bond (Au–S ≈ 2.4 Å) — far below any pair gap; the old
+    // shared 4 Å floor made a physical single-mode contact impossible.  Adjust the
+    // range on mode switch + snap the value to the mode's default when the current
+    // value falls outside the new range.  Kept out of refreshElcReadouts (which
+    // fires on every slider input) so a drag isn't re-clamped mid-move.
+    function applyElcGapRange(mode) {
+        const gap = $("elc-gap");
+        if (!gap) return;
+        // Read the value BEFORE narrowing the range: setting a max below the
+        // current value makes the browser clamp it, which would hide an
+        // out-of-range value from the snap check below.
+        const v = Number(gap.value);
+        if (mode === "single") {
+            gap.min = "1.5"; gap.max = "6.0"; gap.step = "0.05";
+            if (!(v >= 1.5 && v <= 6.0)) gap.value = "2.4";   // canonical Au–S contact
+        } else {
+            gap.min = "4.0"; gap.max = "30.0"; gap.step = "0.1";
+            if (!(v >= 4.0 && v <= 30.0)) gap.value = "12.0";
+        }
+    }
+
     async function applyElectrode() {
         const mode = $("elc-mode").value;
         const common = readElcCommonBody();
@@ -943,7 +967,9 @@
         // the side picker; live readouts update on slider drag.
         const modeSel = $("elc-mode");
         if (modeSel) {
+            applyElcGapRange(modeSel.value);   // set the initial range for the default mode
             modeSel.addEventListener("change", () => {
+                applyElcGapRange(modeSel.value);
                 refreshElcReadouts();
                 refreshSelectionUI();
             });

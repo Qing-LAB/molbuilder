@@ -3118,6 +3118,30 @@ def test_kgrid_survives_a_delete_op(page, flask_server, water_xyz_file):
         "the modify op wiped the k-grid the user set in the Cell tab"
 
 
+def test_single_mode_electrode_allows_physical_contact_distance(
+        page, flask_server, water_xyz_file):
+    """Regression (2026-07 fresh-eyes review): the gap slider is reused for
+    both electrode modes, but single mode is an anchor-to-layer CONTACT
+    distance (Au-S ~2.4 A) that the shared pair-gap 4 A floor made impossible.
+    Switching to single mode must widen the range down to physical contacts."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _open_op_tab(page, "junction")
+    # Default is pair mode: the slider is a wide electrode-to-electrode gap.
+    assert page.evaluate(
+        "() => Number(document.getElementById('elc-gap').min)") == 4.0
+    # Switch to single mode -> the slider must reach a real contact distance.
+    page.evaluate(
+        "() => { const s = document.getElementById('elc-mode');"
+        "        s.value = 'single';"
+        "        s.dispatchEvent(new Event('change', {bubbles: true})); }")
+    assert page.evaluate(
+        "() => Number(document.getElementById('elc-gap').min)") <= 2.4
+    assert page.evaluate(
+        "() => Number(document.getElementById('elc-gap').value)") == 2.4
+
+
 def test_panel_assign_works_on_dirty_workspace_after_electrode(
         page, flask_server, water_xyz_file):
     """Regression for the 2026-06-09 user-reported BLOCKER:
