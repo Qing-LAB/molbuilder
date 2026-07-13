@@ -13,9 +13,10 @@ Workspace-state protocol:
 Migration phase tracking: this file is gated against Phase 1 of
 the workspace-state migration plan (§ 6).  Phase 2 will pin the
 endpoint-level migration (build/load + build/molecule + modify/*
-emit ``workspace_payload`` directly) and Phase 3 adds
-``selection_remap``.  Both extend this file rather than replacing
-it.
+emit ``workspace_payload`` directly).  (Phase 3's ``selection_remap``
+was later retired: the client clears the selection on any atom-count
+change, molview-module.md §19.3.2.)  Later phases extend this file
+rather than replacing it.
 """
 from __future__ import annotations
 

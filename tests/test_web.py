@@ -823,13 +823,12 @@ def test_molbuilder_page_loads(web_client):
         # Static asset paths the template references.
         "modify/style.css",
         "modify/viewer.js",
-        # Two-pane scaffolding the JS targets by id.  The selection
-        # panel above the grid (#selection-host) owns the per-atom
-        # list + click-to-select; the representation / atom-label
-        # knobs (#rep, #show-indices) live in the embedded viewer's
-        # knob bar, not in the page template.
-        'id="viewer"',
-        'id="selection-host"',
+        # Scaffolding the JS targets by id.  Post-Track-B the template
+        # exposes only the EMPTY host (#molview-host); molview.mount
+        # builds the whole fused card (the .viewer div, the selection
+        # panel, the View-menu knobs) into it client-side, so those are
+        # NOT in the static HTML.
+        'id="molview-host"',
         # All five edit ops are wired by the JS.
         'id="delete-apply"',
         'id="add-apply"',
@@ -1126,74 +1125,26 @@ def test_modify_delete_returns_workspace_payload(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  Phase 3: selection_remap on delete + add_atom                        #
-#  (docs/protocols/workspace-state.md § 4.5 + § 5.1)                    #
+#  Atom-count-changing ops emit NO selection_remap (retired)           #
+#  (molview-module.md §19.3.2 -- the client clears the selection)      #
 # --------------------------------------------------------------------- #
 
 
-def test_modify_delete_returns_selection_remap(web_client):
-    """Phase 3: ``/api/modify/delete`` carries ``selection_remap``
-    in ``extra``.  Maps every pre-delete index to its post-delete
-    index, or ``None`` if the atom was removed.
-
-    Fixes the latent bug where the client's naive ``selection.
-    filter(i < n_new)`` silently dropped surviving high-index
-    atoms (selecting atom 2, deleting atom 0, ended up with
-    empty selection instead of new index 1)."""
-    # 3-atom water: O at index 0, H at indices 1 and 2.
+def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
+    """selection_remap was retired: the client CLEARS the selection on any
+    atom-count change (molview-module.md §19.3.2), so a cleared selection can
+    never mis-point at a shifted index.  Neither delete nor add_atom (nor the
+    electrode ops) may carry a ``selection_remap`` in ``extra`` anymore."""
     r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
-        "indices": [0],   # delete the O
-    })
+        "xyz": _H2O_XYZ, "indices": [0]})
     body = r.get_json()
     assert body["ok"] is True
-    assert "selection_remap" in body["extra"], (
-        "Phase 3 contract: /api/modify/delete extras must carry "
-        "selection_remap so the workspace dispatcher can translate "
-        "the user's selection across the index shift"
-    )
-    remap = body["extra"]["selection_remap"]
-    # Old index 0 (the O) was deleted; old [1, 2] become new [0, 1].
-    assert remap == [None, 0, 1]
-
-
-def test_modify_delete_selection_remap_handles_middle_deletion(
-        web_client):
-    """Pin the middle-deletion case: surviving HIGH-index atom
-    shifts DOWN.  This is the exact case the pre-fix client-side
-    naive filter got wrong."""
-    r = web_client.post("/api/modify/delete", json={
-        "xyz": _H2O_XYZ,
-        "indices": [1],   # delete the central H
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    remap = body["extra"]["selection_remap"]
-    # Old [0, 1, 2] → new [0, deleted, 1].
-    assert remap == [0, None, 1]
-
-
-def test_modify_add_atom_returns_identity_selection_remap(web_client):
-    """Phase 3: ``/api/modify/add_atom`` emits the identity remap
-    (all pre-op atoms survive at their old indices).  Emitting it
-    even when trivial keeps the client dispatcher's per-op rule
-    table flat — one lookup per op, no special cases."""
+    assert "selection_remap" not in (body.get("extra") or {})
     r = web_client.post("/api/modify/add_atom", json={
-        "xyz": _H2O_XYZ,
-        "element": "H",
-        "anchor_index": 0,
-        "offset": [0.5, 0, 0],
-    })
+        "xyz": _H2O_XYZ, "element": "H", "anchor_index": 0, "offset": [0.5, 0, 0]})
     body = r.get_json()
     assert body["ok"] is True
-    assert "selection_remap" in body["extra"]
-    remap = body["extra"]["selection_remap"]
-    assert remap == [0, 1, 2], (
-        "add_atom remap must be identity over the PRE-op atom range; "
-        "the new atom appears at index n with no pre-op counterpart"
-    )
-
-
+    assert "selection_remap" not in (body.get("extra") or {})
 # --------------------------------------------------------------------- #
 #  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
 #  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #

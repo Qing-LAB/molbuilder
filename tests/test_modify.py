@@ -18,8 +18,6 @@ from molbuilder.modify import (
     add_atom,
     add_electrode_slab,
     add_symmetric_electrodes,
-    compute_selection_remap_after_add,
-    compute_selection_remap_after_delete,
     delete_atoms,
     orient_along_axis,
     rotate_around_axis,
@@ -97,116 +95,6 @@ def test_delete_dedups_repeated_indices(linear_dimer):
     out = delete_atoms(linear_dimer, [1, 1, 1])
     assert out.n_atoms == linear_dimer.n_atoms - 1
     assert out.elements == ["C", "H", "H", "H", "C"]
-
-
-# --------------------------------------------------------------------- #
-#  selection_remap — Phase 3 of workspace-state migration               #
-#  (docs/protocols/workspace-state.md § 4.5 + § 5.1)                    #
-# --------------------------------------------------------------------- #
-
-
-class TestComputeSelectionRemapAfterDelete:
-    """The remap maps every PRE-delete atom index to its POST-delete
-    index, or ``None`` if the atom was deleted.  Fixes the latent
-    bug where the client's naive ``selection.filter(i < n_new)``
-    silently dropped surviving high-index atoms across an index
-    shift (selecting atom 2, deleting atom 0, ended up with empty
-    selection instead of new index 1).
-    """
-
-    def test_shape_is_length_n_atoms_list(self, linear_dimer):
-        remap = compute_selection_remap_after_delete(linear_dimer, [0])
-        assert isinstance(remap, list)
-        assert len(remap) == linear_dimer.n_atoms
-
-    def test_deleted_atoms_map_to_none(self, linear_dimer):
-        remap = compute_selection_remap_after_delete(
-            linear_dimer, [0, 5])
-        assert remap[0] is None
-        assert remap[5] is None
-
-    def test_survivors_get_new_zero_based_indices(self, linear_dimer):
-        # Delete index 0 (a C).  Old [1, 2, 3, 4, 5] → new [0, 1, 2, 3, 4].
-        remap = compute_selection_remap_after_delete(linear_dimer, [0])
-        assert remap == [None, 0, 1, 2, 3, 4]
-
-    def test_delete_middle_atom_shifts_high_indices_down(self):
-        # 3-atom O-H-H water; delete the central H.
-        # Old [0, 1, 2] → new [0, deleted, 1].
-        s = Structure(
-            elements=["O", "H", "H"],
-            positions=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
-        )
-        assert compute_selection_remap_after_delete(s, [1]) == [0, None, 1]
-
-    def test_delete_top_index_does_not_shift_lower(self):
-        s = Structure(
-            elements=["O", "H", "H"],
-            positions=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
-        )
-        # Delete index 2 (last H): old [0, 1] stay; old 2 → None.
-        assert compute_selection_remap_after_delete(s, [2]) == [0, 1, None]
-
-    def test_delete_multiple_indices_remaps_correctly(self, linear_dimer):
-        # Delete indices [1, 3] → survivors at old [0, 2, 4, 5]
-        # become new [0, 1, 2, 3].
-        remap = compute_selection_remap_after_delete(linear_dimer, [1, 3])
-        assert remap == [0, None, 1, None, 2, 3]
-
-    def test_out_of_range_indices_silently_ignored_matches_delete_atoms(
-            self, linear_dimer):
-        # Matches delete_atoms's "out-of-range silently ignored"
-        # behaviour: no atom removed, remap is identity.
-        remap = compute_selection_remap_after_delete(
-            linear_dimer, [99, -1, 100])
-        assert remap == list(range(linear_dimer.n_atoms))
-
-    def test_deduplicated_indices_match_delete_atoms(self, linear_dimer):
-        # delete_atoms tolerates duplicate indices.  The remap
-        # must too — sets dedupe naturally.
-        remap = compute_selection_remap_after_delete(
-            linear_dimer, [1, 1, 1])
-        # Only one delete: index 1.  Old [0, 2, 3, 4, 5] → new [0, 1, 2, 3, 4].
-        assert remap == [0, None, 1, 2, 3, 4]
-
-    def test_remap_consistent_with_delete_atoms_result(self, linear_dimer):
-        """Cross-check: applying the remap to the original index
-        list yields exactly the index space delete_atoms produced.
-        Pre-fix this check would have caught the client-side
-        naive-filter bug."""
-        new_struct = delete_atoms(linear_dimer, [1, 4])
-        remap = compute_selection_remap_after_delete(
-            linear_dimer, [1, 4])
-        # Survivors per the remap.
-        survivor_new_indices = sorted(
-            i for i in remap if i is not None)
-        assert survivor_new_indices == list(range(new_struct.n_atoms))
-
-
-class TestComputeSelectionRemapAfterAdd:
-    """add_atom appends at index ``struct.n_atoms``; every pre-op
-    index survives unchanged.  The identity remap exists so the
-    Phase 4+ client dispatcher can apply one uniform per-op rule
-    (look up ``extra["selection_remap"]``) without growing a
-    special case for add-class ops."""
-
-    def test_identity_for_water(self):
-        s = Structure(
-            elements=["O", "H", "H"],
-            positions=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]]),
-        )
-        assert compute_selection_remap_after_add(s) == [0, 1, 2]
-
-    def test_length_equals_pre_add_n_atoms(self, linear_dimer):
-        remap = compute_selection_remap_after_add(linear_dimer)
-        # The new atom appears at index n; remap describes pre-op
-        # atoms only.
-        assert len(remap) == linear_dimer.n_atoms
-
-    def test_empty_struct_remap_is_empty_list(self):
-        s = Structure(elements=[],
-                      positions=np.zeros((0, 3)))
-        assert compute_selection_remap_after_add(s) == []
 
 
 # --------------------------------------------------------------------- #

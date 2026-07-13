@@ -101,29 +101,8 @@
     //  viewer handle, no embed, and no raw-3Dmol reach in this file.   //
     //  --------------------------------------------------------------- //
 
-    // ----- xyz axis triad ----------------------------------------- //
-    //
-    // The triad gives the user a fixed orientation reference while
-    // rotating the camera.  Two modes (selected automatically based
-    // on whether the loaded structure carries lattice vectors):
-    //
-    //   * Cartesian — fixed-length unit X/Y/Z arrows at the origin.
-    //     Used when no cell is defined (the common case for /modify
-    //     where structures load from XYZ before any cell is set).
-    //   * Cell      — arrows along a/b/c lattice vectors, scaled to
-    //     the cell vector lengths.  Used when a cell IS defined
-    //     (PDB CRYST1 records, future sidecar metadata, etc.).
-    //
-    // The actual drawing logic lives in ``lib/mol-axes.js`` so the
-    // contract is shared with /results' trajectory inspector and any
-    // future tab that mounts a 3Dmol viewer.  This handler is a thin
-    // adapter: read the checkbox state, gather the cell (if any),
-    // delegate.
-
-    // drawAxes() removed by #203 — the Axes toggle now lives in
-    // the embed's standard knob bar, which calls setAxes directly.
-    // Any code still calling drawAxes() should be replaced with a
-    // direct _handle.setAxes(boolean) call.
+    // Axes (and all view chrome) are the module's: the embed's knob bar owns the Axes
+    // toggle; Modify holds no axis-drawing code (the old drawAxes / mol-axes adapter is gone).
 
     // --------------------------------------------------------------- //
     //  Atom list + click-to-select are owned by the selection panel    //

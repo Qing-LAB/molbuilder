@@ -1075,7 +1075,7 @@ Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure
 | **`openMolecule(input)`** | `{text, filename[, source, periodicity, annotations]}` → POST `/api/build/load`; a project-file path string → `molbuilderTab.commitFile` | `Promise<WorkspacePayload>` | Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune + anchor at index 0). Caller `source`/`periodicity`/`annotations` override the server-derived (generator provenance + sidecar cell/annotations). |
 | **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). Writing the bytes to disk is the consumer's job — NOT the session-state save. |
 | `generate(kind, input, opts)` | via the `structure.<kind>` generator | `Promise<WorkspacePayload>` | Produce a structure and open it (like `openMolecule`); dirty=true; resets the timeline. |
-| `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; `selection_remap` (§21.3); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |
+| `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; clears the selection on any atom-count change (§19.3.2); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |
 | `markDirty()` / `markSaved(path)` | (in-memory) | `void` | Flip / clear the dirty bit + record `last_save_to`. |
 | `discard()` | (in-memory) | `Promise<void>` | Clears canvas + selection. **Unconditional** — gate on the warning modal first. |
 
@@ -1113,12 +1113,10 @@ FRESH LOAD (`installSource` set) into an empty canvas *installs* the whole struc
 periodicity, dirty=false); (3) **distribute** the payload's top-level metadata arrays
 (`atom_names`/`residue_ids`/`residue_names`/`chain_ids`) onto the per-atom rows — the wire has them
 as parallel arrays, not per-atom, so this keeps molview.data the COMPLETE single source; (4) adopt
-`payload.atoms` into the selection store; (5) apply `selection_remap` (§21.3) or `clearSelection`
-when `opts.resetSelection`; (6) fire `notify()` once. There is NO consumer callback here — the module
-holds all the data and consumers react to the `notify()` (the old modify-tab `applyStructure` hook is
-gone; §19.3.2). `selection_remap` is read from
-`preSelection` (captured before adoptAtoms' destructive in-range filter) so a Delete-of-low-index
-does not drop the wrong atom.
+`payload.atoms` into the selection store; (5) `clearSelection` when `opts.resetSelection` (any
+atom-count change, or a load/generate; §19.3.2) — count-preserving transforms keep the selection;
+(6) fire `notify()` once. There is NO consumer callback here — the module holds all the data and
+consumers react to the `notify()` (the old modify-tab `applyStructure` hook is gone; §19.3.2).
 
 **OPENING A MOLECULE IS AN ATOMIC OPERATION.** `exportFile()` reads the ENTIRE model out to bytes
 (§19.4); `openMolecule()` writes the ENTIRE model in from bytes in one call (→ the internal sync
@@ -1141,7 +1139,7 @@ all live from that one call. If they are not, the contract is broken, not the de
 |---|---|---|
 | `touchCanvas` | `true` | When `false` this is a LOAD, not a modifier op: the canvas text/dirty bit is not *replaced* in place; a fresh load into an empty canvas is *installed* instead (see `installSource`). |
 | `installSource` | — | `{kind, file, generator_input}` provenance for a fresh load. When set, step 2 installs the payload's structure into the canvas (text + periodicity, dirty=false), **replacing** whatever was there, so the single call populates the whole model and re-loads stay coherent (load water, then benzene → the canvas is benzene). Only `openMolecule` sets it. |
-| `resetSelection` | `false` | When `true`, clear selection unconditionally (load/generate; modifier ops use `selection_remap`). |
+| `resetSelection` | `false` | When `true`, clear selection unconditionally (load/generate, and any atom-count-changing modifier op; §19.3.2). Count-preserving transforms pass `false`. |
 
 #### 19.3.2 Structure-mutation API — one door, a declarative op registry
 
@@ -1409,7 +1407,7 @@ The server-response shapes the data model's HTTP mutators (§19.3) consume. (End
 |---|---|
 | POST `/api/build/load` | `pdb`, `source_format`, `n_residues`, `summary` |
 | POST `/api/build/molecule` | `backend_used`, `add_hydrogens_mode`, `pdb`, `summary` |
-| POST `/api/modify/<op>` | `selection_remap` (when applicable), `op`, `args` |
+| POST `/api/modify/<op>` | *(none)* — the client clears the selection on any atom-count change (§19.3.2), so no per-op remap is emitted |
 
 ### 21.2 Atom row shape
 
@@ -1422,20 +1420,7 @@ Carries coordinates (the atom is the geometric truth); the client normalises `re
   "regions": ["bridge"], "is_frozen": false }
 ```
 
-### 21.3 selection_remap (in `extra`)
-
-Flat list of `length = pre-op atom count`; `remap[old_index] === new_index` (or `null` when the
-atom was removed).
-
-```json
-"selection_remap": [null, 0, 1]      // delete index 0
-"selection_remap": [0, 1, 2]         // add atom (identity; new atom at index 3)
-```
-
-When the server sends it, the data model MUST use it instead of the naive in-range filter (§19.3.1),
-else Delete-of-low-index silently drops the wrong atom.
-
-### 21.4 Error envelope
+### 21.3 Error envelope
 
 ```json
 { "ok": false, "error": "human-readable message", "issues": [ /* optional */ ] }

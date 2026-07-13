@@ -75,61 +75,6 @@ def _reindex_transport_metadata(
     return new_frozen, new_regions, new_annotations
 
 
-def compute_selection_remap_after_delete(
-    struct: Structure,
-    indices: Sequence[int],
-) -> List[Optional[int]]:
-    """Return the per-atom remap that maps every PRE-delete index to
-    its POST-delete index (or ``None`` if the atom was removed).
-
-    Wire shape: a flat list where ``remap[old_index] == new_index``,
-    or ``None`` when the atom was deleted.  Length equals the pre-
-    delete ``struct.n_atoms``.  Workspace-state protocol § 4.5 +
-    § 5.1 — emitted under ``extra["selection_remap"]`` by the
-    ``/api/modify/delete`` endpoint.
-
-    Why a list, not a dict: JSON int keys round-trip to strings;
-    a list keeps the wire shape compact and the client doesn't
-    have to parse keys.  ``len(remap)`` is the pre-op atom count
-    (an implicit sanity check for the client).
-
-    Used by the Phase 4+ workspace dispatcher to correctly remap
-    the user's selection across a Delete that shrinks the
-    structure.  Pre-Phase-3 the client's naive
-    ``selection.filter(i < new_n_atoms)`` silently dropped
-    surviving high-index atoms (e.g. selecting atom 2, deleting
-    atom 0, ended up with empty selection instead of new index 1).
-
-    >>> # Structure with atoms [O, H, H], delete index 0 (the O):
-    >>> # surviving atoms become new [H, H] at indices [0, 1].
-    >>> compute_selection_remap_after_delete(s, [0])
-    [None, 0, 1]
-    """
-    indices_set = set(int(i) for i in indices)
-    keep = sorted(set(range(struct.n_atoms)) - indices_set)
-    old_to_new = {old: new for new, old in enumerate(keep)}
-    return [old_to_new.get(i) for i in range(struct.n_atoms)]
-
-
-def compute_selection_remap_after_add(
-    struct: Structure,
-) -> List[int]:
-    """Return the identity remap for an ``add_atom`` op.
-
-    ``add_atom`` appends at index ``struct.n_atoms``; every pre-op
-    index keeps its value.  Length equals the pre-op ``struct.n_atoms``
-    (the new atom appears at the next index, which has no pre-op
-    counterpart).
-
-    Why emit it at all when it's the identity: the Phase 4+ workspace
-    dispatcher applies the same per-op rule (look up
-    ``extra["selection_remap"]``) regardless of op class — emitting
-    the identity for add keeps the dispatcher's per-op branch table
-    flat instead of growing a "no remap means preserve" special case.
-    """
-    return list(range(struct.n_atoms))
-
-
 def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
     """Return a new ``Structure`` with the given atom indices removed.
 

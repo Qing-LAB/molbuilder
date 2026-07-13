@@ -72,13 +72,15 @@ they're just views over channels now.
 ### 2.1 Index stability (channels remap on structure edits)
 
 Channels are **keyed by atom index**, so any structure mutation (add / delete
-atom) MUST remap every channel or metadata silently corrupts (the same hazard
-`selection_remap` guards for the selection). This already exists for the two
-built-ins — `modify.py::remap_frozen_and_regions(old_to_new)` — and the
-annotations layer **generalizes it to iterate all channels** (drop indices that
-vanished, translate the rest through `old_to_new`; `value` channels remap their
-key set). Every modify op that returns a `selection_remap` must also carry the
-channel remap. This is a load-bearing correctness requirement, not an add-on.
+atom) MUST remap every channel or metadata silently corrupts (the same index-shift
+hazard the *selection* faces — which molview sidesteps by clearing the selection on
+any atom-count change, §19.3.2). This already exists for the two built-ins —
+`modify.py::remap_frozen_and_regions(old_to_new)` — and the annotations layer
+**generalizes it to iterate all channels** (drop indices that vanished, translate
+the rest through `old_to_new`; `value` channels remap their key set). Every
+atom-count-changing modify op must carry the channel remap (the server reindexes
+channels in lockstep with frozen/regions). This is a load-bearing correctness
+requirement, not an add-on.
 
 **Structure API (as shipped, Phase 1):**
 ```python

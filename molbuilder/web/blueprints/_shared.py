@@ -269,8 +269,8 @@ def workspace_payload(
         }
 
     Endpoint-specific add-ons (``backend_used``,
-    ``add_hydrogens_mode``, ``pdb``, ``summary``,
-    ``selection_remap``, …) belong in ``extra``.  The dispatcher
+    ``add_hydrogens_mode``, ``pdb``, ``summary``, …) belong in
+    ``extra``.  The dispatcher
     on the client reads the canonical keys and treats ``extra`` as
     opaque metadata — extending ``extra`` does not break any
     consumer.
@@ -337,8 +337,8 @@ def structure_to_dict(
 
     The optional ``extra`` dict (Phase 2 addition, 2026-06-07)
     threads endpoint-specific keys (``pdb``, ``summary``,
-    ``backend_used``, ``add_hydrogens_mode``, ``selection_remap``)
-    into BOTH places at once:
+    ``backend_used``, ``add_hydrogens_mode``) into BOTH places at
+    once:
 
     * At the top level of the returned dict, for back-compat with
       every existing JS consumer that reads them off the response
@@ -425,8 +425,9 @@ def ok_structure_response(
       the actually-parsed format).
     * ``/api/build/molecule``: ``{"pdb", "summary",
       "backend_used", "add_hydrogens_mode"}``.
-    * ``/api/modify/<op>``: empty today; Phase 3 adds
-      ``selection_remap`` for delete/add_atom.
+    * ``/api/modify/<op>``: no ``extra`` keys — the client CLEARS
+      the selection on any atom-count change (molview §19.3.2), so
+      no per-op selection remap is emitted.
 
     Wraps :func:`structure_to_dict` (which routes through
     :func:`workspace_payload`) in ``{"ok": True, ...}``.  No

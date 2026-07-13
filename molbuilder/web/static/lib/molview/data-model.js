@@ -48,7 +48,8 @@
  *     Modify state.* rip-out).
  *   * ``_applyWorkspacePayload`` is THE single cross-store sync point:
  *     canvas-state.replaceContent + top-level-metadata distribution onto atoms + selection
- *     store adoptAtoms + selection_remap, then a subscription notify.  It no longer calls any
+ *     store adoptAtoms + the §19.3.2 selection rule (clear on count change), then a
+ *     subscription notify.  It no longer calls any
  *     consumer hook -- consumers read the single source through the unified API and react to
  *     the subscription.  Every entry point (applyOp, loadFromText) routes through it.
  *   * Persistence: debounced write to
@@ -938,12 +939,10 @@
      *      already set via ``structurePage.loadIntoCanvas`` (dirty=false).
      *   2. (removed) There is no longer a modify-tab ``applyStructure`` hook -- consumers
      *      hold no mirror; the module owns the data and fires a subscription (step 5).
-     *   3. ``selection_remap`` (Phase 3 wire shape) is applied to the
-     *      existing selection — surviving indices remap, removed atoms
-     *      drop, all in one ``setSelection`` call.
-     *   4. ``opts.resetSelection`` clears the selection (sidebar /
-     *      generator flow).  Mutually exclusive with ``selection_remap``.
-     *   5. Dispatcher subscribers are notified.
+     *   3. ``opts.resetSelection`` clears the selection (§19.3.2): any atom-count
+     *      change, plus the sidebar / generator load flow.  Count-preserving
+     *      transforms pass ``resetSelection:false`` and keep the selection.
+     *   4. Dispatcher subscribers are notified.
      */
     function _applyWorkspacePayload(payload, opts) {
         opts = opts || {};
@@ -951,17 +950,7 @@
         var resetSelection = !!opts.resetSelection;
         var text = payload && (payload.text || payload.xyz);
 
-        // Capture the PRE-op selection BEFORE any store mutation.
-        // adoptAtoms below naively filters ``state.selection`` to
-        // in-range indices for the new atom count; that filter
-        // destroys the data the selection_remap step needs to
-        // translate (selecting atom 2 + deleting atom 0: adoptAtoms
-        // drops 2 since 2 >= 2 in the 2-atom result; without
-        // capturing first, the remap reads from [] instead of [2]
-        // and produces [] instead of the correct [1]).
         var st = _store();
-        var preSelection = (st && typeof st.getState === "function")
-            ? st.getState().selection.slice() : [];
 
         // ATOMIC load/replace (§19.3.1 + F4): suspend persistence across the WHOLE
         // multi-store write so the intermediate steps (canvas install/replace, THEN
@@ -1037,28 +1026,13 @@
             st.adoptAtoms(payload.atoms);
         }
 
-        // 4. Selection mapping.  Reads from ``preSelection`` (captured
-        //    before adoptAtoms' destructive filter) so a Delete op's
-        //    selection_remap translates the user's ORIGINAL anchor
-        //    rather than the post-filter empty set.
-        // §19.3.2 atom-count selection rule: resetSelection (a count-changing mutation, or a
-        // load) CLEARS -- it takes PRECEDENCE over any server selection_remap, which is now
-        // retired for these ops (a cleared selection can never mis-point at a shifted index).
-        // The remap branch survives only for callers that ask for it WITHOUT resetSelection.
-        var remap = payload && payload.extra
-                 && payload.extra.selection_remap;
+        // 4. §19.3.2 atom-count selection rule: any count-changing mutation (grow/shrink)
+        //    -- and a load/generate -- passes resetSelection and CLEARS the selection.  A
+        //    cleared selection can never mis-point at a shifted index, so there is no server
+        //    ``selection_remap`` (retired).  Count-preserving transforms pass
+        //    resetSelection:false and leave the selection untouched.
         if (resetSelection && st && typeof st.clearSelection === "function") {
             st.clearSelection();
-        } else if (Array.isArray(remap) && st
-                && typeof st.setSelection === "function") {
-            var newSel = [];
-            for (var i = 0; i < preSelection.length; i++) {
-                var idx = preSelection[i];
-                var newIdx = (idx >= 0 && idx < remap.length)
-                    ? remap[idx] : null;
-                if (newIdx != null) newSel.push(newIdx);
-            }
-            st.setSelection(newSel);
         }
 
         // 5. Notify dispatcher subscribers.
