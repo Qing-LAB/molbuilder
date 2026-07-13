@@ -40,7 +40,6 @@
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
  *   "structure.page"            -- lib/structure/page.js
  *   "structure.save"            -- lib/structure/save.js
- *   "modify.handle"             -- modify/viewer.js (per-tab; embed handle, not raw 3Dmol)
  *   "modify.loadStructureText"  -- modify/viewer.js (per-tab; accepts XYZ + PDB)
  *   "inspectors"                -- lib/inspectors/registry.js
  *

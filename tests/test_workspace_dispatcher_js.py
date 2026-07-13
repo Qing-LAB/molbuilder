@@ -183,6 +183,10 @@ _DATA_SURFACE = sorted([
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
     "getFrame", "getForces", "currentForces", "currentFrame", "frameCount",
     "selection", "view",
+    # §20 view-state lifecycle: the active molview registers its embed handle
+    # (attach/detach) so view.get/applyState reach it, and flushViewState mirrors
+    # the live view on pagehide (persistence is otherwise push-only).
+    "attachViewHandle", "detachViewHandle", "flushViewState",
     # §19.5 state timeline — save(delta)/load(delta) + the two live reads.
     "state_index", "uncommitted",
 ])

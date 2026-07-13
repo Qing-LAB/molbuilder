@@ -1376,6 +1376,17 @@ mutation not followed by `save` stays in memory only — the user decides what a
 
 The 3Dmol embed handle is a *rendering target*, not a store; view state is derived from it on read.
 
+**Where the handle comes from.** The active molview registers its embed handle with the data
+model at mount — `mount`'s `onReady` calls `data.attachViewHandle(h)` (§18.2, "molview owns the
+whole assembly"). `data.view` reads *that* handle; there is no window global. This is what makes
+view state (camera / style / axes / labels) **persist and restore per tab**: `_serialise()`
+snapshots `view.getState()` into the owner-namespaced mirror (§18.4), and on the next visit
+`_applySnapshot()` re-applies it via `view.applyState()`. Because the session restore runs before
+the embed exists (viewer.js's `DOMContentLoaded` `load(0)` fires before `onReady`), a pre-embed
+restore is **stashed** and applied the instant `attachViewHandle` fires — so the camera survives a
+tab round-trip. (Pre-migration the handle was read off the tab-owned `molbuilder.modify.handle`
+global; that coupling is retired.)
+
 ---
 
 ## §21 Wire contract (server → `molview.data`)

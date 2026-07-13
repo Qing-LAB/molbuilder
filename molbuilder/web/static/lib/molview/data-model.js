@@ -154,11 +154,26 @@
         if (typeof factory === "function") _frames = factory();
         return _frames;
     }
-    function _handle() {
-        return (root.molbuilder
-                && root.molbuilder.modify
-                && root.molbuilder.modify.handle)
-            ? root.molbuilder.modify.handle : null;
+    // The 3Dmol embed handle is the view-state render target (§20).  The ACTIVE molview
+    // registers it here at mount (onReady -> attachViewHandle); §18 "molview owns the whole
+    // assembly", one active molview per page.  Pre-migration this was read off the tab-owned
+    // global ``molbuilder.modify.handle``; that coupling is retired -- the module holds its own.
+    var _viewHandle = null;
+    // View state restored from a session snapshot BEFORE the embed exists (the restore runs at
+    // DOMContentLoaded; the embed's onReady fires later) is stashed here and applied the moment
+    // the handle attaches -- so camera / style / axes / labels survive a tab round-trip (§20 +
+    // owner-namespaced persistence §18.4).
+    var _pendingView = null;
+    function _handle() { return _viewHandle; }
+    function attachViewHandle(h) {
+        _viewHandle = h || null;
+        if (_viewHandle && _pendingView) {
+            try { view.applyState(_pendingView); } catch (_) { /* stub embed */ }
+            _pendingView = null;
+        }
+    }
+    function detachViewHandle(h) {
+        if (!h || h === _viewHandle) _viewHandle = null;
     }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime)
@@ -805,9 +820,9 @@
 
     var view = {
         applyState: function (patch) {
-            var h = _handle(); if (!h) throw _missing("modify embed");
+            var h = _handle(); if (!h) throw _missing("view embed");
             if (typeof h.applyState !== "function") {
-                throw _missing("modify embed.applyState");
+                throw _missing("view embed.applyState");
             }
             return h.applyState(patch);
         },
@@ -824,6 +839,30 @@
             };
         },
     };
+
+    // §20 view flush.  Persistence is PUSH-ONLY (§19.5) and a pure view change (camera rotate,
+    // menu toggle) has NO push trigger -- so without this, view state would only reach the mirror
+    // incidentally, on the next structure op / Save state.  This patches ONLY the view slot of the
+    // already-persisted session mirror with the current embed view state, then re-mirrors (MIRROR
+    // ONLY, no disk).  It is VIEW-ONLY by design: it never touches the mirror's structure/selection,
+    // so it cannot change structure-persistence semantics (data-safety).  Called from a
+    // pagehide / visibilitychange('hidden') flush the module registers at mount (§18.2), so a
+    // view-only change survives a tab round-trip.
+    function flushViewState() {
+        var ws = _ws();
+        if (!ws || typeof ws.persist !== "function"
+                || typeof ws.readPersistedSnapshot !== "function") return;
+        var m = ws.readPersistedSnapshot();
+        if (!m || !m.state) return;               // nothing persisted yet -> nothing to patch
+        var v = null;
+        try { v = view.getState(); } catch (_) { v = null; }
+        if (!v) return;                            // no embed / no view -> leave the mirror as-is
+        m.state.view = v;
+        var wid = ws.workspaceId();
+        var idx = (typeof m.state.state_index === "number") ? m.state.state_index : _stateIndex;
+        try { ws.persist(m, null, { workspace_id: wid, state_index: idx }); }   // MIRROR ONLY
+        catch (_) { /* best-effort on unload */ }
+    }
 
     // ─── Operations ──────────────────────────────────────────────── //
     //
@@ -1739,8 +1778,14 @@
                     && typeof st.setSelection === "function") {
                 st.setSelection(s.selection.indices);
             }
-            // Restore the view (camera / style / axes / labels), best-effort.
-            if (s.view) { try { view.applyState(s.view); } catch (_) { /* no embed */ } }
+            // Restore the view (camera / style / axes / labels).  The restore usually runs
+            // BEFORE the embed exists (viewer.js's DOMContentLoaded load(0) fires before mount's
+            // onReady), so if no handle is attached yet, stash it -- attachViewHandle applies it
+            // the instant the embed arrives, so the view survives a tab round-trip (§20).
+            if (s.view) {
+                if (_handle()) { try { view.applyState(s.view); } catch (_) { /* stub embed */ } }
+                else { _pendingView = s.view; }
+            }
             // Restore the dirty bit (installSource set it false).
             if (s.dirty) { try { markDirty(); } catch (_) { /* empty/absent canvas */ } }
         } finally {
@@ -1917,6 +1962,9 @@
         frameCount:            frameCount,
         selection:             selection,
         view:                  view,
+        attachViewHandle:      attachViewHandle,   // §20: the active molview registers its embed
+        detachViewHandle:      detachViewHandle,   // handle here at mount (retires modify.handle)
+        flushViewState:        flushViewState,     // §20: pagehide flush -- mirror the live view
     };
 
     // The state-timeline reads are LIVE getters (§19.5) -- a plain value would freeze at 0.

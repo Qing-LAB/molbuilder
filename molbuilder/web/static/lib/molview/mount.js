@@ -136,6 +136,18 @@
                         // Test hook: expose the viewer handle so e2e can read what was drawn
                         // (the owner never sees it -- it's not on the returned handle).
                         built.viewerHost.__molview_test_handle = h;
+                        // Register the embed as molview.data's view-state target (§20): the
+                        // model reads THIS handle (not the retired ``molbuilder.modify.handle``
+                        // global), so camera / style / axes / labels persist + restore per
+                        // owner-namespace across a tab round-trip.  Applies any view state a
+                        // pre-embed session restore stashed.
+                        if (data && typeof data.attachViewHandle === "function") {
+                            data.attachViewHandle(h);
+                            cleanups.push(function () {
+                                try { data.detachViewHandle && data.detachViewHandle(h); }
+                                catch (_) {}
+                            });
+                        }
                         if (mvApi && typeof mvApi.mountRender === "function") {
                             const rc = mvApi.mountRender(h, data, store,
                                                          { viewerHost: built.viewerHost });
@@ -207,6 +219,33 @@
                 setLoop:   function (on) { _loop = !!on; },
             }, store);
             cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
+        }
+
+        // §20 view flush: persistence is push-only, and a pure view change (camera rotate, menu
+        // toggle) has no push trigger -- so mirror the live view state on navigation away so it
+        // survives a tab round-trip.  pagehide covers navigating to another page; visibilitychange
+        // ('hidden') covers backgrounding the tab.  View-ONLY (data.flushViewState patches just the
+        // mirror's view slot), so it never touches structure persistence.
+        const _flushView = function () {
+            try { if (data && typeof data.flushViewState === "function") data.flushViewState(); }
+            catch (_) {}
+        };
+        const _onVisibility = function () {
+            if (root.document && root.document.visibilityState === "hidden") _flushView();
+        };
+        // Guarded: the Node mount-test harness stubs `root` without a DOM event API.
+        if (typeof root.addEventListener === "function") {
+            root.addEventListener("pagehide", _flushView);
+            const _doc = root.document;
+            if (_doc && typeof _doc.addEventListener === "function") {
+                _doc.addEventListener("visibilitychange", _onVisibility);
+            }
+            cleanups.push(function () {
+                root.removeEventListener("pagehide", _flushView);
+                if (_doc && typeof _doc.removeEventListener === "function") {
+                    _doc.removeEventListener("visibilitychange", _onVisibility);
+                }
+            });
         }
 
         // Fold handle -- local layout state (fused-layout.css .is-folded), not store state.

@@ -3040,6 +3040,58 @@ def test_panel_assign_target_new_option_reveals_label_input(
     assert new_input.is_visible()
 
 
+def test_view_state_persists_across_tab_reload(
+        page, flask_server, water_xyz_file):
+    """§20 view-state round-trip: the 3Dmol view (camera + menu settings) is
+    captured into the owner-namespaced session mirror on navigation and
+    restored when the user returns to the tab.
+
+    Regression for the retired ``molbuilder.modify.handle`` global: the data
+    model's ``view`` sub-namespace now reads the module-registered embed handle
+    (``data.attachViewHandle`` at mount ``onReady``), so getState/applyState
+    work; and the pagehide flush (``data.flushViewState``) writes the live view
+    into the mirror even though a view-only change has no push-persist trigger.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+
+    # Wiring proof: view.getState() now exposes a live camera.  Before the fix
+    # _handle() read the dead global and this was null.
+    assert page.evaluate(
+        "() => { const v = window.molbuilder.molview.data.view.getState();"
+        "        return !!(v && v.camera != null); }"
+    ), "data.view.getState() must expose a live camera once the embed handle attaches"
+
+    # Flip a menu setting (axes) through the unified view API and confirm it took.
+    a0 = page.evaluate(
+        "() => !!window.molbuilder.molview.data.view.getState().axes")
+    page.evaluate(
+        "(want) => window.molbuilder.molview.data.view.applyState({axes: want})",
+        not a0)
+    assert page.evaluate(
+        "() => !!window.molbuilder.molview.data.view.getState().axes"
+    ) == (not a0), "applyState({axes}) must flip the axes knob"
+
+    # Flush the view into the session mirror (what pagehide does), then reload
+    # the tab -- sessionStorage survives a same-tab reload.
+    page.evaluate("() => window.molbuilder.molview.data.flushViewState()")
+    page.reload()
+    page.wait_for_function(
+        "() => !!window.molbuilder"
+        "      && typeof window.molbuilder.loadStructureText === 'function'")
+    _wait_panel_ready(page)
+
+    # The restored view must carry the flipped axes state, not the default --
+    # applied by attachViewHandle once the embed re-initialises on the new page.
+    page.wait_for_function(
+        "(want) => { const d = window.molbuilder.molview.data;"
+        "            const v = d && d.view && d.view.getState();"
+        "            return !!(v && !!v.axes === want); }",
+        arg=(not a0),
+    )
+
+
 def test_panel_assign_works_on_dirty_workspace_after_electrode(
         page, flask_server, water_xyz_file):
     """Regression for the 2026-06-09 user-reported BLOCKER:

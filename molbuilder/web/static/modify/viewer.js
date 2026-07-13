@@ -1116,12 +1116,12 @@
     // any future tab-coordination code).  Reuses /api/build/load's
     // JSON path so we don't need a browser File object.
     window.molbuilder = window.molbuilder || {};
-    // The viewer + its handle belong to the MODULE now (Track B): no ``modify.handle`` to
-    // expose, and (state.* rip-out) no ``modify.currentStateBody`` / ``modify.applyStructure``
-    // either -- the op-request body is built INSIDE the module (data-model.applyOp
-    // ._structureBody from molview.data) and the op result flows store -> UI via the
-    // molview.data subscription, not a consumer hand-off hook.
-    window.molbuilder.modify = window.molbuilder.modify || {};
+    // The viewer + its handle belong to the MODULE now: the module registers the embed handle
+    // with molview.data at mount (data.attachViewHandle), so molview.data.view reads the
+    // module-held handle (§20) -- there is no ``modify.handle`` global anymore.  And (state.*
+    // rip-out) no ``modify.currentStateBody`` / ``modify.applyStructure`` either: the op-request
+    // body is built INSIDE the module (data-model.applyOp._structureBody from molview.data) and
+    // op results flow store -> UI via the molview.data subscription, not a consumer hand-off hook.
     // Load a structure text blob (XYZ or PDB) through the UNIFIED
     // open door (``molview.data.openMolecule({text, filename})``), which
     // sniffs the format from the filename + content and installs the
