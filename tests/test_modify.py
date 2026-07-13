@@ -211,11 +211,17 @@ def test_add_atom_canonicalises_element_case(linear_dimer):
     assert out2.elements[-1] == "Fe"
 
 
-def test_add_atom_rejects_zero_offset(linear_dimer):
-    """Scientific guard: a zero offset would place the new atom on top of the
-    anchor (coincident atoms -> degenerate geometry)."""
-    with pytest.raises(ValueError, match="offset must be non-zero"):
-        add_atom(linear_dimer, "H", anchor_index=0, offset=[0.0, 0.0, 0.0])
+def test_add_atom_zero_offset_is_advisory_not_blocked(linear_dimer):
+    """Advisory-not-enforcing (validation contract): a zero offset places the new
+    atom on top of the anchor, but the op does NOT block -- it builds the
+    structure (coincident atoms) and ``validate_geometry`` surfaces the clash as a
+    non-blocking ``geometry.min_distance`` finding.  The user fixes it later /
+    the generation gate enforces at emit time."""
+    from molbuilder.validation import validate_geometry
+    out = add_atom(linear_dimer, "H", anchor_index=0, offset=[0.0, 0.0, 0.0])
+    assert out.n_atoms == linear_dimer.n_atoms + 1                 # no raise
+    assert any(i.where == "geometry.min_distance"                  # advisory surfaced
+               for i in validate_geometry(out))
 
 
 def test_add_atom_explicit_residue_id_groups_atoms_in_one_residue(linear_dimer):
@@ -720,22 +726,22 @@ def test_symmetric_electrodes_rejects_too_small_gap(linear_dimer):
                                   anchor_indices=(5, 0), gap=1.0)
 
 
-def test_symmetric_electrodes_anchorless_rejects_off_center_molecule():
-    """Position-aware overlap guard (2026-07 fresh-eyes review): the anchorless
-    slabs sit at ABSOLUTE z = ±gap/2 and this mode does NOT move the molecule,
-    so an OFF-CENTER molecule can pass a z-EXTENT check yet still poke into a
-    slab.  z ∈ [0, 5] with gap = 8 (slabs at ±4) leaves the top at z = 5 inside
-    the +4 slab and must be rejected -- while the SAME 5 Å span CENTRED
-    (z ∈ [-2.5, 2.5]) fits and is accepted."""
+def test_symmetric_electrodes_anchorless_off_center_is_advisory_not_blocked():
+    """Advisory-not-enforcing (validation contract): the anchorless slabs sit at
+    absolute z = ±gap/2 and this mode does NOT move the molecule, so an
+    off-center molecule can end up with a slab poking into it.  The op does NOT
+    block -- it builds the (possibly clashing) junction; ``validate_geometry``
+    surfaces any close contact while editing and the generation gate enforces at
+    emit.  The user re-poses / re-gaps."""
     off = Structure(elements=["S", "S"],
                     positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 5.0]]))
-    with pytest.raises(ValueError, match="off-centre"):
-        add_symmetric_electrodes(off, "Au", "111", (2, 2, 1), gap=8.0)
-    # Same extent, centred about the origin -> clears both slabs.
+    out = add_symmetric_electrodes(off, "Au", "111", (2, 2, 1), gap=8.0)
+    assert out.n_atoms > off.n_atoms   # slabs added, no raise
+    # A centred molecule of the same span builds too (the guard was never the gate).
     centred = Structure(elements=["S", "S"],
                         positions=np.array([[0.0, 0.0, -2.5], [0.0, 0.0, 2.5]]))
-    out = add_symmetric_electrodes(centred, "Au", "111", (2, 2, 1), gap=8.0)
-    assert out.n_atoms > centred.n_atoms   # slabs added, no raise
+    assert add_symmetric_electrodes(centred, "Au", "111", (2, 2, 1),
+                                    gap=8.0).n_atoms > centred.n_atoms
 
 
 def test_symmetric_electrodes_rejects_reversed_anchor_order(linear_dimer):
@@ -820,15 +826,17 @@ def test_symmetric_electrodes_anchorless_works_for_offset_origin():
     assert abs(elc_z[elc_z < 0].max() + 5.0) < 1e-9
 
 
-def test_symmetric_electrodes_anchorless_rejects_too_small_gap():
-    """The gap must accommodate the molecule's z-extent + 2× M-X
-    bond margin (1.5 Å each side).  A 6 Å molecule cannot fit in a
-    4 Å gap; reject with an actionable message."""
+def test_symmetric_electrodes_anchorless_small_gap_is_advisory_not_blocked():
+    """Advisory-not-enforcing (validation contract): a gap too small for the
+    molecule's z-extent is NOT rejected -- the op builds the (clashing) junction
+    and ``validate_geometry`` surfaces the close contact while editing (the
+    generation gate enforces at emit).  Only a non-positive gap (degenerate) is
+    rejected."""
     s = Structure(elements=["C"]*5, positions=np.array([
         [0, 0, -3], [0, 0, -1.5], [0, 0, 0], [0, 0, 1.5], [0, 0, 3],
     ]))
-    with pytest.raises(ValueError, match="too small"):
-        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=4.0)
+    out = add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=4.0)
+    assert out.n_atoms > s.n_atoms   # slabs added, no raise
 
 
 def test_symmetric_electrodes_anchorless_rejects_nonpositive_gap():

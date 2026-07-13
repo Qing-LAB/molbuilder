@@ -1302,19 +1302,24 @@ def test_modify_add_atom_rejects_unknown_element(web_client):
     assert "unknown element symbol" in body["error"]
 
 
-def test_modify_add_atom_rejects_zero_offset(web_client):
-    """Scientific guard: a zero offset would place the new atom on top of the
-    anchor (coincident atoms); reject with 400."""
+def test_modify_add_atom_zero_offset_is_advisory_not_blocked(web_client):
+    """Advisory-not-enforcing (validation contract): a zero offset places the new
+    atom on top of the anchor, but /api/modify/add_atom does NOT reject it -- it
+    returns the structure (ok, 200) and surfaces the coincident atoms as a
+    non-blocking ``geometry.min_distance`` issue.  The editing stage advises; the
+    generation gate enforces."""
     r = web_client.post("/api/modify/add_atom", json={
         "xyz": _H2O_XYZ,
         "element": "H",
         "anchor_index": 0,
         "offset": [0, 0, 0],
     })
-    assert r.status_code == 400
+    assert r.status_code == 200
     body = r.get_json()
-    assert body["ok"] is False
-    assert "offset must be non-zero" in body["error"]
+    assert body["ok"] is True
+    assert body["n_atoms"] == 4
+    assert any(i.get("where") == "geometry.min_distance"
+               for i in (body.get("issues") or []))
 
 
 def test_modify_add_atom_rejects_missing_offset(web_client):

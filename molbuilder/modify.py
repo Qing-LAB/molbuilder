@@ -183,15 +183,13 @@ def add_atom(
             f"symbol like 'H', 'C', or 'Au'"
         )
     offset_arr = np.asarray(offset, dtype=float).reshape(3)
-    # Scientific guard: a (near-)zero offset drops the new atom on top of the
-    # anchor -> two coincident atoms (degenerate geometry, infinite forces in
-    # any DFT run).  Reject only the essentially-zero case (< 1e-3 Å) so a
-    # legitimately short bond (e.g. an X-H at 0.7 Å) is still allowed.
-    if float(np.linalg.norm(offset_arr)) < 1e-3:
-        raise ValueError(
-            "offset must be non-zero: a zero offset would place the new atom "
-            "on top of the anchor (coincident atoms)"
-        )
+    # ADVISORY-NOT-ENFORCING (validation contract): a (near-)zero offset places
+    # the new atom on top of the anchor.  We do NOT block it -- close / coincident
+    # atoms are surfaced non-blockingly by ``validate_geometry`` (the
+    # ``geometry.min_distance`` finding) while editing, and the GENERATION gate
+    # (``report(validate(...))`` in the SIESTA/PySCF emitters) enforces at emit
+    # time.  So the user can build an intermediate structure and fix it later.
+    # Only genuinely-invalid input (a non-element symbol, above) is rejected here.
     new_pos = struct.positions[anchor_index] + offset_arr
     if residue_id is None:
         new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
@@ -1054,31 +1052,13 @@ def add_symmetric_electrodes(
             raise ValueError(
                 f"gap = {gap:.3f} Å must be > 0"
             )
-        # Reject a molecule that would overlap a slab.  The slabs' closest
-        # layers sit at ABSOLUTE z = ±gap/2, and this mode deliberately does
-        # NOT move the molecule (the user poses it), so we must check the
-        # molecule's ACTUAL z-range against BOTH slab planes -- not just its
-        # z-EXTENT.  An extent-only check passes an off-center molecule whose
-        # far end still pokes into a slab (z ∈ [0, 5], gap = 8 → +z slab at
-        # z = 4, but the molecule reaches z = 5).  We leave a ``mol_z_margin``
-        # cushion on each side (a typical M-X contact bond is ~2.0-2.4 Å).
-        # Rejecting up front gives an actionable message instead of a
-        # downstream min-distance validation error.
-        mol_z = struct.positions[:, 2]
-        mol_z_min = float(mol_z.min())
-        mol_z_max = float(mol_z.max())
-        mol_z_margin = 1.5     # Å, generous floor on M-X contact bond
-        top_clearance = (gap / 2.0) - mol_z_max      # +z slab plane minus molecule top
-        bot_clearance = mol_z_min + (gap / 2.0)      # molecule bottom minus -z slab plane
-        if top_clearance < mol_z_margin or bot_clearance < mol_z_margin:
-            raise ValueError(
-                f"gap = {gap:.2f} Å is too small (or the molecule is off-centre): "
-                f"the molecule spans z ∈ [{mol_z_min:.2f}, {mol_z_max:.2f}] Å but "
-                f"the slabs sit at z = ±{gap / 2.0:.2f} Å, leaving only "
-                f"{min(top_clearance, bot_clearance):.2f} Å clearance (need ≥ "
-                f"{mol_z_margin:.2f} Å). Centre + re-pose the molecule (Geom + "
-                f"Pose) or increase the gap."
-            )
+        # ADVISORY-NOT-ENFORCING (validation contract): the slabs sit at absolute
+        # z = ±gap/2 and this mode does NOT move the molecule (the user poses it).
+        # If the gap is too small -- or the molecule off-centre -- a slab can
+        # overlap the molecule.  We do NOT block that: ``validate_geometry``
+        # (geometry.min_distance) surfaces the clash non-blockingly while editing,
+        # and the generation gate (report(validate(...))) enforces at emit time.
+        # The user re-poses / re-gaps.  Only gap <= 0 (degenerate) is rejected above.
         # add_electrode_slab places its slab using ``positions[anchor_index]``
         # as the geometric reference: lateral xy = anchor.xy + offset,
         # closest-layer z = anchor.z + sign * contact_distance.  We
