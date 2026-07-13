@@ -1187,6 +1187,10 @@
         // + reindex + return them for them to survive an add/delete -- the modify round-trip
         // completeness step; until then this is a harmless no-op.)
         if (s && s.annotations != null) body.annotations = s.annotations;
+        // Periodicity (cell / axis_kind / vacuum / k-grid) rides through the op so an edit
+        // does not silently wipe a cell / transport axis / k-grid the user set (the server
+        // reads it back in struct_from_body, symmetric with structure_to_dict's emission).
+        if (s && s.periodicity != null) body.periodicity = s.periodicity;
         return body;
     }
 

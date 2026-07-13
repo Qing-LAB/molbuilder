@@ -1145,6 +1145,34 @@ def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
     body = r.get_json()
     assert body["ok"] is True
     assert "selection_remap" not in (body.get("extra") or {})
+
+
+def test_modify_op_round_trips_the_periodic_cell(web_client):
+    """Regression (2026-07 fresh-eyes review): a modify op must carry the
+    periodicity (cell / axis_kind / vacuum / k-grid) through the round-trip.
+    Before the fix ``struct_from_body`` rebuilt an isolated Structure and the
+    response reset the client's cell/k-grid to defaults -> the next SIESTA FDF
+    silently dropped LatticeVectors / the k-grid."""
+    periodicity = {
+        "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
+        "axis_kind": ["periodic", "periodic", "transport"],
+        "vacuum": [5.0, 5.0, 0.0],
+        "kgrid": [2, 2, 8],
+    }
+    # A count-changing op (delete) AND a transform (rotate) must both preserve it.
+    for op, extra in (("delete", {"indices": [1]}),
+                      ("rotate", {"axis": "z", "angle": 30})):
+        r = web_client.post(f"/api/modify/{op}", json={
+            "xyz": _H2O_XYZ, "periodicity": periodicity, **extra})
+        body = r.get_json()
+        assert body["ok"] is True, f"{op}: {body}"
+        per = body["periodicity"]
+        assert per["cell"] == periodicity["cell"], f"{op} dropped the cell"
+        assert per["axis_kind"] == periodicity["axis_kind"], f"{op} dropped axis_kind"
+        assert per["vacuum"] == periodicity["vacuum"], f"{op} dropped vacuum"
+        assert per["kgrid"] == periodicity["kgrid"], f"{op} dropped the k-grid"
+
+
 # --------------------------------------------------------------------- #
 #  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
 #  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #

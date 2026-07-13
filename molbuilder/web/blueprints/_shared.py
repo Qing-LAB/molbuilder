@@ -162,6 +162,24 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
         if isinstance(v, list) and len(v) == n:
             return list(v)
         return default
+    # Periodicity rides through the op round-trip, SYMMETRIC with
+    # ``structure_to_dict``'s ``periodicity`` block.  cell / axis_kind / vacuum
+    # / k-grid are NOT per-atom, so an edit (delete / add / orient / rotate /
+    # translate) must not silently revert a periodic or transport cell to
+    # isolated defaults.  Absent -> Structure's isolated defaults;
+    # ``__post_init__`` normalises + validates (a malformed cell raises ->
+    # the caller turns it into a 400).
+    per = body.get("periodicity")
+    peri_kw: Dict[str, Any] = {}
+    if isinstance(per, dict):
+        if per.get("cell") is not None:
+            peri_kw["cell"] = per["cell"]
+        if per.get("axis_kind") is not None:
+            peri_kw["axis_kind"] = tuple(per["axis_kind"])
+        if per.get("vacuum") is not None:
+            peri_kw["vacuum"] = tuple(per["vacuum"])
+        if per.get("kgrid") is not None:
+            peri_kw["kgrid"] = tuple(int(k) for k in per["kgrid"])
     return Structure(
         elements      = list(base.elements),
         positions     = base.positions,
@@ -170,6 +188,7 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
         residue_names = _pick("residue_names", list(base.residue_names)),
         chain_ids     = _pick("chain_ids",     list(base.chain_ids)),
         title         = base.title,
+        **peri_kw,
     )
 
 

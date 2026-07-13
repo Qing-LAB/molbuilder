@@ -954,6 +954,26 @@ class Structure:
     #  Combine / translate / center -- handy small utilities              #
     # ------------------------------------------------------------------ #
 
+    def _carry_periodicity(self) -> dict:
+        """Periodicity fields (cell / pbc / axis_kind / vacuum / kgrid) for
+        reconstructing a Structure that EDITS ATOMS but keeps the lattice.
+
+        None of these are per-atom, so an add / delete / rigid transform
+        carries them verbatim.  Dropping any of them silently reverts a
+        periodic or transport cell to isolated defaults (axis_kind -> derived
+        from pbc, vacuum -> 0, kgrid -> 1) -- e.g. deleting a stray atom would
+        wipe a k-grid the user set, and the emitted SIESTA FDF would omit
+        ``LatticeVectors`` / the k-grid.  Every op-helper that rebuilds a
+        Structure spreads this so the lattice survives the edit.
+        """
+        return dict(
+            cell      = (self.cell.copy() if self.cell is not None else None),
+            pbc       = self.pbc,
+            axis_kind = self.axis_kind,
+            vacuum    = self.vacuum,
+            kgrid     = self.kgrid,
+        )
+
     def copy(self) -> "Structure":
         """Return a deep-ish copy: all metadata lists are duplicated;
         ``positions`` is copied so the new Structure can be mutated
@@ -972,10 +992,8 @@ class Structure:
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
             frozen_atoms  = list(self.frozen_atoms),
-            cell          = (self.cell.copy() if self.cell is not None
-                             else None),
-            pbc           = self.pbc,
             annotations   = copy_annotations(self.annotations),
+            **self._carry_periodicity(),
         )
 
     def translated(self, vec: Sequence[float]) -> "Structure":
@@ -990,11 +1008,9 @@ class Structure:
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
             frozen_atoms  = list(self.frozen_atoms),
-            # A rigid translation leaves the lattice unchanged.
-            cell          = (self.cell.copy() if self.cell is not None
-                             else None),
-            pbc           = self.pbc,
             annotations   = copy_annotations(self.annotations),
+            # A rigid translation leaves the lattice unchanged.
+            **self._carry_periodicity(),
         )
 
     def centered(self) -> "Structure":

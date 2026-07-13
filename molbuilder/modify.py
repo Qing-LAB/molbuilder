@@ -101,6 +101,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         regions=new_regions,
         frozen_atoms=new_frozen,
         annotations=new_annotations,
+        **struct._carry_periodicity(),   # deleting atoms keeps the lattice
     )
 
 
@@ -200,6 +201,7 @@ def add_atom(
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
+        **struct._carry_periodicity(),   # appending an atom keeps the lattice
     )
 
 
@@ -349,6 +351,7 @@ def orient_along_axis(
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
+        **struct._carry_periodicity(),   # a rigid rotation keeps the lattice
     )
 
 
@@ -429,6 +432,7 @@ def rotate_around_axis(
         regions={k: list(v) for k, v in struct.regions.items()},
         frozen_atoms=list(struct.frozen_atoms),
         annotations=copy_annotations(struct.annotations),
+        **struct._carry_periodicity(),   # a rigid rotation keeps the lattice
     )
 
 

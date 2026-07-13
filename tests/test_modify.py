@@ -44,6 +44,65 @@ def linear_dimer():
 
 
 @pytest.fixture
+def periodic_dimer():
+    """The linear dimer with a full periodic + transport cell set (as the
+    Cell op-tab would produce), so ops can be checked for lattice survival."""
+    return Structure(
+        elements=["C", "H", "H", "H", "H", "C"],
+        positions=np.array([
+            [0.0,  0.0, 0.0], [0.5,  0.5, 0.0], [0.5, -0.5, 0.0],
+            [2.5,  0.5, 0.0], [2.5, -0.5, 0.0], [3.0,  0.0, 0.0],
+        ]),
+        title="dimer",
+        cell=np.diag([10.0, 10.0, 20.0]),
+        axis_kind=("periodic", "periodic", "transport"),
+        vacuum=(5.0, 5.0, 0.0),
+        kgrid=(2, 2, 8),
+    )
+
+
+def _assert_lattice_preserved(out, ref):
+    """The op must carry cell / axis_kind / vacuum / k-grid verbatim -- these
+    are NOT per-atom, so an edit must never revert them to isolated defaults."""
+    assert out.cell is not None and np.allclose(out.cell, ref.cell)
+    assert out.axis_kind == ref.axis_kind
+    assert out.vacuum == ref.vacuum
+    assert out.kgrid == ref.kgrid
+
+
+class TestOpsPreservePeriodicity:
+    """Regression (2026-07 fresh-eyes review): a modify op must not silently
+    wipe the periodic cell / transport axis / vacuum / k-grid.  Before the fix
+    delete/add/orient/rotate/translate dropped them and a subsequent SIESTA
+    FDF omitted LatticeVectors / the k-grid -- a scientifically wrong cell,
+    no warning."""
+
+    def test_delete_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(delete_atoms(periodic_dimer, [1]), periodic_dimer)
+
+    def test_add_atom_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(
+            add_atom(periodic_dimer, "S", 0, [1.5, 0, 0]), periodic_dimer)
+
+    def test_orient_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(
+            orient_along_axis(periodic_dimer, (0, 5), axis="z"), periodic_dimer)
+
+    def test_rotate_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(
+            rotate_around_axis(periodic_dimer, axis="z", angle=30), periodic_dimer)
+
+    def test_translate_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(periodic_dimer.translated((1, 0, 0)), periodic_dimer)
+
+    def test_center_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(periodic_dimer.centered(), periodic_dimer)
+
+    def test_copy_preserves_lattice(self, periodic_dimer):
+        _assert_lattice_preserved(periodic_dimer.copy(), periodic_dimer)
+
+
+@pytest.fixture
 def single_anchor():
     """One S atom at the origin -- minimal anchor for electrode tests."""
     return Structure(

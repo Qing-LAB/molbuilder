@@ -3092,6 +3092,32 @@ def test_view_state_persists_across_tab_reload(
     )
 
 
+def test_kgrid_survives_a_delete_op(page, flask_server, water_xyz_file):
+    """Full-stack regression (2026-07 fresh-eyes review): a k-grid (or cell /
+    axis_kind / vacuum) set in the Cell op-tab must survive an atom edit.
+    Before the fix the op round-trip rebuilt an isolated Structure and the
+    response reset the store to defaults, so a subsequent SIESTA FDF silently
+    dropped the k-grid / LatticeVectors.  This drives the real client path:
+    setKgrid -> applyOp(delete) -> _structureBody sends periodicity -> server
+    reads it back -> the store still has the k-grid."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    # Set a k-grid the way the Cell op-tab's Update button does.
+    page.evaluate("() => window.molbuilder.molview.data.setKgrid([2, 2, 8])")
+    assert page.evaluate(
+        "() => window.molbuilder.molview.data.getKgrid()") == [2, 2, 8]
+    # Delete an atom (a count-changing op) through the module's applyOp.
+    page.evaluate(
+        "() => window.molbuilder.molview.data.applyOp('delete', {indices: [2]})")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2")
+    # The k-grid must have survived the round-trip, not reverted to [1,1,1].
+    assert page.evaluate(
+        "() => window.molbuilder.molview.data.getKgrid()") == [2, 2, 8], \
+        "the modify op wiped the k-grid the user set in the Cell tab"
+
+
 def test_panel_assign_works_on_dirty_workspace_after_electrode(
         page, flask_server, water_xyz_file):
     """Regression for the 2026-06-09 user-reported BLOCKER:
