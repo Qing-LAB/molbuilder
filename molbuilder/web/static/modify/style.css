@@ -118,10 +118,6 @@ header .tagline {
     flex-direction: column;
     min-height: 480px;
 }
-.viewer-section #viewer.viewer {
-    flex: 1;
-    min-height: 360px;
-}
 /* The wrap mirrors the canvas dimensions (centred, capped at
  * 560 px) so the absolute-positioned measurement chip anchors to
  * the actual canvas corner and not the card's full-width column.
@@ -143,17 +139,31 @@ header .tagline {
     max-height: var(--viewer-edge, min(60vh, 560px));
     margin: 0 auto;
 }
-/* Match the dark UI: 3Dmol renders into the inner canvas with a
- * configurable background (set by the viewer init), so the
- * outer #viewer slot can stay transparent and inherit the card's
- * surface colour — the jarring white frame around the canvas
- * on the Molbuilder tab came from this rule, not from 3Dmol
- * itself. */
-.viewer-section .viewer-wrap > #viewer {
+/* The viewer HOST + the embed's card FILL the square wrap and CLIP.
+ *
+ * The module builds the host as ``.viewer`` (a CLASS, not ``#viewer``); the old
+ * ``#viewer`` id selector was dead, so the host + its 3Dmol canvas were never
+ * height-constrained.  3Dmol then initialised into an unbounded container and
+ * over-sized the canvas, which spilled DOWN out of the square -- penetrating the
+ * selection/cell panel below (and, at other widths, the modify card / footer)
+ * once the layout stacked vertically.  Constraining the host + the embed card to
+ * the wrap FROM PAGE LOAD (with overflow:hidden) lets 3Dmol size its canvas into
+ * the square instead of overflowing it, and clips anything that still doesn't.
+ *
+ * (Also matches the dark UI: the transparent host inherits the card surface, so
+ * there's no jarring white frame around the canvas.) */
+.viewer-section .viewer-wrap > .viewer {
     width: 100%;
     height: 100%;
     position: relative;
+    overflow: hidden;
     background: transparent;
+}
+.viewer-section .viewer-wrap > .viewer > .mol-viewer-card {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Workspace layout (v5, 2026-07-08): the fused molview card (viewer + selection/cell
