@@ -1176,6 +1176,25 @@ def _parse_two_ints_csv(value, flag):
         )
 
 
+def _parse_ints_csv(value, flag):
+    """``"3,0,7"`` -> ``[3, 0, 7]`` (one or more integers).  Used for the
+    electrode centre-index list (the atoms whose centroid the slab centres
+    on).  Rejects an empty list -- callers who want origin-centring omit the
+    field entirely at the API level."""
+    parts = [p.strip() for p in value.split(",") if p.strip() != ""]
+    if not parts:
+        raise click.BadParameter(
+            f"{flag} expects one or more comma-separated atom indices; "
+            f"got {value!r}"
+        )
+    try:
+        return [int(p) for p in parts]
+    except ValueError:
+        raise click.BadParameter(
+            f"{flag} entries must be integers; got {value!r}"
+        )
+
+
 def _parse_size3(size_str, flag):
     """``"3x3x2"`` -> ``(3, 3, 2)``.  Tolerates whitespace around the
     individual integer fields."""
@@ -1197,12 +1216,15 @@ def _parse_electrode_spec(spec):
 
     Two modes, distinguished by the ``@key=`` substring:
 
-      * **Pair (default):** ``ELEM:PLANE:MxNxL@gap=GAP:ATOP,ABOT``.
-        Two anchors after the trailing colon, comma-separated.
+      * **Pair (default):** ``ELEM:PLANE:MxNxL@gap=GAP:I,J,...``.
+        One or more centre indices after the trailing colon,
+        comma-separated -- the junction centres on their CENTROID (1
+        index -> that atom, 2 -> their midpoint, N -> centroid).
         ``GAP`` is the total electrode-to-electrode distance.
-      * **Single (rare):** ``ELEM:PLANE:MxNxL@contact=DIST:+z=N`` or
-        ``ELEM:PLANE:MxNxL@contact=DIST:-z=N``.  ``DIST`` is the
-        anchor-to-closest-layer distance for the chosen side.
+      * **Single (rare):** ``ELEM:PLANE:MxNxL@contact=DIST:+z=I,J,...``
+        or ``...:-z=I,J,...``.  ``DIST`` is the centre-to-closest-layer
+        distance for the chosen side; the slab centres on the same
+        centroid of the trailing index list.
 
     Returns a dict with key ``"mode"`` set to ``"pair"`` or
     ``"single"`` and the appropriate fields.
@@ -1228,8 +1250,8 @@ def _parse_electrode_spec(spec):
     keyval, has_colon, rest = after_at.partition(":")
     if not has_colon or not rest:
         raise click.BadParameter(
-            f"--electrode {spec!r}: missing trailing anchor section after "
-            f"'@{keyval}:'."
+            f"--electrode {spec!r}: missing trailing centre-index section "
+            f"after '@{keyval}:'."
         )
     key, has_eq, val = keyval.partition("=")
     key = key.strip().lower()                   # R3: case-insensitive
@@ -1248,43 +1270,31 @@ def _parse_electrode_spec(spec):
         )
 
     if key == "gap":
-        # Pair mode: trailing field is "ATOP,ABOT"
-        if "," not in rest:
-            raise click.BadParameter(
-                f"--electrode {spec!r}: '@gap=' (pair mode) requires the "
-                f"trailing field to be 'ATOP,ABOT' (two anchor indices); "
-                f"got {rest!r}"
-            )
-        anchor_top, anchor_bot = _parse_two_ints_csv(
-            rest, f"--electrode {spec!r}"
-        )
+        # Pair mode: trailing field is a centre-index list "I,J,..."
+        center_indices = _parse_ints_csv(rest, f"--electrode {spec!r}")
         return {
             "mode": "pair",
             "element": element, "plane": plane, "size": size,
             "gap": distance,
-            "anchor_top": anchor_top, "anchor_bot": anchor_bot,
+            "center_indices": center_indices,
         }
     if key == "contact":
-        # Single mode: trailing field is "+z=N" or "-z=N"
-        side, has_eq2, anchor_str = rest.partition("=")
+        # Single mode: trailing field is "+z=I,J,..." or "-z=I,J,..."
+        side, has_eq2, idx_str = rest.partition("=")
         side = side.strip()
-        anchor_str = anchor_str.strip()
+        idx_str = idx_str.strip()
         if not has_eq2 or side not in ("+z", "-z"):
             raise click.BadParameter(
                 f"--electrode {spec!r}: '@contact=' (single mode) requires "
-                f"the trailing field to be '+z=N' or '-z=N'; got {rest!r}"
+                f"the trailing field to be '+z=I,J,...' or '-z=I,J,...'; "
+                f"got {rest!r}"
             )
-        try:
-            anchor = int(anchor_str)
-        except ValueError:
-            raise click.BadParameter(
-                f"--electrode {spec!r}: anchor {anchor_str!r} must be an integer"
-            )
+        center_indices = _parse_ints_csv(idx_str, f"--electrode {spec!r}")
         return {
             "mode": "single",
             "element": element, "plane": plane, "size": size,
             "contact_distance": distance,
-            "side": side, "anchor": anchor,
+            "side": side, "center_indices": center_indices,
         }
     raise click.BadParameter(
         f"--electrode {spec!r}: unknown key {key!r}; expected 'gap' (pair) "
@@ -1328,12 +1338,14 @@ def _infer_output_format(path):
                    "degrees, e.g. 'z:90'.  Single-instance per call: "
                    "passing --rotate twice is rejected.")
 @click.option("--electrode", multiple=True,
-              metavar="ELEM:PLANE:MxNxL@KEY=VAL:ANCHOR",
-              help="add an FCC electrode.  PAIR (default): "
+              metavar="ELEM:PLANE:MxNxL@KEY=VAL:CENTER_INDICES",
+              help="add an FCC electrode, centred on the CENTROID of the "
+                   "trailing atom-index list (1 index -> that atom, 2 -> "
+                   "their midpoint, N -> centroid).  PAIR (default): "
                    "'Au:111:3x3x2@gap=8.5:3,0' -- gap is electrode-to-"
-                   "electrode distance, anchors are (top, bot).  SINGLE "
-                   "(rare): 'Au:111:3x3x2@contact=2.4:+z=3' -- contact is "
-                   "anchor-to-closest-layer distance.  Repeat for stepped "
+                   "electrode distance.  SINGLE (rare): "
+                   "'Au:111:3x3x2@contact=2.4:+z=3' -- contact is the "
+                   "centre-to-closest-layer distance.  Repeat for stepped "
                    "contacts; mixing pair and single is allowed.")
 # Sub-options for --orient-axis
 @click.option("--axis", default="z", show_default=True,
@@ -1508,7 +1520,7 @@ def cmd_modify(input_path, output_path,
                         element=spec["element"],
                         plane=spec["plane"],
                         size=spec["size"],
-                        anchor_indices=(spec["anchor_top"], spec["anchor_bot"]),
+                        center_indices=spec["center_indices"],
                         gap=spec["gap"],
                         orthogonal=orthogonal,
                         offset=offset_xy,
@@ -1520,7 +1532,7 @@ def cmd_modify(input_path, output_path,
                         element=spec["element"],
                         plane=spec["plane"],
                         size=spec["size"],
-                        anchor_index=spec["anchor"],
+                        center_indices=spec["center_indices"],
                         contact_distance=spec["contact_distance"],
                         side=spec["side"],
                         orthogonal=orthogonal,

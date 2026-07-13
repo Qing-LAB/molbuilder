@@ -1194,8 +1194,8 @@ enforce the policy, check the invariant, place the group in the body, and route:
 | `rotate` | subject | **all** | any | *(subject: all→whole-structure; subset→orchestration)* | transform → count == old | **kept** | `axis, angle, center?` |
 | `orient` | anchor | **reject** | 2 | `anchors` (array[2]) | transform → count == old | **kept** | `axis` |
 | `add_atom` | anchor | **reject** | 1 | `anchor_index` (scalar = group[0]) | grow → count > old | **cleared** | `element, offset, residue?` |
-| `symmetric_electrodes` | anchor | **canonical** (0 valid) | 0–2 | `anchors` (array) | grow → count > old | **cleared** | `element, plane, size, gap, …` |
-| `electrode` | anchor | 1 | 1 | `anchor_index` (scalar) | grow → count > old | **cleared** | `element, plane, size, side, …` |
+| `symmetric_electrodes` | anchor | **canonical** (0 valid → origin) | any | `center_indices` (array) | grow → count > old | **cleared** | `element, plane, size, gap, …` |
+| `electrode` | anchor | **canonical** (0 valid → origin) | any | `center_indices` (array) | grow → count > old | **cleared** | `element, plane, size, side, …` |
 | `delete` | subject | **reject** (never all-by-accident) | any | `indices` (array) | shrink → count == old−\|group\| | **cleared** | — |
 
 Descriptor fields: `role` (subject|anchor — §"the model"), `empty` (all|reject|canonical), `arity`

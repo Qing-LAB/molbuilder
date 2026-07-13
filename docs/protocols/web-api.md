@@ -747,8 +747,8 @@ function.
 | `/api/modify/orient` | POST | `{xyz, anchor_indices, axis, center, ...}` |
 | `/api/modify/rotate` | POST | `{xyz, axis, angle, center, ...}` |
 | `/api/modify/translate` | POST | `{xyz, dx, dy, dz, ...}` |
-| `/api/modify/electrode` | POST | `{xyz, element, plane, size, anchor_index, ...}` |
-| `/api/modify/symmetric_electrodes` | POST | `{xyz, element, plane, size, anchor_indices, gap, ...}` |
+| `/api/modify/electrode` | POST | `{xyz, element, plane, size, center_indices?, ...}` |
+| `/api/modify/symmetric_electrodes` | POST | `{xyz, element, plane, size, center_indices?, gap, ...}` |
 
 ### 5.2 `/api/modify/meta`
 

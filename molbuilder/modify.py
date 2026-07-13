@@ -11,13 +11,13 @@ Public surface (all pure functions; each returns a new ``Structure``):
                                                 -> Structure
     rotate_around_axis(struct, axis="z", angle=0.0, *, center="origin")
                                                 -> Structure
-    add_electrode_slab(struct, element, plane, size, anchor_index, *,
+    add_electrode_slab(struct, element, plane, size, center_indices=None, *,
                        contact_distance=None, side="+z", orthogonal=False,
                        offset=(0.0, 0.0), lattice_constant=None,
                        inter_layer_offset=None)
                                                 -> Structure
     add_symmetric_electrodes(struct, element, plane, size,
-                             anchor_indices=None, *, gap=8.0,
+                             center_indices=None, *, gap=8.0,
                              orthogonal=False, offset=(0.0, 0.0),
                              lattice_constant=None)
                                                 -> Structure
@@ -40,10 +40,18 @@ Geometry conventions for the nanojunction workflow:
       ``a0`` sits at the origin and ``a1`` is on +z.  This is the
       DFT-transport convention -- z is the transport direction; the
       two electrodes extend along ±z.
+    * The slab is CENTRED on the centroid of ``center_indices`` -- the
+      atoms the user selected (1 index -> that atom, 2 -> their midpoint,
+      N -> their centroid).  Omit / pass ``None`` and the slab centres on
+      the world origin.  This is the same rule the pair helper uses so
+      the junction sits on the molecule the user picked.
     * ``add_electrode_slab(side="+z")`` places the first (closest)
-      layer at z = anchor.z + gap, with subsequent layers extending
-      outward in the +z direction.  Use ``side="-z"`` for the bottom
-      electrode.
+      layer at z = centre.z + contact_distance, with subsequent layers
+      extending outward in the +z direction.  Use ``side="-z"`` for the
+      bottom electrode.
+    * ``add_symmetric_electrodes`` centres BOTH slabs on that same
+      centroid and separates them by ``gap`` (closest layers at
+      centre.z ± gap/2).
 """
 
 from __future__ import annotations
@@ -736,7 +744,7 @@ def add_electrode_slab(
     element: str,
     plane: str,
     size: Tuple[int, int, int],
-    anchor_index: int,
+    center_indices: Optional[Sequence[int]] = None,
     *,
     contact_distance: Optional[float] = None,
     side: str = "+z",
@@ -756,11 +764,14 @@ def add_electrode_slab(
     ``size=(m, n, n_layers)`` where every layer has the same lateral
     ``(m, n)`` (uniform across layers).
 
-    The whole slab is translated so:
+    The slab CENTRE is the centroid of ``center_indices`` (the atoms the
+    user selected -- 1 index -> that atom, 2 -> their midpoint, N -> their
+    centroid); omit / pass ``None`` and it defaults to the world origin.
+    The whole slab is then translated so:
 
-      * The slab's lateral centroid sits at ``(anchor.x + offset[0],
-        anchor.y + offset[1])``.
-      * The closest layer's z is ``anchor.z + sign * contact_distance``
+      * The slab's lateral centroid sits at ``(centre.x + offset[0],
+        centre.y + offset[1])``.
+      * The closest layer's z is ``centre.z + sign * contact_distance``
         (sign = +1 for ``side="+z"``, -1 for ``"-z"``); subsequent
         layers extend outward at the slab's natural inter-layer
         spacing.
@@ -778,8 +789,9 @@ def add_electrode_slab(
         ``(m, n, n_layers)`` -- in-plane repeat counts and number of
         layers.  Uniform across all layers.  ``n_layers == 0`` returns
         ``struct`` unchanged.
-    anchor_index
-        Atom whose (x, y, z) defines the electrode placement reference.
+    center_indices
+        The selected atoms whose centroid defines the electrode placement
+        reference (``None`` / empty -> the world origin).
     contact_distance
         Distance (Å) from the anchor atom along the side direction to
         the closest electrode layer's z plane.  Default 2.4 Å (a
@@ -835,11 +847,6 @@ def add_electrode_slab(
         contact_distance = default_contact_distance(element)
     if side not in ("+z", "-z"):
         raise ValueError(f"side must be '+z' or '-z'; got {side!r}")
-    if not (0 <= anchor_index < struct.n_atoms):
-        raise IndexError(
-            f"anchor_index {anchor_index} out of range for "
-            f"{struct.n_atoms}-atom structure"
-        )
     _check_fcc_element(element)
     a = lattice_constant if lattice_constant is not None else _get_fcc_lattice()[element]
 
@@ -884,14 +891,26 @@ def add_electrode_slab(
                 f"electrodes.  Aborting; this is a build-tool regression."
             )
 
-    # Translate so the slab's lateral centroid (average xy of every
-    # electrode atom) lands at ``(anchor.x + offset[0], anchor.y +
-    # offset[1])``.  The default ``offset=(0, 0)`` puts the slab
-    # centroid directly over the anchor (atop site).  Non-zero
-    # ``offset`` shifts the slab laterally so the user can park the
-    # anchor over a bridge / hollow site -- the slider in the Modify
-    # UI dials this in interactively.
-    anchor = struct.positions[anchor_index]
+    # Placement REFERENCE = the centroid of the selected atom group
+    # (``center_indices``); empty / None -> the ORIGIN.  ONE consistent rule for
+    # single AND symmetric electrodes: 1 atom -> that atom, 2 -> their midpoint,
+    # N -> their centroid, nothing selected -> the origin (0, 0, 0).
+    if center_indices:
+        _cidx = [int(i) for i in center_indices]
+        for _i in _cidx:
+            if not (0 <= _i < struct.n_atoms):
+                raise IndexError(
+                    f"center index {_i} out of range for {struct.n_atoms}-atom "
+                    f"structure"
+                )
+        anchor = struct.positions[_cidx].mean(axis=0)
+    else:
+        anchor = np.zeros(3, dtype=float)
+
+    # Translate so the slab's lateral centroid (average xy of every electrode
+    # atom) lands at ``(centre.x + offset[0], centre.y + offset[1])``.  The
+    # default ``offset=(0, 0)`` puts the slab centroid directly over the centre;
+    # non-zero ``offset`` shifts it laterally (bridge / hollow site).
     offset_x, offset_y = float(offset[0]), float(offset[1])
     slab_centroid_xy = metal_pos[:, :2].mean(axis=0)
     metal_pos[:, 0] += (anchor[0] + offset_x) - slab_centroid_xy[0]
@@ -978,7 +997,7 @@ def add_symmetric_electrodes(
     element: str,
     plane: str,
     size: Tuple[int, int, int],
-    anchor_indices: Optional[Tuple[int, int]] = None,
+    center_indices: Optional[Sequence[int]] = None,
     *,
     gap: float = 8.0,
     orthogonal: bool = False,
@@ -986,177 +1005,73 @@ def add_symmetric_electrodes(
     lattice_constant: Optional[float] = None,
 ) -> Structure:
     """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
-    with the inter-slab midpoint at the origin.
+    centred on the SELECTED ATOM GROUP (or the origin).
 
-    Geometry (the canonical case, ``anchor_indices=None``):
+    The junction CENTRE is the centroid (mean x, y, z) of ``center_indices`` --
+    the atoms the user selected.  The slabs are then placed:
 
-      top closest layer at  z = +gap/2
-      bot closest layer at  z = -gap/2
-      both slabs lateral-centred on (offset[0], offset[1])
+      top closest layer at  z = centre.z + gap/2
+      bot closest layer at  z = centre.z - gap/2
+      both slabs lateral-centred on (centre.x + offset[0], centre.y + offset[1])
 
-    Each slab's layer planes are perpendicular to z (the surface
-    normal points along z, per ASE's fcc{100,110,111} convention);
-    the line joining the two slab centroids IS the z-axis.  The
-    user's workflow is: Center the molecule at origin,
-    rotate it (Pose ops) so it sits the way they want in the gap,
-    then call this with the desired ``gap`` -- the slabs are always
-    placed symmetrically around the origin so the user has full
-    control over molecule-vs-slab geometry via the molecule's pose
-    alone.
+    This is the natural generalisation of "flank the selected atoms": one atom
+    centres on that atom, two atoms centre on their midpoint, N atoms centre on
+    their centroid -- one consistent rule (supersedes the old origin-only default
+    AND the two-anchor special case).  With NO selection (``center_indices`` None
+    or empty) the centre falls back to the origin (0, 0, 0) -- the pre-centred
+    workflow.
 
-    ``gap`` is the **canonical "junction gap"** -- the empty z-space
-    between the two electrodes' closest layers.
+    The molecule is NOT moved (advisory-not-enforcing, design.md "Validation is
+    advisory while editing, enforcing at generation"): if its z-extent exceeds the
+    gap, ``validate_geometry`` surfaces the close contact non-blockingly; the op
+    still builds the junction so the user can re-pose / re-gap.
+
+    Each slab's layer planes are perpendicular to z (ASE fcc{100,110,111}
+    convention); the line joining the two slab centroids is parallel to z.
 
     Parameters
     ----------
-    anchor_indices
-        ``None`` (default, recommended) -- slabs centred on the
-        origin; no atom selection required.
-
-        ``(a_top, a_bot)`` -- legacy mode that places the slab midpoint
-        at the anchor-pair midpoint instead of the origin.  ``a_top``
-        is the +z anchor, ``a_bot`` is the -z anchor.  Useful when the
-        molecule is NOT pre-centred and the caller wants the slabs to
-        flank a specific atom pair instead.  The contact distance is
-        ``(gap - |z_top - z_bot|) / 2`` so the slabs still sit at
-        ``mid.z ± gap/2``.
+    center_indices
+        Atom indices whose centroid is the junction centre (typically the current
+        selection).  ``None`` or empty -> the origin.
     gap
-        Total junction gap (Å), electrode-to-electrode along z.  Default
-        8.0 Å is a typical value for thiol-anchored small molecules.
+        Total junction gap (Angstrom), electrode-to-electrode along z.  Default 8.0.
     offset
-        ``(Δx, Δy)`` lateral shift in Å applied to BOTH slabs.  Default
-        ``(0, 0)`` puts the slabs' lateral centroid on the (xy) origin.
+        ``(dx, dy)`` lateral shift (Angstrom) applied to BOTH slabs, relative to the
+        centre's xy.  Default ``(0, 0)``.
     orthogonal, lattice_constant
         Same as :func:`add_electrode_slab`; applied to both sides.
 
-    For asymmetric junctions (different size / metal / offset per side,
-    or stepped contacts), call :func:`add_electrode_slab` twice with
-    different parameters.
+    For asymmetric junctions (different size / metal / offset per side), call
+    :func:`add_electrode_slab` twice with explicit ``side`` + ``contact_distance``.
     """
-    if anchor_indices is None:
-        # Anchorless / origin-centred mode (the recommended workflow).
-        # The slabs sit at z = ±gap/2 around the origin; xy is centred
-        # on (offset_x, offset_y).  We still need ATOMS in struct so
-        # the molecule is preserved through the add_electrode_slab
-        # call; the GEOMETRIC CENTROID of the molecule (atom-coordinate
-        # mean) plays the role of the synthetic anchor, with a
-        # compensating offset so the slab lands on the absolute
-        # z = ±gap/2 plane regardless of where the molecule sits.
-        if struct.n_atoms == 0:
-            raise ValueError(
-                "cannot add electrodes to an empty structure; load a "
-                "molecule first (Build tab, /api/build/load, or one "
-                "of the molbuilder build CLIs)"
-            )
-        if gap <= 0.0:
-            raise ValueError(
-                f"gap = {gap:.3f} Å must be > 0"
-            )
-        # ADVISORY-NOT-ENFORCING (validation contract): the slabs sit at absolute
-        # z = ±gap/2 and this mode does NOT move the molecule (the user poses it).
-        # If the gap is too small -- or the molecule off-centre -- a slab can
-        # overlap the molecule.  We do NOT block that: ``validate_geometry``
-        # (geometry.min_distance) surfaces the clash non-blockingly while editing,
-        # and the generation gate (report(validate(...))) enforces at emit time.
-        # The user re-poses / re-gaps.  Only gap <= 0 (degenerate) is rejected above.
-        # add_electrode_slab places its slab using ``positions[anchor_index]``
-        # as the geometric reference: lateral xy = anchor.xy + offset,
-        # closest-layer z = anchor.z + sign * contact_distance.  We
-        # pass ``anchor_index=0`` and compute ``offset`` and
-        # ``contact_distance`` relative to atom 0 so the cancellation
-        # is consistent: slab xy lands at the user's offset (default
-        # 0,0), closest layers at absolute ±gap/2 (independent of
-        # atom 0's location, which is just a placeholder).  The
-        # CENTROID is used only for the pre-flight z-extent guard
-        # above; it's not the placement reference.
-        ref = struct.positions[0]
-        contact_top = (gap / 2.0) - float(ref[2])
-        contact_bot = (gap / 2.0) + float(ref[2])
-        delta_xy = (
-            float(offset[0]) - float(ref[0]),
-            float(offset[1]) - float(ref[1]),
-        )
-        out = add_electrode_slab(
-            struct, element, plane, size, anchor_index=0,
-            contact_distance=contact_bot, side="-z",
-            orthogonal=orthogonal, offset=delta_xy,
-            lattice_constant=lattice_constant,
-        )
-        out = add_electrode_slab(
-            out, element, plane, size, anchor_index=0,
-            contact_distance=contact_top, side="+z",
-            orthogonal=orthogonal, offset=delta_xy,
-            lattice_constant=lattice_constant,
-        )
-        return out
-
-    a_top, a_bot = int(anchor_indices[0]), int(anchor_indices[1])
-    if a_top == a_bot:
-        raise ValueError("anchor_indices must be two distinct atoms")
-    for i in (a_top, a_bot):
-        if not (0 <= i < struct.n_atoms):
-            raise IndexError(
-                f"anchor index {i} out of range for {struct.n_atoms}-atom structure"
-            )
-    p_top = struct.positions[a_top]
-    p_bot = struct.positions[a_bot]
-    # Enforce the (top, bot) convention: top must have higher z than bot.
-    # Without this check the math produces overlapping slabs when the user
-    # accidentally swaps the order.
-    if p_top[2] < p_bot[2]:
+    if struct.n_atoms == 0:
         raise ValueError(
-            f"anchor_indices=(a_top={a_top}, a_bot={a_bot}) but the "
-            f"labelled top anchor sits at z={p_top[2]:.3f} which is lower "
-            f"than the labelled bottom at z={p_bot[2]:.3f}.  Pass "
-            f"(top, bot) where positions[top].z > positions[bot].z, or "
-            f"orient the molecule with `orient_along_axis(..., "
-            f"center='midpoint')` first to put the +z anchor on +z."
+            "cannot add electrodes to an empty structure; load a molecule first "
+            "(Build tab, /api/build/load, or one of the molbuilder build CLIs)"
         )
-    mid = 0.5 * (p_top + p_bot)
-    anchor_sep_z = abs(p_top[2] - p_bot[2])
-    contact = (gap - anchor_sep_z) / 2.0
-    if contact <= 0.0:
-        raise ValueError(
-            f"gap = {gap:.3f} Å is smaller than the anchor pair's z-extent "
-            f"({anchor_sep_z:.3f} Å); the electrodes would overlap the "
-            f"molecule.  Increase gap, or re-orient the molecule with a "
-            f"smaller tilt angle so the anchor pair is more z-aligned."
-        )
+    if gap <= 0.0:
+        raise ValueError(f"gap = {gap:.3f} Angstrom must be > 0")
 
-    # We can't just call add_electrode_slab with each anchor because that
-    # would lateral-centre each slab on its own anchor (which differs in
-    # x, y for a tilted molecule).  We want both slabs centred on the
-    # ANCHOR-PAIR MIDPOINT in xy, collinear along z.
-    #
-    # Equivalent trick: make a synthetic anchor at (mid.x, mid.y, p_*.z)
-    # for each side and call add_electrode_slab.  But that requires a
-    # real atom -- so instead we replicate the placement math here.
-
-    # Use add_electrode_slab via the actual top/bot anchors, with an
-    # offset that compensates for the lateral difference between the
-    # anchor and the desired (mid.x, mid.y).
-    delta_top_xy = (
-        mid[0] - p_top[0] + offset[0],
-        mid[1] - p_top[1] + offset[1],
-    )
-    delta_bot_xy = (
-        mid[0] - p_bot[0] + offset[0],
-        mid[1] - p_bot[1] + offset[1],
-    )
-
+    # Both slabs share the SAME centre (the centroid of ``center_indices``, or the
+    # origin) and sit at centre.z +/- gap/2 -- i.e. each is a single electrode with
+    # contact_distance = gap/2 on the opposite side.  add_electrode_slab owns the
+    # centroid/origin rule, so we just call it twice.  ``center_indices`` names the
+    # molecule atoms; the +z slab is appended AFTER them, so the same indices still
+    # name the same atoms on the -z call.
+    half = gap / 2.0
     out = add_electrode_slab(
-        struct, element, plane, size, a_bot,
-        contact_distance=contact, side="-z",
-        orthogonal=orthogonal, offset=delta_bot_xy,
-        lattice_constant=lattice_constant,
+        struct, element, plane, size, center_indices,
+        contact_distance=half, side="+z",
+        orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
     )
     out = add_electrode_slab(
-        out, element, plane, size, a_top,
-        contact_distance=contact, side="+z",
-        orthogonal=orthogonal, offset=delta_top_xy,
-        lattice_constant=lattice_constant,
+        out, element, plane, size, center_indices,
+        contact_distance=half, side="-z",
+        orthogonal=orthogonal, offset=offset, lattice_constant=lattice_constant,
     )
     return out
+
 
 
 __all__ = [

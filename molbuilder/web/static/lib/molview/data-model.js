@@ -1208,14 +1208,13 @@
         "rotate":    { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
         "orient":    { role: "anchor",  empty: "reject", arity: 2,      groupField: "anchors",      shape: "transform" },
         "add_atom":  { role: "anchor",  empty: "reject", arity: 1,      groupField: "anchor_index", scalar: true, shape: "grow" },
-        "electrode": { role: "anchor",  empty: "reject", arity: 1,      groupField: "anchor_index", scalar: true, shape: "grow" },
+        "electrode": { role: "anchor",  empty: "canonical", arity: null, groupField: "center_indices", shape: "grow" },
+        // Junction CENTRE = the centroid of the selected atom group (any count):
+        // 1 atom -> that atom, 2 -> midpoint, N -> centroid.  Empty selection ->
+        // "canonical" (the field is omitted, server centres on the origin).  No
+        // ordering needed -- a centroid is order-independent.
         "symmetric_electrodes": {
-            role: "anchor", empty: "canonical", arity: [0, 2], groupField: "anchors", shape: "grow",
-            mapGroup: function (g) {
-                if (g.length !== 2) return g;                       // 0 anchors = canonical origin
-                var c = getCoordinates();                           // else order [top, bottom] by z
-                return (c[g[0]][2] >= c[g[1]][2]) ? [g[0], g[1]] : [g[1], g[0]];
-            },
+            role: "anchor", empty: "canonical", arity: null, groupField: "center_indices", shape: "grow",
         },
         "delete":    { role: "subject", empty: "reject", arity: null,   groupField: "indices",      shape: "shrink" },
     };
@@ -1257,7 +1256,7 @@
             var placed = desc.mapGroup ? desc.mapGroup(group) : group;
             // An empty group under a "canonical" empty-policy means OMIT the field
             // entirely so the server applies its canonical default (e.g. origin-centred
-            // electrode slabs).  Writing anchors:[] would be rejected as a bad arity.
+            // electrode slabs).  Writing center_indices:[] would be an empty selection.
             if (placed.length) body[desc.groupField] = desc.scalar ? placed[0] : placed;
         }
         for (var k in opParams) { if (k !== "indices" && k !== undefined) body[k] = opParams[k]; }

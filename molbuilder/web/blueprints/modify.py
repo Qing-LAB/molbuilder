@@ -481,14 +481,16 @@ def _parse_electrode_common(body):
 
 @bp.route("/api/modify/electrode", methods=["POST"])
 def api_modify_electrode():
-    """Append one FCC slab on either side of one anchor.
+    """Append one FCC slab, centred on the selected atom group.
 
     Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
-             anchor_index, contact_distance?, side?, orthogonal?,
+             center_indices?, contact_distance?, side?, orthogonal?,
              offset?, lattice_constant?, inter_layer_offset?}``.
 
-    ``side`` is ``"+z"`` or ``"-z"``; ``contact_distance`` is the
-    anchor-to-closest-layer distance.  Per-side single mode is the
+    ``center_indices`` is the selected atoms whose centroid the slab
+    centres on (1 -> that atom, 2 -> midpoint, N -> centroid); omit /
+    empty -> the world origin.  ``side`` is ``"+z"`` or ``"-z"``;
+    ``contact_distance`` is the centre-to-closest-layer distance.  Per-side single mode is the
     one to use when the user wants asymmetric junctions (different
     metal / size on each side); for canonical pair junctions, prefer
     :func:`api_modify_symmetric_electrodes` which takes ``gap``
@@ -507,17 +509,26 @@ def api_modify_electrode():
             _parse_electrode_common(body)
     except ValueError as exc:
         return _err(str(exc), 400)
-    anchor_index = body.get("anchor_index")
-    try:
-        anchor_index = int(anchor_index)
-    except (TypeError, ValueError):
-        return _err("'anchor_index' must be an integer", 400)
-    if not (0 <= anchor_index < struct.n_atoms):
-        return _err(
-            f"anchor_index {anchor_index} out of range for "
-            f"{struct.n_atoms}-atom structure",
-            400,
-        )
+    # Slab CENTRE = the centroid of ``center_indices`` (the user's selection);
+    # omitted / empty -> the origin.  Same rule as the symmetric op (1 atom ->
+    # that atom, 2 -> midpoint, N -> centroid).
+    center_indices = body.get("center_indices")
+    center_idx: Optional[List[int]]
+    if center_indices is None:
+        center_idx = None
+    else:
+        if not isinstance(center_indices, list):
+            return _err(
+                "'center_indices' must be omitted or a list of atom indices", 400)
+        try:
+            center_idx = [int(i) for i in center_indices]
+        except (TypeError, ValueError):
+            return _err("'center_indices' entries must be integers", 400)
+        for i in center_idx:
+            if not (0 <= i < struct.n_atoms):
+                return _err(
+                    f"center index {i} out of range for {struct.n_atoms}-atom "
+                    f"structure", 400)
     try:
         contact_distance = _finite_float(
             "contact_distance", body.get("contact_distance", 2.4))
@@ -536,7 +547,7 @@ def api_modify_electrode():
             return _err("'inter_layer_offset' must be numeric or null", 400)
     try:
         new_struct = _add_electrode_slab(
-            struct, element, plane, size, anchor_index,
+            struct, element, plane, size, center_idx,
             contact_distance=contact_distance,
             side=side,
             orthogonal=orthogonal,
@@ -573,16 +584,13 @@ def api_modify_symmetric_electrodes():
       lateral xy centroid    = ``offset`` (default origin)
 
     The midpoint of the two slabs is at the world origin -- the
-    user is expected to centre the molecule (``/api/modify/translate``
-    with ``recenter=true``) and pose it (Pose subtab) before the
-    slab op so the molecule sits in the gap exactly the way they
-    want it.  Anchors aren't needed: slab placement is fully
-    determined by ``gap`` and (optionally) ``offset``.
+    Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
+             gap?, center_indices?, orthogonal?, offset?, lattice_constant?}``.
 
-    Legacy mode: pass ``anchors=[a_top, a_bot]`` to centre the slab
-    midpoint on the anchor-pair midpoint instead of the origin.
-    Useful when the molecule is NOT pre-centred and the caller wants
-    the slabs to flank a specific atom pair.
+    The junction CENTRE is the centroid of ``center_indices`` (the atoms the user
+    selected): 1 atom centres on that atom, 2 on their midpoint, N on their
+    centroid.  Omitted / empty -> the origin (0, 0, 0).  The molecule is NOT
+    moved; if it doesn't fit the gap, ``validate_geometry`` advises (non-blocking).
     """
     body = request.get_json(silent=True) or {}
     try:
@@ -597,29 +605,26 @@ def api_modify_symmetric_electrodes():
             _parse_electrode_common(body)
     except ValueError as exc:
         return _err(str(exc), 400)
-    anchors = body.get("anchors")
-    anchor_indices: Optional[Tuple[int, int]]
-    if anchors is None:
-        anchor_indices = None
+    # Junction CENTRE = the centroid of ``center_indices`` (the user's selection);
+    # omitted / empty -> the origin.  This generalises the old two-anchor midpoint
+    # to any-size group (1 atom -> that atom, 2 -> midpoint, N -> centroid).
+    center_indices = body.get("center_indices")
+    center_idx: Optional[List[int]]
+    if center_indices is None:
+        center_idx = None
     else:
-        if (not isinstance(anchors, list)) or len(anchors) != 2:
+        if not isinstance(center_indices, list):
             return _err(
-                "'anchors' must be omitted or a 2-element [a_top, a_bot] list",
-                400,
-            )
+                "'center_indices' must be omitted or a list of atom indices", 400)
         try:
-            a_top, a_bot = int(anchors[0]), int(anchors[1])
+            center_idx = [int(i) for i in center_indices]
         except (TypeError, ValueError):
-            return _err("anchor indices must be integers", 400)
-        if a_top == a_bot:
-            return _err("anchors must be two distinct atom indices", 400)
-        if not (0 <= a_top < struct.n_atoms and 0 <= a_bot < struct.n_atoms):
-            return _err(
-                f"anchor indices ({a_top}, {a_bot}) out of range for "
-                f"{struct.n_atoms}-atom structure",
-                400,
-            )
-        anchor_indices = (a_top, a_bot)
+            return _err("'center_indices' entries must be integers", 400)
+        for i in center_idx:
+            if not (0 <= i < struct.n_atoms):
+                return _err(
+                    f"center index {i} out of range for {struct.n_atoms}-atom "
+                    f"structure", 400)
     try:
         gap = _finite_float("gap", body.get("gap", 8.0))
     except ValueError as exc:
@@ -628,7 +633,7 @@ def api_modify_symmetric_electrodes():
         return _err("'gap' must be > 0 Å", 400)
     try:
         new_struct = _add_symmetric_electrodes(
-            struct, element, plane, size, anchor_indices,
+            struct, element, plane, size, center_idx,
             gap=gap,
             orthogonal=orthogonal,
             offset=offset,

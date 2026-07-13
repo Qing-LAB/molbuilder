@@ -81,6 +81,21 @@
         const d = _data();
         return (d && typeof d.getCoordinates === "function" && d.getCoordinates()) || [];
     }
+    // The symmetric-electrode junction CENTRE: the centroid of the selected atom
+    // group, or the ORIGIN when nothing is selected -- the exact rule the op uses
+    // server-side (add_symmetric_electrodes).  Shown in the electrode readout so
+    // the user can confirm where the slabs will land before applying.
+    function _electrodeCenter(sel) {
+        if (!sel || !sel.length) return { x: 0, y: 0, z: 0, source: "origin" };
+        const c = _coords();
+        let x = 0, y = 0, z = 0;
+        for (const i of sel) {
+            const p = c[i];
+            if (p) { x += p[0]; y += p[1]; z += p[2]; }
+        }
+        const n = sel.length;
+        return { x: x / n, y: y / n, z: z / n, source: "selection" };
+    }
     // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
     // k-grid tiling controller USED to live here (`_drawBase` / `_wireKgrid` / the cell
     // accessors).  They are gone: the concealed MolView module owns the render loop and
@@ -188,37 +203,35 @@
         const mode = ($("elc-mode") || {}).value || "symmetric";
         if (elcBtn && elcReadout) {
             if (mode === "single") {
-                if (sel.length === 1) {
-                    elcBtn.disabled = locked;
-                    elcReadout.textContent =
-                        `Anchor: #${sel[0] + 1} ${els[sel[0]]}.  ` +
-                        `Side determines which face the slab grows on.`;
-                } else {
-                    elcBtn.disabled = true;
-                    elcReadout.textContent =
-                        "Single mode: pick exactly one anchor.";
-                }
-            } else {
-                // Pair mode: 0 atoms = origin-centred (canonical),
-                // 2 atoms = legacy anchor-midpoint.  1 atom is
-                // ambiguous; rejected at apply time.
+                // Same centring rule as pair mode: the slab centres on the
+                // centroid of the selected atom group (any count), or the ORIGIN
+                // when nothing is selected.  ``side`` picks which face it grows on.
                 elcBtn.disabled = locked || _nAtoms() === 0;
-                if (sel.length === 0) {
-                    elcReadout.textContent =
-                        "Pair mode: slabs at z = ±gap/2 around the origin.  "
-                        + "Centre + pose the molecule first (Geom + Pose).";
-                } else if (sel.length === 2) {
-                    const [a, b] = sel;
-                    elcReadout.textContent =
-                        `Legacy mode: slabs flank #${a + 1} ${els[a]} `
-                        + `↔ #${b + 1} ${els[b]} `
-                        + "(midpoint of the two anchors).";
-                } else {
-                    elcBtn.disabled = true;
-                    elcReadout.textContent =
-                        "Pair mode: select 0 atoms (origin-centred) or "
-                        + "2 atoms (legacy anchor pair).";
-                }
+                const center = _electrodeCenter(sel);
+                const c = `(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, `
+                        + `${center.z.toFixed(2)}) Å`;
+                const side = getCheckedRadio("elc-side") || "+z";
+                elcReadout.textContent = (sel.length === 0)
+                    ? `Single mode: slab centre = ${c} — the ORIGIN (nothing `
+                      + `selected); grows on the ${side} face.`
+                    : `Single mode: slab centre = ${c} — centroid of the `
+                      + `${sel.length} selected atom${sel.length === 1 ? "" : "s"}`
+                      + `; grows on the ${side} face.`;
+            } else {
+                // Pair mode: the junction CENTRE is the centroid of the
+                // selected atom group -- any count works (1 atom -> that atom,
+                // 2 -> midpoint, N -> centroid).  NOTHING selected -> the origin.
+                // Enabled whenever a structure is loaded.  We SHOW the computed
+                // centre (x, y, z) so the user can confirm where the slabs land.
+                elcBtn.disabled = locked || _nAtoms() === 0;
+                const center = _electrodeCenter(sel);   // {x,y,z, source}
+                const c = `(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, `
+                        + `${center.z.toFixed(2)}) Å`;
+                elcReadout.textContent = (sel.length === 0)
+                    ? `Pair mode: junction centre = ${c} — the ORIGIN (nothing `
+                      + `selected); slabs at z = ${center.z.toFixed(2)} ± gap/2.`
+                    : `Pair mode: junction centre = ${c} — centroid of the `
+                      + `${sel.length} selected atom${sel.length === 1 ? "" : "s"}.`;
             }
         }
 
@@ -785,15 +798,18 @@
         const common = readElcCommonBody();
         const gap = Number($("elc-gap").value);
         // Electrode ops are ordinary modifier ops: the response flows through
-        // molview.data.applyOp -> the model.  The module resolves the anchor
-        // group from the selection and enforces arity; the Add-pair button is
-        // disabled at wrong arity per mode:
-        //   single (electrode)            -> exactly 1 anchor; slab on `side`.
-        //   pair   (symmetric_electrodes) -> 0 anchors (origin-centred slabs)
-        //          or 2 (legacy anchor-pair midpoint, ordered top/bottom by z
-        //          INSIDE the module's mapGroup).
+        // molview.data.applyOp -> the model.  The module resolves the CENTRE
+        // group (``center_indices``) from the current selection -- ONE unified
+        // rule for both modes:
+        //   single (electrode)            -> slab centred on the selection's
+        //                                    centroid; grows on `side`.
+        //   pair   (symmetric_electrodes) -> both slabs centred on that same
+        //                                    centroid, separated by `gap`.
+        // Any count is valid: 1 -> that atom, 2 -> midpoint, N -> centroid,
+        // and NO selection -> the world origin (the field is omitted).
         // A rollback point is an explicit "Save state" checkpoint (§19.5) --
-        // there is no per-op auto-push.  We pass op-params only, NOT the anchors.
+        // there is no per-op auto-push.  We pass op-params only; the module
+        // fills in ``center_indices`` from the selection.
         let r = null;
         if (mode === "single") {
             const side = getCheckedRadio("elc-side") || "+z";

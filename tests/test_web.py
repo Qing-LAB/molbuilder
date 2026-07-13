@@ -1694,7 +1694,7 @@ def test_modify_symmetric_electrodes_pair_mode(web_client):
         "xyz":     _SS_XYZ,
         "element": "Au", "plane": "111",
         "size":    [2, 2, 1],
-        "anchors": [1, 0],          # +z first, -z second
+        "center_indices": [1, 0],   # junction centres on their centroid
         "gap":     8.0,
     })
     body = r.get_json()
@@ -1705,9 +1705,9 @@ def test_modify_symmetric_electrodes_pair_mode(web_client):
 
 
 def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
-    """Anchorless mode (no ``anchors`` field) puts the slab midpoint
-    at the world origin: top closest layer at z = +gap/2, bot at
-    -gap/2.  We verify by reading ELC z-coords from the response
+    """No-selection mode (no ``center_indices`` field) puts the slab
+    midpoint at the world origin: top closest layer at z = +gap/2, bot
+    at -gap/2.  We verify by reading ELC z-coords from the response
     xyz.  This is the canonical UI workflow -- centre-and-pose the
     molecule first, then add slabs around the origin."""
     r = web_client.post("/api/modify/symmetric_electrodes", json={
@@ -1715,7 +1715,7 @@ def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
         "element": "Au", "plane": "111",
         "size":    [2, 2, 1],
         "gap":     8.0,
-        # No anchors field.
+        # No center_indices field.
     })
     body = r.get_json()
     assert body["ok"] is True
@@ -1761,7 +1761,7 @@ def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
     """Single-mode contact distance must be strictly positive."""
     r = web_client.post("/api/modify/electrode", json={
         "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 0,
+        "size": [2, 2, 1], "center_indices": [0],
         "contact_distance": 0.0, "side": "+z",
     })
     assert r.status_code == 400
@@ -1769,10 +1769,10 @@ def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
 
 
 def test_modify_electrode_single_mode(web_client):
-    """Single mode: one slab on +z above the second S atom."""
+    """Single mode: one slab on +z, centred on the second S atom."""
     r = web_client.post("/api/modify/electrode", json={
         "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 1,
+        "size": [2, 2, 1], "center_indices": [1],
         "side": "+z", "contact_distance": 2.4,
     })
     body = r.get_json()
@@ -1785,7 +1785,7 @@ def test_modify_electrode_single_mode(web_client):
 def test_modify_electrode_rejects_bad_side(web_client):
     r = web_client.post("/api/modify/electrode", json={
         "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 0, "side": "above",
+        "size": [2, 2, 1], "center_indices": [0], "side": "above",
     })
     assert r.status_code == 400
     assert "side" in r.get_json()["error"]

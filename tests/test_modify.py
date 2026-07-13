@@ -452,7 +452,7 @@ def test_electrode_atom_count(single_anchor, element, plane,
     """Atom count = m * n * n_layers.  Same for every supported
     element + (plane, orthogonal) combo."""
     out = add_electrode_slab(single_anchor, element, plane,
-                              size, anchor_index=0,
+                              size, center_indices=[0],
                               contact_distance=2.0, orthogonal=orthogonal)
     n_metal = sum(1 for e in out.elements if e == element)
     assert n_metal == n_expected, (
@@ -470,7 +470,7 @@ def test_electrode_atom_count(single_anchor, element, plane,
 def test_electrode_plus_z_atoms_above_anchor(single_anchor, plane,
                                               orthogonal, size):
     out = add_electrode_slab(single_anchor, "Au", plane, size,
-                              anchor_index=0, contact_distance=2.0, side="+z",
+                              center_indices=[0], contact_distance=2.0, side="+z",
                               orthogonal=orthogonal)
     au_z = np.array([p[2] for e, p in zip(out.elements, out.positions) if e == "Au"])
     assert au_z.min() >= 2.0 - 1e-6
@@ -486,7 +486,7 @@ def test_electrode_plus_z_atoms_above_anchor(single_anchor, plane,
 def test_electrode_minus_z_atoms_below_anchor(single_anchor, plane,
                                                 orthogonal, size):
     out = add_electrode_slab(single_anchor, "Au", plane, size,
-                              anchor_index=0, contact_distance=2.0, side="-z",
+                              center_indices=[0], contact_distance=2.0, side="-z",
                               orthogonal=orthogonal)
     au_z = np.array([p[2] for e, p in zip(out.elements, out.positions) if e == "Au"])
     assert au_z.max() <= -2.0 + 1e-6
@@ -506,7 +506,7 @@ def test_electrode_default_offset_centers_slab_on_anchor(plane, orthogonal, size
     s = Structure(
         elements=["S"], positions=np.array([[3.7, -1.2, 0.0]]), title="off-origin",
     )
-    out = add_electrode_slab(s, "Au", plane, size, anchor_index=0,
+    out = add_electrode_slab(s, "Au", plane, size, center_indices=[0],
                               contact_distance=2.0, orthogonal=orthogonal)
     au = np.array([p for e, p in zip(out.elements, out.positions) if e == "Au"])
     centroid_xy = au[:, :2].mean(axis=0)
@@ -514,6 +514,37 @@ def test_electrode_default_offset_centers_slab_on_anchor(plane, orthogonal, size
         f"slab centroid {centroid_xy} should equal anchor (3.7, -1.2) "
         f"with default offset=(0, 0)"
     )
+
+
+def test_electrode_centres_on_group_centroid():
+    """Group-centring: with a multi-atom ``center_indices``, the slab centres
+    on the group's CENTROID (mean x, y, z) -- the same rule the pair helper
+    uses (1 atom -> that atom, 2 -> midpoint, N -> centroid)."""
+    s = Structure(
+        elements=["S", "S", "S"],
+        positions=np.array([[0.0, 0.0, 0.0],
+                            [4.0, 0.0, 0.0],
+                            [2.0, 6.0, 0.0]]),
+        title="triangle",
+    )
+    centroid = s.positions.mean(axis=0)   # (2.0, 2.0, 0.0)
+    out = add_electrode_slab(s, "Au", "111", (3, 3, 1),
+                             center_indices=[0, 1, 2],
+                             contact_distance=2.0, side="+z")
+    au = np.array([p for e, p in zip(out.elements, out.positions) if e == "Au"])
+    assert np.allclose(au[:, :2].mean(axis=0), centroid[:2], atol=1e-6)
+    assert np.isclose(au[:, 2].min(), centroid[2] + 2.0, atol=1e-6)
+
+
+def test_electrode_no_selection_centres_on_origin():
+    """No selection (``center_indices=None``) centres the slab on the world
+    ORIGIN, independent of where the molecule sits."""
+    s = Structure(elements=["S"], positions=np.array([[9.0, -9.0, 3.0]]))
+    out = add_electrode_slab(s, "Au", "111", (2, 2, 1), center_indices=None,
+                             contact_distance=2.0, side="+z")
+    au = np.array([p for e, p in zip(out.elements, out.positions) if e == "Au"])
+    assert np.allclose(au[:, :2].mean(axis=0), [0.0, 0.0], atol=1e-6)
+    assert np.isclose(au[:, 2].min(), 2.0, atol=1e-6)   # origin.z + contact
 
 
 @pytest.mark.parametrize("offset_xy", [
@@ -525,9 +556,9 @@ def test_electrode_offset_shifts_slab_centroid(single_anchor, offset_xy):
     """Non-zero offset shifts the slab's centroid by exactly that
     much, leaving everything else unchanged."""
     base = add_electrode_slab(single_anchor, "Au", "111",
-                              (3, 3, 2), anchor_index=0, contact_distance=2.0)
+                              (3, 3, 2), center_indices=[0], contact_distance=2.0)
     shifted = add_electrode_slab(single_anchor, "Au", "111",
-                                  (3, 3, 2), anchor_index=0,
+                                  (3, 3, 2), center_indices=[0],
                                   contact_distance=2.0, offset=offset_xy)
     base_centroid = np.array([p[:2] for e, p in zip(base.elements, base.positions)
                                if e == "Au"]).mean(axis=0)
@@ -548,7 +579,7 @@ def test_electrode_metadata_marks_atoms_as_ELC(single_anchor):
     """Spec § 5: electrode atoms get residue_name='ELC' and a fresh
     residue_id so the molecule and electrode are separable."""
     out = add_electrode_slab(single_anchor, "Au", "111",
-                              (2, 2, 1), anchor_index=0, contact_distance=2.0)
+                              (2, 2, 1), center_indices=[0], contact_distance=2.0)
     elc_indices = [i for i, n in enumerate(out.residue_names) if n == "ELC"]
     assert len(elc_indices) > 0
     elc_residue_ids = {out.residue_ids[i] for i in elc_indices}
@@ -560,7 +591,7 @@ def test_electrode_metadata_marks_atoms_as_ELC(single_anchor):
 
 
 def test_electrode_zero_layers_is_noop(single_anchor):
-    out = add_electrode_slab(single_anchor, "Au", "111", (3, 3, 0), 0)
+    out = add_electrode_slab(single_anchor, "Au", "111", (3, 3, 0), [0])
     assert out.n_atoms == single_anchor.n_atoms
     assert out.elements == single_anchor.elements
 
@@ -572,24 +603,24 @@ def test_electrode_zero_layers_is_noop(single_anchor):
 
 def test_electrode_rejects_unsupported_element(single_anchor):
     with pytest.raises(ValueError, match="unsupported electrode element"):
-        add_electrode_slab(single_anchor, "Fe", "111", (2, 2, 1), 0)
+        add_electrode_slab(single_anchor, "Fe", "111", (2, 2, 1), [0])
     with pytest.raises(ValueError, match="unsupported electrode element"):
-        add_electrode_slab(single_anchor, "Al", "111", (2, 2, 1), 0)
+        add_electrode_slab(single_anchor, "Al", "111", (2, 2, 1), [0])
 
 
 def test_electrode_rejects_unsupported_plane(single_anchor):
     with pytest.raises(ValueError, match="unsupported crystal plane"):
-        add_electrode_slab(single_anchor, "Au", "101", (2, 2, 1), 0)
+        add_electrode_slab(single_anchor, "Au", "101", (2, 2, 1), [0])
 
 
 def test_electrode_rejects_bad_side(single_anchor):
     with pytest.raises(ValueError, match="side"):
-        add_electrode_slab(single_anchor, "Au", "111", (2, 2, 1), 0, side="up")
+        add_electrode_slab(single_anchor, "Au", "111", (2, 2, 1), [0], side="up")
 
 
 def test_electrode_rejects_bad_anchor(single_anchor):
     with pytest.raises(IndexError):
-        add_electrode_slab(single_anchor, "Au", "111", (2, 2, 1), anchor_index=5)
+        add_electrode_slab(single_anchor, "Au", "111", (2, 2, 1), center_indices=[5])
 
 
 def test_electrode_orthogonal_111_rejects_odd_n(single_anchor):
@@ -597,7 +628,7 @@ def test_electrode_orthogonal_111_rejects_odd_n(single_anchor):
     bubbles up as a ValueError with operation context."""
     with pytest.raises(ValueError, match="orthogonal=True"):
         add_electrode_slab(single_anchor, "Au", "111",
-                            (3, 3, 1), 0, orthogonal=True)
+                            (3, 3, 1), [0], orthogonal=True)
 
 
 @pytest.mark.parametrize("plane", ["100", "110"])
@@ -606,17 +637,17 @@ def test_electrode_primitive_100_110_rejects_non_orthogonal(single_anchor, plane
     NotImplementedError; we re-wrap as ValueError with context."""
     with pytest.raises(ValueError, match="orthogonal=False"):
         add_electrode_slab(single_anchor, "Au", plane,
-                            (3, 3, 1), 0, orthogonal=False)
+                            (3, 3, 1), [0], orthogonal=False)
 
 
 def test_electrode_lattice_constant_override(single_anchor):
     """Explicit lattice_constant changes the slab's overall extent
     (proxy for 'the kwarg actually reached ASE')."""
     default = add_electrode_slab(single_anchor, "Au", "100",
-                                  (3, 3, 1), 0, contact_distance=2.0,
+                                  (3, 3, 1), [0], contact_distance=2.0,
                                   orthogonal=True)
     expanded = add_electrode_slab(single_anchor, "Au", "100",
-                                   (3, 3, 1), 0, contact_distance=2.0,
+                                   (3, 3, 1), [0], contact_distance=2.0,
                                    orthogonal=True, lattice_constant=5.0)
     def slab_extent(s):
         au_xy = np.array([p[:2] for e, p in zip(s.elements, s.positions)
@@ -631,7 +662,7 @@ def test_electrode_inter_layer_offset_rescales_z():
     """inter_layer_offset overrides ASE's natural inter-layer spacing.
     Useful for strained-distance studies."""
     s = Structure(elements=["S"], positions=np.array([[0.0, 0, 0]]))
-    natural = add_electrode_slab(s, "Au", "111", (2, 2, 3), 0,
+    natural = add_electrode_slab(s, "Au", "111", (2, 2, 3), [0],
                                    contact_distance=2.0)
     nat_z = sorted({float(p[2])
                     for e, p in zip(natural.elements, natural.positions)
@@ -639,7 +670,7 @@ def test_electrode_inter_layer_offset_rescales_z():
     nat_dz = nat_z[1] - nat_z[0]
 
     forced_dz = nat_dz * 1.5
-    stretched = add_electrode_slab(s, "Au", "111", (2, 2, 3), 0,
+    stretched = add_electrode_slab(s, "Au", "111", (2, 2, 3), [0],
                                     contact_distance=2.0,
                                     inter_layer_offset=forced_dz)
     stretch_z = sorted({float(p[2])
@@ -671,10 +702,11 @@ def test_symmetric_electrodes_doubles_metal_count(linear_dimer, plane,
     matching the old per-side semantics for a clean atom-count check."""
     oriented = orient_along_axis(linear_dimer, (0, 5), axis="z",
                                   center="midpoint")
-    # NEW convention: anchor_indices = (a_top, a_bot).  After orient,
-    # atom 5 ends up on +z (top), atom 0 on -z (bottom).
+    # center_indices = the selected atom group; centre = its centroid.
+    # After midpoint orient, atoms 0 & 5 straddle the origin so the pair
+    # centres near z=0 and the slabs land at ±gap/2.
     out = add_symmetric_electrodes(oriented, "Au", plane, size,
-                                    anchor_indices=(5, 0),
+                                    center_indices=[5, 0],
                                     gap=7.0, orthogonal=orthogonal)
     n_au = sum(1 for e in out.elements if e == "Au")
     assert n_au == 2 * per_side
@@ -685,7 +717,7 @@ def test_symmetric_electrodes_above_and_below(linear_dimer):
                                   center="midpoint")
     out = add_symmetric_electrodes(oriented, "Au", "111",
                                     (2, 2, 2),
-                                    anchor_indices=(5, 0),
+                                    center_indices=[5, 0],
                                     gap=7.0)
     a0_z = oriented.positions[0, 2]
     a1_z = oriented.positions[5, 2]
@@ -706,7 +738,7 @@ def test_symmetric_electrodes_gap_centered_on_anchor_midpoint(linear_dimer):
     gap = 7.0
     out = add_symmetric_electrodes(oriented, "Au", "111",
                                     (2, 2, 1),
-                                    anchor_indices=(5, 0),
+                                    center_indices=[5, 0],
                                     gap=gap)
     au_z = sorted({float(p[2])
                    for e, p in zip(out.elements, out.positions)
@@ -716,14 +748,17 @@ def test_symmetric_electrodes_gap_centered_on_anchor_midpoint(linear_dimer):
     assert np.isclose(au_z[0],  mid_z - gap / 2, atol=1e-9)
 
 
-def test_symmetric_electrodes_rejects_too_small_gap(linear_dimer):
-    """gap smaller than anchor-pair z-extent must raise ValueError --
-    otherwise the electrodes would overlap the molecule."""
+def test_symmetric_electrodes_small_gap_is_advisory_not_blocked(linear_dimer):
+    """Advisory-not-enforcing (validation contract): a positive gap smaller than
+    the selected-group z-extent is NOT rejected.  Centring on center_indices=[5,0]
+    puts the slabs at centre.z ± gap/2; with gap=1.0 they clash into the molecule,
+    but the op still BUILDS the junction so the user can re-pose / re-gap.
+    ``validate_geometry`` surfaces the close contact while editing; only a
+    non-positive gap (degenerate) is rejected (covered separately)."""
     oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    # anchor pair is 3.0 Å apart in z after orient; gap=1.0 too small.
-    with pytest.raises(ValueError, match="gap"):
-        add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
-                                  anchor_indices=(5, 0), gap=1.0)
+    out = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
+                                   center_indices=[5, 0], gap=1.0)
+    assert out.n_atoms > oriented.n_atoms   # slabs added, no raise
 
 
 def test_symmetric_electrodes_anchorless_off_center_is_advisory_not_blocked():
@@ -744,17 +779,17 @@ def test_symmetric_electrodes_anchorless_off_center_is_advisory_not_blocked():
                                     gap=8.0).n_atoms > centred.n_atoms
 
 
-def test_symmetric_electrodes_rejects_reversed_anchor_order(linear_dimer):
-    """T1 (post-static-review): pass anchors in (a_top, a_bot) order
-    where a_top has LOWER z than a_bot.  Without validation the math
-    silently produces overlapping slabs -- now caught at the API
-    boundary with a descriptive ValueError."""
+def test_symmetric_electrodes_order_independent(linear_dimer):
+    """The junction centre is the CENTROID of ``center_indices`` -- an
+    unordered set -- so [5, 0] and [0, 5] must produce the identical junction.
+    (The old two-anchor version distinguished a_top / a_bot and rejected a
+    reversed pair; centroid centring removes that ordering concept entirely.)"""
     oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
-    # After orient: atom 5 is on +z, atom 0 on -z.  Reversed:
-    with pytest.raises(ValueError, match="lower than the labelled bottom"):
-        add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
-                                  anchor_indices=(0, 5),    # ← swapped
-                                  gap=7.0)
+    a = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
+                                 center_indices=[5, 0], gap=7.0)
+    b = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
+                                 center_indices=[0, 5], gap=7.0)
+    assert np.allclose(a.positions, b.positions, atol=1e-12)
 
 
 def test_symmetric_electrodes_handles_tilted_molecule():
@@ -778,7 +813,7 @@ def test_symmetric_electrodes_handles_tilted_molecule():
     mid = 0.5 * (a_top + a_bot)
     # gap = 9.0 Å > anchor z-extent
     junction = add_symmetric_electrodes(tilted, "Au", "111", (3, 3, 1),
-                                          anchor_indices=(3, 0),
+                                          center_indices=[3, 0],
                                           gap=9.0)
     # The two electrode layers' centroids should sit at (mid.x, mid.y)
     # in xy and at mid.z ± gap/2 in z.
@@ -797,8 +832,8 @@ def test_symmetric_electrodes_handles_tilted_molecule():
 
 
 def test_symmetric_electrodes_anchorless_centres_on_origin(linear_dimer):
-    """``anchor_indices=None`` (default) places the slab pair
-    symmetrically around the world origin: closest layers at ±gap/2
+    """``center_indices=None`` (default, no selection) places the slab
+    pair symmetrically around the world origin: closest layers at ±gap/2
     in absolute z, regardless of where the molecule sits."""
     out = add_symmetric_electrodes(linear_dimer, "Au", "111",
                                    size=(2, 2, 2), gap=10.0)
@@ -861,9 +896,9 @@ def test_symmetric_electrodes_offset_propagates_to_both_sides(linear_dimer):
     same (Δx, Δy)."""
     oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
     base = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                      anchor_indices=(5, 0), gap=7.0)
+                                      center_indices=[5, 0], gap=7.0)
     shifted = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                         anchor_indices=(5, 0), gap=7.0,
+                                         center_indices=[5, 0], gap=7.0,
                                          offset=(0.6, -0.4))
     def side_centroid(s, sign):
         au = np.array([p[:2] for e, p in zip(s.elements, s.positions)
@@ -911,7 +946,7 @@ def test_junction_end_to_end(orthogonal, size, per_side):
         oriented, "Au", "111", size,
         # NEW convention: (a_top, a_bot).  After orient with default
         # midpoint centring, atom 3 is on +z (top), atom 0 on -z (bottom).
-        anchor_indices=(3, 0), gap=9.0, orthogonal=orthogonal,
+        center_indices=[3, 0], gap=9.0, orthogonal=orthogonal,
     )
     n_au = sum(1 for e in junction.elements if e == "Au")
     # symmetric => 2 sides × per_side atoms
@@ -948,17 +983,17 @@ def test_junction_stepped_contacts_via_two_calls():
     # mode uses ``contact_distance`` (anchor-to-closest-layer), not
     # ``gap`` (which is reserved for the pair-mode total junction gap).
     s1 = add_electrode_slab(oriented, "Au", "111", (3, 3, inner_layers),
-                              anchor_index=0, contact_distance=inner_gap,
+                              center_indices=[0], contact_distance=inner_gap,
                               side="-z")
     s2 = add_electrode_slab(s1, "Au", "111", (3, 3, inner_layers),
-                              anchor_index=3, contact_distance=inner_gap,
+                              center_indices=[3], contact_distance=inner_gap,
                               side="+z")
     # Outer stacks: 4×4 single layer, both sides, larger contact distance.
     s3 = add_electrode_slab(s2, "Au", "111", (4, 4, 1),
-                              anchor_index=0, contact_distance=outer_gap,
+                              center_indices=[0], contact_distance=outer_gap,
                               side="-z")
     junction = add_electrode_slab(s3, "Au", "111", (4, 4, 1),
-                                    anchor_index=3, contact_distance=outer_gap,
+                                    center_indices=[3], contact_distance=outer_gap,
                                     side="+z")
 
     n_au = sum(1 for e in junction.elements if e == "Au")
@@ -1052,9 +1087,9 @@ def test_add_electrode_slab_uses_element_aware_contact_distance(linear_dimer):
     slab.  Concretely: the Pt closest layer is 0.35 A closer to the
     anchor than Au's (2.40 - 2.05)."""
     au_out = add_electrode_slab(linear_dimer, "Au", "111",
-                                size=(2, 2, 1), anchor_index=0, side="+z")
+                                size=(2, 2, 1), center_indices=[0], side="+z")
     pt_out = add_electrode_slab(linear_dimer, "Pt", "111",
-                                size=(2, 2, 1), anchor_index=0, side="+z")
+                                size=(2, 2, 1), center_indices=[0], side="+z")
     # Anchor sits at positions[0]; the closest metal layer's z =
     # anchor.z + contact_distance.  Find the smallest metal z above
     # the anchor.
@@ -1252,7 +1287,7 @@ def test_add_electrode_slab_preserves_existing_metadata():
     )
     s2 = add_electrode_slab(
         s, element="Au", plane="100",
-        size=(2, 2, 1), anchor_index=0, side="+z",
+        size=(2, 2, 1), center_indices=[0], side="+z",
         contact_distance=2.0, orthogonal=True,
     )
     assert s2.n_atoms > 1
