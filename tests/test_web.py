@@ -1308,6 +1308,36 @@ def test_modify_add_atom_rejects_bad_anchor(web_client):
     assert "anchor_index" in body["error"]
 
 
+def test_modify_add_atom_rejects_unknown_element(web_client):
+    """Scientific guard: a non-periodic-table symbol is rejected at the op
+    boundary (400), not silently accepted to detonate later in a generator."""
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "Xx",
+        "anchor_index": 0,
+        "offset": [0, 0, 1],
+    })
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "unknown element symbol" in body["error"]
+
+
+def test_modify_add_atom_rejects_zero_offset(web_client):
+    """Scientific guard: a zero offset would place the new atom on top of the
+    anchor (coincident atoms); reject with 400."""
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "H",
+        "anchor_index": 0,
+        "offset": [0, 0, 0],
+    })
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "offset must be non-zero" in body["error"]
+
+
 def test_modify_add_atom_rejects_missing_offset(web_client):
     r = web_client.post("/api/modify/add_atom", json={
         "xyz": _H2O_XYZ,

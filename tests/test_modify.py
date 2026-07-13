@@ -247,6 +247,30 @@ def test_add_atom_rejects_bad_anchor(linear_dimer):
         add_atom(linear_dimer, "S", anchor_index=99, offset=[0, 0, 0])
 
 
+def test_add_atom_rejects_unknown_element(linear_dimer):
+    """Scientific guard: a non-periodic-table symbol must be rejected at the
+    op boundary, not ride silently into the Structure and detonate later in
+    the SIESTA/PySCF emitters (KeyError on ase.data.atomic_numbers)."""
+    with pytest.raises(ValueError, match="unknown element symbol"):
+        add_atom(linear_dimer, "Xx", anchor_index=0, offset=[1.0, 0, 0])
+
+
+def test_add_atom_canonicalises_element_case(linear_dimer):
+    """A mis-cased but real symbol ("au", "AU") is accepted and stored in
+    canonical Element-case so downstream symbol tables key on it."""
+    out = add_atom(linear_dimer, "au", anchor_index=0, offset=[1.0, 0, 0])
+    assert out.elements[-1] == "Au"
+    out2 = add_atom(linear_dimer, "FE", anchor_index=0, offset=[1.0, 0, 0])
+    assert out2.elements[-1] == "Fe"
+
+
+def test_add_atom_rejects_zero_offset(linear_dimer):
+    """Scientific guard: a zero offset would place the new atom on top of the
+    anchor (coincident atoms -> degenerate geometry)."""
+    with pytest.raises(ValueError, match="offset must be non-zero"):
+        add_atom(linear_dimer, "H", anchor_index=0, offset=[0.0, 0.0, 0.0])
+
+
 def test_add_atom_explicit_residue_id_groups_atoms_in_one_residue(linear_dimer):
     """SP-E: passing ``residue_id=`` lets a caller land multiple
     appended atoms in the same residue -- needed for polyatomic

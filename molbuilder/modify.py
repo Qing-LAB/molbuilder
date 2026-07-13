@@ -213,7 +213,28 @@ def add_atom(
             f"anchor_index {anchor_index} out of range for "
             f"{struct.n_atoms}-atom structure"
         )
+    # Scientific guard: the element must be a real periodic-table symbol.
+    # Without this a typo ("Xx") or a mis-cased symbol ("AU") rides silently
+    # into the Structure and only detonates much later in the SIESTA/PySCF
+    # emitters (KeyError on ase.data.atomic_numbers).  Canonicalise to
+    # Element-case first so "au" / "AU" become "Au" rather than being rejected.
+    from ase.data import atomic_numbers as _atomic_numbers
+    element = str(element).strip().capitalize()
+    if element not in _atomic_numbers:
+        raise ValueError(
+            f"unknown element symbol {element!r}; expected a periodic-table "
+            f"symbol like 'H', 'C', or 'Au'"
+        )
     offset_arr = np.asarray(offset, dtype=float).reshape(3)
+    # Scientific guard: a (near-)zero offset drops the new atom on top of the
+    # anchor -> two coincident atoms (degenerate geometry, infinite forces in
+    # any DFT run).  Reject only the essentially-zero case (< 1e-3 Å) so a
+    # legitimately short bond (e.g. an X-H at 0.7 Å) is still allowed.
+    if float(np.linalg.norm(offset_arr)) < 1e-3:
+        raise ValueError(
+            "offset must be non-zero: a zero offset would place the new atom "
+            "on top of the anchor (coincident atoms)"
+        )
     new_pos = struct.positions[anchor_index] + offset_arr
     if residue_id is None:
         new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
