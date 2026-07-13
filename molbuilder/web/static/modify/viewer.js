@@ -376,7 +376,34 @@
         const el = $("edit-status");
         if (!el) return;
         el.textContent = msg;
-        el.className = "muted" + (kind ? ` status-${kind}` : "");
+        el.className = "modify-status" + (kind ? ` status-${kind}` : "");
+    }
+
+    // Render the op's validation advisories into the dedicated message region.
+    // While EDITING, findings are shown, never blocking (design.md § 6): each
+    // ``{severity, message, where}`` becomes a severity-styled row; an empty /
+    // absent list hides the list entirely (no stale rows across ops).
+    function renderEditAdvisories(issues) {
+        const el = $("edit-advisories");
+        if (!el) return;
+        const list = (Array.isArray(issues) ? issues : []).filter(Boolean);
+        el.textContent = "";                       // clear any prior op's rows
+        if (!list.length) { el.hidden = true; return; }
+        for (const iss of list) {
+            const sev = (iss && iss.severity) || "info";
+            const li = document.createElement("li");
+            li.className = "modify-advisory modify-advisory--" + sev;
+            const tag = document.createElement("span");
+            tag.className = "modify-advisory-tag";
+            tag.textContent = sev.toUpperCase();
+            const msg = document.createElement("span");
+            msg.className = "modify-advisory-msg";
+            msg.textContent = (iss && iss.message) || "";
+            li.appendChild(tag);
+            li.appendChild(msg);
+            el.appendChild(li);
+        }
+        el.hidden = false;
     }
 
     async function postOp(path, extraBody, label) {
@@ -391,6 +418,7 @@
         state.inFlight = true;
         refreshSelectionUI();
         setEditStatus(`${label}…`);
+        renderEditAdvisories([]);   // clear the previous op's advisories
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         try {
@@ -413,12 +441,12 @@
                 setEditStatus(`${label} failed.`, "error");
                 return null;
             }
-            setEditStatus(
-                r.issues && r.issues.length
-                    ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
-                    : `${label}: ${r.n_atoms} atoms.`,
-                "ok",
-            );
+            setEditStatus(`${label}: ${r.n_atoms} atoms.`, "ok");
+            // ADVISORY surfacing (validation contract, design.md § 6): while
+            // editing, validate_geometry findings are shown -- never blocked.
+            // They ride back in ``r.issues``; render them in the dedicated
+            // message region so the user is notified (and decides).
+            renderEditAdvisories(r.issues);
             return r;
         } finally {
             state.inFlight = false;

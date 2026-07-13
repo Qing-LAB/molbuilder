@@ -300,7 +300,6 @@
   <section class="card modify-section workspace-modify">
     <header class="card-header">
       <h2>Modify</h2>
-      <span id="edit-status" class="muted"></span>
       {#- State timeline (§19.5) -- WHOLE-MODEL controls, always visible (not
           buried in an op-subtab): "Save state" checkpoints the model
           (molview.data.save(1)); "Retract" rolls back (molview.data.load(-1)).
@@ -312,6 +311,16 @@
           title="Retract: roll the whole structure back to the previous saved state.">↶ Retract</button>
       </span>
     </header>
+
+    {#- DEDICATED message region (NOT the title area): the last op's result +
+        any validation advisories (validate_geometry findings) get a clear,
+        space-ample home here.  While EDITING these are advisory only -- shown,
+        never blocking (design.md § "Validation is advisory while editing,
+        enforcing at generation").  Wired in modify/viewer.js. -#}
+    <div class="modify-messages" role="status" aria-live="polite">
+      <p id="edit-status" class="modify-status"></p>
+      <ul id="edit-advisories" class="modify-advisories" hidden></ul>
+    </div>
 
     <div class="modify-body">
       <!-- Edit (op-tabs) — the existing Atom / Pose / Geom /

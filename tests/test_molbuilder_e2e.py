@@ -3092,6 +3092,35 @@ def test_view_state_persists_across_tab_reload(
     )
 
 
+def test_modify_tab_surfaces_validation_advisories(
+        page, flask_server, water_xyz_file):
+    """Validation contract (design.md § 6, action 2): while editing, a
+    validate_geometry finding is SHOWN in the dedicated message region -- not
+    blocked, not merely counted in the title.  A zero-offset add makes coincident
+    atoms -> a geometry.min_distance advisory row appears in #edit-advisories,
+    and the op still succeeds (the atom is added)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _set_selection(page, [0])                 # one anchor -> Add is enabled
+    # Zero the add offset (default dz = 1.0) so the new atom lands on the anchor.
+    for sid in ("add-dx", "add-dy", "add-dz"):
+        page.evaluate(
+            "(id) => { const el = document.getElementById(id);"
+            "  el.value = '0'; el.dispatchEvent(new Event('input', {bubbles:true})); }",
+            sid)
+    page.locator("#add-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 4")   # op succeeded
+    # The advisory MESSAGE (not just a count) is shown in the dedicated region.
+    row = page.wait_for_selector("#edit-advisories .modify-advisory",
+                                 state="attached")
+    assert "apart" in row.inner_text().lower(), \
+        "the geometry.min_distance advisory message must be surfaced"
+    # And it is NOT in the card title (messages have their own region now).
+    assert page.locator(".card-header #edit-status").count() == 0
+
+
 def test_kgrid_survives_a_delete_op(page, flask_server, water_xyz_file):
     """Full-stack regression (2026-07 fresh-eyes review): a k-grid (or cell /
     axis_kind / vacuum) set in the Cell op-tab must survive an atom edit.

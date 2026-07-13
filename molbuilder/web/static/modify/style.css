@@ -179,6 +179,62 @@ header .tagline {
  * 06-12).  Footer row at the bottom holds Save +
  * Send-to-Optimization. */
 .modify-section { display: flex; flex-direction: column; }
+
+/* ---- Dedicated message region -------------------------------------- */
+/* Op result + validation advisories live HERE, in a clear space-ample band
+ * below the header -- NOT crammed into the card title.  While editing, these
+ * are advisory only, shown non-blockingly (design.md § 6 validation contract). */
+.modify-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.modify-status {
+    margin: 0;
+    min-height: 1.2em;            /* reserve a line so the band doesn't jump */
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.modify-status.status-ok    { color: var(--text-primary); }
+.modify-status.status-error { color: var(--error); }
+
+.modify-advisories {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.modify-advisories[hidden] { display: none; }   /* [hidden] precedence guard */
+
+.modify-advisory {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--text-muted);
+    background: var(--bg-fieldset);
+}
+.modify-advisory-tag {
+    flex: 0 0 auto;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.modify-advisory-msg { color: var(--text-primary); }
+.modify-advisory--warn  { border-left-color: var(--warn-soft); }
+.modify-advisory--warn  .modify-advisory-tag { color: var(--warn-soft); }
+.modify-advisory--error { border-left-color: var(--error); }
+.modify-advisory--error .modify-advisory-tag { color: var(--error); }
+.modify-advisory--info  { border-left-color: var(--text-muted); }
+
 .modify-body {
     display: block;       /* single column: op-tabs only */
     align-items: start;
