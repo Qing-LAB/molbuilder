@@ -472,9 +472,11 @@
     };
 
     async function applyDelete() {
-        const indices = selectedIndices();
-        if (!indices.length) return;
-        await postOp("/api/modify/delete", { indices }, "Deleted");
+        // The module resolves the acting group from the live selection and
+        // rejects an empty one (delete's empty-policy = "reject"); the Delete
+        // button is disabled at zero selection anyway.  We pass op-params only
+        // -- NOT the group -- so the module owns resolution + enforcement.
+        await postOp("/api/modify/delete", {}, "Deleted");
     }
 
     // ----- Geom subtab: rigid translate ops ----------------------- //
@@ -536,12 +538,10 @@
     }
 
     async function applyAddAtom() {
-        const sel = selectedIndices();
-        if (sel.length !== 1) {
-            setEditStatus("Pick exactly one anchor atom first.", "error");
-            return;
-        }
-        const anchor_index = sel[0];
+        // The module resolves the single anchor from the selection and enforces
+        // arity 1 (add_atom's empty-policy = "reject", arity = 1); the Add
+        // button is disabled unless exactly one atom is picked.  We pass the
+        // op-params only (element + placement offset) -- NOT the anchor index.
         const element = ($("add-element").value || "H").trim();
         if (!element) {
             setEditStatus("Element required.", "error");
@@ -550,7 +550,7 @@
         const offset = readAddOffset();
         await postOp(
             "/api/modify/add_atom",
-            { element, anchor_index, offset },
+            { element, offset },
             `Added ${element}`,
         );
     }
@@ -575,21 +575,17 @@
     }
 
     async function applyOrient() {
-        // The selection is the anchor pair.  Send sorted-ascending so
-        // the renderer's "first anchor" semantic is reproducible from
-        // the UI without exposing a "swap" affordance.  Tilted-pair
-        // direction is determined by orient_along_axis (a0 -> a1).
-        const sel = selectedIndices();
-        if (sel.length !== 2) {
-            setEditStatus("Pick exactly two anchor atoms first.", "error");
-            return;
-        }
+        // The module resolves the two anchors from the selection and enforces
+        // arity 2 (orient's empty-policy = "reject", arity = 2); the Orient
+        // button is disabled unless exactly two atoms are picked.  Anchor order
+        // follows the selection order (a0 -> a1 sets the tilt direction in
+        // orient_along_axis).  We pass the op-params only -- NOT the anchors.
         const axis  = getCheckedRadio("orient-axis") || "z";
         const angle = Number($("orient-angle").value);
         const center = $("orient-center").value || "midpoint";
         await postOp(
             "/api/modify/orient",
-            { anchors: sel, axis, angle, center },
+            { axis, angle, center },
             angle === 0 ? `Oriented along ${axis}`
                         : `Oriented (${axis}, tilt ${angle}°)`,
         );
@@ -774,62 +770,34 @@
     }
 
     async function applyElectrode() {
-        const sel = selectedIndices();
         const mode = $("elc-mode").value;
         const common = readElcCommonBody();
         const gap = Number($("elc-gap").value);
-        // Electrode ops are ordinary modifier ops now: the response
-        // flows through molview.data.applyOp -> the model.  If the
-        // user wants a rollback point, they take an explicit "Save
-        // state" checkpoint (§19.5) -- there is no per-op auto-push.
+        // Electrode ops are ordinary modifier ops: the response flows through
+        // molview.data.applyOp -> the model.  The module resolves the anchor
+        // group from the selection and enforces arity; the Add-pair button is
+        // disabled at wrong arity per mode:
+        //   single (electrode)            -> exactly 1 anchor; slab on `side`.
+        //   pair   (symmetric_electrodes) -> 0 anchors (origin-centred slabs)
+        //          or 2 (legacy anchor-pair midpoint, ordered top/bottom by z
+        //          INSIDE the module's mapGroup).
+        // A rollback point is an explicit "Save state" checkpoint (§19.5) --
+        // there is no per-op auto-push.  We pass op-params only, NOT the anchors.
         let r = null;
         if (mode === "single") {
-            if (sel.length !== 1) {
-                setEditStatus("Pick exactly one anchor for single mode.", "error");
-                return;
-            }
             const side = getCheckedRadio("elc-side") || "+z";
             r = await postOp(
                 "/api/modify/electrode",
                 Object.assign({}, common, {
-                    anchor_index:     sel[0],
                     side:             side,
                     contact_distance: gap,
                 }),
                 `Added ${common.element}(${common.plane}) ${side}`,
             );
         } else {
-            // Symmetric pair mode -- canonical placement is at the
-            // world origin.  Slabs at z = ±gap/2, lateral xy on the
-            // origin (plus the user's xy offset).  No anchor pick is
-            // required; the user is expected to centre + pose the
-            // molecule (Geom + Pose subtabs) before adding slabs.
-            //
-            // If the user has selected two atoms anyway, we forward
-            // them as legacy anchor pair: the slabs centre on the
-            // anchor-pair midpoint instead of the origin.  Useful for
-            // un-centred structures.  Selecting one atom is
-            // ambiguous -- treat it as user error so they explicitly
-            // pick 0 or 2.
-            if (sel.length === 1) {
-                setEditStatus(
-                    "Pair mode: select 0 atoms (origin-centred slabs)"
-                    + " or 2 atoms (legacy anchor-pair midpoint).", "error");
-                return;
-            }
-            const extra = { gap: gap };
-            if (sel.length === 2) {
-                const [i0, i1] = sel;
-                const coords = _coords();
-                const z0 = coords[i0][2];
-                const z1 = coords[i1][2];
-                const a_top = z0 >= z1 ? i0 : i1;
-                const a_bot = z0 >= z1 ? i1 : i0;
-                extra.anchors = [a_top, a_bot];
-            }
             r = await postOp(
                 "/api/modify/symmetric_electrodes",
-                Object.assign({}, common, extra),
+                Object.assign({}, common, { gap: gap }),
                 `Added ${common.element}(${common.plane}) pair`,
             );
         }
