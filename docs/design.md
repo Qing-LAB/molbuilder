@@ -674,13 +674,36 @@ every parameter — the generated FDF / .py is meant to be readable
 as a tutorial. Section headers are mandatory; they make `Ctrl-F`
 in the file work for someone unfamiliar with the platform.
 
-### 6. Pre-emission geometry validation
+### 6. Validation is advisory while editing, enforcing at generation
 
-Before any FDF or PySCF script is written, run a scientific sanity
-pass on the structure + cell.  Errors stop emission; warnings print
-to stderr but proceed.  Validators are pure functions reading field
-metadata; they never call out to the engine.  Full check list lives
-in [`science.md`](science.md) § 3.
+One validation package (`molbuilder/validation/`) produces `List[Issue]`
+(severity `error | warn | info`).  Its **behaviour depends on the stage**, and
+that split is the contract:
+
+- **While EDITING a structure** (the Modify tab, `/api/modify/*`,
+  `/api/build/*`): findings are **advisory**.  `validate_geometry(struct)` runs
+  on every response and its issues ride back in the payload; **nothing is
+  blocked**.  The user is *notified* and decides — they may be building an
+  intermediate (a deliberately-close contact, an off-centre junction) they will
+  fix in a later step, under constraints we don't know.
+
+- **At GENERATION** (before an FDF / PySCF script is written): the same findings
+  **enforce**.  `report(validate(struct, cfg))` prints warnings and **raises
+  `ValidationError` on any error-severity issue**, stopping emission — because an
+  invalid structure/config cannot produce a valid job.
+
+`report()` is the **only** gate that blocks; the editing paths never call it.
+So the rule for **what severity a check carries** and for **where a hard stop may
+live** is: **block only what is physically impossible or wrong** (cannot be
+emitted, or would diverge — an invalid element symbol, an out-of-range index, a
+singular cell).  Everything a user might legitimately want — close/overlapping
+contacts, unusual geometry, a sparse k-grid — is a **warning/notice, never a
+block**.  Op helpers in `molbuilder/modify.py` therefore must **not** raise on
+geometry: they build the structure and let `validate_geometry` advise.
+Validators are pure functions reading field metadata; they never call out to the
+engine.  The full check list + the call graph live in [`science.md`](science.md)
+§ 3 and [`protocols/scientific-validation.md`](protocols/scientific-validation.md),
+which **cite this principle rather than restate it**.
 
 ### 7. Generated artifacts are self-contained
 

@@ -205,12 +205,18 @@ Full machinery in [`protocols/scientific-validation.md`](protocols/scientific-va
 
 ---
 
-## 3. Validation pass (pre-emission)
+## 3. Validation pass
 
-Runs before `render_fdf` / `render_script` writes any output.
-Implemented in `molbuilder/validation/geometry.py::validate_geometry(struct,
-cfg) -> List[Issue]`.  Errors stop emission; warnings print to
-stderr.
+The validation package produces `List[Issue]`, but **whether a finding blocks
+depends on the stage** — the advisory-while-editing / enforcing-at-generation
+contract is stated once in [`design.md`](design.md) § "Validation is advisory
+while editing, enforcing at generation" and is **not restated here**.  In brief:
+`validate_geometry(struct)` runs on every editing response (Modify /
+`/api/modify/*` / `/api/build/*`) and its issues are surfaced but never block;
+`report(validate(struct, cfg))` runs before `render_fdf` / `render_script` and
+raises `ValidationError` on error-severity issues, stopping emission.  `report()`
+is the only gate — see § 6 there for what may carry error severity ("physically
+impossible or wrong") vs. what must stay a warning.
 
 `Issue` is the L1 dataclass:
 

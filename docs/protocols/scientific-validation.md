@@ -12,6 +12,12 @@
 > registry, the surfaces that read each conclusion.  Pointer in
 > [`design.md`](../design.md) § 0.
 >
+> **The stage contract — advisory while editing, enforcing at generation
+> (`report()` is the only gate; block only what is physically impossible or
+> wrong) — is stated once in [`design.md`](../design.md) § "Validation is
+> advisory while editing, enforcing at generation".** This doc realises that
+> contract; it does not restate it.
+>
 > All data passed across these surfaces is typed via **frozen
 > dataclasses** ([`design.md`](../design.md) § "Principle 1: The
 > dataclass is the lingua franca").  No untyped dicts on the
