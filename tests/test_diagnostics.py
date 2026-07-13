@@ -33,11 +33,11 @@ from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
 
 
 def test_default_env_names_covers_the_routed_categories():
-    """Five routed categories as of the 2026-06-14 siesta-gpu add:
-    siesta (precompiled CPU), siesta-gpu (built from source),
-    pyscf, mdtools, tests."""
+    """Four routed backend categories: siesta (precompiled CPU),
+    siesta-gpu (built from source), pyscf, mdtools.  There is no
+    "tests" category -- browser E2E runs under the host env."""
     assert set(DEFAULT_ENV_NAMES) == {
-        "siesta", "siesta-gpu", "pyscf", "mdtools", "tests",
+        "siesta", "siesta-gpu", "pyscf", "mdtools",
     }
 
 
@@ -47,7 +47,9 @@ def test_default_env_names_match_readme_install():
     assert DEFAULT_ENV_NAMES["siesta-gpu"] == "molbuilder-siesta-gpu"
     assert DEFAULT_ENV_NAMES["pyscf"]      == "molbuilder-pySCF"
     assert DEFAULT_ENV_NAMES["mdtools"]    == "molbuilder-MDtools"
-    assert DEFAULT_ENV_NAMES["tests"]      == "molbuilder-tests"
+    # No "tests" category: browser E2E runs under the host env, not a
+    # dedicated conda env (the E2E fixture starts the app in-process).
+    assert "tests" not in DEFAULT_ENV_NAMES
 
 
 def test_every_tool_routes_to_a_known_category():
@@ -64,7 +66,8 @@ def test_known_tools_present():
     contract surface."""
     assert TOOL_TO_CATEGORY["tleap"]      == "mdtools"
     assert TOOL_TO_CATEGORY["siesta"]     == "siesta"
-    assert TOOL_TO_CATEGORY["playwright"] == "tests"
+    # playwright is NOT routed: browser E2E runs under the host env.
+    assert "playwright" not in TOOL_TO_CATEGORY
     assert EXTENSION_TO_CATEGORY[".fdf"]  == "siesta"
     assert EXTENSION_TO_CATEGORY[".py"]   == "pyscf"
 
@@ -90,7 +93,8 @@ def test_env_for_category_returns_default():
     assert caps.env_for_category("siesta")  == "molbuilder-siesta"
     assert caps.env_for_category("pyscf")   == "molbuilder-pySCF"
     assert caps.env_for_category("mdtools") == "molbuilder-MDtools"
-    assert caps.env_for_category("tests")   == "molbuilder-tests"
+    # "tests" is not a routed category (browser E2E runs under the host env).
+    assert caps.env_for_category("tests")   is None
 
 
 def test_env_for_category_unknown_returns_none():
@@ -111,7 +115,12 @@ def test_env_for_tool_known():
     caps = _caps()
     assert caps.env_for_tool("tleap")      == "molbuilder-MDtools"
     assert caps.env_for_tool("siesta")     == "molbuilder-siesta"
-    assert caps.env_for_tool("playwright") == "molbuilder-tests"
+
+
+def test_env_for_tool_playwright_not_routed():
+    """``playwright`` is deliberately unrouted: browser E2E runs under
+    the host env (in-process Flask app), not a dedicated conda env."""
+    assert _caps().env_for_tool("playwright") is None
 
 
 def test_env_for_tool_unknown_returns_none():

@@ -1089,11 +1089,14 @@ Existing fixtures in this repo that bundle this registration:
 
 ### 9.8 Scientific backends in e2e — skip or dispatch, never bake into the env
 
-The browser E2E env (`molbuilder-tests`) carries **browser tooling only** — no
-rdkit / openbabel / biopython / sisl / pyscf (see
-[`test-strategy.md` § 4a](test-strategy.md)).  So an e2e case that needs a generator
-backend must NOT assume the backend is importable, and you must **never** add a
-backend to an env to make a case run.
+Browser E2E runs under the **host env** (`molbuilder`) — the E2E fixture starts the
+Flask app in-process, so there is no separate browser-only env (see
+[`test-strategy.md` § 4a](test-strategy.md)).  The host env carries the build-time
+chemistry libraries (rdkit / openbabel / biopython / ase / sisl), so e2e cases that
+need those run rather than skip.  What is NOT in the host env are the heavy compute
+engines (pyscf, siesta binaries) — those live only in their own backend envs.  So an
+e2e case that needs a compute backend must NOT assume it is importable, and you must
+**never** add a backend to an env just to make a case run.
 
 Two established mechanisms:
 

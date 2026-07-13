@@ -24,8 +24,7 @@ Schema (all sections optional)::
                   "key":  "/etc/letsencrypt/.../privkey.pem" },
         "envs": { "siesta":  "molbuilder-siesta",
                   "pyscf":   "molbuilder-pySCF",
-                  "mdtools": "molbuilder-MDtools",
-                  "tests":   "molbuilder-tests" }
+                  "mdtools": "molbuilder-MDtools" }
     }
 
 For backwards compatibility with the flat shape shipped before the

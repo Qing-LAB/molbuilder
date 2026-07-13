@@ -676,22 +676,16 @@ _MDTOOLS = Recipe(
 )
 
 
-_TESTS = Recipe(
-    name="molbuilder-tests",
-    category="tests",
-    description="Playwright + pytest-playwright + Chromium "
-                "(browser E2E tests only).",
-    channels=("conda-forge",),
-    conda_packages=("python=3.12", "pip", "playwright", "pytest"),
-    pip_packages=("pytest-playwright",),
-    # playwright fetches the Chromium binary into the env's cache;
-    # without this step the browser tests fail at runtime.
-    extra_steps=(
-        ("python", "-m", "playwright", "install", "chromium"),
-    ),
-    verify_argv=("playwright", "--version"),
-    verify_expect_contains="Version",
-)
+# NOTE: there is deliberately no dedicated browser-E2E env.  The E2E
+# fixture starts the Flask app IN-PROCESS (``create_app`` + werkzeug
+# ``make_server`` in ``tests/test_molbuilder_e2e.py``), so it needs the
+# full molbuilder import stack -- a "browser tooling only" env cannot
+# start the app.  Browser E2E therefore runs under the HOST env
+# (``molbuilder``); its extra tooling comes from the pyproject ``[e2e]``
+# extra (``pip install ".[e2e]" && python -m playwright install
+# chromium``), NOT from a conda recipe, so fresh installs stay lean and
+# never force a Chromium download.  See docs/protocols/test-strategy.md
+# § 4a and docs/protocols/playwright-tests.md § 9.8.
 
 
 # --------------------------------------------------------------------- #
@@ -1344,7 +1338,7 @@ _SIESTA_GPU = Recipe(
 
 
 BUILTIN_RECIPES: Tuple[Recipe, ...] = (
-    _HOST, _PYSCF, _SIESTA, _MDTOOLS, _TESTS, _SIESTA_GPU,
+    _HOST, _PYSCF, _SIESTA, _MDTOOLS, _SIESTA_GPU,
 )
 
 

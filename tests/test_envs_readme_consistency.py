@@ -93,12 +93,6 @@ def test_verify_substrings_appear_in_readme(readme_text):
     for r in BUILTIN_RECIPES:
         if not r.verify_expect_contains:
             continue
-        # Tests env: README uses "pytest-playwright" in install
-        # block + "playwright --version" prints "Version X.Y" which
-        # is what we check; substring "Version" is too generic to
-        # require verbatim in README.  Exempt this recipe.
-        if r.name == "molbuilder-tests":
-            continue
         # Host env's "host env OK" is our verify-line string, not
         # a README claim; exempt.
         if r.name == "molbuilder":

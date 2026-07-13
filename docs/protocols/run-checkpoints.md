@@ -115,7 +115,9 @@ Same separation principle as [`projects-sidebar.md`](projects-sidebar.md) § 3: 
 - `molbuilder-siesta-gpu` (source-built GPU SIESTA — same)
 - `molbuilder-pySCF` (PySCF — same)
 - `molbuilder-MDtools` (AmberTools workflows that might checkpoint between tleap calls)
-- `molbuilder-tests` (Playwright env — tests need git to set up fixture repos)
+
+(Browser E2E has no separate env — it runs under the host env, which
+already lists `git` above.)
 
 This guarantees that after `conda activate <any-env>`, `git` is on PATH at the env's prefix. Compute nodes do not need a system git, do not need network access, and do not need any site-specific module-load step. The bootstrap preflight (`molbuilder envs bootstrap`) verifies:
 

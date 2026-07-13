@@ -60,17 +60,17 @@ DEFAULT_ENV_NAMES: Mapping[str, str] = {
     "siesta-gpu": "molbuilder-siesta-gpu",
     "pyscf":      "molbuilder-pySCF",
     "mdtools":    "molbuilder-MDtools",
-    "tests":      "molbuilder-tests",
 }
 
 # Executable name -> category.  Drives ``env_for_tool``.  Tools not
 # listed here are not routed: the caller falls through to host PATH.
+# ``playwright`` is intentionally NOT routed: browser E2E runs under the
+# host env (in-process Flask app), not a dedicated env.
 TOOL_TO_CATEGORY: Mapping[str, str] = {
     "siesta":      "siesta",
     "tleap":       "mdtools",
     "parmchk2":    "mdtools",
     "antechamber": "mdtools",
-    "playwright":  "tests",
 }
 
 # Script file extension -> category.  Used by the run-wrapper emitter

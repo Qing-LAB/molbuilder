@@ -30,9 +30,9 @@ pytestmark = pytest.mark.e2e
 
 playwright_module = pytest.importorskip(
     "playwright.sync_api",
-    reason="playwright + chromium needed; install via "
-           "``conda run -n molbuilder-tests python -m playwright "
-           "install chromium``"
+    reason="playwright + chromium needed; in the molbuilder env run "
+           "``pip install \".[e2e]\" && python -m playwright install "
+           "chromium``"
 )
 
 

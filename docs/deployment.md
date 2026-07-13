@@ -578,8 +578,7 @@ Omit the whole `tls` section for localhost-only deployments.
 "envs": {
   "siesta":  "molbuilder-siesta",
   "pyscf":   "molbuilder-pySCF",
-  "mdtools": "molbuilder-MDtools",
-  "tests":   "molbuilder-tests"
+  "mdtools": "molbuilder-MDtools"
 }
 ```
 

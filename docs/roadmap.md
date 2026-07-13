@@ -71,8 +71,9 @@ with the env/build work.
 
 - **E2E tests collectable in the unit env.** `test_molbuilder_e2e.py`
   (Playwright/Chromium, `importorskip("playwright.sync_api")`) fails
-  rather than skips when swept into a `molbuilder`-env run, because it
-  needs the `molbuilder-tests` env + a live `molbuilder serve`. It is
+  rather than skips when swept into a `molbuilder`-env run that lacks
+  the `[e2e]` extra (playwright + chromium — browser E2E runs under the
+  host env, but the tooling is an opt-in overlay). It is
   NOT a product failure. Decide a clean exclusion: a pytest marker
   (e.g. `@pytest.mark.e2e`) + `-m "not e2e"` default for unit runs, or
   a stronger guard than `importorskip`. Pin: a unit-env collection

@@ -39,9 +39,9 @@ workflows.  Specific capabilities:
   on file `mtime`, streaming new frames into the 3Dmol viewer and
   new convergence data into Plotly charts.  The parser tolerates
   half-written trailing blocks.
-- **Isolated backend environments.** Five conda envs
+- **Isolated backend environments.** Four conda envs
   (`molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`,
-  `molbuilder-MDtools`, `molbuilder-tests`) pin their own native
+  `molbuilder-MDtools`) pin their own native
   stacks; one `molbuilder envs` CLI installs and manages them.
 - **Optional source-built GPU SIESTA.** ELPA (CUDA) + ELSI +
   SIESTA 5.4.2 from source against the env's pinned toolchain, with
@@ -651,7 +651,7 @@ What it does in order:
 3. Sets `PYTHONPATH=$REPO_ROOT` and dispatches into the host env to
    call `python -m molbuilder envs bootstrap`, which installs every
    conda-only backend recipe (`molbuilder-siesta`, `molbuilder-pySCF`,
-   `molbuilder-MDtools`, `molbuilder-tests`).  PYTHONPATH is the
+   `molbuilder-MDtools`).  PYTHONPATH is the
    load-bearing detail that makes the bootstrap CWD-independent
    (molbuilder is intentionally not pip-installed).
 4. Runs `molbuilder envs doctor` for a smoke check; non-zero exit
@@ -693,7 +693,6 @@ Site-config hooks:
 | `molbuilder-siesta` | precompiled `siesta=5.4.2=mpi_openmpi_*` | always |
 | `molbuilder-pySCF` | pyscf + geometric + (optional) gpu4pyscf + CUDA 13 | always |
 | `molbuilder-MDtools` | ambertools-dac=26 (dacase channel) | always |
-| `molbuilder-tests` | playwright + pytest-playwright + Chromium | always |
 | `molbuilder-siesta-gpu` *(optional)* | source-built ELPA + ELSI + SIESTA 5.4.2 with CUDA-enabled ELPA | only with `--include-source-builds` |
 
 ### Per-recipe CLI (advanced / manual)
@@ -1619,7 +1618,7 @@ Running the tests:
 ```bash
 pytest tests/ -q                            # full suite (~45 min with E2E)
 pytest tests/test_envs_*.py -q              # env recipes + builds executor (fast)
-pytest tests/test_molbuilder_e2e.py -q      # Playwright + live Flask (needs molbuilder-tests env)
+pytest tests/test_molbuilder_e2e.py -q      # Playwright browser E2E (host env; needs the [e2e] extra)
 ```
 
 ---

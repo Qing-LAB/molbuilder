@@ -60,7 +60,7 @@ scripts/install-env.sh --help` for the `MOLBUILDER_HOST_ENV_CHANNELS`
 override and the `MOLBUILDER_DEBUG_CHANNELS` debug flag.
 
 Backend envs (`molbuilder-siesta`, `molbuilder-pySCF`,
-`molbuilder-MDtools`, `molbuilder-tests`) are created by the Python
+`molbuilder-MDtools`) are created by the Python
 install layer using **per-recipe channels** declared in
 `molbuilder/envs/recipes.py` (e.g. `molbuilder-MDtools` requires the
 `dacase` channel for AmberTools; `molbuilder-siesta` requires
@@ -152,7 +152,12 @@ decisions log (2026-05-14 entries).
 | `molbuilder-siesta-gpu` | gcc14 + cmake + openmpi + libs, then built-from-source ELPA + ELSI + SIESTA 5.4.2 | Running SIESTA jobs (GPU, ELPA-CUDA accelerated); coexists with `molbuilder-siesta` |
 | `molbuilder-pySCF` | pyscf + (optional) gpu4pyscf + CUDA 13 toolkit | Running PySCF / Spectra jobs |
 | `molbuilder-MDtools` | ambertools-dac=26 (from `dacase` channel) | Running tleap / parmchk2 / RESP / antechamber |
-| `molbuilder-tests` | playwright + pytest-playwright + Chromium | Running browser E2E tests |
+
+Browser E2E tests run under the **host env** (they start the Flask app
+in-process, so they need the full molbuilder stack).  Add their tooling
+to the host env on demand with the `[e2e]` extra — see the
+["Browser E2E tests"](#browser-e2e-tests) section below.  There is no
+dedicated test env.
 
 Notes:
 
@@ -503,8 +508,8 @@ conda run -n molbuilder-MDtools tleap -f /dev/null < /dev/null
 
 ### Customising env names via `molbuilder.json`
 
-The four canonical names above (`molbuilder-siesta`, `molbuilder-pySCF`,
-`molbuilder-MDtools`, `molbuilder-tests`) are what molbuilder's
+The canonical backend names above (`molbuilder-siesta`,
+`molbuilder-pySCF`, `molbuilder-MDtools`) are what molbuilder's
 subprocess-dispatch looks up by default.  To use different names —
 because you share a machine with other users, want short names, or
 maintain multiple parallel envs (e.g. one set per project) — drop a
@@ -515,16 +520,16 @@ maintain multiple parallel envs (e.g. one set per project) — drop a
   "envs": {
     "siesta":  "my-siesta-stable",
     "pyscf":   "my-pyscf-cu13",
-    "mdtools": "amber26-dac",
-    "tests":   "molbuilder-tests"
+    "mdtools": "amber26-dac"
   }
 }
 ```
 
-The four keys are **categories** (`siesta`, `pyscf`, `mdtools`,
-`tests`); values are conda env names.  Any unspecified category falls
-back to the documented default.  The file is gitignored — these
-per-machine names never enter the repo.
+The keys are **categories** (`siesta`, `pyscf`, `mdtools`); values are
+conda env names.  Any unspecified category falls back to the documented
+default.  The file is gitignored — these per-machine names never enter
+the repo.  (There is no `tests` category: browser E2E runs under the
+host env, not a routed backend env.)
 
 The same `molbuilder.json` also carries TLS cert/key paths for the
 HTTPS dev-server (see § "Optional dependencies" → `molbuilder serve`),
@@ -536,22 +541,26 @@ so a fully populated file looks like:
             "key":  "/etc/letsencrypt/.../privkey.pem" },
   "envs": { "siesta":  "my-siesta-stable",
             "pyscf":   "my-pyscf-cu13",
-            "mdtools": "amber26-dac",
-            "tests":   "molbuilder-tests" }
+            "mdtools": "amber26-dac" }
 }
 ```
 
-### `molbuilder-tests` — Playwright E2E
+### Browser E2E tests
 
-Only needed if you're working on the web UI or fixing a Playwright-test
-failure — most development never touches this env.
+The Playwright browser tests start the Flask app **in-process**, so they
+run under the **host env** (they need the full molbuilder import stack —
+a browser-only env can't start the app).  There is no dedicated test
+env.  Add the browser tooling to the host env only when you need to run
+these tests (most development never does):
 
 ```bash
-conda create -n molbuilder-tests -c conda-forge -y python=3.12 pip \
-    playwright pytest
-conda run -n molbuilder-tests python -m pip install pytest-playwright
-conda run -n molbuilder-tests python -m playwright install chromium
+conda activate molbuilder            # the host env
+pip install ".[e2e]"                 # playwright + pytest-playwright
+python -m playwright install chromium
+# WSL / minimal Linux may also need: sudo python -m playwright install-deps chromium
 ```
+
+Then run them from the host env: `pytest tests/test_molbuilder_e2e.py -q`.
 
 ---
 
@@ -616,8 +625,9 @@ python -m pytest tests/ --ignore=tests/spectra/test_smoke.py \
 conda run -n molbuilder-pySCF python -m pytest tests/spectra/test_smoke.py -m smoke -q
 #   Expect: 6 passed.  Runs PySCF on water + HCl with a small basis set.
 
-# 4. Playwright E2E (only if molbuilder-tests is installed)
-conda run -n molbuilder-tests python -m pytest tests/test_molbuilder_e2e.py -q
+# 4. Playwright browser E2E (host env; only after `pip install ".[e2e]"`
+#    + `python -m playwright install chromium` — see "Browser E2E tests")
+python -m pytest tests/test_molbuilder_e2e.py -q
 #   Expect: all pass.
 ```
 

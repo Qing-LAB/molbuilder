@@ -202,19 +202,23 @@ package genuinely not on conda; mixing corrupts native ABIs).
 
 **Env roles for tests:**
 
-- **L1–L4** (unit / module / interface / integration) — the **host env**, which
-  carries the full app runtime + all science backends.
-- **L5 e2e** (Playwright) — the browser env (`molbuilder-tests`), whose designed
-  contents are **browser tooling only** (playwright + pytest-playwright + Chromium).
+- **L1–L5** all run under the **host env** (`molbuilder`), which carries the full app
+  runtime + all science backends.
+- **L5 e2e** (Playwright) has no separate env: the E2E fixture starts the Flask app
+  **in-process** (`create_app` + `make_server`), so it needs the whole molbuilder
+  import stack — a "browser tooling only" env can't start the app.  Its browser tooling
+  is a host-env overlay from the pyproject `[e2e]` extra (`pip install ".[e2e]"` +
+  `python -m playwright install chromium`), not a conda recipe, so fresh installs stay
+  lean and never force a Chromium download.
 
-**Scientific backends never enter the browser E2E env.**  rdkit / openbabel /
-biopython / sisl / pyscf live only in the host + their own backend envs.  A
-backend-dependent e2e case must **skip** when the backend is absent, or let the app
-**dispatch** the heavy build to the backend's own env (`conda run -n <env>`).  See
-[`playwright-tests.md` § 9.8](playwright-tests.md) for the `backends_any` +
-`available_backends()` skip pattern.  Baking a backend into the browser env to make a
-case run is both wrong (contaminates a lean, conflict-avoiding env) and pointless
-(the case is built to skip).
+**A backend-dependent e2e case must skip or dispatch — never bake the backend in to make
+it run.**  Heavy engines (pyscf, siesta binaries) live only in their own backend envs; a
+backend-dependent e2e case must **skip** when the backend is absent (`available_backends()`),
+or let the app **dispatch** the heavy build to the backend's own env (`conda run -n <env>`).
+See [`playwright-tests.md` § 9.8](playwright-tests.md) for the `backends_any` +
+`available_backends()` skip pattern.  The host env does carry the build-time chemistry
+libraries (rdkit / openbabel / biopython / ase / sisl) for L1–L4, so those e2e cases run
+rather than skip — that is coverage, not contamination.
 
 ### 4a.1 Calling code that lives in another env — the two kinds
 

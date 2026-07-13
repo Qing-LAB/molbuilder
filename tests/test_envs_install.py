@@ -1,9 +1,12 @@
 """L1 tests for ``molbuilder.envs.install``.
 
 Plan generation + execution shape; no real conda commands.  We use
-the SIESTA recipe (single conda package, no pip, has verify) and
-the tests recipe (conda + pip + extra step) to cover the relevant
-phase combinations.
+the SIESTA recipe (single conda package, no pip, has verify) for the
+create+verify path and a SYNTHETIC recipe (conda + pip + extra step +
+verify) for the all-phases path.  The synthetic recipe is used instead
+of a registry entry because no built-in recipe currently declares an
+``extra_steps`` install phase -- the planner logic under test is
+recipe-shape-driven, so an in-test recipe is the honest fixture.
 """
 from __future__ import annotations
 
@@ -13,7 +16,23 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import install
-from molbuilder.envs.recipes import recipe_by_name
+from molbuilder.envs.recipes import Recipe, recipe_by_name
+
+
+# A recipe that exercises EVERY install phase: conda create + pip
+# install + an extra step + verify.  Mirrors the shape the retired
+# browser-E2E env used to provide.
+_ALL_PHASES_RECIPE = Recipe(
+    name="synth-install-env",
+    category=None,
+    description="Synthetic recipe: conda + pip + extra + verify.",
+    channels=("conda-forge",),
+    conda_packages=("python=3.12", "pip"),
+    pip_packages=("some-pip-only-tool",),
+    extra_steps=(("python", "-m", "some_tool", "post-install"),),
+    verify_argv=("some-tool", "--version"),
+    verify_expect_contains="Version",
+)
 
 
 def _bind(*, conda_envs=(), conda_binary="/usr/bin/conda"):
@@ -40,9 +59,9 @@ def test_plan_includes_create_and_verify_for_siesta():
     assert "extra" not in labels
 
 
-def test_plan_includes_pip_and_extras_for_tests_recipe():
+def test_plan_includes_pip_and_extras_for_all_phases_recipe():
     _bind()
-    recipe = recipe_by_name("molbuilder-tests")
+    recipe = _ALL_PHASES_RECIPE
     name, steps = install.plan_install(recipe)
     labels = [s.label for s in steps]
     assert labels == ["conda create", "pip install", "extra", "verify"]
@@ -142,11 +161,11 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     The probe insists on registry + dir + conda-meta to call the env
     "PRESENT", so the mock must serve a fake envs_dirs that points
     at a real directory with a conda-meta/ subdir on disk."""
-    fake_env = tmp_path / "molbuilder-tests"
+    recipe = _ALL_PHASES_RECIPE
+    fake_env = tmp_path / recipe.name
     (fake_env / "conda-meta").mkdir(parents=True)
 
-    _bind(conda_envs=("molbuilder-tests",))
-    recipe = recipe_by_name("molbuilder-tests")
+    _bind(conda_envs=(recipe.name,))
 
     def fake_run(argv, *a, **kw):
         argv_list = list(argv) if not isinstance(argv, str) else [argv]
@@ -165,7 +184,7 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     assert result.succeeded is True
     create = next(s for s in result.steps if s.label == "conda create")
     assert "already exists" in create.output
-    # molbuilder-tests has pip_packages + extra_steps + verify.  Three
+    # The synthetic recipe has pip_packages + extra_steps + verify.  Three
     # streaming calls (pip + extra + verify), zero for the skipped create.
     assert len(calls) == 3, (
         f"expected 3 streaming calls (pip + extra + verify), got {len(calls)}"
