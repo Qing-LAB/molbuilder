@@ -550,7 +550,7 @@
         }
         // NOTE: _notify() is RENDER-ONLY -- it fires on EVERY change (data OR view) and
         // NEVER persists.  Persistence is push-only (§19.5): nothing reaches disk until the
-        // consumer calls pushState() (or a load anchors the timeline).  So a hundred slider
+        // consumer calls save(delta) (or a load anchors the timeline).  So a hundred slider
         // drags -- and a hundred edits -- cost zero writes.
     }
 
@@ -559,7 +559,7 @@
         _wired = true;
         // Canvas-state fires on every DATA change (text / periodicity / dirty toggle) ->
         // render, and (when NOT inside an internal apply) mark the model uncommitted so a
-        // consumer knows a pushState would checkpoint real work.  NO auto-write (§19.5).
+        // consumer knows a save(1) would checkpoint real work.  NO auto-write (§19.5).
         var cs = _canvas();
         if (cs && typeof cs.onChange === "function") {
             cs.onChange(function () {
@@ -1855,7 +1855,7 @@
 
     // `openMolecule` anchors a FRESH timeline (§19.5): prune every existing {workspace_id}.* state
     // file, reset state_index to 0, and write the loaded structure as the index-0 anchor.
-    // This is the ONE automatic write; everything after is explicit pushState.
+    // This is the ONE automatic write; everything after is explicit save(delta).
     function _anchorTimeline() {
         var ws = _ws();
         _stateIndex  = 0;

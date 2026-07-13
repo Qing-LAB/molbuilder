@@ -600,7 +600,7 @@ The full frame surface on `molview.data` (reads join §19.2, mutators join §19.
 
 | Call | Kind | Meaning |
 |---|---|---|
-| `load({text})` | replace | Load from a file — single-frame `.xyz` → one frame; **multi-frame** `.xyz` → all frames. |
+| `openMolecule(fileOrText)` | replace | Load a molecule (the ONE open door, §19.3). Loads a **single** frame today; **PLANNED** — splitting a multi-frame `.xyz` into all frames is not implemented, so populate frames explicitly via `reloadFrames`. |
 | `reloadFrames(frames, {forces?})` | replace | **Hard reload** — discard the current frames, recreate the whole set (a job re-ran). Resets to frame 0. |
 | `addFrame(coords, {forces?})` / `addFrames(list, {forces?})` | append | Add frame(s) to the existing set (a running job **streams** new steps). Does not move the current frame. |
 | `setFrame(i)` | select | Make frame `i` current — pushes that frame's coords onto the store, so subscribers re-render. Throws if out of range. |
@@ -608,6 +608,11 @@ The full frame surface on `molview.data` (reads join §19.2, mutators join §19.
 | `currentFrame()` / `frameCount()` / `currentForces()` | read | The current index / the number of frames / the current frame's forces. |
 
 #### 14.5.0 Persistence — multi-frame extxyz + the molstruct sidecar (no new format)
+
+> **Status: PLANNED (task #35).** `_serialise()` does not yet carry frames, so a multi-frame
+> trajectory does **not** survive a reload today — frames are demo-only (`molview/demo.js`), and
+> `openMolecule` loads a single frame. The on-disk format described below is the design target,
+> not the shipped behavior.
 
 On disk a multi-frame structure **extends the existing single-frame pattern** (`name.xyz` +
 `name.molstruct.json`) — no new format is invented. **MolView owns this format/codec** (it is
@@ -833,7 +838,7 @@ molview.mount(hostEl, workspace, opts) -> handle
 - **`opts`** = `{ mode: "modify" | "readonly", owner?: string }`.
 - **`handle`** — the **owner-facing API of §D**. The complete key set (the exact `Object.keys`
   the demo pins, sorted):
-  `{ load, save, undo, getStructure, getSelection, onChange, dispose,`
+  `{ openMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
   ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying, setArrows, setLabels }`.
   The first seven are the core owner API (§D); the rest are the **frame axis** (§14.5), present
   on every handle but inert for a static structure (`frameCount() === 1`). It exposes **no

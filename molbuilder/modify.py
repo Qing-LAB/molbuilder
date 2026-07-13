@@ -3,12 +3,23 @@
 Public surface (all pure functions; each returns a new ``Structure``):
 
     delete_atoms(struct, indices)              -> Structure
-    add_atom(struct, element, anchor_index, offset)
+    add_atom(struct, element, anchor_index, offset, *,
+             atom_name=None, residue_name="MOD", residue_id=None)
                                                 -> Structure
-    orient_along_axis(struct, anchor_indices, axis="z", center="first")
+    orient_along_axis(struct, anchor_indices, axis="z", *,
+                      angle=0.0, center="midpoint")
                                                 -> Structure
-    add_electrode_slab(struct, element, plane, layer_sizes, anchor_index,
-                       gap, side="+z", lattice_constant=None)
+    rotate_around_axis(struct, axis="z", angle=0.0, *, center="origin")
+                                                -> Structure
+    add_electrode_slab(struct, element, plane, size, anchor_index, *,
+                       contact_distance=None, side="+z", orthogonal=False,
+                       offset=(0.0, 0.0), lattice_constant=None,
+                       inter_layer_offset=None)
+                                                -> Structure
+    add_symmetric_electrodes(struct, element, plane, size,
+                             anchor_indices=None, *, gap=8.0,
+                             orthogonal=False, offset=(0.0, 0.0),
+                             lattice_constant=None)
                                                 -> Structure
 
 Every function preserves the per-atom metadata (``atom_names``,

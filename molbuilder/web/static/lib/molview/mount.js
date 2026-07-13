@@ -9,7 +9,7 @@
  * not persistence.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
- *   handle = { load(fileOrText), save(), undo(),                       // WRITE
+ *   handle = { openMolecule(fileOrText), exportFile(), undo(),         // WRITE
  *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
  *              setArrows(arrows), setLabels(labels),                  //   overlays (§14.5.1)
