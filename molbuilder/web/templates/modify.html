@@ -256,12 +256,12 @@
 
 <main class="molbuilder-tab-main">
 
-  <!-- 2. Viewer — vertical workflow puts the 3D canvas between
-       Init structure (above) and Modify (below).  /modify-
-       specific actions (Focus molecule, Clear selection) stay
-       in the row directly below the canvas; structure-level
-       handoff actions (Save, Send-to-Optimization) live at
-       the bottom of Modify, NOT here. -->
+  <!-- Viewer — vertical workflow puts the 3D canvas between Init
+       structure (above) and Modify (below).  View actions (Reset
+       view = focus molecule, toggles) live in the module's own
+       View menu inside the fused card; selection Clear lives in the
+       selection panel.  Structure-level handoff actions (Save,
+       Send-to-Optimization) live at the bottom of Modify, NOT here. -->
   {#- 2026-06-12 layout v3: three panels — viewer, selection,
       modify — each in its own card.  Wide viewports stack them
       side-by-side via .workspace-grid (3 columns); medium drops
@@ -320,11 +320,11 @@
       <aside class="modify-edit edit-card">
     <div class="edit-panel">
       <!-- The "Selection" summary that used to sit at the top of
-           this panel was retired 2026-05-20.  The selection-panel
-           card above the grid (see #selection-host) renders the
-           per-atom list with checkboxes + region labels; the
-           per-op anchor readouts below populate themselves from
-           the live selection store. -->
+           this panel was retired 2026-05-20.  The selection panel
+           inside the fused molview card (built by molview.mount into
+           #molview-host) renders the per-atom list with checkboxes +
+           region labels; the per-op anchor readouts below populate
+           themselves from the live selection store. -->
 
       <!-- Sub-tabs split the op fieldsets into the three workflow
            phases.  Default-open is "Atom" (the most common starting
@@ -336,23 +336,23 @@
         <button class="optab is-active" data-op-tab="atom"
                 role="tab" type="button"
                 id="optab-btn-atom" aria-controls="optab-panel-atom"
-                aria-selected="true">1. Atom</button>
+                aria-selected="true">Atom</button>
         <button class="optab" data-op-tab="pose"
                 role="tab" type="button"
                 id="optab-btn-pose" aria-controls="optab-panel-pose"
-                aria-selected="false">2. Pose</button>
+                aria-selected="false">Pose</button>
         <button class="optab" data-op-tab="geom"
                 role="tab" type="button"
                 id="optab-btn-geom" aria-controls="optab-panel-geom"
-                aria-selected="false">3. Geom</button>
+                aria-selected="false">Geom</button>
         <button class="optab" data-op-tab="junction"
                 role="tab" type="button"
                 id="optab-btn-junction" aria-controls="optab-panel-junction"
-                aria-selected="false">4. Junction</button>
+                aria-selected="false">Junction</button>
         <button class="optab" data-op-tab="cell"
                 role="tab" type="button"
                 id="optab-btn-cell" aria-controls="optab-panel-cell"
-                aria-selected="false">5. Cell</button>
+                aria-selected="false">Cell</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->

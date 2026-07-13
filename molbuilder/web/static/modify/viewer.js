@@ -402,18 +402,14 @@
 
     async function postOp(path, extraBody, label) {
         // Modifier-button wrapper around ``molview.data.applyOp``.  Owns the
-        // UI-level concerns the dispatcher deliberately stays out
-        // of: the in-flight lock (prevents double-click double-
-        // fire), the edit-status text, the AbortController for the
-        // wedge-release path, and the selection-UI refresh.  The
-        // dispatcher owns the HTTP fetch + cross-store state
+        // UI-level concerns the module deliberately stays out of: the
+        // in-flight lock (prevents a double-click double-fire), the
+        // edit-status text, and the selection-UI refresh.  The module
+        // (data-model.applyOp) owns the HTTP fetch + atomic state
         // replacement; this wrapper composes them with the button's
         // user-facing affordances.
         if (state.inFlight) return null;
-        const ac = (typeof AbortController !== "undefined")
-            ? new AbortController() : null;
         state.inFlight = true;
-        state._inFlightAbort = ac;
         refreshSelectionUI();
         setEditStatus(`${label}…`);
         const op = path.replace(/^\/api\/modify\//, "");
@@ -428,10 +424,6 @@
                 }
                 r = await d.applyOp(op, extraBody);
             } catch (e) {
-                if (e && e.name === "AbortError") {
-                    setEditStatus(`${label} cancelled.`, "muted");
-                    return null;
-                }
                 setEditStatus(
                     `${label} failed: ${(e && e.message) || String(e)}`,
                     "error",
@@ -451,7 +443,6 @@
             return r;
         } finally {
             state.inFlight = false;
-            state._inFlightAbort = null;
             refreshSelectionUI();
             // The op cleared the in-flight lock + (usually) changed the model, so the
             // state-timeline buttons must re-evaluate: an op leaves the model `uncommitted`
@@ -459,17 +450,6 @@
             refreshUndoButton();
         }
     }
-
-    // Phase 6e seventh-review LANDMINE-3: expose the wedge-
-    // release path.  Today only the bfcache-restore handler
-    // calls it; a future Cancel button is a trivial UI
-    // addition that wires here.
-    state.abortInFlight = function () {
-        const ac = state._inFlightAbort;
-        if (ac) {
-            try { ac.abort(); } catch (_) {}
-        }
-    };
 
     async function applyDelete() {
         // The module resolves the acting group from the live selection and

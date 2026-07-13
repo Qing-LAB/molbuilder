@@ -1,23 +1,25 @@
-/* /modify atom-selection bootstrap -- page glue only.
+/* /modify structure bootstrap -- page glue only.
  *
- * Responsibilities (and ONLY these):
+ * Post-migration (Track B), the concealed MolView module builds the entire
+ * fused card (viewer + selection panel + View-menu toggles + measurement +
+ * fold) and attaches the viewer-adapter itself.  This file does ONLY the
+ * page-level DATA orchestration the module can't:
  *
- *   1. Fetch the _selection_panel.html partial and insert it into
- *      the page's #selection-host.
- *   2. Mount the panel against the singleton store.
- *   3. Attach the viewer-adapter once modify/viewer.js has exposed
- *      its 3Dmol viewer.
- *   4. Forward the Projects sidebar's onChange (filtered to .xyz)
- *      into store.setSourceFile.
+ *   1. Mount the module into the empty #molview-host (molview.mount), handing
+ *      it the workspace object.
+ *   2. Inject the tab's XYZ/PDB loader into the module's selection namespace.
+ *   3. Translate the Projects sidebar's pick/commit into a candidate + a
+ *      gated _commitFile (warning modal on a dirty canvas), honouring the
+ *      mount-restore ownership contract so it never clobbers a restore.
+ *   4. Wire the "Load picked file" button + its readout.
  *
- * That's it.  All HTTP wiring, rule translation, save dispatch and
- * label bookkeeping lives in the store.  See
- * docs/protocols/molview-module.md for the full architecture.
+ * All HTTP wiring, rule translation, save dispatch and label bookkeeping live
+ * in the module/store.  See docs/protocols/molview-module.md for the full
+ * architecture.
  */
 (function () {
     "use strict";
 
-    const PARTIAL_URL = "/partials/selection-panel";
     // EMPTY host: molview.mount BUILDS the whole fused card into it (viewer + panel +
     // View-menu toggles + measurement + fold), exactly like the demo / Results.  Modify
     // no longer hand-builds a card, so the mount takes the module's build path.
