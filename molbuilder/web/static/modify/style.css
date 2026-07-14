@@ -117,6 +117,15 @@ header .tagline {
     display: flex;
     flex-direction: column;
     min-height: 480px;
+    /* Keep the "Structure & selection" card (header + fused viewer/panel) tied
+     * to the WIDTH ITS CONTENT ACTUALLY NEEDS, so the header never overhangs a
+     * viewer+panel pair that the fused-layout centres.  The fused card's content
+     * maxes at: viewer square (--viewer-edge = min(60vh, 560px)) + the fold rail
+     * (22px) + the panel floor (--panel-min = 320px).  Capping the section here
+     * makes the whole set one tight, edge-aligned card instead of a full-grid-
+     * width bar with symmetric empty margins.  (Values mirror fused-layout.css;
+     * the card grows to this cap, then spare row width goes to the Modify card.) */
+    max-width: calc(min(60vh, 560px) + 342px);
 }
 /* The wrap mirrors the canvas dimensions (centred, capped at
  * 560 px) so the absolute-positioned measurement chip anchors to
@@ -416,6 +425,28 @@ header .tagline {
     border-color: var(--accent);
     color: var(--accent);
 }
+
+/* Save state | Retract | status — one aligned inline-flex group. */
+.modify-timeline-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Timeline dirty/target indicator next to Retract (viewer.js
+ * refreshUndoButton): a passive flag showing whether there are unsaved edits
+ * and which state Retract restores.  Amber (--warn-soft) when dirty, muted when
+ * at a clean checkpoint. */
+.timeline-status {
+    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
+    color: var(--text-muted, #6c7280);
+    white-space: nowrap;
+    user-select: none;
+    align-self: center;
+}
+.timeline-status.is-dirty { color: var(--warn-soft, #d8a64b); }
+.timeline-status:empty    { display: none; }
 
 /* ---- Edit panel (right) ---- */
 .edit-card .edit-panel {

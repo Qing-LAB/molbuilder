@@ -210,6 +210,7 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
 | `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
+| `ws.onPersistError(handler)` | `((detail) → void) → unsubscribe` | Subscribe to **non-blocking** state-write failures (§4.7). `persist` fires the on-disk write fire-and-forget, but every failure (rejected fetch OR non-2xx) is reported here (`detail = {op, state_index?, above_index?, status?, error?}`) — plus `console.error` + a `molbuilder:persist-error` DOM event. The UI subscribes to warn the user; the write is never silently swallowed. Returns an unsubscribe fn. |
 | `ws.useNamespace(owner)` | `(string\|null) → void` | Declare the active consumer's `owner`, folding it into the mirror key (`<base>::<owner>`) and clearing the cached `workspace_id` so it recomputes per namespace. Set by `molview.mount`; also by any restore that runs before mount (molview-module.md §18.4). `null` → the base key. |
 | `ws.STORAGE_KEY` | `string` | The **base** `sessionStorage` key (`molbuilder.workspace.v1`; shared constant `SS_WORKSPACE`). The live key is namespaced by the active `owner` (§4.4.1). |
 
@@ -622,6 +623,28 @@ store for it. What the workspace must provide:
 - **Pruning.** A rolling window of the most recent indices (default 30) is kept; older indices are
   deleted, and a `save(1)` after a `load(-1)` deletes every index **above** the new one (the
   abandoned tail). The timeline never grows without bound.
+- **Anchor ordering — prune BEFORE the write.** `openMolecule` anchors a fresh timeline: it
+  first prunes the whole previous timeline (`pruneStatesAbove(wid, -1)` = delete every
+  `<wid>.*` file) and then writes the index-0 anchor. These are two independent HTTP calls;
+  the anchor write MUST be issued **only after** the prune-all has resolved. `pruneStatesAbove`
+  returns its fetch promise for exactly this — the data model's `_anchorTimeline` does
+  `prune.then(() => persist(…, index 0))`. Issuing them concurrently races: on the threaded
+  server a late-landing delete-all unlinks the just-written anchor, and a later `load(-1)` to
+  index 0 reads a missing file and no-ops (the "retract never returns to the opened state"
+  hang). Ordering closes it; the write itself stays fire-and-forget (below).
+- **The state write is NON-BLOCKING but ERROR-EXPLICIT.** The on-disk state file is
+  crash-recovery / retract-history durability *downstream* of the source of truth (the
+  in-memory model + the **synchronous** `sessionStorage` mirror). So `persist` **fires** the
+  `write-state` POST and does **not** make the hot path (`openMolecule`, `save`) await the
+  durable disk write — blocking the editor on a disk round-trip buys no correctness and
+  couples every checkpoint/open to server latency. **But a failure is never swallowed:** a
+  rejected fetch (network) OR a non-2xx response (server refused — bad `workspace_id`, disk
+  full) is reported via `ws.onPersistError(handler)` (console.error + a `molbuilder:persist-error`
+  DOM event + registered handlers). The UI subscribes and warns the user that their edits are
+  safe in memory but the retract / crash-recovery history may be incomplete (the Modify tab
+  wires this to its `#status` line). This replaces the old silent `.catch(() => {})`, which is
+  what let a failed anchor write masquerade as a mysterious downstream hang instead of a clear
+  error.
 
 **This supersedes the "debounce on every change" write cadence (§4.4.2):** persistence is now
 **push-only** — a write happens on `openMolecule` (the index-0 anchor) and on each explicit `save`,

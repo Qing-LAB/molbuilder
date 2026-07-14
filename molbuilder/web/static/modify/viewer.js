@@ -325,17 +325,51 @@
     // and ``uncommitted`` (in-memory changes since the last checkpoint)
     // are LIVE reads off ``molview.data``.
 
-    // Enable/disable the timeline controls off the model's LIVE
-    // ``state_index`` -- Retract is meaningful only above the anchor
-    // (index > 0); Save state whenever a structure is loaded.  Named
-    // refreshUndoButton for continuity with the render-hook callers.
+    // Enable/disable the timeline controls off the model's LIVE reads.
+    // Retract is meaningful when there is something to undo: an earlier
+    // checkpoint (``state_index`` > 0) OR uncommitted edits since the last
+    // checkpoint (``uncommitted``) -- the first Retract reverts uncommitted
+    // edits to the current checkpoint (data-model load(-1)), so it must be
+    // enabled while dirty even at the index-0 anchor.  Save state whenever a
+    // structure is loaded.  Named refreshUndoButton for continuity with the
+    // render-hook callers.
     function refreshUndoButton() {
         const d = _data();
         const idx = (d && typeof d.state_index === "number") ? d.state_index : 0;
+        const dirty = !!(d && d.uncommitted);
         const retractBtn = $("undo-op");
-        if (retractBtn) retractBtn.disabled = state.inFlight || !(idx > 0);
+        if (retractBtn) retractBtn.disabled = state.inFlight || !(idx > 0 || dirty);
         const saveBtn = $("save-state");
         if (saveBtn) saveBtn.disabled = state.inFlight || _nAtoms() === 0;
+
+        // Dirty/target indicator next to Retract: tell the user whether the
+        // model has unsaved edits and WHICH state Retract will restore.
+        //   * dirty  -> Retract discards the unsaved edits and returns to the
+        //              LAST SAVED state (#idx);
+        //   * clean & idx>0 -> Retract steps back a checkpoint (#idx -> #idx-1);
+        //   * clean & idx==0 -> nothing to retract.
+        const statusEl = $("timeline-status");
+        if (statusEl) {
+            if (_nAtoms() === 0) {
+                statusEl.textContent = "";
+                statusEl.className = "timeline-status";
+            } else if (dirty) {
+                statusEl.textContent = `● unsaved — Retract → #${idx}`;
+                statusEl.className = "timeline-status is-dirty";
+                statusEl.title =
+                    `Unsaved edits since checkpoint #${idx}. `
+                    + `Retract discards them and returns to #${idx}.`;
+            } else if (idx > 0) {
+                statusEl.textContent = `✓ saved #${idx} — Retract → #${idx - 1}`;
+                statusEl.className = "timeline-status is-clean";
+                statusEl.title =
+                    `At saved checkpoint #${idx}. Retract steps back to #${idx - 1}.`;
+            } else {
+                statusEl.textContent = `✓ saved #0`;
+                statusEl.className = "timeline-status is-clean";
+                statusEl.title = "At the initial state (#0). Nothing to retract.";
+            }
+        }
     }
 
     // "Save state": commit an undoable checkpoint (``save(1)``).
@@ -1027,6 +1061,9 @@
         // don't block the rest of init -- the mode switch and selection
         // UI are wired off the existing readouts.
         populateElectrodeMeta().then(refreshElcReadouts);
+        // (Non-blocking persist failures surface in the app-wide notification bar
+        // -- lib/app-notifications.js listens for molbuilder:persist-error, so the
+        // Modify tab wires nothing here; see docs/protocols/notifications.md.)
 
         // Sub-tabs: click an op-tab button to swap which panel is
         // visible.  Pure DOM toggle (no state in the IIFE; the

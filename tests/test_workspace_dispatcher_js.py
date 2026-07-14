@@ -975,10 +975,13 @@ class TestStateTimeline:
         assert out["rejected"] is True
         assert out["index"] == 0                 # unchanged — no advance on failure
 
-    def test_load_minus1_reads_prev_applies_it_and_decrements(self):
-        """§19.5: ``load(-1)`` reads {index-1}, APPLIES that snapshot to
-        the whole model (discarding uncommitted changes), decrements, and
-        re-mirrors that index (mirror-only)."""
+    def test_load_minus1_while_dirty_reverts_to_current_checkpoint(self):
+        """§19.5 Retract semantics: with UNCOMMITTED edits on top of a
+        checkpoint, ``load(-1)`` reverts those edits by re-applying the CURRENT
+        checkpoint -- it does NOT step past a saved checkpoint.  The uncommitted
+        edit consumes the first retract step; the index stays put, uncommitted
+        clears.  (Only a subsequent Retract, now clean, steps back -- see
+        ``test_load_minus1_while_clean_decrements`` below.)"""
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
@@ -1002,11 +1005,35 @@ class TestStateTimeline:
             "    }));\n"
             "  });\n"
             "});")
-        assert out["beforeEls"] == ["C"]         # the uncommitted edit was live
-        assert out["afterEls"] == ["O", "H", "H"]  # load(-1) restored the index-0 water
-        assert out["head"] == "3"                # whole structure re-applied
-        assert out["index"] == 0                 # decremented after the read resolved
-        assert out["readIdx"] == [0]             # read index (state_index - 1)
+        assert out["beforeEls"] == ["C"]           # the uncommitted edit was live
+        assert out["afterEls"] == ["O", "H", "H"]  # reverted to the SAVED index-1 water
+        assert out["head"] == "3"                  # whole structure re-applied
+        assert out["index"] == 1                   # NOT decremented -- reverted in place
+        assert out["readIdx"] == [1]               # read the CURRENT checkpoint, not prev
+        assert out["uncommitted"] is False
+
+    def test_load_minus1_while_clean_decrements(self):
+        """§19.5 Retract semantics: at a CLEAN checkpoint (no uncommitted
+        edits), ``load(-1)`` steps back one checkpoint -- reads {index-1},
+        applies it, decrements, and re-mirrors."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "  return d.save(1);\n"                              # index 1 (disk[1]=water); clean
+            "}).then(() => {\n"
+            "  return d.load(-1).then(() => {\n"                 # clean -> step back to 0
+            "    console.log(JSON.stringify({\n"
+            "      afterEls:  d.getElements(),\n"
+            "      index:     d.state_index,\n"
+            "      readIdx:   _readIdx,\n"
+            "      uncommitted: d.uncommitted,\n"
+            "    }));\n"
+            "  });\n"
+            "});")
+        assert out["afterEls"] == ["O", "H", "H"]  # index-0 anchor water
+        assert out["index"] == 0                   # decremented (clean -> step back)
+        assert out["readIdx"] == [0]               # read index (state_index - 1)
         assert out["uncommitted"] is False
 
     def test_load_minus1_is_a_noop_and_floors_at_zero(self):
@@ -1102,6 +1129,126 @@ class TestStateTimeline:
             "});")
         assert out["order"] == [1, 2]            # first-in first-out, not by write speed
         assert out["index"] == 2                 # sequential advance, no interleave
+
+
+class TestAnchorTimelineDurableWrites:
+    """Regression (2026-07-14): the state-timeline anchor write must be
+    RACE-FREE.
+
+    ``openMolecule``'s index-0 anchor intermittently vanished (~20% of runs),
+    so a later Retract to index 0 read a missing file and no-op'd -- the flaky
+    "retract never returns to the opened state" hang.  Root cause: within
+    ``_anchorTimeline`` the two server calls had NO ordering between them --
+    ``pruneStatesAbove(-1)`` (delete the WHOLE timeline) and the index-0 write
+    were issued concurrently, so on the threaded server a late-landing
+    delete-all could wipe the just-written anchor.
+
+    FIX (ordering only): await the prune-all, THEN issue the anchor write.
+    ``persist`` stays best-effort/fire-and-forget (workspace-contract: the
+    on-disk state file is crash-safety, not a blocking write) -- making it
+    awaitable would force ``openMolecule`` to block on the durable write, which
+    is neither needed for the race nor free (it stalls the generation flow).
+
+    Pin: the anchor's prune-all completes STRICTLY BEFORE the index-0 write is
+    issued."""
+
+    def test_anchor_prunes_all_before_writing_index0(self):
+        out = _run_node(
+            # Instrument fetch: /build/load returns water; prune-states resolves
+            # on a LATER macrotask (so a CONCURRENT write-0 would be issued while
+            # prune is still pending); write-state records whether prune had
+            # already resolved when the index-0 write was issued.
+            "global.__o = { pruneResolved:false, writeAfterPrune:null,\n"
+            "               above:null };\n"
+            "global.window.fetch = function (url, opts) {\n"
+            "  var b = {}; try { b = JSON.parse((opts&&opts.body)||'{}'); } catch(e){}\n"
+            "  if (url.indexOf('/api/build/load') >= 0) {\n"
+            "    return Promise.resolve({ ok:true, json: function(){ return Promise.resolve({\n"
+            "      ok:true, source_format:'xyz', title:'h2o', n_atoms:3,\n"
+            "      text:'3\\\\nh2o\\\\nO 0 0 0\\\\nH 0.957 0 0\\\\nH -0.24 0.927 0\\\\n',\n"
+            "      atoms:[{index:0,element:'O',x:0,y:0,z:0,regions:[],is_frozen:false},\n"
+            "             {index:1,element:'H',x:0.957,y:0,z:0,regions:[],is_frozen:false},\n"
+            "             {index:2,element:'H',x:-0.24,y:0.927,z:0,regions:[],is_frozen:false}] }); } });\n"
+            "  }\n"
+            "  if (url.indexOf('/api/workingcopy/prune-states') >= 0) {\n"
+            "    global.__o.above = b.above_index;\n"
+            "    return new Promise(function (res) { setTimeout(function () {\n"
+            "      global.__o.pruneResolved = true;\n"
+            "      res({ ok:true, json:function(){ return Promise.resolve({ ok:true, removed:0 }); } });\n"
+            "    }, 25); });\n"
+            "  }\n"
+            "  if (url.indexOf('/api/workingcopy/write-state') >= 0) {\n"
+            "    if (b.state_index === 0 && global.__o.writeAfterPrune === null) {\n"
+            "      global.__o.writeAfterPrune = global.__o.pruneResolved;\n"
+            "    }\n"
+            "    return Promise.resolve({ ok:true, json:function(){ return Promise.resolve({ ok:true }); } });\n"
+            "  }\n"
+            "  return Promise.resolve({ ok:true, json:function(){ return Promise.resolve({ ok:true }); } });\n"
+            "};\n"
+            "(async () => {\n"
+            "  await window.molbuilder.molview.data.openMolecule({\n"
+            "    text:'3\\\\nh2o\\\\nO 0 0 0\\\\nH 0.957 0 0\\\\nH -0.24 0.927 0\\\\n',\n"
+            "    filename:'w.xyz' });\n"
+            "  console.log(JSON.stringify(global.__o));\n"
+            "})();")
+        assert out["above"] == -1, (
+            "_anchorTimeline must prune the WHOLE timeline (above_index=-1) "
+            "before writing the anchor."
+        )
+        assert out["writeAfterPrune"] is True, (
+            "the index-0 anchor write was issued BEFORE pruneStatesAbove(-1) "
+            "resolved -- the delete-all races the anchor write and can wipe it. "
+            "_anchorTimeline must await the prune, THEN persist the anchor."
+        )
+
+
+class TestPersistErrorIsExplicit:
+    """The state write is NON-BLOCKING but ERROR-EXPLICIT (workspace-contract
+    §4.7): persist() fires the write-state POST fire-and-forget, but a failure
+    -- a rejected fetch (network) OR a non-2xx response (server refused) -- is
+    NEVER swallowed.  It reaches ``ws.onPersistError(handler)`` subscribers.
+
+    This replaces the old silent ``.catch(() => {})`` that let a failed anchor
+    write masquerade as a mysterious downstream hang."""
+
+    def _run_persist(self, fetch_body):
+        return _run_node(
+            "var got = [];\n"
+            "window.molbuilder.workspace.onPersistError(function (d) { got.push(d); });\n"
+            + fetch_body +
+            "window.molbuilder.workspace.persist({s:1}, {blob:1},\n"
+            "  { workspace_id:'w', state_index:3 });\n"
+            # wait a macrotask for the write-state fetch .then/.catch to run.
+            "setTimeout(function () { console.log(JSON.stringify({ got: got })); }, 40);")
+
+    def test_non_2xx_write_surfaces_via_onPersistError(self):
+        out = self._run_persist(
+            "global.window.fetch = function (url) {\n"
+            "  var isWrite = String(url).indexOf('write-state') >= 0;\n"
+            "  return Promise.resolve({ ok: !isWrite, status: isWrite ? 500 : 200,\n"
+            "    json: function () { return Promise.resolve({ ok: !isWrite }); } });\n"
+            "};\n")
+        assert len(out["got"]) == 1, out
+        assert out["got"][0]["op"] == "write-state"
+        assert out["got"][0]["status"] == 500
+        assert out["got"][0]["state_index"] == 3
+
+    def test_network_reject_write_surfaces_via_onPersistError(self):
+        out = self._run_persist(
+            "global.window.fetch = function () {\n"
+            "  return Promise.reject(new TypeError('Failed to fetch'));\n"
+            "};\n")
+        assert len(out["got"]) == 1, out
+        assert out["got"][0]["op"] == "write-state"
+        assert "Failed to fetch" in out["got"][0]["error"]
+
+    def test_successful_write_does_not_fire(self):
+        out = self._run_persist(
+            "global.window.fetch = function () {\n"
+            "  return Promise.resolve({ ok: true, status: 200,\n"
+            "    json: function () { return Promise.resolve({ ok: true }); } });\n"
+            "};\n")
+        assert out["got"] == [], out
 
 
 # --------------------------------------------------------------------- #

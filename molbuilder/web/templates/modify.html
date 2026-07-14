@@ -308,7 +308,11 @@
         <button id="save-state" class="ghost" disabled
           title="Save a checkpoint of the current structure you can roll back to.">⭳ Save state</button>
         <button id="undo-op" class="ghost" disabled
-          title="Retract: roll the whole structure back to the previous saved state.">↶ Retract</button>
+          title="Retract: with unsaved edits, return to the last saved state; otherwise step back one checkpoint.">↶ Retract</button>
+        {#- Dirty/target indicator: shows whether the model has unsaved edits
+            and WHICH state Retract will restore (last saved when dirty; the
+            previous checkpoint when clean).  Wired in modify/viewer.js. -#}
+        <span id="timeline-status" class="timeline-status" aria-live="polite"></span>
       </span>
     </header>
 

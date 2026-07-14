@@ -800,6 +800,16 @@
         if (typeof cs.markDirty !== "function") {
             throw _missing("canvas.markDirty");
         }
+        // markDirty() is the explicit "this is an unsaved DATA edit" signal --
+        // label / frozen / metadata writes (which route through the selection
+        // store, not the canvas text/periodicity) call it.  Set the TIMELINE
+        // dirty flag directly here rather than relying on the canvas onChange:
+        // cs.markDirty() is a NO-OP when the canvas dirty bit is ALREADY set, so
+        // its onChange never fires and the edit would go untracked -- Retract
+        // would then skip it and Save could miss it.  Guarded by _applying so a
+        // snapshot restore that re-sets the dirty bit doesn't spuriously mark
+        // the model uncommitted (load() sets the committed flag afterward).
+        if (!_applying) _uncommitted = true;
         return cs.markDirty();
     }
 
@@ -1109,14 +1119,29 @@
           + "or a project-file path string"));
     }
 
+    // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).  Emits
+    // "[MV-TRACE <ms>] <event> <json?>" so ONE reproduction shows the exact
+    // SEQUENCE + timing across openMolecule/anchor/persist -- observe, don't guess.
+    function _trace(ev, extra) {
+        if (!root.__MV_TRACE) return;
+        try {
+            var t = (root.performance && root.performance.now)
+                ? root.performance.now() : 0;
+            root.console.log("[MV-TRACE " + t.toFixed(1) + "] " + ev
+                + (extra !== undefined ? " " + JSON.stringify(extra) : ""));
+        } catch (_) { /* tracing never throws */ }
+    }
+
     async function _loadText(text, filename, opts) {
         opts = opts || {};
+        _trace("loadText:start", { filename: filename, len: (text || "").length });
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ text: text, filename: filename }),
         });
         const r = await resp.json();
+        _trace("loadText:build-load:done", { ok: r.ok, n_atoms: r.n_atoms });
         if (!r.ok) {
             throw new Error(r.error || "Load failed.");
         }
@@ -1142,9 +1167,12 @@
         } finally {
             _applying = false;
         }
+        _trace("loadText:applyPayload:done");
         // Anchor a fresh timeline (§19.5): prune the previous molecule's state files, reset
         // state_index to 0, and write this loaded structure as the index-0 anchor.
+        _trace("loadText:anchor:begin");
         await _anchorTimeline();
+        _trace("loadText:anchor:awaited -> return");
         return r;
     }
 
@@ -1795,12 +1823,25 @@
             var wid    = ws.workspaceId();
             var target = _stateIndex + delta;
             var snap   = _serialise();
+            // _serialise() stamps `state_index: _stateIndex` (the CURRENT index),
+            // but this snapshot is FILED at `target` (= _stateIndex + delta) and
+            // becomes the session mirror.  Stamp it with `target` so the file's
+            // self-reported index matches where it lives -- otherwise every saved
+            // snapshot reports one-too-low, and a reload's load(0) (which reads
+            // the mirror's internal state_index) restores _stateIndex off by one,
+            // so the next Retract skips a saved state (the "retract loses states
+            // after loading back" bug).
+            snap.state.state_index = target;
             return Promise.resolve(
                 ws.persist(snap, snap, { workspace_id: wid, state_index: target })
             ).then(function () {
                 _stateIndex  = target;
                 _uncommitted = false;
                 if (delta > 0 && typeof ws.pruneStatesAbove === "function") {
+                    // Fire-and-forget: this prunes indices strictly ABOVE the
+                    // just-written `target`, so unlike the anchor case there is no
+                    // delete-vs-write race to order (it never touches `target` or
+                    // below).  Best-effort, like the write itself.
                     ws.pruneStatesAbove(wid, target);   // drop the abandoned tail
                 }
             });
@@ -1834,6 +1875,17 @@
                 return;
             }
             var target = _stateIndex + delta;
+            // Retract semantics (delta < 0): UNCOMMITTED edits are a working state
+            // sitting ABOVE the current committed checkpoint, so the FIRST step of a
+            // Retract reverts them to that checkpoint -- it must NOT skip past a SAVED
+            // checkpoint.  An uncommitted state therefore consumes the first unit of a
+            // retract: from [checkpoint N + uncommitted edit], load(-1) restores N
+            // (discards the edit) and only a SECOND load(-1) steps to N-1.  (This also
+            // lets you undo uncommitted work sitting on the index-0 anchor, which used
+            // to be a no-op because target went negative.)
+            if (delta < 0 && _uncommitted) {
+                target += 1;
+            }
             if (target < 0) return;                    // can't go below the anchor
             if (typeof ws.readState !== "function") return;
             var wid = ws.workspaceId();
@@ -1861,12 +1913,26 @@
         _uncommitted = false;
         if (!ws || typeof ws.persist !== "function") return Promise.resolve();
         var wid = ws.workspaceId();
-        if (typeof ws.pruneStatesAbove === "function") {
-            ws.pruneStatesAbove(wid, -1);   // clear the whole timeline
-        }
         var snap = _serialise();
-        return Promise.resolve(
-            ws.persist(snap, snap, { workspace_id: wid, state_index: 0 }));
+        // ORDER MATTERS: pruneStatesAbove(-1) DELETES every {wid}.* state file
+        // (the old timeline).  It MUST fully complete BEFORE the index-0 anchor
+        // write is ISSUED -- otherwise the two HTTP calls race and a late-landing
+        // delete-all unlinks the just-written anchor, so a later Retract to index
+        // 0 reads a missing file and no-ops (the intermittent "retract never
+        // returns to the opened state" hang).  ``pruneStatesAbove`` returns its
+        // fetch promise, so awaiting it before calling ``persist`` is sufficient;
+        // the anchor write itself stays best-effort/fire-and-forget (persist is
+        // crash-safety, not a blocking write -- workspace-contract), and by the
+        // time any Retract reads index 0 it has long since landed.
+        _trace("anchor:prune:issue", { wid: wid });
+        var prune = (typeof ws.pruneStatesAbove === "function")
+            ? Promise.resolve(ws.pruneStatesAbove(wid, -1))
+            : Promise.resolve();
+        return prune.then(function () {
+            _trace("anchor:prune:resolve -> persist:issue");
+            ws.persist(snap, snap, { workspace_id: wid, state_index: 0 });
+            _trace("anchor:persist:issued");
+        });
     }
 
 

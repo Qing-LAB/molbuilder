@@ -104,13 +104,71 @@
     // ``snapshotBlob`` is the consumer's already-serialised OPAQUE session snapshot; ``identity``
     // = {workspace_id, state_index} keys the filename ``<workspace_id>.<state_index>.wc.json``.
     // The server stores it FORMAT-BLIND (never through the structure codec).  Best-effort.
+    // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).  Mirrors
+    // data-model's _trace so client seams + HTTP round-trips share one timeline.
+    function _trace(ev, extra) {
+        if (!root.__MV_TRACE) return;
+        try {
+            var t = (root.performance && root.performance.now)
+                ? root.performance.now() : 0;
+            root.console.log("[MV-TRACE " + t.toFixed(1) + "] " + ev
+                + (extra !== undefined ? " " + JSON.stringify(extra) : ""));
+        } catch (_) { /* never throws */ }
+    }
+
+    // Persist contract: NON-BLOCKING but ERROR-EXPLICIT.  The on-disk state
+    // write is fire-and-forget (the hot path never awaits it -- the in-memory
+    // model + synchronous session mirror are the source of truth), BUT a failure
+    // is NEVER swallowed: it is reported to the console AND emitted as a
+    // ``molbuilder:persist-error`` DOM event so a UI layer can warn the user
+    // ("state didn't reach disk; retract history / crash recovery may be
+    // incomplete").  A failure is either a rejected fetch (network) OR a
+    // non-2xx response (server refused, e.g. bad workspace_id / disk).
+    var _persistErrorHandlers = [];
+    // Subscribe to persist failures (the UI layer registers here to warn the
+    // user).  Returns an unsubscribe fn.  Part of the non-blocking/error-explicit
+    // contract: the write is fire-and-forget, but every failure reaches here.
+    function onPersistError(fn) {
+        if (typeof fn !== "function") return function () {};
+        _persistErrorHandlers.push(fn);
+        return function () {
+            var i = _persistErrorHandlers.indexOf(fn);
+            if (i >= 0) _persistErrorHandlers.splice(i, 1);
+        };
+    }
+    function _reportPersistError(detail) {
+        try { root.console.error("[workspace] persist FAILED (non-blocking)", detail); }
+        catch (_) { /* console may be absent */ }
+        _persistErrorHandlers.slice().forEach(function (fn) {
+            try { fn(detail); } catch (_) { /* one bad handler can't muzzle the rest */ }
+        });
+        try {   // also a DOM event, for decoupled listeners in a real browser
+            if (root.dispatchEvent && typeof root.CustomEvent === "function") {
+                root.dispatchEvent(new root.CustomEvent(
+                    "molbuilder:persist-error", { detail: detail }));
+            }
+        } catch (_) { /* event dispatch is best-effort surfacing */ }
+    }
+
     function _persistState(snapshotBlob, identity) {
         if (!root.fetch || !snapshotBlob) return;
+        var idx = identity && identity.state_index;
+        _trace("http:write-state:issue", { idx: idx });
         root.fetch("/api/workingcopy/write-state", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
-        }).catch(function () { /* state file is best-effort crash-safety */ });
+        }).then(function (res) {
+            _trace("http:write-state:done", { idx: idx, status: res && res.status });
+            if (!res || !res.ok) {
+                _reportPersistError({ op: "write-state", state_index: idx,
+                                      status: res && res.status });
+            }
+        }).catch(function (err) {
+            _trace("http:write-state:error", { idx: idx });
+            _reportPersistError({ op: "write-state", state_index: idx,
+                                  error: (err && err.message) || String(err) });
+        });
     }
 
     /**
@@ -153,11 +211,25 @@
      */
     function pruneStatesAbove(workspace_id, index) {
         if (!root.fetch || !workspace_id) return Promise.resolve();
+        _trace("http:prune-states:issue", { above: index });
         return root.fetch("/api/workingcopy/prune-states", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),
-        }).catch(function () { /* best-effort */ });
+        }).then(function (res) {
+            _trace("http:prune-states:done", { above: index, status: res && res.status });
+            if (!res || !res.ok) {
+                _reportPersistError({ op: "prune-states", above_index: index,
+                                      status: res && res.status });
+            }
+            return res;   // resolve either way: the anchor write still proceeds
+        }).catch(function (err) {
+            _trace("http:prune-states:error", { above: index });
+            _reportPersistError({ op: "prune-states", above_index: index,
+                                  error: (err && err.message) || String(err) });
+            // Resolve (undefined) so _anchorTimeline's ordered write still runs;
+            // a failed prune leaves a stale tail, not a lost anchor.
+        });
     }
 
     var api = {
@@ -168,6 +240,7 @@
         workspaceId:           workspaceId,
         readPersistedSnapshot: readPersistedSnapshot,
         mountRestoreTarget:    mountRestoreTarget,
+        onPersistError:        onPersistError,   // subscribe to non-blocking write failures
         STORAGE_KEY:           STORAGE_KEY,
     };
 
