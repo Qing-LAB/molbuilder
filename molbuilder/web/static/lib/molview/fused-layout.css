@@ -52,10 +52,16 @@
      * folding the panel is purely width (the viewer is already maxed, so it can't grow). */
     flex: 0 1 var(--panel-min);
     min-width: var(--panel-min);
-    /* Never taller than the viewer square (+ its controls row): a long panel SCROLLS
-     * rather than growing the card -- so unfolding never "adds height". */
-    max-height: calc(var(--viewer-edge) + 3.25rem);
-    min-height: 0;
+    /* LOCKED to the viewer edge: a FIXED frame the height of the viewer square (+
+     * its controls row), so its vertical edge aligns with the viewer and switching
+     * atom-list <-> filter (or Selection <-> Cell) NEVER resizes it -- the inner
+     * list/filter is the scroll region.  (Was ``max-height`` + content-sized, which
+     * made the panel jump between the long atom list and the short filter view.)
+     * A ``min-height`` floor keeps it usable when the viewport (hence --viewer-edge)
+     * is short: it never collapses below a few list rows + the header/actions, and
+     * the inner list simply scrolls. */
+    height: calc(var(--viewer-edge) + 3.25rem);
+    min-height: 18rem;
     /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
      * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
      * kills the redundant outer scrollbar the panel used to add on top of the atom list. */
@@ -101,13 +107,13 @@
 }
 
 .molview-panel .panel-page > * { flex: 0 0 auto; }
-/* The click/filter body sizes to its CONTENT (so a short list is compact, with the
- * Clear/Invert + assign right beneath it) but SHRINKS when the content can't fit -- flex:
- * 0 1 auto, not 1 1 (which would force-fill and leave a tall empty list).  When it shrinks,
- * the atom list inside scrolls; the header + actions + assign always stay visible. */
+/* The click/filter body FILLS the fixed-height panel (flex: 1 1 auto) so the panel
+ * frame is STABLE whichever view is shown -- the atom list and the (shorter) filter
+ * view both occupy the same frame, and the list/filter rows inside are the single
+ * scroll region.  The header + Clear/Invert + assign stay pinned above it. */
 .molview-panel .panel-page > #selection-click-section:not([hidden]),
 .molview-panel .panel-page > #selection-filter-section:not([hidden]) {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -190,10 +196,17 @@
     }
     .molview-panel {
         flex: 0 0 auto;
-        width: 100%;
+        /* Match the viewer square's width -- the panel's HORIZONTAL edge aligns
+         * with the viewer above it (the body centres both). */
+        width: min(var(--viewer-edge), 100%);
         min-width: 0;
-        max-width: none;
-        max-height: 45vh;
+        max-width: 100%;
+        /* Fixed height (with a floor) so an atom-list <-> filter switch doesn't
+         * resize it; the inner list scrolls.  ``max-height`` is reset so the fold
+         * (which animates max-height to 0) still fully collapses it. */
+        height: 45vh;
+        min-height: 18rem;
+        max-height: none;
         transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
     .molview-fold-btn {
@@ -204,7 +217,7 @@
     /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
      * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
     .molview-fold-chevron { transform: rotate(-90deg); }
-    .molview-card.is-folded .molview-panel { max-height: 0; min-width: 0; }
+    .molview-card.is-folded .molview-panel { max-height: 0; min-width: 0; min-height: 0; }
     .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
 }
 

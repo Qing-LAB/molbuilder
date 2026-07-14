@@ -6485,3 +6485,53 @@ def test_atom_index_display_is_1_based(page, flask_server, water_xyz_file):
 
 
 
+
+
+_BENZENE_XYZ = (
+    "12\nbenzene\n"
+    "C 1.396 0 0\nC 0.698 1.209 0\nC -0.698 1.209 0\nC -1.396 0 0\n"
+    "C -0.698 -1.209 0\nC 0.698 -1.209 0\nH 2.48 0 0\nH 1.24 2.148 0\n"
+    "H -1.24 2.148 0\nH -2.48 0 0\nH -1.24 -2.148 0\nH 1.24 -2.148 0\n"
+)
+
+
+def test_selection_panel_height_is_stable_across_atomlist_filter_switch(
+        page, flask_server):
+    """Item 2: the selection/cell panel is a FIXED frame locked to the viewer
+    edge, so switching the atom-list <-> filter view NEVER resizes it (the inner
+    list/filter is the scroll region).  Pre-fix the panel sized to its content,
+    so the long atom list and the short filter view produced different heights.
+
+    Benzene (12 atoms) makes the atom list clearly longer than the filter view,
+    so a content-sized panel WOULD differ -- this catches the regression."""
+    _open_modify(page, flask_server)
+    page.evaluate(
+        "(t) => window.molbuilder.molview.data.openMolecule("
+        "  { text: t, filename: 'benzene.xyz' })", _BENZENE_XYZ)
+    page.wait_for_function(
+        "() => { const p = document.querySelector('.molview-panel');"
+        "        return p && p.offsetHeight > 0; }")
+
+    def _set_mode(mode):
+        page.evaluate(
+            "(m) => { const r = document.getElementById('selection-mode-' + m);"
+            "  r.checked = true;"
+            "  r.dispatchEvent(new Event('change', { bubbles: true })); }", mode)
+
+    def _panel_h():
+        return page.evaluate(
+            "() => document.querySelector('.molview-panel').offsetHeight")
+
+    _set_mode("click")
+    page.wait_for_selector("#selection-click-section:not([hidden])")
+    h_list = _panel_h()
+    _set_mode("filter")
+    page.wait_for_selector("#selection-filter-section:not([hidden])")
+    h_filter = _panel_h()
+
+    assert h_list == h_filter, (
+        f"selection panel height changed on the atom-list <-> filter switch "
+        f"({h_list}px vs {h_filter}px); it must be a fixed frame locked to the "
+        f"viewer edge (item 2)")
+    # And it aligns with the viewer square (+ controls), not collapsed tiny.
+    assert h_list >= 280, f"panel height {h_list}px is below the usable floor"
