@@ -65,6 +65,17 @@
   {% endif %}
 </nav>
 
+{#- App-wide system-notification bar (docs/protocols/notifications.md): ONE
+    consistent surface for system-level messages that span tabs -- debuting with
+    the non-blocking/error-explicit workspace persist failures (workspace-contract
+    §4.7).  A STACK the user clears individually.  Present on every page because
+    this partial is included by every tab template.  Empty (and hidden) until the
+    first notification. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/app-notifications.css') }}">
+<div id="app-notifications" class="app-notifications" role="region"
+     aria-label="System notifications" hidden></div>
+<script src="{{ url_for('static', filename='lib/app-notifications.js') }}" defer></script>
+
 {#- System-load monitor is mounted explicitly by the Results template
     (results.html) -- it lives in ``_system_load_monitor.html`` as a
     small partial so a future template can opt in by including that

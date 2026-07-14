@@ -1,0 +1,79 @@
+/* App-wide system-notification bar (notifications.md).
+ * ONE shared .app-notification class + --error/--warn/--info severity
+ * modifiers; tokens-only; reduced-motion aware. */
+
+.app-notifications {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    /* Sits directly under the tab nav, spanning the app width. */
+}
+.app-notifications[hidden] { display: none; }
+
+.app-notification {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-left-width: 4px;                 /* severity stripe */
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-card);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    animation: app-notification-in 140ms ease-out;
+}
+
+/* Severity = the left stripe + a matching leading glyph colour.  Semantic
+ * colour only (distinct from --accent), per ui-design-contract.md. */
+.app-notification--error { border-left-color: var(--error); }
+.app-notification--warn  { border-left-color: var(--warning); }
+.app-notification--info  { border-left-color: var(--accent); }
+
+.app-notification__msg { flex: 1 1 auto; }
+
+.app-notification__dismiss {
+    flex: 0 0 auto;
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 var(--space-xs);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+}
+.app-notification__dismiss:hover { color: var(--text-primary); }
+.app-notification__dismiss:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.app-notification__clear-all {
+    align-self: flex-end;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.app-notification__clear-all:hover { color: var(--text-primary); }
+.app-notification__clear-all:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+@keyframes app-notification-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-notification { animation: none; }
+}
