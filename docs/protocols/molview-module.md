@@ -418,6 +418,55 @@ flowchart TB
   side/bottom region of the viewer card (molview owns this layout + the fold, §18.2; the
   viewer itself offers no layout API).
 
+### 13.3 Halo overlays — the three layers + the color contract
+
+Each `render(state)` in `viewer-adapter.js` builds ONE `setOverlays({atoms})` call
+composed of **three independent halo layers**, painted in this order (later layers draw
+on top):
+
+| # | Layer | Which atoms | Driven by | Reads selection? |
+|---|---|---|---|---|
+| 1 | **Region halo** | every atom carrying a region **label** | `atom.labels` (per-atom region membership — see [`region-labels.md`](region-labels.md) / [`atom-annotations.md`](atom-annotations.md)) | **NO** |
+| 2 | **Frozen marker** | every atom with `isFrozen` | `atom.isFrozen` (the frozen flag channel) | **NO** |
+| 3 | **Selection halo** | the current pick set | `state.indices` — drawn **only** `if (indices.length)` | YES |
+
+**Load-bearing invariant — layers 1 & 2 are selection-independent.** A region halo (or a
+frozen marker) is present whenever the atom carries that annotation, **whether or not
+anything is selected**. So an atom can show a halo with an empty selection — that is the
+region/frozen indicator, NOT a stale selection. Only layer 3 (yellow) reflects the pick set,
+and it vanishes the instant the selection is empty. Do not "fix" a persistent halo by
+clearing the selection store; clear the atom's region/frozen annotation instead.
+
+**Color contract** (`_colorFor(label)`):
+
+- **Named regions get fixed, semantic colors** (`REGION_COLORS`) — the transport/junction
+  vocabulary:
+
+  | label | color |
+  |---|---|
+  | `L-electrode` | `#7fc97f` (green) |
+  | `R-electrode` | `#beaed4` (purple) |
+  | `bridge` | `#fdc086` (orange) |
+  | `interface` | `#ffff99` (yellow) |
+
+- **Any other (free-form) label** → `_fallbackColor(label)`: a stable name-hash into an
+  8-entry palette. Deterministic (same name → same color across reloads) but **NOT
+  collision-free** — with 8 slots, two distinct names can share a color. `hasOwnProperty`
+  guards the `REGION_COLORS` lookup so a label like `"__proto__"` cannot pierce the prototype.
+
+- **One color per atom:** the adapter keys each atom's region halo on `labels[0]` — its
+  **first** label only. An atom in several regions shows just the first region's color; the
+  others do not stack. (Region *membership* is multi-valued in the data model; the rendered
+  *color* is single-valued per atom.)
+
+**Halo geometry** (Å, fixed constants): region `{radius 0.5, opacity 0.35}`; frozen
+`{color #ff5050, radius 0.25, opacity 0.85}`; selection `{color yellow, radius 0.7,
+opacity 0.45}`. Selection is the largest + brightest so it reads as the "live" set above
+region tints.
+
+**Halos stand down under a derived view.** While isolate OR k-grid is on, the adapter drops
+all three layers and stops forwarding clicks — the window is display-only (§14.3, §13.2).
+
 ## §14 k-grid & the render pipeline
 
 ### 14.0 The mental model — READ THIS FIRST
@@ -1077,7 +1126,7 @@ Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure
 |---|---|---|---|
 | **`save(delta=0)`** | → `ws.persist` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state save.** Serialize the current model (`getState`) and persist it at `state_index+delta`, moving `state_index` by `delta`. `save(1)` = a new undoable **checkpoint** ("Save state"; prunes any abandoned tail above); `save(0)` = re-save the current index in place. The explicit persist trigger (§19.5). |
 | **`load(delta=0)`** | → `ws.readState` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state restore.** Read the snapshot at `state_index+delta` and apply it to the WHOLE model, moving `state_index` by `delta`. `load(-1)` = **Retract**/undo; `load(0)` = reload / mount-restore. No-op if the target index < 0. Undo-only (a `save(1)` after a `load(-1)` overwrites the abandoned tail — no redo). Applies WITHOUT re-parsing or re-anchoring the timeline. |
-| **`openMolecule(input)`** | `{text, filename[, source, periodicity, annotations]}` → POST `/api/build/load`; a project-file path string → `molbuilderTab.commitFile` | `Promise<WorkspacePayload>` | Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune + anchor at index 0). Caller `source`/`periodicity`/`annotations` override the server-derived (generator provenance + sidecar cell/annotations). |
+| **`openMolecule(input)`** | `{text, filename[, source, periodicity, annotations]}` → POST `/api/build/load`; a project-file path string → `molbuilderTab.commitFile` | `Promise<WorkspacePayload>` | Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune-all **then** anchor at index 0 — the order matters; see below). Caller `source`/`periodicity`/`annotations` override the server-derived (generator provenance + sidecar cell/annotations). |
 | **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). Writing the bytes to disk is the consumer's job — NOT the session-state save. |
 | `generate(kind, input, opts)` | via the `structure.<kind>` generator | `Promise<WorkspacePayload>` | Produce a structure and open it (like `openMolecule`); dirty=true; resets the timeline. |
 | `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; clears the selection on any atom-count change (§19.3.2); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |

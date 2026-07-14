@@ -309,15 +309,13 @@ WORKSPACE_DATA_PATTERN = re.compile(
     r"(?:" + _WORKSPACE_DATA_METHODS + r")\b"
 )
 
-# Tab consumers still reading data off the workspace -- being migrated to
-# molbuilder.molview.data in task #42.  This allows the KNOWN files so the guard
-# enforces "no NEW violators" during the migration; the second assertion below
-# keeps it EXACT, so the set can only SHRINK (each file leaves as #42 rewires it).
-WORKSPACE_DATA_MIGRATING = {
-    "lib/selection-panel.js",
-    "modify/selection-bootstrap.js",
-    "modify/viewer.js",
-}
+# Tab consumers that once read data off the workspace persistence layer -- all
+# migrated to molbuilder.molview.data (task #42 complete: selection-panel.js,
+# selection-bootstrap.js, and modify/viewer.js were the last three, now rewired).
+# The set is empty, so the guard below is now absolute: ANY read of
+# molbuilder.workspace.<data-method> fails.  The second assertion keeps this set
+# from silently regrowing -- a re-added entry that no longer matches is flagged.
+WORKSPACE_DATA_MIGRATING: set[str] = set()
 
 
 def _scan_file_for(path: Path, pattern) -> list[tuple[int, str]]:

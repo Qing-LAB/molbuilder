@@ -41,15 +41,16 @@ them — the inspector's play/amplitude/speed widgets call `vib.play()` / `setAm
 ```mermaid
 flowchart TD
     INSP["Spectra inspector (lib/spectra/core.js)<br/>modes + spectrum chart + mode list + form"]
-    VV["VibrationView<br/>animated normal-mode viewer + play/amplitude/speed controls<br/>SOLE owner of the vibration animation"]
-    EMBED["viewer embed (mol-viewer-embed.js)<br/>3Dmol wrapper"]
+    VV["VibrationView<br/>animated normal-mode viewer + its OWN 3Dmol seal<br/>SOLE owner of the vibration animation"]
+    GL["3Dmol.js (library only)"]
     INSP -->|"mount · showMode · play/pause · setAmplitude/setSpeed"| VV
-    VV -->|"setStructure · setOverlays · run the mode oscillation"| EMBED
+    VV -->|"draw · grey frozen · run the cos(φ) oscillation"| GL
 ```
 
-The inspector never touches the viewer's animation API; VibrationView is the single door to
-vibration playback. (Contrast: today the inspector calls `handle.setAnimation({kind:
-"vibration"})` on the shared embed directly — the residue this package replaces.)
+The inspector never touches a viewer's animation API; VibrationView is the single door to
+vibration playback, and it wraps 3Dmol.js **itself** — it does not route through MolView's
+`mol-viewer-embed`. (Target per §4. The shipped Phase-1 interim still borrows the shared embed;
+Phase 2 replaces that with VibrationView's own seal so the two modules share no code path.)
 
 ### B. What one mode looks like on screen — the animation
 
@@ -173,32 +174,46 @@ results and passes the relevant mode in. VibrationView only *animates* what it i
 
 | VibrationView owns | Outside |
 |---|---|
-| The animated 3-D view; the cos(φ) oscillation loop; the eigenvector→global scatter; frozen-atom greying; the playback **API** | **Inspector:** the spectrum chart (Plotly), the mode list, the results/form state, choosing which mode to show, **and the control widgets** (play/amplitude/speed sliders) wired to the API |
+| Its OWN concealed 3Dmol view (draw, frozen-atom greying, camera); the cos(φ) oscillation loop; the eigenvector→global scatter; the playback **API** | **Inspector:** the spectrum chart (Plotly), the mode list, the results/form state, choosing which mode to show, **and the control widgets** (play/amplitude/speed sliders) wired to the API |
 | Concealing vibration playback behind §1 (the single door) | **Upstream (parse / backend):** computing eigenvectors, frequencies, the free/frozen partition |
-| Reusing the 3Dmol viewer to draw + move atoms | **Viewer embed:** the raw 3Dmol wrapper (structure draw, overlays) |
+| Sealing 3Dmol for the vibration job — **separately and completely from MolView** (no shared wrapper/module, no shared code path) | **MolView + its `mol-viewer-embed`:** a *sibling* module sealing 3Dmol for editing/selection. VibrationView never imports it; they share only the 3Dmol.js **library** |
 
 Explicitly **NOT** in VibrationView: atom selection / picking, k-grid, structure editing,
 measurement, the spectrum chart. Those are MolView's job or the inspector's — never here.
 
-## §4 Delivery — two phases
+## §4 Delivery — the target is a SEPARATE seal, reached in two phases
 
-**Phase 1 — conceal (wrap the shared embed).** VibrationView `mount` embeds the existing
-viewer (`viewer.embed`, `pick:{mode:"none"}`) and drives its `setAnimation({kind:
-"vibration", displacements, amplitude, speedHz})` + `playAnimation`/`pauseAnimation` under the
-hood. The spectra inspector migrates onto VibrationView's §1 API and stops calling
-`setAnimation` itself. Low risk; the shared embed is unchanged (trajectory still uses its
-animation). This is the first shippable step.
+**The target (the finished module): VibrationView seals its own 3Dmol, completely separately
+from MolView.** It owns a concealed 3Dmol wrapper dedicated to the vibration job — it draws the
+equilibrium structure, greys frozen atoms, frames the camera, and runs the `cos(φ)` oscillation
+loop **itself** — with **no dependency on `mol-viewer-embed.js`**. This is the opening principle
+made real: VibrationView and MolView are **sibling** modules that each seal 3Dmol for their own
+single purpose and **share no code path**. MolView keeps `mol-viewer-embed` for its job
+(structure editing + selection); VibrationView never touches it, and MolView never touches
+VibrationView. Consequences: (a) the shared viewer carries **no** vibration concern; (b)
+removing or changing either module cannot affect the other; (c) the vibration animation is
+testable in isolation from the shared-viewer e2e suite. (What the two modules legitimately share
+is the 3Dmol.js **library** — the third-party renderer — not each other's wrapper/module.)
 
-**Phase 2 — extract (later).** Move the vibration oscillation loop **out of** the shared
-`mol-viewer-embed.js` into VibrationView, so the shared viewer (and therefore MolView) no
-longer carries a vibration concern at all. This is also what lets the vibration animation be
-tested in isolation from the shared-viewer e2e suite.
+**Phase 1 — conceal, via the shared embed (INTERIM, shipped).** As a first shippable step,
+VibrationView `mount` reached the §1 API by wrapping the *existing* shared viewer
+(`viewer.embed`, `pick:{mode:"none"}`) and driving its `setAnimation({kind: "vibration",
+displacements, amplitude, speedHz})` + `playAnimation`/`pauseAnimation` under the hood. The
+spectra inspector migrated onto the §1 API and stopped calling `setAnimation` itself. This got
+the API boundary right but left a **temporary shared code path** (VibrationView borrowing
+MolView's embed) — the one thing the target forbids.
 
-> **Trajectory (MD frames) is NOT a VibrationView sibling.** VibrationView is *display-only
-> motion* (no interaction). A trajectory viewer, by contrast, wants MolView's full inspection
-> — select atoms, measure, k-grid — but across a **sequence of frames**. So trajectory is
-> better modeled as an **expansion of MolView** (a frame dimension), not a separate
-> display-only package. See `molview-module.md` for that direction.
+**Phase 2 — seal separately (removes the shared path; the actual finish).** Replace the borrowed
+embed with VibrationView's **own** concealed 3Dmol wrapper: it constructs and owns its 3Dmol
+viewer, draws + greys + frames, and owns the oscillation loop end-to-end. When this lands, the
+vibration `setAnimation` kind leaves `mol-viewer-embed.js` entirely, VibrationView imports no
+MolView code, and the two modules share nothing but the 3Dmol.js library. This is what makes
+VibrationView a true **drop-in module**, finalized as we walk the individual tabs that use it.
+
+> **Trajectory (MD frames) is NOT part of this.** VibrationView is *display-only motion* for one
+> vibrational mode. A trajectory viewer wants MolView's full inspection (select / measure /
+> k-grid) across a **sequence of frames**, so it is an **expansion of MolView** (a frame
+> dimension), not a VibrationView concern — see `molview-module.md`. It never enters this task.
 
 ## §5 Test affordances
 
@@ -217,4 +232,5 @@ tested in isolation from the shared-viewer e2e suite.
 | Date | Decision |
 |---|---|
 | 2026-07-09 | VibrationView carved out as a concealed package for normal-mode animation, a **sibling** of MolView (not part of it). Confirmed by code: no `lib/molview/` module references animation; the embed's `setAnimation` is used only by `spectra/core.js` (vibration) + `trajectory/core.js` (frames). Phase 1 wraps the shared embed's vibration loop + migrates the spectra inspector; Phase 2 later extracts the loop out of the shared viewer. |
-| 2026-07-09 | **Phase 1 shipped.** 1a: `lib/vibrationview/{mode-math,vibrationview}.js` + node tests. 1b: `spectra/core.js` migrated onto the API (`state.handle`→`state.vib`; `_scatterModeDisplacements` + `_applyModeViewerStyle` deleted); scripts registered on `results.html`/`spectra.html`; `test_spectra_scatter_js.py` retired (superseded by `test_vibrationview_mode_math_js.py`). Controls stayed in the inspector (wired to the API). Migration revealed geometry travels **per-mode** (not mount-only), so `showMode` takes `{geometry, freeAtomIdx, frozenAtomIdx}` and redraws the baseline only on change. **Phase 2 (extract the loop out of the shared embed) not started** — trajectory still shares that loop. |
+| 2026-07-09 | **Phase 1 shipped.** 1a: `lib/vibrationview/{mode-math,vibrationview}.js` + node tests. 1b: `spectra/core.js` migrated onto the API (`state.handle`→`state.vib`; `_scatterModeDisplacements` + `_applyModeViewerStyle` deleted); scripts registered on `results.html`/`spectra.html`; `test_spectra_scatter_js.py` retired (superseded by `test_vibrationview_mode_math_js.py`). Controls stayed in the inspector (wired to the API). Migration revealed geometry travels **per-mode** (not mount-only), so `showMode` takes `{geometry, freeAtomIdx, frozenAtomIdx}` and redraws the baseline only on change. **Phase 2 (own seal) not started** — Phase 1 still borrows the shared embed. |
+| 2026-07-14 | **Target clarified — SEPARATE SEAL.** The finished module wraps 3Dmol.js **itself** and shares **no code path** with MolView's `mol-viewer-embed` (realizing the opening principle). Phase-1's shared-embed wrap is an INTERIM that got the §1 API right but left a temporary shared path; Phase 2 = give VibrationView its own concealed 3Dmol wrapper (draw / grey / camera / cos(φ) loop) so the vibration `setAnimation` kind leaves `mol-viewer-embed.js` entirely and the two modules share only the 3Dmol.js library. §3/§4 + the §A diagram updated to describe the own-seal target. Trajectory explicitly excluded (it is a MolView frame-dimension expansion). Finalized as we walk the tabs that use it; spectra-side comments/tests already de-referenced the old raw-3Dmol language (2026-07-14). |

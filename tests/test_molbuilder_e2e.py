@@ -2004,6 +2004,84 @@ def test_delete_with_no_selection_is_rejected(page, flask_server, water_xyz_file
         "() => window.__molbuilder_modify_test.getNAtoms()") == 3, "nothing deleted"
 
 
+def _molview_picked(page):
+    """Read the embedded 3Dmol pick buffer (the viewer's own selection
+    state) via the test handle mount.js exposes on the viewer host."""
+    return page.evaluate("""() => {
+        let h = null;
+        document.querySelectorAll('*').forEach((e) => {
+            if (e.__molview_test_handle) h = e.__molview_test_handle;
+        });
+        return (h && typeof h.getPickedIndices === 'function')
+            ? h.getPickedIndices() : 'NO_HANDLE';
+    }""")
+
+
+def test_delete_group_clears_selection(page, flask_server, water_xyz_file):
+    """Deleting a multi-atom selection must leave NO atom selected across
+    ALL three surfaces -- the store, the panel table, AND the 3D viewer's
+    own pick buffer (§19.3.2: a count-changing grow/shrink CLEARS).
+
+    Regression (selection-stays-after-delete): the embed's ``setStructure``
+    used to fabricate an ``onPick([])`` on the atom-set change, which the
+    viewer-adapter treated as a double-click deselect and toggled the last-
+    clicked atom back on -- one stray atom survived every delete.  The fix:
+    setStructure clears its pick buffer silently, and the adapter mirrors
+    the store into the buffer (store -> 3D)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _set_selection(page, [0, 1])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 1")
+    sel = page.evaluate(
+        "() => window.__molbuilder_modify_test.getSelected()")
+    assert sel == [], f"delete must clear the selection; store still has {sel}"
+    # The USER-VISIBLE surfaces: the panel table checkboxes AND the 3D
+    # viewer's pick buffer must both show nothing selected.
+    dom = page.evaluate("""() => ({
+        rowsSelected: document.querySelectorAll(
+            '#selection-atom-list tr[data-atom-index].is-selected').length,
+        boxesChecked: [...document.querySelectorAll(
+            '#selection-atom-list tr[data-atom-index] input[type=checkbox]')]
+            .filter((c) => c.checked).length,
+    })""")
+    assert dom == {"rowsSelected": 0, "boxesChecked": 0}, (
+        f"panel still shows a selected atom after delete: {dom}")
+    assert _molview_picked(page) == [], (
+        "3D viewer pick buffer still shows a selected atom after delete")
+
+
+def test_add_atom_clears_selection(page, flask_server, water_xyz_file):
+    """Adding an atom (a grow op) must also clear the selection everywhere."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _set_selection(page, [0])
+    page.evaluate(
+        "() => window.molbuilder.molview.data.applyOp("
+        "  'add_atom', {element: 'H', offset: [1.0, 0, 0]})")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 4")
+    sel = page.evaluate(
+        "() => window.__molbuilder_modify_test.getSelected()")
+    assert sel == [], f"add must clear the selection; store still has {sel}"
+    assert _molview_picked(page) == [], (
+        "3D viewer pick buffer still shows a selected atom after add")
+
+
+# NOTE (2026-07-14): ``test_store_selection_syncs_into_viewer_pick_buffer`` was
+# REMOVED.  It pinned a since-reverted overreach where the adapter mirrored the
+# store INTO the embed's pick buffer (setPickedIndices) in "multi" mode -- which
+# made the embed a SECOND selection store (a second source of truth), contrary to
+# molview-module.md §13.2 (the store is the single source of truth; clicks
+# forward to store.toggle, and the embed's pick buffer is vestigial
+# click-tracking).  The store->3D *wiring* is pinned statically instead by
+# tests/test_viewer_adapter_halo_contract_js.py (the selection layer reads
+# s.indices and paints HALO_SELECT via setOverlays); the store-is-truth click
+# contract is covered by test_viewer_clicks_are_wired_to_the_store (inspector
+# e2e) and the delete/add-clear tests below (_molview_picked == []).
+
+
 def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
     """The viewer-controls bar hosts the view toggles ("Show selected only" / "Show
     k-grid"), bound to ws.selection -- toggling them drives the STORE (the state lives in
@@ -3986,8 +4064,9 @@ def test_state_timeline_save_and_retract_restores_pre_checkpoint(
         while state_index stays put;
       * ``save(1)`` advances state_index to 1 and clears ``uncommitted``;
       * a further op flips ``uncommitted`` true again;
-      * ``load(-1)`` (Retract) rolls the WHOLE model back to the index-0
-        pre-checkpoint anchor -- the atom count reverts to the original 3 --
+      * ``load(-1)`` (Retract) with UNCOMMITTED edits reverts them to the LAST
+        SAVED checkpoint (index 1) -- it does NOT skip that checkpoint;
+      * a SECOND ``load(-1)`` (now committed) steps back to the index-0 anchor,
         clears ``uncommitted``, and disables Retract again.
 
     (The BUTTONS' click wiring is pinned separately in
@@ -4017,8 +4096,8 @@ def test_state_timeline_save_and_retract_restores_pre_checkpoint(
     assert page.evaluate(f"() => {_DATA}.state_index") == 0
 
     # Checkpoint (what #save-state does): save(1) -> index 1, uncommitted
-    # cleared.
-    page.evaluate(f"() => {_DATA}.save(1)")
+    # cleared.  Await the enqueued persist so the on-disk state settles.
+    page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
     page.wait_for_function(f"() => {_DATA}.state_index === 1")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is False
 
@@ -4030,10 +4109,21 @@ def test_state_timeline_save_and_retract_restores_pre_checkpoint(
     )
     assert page.evaluate(f"() => {_DATA}.uncommitted") is True
 
-    # Retract (what #undo-op does): load(-1) -> index 1 -> 0 restores the
-    # 3-atom pre-checkpoint anchor (NOT the 2-atom index-1 checkpoint),
-    # discarding the uncommitted op.
-    page.evaluate(f"() => {_DATA}.load(-1)")
+    # Retract #1 (what #undo-op does) with UNCOMMITTED edits present: it must
+    # revert the uncommitted delete to the LAST SAVED checkpoint (index 1, 2
+    # atoms) -- NOT skip past it to the anchor.  The uncommitted edit consumes
+    # the first retract step; index stays 1, uncommitted clears.  Await the
+    # enqueued load (incl. its re-mirror) so retract #2 can't race its disk I/O.
+    page.evaluate(f"async () => {{ await {_DATA}.load(-1); }}")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    assert page.evaluate(f"() => {_DATA}.state_index") == 1
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is False
+
+    # Retract #2 (now committed at index 1): steps back a checkpoint to the
+    # index-0 anchor (3 atoms) and disables Retract.
+    page.evaluate(f"async () => {{ await {_DATA}.load(-1); }}")
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 3"
     )
@@ -4041,6 +4131,159 @@ def test_state_timeline_save_and_retract_restores_pre_checkpoint(
     assert page.evaluate(f"() => {_DATA}.uncommitted") is False
     _open_op_tab(page, "junction")
     assert page.locator("#undo-op").is_disabled()
+
+
+def test_state_timeline_retract_after_reload_does_not_skip_states(
+        page, flask_server, water_xyz_file):
+    """Regression (retract-loses-states-after-loading-back): a persisted
+    checkpoint must stamp the state_index it is FILED at.
+
+    ``_serialise()`` stamps the CURRENT ``_stateIndex``, but ``save(delta)``
+    files the snapshot at ``target = _stateIndex + delta`` and advances the
+    index only afterward -- so every checkpoint (and the session mirror)
+    used to report an index one-too-low.  In-session Retract used the live
+    ``_stateIndex`` and worked; but after a RELOAD, ``load(0)`` sets
+    ``_stateIndex`` FROM the mirror's internal index -> off by one -> the
+    next Retract targeted the wrong index and SKIPPED a saved checkpoint.
+
+    Save two checkpoints, simulate a reload (``load(0)``), then Retract once:
+    it must land on the FIRST checkpoint (index 1), not skip past it to the
+    anchor (index 0)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)              # 3 atoms, anchored at idx 0
+
+    # Checkpoint A: delete the O -> 2 atoms, save(1) -> index 1.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2")
+    page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
+    page.wait_for_function(f"() => {_DATA}.state_index === 1")
+
+    # Checkpoint B: delete another -> 1 atom, save(1) -> index 2.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 1")
+    page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
+    page.wait_for_function(f"() => {_DATA}.state_index === 2")
+
+    # Simulate a reload / tab-revisit: mount-restore reads the session mirror
+    # and restores state_index FROM it.  The DIRECT symptom of the bug: the
+    # index must stay 2 (where we actually are), not drop to 1.
+    idx_after_reload = page.evaluate(
+        f"async () => {{ await {_DATA}.load(0); return {_DATA}.state_index; }}")
+    assert idx_after_reload == 2, (
+        f"load(0) restored state_index off by one (got {idx_after_reload}, "
+        f"expected 2) -- the mirror snapshot was stamped with the wrong index")
+
+    # Retract once: must land on checkpoint A (index 1, 2 atoms), NOT skip
+    # past it to the anchor (index 0, 3 atoms).
+    idx_after_retract = page.evaluate(
+        f"async () => {{ await {_DATA}.load(-1); return {_DATA}.state_index; }}")
+    assert idx_after_retract == 1, (
+        f"Retract after reload skipped a checkpoint (state_index "
+        f"{idx_after_retract}, expected 1)")
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()") == 2, (
+        "Retract after reload restored the wrong checkpoint (expected the "
+        "2-atom index-1 state, not the anchor)")
+
+
+def test_state_timeline_retract_with_uncommitted_returns_to_last_saved(
+        page, flask_server, water_xyz_file):
+    """Regression (retract skips the last saved state while dirty): with
+    UNCOMMITTED edits on top of a checkpoint, the FIRST Retract must return to
+    that checkpoint -- discarding only the uncommitted edits -- NOT step past
+    it to the previous checkpoint.
+
+    The exact user scenario: move/rotate the molecule, Save state (#N), then
+    add an electrode WITHOUT saving; Retract must restore the saved #N geometry
+    (electrode gone), not the pre-#N state.  Here: translate + save = #1, then
+    an uncommitted add-atom, then Retract must give back the TRANSLATED 3-atom
+    #1, not the pre-translate anchor."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)                 # 3 atoms, anchored at 0
+
+    x0 = page.evaluate(f"() => {_DATA}.getCoordinates()[0][0]")
+    # A geometry edit (translate), then SAVE it as checkpoint #1.
+    page.evaluate(f"() => {_DATA}.applyOp('translate', {{dx: 5.0, dy: 0, dz: 0}})")
+    page.wait_for_function(f"() => {_DATA}.uncommitted === true")
+    page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
+    page.wait_for_function(f"() => {_DATA}.state_index === 1")
+    x_saved = page.evaluate(f"() => {_DATA}.getCoordinates()[0][0]")
+    assert abs(x_saved - (x0 + 5.0)) < 1e-6, "translate not in the saved state"
+
+    # An UNCOMMITTED op on top (add an atom -> 4 atoms).
+    _set_selection(page, [0])
+    page.evaluate(
+        f"() => {_DATA}.applyOp('add_atom', {{element:'H', offset:[1,0,0]}})")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 4")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is True
+
+    # Retract: must return to the SAVED checkpoint #1 -- translated geometry,
+    # 3 atoms, index 1 -- NOT the pre-translate anchor (index 0, x == x0).
+    page.evaluate(f"async () => {{ await {_DATA}.load(-1); }}")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3")
+    assert page.evaluate(f"() => {_DATA}.state_index") == 1, (
+        "Retract skipped the last saved checkpoint")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is False
+    x_after = page.evaluate(f"() => {_DATA}.getCoordinates()[0][0]")
+    assert abs(x_after - (x0 + 5.0)) < 1e-6, (
+        f"Retract restored the pre-checkpoint geometry (x={x_after}), not the "
+        f"saved #1 translated state (expected {x0 + 5.0})")
+
+
+def test_state_timeline_metadata_marks_dirty_and_restores(
+        page, flask_server, water_xyz_file):
+    """Full-state recovery (user requirement): ANY data change -- coordinates,
+    region LABELS, and periodicity (cell / vacuum / k-grid) -- must set the
+    timeline dirty flag AND be captured by Save and restored by Retract.
+
+    Regression: a region-label edit routed through the selection store and
+    called markDirty(), but markDirty was a no-op (so its onChange never fired,
+    and the timeline dirty flag stayed off) whenever the canvas was already
+    dirty -- so labels went untracked and Retract skipped them.  markDirty now
+    sets the timeline flag directly."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+
+    # A region-label edit MUST mark the timeline dirty (the bug: it didn't).
+    page.evaluate(f"() => {_DATA}.selection.set([0])")
+    page.evaluate(f"() => {_DATA}.setLabel('L-electrode', [0])")
+    page.wait_for_function(
+        f"() => JSON.stringify({_DATA}.getRegions())"
+        f"       === JSON.stringify({{'L-electrode':[0]}})")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is True, (
+        "a region-label edit did NOT set the timeline dirty flag")
+
+    # Periodicity also marks dirty and rides in the snapshot.
+    page.evaluate(f"() => {_DATA}.setKgrid([2,2,2])")
+    page.wait_for_function(f"() => {_DATA}.getKgrid()[0] === 2")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is True
+
+    # SAVE checkpoint #1 with {label L-electrode:[0], kgrid 2x2x2}.
+    page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
+    page.wait_for_function(f"() => {_DATA}.state_index === 1")
+
+    # An UNCOMMITTED metadata edit on top: add a second label + change k-grid.
+    page.evaluate(f"() => {_DATA}.setLabel('bridge', [1])")
+    page.evaluate(f"() => {_DATA}.setKgrid([4,4,4])")
+    page.wait_for_function(f"() => {_DATA}.getKgrid()[0] === 4")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is True
+
+    # Retract: with uncommitted edits, return to the SAVED checkpoint #1 --
+    # restoring its EXACT metadata (label L-electrode only, k-grid 2x2x2).
+    page.evaluate(f"async () => {{ await {_DATA}.load(-1); }}")
+    page.wait_for_function(f"() => {_DATA}.state_index === 1")
+    assert page.evaluate(f"() => {_DATA}.uncommitted") is False
+    regions = page.evaluate(f"() => JSON.stringify({_DATA}.getRegions())")
+    assert regions == '{"L-electrode":[0]}', (
+        f"Retract did not restore the saved labels; got {regions}")
+    assert page.evaluate(f"() => {_DATA}.getKgrid()") == [2, 2, 2], (
+        "Retract did not restore the saved k-grid")
 
 
 def test_state_timeline_buttons_checkpoint_and_retract(
@@ -4773,29 +5016,49 @@ def ss_pair_xyz_file(tmp_path, monkeypatch):
     return str(p)
 
 
-def test_electrode_apply_button_state_matches_selection_and_mode(
+def test_electrode_apply_enabled_for_any_selection_count(
         page, flask_server, ss_pair_xyz_file):
-    """Pair mode: 0 atoms selected = enabled (canonical origin-
-    centred placement), 1 = disabled (ambiguous), 2 = enabled
-    (legacy anchor-pair midpoint).  Single mode needs exactly 1."""
+    """CONTRACT (electrode group-centring UNIFICATION, commit 2fc387c):
+    the slab/junction centres on the CENTROID of the selected atom group
+    for ANY count -- 0 -> the origin, 1 -> that atom, 2 -> midpoint,
+    N -> centroid -- in BOTH pair and single mode.  So Apply is enabled
+    whenever a structure is loaded, regardless of how many atoms are
+    selected, and the anchor readout shows the computed centre so the user
+    can confirm where the slabs land.
+
+    This REPLACES the pre-unification anchor-pair rule (which this test
+    used to pin): back then 1 selected atom was "ambiguous" and DISABLED
+    the button, and single mode required exactly 1 anchor.  That rule is
+    gone -- centring on the centroid makes every count valid -- so a test
+    still asserting "1 atom -> disabled" is pinning an abandoned contract.
+    """
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     _open_op_tab(page, "junction")
     btn = page.locator("#elc-apply")
-    # No selection in pair mode -> enabled (canonical origin-centred).
-    assert btn.is_enabled()
-    # One atom selected -> disabled (ambiguous: not 0, not 2).
-    _set_selection(page, [0])
-    assert btn.is_disabled()
-    # Two atoms selected -> enabled (legacy anchor-pair midpoint mode).
-    _set_selection(page, [0, 1])
-    assert btn.is_enabled()
-    # Switch to single mode -> two anchors is wrong; disabled.
-    page.locator("#elc-mode").select_option("single")
-    assert btn.is_disabled()
-    # One anchor in single mode -> enabled.
-    _set_selection(page, [0])
-    assert btn.is_enabled()
+    readout = page.locator("#elc-anchor-readout")
+    # #elc-mode has two option VALUES: "symmetric" (labelled "Pair
+    # (symmetric)", the default -> the pair-mode readout branch) and
+    # "single".  Both follow the SAME centroid rule.  Apply is enabled for
+    # every selection count; the readout names the computed centre
+    # (origin / that atom / centroid).
+    for mode in ("symmetric", "single"):
+        page.locator("#elc-mode").select_option(mode)
+        # 0 selected -> centroid = the origin; still enabled.
+        _set_selection(page, [])
+        assert btn.is_enabled(), (
+            f"{mode} mode, 0 atoms: Apply must be enabled (origin-centred)")
+        assert "ORIGIN" in readout.inner_text()
+        # 1 selected -> centroid = that atom; enabled (was DISABLED pre-unification).
+        _set_selection(page, [0])
+        assert btn.is_enabled(), (
+            f"{mode} mode, 1 atom: Apply must be enabled (centroid = that atom)")
+        assert "centroid of the 1 selected atom" in readout.inner_text()
+        # 2 selected -> centroid = midpoint; enabled.
+        _set_selection(page, [0, 1])
+        assert btn.is_enabled(), (
+            f"{mode} mode, 2 atoms: Apply must be enabled (centroid = midpoint)")
+        assert "centroid of the 2 selected atoms" in readout.inner_text()
 
 
 def test_electrode_gap_label_tracks_mode(

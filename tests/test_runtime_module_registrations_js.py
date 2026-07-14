@@ -37,8 +37,10 @@ pytestmark = pytest.mark.module
 ROOT = Path(__file__).resolve().parents[1]
 # Scan the entire script tree, not just lib/.  Per-tab modules
 # (e.g. modify/viewer.js, modify/selection-bootstrap.js) live
-# alongside lib/ and also call runtime.register() — modify.handle
-# is registered in modify/viewer.js.
+# alongside lib/ and also call runtime.register().  Track B retired
+# ``modify.handle`` (the concealed MolView module now owns the embed
+# handle via ``molview.data.attachViewHandle`` and registers
+# ``molview.data``); consumers whenReady("molview.data") instead.
 STATIC = ROOT / "molbuilder/web/static"
 
 
@@ -57,11 +59,17 @@ _REGISTER_CALL_RE = re.compile(
 # consumer may ``whenReady("X")`` on.  Updating this list requires
 # editing design.md too (intentional friction so a rename surfaces
 # at review time).
+# Track B retired ``modify.handle``: the concealed MolView module now owns the
+# embed handle via ``molview.data.attachViewHandle`` (a method, not a runtime
+# registration), so there is no ``.handle`` registration to require here.  The
+# data model itself IS registered (``_runtime().register("molview.data")`` in
+# data-model.js) but through the ``_runtime()`` helper form this scanner's regex
+# doesn't match; it isn't a whenReady dependency of any consumer, so it's not in
+# this required set.
 _REQUIRED_REGISTRATIONS = sorted([
     "projects",
     "selection.panel",
     "selection.viewerAdapter",
-    "modify.handle",
 ])
 
 

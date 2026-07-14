@@ -315,53 +315,61 @@ class TestFrameSliderHandlerSnapshotPattern:
 # --------------------------------------------------------------------- #
 
 
-class TestSelectionPanelIsolateUnsubscribeCleanup:
-    """The selection panel's auto-uncheck-on-empty-selection wiring
-    subscribes to the selection store.  That subscriber's
-    unsubscribe handle MUST be pushed into the panel's ``cleanups``
-    array so ``dispose()`` tears it down.
+class TestViewControlsIsolateUnsubscribeCleanup:
+    """The isolate ("Show selected only") auto-clear-on-empty wiring
+    subscribes to the selection store.  That subscriber's unsubscribe
+    handle MUST be returned via the mount's ``dispose()`` so a
+    mount→dispose cycle tears it down.
 
-    Pre-fix the subscribe call was fire-and-forget: every /modify
-    mount→dispose cycle stranded a closure holding the panel's
-    ``els.isolateChk`` reference + the ``_isolateAdapter()`` lookup.
+    The auto-uncheck-on-empty behaviour used to live in
+    ``selection-panel.js``.  It moved to ``molview/view-controls.js``
+    (``mountViewControls``): there is NO standalone "Show selected
+    only" checkbox any more.  ``view-controls.js`` is the sole author
+    of the "Show selected only" (isolate) + "Show k-grid" toggle
+    elements, and ``molview/mount.js`` grafts that rendered node into
+    the embed's **View dropdown menu** (``.mol-viewer-menu-view
+    .mol-viewer-menu-toggles``), alongside the embed's native Show
+    axes / labels / overlay / unit-cell toggles.  So the toggle is a
+    View-menu item, not a bar — but the store subscription that powers
+    its auto-uncheck lives here.  The leak invariant is unchanged;
+    only its home moved.
+
+    Pre-fix the subscribe call was fire-and-forget: every mount→dispose
+    cycle stranded a closure holding the ``iso`` checkbox reference.
     A long-running session that opens /modify dozens of times
     accumulated those closures.
 
-    Pin the capture + the cleanup push so a refactor can't silently
-    revert."""
+    Pin the capture + the dispose teardown so a refactor can't
+    silently revert."""
 
     @pytest.fixture(scope="class")
-    def panel_body(self):
-        return (_LIB / "selection-panel.js").read_text()
+    def view_controls_body(self):
+        return (_LIB / "molview" / "view-controls.js").read_text()
 
     def test_isolate_subscriber_captures_unsubscribe_handle(
-            self, panel_body):
+            self, view_controls_body):
         """The auto-uncheck wiring assigns the return value of
-        store.subscribe(...) to a const — that's the unsubscribe
+        store.subscribe(...) to a variable — that's the unsubscribe
         handle.  Verify the capture exists."""
         assert re.search(
-            r"const\s+_isolateUnsubscribe\s*=\s*store\.subscribe",
-            panel_body,
-        ), ("selection-panel.js auto-uncheck-on-empty wiring no "
+            r"(?:var|let|const)\s+unsub\s*=\s*store\.subscribe",
+            view_controls_body,
+        ), ("view-controls.js auto-uncheck-on-empty wiring no "
             "longer captures its store.subscribe() return value; "
-            "the subscriber leaks every /modify mount cycle.  See "
-            "design.md 2026-06-12 entry on audit #352 follow-up.")
+            "the subscriber leaks every viewer mount cycle.")
 
-    def test_isolate_unsubscribe_is_pushed_into_cleanups(
-            self, panel_body):
-        """The captured unsubscribe handle must be added to the
-        ``cleanups`` array (LIFO-walked by ``dispose``)."""
-        # Match `cleanups.push(() => { try { _isolateUnsubscribe(); } catch (_) ... })`
+    def test_isolate_unsubscribe_is_called_in_dispose(
+            self, view_controls_body):
+        """The captured unsubscribe handle must be invoked from the
+        mount's returned ``dispose()`` so teardown removes it."""
+        # Match `dispose: function () { try { unsub(); } catch (_) ... }`
         assert re.search(
-            r"cleanups\.push\(\s*\(\s*\)\s*=>\s*\{[^}]*"
-            r"_isolateUnsubscribe\s*\(\s*\)",
-            panel_body, re.DOTALL,
-        ), ("selection-panel.js does NOT push _isolateUnsubscribe "
-            "into the cleanups array.  dispose() will not tear it "
-            "down; every mount cycle leaks the closure.  See the "
-            "panel's cleanups discipline: every addEventListener / "
-            "subscribe in mount() MUST push its undo into "
-            "cleanups, no exceptions.")
+            r"dispose\s*:\s*function\s*\([^)]*\)\s*\{[^}]*"
+            r"unsub\s*\(\s*\)",
+            view_controls_body, re.DOTALL,
+        ), ("view-controls.js mount does NOT call unsub() in its "
+            "dispose(); every mount cycle leaks the store "
+            "subscriber closure.")
 
 
 # --------------------------------------------------------------------- #

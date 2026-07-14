@@ -221,7 +221,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 76 routes
+## 2. Endpoint index — all 78 routes
 
 ```mermaid
 flowchart LR
@@ -231,6 +231,7 @@ flowchart LR
         page_spec["GET /spectrum-calculation"]
         page_transp["GET /transport-calculation"]
         page_results["GET /results"]
+        page_mvdemo["GET /molview-demo (test harness for the MolView module — not a user tab)"]
     end
     subgraph "Partials (template fragments injected via fetch)"
         part_traj["GET /partials/trajectory-inspector"]
@@ -296,6 +297,7 @@ flowchart LR
     end
     subgraph "Misc"
         misc_anal["POST /api/structure/analyze"]
+        misc_rcell["POST /api/structure/resolve-cell"]
         misc_wrap["POST /api/run/install-wrapper"]
         misc_ips["POST /api/siesta/install-pseudos"]
         misc_back["GET /api/backends"]
@@ -849,6 +851,19 @@ Load / edit (draft) / save for the structure editor — the working-copy core
 | `/api/workingcopy/orphans` | POST | `{path}` | `{ok, orphans: [{scratch, source, session, ts}]}` |
 | `/api/workingcopy/recover` | POST | `{scratch}` | `{ok, source, data}` |
 | `/api/workingcopy/clean` | POST | `{path}` | `{ok, removed}` |
+| `/api/workingcopy/write-state` | POST | `{workspace_id, state_index, data}` | `{ok}` |
+| `/api/workingcopy/read-state` | POST | `{workspace_id, state_index}` | `{ok, data}` (404 with `data:null` when the index is absent) |
+| `/api/workingcopy/prune-states` | POST | `{workspace_id, above_index}` | `{ok, removed}` (`above_index = -1` clears the whole timeline) |
+
+The `*-state` trio backs the **push-only state timeline** (MolView's
+Save-state / Retract — `molview-module.md` §19.5): each checkpoint writes
+one opaque, format-blind snapshot to
+`<workspace_id>.<state_index>.wc.json` (kept as a rolling window of the
+most-recent indices); `read-state` fetches the snapshot a Retract navigates
+to; `prune-states` tail-deletes the abandoned indices above a given point
+after the timeline forks. These bytes are stored verbatim — never routed
+through `StructureCodec` — so the timeline is agnostic to what the MolView
+data model serialises into it.
 
 ### 6.2 Atom row shape (`/api/selection/atoms`)
 

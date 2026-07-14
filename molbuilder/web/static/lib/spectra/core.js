@@ -1,4 +1,4 @@
-/* Spectra inspector core -- 3Dmol mode viewer + Plotly chart + form.
+/* Spectra inspector core -- VibrationView mode viewer + Plotly chart + form.
  *
  * THE shared spectra-inspector implementation.  Two consumers:
  *
@@ -122,7 +122,7 @@
         phaseIndicator: null,
         // Spectrum chart Lorentzian-broadening control.
         broadeningFwhm: null,
-        // 3Dmol mode-animation viewer (§ 9.2.3).
+        // VibrationView mode-animation viewer (vibrationview.md; § 9.2.3).
         modeViewerWrap: null,
         modeViewer:     null,
         viewerStatus:   null,
@@ -1512,8 +1512,8 @@
         // ``watchTick`` polls /api/spectra/load every WATCH_INTERVAL_MS
         // and most ticks return identical results (Hessian phase still
         // running, ES phase still cooking).  Without this gate the
-        // viewer-dispose block below tears down + rebuilds the 3Dmol
-        // canvas every 2s, which resets the user's camera angle and
+        // viewer-dispose block below tears down + rebuilds the VibrationView
+        // mode viewer every 2s, which resets the user's camera angle and
         // pauses the vibration animation right when they're trying to
         // study a mode.  Fingerprint on the fields that drive what's
         // rendered: atom count, mode count + per-mode ES presence,
@@ -1619,8 +1619,8 @@
         renderModesTable();
         renderESPanel();
         // Geometry changed (new results loaded) -- discard the old
-        // 3Dmol viewer so the next render rebuilds with the fresh
-        // structure.
+        // VibrationView mode viewer so the next render rebuilds with the
+        // fresh structure.
         if (state.vib) {
             _stopAnimation();
             // Dispose VibrationView (tears down the knob bar DOM + ResizeObserver + the
@@ -2161,10 +2161,12 @@
 
     // ----- Mode-animation viewer (§ 9.2.3) ---------------------
     //
-    // 3Dmol.js renders the equilibrium structure inside #mode-viewer
-    // and we animate the selected mode by adding the eigenvector
-    // displacement times sin(phase) to each atom's equilibrium
-    // position on every animation frame.
+    // The concealed VibrationView module (vibrationview.md) renders the
+    // equilibrium structure inside #mode-viewer and animates the selected
+    // mode -- it owns the loop that adds the eigenvector displacement times
+    // cos(phase) to each atom's equilibrium position every frame.  Spectra
+    // just hands it the geometry + mode via vib.showMode; it never touches a
+    // raw viewer.
     //
     // Geometry source priority:
     //   1. results.equilibrium.elements + positions_ang
@@ -2214,10 +2216,10 @@
 
     function renderModeViewer() {
         // Top-level entry point.  Called whenever selection / results
-        // change.  Shows / hides the viewer, builds the 3Dmol
-        // instance lazily, and starts (or stops) the animation
-        // depending on whether a mode is selected with a non-null
-        // eigenvector.
+        // change.  Shows / hides the viewer, mounts the VibrationView
+        // module lazily (_ensureViewer), and starts (or stops) the
+        // animation depending on whether a mode is selected with a
+        // non-null eigenvector.
         if (!els.modeViewerWrap) return;
 
         const geom = _equilibriumGeometry();
@@ -2865,9 +2867,9 @@
     return {
         /**
          * Tear down every long-lived resource this mount created:
-         * the live-watch poller, the mode-animation rAF loop, the
-         * 3Dmol viewer's bookkeeping, and Plotly's resize/event
-         * observers on the spectrum chart.  After dispose() the
+         * the live-watch poller, the VibrationView mode viewer (its
+         * animation loop + canvas, via state.vib.dispose()), and Plotly's
+         * resize/event observers on the spectrum chart.  After dispose() the
          * rootEl's contents are no longer owned by the inspector;
          * caller may clear/replace freely.
          */

@@ -83,7 +83,7 @@ _PAGES = [
     ("/structure-optimization", "#load-from-sidebar-btn"),
     # Molbuilder tab: interactive build + edit workspace.  Probe
     # for the selection panel's host.
-    ("/molbuilder", "#selection-host"),
+    ("/molbuilder", "#molview-host"),
     # Spectrum-calculation tab: PySCF spectra script generator.
     ("/spectrum-calculation", "#generate-btn"),
     # Transport-calculation tab: placeholder; pin its boot too so

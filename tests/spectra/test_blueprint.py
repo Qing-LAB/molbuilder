@@ -648,8 +648,11 @@ class TestSpectraDisposeContract:
         """dispose() must tear down every long-lived resource the
         mount allocated: watch poller (cleared via the canonical
         ``transition("IDLE")`` site per results-state-contract.md
-        § 2), the mode-viewer embed handle (which owns its own
-        vibration rAF + 3Dmol viewer per #231 Part B), and the
+        § 2), the VibrationView mode viewer (``state.vib`` — the
+        concealed normal-mode animation package, vibrationview.md,
+        which owns its own vibration rAF + 3Dmol canvas; #231 Part B
+        migrated the spectra mode viewer onto it, renaming the old
+        ``state.handle`` embed field to ``state.vib``), and the
         Plotly chart.  Pinning each cleanup site rather than just
         host.innerHTML="" so a future refactor that drops, say,
         the Plotly.purge call lands with a clear failure (and not
@@ -666,9 +669,10 @@ class TestSpectraDisposeContract:
                 "live-watch poller (cleared via the canonical "
                 "transition('IDLE') site per "
                 "results-state-contract.md § 2)"),
-            ("state.handle.dispose()",
-                "mode-viewer embed handle (state.handle — owns the "
-                "vibration rAF + the 3Dmol viewer)"),
+            ("state.vib.dispose()",
+                "VibrationView mode viewer (state.vib — the concealed "
+                "normal-mode animation package owns the vibration rAF "
+                "+ the 3Dmol canvas; vibrationview.md)"),
             ("Plotly.purge(els.spectrumChart)",
                 "Plotly spectrum chart"),
         ):
@@ -739,13 +743,14 @@ class TestSpectraDisposeContract:
         #   results-state-contract.md § 2 ("All state changes go
         #   through one function").  A second dispose() call hits
         #   the same guard against a now-null timer and is a no-op.
-        # * The mode-viewer embed handle (#231 Part B) owns the
-        #   vibration rAF + 3Dmol viewer; guarded by
-        #   ``if (state.handle)`` against the handle reference.
+        # * The VibrationView mode viewer (#231 Part B renamed the old
+        #   ``state.handle`` embed field to ``state.vib``) owns the
+        #   vibration rAF + 3Dmol canvas; guarded by ``if (state.vib)``
+        #   against the handle reference (vibrationview.md).
         # * Plotly purge is guarded by ``typeof Plotly !== "undefined"``.
         for guard in (
             'transition("IDLE")',
-            "if (state.handle)",
+            "if (state.vib)",
             'typeof Plotly !== "undefined"',
         ):
             assert guard in body, (
