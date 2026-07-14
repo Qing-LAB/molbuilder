@@ -261,16 +261,34 @@ def test_results_view_controls_bar_drives_store(
 
 def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
-    """Under decision A the adapter wires viewer clicks to the store (single
-    pick) instead of a separate triple-pick — the measurement derives from the
-    selection.  Pin the embed's pick mode as 'single' (adapter-set)."""
+    """CONTRACT (molview-module.md §13.2 + §15, "decision A"): a viewer click
+    forwards to ``store.toggle`` — the selection STORE is the single source of
+    truth.  The adapter runs the embed in "single" pick mode with halos/labels
+    OFF (it paints halos via setOverlays), so the embed's pick buffer is NOT a
+    second selection; it only reports which atom the click toggled.  A
+    multi-atom selection is built by TOGGLING atoms into the store (there is no
+    separate triple-pick chip), and the measurement overlay (§15) derives its
+    1/2/3-atom readout from that store selection.
+
+    Why this test exists / what would break it:  switching the adapter to
+    "multi" pick mode + ``store.set(fullSet)`` (moving the accumulator into the
+    embed's own pick buffer — a SECOND source of truth) flips the mode away from
+    "single" and is exactly the regression this pins.
+
+    Pin BOTH halves so the mode check can't pass while the wiring is dead:
+      1. the embed's pick mode is "single" (adapter-set), AND
+      2. invoking the pick callback actually toggles the STORE — a fresh pick
+         adds the atom, and the same-atom-twice empty report (single-mode
+         deselect, via the adapter's ``prevClicked`` shim) removes it again.
+    """
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = tmp_path / "small.xyz"
     xyz.write_text("2\nsmall\nH 0 0 0\nH 1 0 0\n")
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
-    # The adapter attaches asynchronously via molview.mount; wait for single-pick.
-    # Null-safe: getPick() is undefined until the adapter runs setPick.
+    # (1) The adapter attaches asynchronously via molview.mount; wait for the
+    # embed to be in single-pick mode.  Null-safe: getPick() is undefined until
+    # the adapter runs setPick.
     page.wait_for_function(
         "() => {"
         "  const v = document.querySelector('.structure-viewer-slot .viewer');"
@@ -279,6 +297,25 @@ def test_viewer_clicks_are_wired_to_the_store(
         "  return p && p.mode === 'single';"
         "}",
         timeout=8000,
+    )
+    # (2) Prove the click callback reaches the store (click -> store.toggle).
+    # getPick().onPick IS the adapter's click handler; firing it is equivalent
+    # to a real viewer click (which is otherwise unaddressable on a WebGL canvas).
+    page.evaluate(f"() => {_SEL}.clear()")
+    # A fresh pick of atom 1 toggles it INTO the store.
+    page.evaluate(f"() => {_VH}.getPick().onPick([1])")
+    assert page.evaluate(
+        f"() => JSON.stringify({_SEL}.getState().indices)") == "[1]", (
+        "a viewer pick did not reach the store — click wiring is broken "
+        "(§13.2: a click must forward to store.toggle)."
+    )
+    # Clicking the SAME atom again reports an empty set (single-mode deselect);
+    # the adapter's prevClicked shim toggles atom 1 back OUT of the store.
+    page.evaluate(f"() => {_VH}.getPick().onPick([])")
+    assert page.evaluate(
+        f"() => {_SEL}.getState().indices.length") == 0, (
+        "same-atom-twice deselect did not clear the store — the prevClicked "
+        "shim (single-mode empty-report path) is broken."
     )
 
 

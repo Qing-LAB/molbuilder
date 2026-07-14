@@ -98,27 +98,34 @@
         // drives the readout.  (S3 used to skip clicks in readonly to preserve a
         // separate triple-pick chip; that chip is retired.)
 
-        // ----- click wiring --------------------------------------- //
+        // ----- click wiring (VIEW -> STORE, molview-module.md §13.2) --- //
         //
-        // Use the embed's PickOpts.onPick in "single" mode + halo/
-        // label off (we paint everything via setOverlays).  Each
-        // click toggles the just-clicked atom in the store; the
-        // ``prevClicked`` shim tells us which atom to toggle when
-        // single-mode pick reports an empty set (= same atom clicked
-        // twice).
+        // CONTRACT: a viewer click forwards to ``store.toggle(atom)`` -- the
+        // STORE is the single source of truth for the selection (§13.2).  The
+        // embed runs in "single" pick mode with halos/labels OFF (the adapter
+        // paints every halo via setOverlays), so the embed's own pick buffer is
+        // NOT a second selection: it only tracks the click to report WHICH atom
+        // to toggle.  A multi-atom selection is still built by clicking -- each
+        // click toggles one atom in the store, which accumulates them; the
+        // measurement overlay (§15) then derives its 1/2/3-atom readout from
+        // that store selection.  (Do NOT switch this to "multi" + store.set:
+        // that moves the accumulator into the embed buffer -- a second source of
+        // truth -- and breaks the inspector's single-mode pin.)
         //
-        // Switching to filter mode hides the atom-list editor but
-        // the 3D viewer stays visible -- a click there is still a
-        // meaningful user action on the shared selection.
+        // The ``prevClicked`` shim tells us which atom to toggle when a
+        // single-mode pick reports an EMPTY set (= the same atom clicked twice
+        // to deselect it).  This is now the ONLY way onPick sees an empty set:
+        // a programmatic structure swap (add/delete) clears the embed's pick
+        // buffer SILENTLY -- mol-viewer-embed setStructure no longer fabricates
+        // an onPick([]) -- so re-deriving the view can never masquerade as a
+        // click and re-toggle the last-clicked atom back on after an edit.
         let prevClicked = null;
         function onPick(curr) {
             if (!Array.isArray(curr)) return;
             // §14.3 (molview-module.md): in-window picking is DISABLED while the viewer
             // shows a DERIVED list -- isolate (only the selected atoms are drawn) OR k-grid
-            // (tiled copies): a click then has no unambiguous unit-cell atom.  This same
-            // guard also DROPS the programmatic onPick([]) that a resized setStructure
-            // fires, so re-deriving the view never clobbers the store selection.  The
-            // selection panel (unit-cell atom list) still edits the selection.
+            // (tiled copies): a click then has no unambiguous unit-cell atom, so drop it.
+            // The selection panel (unit-cell atom list) still edits the selection.
             const st = store.getState() || {};
             const isolating = !!st.isolate
                 && (Array.isArray(st.indices) ? st.indices.length : 0) > 0;

@@ -3767,12 +3767,17 @@
             // previous one (same count + same element-by-element
             // ordering).  Otherwise clear them — the atom-index
             // space changed, so an index that used to mean "the
-            // carbon at position 5" now means something else.  Fire
-            // onPick([]) on a clear so hosts mirroring picks into a
-            // store see the transition.  The empty-prev case
-            // (initial mount with no prior picks / overlays) skips
-            // the onPick fire to avoid a spurious empty event at
-            // boot.
+            // carbon at position 5" now means something else.
+            //
+            // We DELIBERATELY do NOT fire onPick on this clear.  onPick
+            // is reserved for CLICK-driven changes (see setPickedIndices
+            // below), so a programmatic structure swap must be SILENT --
+            // otherwise a host that mirrors picks into a store (the
+            // selection viewer-adapter) sees a fabricated empty "click"
+            // and mis-toggles the last-clicked atom back on after an
+            // add/delete.  The host re-syncs the pick display from its
+            // OWN authority (the selection store) via setPickedIndices
+            // after the structure change.
             const nextElements = _elements(state.viewer);
             const sameAtoms =
                 prevElements.length === nextElements.length
@@ -3792,13 +3797,9 @@
             if (keepPick) {
                 state.pickedIndices = prevPicked;
             } else {
+                // Silent clear (no onPick — see the note above): the host
+                // re-syncs its pick display from the store after the swap.
                 state.pickedIndices = [];
-                if (prevPicked.length > 0
-                    && state.current.pick
-                    && typeof state.current.pick.onPick === "function") {
-                    try { state.current.pick.onPick([]); }
-                    catch (_) {}
-                }
             }
             if (!keepOverlays && state.current.overlays) {
                 state.current.overlays = null;

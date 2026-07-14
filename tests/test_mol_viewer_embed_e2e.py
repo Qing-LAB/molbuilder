@@ -173,25 +173,26 @@ class TestModifyViewerDimensions:
         has its own viewer card with aspect-ratio + min-height
         CSS that the bare-mode wrapper must pass through."""
         page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
-        w, h = _canvas_dimensions(page, "#viewer")
+        page.wait_for_selector("#molview-host", timeout=_BOOT_TIMEOUT_MS)
+        w, h = _canvas_dimensions(page, "#molview-host")
         assert w > 0, f"modify viewer canvas width is {w}; expected > 0"
         assert h > 0, f"modify viewer canvas height is {h}; expected > 0"
 
     def test_modify_viewer_renders_3dmol_canvas(
             self, page, flask_server):
         page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_selector("#molview-host", timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(500)
-        assert _has_webgl_canvas(page, "#viewer"), (
+        assert _has_webgl_canvas(page, "#molview-host"), (
             "3Dmol WebGL canvas missing or 0x0 in /modify; "
             "viewer is visually blank"
         )
 
     def test_modify_viewer_respects_host_aspect_ratio(
             self, page, flask_server):
-        """The host ``#viewer.viewer`` has aspect-ratio 1/1 and
-        min-height 320 px.  After #203 (knob bar visible), the
+        """The modify viewer host ``#molview-host`` (Track B: the fused
+        MolView card, formerly ``#viewer``) carries the aspect-ratio +
+        min-height CSS.  After #203 (knob bar visible), the
         canvas sits beneath a ~60 px header + knob bar inside
         the host card, so it's NOT the full host area anymore.
 
@@ -201,8 +202,8 @@ class TestModifyViewerDimensions:
         above any rounding-noise floor but well below the host's
         320 min-height, accounting for the chrome above."""
         page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
-        w, h = _canvas_dimensions(page, "#viewer")
+        page.wait_for_selector("#molview-host", timeout=_BOOT_TIMEOUT_MS)
+        w, h = _canvas_dimensions(page, "#molview-host")
         assert h >= 200, (
             f"viewer canvas height {h} collapsed; the blank-viewer "
             f"bug class is back"
@@ -818,6 +819,68 @@ class TestHandleSurface:
             "setPickedIndices fired onPick -- it must not (feedback "
             "loop risk per § 3.2 contract)"
         )
+
+    def test_setStructure_atom_set_change_does_not_fire_onPick(
+            self, page, flask_server):
+        """Regression (selection-stays-after-delete): a setStructure that
+        CHANGES the atom set (an add/delete) must clear the pick buffer
+        SILENTLY -- it must NOT fabricate an onPick([]).
+
+        onPick is reserved for real user CLICKS (same contract as
+        setPickedIndices).  A programmatic structure swap firing onPick made
+        the selection viewer-adapter treat it as a 'same atom clicked twice'
+        deselect and toggle the last-clicked atom back on -- so one stray
+        atom stayed selected after every delete.  The buffer is cleared; the
+        host re-syncs the pick display from its own store."""
+        page.goto(f"{flask_server}/structure-optimization")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onPickFires = 0, lastArg = "none";
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: {
+                        mode: "multi", halo: false, label: false,
+                        onPick: (s) => { onPickFires++; lastArg = s.slice(); },
+                    },
+                });
+                // A prior selection, as viewer clicks would have left it.
+                h.setPickedIndices([0, 2]);
+                onPickFires = 0;             // ignore the (silent) setup push
+                // (a) SAME atom set (e.g. a move/rotate): picks kept, no fire.
+                h.setStructure({ xyz: "3\\nwater\\nO 0 0 1\\nH 1 0 1\\nH 0 1 1\\n",
+                                 preservePick: undefined });
+                const afterSame = { fires: onPickFires,
+                                    picked: h.getPickedIndices() };
+                onPickFires = 0;
+                // (b) DIFFERENT atom set (a delete/add): picks cleared, no fire.
+                h.setStructure({ xyz: "2\\nn2\\nN 0 0 0\\nN 1 0 0\\n" });
+                const afterChange = { fires: onPickFires,
+                                      picked: h.getPickedIndices() };
+                h.dispose();
+                host.remove();
+                return { afterSame, afterChange, lastArg };
+            }
+        """)
+        # Same-atom swap keeps the picks and never fires onPick.
+        assert out["afterSame"]["fires"] == 0, (
+            "setStructure(same atoms) fired onPick -- must be silent")
+        assert out["afterSame"]["picked"] == [0, 2], (
+            f"same-atom swap must keep picks; got {out['afterSame']['picked']}")
+        # Atom-set change clears the buffer AND stays silent (the fix).
+        assert out["afterChange"]["fires"] == 0, (
+            "setStructure(atom-set change) fabricated an onPick -- it must "
+            "clear the pick buffer SILENTLY (this is the delete-leaves-one-"
+            f"atom-selected bug); onPick got {out['lastArg']!r}")
+        assert out["afterChange"]["picked"] == [], (
+            f"atom-set change must clear picks; got {out['afterChange']['picked']}")
 
     def test_setX_dispatches_invalid_input_per_5_3(
             self, page, flask_server):
@@ -2036,8 +2099,11 @@ class TestHandleSurface:
             self, page, flask_server):
         """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure
         IFF atom count + element-by-element ordering match.  On
-        mismatch the embed fires onPick([]) so hosts mirroring picks
-        into a store see the clear.  Regression test for B2 (#238).
+        mismatch the embed clears picks -- SILENTLY: onPick is reserved
+        for real user clicks, so a programmatic structure swap must NOT
+        fire it (2026-07: firing it made the selection adapter re-toggle
+        the last-clicked atom back on after a delete).  Regression test
+        for B2 (#238), updated for the silent-clear contract.
         """
         page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
@@ -2085,9 +2151,12 @@ class TestHandleSurface:
             f"picks survived element-mismatched setStructure: "
             f"{out['afterDiff']!r}"
         )
-        assert [] in out["calls"], (
-            f"setStructure did NOT fire onPick([]) on clear; calls="
-            f"{out['calls']!r}"
+        # onPick is CLICK-only: neither the element-identical swap (picks
+        # kept) nor the element-mismatch swap (picks cleared) may fire it.
+        assert out["calls"] == [], (
+            f"setStructure fabricated an onPick on a programmatic swap -- it "
+            f"must clear picks silently (this is the delete-leaves-one-atom-"
+            f"selected bug); calls={out['calls']!r}"
         )
 
     def test_test_surface_normaliser_exports_callable(
