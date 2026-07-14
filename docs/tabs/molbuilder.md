@@ -137,7 +137,7 @@ Out of scope:
 │  │                  │  │                   │  │  Electrode -z    │  │
 │  └──────────────────┘  └───────────────────┘  └──────────────────┘  │
 │                                                                     │
-│  [Load XYZ/PDB]  [Send to Build tab]                                │
+│  [Save to project]   (cross-tab transfer = via the saved file only) │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -168,9 +168,17 @@ Walkthrough for the canonical Au-thiol-Au workflow (M6 anchorless flow):
    Electrode** again to replace the slab, or hits **Undo** to revert
    to the pre-slab structure (slab-only undo, up to HISTORY_MAX = 20
    ops; see § 2.3).
-10. User clicks **Send to Build tab** → Build tab opens with this
-    structure pre-loaded; user clicks Generate .fdf / Generate .py as
-    normal.
+10. User clicks **Save to project** to write the geometry to a project
+    file, then opens the target tab (e.g. Structure optimization) and
+    **Loads it from the project sidebar**.
+
+**Data-transfer contract (no in-memory "Send to"):** cross-tab / cross-step
+transfer goes **only** through a **saved project file**. There is no direct
+"Send to <tab>" hand-off that carries structure state in memory (the old
+Send-to-Build / Send-to-Optimization button was removed). A result is Saved to
+project, then explicitly Loaded where it is used. This is deliberate — it makes
+the file on disk the single source of truth for what moved between steps, and
+eliminates the in-memory-corruption / sessionStorage-vs-disk consistency class.
 
 **Legacy anchored flow** (slabs flank a specific atom pair in xy +
 z): the user selects exactly two atoms before clicking Apply Add

@@ -316,6 +316,19 @@
       </span>
     </header>
 
+    {#- "Save to project" — the structure write, relocated here (right under the
+        title line) so the primary way to get the geometry OUT is prominent.  All
+        cross-tab transfer now goes THROUGH a saved project file (no in-memory
+        "send to"): save here, then "Load from project" in the target tab.  Wired
+        in modify/viewer.js. -#}
+    <div class="modify-actions modify-actions--header">
+      <button id="save-to-source-btn" class="full-btn" disabled>
+        Save to project
+      </button>
+      <span id="save-readout" class="muted"></span>
+      <span id="save-status" class="muted" role="status"></span>
+    </div>
+
     {#- DEDICATED message region (NOT the title area): the last op's result +
         any validation advisories (validate_geometry findings) get a clear,
         space-ample home here.  While EDITING these are advisory only -- shown,
@@ -752,25 +765,6 @@
 
     </div><!-- /.modify-body -->
 
-    <!-- Modify footer — structure-level actions.  Save lives on
-         the left (the always-available structure write); the
-         Send-to-Optimization handoff lives on the right (the
-         workflow-advance action — once the geometry's ready,
-         move it to the next tab for script generation). -->
-    <div class="modify-footer">
-      <div class="modify-actions">
-        <button id="save-to-source-btn" class="full-btn" disabled>
-          Save to project
-        </button>
-        <span id="save-readout" class="muted"></span>
-        <span id="save-status" class="muted" role="status"></span>
-      </div>
-      <div class="modify-handoff">
-        <button id="send-to-build" class="full-btn" disabled>
-          Send to Structure optimization →
-        </button>
-      </div>
-    </div>
   </section>
   </div><!-- /.workspace-grid -->
 

@@ -5122,49 +5122,19 @@ def test_apply_electrode_pair_mode_builds_au_junction(
     assert errors == [], f"JS errors during electrode apply: {errors}"
 
 
-def test_send_to_build_writes_sidebar_pointer(
-        page, flask_server, ss_pair_xyz_file):
-    """Task #294 (2026-06-08): the Send-to-Build button is now a
-    "save-first" handoff.  Clicking it sets
-    ``sessionStorage["molbuilder.current_file"]`` to the project-
-    saved path + navigates to /structure-optimization.  No more
-    ``builder-structure`` payload — the optimization tab loads
-    the structure from the project file on disk via its sidebar-
-    driven Load button (task #295).
-
-    The button is only enabled when the workspace is clean +
-    backed by a file path.  ``_load_file`` populates canvas-state
-    via the sidebar Load workflow, so ``source.file`` is set and
-    ``isDirty()=false`` immediately after a fresh load — the
-    Send button is enabled without an explicit Save click."""
+def test_modify_has_no_send_to_optimization_handoff(page, flask_server):
+    """The "Send to Structure optimization" handoff was REMOVED (item 1): the
+    ONLY cross-tab transfer contract is a saved project file (Save to project ->
+    "Load from project" in the target tab).  Pin that the button is gone and
+    "Save to project" is present, relocated under the Modify title (item 5)."""
     _open_modify(page, flask_server)
-    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
-    # Send button should be enabled — fresh load = clean + has source.file.
-    page.wait_for_function(
-        "() => !document.getElementById('send-to-build').disabled",
-        timeout=5000,
+    assert page.locator("#send-to-build").count() == 0, (
+        "the Send-to-Optimization handoff must stay removed; cross-tab transfer "
+        "goes only through a saved project file."
     )
-    with page.expect_navigation():
-        page.locator("#send-to-build").click()
-    expected = flask_server.rstrip("/") + "/structure-optimization"
-    assert page.url.rstrip("/") == expected, (
-        f"expected redirect to {expected}, got {page.url}"
-    )
-    # Sidebar pointer is set; the legacy builder-structure payload is NOT.
-    current_file = page.evaluate(
-        "() => sessionStorage.getItem('molbuilder.current_file')"
-    )
-    assert current_file == ss_pair_xyz_file, (
-        f"send-to-build did not point the sidebar at the saved file; "
-        f"got {current_file!r}"
-    )
-    legacy = page.evaluate(
-        "() => sessionStorage.getItem('builder-structure')"
-    )
-    assert legacy is None, (
-        f"legacy builder-structure key should not be written by the "
-        f"save-first handoff; got {legacy!r}"
-    )
+    # Save to project survives, and lives in the header action row (under the
+    # title), NOT a bottom footer.
+    assert page.locator(".modify-actions--header #save-to-source-btn").count() == 1
 
 
 def test_send_to_build_disabled_when_workspace_is_dirty(

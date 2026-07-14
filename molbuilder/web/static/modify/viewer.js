@@ -235,35 +235,10 @@
             }
         }
 
-        const sendBtn = $("send-to-build");
-        if (sendBtn) {
-            // Save-first enable rule (task #294, 2026-06-08): the
-            // Send button is only enabled when the workspace has a
-            // clean structure backed by a project file — either
-            // freshly loaded from the sidebar (source.kind=file)
-            // OR explicitly saved (last_save_to set).  Both expose
-            // an on-disk target via ``structureSave.targetPath()``.
-            // Forces the workflow (Save → Send) and eliminates the
-            // sessionStorage-vs-disk conflict class.
-            // Read the dirty bit off the unified model (molview.data).
-            const d = _data();
-            const save = window.molbuilder
-                    && window.molbuilder.structureSave;
-            const targetPath = (save && typeof save.targetPath === "function")
-                ? save.targetPath() : null;
-            const savedAndClean = !!d
-                && typeof d.isDirty === "function"
-                && !d.isDirty()
-                && !!targetPath;
-            sendBtn.disabled = locked
-                || _nAtoms() === 0
-                || !savedAndClean;
-            sendBtn.title = savedAndClean
-                ? "Send the saved structure to /structure-optimization."
-                : "Save the workspace to a project file first; the "
-                + "optimization tab loads structures from the project "
-                + "sidebar.";
-        }
+        // (The "Send to Structure optimization" handoff was removed: cross-tab
+        // transfer now goes ONLY through a saved project file -- Save to project
+        // here, then "Load from project" in the target tab.  No in-memory "send
+        // to", so no sessionStorage-vs-disk conflict class to guard.)
     }
 
     // --------------------------------------------------------------- //
@@ -868,65 +843,11 @@
         if (r) refreshUndoButton();
     }
 
-    function sendToBuild() {
-        // Save-first handoff (task #294, 2026-06-08): the Send
-        // button only proceeds when the workspace structure is
-        // already saved to a project file (canvas-state has a
-        // ``last_save_to`` path AND ``isDirty()`` is false).  The
-        // button's enable logic enforces this; ``sendToBuild`` is
-        // a defensive re-check in case the dirty bit flipped
-        // between subscriber-fire and click.
-        //
-        // The handoff itself is now a simple sidebar-selection
-        // forwarding: we set
-        // ``sessionStorage["molbuilder.current_file"]`` to the
-        // saved path (the projects sidebar's persistence key) +
-        // navigate to /structure-optimization, where the new
-        // "Load from sidebar selection" button (task #295)
-        // becomes the sole structure-data entry point.  No more
-        // ``builder-structure`` payload — the persistence comes
-        // from the project file on disk, eliminating the
-        // sessionStorage-vs-disk conflict class.
-        // Read the dirty bit through the unified model (molview.data).
-        const d = _data();
-        const save = window.molbuilder
-                && window.molbuilder.structureSave;
-        const targetPath = (save && typeof save.targetPath === "function")
-            ? save.targetPath() : null;
-        if (!d || !targetPath || d.isDirty()) {
-            setEditStatus(
-                "Save to project first — Send-to-Optimization "
-              + "needs a project file as input.",
-                "error",
-            );
-            return;
-        }
-        try {
-            const C = (window.molbuilder || {}).constants || {};
-            sessionStorage.setItem(
-                C.SS_FILE || "molbuilder.current_file", targetPath);
-            // Track the directory too so the sidebar opens at
-            // the right folder; projects-sidebar's ``state.js``
-            // also reads the same key (mirrored via
-            // lib/constants.js).
-            const slash = targetPath.lastIndexOf("/");
-            if (slash >= 0) {
-                // Root-level paths (``/foo.xyz``) collapse to ``/``;
-                // anything deeper keeps its parent.  ``slash > 0``
-                // (the previous guard) silently dropped the dir for
-                // root-level files, leaving the sidebar pinned at
-                // the previous folder.
-                sessionStorage.setItem(
-                    C.SS_DIR || "molbuilder.current_dir",
-                    targetPath.slice(0, slash) || "/");
-            }
-        } catch (e) {
-            setEditStatus(
-                `Could not stage handoff: ${e && e.message}`, "error");
-            return;
-        }
-        window.location.href = "/structure-optimization";
-    }
+    // (sendToBuild removed: the "Send to Structure optimization" handoff is gone.
+    // Cross-tab/step transfer goes ONLY through a saved project file -- "Save to
+    // project" here, then "Load from project" in the target tab.  This is the
+    // data-transfer contract: no direct in-memory "send to" between tabs, so the
+    // whole sessionStorage-vs-disk / in-memory-corruption class is eliminated.)
 
     // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
@@ -941,13 +862,13 @@
         if (_store) {
             _store.subscribe(() => refreshSelectionUI());
         }
-        // Composite model subscriber — the Send-to-Optimization button's
-        // enable rule depends on isDirty() + a saved target, and the
-        // Save-state / Retract controls depend on the LIVE state_index /
-        // uncommitted timeline reads; none of those fire through the
-        // selection store alone.  ``molview.data.subscribe`` fires on
-        // EVERY model change (canvas data + selection + timeline), so
-        // both button groups stay in lockstep with Save / Load /
+        // Composite model subscriber — the "Save to project" button's enable
+        // rule depends on isDirty() + a saved target, and the Save-state /
+        // Retract controls depend on the LIVE state_index / uncommitted timeline
+        // reads; none of those fire through the selection store alone.
+        // ``molview.data.subscribe`` fires on EVERY model change (canvas data +
+        // selection + timeline), so both button groups stay in lockstep with
+        // Save / Load /
         // modifier ops / checkpoints.  This is also the render-reaction
         // hook the module contract asks consumers to use once mutations
         // go through molview.data.
@@ -1036,11 +957,9 @@
             refreshRotateAngleReadout();
         }
 
-        // M5: electrode panel + Send-to-Build handoff.
+        // M5: electrode panel.
         const elcBtn = $("elc-apply");
         if (elcBtn) elcBtn.addEventListener("click", applyElectrode);
-        const sendBtn = $("send-to-build");
-        if (sendBtn) sendBtn.addEventListener("click", sendToBuild);
         // Mode switch: re-evaluate selection requirement + show/hide
         // the side picker; live readouts update on slider drag.
         const modeSel = $("elc-mode");

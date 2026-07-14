@@ -264,25 +264,22 @@ header .tagline {
  * rule today; safe to delete once the grep comes back clean. */
 .modify-selection { }
 
-.modify-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--gap);
-    padding-top: 0.8rem;
-    margin-top: 0.6rem;
-    border-top: 1px solid var(--border-soft);
-    flex-wrap: wrap;
-}
-.modify-actions, .modify-handoff {
+/* "Save to project" action row.  Relocated under the Modify title (item 5); the
+ * Send-to-Optimization handoff + the bottom footer were removed (item 1) -- all
+ * cross-tab transfer goes through a saved project file. */
+.modify-actions {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
 }
-.modify-actions  { flex: 1 1 240px; }
-.modify-handoff  { flex: 1 1 240px; justify-content: flex-end; }
-.modify-footer button.full-btn { min-width: 200px; }
+.modify-actions--header {
+    padding: 0.5rem 0 0.2rem;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 0.4rem;
+}
+/* Under the title the write action is prominent but not full-bleed. */
+.modify-actions--header button.full-btn { width: auto; min-width: 180px; }
 
 @media (max-width: 640px) {
     .molbuilder-tab-main { padding: 6px; gap: 6px; }

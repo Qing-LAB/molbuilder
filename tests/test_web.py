@@ -835,7 +835,6 @@ def test_molbuilder_page_loads(web_client):
         'id="orient-apply"',
         'id="rotate-apply"',
         'id="elc-apply"',
-        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /molbuilder HTML"
     # Retired surfaces stay retired -- catch any reintroduction of
@@ -1404,7 +1403,6 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-apply"',
         # M5 electrode + handoff controls are wired.
         'id="elc-apply"',
-        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1657,7 +1655,6 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         'name="rotate-axis"',
         # M5 controls wired.
         'id="elc-apply"',
-        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
