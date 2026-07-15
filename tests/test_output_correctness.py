@@ -21,8 +21,7 @@ def small_struct():
     return Structure(
         elements=["O", "H", "H"],
         positions=np.array([[0, 0, 0], [0.957, 0, 0], [-0.24, 0.927, 0]]),
-        title="water",
-    )
+        title="water", vacuum=(12.0, 12.0, 12.0))
 
 
 # --------------------------------------------------------------------- #

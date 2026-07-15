@@ -297,19 +297,50 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 # --------------------------------------------------------------------- #
 
 
+# Recommended per-side vacuum (Angstrom) for an isolated molecule so its periodic
+# images don't interact: >= 25 A for a charged system (image-image Coulomb decays
+# slowly), a smaller floor for a neutral one (density/wavefunction overlap).
+_VACUUM_MIN_NEUTRAL = 8.0
+_VACUUM_MIN_CHARGED = 25.0
+
+
+def _warn_insufficient_vacuum(struct: Structure, charge: int) -> None:
+    """WARN (never mutate) when an ISOLATED axis carries too little vacuum for a
+    clean SIESTA calc.  Skipped for periodic / transport axes -- a device or
+    crystal cell sets the box there, not the vacuum.  Geometry is left untouched;
+    the structure is the single source of truth (structure-periodicity.md)."""
+    import warnings
+    min_vac = _VACUUM_MIN_CHARGED if charge != 0 else _VACUUM_MIN_NEUTRAL
+    kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+    thin = [(i, float(struct.vacuum[i])) for i, k in enumerate(kinds)
+            if k == "isolated" and float(struct.vacuum[i]) < min_vac]
+    if not thin:
+        return
+    where = ", ".join(f"axis {i} (vacuum={v:g} A)" for i, v in thin)
+    warnings.warn(
+        f"Thin vacuum on an isolated system: {where}.  Recommended >= {min_vac:g} "
+        f"A per side ({'charged' if charge else 'neutral'}) so the molecule's "
+        f"periodic images don't interact.  Set 'vacuum' on the structure "
+        f"(Modify -> Cell tab).  The FDF is emitted with the structure's geometry "
+        f"unchanged.",
+        RuntimeWarning, stacklevel=3)
+
+
 def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
 
-    If ``cell`` is None (default), an *orthorhombic* vacuum cell is
-    generated, sized per-axis as ``extent[i] + 2 * cell_padding``, and
-    the atom coordinates are translated so the structure sits centred
-    in the box (``cell_padding`` of vacuum on every face).
+    If ``cell`` is None (default), the vacuum cell is derived from the STRUCTURE
+    -- ``struct.resolve_cell()`` (isolated axes = ``bbox + 2*vacuum``) -- and the
+    atoms are translated by ``-struct.resolve_cell_origin()`` so the molecule sits
+    centred with ``vacuum`` of clearance on every isolated face.  Vacuum comes
+    with the structure (``Structure.vacuum``, per-side gap), the single source of
+    truth for lattice/vacuum (structure-periodicity.md); there is no cell_padding.
+    A thin-vacuum isolated system is WARNED about (never mutated).
 
-    Pass an explicit ``(3, 3) cell`` (Angstrom, row vectors) to override
-    -- in that case atom coordinates are passed through unchanged, since
-    a user-supplied cell typically goes with a known atom frame
-    (e.g. crystallographic positions).
+    Pass an explicit ``(3, 3) cell`` (Angstrom, row vectors) to override -- in that
+    case atom coordinates are passed through unchanged, since a user-supplied cell
+    typically goes with a known atom frame (e.g. crystallographic positions).
     """
     cfg = config or SiestaConfig()
     species = (list(cfg.species_order) if cfg.species_order
@@ -326,16 +357,6 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     charge_source = ("user-specified" if cfg.net_charge is not None
                      else "auto (phosphate protonation)")
 
-    # For charged systems in vacuum, the SIESTA-recommended padding is
-    # >=25 A on each face to suppress image-image Coulomb interactions.
-    # If the user is on the auto-vacuum path (cell=None) and hasn't
-    # already bumped cell_padding past that, raise it for them.
-    effective_padding = cfg.cell_padding
-    auto_bumped_padding = False
-    if cell is None and auto_charge != 0 and cfg.cell_padding < 25.0:
-        effective_padding = 25.0
-        auto_bumped_padding = True
-
     # Validate every element has a species index
     for el in struct.elements:
         if el not in species_index:
@@ -348,13 +369,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     #
     # Two cases:
     #
-    #   (1) No cell provided -> molecule in vacuum.
-    #       Build an orthorhombic box sized per-axis as
-    #       (extent + 2 * cell_padding), then translate the structure
-    #       so its bounding-box midpoint sits at the cell centre.
-    #       Result: atom coordinates fall in [cell_padding,
-    #       size - cell_padding] on every axis -- atoms are always
-    #       inside the cell, no wrapping needed.
+    #   (1) No cell provided -> derive the vacuum box from the STRUCTURE.
+    #       struct.resolve_cell() sizes isolated axes as (extent + 2*vacuum);
+    #       translate atoms by -struct.resolve_cell_origin() so the molecule sits
+    #       centred with `vacuum` clearance on every isolated face -- atoms fall
+    #       in [vacuum, size - vacuum], always inside the cell, no wrapping.
+    #       Vacuum is the structure's, not a config knob (structure-periodicity.md).
     #
     #   (2) Cell provided -> periodic system (slab, crystal, junction).
     #       Trust the cell, but check whether atoms fall inside.  If
@@ -366,22 +386,42 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     #       SIESTA mesh and in the post-relaxation visualisation.
     positions = np.asarray(struct.positions, dtype=float)
     if cell is None:
-        ext   = positions.max(axis=0) - positions.min(axis=0)
-        sizes = ext + 2 * effective_padding
-        cell  = np.diag(sizes)
-        if cfg.center_in_vacuum:
-            center_now    = (positions.max(axis=0) + positions.min(axis=0)) / 2.0
-            center_target = sizes / 2.0
-            positions = positions + (center_target - center_now)
-        bump_note = (
-            f"; padding auto-bumped from {cfg.cell_padding} -> "
-            f"{effective_padding} A because NetCharge != 0"
-            if auto_bumped_padding else ""
-        )
+        # Derive the vacuum box from the STRUCTURE -- the single source of truth
+        # for lattice/vacuum (structure-periodicity.md).  resolve_cell() sizes
+        # isolated axes as bbox + 2*vacuum; resolve_cell_origin() is the box's low
+        # corner (bbox_min - vacuum), so translating atoms by -origin centres the
+        # molecule with `vacuum` of clearance on every isolated face (exactly what
+        # the Modify-tab display shows).  There is no more cfg.cell_padding /
+        # center_in_vacuum -- vacuum comes with the structure.
+        cell = struct.resolve_cell()
+        if cell is None:
+            raise ValueError(
+                "cannot derive a vacuum cell: the structure is empty")
+        cell = np.asarray(cell, dtype=float).reshape(3, 3)
+        # A flat / linear molecule (water, benzene, a DNA base) has a thin axis
+        # with zero extent; with vacuum = 0 the box has no thickness there -> a
+        # zero-volume cell SIESTA cannot run.  Fail with a clear, actionable
+        # message (we never invent a vacuum -- the structure is the source of
+        # truth) rather than the generic "degenerate cell" validation error.
+        if abs(float(np.linalg.det(cell))) < 1e-6:
+            raise ValueError(
+                "the vacuum cell derived from the structure is degenerate (zero "
+                "volume): a flat or linear molecule has a thin axis where "
+                "vacuum = 0, so the box has no thickness there.  Set 'vacuum' > 0 "
+                "on the structure (Modify -> Cell tab) so SIESTA has a real box "
+                "-- the geometry is not changed for you.")
+        origin = struct.resolve_cell_origin()
+        if origin is not None:
+            positions = positions - np.asarray(origin, dtype=float)
+        # WARN (never mutate): too little vacuum on an isolated axis lets the
+        # molecule's periodic images interact.  The user sets vacuum in the
+        # structure (Modify -> Cell); we only flag it.
+        _warn_insufficient_vacuum(struct, auto_charge)
+        sizes = np.diag(cell)
         cell_note = (
-            f"# (auto-generated orthorhombic vacuum cell "
+            f"# (vacuum cell derived from the structure: "
             f"{sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A; "
-            f"cell_padding = {effective_padding} A on each face{bump_note}; "
+            f"vacuum = {tuple(round(float(v), 2) for v in struct.vacuum)} A/side; "
             f"atoms centred)"
         )
     else:
@@ -877,9 +917,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             f"# NetCharge: {auto_charge:+d} ({charge_source}).",
             "# Note: SIESTA adds a uniform compensating background charge",
             "# for periodic-cell consistency.  For vacuum calcs of charged",
-            "# molecules use cell_padding >= 25 A (we already auto-bump to",
-            "# 25 A in the auto-vacuum case) to suppress image-image",
-            "# Coulomb interactions.  To make a neutral system instead,",
+            "# molecules set the structure's vacuum >= 25 A per side (Modify ->",
+            "# Cell) to suppress image-image Coulomb interactions; molbuilder",
+            "# warns if it's thinner.  To make a neutral system instead,",
             "# either build with protonate_phosphates=True or pass a",
             "# Config(net_charge=0) override.",
             "#",
@@ -1447,14 +1487,24 @@ def convert(
     input_path: str,
     fdf_path: str,
     config: Optional["SiestaConfig"] = None,
+    vacuum: Optional[Tuple[float, float, float]] = None,
 ) -> dict:
     """Read an XYZ or PDB file, write an FDF, optionally copy psml files.
+
+    ``vacuum`` (Å, per-side gap) sets the structure's isolation padding -- the
+    CLI/convert equivalent of the Modify -> Cell tab, since vacuum comes with the
+    STRUCTURE (structure-periodicity.md), not the config.  Applied only when the
+    input file carries no explicit cell (an imported cell wins).  Without it a
+    flat/linear molecule loaded from a bare XYZ has vacuum 0 -> a degenerate cell
+    (render_fdf raises with an actionable message).
 
     Returns a summary dict with keys: ``fdf``, ``n_atoms``, ``species``,
     ``missing_psml``.
     """
     cfg = config or SiestaConfig()
     struct, cell = _struct_from_file(input_path)
+    if vacuum is not None and cell is None:
+        struct.vacuum = tuple(float(v) for v in vacuum)
 
     species = (list(cfg.species_order) if cfg.species_order
                else _detect_species(struct.elements))

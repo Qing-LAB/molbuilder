@@ -588,10 +588,18 @@ def _make_pyscf_options_decorator():
                    "path).  This is HOW a ladder asks for a cheap warm-up + "
                    "an expensive final (staged-execution.md § 6).  Requires "
                    "--jobset; stages omitted here inherit the job-level config.")
+# --vacuum: the structure's isolation padding (Å, per side).  Vacuum comes with
+# the STRUCTURE, not the config (structure-periodicity.md) -- this is the CLI
+# equivalent of the Modify -> Cell tab.  Needed for a flat/linear molecule loaded
+# from a bare XYZ (no cell), which otherwise has vacuum 0 -> a degenerate cell.
+@click.option("--vacuum", type=float, default=None, metavar="ANGSTROM",
+              help="isolation vacuum (Å) per side on isolated axes; sets the "
+                   "STRUCTURE's vacuum (CLI equivalent of Modify -> Cell).  "
+                   "Required for a flat/linear molecule from a bare XYZ.")
 @_make_siesta_options_decorator()
 def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
             stages_json, stage_strategy, emit_jobset, stage_resources,
-            **fields):
+            vacuum, **fields):
     """Convert an XYZ or PDB structure into a SIESTA .fdf input.
 
     Every SiestaConfig field is exposed as a CLI option (auto-generated
@@ -678,7 +686,9 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
         return
 
     with _resolve_input_path(input_path) as resolved_input:
-        summary = convert(resolved_input, fdf_path, cfg)
+        summary = convert(resolved_input, fdf_path, cfg,
+                          vacuum=((vacuum, vacuum, vacuum)
+                                  if vacuum is not None else None))
     click.echo(
         f"Wrote {summary['fdf']}: {summary['n_atoms']} atoms, "
         f"{len(summary['species'])} species "

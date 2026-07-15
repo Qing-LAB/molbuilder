@@ -88,7 +88,7 @@ def _make_capture(captured):
         # Return a tiny Structure so cli._emit() can call .to_xyz() / .summary().
         from molbuilder.structure import Structure
         return Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
-                         title="stub")
+                         title="stub", vacuum=(12.0, 12.0, 12.0))
     return _fake
 
 
@@ -166,8 +166,7 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
         "molbuilder.build_peptide",
         lambda seq, **kwargs: Structure(
             elements=["C"], positions=np.array([[0.1, 0.2, 0.3]]),
-            title="x",
-        ),
+            title="x", vacuum=(12.0, 12.0, 12.0)),
     )
     rc = cli.main(["peptide", "A", "--pyscf-atom-block"])
     assert rc == 0
@@ -191,7 +190,7 @@ def test_fdf_reads_xyz_from_stdin(monkeypatch, tmp_path):
     xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
     monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
     out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", "-", str(out_fdf),
+    rc = cli.main(["fdf", "--vacuum", "12", "-", str(out_fdf),
                    "--no-copy-psml", "--no-write-md-history"])
     assert rc == 0
     assert out_fdf.exists() and out_fdf.stat().st_size > 0
@@ -278,7 +277,7 @@ def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("sys.stdin", io.StringIO(pdb))
     out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", "-", str(out_fdf),
+    rc = cli.main(["fdf", "--vacuum", "12", "-", str(out_fdf),
                    "--no-copy-psml", "--no-write-md-history"])
     assert rc == 0
 
@@ -574,7 +573,6 @@ def _stub_pyscf_summary(out_path):
     # generator emits both SystemName and SystemLabel from
     # cfg.system_label).
     ("--system-label",           "demo",     "system_label",           "demo"),
-    ("--cell-padding",           "20.0",     "cell_padding",           20.0),
     ("--basis-size",             "TZP",      "basis_size",             "TZP"),
     ("--pao-energy-shift",       "0.005",    "pao_energy_shift",       0.005),
     ("--xc-functional",          "VDW",      "xc_functional",          "VDW"),
@@ -604,14 +602,14 @@ def test_fdf_cli_override_propagates_to_siesta_config(
     used by convert().  Catches kwarg-name typos and type-coercion bugs."""
     captured = {}
 
-    def fake_convert(input_path, fdf_path, config):
+    def fake_convert(input_path, fdf_path, config, vacuum=None):
         captured["cfg"] = config
         return _stub_siesta_summary(fdf_path)
     monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
 
     in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
     out_fdf = tmp_path / "h2.fdf"
-    rc = cli.main(["fdf", in_xyz, str(out_fdf), flag, cli_val])
+    rc = cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag, cli_val])
     assert rc == 0
     assert getattr(captured["cfg"], attr) == expected, (
         f"{flag} {cli_val!r}: expected SiestaConfig.{attr}={expected!r}, "
@@ -632,7 +630,6 @@ def test_fdf_cli_override_propagates_to_siesta_config(
     ("write_coor_xmol",   "--no-write-coor-xmol",   "--write-coor-xmol"),
     ("write_md_history",  "--no-write-md-history",  "--write-md-history"),
     ("wrap_into_cell",    "--no-wrap-into-cell",    "--wrap-into-cell"),
-    ("center_in_vacuum",  "--no-center-in-vacuum",  "--center-in-vacuum"),
     ("verbose_comments",  "--no-verbose-comments",  "--verbose-comments"),
     ("copy_psml",         "--no-copy-psml",         "--copy-psml"),
     ("spin_polarized",    "--no-spin-polarized",    "--spin-polarized"),
@@ -644,7 +641,7 @@ def test_fdf_cli_bool_flags_round_trip(
     into is_flag=True (one-way switch) instead of a flag pair."""
     captured = []
 
-    def fake_convert(input_path, fdf_path, config):
+    def fake_convert(input_path, fdf_path, config, vacuum=None):
         captured.append(config)
         return _stub_siesta_summary(fdf_path)
     monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
@@ -652,9 +649,9 @@ def test_fdf_cli_bool_flags_round_trip(
     in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
     out_fdf = tmp_path / "h2.fdf"
 
-    assert cli.main(["fdf", in_xyz, str(out_fdf), flag_off]) == 0
+    assert cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag_off]) == 0
     assert getattr(captured[-1], attr) is False, f"{flag_off} did not flip {attr}"
-    assert cli.main(["fdf", in_xyz, str(out_fdf), flag_on]) == 0
+    assert cli.main(["fdf", "--vacuum", "12", in_xyz, str(out_fdf), flag_on]) == 0
     assert getattr(captured[-1], attr) is True, f"{flag_on} did not set {attr}"
 
 
@@ -775,8 +772,7 @@ def test_siesta_default_values_render_in_fdf(expected_substr):
     s = Structure(
         elements=["H", "H"],
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
+        title="h2", vacuum=(12.0, 12.0, 12.0))
     fdf = render_fdf(s, SiestaConfig())
     assert expected_substr in fdf, (
         f"missing default substring {expected_substr!r}.\n"

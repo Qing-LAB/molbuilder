@@ -156,8 +156,7 @@ def _minimal_h2_fdf(tmp_path: Path, relax_type: str,
     struct = Structure(
         elements=["H", "H"],
         positions=np.array([[0.0, 0.0, 0.0],
-                            [0.74, 0.0, 0.0]]),
-    )
+                            [0.74, 0.0, 0.0]]), vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(
         relax_type=relax_type,
         relax_steps=n_steps,

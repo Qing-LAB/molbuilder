@@ -183,16 +183,10 @@ class SiestaConfig:
         "validate": _validate_basename("system_label"),
     })
 
-    # Cell handling for non-periodic XYZ files.  Not exposed in the web
-    # form today (the auto-cell pad is fine for the typical workflow);
-    # leave unsectioned so it stays a Python-API knob.
-    cell_padding: float = field(default=15.0, metadata={
-        "label": "Cell padding", "unit": "Å",
-        "engine_key":  '(molbuilder: auto-cell build only)',
-        "range": (5.0, 50.0),
-        "tier":  "basic",
-        "help":  "vacuum padding (Å) around the molecule on each face of the auto-cell",
-    })
+    # NOTE: the vacuum box is NOT a SiestaConfig knob.  Vacuum comes with the
+    # STRUCTURE (Structure.vacuum, per-side gap) -- the single source of truth for
+    # lattice/vacuum (structure-periodicity.md).  render_fdf derives the auto-cell
+    # from ``struct.resolve_cell()``; there is no cell_padding / center_in_vacuum.
 
     # Basis
     basis_size: str = field(default="DZP", metadata={
@@ -699,13 +693,8 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: pre-emission positioning)',
         "help": "fold atoms with fractional coords outside [0,1) back into the cell",
     })
-    center_in_vacuum: bool = field(default=True, metadata={
-        "section": "Output & positioning",
-        "workflow_group": "profile",
-        "label": "Center in vacuum cell",
-        "engine_key":  '(molbuilder: pre-emission positioning)',
-        "help": "centre the molecule in the auto-vacuum cell (auto-cell case)",
-    })
+    # (center_in_vacuum removed: centring is intrinsic to the structure-derived
+    # vacuum box -- render_fdf centres the molecule via resolve_cell_origin.)
 
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,

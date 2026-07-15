@@ -527,7 +527,7 @@ def _validate_siesta(struct: Structure, cfg,
                 f"estimated net dipole = {dipole:.1f} D in a vacuum cell "
                 f"with no dipole correction -- image-image dipole "
                 f"interactions will shift energies; consider a larger "
-                f"cell_padding or enable SIESTA's SlabDipoleCorrection "
+                f"vacuum on the structure or enable SIESTA's SlabDipoleCorrection "
                 f"(estimate from EN-based partial charges; rough +/- 50%)",
                 "geometry.dipole",
             ))

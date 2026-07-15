@@ -58,8 +58,7 @@ def test_s2_siesta_net_charge_override():
     from molbuilder.siesta import SiestaConfig, render_fdf
     s = Structure(
         elements=["C", "N", "O"],
-        positions=np.array([[0,0,0],[1.5,0,0],[0,1.5,0]]),
-    )
+        positions=np.array([[0,0,0],[1.5,0,0],[0,1.5,0]]), vacuum=(12.0, 12.0, 12.0))
     text_default = render_fdf(s, SiestaConfig(verbose_comments=False))
     assert "NetCharge" not in text_default
     text_charged = render_fdf(s, SiestaConfig(net_charge=-1, verbose_comments=False))
@@ -85,35 +84,47 @@ def test_s2_pyscf_charge_override():
     from molbuilder.pyscf import PySCFConfig, render_script
     s = Structure(
         elements=["O", "H"],
-        positions=np.array([[0,0,0],[0.957,0,0]]),
-    )
+        positions=np.array([[0,0,0],[0.957,0,0]]), vacuum=(12.0, 12.0, 12.0))
     text = render_script(s, PySCFConfig(charge=-1, verbose_comments=False))
     assert "charge     = -1," in text
 
 
 # --------------------------------------------------------------------- #
-#  D3 -- charged-system cell padding auto-bumps to 25 A                 #
+#  D3 -- vacuum comes with the STRUCTURE (cell_padding removed 2026-07)  #
+#                                                                       #
+#  render_fdf derives the vacuum box from struct.resolve_cell() (bbox + #
+#  2*vacuum, centred).  cfg.cell_padding is gone; a charged system with #
+#  thin vacuum is WARNED (never auto-bumped) -- geometry is the user's.  #
 # --------------------------------------------------------------------- #
 
 
-def test_d3_charged_system_bumps_padding(deprotonated_diester):
-    import re
+def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
+    import dataclasses
+    import warnings
     from molbuilder.siesta import SiestaConfig, render_fdf
-    text = render_fdf(deprotonated_diester,
-                      SiestaConfig(cell_padding=15.0, verbose_comments=False))
-    m = re.search(r"vacuum cell ([0-9.]+) x ([0-9.]+) x ([0-9.]+) A", text)
-    assert m, text
-    sizes = [float(g) for g in m.groups()]
-    # All three sizes >= 50 A confirms the bump (extent ~5 A + 2*25 padding)
-    assert all(s_ >= 50.0 for s_ in sizes), sizes
+    # A charged molecule with 10 A/side vacuum: below the >=25 A charged
+    # recommendation -> WARN (image-image Coulomb), geometry unchanged.
+    s = dataclasses.replace(deprotonated_diester, vacuum=(10.0, 10.0, 10.0))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        render_fdf(s, SiestaConfig(verbose_comments=False))
+    msgs = " ".join(str(x.message) for x in w)
+    assert "25 A per side (charged)" in msgs, msgs
+    assert "periodic images" in msgs
 
 
-def test_d3_neutral_system_keeps_user_padding(water_structure):
+def test_d3_neutral_uses_the_structures_vacuum(water_structure):
+    import dataclasses
+    import warnings
     from molbuilder.siesta import SiestaConfig, render_fdf
-    text = render_fdf(water_structure,
-                      SiestaConfig(cell_padding=15.0, verbose_comments=False))
-    assert "cell_padding = 15.0 A on each face" in text
-    assert "auto-bumped" not in text
+    # The FDF cell note reports the STRUCTURE's vacuum (per side); a sufficient
+    # neutral vacuum (10 >= 8) raises no thin-vacuum warning.
+    s = dataclasses.replace(water_structure, vacuum=(10.0, 10.0, 10.0))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        text = render_fdf(s, SiestaConfig(verbose_comments=False))
+    assert "vacuum = (10.0, 10.0, 10.0) A/side" in text, text
+    assert not any("periodic images" in str(x.message) for x in w)
 
 
 # --------------------------------------------------------------------- #
@@ -123,7 +134,7 @@ def test_d3_neutral_system_keeps_user_padding(water_structure):
 
 def test_s7_pdb_serial_caps_at_99999():
     n = 100001
-    s = Structure(elements=["C"] * n, positions=np.zeros((n, 3)))
+    s = Structure(elements=["C"] * n, positions=np.zeros((n, 3)), vacuum=(12.0, 12.0, 12.0))
     pdb = s.to_pdb()
     lines = [ln for ln in pdb.splitlines() if ln.startswith("ATOM")]
     assert len(lines) == n
@@ -138,8 +149,7 @@ def test_s7_pdb_residue_id_caps_at_9999():
     s = Structure(
         elements=["C"] * n,
         positions=np.zeros((n, 3)),
-        residue_ids=list(range(1, n + 1)),
-    )
+        residue_ids=list(range(1, n + 1)), vacuum=(12.0, 12.0, 12.0))
     pdb = s.to_pdb()
     lines = [ln for ln in pdb.splitlines() if ln.startswith("ATOM")]
     assert lines[0][22:26]    == "   1"

@@ -40,8 +40,7 @@ def h2():
     return Structure(
         elements=["H", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]]),
-        title="h2",
-    )
+        title="h2", vacuum=(12.0, 12.0, 12.0))
 
 
 @pytest.fixture
@@ -55,8 +54,7 @@ def methyl_radical():
             [-0.540,  0.935, 0.000],
             [-0.540, -0.935, 0.000],
         ]),
-        title="ch3",
-    )
+        title="ch3", vacuum=(12.0, 12.0, 12.0))
 
 
 # --------------------------------------------------------------------- #
@@ -313,8 +311,7 @@ def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
             [-2.0, 0.0, 0.0],
             [0.0, -2.0, 0.0],
         ]),
-        title="pt_complex",
-    )
+        title="pt_complex", vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(
         job_name="pt",
         basis="cc-pVDZ",            # NOT def2-* -- needs explicit ECP
@@ -334,8 +331,7 @@ def test_gap_8_ecp_skipped_for_def2_basis():
     pt = Structure(
         elements=["Pt", "C", "C"],
         positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
-        title="pt",
-    )
+        title="pt", vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
                       density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
@@ -353,8 +349,7 @@ def test_gap_8_ecp_skipped_for_light_atoms_only():
     h2o = Structure(
         elements=["O", "H", "H"],
         positions=np.array([[0,0,0],[0.96,0,0],[-0.24,0.93,0]]),
-        title="h2o",
-    )
+        title="h2o", vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(job_name="h2o", basis="cc-pVDZ",
                       density_fit=False, dispersion=None)
     script = render_script(h2o, cfg)
@@ -370,8 +365,7 @@ def test_gap_8_ecp_user_override_disables():
     pt = Structure(
         elements=["Pt"],
         positions=np.array([[0.0,0,0]]),
-        title="pt",
-    )
+        title="pt", vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ", ecp="",
                       density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
@@ -394,8 +388,7 @@ def test_gap_8_ecp_skipped_for_all_def2_spellings(basis):
     a spurious lanl2dz on top of def2's own ECP."""
     pt = Structure(
         elements=["Pt", "C", "C"],
-        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
-    )
+        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]), vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(job_name="pt", basis=basis,
                       density_fit=False, dispersion=None)
     script = render_script(pt, cfg)
@@ -415,8 +408,7 @@ def test_gap_8_dict_ecp_emits_as_python_dict_literal():
     Python dict literal so PySCF sees it as the per-element form."""
     pt = Structure(
         elements=["Pt", "Au", "C"],
-        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
-    )
+        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]), vacuum=(12.0, 12.0, 12.0))
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
                       density_fit=False, dispersion=None)
     cfg.ecp = {"Pt": "lanl2dz", "Au": "stuttgart"}

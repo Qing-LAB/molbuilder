@@ -53,6 +53,7 @@ def water_structure() -> Structure:
         residue_names=["HOH", "HOH", "HOH"],
         chain_ids=["A", "A", "A"],
         title="water",
+        vacuum=(12.0, 12.0, 12.0),
     )
 
 
@@ -77,6 +78,7 @@ def deprotonated_diester() -> Structure:
         elements=elements, positions=positions,
         atom_names=["C5'", "O5'", "P", "OP1", "OP2", "O3'", "C3'"],
         residue_ids=[1] * 7, residue_names=["DA"] * 7, chain_ids=["A"] * 7,
+        vacuum=(12.0, 12.0, 12.0),
     )
 
 

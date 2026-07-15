@@ -137,8 +137,8 @@ def validate_geometry(struct: Structure,
                     "warn",
                     f"min atom-to-nearest-image distance is "
                     f"{min_image:.2f} Å -- molecule images interact through "
-                    f"the periodic boundary; increase cell vectors or "
-                    f"cell_padding so this exceeds ~6 Å",
+                    f"the periodic boundary; increase the cell or the "
+                    f"structure's vacuum so this exceeds ~6 Å",
                     "cell.image_distance",
                 ))
 

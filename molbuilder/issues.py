@@ -35,8 +35,8 @@ class Issue:
         don't add to the warn count.
     message : str
         Human-readable, single-line, no trailing punctuation.  Should
-        include any actionable advice in-line (e.g. "increase
-        cell_padding above 25 Å" rather than "cell too tight").
+        include any actionable advice in-line (e.g. "increase the
+        structure's vacuum above 25 Å" rather than "cell too tight").
     where : str
         Locus of the problem, dotted-namespace style:
           "geometry.min_distance"   -- structural finding

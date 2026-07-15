@@ -2064,7 +2064,7 @@ def test_siesta_form_schema_matches_documented_layout():
         ("Exchange-correlation",     2),
         ("SCF",                      7),
         ("Spin",                     2),
-        ("Output & positioning",     6),
+        ("Output & positioning",     5),
         # Compute & budget: 14 fields after the 2026-06-15 merge.
         #   Relaxation contributed 7 (relax_type, relax_steps,
         #   relax_force_tol, relax_max_displ, md_initial_temperature,
@@ -2316,7 +2316,7 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     starting with ``(molbuilder`` so the JS engineKeyBadge() picks
     the dashed-border italic visual variant.  Without this the
     user might search the SIESTA / PySCF manual for a keyword
-    molbuilder invented (e.g. cell_padding, verbose_comments)."""
+    molbuilder invented (e.g. verbose_comments, wrap_into_cell)."""
     from molbuilder.web.blueprints._shared import dataclass_to_form_schema
     from molbuilder.config.siesta import SiestaConfig
     sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
@@ -2328,7 +2328,6 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
         "omp_threads",      # .run.sh + .fdf runtime_info comment
         "max_memory_mb",    # .run.sh ulimit + .fdf comment
         "wrap_into_cell",   # pre-emission positioning
-        "center_in_vacuum", # pre-emission positioning
         "verbose_comments", # .fdf comment-block control
     }
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}

@@ -120,8 +120,7 @@ class TestStructureRegions:
         s = Structure(
             elements=["C", "C", "C", "C"],
             positions=np.zeros((4, 3)),
-            regions={"L-electrode": [0, 1], "R-electrode": [3]},
-        )
+            regions={"L-electrode": [0, 1], "R-electrode": [3]}, vacuum=(12.0, 12.0, 12.0))
         assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3]}
 
     def test_indices_are_normalised_to_sorted_unique(self):
@@ -130,23 +129,20 @@ class TestStructureRegions:
         s = Structure(
             elements=["C"] * 4,
             positions=np.zeros((4, 3)),
-            regions={"bridge": [3, 1, 1, 0]},
-        )
+            regions={"bridge": [3, 1, 1, 0]}, vacuum=(12.0, 12.0, 12.0))
         assert s.regions["bridge"] == [0, 1, 3]
 
     def test_out_of_range_index_raises(self):
         with pytest.raises(ValueError, match="out of range"):
             Structure(
                 elements=["C", "C"], positions=np.zeros((2, 3)),
-                regions={"L-electrode": [5]},
-            )
+                regions={"L-electrode": [5]}, vacuum=(12.0, 12.0, 12.0))
 
     def test_negative_index_raises(self):
         with pytest.raises(ValueError, match="out of range"):
             Structure(
                 elements=["C", "C"], positions=np.zeros((2, 3)),
-                regions={"L-electrode": [-1]},
-            )
+                regions={"L-electrode": [-1]}, vacuum=(12.0, 12.0, 12.0))
 
     def test_atom_can_belong_to_multiple_regions(self):
         """Region membership is NOT mutually exclusive.  An atom may
@@ -155,8 +151,7 @@ class TestStructureRegions:
         separately at engine-load time."""
         s = Structure(
             elements=["C"] * 3, positions=np.zeros((3, 3)),
-            regions={"L-electrode": [0, 1], "bridge": [1, 2]},
-        )
+            regions={"L-electrode": [0, 1], "bridge": [1, 2]}, vacuum=(12.0, 12.0, 12.0))
         assert s.regions["L-electrode"] == [0, 1]
         assert s.regions["bridge"] == [1, 2]
 
@@ -164,8 +159,7 @@ class TestStructureRegions:
         with pytest.raises(ValueError, match="region label"):
             Structure(
                 elements=["C"], positions=np.zeros((1, 3)),
-                regions={"": [0]},
-            )
+                regions={"": [0]}, vacuum=(12.0, 12.0, 12.0))
 
 
 class TestStructureFrozenAtoms:
@@ -175,16 +169,14 @@ class TestStructureFrozenAtoms:
     def test_sorted_unique_normalisation(self):
         s = Structure(
             elements=["C"] * 4, positions=np.zeros((4, 3)),
-            frozen_atoms=[3, 1, 1, 0],
-        )
+            frozen_atoms=[3, 1, 1, 0], vacuum=(12.0, 12.0, 12.0))
         assert s.frozen_atoms == [0, 1, 3]
 
     def test_out_of_range_raises(self):
         with pytest.raises(ValueError, match="out of range"):
             Structure(
                 elements=["C", "C"], positions=np.zeros((2, 3)),
-                frozen_atoms=[7],
-            )
+                frozen_atoms=[7], vacuum=(12.0, 12.0, 12.0))
 
     def test_can_overlap_a_region_atom(self):
         """A fixed atom MAY also be tagged as part of a region (typical
@@ -193,8 +185,7 @@ class TestStructureFrozenAtoms:
         s = Structure(
             elements=["C"] * 4, positions=np.zeros((4, 3)),
             regions={"L-electrode": [0, 1]},
-            frozen_atoms=[0, 1],
-        )
+            frozen_atoms=[0, 1], vacuum=(12.0, 12.0, 12.0))
         assert s.regions["L-electrode"] == [0, 1]
         assert s.frozen_atoms == [0, 1]
 
@@ -223,8 +214,7 @@ class TestStructureTransportMetadataCarryThrough:
             elements=["C"] * 5,
             positions=np.arange(15, dtype=float).reshape(5, 3),
             regions={"L-electrode": [0, 1], "bridge": [2]},
-            frozen_atoms=[0, 1, 4],
-        )
+            frozen_atoms=[0, 1, 4], vacuum=(12.0, 12.0, 12.0))
 
     def test_copy_preserves_frozen_atoms_and_regions(self):
         s  = self._struct_with_meta()
@@ -259,12 +249,10 @@ class TestStructureTransportMetadataCarryThrough:
         # n_first + i in the result.
         s1 = Structure(
             elements=["C"] * 3, positions=np.zeros((3, 3)),
-            frozen_atoms=[0, 2],
-        )
+            frozen_atoms=[0, 2], vacuum=(12.0, 12.0, 12.0))
         s2 = Structure(
             elements=["O"] * 2, positions=np.ones((2, 3)),
-            frozen_atoms=[1],
-        )
+            frozen_atoms=[1], vacuum=(12.0, 12.0, 12.0))
         merged = Structure.concat([s1, s2])
         assert merged.n_atoms == 5
         assert merged.frozen_atoms == [0, 2, 3 + 1]   # 0, 2, 4
@@ -274,12 +262,10 @@ class TestStructureTransportMetadataCarryThrough:
         # Different label per input: both labels appear in the result.
         s1 = Structure(
             elements=["C"] * 3, positions=np.zeros((3, 3)),
-            regions={"electrode": [0, 1]},
-        )
+            regions={"electrode": [0, 1]}, vacuum=(12.0, 12.0, 12.0))
         s2 = Structure(
             elements=["O"] * 2, positions=np.ones((2, 3)),
-            regions={"electrode": [0], "tip": [1]},
-        )
+            regions={"electrode": [0], "tip": [1]}, vacuum=(12.0, 12.0, 12.0))
         merged = Structure.concat([s1, s2])
         assert merged.regions["electrode"] == [0, 1, 3]    # 0, 1, n1+0
         assert merged.regions["tip"]       == [3 + 1]      # n1+1
@@ -287,8 +273,8 @@ class TestStructureTransportMetadataCarryThrough:
     def test_concat_empty_metadata_is_no_op(self):
         # Inputs with no transport metadata must produce a result with
         # empty metadata (and not crash trying to index empty lists).
-        s1 = Structure(elements=["C"], positions=np.zeros((1, 3)))
-        s2 = Structure(elements=["O"], positions=np.ones((1, 3)))
+        s1 = Structure(elements=["C"], positions=np.zeros((1, 3)), vacuum=(12.0, 12.0, 12.0))
+        s2 = Structure(elements=["O"], positions=np.ones((1, 3)), vacuum=(12.0, 12.0, 12.0))
         merged = Structure.concat([s1, s2])
         assert merged.frozen_atoms == []
         assert merged.regions == {}
@@ -424,6 +410,7 @@ class TestElementCaseCanonicalization:
             "",
         ])
         s = Structure.from_pdb(text)
+        s.vacuum = (12.0, 12.0, 12.0)   # vacuum comes with the structure (per-side)
         fdf = render_fdf(s, SiestaConfig(system_label="t"))
         assert " Fe\n" in fdf, "Fe missing from ChemicalSpeciesLabel block"
 

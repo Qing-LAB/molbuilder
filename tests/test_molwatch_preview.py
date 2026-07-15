@@ -173,7 +173,7 @@ def test_siesta_convert_emits_molwatch_log_by_default(tmp_path):
     xyz = tmp_path / "h2.xyz"
     s.to_xyz(str(xyz))
     fdf = tmp_path / "h2.fdf"
-    summary = convert(str(xyz), str(fdf), SiestaConfig(system_label="h2"))
+    summary = convert(str(xyz), str(fdf), SiestaConfig(system_label="h2"), vacuum=(12.0, 12.0, 12.0))
     mw = tmp_path / "h2.molwatch.log"
     assert mw.exists()
     assert summary["molwatch_log"] == str(mw)
@@ -197,6 +197,7 @@ def test_siesta_convert_respects_disable_flag(tmp_path):
     summary = convert(
         str(xyz), str(fdf),
         SiestaConfig(system_label="h2", write_molwatch_log=False),
+        vacuum=(12.0, 12.0, 12.0),
     )
     mw = tmp_path / "h2.molwatch.log"
     assert not mw.exists()

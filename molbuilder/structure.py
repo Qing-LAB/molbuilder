@@ -407,10 +407,18 @@ class Structure:
         An explicit ``self.cell`` (imported / captured at construction / user
         override) wins verbatim.  Otherwise derive per ``axis_kind``:
 
-          * ``isolated``  -> bbox + vacuum (a box; vacuum >= 0)
+          * ``isolated``  -> bbox + 2*vacuum (a box; vacuum >= 0)
           * ``transport`` -> bbox (matched device length; vacuum ignored)
           * ``periodic``  -> ERROR -- a periodic axis needs a commensurate
             lattice from construction/import, never a bounding box.
+
+        ``vacuum[i]`` is the **per-side gap** (Angstrom): the box gets ``vacuum``
+        of empty space on EACH face of an isolated axis, so the cell length is
+        ``bbox[i] + 2*vacuum[i]`` and the molecule sits centred with ``vacuum`` of
+        clearance on both sides.  This matches the SIESTA FDF vacuum box
+        (``render_fdf``: ``extent + 2*cell_padding``, centred) so the displayed
+        cell reflects what the calculation actually uses.  See
+        ``resolve_cell_origin`` for the box's low corner.
 
         Assumes a block-orthogonal cell (per-axis diagonal); a general triclinic
         cell must arrive explicit.  Returns None for an empty structure.
@@ -428,9 +436,28 @@ class Structure:
                     f"periodic axis needs a commensurate lattice from "
                     f"construction/import (never a bounding box)."
                 )
-            pad = self.vacuum[i] if kind == "isolated" else 0.0
+            # vacuum is the PER-SIDE gap -> 2*vacuum total padding.
+            pad = 2.0 * self.vacuum[i] if kind == "isolated" else 0.0
             out[i, i] = float(extent[i]) + pad
         return out
+
+    def resolve_cell_origin(self) -> Optional[np.ndarray]:
+        """The low corner (Angstrom) of the resolved bounding-box cell.
+
+        For a DERIVED (bbox) cell the box wraps the atoms: the low corner sits at
+        ``bbox_min - vacuum`` on each isolated axis (and ``bbox_min`` on a
+        transport axis), so the molecule is centred in the resolved cell with
+        ``vacuum`` of clearance per side -- matching the SIESTA FDF's centring.
+        The display anchors the cell wireframe here instead of the coordinate
+        origin.  Returns ``None`` for an empty structure or when an EXPLICIT cell
+        is set (an explicit cell carries its own atom frame -- anchored at 0)."""
+        if self.cell is not None or len(self.positions) == 0:
+            return None
+        lo = self.positions.min(axis=0).astype(float)
+        origin = np.zeros(3, dtype=float)
+        for i, kind in enumerate(self.axis_kind):
+            origin[i] = lo[i] - (self.vacuum[i] if kind == "isolated" else 0.0)
+        return origin
 
     def _validate_regions(self, n: int) -> None:
         """Per-atom index in [0, n); region names are non-empty

@@ -169,7 +169,7 @@ def test_explicit_blocksize_override_passes_through_verbatim():
         [i * 1.5, j * 1.5, k * 1.5]
         for i in range(side) for j in range(side) for k in range(side)
     ])[:50]
-    s = Structure(elements=["C"] * 50, positions=coords, title="x")
+    s = Structure(elements=["C"] * 50, positions=coords, title="x", vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(parallel_block_size=32, mpi_np=4, relax_type="none")
     fdf = render_fdf(s, cfg)
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
@@ -194,7 +194,7 @@ def test_explicit_blocksize_override_safe_value_passes_through():
         [i * 1.5, j * 1.5, k * 1.5]
         for i in range(side) for j in range(side) for k in range(side)
     ])[:50]
-    s = Structure(elements=["C"] * 50, positions=coords, title="x")
+    s = Structure(elements=["C"] * 50, positions=coords, title="x", vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(parallel_block_size=4, mpi_np=4, relax_type="none")
     fdf = render_fdf(s, cfg)
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
@@ -212,7 +212,7 @@ def test_fdf_charged_system_emits_makov_payne_notice():
     from molbuilder.structure import Structure
     s = Structure(elements=["O", "H"],
                   positions=np.array([[0, 0, 0], [0.96, 0, 0]]),
-                  title="OH-")
+                  title="OH-", vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(net_charge=-1, relax_type="none")
     fdf = render_fdf(s, cfg)
     # NetCharge line emitted as before.
@@ -240,7 +240,7 @@ def test_fdf_neutral_system_no_makov_payne_block():
                   positions=np.array([[0, 0, 0],
                                        [0.96, 0, 0],
                                        [-0.24, 0.93, 0]]),
-                  title="H2O")
+                  title="H2O", vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(relax_type="none")
     fdf = render_fdf(s, cfg)
     assert "NetCharge" not in fdf
@@ -264,10 +264,10 @@ def test_cell_volume_below_one_per_atom_raises():
     # 10 carbon atoms; needs cell volume >= 10 A^3 to pass.
     s = Structure(elements=["C"] * 10,
                   positions=np.zeros((10, 3)) + np.arange(10).reshape(10, 1) * 0.5,
-                  title="dense")
+                  title="dense", vacuum=(12.0, 12.0, 12.0))
     # Tiny cell: 1.5 A^3 cubic = 0.5 A side.  Below 10 A^3 threshold.
     tiny_cell = np.eye(3) * 1.5 ** (1.0 / 3.0)
-    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False)
+    cfg = SiestaConfig(relax_type="none")
     with pytest.raises(ValueError) as exc_info:
         render_fdf(s, cfg, cell=tiny_cell)
     msg = str(exc_info.value)
@@ -297,11 +297,11 @@ def test_cell_volume_just_above_threshold_passes():
     s = Structure(elements=["C"] * 10,
                   positions=np.linspace([0, 0, 0],
                                          [10, 10, 10], 10),
-                  title="dense")
+                  title="dense", vacuum=(12.0, 12.0, 12.0))
     # Cell with vol = 12 A^3 = (12)^(1/3) ~= 2.29 A side.
     edge = 12.0 ** (1.0 / 3.0)
     cell = np.eye(3) * edge
-    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False,
+    cfg = SiestaConfig(relax_type="none",
                        wrap_into_cell=False)
     # render_fdf will issue downstream warnings (atom overlap, etc.),
     # but the volume gate itself must pass.
@@ -327,15 +327,15 @@ def test_cell_volume_per_atom_threshold_scales_with_n_atoms():
     s = Structure(elements=["H"] * 100,
                   positions=np.linspace([0, 0, 0],
                                          [3, 3, 3], 100),
-                  title="crowded")
+                  title="crowded", vacuum=(12.0, 12.0, 12.0))
     cell = np.eye(3) * 50.0 ** (1.0 / 3.0)   # vol = 50 A^3
-    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False)
+    cfg = SiestaConfig(relax_type="none")
     with pytest.raises(ValueError, match="below the minimum"):
         render_fdf(s, cfg, cell=cell)
     # Same cell with 1 atom: still passes (1.0 A^3 floor for n=1).
     s_single = Structure(elements=["H"],
                          positions=np.array([[1.0, 1.0, 1.0]]),
-                         title="single")
+                         title="single", vacuum=(12.0, 12.0, 12.0))
     cell_single = np.eye(3) * 2.0   # vol = 8 A^3 >> 1 A^3 (n=1)
     fdf = render_fdf(s_single, cfg, cell=cell_single)
     assert "BlockSize" in fdf
@@ -425,8 +425,7 @@ def test_fdf_picks_safe_blocksize_for_hemec_case():
     s = Structure(
         elements=["C"] * 81,
         positions=coords,
-        title="hemeC-shaped",
-    )
+        title="hemeC-shaped", vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(mpi_np=15, relax_type="none")
     fdf = render_fdf(s, cfg)
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
@@ -451,8 +450,7 @@ def test_fdf_emits_explicit_blocksize_and_paralleloverk(tmp_path):
     s = Structure(
         elements=["H", "H"],
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
+        title="h2", vacuum=(12.0, 12.0, 12.0))
     text = render_fdf(s, SiestaConfig(system_label="h2"))
     # Both lines must appear, regardless of system size.
     import re
@@ -469,8 +467,7 @@ def test_paralleloverk_auto_from_kgrid(tmp_path):
     s = Structure(
         elements=["H", "H"],
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
+        title="h2", vacuum=(12.0, 12.0, 12.0))
     gamma = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(1, 1, 1)))
     assert "Diag.ParallelOverK .false." in gamma
     multi = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(4, 4, 4)))
@@ -505,8 +502,7 @@ def _h2_struct():
     return Structure(
         elements=["H", "H"],
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
+        title="h2", vacuum=(12.0, 12.0, 12.0))
 
 
 def test_spin_polarized_emits_v4_keyword_for_aux_compat():
@@ -685,7 +681,8 @@ def test_convert_writes_stage_suffixed_preview_log(tmp_path):
     in_p.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
     fdf_p = tmp_path / "deliberately_unrelated_name.fdf"
     summary = convert(str(in_p), str(fdf_p),
-                      SiestaConfig(system_label="my-job", stage=3))
+                      SiestaConfig(system_label="my-job", stage=3),
+                      vacuum=(12.0, 12.0, 12.0))
     assert os.path.basename(summary["molwatch_log"]) \
         == "my-job-stage3.molwatch.log"
 
@@ -707,8 +704,7 @@ def _struct_with_frozen(frozen):
     return Structure(
         elements=["H", "O", "H", "C", "N"],
         positions=np.array([[i*1.5, 0, 0] for i in range(5)], dtype=float),
-        frozen_atoms=list(frozen),
-    )
+        frozen_atoms=list(frozen), vacuum=(12.0, 12.0, 12.0))
 
 
 def test_siesta_frozen_atoms_emit_geometry_constraints_block():
@@ -746,8 +742,7 @@ def test_siesta_frozen_atoms_large_count_chunks_lines():
     s = Structure(
         elements=["C"] * 51,
         positions=np.array([[i*1.5, 0, 0] for i in range(51)], dtype=float),
-        frozen_atoms=frozen,
-    )
+        frozen_atoms=frozen, vacuum=(12.0, 12.0, 12.0))
     fdf = render_fdf(s, SiestaConfig(verbose_comments=False))
     # Count ``position`` lines inside the block.
     inside = False
@@ -846,8 +841,7 @@ def test_relaxation_emits_universal_md_step_count(relax_type):
     import numpy as _np_md
     s = Structure(
         elements=["H", "H"],
-        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
-    )
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]), vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(relax_type=relax_type, relax_steps=42,
                        psml_lib=None)
     text = render_fdf(s, cfg)
@@ -883,8 +877,7 @@ def test_relaxation_emits_universal_md_displ_cap(relax_type):
     import numpy as _np_md
     s = Structure(
         elements=["H", "H"],
-        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
-    )
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]), vacuum=(12.0, 12.0, 12.0))
     cfg = SiestaConfig(relax_type=relax_type, relax_max_displ=0.07,
                        psml_lib=None)
     text = render_fdf(s, cfg)
@@ -914,8 +907,7 @@ def test_savehs_keyword_emitted_always():
     import numpy as _np_md
     s = Structure(
         elements=["H", "H"],
-        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]),
-    )
+        positions=_np_md.array([[0, 0, 0], [0.74, 0, 0]]), vacuum=(12.0, 12.0, 12.0))
     def _has_active_writehs(text):
         """Return True if any non-comment line carries a ``WriteHS``
         directive (i.e. an actual keyword emission, not a historical-
@@ -1123,7 +1115,8 @@ class TestSiestaStageOverlay:
             out_fdf = tmp_path / f"h2_stage{stage}.fdf"
             runner = CliRunner()
             result = runner.invoke(
-                cli, ["fdf", str(xyz), str(out_fdf), "--stage", stage],
+                cli, ["fdf", str(xyz), str(out_fdf), "--stage", stage,
+                      "--vacuum", "12"],
                 catch_exceptions=False,
             )
             assert result.exit_code == 0, result.output
