@@ -86,7 +86,13 @@
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
                 // EXPLICIT cell only (not the resolved bbox) -- see getExplicitCell.
-                handle.setStructure({ xyz: u.xyz, lattice: getExplicitCell() || undefined });
+                // Pass the raw getExplicitCell() (a cell, or NULL when there's none) -- NOT
+                // `|| undefined`: the embed reads `lattice: undefined` as "keep the current
+                // lattice" and `lattice: null` as "CLEAR it".  Coercing the no-cell null to
+                // undefined left a stale wireframe drawn after a cell -> no-cell transition
+                // (add electrodes = hexagonal cell, then Retract to the cell-less molecule --
+                // the box stayed hexagonal).  null clears it.
+                handle.setStructure({ xyz: u.xyz, lattice: getExplicitCell() });
             }
         }
 

@@ -93,6 +93,34 @@ def test_base_draw_reads_store_atoms_and_explicit_cell_only():
     assert out["hasLattice"] is False          # cell-less molecule -> NO lattice on the base draw
 
 
+def test_base_draw_clears_lattice_on_cell_to_no_cell_transition():
+    """Regression (Retract cell-overlay bug): after a structure carrying an EXPLICIT cell
+    (e.g. add-electrodes -> a hexagonal Au(111) cell) is Retracted to a cell-less molecule,
+    the base draw must pass ``lattice: null`` -- an EXPLICIT clear -- not ``undefined``.  The
+    embed reads ``undefined`` as "keep the current lattice", which left the stale hexagonal
+    wireframe/axes drawn over the reverted orthogonal molecule.  ``null`` clears them."""
+    out = _run_node(_HARNESS + """
+        let explicitCell = [[8.65,0,0],[4.33,7.49,0],[0,0,34.07]];   // hexagonal electrode cell
+        data.getUnitCell = () => explicitCell;
+        mountRender(handle, data, store, {});
+        const withCell = calls[calls.length-1];
+        // Retract to a cell-less molecule: the explicit cell is gone AND a structure change
+        // drives the redraw (the same signal a Retract fires).
+        explicitCell = null;
+        storeState = Object.assign({}, storeState, { atoms: [{ element:'O', x:0, y:0, z:0 }] });
+        storeSubs.forEach((fn) => fn());
+        const afterClear = calls[calls.length-1];
+        console.log(JSON.stringify({
+            withCell_lattice:   withCell.lattice,
+            afterClear_hasKey:  Object.prototype.hasOwnProperty.call(afterClear, 'lattice'),
+            afterClear_lattice: afterClear.lattice,
+        }));
+    """)
+    assert out["withCell_lattice"] == [[8.65, 0, 0], [4.33, 7.49, 0], [0, 0, 34.07]]
+    assert out["afterClear_hasKey"] is True     # the lattice key is PRESENT ...
+    assert out["afterClear_lattice"] is None    # ... and NULL (explicit clear), not undefined
+
+
 def test_redraw_on_structure_change_but_not_on_selection_click():
     """§14.2 signature guard: a pure selection click does NOT redraw the base; a coords/atoms
     change (a load) redraws EXACTLY once."""
