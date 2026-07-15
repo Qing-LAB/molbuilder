@@ -140,8 +140,15 @@ subsection.** Editing one? Read its subsection first.
   (`320px`), `--panel-min` (`320px`). A single `@container (max-width: 664px)` query
   (= `viewer-min + handle + panel-min`, shown in the comment) flips side-by-side ↔
   stacked. **No `@media`, no other breakpoint, no second magic number.**
-- **Viewer:** a 1:1 square (`aspect-ratio`), floored by `--viewer-min`, capped by
-  `--viewer-edge`; it never fills the card (leftover width → panel).
+- **Viewer:** a 1:1 square sized to `--viewer-extent` — a derived value the `.molview-body`
+  computes once (`max(--viewer-min, min(--viewer-edge, 100cqw − --panel-min − --fold-w))`)
+  and BOTH the viewer and the panel key their height off, so the two bottom-align at every
+  width with **no JS** and no fixed height. `100cqw` is the card's own content width (content-
+  driven, §3), so the viewer never fills the card (leftover → margin/panel).
+- **Stacked (`@container` under 664):** viewer + panel share one `--stack-extent`
+  (`min(--viewer-edge, 100cqw)`) for a matching width; the fold handle becomes a **compact,
+  centred grip** (hugs its chevron), never a full-width bar — so it can't read as wider than
+  the columns. No `vh`/`px` magic; the panel height reuses `--viewer-edge` via `--stack-extent`.
 - **Viewer-controls bar:** the view toggles (isolate / k-grid) are `.viewer-toggle`
   (**one shared class both molviews use**), mounted by `molview.mountViewControls`
   ([`molview-module.md`](molview-module.md)) — never re-styled per page.

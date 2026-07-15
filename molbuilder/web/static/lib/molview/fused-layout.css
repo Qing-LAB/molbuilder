@@ -18,28 +18,41 @@
     --viewer-edge: min(60vh, 560px);   /* max square edge (== the viewer's max-height) */
     --viewer-min: 320px;               /* min square width */
     --panel-min:  320px;               /* min panel width */
+    --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
 }
 
 /* WIDE (row): viewer | handle | panel.  justify-content:center so that when the card
- * column is wider than the content needs (the viewer is capped at --viewer-edge and the
- * panel is a fixed-width column), the leftover width splits as symmetric margin around the
- * viewer+panel pair instead of a lopsided empty gap to the right of the panel. */
+ * column is wider than the content needs (the viewer is capped at --viewer-edge), the
+ * leftover width splits as symmetric margin around the viewer+panel pair instead of a
+ * lopsided empty gap to the right of the panel. */
 .molview-body {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
     justify-content: center;
     width: 100%;
+
+    /* The viewer square's ACTUAL edge -- ONE value the viewer AND the panel both key off,
+     * so the panel's height matches the viewer with no JS and no fixed magic number:
+     *   - capped at --viewer-edge (never fills the card),
+     *   - but shrinks so the panel (--panel-min) + handle (--fold-w) always fit beside it.
+     * 100cqw is the CARD's own content width (it is `container-type: inline-size`), so this
+     * is content-driven -- it resolves against the embed, not the viewport (contract §3).
+     * The @container query below flips to stacked before this could fall under --viewer-min,
+     * so the max() floor is only belt-and-braces. */
+    --viewer-extent: max(var(--viewer-min),
+                         min(var(--viewer-edge),
+                             calc(100cqw - var(--panel-min) - var(--fold-w))));
 }
 
-/* Viewer: a 1:1 square (aspect-ratio lives on .viewer-wrap in the page CSS).  max-width
- * caps it at --viewer-edge so it never fills the card; min-width is its floor.  The
- * container query stacks BEFORE the slot can fall below --viewer-min, so it never
- * overflows. */
+/* Viewer: a 1:1 square sized to --viewer-extent (== card leftover, capped at --viewer-edge).
+ * A DEFINITE square edge -- so the panel beside it can be told the SAME height and the two
+ * bottom-align at any width, declaratively (the trajectory-inspector `align-items: stretch`
+ * pattern, expressed here as a shared extent). */
 .molview-body > .molview-viewer {
-    flex: 1 1 auto;
-    min-width: var(--viewer-min);
-    max-width: var(--viewer-edge);
+    flex: 0 0 auto;
+    width: var(--viewer-extent);
+    height: var(--viewer-extent);
     position: relative;            /* anchors the measurement-chip overlay */
 }
 
@@ -47,20 +60,17 @@
  * width-collapse clean; overflow-y auto scrolls a tall panel rather than forcing the card
  * wider. */
 .molview-panel {
-    /* A fixed-width column (grow:0) so the VIEWER grows to its max square first; the panel
-     * then keeps a stable width.  => once the card is wide enough for a full-size viewer,
-     * folding the panel is purely width (the viewer is already maxed, so it can't grow). */
-    flex: 0 1 var(--panel-min);
-    min-width: var(--panel-min);
-    /* LOCKED to the viewer edge: a FIXED frame EXACTLY the height of the viewer
-     * SQUARE (--viewer-edge), so the panel's bottom aligns with the viewer's --
-     * the viewer's View/Export control bar is an OVERLAY *inside* the square, not
-     * a separate row, so NO extra height is added.  Switching atom-list <-> filter
-     * (or Selection <-> Cell) never resizes it; the inner list/filter is the scroll
-     * region.  A ``min-height`` floor keeps it usable when the viewport (hence
-     * --viewer-edge) is short -- it never collapses below a few list rows + the
-     * header/actions, and the inner list simply scrolls. */
-    height: var(--viewer-edge);
+    /* A fixed-width column (grow:0) with a stable width, so folding it is purely a
+     * width collapse (the viewer is already at its extent, so it can't grow). */
+    flex: 0 0 auto;
+    width: var(--panel-min);
+    /* HEIGHT == the viewer square's extent -- the SAME value the viewer uses, so the two
+     * bottom-align at EVERY width with no JS and no fixed magic number.  The viewer's
+     * View/Export bar is an OVERLAY inside its square (adds no height), so the panel's
+     * bottom lines up with the viewer's.  Switching atom-list <-> filter (or Selection <->
+     * Cell) never resizes it; the inner list/filter is the scroll region.  A ``min-height``
+     * floor keeps it usable if the viewport (hence the extent) is very short. */
+    height: var(--viewer-extent);
     min-height: 18rem;
     /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
      * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
@@ -68,8 +78,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-                min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.15s ease;
 }
 
@@ -177,52 +186,56 @@
 
 /* Folded (wide): collapse the panel to zero width; the viewer stays put. */
 .molview-card.is-folded .molview-panel {
-    flex: 0 0 0;
+    width: 0;
     min-width: 0;
     opacity: 0;
     pointer-events: none;
 }
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
-/* ---- STACK when the card can't give the viewer its FULL square edge beside the
-   panel: --viewer-edge(max 560) + handle(22) + --panel-min(320) ~= 902.  BELOW this
-   the side-by-side viewer square would shrink SHORTER than the fixed-height panel
-   (the "viewer much shorter than the panel" case, e.g. projects sidebar open on a
-   narrow card) -- so instead we go VERTICAL: viewer on top (a centred square,
-   full-width up to its edge), panel below, aligned.  ABOVE it the viewer reaches
-   --viewer-edge and its bottom lines up with the panel.  The handle becomes a
-   horizontal bar; fold collapses the panel HEIGHT. ---- */
-@container (max-width: 902px) {
-    .molview-body { flex-direction: column; align-items: center; }
+/* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
+   the threshold is the DERIVED sum --viewer-min(320) + --fold-w(22) + --panel-min(320) = 664
+   (contract §7.1 -- the one named breakpoint, no second magic number).  Above it, the row's
+   shared --viewer-extent keeps the viewer + panel bottom-aligned at any width; below it even
+   --viewer-min won't fit beside --panel-min, so we go VERTICAL: viewer on top (a centred
+   square), panel below.  The handle becomes a compact centred grip; fold collapses height. */
+@container (max-width: 664px) {
+    /* ONE stacked square edge -- capped at --viewer-edge (which already carries the sole
+     * allowed 60vh, §7.1), else the CARD's own width (100cqw).  Reused by the viewer AND the
+     * panel so both columns share one width and align; no fresh viewport magic number. */
+    .molview-body {
+        flex-direction: column;
+        align-items: center;
+        --stack-extent: min(var(--viewer-edge), 100cqw);
+    }
     .molview-body > .molview-viewer {
-        flex: 0 0 auto;
-        width: min(var(--viewer-edge), 100%);   /* centred square, capped at the card */
-        max-width: 100%;
+        width: var(--stack-extent);              /* centred square */
+        height: var(--stack-extent);
     }
     .molview-panel {
-        flex: 0 0 auto;
-        /* Match the viewer square's width -- the panel's HORIZONTAL edge aligns
-         * with the viewer above it (the body centres both). */
-        width: min(var(--viewer-edge), 100%);
-        min-width: 0;
-        max-width: 100%;
-        /* Fixed height (with a floor) so an atom-list <-> filter switch doesn't
-         * resize it; the inner list scrolls.  ``max-height`` is reset so the fold
-         * (which animates max-height to 0) still fully collapses it. */
-        height: 45vh;
-        min-height: 18rem;
-        max-height: none;
-        transition: max-height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+        /* Same width as the viewer square (columns align), and a height that MATCHES the
+         * square too -- a generous, stable frame (so the atom list is usable, not a sliver)
+         * that an atom-list <-> filter switch never resizes; the inner list scrolls, and the
+         * page scrolls if the stacked pair exceeds the viewport (the narrow case). */
+        width: var(--stack-extent);
+        height: var(--stack-extent);
+        min-height: 22rem;
+        transition: height 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
     }
     .molview-fold-btn {
-        align-self: stretch;
+        /* A COMPACT centred grip (hugs its chevron + a grab margin) -- NOT a full-width bar.
+         * A small centred handle cannot read as "wider than the panels" by construction, so
+         * the stacked layout needs no width-matching against the viewer canvas / panel inset. */
+        align-self: center;
         width: auto;
-        height: 22px;                          /* a full-width horizontal bar */
+        padding: 0 2rem;
+        height: 22px;
+        border-radius: 999px;
     }
     /* Stacked (panel BELOW): direction = where the panel moves.  UNFOLDED points UP
      * ("collapse up, away"); FOLDED points DOWN ("reveal the panel below"). */
     .molview-fold-chevron { transform: rotate(-90deg); }
-    .molview-card.is-folded .molview-panel { max-height: 0; min-width: 0; min-height: 0; }
+    .molview-card.is-folded .molview-panel { height: 0; min-height: 0; }
     .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
 }
 

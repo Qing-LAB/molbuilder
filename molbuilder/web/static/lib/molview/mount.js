@@ -257,6 +257,9 @@
             foldBtn.addEventListener("click", onFold);
             cleanups.push(function () { foldBtn.removeEventListener("click", onFold); });
         }
+        // NOTE: the panel's height matching the viewer square is done PURELY in CSS
+        // (fused-layout.css: the viewer and panel share `--viewer-extent`) -- no JS/
+        // ResizeObserver.  See the fused card's §7.1 system in ui-design-contract.md.
 
         // ---- The owner-facing handle (§D) --------------------------------------------- //
         // The owner reads the molecule + reacts to changes THROUGH molview -- never storage
