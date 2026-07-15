@@ -24,44 +24,70 @@ the full optimisation + electrode `.TSHS` step.  MIT licensed.
 
 ## Scope and capabilities
 
-molbuilder targets molecular-electronics and single-molecule DFT
-workflows.  Specific capabilities:
+If you study single molecules wired between two metal electrodes —
+or any small molecule you want to run through SIESTA, TranSIESTA, or
+PySCF — molbuilder takes you from "I have a molecule in mind" to
+"I have publishable numbers" without leaving one browser tab and
+without hand-writing input files.
 
-- **Structure assembly.** Peptide, DNA, RNA, SMILES, and PubChem
-  compound builders feed into an atom-level editor.  Crystallographic
-  FCC slabs (Au, Ag, Cu, Ni, Pt, Pd on the 100 / 110 / 111 surfaces)
-  are added with a single command to produce transport-ready
-  geometries.
-- **Input-file generation.** SIESTA `.fdf`, TranSIESTA, and PySCF
-  scripts are emitted from a schema-driven form.  Each generated file
-  carries inline parameter tooltips and a draft methods paragraph.
-- **Live inspection.** The Results tab parses running calculations
-  on file `mtime`, streaming new frames into the 3Dmol viewer and
-  new convergence data into Plotly charts.  The parser tolerates
-  half-written trailing blocks.
-- **Isolated backend environments.** Four conda envs
-  (`molbuilder-siesta`, `molbuilder-siesta-gpu`, `molbuilder-pySCF`,
-  `molbuilder-MDtools`) pin their own native
-  stacks; one `molbuilder envs` CLI installs and manages them.
-- **Optional source-built GPU SIESTA.** ELPA (CUDA) + ELSI +
-  SIESTA 5.4.2 from source against the env's pinned toolchain, with
-  sentinel-based resume, interactive preflight, and build-env
-  isolation from system MPI / CUDA / compilers.
-- **Multi-user deployment.** Built-in OAuth (Google, GitHub,
-  Microsoft, ORCID, Apereo CAS such as ASURITE) with per-provider
-  `allowed_users` lists, or operation behind an existing reverse-
-  proxy auth gateway.
-- **Schema as the single source of truth.** Every config parameter
-  is `@dataclass` field metadata.  Adding a parameter to the
-  dataclass produces a CLI flag, a form input with tooltip and
-  validator, a methods-text mention, and form-schema introspection
-  without parallel HTML / JS / fixture edits.
-- **Documented contracts.** UI features have specs in [`docs/`](docs/);
-  tests are derived from the specs.
+Here is what it does for you, and *why that matters*:
 
-> Generated structures are starting points for a geometry
-> optimisation, not equilibrium geometries.  Always relax in the
-> chosen DFT code before computing properties.
+- **Build the structure without a chemistry drawing program.** Type
+  a SMILES string, a peptide/DNA/RNA sequence, or a PubChem compound
+  name and get a 3-D structure. Then, with one click, sandwich it
+  between two gold (or Ag/Cu/Ni/Pt/Pd) electrode slabs to make a
+  *nanojunction* — the metal–molecule–metal geometry transport
+  calculations need. **Why it helps:** assembling a junction by hand
+  in a generic editor is fiddly and error-prone; here it is a menu.
+
+- **Get correct input files without memorizing every keyword.** Fill
+  in a short form and molbuilder writes a complete SIESTA `.fdf`,
+  TranSIESTA input, or PySCF script for you — each field has a
+  hover-tooltip explaining what it is, and each generated file comes
+  with a ready-to-paste "Methods" paragraph for your paper.
+  **Why it helps:** the form *validates as you go*, so common
+  mistakes (wrong charge, too little vacuum, a k-grid that makes no
+  sense for a molecule) are caught before you burn cluster hours.
+
+- **Watch a calculation converge while it runs.** Point the Results
+  tab at a running job's output and the energy, forces, and geometry
+  update live as SIESTA/PySCF writes them. **Why it helps:** you
+  can tell a run is going bad (oscillating SCF, exploding forces)
+  in minutes instead of discovering it hours later.
+
+- **Never fight a broken conda environment again.** The heavy native
+  codes (SIESTA, PySCF, AmberTools, a GPU SIESTA) each live in their
+  own isolated conda environment, and one command sets all of them
+  up and checks they work. **Why it helps:** the versions that are
+  known to work together stay together; you don't debug a linker
+  error the day before a deadline.
+
+- **Run on your laptop or a supercomputer with the same commands.**
+  A calculation is packaged as a self-contained *bundle* you can copy
+  to an HPC cluster; molbuilder writes the SLURM submit scripts and
+  activation preamble for you. **Why it helps:** "works on my
+  machine" and "works on the cluster" become the same workflow.
+
+- **Save your work and roll back when an experiment goes wrong.** A
+  run directory can be snapshotted (text *and* the big binary files)
+  so you can try a risky parameter change and rewind to the last good
+  state if it breaks. **Why it helps:** you can explore freely
+  instead of hoarding `run_final_v3_REALLY_final/` copies.
+
+- **Measure instead of guess for performance.** A benchmark command
+  sweeps CPU/GPU and parallel settings and reports the wall-clock
+  time per point, so you pick a production configuration from data.
+  **Why it helps:** the right number of cores/GPUs for *your* system
+  can be 3× off from a rule of thumb.
+
+Everything the app shows is backed by a documented contract in
+[`docs/`](docs/), and the tests are derived from those docs — so the
+behavior you read about is the behavior you get.
+
+> **One thing to keep in mind:** the structures molbuilder builds are
+> *starting points*. They are a sensible initial guess, not a
+> relaxed, equilibrium geometry. Always run a geometry optimization
+> in your DFT code before you trust any computed property.
 
 ### Validation summary
 
@@ -211,44 +237,125 @@ Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
 comparison is pending the slab optimisation + electrode `.TSHS`
 generation step.
 
-### Snapshot a run before risky changes
+### Save a run before a risky change (checkpoints)
 
-`molbuilder snapshot` turns each working directory into its own tiny
-git repository so you can roll back to any prior state after a
-parameter sweep, basis swap, or stage refinement gone wrong.
+**The problem it solves.** You have a converged geometry and you want
+to try a tighter basis, a different k-grid, or one more relaxation
+stage — but you don't want to lose the good result if the change makes
+things worse. The usual "fix" is copying the whole folder to
+`run_backup_2/`, which quickly becomes a mess and still doesn't
+capture the big binary restart files.
 
+A **checkpoint** saves the *entire state* of a run directory — the
+text inputs/outputs **and** the large binaries SIESTA/PySCF write
+(`.DM`, `.HSX`, `.TSHS`, `.chk`, …) — so you can rewind to it later
+with one command.
+
+```mermaid
+flowchart LR
+  A["converged run"] -->|"snapshot checkpoint + tag"| B["saved state<br/>'stage3-converged'"]
+  B --> C["try a risky change<br/>(new basis, extra stage…)"]
+  C -->|"it worked"| D["keep going"]
+  C -->|"it broke"| E["snapshot restore stage3-converged<br/>→ back to the good state"]
 ```
+
+```bash
 cd projects/BDT/optimization/TJ-BDT-Au111
 
-# One-time setup of the working dir as a checkpoint repo:
-molbuilder snapshot init
-
-# Save the current state before changing anything:
+molbuilder snapshot init                            # once per run dir
 molbuilder snapshot checkpoint -m "stage 3 converged"
 molbuilder snapshot tag stage3-converged -m "ready for transport"
 
-# ...edit the .fdf, run a new stage, etc.  When something breaks:
-molbuilder snapshot list           # show every saved state
-molbuilder snapshot restore stage3-converged   # rewinds everything
+# ...now change the .fdf, run another stage, sweep a parameter...
+
+molbuilder snapshot list                            # see every saved state
+molbuilder snapshot restore stage3-converged        # rewind text + binaries
 ```
 
-The big binaries (`.DM`, `.HSX`, `.TSHS`, `.TBT.AVTRANS_*`) are
-archived by commit SHA in `.binsnapshots/<sha>/` rather than committed
-into git (which would balloon the repo); `restore` rewinds the text
-files **and** copies the binaries back in one command.  Full design
-in [`docs/protocols/run-checkpoints.md`](docs/protocols/run-checkpoints.md).
+Under the hood each run directory becomes its own small git repo. The
+big binaries are stored *outside* git (git handles huge binaries
+badly) and keyed by content, then copied back in when you restore.
+Restore is **verify-first**: it checks the saved binaries are intact
+*before* touching your files, so a corrupt archive aborts cleanly
+instead of leaving you with a half-restored, unusable directory. You
+can also drive all of this from the run-history panel in the sidebar.
+Plain-language guide: [`docs/checkpoints-guide.md`](docs/checkpoints-guide.md);
+full contract: [`docs/protocols/run-checkpoints.md`](docs/protocols/run-checkpoints.md).
 
-### Benchmark a SIESTA-GPU project
+### Find the fastest settings for your machine (benchmark)
 
-`molbuilder bench siesta-gpu <project_dir>` sweeps over
-`(np, omp, BlockSize, ELPA-stage, NUMA-pin, GPU/CPU)` test points
-and reports per-iter wall time so you can pick a production point
-from measurement instead of guessing.  Default sweep is 22 points
-(11 shapes × ELPA-1/2STAGE); custom sweeps via `--points "p1 p2
-..."` with `np,omp,bs[,diag[,pin[,gpu]]]` tuples.  Full reference
-(point-string syntax, output layout, defaults) in
+**The problem it solves.** SIESTA's speed depends on how many CPU
+cores and GPUs you give it, how you split the work between them, and
+a few solver options — and the best choice for *your* structure on
+*your* hardware is often surprisingly different from the rule of
+thumb. Guessing wastes cluster time; testing by hand is tedious.
+
+`molbuilder bench siesta-gpu <project_dir>` runs your structure under
+a range of settings and reports the wall-clock time for each, so you
+can read the fastest one off a table instead of guessing.
+
+```bash
+# Runs a short sweep (a few SCF cycles per point, minutes not hours)
+# and prints a ranked timing table.
+molbuilder bench siesta-gpu projects/BDT/optimization/TJ-BDT-Au111
+```
+
+Each "point" it tests is a combination of core count, GPU on/off, and
+solver options; the default sweep covers 22 sensible combinations. You
+can define your own set with `--points` when you want to explore a
+specific corner. Full syntax and output layout are in
 [§ Performance benchmarking](#performance-benchmarking--molbuilder-bench-siesta-gpu)
 below.
+
+### Run a staged optimization on an HPC cluster
+
+**The problem it solves.** Relaxing a structure to publication quality
+in one shot is slow and fragile, and running on a shared cluster means
+writing SLURM scripts, remembering which conda env to load, and
+chaining stages by hand. molbuilder does all of that for you.
+
+The idea is a **ladder of stages** — a cheap, loose warm-up first, then
+a tighter, more expensive finish — where each stage starts from where
+the last one stopped (a *warm start*), so the expensive stage only has
+to polish an already-good geometry.
+
+```mermaid
+flowchart LR
+  A["your structure<br/>(.xyz / .pdb)"] -->|"fdf … --jobset<br/>(build the bundle)"| B[["bundle/<br/>inputs + the plan"]]
+  B -->|"scp to the cluster"| C[["bundle/ on HPC"]]
+  C -->|"jobset prep"| D["each stage gets its own folder"]
+  D -->|"jobset plan"| E["review before anything runs"]
+  E -->|"jobset submit"| F["stages run in order,<br/>each warm-starting the next"]
+  F --> G["your relaxed geometry"]
+```
+
+You build a self-contained **bundle** once, copy it wherever you want
+to run, and drive it with three commands. Build on your laptop, run on
+a supercomputer — the bundle carries everything it needs.
+
+```bash
+# 1. Build the bundle (on laptop or cluster). --stage-strategy picks the
+#    ladder: loose-only | publishable (default) | vib-quality.
+molbuilder fdf my-structure.xyz bundle/JOB.fdf \
+    --stage-strategy publishable --jobset --psml-lib ~/pseudopotentials
+
+# 2. Copy it to the cluster (it is self-contained).
+scp -r bundle/ you@cluster:/scratch/you/myrun/
+
+# 3. On the cluster: lay out the per-stage folders, review, then run.
+molbuilder jobset prep   bundle/    # each stage its own folder
+molbuilder jobset plan   bundle/    # see order + resources BEFORE running
+molbuilder jobset submit bundle/    # queue the chain
+molbuilder jobset status bundle/    # where it is + the resume point
+```
+
+You can give each stage its own queue and resources (a small warm-up,
+a big final) with `--stage-resources`. molbuilder writes the SLURM
+submit scripts and the "activate the right conda env" preamble for
+you, from the settings in `molbuilder.json` (see
+[Setting up `molbuilder.json`](#setting-up-molbuilderjson-so-generated-wrappers-run-standalone)).
+Copy-paste guide: [`docs/staged-relaxation-guide.md`](docs/staged-relaxation-guide.md);
+SLURM specifics: [`docs/protocols/slurm-integration.md`](docs/protocols/slurm-integration.md).
 
 ---
 
@@ -279,93 +386,104 @@ per-atom labels never orphan.
 
 ![Molbuilder workspace: Au–BDT–Au junction in the 3Dmol viewer at centre, atom-list and selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right](docs/img/molbuilder-workspace.png)
 
-The Molbuilder tab is the only tab that holds in-memory canvas
-state.  Every other tab reads from disk.  All commands are reachable
-from a single screen via foldable panels.
+This is your **workbench**: the one place where you build and edit a
+structure interactively. Everything you do here lives in the browser
+as you work; when you're happy with it, you **Save** it to your
+project as files, and the calculation tabs read those files. The other
+four tabs never edit — they only consume what you saved.
 
-**Panels:**
+```mermaid
+flowchart LR
+  subgraph M["Molbuilder tab (your live workbench)"]
+    IN["load a file<br/>or build from a<br/>SMILES / sequence / name"] --> ED["edit: select atoms,<br/>pose, add electrodes"]
+    ED --> SV["Save"]
+  end
+  SV -->|"writes .xyz + a sidecar<br/>of per-atom labels"| F[("project files")]
+  F -->|"read (never edited)"| T["Structure / Spectrum /<br/>Transport / Results tabs"]
+```
 
-- **Sources** — load `.xyz` / `.pdb` from the sidebar, or generate
-  from a SMILES string (RDKit), a peptide / DNA / RNA sequence, a
-  compound name (PubChem), or a canonical B / A / Z DNA helix
-  (3DNA, optional).
-- **Atom** — click atoms in the viewer or atom list to select;
-  Shift-click extends the selection.  Selected atoms render with
-  an orange wireframe halo visible from any camera angle.  Delete
-  removes selected atoms (e.g. strip H caps to expose S anchors);
-  Add inserts a new atom at `(dx, dy, dz)` with a live distance
-  readout.
-- **Pose** — orient an anchor pair onto the z-axis with a tilt
-  slider, or rotate the structure around x / y / z with a
-  centroid or origin pivot.
-- **Geom** — centre the geometric centroid at the origin or apply
-  an explicit `(Δx, Δy, Δz)` shift.  Useful for cleanup after
-  chained ops or for recovering an off-origin xyz.
-- **Junction** — add FCC electrode slabs (Au, Ag, Cu, Ni, Pt, Pd
-  on 100 / 110 / 111) at a chosen gap.  In *anchorless* mode
-  (default) slabs land at `z = ±gap/2` around the world origin.
-  In *anchor-pair* mode (legacy) slabs are placed so the midpoint
-  of two selected anchor atoms becomes the slab midpoint.
-- **Save** — write `<project>/<name>.xyz` and a `.molstruct.json`
-  sidecar carrying per-atom labels; file-driven task tabs pick
-  them up.
+**Your in-progress work is not lost when you click around.** The
+workbench remembers your structure, selection, and view as you switch
+tabs, and even if you reload the page — so a stray navigation or an
+accidental refresh doesn't throw away an hour of editing. Saving to
+your project is the separate, deliberate step that turns it into files.
 
-**Notable details:**
+**The panels (all on one screen, fold them open as needed):**
 
-- A 20-deep slab-only Undo lets you sweep `gap` values
-  exploratorily without losing your atom-edit history.
-- Element-aware contact distances ship as defaults (2.40 Å Au–S,
-  2.50 Å Ag–S, 2.30 Å Cu–S / Pd–S, 2.20 Å Ni–S, 2.05 Å Pt–N) with
-  citations in
-  [`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json).
-- *Focus molecule* anchors the camera on the molecule (ignoring
-  the bulky slabs) when interaction feels off-centre after adding
-  electrodes.
-- The auto-detection chip identifies the chemistry (e.g.
-  "Au-thiol-Au junction; closed-shell singlet") and surfaces
-  validator warnings inline.
+- **Sources** — start a structure: load an `.xyz` / `.pdb` from the
+  sidebar, or generate one from a SMILES string, a peptide / DNA / RNA
+  sequence, a compound name (looked up on PubChem), or a canonical
+  B / A / Z-form DNA helix.
+- **Atom** — click atoms in the viewer (or the atom list) to select
+  them; Shift-click adds more. Selected atoms get an orange halo you
+  can see from any angle. Delete strips atoms (e.g. remove the H caps
+  to expose the sulfur anchors of a thiol); Add drops in a new atom at
+  a chosen offset with a live distance readout.
+- **Pose** — aim a chosen pair of atoms along the z-axis (with a tilt
+  slider), or rotate the whole structure about x / y / z. This is how
+  you stand a molecule up the way a junction needs it.
+- **Geom** — recenter the structure on the origin, or nudge it by an
+  explicit `(Δx, Δy, Δz)`. Handy cleanup after a series of edits.
+- **Junction** — the one-click part: add two metal electrode slabs
+  (Au, Ag, Cu, Ni, Pt, or Pd, on the 100 / 110 / 111 face) at a gap
+  you choose, turning a bare molecule into a metal–molecule–metal
+  junction ready for transport.
+- **Save** — write the structure to `<project>/<name>.xyz` plus a
+  small companion `.molstruct.json` file that remembers per-atom
+  labels (which atoms are the left/right electrode, which are frozen).
+  The calculation tabs pick both up automatically.
 
-Spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
+**Small touches that save time:**
+
+- **Undo** (20 steps, slab edits) lets you sweep electrode-gap values
+  freely without losing your earlier atom edits.
+- Sensible **metal–anchor bond lengths** are built in per element
+  (e.g. 2.40 Å for Au–S), with literature citations in
+  [`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json),
+  so the electrodes land at a physically reasonable distance.
+- **Focus molecule** re-centers the camera on the molecule when the
+  bulky slabs pull the view off-center.
+- An **auto-detect chip** names the chemistry it thinks you built
+  (e.g. "Au-thiol-Au junction; closed-shell singlet") and shows any
+  validator warnings right there, before you generate inputs.
+
+Guides: [`docs/workspace-guide.md`](docs/workspace-guide.md) (how the
+save/restore state works);
+spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
 ### 2. Structure optimization — SIESTA `.fdf` + PySCF `.py`
 
 ![Structure-optimization form for the BDT Au junction: engine selector at top, three workflow-group cards (Profile, Stage, Budget), 3Dmol viewer rendering the input geometry, inline detection chip and per-card issues panel](docs/img/structure-optimization-form.png)
 
-A file-driven task tab.  The user picks an `.xyz` or `.pdb` from
-the sidebar, configures the form, and Generate emits a self-contained
-`<name>.fdf` (or `.py`) plus a `<name>.run.sh` wrapper that knows
-which conda env to dispatch into.
+This is where you turn a saved structure into a **geometry-optimization
+job**. Pick an `.xyz` or `.pdb` from the sidebar, fill in a short form,
+and Generate writes a complete SIESTA `.fdf` (or PySCF `.py`) plus a
+small `run.sh` launcher that already knows which conda environment to
+use. Copy the folder to wherever you compute and run it.
 
-**Notable details:**
+**What makes it easier to get right:**
 
-- The form is generated from `SiestaConfig` / `PySCFConfig`
-  dataclass field metadata.  Adding a parameter is a single
-  dataclass field edit; the CLI flag, form input, tooltip, and
-  validator follow automatically.
-- Fields are grouped into three workflow cards — Profile, Stage,
-  and Budget — by life-cycle phase (what the system is, what
-  stage of relaxation you are at, what compute budget you have)
-  rather than alphabetically or by FDF block.  Card grouping is
-  pinned by per-card e2e tests.
-- A methods-text preview composes a draft methods paragraph that
-  stays in sync with the form state.  Useful as a starting point
-  for a manuscript; not a substitute for proof-reading.
-- The issues panel is routed through the shared
-  `analyze_structure` pipeline so the detection chip, validator,
-  and preflight always agree.  For example, Au–BDT–Au is identified
-  as a noble-metal cluster and the open-shell-spin warning is
-  suppressed.
-- Staged relaxation is supported on both engines.  PySCF runs the
-  full per-stage convergence ladder in a single script
-  (`cfg.stages: List[StageSpec]`).  SIESTA exposes `--stage {1,2,3}`
-  on the CLI as a tier-aligned overlay (stage 1 CG warm-up, stage
-  2 Broyden publishable, stage 3 Broyden crystal-tight per
-  [`docs/engines/optimization-tuning.md`](docs/engines/optimization-tuning.md));
-  a per-stage data model parallel to PySCF's is planned.
-- Each stage writes a distinct `<basename>-stage<N>.molwatch.log`.
-  Pointing the Results inspector at the run directory merges the
-  stages into one continuous trajectory with stage-boundary markers
-  on the energy and force plots.
+- **The form explains itself and checks itself.** Every field has a
+  hover-tooltip saying what it does, and a warnings panel flags likely
+  mistakes as you type. It's smart about chemistry — for Au–BDT–Au it
+  recognizes a gold cluster and *doesn't* nag you with a spurious
+  open-shell-spin warning.
+- **Fields are grouped the way you think about a calculation**, not
+  alphabetically: *what the system is* (Profile), *how tight this
+  relaxation should be* (Stage), and *how much compute you're willing
+  to spend* (Budget).
+- **A draft "Methods" paragraph writes itself** from your settings, as
+  a starting point for your paper (proof-read it — it's a draft, not a
+  ghost-writer).
+- **Staged relaxation on both engines.** Run the cheap-to-tight ladder
+  (see [Run a staged optimization](#run-a-staged-optimization-on-an-hpc-cluster)
+  above) — PySCF runs the whole ladder in one script; SIESTA exposes
+  it as `--stage {1,2,3}`
+  ([tuning reference](docs/engines/optimization-tuning.md)).
+- **The stages come back as one picture.** Each stage logs its own
+  progress; point the Results tab at the run folder and it stitches
+  them into a single energy/force trajectory with markers where one
+  stage handed off to the next.
 
 Spec: [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md);
 tuning reference: [`docs/engines/optimization-tuning.md`](docs/engines/optimization-tuning.md).
@@ -374,27 +492,29 @@ tuning reference: [`docs/engines/optimization-tuning.md`](docs/engines/optimizat
 
 ![Spectrum-calculation form: vertical workflow-group cards for Profile, Stage, and Budget, with defaults suitable for a small-molecule Raman run](docs/img/spectrum-form.png)
 
-A file-driven task tab that generates `<job>.spectra.py` PySCF
-scripts for harmonic vibrational analysis: frequencies, Raman
-activities, optional per-mode electronic-structure probes, and a
-scaffolded IR add-on.
+This is where you compute a **vibrational spectrum** — the peaks you'd
+compare against an experimental Raman or IR measurement. Pick a
+*relaxed* small molecule, set a couple of options, and Generate writes
+a PySCF script that computes the vibrational frequencies and their
+Raman activities (and, optionally, IR intensities).
 
-**Notable details:**
+**What makes it trustworthy:**
 
-- The Raman pipeline produces frequencies and Raman activities
-  bit-for-bit identical to a hand-written raw-PySCF reference at
-  B3LYP/def2-SVP for water.  Method and result table:
-  [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md).
-- Per-mode electronic-structure probes run optional displaced-SCF
-  jobs around the equilibrium geometry, projected onto each mode's
-  eigenvector for mode-resolved orbital responses.
-- The IR add-on (`compute_ir=True`) populates
-  `ir_intensity_km_mol` on top of the Raman finite-difference loop
-  at no extra SCF cost.  Absolute IR magnitudes are not validated;
-  treat them as preliminary.
-- The output format includes mass-weighted canonical eigenvectors
-  for post-hoc Raman / IR re-projection plus display-normalised
-  eigenvectors for 3-D animation in the Results tab.
+- **The Raman numbers are validated.** For water at B3LYP/def2-SVP, the
+  frequencies and Raman activities match a hand-written, from-scratch
+  PySCF reference to the last digit — so the pipeline itself isn't
+  adding error. Method and table:
+  [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md).
+- **You can ask what each vibration does to the electrons.** An
+  optional probe nudges the geometry along a chosen vibration and
+  re-runs the electronic structure, so you see how that specific mode
+  shifts the orbitals.
+- **IR comes almost for free.** Turning IR on reuses the same
+  calculation the Raman step already does, so you get IR intensities at
+  no extra cost. (Treat the absolute IR magnitudes as preliminary —
+  they aren't validated yet.)
+- **The result plays back in 3-D.** The output stores each vibration's
+  motion so the Results tab can animate it on the molecule.
 
 Spec + bibliography:
 [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) +
@@ -404,47 +524,63 @@ Spec + bibliography:
 
 ![Transport-calculation form for the Au–BDT–Au junction: left-electrode / bridge / right-electrode region labels flow in from the .molstruct.json sidecar; the viewer renders the junction with region-coloured atoms](docs/img/transport-form.png)
 
-A file-driven task tab that emits TranSIESTA `.fdf` for zero-bias
-transmission.  Bias-scan and electrode `.TSHS` generation wizards
-are on the roadmap.
+This is where you set up a **transport calculation** — how well
+electrons flow through your metal–molecule–metal junction, as a
+transmission-vs-energy curve. Pick your junction and Generate writes a
+TranSIESTA `.fdf` for the zero-bias case. (Voltage-bias sweeps and an
+electrode-file wizard are on the roadmap.)
 
-**Notable details:**
+**What makes it easier to get right** — TranSIESTA is famously
+unforgiving, so this tab front-loads the checks:
 
-- An Au–BDT–Au fixture in `tests/data/` pins the `.fdf` emission
-  contract end-to-end (NEGF keyword set, region labels,
-  atom-ordering preflight, chemistry analyzer).  The numerical
-  T(E_F) comparison against Reed 2006 / Stokbro 2003 is a planned
-  follow-up; see [§ Scientific validation](#scientific-validation)
-  for the current status.
-- The atom-ordering preflight catches the canonical TranSIESTA
-  failure mode (the structure must be contiguous left-lead →
-  device → right-lead; silent miscounts produce wrong
-  transmission with no error).
-- The validator covers k-mesh, contour parameters, electrode mode,
-  and per-element mesh-cutoff defaults (Au needs a higher cutoff
-  than the SIESTA default).
-- Region labels persist through the workflow via the
-  `.molstruct.json` sidecar.  Electrode / bridge / anchor regions
-  set in the Molbuilder tab carry into the TranSIESTA emitter
-  without re-labelling.
+- **It catches the classic silent failure.** TranSIESTA needs the
+  atoms ordered strictly left-electrode → molecule → right-electrode;
+  get it wrong and you get a *wrong transmission with no error
+  message*. A preflight check verifies the ordering before you run.
+- **The electrode labels come along for free.** The left/right
+  electrode and bridge atoms you marked back in the Molbuilder tab
+  travel with the structure (in its sidecar file), so you don't
+  re-label them here.
+- **It knows the settings gold needs.** The validator checks the
+  k-mesh, energy contour, and mesh cutoff, and reminds you that gold
+  needs a finer mesh than SIESTA's default.
+- **It's pinned against the literature setup.** An 18-atom Au–BDT–Au
+  test case locks the generated input against the known-correct
+  keyword set; the end-to-end numerical comparison to Reed 2006 /
+  Stokbro 2003 is a tracked follow-up (see
+  [Scientific validation](#scientific-validation)).
 
 Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
-### 5. Results — unified inspector
+### 5. Results — look at what your calculation produced
+
+This is where you **read your results** — whether a run is still going
+or finished. Click any output file in the sidebar and the Results tab
+shows the right view for it automatically: a live optimization as a
+movie with energy/force plots, a finished spectrum as a chart you can
+click to animate, a structure in 3-D, or a raw log for reading. You
+don't choose a viewer; it picks one from the file.
+
+**Watch an optimization as it runs.** Point it at a running job and the
+geometry, energy, and forces update as SIESTA/PySCF writes them — so
+you catch a run going bad early. If your optimization ran in stages,
+they're stitched into one continuous trajectory with a marker where
+each stage handed off.
 
 ![Trajectory inspector pointed at a BDT multi-stage optimisation directory: stage molwatch logs merged into one continuous trajectory with stage-boundary markers on the energy / force / SCF-residual plots](docs/img/results-trajectory.png)
 
-For vibrational data, the spectra inspector renders a
-Lorentzian-broadened spectrum, the modes table, and a 3-D
-animation per mode on click.
+**See a spectrum and play its vibrations.** For a finished Raman/IR
+run, it draws the broadened spectrum and a table of modes; click a peak
+and the molecule animates that vibration in 3-D.
 
 ![Spectra inspector: Lorentzian-broadened spectrum chart, modes table with frequencies and Raman activities, 3-D viewer animating the selected mode's eigenvector](docs/img/results-spectra.png)
 
-Once a run is finished, the **Bundle for next stage** card at the
-bottom of the Results tab combines the final structure (from `.XV`
-or `_optimized.xyz`) with the labels the originating script carried
-(an in-body ATOM-METADATA block) and writes a portable `.xyz` plus
-`.molstruct.json` pair the next workflow tab can load directly.
+**Hand the result off to the next step in one click.** When a run
+finishes, the **Bundle for next stage** card takes the final,
+optimized geometry and the atom labels it was carrying (which atoms
+are electrodes, which are frozen) and writes them out as a clean
+`.xyz` + sidecar pair — ready to load straight into the Spectrum or
+Transport tab. No manual copying of coordinates, no re-labeling.
 
 ![Bundle for next stage card: text inputs for run dir / target dir / stem, overwrite checkbox, Bundle button, and a result panel that turns green for converged geometries or amber for fallback cases](docs/img/results-bundle-card.png)
 
