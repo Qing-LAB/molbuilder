@@ -44,11 +44,13 @@ def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
     user picked the backend for a reason."""
     calls = []
 
-    def fake_amber_build(kind, sequence, form, terminal, title):
+    def fake_amber_build(kind, sequence, form, terminal, title,
+                         double_strand=False, strand2=None):
         calls.append("amber")
         return "amber-result"
 
-    def fake_rdkit_build(kind, sequence, form, terminal, title):
+    def fake_rdkit_build(kind, sequence, form, terminal, title,
+                         double_strand=False, strand2=None):
         calls.append("rdkit")
         return "rdkit-result"
 

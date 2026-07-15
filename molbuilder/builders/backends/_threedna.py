@@ -240,11 +240,30 @@ def _is_alternating_gc(seq: str) -> bool:
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
-          title: Optional[str] = None, double_strand: bool = False) -> Structure:
+          title: Optional[str] = None, double_strand: bool = False,
+          strand2: Optional[str] = None) -> Structure:
     if kind not in ("dna", "rna"):
         raise ValueError(
             f"3DNA backend supports kind in 'dna'|'rna'; got {kind!r}"
         )
+
+    # An EXPLICIT second strand (strand2) => an arbitrary, possibly MISMATCHED
+    # duplex.  fiber can only make a canonical Watson-Crick duplex; route this
+    # through `rebuild` instead (base-pair-step parameters, each pair naming its
+    # two bases independently).  RNA isn't supported on this path.
+    if strand2 is not None:
+        if kind != "dna":
+            raise ValueError(
+                "explicit two-strand duplexes are DNA-only (got kind="
+                f"{kind!r}).")
+        found = _resolve()
+        if found is None:
+            from . import BackendUnavailable
+            raise BackendUnavailable(_unavailable_message())
+        seq = "".join(c for c in sequence.upper() if c.isalpha())
+        if not seq:
+            raise ValueError("Empty sequence")
+        return _build_arbitrary_duplex(found, seq, strand2, form, terminal, title)
 
     # RNA only supports A-form via fiber.
     if kind == "rna" and form not in ("A", None, ""):
@@ -458,6 +477,122 @@ def _strip_5prime_phosphate(struct: Structure) -> Structure:
                          if struct.chain_ids     is not None else None),
         title         = struct.title,
     )
+
+
+# --------------------------------------------------------------------- #
+#  Arbitrary / mismatched duplex via `rebuild`                          #
+# --------------------------------------------------------------------- #
+
+# Arnott fiber B-DNA step parameters -- a straight, canonical right-handed
+# B-helix (10 bp/turn).  Used uniformly for every step so an arbitrary
+# (possibly mismatched) two-strand duplex lands on a standard B backbone.
+_B_DNA_RISE  = 3.38    # Angstrom, rise per base-pair step
+_B_DNA_TWIST = 36.0    # degrees,  twist per base-pair step
+
+
+def _bp_step_par(strand1: str, strand2: str) -> str:
+    """Serialize a 3DNA ``bp_step.par`` file for a two-strand duplex.
+
+    One line per base pair: ``X-Y`` where X = ``strand1[i]`` (5'->3') is paired
+    ANTIPARALLEL with Y = ``strand2[N-1-i]`` (strand2 given 5'->3', read 3'->5'
+    down the duplex), followed by 12 params -- 6 intra-base-pair (Shear, Stretch,
+    Stagger, Buckle, Prop-Tw, Opening) then 6 inter-base-pair STEP (Shift, Slide,
+    Rise, Tilt, Roll, Twist).  Intra-bp params are 0 (ideal planar pair); step
+    params are 0 for the first pair (no preceding step) and Arnott B-DNA
+    (Rise 3.38 A, Twist 36 deg) thereafter.
+    """
+    n = len(strand1)
+    lines = [
+        f"{n:4d} # base-pairs",
+        "   0 # ***local base-pair & step parameters***",
+        "#        Shear    Stretch   Stagger   Buckle   Prop-Tw   Opening"
+        "     Shift     Slide     Rise      Tilt      Roll      Twist",
+    ]
+    for i in range(n):
+        x = strand1[i]
+        y = strand2[n - 1 - i]                     # antiparallel partner
+        rise  = 0.0 if i == 0 else _B_DNA_RISE
+        twist = 0.0 if i == 0 else _B_DNA_TWIST
+        vals = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,      # intra-bp
+                0.0, 0.0, rise, 0.0, 0.0, twist]   # step
+        lines.append(f"{x}-{y}  " + "".join(f"{v:10.3f}" for v in vals))
+    return "\n".join(lines) + "\n"
+
+
+def _build_arbitrary_duplex(found: "_Threedna", strand1: str, strand2: str,
+                            form: str, terminal: str,
+                            title: Optional[str]) -> Structure:
+    """Build a two-strand (possibly MISMATCHED) B-form duplex via X3DNA ``rebuild``.
+
+    ``fiber`` can only make a canonical Watson-Crick duplex (strand2 == the
+    complement of strand1).  ``rebuild`` consumes a base-pair-step parameter file
+    in which each pair names its two bases independently, so an arbitrary strand2
+    -- including non-WC mismatches (A-G, T-T, ...) -- can be laid onto a standard
+    B-DNA backbone.  Mismatched pairs are placed at the standard base-pair frame
+    as a STARTING model (they may clash; relax before use).
+
+    B-form only: ``rebuild`` uses the standard B-DNA atomic templates copied by
+    ``x3dna_utils cp_std BDNA``; A/Z-form arbitrary duplexes aren't offered (use
+    ``ds,<sequence>`` for an A/Z *canonical* duplex via fiber).
+    """
+    if (form or "B").upper() != "B":
+        raise ValueError(
+            f"two-strand (arbitrary / mismatched) duplexes are B-form only; got "
+            f"form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form canonical "
+            f"duplex (the complementary strand is generated automatically).")
+    strand2 = "".join(c for c in strand2.upper() if c.isalpha())
+    if len(strand1) != len(strand2):
+        raise ValueError(
+            f"the two strands of a duplex must be equal length (a fully "
+            f"base-paired duplex; overhangs / bulges aren't supported): "
+            f"strand1={len(strand1)} nt, strand2={len(strand2)} nt.")
+
+    par_text    = _bp_step_par(strand1, strand2)
+    x3dna_utils = os.path.join(found.root, "bin", "x3dna_utils")
+    rebuild     = os.path.join(found.root, "bin", "rebuild")
+
+    env = os.environ.copy()
+    env["X3DNA"] = found.root
+    env["PATH"]  = os.path.join(found.root, "bin") + os.pathsep + env.get("PATH", "")
+
+    with tempfile.TemporaryDirectory(prefix="molbuilder_3dna_") as workdir:
+        Path(os.path.join(workdir, "bp_step.par")).write_text(par_text)
+        pdb_path = os.path.join(workdir, "out.pdb")
+        # `rebuild -atomic` needs the standard B-DNA atomic templates copied into
+        # the CWD first; then it builds the all-atom duplex from bp_step.par.
+        for cmd in (
+            [x3dna_utils, "cp_std", "BDNA"],
+            [rebuild, "-atomic", "bp_step.par", "out.pdb"],
+        ):
+            res = subprocess.run(
+                cmd, capture_output=True, text=True,
+                cwd=workdir, env=env, stdin=subprocess.DEVNULL, timeout=60)
+            if res.returncode != 0:
+                raise RuntimeError(
+                    f"X3DNA {os.path.basename(cmd[0])} failed (exit "
+                    f"{res.returncode}).\nCommand: {' '.join(cmd)}\n"
+                    f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}")
+        if not os.path.isfile(pdb_path):
+            raise RuntimeError("rebuild produced no output PDB.")
+        pdb_text = Path(pdb_path).read_text()
+
+    if not pdb_text.strip():
+        raise RuntimeError("rebuild produced an empty PDB.")
+
+    struct = parse_pdb_to_structure(
+        pdb_text,
+        title=title or f"dna {strand1}/{strand2} (3DNA rebuild, B-form duplex)")
+    # KEEP both chains -- that IS the duplex.  Strip the spurious 5'-terminal
+    # phosphate per chain when the user asked for 5'-OH ends (rebuild, like fiber,
+    # always emits a 5'-P); H is added downstream by chemistry.add_hydrogens.
+    if terminal in ("OH", "3P"):
+        struct = _strip_5prime_phosphate(struct)
+    err = verify_backbone_connectivity(struct, "dna", max_O3_P=1.80)
+    if err is not None:
+        raise RuntimeError(
+            f"rebuild output failed connectivity check: {err} "
+            f"($X3DNA={found.root}).")
+    return struct
 
 
 # --------------------------------------------------------------------- #

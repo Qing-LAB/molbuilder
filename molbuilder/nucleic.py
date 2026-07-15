@@ -37,26 +37,37 @@ def _strip_direction(s: str) -> str:
 def _parse_dna_notation(text: str):
     """Parse the DNA-panel input notation (docs/tabs/molbuilder.md).
 
-    - bare sequence (``"ATGC"``)      -> ``("ss", "ATGC")``  single strand.
-    - ``"ds,ATGC"`` / ``"ds:ATGC"``   -> ``("ds", "ATGC")``  canonical Watson-Crick
-      duplex; the complementary strand is generated automatically.
-    Direction markers are accepted on the strand: ``5'-ATGC-3'`` (default) or
-    ``3'-ATGC-5'`` (reversed to internal 5'->3').
+    Returns ``(mode, strand1, strand2)``:
 
-    Raises ValueError for the not-yet-supported arbitrary / two-explicit-strand
-    forms, pointing at the planned X3DNA-``rebuild`` support.
+    - bare sequence (``"ATGC"``)      -> ``("ss", "ATGC", None)``  single strand.
+    - ``"ds,ATGC"`` / ``"ds:ATGC"``   -> ``("ds", "ATGC", None)``  canonical Watson-
+      Crick duplex; the complementary strand is generated automatically (fiber).
+    - two comma-separated strands     -> ``("ds", "ATGC", "GCAA")``  an EXPLICIT,
+      possibly MISMATCHED duplex (X3DNA ``rebuild``).  Both strands are 5'->3' by
+      default and paired ANTIPARALLEL.  The ``ds,`` prefix is optional here (two
+      strands already imply a duplex): ``"ATGC,GCAA"`` == ``"ds,ATGC,GCAA"``.
+
+    Direction markers are accepted per strand: ``5'-ATGC-3'`` (default) or
+    ``3'-ATGC-5'`` (reversed to internal 5'->3').
     """
     s = (text or "").strip()
     mode = "ss"
     if s[:3].lower() in ("ds,", "ds:"):
         mode, s = "ds", s[3:].strip()
     if "," in s:
-        raise ValueError(
-            "arbitrary / two-strand duplexes (e.g. \"3'-XXX-5',3'-YYY-5'\") are "
-            "not yet supported -- they need non-canonical geometry (planned via "
-            "X3DNA rebuild).  For a canonical double strand use \"ds,<sequence>\"; "
-            "the complementary strand is generated automatically.")
-    return mode, _strip_direction(s)
+        # Two explicit strands => an arbitrary duplex (regardless of a ds prefix).
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise ValueError(
+                "a two-strand duplex takes exactly two comma-separated strands "
+                "(\"strand1,strand2\", each 5'->3' by default); got "
+                f"{len(parts)} comma-separated segments.")
+        s1, s2 = _strip_direction(parts[0]), _strip_direction(parts[1])
+        if not s1 or not s2:
+            raise ValueError(
+                "both strands of a two-strand duplex must be non-empty.")
+        return "ds", s1, s2
+    return mode, _strip_direction(s), None
 
 
 def build_dna(
@@ -67,12 +78,21 @@ def build_dna(
     terminal: str = "OH",
     add_hydrogens: "bool | str" = "auto",
     protonate_phosphates: bool = True,
+    relax_clashes: bool = False,
     title: Optional[str] = None,
 ) -> Structure:
     """Build a DNA polymer from a 1-letter sequence.
 
-    A bare sequence builds a SINGLE strand; the ``ds,<seq>`` notation builds a
-    canonical Watson-Crick DUPLEX (X3DNA + B-form only; see ``_parse_dna_notation``).
+    A bare sequence builds a SINGLE strand; ``ds,<seq>`` builds a canonical
+    Watson-Crick DUPLEX; two comma-separated strands (``"strand1,strand2"``) build
+    an EXPLICIT, possibly mismatched duplex (X3DNA required; see
+    ``_parse_dna_notation``).
+
+    ``relax_clashes`` (explicit-duplex only): a mismatched base pair placed at the
+    standard frame can interpenetrate.  By default such an overlap is DETECTED and
+    a ``RuntimeWarning`` names the clashing pair (never silently emitted).  Set
+    ``relax_clashes=True`` to instead relieve it with a short OpenBabel UFF
+    minimization -- a cleaner starting geometry for a subsequent DFT relaxation.
 
     Parameters
     ----------
@@ -124,38 +144,124 @@ def build_dna(
     title
         Optional title written into XYZ comment / PDB TITLE.
     """
-    # Notation: bare -> single strand; "ds,<seq>" -> canonical WC duplex.
-    mode, seq = _parse_dna_notation(sequence)
+    # Notation: bare -> single strand; "ds,<seq>" -> canonical WC duplex;
+    # "strand1,strand2" -> explicit (possibly mismatched) duplex.
+    mode, seq, seq2 = _parse_dna_notation(sequence)
     double_strand = (mode == "ds")
+    explicit_duplex = seq2 is not None
     if double_strand:
-        # GATE: a canonical duplex needs X3DNA (fiber) + B-form (v1 scope).
+        # GATE: any duplex needs X3DNA -- canonical via fiber, arbitrary via rebuild.
         resolved = backend if backend != "auto" else auto_backend_name()
         if resolved != "threedna":
             raise ValueError(
                 "double-strand DNA requires X3DNA (the 'threedna' backend, which "
-                "builds canonical duplex geometry via fiber).  "
+                "builds duplex geometry via fiber / rebuild).  "
                 + ("It isn't installed / detected. " if resolved is None
                    else f"The selected backend is {resolved!r}. ")
                 + "Install X3DNA from x3dna.org (non-commercial license).  "
                 "Single strands work with any backend.")
-        if (form or "B").upper() not in ("B", "A", "Z"):
+        if explicit_duplex:
+            # Arbitrary / mismatched duplex (rebuild): B-form only for now.
+            if (form or "B").upper() != "B":
+                raise ValueError(
+                    f"two-strand (arbitrary / mismatched) duplexes are B-form only; "
+                    f"got form={form!r}.  Use \"ds,<sequence>\" for an A- or Z-form "
+                    f"canonical duplex (the complement is generated automatically).")
+        elif (form or "B").upper() not in ("B", "A", "Z"):
             raise ValueError(
                 f"double-strand DNA supports B / A / Z helix form; got "
-                f"form={form!r}.  (Z requires an alternating poly-d(GC) sequence.  "
-                f"Arbitrary / mismatched-sequence duplexes are planned via X3DNA "
-                f"rebuild.)")
+                f"form={form!r}.  (Z requires an alternating poly-d(GC) sequence.)")
 
     # parse_dna_sequence returns 3-letter codes (DA, DT, DG, DC).
     # Backends want a 1-letter sequence, so strip the "D" prefix.
     codes = parse_dna_sequence(seq)
     cleaned = "".join(c[1] for c in codes)
+    cleaned2 = None
+    if explicit_duplex:
+        codes2 = parse_dna_sequence(seq2)
+        cleaned2 = "".join(c[1] for c in codes2)
+        if len(cleaned) != len(cleaned2):
+            raise ValueError(
+                f"the two strands of a duplex must be equal length (a fully "
+                f"base-paired duplex; overhangs / bulges aren't supported yet): "
+                f"strand1={len(cleaned)} nt, strand2={len(cleaned2)} nt.")
     struct = dispatch(
         "dna", cleaned,
         backend=backend, form=form, terminal=terminal, title=title,
-        double_strand=double_strand,
+        double_strand=double_strand, strand2=cleaned2,
     )
     struct = _maybe_add_hydrogens(struct, add_hydrogens)
-    return _maybe_protonate(struct, protonate_phosphates)
+    struct = _maybe_protonate(struct, protonate_phosphates)
+    if explicit_duplex:
+        # A mismatched pair placed at the standard frame can interpenetrate --
+        # detect it (warn) or relieve it (opt-in).  Runs on the FINAL structure
+        # (post H-add / protonation) so the clash reflects the atoms DFT sees.
+        struct = _handle_duplex_clashes(struct, relax_clashes)
+    return struct
+
+
+# Two thresholds (Angstrom), keyed to what actually harms a downstream DFT/SIESTA
+# relaxation -- not to reaching an ideal geometry (SIESTA does that):
+#   _CLASH_WARN_A  -- an inter-residue contact this close is a real steric overlap
+#     (a mismatched base pair at the WC frame).  Below the tightest legitimate
+#     canonical contact (~1.5 A adjacent-residue H-H) and a WC H-bond (~1.8 A), so
+#     no false positives on clash-free duplexes.  Flag it so the user knows.
+#   _CLASH_DANGER_A -- NEAR-COINCIDENT atoms (nuclei almost on top of each other):
+#     THIS is what makes the first SCF step explode.  The opt-in relief only needs
+#     to clear this line; a merely-tight contact above it, SIESTA relaxes fine
+#     (user guidance 2026-07-14).
+_CLASH_WARN_A   = 1.3
+_CLASH_DANGER_A = 1.0
+
+
+def _handle_duplex_clashes(struct: Structure, relax_clashes: bool) -> Structure:
+    """Detect (warn) or relieve (opt-in) steric clashes in an explicit duplex.
+
+    Never silently emits a clashing structure.  A mismatched base pair placed at
+    the standard frame can interpenetrate; the danger for a subsequent relaxation
+    is NEAR-COINCIDENT atoms (explosive first SCF step), not a merely imperfect
+    geometry.  So:
+      - ``relax_clashes=False`` (default): a ``RuntimeWarning`` names the clashing
+        pair and, if it's near-coincident, flags the explosion risk.
+      - ``relax_clashes=True``: a short force-field minimization pushes atoms apart
+        to a SIESTA-relaxable distance (clears near-coincidence); a residual warning
+        fires only if some pair is STILL near-coincident (< ``_CLASH_DANGER_A``).
+    """
+    import warnings
+    from .chemistry import min_nonbonded_contact, relieve_clashes
+
+    d, i, j = min_nonbonded_contact(struct)
+    if d is None or d >= _CLASH_WARN_A:
+        return struct                      # clash-free (canonical / spaced pairs)
+
+    def _lab(k: int) -> str:
+        ch  = struct.chain_ids[k]   if struct.chain_ids   is not None else "?"
+        rid = struct.residue_ids[k] if struct.residue_ids is not None else "?"
+        nm  = (struct.atom_names[k] if struct.atom_names  is not None
+               else struct.elements[k])
+        return f"{ch}{rid}:{nm}"
+
+    if relax_clashes:
+        struct = relieve_clashes(struct)
+        d2, _, _ = min_nonbonded_contact(struct)
+        if d2 is not None and d2 < _CLASH_DANGER_A:
+            warnings.warn(
+                f"Relieved clashes but a residual NEAR-COINCIDENT contact remains "
+                f"({d2:.2f} A) -- an unusually dense run of mismatches; inspect or "
+                f"minimize further before relaxing the geometry.",
+                RuntimeWarning, stacklevel=3)
+        return struct
+
+    danger = ("  These atoms are NEAR-COINCIDENT -- relaxing as-is risks an "
+              "explosive first SCF step. " if d < _CLASH_DANGER_A else "  ")
+    warnings.warn(
+        f"This duplex has a steric CLASH at {_lab(i)}<->{_lab(j)} ({d:.2f} A) -- a "
+        f"non-Watson-Crick (mismatched) base pair at the standard frame." + danger
+        + "Rebuild with relax_clashes=True (a short force-field minimization that "
+        "removes the near-coincidence; SIESTA relaxes the rest) or minimize "
+        "externally before a geometry optimization.",
+        RuntimeWarning, stacklevel=3)
+    return struct
 
 
 def build_rna(

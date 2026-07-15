@@ -59,11 +59,12 @@ def is_available() -> bool:
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
-          title: Optional[str] = None, double_strand: bool = False) -> Structure:
-    if double_strand:
+          title: Optional[str] = None, double_strand: bool = False,
+          strand2: Optional[str] = None) -> Structure:
+    if double_strand or strand2 is not None:
         raise ValueError(
             "double-strand DNA is not supported by the amber backend; it "
-            "requires X3DNA (canonical duplex geometry).")
+            "requires X3DNA (canonical or arbitrary duplex geometry).")
     if not is_available():
         from . import BackendUnavailable
         raise BackendUnavailable(

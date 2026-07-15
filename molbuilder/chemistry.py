@@ -1368,6 +1368,113 @@ def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
 
 
 # --------------------------------------------------------------------- #
+#  Steric-clash detection + relief                                      #
+#                                                                        #
+#  Building a duplex with a non-Watson-Crick base pair (a mismatch)     #
+#  places the two bases at the standard WC frame, where they can        #
+#  interpenetrate -- a topologically correct but physically unusable    #
+#  starting structure (huge forces / SCF trouble if relaxed as-is).     #
+#  `min_nonbonded_contact` DETECTS the overlap; `relieve_clashes`       #
+#  optionally REMOVES it with a short force-field minimization.         #
+# --------------------------------------------------------------------- #
+
+
+def min_nonbonded_contact(struct: Structure, search_radius: float = 2.5):
+    """Closest approach between atoms in DIFFERENT residues -- a steric-clash probe.
+
+    Returns ``(distance, i, j)`` for the closest inter-residue atom pair within
+    ``search_radius`` Angstrom, or ``(None, None, None)`` when the structure has no
+    residue labels or no inter-residue pair inside the radius.
+
+    Inter-residue only: within a residue, close contacts are covalent bonds (not
+    clashes).  Between residues in DNA the only covalent link is the O3'-P
+    backbone (~1.6 A), so any inter-residue pair well below that is an overlap --
+    e.g. a mismatched base pair whose two bases interpenetrate.
+    """
+    if struct.residue_ids is None:
+        return (None, None, None)
+    P = np.asarray(struct.positions, dtype=float)
+    if P.shape[0] < 2:
+        return (None, None, None)
+    chains = struct.chain_ids if struct.chain_ids is not None else [None] * len(P)
+    keys = list(zip(chains, struct.residue_ids))
+    from scipy.spatial import cKDTree
+    tree = cKDTree(P)
+    best = (None, None, None)
+    for i, j in tree.query_pairs(r=search_radius):
+        if keys[i] == keys[j]:
+            continue
+        d = float(np.linalg.norm(P[i] - P[j]))
+        if best[0] is None or d < best[0]:
+            best = (d, int(i), int(j))
+    return best
+
+
+def relieve_clashes(struct: Structure, steps: int = 1000) -> Structure:
+    """Push apart steric overlaps with a short OpenBabel UFF minimization.
+
+    Returns a new Structure (same atom order + count).  The GOAL is not an ideal
+    geometry -- a subsequent DFT/SIESTA relaxation does that -- but to remove
+    NEAR-COINCIDENT atoms that would otherwise make the first SCF step explode.
+
+    Two robustness measures make this GENERAL (any sequence / mismatch), not tuned
+    to one pair:
+
+      1. **Bond cleanup.**  Our PDB carries no CONECT, so OpenBabel perceives bonds
+         from geometry -- and perceives an OVERLAPPING pair as BONDED, which would
+         pin it together and defeat the minimization.  We first DELETE every
+         perceived inter-residue bond except the real O3'-P backbone link, so UFF
+         sees the clashing atoms as non-bonded and repels them.  (This is also why
+         the result is safe to hand downstream: no atoms left "wrongly bonded".)
+      2. **Steepest-descent warm-up** then conjugate gradients: SD clears the hard
+         short-range overlaps that CG alone can get stuck on.
+
+    Raises RuntimeError if OpenBabel isn't installed / the force field won't set
+    up -- the caller (build_dna) surfaces that rather than silently no-op'ing.
+    """
+    try:
+        from openbabel import openbabel as ob
+    except ImportError as exc:      # pragma: no cover - env-dependent
+        raise RuntimeError(
+            "relax_clashes needs OpenBabel (`conda install -c conda-forge "
+            "openbabel`).") from exc
+
+    conv = ob.OBConversion()
+    conv.SetInAndOutFormats("pdb", "pdb")
+    mol = ob.OBMol()
+    conv.ReadString(mol, struct.to_pdb())
+
+    def _res_key(atom):
+        r = atom.GetResidue()
+        return (r.GetChain(), r.GetNum()) if r else None
+
+    def _atom_name(atom):
+        r = atom.GetResidue()
+        return r.GetAtomID(atom).strip() if r else ""
+
+    # Drop perceived inter-residue bonds except the O3'-P backbone linkage: the
+    # mis-perceived clash "bond" is what pins overlapping atoms together.
+    doomed = []
+    for bond in ob.OBMolBondIter(mol):
+        a1, a2 = bond.GetBeginAtom(), bond.GetEndAtom()
+        if _res_key(a1) != _res_key(a2):
+            names = {_atom_name(a1), _atom_name(a2)}
+            if names not in ({"O3'", "P"}, {"O3*", "P"}):
+                doomed.append(bond)
+    for bond in doomed:
+        mol.DeleteBond(bond)
+
+    ff = ob.OBForceField.FindForceField("UFF")
+    if ff is None or not ff.Setup(mol):
+        raise RuntimeError(
+            "OpenBabel UFF force field could not be set up for clash relief.")
+    ff.SteepestDescent(max(1, steps // 2))   # clear hard short-range overlaps
+    ff.ConjugateGradients(steps)             # then settle
+    ff.GetCoordinates(mol)
+    return Structure.from_pdb(conv.WriteString(mol), title=struct.title)
+
+
+# --------------------------------------------------------------------- #
 #  Pauling electronegativity table + heuristic partial-charge estimate #
 #                                                                        #
 #  This is a heuristic, not a QM result.  Used by the validation pass  #

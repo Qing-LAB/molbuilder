@@ -107,11 +107,14 @@ def dispatch(kind: str, sequence: str, *,
              form: str = "B",
              terminal: str = "OH",
              title=None,
-             double_strand: bool = False):
+             double_strand: bool = False,
+             strand2: "str | None" = None):
     """Build a nucleic acid using the named backend (or auto-detect).
 
     ``double_strand`` builds a canonical Watson-Crick DUPLEX (only the threedna
-    backend supports it; build_dna gates it to X3DNA + B-form).
+    backend supports it; build_dna gates it to X3DNA + B-form).  ``strand2`` (an
+    explicit second strand, 5'->3') builds an ARBITRARY / mismatched duplex via
+    X3DNA ``rebuild`` -- threedna-only, B-form; other backends reject it.
     """
     backends = _load_backends()
 
@@ -127,7 +130,7 @@ def dispatch(kind: str, sequence: str, *,
                 "  - `pip install rdkit`  (folded conformer, chemistry-only)."
             )
         return backends[chosen](kind, sequence, form, terminal, title,
-                                double_strand=double_strand)
+                                double_strand=double_strand, strand2=strand2)
 
     if backend not in backends:
         raise ValueError(
@@ -136,7 +139,7 @@ def dispatch(kind: str, sequence: str, *,
         )
 
     return backends[backend](kind, sequence, form, terminal, title,
-                             double_strand=double_strand)
+                             double_strand=double_strand, strand2=strand2)
 
 
 __all__ = [

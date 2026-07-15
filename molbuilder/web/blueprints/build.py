@@ -508,6 +508,7 @@ def api_build_molecule():
         return jsonify({"ok": False, "error": "empty input"}), 400
     backend_used: str | None = None
     h_mode_used: str | None = None
+    build_warnings: list[str] = []
     try:
         # DNA / RNA accept extra knobs (backend / form / terminal).
         if kind in ("dna", "rna"):
@@ -536,6 +537,10 @@ def api_build_molecule():
                 "protonate_phosphates":
                     bool(body.get("protonate_phosphates", True)),
             }
+            # relax_clashes (DNA explicit-duplex): opt-in force-field relief of a
+            # mismatched pair's steric overlap.  build_dna ignores it for ss / RNA.
+            if kind == "dna":
+                kwargs["relax_clashes"] = bool(body.get("relax_clashes", False))
             # Resolve "auto" before the build so the UI can display
             # which backend actually ran -- this matches dispatch()'s
             # selection logic exactly (see auto_backend_name docstring).
@@ -547,7 +552,14 @@ def api_build_molecule():
                 backend_used = auto_backend_name()
             else:
                 backend_used = requested
-            struct = _BUILDERS[kind](text, **kwargs)
+            # Capture builder RuntimeWarnings (e.g. a mismatched-duplex steric
+            # CLASH, or the amber "extended polymer" note) so the UI can surface
+            # them -- otherwise they'd only reach the server log.
+            import warnings as _warnings
+            with _warnings.catch_warnings(record=True) as _caught:
+                _warnings.simplefilter("always")
+                struct = _BUILDERS[kind](text, **kwargs)
+            build_warnings = [str(w.message) for w in _caught]
         elif kind in ("smiles", "name"):
             # RDKit-first, OpenBabel-fallback (Name lookup resolves to SMILES then
             # builds, so it rides the same chain): surface WHICH engine produced
@@ -589,6 +601,9 @@ def api_build_molecule():
         # for non-nucleic builds (peptide/SMILES/name) where the
         # kwarg doesn't apply.
         "add_hydrogens_mode": h_mode_used,
+        # Builder warnings (e.g. a mismatched-duplex steric clash) for the UI to
+        # surface; empty list when the build was clean.
+        "build_warnings":     build_warnings,
     })
 
 

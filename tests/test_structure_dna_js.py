@@ -149,7 +149,8 @@ class TestHappyPath:
             console.log(JSON.stringify(capturedBody));
         ''')
         assert out == {"kind": "dna", "input": "ACGT",
-                       "form": "B", "backend": "auto"}
+                       "form": "B", "backend": "auto",
+                       "relax_clashes": False}
 
     def test_explicit_form_forwarded(self):
         out = _run_node('''

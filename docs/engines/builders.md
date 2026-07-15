@@ -40,18 +40,47 @@ build_rna(sequence: str, *, backend="auto", form="A", terminal="OH",
           protonate_phosphates=True, title=None) -> Structure
 ```
 
-**DNA strand notation (`build_dna` `sequence`).** A bare sequence
-(`"ATGC"`) builds a **single strand**. Prefix with `ds,` (`"ds,ATGC"`) to
-build a **canonical Watson-Crick duplex** — `fiber` lays down the given strand
-plus its auto-generated complement (both chains kept; the 5'-phosphate is
-stripped per strand for the `terminal="OH"` default). Direction markers are
-accepted (`5'-ATGC-3'` default; `3'-ATGC-5'` reverses to internal 5'→3').
-**Gate:** double-strand requires the **`threedna` (X3DNA)** backend and a
-supported helix form — **B / A / Z** (Z needs an alternating poly-d(GC)
-sequence; it is intrinsically a duplex) — else a clear `ValueError` (only
-`fiber` builds canonical duplex geometry). Two explicit strands
-(`"3'-XXX-5',3'-YYY-5'"`, i.e. arbitrary / mismatched duplexes) are parsed but
-currently rejected with a pointer to the X3DNA-`rebuild` follow-up.
+**DNA strand notation (`build_dna` `sequence`).** Three forms, all parsed by
+`nucleic._parse_dna_notation` into `(mode, strand1, strand2)`:
+
+1. **Single strand** — a bare sequence (`"ATGC"`).
+2. **Canonical duplex** — prefix with `ds,` (`"ds,ATGC"`): `fiber` lays down the
+   given strand plus its auto-generated Watson-Crick complement.
+3. **Explicit / arbitrary duplex** — two comma-separated strands
+   (`"ATGC,GCAT"`; the `ds,` prefix is optional since two strands already imply
+   a duplex). Both are 5'→3' by default and paired **antiparallel** (base pair
+   *i* couples `strand1[i]` with `strand2[N-1-i]`). A non-complementary pair is a
+   **mismatch** (A-G, T-T, …) — placed at the standard base-pair frame as a
+   B-form starting model (relax before use). Built via X3DNA **`rebuild`** from
+   an idealized Arnott B-DNA base-pair-step parameter file
+   (`_bp_step_par` → `x3dna_utils cp_std BDNA` → `rebuild -atomic`).
+
+Both duplex forms keep both chains and strip the spurious 5'-phosphate per
+strand for the `terminal="OH"` default. Direction markers are accepted per
+strand (`5'-ATGC-3'` default; `3'-ATGC-5'` reverses to internal 5'→3').
+**Gate:** any duplex requires the **`threedna` (X3DNA)** backend. Canonical
+duplexes support **B / A / Z** helix form (Z needs an alternating poly-d(GC)
+sequence); explicit two-strand duplexes are **B-form only** (rebuild uses the
+standard B-DNA template) and must be **equal length** (no overhangs/bulges yet).
+Violations raise a clear `ValueError`.
+
+**Mismatch steric clashes (`relax_clashes`).** A non-Watson-Crick pair placed at
+the standard base-pair frame *interpenetrates* — its two bases overlap (e.g. a
+purine·purine pair can leave atoms <0.9 Å apart). That's topologically correct
+but physically unusable: relaxing it as-is risks huge forces / a non-converging
+first SCF step. `build_dna` therefore, for explicit duplexes only, measures the
+closest inter-residue contact (`chemistry.min_nonbonded_contact`) and:
+
+- **default (`relax_clashes=False`)** — emits a `RuntimeWarning` naming the
+  clashing pair (and flagging *near-coincident* atoms); never silently emits it.
+- **`relax_clashes=True`** — relieves it via `chemistry.relieve_clashes`: a short
+  OpenBabel UFF minimization. The overlapping atoms are otherwise *mis-perceived
+  as bonded* (our PDB has no CONECT), so it first **deletes every perceived
+  inter-residue bond except the O3'-P backbone link**, then steepest-descent +
+  conjugate-gradients pushes them apart. The goal isn't an ideal geometry — the
+  downstream DFT/SIESTA relaxation does that — but to remove *near-coincidence*
+  (the explosion risk). General across all mismatch types + dense multi-mismatch
+  runs (verified: worst-case 6× G·G goes 0.28 Å → ~1.0 Å).
 
 * `backend`:
   * `"auto"`: prefer `threedna` (X3DNA fiber, canonical helix) if

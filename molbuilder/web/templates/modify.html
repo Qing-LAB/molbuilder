@@ -158,17 +158,21 @@
         Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
         Picks the best installed backend (3DNA preferred, AmberTools fallback).
         <br>
-        <strong>Double strand:</strong> prefix the sequence with
-        <code>ds,</code> — e.g. <code>ds,ATGCATGC</code> — to build a canonical
-        Watson–Crick duplex; the complementary strand is generated automatically.
-        (Requires 3DNA. B / A / Z helix — Z needs an alternating poly-d(GC)
-        sequence. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.
-        Arbitrary / mismatched duplexes are coming later.)
+        <strong>Canonical duplex:</strong> prefix with <code>ds,</code> — e.g.
+        <code>ds,ATGCATGC</code> — for a Watson–Crick duplex; the complementary
+        strand is generated automatically (B / A / Z helix — Z needs an
+        alternating poly-d(GC) sequence).
+        <br>
+        <strong>Explicit / mismatched duplex:</strong> give the two strands
+        comma-separated — e.g. <code>ATGCATGC,GCATGCAT</code> — both 5'→3', paired
+        antiparallel and equal length. A non-complementary base pairs as a
+        mismatch (a B-form starting model — relax before use). B-form only.
+        (Requires 3DNA. Read 5'→3'; write <code>3'-…-5'</code> to reverse a strand.)
       </p>
       <label class="source-input-row">
         <span>Sequence</span>
         <input id="dna-input" type="text"
-               placeholder="e.g. ATGCATGC   (or ds,ATGCATGC for a duplex)"
+               placeholder="ATGCATGC · ds,ATGCATGC · ATGC,GCAT (two strands)"
                autocomplete="off" spellcheck="false">
       </label>
       <label class="source-input-row">
@@ -191,6 +195,11 @@
           <option value="amber">AmberTools (extended chain)</option>
           <option value="rdkit">RDKit (folded conformer)</option>
         </select>
+      </label>
+      <label class="source-input-row"
+             title="Two-strand duplexes only: a non-complementary (mismatched) base pair interpenetrates at the standard frame.  When checked, a short force-field minimization pushes the overlapping atoms apart (removes near-coincidence) so a later DFT/SIESTA relaxation doesn't explode.  Unchecked, a clash is only reported.">
+        <span>Relieve clashes</span>
+        <input id="dna-relax-clashes" type="checkbox">
       </label>
       <div class="source-actions">
         <button id="dna-generate-btn" class="ghost">Generate</button>
