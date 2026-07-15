@@ -184,10 +184,15 @@
 }
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
-/* ---- STACK: the card can't hold --viewer-min + handle + --panel-min side by side
-   (320 + 22 + 320 ~= 662).  Viewer on top (a centred square, never full-width), panel
-   below; the handle becomes a horizontal bar; fold collapses the panel HEIGHT. ---- */
-@container (max-width: 664px) {
+/* ---- STACK when the card can't give the viewer its FULL square edge beside the
+   panel: --viewer-edge(max 560) + handle(22) + --panel-min(320) ~= 902.  BELOW this
+   the side-by-side viewer square would shrink SHORTER than the fixed-height panel
+   (the "viewer much shorter than the panel" case, e.g. projects sidebar open on a
+   narrow card) -- so instead we go VERTICAL: viewer on top (a centred square,
+   full-width up to its edge), panel below, aligned.  ABOVE it the viewer reaches
+   --viewer-edge and its bottom lines up with the panel.  The handle becomes a
+   horizontal bar; fold collapses the panel HEIGHT. ---- */
+@container (max-width: 902px) {
     .molview-body { flex-direction: column; align-items: center; }
     .molview-body > .molview-viewer {
         flex: 0 0 auto;
