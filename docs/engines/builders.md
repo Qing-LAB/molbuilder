@@ -46,12 +46,12 @@ build a **canonical Watson-Crick duplex** — `fiber` lays down the given strand
 plus its auto-generated complement (both chains kept; the 5'-phosphate is
 stripped per strand for the `terminal="OH"` default). Direction markers are
 accepted (`5'-ATGC-3'` default; `3'-ATGC-5'` reverses to internal 5'→3').
-**Gate:** double-strand requires the **`threedna` (X3DNA)** backend **and**
-`form="B"` — else a clear `ValueError` (only `fiber` builds canonical duplex
-geometry; A/Z + arbitrary-sequence duplexes are a follow-up via X3DNA
-`rebuild`). Two explicit strands (`"3'-XXX-5',3'-YYY-5'"`, i.e. arbitrary /
-mismatched duplexes) are parsed but currently rejected with a pointer to that
-follow-up.
+**Gate:** double-strand requires the **`threedna` (X3DNA)** backend and a
+supported helix form — **B / A / Z** (Z needs an alternating poly-d(GC)
+sequence; it is intrinsically a duplex) — else a clear `ValueError` (only
+`fiber` builds canonical duplex geometry). Two explicit strands
+(`"3'-XXX-5',3'-YYY-5'"`, i.e. arbitrary / mismatched duplexes) are parsed but
+currently rejected with a pointer to the X3DNA-`rebuild` follow-up.
 
 * `backend`:
   * `"auto"`: prefer `threedna` (X3DNA fiber, canonical helix) if

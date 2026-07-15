@@ -316,17 +316,18 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     #   already validated alternating-GC upstream, so len is even).
     if form == "Z":
         n_repeats = len(seq) // 2  # 2 bases per GC repeat unit
-        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [
-            f"-rep={n_repeats}",
-            "-single",
-        ]
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [f"-rep={n_repeats}"]
+        if not double_strand:
+            # Z-DNA is inherently a duplex (poly d(GC):poly d(GC)); -single
+            # extracts one strand.  Omit it for a double strand.
+            cmd.append("-single")
     else:
         cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [f"-seq={seq}"]
         if not double_strand:
             # Single-stranded output (the default).  With `double_strand`,
             # omitting `-single` makes fiber lay down the given strand PLUS its
-            # canonical Watson-Crick complement -> a B-form duplex.  (build_dna
-            # gates double_strand to X3DNA + B-form, so we only reach here for B.)
+            # canonical Watson-Crick complement -> a duplex (B- or A-form via the
+            # -b / -a flag in _FIBER_FLAGS).
             cmd.append("-single")
 
     # fiber needs $X3DNA in the env at runtime so its auxiliary scripts

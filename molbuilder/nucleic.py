@@ -138,11 +138,12 @@ def build_dna(
                    else f"The selected backend is {resolved!r}. ")
                 + "Install X3DNA from x3dna.org (non-commercial license).  "
                 "Single strands work with any backend.")
-        if (form or "B").upper() != "B":
+        if (form or "B").upper() not in ("B", "A", "Z"):
             raise ValueError(
-                f"double-strand DNA is currently B-form only; got form={form!r}.  "
-                "A-form / Z-form / arbitrary-sequence duplexes are planned "
-                "(via X3DNA rebuild).")
+                f"double-strand DNA supports B / A / Z helix form; got "
+                f"form={form!r}.  (Z requires an alternating poly-d(GC) sequence.  "
+                f"Arbitrary / mismatched-sequence duplexes are planned via X3DNA "
+                f"rebuild.)")
 
     # parse_dna_sequence returns 3-letter codes (DA, DT, DG, DC).
     # Backends want a 1-letter sequence, so strip the "D" prefix.

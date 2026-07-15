@@ -46,13 +46,13 @@ def test_ds_rejected_on_non_x3dna_backend():
         build_dna("ds,ATGC", backend="rdkit")
 
 
-def test_ds_rejected_on_non_B_form():
-    # Force the X3DNA backend so we reach the form check (not the backend gate).
+def test_ds_rejected_on_unsupported_form():
+    # B / A / Z are supported; anything else is rejected up front.
     from molbuilder.builders.backends import auto_backend_name
     if auto_backend_name() != "threedna":
         pytest.skip("X3DNA not installed; the backend gate fires first")
-    with pytest.raises(ValueError, match="B-form only"):
-        build_dna("ds,ATGC", backend="threedna", form="A")
+    with pytest.raises(ValueError, match="B / A / Z"):
+        build_dna("ds,ATGC", backend="threedna", form="Q")
 
 
 # --------------------------------------------------------------------- #
@@ -71,6 +71,21 @@ def test_ds_build_is_a_two_chain_duplex(_x3dna):
     ss = build_dna(seq)
     ds = build_dna("ds," + seq)
     # A canonical duplex is the strand PLUS its complement -> ~2x the atoms.
+    assert len(ds.elements) == pytest.approx(2 * len(ss.elements), abs=20)
+    assert sorted(set(ds.chain_ids)) == ["A", "B"]
+
+
+def test_ds_a_form_duplex(_x3dna):
+    ss = build_dna("ATGCATGC", form="A")
+    ds = build_dna("ds,ATGCATGC", form="A")
+    assert len(ds.elements) == pytest.approx(2 * len(ss.elements), abs=20)
+    assert sorted(set(ds.chain_ids)) == ["A", "B"]
+
+
+def test_ds_z_form_duplex(_x3dna):
+    # Z-DNA is inherently a duplex; requires alternating poly-d(GC).
+    ss = build_dna("GCGCGC", form="Z")
+    ds = build_dna("ds,GCGCGC", form="Z")
     assert len(ds.elements) == pytest.approx(2 * len(ss.elements), abs=20)
     assert sorted(set(ds.chain_ids)) == ["A", "B"]
 
