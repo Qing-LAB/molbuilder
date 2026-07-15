@@ -408,35 +408,44 @@ tabs, and even if you reload the page — so a stray navigation or an
 accidental refresh doesn't throw away an hour of editing. Saving to
 your project is the separate, deliberate step that turns it into files.
 
-**The panels (all on one screen, fold them open as needed):**
+The screen is three stacked panels, top to bottom:
 
-- **Sources** — start a structure: load an `.xyz` / `.pdb` from the
-  sidebar, or generate one from a SMILES string, a peptide / DNA / RNA
-  sequence, a compound name (looked up on PubChem), or a canonical
-  B / A / Z-form DNA helix.
-- **Atom** — click atoms in the viewer (or the atom list) to select
-  them; Shift-click adds more. Selected atoms get an orange halo you
-  can see from any angle. Delete strips atoms (e.g. remove the H caps
-  to expose the sulfur anchors of a thiol); Add drops in a new atom at
-  a chosen offset with a live distance readout.
-- **Pose** — aim a chosen pair of atoms along the z-axis (with a tilt
-  slider), or rotate the whole structure about x / y / z. This is how
-  you stand a molecule up the way a junction needs it.
-- **Geom** — recenter the structure on the origin, or nudge it by an
-  explicit `(Δx, Δy, Δz)`. Handy cleanup after a series of edits.
-- **Junction** — the one-click part: add two metal electrode slabs
-  (Au, Ag, Cu, Ni, Pt, or Pd, on the 100 / 110 / 111 face) at a gap
-  you choose, turning a bare molecule into a metal–molecule–metal
-  junction ready for transport.
-- **Save** — write the structure to `<project>/<name>.xyz` plus a
-  small companion `.molstruct.json` file that remembers per-atom
-  labels (which atoms are the left/right electrode, which are frozen).
-  The calculation tabs pick both up automatically.
+- **Init structure** — where a structure *starts*. Load an `.xyz` /
+  `.pdb` from the sidebar, or build one from a SMILES string, a
+  peptide / DNA / RNA sequence, a compound name (looked up on
+  PubChem), or a canonical B / A / Z-form DNA helix.
+- **Structure & selection** — the 3-D viewer and the atom list, side
+  by side. Click atoms in either one to select them (Shift-click adds
+  more); selected atoms get an orange halo visible from any angle. The
+  key extra job here is **labeling regions**: mark which atoms are the
+  left electrode, the right electrode, or the bridge, using the
+  **Target → Assign** control. Those labels travel with the structure
+  all the way to the Transport tab, so you never re-label. A **Cell**
+  sub-view lets you set the periodic box and vacuum when you need one.
+- **Modify** — the editing tools, grouped into four sub-tabs by what
+  they do:
+    - **Atom** — add or delete atoms (e.g. delete the H caps to expose
+      a thiol's sulfur anchors; add an atom at a chosen offset with a
+      live distance readout).
+    - **Transform** — move, recenter, rotate, or stand the molecule up
+      by aligning a chosen atom pair — how you pose it the way a
+      junction needs.
+    - **Junction** — the one-click part: add two metal electrode slabs
+      (Au, Ag, Cu, Ni, Pt, or Pd, on the 100 / 110 / 111 face) at a gap
+      you choose, turning a bare molecule into a
+      metal–molecule–metal junction.
+    - **Cell** — set the lattice / vacuum box for a periodic run.
+
+  This panel also has the **save controls**: **Save state** takes a
+  snapshot of your current work and **Retract** steps back to the last
+  snapshot (your safety net while editing), while **Save to project**
+  is the deliberate step that writes the structure to
+  `<project>/<name>.xyz` plus a small `.molstruct.json` companion file
+  holding the per-atom labels. The calculation tabs pick both up
+  automatically.
 
 **Small touches that save time:**
 
-- **Undo** (20 steps, slab edits) lets you sweep electrode-gap values
-  freely without losing your earlier atom edits.
 - Sensible **metal–anchor bond lengths** are built in per element
   (e.g. 2.40 Å for Au–S), with literature citations in
   [`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json),
@@ -448,7 +457,7 @@ your project is the separate, deliberate step that turns it into files.
   validator warnings right there, before you generate inputs.
 
 Guides: [`docs/workspace-guide.md`](docs/workspace-guide.md) (how the
-save/restore state works);
+save-state / retract and cross-tab persistence work);
 spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
 ### 2. Structure optimization — SIESTA `.fdf` + PySCF `.py`
