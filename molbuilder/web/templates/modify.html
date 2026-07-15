@@ -155,14 +155,20 @@
   <div class="init-tab-panel" data-init-panel="dna" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
-        Build single-stranded DNA from a 1-letter sequence (ACGT)
-        in B / A / Z helix form.  Picks the best installed
-        backend (3DNA preferred, AmberTools fallback).
+        Build DNA from a 1-letter sequence (ACGT) in B / A / Z helix form.
+        Picks the best installed backend (3DNA preferred, AmberTools fallback).
+        <br>
+        <strong>Double strand:</strong> prefix the sequence with
+        <code>ds,</code> — e.g. <code>ds,ATGCATGC</code> — to build a canonical
+        Watson–Crick duplex; the complementary strand is generated automatically.
+        (Requires 3DNA + B-form. Sequence is read 5'→3'; write
+        <code>3'-…-5'</code> to reverse a strand. Arbitrary / mismatched duplexes
+        are coming later.)
       </p>
       <label class="source-input-row">
         <span>Sequence</span>
         <input id="dna-input" type="text"
-               placeholder="e.g. ATGCATGC"
+               placeholder="e.g. ATGCATGC   (or ds,ATGCATGC for a duplex)"
                autocomplete="off" spellcheck="false">
       </label>
       <label class="source-input-row">

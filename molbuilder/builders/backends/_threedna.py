@@ -240,7 +240,7 @@ def _is_alternating_gc(seq: str) -> bool:
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
-          title: Optional[str] = None) -> Structure:
+          title: Optional[str] = None, double_strand: bool = False) -> Structure:
     if kind not in ("dna", "rna"):
         raise ValueError(
             f"3DNA backend supports kind in 'dna'|'rna'; got {kind!r}"
@@ -321,13 +321,13 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             "-single",
         ]
     else:
-        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [
-            f"-seq={seq}",
-            # Single-stranded output -- molbuilder builders are
-            # single-chain; the user can swap to duplex by
-            # post-processing.
-            "-single",
-        ]
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [f"-seq={seq}"]
+        if not double_strand:
+            # Single-stranded output (the default).  With `double_strand`,
+            # omitting `-single` makes fiber lay down the given strand PLUS its
+            # canonical Watson-Crick complement -> a B-form duplex.  (build_dna
+            # gates double_strand to X3DNA + B-form, so we only reach here for B.)
+            cmd.append("-single")
 
     # fiber needs $X3DNA in the env at runtime so its auxiliary scripts
     # / config look-ups resolve.  Inject ours regardless of what the
@@ -375,11 +375,11 @@ def build(kind: str, sequence: str, form: str, terminal: str,
         title=title or f"{kind} {seq} (3DNA fiber, {form}-form)",
     )
 
-    # fiber's PDB has chains 'A' (and sometimes 'B' for duplex output we
-    # didn't ask for); pin to the first chain so downstream layers see
-    # a single-chain Structure.
+    # fiber's default output is a DUPLEX (chains 'A' + 'B'); `-single` gives one
+    # chain.  For a single strand, pin to the first chain (fiber can still emit a
+    # 2nd).  For a DOUBLE strand, KEEP BOTH chains -- that IS the duplex.
     chains = sorted(set(struct.chain_ids))
-    if len(chains) > 1:
+    if not double_strand and len(chains) > 1:
         struct = select_chain(struct, chains[0])
 
     # Strip the spurious 5'-terminal phosphate when the user asked for
@@ -423,17 +423,22 @@ def _strip_5prime_phosphate(struct: Structure) -> Structure:
         # crash.
         return struct
 
-    first_rid   = struct.residue_ids[0]
-    first_chain = (struct.chain_ids[0]
-                   if struct.chain_ids is not None else None)
+    # The 5'-terminal residue is the FIRST residue of EACH chain (fiber writes
+    # each chain 5'->3').  A duplex has TWO 5' termini (one per strand), so strip
+    # per chain -- not just the very first residue (which left strand B's 5'-P on
+    # a double-strand build).
+    chain_ids = struct.chain_ids
+    first_rid_of = {}       # chain -> its first residue_id (5' terminus)
+    for i in range(struct.n_atoms):
+        ch = chain_ids[i] if chain_ids is not None else None
+        if ch not in first_rid_of:
+            first_rid_of[ch] = struct.residue_ids[i]
 
     keep = np.ones(struct.n_atoms, dtype=bool)
     for i in range(struct.n_atoms):
-        if struct.residue_ids[i] != first_rid:
-            continue
-        if first_chain is not None and struct.chain_ids[i] != first_chain:
-            continue
-        if struct.atom_names[i] in _PHOSPHATE_ATOM_NAMES:
+        ch = chain_ids[i] if chain_ids is not None else None
+        if (struct.residue_ids[i] == first_rid_of.get(ch)
+                and struct.atom_names[i] in _PHOSPHATE_ATOM_NAMES):
             keep[i] = False
 
     if keep.all():

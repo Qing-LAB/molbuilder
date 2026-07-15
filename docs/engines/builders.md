@@ -40,6 +40,19 @@ build_rna(sequence: str, *, backend="auto", form="A", terminal="OH",
           protonate_phosphates=True, title=None) -> Structure
 ```
 
+**DNA strand notation (`build_dna` `sequence`).** A bare sequence
+(`"ATGC"`) builds a **single strand**. Prefix with `ds,` (`"ds,ATGC"`) to
+build a **canonical Watson-Crick duplex** — `fiber` lays down the given strand
+plus its auto-generated complement (both chains kept; the 5'-phosphate is
+stripped per strand for the `terminal="OH"` default). Direction markers are
+accepted (`5'-ATGC-3'` default; `3'-ATGC-5'` reverses to internal 5'→3').
+**Gate:** double-strand requires the **`threedna` (X3DNA)** backend **and**
+`form="B"` — else a clear `ValueError` (only `fiber` builds canonical duplex
+geometry; A/Z + arbitrary-sequence duplexes are a follow-up via X3DNA
+`rebuild`). Two explicit strands (`"3'-XXX-5',3'-YYY-5'"`, i.e. arbitrary /
+mismatched duplexes) are parsed but currently rejected with a pointer to that
+follow-up.
+
 * `backend`:
   * `"auto"`: prefer `threedna` (X3DNA fiber, canonical helix) if
     installed, else `amber` (AmberTools `tleap`, extended chain), else

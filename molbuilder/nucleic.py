@@ -12,11 +12,51 @@ for backend capabilities and install requirements.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from .backends import dispatch
+# ``auto_backend_name`` resolves "auto" -> the chosen backend; used to gate
+# double-strand, which requires X3DNA.
+from .builders.backends import auto_backend_name
 from .residues import parse_dna_sequence, parse_rna_sequence
 from .structure import Structure
+
+
+def _strip_direction(s: str) -> str:
+    """Return the sequence in internal 5'->3', stripping any direction markers.
+    Accepts ``5'-ATGC-3'`` (default) and ``3'-ATGC-5'`` (reversed to 5'->3')."""
+    s = s.strip()
+    m = re.match(r"^\s*([53])'\s*-\s*(.*?)\s*-\s*([53])'\s*$", s)
+    if m:
+        core = "".join(c for c in m.group(2) if c.isalpha()).upper()
+        return core[::-1] if m.group(1) == "3" else core
+    return "".join(c for c in s if c.isalpha()).upper()
+
+
+def _parse_dna_notation(text: str):
+    """Parse the DNA-panel input notation (docs/tabs/molbuilder.md).
+
+    - bare sequence (``"ATGC"``)      -> ``("ss", "ATGC")``  single strand.
+    - ``"ds,ATGC"`` / ``"ds:ATGC"``   -> ``("ds", "ATGC")``  canonical Watson-Crick
+      duplex; the complementary strand is generated automatically.
+    Direction markers are accepted on the strand: ``5'-ATGC-3'`` (default) or
+    ``3'-ATGC-5'`` (reversed to internal 5'->3').
+
+    Raises ValueError for the not-yet-supported arbitrary / two-explicit-strand
+    forms, pointing at the planned X3DNA-``rebuild`` support.
+    """
+    s = (text or "").strip()
+    mode = "ss"
+    if s[:3].lower() in ("ds,", "ds:"):
+        mode, s = "ds", s[3:].strip()
+    if "," in s:
+        raise ValueError(
+            "arbitrary / two-strand duplexes (e.g. \"3'-XXX-5',3'-YYY-5'\") are "
+            "not yet supported -- they need non-canonical geometry (planned via "
+            "X3DNA rebuild).  For a canonical double strand use \"ds,<sequence>\"; "
+            "the complementary strand is generated automatically.")
+    return mode, _strip_direction(s)
 
 
 def build_dna(
@@ -29,12 +69,17 @@ def build_dna(
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
-    """Build a single-stranded DNA polymer from a 1-letter sequence.
+    """Build a DNA polymer from a 1-letter sequence.
+
+    A bare sequence builds a SINGLE strand; the ``ds,<seq>`` notation builds a
+    canonical Watson-Crick DUPLEX (X3DNA + B-form only; see ``_parse_dna_notation``).
 
     Parameters
     ----------
     sequence
-        DNA sequence (``"ATGCATGC"``).  Whitespace is ignored.
+        DNA sequence (``"ATGCATGC"``), or ``"ds,ATGCATGC"`` for a canonical
+        double strand.  Direction markers (``5'-…-3'`` / ``3'-…-5'``) are
+        accepted.  Whitespace is ignored.
     backend
         ``"auto"`` (default) -- pick the best installed backend
         (``threedna`` > ``amber`` > ``rdkit``).  Force one with
@@ -79,13 +124,34 @@ def build_dna(
     title
         Optional title written into XYZ comment / PDB TITLE.
     """
+    # Notation: bare -> single strand; "ds,<seq>" -> canonical WC duplex.
+    mode, seq = _parse_dna_notation(sequence)
+    double_strand = (mode == "ds")
+    if double_strand:
+        # GATE: a canonical duplex needs X3DNA (fiber) + B-form (v1 scope).
+        resolved = backend if backend != "auto" else auto_backend_name()
+        if resolved != "threedna":
+            raise ValueError(
+                "double-strand DNA requires X3DNA (the 'threedna' backend, which "
+                "builds canonical duplex geometry via fiber).  "
+                + ("It isn't installed / detected. " if resolved is None
+                   else f"The selected backend is {resolved!r}. ")
+                + "Install X3DNA from x3dna.org (non-commercial license).  "
+                "Single strands work with any backend.")
+        if (form or "B").upper() != "B":
+            raise ValueError(
+                f"double-strand DNA is currently B-form only; got form={form!r}.  "
+                "A-form / Z-form / arbitrary-sequence duplexes are planned "
+                "(via X3DNA rebuild).")
+
     # parse_dna_sequence returns 3-letter codes (DA, DT, DG, DC).
     # Backends want a 1-letter sequence, so strip the "D" prefix.
-    codes = parse_dna_sequence(sequence)
+    codes = parse_dna_sequence(seq)
     cleaned = "".join(c[1] for c in codes)
     struct = dispatch(
         "dna", cleaned,
         backend=backend, form=form, terminal=terminal, title=title,
+        double_strand=double_strand,
     )
     struct = _maybe_add_hydrogens(struct, add_hydrogens)
     return _maybe_protonate(struct, protonate_phosphates)

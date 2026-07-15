@@ -106,8 +106,13 @@ def dispatch(kind: str, sequence: str, *,
              backend: str = "auto",
              form: str = "B",
              terminal: str = "OH",
-             title=None):
-    """Build a nucleic acid using the named backend (or auto-detect)."""
+             title=None,
+             double_strand: bool = False):
+    """Build a nucleic acid using the named backend (or auto-detect).
+
+    ``double_strand`` builds a canonical Watson-Crick DUPLEX (only the threedna
+    backend supports it; build_dna gates it to X3DNA + B-form).
+    """
     backends = _load_backends()
 
     if backend == "auto":
@@ -121,7 +126,8 @@ def dispatch(kind: str, sequence: str, *,
                 "  - `conda install -c conda-forge ambertools`  (extended chain),\n"
                 "  - `pip install rdkit`  (folded conformer, chemistry-only)."
             )
-        return backends[chosen](kind, sequence, form, terminal, title)
+        return backends[chosen](kind, sequence, form, terminal, title,
+                                double_strand=double_strand)
 
     if backend not in backends:
         raise ValueError(
@@ -129,7 +135,8 @@ def dispatch(kind: str, sequence: str, *,
             f"{sorted(backends) + ['auto']}"
         )
 
-    return backends[backend](kind, sequence, form, terminal, title)
+    return backends[backend](kind, sequence, form, terminal, title,
+                             double_strand=double_strand)
 
 
 __all__ = [
