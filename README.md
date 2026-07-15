@@ -380,22 +380,23 @@ the tab labels.
 
 | Tab | Route | Role |
 |---|---|---|
-| **Molbuilder** | `/molbuilder` (bare `/` redirects) | Interactive workspace — load / build / edit / assemble |
-| **Structure optimization** | `/structure-optimization` | File-driven SIESTA `.fdf` + PySCF `.py` generator |
-| **Spectrum calculation** | `/spectrum-calculation` | File-driven PySCF Raman / IR script generator |
-| **Transport calculation** | `/transport-calculation` | File-driven TranSIESTA `.fdf` generator |
-| **Results** | `/results` | Unified file-dispatched inspector — trajectory, spectra, structure, source, and a "Bundle for next stage" handoff card |
+| **Molbuilder** | `/molbuilder` (bare `/` redirects) | The interactive workbench — build, edit, and assemble a structure |
+| **Structure optimization** | `/structure-optimization` | Turns a saved structure into a SIESTA `.fdf` or PySCF `.py` optimization job |
+| **Spectrum calculation** | `/spectrum-calculation` | Turns a relaxed molecule into a PySCF Raman / IR job |
+| **Transport calculation** | `/transport-calculation` | Turns a junction into a TranSIESTA transmission job |
+| **Results** | `/results` | Reads outputs and shows the right view — trajectory, spectra, structure, raw log, plus a "Bundle for next stage" handoff card |
 
-The Projects sidebar persists on every tab.  Single-click previews
-a file; double-click commits it as the workspace cursor.  Structure
-files render with their `.molstruct.json` sidecars paired so
-per-atom labels never orphan.
+Four of the five tabs never edit anything — they read the files you
+saved. The **Projects sidebar** stays on every tab: single-click
+previews a file, double-click commits it as the one the current tab
+works on. Structure files travel with their `.molstruct.json` sidecar
+so the per-atom labels (electrodes, frozen atoms) never get separated.
 
 ![Projects sidebar showing the BDT project expanded; the structure/ folder is open and BDT-AuJunction_siestaStage1_optimized.xyz is selected with its .molstruct.json sidecar paired](docs/img/sidebar-projects.png)
 
 ### 1. The Molbuilder tab — interactive workspace
 
-![Molbuilder workspace: Au–BDT–Au junction in the 3Dmol viewer at centre, atom-list and selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right](docs/img/molbuilder-workspace.png)
+![Molbuilder workspace: Au–BDT–Au junction in the 3Dmol viewer, the Structure & selection atom list and Selection/Cell panel, and the Modify panel with Atom / Transform / Junction / Cell sub-tabs plus Save state / Retract / Save to project](docs/img/molbuilder-workspace.png)
 
 This is your **workbench**: the one place where you build and edit a
 structure interactively. Everything you do here lives in the browser
