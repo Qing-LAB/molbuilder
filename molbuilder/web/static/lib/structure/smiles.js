@@ -128,7 +128,8 @@
                 // which parses + renders the structure itself.  The old
                 // viewerLoader second load is removed — it would
                 // double-apply the same bytes.
-                return { ok: true, n_atoms: body.n_atoms };
+                return { ok: true, n_atoms: body.n_atoms,
+                         backend_used: body.backend_used };
             });
         })
         .catch(function (err) {
@@ -188,7 +189,11 @@
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from " + echo);
+                        + " from " + echo
+                        // Provenance: name the engine that built the geometry so
+                        // the user knows when they're on the lower-fidelity
+                        // OpenBabel fallback (RDKit-first, OpenBabel-fallback).
+                        + (r.backend_used ? " · " + r.backend_used : ""));
                 } else if (r.cancelled) {
                     // User clicked Cancel on the warning modal —
                     // tell them their workspace is untouched so

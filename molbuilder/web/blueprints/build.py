@@ -548,6 +548,11 @@ def api_build_molecule():
             else:
                 backend_used = requested
             struct = _BUILDERS[kind](text, **kwargs)
+        elif kind in ("smiles", "name"):
+            # RDKit-first, OpenBabel-fallback (Name lookup resolves to SMILES then
+            # builds, so it rides the same chain): surface WHICH engine produced
+            # the geometry so the user knows when they're on the lower-fidelity path.
+            struct, backend_used = _BUILDERS[kind](text, return_backend=True)
         else:
             struct = _BUILDERS[kind](text)
     except ImportError as exc:

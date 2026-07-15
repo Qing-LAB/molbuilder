@@ -72,9 +72,21 @@ if (!gate.ok) return;                 // user cancelled the discard
 window.molbuilder.loadStructureText(r.text, name);
 ```
 
-Backend dispatch (see `engines/builders.md`): `kind:"name"` → PubChem lookup;
-`kind:"smiles"` → RDKit/OpenBabel; DNA/RNA → X3DNA; peptide → the peptide
-builder. `file.js` and the sidebar use `/api/build/load` (load existing text).
+Backend dispatch (see `engines/builders.md`): `kind:"name"` → PubChem lookup
+(then SMILES); `kind:"smiles"` → **RDKit first, OpenBabel fallback**; DNA/RNA →
+X3DNA; peptide → the peptide builder. `file.js` and the sidebar use
+`/api/build/load` (load existing text).
+
+**SMILES: RDKit-first, OpenBabel-fallback + provenance.** RDKit (ETKDGv3 + MMFF94s)
+is primary — best geometry + reliable stereochemistry, the right starting point
+for DFT. When RDKit can't **parse** a SMILES (metal-organics — e.g. heme, where
+`MolFromSmiles` returns `None`) or can't **embed** a 3-D conformer (cages — e.g.
+C60, where ETKDG fails), it falls back to **OpenBabel** `make3D` (more lenient,
+rougher geometry). The response's `backend_used` names the engine that produced
+the geometry (`RDKit ETKDGv3` vs `OpenBabel make3D (RDKit fallback …)`), which the
+SMILES status line surfaces — so the user knows when they are on the fallback.
+Name lookup resolves to SMILES first, so it rides the same chain (this is what
+makes "C60"/"buckminsterfullerene" build).
 
 ---
 
