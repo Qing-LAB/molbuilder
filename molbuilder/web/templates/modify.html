@@ -35,7 +35,7 @@
 <!--             toggle drawn at world origin)                     -->
 <!--      RIGHT  edit panel: Atom (delete + add); Transform        -->
 <!--             (translate / center / rotate / orient); Junction   -->
-<!--             (electrode + Send-to-Build handoff); Cell.         -->
+<!--             (electrode placement); Cell.                       -->
 <!--             All ops wired via molview.data.applyOp.            -->
 <!-- ============================================================ -->
 
@@ -275,8 +275,8 @@
        structure (above) and Modify (below).  View actions (Reset
        view = focus molecule, toggles) live in the module's own
        View menu inside the fused card; selection Clear lives in the
-       selection panel.  Structure-level handoff actions (Save,
-       Send-to-Optimization) live at the bottom of Modify, NOT here. -->
+       selection panel.  "Save to project" lives in the Modify card's
+       header row (.modify-actions--header), NOT here. -->
   {#- 2026-06-12 layout v3: three panels — viewer, selection,
       modify — each in its own card.  Wide viewports stack them
       side-by-side via .workspace-grid (3 columns); medium drops
@@ -310,8 +310,8 @@
 
   <!-- 4. Modify — atom/transform/junction/cell op-tabs.  Now its own
        card so the user can keep the viewer + selection panels
-       fixed while applying ops.  Save + Send-to-Optimization
-       handoff at the bottom. -->
+       fixed while applying ops.  "Save to project" is in the card
+       header row (all cross-tab transfer is via saved project files). -->
   <section class="card modify-section workspace-modify">
     <header class="card-header">
       <h2>Modify</h2>
@@ -586,9 +586,9 @@
 
       </div><!-- /.optab-panel data-op-panel="transform" -->
 
-      <!-- Junction: electrode panel + Send-to-Build handoff (M5).
-           Place metal slabs around the anchor(s), then hand off the
-           finished structure to the Build tab to generate FDF/PySCF. -->
+      <!-- Junction: electrode placement (M5).  Place metal slabs around
+           the anchor(s); Save to project, then load that file in the
+           Structure optimization / Transport tab to generate FDF/PySCF. -->
       <div class="optab-panel" data-op-panel="junction" role="tabpanel"
            id="optab-panel-junction" aria-labelledby="optab-btn-junction">
 

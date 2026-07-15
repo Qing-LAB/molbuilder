@@ -66,7 +66,7 @@ header .tagline {
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: 4px;
-    font: 0.92rem/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+    font: 0.92rem/1.2 var(--font-mono);
 }
 .source-actions {
     display: flex;
@@ -193,10 +193,10 @@ header .tagline {
 /* Secondary card: keeps the op controls at a usable width. */
 .workspace-grid > .workspace-modify { --card-weight: 1;   --card-basis: 320px; --card-min: 300px; }
 
-/* Modify section: now hosts ONLY the op-tabs (the selection
- * panel moved to its own workspace card in layout v3, 2026-
- * 06-12).  Footer row at the bottom holds Save +
- * Send-to-Optimization. */
+/* Modify section: hosts the "Save to project" header row + the op-tabs (the
+ * selection panel moved to its own workspace card in layout v3, 2026-06-12).
+ * The old bottom footer + the Send-to-Optimization handoff were removed;
+ * Save-to-project now lives in the card header (.modify-actions--header). */
 .modify-section { display: flex; flex-direction: column; }
 
 /* ---- Dedicated message region -------------------------------------- */
@@ -259,10 +259,6 @@ header .tagline {
     align-items: start;
 }
 .modify-edit      { min-width: 0; }
-/* Legacy class kept for selection-panel CSS that may target it
- * via descendant selectors during the migration window.  Empty
- * rule today; safe to delete once the grep comes back clean. */
-.modify-selection { }
 
 /* "Save to project" action row.  Relocated under the Modify title (item 5); the
  * Send-to-Optimization handoff + the bottom footer were removed (item 1) -- all
@@ -373,41 +369,6 @@ header .tagline {
 
 /* ---- Viewer section ---- */
 .viewer-section { gap: 0; }
-/* Square-ish viewer, consistent with the other tabs.  Sits in
- * the middle section of the vertical workflow; centred
- * horizontally when the container is wider.  Size constraints
- * live on the .viewer-wrap rule above; this entry is only kept
- * because it pins the canvas background — 3Dmol renders into a
- * transparent canvas otherwise and the dark card shows through.
- * (Pre-task-298 #viewer carried its own width/max-width/aspect
- * but those moved up to the wrap so the measurement chip can
- * anchor to the actual canvas corner.) */
-.viewer-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.6rem 1rem;
-    border-top: 1px solid var(--border-soft);
-}
-.viewer-controls label {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-.viewer-controls select {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: 0.25rem 0.45rem;
-    font: inherit;
-}
-.viewer-controls .check input[type="checkbox"] {
-    accent-color: var(--accent);
-}
 .ghost {
     background: transparent;
     color: var(--text-secondary);
@@ -456,13 +417,6 @@ header .tagline {
     font-size: 0.82rem;
     line-height: 1.4;
     margin: 0 0 0.6rem;
-}
-
-/* The Selection block sits above the sub-tabs as a permanent,
-   always-visible status panel.  Visually compact -- the per-atom
-   info table is the data, not the chrome. */
-.edit-panel .selection-block {
-    margin-top: 0;
 }
 
 /* Sub-tabs (Atom / Pose / Junction) split the op fieldsets into
@@ -517,9 +471,6 @@ header .tagline {
     font-size: 0.85rem;
     padding: 0 0.3rem;
 }
-.edit-panel .op-block.future-op[disabled] {
-    opacity: 0.55;
-}
 .edit-panel .op-row {
     display: flex;
     align-items: center;
@@ -561,7 +512,7 @@ header .tagline {
     align-items: center;
     gap: 0.5rem;
     margin: 0.3rem 0;
-    font: 0.88rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font: 0.88rem var(--font-mono);
     color: var(--text-secondary);
 }
 .edit-panel .slider-row > span:first-child {
@@ -574,7 +525,7 @@ header .tagline {
     width: 100%;
 }
 .edit-panel .readout-inline {
-    font: 0.86rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font: 0.86rem var(--font-mono);
     color: var(--text-primary);
     text-align: right;
 }
@@ -584,7 +535,7 @@ header .tagline {
 }
 .edit-panel .axis-radios label {
     color: var(--text-primary);
-    font: 0.88rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font: 0.88rem var(--font-mono);
     cursor: pointer;
     user-select: none;
 }
@@ -599,41 +550,6 @@ header .tagline {
     border-radius: var(--radius-sm);
     padding: 0.25rem 0.45rem;
     font: inherit;
-}
-.edit-panel .selection-info {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 0.5rem;
-    font: 0.78rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: var(--text-primary);
-}
-.edit-panel .selection-info thead th {
-    background: var(--bg-card-hover);
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-align: left;
-    padding: 0.25rem 0.4rem;
-    border-bottom: 1px solid var(--border-soft);
-}
-.edit-panel .selection-info tbody td {
-    padding: 0.2rem 0.4rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-}
-.edit-panel .selection-info .col-idx,
-.edit-panel .selection-info .col-el {
-    color: var(--text-secondary);
-}
-.edit-panel .selection-info .col-coord {
-    text-align: right;
-    color: var(--accent);
-}
-.edit-panel .readout {
-    font: 0.88rem/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.6rem;
 }
 .full-btn {
     width: 100%;

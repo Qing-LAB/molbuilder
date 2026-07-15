@@ -615,7 +615,7 @@
         );
     }
 
-    // ----- M5: electrode panel + Send-to-Build handoff ------------- //
+    // ----- M5: electrode panel ------------------------------------- //
 
     function readElcCommonBody() {
         // Bundle the shared electrode OP-PARAMS both single + symmetric modes need

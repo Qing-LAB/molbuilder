@@ -628,7 +628,7 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 
 | Endpoint | Body shape | Effect |
 |---|---|---|
-| `GET /api/modify/meta` | (no body) | Returns `{ok, fcc_elements, fcc_planes}` for UI dropdowns; reads from the `SUPPORTED_FCC_ELEMENTS` / `SUPPORTED_FCC_PLANES` tuples in `molbuilder.modify`.  Single source of truth -- HTML must not duplicate the lists. |
+| `GET /api/modify/meta` | (no body) | Returns `{ok, fcc_elements, fcc_planes, lattice_table}` -- element/plane dropdowns PLUS the per-metal lattice-constant reference (the electrode "Lattice ref" radios read `lattice_table[element].a_experimental` / `a_pbe` / `a_pbe_siesta_psml`).  Reads from `SUPPORTED_FCC_ELEMENTS` / `SUPPORTED_FCC_PLANES` + `load_fcc_lattice_full()` in `molbuilder.modify`.  Single source of truth -- HTML must not duplicate the lists. |
 | `POST /api/build/load` | `{xyz, format?}` (retired `/api/modify/load`; superseded by build's load path on commit `7105ae8`) | Validate input.  Echo back canonical xyz (re-parsed; catches malformed input early). |
 | `POST /api/modify/delete` | `{xyz, indices: List[int]}` | `delete_atoms` |
 | `POST /api/modify/add_atom` | `{xyz, element, anchor_index, offset: [dx,dy,dz]}` | `add_atom` |
@@ -663,29 +663,30 @@ The UI shows them in an issues panel mirroring the Build tab's design.
   0-based for click handlers and state.selected; the displayed `#`
   column adds 1.  Build / Modify / Watch all follow this rule.
 
-### 5.1 Cross-tab persistence (Phase 1)
+### 5.1 Session persistence
 
-Build (`/`), Watch (`/watch`), and Modify (`/modify`) are separate
-Flask routes, so navigating between tabs is a full page reload --
-JS closure state is destroyed.  Phase 1 (2026-05-09) added
-``sessionStorage`` round-trips for the structure on Build and Modify:
+The Molbuilder workspace (`/molbuilder`) survives a page reload via the
+**workspace dispatcher** (`lib/workspace/dispatcher.js`,
+`window.molbuilder.workspace`), the ONE persistence layer -- not per-tab ad-hoc
+`sessionStorage` keys.  Authoritative contract:
+[`workspace-contract.md`](../protocols/workspace-contract.md) §3.5 / §4; the
+MolView data model that serialises itself is `molview-module.md` §19.
 
-* **Build** persists the last-rendered ``Structure`` (xyz, metadata,
-  3Dmol camera) under ``builder-structure``.  The form-fields
-  storage at ``builder-form`` is unchanged and complementary.
-* **Modify** persists xyz + metadata + the current atom selection
-  + 3Dmol camera + viewer toggles (`Show indices`, `Show xyz axes`,
-  representation) under ``modify-state``.
-* **Storage scope:** ``sessionStorage`` (per-tab, cleared on browser
-  close), not ``localStorage`` -- so a "session ends -> fresh start"
-  default applies.  Quota errors (>5 MB structures) are caught and
-  the save silently skipped.
-* **Watch** stays as it was: only the path-input value is persisted.
-  Auto-reload of the trajectory on `pageshow` is Phase 2 work.
-* The **Modify -> Build "Send to Build" handoff** in M5 reuses the
-  same ``builder-structure`` key: Modify writes the finished
-  junction there, navigates to ``/``, and Build's restore renders
-  it identically to a fresh build.
+* **What persists:** the whole MolView model snapshot -- structure (xyz +
+  periodicity + opaque annotations), the full selection (indices, click order,
+  filters, and the isolate / k-grid view toggles), the view (camera / style),
+  and the state-timeline index (§19.5).  `molview.data` serialises it; the
+  workspace writes it VERBATIM (format-blind).
+* **Where:** one namespaced `sessionStorage` mirror under
+  `molbuilder.workspace.v1` (per-tab; folded per owner via `useNamespace`), plus
+  best-effort on-disk state files for the undo timeline.  `sessionStorage` (not
+  `localStorage`) keeps the "close the tab -> fresh start" default.  Persistence
+  is push-only and non-blocking; write failures surface via `onPersistError`.
+* **No cross-tab "Send to" handoff.**  There is NO in-memory transfer to other
+  tabs.  All cross-tab transfer is through **saved project files**: Save to
+  project, then Load that file in Structure optimization / Spectrum / Transport.
+  (The old `builder-structure` / `modify-state` keys and the Modify->Build
+  handoff were removed; see §2.)
 
 ---
 
