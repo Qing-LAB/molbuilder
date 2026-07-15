@@ -1,11 +1,10 @@
-/* Structure-tab canvas state — workspace-internal as of Phase 9
- * (2026-06-13).  This module no longer mounts a public singleton
- * on ``window.molbuilder.structureCanvas``.  The workspace
- * dispatcher (lib/workspace/dispatcher.js) holds the one
- * process-wide instance via the private mount this file places
- * on ``window.molbuilder.workspace._canvasState``.  Every
- * external consumer goes through ``window.molbuilder.workspace.*``
- * (=``ws.*``).
+/* Structure-tab canvas state — MolView-internal.  This module no longer mounts a
+ * public singleton on ``window.molbuilder.structureCanvas``.  The one process-wide
+ * instance is placed on the private ``window.molbuilder.molview._canvasState`` slot;
+ * MolView's data model (lib/molview/data-model.js) reads it there.  It lives on the
+ * MOLVIEW namespace (NOT ``workspace``): the canvas store is part of MolView's concealed
+ * data model, and the 2026-07 carve made ``workspace`` persistence-only, so mounting a
+ * data store under ``workspace.*`` was the model leaking into the persistence layer.
  *
  * Single source of truth for "what's loaded in the Structure tab
  * canvas."  Survives browser refresh via sessionStorage; cleared
@@ -120,6 +119,20 @@
             vacuum:        Array.isArray(p.vacuum) ? p.vacuum.slice() : null,
             kgrid:         Array.isArray(p.kgrid) ? p.kgrid.slice() : null,
         };
+    }
+
+    // Defensive DEEP copy of the opaque annotations payload (workspace-contract §1.2.1):
+    // getStructure() must not hand out a LIVE reference into _state, or a consumer that
+    // mutates the returned annotations writes straight into the canvas store.
+    function _cloneAnnotations(a) {
+        if (a == null) return null;
+        try {
+            return (typeof structuredClone === "function")
+                ? structuredClone(a)
+                : JSON.parse(JSON.stringify(a));
+        } catch (_) {
+            return a;   // non-serialisable opaque payload -> last-resort shared ref
+        }
     }
 
     // Private state.  Initialised by ``_restoreFromSession`` on first
@@ -351,7 +364,7 @@
             source_format: _state.source_format,
             text:          _state.text,
             periodicity:   _clonePeriodicity(_state.periodicity),   // defensive copy
-            annotations:   _state.annotations || null,   // F1: opaque carry
+            annotations:   _cloneAnnotations(_state.annotations),   // F1: opaque carry (defensive copy)
         };
     }
     function getLastSavedTo(){ _ensureInit(); return _state.last_save_to; }
@@ -401,20 +414,22 @@
 
     // UMD-ish export.  In Node test contexts (canvas-state-only
     // unit tests) ``module.exports`` carries the api so tests can
-    // ``require()`` it without a DOM.  In the browser the api is
-    // mounted on a PRIVATE workspace namespace as of Phase 9
-    // (2026-06-13) — the legacy ``window.molbuilder.structureCanvas``
-    // global + the matching ``runtime.register("structure.canvas",
-    // ...)`` are gone.  The dispatcher reads from
-    // ``window.molbuilder.workspace._canvasState`` (this mount) and
-    // also honours a legacy ``structureCanvas`` mount as a
-    // test-only escape hatch for harnesses that ``require()`` this
-    // file and assign the return value manually.
+    // ``require()`` it without a DOM.  In the browser the api is mounted on the PRIVATE
+    // ``window.molbuilder.molview._canvasState`` slot — the legacy
+    // ``window.molbuilder.structureCanvas`` global + the ``runtime.register(
+    // "structure.canvas", ...)`` are gone.  data-model.js reads from
+    // ``molview._canvasState`` (this mount) and also honours a legacy ``structureCanvas``
+    // mount as a test-only escape hatch for harnesses that ``require()`` this file and
+    // assign the return value manually.
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     } else {
         root.molbuilder = root.molbuilder || {};
-        root.molbuilder.workspace = root.molbuilder.workspace || {};
-        root.molbuilder.workspace._canvasState = api;
+        // Mount on the MolView namespace -- the canvas store is part of MolView's
+        // concealed data model, NOT the (persistence-only) workspace (2026-07 carve).
+        // data-model.js merges ``molview`` with ``|| {}``, so this survives regardless of
+        // script-load order.
+        root.molbuilder.molview = root.molbuilder.molview || {};
+        root.molbuilder.molview._canvasState = api;
     }
 })(typeof window !== "undefined" ? window : globalThis);

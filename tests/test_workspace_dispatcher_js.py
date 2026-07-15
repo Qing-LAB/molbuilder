@@ -178,7 +178,8 @@ _DATA_SURFACE = sorted([
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
     "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
     "setKgrid", "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
-    "markDirty", "markSaved", "openMolecule", "exportFile", "save", "load",
+    "markDirty", "markSaved", "openMolecule", "readWorkingCopy", "exportFile",
+    "save", "load",
     "generate", "applyOp",
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
     "getFrame", "getForces", "currentForces", "currentFrame", "frameCount",
@@ -279,9 +280,9 @@ class TestDataModelSurface:
 
 
 class TestWorkspaceIsPersistenceOnly:
-    _PERSIST_SURFACE = ["STORAGE_KEY", "mountRestoreTarget", "persist",
-                        "pruneStatesAbove", "readPersistedSnapshot", "readState",
-                        "useNamespace", "workspaceId"]
+    _PERSIST_SURFACE = ["STORAGE_KEY", "mountRestoreTarget", "onPersistError",
+                        "persist", "pruneStatesAbove", "readPersistedSnapshot",
+                        "readState", "useNamespace", "workspaceId"]
 
     def test_workspace_public_surface_is_exactly_persistence(self):
         """§3.5: the workspace exposes EXACTLY the persistence surface
@@ -412,6 +413,73 @@ class TestGetStructureNullIffEmpty:
             "  (e) => console.log(JSON.stringify({ rejected: true,\n"
             "     msg: /path string/.test(String(e.message)) })));")
         assert out == {"rejected": True, "msg": True}
+
+
+class TestReadsAreDefensiveCopies:
+    """§1.2.1: every read accessor returns COPIES -- a consumer holding a
+    returned value can NEVER mutate the store by writing into it."""
+
+    def test_getAtoms_returns_defensive_per_atom_copies(self):
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
+            "  const a = d.getAtoms();\n"
+            "  a[0].x = 999; a[0].element = 'Xx';\n"       # mutate the returned copy
+            "  const b = d.getAtoms();\n"
+            "  console.log(JSON.stringify({ x: b[0].x, el: b[0].element }));\n"
+            "});")
+        assert out["x"] != 999, "getAtoms() leaked a live atom object"
+        assert out["el"] != "Xx", "getAtoms() leaked a live atom object"
+
+    def test_getStructure_annotations_are_a_deep_copy(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "const cs = window.molbuilder.structureCanvas;\n"
+            "cs.setStructure({ source_format:'xyz', text:'1\\nx\\nH 0 0 0\\n',\n"
+            "  annotations:{ note:'orig', arr:[1, 2] } }, {kind:'file', file:'/p/x.xyz'});\n"
+            "const s1 = d.getStructure();\n"
+            "s1.annotations.note = 'HACKED'; s1.annotations.arr.push(99);\n"
+            "const s2 = d.getStructure();\n"
+            "console.log(JSON.stringify({ note: s2.annotations.note,\n"
+            "                             arrLen: s2.annotations.arr.length }));")
+        assert out["note"] == "orig", "getStructure().annotations leaked a live reference"
+        assert out["arrLen"] == 2, "getStructure().annotations leaked a live reference"
+
+
+class TestReadWorkingCopy:
+    """§ working-copy read goes through the ONE data door: consumers call
+    ``molview.data.readWorkingCopy(path)`` instead of POSTing
+    /api/workingcopy/open raw (unified-API access)."""
+
+    def test_posts_the_path_and_returns_the_payload(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "let posted = null;\n"
+            "global.window.fetch = (url, opts) => { posted = {url, body: JSON.parse(opts.body)};\n"
+            "  return Promise.resolve({ ok:true, json: () => Promise.resolve(\n"
+            "    { ok:true, periodicity:{cell:null}, annotations:{n:1} }) }); };\n"
+            "d.readWorkingCopy('/p/x.xyz').then(r => console.log(JSON.stringify({\n"
+            "  url: posted.url, path: posted.body.path,\n"
+            "  ok: !!(r && r.ok), hasAnno: !!(r && r.annotations) })));")
+        assert out["url"] == "/api/workingcopy/open"
+        assert out["path"] == "/p/x.xyz"
+        assert out["ok"] is True
+        assert out["hasAnno"] is True
+
+    def test_returns_null_on_a_failed_read(self):
+        out = _run_node(
+            "const d = window.molbuilder.molview.data;\n"
+            "global.window.fetch = () => Promise.resolve({ ok:false });\n"
+            "d.readWorkingCopy('/p/x.xyz').then(r => console.log(JSON.stringify({ r: r })));")
+        assert out["r"] is None
+
+    def test_modify_bootstrap_does_not_fetch_workingcopy_open_raw(self):
+        """The Modify consumer must route through readWorkingCopy, not a raw fetch."""
+        src = (ROOT / "molbuilder/web/static/modify/selection-bootstrap.js").read_text()
+        assert 'fetch("/api/workingcopy/open"' not in src, (
+            "selection-bootstrap.js POSTs /api/workingcopy/open raw -- route it "
+            "through molview.data.readWorkingCopy(path) instead")
 
 
 # --------------------------------------------------------------------- #
@@ -959,6 +1027,45 @@ class TestStateTimeline:
         assert out["index"] == 0                 # save(0) does not move the index
         assert out["persistIdx"] == [0, 0]       # anchor, then the in-place re-save
         assert out["pruneIdx"] == [-1]           # delta==0 -> NO extra prune
+
+    def test_reload_restores_full_selection_not_just_indices(self):
+        """§19.2/§19.5: getSelection() snapshots the WHOLE selection state and
+        load(0) restores it -- isolate + k-grid (the VIEW toggles), the click
+        ORDER (pickOrder = angle vertex), and mode/filters/combinator -- NOT just
+        indices.  Regression: "Show selected only" / k-grid silently reset to
+        default on every reload / Retract because only indices were restored."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "const store = window.molbuilder.selection.store;\n"
+            "d.openMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
+            "  store.setSelection([2, 1]);\n"                       # pickOrder [2,1] -> vertex 1
+            "  store.setIsolate(true);\n"
+            "  store.setKgrid({ enabled: true, dims: [2, 1, 1] });\n"
+            "  return d.save(0).then(() => {\n"                     # persist the snapshot
+            "    store.setSelection([]);\n"                          # stomp the LIVE store
+            "    store.setIsolate(false);\n"
+            "    store.setKgrid({ enabled: false, dims: [1, 1, 1] });\n"
+            "    const stomped = d.getSelection();\n"
+            "    return d.load(0).then(() => {\n"                    # reload-restore from mirror
+            "      const after = d.getSelection();\n"
+            "      console.log(JSON.stringify({\n"
+            "        stomped_isolate:  stomped.isolate,\n"
+            "        after_indices:    after.indices,\n"
+            "        after_pickOrder:  after.pickOrder,\n"
+            "        after_isolate:    after.isolate,\n"
+            "        after_kgrid_en:   after.kgrid && after.kgrid.enabled,\n"
+            "        after_kgrid_dims: after.kgrid && after.kgrid.dims,\n"
+            "      }));\n"
+            "    });\n"
+            "  });\n"
+            "});")
+        assert out["stomped_isolate"] is False       # sanity: the live store WAS stomped
+        assert out["after_indices"] == [1, 2]        # selection restored (sorted set)
+        assert out["after_pickOrder"] == [2, 1]      # click ORDER restored (angle vertex)
+        assert out["after_isolate"] is True          # the bug: isolate survives the reload
+        assert out["after_kgrid_en"] is True         # k-grid toggle survives
+        assert out["after_kgrid_dims"] == [2, 1, 1]  # k-grid dims survive
 
     def test_save_does_not_advance_when_persist_rejects(self):
         """§19.5 atomic: a failed write never leaves state_index pointing

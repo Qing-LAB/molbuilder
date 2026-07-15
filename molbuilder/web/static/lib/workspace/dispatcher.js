@@ -244,9 +244,11 @@
         STORAGE_KEY:           STORAGE_KEY,
     };
 
-    // MERGE into any pre-existing ``workspace`` namespace, not replace it: canvas-state-impl.js
-    // (still) mounts its singleton on ``workspace._canvasState`` before this file loads; a plain
-    // ``= api`` would clobber that slot.  Preserve every private slot the impls already set.
+    // MERGE into any pre-existing ``workspace`` namespace, not replace it -- defensive, so a
+    // plain ``= api`` can't clobber a slot some other module set first.  (The canvas-state
+    // store used to mount ``workspace._canvasState`` here; it now lives on
+    // ``molview._canvasState`` -- the 2026-07 carve keeps the workspace persistence-only --
+    // so this merge is no longer load-bearing for it, but stays as a general safeguard.)
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.workspace = Object.assign(
         root.molbuilder.workspace || {}, api);

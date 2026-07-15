@@ -93,18 +93,17 @@
     // Phase 9 (2026-06-13): the canvas-state singleton is no
     // longer mounted as a public global.  The impl file
     // (lib/molview/_canvas-state-impl.js) places it on the
-    // private ``workspace._canvasState`` slot in the browser.
-    // Test escape hatch: a harness that ``require()``s the impl
-    // and assigns the return value to ``root.molbuilder
-    // .structureCanvas`` (test_workspace_dispatcher_js.py) is
-    // honoured too — so existing test setup keeps working
-    // without re-exposing the legacy global in production
-    // templates.
+    // private ``molview._canvasState`` slot in the browser.  It lives on the MolView
+    // namespace (NOT ``workspace``): the canvas store is part of MolView's concealed
+    // data model, and the 2026-07 carve made ``workspace`` persistence-only, so a data
+    // store hanging off ``workspace.*`` was the model leaking back into the persistence
+    // layer.  Test escape hatch: a harness that ``require()``s the impl and assigns the
+    // return value to ``root.molbuilder.structureCanvas`` is honoured too.
     function _canvas() {
         if (root.molbuilder
-            && root.molbuilder.workspace
-            && root.molbuilder.workspace._canvasState) {
-            return root.molbuilder.workspace._canvasState;
+            && root.molbuilder.molview
+            && root.molbuilder.molview._canvasState) {
+            return root.molbuilder.molview._canvasState;
         }
         if (root.molbuilder && root.molbuilder.structureCanvas) {
             return root.molbuilder.structureCanvas;
@@ -427,13 +426,25 @@
 
     function getSelection() {
         var st = _store();
-        if (!st) return {indices: [], mode: "click", filters: [], combinator: "or"};
+        if (!st) return {indices: [], pickOrder: [], mode: "click", filters: [],
+                         combinator: "or", isolate: false,
+                         kgrid: {enabled: false, dims: [1, 1, 1], source: "free"}};
         var s = st.getState();
         return {
             indices:    s.selection.slice(),
+            // §19.2: the full selection snapshot -- NOT just indices.  pickOrder is
+            // the click ORDER (angle vertex = pickOrder[1]); isolate + kgrid are the
+            // VIEW toggles.  Dropping them here silently reset "Show selected only" /
+            // k-grid and the measurement vertex on every reload / Retract (§19.5 says
+            // the restore brings back what you had).
+            pickOrder:  (s.pickOrder || s.selection).slice(),
             mode:       s.mode,
             filters:    s.filters.map(function (f) { return Object.assign({}, f); }),
             combinator: s.combinator,
+            isolate:    !!s.isolate,
+            kgrid:      s.kgrid ? { enabled: !!s.kgrid.enabled,
+                                    dims: (s.kgrid.dims || [1, 1, 1]).slice(),
+                                    source: s.kgrid.source } : undefined,
         };
     }
 
@@ -460,7 +471,13 @@
         var st = _store();
         if (!st) return [];
         var s = st.getState();
-        return Array.isArray(s.atoms) ? s.atoms.slice() : [];
+        if (!Array.isArray(s.atoms)) return [];
+        // Defensive per-atom copy (workspace-contract §1.2.1): the store snapshot SHARES
+        // the atom OBJECTS, so a bare .slice() lets a consumer mutate the store by writing
+        // getAtoms()[i].x / .labels.push(...).  Use the same _cloneAtom getStructure() does.
+        var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
+                   || function (a) { return a; };
+        return s.atoms.map(_clone);
     }
 
     /**
@@ -1777,11 +1794,28 @@
                                       generator_input: src.generator_input || null },
                 });
             }
-            // Restore the exact selection the snapshot held (the apply above reset it).
+            // Restore the FULL selection snapshot the apply above reset (§19.2/§19.5):
+            // mode, filters, combinator, and the VIEW toggles (isolate + k-grid), then
+            // the selection itself.  setSelection LAST and passed the pickOrder (falling
+            // back to indices) so it re-derives BOTH the sorted set AND the click order
+            // (the angle-measurement vertex) in one call.
             var st = _store();
-            if (st && s.selection && Array.isArray(s.selection.indices)
-                    && typeof st.setSelection === "function") {
-                st.setSelection(s.selection.indices);
+            var sel = s.selection;
+            if (st && sel) {
+                if (typeof st.setMode === "function" && sel.mode) st.setMode(sel.mode);
+                if (typeof st.setFilters === "function" && Array.isArray(sel.filters))
+                    st.setFilters(sel.filters);
+                if (typeof st.setCombinator === "function" && sel.combinator)
+                    st.setCombinator(sel.combinator);
+                if (typeof st.setIsolate === "function" && typeof sel.isolate === "boolean")
+                    st.setIsolate(sel.isolate);
+                if (typeof st.setKgrid === "function" && sel.kgrid) st.setKgrid(sel.kgrid);
+                if (typeof st.setSelection === "function") {
+                    var order = (Array.isArray(sel.pickOrder) && sel.pickOrder.length)
+                        ? sel.pickOrder
+                        : (Array.isArray(sel.indices) ? sel.indices : []);
+                    st.setSelection(order);
+                }
             }
             // Restore the view (camera / style / axes / labels).  The restore usually runs
             // BEFORE the embed exists (viewer.js's DOMContentLoaded load(0) fires before mount's
@@ -1938,6 +1972,23 @@
 
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
 
+    // Read a PROJECT file's working-copy DATA (codec-enriched: per-atom regions/frozen +
+    // full periodicity + opaque annotations) through the ONE data door.  Consumers must
+    // NOT POST /api/workingcopy/open raw -- that reached around the unified surface (and
+    // the workspace can't own it: it returns INTERPRETED structure data, not the
+    // format-blind bytes the persistence layer deals in).  Returns the parsed payload, or
+    // null on any failure so the caller can fall back to a plain byte load.
+    function readWorkingCopy(path) {
+        if (typeof root.fetch !== "function") return Promise.resolve(null);
+        return root.fetch("/api/workingcopy/open", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ path: path }),
+        }).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { return (j && j.ok) ? j : null; })
+          .catch(function () { return null; });
+    }
+
     var api = {
         subscribe:             subscribe,
         getState:              getState,
@@ -1982,6 +2033,7 @@
         markSaved:             markSaved,
         // ---- THE molecule + document doors (molview-module.md §19.3-19.4) ---- //
         openMolecule:          openMolecule,  // bring a NEW molecule in: {text,filename}|path -> whole model, atomic + timeline reset
+        readWorkingCopy:       readWorkingCopy, // read a project file's codec-enriched data (periodicity/annotations/atoms)
         exportFile:            exportFile,    // serialize whole model -> {xyz,sidecar} project-file bytes (openMolecule's inverse)
         // The state timeline (§19.5): ONE save + ONE load, index-delta parameterized.
         // `state_index` / `uncommitted` are LIVE getters (defined on the mounted object below).

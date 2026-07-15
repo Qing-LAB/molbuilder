@@ -1,26 +1,25 @@
-"""Node test: dispatcher.js MUST preserve the canvas-state mount.
+"""Node test: the canvas-state mount survives the full load order.
 
-Regression pin for the 2026-06-14 BLOCKER.  The MolView data model
-(``lib/molview/data-model.js``) reads the canvas-state store through the
-private ``workspace._canvasState`` slot that ``_canvas-state-impl.js``
-mounts earlier in the script-tag order.  The workspace dispatcher
-(``lib/workspace/dispatcher.js``) originally mounted itself with
-``root.molbuilder.workspace = api``, which silently CLOBBERED that slot;
-after the clobber every data-model read that resolves the canvas via
-``_canvas()`` got ``null`` and the Generate / Load buttons on
-``/molbuilder`` failed after a successful build.
+The MolView data model (``lib/molview/data-model.js``) reads the canvas-state
+store through the private ``molview._canvasState`` slot that
+``_canvas-state-impl.js`` mounts earlier in the script-tag order.  The slot lives
+on the ``molview`` namespace (the 2026-07 carve made ``workspace``
+persistence-only, so a data store must NOT hang off ``workspace.*``).
 
-The fix is mechanical: ``Object.assign(root.molbuilder.workspace || {},
-api)``.  This test loads the four workspace/molview JS files in their
-production order in a vm sandbox (browser-like: no ``module`` global) and
-asserts:
+Descended from the 2026-06-14 BLOCKER (then the dispatcher's
+``root.molbuilder.workspace = api`` clobbered the slot when it lived on
+``workspace``).  The invariant now: every module that assigns a shared namespace
+MERGES it (``root.molbuilder.<ns> = root.molbuilder.<ns> || {}`` /
+``Object.assign``), so data-model.js mounting ``molview.data`` must not clobber
+``molview._canvasState``.  This test loads the four workspace/molview JS files in
+production order in a vm sandbox (browser-like: no ``module`` global) and asserts:
 
-  (a) the private ``_canvasState`` slot survives the dispatcher load, and
+  (a) the private ``_canvasState`` slot survives the full load, and
   (b) a canvas write is READABLE end-to-end through the data model's
       public ``molview.data`` surface afterwards.
 
-If either assertion fails, the dispatcher's mount step has regressed —
-fix the dispatcher, NOT this test.
+If either assertion fails, a mount step has regressed — fix the module, NOT this
+test.
 
 The molecule I/O surface is the unified ``molview.data.load()`` /
 ``save()`` (molview-module.md §19.3-19.4); the pre-carve ``installStructure``
@@ -90,20 +89,22 @@ def _bootstrap_js() -> str:
         }}
         const ws = sandbox.window.molbuilder
                 && sandbox.window.molbuilder.workspace;
-        const data = sandbox.window.molbuilder
-                && sandbox.window.molbuilder.molview
-                && sandbox.window.molbuilder.molview.data;
+        const molview = sandbox.window.molbuilder
+                && sandbox.window.molbuilder.molview;
+        const data = molview && molview.data;
     """)
 
 
 def test_canvas_state_mount_survives_dispatcher_load():
-    """The BLOCKER fix: after the dispatcher loads, the canvas-state
-    IIFE's private ``_canvasState`` slot MUST still be on ``workspace``,
+    """After all four files load, the canvas-state IIFE's private
+    ``_canvasState`` slot MUST still be on ``molview`` (data-model.js merges
+    ``molview`` with ``|| {}``, so mounting ``molview.data`` must not clobber it),
     and the data model + its public surface MUST be mounted."""
     out = _run_node(_bootstrap_js() + dedent("""
         console.log(JSON.stringify({
             workspace_present:    !!ws,
-            canvas_state_present: !!(ws && ws._canvasState),
+            molview_present:      !!molview,
+            canvas_state_present: !!(molview && molview._canvasState),
             data_present:         !!data,
             load_present:         typeof (data && data.load),
             save_present:         typeof (data && data.save),
@@ -113,8 +114,9 @@ def test_canvas_state_mount_survives_dispatcher_load():
     """))
     assert out["workspace_present"] is True
     assert out["canvas_state_present"] is True, (
-        "dispatcher.js clobbered workspace._canvasState.  See the module "
-        "docstring for the BLOCKER this test pins."
+        "molview._canvasState was clobbered -- data-model.js must MERGE the "
+        "molview namespace (root.molbuilder.molview = root.molbuilder.molview "
+        "|| {}), not replace it.  See the module docstring."
     )
     assert out["data_present"] is True
     assert out["load_present"] == "function"
@@ -134,7 +136,7 @@ def test_canvas_write_is_readable_through_the_data_model():
             // Seed the canvas through the internal slot the mount must
             // have preserved (the public door is load(), which needs a
             // server; this test is about the MOUNT, not the load path).
-            ws._canvasState.setStructure(
+            molview._canvasState.setStructure(
                 { source_format: "xyz", text: "1\\n\\nH 0 0 0\\n" },
                 { kind: "smiles" }
             );

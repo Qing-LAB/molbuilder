@@ -7,7 +7,7 @@ History (2026-06-14)
 Earlier in the session this file held 3 assertions that fully
 duplicated `tests/test_workspace_dispatcher_canvas_mount_js.py`:
 
-  1. ``window.molbuilder.workspace._canvasState`` is truthy
+  1. ``window.molbuilder.molview._canvasState`` is truthy
   2. ``workspace.getStructure()`` is callable without throwing
   3. The empty workspace returns ``null`` from ``getStructure()``
 
@@ -18,11 +18,11 @@ doesn't already pin.
 
 The single contract L5 CAN catch that L2 cannot: that the real
 script-tag order in ``molbuilder.html`` actually loads the
-``_canvas-state-impl.js`` BEFORE the dispatcher's mount.  Verified
-in this file by ``page.goto('/molbuilder')`` + a single assertion
-that ``workspace._canvasState`` ends up truthy after page load,
-with no console errors during the load.  The 3-assertion contract
-checks have moved to L2.
+``_canvas-state-impl.js`` and ``data-model.js``.  Verified in this
+file by ``page.goto('/molbuilder')`` + a single assertion that
+``molview._canvasState`` ends up truthy after page load, with no
+console errors during the load.  The 3-assertion contract checks
+have moved to L2.
 """
 from __future__ import annotations
 
@@ -78,12 +78,12 @@ def test_molbuilder_page_mounts_canvas_state_under_real_script_order(
         timeout=10000,
     )
     canvas_slot_present = page.evaluate(
-        "() => !!(window.molbuilder.workspace._canvasState)"
+        "() => !!(window.molbuilder.molview && window.molbuilder.molview._canvasState)"
     )
     assert canvas_slot_present, (
-        "window.molbuilder.workspace._canvasState was not present "
+        "window.molbuilder.molview._canvasState was not present "
         "after /molbuilder mounted -- the impl script either "
-        "didn't run, or the dispatcher's mount wiped it.  See "
+        "didn't run, or a later mount wiped it.  See "
         "test_workspace_dispatcher_canvas_mount_js.py for the "
         "function-level contract this smoke complements."
     )
