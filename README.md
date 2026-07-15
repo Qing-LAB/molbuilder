@@ -12,13 +12,29 @@ The Au–BDT–Au junction is used as the running example throughout
 this README: builder → optimisation → spectrum → transport →
 results.
 
-**Status.** Pre-1.0.  Active development.  Used by the Qing lab for
-Au–thiol–Au transport studies.  Raman pipeline bit-for-bit validated
-against an independent hand-written PySCF reference.  Au–BDT–Au
-transport validation against Reed 2006 / Stokbro 2003 is set up as
-a fixture (geometry, sidecar labels, `.fdf` emission, preflight, atom
-ordering) but the end-to-end T(E_F) numerical comparison is pending
-the full optimisation + electrode `.TSHS` step.  MIT licensed.
+**Status.** Pre-1.0, active development, used by the Qing lab for
+Au–thiol–Au transport studies. The Raman pipeline is validated
+bit-for-bit against an independent reference; the transport pipeline
+is validated up to `.fdf` emission, with the numerical T(E_F)
+cross-check still pending (details in
+[Scientific validation](#scientific-validation)). MIT licensed.
+
+---
+
+## Contents
+
+- [Scope and capabilities](#scope-and-capabilities) — what it does, and why each part helps
+- [Quick start](#quick-start) — install and run in one command
+- [Common tasks](#common-tasks) — copy-paste recipes for the everyday jobs
+- [Feature tour](#feature-tour) — the five tabs, one at a time
+- [Workflow](#workflow--the-canonical-cross-tab-flow) — how the tabs hand off to each other
+- [Design at a glance](#design-at-a-glance) — the architecture in one diagram
+- [Install + multi-env model](#install--multi-env-model) — the backend environments in detail
+- [GPU SIESTA](#gpu-siesta-from-source) and [benchmarking](#performance-benchmarking--molbuilder-bench-siesta-gpu) — build from source, measure the fastest settings
+- [Deployment](#deployment) — LAN / internet exposure, auth, TLS
+- [Python API + CLI](#python-api--cli-for-scripting) — scripting without the UI
+- [Scientific validation](#scientific-validation) — what is checked, and against what
+- [Documentation](#documentation) · [Tips & FAQ](#tips--faq) · [Limits](#limits)
 
 ---
 
@@ -89,21 +105,10 @@ behavior you read about is the behavior you get.
 > relaxed, equilibrium geometry. Always run a geometry optimization
 > in your DFT code before you trust any computed property.
 
-### Validation summary
-
-- **Raman pipeline** (build → relax → Hessian → finite-difference
-  Raman) is bit-for-bit identical to a hand-written raw-PySCF
-  reference at B3LYP/def2-SVP for water.  Frequencies max Δ <
-  10⁻³ cm⁻¹; Raman activities max Δ < 10⁻⁶ Å⁴/amu.
-- **Au–BDT–Au transport.** Reference targets: Reed et al. 2006
-  (*J. Phys. Chem. B* **110**, 20671) — experimental
-  G(E_F) ≈ 0.01 G₀; Stokbro et al. 2003 (*Comp. Mat. Sci.* **27**,
-  151) — TranSIESTA G(E_F) ≈ 0.005–0.015 G₀.  Today's fixture pins
-  the `.fdf` emission, region labels, preflight, and atom-ordering
-  contract for an 18-atom test geometry.  The end-to-end T(E_F)
-  numerical cross-check is pending the full Au(111)-slab
-  optimisation + electrode `.TSHS` generation; tracked alongside
-  the planned electrode-`.TSHS` wizard.
+Where correctness matters, the claims above are cross-checked against
+an independent reference or the published literature. See
+[Scientific validation](#scientific-validation) for the table of what
+is verified today and what is still pending.
 
 ---
 
@@ -150,26 +155,33 @@ auth), see [§ Deployment](#deployment) and
 
 ## Common tasks
 
-Each recipe below is a same-screen workflow inside the web app.
-Each numbered step is a panel scroll or click; tab switches are
-called out where they happen.
+The first recipes are in-app workflows (each numbered step is a panel
+scroll or click on one tab; tab switches are called out where they
+happen). The last three — checkpoints, benchmarking, and running on an
+HPC cluster — are command-line workflows you can copy and paste.
 
 ### Build an Au–S–molecule–S–Au junction from a SMILES
 
-1. **Molbuilder tab → Sources panel.** Type the SMILES
-   `Sc1ccc(S)cc1` (1,4-benzenedithiol) and click *Build*.
-2. **Atom panel.** Click each thiol H and press *Delete* to expose
-   the two S atoms.
-3. **Pose panel.** Shift-click the two S atoms, set *axis = z* and
-   *center = midpoint*, and click *Apply orient*.
-4. **Junction panel.** Set *Element = Au*, *plane = 111*,
-   *m×n×layers = 3×3×2*, *gap = 12 Å*, and click *Apply add
-   electrode*.
-5. **Save panel.** Click *Save to project* → `BDT-Au.xyz` plus its
-   `BDT-Au.molstruct.json` sidecar.
+All of this happens on the **Molbuilder tab**, top to bottom through
+its three panels: **Init structure**, **Structure & selection**, and
+**Modify** (with Atom / Transform / Junction / Cell sub-tabs).
 
-The result is a transport-ready Au–BDT–Au geometry along with its
-sidecar carrying region labels.
+1. **Init structure → SMILES.** Enter `Sc1ccc(S)cc1`
+   (1,4-benzenedithiol) and build. The molecule appears in the viewer.
+2. **Structure & selection, then Modify → Atom.** Click each thiol
+   hydrogen to select it, then *Delete selected* to expose the two
+   sulfur anchors.
+3. **Modify → Transform.** Select the two S atoms and orient that pair
+   onto the z-axis (center = midpoint) — this stands the molecule up
+   the way a junction needs.
+4. **Modify → Junction.** Add electrodes: *element = Au*, *plane =
+   111*, *m×n×layers = 3×3×2*, *gap = 12 Å*, apply.
+5. **Modify → Save to project.** Writes `BDT-Au.xyz` plus its
+   `BDT-Au.molstruct.json` sidecar, which carries the electrode /
+   bridge region labels.
+
+The result is a transport-ready Au–BDT–Au geometry whose sidecar
+carries the region labels the Transport tab will read later.
 
 ### Generate a SIESTA `.fdf` for this geometry
 
@@ -186,30 +198,28 @@ copy the directory to a cluster and run `bash BDT-Au.run.sh`.
 
 ### Watch an optimization converge in real time
 
-1. **Results tab.** Single-click the run directory's
-   `.molwatch.log` in the sidebar.
-2. The inspector renders the 3Dmol frame animation, energy vs
-   step, max atomic force vs step, and per-cycle SCF residual on
-   a log scale.
-3. The inspector auto-refreshes when the log's `mtime` changes
-   (about once per minute by default).
-
-Frames stream in while the job is still running on the cluster;
-no file copying or offline plotting is required.
+1. **Results tab.** Navigate the Projects sidebar into the run
+   directory, then choose the `.molwatch.log` (or the SIESTA `.out`)
+   from the **Result file** dropdown.
+2. The trajectory inspector renders the 3-D frame animation plus the
+   energy-vs-step, max-force-vs-step, and per-cycle SCF-residual plots.
+3. It auto-refreshes when the file's timestamp changes, so new frames
+   stream in while the job is still running on the cluster — no file
+   copying or offline plotting.
 
 ### Run Raman on a small molecule
 
-1. **Molbuilder tab → Sources panel.** Type the compound name
-   `aspirin` for a PubChem lookup; save to the project as
-   `aspirin.xyz`.
+1. **Molbuilder tab → Init structure → Name lookup.** Enter
+   `aspirin` (PubChem), then Save to project as `aspirin.xyz`.
 2. **Structure-optimization tab.** Set *Engine = PySCF*,
    *method = B3LYP/def2-SVP*, and *Generate* → `aspirin.py`.
-   Run on a cluster.
+   Run on a cluster to get the relaxed geometry.
 3. **Spectrum-calculation tab.** Pick `aspirin_optimized.xyz`
    from the sidebar; enable `compute_raman` and
    `compute_frequencies`; *Generate* → `aspirin.spectra.py`.  Run
    on a cluster.
-4. **Results tab.** Pick `aspirin.spectra.json` to see the
+4. **Results tab.** Navigate to the run directory and pick
+   `aspirin.spectra.json` from the **Result file** dropdown to see the
    Lorentzian-broadened spectrum, the modes table, and per-mode
    3-D animation.
 
@@ -227,8 +237,9 @@ independent hand-written PySCF reference; see
    resulting `.fdf` on a cluster also requires the electrode
    `.TSHS` files; their generation is a manual step today, with
    an "electrode wizard" planned.
-4. **Results tab.** Pick `BDT-Au.transport.json` to view the
-   metadata (T(E) and I-V Plotly charts are planned).
+4. **Results tab.** Navigate to the run directory and pick
+   `BDT-Au.transport.json` from the **Result file** dropdown to view
+   the metadata (T(E) and I-V charts are planned).
 
 The Au–BDT–Au transport pipeline targets a T(E_F) comparison with
 Reed 2006 (*J. Phys. Chem. B* **110**, 20671) and Stokbro 2003
@@ -1634,7 +1645,7 @@ points, grouped by topic:
 
 | Document | Covers |
 |---|---|
-| [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md) | Molbuilder tab — Sources, Atom, Pose, Geom, Junction, Save. |
+| [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md) | Molbuilder tab — Init structure; Structure & selection; Modify (Atom / Transform / Junction / Cell) + Save state / Retract / Save to project. |
 | [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md) | Structure-optimization tab — SIESTA `.fdf` and PySCF `.py` form. |
 | [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectrum-calculation tab — schema, layers, atom-fixing semantics; Raman validation in § 12.1. |
 | [`docs/tabs/results.md`](docs/tabs/results.md) | Results tab — overview pointing at protocol docs below. |
