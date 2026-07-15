@@ -52,15 +52,15 @@
      * folding the panel is purely width (the viewer is already maxed, so it can't grow). */
     flex: 0 1 var(--panel-min);
     min-width: var(--panel-min);
-    /* LOCKED to the viewer edge: a FIXED frame the height of the viewer square (+
-     * its controls row), so its vertical edge aligns with the viewer and switching
-     * atom-list <-> filter (or Selection <-> Cell) NEVER resizes it -- the inner
-     * list/filter is the scroll region.  (Was ``max-height`` + content-sized, which
-     * made the panel jump between the long atom list and the short filter view.)
-     * A ``min-height`` floor keeps it usable when the viewport (hence --viewer-edge)
-     * is short: it never collapses below a few list rows + the header/actions, and
-     * the inner list simply scrolls. */
-    height: calc(var(--viewer-edge) + 3.25rem);
+    /* LOCKED to the viewer edge: a FIXED frame EXACTLY the height of the viewer
+     * SQUARE (--viewer-edge), so the panel's bottom aligns with the viewer's --
+     * the viewer's View/Export control bar is an OVERLAY *inside* the square, not
+     * a separate row, so NO extra height is added.  Switching atom-list <-> filter
+     * (or Selection <-> Cell) never resizes it; the inner list/filter is the scroll
+     * region.  A ``min-height`` floor keeps it usable when the viewport (hence
+     * --viewer-edge) is short -- it never collapses below a few list rows + the
+     * header/actions, and the inner list simply scrolls. */
+    height: var(--viewer-edge);
     min-height: 18rem;
     /* ONE scroll, not nested: the panel is a flex column and never scrolls itself
      * (overflow hidden); the ACTIVE page inside is the single scroll region (below).  This
