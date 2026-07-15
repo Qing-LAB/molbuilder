@@ -1272,3 +1272,42 @@ def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
     assert rc == 0
     final = outp.read_text()
     assert final.startswith("3\n")
+
+
+# --------------------------------------------------------------------- #
+#  serve --no-auth: loopback-only guard (security-relevant)             #
+# --------------------------------------------------------------------- #
+
+
+def test_serve_no_auth_refuses_non_loopback_host():
+    """--no-auth must REFUSE a non-loopback bind so an unauthenticated
+    server is never exposed off the machine."""
+    from click.testing import CliRunner
+    res = CliRunner().invoke(
+        cli.cli, ["serve", "--no-auth", "--host", "0.0.0.0", "--port", "8099"])
+    assert res.exit_code != 0
+    assert "loopback" in res.output.lower()
+
+
+def test_serve_no_auth_loopback_uses_config_empty(monkeypatch):
+    """On a loopback host, --no-auth builds the app via
+    create_app(config={}) (the no-auth seam) and serves without TLS."""
+    from click.testing import CliRunner
+    import molbuilder.web.app as _appmod
+
+    calls = {}
+
+    class _FakeApp:
+        def run(self, **kw):
+            calls["run_kwargs"] = kw
+
+    def _fake_create_app(*, config=None):
+        calls["config"] = config
+        return _FakeApp()
+
+    monkeypatch.setattr(_appmod, "create_app", _fake_create_app)
+    res = CliRunner().invoke(
+        cli.cli, ["serve", "--no-auth", "--host", "127.0.0.1", "--port", "8099"])
+    assert res.exit_code == 0, res.output
+    assert calls["config"] == {}                 # no-auth seam
+    assert calls["run_kwargs"].get("ssl_context") is None   # plain http

@@ -661,6 +661,20 @@ CAS extras:
 Omit the whole `auth` section to run with no authentication
 (localhost-only single-user shape).
 
+For a quick throwaway auth-free run (local dev, screenshots, tests)
+without editing `molbuilder.json`, pass `--no-auth` to `serve`:
+
+```bash
+molbuilder serve --no-auth --port 8012
+```
+
+`--no-auth` builds the app with `create_app(config={})` (ignoring
+`molbuilder.json`'s auth/TLS) and is **allowed only on a loopback
+`--host`** (`127.0.0.1` / `localhost` / `::1`); it refuses any
+non-loopback bind so an unauthenticated server can never be exposed
+off the machine. The `projects/` root still resolves from the current
+working directory as usual.
+
 ### `secret_key_file`
 
 ```json

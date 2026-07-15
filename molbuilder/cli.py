@@ -2243,9 +2243,35 @@ def cmd_runtime_info(input_path, out_path, pretty):
               help="Bypass the loopback-or-TLS guard.  Only sensible "
                    "when something outside molbuilder (proxy / VPN) "
                    "gates access -- see docs/deployment.md.")
-def cmd_serve(host, port, debug, cert, key, allow_insecure_binding):
+@click.option("--no-auth", is_flag=True,
+              help="Run with NO authentication (ignores molbuilder.json's "
+                   "auth/TLS).  Allowed ONLY on a loopback --host "
+                   "(127.0.0.1 / localhost / ::1) so an unauthenticated "
+                   "server can never be exposed; refuses otherwise.  For "
+                   "local dev, screenshots, and tests.")
+def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth):
     """Start a Flask server with the molbuilder browser UI."""
     from .web.app import create_app
+
+    if no_auth:
+        # Auth-free is a LOCAL-ONLY convenience: refuse anything but a
+        # loopback bind so an unauthenticated server is never reachable
+        # off the machine.  create_app(config={}) is the supported
+        # no-auth seam (see web/app.py:create_app); it ignores
+        # molbuilder.json entirely (no providers -> no login), and the
+        # projects root still resolves from the CWD.
+        if not _is_loopback_host(host):
+            raise click.ClickException(
+                f"--no-auth requires a loopback --host (got {host!r}); "
+                "refusing to start an unauthenticated server on a "
+                "non-loopback interface.")
+        app = create_app(config={})
+        click.echo(
+            f"molbuilder web UI (NO AUTH -- loopback only) starting at "
+            f"http://{host}:{port}", err=True)
+        app.run(host=host, port=port, debug=debug, ssl_context=None)
+        return
+
     cert, key = _resolve_tls(cert, key)
     _check_tls_readable(cert, key)
     ssl_ctx = (cert, key) if cert and key else None
