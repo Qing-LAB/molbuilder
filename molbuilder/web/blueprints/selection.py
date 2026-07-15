@@ -321,8 +321,9 @@ def selection_atoms():
         # reopened structure restores it (the .json sits next to the .xyz on the
         # server; the viewer never parses -- the host reads it here).  `cell` is
         # kept for the Phase 1 Results-viewer consumer; `periodicity` is the full
-        # {cell, axis_kind, vacuum, kgrid} the Modify path-based load reads.
-        # Absent / malformed sidecar -> both null.
+        # {cell, axis_kind, vacuum} the Modify path-based load reads.  (k-grid is
+        # NOT geometry -- it's a sampling knob on SiestaConfig; a legacy sidecar's
+        # `kgrid` key is ignored.)  Absent / malformed sidecar -> both null.
         cell = None
         periodicity = None
         try:
@@ -334,7 +335,6 @@ def selection_atoms():
                     "cell":      cell,
                     "axis_kind": _sd.get("axis_kind"),
                     "vacuum":    _sd.get("vacuum"),
-                    "kgrid":     _sd.get("kgrid"),
                 }
         except Exception:
             cell = None

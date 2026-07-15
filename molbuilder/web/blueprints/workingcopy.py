@@ -104,7 +104,8 @@ def wc_open():
             "resolved_cell": _resolved_cell,
             "axis_kind":     sc.get("axis_kind"),
             "vacuum":        sc.get("vacuum"),
-            "kgrid":         sc.get("kgrid"),
+            # (No "kgrid": it's a sampling knob on SiestaConfig / TransportConfig,
+            # not geometry -- structure-periodicity.md.)
         },
         # F1: the per-atom annotation channels (atom-annotations.md) ride opaquely
         # through the frontend so a Modify Save doesn't clobber them to {}.

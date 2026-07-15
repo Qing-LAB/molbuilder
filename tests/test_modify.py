@@ -57,17 +57,16 @@ def periodic_dimer():
         cell=np.diag([10.0, 10.0, 20.0]),
         axis_kind=("periodic", "periodic", "transport"),
         vacuum=(5.0, 5.0, 0.0),
-        kgrid=(2, 2, 8),
     )
 
 
 def _assert_lattice_preserved(out, ref):
-    """The op must carry cell / axis_kind / vacuum / k-grid verbatim -- these
-    are NOT per-atom, so an edit must never revert them to isolated defaults."""
+    """The op must carry cell / axis_kind / vacuum verbatim -- these are NOT
+    per-atom, so an edit must never revert them to isolated defaults.  (k-grid
+    is no longer geometry; it lives on SiestaConfig -- structure-periodicity.md.)"""
     assert out.cell is not None and np.allclose(out.cell, ref.cell)
     assert out.axis_kind == ref.axis_kind
     assert out.vacuum == ref.vacuum
-    assert out.kgrid == ref.kgrid
 
 
 class TestOpsPreservePeriodicity:

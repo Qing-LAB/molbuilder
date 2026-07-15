@@ -9,7 +9,7 @@ contract.
 Public surface here
 -------------------
 
-* :data:`SCHEMA_VERSION`            — current on-disk schema (4).
+* :data:`SCHEMA_VERSION`            — current on-disk schema (5).
 * :exc:`MolstructJsonError`         — raised on malformed input or
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct
@@ -70,7 +70,7 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 _SIDECAR_SUFFIX = ".molstruct.json"
@@ -197,7 +197,6 @@ def to_dict(
     pbc: Optional[Any] = None,
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
-    kgrid: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
@@ -289,8 +288,10 @@ def to_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
-    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
+    # Periodicity kind / vacuum (structure-periodicity.md; additive @ v4).
     # axis_kind is authoritative; pbc above is its derived ASE view.
+    # (k-grid was dropped @ v5: it's a reciprocal-space SAMPLING knob that
+    # belongs on SiestaConfig / TransportConfig, not the geometry sidecar.)
     _KINDS = ("periodic", "isolated", "transport")
     normed_axis_kind = None
     if axis_kind is not None:
@@ -305,12 +306,6 @@ def to_dict(
         if len(v) != 3:
             raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
         normed_vacuum = v
-    normed_kgrid = None
-    if kgrid is not None:
-        kg = [max(1, int(x)) for x in kgrid]
-        if len(kg) != 3:
-            raise MolstructJsonError(f"kgrid must have 3 entries; got {kgrid!r}")
-        normed_kgrid = kg
 
     # Extensible per-atom annotation channels (schema v4; atom-annotations.md
     # § 3).  Additive alongside regions/frozen_atoms (which are still written
@@ -342,7 +337,6 @@ def to_dict(
         "pbc":             normed_pbc,
         "axis_kind":       normed_axis_kind,
         "vacuum":          normed_vacuum,
-        "kgrid":           normed_kgrid,
         "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
@@ -524,9 +518,8 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     vac = sidecar_data.get("vacuum")
     if vac is not None:
         struct.vacuum = tuple(float(x) for x in vac)
-    kg = sidecar_data.get("kgrid")
-    if kg is not None:
-        struct.kgrid = tuple(max(1, int(x)) for x in kg)
+    # (A "kgrid" key from a pre-v5 sidecar is intentionally ignored: k-grid is
+    # no longer a geometry field -- it lives on SiestaConfig / TransportConfig.)
 
 
 def load(sidecar_path):

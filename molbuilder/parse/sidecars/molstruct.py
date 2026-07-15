@@ -37,8 +37,10 @@ from ._helpers import build_sidecar_result
 # must be re-exported from /modify.  v3 has no ``annotations`` (a v3
 # reader/consumer sees only regions + frozen); v4 adds the extensible
 # annotation channels (atom-annotations.md § 3) additively -- v3 files
-# still load (annotations absent -> empty).
-_READABLE_SCHEMA_VERSIONS = (3, 4)
+# still load (annotations absent -> empty).  v5 drops the ``kgrid`` field
+# (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
+# a ``kgrid`` key in an older v3/v4 file loads fine -- it's ignored.
+_READABLE_SCHEMA_VERSIONS = (3, 4, 5)
 
 
 def _normalised_dict(
@@ -52,7 +54,6 @@ def _normalised_dict(
     pbc: Optional[Any] = None,
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
-    kgrid: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
@@ -138,7 +139,9 @@ def _normalised_dict(
 
     normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
 
-    # Periodicity kind / vacuum / kgrid (structure-periodicity.md; additive @ v4).
+    # Periodicity kind / vacuum (structure-periodicity.md; additive @ v4).
+    # (k-grid dropped @ v5 -- a SAMPLING knob on SiestaConfig / TransportConfig,
+    # not a geometry field.  A "kgrid" key in a pre-v5 sidecar is ignored below.)
     _KINDS = ("periodic", "isolated", "transport")
     normed_axis_kind = None
     if axis_kind is not None:
@@ -153,12 +156,6 @@ def _normalised_dict(
         if len(v) != 3:
             raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
         normed_vacuum = v
-    normed_kgrid = None
-    if kgrid is not None:
-        kg = [max(1, int(x)) for x in kgrid]
-        if len(kg) != 3:
-            raise MolstructJsonError(f"kgrid must have 3 entries; got {kgrid!r}")
-        normed_kgrid = kg
 
     # Extensible annotation channels (schema v4; atom-annotations.md § 3).
     # Absent on v3.  Round-trip each channel through AtomChannel so a
@@ -196,7 +193,6 @@ def _normalised_dict(
         "pbc":             normed_pbc,
         "axis_kind":       normed_axis_kind,
         "vacuum":          normed_vacuum,
-        "kgrid":           normed_kgrid,
         "annotations":     normed_annotations,
         "created_by":      str(created_by),
         "created_at":      created_at,
@@ -283,7 +279,6 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
             pbc             = data.get("pbc"),
             axis_kind       = data.get("axis_kind"),
             vacuum          = data.get("vacuum"),
-            kgrid           = data.get("kgrid"),
             annotations     = data.get("annotations"),
             created_by      = data.get("created_by", "unknown"),
             created_at      = data.get("created_at"),

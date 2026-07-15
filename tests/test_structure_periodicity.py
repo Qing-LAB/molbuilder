@@ -1,5 +1,6 @@
-"""Structure periodicity fields — axis_kind / vacuum / kgrid + resolve_cell
-(structure-periodicity.md, Phase 2a data model).
+"""Structure periodicity fields — axis_kind / vacuum + resolve_cell
+(structure-periodicity.md, Phase 2a data model).  k-grid is deliberately NOT
+here: it's a reciprocal-space sampling knob on SiestaConfig / TransportConfig.
 """
 import numpy as np
 import pytest
@@ -44,11 +45,16 @@ class TestAxisKindReconciliation:
         with pytest.raises(ValueError, match="axis_kind"):
             _s(axis_kind=("periodic", "bogus", "isolated"))
 
-    def test_vacuum_kgrid_defaults(self):
+    def test_vacuum_default(self):
         s = _s()
         assert s.vacuum == (0.0, 0.0, 0.0)
-        assert s.kgrid == (1, 1, 1)
-        assert _s(kgrid=(4, 4, 0)).kgrid == (4, 4, 1)  # clamped >= 1
+
+    def test_kgrid_is_not_a_structure_field(self):
+        # k-grid is a reciprocal-space SAMPLING knob (SiestaConfig /
+        # TransportConfig), not geometry -- structure-periodicity.md.
+        assert not hasattr(_s(), "kgrid")
+        with pytest.raises(TypeError):
+            _s(kgrid=(4, 4, 1))
 
 
 class TestResolveCell:
@@ -57,9 +63,10 @@ class TestResolveCell:
         assert np.allclose(_s(cell=c).resolve_cell(), c)
 
     def test_molecule_bbox_plus_vacuum(self):
-        # x extent 2 + vacuum 5 = 7; y,z extent 0 + 5 = 5.
+        # vacuum is a PER-SIDE gap: cell = bbox + 2*vacuum.
+        # x extent 2 + 2*5 = 12; y,z extent 0 + 2*5 = 10.
         s = _s(vacuum=(5, 5, 5))
-        assert np.allclose(s.resolve_cell(), np.diag([7.0, 5.0, 5.0]))
+        assert np.allclose(s.resolve_cell(), np.diag([12.0, 10.0, 10.0]))
 
     def test_transport_axis_bbox_no_vacuum(self):
         # a transport axis ignores vacuum (matched device length); needs a cell
@@ -71,7 +78,7 @@ class TestResolveCell:
         )
         cell = s.resolve_cell()
         assert cell[2, 2] == pytest.approx(6.0)   # z extent, NO vacuum
-        assert cell[0, 0] == pytest.approx(0.0 + 5.0)  # isolated x gets vacuum
+        assert cell[0, 0] == pytest.approx(0.0 + 2 * 5.0)  # isolated x gets 2*vacuum
 
     def test_periodic_axis_without_cell_raises(self):
         s = _s(axis_kind=("periodic", "isolated", "isolated"))
@@ -83,8 +90,9 @@ class TestResolveCell:
 
 
 class TestSidecarRoundTrip:
-    """axis_kind / vacuum / kgrid persist through the .molstruct.json sidecar
-    (structure-periodicity.md § 7; additive @ schema v4)."""
+    """axis_kind / vacuum persist through the .molstruct.json sidecar
+    (structure-periodicity.md § 7; additive @ schema v4).  k-grid is NOT a
+    geometry field, so it's neither written nor read (dropped @ schema v5)."""
 
     def test_round_trip_through_to_dict_and_apply(self):
         from molbuilder.sidecars import molstruct as ms
@@ -92,17 +100,26 @@ class TestSidecarRoundTrip:
             n_atoms_total=2, structure_hash="a" * 64,
             cell=[[5, 0, 0], [0, 5, 0], [0, 0, 10]],
             axis_kind=["periodic", "periodic", "transport"],
-            vacuum=[0.0, 0.0, 0.0], kgrid=[4, 4, 1],
+            vacuum=[0.0, 0.0, 0.0],
         )
         assert d["axis_kind"] == ["periodic", "periodic", "transport"]
         assert d["vacuum"] == [0.0, 0.0, 0.0]
-        assert d["kgrid"] == [4, 4, 1]
+        assert "kgrid" not in d   # k-grid is not geometry -> not in the sidecar
 
         s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
         ms.apply_to_structure(s, d)
         assert s.axis_kind == ("periodic", "periodic", "transport")
-        assert s.kgrid == (4, 4, 1)
+        assert not hasattr(s, "kgrid")
         assert s.pbc == (True, True, True)   # derived: transport -> True
+
+    def test_pre_v5_kgrid_key_is_ignored_on_read(self):
+        # A legacy v3/v4 sidecar that still carries a "kgrid" key loads fine;
+        # the key is simply ignored (Structure has no kgrid field).
+        from molbuilder.sidecars import molstruct as ms
+        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
+        ms.apply_to_structure(s, {"n_atoms_total": 2, "regions": {},
+                                  "frozen_atoms": [], "kgrid": [4, 4, 1]})
+        assert not hasattr(s, "kgrid")
 
     def test_invalid_axis_kind_rejected_at_build(self):
         from molbuilder.sidecars import molstruct as ms
@@ -115,7 +132,6 @@ class TestSidecarRoundTrip:
         s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
         ms.apply_to_structure(s, {"n_atoms_total": 2, "regions": {},
                                   "frozen_atoms": []})
-        assert s.kgrid == (1, 1, 1)
         assert s.axis_kind == ("isolated", "isolated", "isolated")
 
 

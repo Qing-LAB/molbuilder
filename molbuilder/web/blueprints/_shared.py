@@ -178,8 +178,9 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
             peri_kw["axis_kind"] = tuple(per["axis_kind"])
         if per.get("vacuum") is not None:
             peri_kw["vacuum"] = tuple(per["vacuum"])
-        if per.get("kgrid") is not None:
-            peri_kw["kgrid"] = tuple(int(k) for k in per["kgrid"])
+        # (No "kgrid": k-grid is a SAMPLING knob on SiestaConfig /
+        # TransportConfig, not a geometry field -- structure-periodicity.md.
+        # A stray "kgrid" in the periodicity payload is simply ignored.)
     return Structure(
         elements      = list(base.elements),
         positions     = base.positions,
@@ -402,7 +403,8 @@ def structure_to_dict(
             "resolved_cell": _resolved_cell,   # § 3a effective cell (server-resolved)
             "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
             "vacuum":        list(struct.vacuum),
-            "kgrid":         list(struct.kgrid),
+            # (No "kgrid": it's a SAMPLING knob on SiestaConfig / TransportConfig,
+            # not geometry -- structure-periodicity.md.)
         },
         # Per-atom annotation channels (atom-annotations.md) ride back with the geometry so a
         # modify op preserves them index-aligned (the op reindexed them server-side).  The

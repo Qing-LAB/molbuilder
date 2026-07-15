@@ -1148,15 +1148,16 @@ def test_modify_count_changing_ops_emit_no_selection_remap(web_client):
 
 def test_modify_op_round_trips_the_periodic_cell(web_client):
     """Regression (2026-07 fresh-eyes review): a modify op must carry the
-    periodicity (cell / axis_kind / vacuum / k-grid) through the round-trip.
-    Before the fix ``struct_from_body`` rebuilt an isolated Structure and the
-    response reset the client's cell/k-grid to defaults -> the next SIESTA FDF
-    silently dropped LatticeVectors / the k-grid."""
+    periodicity (cell / axis_kind / vacuum) through the round-trip.  Before the
+    fix ``struct_from_body`` rebuilt an isolated Structure and the response reset
+    the client's cell to defaults -> the next SIESTA FDF silently dropped
+    LatticeVectors.  (k-grid is NOT geometry -- a stray ``kgrid`` in the payload
+    is ignored and never echoed back; structure-periodicity.md.)"""
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
         "axis_kind": ["periodic", "periodic", "transport"],
         "vacuum": [5.0, 5.0, 0.0],
-        "kgrid": [2, 2, 8],
+        "kgrid": [2, 2, 8],   # legacy key -> ignored, not echoed back
     }
     # A count-changing op (delete) AND a transform (rotate) must both preserve it.
     for op, extra in (("delete", {"indices": [1]}),
@@ -1169,7 +1170,7 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
         assert per["cell"] == periodicity["cell"], f"{op} dropped the cell"
         assert per["axis_kind"] == periodicity["axis_kind"], f"{op} dropped axis_kind"
         assert per["vacuum"] == periodicity["vacuum"], f"{op} dropped vacuum"
-        assert per["kgrid"] == periodicity["kgrid"], f"{op} dropped the k-grid"
+        assert "kgrid" not in per, f"{op} should not echo k-grid (not geometry)"
 
 
 # --------------------------------------------------------------------- #

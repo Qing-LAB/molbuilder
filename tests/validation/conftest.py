@@ -31,6 +31,9 @@ from molbuilder.validation import report, validate
 
 @pytest.fixture
 def water_struct():
+    # A planar molecule: give it a real per-side vacuum so render_fdf's
+    # derived cell isn't degenerate on the out-of-plane axis (vacuum=0 would
+    # make a zero-thickness box -> hard error; structure-periodicity.md).
     return Structure(
         elements=["O", "H", "H"],
         positions=np.array([
@@ -39,6 +42,7 @@ def water_struct():
             [-0.240, 0.927, 0.000],
         ]),
         title="water",
+        vacuum=(12.0, 12.0, 12.0),
     )
 
 

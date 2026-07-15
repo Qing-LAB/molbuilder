@@ -119,6 +119,7 @@ def test_render_fdf_raises_on_overlapping_atoms():
     s = Structure(
         elements=["O", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0]]),
+        vacuum=(10.0, 10.0, 10.0),   # non-degenerate box so validate() is reached
     )
     with pytest.raises(ValidationError) as exc:
         render_fdf(s, SiestaConfig())

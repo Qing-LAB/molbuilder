@@ -54,13 +54,13 @@ def test_open_returns_atoms_and_periodicity_for_the_store(client_project):
         n_atoms_total=5, structure_hash=_msj.sha256_of_file(xyz),
         regions={"L-electrode": [0, 1]}, frozen_atoms=[0],
         cell=[[40, 0, 0], [0, 40, 0], [0, 0, 40]],
-        axis_kind=["periodic", "periodic", "periodic"], kgrid=[2, 2, 2]))
+        axis_kind=["periodic", "periodic", "periodic"]))
     r = _json(client.post("/api/workingcopy/open", json={"path": str(xyz)}))
     assert r["ok"]
     assert len(r["atoms"]) == 5
     assert "L-electrode" in r["atoms"][0]["regions"]      # sidecar region on the atom
     assert r["atoms"][0]["is_frozen"] is True             # sidecar frozen on the atom
-    assert r["periodicity"]["kgrid"] == [2, 2, 2]         # periodicity carried
+    assert "kgrid" not in r["periodicity"]                # k-grid is not geometry
     assert r["periodicity"]["axis_kind"] == ["periodic", "periodic", "periodic"]
 
 
@@ -156,7 +156,7 @@ def test_save_as_new_path(client_project):
 def test_save_writes_full_periodicity_and_hash_tie(client_project):
     """A1 (molview-migration-plan): the working-copy save writes the WHOLE dataset
     atomically -- .xyz + .json TOGETHER, the .json carrying the full periodicity
-    (cell/axis_kind/kgrid) and structure_hash = sha256 of the just-written .xyz."""
+    (cell/axis_kind/vacuum) and structure_hash = sha256 of the just-written .xyz."""
     import hashlib
     client, proj = client_project
     xyz = str(proj / "mol.xyz")
@@ -164,7 +164,6 @@ def test_save_writes_full_periodicity_and_hash_tie(client_project):
     # The store would carry periodicity in the sidecar blob:
     blob["sidecar"]["cell"] = [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 10.0]]
     blob["sidecar"]["axis_kind"] = ["periodic", "periodic", "transport"]
-    blob["sidecar"]["kgrid"] = [4, 4, 1]
     r = _json(client.post("/api/workingcopy/save",
                           json={"source": xyz, "data": blob, "overwrite": True}))
     assert r["ok"]
@@ -174,7 +173,7 @@ def test_save_writes_full_periodicity_and_hash_tie(client_project):
     sidecar = json.loads((proj / "mol.molstruct.json").read_text())
     assert sidecar["cell"] == [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 10.0]]
     assert sidecar["axis_kind"] == ["periodic", "periodic", "transport"]
-    assert sidecar["kgrid"] == [4, 4, 1]
+    assert "kgrid" not in sidecar   # k-grid is not geometry -> not written
     # Hash-tie: the .json's structure_hash matches the just-written .xyz.
     xyz_bytes = (proj / "mol.xyz").read_bytes()
     assert sidecar["structure_hash"] == hashlib.sha256(xyz_bytes).hexdigest()

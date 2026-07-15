@@ -16,7 +16,7 @@ def test_to_dict_v4_dual_writes_annotations_and_builtins():
         n_atoms_total=5, structure_hash=_hash(),
         regions={"L-electrode": [0, 1]}, frozen_atoms=[4],
         annotations={"charge": AtomChannel("value", {0: -1.0, 1: 0.5})})
-    assert d["schema_version"] == 4
+    assert d["schema_version"] == 5   # current schema (kgrid dropped @ v5)
     assert d["regions"] == {"L-electrode": [0, 1]}      # dual-write: built-ins kept
     assert d["frozen_atoms"] == [4]
     assert d["annotations"]["charge"] == {
@@ -34,7 +34,7 @@ def test_save_load_apply_roundtrips_annotations(tmp_path):
         regions=s.regions, frozen_atoms=s.frozen_atoms,
         annotations=s.annotations))
     loaded = molstruct.load(p)
-    assert loaded["schema_version"] == 4
+    assert loaded["schema_version"] == 5   # current schema (kgrid dropped @ v5)
     back = Structure(elements=["C"] * 5,
                      positions=np.arange(15, dtype=float).reshape(5, 3))
     molstruct.apply_to_structure(back, loaded)

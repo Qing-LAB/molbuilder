@@ -399,9 +399,10 @@ class TestAtomsEndpoint:
     def test_periodicity_from_sidecar_for_path_based_load(
             self, web, selection_root):
         """structure-periodicity.md: /api/selection/atoms returns the full
-        `periodicity` {cell, axis_kind, vacuum, kgrid} so the Modify path-based
-        load restores a reopened structure's periodicity (the .json sits next to
-        the .xyz on the server)."""
+        `periodicity` {cell, axis_kind, vacuum} so the Modify path-based load
+        restores a reopened structure's periodicity (the .json sits next to the
+        .xyz on the server).  A legacy `kgrid` key in the sidecar is ignored --
+        k-grid is a sampling knob on SiestaConfig, not geometry."""
         import hashlib
         import json as _json
         xyz_bytes = (selection_root / "junction.xyz").read_bytes()
@@ -411,14 +412,14 @@ class TestAtomsEndpoint:
             "schema_version": 4, "n_atoms_total": 11,
             "structure_hash": struct_hash, "regions": {}, "frozen_atoms": [],
             "cell": cell, "axis_kind": ["periodic", "periodic", "transport"],
-            "kgrid": [4, 4, 1], "selection_rules": {},
+            "kgrid": [4, 4, 1], "selection_rules": {},   # legacy key -> ignored
         }))
         per = web.post("/api/selection/atoms", json={
             "structure_path": _path(selection_root),
         }).get_json()["periodicity"]
         assert per["cell"] == cell
         assert per["axis_kind"] == ["periodic", "periodic", "transport"]
-        assert per["kgrid"] == [4, 4, 1]
+        assert "kgrid" not in per   # k-grid is not part of the geometry payload
 
     def test_cell_null_without_sidecar(self, web, selection_root):
         """No sidecar next to the .xyz -> `cell` + `periodicity` null, not error."""

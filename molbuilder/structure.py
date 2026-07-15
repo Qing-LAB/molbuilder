@@ -300,10 +300,11 @@ class Structure:
     # ``pbc`` above is the DERIVED ASE view (periodic|transport -> True,
     # isolated -> False).  None -> derived from ``pbc``/``cell`` in __post_init__.
     axis_kind:     Optional[Tuple[str, str, str]] = None
-    # Isolation padding (Å) on isolated axes; Monkhorst-Pack / display grid.
-    # Defaults keep every existing call site unchanged.
+    # Isolation padding (Å) on isolated axes -- the PER-SIDE vacuum gap.
+    # (k-grid is NOT here: it's a reciprocal-space SAMPLING knob, a CALCULATION
+    # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
+    # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Tuple[float, float, float]  = (0.0, 0.0, 0.0)
-    kgrid:         Tuple[int, int, int]        = (1, 1, 1)
     # Extensible per-atom annotations (atom-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
     # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
@@ -386,13 +387,10 @@ class Structure:
                 )
             self.axis_kind = ak
             self.pbc = tuple(k != "isolated" for k in ak)   # pbc DERIVED
-        # Shape/clamp vacuum + kgrid.
+        # Shape/clamp vacuum (per-side gap).
         self.vacuum = tuple(float(v) for v in self.vacuum)
         if len(self.vacuum) != 3:
             raise ValueError("Structure.vacuum must have exactly 3 entries")
-        self.kgrid = tuple(max(1, int(k)) for k in self.kgrid)
-        if len(self.kgrid) != 3:
-            raise ValueError("Structure.kgrid must have exactly 3 entries")
 
         # Validate transport metadata.  Both fields default to empty,
         # so a caller that doesn't care about regions / frozen atoms
@@ -982,23 +980,22 @@ class Structure:
     # ------------------------------------------------------------------ #
 
     def _carry_periodicity(self) -> dict:
-        """Periodicity fields (cell / pbc / axis_kind / vacuum / kgrid) for
+        """Periodicity fields (cell / pbc / axis_kind / vacuum) for
         reconstructing a Structure that EDITS ATOMS but keeps the lattice.
 
         None of these are per-atom, so an add / delete / rigid transform
         carries them verbatim.  Dropping any of them silently reverts a
         periodic or transport cell to isolated defaults (axis_kind -> derived
-        from pbc, vacuum -> 0, kgrid -> 1) -- e.g. deleting a stray atom would
-        wipe a k-grid the user set, and the emitted SIESTA FDF would omit
-        ``LatticeVectors`` / the k-grid.  Every op-helper that rebuilds a
-        Structure spreads this so the lattice survives the edit.
+        from pbc, vacuum -> 0) -- e.g. deleting a stray atom would wipe a
+        transport cell, and the emitted SIESTA FDF would omit
+        ``LatticeVectors``.  Every op-helper that rebuilds a Structure spreads
+        this so the lattice survives the edit.
         """
         return dict(
             cell      = (self.cell.copy() if self.cell is not None else None),
             pbc       = self.pbc,
             axis_kind = self.axis_kind,
             vacuum    = self.vacuum,
-            kgrid     = self.kgrid,
         )
 
     def copy(self) -> "Structure":

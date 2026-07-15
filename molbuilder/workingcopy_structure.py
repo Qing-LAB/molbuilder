@@ -71,5 +71,4 @@ class StructureCodec:
             pbc            = [bool(x) for x in struct.pbc] if struct.pbc is not None else None,
             axis_kind      = list(struct.axis_kind) if struct.axis_kind is not None else None,
             vacuum         = list(struct.vacuum),
-            kgrid          = list(struct.kgrid),
         )
