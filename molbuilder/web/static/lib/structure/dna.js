@@ -64,6 +64,35 @@
     }
 
     /**
+     * Parse the DNA-panel notation CLIENT-SIDE (mirrors the server's
+     * nucleic._parse_dna_notation) so the ACGT check runs on the CORE
+     * sequence, not the raw "ds,ATGC" / "5'-ATGC-3'" text:
+     *   bare "ATGC"     -> { mode:"ss", core:"ATGC" }
+     *   "ds,ATGC"       -> { mode:"ds", core:"ATGC" }   (canonical duplex)
+     *   5'/3' markers accepted; a 3'->5' strand is reversed to 5'->3'.
+     *   two comma-separated strands -> { twoStrand:true } (the server owns the
+     *   "not yet supported" message for arbitrary duplexes).
+     * The RAW notation is sent to the server, which re-parses authoritatively.
+     */
+    function _parseDnaNotation(raw) {
+        var s = String(raw == null ? "" : raw).trim();
+        var mode = "ss";
+        if (/^ds[,:]/i.test(s)) { mode = "ds"; s = s.slice(3).trim(); }
+        if (s.indexOf(",") >= 0) {
+            return { mode: mode, core: "", twoStrand: true };
+        }
+        var m = s.match(/^\s*([53])'\s*-\s*([\s\S]*?)\s*-\s*([53])'\s*$/);
+        var core;
+        if (m) {
+            core = m[2].replace(/[^A-Za-z]/g, "").toUpperCase();
+            if (m[1] === "3") core = core.split("").reverse().join("");
+        } else {
+            core = s.replace(/[^A-Za-z]/g, "").toUpperCase();
+        }
+        return { mode: mode, core: core, twoStrand: false };
+    }
+
+    /**
      * Generate ssDNA from a 1-letter sequence.
      *
      * @param {string} sequence  ACGT, case-insensitive
@@ -81,11 +110,12 @@
                 error: "Enter a DNA sequence first (ACGT).",
             });
         }
-        var trimmed = sequence.trim().toUpperCase().replace(/\s+/g, "");
-        if (!VALID_DNA.test(trimmed)) {
+        var parsed = _parseDnaNotation(sequence);
+        if (!parsed.twoStrand && !VALID_DNA.test(parsed.core)) {
             return Promise.resolve({
                 ok:    false,
-                error: "Sequence must use ACGT only.  Got: "
+                error: "Sequence must use ACGT only (optionally prefixed with "
+                     + "\"ds,\" for a canonical double strand).  Got: "
                      + JSON.stringify(sequence),
             });
         }
@@ -117,15 +147,15 @@
         // length is implicitly even because each repeat is 2 bases.
         // Matches the server-side ``_is_alternating_gc`` predicate
         // exactly so client-side acceptance == server-side acceptance.
-        if (form === "Z"
+        if (form === "Z" && !parsed.twoStrand
                 && (backend === "auto" || backend === "threedna")
-                && !/^(GC)+$/i.test(trimmed)
-                && !/^(CG)+$/i.test(trimmed)) {
+                && !/^(GC)+$/i.test(parsed.core)
+                && !/^(CG)+$/i.test(parsed.core)) {
             return Promise.resolve({
                 ok:    false,
                 error: "Z-DNA via 3DNA only supports alternating "
                      + "poly-d(GC) sequences (e.g. GCGC, CGCGCG).  "
-                     + "Use B-form or A-form for " + trimmed + ".",
+                     + "Use B-form or A-form for " + parsed.core + ".",
             });
         }
         // Lazy-resolve dependencies in case the script-load
@@ -144,7 +174,9 @@
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({
                 kind:    "dna",
-                input:   trimmed,
+                // Send the RAW notation ("ds,ATGC", "5'-…-3'"): the server parses
+                // it authoritatively (nucleic._parse_dna_notation).
+                input:   sequence.trim(),
                 form:    form,
                 backend: backend,
             }),
@@ -167,7 +199,7 @@
                 { source_format: "xyz", text: body.xyz },
                 { kind: "dna",
                   generator_input: {
-                      sequence: trimmed, form: form,
+                      sequence: sequence.trim(), form: form,
                       backend: backend,
                   } }
             ).then(function (gate) {
