@@ -323,16 +323,14 @@
             // (below) routes through molview.data.openMolecule, which parses + RENDERS the
             // bytes; those build/load atoms are then overlaid by the framework's
             // sidecar-enriched atoms via adoptSession.
+            // Read the working-copy data through the ONE data door (molview.data),
+            // NOT a raw POST to /api/workingcopy/open -- consumers don't reach around
+            // the unified surface.  Returns null on failure -> a plain byte load.
             let opened = null;
             try {
-                const or = await fetch("/api/workingcopy/open", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ path: path }),
-                });
-                if (or.ok) {
-                    const oj = await or.json();
-                    if (oj && oj.ok) opened = oj;
+                const _d = window.molbuilder.molview && window.molbuilder.molview.data;
+                if (_d && typeof _d.readWorkingCopy === "function") {
+                    opened = await _d.readWorkingCopy(path);
                 }
             } catch (_) { opened = null; }
             const periodicity = (opened && opened.periodicity) || null;

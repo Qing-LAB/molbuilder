@@ -493,7 +493,7 @@ def _data_dir_candidates() -> List[_Path]:
     return candidates
 
 
-def _load_fcc_lattice_full() -> dict:
+def load_fcc_lattice_full() -> dict:
     """Load the full FCC lattice-constant table from ``fcc_lattice.json``.
 
     v2 schema (2026-06-18 onward): each metal carries
@@ -568,9 +568,9 @@ def _load_fcc_lattice() -> dict:
     only need "the default experimental lattice constant" don't have
     to know about v2's per-XC fields.  Callers that need to pick
     between experimental / PBE / user-measured values should hit
-    ``_load_fcc_lattice_full`` directly (the web meta endpoint does).
+    ``load_fcc_lattice_full`` directly (the web meta endpoint does).
     """
-    full = _load_fcc_lattice_full()
+    full = load_fcc_lattice_full()
     return {sym: entry["a_experimental"] for sym, entry in full.items()}
 
 

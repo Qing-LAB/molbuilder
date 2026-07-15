@@ -4,10 +4,11 @@
  * one Update per group (vacuum / pbc / unit cell / k-grid) so each can independently stay
  * at its default or be committed.  Each group reads the current value from the SAME molview
  * accessors the display uses (getVacuumInfo / getAxisKindInfo / getUnitCellInfo /
- * getKgridInfo -> { value, isDefault }) and commits through the workspace API:
- *   - vacuum / pbc / unit cell -> ws.commitPeriodicity (re-resolves the effective cell
+ * getKgridInfo -> { value, isDefault }) and commits through the MolView DATA API
+ * (window.molbuilder.molview.data -- NOT the persistence-only workspace):
+ *   - vacuum / pbc / unit cell -> data.commitPeriodicity (re-resolves the effective cell
  *     through the ONE server resolver, § 3a);
- *   - k-grid                  -> ws.setKgrid (no re-resolve; the cell is unchanged).
+ *   - k-grid                  -> data.setKgrid (no re-resolve; the cell is unchanged).
  * No auto-commit: editing a field only stages; the group's Update button commits.
  */
 (function () {
@@ -19,12 +20,12 @@
     // DATA access (getStructure / get*Info / commitPeriodicity / setKgrid /
     // subscribe) is the in-memory model on molview.data; ``workspace`` is
     // persistence-only now.
-    function ws() {
+    function data() {
         return root.molbuilder && root.molbuilder.molview
             && root.molbuilder.molview.data;
     }
     function hasStructure() {
-        var w = ws();
+        var w = data();
         return !!(w && typeof w.getStructure === "function" && w.getStructure());
     }
     function round(n) { return Math.round(Number(n) * 1000) / 1000; }
@@ -69,7 +70,7 @@
     function refresh() {
         var panel = $("optab-panel-cell");
         if (!panel) return;
-        var w = ws();
+        var w = data();
         var has = hasStructure();
         var hint = $("pv-empty-hint");
         if (hint) hint.hidden = has;
@@ -115,7 +116,7 @@
         return isInt ? Math.max(1, Math.round(raw)) : raw;
     }
     function commit(patch) {
-        var w = ws();
+        var w = data();
         if (!w || typeof w.commitPeriodicity !== "function") return;
         Promise.resolve(w.commitPeriodicity(patch)).then(refresh);
     }
@@ -150,7 +151,7 @@
         });
         var kg = $("pv-kg-update");
         if (kg) kg.addEventListener("click", function () {
-            var w = ws();
+            var w = data();
             if (w && typeof w.setKgrid === "function") {
                 w.setKgrid([num("pv-kg-a", 1, true), num("pv-kg-b", 1, true),
                             num("pv-kg-c", 1, true)]);
@@ -167,7 +168,7 @@
         refresh();
         // Refresh on ANY workspace change (load, modify op, or another periodicity edit):
         // ws.subscribe fires on the canvas onChange too (dispatcher wires cs.onChange).
-        var w = ws();
+        var w = data();
         if (w && typeof w.subscribe === "function") w.subscribe(refresh);
     }
 

@@ -131,8 +131,8 @@ def api_modify_meta():
     lattice_table: Dict[str, Any] = {}
     lattice_error: Optional[str] = None
     try:
-        from molbuilder.modify import _load_fcc_lattice_full
-        lattice_table = _load_fcc_lattice_full()
+        from molbuilder.modify import load_fcc_lattice_full
+        lattice_table = load_fcc_lattice_full()
     except Exception as exc:                                # pragma: no cover -- defensive
         lattice_error = str(exc)
     return jsonify({

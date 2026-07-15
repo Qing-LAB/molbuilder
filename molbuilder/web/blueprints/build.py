@@ -658,10 +658,12 @@ def api_build_load():
         if ext in ("xyz", "pdb"):
             fmt = ext
         else:
-            # Sniff: PDB lines start with ATOM/HETATM/HEADER/TITLE,
-            # XYZ first line is an atom count.
-            first = text.lstrip().splitlines()[0] if text.strip() else ""
-            fmt = "xyz" if first.strip().isdigit() else "pdb"
+            # Sniff by content -- the ONE shared rule (XYZ's first non-blank line is
+            # a POSITIVE atom count; anything else is PDB).  Delegate to the same
+            # helper the /api/build/molecule path uses so the two never disagree on an
+            # edge case (e.g. a leading "0" line: int("0")>0 is False -> pdb, whereas
+            # the old inline `"0".isdigit()` said xyz).
+            fmt = _sniff_structure_format(text)
 
     try:
         if fmt == "xyz":

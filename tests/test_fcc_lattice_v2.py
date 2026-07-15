@@ -23,7 +23,7 @@ import pytest
 from molbuilder.modify import (
     SUPPORTED_FCC_ELEMENTS,
     _load_fcc_lattice,
-    _load_fcc_lattice_full,
+    load_fcc_lattice_full,
 )
 
 
@@ -123,8 +123,8 @@ def test_v1_loader_returns_experimental_floats():
 
 
 def test_v2_loader_returns_full_dict():
-    """``_load_fcc_lattice_full`` returns the per-XC dict per metal."""
-    full = _load_fcc_lattice_full()
+    """``load_fcc_lattice_full`` returns the per-XC dict per metal."""
+    full = load_fcc_lattice_full()
     for sym in SUPPORTED_FCC_ELEMENTS:
         assert sym in full
         e = full[sym]
