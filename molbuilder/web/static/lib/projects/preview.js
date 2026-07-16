@@ -505,14 +505,13 @@ async function saveEdit() {
  * Open the preview modal showing the contents of the currently-
  * selected file (sessionStorage.molbuilder.current_file).
  *
- * Two read paths:
- *   * Size ≤ EDIT_MAX_BYTES → bulk /api/files/read into the
- *     editor; full edit + save round-trip available.
- *   * Size  > EDIT_MAX_BYTES → paginated /api/files/read_range
- *     into the editor (read-only); Edit is disabled with a clear
- *     "use external editor" hint.  Scroll-driven append fetches
- *     the next chunk; CodeMirror's virtual scroll keeps DOM
- *     memory bounded regardless of how much of the file is loaded.
+ * Two read paths (branch on the server's BULK ceiling, not the edit cap):
+ *   * Size ≤ BULK_READ_MAX_BYTES (16 MB) → bulk /api/files/read in one shot.
+ *   * Size  > BULK_READ_MAX_BYTES → paginated /api/files/read_range chunks.
+ *     Scroll-driven append fetches the next chunk; CodeMirror's virtual scroll
+ *     keeps DOM memory bounded regardless of how much of the file is loaded.
+ * Editing is a SEPARATE gate: files past EDIT_MAX_BYTES (32 MB) load read-only
+ * (Edit disabled with a "use external editor" hint).
  */
 export async function showPreview() {
     if (!elModal) {
@@ -598,7 +597,13 @@ export async function showPreview() {
     _state.mtime = mtime;
 
     try {
-        if (size <= EDIT_MAX_BYTES) {
+        // Single-shot bulk read is bounded by the SERVER's bulk ceiling
+        // (BULK_READ_MAX_BYTES = 16 MB), which is what _loadBulk requests -- NOT the
+        // (larger) EDIT ceiling.  Branching on EDIT_MAX_BYTES sent 16-32 MB files down
+        // the bulk path where the server hard-refuses (files.py), so they showed the
+        // raw error with NO content while the paginated path (any size) sat unused.
+        // Chunk above the bulk ceiling.
+        if (size <= BULK_READ_MAX_BYTES) {
             await _loadBulk(path);
         } else {
             await _loadPaginated(path, size);
