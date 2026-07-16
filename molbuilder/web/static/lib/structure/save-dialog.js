@@ -85,19 +85,24 @@
         // create files in a sibling subdir without realising it.
         // Forces the user to pick a different directory via the
         // sidebar rather than smuggle a path through the input.
+        var previewEl = dialog.querySelector('[data-role="name-preview"]');
         function _validate(raw) {
             var s = (raw || "").trim();
+            // Forgiving: the save owns the extensions, so strip a ".xyz" or
+            // ".molstruct.json" the user typed out of habit -- the returned value
+            // is always the clean BASE name.
+            s = s.replace(/\.molstruct\.json$/i, "").replace(/\.xyz$/i, "");
             if (!s) return { ok: false, reason: "" };
             if (s.indexOf("/") !== -1 || s.indexOf("\\") !== -1) {
                 return {
                     ok: false,
-                    reason: "Filename can't contain '/' or '\\\\'."
+                    reason: "Name can't contain '/' or '\\\\'."
                             + "  Pick a different directory via the"
                             + " sidebar instead.",
                 };
             }
             if (s === "." || s === "..") {
-                return { ok: false, reason: "Reserved filename." };
+                return { ok: false, reason: "Reserved name." };
             }
             return { ok: true, value: s };
         }
@@ -107,6 +112,16 @@
             if (errEl) {
                 errEl.textContent = v.ok ? "" : v.reason;
                 errEl.hidden = v.ok;
+            }
+            if (previewEl) {
+                if (v.ok) {
+                    previewEl.textContent =
+                        "Writes  " + v.value + ".xyz  and  "
+                        + v.value + ".molstruct.json";
+                    previewEl.hidden = false;
+                } else {
+                    previewEl.hidden = true;
+                }
             }
         }
         if (input) {
@@ -168,15 +183,25 @@
         input.setAttribute("data-role", "name-input");
         input.setAttribute("autocomplete", "off");
         input.setAttribute("spellcheck", "false");
+        input.setAttribute("placeholder", "e.g. my_molecule");
         label.appendChild(input);
         dialog.appendChild(label);
 
         var hint = doc.createElement("p");
         hint.className = "molbuilder-save-name-hint";
         hint.textContent =
-            "Saved to the same project directory.  Existing files "
-            + "will prompt for overwrite confirmation.";
+            "Enter a name only — no file extension.  Saving writes TWO files "
+            + "into the current project directory: the coordinates and a sidecar "
+            + "with your labels / regions / cell.";
         dialog.appendChild(hint);
+
+        // Live preview of the exact pair the save will write, so the user sees
+        // that ONE name produces both files and never needs to type ".xyz".
+        var preview = doc.createElement("p");
+        preview.className = "molbuilder-save-name-preview";
+        preview.setAttribute("data-role", "name-preview");
+        preview.hidden = true;
+        dialog.appendChild(preview);
 
         // Inline error slot for validation messages — hidden when
         // the input is valid, shown when the user types something

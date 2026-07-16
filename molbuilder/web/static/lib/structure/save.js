@@ -223,11 +223,36 @@
                 return { ok: false, cancelled: true,
                          error: "Save cancelled." };
             }
-            var finalPath = dir + "/" + chosen;
+            // The user names the structure; the save produces the PAIR
+            // ``<name>.xyz`` (coordinates) + ``<name>.molstruct.json`` (labels/
+            // regions).  Both filenames come from the ONE base name, so we own
+            // the extension: strip any suffix the user typed anyway (forgiving)
+            // and append ``.xyz``.  Passing a bare ``<name>`` (no .xyz) would
+            // write a coordinate file that can't be reloaded (StructureCodec.load
+            // dispatches on the .xyz/.pdb suffix).
+            var base = String(chosen).trim()
+                .replace(/\.molstruct\.json$/i, "")
+                .replace(/\.xyz$/i, "");
+            if (!base) {
+                return { ok: false, error: "Please enter a file name." };
+            }
+            var finalPath = dir + "/" + base + ".xyz";
             // ONE unified save (§4.0.1): writes the whole dataset (.xyz + .json)
             // atomically via /api/workingcopy/save.  Overwrite is ALWAYS confirmed
             // inside _saveDataset (409 -> confirm -> retry); no save-back skip.
-            return _saveDataset(finalPath);
+            return _saveDataset(finalPath).then(function (res) {
+                // On a successful write, refresh the sidebar listing so the new
+                // <name>.xyz (+ its sidecar) appears without a manual reload --
+                // the save wrote through /api/workingcopy/save, which the projects
+                // file layer doesn't observe on its own.  Best-effort; a refresh
+                // failure never fails the save.
+                if (res && res.ok && _projects
+                        && typeof _projects.refresh === "function") {
+                    try { Promise.resolve(_projects.refresh()).catch(function () {}); }
+                    catch (_) { /* refresh is cosmetic; never throw here */ }
+                }
+                return res;
+            });
         });
     }
 

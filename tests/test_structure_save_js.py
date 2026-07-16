@@ -54,19 +54,40 @@ def _run_node(snippet: str) -> object:
                 }} : null),
                 getSource:      () => state.source,
                 getLastSavedTo: () => state.lastSaveTo,
+                // The save COORDINATOR (molview.data.saveProjectFile) is what
+                // save.js delegates to now (it owns exportFile + the
+                // /api/workingcopy/save POST + markSaved).  The fake records
+                // each call (path + overwrite) and returns a configurable
+                // envelope queue (default: success) so these tests pin save.js's
+                // COMPOSITION (name normalisation, overwrite retry, refresh,
+                // result mapping) -- the POST itself is tested at the
+                // molview.data level (test_workspace_dispatcher_js).
+                saveProjectFile: (path, opts) => {{
+                    calls.push({{path: path,
+                                 overwrite: !!(opts && opts.overwrite)}});
+                    const q = state.saveResults;
+                    const r = (q && q.length) ? q.shift()
+                                              : {{ok: true, path: path}};
+                    return Promise.resolve(r);
+                }},
                 // Phase 10 — workspace-contract.md §2.1 — fake the
                 // ws.* surface, not the legacy canvas.onChange.
                 subscribe:      () => () => {{}},
                 _calls:         () => calls.slice(),
+                _saveCalls:     () => calls.slice(),
             }};
         }}
         function _mkFakeProjects(writeImpl) {{
             const calls = [];
+            let refreshCount = 0;
             return {{
                 writeFile: (path, text) => {{
                     calls.push({{path, text}});
                     return Promise.resolve(writeImpl(path, text));
                 }},
+                // Save triggers a sidebar refresh so the new file appears.
+                refresh: () => {{ refreshCount += 1; return Promise.resolve({{ok:true}}); }},
+                _refreshCount: () => refreshCount,
                 // 2026-06-09 (save dialog): save.js reads the current
                 // sidebar dir as the destination root.  Mirrors
                 // the workspace fixtures' ``/projects/p`` source dir
@@ -244,10 +265,11 @@ class TestTargetPath:
 
 class TestSaveFlow:
 
-    def test_writes_named_file_via_one_workingcopy_save(self):
-        """§4.0.1: the user names the file; the save makes ONE POST to
-        /api/workingcopy/save carrying the whole dataset (xyz + sidecar) + target
-        in the sidebar's current dir."""
+    def test_delegates_to_the_save_coordinator_with_the_named_target(self):
+        """save.js composes the flow; the WRITE is the coordinator's
+        (molview.data.saveProjectFile).  The user names the file; save() resolves
+        the sidebar dir + name, appends .xyz, and calls saveProjectFile ONCE with
+        overwrite:false (no clobber on the first try)."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
@@ -256,28 +278,43 @@ class TestSaveFlow:
                 source: {kind: "file", file: "/projects/p/water.xyz"},
                 lastSaveTo: null,
             });
-            const sp = _mkFakeStructurePage();
             _mountDialog("water-modified.xyz");
-            const f = _mountFetch(() => ({status: 200,
-                json: {ok: true, saved: "/projects/p/water-modified.xyz"}}));
             save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
-                            structurePage: sp});
+                            structurePage: _mkFakeStructurePage()});
             const r = await save.save();
-            console.log(JSON.stringify({
-                envelope:       r,
-                fetch:          f.calls(),
-                markSavedCalls: sp._calls(),
-            }));
+            console.log(JSON.stringify({ envelope: r, saveCalls: c._saveCalls() }));
         ''')
         assert out["envelope"] == {
             "ok": True, "path": "/projects/p/water-modified.xyz"}
-        assert len(out["fetch"]) == 1                 # ONE call, not two
-        call = out["fetch"][0]
-        assert call["url"] == "/api/workingcopy/save"
-        assert call["body"]["target"] == "/projects/p/water-modified.xyz"
-        assert call["body"]["data"]["xyz"] == "3\nH2O\nO 0 0 0\nH 1 0 0\nH 0 1 0\n"
-        assert call["body"]["overwrite"] is False     # first try is no-clobber
-        assert out["markSavedCalls"] == ["/projects/p/water-modified.xyz"]
+        assert out["saveCalls"] == [
+            {"path": "/projects/p/water-modified.xyz", "overwrite": False}]
+
+    def test_base_name_gets_xyz_appended_and_sidebar_refreshes(self):
+        """The user names the structure WITHOUT an extension; the save owns the
+        suffixes.  A bare ``water`` -> target ``water.xyz`` (so the coordinate
+        file is reloadable), and on success the sidebar is refreshed so the new
+        pair appears without a manual reload."""
+        out = _run_node('''
+            const c = _mkFakeCanvas({
+                empty: false,
+                structure: {source_format: "xyz", text: "1\\nx\\nH 0 0 0\\n"},
+                source: {kind: "file", file: "/projects/p/orig.xyz"},
+                lastSaveTo: null,
+            });
+            const proj = _mkFakeProjects(() => ({ok:true}));
+            _mountDialog("water");                       // no extension typed
+            save.configure({canvas: c, projects: proj,
+                            structurePage: _mkFakeStructurePage()});
+            const r = await save.save();
+            console.log(JSON.stringify({
+                envelope:     r,
+                saveCalls:    c._saveCalls(),
+                refreshCount: proj._refreshCount(),
+            }));
+        ''')
+        assert out["envelope"]["ok"] is True
+        assert out["saveCalls"][0]["path"] == "/projects/p/water.xyz"  # .xyz appended
+        assert out["refreshCount"] == 1                    # sidebar refreshed on success
 
     def test_no_default_filename_dialog_gets_blank(self):
         """§1: NO default filename -- even with a prior last_save_to, the dialog
@@ -291,19 +328,17 @@ class TestSaveFlow:
                 lastSaveTo: "/projects/p/renamed.xyz",
             });
             const dlg = _mountDialog("chosen.xyz");
-            const f = _mountFetch(() => ({status: 200,
-                json: {ok: true, saved: "/projects/p/chosen.xyz"}}));
             save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
                             structurePage: _mkFakeStructurePage()});
             await save.save();
             console.log(JSON.stringify({
                 initialShown: dlg.chooseSaveName,
-                target:       f.calls()[0].body.target,
+                target:       c._saveCalls()[0].path,
             }));
         ''')
         # Dialog was shown a BLANK initial -- no default, not the source name.
         assert out["initialShown"] == [""]
-        # Saves to the sidebar dir + the user-chosen name.
+        # Saves to the sidebar dir + the user-chosen name (.xyz owned by the save).
         assert out["target"] == "/projects/p/chosen.xyz"
 
 
@@ -360,52 +395,51 @@ class TestRefusals:
 class TestErrorPaths:
 
     def test_server_error_surfaces(self):
-        """A sidecar/write failure is SURFACED (returned), never swallowed --
-        the whole point of the unification (no more silent lost .json)."""
+        """A write failure from the coordinator is SURFACED (returned), never
+        swallowed -- and the sidebar is NOT refreshed for a failed save."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
                 structure: {source_format: "xyz", text: "x"},
                 source: {kind: "file", file: "/p/f.xyz"},
+                saveResults: [{ok: false, error: "permission denied"}],
             });
-            const sp = _mkFakeStructurePage();
+            const proj = _mkFakeProjects(() => ({ok:true}));
             _mountDialog("f.xyz");
-            _mountFetch(() => ({status: 500,
-                json: {ok: false, error: "permission denied"}}));
-            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
-                            structurePage: sp});
+            save.configure({canvas: c, projects: proj,
+                            structurePage: _mkFakeStructurePage()});
             const r = await save.save();
             console.log(JSON.stringify({
-                envelope: r,
-                markSavedCalls: sp._calls(),
+                envelope: r, refreshCount: proj._refreshCount(),
             }));
         ''')
         assert out["envelope"]["ok"] is False
         assert "permission denied" in out["envelope"]["error"]
-        # MUST NOT mark saved when the write failed.
-        assert out["markSavedCalls"] == []
+        # No refresh on a failed save.
+        assert out["refreshCount"] == 0
 
     def test_network_throw_surfaces_envelope(self):
+        """The coordinator maps a network throw to a {ok:false, error} envelope;
+        save.js surfaces it verbatim."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
                 structure: {source_format: "xyz", text: "x"},
                 source: {kind: "file", file: "/p/f.xyz"},
+                saveResults: [{ok: false, error: "Save failed: Failed to fetch"}],
             });
-            const sp = _mkFakeStructurePage();
+            const proj = _mkFakeProjects(() => ({ok:true}));
             _mountDialog("f.xyz");
-            _mountFetch(() => ({throw: "Failed to fetch"}));
-            save.configure({canvas: c, projects: _mkFakeProjects(() => ({ok:true})),
-                            structurePage: sp});
+            save.configure({canvas: c, projects: proj,
+                            structurePage: _mkFakeStructurePage()});
             const r = await save.save();
             console.log(JSON.stringify({
-                envelope: r,
-                markSavedCalls: sp._calls(),
+                envelope: r, refreshCount: proj._refreshCount(),
             }));
         ''')
         assert out["envelope"]["ok"] is False
         assert "Failed to fetch" in out["envelope"]["error"]
-        assert out["markSavedCalls"] == []
+        assert out["refreshCount"] == 0
 
 
 # ----- Configuration error surface ------------------------------- #

@@ -433,6 +433,65 @@ class TestGetStructureNullIffEmpty:
         assert out["src"] == "/projects/p/a.xyz"
         assert out["delegated"] is False, "coordinator must NOT delegate to the tab"
 
+    def test_saveProjectFile_writes_the_pair_and_marks_saved(self):
+        """structure-load-save-contract: saveProjectFile serialises the model
+        (exportFile), POSTs the whole dataset to /api/workingcopy/save with the
+        target + overwrite=false, and on success clears the dirty bit (markSaved).
+        This is the write logic that moved OUT of save.js into molview.data."""
+        stub = (
+            "let savePost = null;\n"
+            "global.window.fetch = function (url, opts) {\n"
+            "  const body = (opts && opts.body) ? JSON.parse(opts.body) : {};\n"
+            "  const j = (url === '/api/workingcopy/save')\n"
+            "    ? (savePost = {target: body.target, overwrite: body.overwrite,\n"
+            "                   hasXyz: !!(body.data && body.data.xyz)},\n"
+            "       {ok: true, saved: body.target})\n"
+            "    : {ok: true, source_format: 'xyz', n_atoms: 1,\n"
+            "       text: '1\\nx\\nH 0 0 0\\n',\n"
+            "       atoms: [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}]};\n"
+            "  return Promise.resolve({ ok: true, status: 200,\n"
+            "    json: function () { return Promise.resolve(j); } });\n"
+            "};\n"
+        )
+        out = _run_node(
+            stub +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: '1\\nx\\nH 0 0 0\\n', filename: '/p/x.xyz' })\n"
+            "  .then(() => d.markDirty())\n"
+            "  .then(() => d.saveProjectFile('/projects/p/out.xyz', { overwrite: false }))\n"
+            "  .then((r) => { console.log(JSON.stringify({\n"
+            "    r: r, post: savePost, dirtyAfter: d.isDirty() })); });")
+        assert out["r"] == {"ok": True, "path": "/projects/p/out.xyz"}
+        assert out["post"]["target"] == "/projects/p/out.xyz"
+        assert out["post"]["overwrite"] is False   # first try never clobbers
+        assert out["post"]["hasXyz"] is True        # the whole dataset rode in
+        assert out["dirtyAfter"] is False           # markSaved cleared the dirty bit
+
+    def test_saveProjectFile_signals_needsOverwrite_on_409(self):
+        """A 409 (file exists) is surfaced as {needsOverwrite:true} so the UI
+        layer confirms + retries with overwrite:true -- the overwrite DIALOG
+        stays out of the DOM-free data layer."""
+        stub = (
+            "global.window.fetch = function (url, opts) {\n"
+            "  if (url === '/api/workingcopy/save') {\n"
+            "    return Promise.resolve({ ok: false, status: 409,\n"
+            "      json: function () { return Promise.resolve({ ok: false, error: 'exists' }); } });\n"
+            "  }\n"
+            "  return Promise.resolve({ ok: true, status: 200, json: function () {\n"
+            "    return Promise.resolve({ ok: true, source_format: 'xyz', n_atoms: 1,\n"
+            "      text: '1\\nx\\nH 0 0 0\\n',\n"
+            "      atoms: [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}] });\n"
+            "  } });\n"
+            "};\n"
+        )
+        out = _run_node(
+            stub +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text: '1\\nx\\nH 0 0 0\\n', filename: '/p/x.xyz' })\n"
+            "  .then(() => d.saveProjectFile('/projects/p/out.xyz', { overwrite: false }))\n"
+            "  .then((r) => { console.log(JSON.stringify(r)); });")
+        assert out == {"ok": False, "needsOverwrite": True}
+
     def test_openMolecule_rejects_a_bad_input(self):
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"

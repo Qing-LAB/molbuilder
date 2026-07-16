@@ -175,8 +175,10 @@ class TestSurface:
 
 class TestChooseSaveName:
 
-    def test_save_resolves_with_input_value(self):
-        """Clicking Save resolves with the (trimmed) input value."""
+    def test_save_resolves_with_base_name_extension_stripped(self):
+        """Clicking Save resolves with the trimmed BASE name -- the dialog owns
+        no extension: a ".xyz" (or ".molstruct.json") the user typed out of habit
+        is stripped, so the save can append the pair suffixes itself."""
         out = _run_node('''
             const p = dialog.chooseSaveName("water.xyz");
             // The newly-created dialog is the last child of body.
@@ -187,8 +189,27 @@ class TestChooseSaveName:
             const result = await p;
             console.log(JSON.stringify({result, open: dialog.isNameOpen()}));
         ''')
-        assert out["result"] == "renamed.xyz"
+        assert out["result"] == "renamed"       # ".xyz" stripped -> base name
         assert out["open"] is False
+
+    def test_preview_shows_both_output_files(self):
+        """The dialog live-previews the PAIR the save writes (<name>.xyz +
+        <name>.molstruct.json) so the user sees one name -> two files and never
+        needs to type an extension."""
+        out = _run_node('''
+            dialog.chooseSaveName("");
+            const d = _body._children[_body._children.length - 1];
+            const input = d.querySelector('[data-role="name-input"]');
+            const prev  = d.querySelector('[data-role="name-preview"]');
+            input.value = "my_mol";
+            input.dispatchEvent({type:"input"});
+            console.log(JSON.stringify({ text: prev.textContent,
+                                         hidden: !!prev.hidden }));
+            dialog._reset();
+        ''')
+        assert out["hidden"] is False
+        assert "my_mol.xyz" in out["text"]
+        assert "my_mol.molstruct.json" in out["text"]
 
     def test_cancel_resolves_null(self):
         out = _run_node('''
