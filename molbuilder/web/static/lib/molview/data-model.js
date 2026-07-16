@@ -18,9 +18,9 @@
  *     getRegions, getFrozen, getElements, getCoordinates, isDirty, isEmpty,
  *     // Periodicity (structure-periodicity.md): raw reads, {value,isDefault}
  *     // display accessors, setters, + the server-resolved commit
- *     getUnitCell, getVacuum, getKgrid, getAxisKind,
- *     getUnitCellInfo, getVacuumInfo, getKgridInfo, getAxisKindInfo,
- *     setUnitCell, setVacuum, setKgrid, setAxisKind, commitPeriodicity,
+ *     getUnitCell, getVacuum, getAxisKind,
+ *     getUnitCellInfo, getVacuumInfo, getAxisKindInfo,
+ *     setUnitCell, setVacuum, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
  *     openMolecule, generate, applyOp, discard, undo,
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
@@ -216,7 +216,7 @@
             atoms:         s ? s.atoms.map(_clone) : [],
             // Periodicity rides with the geometry (structure-periodicity.md):
             // `lattice` = the cell (kept for existing consumers); `periodicity`
-            // carries the full cell/axis_kind/vacuum/kgrid so a save writes the
+            // carries the full cell/axis_kind/vacuum so a save writes the
             // whole structure (workspace-contract.md §4.0).
             lattice:       per ? per.cell : null,
             periodicity:   per,
@@ -255,14 +255,12 @@
         var per = _periodicityInternal();
         return (per && per.cell) || null;
     }
-    // Defaults for SAFE-to-default fields only (§1.2.1): kgrid -> gamma, vacuum -> 0.
+    // Defaults for SAFE-to-default fields only (§1.2.1): vacuum -> 0.
+    // (k-grid is not here: it's a reciprocal-space SAMPLING knob on
+    // SiestaConfig / TransportConfig, not geometry -- structure-periodicity.md.)
     function getVacuum() {
         var per = _periodicityInternal();
         return (per && per.vacuum) || [0, 0, 0];
-    }
-    function getKgrid() {
-        var per = _periodicityInternal();
-        return (per && per.kgrid) || [1, 1, 1];   // gamma-point default
     }
     // axis_kind is NOT safe to default: periodic vs isolated vs transport is a
     // scientific choice (guessing periodic would generate a WRONG PBC/transport
@@ -280,9 +278,8 @@
     //   cell      -> no explicit cell   (value = server-resolved bbox; may be null pre-
     //                                     first-resolve, so cell `value` alone can be null)
     //   vacuum    -> [0,0,0]            (no padding)
-    //   kgrid     -> [1,1,1]            (Gamma point)
     //   axis_kind -> every axis isolated (the vacuum box)
-    // Value-based defaults (vacuum/kgrid/axis_kind) can't tell "user set the default
+    // Value-based defaults (vacuum/axis_kind) can't tell "user set the default
     // value" from "never set" -- intentional: the tag reflects the DISPLAYED value being
     // the default, not its provenance.
     function getUnitCellInfo() {
@@ -298,10 +295,6 @@
     function getVacuumInfo() {
         var v = getVacuum();
         return { value: v, isDefault: (v[0] === 0 && v[1] === 0 && v[2] === 0) };
-    }
-    function getKgridInfo() {
-        var k = getKgrid();
-        return { value: k, isDefault: (k[0] === 1 && k[1] === 1 && k[2] === 1) };
     }
     function getAxisKindInfo() {
         var per = _periodicityInternal() || {};
@@ -368,7 +361,6 @@
         if (cs && typeof cs.setPeriodicity === "function") cs.setPeriodicity(patch);
     }
     function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }      // getLattice's pair
-    function setKgrid(dims)     { _setPeriodicity({ kgrid: dims }); }
     function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
     function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
     // §3b: the Cell page's "Update" commit -- apply an explicit periodicity edit, then
@@ -427,24 +419,20 @@
     function getSelection() {
         var st = _store();
         if (!st) return {indices: [], pickOrder: [], mode: "click", filters: [],
-                         combinator: "or", isolate: false,
-                         kgrid: {enabled: false, dims: [1, 1, 1], source: "free"}};
+                         combinator: "or", isolate: false};
         var s = st.getState();
         return {
             indices:    s.selection.slice(),
             // §19.2: the full selection snapshot -- NOT just indices.  pickOrder is
-            // the click ORDER (angle vertex = pickOrder[1]); isolate + kgrid are the
-            // VIEW toggles.  Dropping them here silently reset "Show selected only" /
-            // k-grid and the measurement vertex on every reload / Retract (§19.5 says
-            // the restore brings back what you had).
+            // the click ORDER (angle vertex = pickOrder[1]); isolate is the VIEW
+            // toggle.  Dropping them here silently reset "Show selected only" and the
+            // measurement vertex on every reload / Retract (§19.5 says the restore
+            // brings back what you had).
             pickOrder:  (s.pickOrder || s.selection).slice(),
             mode:       s.mode,
             filters:    s.filters.map(function (f) { return Object.assign({}, f); }),
             combinator: s.combinator,
             isolate:    !!s.isolate,
-            kgrid:      s.kgrid ? { enabled: !!s.kgrid.enabled,
-                                    dims: (s.kgrid.dims || [1, 1, 1]).slice(),
-                                    source: s.kgrid.source } : undefined,
         };
     }
 
@@ -676,10 +664,6 @@
         setIsolate:      function (on) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setIsolate(on);
-        },
-        setKgrid:        function (patch) {
-            var s = _store(); if (!s) throw _missing("selection store");
-            return s.setKgrid(patch);
         },
         setFilters:      function (filters) {
             var s = _store(); if (!s) throw _missing("selection store");
@@ -1119,7 +1103,7 @@
     function openMolecule(input) {
         if (input && typeof input === "object" && typeof input.text === "string") {
             // `source`      -> provenance (a generator names its kind/generator_input);
-            // `periodicity` -> sidecar cell/kgrid/vacuum/axis_kind that /api/build/load
+            // `periodicity` -> sidecar cell/vacuum/axis_kind that /api/build/load
             //                  cannot re-derive (a file-open supplies it);
             // `annotations` -> the opaque sidecar channel carry.
             return _loadText(input.text, input.filename, {
@@ -1685,7 +1669,7 @@
                 cell:            per.cell || null,
                 axis_kind:       per.axis_kind || null,
                 vacuum:          per.vacuum || null,
-                kgrid:           per.kgrid || null,
+                // (no kgrid: it's a sampling knob on SiestaConfig, not geometry)
                 // F1: re-emit the annotation channels carried opaquely from load, so
                 // a Modify Save preserves them instead of clobbering to {}.
                 annotations:     s.annotations || {},
@@ -1809,7 +1793,6 @@
                     st.setCombinator(sel.combinator);
                 if (typeof st.setIsolate === "function" && typeof sel.isolate === "boolean")
                     st.setIsolate(sel.isolate);
-                if (typeof st.setKgrid === "function" && sel.kgrid) st.setKgrid(sel.kgrid);
                 if (typeof st.setSelection === "function") {
                     var order = (Array.isArray(sel.pickOrder) && sel.pickOrder.length)
                         ? sel.pickOrder
@@ -2005,11 +1988,9 @@
         getLattice:            getUnitCell,   // alias
         getAxisKind:           getAxisKind,
         getVacuum:             getVacuum,
-        getKgrid:              getKgrid,
         // §3b display accessors ({ value, isDefault }) for the Cell page:
         getUnitCellInfo:       getUnitCellInfo,
         getVacuumInfo:         getVacuumInfo,
-        getKgridInfo:          getKgridInfo,
         getAxisKindInfo:       getAxisKindInfo,
         getAtomsByLabel:       getAtomsByLabel,
         getFrozen:             getFrozen,
@@ -2023,7 +2004,6 @@
         commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias
-        setKgrid:              setKgrid,
         setAxisKind:           setAxisKind,
         setVacuum:             setVacuum,
         setLabel:              setLabel,

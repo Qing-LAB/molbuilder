@@ -27,8 +27,8 @@
     "use strict";
 
     // NOTE: this inspector is a VIEWER glue layer -- it must NOT parse structure
-    // files or .fdf for the cell / k-grid.  molbuilder/parse/ already extracts
-    // those (StructureResult.cell + the fdf kgrid diagonal); the results tab is
+    // files or .fdf for the cell.  molbuilder/parse/ already extracts that
+    // (StructureResult.cell); the results tab is
     // responsible for concentrating them and passing them in as params
     // (ctx.viewParams).  MolView only cares whether a periodicity was handed to
     // it (via openMolecule) or not.
@@ -123,13 +123,12 @@
                 }
                 const fmt = file.toLowerCase().endsWith(".pdb") ? "pdb" : "xyz";
 
-                // Periodicity (structure-periodicity.md): the cell / k-grid comes
-                // from the dataset, read server-side and handed to MolView via
-                // openMolecule -- MolView NEVER parses.  ctx.viewParams wins if the
-                // host already supplied it; otherwise fetch the sidecar's full
-                // periodicity ({cell, axis_kind, vacuum, kgrid}) from
-                // /api/selection/atoms.  Absent -> null: no unit-cell box, k-grid
-                // stays inert, Cell page shows defaults.
+                // Periodicity (structure-periodicity.md): the cell comes from the
+                // dataset, read server-side and handed to MolView via openMolecule
+                // -- MolView NEVER parses.  ctx.viewParams wins if the host already
+                // supplied it; otherwise fetch the sidecar's full periodicity
+                // ({cell, axis_kind, vacuum}) from /api/selection/atoms.  Absent ->
+                // null: no unit-cell box, Cell page shows defaults.
                 const vp = (ctx && ctx.viewParams) || {};
                 let periodicity = vp.periodicity || (vp.cell ? { cell: vp.cell } : null);
                 if (!periodicity && fmt === "xyz") {

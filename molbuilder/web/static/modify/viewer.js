@@ -97,10 +97,10 @@
         return { x: x / n, y: y / n, z: z / n, source: "selection" };
     }
     // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
-    // k-grid tiling controller USED to live here (`_drawBase` / `_wireKgrid` / the cell
-    // accessors).  They are gone: the concealed MolView module owns the render loop and
-    // the k-grid controller (render.js composes mountKgridRender + mountMeasurementOverlay,
-    // driven by molview.data), so Modify no longer draws anything itself.
+    // isolate render controller USED to live here (`_drawBase` / the cell accessors).
+    // They are gone: the concealed MolView module owns the render loop (render.js composes
+    // mountIsolateRender + mountMeasurementOverlay, driven by molview.data), so Modify no
+    // longer draws anything itself.
 
     // --------------------------------------------------------------- //
     //  The 3Dmol viewer is EMBEDDED BY THE MODULE.                     //

@@ -1,5 +1,5 @@
-/* Viewer view-controls -- the DISPLAY toggles that sit in the viewer's control bar
- * (beside "Focus molecule"): "Show selected only" (isolate) + "Show k-grid" (tiling).
+/* Viewer view-controls -- the DISPLAY toggle that sits in the viewer's control bar
+ * (beside "Focus molecule"): "Show selected only" (isolate).
  *
  * These are VIEW state, not selection state, and they are PER-VIEWER: each mount wires to
  * ITS store (Modify's workspace selection, or a Results card's isolated store), so two
@@ -18,15 +18,11 @@
         // Static template (no interpolation) -- one template literal so the XSS audit
         // (test_xss_audit.py) sees a safe single-literal RHS, not a concatenation.
         hostEl.innerHTML =
-            `<label class="viewer-toggle" title="Hide unselected atoms so the current selection stands out."><input type="checkbox" class="vc-isolate"><span>Show selected only</span></label><label class="viewer-toggle" title="Tile the unit cell by the k-grid to check the periodic model."><input type="checkbox" class="vc-kgrid"><span>Show k-grid</span></label>`;
+            `<label class="viewer-toggle" title="Hide unselected atoms so the current selection stands out."><input type="checkbox" class="vc-isolate"><span>Show selected only</span></label>`;
         var iso = hostEl.querySelector(".vc-isolate");
-        var kg  = hostEl.querySelector(".vc-kgrid");
 
         iso.addEventListener("change", function (e) {
             store.setIsolate(!!e.target.checked);
-        });
-        kg.addEventListener("change", function (e) {
-            store.setKgrid({ enabled: !!e.target.checked });
         });
 
         // Reflect the store; auto-clear isolate ONLY on the empty TRANSITION (a non-empty
@@ -40,9 +36,6 @@
                 store.setIsolate(false);   // re-notifies; the box syncs next tick
             } else if (document.activeElement !== iso) {
                 iso.checked = !!s.isolate;
-            }
-            if (document.activeElement !== kg) {
-                kg.checked = !!(s.kgrid && s.kgrid.enabled);
             }
             prevSelCount = n;
         }

@@ -434,7 +434,10 @@ class SiestaConfig:
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
-        "help":  "Monkhorst-Pack mesh (e.g. 4x4x1 in CLI or [4,4,1] in code)",
+        "help":  ("Monkhorst-Pack k-point mesh: the sampling resolution of "
+                  "reciprocal space for the DFT calculation. More k-points = "
+                  "finer Brillouin-zone sampling = better convergence at more "
+                  "cost. e.g. 4x4x1 in CLI or [4,4,1] in code."),
         "skip_cli": True,
         # 2026-06-14 G5: per-component validator so the metadata
         # range check actually runs on a Tuple-typed field.  Without

@@ -7,17 +7,17 @@
  *
  * The render is ONE coordinate pipeline -> ONE 3dmol draw (§14.0).  It is a READ-ONLY view
  * derivation: it GENERATES the coordinate list 3dmol draws from the stored atoms; it never
- * writes the data (isolate/k-grid change the render list, never the dataset).
+ * writes the data (isolate changes the render list, never the dataset).
  *   ws / store atoms       -> the clean unit-cell atoms (the source of truth)
- *   drawBase()             -> the plain unit cell (when neither isolate nor k-grid is on)
- *   mountKgridRender(..)   -> REPLACES it with the derived list when isolate (filtered to the
- *                             selected atoms) or k-grid (tiled) is on -- one setStructure, the
- *                             derived list instead of the base, NOT a second draw on top (§14.2)
+ *   drawBase()             -> the plain unit cell (when isolate is off)
+ *   mountIsolateRender(..) -> REPLACES it with the derived list when isolate is on (filtered
+ *                             to the selected atoms) -- one setStructure, the derived list
+ *                             instead of the base, NOT a second draw on top (§14.2)
  * plus the measurement overlay (mountMeasurementOverlay, §15), coords read from the handle.
  *
  *   molview.mountRender(handle, workspace, store, { viewerHost }) -> { refresh, dispose }
  *
- * It composes the existing molview pieces (mountKgridRender, mountMeasurementOverlay) -- it
+ * It composes the existing molview pieces (mountIsolateRender, mountMeasurementOverlay) -- it
  * does not reimplement them.  mount.js assembles this with the viewer embed to make the
  * full component.
  */
@@ -55,8 +55,8 @@
             var elements = atoms.map(function (a) { return a.element; });
             return { coords: coords, elements: elements, xyz: _buildXyz(elements, coords) };
         }
-        // The RESOLVED lattice (explicit cell, OR the bbox+vacuum default) -- used ONLY for
-        // k-grid TILING (duplicate the unit cell by the lattice), never for the base draw.
+        // The RESOLVED lattice (explicit cell, OR the bbox+vacuum default) -- used to detect
+        // cell changes in the structure signature, never for the base draw.
         function getCell() {
             if (typeof workspace.getUnitCellInfo === "function") {
                 var info = workspace.getUnitCellInfo();
@@ -73,15 +73,11 @@
             return (typeof workspace.getUnitCell === "function" && workspace.getUnitCell())
                 || null;
         }
-        // The k-grid DIMS = periodicity.kgrid (the ONE value, §14.0); NOT the store's dims.
-        function getKgridDims() {
-            return (typeof workspace.getKgrid === "function" && workspace.getKgrid()) || [1, 1, 1];
-        }
 
         // ---- The pipeline -> one draw ------------------------------------------------- //
 
         // Base draw: the plain current structure (all atoms, from the store).  When isolate
-        // or k-grid is on, mountKgridRender REPLACES this with the derived list (§14.2).
+        // is on, mountIsolateRender REPLACES this with the derived list (§14.2).
         function drawBase() {
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
@@ -96,13 +92,12 @@
             }
         }
 
-        // k-grid controller: tiles the CLEAN unit cell by periodicity.kgrid when the store's
-        // enable toggle is on (§14.2).  We hand it getKgridDims so dims come from the data
-        // model, not the store (no back-compat fallback).
-        var kg = (typeof mv.mountKgridRender === "function")
-            ? mv.mountKgridRender(handle, store, {
-                  getUnit: getUnit, getCell: getCell, getKgridDims: getKgridDims,
-                  // Restore path (isolate + k-grid both off) -> the plain base draw.
+        // Isolate controller: REPLACES the base draw with the selected-only list when the
+        // store's isolate toggle is on (§14.2); restores the base draw when it goes off.
+        var iso = (typeof mv.mountIsolateRender === "function")
+            ? mv.mountIsolateRender(handle, store, {
+                  getUnit: getUnit, getCell: getExplicitCell,
+                  // Restore path (isolate off) -> the plain base draw.
                   drawBase: drawBase,
               })
             : { refresh: _noop, dispose: _noop };
@@ -119,9 +114,9 @@
             : { dispose: _noop };
 
         // Re-draw the BASE only when the STRUCTURE (atoms or cell) changes -- NOT on every
-        // selection click.  Selection/isolate overlays are the viewer-adapter's job; k-grid
-        // is kg's.  A store-only load fires store.subscribe; a periodicity edit fires
-        // ws.subscribe; a plain click fires store.subscribe but leaves the signature the same.
+        // selection click.  Selection/isolate overlays are the viewer-adapter's job.  A
+        // store-only load fires store.subscribe; a periodicity edit fires ws.subscribe; a
+        // plain click fires store.subscribe but leaves the signature the same.
         var _prevSig = null;
         function _structureSig() {
             var st = store.getState();
@@ -132,20 +127,14 @@
                 sig += "|" + a.element + "," + a.x + "," + a.y + "," + a.z;
             }
             var cell = getCell();
-            // Include the k-grid DIMS: changing them (Modify's "Update k-grid") must re-tile
-            // even though the atoms + cell are unchanged.  Without this the sig gate would
-            // early-return and kg.refresh() would never fire (the pre-Track-B viewer refreshed
-            // unconditionally on every ws change; the sig gate here must not lose that).
-            var dims = getKgridDims();
-            return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none")
-                       + "|kg:" + JSON.stringify(dims);
+            return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none");
         }
         function redrawIfStructureChanged() {
             var sig = _structureSig();
             if (sig === _prevSig) return;
             _prevSig = sig;
             drawBase();
-            if (kg && typeof kg.refresh === "function") kg.refresh();
+            if (iso && typeof iso.refresh === "function") iso.refresh();
         }
         redrawIfStructureChanged();   // initial draw
 
@@ -159,7 +148,7 @@
             dispose: function () {
                 try { storeUnsub(); } catch (_) {}
                 try { wsUnsub(); } catch (_) {}
-                try { kg.dispose(); } catch (_) {}
+                try { iso.dispose(); } catch (_) {}
                 try { meas.dispose(); } catch (_) {}
             },
         };

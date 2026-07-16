@@ -123,13 +123,13 @@
         function onPick(curr) {
             if (!Array.isArray(curr)) return;
             // §14.3 (molview-module.md): in-window picking is DISABLED while the viewer
-            // shows a DERIVED list -- isolate (only the selected atoms are drawn) OR k-grid
-            // (tiled copies): a click then has no unambiguous unit-cell atom, so drop it.
-            // The selection panel (unit-cell atom list) still edits the selection.
+            // shows a DERIVED list -- isolate (only the selected atoms are drawn): a click
+            // then has no unambiguous unit-cell atom, so drop it.  The selection panel
+            // (unit-cell atom list) still edits the selection.
             const st = store.getState() || {};
             const isolating = !!st.isolate
                 && (Array.isArray(st.indices) ? st.indices.length : 0) > 0;
-            if ((st.kgrid && st.kgrid.enabled) || isolating) { prevClicked = null; return; }
+            if (isolating) { prevClicked = null; return; }
             if (curr.length === 0) {
                 // Single-mode deselect: same atom clicked twice.
                 if (prevClicked !== null) {
@@ -163,28 +163,25 @@
         //
         // The adapter paints halos ONLY on the plain, full-list base draw, where the drawn
         // atom index equals the unit-cell index the halos are keyed on.  "Show selected
-        // only" (isolate) is a REAL list filter in the render controller (mountKgridRender),
-        // NOT an opacity/hidden trick here -- so when isolate (or k-grid) is on the adapter
-        // stands its overlays down entirely (the derived list has a different index space).
-        // isolate is STORE state (the single source of truth): the panel/view-controls drive
-        // it via store.setIsolate; this adapter is a pure consumer with no isolate control
-        // of its own.
+        // only" (isolate) is a REAL list filter in the render controller (mountIsolateRender),
+        // NOT an opacity/hidden trick here -- so when isolate is on the adapter stands its
+        // overlays down entirely (the derived list has a different index space).  isolate is
+        // STORE state (the single source of truth): the panel/view-controls drive it via
+        // store.setIsolate; this adapter is a pure consumer with no isolate control of its own.
 
         function render(s) {
             s = s || {};
-            // DISPLAY-ONLY view (molview-module.md §14.3): while isolate OR k-grid is on,
-            // the viewer shows a DERIVED atom list -- isolate FILTERS it to the selected
-            // atoms (a real filter, in the render controller -- NOT a hidden/opacity trick),
-            // k-grid TILES it.  Either way the drawn atom index no longer equals the
-            // unit-cell index, so these overlay entries (keyed by unit-cell index) would
-            // land on the wrong atoms.  Stand every overlay down; the panel is the
-            // selection surface in these modes.  The render controller (mountKgridRender)
-            // owns the derived draw; the adapter paints halos only on the plain, full-list
-            // base draw, where drawn index == unit-cell index.
+            // DISPLAY-ONLY view (molview-module.md §14.3): while isolate is on, the viewer
+            // shows a DERIVED atom list -- isolate FILTERS it to the selected atoms (a real
+            // filter, in the render controller -- NOT a hidden/opacity trick).  The drawn
+            // atom index no longer equals the unit-cell index, so these overlay entries
+            // (keyed by unit-cell index) would land on the wrong atoms.  Stand every overlay
+            // down; the panel is the selection surface in this mode.  The render controller
+            // (mountIsolateRender) owns the derived draw; the adapter paints halos only on the
+            // plain, full-list base draw, where drawn index == unit-cell index.
             const isolating = !!s.isolate
                 && (Array.isArray(s.indices) ? s.indices.length : 0) > 0;
-            const tiling = !!(s.kgrid && s.kgrid.enabled);
-            if (isolating || tiling) {
+            if (isolating) {
                 try { handle.setOverlays(null); } catch (_) { /* already clear */ }
                 return;
             }

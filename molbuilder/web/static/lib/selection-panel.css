@@ -709,27 +709,6 @@
 /* `.sr-only` (visually-hidden but screen-reader announced) lives in
  * lib/page-shell.css — every page loads it from there. */
 
-/* k-grid DIMS readout (§3b): a small label + read-only nx × ny × nz mirror of
-   periodicity.kgrid.  The enable TOGGLE moved to the viewer-controls bar. */
-.selection-kgrid {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-top: 0.35rem;
-}
-/* (k-grid label reuses the shared .selection-mini-label caption class -- no duplicate.) */
-.selection-kgrid-dims {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-.selection-kgrid-dims input[type="number"] {
-    width: 3.4em;
-    padding: 0.15rem 0.25rem;
-    font: 11px ui-monospace, monospace;
-}
-
 /* ---------- Cell page: [Selection|Cell] switch + periodicity readout (§3b) ------ */
 .selection-header-tabs { align-items: center; }
 /* The [Selection|Cell] switch is the panel's SECTION-level tab bar -- left-aligned

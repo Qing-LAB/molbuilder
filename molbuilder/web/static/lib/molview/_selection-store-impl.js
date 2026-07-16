@@ -99,11 +99,6 @@
             // k-grid display (§ 6.3 render layer 3): copies of the atoms offset
             // by the lattice vectors, ``dims``=[nx,ny,nz] copies per direction,
             // to validate a periodic model (vacuum / orientation / boundary).
-            // View state (like isolate); the lattice comes from the viewer
-            // (getLattice) at render time, not here.  ``source``: "fixed" (from
-            // a .fdf result -> dims read-only) or "free" (user experiments,
-            // dims clamped so natoms*nx*ny*nz <= MAX_KGRID_ATOMS).
-            kgrid:      { enabled: false, dims: [1, 1, 1], source: "free" },
             filters:    [],
             combinator: "or",
             loading:    false,
@@ -277,9 +272,6 @@
                 pickOrder:  state.pickOrder.slice(),
                 mode:       state.mode,
                 isolate:    state.isolate,
-                kgrid:      { enabled: state.kgrid.enabled,
-                              dims: state.kgrid.dims.slice(),
-                              source: state.kgrid.source },
                 filters:    state.filters.slice(),
                 combinator: state.combinator,
                 loading:    state.loading,
@@ -584,64 +576,6 @@
             if (next === state.isolate) return;
             state.isolate = next;
             _notify();
-        }
-
-        // k-grid view state.  ``setKgrid(patch)`` merges an ``{enabled?, dims?}``
-        // partial so the UI can drive the enable flag and the [nx,ny,nz] dims
-        // independently; dims are floored + clamped to >= 1.  Synchronous
-        // notify -> the render pipeline re-tiles.
-        // Max DISPLAYED atoms after tiling (k-grid is copies -> natoms * product).
-        // Tunable; keeps a big k-grid from blowing up the viewer.
-        const MAX_KGRID_ATOMS = 20000;
-        function _normDims(dims) {
-            const g = Array.isArray(dims) ? dims : [];
-            const out = [1, 1, 1];
-            for (let d = 0; d < 3; d++) {
-                let n = Math.floor(Number(g[d]));
-                if (!isFinite(n) || n < 1) n = 1;
-                out[d] = n;
-            }
-            return out;
-        }
-        // Clamp so natoms * nx*ny*nz <= MAX_KGRID_ATOMS by shrinking the largest
-        // dim until it fits (a big k-grid is just a lot of atom copies).
-        function _capDims(d) {
-            const natoms = (state.atoms && state.atoms.length) || 1;
-            const out = d.slice();
-            while (natoms * out[0] * out[1] * out[2] > MAX_KGRID_ATOMS
-                   && (out[0] > 1 || out[1] > 1 || out[2] > 1)) {
-                let mi = 0;
-                if (out[1] > out[mi]) mi = 1;
-                if (out[2] > out[mi]) mi = 2;
-                if (out[mi] > 1) out[mi] -= 1; else break;
-            }
-            return out;
-        }
-        function setKgrid(patch) {
-            if (!patch || typeof patch !== "object") return;
-            let changed = false;
-            if ("source" in patch) {
-                const src = patch.source === "fixed" ? "fixed" : "free";
-                if (src !== state.kgrid.source) { state.kgrid.source = src; changed = true; }
-            }
-            if ("enabled" in patch) {
-                const e = !!patch.enabled;
-                if (e !== state.kgrid.enabled) { state.kgrid.enabled = e; changed = true; }
-            }
-            if ("dims" in patch) {
-                // dims accepted when the patch is authoritative (also sets source,
-                // e.g. a .fdf presenting its values) OR the mode is free (user
-                // experiment); ignored for a bare user edit in fixed mode.
-                const authoritative = ("source" in patch);
-                if (authoritative || state.kgrid.source === "free") {
-                    const d = _capDims(_normDims(patch.dims));
-                    const cur = state.kgrid.dims;
-                    if (d[0] !== cur[0] || d[1] !== cur[1] || d[2] !== cur[2]) {
-                        state.kgrid.dims = d; changed = true;
-                    }
-                }
-            }
-            if (changed) _notify();
         }
 
         // ----------------------------------------------------------- //
@@ -1019,7 +953,6 @@
             // mode
             setMode:            setMode,
             setIsolate:         setIsolate,
-            setKgrid:           setKgrid,
             // selection editing
             toggleAtom:         toggleAtom,
             setSelection:       setSelection,
@@ -1080,7 +1013,6 @@
     function _ephemeralSnapshot(st) {
         if (!st) {
             return { indices: [], mode: "click", isolate: false,
-                     kgrid: { enabled: false, dims: [1, 1, 1], source: "free" },
                      filters: [],
                      combinator: "or", loading: false, error: null, atoms: [],
                      sourceFile: null, pickOrder: [] };
@@ -1089,11 +1021,6 @@
             indices:    Array.isArray(st.selection) ? st.selection.slice() : [],
             mode:       st.mode || "click",
             isolate:    !!st.isolate,
-            kgrid:      st.kgrid
-                            ? { enabled: !!st.kgrid.enabled,
-                                dims: (st.kgrid.dims || [1, 1, 1]).slice(),
-                                source: st.kgrid.source || "free" }
-                            : { enabled: false, dims: [1, 1, 1], source: "free" },
             filters:    (st.filters || []).map(function (f) { return Object.assign({}, f); }),
             combinator: st.combinator || "or",
             loading:    !!st.loading,
@@ -1114,7 +1041,6 @@
             clear:           function ()      { return s.clearSelection(); },
             setMode:         function (m)     { return s.setMode(m); },
             setIsolate:      function (on)    { return s.setIsolate(on); },
-            setKgrid:        function (patch) { return s.setKgrid(patch); },
             setFilters:      function (f)     { return s.setFilters(f); },
             addFilter:       function (f)     { return s.addFilter(f); },
             removeFilter:    function (i)     { return s.removeFilter(i); },

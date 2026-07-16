@@ -173,11 +173,11 @@ _DATA_SURFACE = sorted([
     "subscribe", "getState", "getStructure", "getSource", "getSourceFile",
     "getLastSavedTo", "getSelection", "getAtoms", "getElements",
     "getCoordinates", "getUnitCell", "getLattice", "getAxisKind", "getVacuum",
-    "getKgrid", "getUnitCellInfo", "getVacuumInfo", "getKgridInfo",
+    "getUnitCellInfo", "getVacuumInfo",
     "getAxisKindInfo", "getAtomsByLabel", "getFrozen", "getRegions",
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
     "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
-    "setKgrid", "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
+    "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
     "markDirty", "markSaved", "openMolecule", "readWorkingCopy", "exportFile",
     "save", "load",
     "generate", "applyOp",
@@ -513,8 +513,9 @@ class TestExportFile:
         # The sidecar carries the full non-geometry state (labels/frozen +
         # periodicity + annotations), built through the §19.2 accessors.
         for field in ("regions", "frozen_atoms", "cell", "axis_kind",
-                      "vacuum", "kgrid", "annotations"):
+                      "vacuum", "annotations"):
             assert field in out["sidecarKeys"], f"sidecar missing {field}"
+        assert "kgrid" not in out["sidecarKeys"]   # k-grid is not geometry
 
     def test_export_carries_regions_frozen_and_periodicity(self):
         """The sidecar is assembled from the model accessors (getRegions
@@ -526,7 +527,7 @@ class TestExportFile:
             "  {source_format:'xyz', text:'2\\nx\\nAu 0 0 0\\nS 1 0 0\\n',\n"
             "   periodicity:{cell:[[10,0,0],[0,10,0],[0,0,10]],\n"
             "     axis_kind:['periodic','periodic','transport'],\n"
-            "     vacuum:[0,0,15], kgrid:[4,4,1]}},\n"
+            "     vacuum:[0,0,15]}},\n"
             "  {kind:'file', file:'/p/x.xyz'});\n"
             "window.molbuilder.selection.store.adoptAtoms([\n"
             "  {index:0, element:'Au', x:0, y:0, z:0, regions:['L-electrode'], is_frozen:true},\n"
@@ -537,7 +538,7 @@ class TestExportFile:
         assert out["frozen_atoms"] == [0]
         assert out["cell"] == [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
         assert out["axis_kind"] == ["periodic", "periodic", "transport"]
-        assert out["kgrid"] == [4, 4, 1]
+        assert "kgrid" not in out   # k-grid is not geometry -> not in the sidecar
 
     def test_export_refuses_geometry_labels_desync_returns_null_and_logs(self):
         """§19.4: a geometry (canvas text) ↔ labels (selection store)
@@ -1041,11 +1042,9 @@ class TestStateTimeline:
             "d.openMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
             "  store.setSelection([2, 1]);\n"                       # pickOrder [2,1] -> vertex 1
             "  store.setIsolate(true);\n"
-            "  store.setKgrid({ enabled: true, dims: [2, 1, 1] });\n"
             "  return d.save(0).then(() => {\n"                     # persist the snapshot
             "    store.setSelection([]);\n"                          # stomp the LIVE store
             "    store.setIsolate(false);\n"
-            "    store.setKgrid({ enabled: false, dims: [1, 1, 1] });\n"
             "    const stomped = d.getSelection();\n"
             "    return d.load(0).then(() => {\n"                    # reload-restore from mirror
             "      const after = d.getSelection();\n"
@@ -1054,8 +1053,6 @@ class TestStateTimeline:
             "        after_indices:    after.indices,\n"
             "        after_pickOrder:  after.pickOrder,\n"
             "        after_isolate:    after.isolate,\n"
-            "        after_kgrid_en:   after.kgrid && after.kgrid.enabled,\n"
-            "        after_kgrid_dims: after.kgrid && after.kgrid.dims,\n"
             "      }));\n"
             "    });\n"
             "  });\n"
@@ -1064,8 +1061,6 @@ class TestStateTimeline:
         assert out["after_indices"] == [1, 2]        # selection restored (sorted set)
         assert out["after_pickOrder"] == [2, 1]      # click ORDER restored (angle vertex)
         assert out["after_isolate"] is True          # the bug: isolate survives the reload
-        assert out["after_kgrid_en"] is True         # k-grid toggle survives
-        assert out["after_kgrid_dims"] == [2, 1, 1]  # k-grid dims survive
 
     def test_save_does_not_advance_when_persist_rejects(self):
         """§19.5 atomic: a failed write never leaves state_index pointing

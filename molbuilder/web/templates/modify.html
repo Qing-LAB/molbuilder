@@ -717,9 +717,10 @@
 
       <!-- Cell: per-GROUP periodicity editors (structure-periodicity.md § 3b).  MolView
            only DISPLAYS periodicity; the actual edits live here, one Update per group so
-           each (vacuum / pbc / unit cell / k-grid) can independently stay default or be
-           committed.  Wired by modify/periodicity.js via ws.commitPeriodicity /
-           ws.setKgrid (the server re-resolves the effective cell). -->
+           each (vacuum / pbc / unit cell) can independently stay default or be committed.
+           Wired by modify/periodicity.js via ws.commitPeriodicity (the server re-resolves
+           the effective cell).  (k-grid is NOT here: it's a reciprocal-space sampling knob
+           on SiestaConfig / TransportConfig, not geometry.) -->
       <div class="optab-panel" data-op-panel="cell" role="tabpanel"
            id="optab-panel-cell" aria-labelledby="optab-btn-cell">
 
@@ -761,19 +762,6 @@
           </div>
         </fieldset>
 
-        <fieldset class="op-block">
-          <legend>k-grid (DFT sampling) <span id="pv-kg-tag" class="pv-tag"></span></legend>
-          <div class="op-row pv-triple">
-            <input type="number" id="pv-kg-a" class="pv-num" step="1" min="1"
-                   aria-label="k-grid a">
-            <input type="number" id="pv-kg-b" class="pv-num" step="1" min="1"
-                   aria-label="k-grid b">
-            <input type="number" id="pv-kg-c" class="pv-num" step="1" min="1"
-                   aria-label="k-grid c">
-          </div>
-          <button id="pv-kg-update" class="full-btn" type="button">Update k-grid</button>
-        </fieldset>
-
       </div><!-- /.optab-panel data-op-panel="cell" -->
     </div>
   </aside>
@@ -798,19 +786,17 @@
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
-{# molview k-grid: the render controller (mountKgridRender) + tiling compute.
-   render-pipeline depends on kgrid, so kgrid loads first. #}
-<script src="{{ url_for('static', filename='lib/molview/kgrid.js') }}"></script>
+{# molview render pipeline: the isolate render controller + compute. #}
 <script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
 {# molview.mount's EMPTY-HOST build path (Track B) owns the render loop, so /modify now
    loads the full render composer: measurement-overlay + render (mountRender composes
-   mountKgridRender + mountMeasurementOverlay).  render depends on measurement-overlay. #}
+   mountIsolateRender + mountMeasurementOverlay).  render depends on measurement-overlay. #}
 <script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
-{# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell/k-grid). #}
+{# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
 <script src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
 {# Selection store + canvas-state — internal implementation
    modules behind the workspace dispatcher.  Loaded FIRST so the

@@ -28,7 +28,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = [
-    ROOT / "molbuilder/web/static/lib/molview/kgrid.js",
     ROOT / "molbuilder/web/static/lib/molview/render-pipeline.js",
     ROOT / "molbuilder/web/static/lib/molview/render.js",
     ROOT / "molbuilder/web/static/lib/molview/mount.js",

@@ -41,7 +41,7 @@
 -#}
 <section class="card selection-card" id="selection-card">
   {#- The page switch IS the card title -- tabs (§ 3b): SELECTION (atoms / filter /
-      assign) vs CELL (unit cell / vacuum / axis-kind + k-grid).  No separate title;
+      assign) vs CELL (unit cell / vacuum / axis-kind).  No separate title;
       the active tab names the sub-panel.  JS toggles the page divs. -#}
   <header class="card-header selection-header-tabs">
     <fieldset class="panel-page-switch" aria-label="Panel page">
@@ -51,7 +51,7 @@
         <span>Selection</span>
       </label>
       <label class="panel-page-option"
-             title="View the unit cell, vacuum, and k-grid.">
+             title="View the unit cell, vacuum, and periodicity.">
         <input type="radio" name="panel-page" value="cell"
                id="panel-page-radio-cell">
         <span>Cell</span>
@@ -274,23 +274,6 @@
       </div>
       <div id="cell-matrix-value" class="cell-matrix-grid"
            aria-label="unit cell as a 3 by 3 matrix">—</div>
-    </div>
-
-    {#- k-grid dims -- a READ-ONLY mirror of periodicity.kgrid (the ONE value; set via the
-        Modify Cell op-tab / DFT setup).  The "Show k-grid" tiling TOGGLE is in the
-        viewer-controls bar (molview.mountViewControls), not here (MolView is display-only). -#}
-    <div class="selection-kgrid" role="group" aria-label="k-grid">
-      <span class="selection-mini-label">k-grid</span>
-      <span class="selection-kgrid-dims">
-        <input type="number" id="selection-kgrid-nx" min="1" step="1" value="1" readonly
-               aria-label="k-grid along a">
-        <span aria-hidden="true">×</span>
-        <input type="number" id="selection-kgrid-ny" min="1" step="1" value="1" readonly
-               aria-label="k-grid along b">
-        <span aria-hidden="true">×</span>
-        <input type="number" id="selection-kgrid-nz" min="1" step="1" value="1" readonly
-               aria-label="k-grid along c">
-      </span>
     </div>
   </div>{#- /#panel-page-cell -#}
 

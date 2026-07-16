@@ -42,16 +42,9 @@
 
         function render() {
             const s = store.getState() || {};
-            // k-grid tiles the unit cell into a supercell -- a per-unit-cell-index readout
-            // can't map onto the duplicated copies, so the measurement stands down until
-            // k-grid is off.  ISOLATE, by contrast, keeps working: the drawn atoms ARE the
-            // selected atoms, the readout is derived from the selection (still curated via
-            // the panel), and we simply re-key the coords below (§14.3, molview-module.md).
-            if (s.kgrid && s.kgrid.enabled) {
-                el.hidden = true;
-                el.textContent = "";
-                return;
-            }
+            // ISOLATE keeps the measurement working: the drawn atoms ARE the selected atoms,
+            // the readout is derived from the selection (still curated via the panel), and we
+            // simply re-key the coords below (§14.3, molview-module.md).
             // Ordered picks: pickOrder (click order -> angle vertex) else indices.
             const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
                 ? s.pickOrder

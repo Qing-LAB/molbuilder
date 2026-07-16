@@ -99,24 +99,11 @@ def test_dispose_removes_the_overlay():
     assert out["before"] == 1 and out["after"] == 0
 
 
-def test_overlay_hidden_while_kgrid_enabled():
-    """molview-module.md §14.3/§15: the measurement overlay STANDS DOWN while k-grid
-    tiling is on -- the duplicated atoms make a unit-cell-indexed readout meaningless.
-    A valid 2-atom pick that WOULD show a distance must stay hidden when kgrid.enabled."""
-    out = _run_node(_HARNESS + """
-        const store = makeStore({ pickOrder: [0,1], indices: [0,1], atoms,
-                                  kgrid: { enabled: true } });
-        mk(viewerHost, { store, coordsProvider: () => coords });
-        console.log(JSON.stringify(snap()));
-    """)
-    assert out["hidden"] is True     # valid 2-atom pick, but k-grid on -> hidden
-
-
 def test_measurement_works_under_isolate_via_global_rekey():
     """molview-module.md §14.3: under ISOLATE the viewer draws ONLY the selected atoms, so
     coordsProvider() returns them in visible (filtered) order.  The overlay must RE-KEY those
     coords back to GLOBAL atom index so the distance is between the right atoms -- isolate
-    KEEPS the measurement (only k-grid pauses it).
+    KEEPS the measurement.
 
     Select global atoms 1 & 2 -- coords (1,0,0) and (0,1,0) -- with isolate on; the viewer
     then draws just those two, so coordsProvider returns [[1,0,0],[0,1,0]] (visible order).
@@ -127,7 +114,7 @@ def test_measurement_works_under_isolate_via_global_rekey():
         // isolate on, atoms 1 & 2 selected -> viewer draws only those, in visible order.
         const filtered = [coords[1], coords[2]];   // what getAtomCoords returns under isolate
         const store = makeStore({ pickOrder: [1,2], indices: [1,2], atoms,
-                                  isolate: true, kgrid: { enabled: false } });
+                                  isolate: true });
         mk(viewerHost, { store, coordsProvider: () => filtered });
         console.log(JSON.stringify(snap()));
     """)

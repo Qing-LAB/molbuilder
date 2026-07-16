@@ -133,7 +133,6 @@ class TestStoreAPISurface:
             "                  typeof store.setLoader === 'function',\n"
             "  mode:          typeof store.setMode === 'function',\n"
             "  isolate:       typeof store.setIsolate === 'function',\n"
-            "  kgrid:         typeof store.setKgrid === 'function',\n"
             "  click_editing: typeof store.toggleAtom === 'function' && "
             "                  typeof store.setSelection === 'function' && "
             "                  typeof store.addToSelection === 'function' && "
@@ -177,10 +176,6 @@ class TestInitialState:
             # (Phase 5) so the panel checkbox + viewer adapter drive/read
             # it through the store instead of a cross-module handle.
             "isolate":    False,
-            # k-grid display view-state (Phase 5 § 6.3): user-set enable + dims
-            # (copies per lattice direction) + source (free/fixed); tiled at
-            # render; lives in the store like isolate.
-            "kgrid":      {"enabled": False, "dims": [1, 1, 1], "source": "free"},
             "filters":    [],
             "combinator": "or",
             "loading":    False,
@@ -921,62 +916,6 @@ class TestIsolateState:
         assert out["afterOn"] == out["afterSub"] + 1        # enabling notified once
         assert out["afterAgain"] == out["afterOn"]          # no-op did NOT notify
         assert out["afterOff"] == out["afterAgain"] + 1     # disabling notified once
-
-
-class TestKgridState:
-    """k-grid view-state (molview-module.md §12.1/§14) lives in the store: setKgrid
-    merges an ``{enabled?, dims?}`` patch, floors + clamps dims to >= 1, appears in the
-    snapshot, and only notifies on a real change."""
-
-    def test_setkgrid_merges_enable_and_normalizes_dims(self):
-        out = _run_node("""
-            const store = window.molbuilder.selection._createStore();
-            store.setKgrid({ enabled: true });
-            store.setKgrid({ dims: [2.9, 0, -1] });   // floor 2; 0 / -1 -> 1
-            console.log(JSON.stringify(store.getState().kgrid));
-        """)
-        assert out == {"enabled": True, "dims": [2, 1, 1], "source": "free"}
-
-    def test_setkgrid_dims_ignored_in_fixed_mode(self):
-        # A .fdf presents its k-grid authoritatively (source+dims); a later BARE
-        # user edit is ignored in fixed mode -- only enable toggles.
-        out = _run_node("""
-            const store = window.molbuilder.selection._createStore();
-            store.setKgrid({ source: "fixed", dims: [2, 2, 1] });
-            store.setKgrid({ dims: [4, 4, 4] });        // bare edit -> ignored
-            store.setKgrid({ enabled: true });          // enable still works
-            console.log(JSON.stringify(store.getState().kgrid));
-        """)
-        assert out == {"enabled": True, "dims": [2, 2, 1], "source": "fixed"}
-
-    def test_setkgrid_free_dims_capped_by_atom_count(self):
-        # 5000 atoms: k-grid is copies, so natoms * nx*ny*nz must stay <= 20000
-        # (=> product <= 4).  A requested 3x3x3 (=27) is clamped down.
-        out = _run_node("""
-            (async () => {
-                const store = window.molbuilder.selection._createStore();
-                await store.adoptSession({
-                    atoms: Array.from({length: 5000}, (_, i) => ({ index: i, element: "C" })),
-                    selection: [],
-                });
-                store.setKgrid({ dims: [3, 3, 3] });
-                const d = store.getState().kgrid.dims;
-                console.log(JSON.stringify({ product: d[0] * d[1] * d[2] }));
-            })();
-        """)
-        assert out["product"] <= 4     # 5000 * product <= 20000
-
-    def test_setkgrid_noop_does_not_notify(self):
-        out = _run_node("""
-            const store = window.molbuilder.selection._createStore();
-            let n = 0;
-            store.subscribe(() => n++);            // fires once immediately
-            const base = n;
-            store.setKgrid({ enabled: false });    // already false
-            store.setKgrid({ dims: [1, 1, 1] });   // already default
-            console.log(JSON.stringify({ extra: n - base }));
-        """)
-        assert out["extra"] == 0
 
 
 class TestWriteLabelInMemory:

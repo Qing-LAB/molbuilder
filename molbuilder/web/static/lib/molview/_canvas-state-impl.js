@@ -84,9 +84,10 @@
 
     // Normalise a periodicity object to the canonical shape, or null.
     // structure-periodicity.md: cell (3x3 | null), axis_kind
-    // ([str,str,str] | null), vacuum ([n,n,n]), kgrid ([n,n,n]).  This
-    // rides ALONGSIDE the geometry so a save writes the whole structure
-    // (workspace-contract.md §4.0).
+    // ([str,str,str] | null), vacuum ([n,n,n]).  This rides ALONGSIDE the
+    // geometry so a save writes the whole structure (workspace-contract.md
+    // §4.0).  (k-grid is NOT geometry -- it's a sampling knob on
+    // SiestaConfig / TransportConfig -- so it is not carried here.)
     function _normPeriodicity(p) {
         if (!p || typeof p !== "object") return null;
         return {
@@ -97,7 +98,6 @@
             resolved_cell: p.resolved_cell || null,
             axis_kind: p.axis_kind || null,
             vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
-            kgrid:     Array.isArray(p.kgrid)  ? p.kgrid.slice(0, 3)  : [1, 1, 1],
         };
     }
 
@@ -117,7 +117,6 @@
             resolved_cell: mat(p.resolved_cell),
             axis_kind:     Array.isArray(p.axis_kind) ? p.axis_kind.slice() : null,
             vacuum:        Array.isArray(p.vacuum) ? p.vacuum.slice() : null,
-            kgrid:         Array.isArray(p.kgrid) ? p.kgrid.slice() : null,
         };
     }
 
@@ -285,10 +284,10 @@
     }
 
     /**
-     * Merge a periodicity PATCH into the canvas (cell / axis_kind / vacuum / kgrid)
+     * Merge a periodicity PATCH into the canvas (cell / axis_kind / vacuum)
      * WITHOUT touching the geometry text — the write path for UI edits of the lattice
-     * + k-grid (§1.2.1 write accessors).  Only the provided keys change; the rest are
-     * kept.  Marks dirty + notifies.
+     * (§1.2.1 write accessors).  Only the provided keys change; the rest are kept.
+     * Marks dirty + notifies.
      */
     function setPeriodicity(patch) {
         _ensureInit();
@@ -298,7 +297,7 @@
         }
         var cur = _state.periodicity
             || { cell: null, resolved_cell: null, axis_kind: null,
-                 vacuum: [0, 0, 0], kgrid: [1, 1, 1] };
+                 vacuum: [0, 0, 0] };
         _state.periodicity = _normPeriodicity({
             cell:      "cell"      in patch ? patch.cell      : cur.cell,
             // resolved_cell is DERIVED -- written back after the server re-resolves an
@@ -308,7 +307,6 @@
                               : cur.resolved_cell),
             axis_kind: "axis_kind" in patch ? patch.axis_kind : cur.axis_kind,
             vacuum:    "vacuum"    in patch ? patch.vacuum    : cur.vacuum,
-            kgrid:     "kgrid"     in patch ? patch.kgrid     : cur.kgrid,
         });
         _state.dirty = true;
         _notify();

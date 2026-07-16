@@ -317,7 +317,7 @@
             // A6 (molview-migration-plan): load the workspace DATA through the
             // working-copy framework in ONE call -- the per-atom rows (element +
             // the sidecar's regions/frozen, applied server-side by codec.load) +
-            // the full periodicity (cell/axis_kind/vacuum/kgrid).  This is the
+            // the full periodicity (cell/axis_kind/vacuum).  This is the
             // store's single source; the ad-hoc /api/selection/atoms disk reads
             // (periodicity + the frozen/region overlay) are gone.  loadIntoCanvas
             // (below) routes through molview.data.openMolecule, which parses + RENDERS the

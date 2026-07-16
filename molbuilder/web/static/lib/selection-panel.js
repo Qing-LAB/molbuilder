@@ -884,16 +884,11 @@
         // they affect -- not in this panel.  The isolate auto-clear-on-empty is handled
         // there.  Both still drive the SAME store; the panel just no longer hosts them.
 
-        // k-grid DIMS: a READ-ONLY mirror of periodicity.kgrid (the ONE value; set via the
-        // Modify Cell op-tab / DFT setup).  Filled by renderCell from getKgridInfo.
-        const _kgNx = $("selection-kgrid-nx");
-        const _kgNy = $("selection-kgrid-ny");
-        const _kgNz = $("selection-kgrid-nz");
-        const _kgridUnsub = store.subscribe(function () { renderCell(); });
-        cleanups.push(() => { try { _kgridUnsub(); } catch (_) { /* ignore */ } });
-        // Live-refresh the Cell display on PERIODICITY changes (kgrid dims / cell / vacuum)
+        const _cellStoreUnsub = store.subscribe(function () { renderCell(); });
+        cleanups.push(() => { try { _cellStoreUnsub(); } catch (_) { /* ignore */ } });
+        // Live-refresh the Cell display on PERIODICITY changes (cell / vacuum / axis_kind)
         // too -- molview.data.subscribe fires on canvas changes; store.subscribe alone misses
-        // them (e.g. the Modify Cell op-tab's Update k-grid).  Periodicity accessors +
+        // them (e.g. the Modify Cell op-tab's Update).  Periodicity accessors +
         // subscribe live on molview.data (the carve), NOT the persistence-only workspace.
         const _dm = root.molbuilder && root.molbuilder.molview
                   && root.molbuilder.molview.data;
@@ -931,13 +926,6 @@
                 const c = dm.getUnitCellInfo();
                 _renderMatrix(els.cellMatrix, c.value);
                 if (els.cellTag) els.cellTag.textContent = c.isDefault ? "(default)" : "";
-            }
-            // k-grid dims: read-only mirror of periodicity.kgrid (the ONE value, §3b).
-            if (dm.getKgridInfo) {
-                const kd = dm.getKgridInfo().value || [1, 1, 1];
-                if (_kgNx) _kgNx.value = String(kd[0]);
-                if (_kgNy) _kgNy.value = String(kd[1]);
-                if (_kgNz) _kgNz.value = String(kd[2]);
             }
         }
         function _renderMatrix(el, m) {

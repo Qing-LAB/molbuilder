@@ -1,14 +1,15 @@
 /* Modify tab -- per-GROUP periodicity editors (structure-periodicity.md § 3b).
  *
  * MolView only DISPLAYS periodicity; the actual edits live in the Modify "Cell" op-tab,
- * one Update per group (vacuum / pbc / unit cell / k-grid) so each can independently stay
- * at its default or be committed.  Each group reads the current value from the SAME molview
- * accessors the display uses (getVacuumInfo / getAxisKindInfo / getUnitCellInfo /
- * getKgridInfo -> { value, isDefault }) and commits through the MolView DATA API
+ * one Update per group (vacuum / pbc / unit cell) so each can independently stay at its
+ * default or be committed.  Each group reads the current value from the SAME molview
+ * accessors the display uses (getVacuumInfo / getAxisKindInfo / getUnitCellInfo
+ * -> { value, isDefault }) and commits through the MolView DATA API
  * (window.molbuilder.molview.data -- NOT the persistence-only workspace):
  *   - vacuum / pbc / unit cell -> data.commitPeriodicity (re-resolves the effective cell
- *     through the ONE server resolver, § 3a);
- *   - k-grid                  -> data.setKgrid (no re-resolve; the cell is unchanged).
+ *     through the ONE server resolver, § 3a).
+ * (k-grid is NOT here: it's a reciprocal-space sampling knob on SiestaConfig /
+ * TransportConfig, not geometry -- structure-periodicity.md.)
  * No auto-commit: editing a field only stages; the group's Update button commits.
  */
 (function () {
@@ -17,9 +18,8 @@
     var AXIS = ["isolated", "periodic", "transport"];
 
     function $(id) { return document.getElementById(id); }
-    // DATA access (getStructure / get*Info / commitPeriodicity / setKgrid /
-    // subscribe) is the in-memory model on molview.data; ``workspace`` is
-    // persistence-only now.
+    // DATA access (getStructure / get*Info / commitPeriodicity / subscribe) is the
+    // in-memory model on molview.data; ``workspace`` is persistence-only now.
     function data() {
         return root.molbuilder && root.molbuilder.molview
             && root.molbuilder.molview.data;
@@ -92,13 +92,6 @@
             });
             tag("pv-axis-tag", a.isDefault);
         }
-        if (w.getKgridInfo) {
-            var k = w.getKgridInfo(), kv = k.value || [1, 1, 1];
-            setIdle($("pv-kg-a"), kv[0] || 1);
-            setIdle($("pv-kg-b"), kv[1] || 1);
-            setIdle($("pv-kg-c"), kv[2] || 1);
-            tag("pv-kg-tag", k.isDefault);
-        }
         if (w.getUnitCellInfo && cellInputs.length === 9) {
             var c = w.getUnitCellInfo(), m = c.value;
             for (var r = 0; r < 3; r++) {
@@ -148,15 +141,6 @@
         var reset = $("pv-cell-reset");
         if (reset) reset.addEventListener("click", function () {
             commit({ cell: null });   // clear -> fall back to the resolved bbox+vacuum
-        });
-        var kg = $("pv-kg-update");
-        if (kg) kg.addEventListener("click", function () {
-            var w = data();
-            if (w && typeof w.setKgrid === "function") {
-                w.setKgrid([num("pv-kg-a", 1, true), num("pv-kg-b", 1, true),
-                            num("pv-kg-c", 1, true)]);
-            }
-            refresh();
         });
     }
 
