@@ -959,6 +959,7 @@ def add_electrode_slab(
     slab_cell = np.asarray(full.get_cell(), dtype=float)
     elc_cell = None
     elc_axis_kind = None
+    elc_cell_origin = None
     if z_extent > 1e-6:
         elc_cell = np.array([
             [slab_cell[0, 0], slab_cell[0, 1], 0.0],
@@ -966,6 +967,14 @@ def add_electrode_slab(
             [0.0, 0.0, z_extent],
         ], dtype=float)
         elc_axis_kind = ("periodic", "periodic", "transport")
+        # cell_origin (structure-periodicity.md § 3c): the captured cell is built
+        # AROUND atoms that straddle the origin (the molecule stays pinned there;
+        # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
+        # CORNER so the box WRAPS the atoms WITHOUT moving them -- the z length is
+        # exactly the device extent, so z runs [z_min, z_max].  render_fdf then
+        # shifts atoms by -cell_origin into [0, cell) for SIESTA; the `calibrate`
+        # op bakes that shift when the user wants it in the stored coords.
+        elc_cell_origin = all_pos.min(axis=0).astype(float)
 
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
     # Existing frozen_atoms + region indices carry through unchanged; the
@@ -975,6 +984,7 @@ def add_electrode_slab(
         elements=list(struct.elements) + [element] * n_new,
         positions=np.vstack([struct.positions, metal_pos]),
         cell=elc_cell,
+        cell_origin=elc_cell_origin,
         axis_kind=elc_axis_kind,
         atom_names=list(struct.atom_names) + [element] * n_new,
         residue_ids=list(struct.residue_ids) + [new_residue_id] * n_new,
@@ -1074,6 +1084,49 @@ def add_symmetric_electrodes(
 
 
 
+def calibrate_to_cell(struct: Structure) -> Structure:
+    """Move the structure into its cell's SIESTA coordinate frame (§ 3c).
+
+    The unified "last step" before saving / handing to SIESTA: bake the
+    generation-time shift into the STORED coordinates so the viewer box, the saved
+    ``.xyz``, and the emitted FDF all agree.  Translate every atom by
+    ``-resolve_cell_origin()`` so the atoms sit in ``[0, cell)`` with the cell
+    anchored at ``(0,0,0)``, and materialise the resolved cell as the explicit cell
+    (``cell_origin`` cleared).
+
+    Idempotent: a second call is a no-op (origin is already 0).  Optional --
+    ``render_fdf`` applies the SAME shift on the fly, so an un-calibrated structure
+    still generates correct SIESTA input; calibration just lets the user SEE and
+    SAVE the exact coordinate frame SIESTA will use.
+
+    Raises ``ValueError`` for a ``periodic`` axis with no explicit cell (you cannot
+    materialise a commensurate lattice from a bounding box; § 3).
+    """
+    if struct.n_atoms == 0:
+        return struct.copy()
+    resolved = struct.resolve_cell()          # explicit cell, or derived bbox+vacuum
+    origin = struct.resolve_cell_origin()
+    shift = (-np.asarray(origin, dtype=float)
+             if origin is not None else np.zeros(3, dtype=float))
+    return Structure(
+        elements=list(struct.elements),
+        positions=struct.positions + shift,
+        cell=(resolved.copy() if resolved is not None else None),
+        cell_origin=None,                     # atoms now in [0, cell); cell at origin
+        axis_kind=struct.axis_kind,
+        vacuum=struct.vacuum,
+        pbc=struct.pbc,
+        atom_names=list(struct.atom_names),
+        residue_ids=list(struct.residue_ids),
+        residue_names=list(struct.residue_names),
+        chain_ids=list(struct.chain_ids),
+        title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        frozen_atoms=list(struct.frozen_atoms),
+        annotations=copy_annotations(struct.annotations),
+    )
+
+
 __all__ = [
     "delete_atoms",
     "add_atom",
@@ -1081,6 +1134,7 @@ __all__ = [
     "rotate_around_axis",
     "add_electrode_slab",
     "add_symmetric_electrodes",
+    "calibrate_to_cell",
     "SUPPORTED_FCC_ELEMENTS",
     "SUPPORTED_FCC_PLANES",
 ]

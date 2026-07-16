@@ -305,6 +305,18 @@ class Structure:
     # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Tuple[float, float, float]  = (0.0, 0.0, 0.0)
+    # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom), or None
+    # = (0,0,0) (structure-periodicity.md § 3c).  Editing convenience: an op that
+    # builds a cell AROUND off-origin atoms (e.g. add_electrode_slab, whose slabs
+    # straddle the origin) sets this to the structure's low corner so the cell WRAPS
+    # the atoms WITHOUT moving them -- the molecule/selection stays pinned where the
+    # user placed it.  SIESTA correctness is restored at generation: render_fdf
+    # translates atoms by -resolve_cell_origin() so they sit in [0, cell); the
+    # ``calibrate`` op bakes that same shift into the stored coords (cell_origin ->
+    # 0).  ONLY meaningful with an explicit ``cell``; None for a derived cell (its
+    # origin is computed from atom extents) and for an imported crystal (atoms are
+    # already in [0, cell), so the cell sits at the world origin).
+    cell_origin:   Optional[np.ndarray]            = None
     # Extensible per-atom annotations (atom-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
     # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
@@ -387,6 +399,16 @@ class Structure:
                 )
             self.axis_kind = ak
             self.pbc = tuple(k != "isolated" for k in ak)   # pbc DERIVED
+        # cell_origin: the low corner an EXPLICIT cell emanates from (§ 3c).  Only
+        # meaningful WITH an explicit cell -- a derived cell computes its origin from
+        # atom extents (resolve_cell_origin), so a stray cell_origin without a cell is
+        # dropped to keep the field a faithful "explicit-cell offset from (0,0,0)".
+        if self.cell_origin is not None:
+            co = np.asarray(self.cell_origin, dtype=float).reshape(3)
+            if not np.all(np.isfinite(co)):
+                raise ValueError(
+                    "Structure.cell_origin must be 3 finite floats (Angstrom)")
+            self.cell_origin = co if self.cell is not None else None
         # Shape/clamp vacuum (per-side gap).
         self.vacuum = tuple(float(v) for v in self.vacuum)
         if len(self.vacuum) != 3:
@@ -440,17 +462,28 @@ class Structure:
         return out
 
     def resolve_cell_origin(self) -> Optional[np.ndarray]:
-        """The low corner (Angstrom) of the resolved bounding-box cell.
+        """The low corner (Angstrom) the resolved cell emanates from (§ 3c).
 
-        For a DERIVED (bbox) cell the box wraps the atoms: the low corner sits at
-        ``bbox_min - vacuum`` on each isolated axis (and ``bbox_min`` on a
-        transport axis), so the molecule is centred in the resolved cell with
-        ``vacuum`` of clearance per side -- matching the SIESTA FDF's centring.
-        The display anchors the cell wireframe here instead of the coordinate
-        origin.  Returns ``None`` for an empty structure or when an EXPLICIT cell
-        is set (an explicit cell carries its own atom frame -- anchored at 0)."""
-        if self.cell is not None or len(self.positions) == 0:
+        The consumer contract: the viewer draws the cell wireframe FROM this corner
+        (so the box wraps the structure), and ``render_fdf`` translates atoms by
+        ``-resolve_cell_origin()`` so SIESTA receives them inside ``[0, cell)`` with
+        the cell at ``(0,0,0)``.  Three cases (structure-periodicity.md § 3c):
+
+          * EXPLICIT cell + ``cell_origin`` set (an electrode junction: the cell was
+            built AROUND off-origin atoms) -> ``cell_origin``.  The box wraps the
+            atoms where they are; generation shifts them into the cell.
+          * EXPLICIT cell + no ``cell_origin`` (an imported crystal: atoms already
+            in ``[0, cell)``) -> ``None`` (= the world origin; no shift).
+          * DERIVED (bbox) cell -> ``bbox_min - vacuum`` (isolated) / ``bbox_min``
+            (transport), so the molecule is centred with ``vacuum`` clearance/side.
+
+        Returns ``None`` for an empty structure (nothing to anchor)."""
+        if len(self.positions) == 0:
             return None
+        if self.cell is not None:
+            # Explicit cell: the stored intent (cell_origin) or the world origin.
+            return (self.cell_origin.astype(float)
+                    if self.cell_origin is not None else None)
         lo = self.positions.min(axis=0).astype(float)
         origin = np.zeros(3, dtype=float)
         for i, kind in enumerate(self.axis_kind):
@@ -992,10 +1025,12 @@ class Structure:
         this so the lattice survives the edit.
         """
         return dict(
-            cell      = (self.cell.copy() if self.cell is not None else None),
-            pbc       = self.pbc,
-            axis_kind = self.axis_kind,
-            vacuum    = self.vacuum,
+            cell        = (self.cell.copy() if self.cell is not None else None),
+            cell_origin = (self.cell_origin.copy()
+                           if self.cell_origin is not None else None),
+            pbc         = self.pbc,
+            axis_kind   = self.axis_kind,
+            vacuum      = self.vacuum,
         )
 
     def copy(self) -> "Structure":
@@ -1022,6 +1057,13 @@ class Structure:
 
     def translated(self, vec: Sequence[float]) -> "Structure":
         v = np.asarray(vec, dtype=float).reshape(3)
+        per = self._carry_periodicity()
+        # A rigid translation leaves the lattice VECTORS unchanged, but the cell's
+        # world-space corner moves WITH the atoms so the box keeps wrapping them
+        # (§ 3c).  (A derived cell has cell_origin None -> recomputed from the new
+        # atom extents anyway.)
+        if per.get("cell_origin") is not None:
+            per["cell_origin"] = per["cell_origin"] + v
         return Structure(
             elements      = list(self.elements),
             positions     = self.positions + v,
@@ -1033,8 +1075,7 @@ class Structure:
             regions       = {k: list(v) for k, v in self.regions.items()},
             frozen_atoms  = list(self.frozen_atoms),
             annotations   = copy_annotations(self.annotations),
-            # A rigid translation leaves the lattice unchanged.
-            **self._carry_periodicity(),
+            **per,
         )
 
     def centered(self) -> "Structure":

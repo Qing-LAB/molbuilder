@@ -149,3 +149,82 @@ class TestElectrodeCaptureCell:
         assert out.cell[2, 2] > 0.0                   # z = device extent
         # in-plane vectors are non-degenerate (hexagonal for fcc111)
         assert abs(float(np.linalg.det(out.cell))) > 1e-6
+        # § 3c: the captured cell WRAPS the atoms -- cell_origin = structure low corner.
+        assert out.cell_origin is not None
+        assert np.allclose(out.cell_origin, out.positions.min(axis=0))
+
+
+def _parse_fdf_cell_coords(fdf):
+    """Pull the LatticeVectors (3x3, rows) + the atom Cartesian coords (Ang) out of a
+    rendered FDF, so a test can check where every atom sits relative to the cell."""
+    import re
+    lv = re.search(r"%block\s+LatticeVectors\s*\n(.*?)%endblock\s+LatticeVectors",
+                   fdf, re.IGNORECASE | re.DOTALL)
+    cell = np.array([[float(x) for x in ln.split()[:3]]
+                     for ln in lv.group(1).strip().splitlines() if ln.split()])
+    ac = re.search(r"%block\s+AtomicCoordinatesAndAtomicSpecies\s*\n(.*?)%endblock",
+                   fdf, re.IGNORECASE | re.DOTALL)
+    coords = []
+    for ln in ac.group(1).strip().splitlines():
+        p = ln.split()
+        if len(p) >= 3 and not ln.lstrip().startswith("#"):
+            coords.append([float(p[0]), float(p[1]), float(p[2])])
+    return cell, np.array(coords)
+
+
+class TestCellOriginAndCalibration:
+    """§ 3c: an explicit cell wraps off-origin atoms via cell_origin; the viewer box
+    and render_fdf stay consistent; calibrate bakes the SIESTA frame."""
+
+    def _junction(self):
+        """Molecule pinned at the origin (2 anchors on z) + symmetric Au(111)
+        electrodes -- atoms straddle the origin, cell captured with cell_origin."""
+        from molbuilder.modify import add_symmetric_electrodes
+        mol = Structure(elements=["S", "S"],
+                        positions=[[0.0, 0.0, -2.0], [0.0, 0.0, 2.0]])
+        return add_symmetric_electrodes(
+            mol, "Au", "111", (2, 2, 3), center_indices=[0, 1], gap=6.0)
+
+    def test_cell_origin_wraps_the_atoms(self):
+        j = self._junction()
+        assert j.positions[:, 2].min() < 0.0, "junction should straddle the origin"
+        o = j.resolve_cell_origin()
+        assert o is not None and np.allclose(o, j.positions.min(axis=0))
+        # The box [o, o+cell] contains every atom on the transport (z) axis exactly.
+        cz = j.resolve_cell()[2, 2]
+        assert j.positions[:, 2].max() <= o[2] + cz + 1e-6
+
+    def test_render_fdf_puts_device_inside_the_transport_cell(self):
+        """The viewer ≡ SIESTA invariant: render_fdf emits the atoms translated into
+        [0, cell) -- every device atom sits inside the transport (z) cell [0, Lz]."""
+        from molbuilder.siesta import render_fdf
+        from molbuilder.config.siesta import SiestaConfig
+        j = self._junction()
+        fdf = render_fdf(j, SiestaConfig(system_label="jx"))
+        cell, coords = _parse_fdf_cell_coords(fdf)
+        # The emitted lattice IS the resolved (explicit) cell -- viewer & FDF agree.
+        assert np.allclose(cell, j.resolve_cell(), atol=1e-4)
+        # Transport z is orthogonal ([0,0,Lz]); every atom's z is inside [0, Lz].
+        Lz = cell[2, 2]
+        assert coords[:, 2].min() >= -1e-4, "device atom below the transport cell"
+        assert coords[:, 2].max() <= Lz + 1e-4, "device atom above the transport cell"
+
+    def test_calibrate_bakes_the_shift_idempotent(self):
+        from molbuilder.modify import calibrate_to_cell
+        j = self._junction()
+        c = calibrate_to_cell(j)
+        assert c.cell_origin is None                      # now anchored at (0,0,0)
+        assert c.resolve_cell_origin() is None
+        assert np.allclose(c.positions[:, 2].min(), 0.0, atol=1e-6)  # atoms in [0, Lz]
+        assert np.allclose(c.resolve_cell(), j.resolve_cell(), atol=1e-6)  # same cell
+        # Idempotent: a second calibrate is a no-op.
+        c2 = calibrate_to_cell(c)
+        assert np.allclose(c.positions, c2.positions)
+
+    def test_imported_crystal_no_shift(self):
+        """An explicit cell with NO cell_origin (imported crystal, atoms already in
+        [0,cell)) -> resolve_cell_origin None -> render_fdf does not shift."""
+        s = Structure(elements=["H"], positions=[[0.5, 0.5, 0.5]],
+                      cell=(np.eye(3) * 3).tolist())
+        assert s.cell_origin is None
+        assert s.resolve_cell_origin() is None
