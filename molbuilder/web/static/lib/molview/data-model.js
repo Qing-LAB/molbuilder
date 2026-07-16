@@ -1047,7 +1047,16 @@
                     }
                 }
             }
-            st.adoptAtoms(payload.atoms);
+            // sourceFile rides IN on the SAME synchronous adopt when this is a file
+            // open (installSource.kind === "file"): atoms + source land together, so
+            // after this one write the store is fully settled -- no trailing
+            // adoptSession is needed to name the file (the old second write that
+            // clobbered a just-made selection).  A generator (kind !== "file") has no
+            // source path, so sourceFile stays as-is (null for a fresh generate).
+            var _srcFile = (opts.installSource
+                            && opts.installSource.kind === "file")
+                ? (opts.installSource.file || null) : undefined;
+            st.adoptAtoms(payload.atoms, _srcFile);
         }
 
         // 4. §19.3.2 atom-count selection rule: any count-changing mutation (grow/shrink)
@@ -1113,16 +1122,35 @@
     // resets the session timeline (§19.5).  There is no other open door: `{text,
     // filename}` parses raw structure text; a project-file path string loads a saved
     // file.  Both land on the single sync point (_applyWorkspacePayload).
+    //
+    // THE LOAD CONTRACT (why this is ONE door, one write):  everything the loaded
+    // molecule needs -- geometry text, periodicity, annotations, AND the
+    // sidecar-enriched per-atom rows (regions/frozen) + its source path -- rides IN on
+    // this single call and is installed by ONE synchronous `_applyWorkspacePayload`
+    // pass BEFORE the load resolves.  A caller must NEVER open the molecule and then
+    // do a SECOND store write (a follow-up `adoptSession`/`adoptAtoms`) to "finish"
+    // the load: the "ready" signal (getNAtoms, the load promise) fires at the single
+    // write, so any second write lands AFTER a consumer may have already acted on the
+    // settled structure and silently clobbers their state (the 2026-07 selection-wipe:
+    // Load, then a click that landed in the gap before a trailing adoptSession, was
+    // erased).  If you have sidecar atoms, pass them here as `input.atoms`.
     function openMolecule(input) {
         if (input && typeof input === "object" && typeof input.text === "string") {
             // `source`      -> provenance (a generator names its kind/generator_input);
             // `periodicity` -> sidecar cell/vacuum/axis_kind that /api/build/load
             //                  cannot re-derive (a file-open supplies it);
             // `annotations` -> the opaque sidecar channel carry.
+            // `atoms`       -> the codec-enriched per-atom rows (regions/frozen from the
+            //                  .molstruct.json sidecar) a project-file open resolved via
+            //                  readWorkingCopy.  Supplied here they REPLACE the plain
+            //                  /api/build/load atoms in the ONE install, so the load
+            //                  needs no second store write.  Omitted -> the build/load
+            //                  atoms are used (generators, raw-text opens).
             return _loadText(input.text, input.filename, {
                 source:      input.source || null,
                 periodicity: input.periodicity || null,
                 annotations: input.annotations || null,
+                atoms:       Array.isArray(input.atoms) ? input.atoms : null,
             });
         }
         if (typeof input === "string" && input) {
@@ -1169,6 +1197,11 @@
         // so the driven canvas signal does not mark the fresh load uncommitted.
         if (opts.periodicity) r.periodicity = opts.periodicity;
         if (opts.annotations) r.annotations = opts.annotations;
+        // Sidecar-enriched atoms (regions/frozen the .molstruct.json carries, which
+        // /api/build/load cannot re-derive) REPLACE the plain parsed atoms so the ONE
+        // install below is the FINAL per-atom state -- no second store write to overlay
+        // them afterwards.  This is what closes the load-order gap (see openMolecule).
+        if (opts.atoms) r.atoms = opts.atoms;
         var installSource = opts.source
             || { kind: "file", file: filename || null, generator_input: null };
         _applying = true;

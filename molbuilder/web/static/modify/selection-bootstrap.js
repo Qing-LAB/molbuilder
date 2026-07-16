@@ -315,17 +315,12 @@
             const format = path.toLowerCase().endsWith(".pdb")
                 ? "pdb" : "xyz";
             // A6 (molview-migration-plan): load the workspace DATA through the
-            // working-copy framework in ONE call -- the per-atom rows (element +
-            // the sidecar's regions/frozen, applied server-side by codec.load) +
-            // the full periodicity (cell/axis_kind/vacuum).  This is the
-            // store's single source; the ad-hoc /api/selection/atoms disk reads
-            // (periodicity + the frozen/region overlay) are gone.  loadIntoCanvas
-            // (below) routes through molview.data.openMolecule, which parses + RENDERS the
-            // bytes; those build/load atoms are then overlaid by the framework's
-            // sidecar-enriched atoms via adoptSession.
-            // Read the working-copy data through the ONE data door (molview.data),
-            // NOT a raw POST to /api/workingcopy/open -- consumers don't reach around
-            // the unified surface.  Returns null on failure -> a plain byte load.
+            // working-copy framework -- the per-atom rows (element + the sidecar's
+            // regions/frozen, applied server-side by codec.load) + the full
+            // periodicity (cell/axis_kind/vacuum).  Read the working-copy data through
+            // the ONE data door (molview.data.readWorkingCopy), NOT a raw POST to
+            // /api/workingcopy/open -- consumers don't reach around the unified
+            // surface.  Returns null on failure -> a plain byte load.
             let opened = null;
             try {
                 const _d = window.molbuilder.molview && window.molbuilder.molview.data;
@@ -337,6 +332,8 @@
             // F1: carry the annotation channels opaquely so a later Save re-emits
             // them (Modify doesn't edit annotations, but must not clobber them).
             const annotations = (opened && opened.annotations) || null;
+            const sidecarAtoms = (opened && Array.isArray(opened.atoms))
+                ? opened.atoms : null;
             // F4: suspend persistence across the text->atoms window so no draft is
             // written pairing the new geometry with the PREVIOUS file's labels; resume
             // at every exit (one resume per path).
@@ -346,51 +343,31 @@
                 if (_dataD && typeof _dataD.resumePersist === "function") _dataD.resumePersist();
             };
             if (_dataD && typeof _dataD.suspendPersist === "function") _dataD.suspendPersist();
+            // THE LOAD CONTRACT (molview-module.md §19.3 + save-flow.md): a file load
+            // is ONE call through the single open door.  Everything the molecule needs
+            // -- geometry text, periodicity, annotations, the sidecar-enriched atoms
+            // AND the source path -- rides IN so the WHOLE model (canvas + selection
+            // store + render) is installed in ONE synchronous write and is fully
+            // SETTLED before loadIntoCanvas resolves.  There is deliberately NO second
+            // store write after this: the old trailing `store.adoptSession(...)` reset
+            // the selection to [] a few hundred ms later (after `await
+            // _anchorTimeline()`'s HTTP), which silently clobbered any atom the user
+            // clicked in that gap -- the "selection never sticks right after Load"
+            // race (fixed 2026-07).
             const gate = await sp.loadIntoCanvas(
                 { source_format: format, text: r.text, periodicity: periodicity,
-                  annotations: annotations },
+                  annotations: annotations, atoms: sidecarAtoms },
                 { kind: "file", file: path }
             );
             if (!gate.ok) { _resumeLoad(); return; }  // cancelled — leave viewer alone
-            // loadIntoCanvas already routed through molview.data.openMolecule,
-            // which parsed + rendered the bytes.  The old viewerLoader
-            // second load is removed — it would double-apply the same
-            // bytes (and re-anchor the timeline a second time).
-            //
-            // Tell the selection store the file is now the source and
-            // overlay the sidecar-enriched atoms WITHOUT refetching:
-            //
-            // 2026-06-11: MUST await — adoptSession returns a Promise
-            // that resolves once the store's atoms + selection are
-            // installed.  Without await, _commitFile returns while
-            // the store still holds the PREVIOUS file's state.  If
-            // the user clicks "assign label" before the Promise
-            // resolves, stale indices from the prior structure go
-            // to the server.  The user saw this as the
-            // "selector keeps tracking the old file" symptom.
-            //
-            // The setSourceFile fallback below is also async; same
-            // reasoning applies.  Both promises swallow internal
-            // errors silently (per _run() in store.js), so awaiting
-            // them just sequences atom-install completion against
-            // _commitFile's return.
-            if (typeof store.adoptSession === "function") {
-                // A6: adopt the FRAMEWORK's atoms -- they already carry the
-                // sidecar's regions + frozen_atoms (codec.load applied the
-                // ``.molstruct.json`` when opening), so there is no
-                // /api/selection/atoms refetch to overlay.  The atom rows are the
-                // same wire shape /api/build/load returns, plus the sidecar data.
-                // If the open call itself failed, pass no atoms — adoptSession then
-                // refetches them (sidecar-applied) from /api/selection/atoms.
-                await store.adoptSession({
-                    sourceFile: path,
-                    selection:  [],
-                    atoms:      (opened && Array.isArray(opened.atoms))
-                                  ? opened.atoms
-                                  : undefined,
-                });
-            } else {
-                await store.setSourceFile(path);  // legacy fallback
+            // Fallback ONLY when readWorkingCopy failed (no sidecar atoms rode in):
+            // the plain build/load atoms are installed, but the .molstruct.json's
+            // regions/frozen overlay is missing.  refreshAtoms refetches the
+            // sidecar-applied rows from /api/selection/atoms -- and, unlike a fresh
+            // adoptSession, it does NOT reset the selection, so it cannot clobber a
+            // just-made pick even though it lands after the "ready" signal.
+            if (!sidecarAtoms && typeof store.refreshAtoms === "function") {
+                await store.refreshAtoms();
             }
             _resumeLoad();   // F4: load done -> resume + write the consistent state
         }

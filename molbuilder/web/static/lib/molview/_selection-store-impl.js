@@ -494,8 +494,21 @@
          * modifier-op responses + cross-tab handoff payloads that
          * already carry the canonical per-atom shape (the same
          * /api/selection/atoms returns).  No HTTP roundtrip, no
-         * signal abort, no source-file mutation — this is the
-         * in-memory sync path the BOMB-0 fix needs.
+         * signal abort — this is the in-memory sync path the BOMB-0
+         * fix needs.
+         *
+         * ``sourceFile`` (optional): when a file-open drives this
+         * call it names the loaded path so the store's sourceFile
+         * (the "Loaded: X" readout + any later refreshAtoms) is set
+         * in the SAME synchronous write as the atoms.  This is what
+         * lets a file load install atoms+source+selection in ONE
+         * store write (the load contract — see
+         * ``_applyWorkspacePayload`` and molview-module.md §19.3):
+         * pass it and the fresh molecule is fully settled before the
+         * "ready" signal (getNAtoms) is observable, so nothing done
+         * on the settled structure gets clobbered by a later reset.
+         * Omitted -> sourceFile untouched (a modifier op keeps the
+         * current file).
          *
          * Selection state is filtered: indices that no longer
          * exist (e.g. atoms removed by a Delete op) are dropped.
@@ -504,10 +517,13 @@
          * Synchronous publication — subscribers see the new atoms
          * + the filtered selection in a single fanout.
          */
-        function adoptAtoms(rawAtoms) {
+        function adoptAtoms(rawAtoms, sourceFile) {
             if (!Array.isArray(rawAtoms)) {
                 throw new TypeError(
                     "adoptAtoms: rawAtoms must be an array");
+            }
+            if (sourceFile !== undefined) {
+                state.sourceFile = sourceFile || null;
             }
             state.atoms = rawAtoms.map(_normaliseAtom);
             // Drop selection indices that no longer exist (the

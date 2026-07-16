@@ -109,6 +109,12 @@
                 source:      source || null,
                 periodicity: structure.periodicity || null,
                 annotations: structure.annotations || null,
+                // Sidecar-enriched atoms (a project-file open resolved these via
+                // readWorkingCopy) ride IN so the load installs the FINAL per-atom
+                // state in ONE write -- the caller must NOT follow up with a second
+                // store write (see openMolecule's load contract).  Omitted by
+                // generators / raw-text loads.
+                atoms:       structure.atoms || null,
             }).then(function () { return { ok: true }; });
         }
         // Empty canvas — load directly; no warning.
