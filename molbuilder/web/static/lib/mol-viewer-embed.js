@@ -2579,14 +2579,15 @@
         const axesApi = (root.molbuilder || {}).axes;
         if (!axesApi || typeof axesApi.draw !== "function") return;
         const a = state.current.axes;
-        const cell = (a.mode === "cartesian") ? null
-                   : (a.mode === "cell")      ? state.current.lattice
-                   : /* auto */                  state.current.lattice;
+        // "Show axes" is ALWAYS the Cartesian x/y/z compass at the world origin --
+        // a fixed reference frame that never masquerades as the cell vectors.  The
+        // a/b/c cell axes are part of the "Show unit cell" overlay (_redrawCell),
+        // drawn along the cell edges.  (structure-periodicity.md Issue #3.)
         state.axesHandle = axesApi.draw(state.viewer, {
-            cell:   cell,
+            cell:   null,        // Cartesian x/y/z, never the lattice a/b/c
             length: a.length,
             origin: a.origin,
-            labels: a.labels,
+            labels: null,        // -> mol-axes defaults to x / y / z
             colors: a.colors,
             radius: a.radius,
             render: false,   // we batch a single render at the end
@@ -2598,17 +2599,35 @@
             try { state.viewer.removeShape(s); } catch (_) {}
         }
         state.cellShapes = [];
+        if (state.cellAxesHandle) {
+            state.cellAxesHandle.clear();
+            state.cellAxesHandle = null;
+        }
         if (!state.current.cell) return;   // "Show unit cell" toggle off
         // The BOX draws from the resolved cell + its anchor corner (``cellBox``, §3a)
         // when the consumer feeds one -- so a bbox+vacuum molecule shows a box that
         // WRAPS the atoms.  Fall back to the raw ``lattice`` (an explicit cell placed
-        // at the world origin) when no cellBox was given.  The AXES stay on ``lattice``
-        // (they are a/b/c only for an explicit cell), so the box and axes are decoupled.
+        // at the world origin) when no cellBox was given.
         const box = state.current.cellBox;
         const lattice = (box && box.lattice) || state.current.lattice;
         const origin  = (box && box.origin) || null;
+        if (!lattice) return;   // no cell -> no box + no a/b/c arrows
         state.cellShapes = _drawCellWireframe(
             state.viewer, lattice, origin, {});
+        // "Show unit cell" IS the box AND its a/b/c axis arrows -- one thing: the
+        // cell, with its edge vectors labelled a/b/c, drawn from the SAME anchor
+        // corner as the box and scaled to the a/b/c lengths.  The Cartesian x/y/z
+        // compass is the SEPARATE "Show axes" overlay (structure-periodicity.md
+        // Issue #3).
+        const axesApi = (root.molbuilder || {}).axes;
+        if (axesApi && typeof axesApi.draw === "function") {
+            state.cellAxesHandle = axesApi.draw(state.viewer, {
+                cell:   lattice,
+                origin: origin || [0, 0, 0],
+                labels: ["a", "b", "c"],
+                render: false,   // batched with the base render
+            });
+        }
     }
 
     function _redrawLabels(state) {
@@ -3564,6 +3583,7 @@
 
             axesHandle:          null,
             cellShapes:          [],
+            cellAxesHandle:      null,   // a/b/c arrows drawn WITH the unit-cell box
             labelHandles:        [],
             arrowShapes:         [],
             arrowLabels:         [],
@@ -5438,6 +5458,7 @@
             _stopAnimationLoop(state);
             try {
                 if (state.axesHandle) state.axesHandle.clear();
+                if (state.cellAxesHandle) state.cellAxesHandle.clear();
                 for (const s of state.cellShapes) state.viewer.removeShape(s);
                 for (const l of state.labelHandles) state.viewer.removeLabel(l);
                 for (const s of state.arrowShapes) state.viewer.removeShape(s);
