@@ -23,6 +23,7 @@ re-derived downstream, never hand-fed as a side file.
 | Field | Shape | Meaning | Default |
 |---|---|---|---|
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 3) |
+| `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell WRAP off-origin atoms without moving them (§ 3c) | `null` = `(0,0,0)` |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 1.1) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | `pbc` | 3 bools — **DERIVED, not stored** | ASE-interop view: `periodic\|transport → True`, `isolated → False` | from `axis_kind` |
 | `vacuum` | 3 floats (Å) | isolation padding — **nonzero only on an `isolated` axis** | `(0, 0, 0)` |
@@ -180,6 +181,75 @@ selection store.  The MolView Cell page's `[nx,ny,nz]` are a **read-only mirror*
 `periodicity.kgrid`; the value is set in the Modify Cell op-tab (`ws.setKgrid`).  The
 viewer re-tiles on a periodicity change (viewer.js subscribes `ws.subscribe →
 _kgCtl.refresh()`).
+
+## 3c. Cell origin + calibration — an explicit cell that WRAPS off-origin atoms
+
+**The problem this solves.** Building a tunnelling junction, the natural workflow keeps
+the molecule (or the selected component) **pinned at the world origin** and grows
+structure around it: centre the molecule at `(0,0,0)`, orient its anchors along `z`,
+then `add_symmetric_electrodes` flanks it with slabs at `z = ±gap/2`. The electrode op
+then captures an explicit `cell` (§ 4) whose lateral vectors are the slab lattice and
+whose `z` length is the total device extent. But the atoms now **straddle the origin**
+(`z ∈ [−L/2, +L/2]`), while a bare 3×3 `cell` is, by SIESTA convention, anchored at
+`(0,0,0)`. So the cell would sit at the origin with **half the atoms outside it** — the
+box "jumps" off the structure, and the emitted FDF would place device atoms outside the
+transport cell. (This was the 2026-07 bug: cell right-size, wrong corner.)
+
+**The contract — separate editing convenience from SIESTA correctness.**
+
+1. **`cell_origin` (a new field): the world-space LOW CORNER an explicit cell emanates
+   from** (`null` = `(0,0,0)`). An op that builds a cell *around* off-origin atoms sets
+   `cell_origin` to the structure's low corner, so the cell **wraps the atoms without
+   moving them** — the molecule stays pinned where the user put it. It is *stored
+   intent* (set by the op), NOT guessed from atom extents, so it never drifts as the
+   user edits, and a genuine imported crystal (atoms already in `[0,cell)`) leaves it
+   `null`.
+
+2. **`resolve_cell_origin()` returns `cell_origin` for an explicit cell** (was `null`).
+   So the **viewer draws the box at its true corner, wrapping the structure** — no jump
+   to the origin.
+
+3. **SIESTA correctness is applied at generation, not during editing.**
+   `render_fdf` translates atoms by `−resolve_cell_origin()` for **every** cell (it
+   already did for derived cells), so SIESTA always receives the atoms inside `[0,cell)`
+   with the cell at `(0,0,0)`. **This is the viewer ≡ render_fdf invariant:** the
+   viewer's box (cell at `cell_origin`, atoms where they are) and SIESTA's cell (at
+   `(0,0,0)`, atoms translated by `−cell_origin`) are the SAME relative geometry.
+
+4. **`calibrate` — the unified last step** (a Modify op, "Calibrate coordinates to
+   cell"). It *bakes* the generation-time shift into the stored coordinates: translate
+   all atoms by `−resolve_cell_origin()`, then set `cell_origin → (0,0,0)`. After
+   calibration the stored structure, the saved `.xyz`, the viewer box, and the FDF all
+   agree, atoms in `[0,cell)`. Calibration is OPTIONAL — generation is correct with or
+   without it — but it lets the user *see* and *save* the exact SIESTA coordinate frame.
+
+```mermaid
+flowchart LR
+    subgraph EDIT["EDIT — molecule pinned at origin (convenience)"]
+        M["molecule @ origin"] --> E["add electrodes<br/>atoms straddle origin<br/>cell captured + cell_origin = bbox low corner"]
+    end
+    E -->|viewer| V["box drawn at cell_origin<br/>WRAPS the structure (no jump)"]
+    E -->|render_fdf<br/>(always)| S["atoms translated by −cell_origin<br/>cell @ (0,0,0), atoms in [0,cell)  ✓ SIESTA"]
+    E -->|calibrate (optional last step)| C["bake the shift into stored coords<br/>cell_origin → 0; atoms in [0,cell)"]
+    C --> V2["viewer box @ origin == FDF cell — all frames agree"]
+```
+
+**The `resolve_cell` / `resolve_cell_origin` table, completed:**
+
+| Cell state | `resolve_cell()` | `resolve_cell_origin()` | `render_fdf` translates atoms by |
+|---|---|---|---|
+| derived (no explicit cell) | per-axis bbox+vacuum / bbox (§ 3) | `bbox_min − vacuum` (isolated) / `bbox_min` (transport) | `−origin` (centres in the box) |
+| explicit, `cell_origin` set (electrode junction) | the explicit cell | `cell_origin` | `−cell_origin` (into `[0,cell)`) |
+| explicit, `cell_origin` null (imported crystal) | the explicit cell | `null` → `(0,0,0)` | `0` (already in `[0,cell)`) |
+
+**"Use default" is invalid for a `periodic`/`transport` axis.** Clearing the explicit
+cell falls back to `resolve_cell()`, which **raises** on a `periodic` axis (you cannot
+derive a commensurate lattice from a bounding box, § 3). So the Cell tab's **"Use
+default" is disabled whenever any axis is `periodic` or `transport`** — offering it is
+what made the box "disappear" (the resolver errored, `resolved_cell` never updated).
+Likewise **vacuum is N/A for an explicit cell** (`resolve_cell` returns the cell
+verbatim; vacuum only grows a *derived* isolated axis), so the vacuum control reads
+"not applicable" rather than silently no-op'ing.
 
 ## 4. Capture-at-construction (fix the electrode discard)
 
