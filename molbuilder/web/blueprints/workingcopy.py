@@ -95,6 +95,11 @@ def wc_open():
         _resolved_cell = _rc.tolist() if _rc is not None else None
     except Exception:  # noqa: BLE001 -- periodic axis w/o lattice -> no resolved box
         _resolved_cell = None
+    try:
+        _ro = w.data.resolve_cell_origin()
+        _resolved_origin = _ro.tolist() if _ro is not None else None
+    except Exception:  # noqa: BLE001
+        _resolved_origin = None
     return jsonify({
         "ok": True, "session": w.session, "source": str(w.source),
         "data": blob,
@@ -102,6 +107,7 @@ def wc_open():
         "periodicity": {
             "cell":          sc.get("cell"),
             "resolved_cell": _resolved_cell,
+            "resolved_cell_origin": _resolved_origin,   # § 3a box anchor corner
             "axis_kind":     sc.get("axis_kind"),
             "vacuum":        sc.get("vacuum"),
             # (No "kgrid": it's a sampling knob on SiestaConfig / TransportConfig,

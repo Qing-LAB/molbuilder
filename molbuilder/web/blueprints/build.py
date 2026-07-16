@@ -623,9 +623,12 @@ def api_resolve_cell():
         struct = StructureCodec().from_scratch(blob)
         rc = struct.resolve_cell()
         resolved = rc.tolist() if rc is not None else None
+        ro = struct.resolve_cell_origin()
+        resolved_origin = ro.tolist() if ro is not None else None
     except Exception as exc:  # noqa: BLE001 -- malformed blob / unresolvable -> 400
         return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({"ok": True, "resolved_cell": resolved})
+    return jsonify({"ok": True, "resolved_cell": resolved,
+                    "resolved_cell_origin": resolved_origin})
 
 
 @bp.route("/api/build/load", methods=["POST"])

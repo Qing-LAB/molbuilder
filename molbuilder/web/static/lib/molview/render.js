@@ -78,17 +78,35 @@
 
         // Base draw: the plain current structure (all atoms, from the store).  When isolate
         // is on, mountIsolateRender REPLACES this with the derived list (§14.2).
+        // The unit-cell BOX channel (§3a): the RESOLVED cell (explicit, else bbox+vacuum)
+        // plus the corner it's anchored at, so the wireframe box WRAPS the atoms instead
+        // of starting at the world origin (structure-periodicity.md Issue #2).  This is
+        // SEPARATE from `lattice` (the explicit cell, which drives the a/b/c axes) so a
+        // cell-less molecule still shows Cartesian xyz axes but gets a bbox+vacuum box.
+        function getCellBox() {
+            var resolved = (typeof workspace.getUnitCellInfo === "function")
+                ? (workspace.getUnitCellInfo().value || null) : null;
+            if (!resolved) return null;
+            var origin = (typeof workspace.getUnitCellOrigin === "function")
+                ? workspace.getUnitCellOrigin() : null;
+            return { lattice: resolved, origin: origin };
+        }
         function drawBase() {
             var u = getUnit();
             if (u && typeof handle.setStructure === "function") {
-                // EXPLICIT cell only (not the resolved bbox) -- see getExplicitCell.
+                // AXES: EXPLICIT cell only (not the resolved bbox) -- see getExplicitCell.
                 // Pass the raw getExplicitCell() (a cell, or NULL when there's none) -- NOT
                 // `|| undefined`: the embed reads `lattice: undefined` as "keep the current
                 // lattice" and `lattice: null` as "CLEAR it".  Coercing the no-cell null to
                 // undefined left a stale wireframe drawn after a cell -> no-cell transition
                 // (add electrodes = hexagonal cell, then Retract to the cell-less molecule --
                 // the box stayed hexagonal).  null clears it.
-                handle.setStructure({ xyz: u.xyz, lattice: getExplicitCell() });
+                // BOX: the resolved cell + anchor, so the box wraps the atoms (Issue #2).
+                handle.setStructure({
+                    xyz:     u.xyz,
+                    lattice: getExplicitCell(),
+                    cellBox: getCellBox(),
+                });
             }
         }
 

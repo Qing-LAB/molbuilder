@@ -19,7 +19,7 @@
  *     // Periodicity (structure-periodicity.md): raw reads, {value,isDefault}
  *     // display accessors, setters, + the server-resolved commit
  *     getUnitCell, getVacuum, getAxisKind,
- *     getUnitCellInfo, getVacuumInfo, getAxisKindInfo,
+ *     getUnitCellInfo, getUnitCellOrigin, getVacuumInfo, getAxisKindInfo,
  *     setUnitCell, setVacuum, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
  *     openMolecule, generate, applyOp, discard, undo,
@@ -249,7 +249,7 @@
         return _atomsInternal().map(function (a) { return [a.x, a.y, a.z]; });
     }
     // RAW explicit cell -- null when unset.  Used by the render's base wireframe (draw a
-    // box only for a REAL cell).  For DISPLAY / k-grid tiling use getUnitCellInfo().value,
+    // box only for a REAL cell).  For DISPLAY use getUnitCellInfo().value,
     // which falls back to the server-resolved bbox.  The two INTENTIONALLY differ.
     function getUnitCell() {
         var per = _periodicityInternal();
@@ -291,6 +291,16 @@
         // the server, so resolved_cell stays consistent with cell/vacuum/axis_kind.)
         var explicit = per.cell || null;
         return { value: explicit || per.resolved_cell || null, isDefault: !explicit };
+    }
+    // §3a: the world-space CORNER the unit-cell box is anchored at.  For an
+    // explicit cell the atoms are already placed within it -> null (the box
+    // starts at the world origin).  For the bbox+vacuum default the origin is
+    // (atom_min - vacuum) per axis, so the drawn box WRAPS the atoms instead of
+    // starting at (0,0,0) -- the render feeds this to the cell wireframe.
+    function getUnitCellOrigin() {
+        var per = _periodicityInternal() || {};
+        if (per.cell) return null;                 // explicit cell -> no offset
+        return per.resolved_cell_origin || null;
     }
     function getVacuumInfo() {
         var v = getVacuum();
@@ -381,7 +391,10 @@
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ data: blob }),
         }).then(function (r) { return r.json(); }).then(function (j) {
-            if (j && j.ok) _setPeriodicity({ resolved_cell: j.resolved_cell });
+            if (j && j.ok) _setPeriodicity({
+                resolved_cell: j.resolved_cell,
+                resolved_cell_origin: j.resolved_cell_origin || null,
+            });
         }).catch(function () { /* best-effort; the explicit edit already landed */ });
     }
     // Assign/replace a region label on a set of atom indices (in-memory; persists on
@@ -572,7 +585,7 @@
                 if (!_applying) _uncommitted = true;
             });
         }
-        // Selection store fires on atoms / selection / coords / isolate / k-grid.  Those
+        // Selection store fires on atoms / selection / coords / isolate.  Those
         // are VIEW ops -> RE-RENDER ONLY (§18.3); they do not mark the model uncommitted.
         var st = _store();
         if (st && typeof st.subscribe === "function") {
@@ -1216,8 +1229,8 @@
         // + reindex + return them for them to survive an add/delete -- the modify round-trip
         // completeness step; until then this is a harmless no-op.)
         if (s && s.annotations != null) body.annotations = s.annotations;
-        // Periodicity (cell / axis_kind / vacuum / k-grid) rides through the op so an edit
-        // does not silently wipe a cell / transport axis / k-grid the user set (the server
+        // Periodicity (cell / axis_kind / vacuum) rides through the op so an edit
+        // does not silently wipe a cell / transport axis the user set (the server
         // reads it back in struct_from_body, symmetric with structure_to_dict's emission).
         if (s && s.periodicity != null) body.periodicity = s.periodicity;
         return body;
@@ -1779,7 +1792,7 @@
                 });
             }
             // Restore the FULL selection snapshot the apply above reset (§19.2/§19.5):
-            // mode, filters, combinator, and the VIEW toggles (isolate + k-grid), then
+            // mode, filters, combinator, and the VIEW toggle (isolate), then
             // the selection itself.  setSelection LAST and passed the pickOrder (falling
             // back to indices) so it re-derives BOTH the sorted set AND the click order
             // (the angle-measurement vertex) in one call.
@@ -1990,6 +2003,7 @@
         getVacuum:             getVacuum,
         // §3b display accessors ({ value, isDefault }) for the Cell page:
         getUnitCellInfo:       getUnitCellInfo,
+        getUnitCellOrigin:     getUnitCellOrigin,
         getVacuumInfo:         getVacuumInfo,
         getAxisKindInfo:       getAxisKindInfo,
         getAtomsByLabel:       getAtomsByLabel,

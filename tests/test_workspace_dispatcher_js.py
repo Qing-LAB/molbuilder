@@ -173,7 +173,7 @@ _DATA_SURFACE = sorted([
     "subscribe", "getState", "getStructure", "getSource", "getSourceFile",
     "getLastSavedTo", "getSelection", "getAtoms", "getElements",
     "getCoordinates", "getUnitCell", "getLattice", "getAxisKind", "getVacuum",
-    "getUnitCellInfo", "getVacuumInfo",
+    "getUnitCellInfo", "getUnitCellOrigin", "getVacuumInfo",
     "getAxisKindInfo", "getAtomsByLabel", "getFrozen", "getRegions",
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
     "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",

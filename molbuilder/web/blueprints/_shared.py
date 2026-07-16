@@ -386,6 +386,15 @@ def structure_to_dict(
         _resolved_cell = _rc.tolist() if _rc is not None else None
     except Exception:  # noqa: BLE001 -- periodic axis w/o lattice -> no resolved box
         _resolved_cell = None
+    # § 3a: the CORNER the resolved box is anchored at.  For a bbox+vacuum cell
+    # (no explicit cell) it's (atom_min - vacuum) per isolated axis, so the box
+    # WRAPS the atoms instead of starting at the world origin.  None for an
+    # explicit cell (atoms already placed within it) or an empty structure.
+    try:
+        _ro = struct.resolve_cell_origin()
+        _resolved_origin = _ro.tolist() if _ro is not None else None
+    except Exception:  # noqa: BLE001
+        _resolved_origin = None
     return {
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
@@ -401,6 +410,7 @@ def structure_to_dict(
         "periodicity": {
             "cell":          struct.cell.tolist() if struct.cell is not None else None,
             "resolved_cell": _resolved_cell,   # § 3a effective cell (server-resolved)
+            "resolved_cell_origin": _resolved_origin,  # § 3a box anchor corner
             "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
             "vacuum":        list(struct.vacuum),
             # (No "kgrid": it's a SAMPLING knob on SiestaConfig / TransportConfig,

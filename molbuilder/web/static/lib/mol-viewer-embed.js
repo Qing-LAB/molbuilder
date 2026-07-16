@@ -183,6 +183,7 @@
             overlayOn:  opts.overlayOn === true,   // force-arrow overlay visibility (View menu toggle)
             pick:       _normalisePick(opts.pick),
             lattice:    _normaliseLattice(opts.lattice),
+            cellBox:    _normaliseCellBox(opts.cellBox),
             overlays:   _normaliseOverlays(opts.overlays),
             knobs:      _normaliseKnobs(opts.knobs),
             projection: _normaliseProjection(opts.projection),
@@ -551,6 +552,22 @@
         ];
     }
 
+    // The BOX channel (§3a): { lattice, origin } for the unit-cell WIREFRAME,
+    // separate from ``lattice`` (which drives the a/b/c axes).  ``lattice`` is the
+    // resolved cell (explicit or bbox+vacuum); ``origin`` is the corner it's
+    // anchored at (null -> the world origin).  Returns null for a missing/invalid box.
+    function _normaliseCellBox(cb) {
+        if (!cb || typeof cb !== "object") return null;
+        const lat = _normaliseLattice(cb.lattice);
+        if (!lat) return null;
+        const o = cb.origin;
+        const origin = (Array.isArray(o) && o.length === 3
+                        && o.every(function (n) { return typeof n === "number"
+                                                        && Number.isFinite(n); }))
+                        ? [o[0], o[1], o[2]] : null;
+        return { lattice: lat, origin: origin };
+    }
+
     /**
      * Cheap structural equality for the small option sub-objects.
      * JSON.stringify is good enough at this UI scale; if perf
@@ -667,7 +684,7 @@
         }
 
         // Display toggles -- ONE untitled group.  axes / labels / overlay / unit cell here;
-        // MolView injects "selection only" + "k-grid" into the SAME group (mount.js).
+        // MolView injects "selection only" into the SAME group (mount.js).
         const toggles = _menuSection("toggles", null);
         toggles.classList.add("mol-viewer-menu-toggles");
         function _addToggle(action, label, on) {
@@ -2195,13 +2212,19 @@
     /*  Cell wireframe                                               */
     /* ------------------------------------------------------------ */
 
-    function _drawCellWireframe(viewer, lattice, opts) {
+    function _drawCellWireframe(viewer, lattice, origin, opts) {
         if (!lattice) return [];
         const [a, b, c] = lattice;
+        // ``origin`` is the world-space CORNER the box is anchored at (§3a): for a
+        // bbox+vacuum cell it's (atom_min - vacuum) so the box WRAPS the atoms
+        // instead of starting at (0,0,0); null/absent -> the world origin (an
+        // explicit cell whose atoms are already placed within it).
+        const o = (Array.isArray(origin) && origin.length === 3)
+                    ? origin : [0, 0, 0];
         const corner = (i, j, k) => ({
-            x: i * a[0] + j * b[0] + k * c[0],
-            y: i * a[1] + j * b[1] + k * c[1],
-            z: i * a[2] + j * b[2] + k * c[2],
+            x: o[0] + i * a[0] + j * b[0] + k * c[0],
+            y: o[1] + i * a[1] + j * b[1] + k * c[1],
+            z: o[2] + i * a[2] + j * b[2] + k * c[2],
         });
         const edges = [
             [[0,0,0],[1,0,0]], [[0,1,0],[1,1,0]],
@@ -2575,9 +2598,17 @@
             try { state.viewer.removeShape(s); } catch (_) {}
         }
         state.cellShapes = [];
-        if (!state.current.cell) return;
+        if (!state.current.cell) return;   // "Show unit cell" toggle off
+        // The BOX draws from the resolved cell + its anchor corner (``cellBox``, §3a)
+        // when the consumer feeds one -- so a bbox+vacuum molecule shows a box that
+        // WRAPS the atoms.  Fall back to the raw ``lattice`` (an explicit cell placed
+        // at the world origin) when no cellBox was given.  The AXES stay on ``lattice``
+        // (they are a/b/c only for an explicit cell), so the box and axes are decoupled.
+        const box = state.current.cellBox;
+        const lattice = (box && box.lattice) || state.current.lattice;
+        const origin  = (box && box.origin) || null;
         state.cellShapes = _drawCellWireframe(
-            state.viewer, state.current.lattice, state.current.cell);
+            state.viewer, lattice, origin, {});
     }
 
     function _redrawLabels(state) {
@@ -3727,6 +3758,9 @@
                 lattice: opts.lattice !== undefined
                             ? _normaliseLattice(opts.lattice)
                             : state.current.lattice,
+                cellBox: opts.cellBox !== undefined
+                            ? _normaliseCellBox(opts.cellBox)
+                            : state.current.cellBox,
             });
             // Clear conflicting source: if caller passes xyz, drop pdb
             // (and vice versa) so a re-call with a different format

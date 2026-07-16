@@ -96,6 +96,10 @@
             // accessor surfaces it.  Carried for the render, never saved (save writes
             // the raw `cell`); refreshed by every server response.
             resolved_cell: p.resolved_cell || null,
+            // §3a: the corner the resolved box is anchored at (atom_min - vacuum
+            // for a bbox+vacuum cell; null for an explicit cell).  Carried for
+            // the render so the box WRAPS the atoms, never saved.
+            resolved_cell_origin: p.resolved_cell_origin || null,
             axis_kind: p.axis_kind || null,
             vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
         };
@@ -115,6 +119,8 @@
         return {
             cell:          mat(p.cell),
             resolved_cell: mat(p.resolved_cell),
+            resolved_cell_origin: Array.isArray(p.resolved_cell_origin)
+                                    ? p.resolved_cell_origin.slice() : null,
             axis_kind:     Array.isArray(p.axis_kind) ? p.axis_kind.slice() : null,
             vacuum:        Array.isArray(p.vacuum) ? p.vacuum.slice() : null,
         };
@@ -296,15 +302,18 @@
             throw new TypeError("setPeriodicity: patch must be an object");
         }
         var cur = _state.periodicity
-            || { cell: null, resolved_cell: null, axis_kind: null,
-                 vacuum: [0, 0, 0] };
+            || { cell: null, resolved_cell: null, resolved_cell_origin: null,
+                 axis_kind: null, vacuum: [0, 0, 0] };
         _state.periodicity = _normPeriodicity({
             cell:      "cell"      in patch ? patch.cell      : cur.cell,
-            // resolved_cell is DERIVED -- written back after the server re-resolves an
-            // edit (§3a); an explicit `cell` set clears the stale resolved value.
+            // resolved_cell + its origin are DERIVED -- written back after the server
+            // re-resolves an edit (§3a); an explicit `cell` set clears the stale values.
             resolved_cell: "cell" in patch ? null
                            : ("resolved_cell" in patch ? patch.resolved_cell
                               : cur.resolved_cell),
+            resolved_cell_origin: "cell" in patch ? null
+                           : ("resolved_cell_origin" in patch ? patch.resolved_cell_origin
+                              : cur.resolved_cell_origin),
             axis_kind: "axis_kind" in patch ? patch.axis_kind : cur.axis_kind,
             vacuum:    "vacuum"    in patch ? patch.vacuum    : cur.vacuum,
         });
