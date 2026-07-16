@@ -62,3 +62,29 @@ def test_reload_restores_structure_and_annotations(project):
     assert w2.data.n_atoms == 5
     assert w2.data.frozen_atoms == [4]
     assert w2.data.get_channel("spin").data == {2: 0.5}
+
+
+def test_load_parses_a_pdb_source_not_as_xyz(tmp_path):
+    """The file picker accepts .pdb, so the codec must parse a .pdb SOURCE via
+    from_pdb.  Regression: load() called from_xyz unconditionally, so a .pdb's
+    "HEADER ..." first line raised "must be an integer atom count" and
+    /api/workingcopy/open 500'd (the Modify atom list then rendered 0 rows)."""
+    pdb = tmp_path / "water.pdb"
+    pdb.write_text(
+        "HEADER    WATER\n"
+        "ATOM      1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O\n"
+        "ATOM      2  H   HOH A   1       0.757   0.586   0.300  1.00  0.00           H\n"
+        "ATOM      3  H   HOH A   1      -0.757   0.586  -0.300  1.00  0.00           H\n"
+        "END\n")
+    struct = CODEC.load(pdb)
+    assert struct.n_atoms == 3
+    assert struct.elements == ["O", "H", "H"]
+
+
+def test_load_rejects_unknown_format_explicitly(tmp_path):
+    """An unknown extension is an EXPLICIT error, never a silent from_xyz
+    attempt that fails with a confusing 'atom count' message."""
+    weird = tmp_path / "mol.cif"
+    weird.write_text("data_x\n_cell_length_a 10.0\n")
+    with pytest.raises(ValueError, match="unsupported structure format"):
+        CODEC.load(weird)

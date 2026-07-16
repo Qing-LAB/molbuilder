@@ -30,7 +30,20 @@ class StructureCodec:
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path) -> Structure:
         src = Path(source_path)
-        struct = Structure.from_xyz(src)
+        # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
+        # file picker accepts .xyz AND .pdb, and each needs its own parser: a
+        # .pdb read as XYZ chokes on its "HEADER ..." first line.  An unknown
+        # extension is an EXPLICIT error, not a silent from_xyz attempt.  (The
+        # working copy is then maintained as .xyz + sidecar via files().)
+        suffix = src.suffix.lower()
+        if suffix == ".pdb":
+            struct = Structure.from_pdb(src)
+        elif suffix == ".xyz":
+            struct = Structure.from_xyz(src)
+        else:
+            raise ValueError(
+                f"StructureCodec.load: unsupported structure format "
+                f"{src.suffix!r} for {src.name!r}; expected .xyz or .pdb")
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
