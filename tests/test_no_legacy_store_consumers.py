@@ -295,10 +295,10 @@ def test_allow_list_files_exist():
 # -- are NOT here; they legitimately stay on the workspace.)
 _WORKSPACE_DATA_METHODS = (
     "getStructure|getAtoms|getSelection|getCoordinates|getElements|getUnitCell|"
-    "getUnitCellInfo|getLattice|getKgrid|getKgridInfo|getAxisKind|getAxisKindInfo|"
+    "getUnitCellInfo|getLattice|getAxisKind|getAxisKindInfo|"
     "getVacuum|getVacuumInfo|getFrozen|getRegions|getAtomsByLabel|atomFor3Dmol|"
     "toAddAtoms|getSource|getSourceFile|getLastSavedTo|getState|isDirty|isEmpty|"
-    "installStructure|applyOp|applyPayload|setUnitCell|setLattice|setKgrid|"
+    "installStructure|applyOp|applyPayload|setUnitCell|setLattice|"
     "setAxisKind|setVacuum|setLabel|commitPeriodicity|loadFromFile|loadFromText|"
     "generate|discard|undo|save|setFrame|addFrame|addFrames|reloadFrames|getFrame|"
     "getForces|currentForces|currentFrame|frameCount|getScratchBlob|draftIdentity|"

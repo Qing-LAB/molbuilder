@@ -613,9 +613,6 @@ fieldset label:has(> input[type="checkbox"]) {
  * tweak had to be applied in two places.  See form-schema.css's
  * ``.param-grid`` for the live rule + responsive breakpoints. */
 
-/* The k-grid fieldset has 3 tiny inputs that look better stacked
-   vertically -- already the default with our new label rule. */
-
 /* ---- Schema-driven form ---- */
 /* All `.schema-*` and `.param-grid-pre` rules live in
  * ``lib/form-schema.css`` — the component-file home for the

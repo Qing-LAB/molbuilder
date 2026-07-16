@@ -958,14 +958,9 @@ class TestPartialSelectionPanelEndpoint:
         "selection-add-btn",
         "selection-remove-btn",
         "selection-error",
-        # Invert button.  (Clear + Invert stay in the panel; the isolate + k-grid
-        # VIEW toggles moved to the viewer-controls bar -- molview.mountViewControls.)
+        # Invert button.  (Clear + Invert stay in the panel; the isolate VIEW
+        # toggle moved to the viewer-controls bar -- molview.mountViewControls.)
         "selection-invert-btn",
-        # k-grid DIMS readout -- a read-only mirror of periodicity.kgrid (the enable
-        # toggle lives in the viewer bar now, not here).
-        "selection-kgrid-nx",
-        "selection-kgrid-ny",
-        "selection-kgrid-nz",
         # Region-label definitions popover (Phase 2a transport UI
         # shipped 2026-06-18; lib/region-label-definitions.js
         # toggles aria-expanded on the button + un-hides the panel).

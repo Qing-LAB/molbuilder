@@ -3,11 +3,11 @@
  *
  * This is the FIRST Results -> MolView conversion (molview-module.md §18,
  * §14.5.3).  The inspector no longer hand-assembles a viewer + an
- * ephemeral selection store + a panel + measurement/view/k-grid
+ * ephemeral selection store + a panel + measurement/view controls
  * controllers.  It mounts the WHOLE MolView module read-only with one
  * call -- ``molview.mount(host, workspace, {mode:"readonly", owner})``
  * -- which builds the fused card, embeds the viewer, and wires the
- * selection panel + measurement overlay + view-controls + k-grid render
+ * selection panel + measurement overlay + view-controls
  * for free.  The molecule is opened through the module's single data door,
  * ``molview.data.openMolecule({text, filename, periodicity})``.
  *
@@ -104,7 +104,7 @@
             // -- Empty host the MolView module mounts into --------- //
             // A plain div (NOT a .molview-card): molview.mount takes its
             // empty-host build path and BUILDS the fused card (viewer +
-            // panel + fold + view-controls + measurement + k-grid) inside.
+            // panel + fold + view-controls + measurement) inside.
             const molviewHost = document.createElement("div");
             molviewHost.className = "structure-viewer-slot";
             card.appendChild(molviewHost);
@@ -145,7 +145,7 @@
                                     || (cj.cell ? { cell: cj.cell } : null);
                             }
                         }
-                    } catch (_) { /* no cell -> no box, k-grid inert */ }
+                    } catch (_) { /* no cell -> no box */ }
                     if (disposed) return;
                 }
 
@@ -177,8 +177,8 @@
                 try {
                     // ONE call mounts the whole read-only component.  The panel is
                     // wired read-only (no assign/write controls); the measurement
-                    // overlay, view-controls (Show selected only / Show k-grid) and
-                    // the k-grid render all come for free through molview.mount.
+                    // overlay and view-controls (Show selected only) all come
+                    // for free through molview.mount.
                     handle = await mv.mount(molviewHost, ws, {
                         mode:  "readonly",
                         owner: "results:structure",
@@ -209,7 +209,7 @@
                         await mv.data.load(0);
                     } else {
                         // Open the molecule through the ONE data door.  Periodicity rides
-                        // along so the k-grid + Cell page work.  This is a data change the
+                        // along so the Cell page works.  This is a data change the
                         // render reacts to on its own (molview owns the render loop).
                         await mv.data.openMolecule({
                             text:        r.text,
@@ -262,7 +262,7 @@
                 dispose() {
                     disposed = true;
                     // molview.mount's handle tears down the whole assembly (viewer,
-                    // panel, controls, overlays, k-grid, subscriptions).
+                    // panel, controls, overlays, subscriptions).
                     if (handle && typeof handle.dispose === "function") {
                         try { handle.dispose(); }
                         catch (_) { /* already torn down */ }

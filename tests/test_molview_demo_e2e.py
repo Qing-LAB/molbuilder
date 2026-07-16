@@ -59,7 +59,6 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     page.wait_for_selector("#molview-demo-host .molview-card .molview-panel", timeout=20000)
     assert page.locator("#molview-demo-host .molview-viewer").count() == 1
     assert page.locator("#molview-demo-host .viewer-toggles .vc-isolate").count() == 1
-    assert page.locator("#molview-demo-host .viewer-toggles .vc-kgrid").count() == 1
 
     # the handle exposes the full §D surface (load/save/undo + getStructure/getSelection +
     # onChange + dispose) -- and only that (no internals).

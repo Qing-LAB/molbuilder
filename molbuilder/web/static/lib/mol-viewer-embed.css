@@ -137,7 +137,7 @@
     display:        flex;
     align-items:    center;
     flex-wrap:      nowrap;   /* ONE line: View, Export, and the trajectory bar (which flexes to
-                                 fill).  isolate/k-grid live inside the View menu, not on the row. */
+                                 fill).  isolate lives inside the View menu, not on the row. */
     gap:            var(--space-sm, 0.5rem);
     padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
     background:     var(--bg-card, #1d2128);
@@ -229,7 +229,7 @@
     border-top:     none;
 }
 /* Untitled display-toggle group: the axes / labels / overlay / unit-cell buttons
-   (plus MolView's injected isolate + k-grid checkboxes) stacked with a small gap. */
+   (plus MolView's injected isolate checkbox) stacked with a small gap. */
 .mol-viewer-menu-toggles {
     display:        flex;
     flex-direction: column;

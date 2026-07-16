@@ -240,7 +240,7 @@
 }
 
 /* Viewer view-controls toggles (view-controls.js) -- the "Show selected only" /
- * "Show k-grid" checkboxes that live in EVERY molview's viewer control bar. */
+ * checkbox that lives in EVERY molview's viewer control bar. */
 .viewer-toggles { display: inline-flex; gap: 0.9rem; align-items: center; flex-wrap: wrap; }
 /* [hidden] must win over the display above (the chrome is gated to trajectories, mount.js). */
 .viewer-toggles[hidden] { display: none; }
@@ -300,7 +300,7 @@
 .mvf-loop input { margin: 0; cursor: pointer; }
 
 /* The "Show ..." display-toggle group in the View menu.  The embed's own toggles
- * (axes / labels / overlay / unit cell) AND MolView's injected isolate + k-grid share
+ * (axes / labels / overlay / unit cell) AND MolView's injected isolate toggle share
  * ONE compact chip style and WRAP so they share rows.  (Reset stays a plain button, above.) */
 .mol-viewer-menu-view .mol-viewer-menu-toggles {
     flex-direction: row;

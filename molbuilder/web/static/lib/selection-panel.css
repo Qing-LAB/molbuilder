@@ -142,7 +142,7 @@
 }
 
 /* THE small-caps caption for the whole panel (§2.1 shared class -- ui-design-contract):
- * Combine/Target/k-grid mini-labels AND the Cell-page captions (readout dt + the unit-cell
+ * Combine/Target mini-labels AND the Cell-page captions (readout dt + the unit-cell
  * matrix label) all share this ONE block.  Do not re-declare it under a new selector. */
 .selection-mini-label,
 .cell-readout dt,

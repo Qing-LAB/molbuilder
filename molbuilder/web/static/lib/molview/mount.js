@@ -56,7 +56,7 @@
         const wrap       = _el("div", "viewer-wrap");
         const viewerHost = _el("div", "viewer");
         wrap.appendChild(viewerHost);
-        // The viewer chrome -- isolate/k-grid toggles + the trajectory bar -- is PLACED INTO the
+        // The viewer chrome -- the isolate toggle + the trajectory bar -- is PLACED INTO the
         // embed's knob bar (the View/Export row) after the viewer embeds (see onReady), so it
         // lines up on ONE row with View/Export, within the viewer width.  Created here, parented
         // there.  Gated: shown ONLY for a trajectory (frameCount > 1).
@@ -171,7 +171,7 @@
                                 try { _overlays && _overlays.dispose(); } catch (_) {}
                             });
                         }
-                        // isolate/k-grid toggles join the embed's untitled toggle group in the
+                        // the isolate toggle joins the embed's untitled toggle group in the
                         // View menu (one group with Show axes/labels/overlay/unit cell).  The
                         // trajectory bar goes on the knob-bar ROW next to View/Export (one line),
                         // shown only for a trajectory (frame-controls gates itself on frameCount).
@@ -194,7 +194,7 @@
         if (!panelMount || !panelMount.panel) return null;   // mountPanel showed its own banner
         cleanups.push(function () { try { panelMount.dispose && panelMount.dispose(); } catch (_) {} });
 
-        // View-controls bar (isolate / k-grid toggles) -- same store, no parallel state.
+        // View-controls bar (the isolate toggle) -- same store, no parallel state.
         if (vcHost && mvApi && typeof mvApi.mountViewControls === "function") {
             const vc = mvApi.mountViewControls(vcHost, store);
             cleanups.push(function () { try { vc.dispose && vc.dispose(); } catch (_) {} });

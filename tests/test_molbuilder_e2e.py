@@ -201,12 +201,12 @@ def _load_water(page, water_xyz_file):
 
 
 def _click_view_toggle(page, kind):
-    """Toggle a molview View-menu view-control (kind = "isolate" | "kgrid").
+    """Toggle a molview View-menu view-control (kind = "isolate").
 
-    Track B: these toggles live in the embed's View menu (a <details>) as chips whose
+    Track B: this toggle lives in the embed's View menu (a <details>) as a chip whose
     <input> is CSS-hidden, so a .check() on the input times out.  Open the menu, then
     CLICK THE LABEL (which flips the hidden checkbox)."""
-    cls = {"isolate": "vc-isolate", "kgrid": "vc-kgrid"}[kind]
+    cls = {"isolate": "vc-isolate"}[kind]
     if not page.locator(".mol-viewer-menu-view").evaluate("el => el.open"):
         page.locator(".mol-viewer-menu-view > summary").click()
     page.locator(f".viewer-toggles .viewer-toggle:has(.{cls})").click()
@@ -2083,63 +2083,22 @@ def test_add_atom_clears_selection(page, flask_server, water_xyz_file):
 
 
 def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
-    """The viewer-controls bar hosts the view toggles ("Show selected only" / "Show
-    k-grid"), bound to ws.selection -- toggling them drives the STORE (the state lives in
-    the workspace store, not a parallel one)."""
+    """The viewer-controls bar hosts the view toggle ("Show selected only"), bound to
+    ws.selection -- toggling it drives the STORE (the state lives in the workspace
+    store, not a parallel one)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water_xyz = tmp_path / "water.xyz"
     water_xyz.write_text(_H2O_XYZ)
     _open_modify(page, flask_server)
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
-    # The module rendered both toggles into the View menu (.viewer-toggles chips).
+    # The module rendered the isolate toggle into the View menu (.viewer-toggles chip).
     assert page.locator(".viewer-toggles .vc-isolate").count() == 1
-    assert page.locator(".viewer-toggles .vc-kgrid").count() == 1
-    # Toggling k-grid via the View menu flips the STORE's view flag.
-    _click_view_toggle(page, "kgrid")
-    page.wait_for_function(
-        "() => window.molbuilder.molview.data.selection.getState().kgrid.enabled === true")
     # Select an atom, then isolate via the View menu -> the STORE's isolate flag flips.
     page.evaluate("() => window.molbuilder.molview.data.selection.toggle(0)")
     _click_view_toggle(page, "isolate")
     page.wait_for_function(
         "() => window.molbuilder.molview.data.selection.getState().isolate === true")
-
-
-def test_kgrid_tiles_in_modify(page, flask_server, tmp_path, monkeypatch):
-    """molview k-grid: with a cell set + k-grid enabled, the Modify viewer TILES.
-    The module render controller (mountKgridRender, subscribed to the selection
-    store) replaces the unit cell with a supercell via setStructure, so the viewer
-    shows base_atoms × product(dims) atoms.  Pins the one-render-loop-in-the-module
-    design (no bespoke tiling in the Modify tab)."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water_xyz = tmp_path / "water.xyz"
-    water_xyz.write_text(_H2O_XYZ)
-    _open_modify(page, flask_server)
-    _load_file(page, str(water_xyz), expected_atoms=3)
-    _wait_panel_ready(page)
-    # Base render: 3 atoms in the viewer model.
-    base = page.evaluate(
-        "() => window.__molbuilder_modify_test.getViewer().selectedAtoms({}).length")
-    assert base == 3, f"expected 3 base atoms, got {base}"
-    # Set a cell (tiling needs lattice vectors) + a 2×1×1 k-grid.  UNIFIED (§3b): the
-    # DIMS are periodicity.kgrid (ws.setKgrid -- the same value the DFT sampling uses),
-    # NOT a separate view count; only the enable TOGGLE rides on the selection store.
-    page.evaluate("""() => {
-        const ws = window.molbuilder.molview.data;
-        ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);
-        ws.setKgrid([2,1,1]);                      // periodicity.kgrid -- the ONE dims
-        ws.selection.setKgrid({ enabled: true });  // the view toggle
-    }""")
-    # The controller re-tiles on the store change → viewer model = 3 × 2 = 6 atoms.
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getViewer()"
-        "        .selectedAtoms({}).length === 6",
-        timeout=5000)
-    tiled = page.evaluate(
-        "() => window.__molbuilder_modify_test.getViewer().selectedAtoms({}).length")
-    assert tiled == 6, (
-        f"k-grid 2×1×1 must tile 3 atoms into 6; viewer shows {tiled}")
 
 
 def test_modify_fused_card_layout(page, flask_server, tmp_path, monkeypatch):
@@ -2300,84 +2259,6 @@ def test_fused_fold_no_overlap_when_narrow(
         f"the fold handle must not overlap the panel; {geom}")
 
 
-def test_kgrid_tiles_on_fresh_molecule_via_resolved_cell(
-        page, flask_server, tmp_path, monkeypatch):
-    """Stage 1 (structure-periodicity.md § 3a): a cell-less molecule surfaces its
-    RESOLVED cell (bbox), so enabling the k-grid tiles it — WITHOUT the user setting
-    any cell.  Root-cause fix for 'k-grid has no effect on a new molecule'."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water_xyz = tmp_path / "water.xyz"
-    water_xyz.write_text(_H2O_XYZ)
-    _open_modify(page, flask_server)
-    _load_file(page, str(water_xyz), expected_atoms=3)
-    _wait_panel_ready(page)
-    assert page.evaluate(
-        "() => window.__molbuilder_modify_test.getViewer()"
-        "        .selectedAtoms({}).length") == 3
-    # No EXPLICIT cell...
-    per = page.evaluate(
-        "() => window.molbuilder.molview.data.getStructure().periodicity")
-    assert per["cell"] is None, f"precondition: no explicit cell; got {per['cell']!r}"
-    # ...but the unified accessor resolves a bbox cell on read (isDefault=true).
-    info = page.evaluate("() => window.molbuilder.molview.data.getUnitCellInfo()")
-    assert info["isDefault"] is True and info["value"] is not None, (
-        f"a cell-less molecule must resolve a bbox cell via the accessor; got {info!r}")
-    # The k-grid control lives on the Cell page (§3b) -- switch to it first.
-    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
-    page.wait_for_function(
-        "() => !document.getElementById('panel-page-cell').hidden")
-    # Set the k-grid dims to 2×1×1 (periodicity.kgrid -- the ONE value; the MolView
-    # inputs are a READ-ONLY mirror), then enable the tiling toggle.  User sets NO cell.
-    page.evaluate("() => window.molbuilder.molview.data.setKgrid([2,1,1])")
-    # The read-only MolView input mirrors periodicity.kgrid.
-    page.wait_for_function(
-        "() => document.getElementById('selection-kgrid-nx').value === '2'")
-    assert page.locator("#selection-kgrid-nx").get_attribute("readonly") is not None, (
-        "MolView k-grid dims must be read-only (set via Modify, not here)")
-    # Enable tiling via the View-menu k-grid toggle (Track B: moved into the View menu).
-    _click_view_toggle(page, "kgrid")
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getViewer()"
-        "        .selectedAtoms({}).length === 6",
-        timeout=5000)
-
-
-def test_kgrid_unified_modify_drives_tiling_and_display(
-        page, flask_server, tmp_path, monkeypatch):
-    """k-grid unification (§3b): ONE value (periodicity.kgrid).  Editing it in the Modify
-    Cell op-tab drives BOTH the viewer tiling AND the MolView k-grid display -- there is no
-    separate view-only count."""
-    _register_tmp_as_picker_root(tmp_path, monkeypatch)
-    water_xyz = tmp_path / "water.xyz"
-    water_xyz.write_text(_H2O_XYZ)
-    _open_modify(page, flask_server)
-    _load_file(page, str(water_xyz), expected_atoms=3)
-    _wait_panel_ready(page)
-    # A cell + the tiling toggle ON (dims still default 1×1×1 -> no visible tiling yet).
-    page.evaluate("""() => {
-        const ws = window.molbuilder.molview.data;
-        ws.setUnitCell([[5,0,0],[0,5,0],[0,0,5]]);
-        ws.selection.setKgrid({ enabled: true });
-    }""")
-    # Set the k-grid in the MODIFY Cell op-tab -> Update k-grid.
-    page.locator("#optab-btn-cell").click()
-    page.wait_for_function(
-        "() => document.getElementById('optab-panel-cell').classList.contains('is-active')")
-    page.locator("#pv-kg-a").fill("3")
-    page.locator("#pv-kg-b").fill("1")
-    page.locator("#pv-kg-c").fill("1")
-    page.locator("#pv-kg-update").click()
-    # The viewer re-tiles from periodicity.kgrid -> 3 atoms × 3 = 9.
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getViewer()"
-        "        .selectedAtoms({}).length === 9",
-        timeout=5000)
-    # ...and the MolView k-grid display mirrors the SAME value.
-    page.locator(".panel-page-option:has(#panel-page-radio-cell)").click()
-    page.wait_for_function(
-        "() => document.getElementById('selection-kgrid-nx').value === '3'")
-
-
 def test_modify_cell_tab_vacuum_editor(
         page, flask_server, tmp_path, monkeypatch):
     """Modify 'Cell' op-tab (§3b): editing vacuum + 'Update vacuum' commits it through
@@ -2425,10 +2306,10 @@ def test_modify_cell_tab_vacuum_editor(
         }""", arg=base, timeout=3000)
 
 
-def test_modify_cell_tab_kgrid_cell_reset(
+def test_modify_cell_tab_cell_reset(
         page, flask_server, tmp_path, monkeypatch):
-    """Modify 'Cell' op-tab: the k-grid group (ws.setKgrid), the explicit unit-cell group
-    (ws.commitPeriodicity{cell}), and 'Use default' (clears the explicit cell)."""
+    """Modify 'Cell' op-tab: the explicit unit-cell group (ws.commitPeriodicity{cell})
+    and 'Use default' (clears the explicit cell)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water_xyz = tmp_path / "water.xyz"
     water_xyz.write_text(_H2O_XYZ)
@@ -2438,14 +2319,6 @@ def test_modify_cell_tab_kgrid_cell_reset(
     page.locator("#optab-btn-cell").click()
     page.wait_for_function(
         "() => document.getElementById('optab-panel-cell').classList.contains('is-active')")
-    # k-grid 2x2x1 -> Update k-grid.
-    page.locator("#pv-kg-a").fill("2")
-    page.locator("#pv-kg-b").fill("2")
-    page.locator("#pv-kg-c").fill("1")
-    page.locator("#pv-kg-update").click()
-    page.wait_for_function(
-        "() => { const k = window.molbuilder.molview.data.getKgridInfo().value;"
-        "  return k[0]===2 && k[1]===2 && k[2]===1; }", timeout=3000)
     # Explicit 3x3 cell -> Update cell; getUnitCell (raw) returns it, not null.
     cell = page.locator("#pv-cell-grid .pv-num")
     for i, v in enumerate([5, 0, 0, 0, 6, 0, 0, 0, 7]):
@@ -2464,7 +2337,7 @@ def test_cell_page_displays_periodicity(
         page, flask_server, tmp_path, monkeypatch):
     """Stage 2-UI (§3b): the [Selection|Cell] page switch reveals a Cell page that
     displays axis-kind / vacuum / resolved cell with "(default)" tags for a fresh
-    molecule, and hosts the (moved) k-grid control."""
+    molecule."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     water_xyz = tmp_path / "water.xyz"
     water_xyz.write_text(_H2O_XYZ)
@@ -2487,10 +2360,6 @@ def test_cell_page_displays_periodicity(
     assert page.locator("#cell-matrix-value .cell-matrix-cell").count() == 9, (
         "unit cell should render as a 3x3 matrix (9 cells)")
     assert page.locator("#cell-matrix-tag").inner_text() == "(default)"
-    # The k-grid DIMS display (read-only mirror) is on the Cell page; the enable TOGGLE
-    # moved into the module's View menu (.viewer-toggles).
-    assert page.locator("#panel-page-cell #selection-kgrid-nx").count() == 1
-    assert page.locator(".viewer-toggles .vc-kgrid").count() == 1
 
 
 def test_save_button_disabled_for_smiles_without_prior_save(
@@ -3199,30 +3068,29 @@ def test_modify_tab_surfaces_validation_advisories(
     assert page.locator(".card-header #edit-status").count() == 0
 
 
-def test_kgrid_survives_a_delete_op(page, flask_server, water_xyz_file):
-    """Full-stack regression (2026-07 fresh-eyes review): a k-grid (or cell /
-    axis_kind / vacuum) set in the Cell op-tab must survive an atom edit.
-    Before the fix the op round-trip rebuilt an isolated Structure and the
-    response reset the store to defaults, so a subsequent SIESTA FDF silently
-    dropped the k-grid / LatticeVectors.  This drives the real client path:
-    setKgrid -> applyOp(delete) -> _structureBody sends periodicity -> server
-    reads it back -> the store still has the k-grid."""
+def test_cell_survives_a_delete_op(page, flask_server, water_xyz_file):
+    """Full-stack regression (2026-07 fresh-eyes review): a cell (or axis_kind /
+    vacuum) set in the Cell op-tab must survive an atom edit.  Before the fix the
+    op round-trip rebuilt an isolated Structure and the response reset the store to
+    defaults, so a subsequent SIESTA FDF silently dropped LatticeVectors.  This
+    drives the real client path: setUnitCell -> applyOp(delete) -> _structureBody
+    sends periodicity -> server reads it back -> the store still has the cell."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     _wait_panel_ready(page)
-    # Set a k-grid the way the Cell op-tab's Update button does.
-    page.evaluate("() => window.molbuilder.molview.data.setKgrid([2, 2, 8])")
+    # Set a cell the way the Cell op-tab's Update button does.
+    page.evaluate("() => window.molbuilder.molview.data.setUnitCell([[5,0,0],[0,6,0],[0,0,7]])")
     assert page.evaluate(
-        "() => window.molbuilder.molview.data.getKgrid()") == [2, 2, 8]
+        "() => window.molbuilder.molview.data.getUnitCell()") == [[5, 0, 0], [0, 6, 0], [0, 0, 7]]
     # Delete an atom (a count-changing op) through the module's applyOp.
     page.evaluate(
         "() => window.molbuilder.molview.data.applyOp('delete', {indices: [2]})")
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 2")
-    # The k-grid must have survived the round-trip, not reverted to [1,1,1].
+    # The cell must have survived the round-trip, not reverted to null.
     assert page.evaluate(
-        "() => window.molbuilder.molview.data.getKgrid()") == [2, 2, 8], \
-        "the modify op wiped the k-grid the user set in the Cell tab"
+        "() => window.molbuilder.molview.data.getUnitCell()") == [[5, 0, 0], [0, 6, 0], [0, 0, 7]], \
+        "the modify op wiped the cell the user set in the Cell tab"
 
 
 def test_single_mode_electrode_allows_physical_contact_distance(
@@ -4260,30 +4128,30 @@ def test_state_timeline_metadata_marks_dirty_and_restores(
         "a region-label edit did NOT set the timeline dirty flag")
 
     # Periodicity also marks dirty and rides in the snapshot.
-    page.evaluate(f"() => {_DATA}.setKgrid([2,2,2])")
-    page.wait_for_function(f"() => {_DATA}.getKgrid()[0] === 2")
+    page.evaluate(f"() => {_DATA}.setVacuum([2,2,2])")
+    page.wait_for_function(f"() => {_DATA}.getVacuum()[0] === 2")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is True
 
-    # SAVE checkpoint #1 with {label L-electrode:[0], kgrid 2x2x2}.
+    # SAVE checkpoint #1 with {label L-electrode:[0], vacuum 2/2/2}.
     page.evaluate(f"async () => {{ await {_DATA}.save(1); }}")
     page.wait_for_function(f"() => {_DATA}.state_index === 1")
 
-    # An UNCOMMITTED metadata edit on top: add a second label + change k-grid.
+    # An UNCOMMITTED metadata edit on top: add a second label + change vacuum.
     page.evaluate(f"() => {_DATA}.setLabel('bridge', [1])")
-    page.evaluate(f"() => {_DATA}.setKgrid([4,4,4])")
-    page.wait_for_function(f"() => {_DATA}.getKgrid()[0] === 4")
+    page.evaluate(f"() => {_DATA}.setVacuum([4,4,4])")
+    page.wait_for_function(f"() => {_DATA}.getVacuum()[0] === 4")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is True
 
     # Retract: with uncommitted edits, return to the SAVED checkpoint #1 --
-    # restoring its EXACT metadata (label L-electrode only, k-grid 2x2x2).
+    # restoring its EXACT metadata (label L-electrode only, vacuum 2/2/2).
     page.evaluate(f"async () => {{ await {_DATA}.load(-1); }}")
     page.wait_for_function(f"() => {_DATA}.state_index === 1")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is False
     regions = page.evaluate(f"() => JSON.stringify({_DATA}.getRegions())")
     assert regions == '{"L-electrode":[0]}', (
         f"Retract did not restore the saved labels; got {regions}")
-    assert page.evaluate(f"() => {_DATA}.getKgrid()") == [2, 2, 2], (
-        "Retract did not restore the saved k-grid")
+    assert page.evaluate(f"() => {_DATA}.getVacuum()") == [2, 2, 2], (
+        "Retract did not restore the saved vacuum")
 
 
 def test_state_timeline_buttons_checkpoint_and_retract(

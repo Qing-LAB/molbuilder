@@ -101,7 +101,7 @@
             if (assign) assign.hidden = true;
         }
 
-        // (The isolate + k-grid view TOGGLES were removed from the panel -- they live in
+        // (The isolate view TOGGLE was removed from the panel -- it lives in
         // the viewer-controls bar now, molview.mountViewControls.)
 
         const $ = (id) => rootEl.querySelector("#" + id);
@@ -879,7 +879,7 @@
         // the ephemeral surface) expose ``invert`` -> the ``invertSelection``
         // mutator; no fallback needed.
         on(els.invertBtn, "click", () => store.invert());
-        // "Show selected only" (isolate) + "Show k-grid" (tiling) are VIEW toggles that
+        // "Show selected only" (isolate) is a VIEW toggle that
         // now live in the viewer-controls bar (molview.mountViewControls), by the viewer
         // they affect -- not in this panel.  The isolate auto-clear-on-empty is handled
         // there.  Both still drive the SAME store; the panel just no longer hosts them.

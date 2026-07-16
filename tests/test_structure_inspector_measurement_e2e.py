@@ -173,11 +173,10 @@ def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
     page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
-def _write_xyz_with_cell_sidecar(tmp_path, cell, kgrid=None):
-    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell` (+ optional
-    `kgrid` dims).  This is the dataset the host reads periodicity from
-    (structure-periodicity.md § 8); post-MolView-conversion the k-grid DIMS come
-    from this periodicity (molview.data.getKgrid()), NOT the selection store."""
+def _write_xyz_with_cell_sidecar(tmp_path, cell):
+    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell`.  This is the
+    dataset the host reads periodicity from (structure-periodicity.md § 8); the
+    viewer never parses -- the cell rides the dataset (molview.data)."""
     import hashlib
     import json
     xyz = tmp_path / "periodic.xyz"
@@ -187,71 +186,48 @@ def _write_xyz_with_cell_sidecar(tmp_path, cell, kgrid=None):
         "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
         "regions": {}, "frozen_atoms": [], "cell": cell, "selection_rules": {},
     }
-    if kgrid is not None:
-        sidecar["kgrid"] = kgrid
     (tmp_path / "periodic.molstruct.json").write_text(json.dumps(sidecar))
     return xyz
 
 
-def test_sidecar_cell_reaches_viewer_and_kgrid_tiles(
+def test_sidecar_cell_reaches_viewer(
         page, flask_server, tmp_path, monkeypatch):
     """Phase 1 (structure-periodicity.md): a .xyz whose `.molstruct.json` sidecar
-    carries a `cell` (+ `kgrid`) -> the host reads it server-side
-    (/api/selection/atoms), opens the molecule through molview.data.openMolecule
-    with that periodicity -> `getLattice()` returns the cell (unit-cell box) AND
-    enabling k-grid tiles the supercell by the periodicity's dims.  The viewer
-    never parses; the cell + dims ride the dataset (molview.data), and the store
-    only holds the ENABLE toggle (render.js § 14.0)."""
+    carries a `cell` -> the host reads it server-side (/api/selection/atoms), opens
+    the molecule through molview.data.openMolecule with that periodicity ->
+    `getLattice()` returns the cell (unit-cell box).  The viewer never parses; the
+    cell rides the dataset (molview.data)."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = _write_xyz_with_cell_sidecar(
-        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]], kgrid=[2, 1, 1])
+        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
 
-    # the shared view-controls (isolate / k-grid toggles) render in THIS card's View menu.
+    # the shared view-control (isolate toggle) renders in THIS card's View menu.
     assert page.locator(f"{slot} .viewer-toggles .vc-isolate").count() == 1
-    assert page.locator(f"{slot} .viewer-toggles .vc-kgrid").count() == 1
 
     # the cell reached the viewer (box can draw)
     lat = page.evaluate(f"() => {_VH}.getLattice()")
     assert lat is not None, "sidecar cell should reach getLattice()"
-    # the dims reached the data model's periodicity
-    assert page.evaluate("() => window.molbuilder.molview.data.getKgrid()") == [2, 1, 1]
-
-    # k-grid tiles: 2 atoms -> enable (dims 2x1x1 from periodicity) -> 4 -> disable -> 2
-    _count = f"() => {_VH}.getAtomCount()"
-    assert page.evaluate(_count) == 2
-    page.evaluate(f"() => {_SEL}.setKgrid({{ enabled: true }})")
-    page.wait_for_function(f"{_count} === 4", timeout=8000)
-    page.evaluate(f"() => {_SEL}.setKgrid({{ enabled: false }})")
-    page.wait_for_function(f"{_count} === 2", timeout=8000)
 
 
 def test_results_view_controls_bar_drives_store(
         page, flask_server, tmp_path, monkeypatch):
-    """The shared view-controls (.vc-isolate / .vc-kgrid, molview.mountViewControls)
-    drive the module's selection store on Results too -- not just Modify.  Post-
-    conversion these toggles live in the viewer's View MENU (a collapsed <details>),
-    so open it before clicking.  Clicking k-grid enables tiling (dims from the
-    dataset periodicity); clicking isolate flips the isolate flag.  (The test above
-    drives the same store via its API; THIS proves the toggle CLICKS reach it.)"""
+    """The shared view-control (.vc-isolate, molview.mountViewControls) drives the
+    module's selection store on Results too -- not just Modify.  Post-conversion the
+    toggle lives in the viewer's View MENU (a collapsed <details>), so open it before
+    clicking.  Clicking isolate flips the isolate flag; the click reaches the store."""
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     xyz = _write_xyz_with_cell_sidecar(
-        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]], kgrid=[2, 1, 1])
+        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]])
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
     _count = f"() => {_VH}.getAtomCount()"
     assert page.evaluate(_count) == 2
-    # Open the viewer's View menu so the injected toggles are actionable, then CLICK
-    # the k-grid toggle.  The raw <input> is a CSS-hidden custom switch, so click its
-    # visible <label>.  Dims (2x1x1) come from the dataset periodicity, not the store.
+    # Open the viewer's View menu so the injected toggle is actionable.
     page.locator(f"{slot} .mol-viewer-menu-view > summary").click()
-    page.locator(f"{slot} .viewer-toggles .viewer-toggle:has(.vc-kgrid)").click()
-    page.wait_for_function(
-        f"() => {_SEL}.getState().kgrid.enabled === true")
-    page.wait_for_function(f"{_count} === 4", timeout=8000)   # the toggle click tiled 2 -> 4
     # isolate: select an atom, then CLICK the isolate toggle -> store.isolate flips.
     page.evaluate(f"() => {_SEL}.set([0])")
     page.locator(f"{slot} .viewer-toggles .viewer-toggle:has(.vc-isolate)").click()

@@ -15,7 +15,7 @@
  *     (``_elements`` / ``_coords`` -> getElements / getCoordinates).  There is NO local
  *     ``state.*`` structure mirror -- the ``state`` object below is just the in-flight lock.
  *
- * The viewer, click-select, halos, k-grid, measurement, toggles, and persistence are all the
+ * The viewer, click-select, halos, measurement, toggles, and persistence are all the
  * module's (mounted by modify/selection-bootstrap.js into the empty #molview-host).
  *
  * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
@@ -108,7 +108,7 @@
     //  Track B migration: Modify no longer calls viewer.embed itself.  //
     //  selection-bootstrap.js mounts the concealed MolView module into //
     //  the empty #molview-host; molview.mount BUILDS the card, embeds  //
-    //  the viewer, owns the render loop + k-grid + measurement, wires  //
+    //  the viewer, owns the render loop + measurement, wires          //
     //  the selection viewer-adapter (click + halos), and puts the      //
     //  toggles in the View menu.  Camera pivot-recentering that used   //
     //  to live here (focusMolecule / snapPivotToCenter, raw 3Dmol) is  //

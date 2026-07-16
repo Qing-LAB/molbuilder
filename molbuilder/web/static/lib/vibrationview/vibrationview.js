@@ -1,7 +1,7 @@
 /* VibrationView -- the concealed normal-mode animation package (vibrationview.md).
  *
  * ONE job: animate a vibrational normal mode.  A SIBLING of MolView -- it never selects,
- * edits, or tiles a k-grid; MolView never animates.  The spectra inspector hands it the
+ * edits; MolView never animates.  The spectra inspector hands it the
  * equilibrium geometry + a mode's displacement vectors and drives playback through the
  * handle; the inspector keeps its OWN control widgets (wired to this API) + its spectrum
  * chart.  VibrationView renders the animated view only -- no control UI of its own (§3).

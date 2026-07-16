@@ -1,6 +1,6 @@
 /* Frame controls bar for MolView (molview-module.md §14.5) -- the trajectory PLAYBACK UI.
  *
- * MolView renders this itself (like the isolate / k-grid view-toggles), so a consumer that
+ * MolView renders this itself (like the isolate view-toggle), so a consumer that
  * hands MolView a trajectory gets the navigation UI for free.  A compact bar:
  *   play/pause   ──slider──   i / N .
  *

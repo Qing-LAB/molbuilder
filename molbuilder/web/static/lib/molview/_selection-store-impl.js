@@ -96,9 +96,6 @@
             // handle.  Isolate only takes visual effect with a non-empty
             // selection (the adapter render gates on selSet.size > 0).
             isolate:    false,
-            // k-grid display (§ 6.3 render layer 3): copies of the atoms offset
-            // by the lattice vectors, ``dims``=[nx,ny,nz] copies per direction,
-            // to validate a periodic model (vacuum / orientation / boundary).
             filters:    [],
             combinator: "or",
             loading:    false,
