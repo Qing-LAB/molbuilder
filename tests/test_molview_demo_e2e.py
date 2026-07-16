@@ -245,9 +245,13 @@ def test_molview_demo_load_is_atomic_across_the_whole_model(page, flask_server):
 
 def test_molview_demo_view_menu_layout(page, flask_server):
     """Pin the View-menu structure the user asked for: Reset is the FIRST item, and the
-    display toggles (axes / labels / overlay / unit cell + MolView's injected 'selected only'
-    and 'k-grid') live in ONE untitled group -- no per-toggle subheadings.  Also that the
-    'unit cell' toggle actually flips (draws the cell wireframe from the fed lattice)."""
+    display toggles (axes / labels / overlay / unit cell + MolView's injected 'selected only')
+    live in ONE untitled group -- no per-toggle subheadings.  Also that the
+    'unit cell' toggle actually flips (draws the cell wireframe from the fed lattice).
+
+    (k-grid used to inject a SECOND consumer toggle here; Phase 2a removed k-grid from
+    MolView entirely -- it's reciprocal-space BZ sampling, not geometry -- so exactly ONE
+    consumer toggle ('selected only') is now re-homed into this group.)"""
     page.goto(f"{flask_server}/molview-demo")
     page.wait_for_selector("#molview-demo-host .mol-viewer-menu-view", timeout=20000)
     # Load the trajectory so the injected isolate/k-grid toggles are present in the group.
@@ -260,11 +264,13 @@ def test_molview_demo_view_menu_layout(page, flask_server):
         "  return b.firstElementChild.querySelector('[data-action]').getAttribute('data-action'); }")
     assert first_action == "reset"
 
-    # 2. One untitled toggle group carrying all six toggles (no heading inside it).
+    # 2. One untitled toggle group carrying the toggles (no heading inside it).  The
+    #    consumer-injected 'selected only' toggle (class .viewer-toggle) is re-homed here;
+    #    post-k-grid-removal there is exactly ONE such injected toggle.
     grp = "#molview-demo-host .mol-viewer-menu-view .mol-viewer-menu-toggles"
     page.wait_for_function(
         "() => { const g = document.querySelector('" + grp + "');"
-        "  return g && g.querySelectorAll('.viewer-toggle').length === 2; }",
+        "  return g && g.querySelectorAll('.viewer-toggle').length === 1; }",
         timeout=5000)
     actions = page.eval_on_selector_all(
         grp + " .mol-viewer-toggle", "els => els.map(e => e.getAttribute('data-action'))")

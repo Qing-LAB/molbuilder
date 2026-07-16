@@ -2284,13 +2284,15 @@ def test_modify_cell_tab_vacuum_editor(
     for ax in ("a", "b", "c"):
         page.locator(f"#pv-vac-{ax}").fill("2")
     page.locator("#pv-vac-update").click()
-    # The resolved cell diagonal grew by 2 per axis (server re-resolve).
+    # The resolved cell diagonal grew by 2*vacuum = 4 per axis (server re-resolve).
+    # vacuum is the PER-SIDE gap (structure-periodicity.md §3a: cell = bbox + 2*vacuum),
+    # so a vacuum of 2 adds 2 on EACH face -> +4 to the axis length, not +2.
     page.wait_for_function(
         """(base) => {
             const c = window.molbuilder.molview.data.getUnitCellInfo().value;
-            return c && Math.abs(c[0][0]-(base[0][0]+2))<1e-6
-                     && Math.abs(c[1][1]-(base[1][1]+2))<1e-6
-                     && Math.abs(c[2][2]-(base[2][2]+2))<1e-6;
+            return c && Math.abs(c[0][0]-(base[0][0]+4))<1e-6
+                     && Math.abs(c[1][1]-(base[1][1]+4))<1e-6
+                     && Math.abs(c[2][2]-(base[2][2]+4))<1e-6;
         }""", arg=base, timeout=5000)
     # The MolView Cell display (read-only) reflects it: switch to the Cell page + check
     # the top-left matrix cell equals the grown value.
@@ -2302,7 +2304,7 @@ def test_modify_cell_tab_vacuum_editor(
             const cells = document.querySelectorAll(
                 '#cell-matrix-value .cell-matrix-cell');
             return cells.length === 9
-                && Math.abs(parseFloat(cells[0].textContent) - (base[0][0]+2)) < 0.01;
+                && Math.abs(parseFloat(cells[0].textContent) - (base[0][0]+4)) < 0.01;
         }""", arg=base, timeout=3000)
 
 
@@ -3763,7 +3765,7 @@ def test_reset_view_no_op_without_structure(page, flask_server):
 
 def test_geom_buttons_disabled_without_structure(page, flask_server):
     """Center-at-origin and Translate buttons start disabled before a
-    structure is loaded.  Mirrors the rotate / send-to-build pattern."""
+    structure is loaded.  Mirrors the rotate button's pattern."""
     _open_modify(page, flask_server)
     _open_op_tab(page, "transform")
     assert page.locator("#center-apply").is_disabled()
@@ -5005,42 +5007,13 @@ def test_modify_has_no_send_to_optimization_handoff(page, flask_server):
     assert page.locator(".modify-actions--header #save-to-source-btn").count() == 1
 
 
-def test_send_to_build_disabled_when_workspace_is_dirty(
-        page, flask_server, water_xyz_file):
-    """The save-first rule (task #294, 2026-06-08): Send is disabled
-    while the canvas is dirty (modifier ops since the last
-    save/load) — even though the workspace IS associated with a
-    file.  User must Save first."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    # Fresh load: Send enabled.
-    page.wait_for_function(
-        "() => !document.getElementById('send-to-build').disabled",
-        timeout=5000,
-    )
-    # Run a modifier op → canvas dirty → Send re-disables.
-    _set_selection(page, [0])
-    page.locator("#delete-apply").click()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
-    )
-    page.wait_for_function(
-        "() => document.getElementById('send-to-build').disabled === true",
-        timeout=5000,
-    )
-
-
 def test_op_subtabs_default_to_atom_and_swap_on_click(
         page, flask_server, water_xyz_file):
     """The edit panel splits the ops into Atom / Transform /
     Junction / Cell sub-tabs.  Default-active is Atom (the most
     common starting op).  Clicking Transform shows translate /
     center / rotate / orient; clicking Junction shows the
-    electrode panel.
-
-    The Send-to-Build handoff is OUTSIDE the op-tabs (2026-05-21)
-    so it's reachable from any sub-tab.  Pinned by
-    test_send_to_build_visible_across_all_op_subtabs below."""
+    electrode panel."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
@@ -5064,43 +5037,6 @@ def test_op_subtabs_default_to_atom_and_swap_on_click(
     page.locator('.optab[data-op-tab="junction"]').click()
     assert junction_panel.is_visible()
     assert page.locator("#elc-apply").is_visible()
-
-
-def test_send_to_build_visible_across_all_op_subtabs(
-        page, flask_server, water_xyz_file):
-    """The Send-to-Build button is the tab-level handoff action;
-    it lives in ``.modify-footer .modify-handoff`` at the bottom
-    of the Modify section so the user can ship the current
-    structure to /structure-optimization regardless of which
-    edit-panel sub-tab (Atom / Transform / Junction / Cell) is active.
-
-    Post-2026-06-08 restructure: the button moved from the
-    viewer-card to the Modify section's footer, alongside the
-    Save button.  Both are structure-level workflow actions and
-    sit next to each other at the bottom of the workflow."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-
-    send_btn = page.locator("#send-to-build")
-    # Hosted in the Modify section's footer, not the viewer card.
-    assert page.locator(
-        ".modify-footer .modify-handoff #send-to-build"
-    ).count() == 1, (
-        "Send to Build button is NOT inside .modify-footer .modify-handoff"
-    )
-
-    # Atom is the default-open op-tab; the handoff button must be
-    # visible while the edit-panel is on Atom.
-    assert page.locator('.optab-panel[data-op-panel="atom"]').is_visible()
-    assert send_btn.is_visible(), "Send to Build hidden on Atom sub-tab"
-
-    # Transform sub-tab.
-    page.locator('.optab[data-op-tab="transform"]').click()
-    assert send_btn.is_visible(), "Send to Build hidden on Transform sub-tab"
-
-    # Junction sub-tab (where it used to live).
-    page.locator('.optab[data-op-tab="junction"]').click()
-    assert send_btn.is_visible(), "Send to Build hidden on Junction sub-tab"
 
 
 # The legacy in-edit-panel ``#selection-info`` block was retired
@@ -5187,13 +5123,6 @@ def test_modify_layout_phone_width_no_horizontal_overflow(
         f"viewer-controls did not wrap on 360 px viewport "
         f"(height = {toolbar_h:.0f} px, expected >= 60 for multi-row)"
     )
-
-
-def test_send_to_build_disabled_without_structure(page, flask_server):
-    """Send-to-Build button must be disabled when no structure is
-    loaded -- nothing to hand off."""
-    _open_modify(page, flask_server)
-    assert page.locator("#send-to-build").is_disabled()
 
 
 # --------------------------------------------------------------------- #
