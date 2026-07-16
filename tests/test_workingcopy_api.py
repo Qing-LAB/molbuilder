@@ -207,7 +207,9 @@ def test_state_timeline_roundtrip_and_prune(client_project, monkeypatch):
     r = _json(client.post("/api/workingcopy/prune-states",
                           json={"workspace_id": ws, "above_index": 1}))
     assert r["removed"] == 1
-    d = proj / ".molbuilder_workspace"
+    # State-timeline files live in a ``states/`` SUBDIR (isolated from the sourceless
+    # drafts so the draft ``*.wc.json`` cleanup can't delete live undo timelines).
+    d = proj / ".molbuilder_workspace" / "states"
     assert sorted(p.name for p in d.glob(f"{ws}.*.wc.json")) == [
         f"{ws}.0.wc.json", f"{ws}.1.wc.json"]
     # above_index = -1 clears the whole timeline
@@ -226,7 +228,7 @@ def test_state_write_keeps_rolling_window(client_project, monkeypatch):
     for i in range(35):
         client.post("/api/workingcopy/write-state",
                     json={"workspace_id": ws, "state_index": i, "data": {"i": i}})
-    d = proj / ".molbuilder_workspace"
+    d = proj / ".molbuilder_workspace" / "states"
     kept = sorted(int(p.name[len(ws) + 1:-len(".wc.json")])
                   for p in d.glob(f"{ws}.*.wc.json"))
     assert kept == list(range(5, 35))            # oldest 5 pruned, 30 kept

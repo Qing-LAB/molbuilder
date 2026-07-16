@@ -262,9 +262,17 @@ def wc_recover():
 
 # ─── State timeline endpoints (§4.7) — format-blind indexed snapshots ─────── #
 def _state_dir():
-    """The state-timeline home — the SAME ``.molbuilder_workspace`` under the
-    projects root the sourceless drafts use (``_default_draft_dir()``)."""
-    return _default_draft_dir() / SCRATCH_DIR
+    """The state-timeline home -- a ``states/`` SUBDIR of the sourceless-draft dir.
+
+    Kept SEPARATE from the draft dir on purpose: state-timeline files
+    (``<workspace_id>.<state_index>.wc.json``) and sourceless drafts
+    (``<stem>.<session>.wc.json``) both end in ``.wc.json``, so when they shared one
+    directory the draft ``d.glob("*.wc.json")`` in ``list_orphans`` / ``clean_all``
+    (workingcopy.py) caught the STATE files too -- ``clean_all`` would delete the live
+    undo timelines of every open tab, and ``list_orphans`` reported them as bogus
+    drafts.  The draft glob is non-recursive, so a subdir is invisible to it while the
+    state read/prune globs scope to ``_state_dir()`` and follow the files here."""
+    return _default_draft_dir() / SCRATCH_DIR / "states"
 
 
 def _valid_ws_id(ws_id) -> bool:
