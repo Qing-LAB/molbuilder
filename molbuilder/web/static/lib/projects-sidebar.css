@@ -122,79 +122,68 @@ body.has-mobile-sidebar-open .ps-resize-handle {
  *
  * The sidebar hides via ``body.is-projects-sidebar-collapsed``:
  * the body padding-left collapses to 0 and the .projects-sidebar
- * goes off-screen.  A small reopen handle (.ps-collapsed-handle)
- * floats at the left edge so the user can bring it back.
+ * goes off-screen.  The reopen handle (.ps-edge-tab--reopen) then
+ * appears at the left edge -- the symmetric twin of the collapse
+ * tab (.ps-edge-tab--collapse) at the same mid-height.
  *
  * State persists in sessionStorage per origin (key
  * ``molbuilder.projects_sidebar_collapsed``) so a refresh keeps
  * the user's preference.  Behaviour wired in
  * ``lib/projects-sidebar.js``. */
 
-.ps-collapse-toggle {
+/* Collapse / reopen are ONE symmetric control: two accent chevron tabs at the
+ * SAME vertical mid-height.  The collapse tab (#ps-collapse-toggle) rides on the
+ * sidebar's right (moving) edge and slides off WITH it; the reopen tab
+ * (#ps-collapsed-handle) sits at the screen's left edge and appears in its place
+ * when collapsed.  Same size + palette; only the side + arrow differ, so retract
+ * and unfold read as one toggle that flips as the panel slides.
+ * Accent-coloured (a 2026-06 pass found a dim handle went unnoticed). */
+.ps-edge-tab {
   appearance: none;
-  background: transparent;
-  color: var(--ps-fg, #ccc);
-  border: 1px solid transparent;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  padding: 0 0.35rem;
-  line-height: 1.6;
-}
-.ps-collapse-toggle:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--ps-border, #333);
-}
-
-/* Reopen handle — sized + styled to be obvious.  Before the
- * 2026-06-07 visibility pass this was 18×60 px in the sidebar's
- * dim palette; users reported missing it entirely.  Now wider +
- * accent-coloured + with a "Projects" label so it reads as a
- * dock affordance, not noise. */
-.ps-collapsed-handle {
-  position: fixed;
-  left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 28px;
-  height: 110px;
+  width: 22px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  z-index: 11;                 /* over the list + the resize strip (z 10) */
   background: linear-gradient(180deg, var(--ps-accent) 0%, var(--ps-accent-strong) 100%);
   color: var(--ps-selected-fg);
   border: 1px solid var(--ps-accent-strong);
-  border-left: none;
-  border-radius: 0 6px 6px 0;
-  cursor: pointer;
-  z-index: 6;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 0;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.35);
-  /* Vertical "Projects" label reads bottom-to-top so it tracks
-   * the eye from the chevron downward. */
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.ps-collapsed-handle::before {
-  /* Larger chevron on top of the vertical label.  Decorative
-   * (the aria-label on the button is the accessible name). */
-  content: "▶";
-  font-size: 1rem;
-  writing-mode: horizontal-tb;
+.ps-edge-tab-chevron {
+  font-size: 0.9rem;
   line-height: 1;
+  font-weight: 700;
 }
-.ps-collapsed-handle:hover {
-  background: linear-gradient(180deg, var(--ps-accent) 0%, var(--ps-accent-strong) 100%);
-  box-shadow: 2px 0 12px rgba(80, 130, 200, 0.45);
-}
-.ps-collapsed-handle:focus-visible {
+.ps-edge-tab:hover { filter: brightness(1.1); }
+.ps-edge-tab:focus-visible {
   outline: 2px solid var(--ps-accent-fg);
   outline-offset: 2px;
+}
+
+/* Collapse tab: on the sidebar's right (inner) edge, curving toward the content
+ * on its left.  Absolute within the fixed .projects-sidebar so it tracks the
+ * width + slides off with the panel (and is hidden with it when collapsed). */
+.ps-edge-tab--collapse {
+  position: absolute;
+  right: 0;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+}
+
+/* Reopen tab: at the screen's left edge, curving toward the content on its
+ * right.  Fixed (outside the aside) + shown only when the sidebar is hidden. */
+.ps-edge-tab--reopen {
+  position: fixed;
+  left: 0;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  display: none;
 }
 
 body.is-projects-sidebar-collapsed {
@@ -204,15 +193,15 @@ body.is-projects-sidebar-collapsed .projects-sidebar {
   transform: translateX(-100%);
   visibility: hidden;
 }
-body.is-projects-sidebar-collapsed .ps-collapsed-handle {
+body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   display: flex;
 }
 /* Narrow-viewport drawer mode takes over below 640 px (the
  * existing mobile toggle handles open/close there); hide the
  * desktop affordances so they don't double up. */
 @media (max-width: 640px) {
-  .ps-collapse-toggle { display: none; }
-  .ps-collapsed-handle { display: none !important; }
+  .ps-edge-tab--collapse { display: none; }
+  .ps-edge-tab--reopen { display: none !important; }
 }
 
 /* ---- Foldable "+ New project" / "+ New subdir" sections -------- */

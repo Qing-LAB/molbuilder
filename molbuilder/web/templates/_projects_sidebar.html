@@ -27,18 +27,19 @@
 <div id="ps-mobile-backdrop" class="ps-mobile-backdrop"
      aria-hidden="true"></div>
 
-{#- Reopen handle for the desktop-collapsed sidebar (B.5.4).
-    Hidden unless ``body.is-projects-sidebar-collapsed`` is set;
-    click brings the sidebar back.  Lives outside .projects-sidebar
-    so it stays visible when the sidebar itself is hidden.  Styled
-    as a prominent dock tab (accent-coloured, vertical "Projects"
-    label) so users discover it without hunting the screen edge. -#}
+{#- Reopen handle for the desktop-collapsed sidebar.  Hidden unless
+    ``body.is-projects-sidebar-collapsed`` is set; click brings the sidebar
+    back.  Lives OUTSIDE .projects-sidebar so it stays visible when the sidebar
+    is hidden.  It is the SYMMETRIC twin of the collapse tab (#ps-collapse-toggle,
+    inside the aside): both are ``.ps-edge-tab`` accent chevrons at the SAME
+    vertical mid-height, so retract ◀ and unfold ▶ read as one control that just
+    flips as the sidebar slides.  ▶ = "bring the panel in". -#}
 <button type="button" id="ps-collapsed-handle"
-        class="ps-collapsed-handle"
+        class="ps-edge-tab ps-edge-tab--reopen"
         aria-label="Show projects sidebar"
         aria-controls="projects-sidebar"
         title="Show projects sidebar"
-        aria-expanded="false">Projects</button>
+        aria-expanded="false"><span class="ps-edge-tab-chevron" aria-hidden="true">▶</span></button>
 
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   {#- Width-resize handle (2026-06-12).  Thin strip on the right edge;
@@ -49,18 +50,21 @@
        role="separator" aria-orientation="vertical"
        aria-label="Resize projects sidebar"
        title="Drag to resize"></div>
+  {#- Desktop collapse tab.  The SYMMETRIC twin of the reopen handle
+      (#ps-collapsed-handle): both are ``.ps-edge-tab`` accent chevrons at the
+      SAME vertical mid-height.  This one lives INSIDE the aside on its right
+      (moving) edge, so it slides off WITH the sidebar; clicking hides the
+      sidebar and the reopen ▶ appears at the left edge at the same height.
+      ◀ = "push the panel out".  Visible only >= 640 px (the mobile drawer
+      toggle handles narrow viewports).  State persists in sessionStorage. -#}
+  <button type="button" id="ps-collapse-toggle"
+          class="ps-edge-tab ps-edge-tab--collapse"
+          aria-label="Hide projects sidebar"
+          aria-controls="projects-sidebar"
+          title="Hide projects sidebar"
+          aria-expanded="true"><span class="ps-edge-tab-chevron" aria-hidden="true">◀</span></button>
   <header class="ps-header">
     <h2 class="ps-title">Projects</h2>
-    {#- Desktop collapse toggle (B.5.4).  Visible only on viewports
-        >= 640 px (the mobile drawer toggle handles narrow ones).
-        Click hides the sidebar; #ps-collapsed-handle below brings
-        it back.  State persists per-origin in sessionStorage. -#}
-    <button type="button" id="ps-collapse-toggle"
-            class="ps-collapse-toggle"
-            aria-label="Hide projects sidebar"
-            aria-controls="projects-sidebar"
-            title="Hide projects sidebar"
-            aria-expanded="true">◀</button>
   </header>
 
   <!-- Lock banner.  Hidden by default; shown by lib/projects/list.js when

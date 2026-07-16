@@ -70,8 +70,9 @@ if (window.molbuilder.runtime
  * Desktop collapse toggle (B.5.4).  Hide/show the sidebar on
  * viewports >= 640 px (the mobile drawer handles narrow ones).
  * Wires:
- *   - #ps-collapse-toggle (in the sidebar header) → click to hide
- *   - #ps-collapsed-handle (floating at the left edge) → click to show
+ *   - #ps-collapse-toggle (edge tab on the sidebar's right edge) → click to hide
+ *   - #ps-collapsed-handle (edge tab at the screen's left edge) → click to show
+ *     (symmetric twins: both ``.ps-edge-tab`` at the same mid-height)
  *
  * State persists per origin in sessionStorage under
  * ``molbuilder.projects_sidebar_collapsed`` so a refresh keeps the
