@@ -292,14 +292,15 @@
         var explicit = per.cell || null;
         return { value: explicit || per.resolved_cell || null, isDefault: !explicit };
     }
-    // §3a: the world-space CORNER the unit-cell box is anchored at.  For an
-    // explicit cell the atoms are already placed within it -> null (the box
-    // starts at the world origin).  For the bbox+vacuum default the origin is
-    // (atom_min - vacuum) per axis, so the drawn box WRAPS the atoms instead of
-    // starting at (0,0,0) -- the render feeds this to the cell wireframe.
+    // §3a/§3c: the world-space CORNER the unit-cell box is drawn from -- ALWAYS the
+    // server's resolved_cell_origin (= struct.resolve_cell_origin()).  For a
+    // bbox+vacuum default that is (atom_min - vacuum); for an EXPLICIT cell that
+    // WRAPS off-origin atoms (an electrode junction) it is the stored cell_origin, so
+    // the box wraps the structure instead of jumping to (0,0,0); for an imported
+    // crystal (atoms already in [0,cell)) the server returns null -> the world origin.
+    // The render feeds this to the cell wireframe.
     function getUnitCellOrigin() {
         var per = _periodicityInternal() || {};
-        if (per.cell) return null;                 // explicit cell -> no offset
         return per.resolved_cell_origin || null;
     }
     function getVacuumInfo() {
@@ -1837,6 +1838,9 @@
                 regions:         getRegions(),
                 frozen_atoms:    getFrozen(),
                 cell:            per.cell || null,
+                // §3c: the low corner an explicit cell wraps off-origin atoms from,
+                // saved so an electrode junction's box survives a save/reload.
+                cell_origin:     per.cell_origin || null,
                 axis_kind:       per.axis_kind || null,
                 vacuum:          per.vacuum || null,
                 // (no kgrid: it's a sampling knob on SiestaConfig, not geometry)

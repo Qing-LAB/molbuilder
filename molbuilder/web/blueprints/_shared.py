@@ -409,8 +409,10 @@ def structure_to_dict(
         # cell alias for existing consumers.
         "periodicity": {
             "cell":          struct.cell.tolist() if struct.cell is not None else None,
+            "cell_origin":   (struct.cell_origin.tolist()
+                              if struct.cell_origin is not None else None),  # § 3c raw corner
             "resolved_cell": _resolved_cell,   # § 3a effective cell (server-resolved)
-            "resolved_cell_origin": _resolved_origin,  # § 3a box anchor corner
+            "resolved_cell_origin": _resolved_origin,  # § 3a/3c box anchor corner
             "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
             "vacuum":        list(struct.vacuum),
             # (No "kgrid": it's a SAMPLING knob on SiestaConfig / TransportConfig,

@@ -40,7 +40,7 @@ from ._helpers import build_sidecar_result
 # still load (annotations absent -> empty).  v5 drops the ``kgrid`` field
 # (k-grid moved off the geometry onto SiestaConfig / TransportConfig);
 # a ``kgrid`` key in an older v3/v4 file loads fine -- it's ignored.
-_READABLE_SCHEMA_VERSIONS = (3, 4, 5)
+_READABLE_SCHEMA_VERSIONS = (3, 4, 5, 6)
 
 
 def _normalised_dict(

@@ -106,8 +106,9 @@ def wc_open():
         "atoms": atoms_list(w.data),
         "periodicity": {
             "cell":          sc.get("cell"),
+            "cell_origin":   sc.get("cell_origin"),      # § 3c raw corner (round-trip)
             "resolved_cell": _resolved_cell,
-            "resolved_cell_origin": _resolved_origin,   # § 3a box anchor corner
+            "resolved_cell_origin": _resolved_origin,   # § 3a/3c box anchor corner
             "axis_kind":     sc.get("axis_kind"),
             "vacuum":        sc.get("vacuum"),
             # (No "kgrid": it's a sampling knob on SiestaConfig / TransportConfig,

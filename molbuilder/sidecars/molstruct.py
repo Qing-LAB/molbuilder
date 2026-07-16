@@ -70,7 +70,7 @@ except ImportError:                  # pragma: no cover - Windows branch
     _HAVE_FLOCK = False
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Canonical sidecar suffix.  ``<job>.xyz`` -> ``<job>.molstruct.json``.
 _SIDECAR_SUFFIX = ".molstruct.json"
@@ -194,6 +194,7 @@ def to_dict(
     frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
+    cell_origin: Optional[Any] = None,
     pbc: Optional[Any] = None,
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
@@ -306,6 +307,16 @@ def to_dict(
         if len(v) != 3:
             raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
         normed_vacuum = v
+    # cell_origin (schema v6; structure-periodicity.md § 3c): the world-space low
+    # corner an EXPLICIT cell emanates from, so an electrode-junction cell wraps
+    # off-origin atoms.  Only meaningful with an explicit cell; dropped otherwise.
+    normed_cell_origin = None
+    if cell_origin is not None and normed_cell is not None:
+        co = [float(x) for x in cell_origin]
+        if len(co) != 3 or not all(_math.isfinite(x) for x in co):
+            raise MolstructJsonError(
+                f"cell_origin must be 3 finite floats; got {cell_origin!r}")
+        normed_cell_origin = co
 
     # Extensible per-atom annotation channels (schema v4; atom-annotations.md
     # § 3).  Additive alongside regions/frozen_atoms (which are still written
@@ -334,6 +345,7 @@ def to_dict(
         "frozen_atoms":    normed_frozen,
         "selection_rules": normed_rules,
         "cell":            normed_cell,
+        "cell_origin":     normed_cell_origin,
         "pbc":             normed_pbc,
         "axis_kind":       normed_axis_kind,
         "vacuum":          normed_vacuum,
@@ -495,6 +507,12 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     if norm_cell is not None:
         import numpy as _np
         struct.cell = _np.asarray(norm_cell, dtype=float)
+        # cell_origin (v6; § 3c): the low corner an explicit cell wraps off-origin
+        # atoms from.  Only meaningful WITH a cell (mirrors the writer's guard).
+        co_raw = sidecar_data.get("cell_origin")
+        if co_raw is not None:
+            struct.cell_origin = _np.asarray(
+                [float(x) for x in co_raw], dtype=float)
 
     # axis_kind is AUTHORITATIVE (structure-periodicity.md); pbc is its DERIVED view.
     # Resolve axis_kind: explicit wins; else a present cell => periodic-all (the

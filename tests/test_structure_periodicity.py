@@ -112,6 +112,26 @@ class TestSidecarRoundTrip:
         assert not hasattr(s, "kgrid")
         assert s.pbc == (True, True, True)   # derived: transport -> True
 
+    def test_cell_origin_round_trips_v6(self):
+        """§3c: cell_origin persists through the sidecar (schema v6) so an electrode
+        junction's box survives a save/reload; dropped when there's no explicit cell."""
+        from molbuilder.sidecars import molstruct as ms
+        d = ms.to_dict(
+            n_atoms_total=2, structure_hash="a" * 64,
+            cell=[[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+            cell_origin=[-2.5, -2.5, -5.0],
+            axis_kind=["periodic", "periodic", "transport"], vacuum=[0.0, 0.0, 0.0],
+        )
+        assert d["schema_version"] == 6
+        assert d["cell_origin"] == [-2.5, -2.5, -5.0]
+        s = Structure(elements=["C", "H"], positions=[[0, 0, 0], [1, 0, 0]])
+        ms.apply_to_structure(s, d)
+        assert np.allclose(s.cell_origin, [-2.5, -2.5, -5.0])
+        # No explicit cell -> cell_origin is meaningless and dropped.
+        d2 = ms.to_dict(n_atoms_total=1, structure_hash="b" * 64,
+                        cell_origin=[1, 2, 3])
+        assert d2["cell_origin"] is None
+
     def test_pre_v5_kgrid_key_is_ignored_on_read(self):
         # A legacy v3/v4 sidecar that still carries a "kgrid" key loads fine;
         # the key is simply ignored (Structure has no kgrid field).

@@ -92,13 +92,17 @@
         if (!p || typeof p !== "object") return null;
         return {
             cell:      p.cell || null,
+            // §3c: the raw low corner an EXPLICIT cell emanates from (an electrode
+            // junction's cell wraps off-origin atoms).  This one IS saved (round-trips
+            // through the sidecar); null for a derived cell / imported crystal.
+            cell_origin: p.cell_origin || null,
             // §3a resolved (effective) cell from the ONE (server) resolver; the display
             // accessor surfaces it.  Carried for the render, never saved (save writes
             // the raw `cell`); refreshed by every server response.
             resolved_cell: p.resolved_cell || null,
-            // §3a: the corner the resolved box is anchored at (atom_min - vacuum
-            // for a bbox+vacuum cell; null for an explicit cell).  Carried for
-            // the render so the box WRAPS the atoms, never saved.
+            // §3a/3c: the corner the resolved box is anchored at (cell_origin for an
+            // explicit wrapping cell; atom_min-vacuum for a bbox+vacuum cell; null for
+            // an imported crystal).  Carried for the render so the box WRAPS the atoms.
             resolved_cell_origin: p.resolved_cell_origin || null,
             axis_kind: p.axis_kind || null,
             vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
@@ -118,6 +122,7 @@
         };
         return {
             cell:          mat(p.cell),
+            cell_origin:   Array.isArray(p.cell_origin) ? p.cell_origin.slice() : null,
             resolved_cell: mat(p.resolved_cell),
             resolved_cell_origin: Array.isArray(p.resolved_cell_origin)
                                     ? p.resolved_cell_origin.slice() : null,
