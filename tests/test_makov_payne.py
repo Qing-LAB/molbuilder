@@ -302,5 +302,8 @@ class TestSiestaIntegration:
             xyz.write_text("1\nh\nH 0 0 0\n")
             fdf = d / "job.fdf"
             cfg = SiestaConfig(system_label="h", net_charge=0)
-            summary = convert(str(xyz), str(fdf), config=cfg)
+            # A single atom's bbox is a point -> give it a vacuum so the derived
+            # cell has a real volume (structure-periodicity.md).
+            summary = convert(str(xyz), str(fdf), config=cfg,
+                              vacuum=(12.0, 12.0, 12.0))
             assert "makov_payne_script" not in summary

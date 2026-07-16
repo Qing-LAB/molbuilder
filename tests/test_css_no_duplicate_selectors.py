@@ -74,7 +74,8 @@ ALLOWLIST: dict[str, str] = {
     ".status.ok":      "phase 3: scope per-tab status variants",
     ".status.warn":    "phase 3: scope per-tab status variants",
     "header .tagline": "phase 3: scope per-tab .tagline overrides",
-    ".viewer-controls": "phase 3: viewer-controls is currently defined per-tab; consolidate after viewer-card unification",
+    # (`.viewer-controls` allowlist entry removed: it's no longer a cross-file
+    #  duplicate -- only spectra/style.css defines it as a rule now.)
     # Issues panel uses different DOM contracts on /spectra
     # (`.issue` children) vs the optimization tab
     # (`.issues-panel .issue-item` children).  Renaming the spectra

@@ -631,13 +631,15 @@ class TestMetalAwareScriptTemplates:
         import numpy as np
         return Structure(elements=["Fe", "N", "N", "N", "N"],
                          positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0],
-                                              [0, 2, 0], [0, -2, 0]]))
+                                              [0, 2, 0], [0, -2, 0]]),
+                         vacuum=(12.0, 12.0, 12.0))   # planar -> needs vacuum for a real box
 
     def _water(self):
         from molbuilder.structure import Structure
         import numpy as np
         return Structure(elements=["O", "H", "H"],
-                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]),
+                         vacuum=(12.0, 12.0, 12.0))   # linear -> needs vacuum for a real box
 
     def test_siesta_fe_emits_spin_sweep_template(self):
         from molbuilder.siesta import render_fdf

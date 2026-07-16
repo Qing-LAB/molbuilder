@@ -36,9 +36,12 @@ from molbuilder.structure import Structure
 
 @pytest.fixture
 def h2():
+    # Per-side vacuum so the derived cell isn't degenerate for this linear
+    # molecule (a zero-thickness box would hard-error -- structure-periodicity.md).
     return Structure(
         elements=["H", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
+        vacuum=(12.0, 12.0, 12.0),
     )
 
 

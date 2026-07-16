@@ -28,11 +28,17 @@ from molbuilder.structure import Structure
 from molbuilder.trajectory_log import write_initial_preview
 
 
+# A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at
+# the default vacuum=0 (structure-periodicity.md).  These CLI tests exercise
+# stage/log mechanics, not geometry, so methane is fine.
 _XYZ = textwrap.dedent("""\
-    2
+    5
 
-    H 0.0 0.0 0.0
-    H 0.0 0.0 0.74
+    C  0.000  0.000  0.000
+    H  0.629  0.629  0.629
+    H -0.629 -0.629  0.629
+    H -0.629  0.629 -0.629
+    H  0.629 -0.629 -0.629
 """)
 
 
@@ -48,6 +54,7 @@ def h2():
     return Structure(
         elements=["H", "H"],
         positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
+        vacuum=(12.0, 12.0, 12.0),   # non-degenerate cell for this linear molecule
     )
 
 

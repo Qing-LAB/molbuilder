@@ -41,13 +41,16 @@ def web():
 # A 5-atom benzene-like ring used for every test.  Small but
 # realistic enough to drive the renderers; species/coordinates
 # don't matter for the boundary-condition logic.
+# A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at
+# vacuum=0 (structure-periodicity.md); these tests exercise label wiring, not
+# geometry, so methane is fine.
 _XYZ = """5
 test fixture
-H  0.00 0.00 0.00
-H  1.00 0.00 0.00
-H  2.00 0.00 0.00
-H  3.00 0.00 0.00
-H  4.00 0.00 0.00
+C  0.000  0.000  0.000
+H  0.629  0.629  0.629
+H -0.629 -0.629  0.629
+H -0.629  0.629 -0.629
+H  0.629 -0.629 -0.629
 """
 
 

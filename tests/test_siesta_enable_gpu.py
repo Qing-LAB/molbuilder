@@ -54,7 +54,9 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
 
 
 def _mk_struct() -> Structure:
-    """Minimal 1-atom water-stub: enough for render_fdf to succeed."""
+    """Minimal 1-atom water-stub: enough for render_fdf to succeed.  A per-side
+    vacuum gives the derived cell a non-zero volume (a single atom's bbox is a
+    point; vacuum=0 would be a degenerate box -- structure-periodicity.md)."""
     return Structure(
         elements      = ["H"],
         positions     = np.zeros((1, 3)),
@@ -62,6 +64,7 @@ def _mk_struct() -> Structure:
         residue_ids   = [1],
         residue_names = ["UNL"],
         chain_ids     = ["A"],
+        vacuum        = (12.0, 12.0, 12.0),
     )
 
 

@@ -27,17 +27,24 @@ from click.testing import CliRunner
 from molbuilder.cli import cli
 
 
+# A 3-D (non-planar) molecule so the derived vacuum cell isn't degenerate at
+# the default vacuum=0 (a linear/planar molecule has a zero-thickness axis --
+# structure-periodicity.md).  These tests exercise stage/jobset mechanics, not
+# geometry, so any real 3-D structure works; methane is the simplest.
 _XYZ = textwrap.dedent("""\
-    2
+    5
 
-    H 0.0 0.0 0.0
-    H 0.0 0.0 0.74
+    C  0.000  0.000  0.000
+    H  0.629  0.629  0.629
+    H -0.629 -0.629  0.629
+    H -0.629  0.629 -0.629
+    H  0.629 -0.629 -0.629
 """)
 
 
 @pytest.fixture
 def xyz(tmp_path):
-    p = tmp_path / "h2.xyz"
+    p = tmp_path / "ch4.xyz"
     p.write_text(_XYZ)
     return p
 

@@ -51,11 +51,14 @@ import pytest
 pytest.importorskip("flask")
 
 
+# Water, made slightly NON-planar (one H off the z=0 plane) so the derived vacuum
+# cell isn't degenerate at vacuum=0 (a planar molecule has a zero-thickness axis --
+# structure-periodicity.md).  These tests exercise the generate-bytes path, not geometry.
 _H2O_XYZ = """3
 water
 O   0.000   0.000   0.000
-H   0.757   0.586   0.000
-H  -0.757   0.586   0.000
+H   0.757   0.586   0.300
+H  -0.757   0.586  -0.300
 """
 
 

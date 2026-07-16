@@ -78,21 +78,25 @@ pytest.importorskip("flask")
 # A tiny benzene structure -- enough atoms that the spectra +
 # transport engines accept it without "system too small" failures
 # but small enough that the render is fast.
+# Benzene puckered slightly out of plane (alternating C/H z) so the derived
+# vacuum cell isn't degenerate at vacuum=0 (a perfectly planar molecule has a
+# zero-thickness axis -- structure-periodicity.md).  These tests exercise the
+# workflow_group issue-enrichment wiring, not geometry.
 _BENZENE_XYZ = """\
 12
 
-C    0.000    1.396    0.000
-C    1.209    0.698    0.000
-C    1.209   -0.698    0.000
-C    0.000   -1.396    0.000
-C   -1.209   -0.698    0.000
-C   -1.209    0.698    0.000
-H    0.000    2.481    0.000
-H    2.149    1.240    0.000
-H    2.149   -1.240    0.000
-H    0.000   -2.481    0.000
-H   -2.149   -1.240    0.000
-H   -2.149    1.240    0.000
+C    0.000    1.396    0.200
+C    1.209    0.698   -0.200
+C    1.209   -0.698    0.200
+C    0.000   -1.396   -0.200
+C   -1.209   -0.698    0.200
+C   -1.209    0.698   -0.200
+H    0.000    2.481    0.400
+H    2.149    1.240   -0.400
+H    2.149   -1.240    0.400
+H    0.000   -2.481   -0.400
+H   -2.149   -1.240    0.400
+H   -2.149    1.240   -0.400
 """
 
 

@@ -177,7 +177,7 @@ class TestPdbWorkflowEndToEnd:
 
     # ----- Step 2: assign frozen_atoms + a region via the codec ----- #
 
-    def test_step_2_save_writes_v4_sidecar(
+    def test_step_2_save_writes_current_schema_sidecar(
         self, web, pdb_under_root,
     ):
         pdb_path, n_atoms, _ = pdb_under_root
@@ -198,7 +198,8 @@ class TestPdbWorkflowEndToEnd:
             f"the codec sidecar seed didn't write the sidecar at {sidecar}"
         )
         on_disk = json.loads(sidecar.read_text())
-        assert on_disk["schema_version"] == 4
+        from molbuilder.sidecars import molstruct as _msj
+        assert on_disk["schema_version"] == _msj.SCHEMA_VERSION
         assert on_disk["n_atoms_total"] == n_atoms
         assert on_disk["frozen_atoms"] == frozen_indices
         assert on_disk["regions"]["L-electrode"] == region_indices
@@ -411,8 +412,8 @@ def simple_pdb_under_root(tmp_path, monkeypatch):
         "ATOM      3  N   MOL A   1       2.250   1.300   0.000  1.00  0.00           N\n"
         "ATOM      4  C   MOL A   1       3.750   1.300   0.000  1.00  0.00           C\n"
         "ATOM      5  O   MOL A   1       4.500   2.600   0.000  1.00  0.00           O\n"
-        "ATOM      6  H   MOL A   1      -0.520   0.900   0.000  1.00  0.00           H\n"
-        "ATOM      7  H   MOL A   1      -0.520  -0.900   0.000  1.00  0.00           H\n"
+        "ATOM      6  H   MOL A   1      -0.520   0.900   0.700  1.00  0.00           H\n"
+        "ATOM      7  H   MOL A   1      -0.520  -0.900  -0.700  1.00  0.00           H\n"
         "ATOM      8  H   MOL A   1       2.020  -0.900   0.000  1.00  0.00           H\n"
         "ATOM      9  H   MOL A   1       1.750   2.200   0.000  1.00  0.00           H\n"
         "ATOM     10  H   MOL A   1       4.270   0.400   0.000  1.00  0.00           H\n"
