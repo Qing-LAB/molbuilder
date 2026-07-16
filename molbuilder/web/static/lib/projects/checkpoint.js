@@ -83,17 +83,18 @@ function _attach() {
     } catch (_) { /* sessionStorage disabled — fall through to default */ }
     _updateViewButtons();
 
-    // Restore collapse state from sessionStorage (per workspace-
-    // contract.md § 4.1; ws.ui.checkpoint.collapsed is the key).
-    const ws = window.molbuilder && window.molbuilder.workspace;
-    if (ws && typeof ws.readPersistedSnapshot === "function") {
-        const snap = ws.readPersistedSnapshot();
-        if (snap && snap.state && snap.state.ui
-                && snap.state.ui.checkpoint
-                && snap.state.ui.checkpoint.collapsed === true) {
+    // Restore collapse preference from sessionStorage -- the SAME mechanism as the
+    // view-mode pref above.  (This used to read
+    // ws.readPersistedSnapshot().state.ui.checkpoint.collapsed, but MolView's session
+    // snapshot has no `ui` slot and nothing ever wrote it -- the restore was dead code
+    // AND a projects-sidebar module reaching into MolView's persisted session, which
+    // the workspace contract forbids.  A UI pref is per-origin sessionStorage, owned
+    // here, not smuggled through the workspace.)
+    try {
+        if (sessionStorage.getItem("ps.checkpoint.collapsed") === "1") {
             _state.userCollapsed = true;
         }
-    }
+    } catch (_) { /* sessionStorage disabled -- default to expanded */ }
 
     elCollapse.addEventListener("click", _onCollapseClick);
     elInitBtn.addEventListener("click", _onInitClick);
@@ -150,6 +151,12 @@ export function onDirectoryChange(dirPath) {
         _hide();
         return;
     }
+    // No-op guard: projects.onChange fires on every single-click FILE selection too
+    // (the cursor moves within the same dir).  Re-entering the SAME run dir must not
+    // re-fetch -- the contract refreshes on directory-ENTER + the manual Refresh only
+    // (checkpoint.js header), and re-running GET /api/checkpoint/state per file click
+    // is exactly the "don't rewrite on a no-op tick" rule.
+    if (dirPath === _state.currentDir) return;
     _state.currentDir = dirPath;
     if (_state.userCollapsed) {
         elPanel.hidden = false;
@@ -515,6 +522,12 @@ function _onCollapseClick() {
     _state.userCollapsed = !_state.userCollapsed;
     elCollapse.textContent = _state.userCollapsed ? "▸" : "▾";
     elCollapse.setAttribute("aria-expanded", String(!_state.userCollapsed));
+    // Persist the preference (per-origin sessionStorage; mirrors the view-mode pref)
+    // so it survives a reload -- the restore in _attach reads this key.
+    try {
+        if (_state.userCollapsed) sessionStorage.setItem("ps.checkpoint.collapsed", "1");
+        else sessionStorage.removeItem("ps.checkpoint.collapsed");
+    } catch (_) { /* sessionStorage disabled -- pref just won't persist */ }
     if (_state.userCollapsed) {
         _renderCollapsedHeader();
     } else {
