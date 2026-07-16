@@ -737,6 +737,12 @@
                    aria-label="vacuum c">
           </div>
           <button id="pv-vac-update" class="full-btn" type="button">Update vacuum</button>
+          {#- Shown when an explicit cell is set: vacuum only grows a DERIVED isolated
+              axis, so it is inert here (structure-periodicity.md § 3c). -#}
+          <p id="pv-vac-na" class="pv-note" hidden>
+            Not applicable — an explicit unit cell is set (vacuum only pads a
+            default box).
+          </p>
         </fieldset>
 
         <fieldset class="op-block">
@@ -760,6 +766,13 @@
               Use default
             </button>
           </div>
+          {#- § 3c: the unified last step -- move atoms into [0,cell) with the cell at
+              the origin (the exact frame SIESTA uses).  Enabled only for an explicit
+              cell (an electrode junction). -#}
+          <button id="pv-cell-calibrate" class="full-btn" type="button" disabled
+                  title="Move the atoms into the cell (cell at origin, atoms in [0,cell)) -- the coordinate frame SIESTA will use.">
+            Calibrate coordinates to cell
+          </button>
         </fieldset>
 
       </div><!-- /.optab-panel data-op-panel="cell" -->

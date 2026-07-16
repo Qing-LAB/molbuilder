@@ -174,6 +174,10 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     if isinstance(per, dict):
         if per.get("cell") is not None:
             peri_kw["cell"] = per["cell"]
+        # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
+        # junction doesn't drop the corner that makes the box wrap the atoms.
+        if per.get("cell_origin") is not None:
+            peri_kw["cell_origin"] = per["cell_origin"]
         if per.get("axis_kind") is not None:
             peri_kw["axis_kind"] = tuple(per["axis_kind"])
         if per.get("vacuum") is not None:

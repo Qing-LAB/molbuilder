@@ -77,30 +77,61 @@
         panel.querySelectorAll("fieldset").forEach(function (fs) { fs.disabled = !has; });
         if (!has || !w) return;
 
+        // An EXPLICIT cell (isDefault === false) is the source of truth: vacuum is
+        // inert (resolve_cell returns the cell verbatim) and "Use default" is invalid
+        // for a periodic/transport axis (you can't derive a commensurate lattice from
+        // a bbox -- clearing the cell would make the box DISAPPEAR).  Read both first
+        // so the group guards below can react (structure-periodicity.md § 3c).
+        var cellInfo = w.getUnitCellInfo ? w.getUnitCellInfo() : { isDefault: true };
+        var axisInfo = w.getAxisKindInfo ? w.getAxisKindInfo() : { value: [] };
+        var explicitCell = !cellInfo.isDefault;
+        var hasPeriodicAxis = (axisInfo.value || []).some(function (k) {
+            return k === "periodic" || k === "transport";
+        });
+
         if (w.getVacuumInfo) {
             var v = w.getVacuumInfo(), vv = v.value || [0, 0, 0];
             setIdle($("pv-vac-a"), round(vv[0] || 0));
             setIdle($("pv-vac-b"), round(vv[1] || 0));
             setIdle($("pv-vac-c"), round(vv[2] || 0));
-            tag("pv-vac-tag", v.isDefault);
+            // Vacuum only grows a DERIVED isolated axis; with an explicit cell it does
+            // nothing, so mark the group "not applicable" instead of a silent no-op.
+            tag("pv-vac-tag", explicitCell ? false : v.isDefault);
+            var vacNa = $("pv-vac-na");
+            if (vacNa) vacNa.hidden = !explicitCell;
+            var vacBtn = $("pv-vac-update");
+            if (vacBtn) vacBtn.disabled = explicitCell;
         }
         if (w.getAxisKindInfo) {
-            var a = w.getAxisKindInfo(), av = a.value || [];
+            var av = axisInfo.value || [];
             ["pv-axis-a", "pv-axis-b", "pv-axis-c"].forEach(function (id, i) {
                 var sel = $(id);
                 if (sel && document.activeElement !== sel) sel.value = av[i] || "isolated";
             });
-            tag("pv-axis-tag", a.isDefault);
+            tag("pv-axis-tag", axisInfo.isDefault);
         }
         if (w.getUnitCellInfo && cellInputs.length === 9) {
-            var c = w.getUnitCellInfo(), m = c.value;
+            var m = cellInfo.value;
             for (var r = 0; r < 3; r++) {
                 for (var col = 0; col < 3; col++) {
                     setIdle(cellInputs[r * 3 + col], m ? round(m[r][col]) : "");
                 }
             }
-            tag("pv-cell-tag", c.isDefault);
+            tag("pv-cell-tag", cellInfo.isDefault);
         }
+        // "Use default" clears the explicit cell -> resolve_cell(); on a periodic /
+        // transport axis that RAISES (no bbox-derived lattice), so disable it there --
+        // offering it is what made the box vanish (§ 3c symptom c).
+        var resetBtn = $("pv-cell-reset");
+        if (resetBtn) {
+            resetBtn.disabled = hasPeriodicAxis;
+            resetBtn.title = hasPeriodicAxis
+                ? "Not available: a periodic/transport axis needs an explicit cell "
+                  + "(a bounding box can't define a commensurate lattice)."
+                : "Clear the explicit cell and fall back to the bbox+vacuum box.";
+        }
+        var calBtn = $("pv-cell-calibrate");
+        if (calBtn) calBtn.disabled = !explicitCell;
     }
 
     function num(id, dflt, isInt) {
@@ -141,6 +172,15 @@
         var reset = $("pv-cell-reset");
         if (reset) reset.addEventListener("click", function () {
             commit({ cell: null });   // clear -> fall back to the resolved bbox+vacuum
+        });
+        // § 3c: calibrate is a GEOMETRY op (moves atoms into the cell), so it goes
+        // through applyOp -- not commitPeriodicity (which only re-resolves the cell).
+        var cal = $("pv-cell-calibrate");
+        if (cal) cal.addEventListener("click", function () {
+            var w = data();
+            if (w && typeof w.applyOp === "function") {
+                Promise.resolve(w.applyOp("calibrate", {})).then(refresh, function () {});
+            }
         });
     }
 

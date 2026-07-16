@@ -1173,6 +1173,38 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
         assert "kgrid" not in per, f"{op} should not echo k-grid (not geometry)"
 
 
+def test_modify_op_round_trips_cell_origin(web_client):
+    """§3c: a modify op on an electrode junction must not drop cell_origin (the
+    corner that makes the box wrap the off-origin atoms), or the box would jump to
+    the origin after any edit."""
+    periodicity = {
+        "cell": [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 12.0]],
+        "cell_origin": [-2.0, -2.0, -6.0],
+        "axis_kind": ["periodic", "periodic", "transport"],
+    }
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _H2O_XYZ, "periodicity": periodicity, "axis": "z", "angle": 15})
+    per = r.get_json()["periodicity"]
+    assert per["cell_origin"] == [-2.0, -2.0, -6.0], "rotate dropped cell_origin"
+
+
+def test_modify_calibrate_moves_atoms_into_the_cell(web_client):
+    """§3c: POST /api/modify/calibrate translates atoms into [0,cell) and clears
+    cell_origin -- the SIESTA coordinate frame, baked into the stored coords."""
+    xyz = "2\njx\nS 0 0 -3\nS 0 0 3\n"
+    r = web_client.post("/api/modify/calibrate", json={
+        "xyz": xyz, "periodicity": {
+            "cell": [[4, 0, 0], [0, 4, 0], [0, 0, 10]],
+            "cell_origin": [-2, -2, -5],
+            "axis_kind": ["periodic", "periodic", "transport"]}})
+    body = r.get_json()
+    assert body["ok"] is True, body
+    per = body["periodicity"]
+    assert per["cell_origin"] is None            # now anchored at (0,0,0)
+    zs = [a["z"] for a in body["atoms"]]
+    assert min(zs) >= -1e-6 and max(zs) <= 10 + 1e-6   # atoms inside [0, Lz]
+
+
 # --------------------------------------------------------------------- #
 #  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
 #  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #

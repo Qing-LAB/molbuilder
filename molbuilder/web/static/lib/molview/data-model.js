@@ -1417,6 +1417,9 @@
             role: "anchor", empty: "canonical", arity: null, groupField: "center_indices", shape: "grow",
         },
         "delete":    { role: "subject", empty: "reject", arity: null,   groupField: "indices",      shape: "shrink" },
+        // § 3c: rigid whole-structure calibrate -> atoms into [0,cell), cell at origin.
+        // Count-preserving (selection kept); no group.
+        "calibrate": { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
     };
     var _mutating = false;   // §19.3.2 serialize: at most ONE structure mutation in flight.
 

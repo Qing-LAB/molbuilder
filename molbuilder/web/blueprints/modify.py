@@ -94,6 +94,7 @@ from molbuilder.modify import (
     add_atom as _add_atom,
     add_electrode_slab as _add_electrode_slab,
     add_symmetric_electrodes as _add_symmetric_electrodes,
+    calibrate_to_cell as _calibrate_to_cell,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
@@ -416,6 +417,32 @@ def api_modify_translate():
         new_struct = struct.translated((dx, dy, dz))
     except ValueError as exc:
         return _err(f"translate failed: {exc}", 400)
+    return _ok_response(new_struct)
+
+
+@bp.route("/api/modify/calibrate", methods=["POST"])
+def api_modify_calibrate():
+    """Calibrate coordinates to the cell (structure-periodicity.md § 3c).
+
+    The unified "last step": translate every atom by ``-resolve_cell_origin()`` so the
+    atoms sit inside ``[0, cell)`` with the cell anchored at ``(0,0,0)``, and
+    materialise the resolved cell as the explicit cell (``cell_origin`` cleared).  Rigid
+    + count-preserving (selection indices survive); idempotent.  Lets the user SEE and
+    SAVE the exact coordinate frame SIESTA will use -- generation applies the same shift
+    on the fly, so this is optional.
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    _label_notice = _apply_labels_to_struct(struct, body)
+    if _label_notice:
+        return _err(_label_notice, 400)
+    try:
+        new_struct = _calibrate_to_cell(struct)
+    except ValueError as exc:
+        return _err(f"calibrate failed: {exc}", 400)
     return _ok_response(new_struct)
 
 
