@@ -409,6 +409,20 @@
             });
         }
 
+        // A SAVE just wrote the in-memory model to ``path``; re-anchor sourceFile so
+        // later label edits target the new file.  SYNCHRONOUS + sourceFile-ONLY: a
+        // save does NOT change the model, so this must NOT reload, refetch, or touch
+        // atoms/selection (contrast setSourceFile, which is a fresh OPEN and clears
+        // everything).  This is the door molview.data.markSaved routes through, so a
+        // save flow never reaches into the store to hand-set the source (the old
+        // save.js `adoptSession({sourceFile})` reach-around).
+        function noteSavedTo(path) {
+            const next = path || null;
+            if (next === state.sourceFile) return;
+            state.sourceFile = next;
+            _notify();
+        }
+
         // Inject the structure loader.  Called by the page
         // bootstrap with the viewer-specific loader (e.g.
         // modify/viewer.js's ``loadStructureText``, which accepts
@@ -958,6 +972,7 @@
             subscribe:          subscribe,
             // source file
             setSourceFile:      setSourceFile,
+            noteSavedTo:        noteSavedTo,      // save-as source re-anchor (sync, no reload)
             refreshAtoms:       refreshAtoms,
             adoptAtoms:         adoptAtoms,
             setCoords:          setCoords,        // frame coord-swap (workspace §1.5)

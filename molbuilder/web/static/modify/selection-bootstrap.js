@@ -129,12 +129,6 @@
             _candidate = next;
             _notifyCandidate();
         }
-        function _commitCandidate() {
-            if (!_candidate) return null;
-            const path = _candidate;
-            store.setSourceFile(path);
-            return path;
-        }
         function _onCandidateChange(fn) {
             if (typeof fn !== "function") {
                 throw new TypeError(
@@ -151,16 +145,18 @@
         }
         window.molbuilder.molbuilderTab = {
             getCandidate:     () => _candidate,
-            commitCandidate:  _commitCandidate,
             onCandidateChange: _onCandidateChange,
             // commitFile(path): the canonical "load this file as
             // the workspace structure" entry point — identical to
-            // what the Load button does on a dblclick.  Goes
-            // through structurePage's gate (warning modal on
-            // dirty canvas) + canvas-state.setStructure +
-            // viewerLoader + store.adoptSession.  Exposed for
-            // tests that need to drive the canonical sidebar→
-            // canvas flow without depending on DOM clicks.
+            // what the Load button does on a dblclick.  Goes through
+            // structurePage's gate (warning modal on dirty canvas) +
+            // the ONE open door (openMolecule), which installs the
+            // whole model in a single write (§19.3.1).  Exposed for
+            // tests that need to drive the canonical sidebar→canvas
+            // flow without depending on DOM clicks.
+            // (The old `commitCandidate` -- a `store.setSourceFile`
+            // reach-around that RELOADED the file -- was dead and is
+            // removed; loading goes through commitFile only.)
             commitFile:       _commitFile,
         };
 

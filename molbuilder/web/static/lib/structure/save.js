@@ -117,26 +117,16 @@
 
     /**
      * Post-save housekeeping.  The DATA is already on disk -- both files, written
-     * atomically by /api/workingcopy/save.  Here we only mark saved + re-anchor
-     * the selection store's sourceFile to the just-written path (so later label
-     * edits target the NEW location).
+     * atomically by /api/workingcopy/save.  All this does is tell the model it was
+     * saved to ``path`` via the ONE unified door: ``markSavedTo`` -> molview.data
+     * ``markSaved`` clears the canvas dirty bit AND re-anchors the selection store's
+     * sourceFile (so later label edits target the NEW file).  save.js does NOT reach
+     * into the selection store itself -- it used to call ``selection.adoptSession(
+     * {sourceFile})`` here, a low-level poke; that re-anchor now lives inside
+     * markSaved (molview owns its store).
      */
     function _postSaveSuccess(path) {
         _structurePage.markSavedTo(path);
-        if (_workspace && _workspace.selection
-                && typeof _workspace.selection.adoptSession === "function") {
-            var currentSel = (_workspace.getSelection
-                              && _workspace.getSelection().indices) || [];
-            var currentAtoms = (_workspace.getAtoms
-                                && _workspace.getAtoms()) || [];
-            try {
-                _workspace.selection.adoptSession({
-                    sourceFile: path,
-                    selection:  currentSel,
-                    atoms:      currentAtoms,
-                });
-            } catch (_) { /* non-fatal -- selection re-anchor is housekeeping */ }
-        }
         return { ok: true, path: path };
     }
 

@@ -1242,6 +1242,33 @@ the Save-panel's project-file write, save-flow.md). Load writes the model from b
 save reads bytes from the model. They are inverses over the one model, and neither
 leaves it half-written.
 
+**The correct save sequence** (Save-to-project on the Modify tab):
+
+```mermaid
+sequenceDiagram
+    participant U as User (Save panel)
+    participant SV as save.js
+    participant EX as exportFile() (§19.4)
+    participant API as POST /api/workingcopy/save
+    participant MS as markSaved (§19.3, the ONE door)
+    participant M as canvas + selection store
+
+    U->>SV: Save → name file
+    SV->>EX: serialise the SETTLED model
+    EX-->>SV: {xyz, sidecar}  (refuses a geometry↔labels desync → null)
+    SV->>API: write BOTH files atomically (overwrite confirmed)
+    API-->>SV: ok
+    SV->>MS: markSavedTo(path)
+    MS->>M: canvas dirty=false  +  store.noteSavedTo(path) (source re-anchor)
+    Note over SV,M: save READS the model; it never writes it.  The source<br/>re-anchor goes through markSaved -- save.js never pokes<br/>the store (no selection.adoptSession reach-around).
+```
+
+> **Reach-around removed (2026-07).** `save.js` used to call
+> `selection.adoptSession({sourceFile, selection, atoms})` directly to re-anchor the
+> store's source after a save-as — a consumer poking the store. That re-anchor now
+> lives INSIDE `markSaved` (`store.noteSavedTo(path)` — synchronous, sourceFile-only,
+> never reloads), so the save flow uses only the unified door.
+
 | Option | Default | Effect when set |
 |---|---|---|
 | `touchCanvas` | `true` | When `false` this is a LOAD, not a modifier op: the canvas text/dirty bit is not *replaced* in place; a fresh load into an empty canvas is *installed* instead (see `installSource`). |

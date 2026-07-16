@@ -838,7 +838,16 @@
         if (typeof cs.markSaved !== "function") {
             throw _missing("canvas.markSaved");
         }
-        return cs.markSaved(path);
+        var r = cs.markSaved(path);
+        // Re-anchor the selection store's sourceFile through the SAME door: a
+        // save-as makes ``path`` the new home, so later label edits + the "Loaded"
+        // readout target it.  Consumers call markSaved and NOTHING else -- save.js
+        // used to reach into ``selection.adoptSession({sourceFile})`` here, a
+        // low-level store poke.  noteSavedTo is sync + sourceFile-only (a save does
+        // not change the model), so it cannot disturb atoms/selection.
+        var st = _store();
+        if (st && typeof st.noteSavedTo === "function") st.noteSavedTo(path);
+        return r;
     }
 
     // ─── View sub-namespace: passthrough to the 3Dmol embed ──────── //
