@@ -350,6 +350,39 @@ class TestWorkspaceIsPersistenceOnly:
         assert out["base"] is None   # neither leaked into the shared base key
         assert out["aTag"] == "A"    # switching back to owner-a reads A, not B
 
+    def test_same_index_state_writes_land_in_issue_order(self):
+        """§4.7 write ordering: the on-disk state write is fire-and-forget, so two
+        writes to the SAME ``<workspace_id>.<state_index>`` file (a rapid
+        save(1) -> load(-1) -> save(1)) must not race -- a stale write landing
+        after a newer one would leave an abandoned state that a later Retract could
+        restore.  The dispatcher CHAINS write-state POSTs: the 2nd is not even SENT
+        until the 1st has fully completed, so last-issued is always last-written --
+        even when the 1st resolves SLOWER than the 2nd would have."""
+        out = _run_node(
+            "var log = [];\n"
+            "global.window.fetch = function (url, opts) {\n"
+            "  if (url === '/api/workingcopy/write-state') {\n"
+            "    var tag = JSON.parse(opts.body).data.tag;\n"
+            "    log.push('sent:' + tag);\n"
+            "    var delay = (tag === 'A') ? 40 : 0;\n"   # 1st write is the SLOW one
+            "    return new Promise(function (res) { setTimeout(function () {\n"
+            "      log.push('done:' + tag);\n"
+            "      res({ ok: true, status: 200 });\n"
+            "    }, delay); });\n"
+            "  }\n"
+            "  return Promise.resolve({ ok: true, status: 200,\n"
+            "    json: function () { return Promise.resolve({}); } });\n"
+            "};\n"
+            "var ws = window.molbuilder.workspace;\n"
+            "var id = { workspace_id: 'w', state_index: 1 };\n"   # SAME index for both
+            "ws.persist({s: 1}, { tag: 'A' }, id);\n"
+            "ws.persist({s: 1}, { tag: 'B' }, id);\n"
+            "setTimeout(function () { console.log(JSON.stringify({ log: log })); }, 200);")
+        # Strict serialisation: A fully completes before B is even sent, despite A
+        # being the slow write.  Without the chain this would be
+        # ['sent:A','sent:B','done:B','done:A'] -- both in flight, slow A landing LAST.
+        assert out["log"] == ["sent:A", "done:A", "sent:B", "done:B"]
+
 
 # --------------------------------------------------------------------- #
 #  3. getStructure() is "null iff empty" (molview-module.md §19.2)       #

@@ -150,24 +150,35 @@
         } catch (_) { /* event dispatch is best-effort surfacing */ }
     }
 
+    // Serialise state writes in ISSUE ORDER.  The writes are fire-and-forget, so two
+    // POSTs to the SAME <workspace_id>.<state_index> file (a rapid
+    // save(1) -> load(-1) -> save(1)) could otherwise land out of order on a threaded
+    // server -- the STALE bytes winning, so a later Retract restores an abandoned
+    // state.  Chaining each write on the previous one guarantees the last-issued write
+    // is the last-written.  Each link ALWAYS resolves (errors are handled, never
+    // re-thrown) so one failed write can't stall the chain.  (Same-class fix as the
+    // anchor's prune-before-write ordering.)
+    var _stateWriteChain = Promise.resolve();
     function _persistState(snapshotBlob, identity) {
         if (!root.fetch || !snapshotBlob) return;
         var idx = identity && identity.state_index;
-        _trace("http:write-state:issue", { idx: idx });
-        root.fetch("/api/workingcopy/write-state", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
-        }).then(function (res) {
-            _trace("http:write-state:done", { idx: idx, status: res && res.status });
-            if (!res || !res.ok) {
+        _stateWriteChain = _stateWriteChain.then(function () {
+            _trace("http:write-state:issue", { idx: idx });
+            return root.fetch("/api/workingcopy/write-state", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
+            }).then(function (res) {
+                _trace("http:write-state:done", { idx: idx, status: res && res.status });
+                if (!res || !res.ok) {
+                    _reportPersistError({ op: "write-state", state_index: idx,
+                                          status: res && res.status });
+                }
+            }).catch(function (err) {
+                _trace("http:write-state:error", { idx: idx });
                 _reportPersistError({ op: "write-state", state_index: idx,
-                                      status: res && res.status });
-            }
-        }).catch(function (err) {
-            _trace("http:write-state:error", { idx: idx });
-            _reportPersistError({ op: "write-state", state_index: idx,
-                                  error: (err && err.message) || String(err) });
+                                      error: (err && err.message) || String(err) });
+            });
         });
     }
 
