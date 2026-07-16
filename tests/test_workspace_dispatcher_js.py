@@ -178,7 +178,8 @@ _DATA_SURFACE = sorted([
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
     "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
     "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
-    "markDirty", "markSaved", "openMolecule", "readWorkingCopy", "exportFile",
+    "markDirty", "markSaved", "openMolecule", "openProjectFile",
+    "saveProjectFile", "readWorkingCopy", "exportFile",
     "save", "load",
     "generate", "applyOp",
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
@@ -393,17 +394,44 @@ class TestGetStructureNullIffEmpty:
         assert out["head"] == "3"
 
     def test_openMolecule_accepts_a_project_file_path_string(self):
-        """§19.3: openMolecule() takes either ``{text, filename}`` OR a
-        project-file path string — the string form routes through the
-        universal commit gate (``molbuilderTab.commitFile``)."""
+        """§19.3 + structure-load-save-contract.md: openMolecule() takes either
+        ``{text, filename}`` OR a project-file path string.  The string form is
+        the LOAD COORDINATOR (``openProjectFile``): it reads the codec-enriched
+        working copy (``readWorkingCopy``) and installs it in ONE store write.
+        It does NOT delegate back to the tab (the old ``molbuilderTab.commitFile``
+        inversion is gone)."""
+        stub = (
+            "global.window.fetch = function (url, opts) {\n"
+            "  return Promise.resolve({ ok: true, json: function () {\n"
+            "    return Promise.resolve({\n"
+            "      ok: true, source_format: 'xyz', n_atoms: 3,\n"
+            "      text: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n',\n"
+            "      data: { xyz: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n',\n"
+            "              sidecar: {} },\n"
+            "      atoms: [\n"
+            "        {index:0, element:'O', x:0,     y:0,     z:0, regions:[], is_frozen:false},\n"
+            "        {index:1, element:'H', x:0.957, y:0,     z:0, regions:[], is_frozen:false},\n"
+            "        {index:2, element:'H', x:-0.24, y:0.927, z:0, regions:[], is_frozen:false}],\n"
+            "      periodicity: { cell: null }, annotations: {},\n"
+            "    });\n"
+            "  }});\n"
+            "};\n"
+        )
         out = _run_node(
+            stub +
             "const d = window.molbuilder.molview.data;\n"
-            "let got = null;\n"
-            "window.molbuilder.molbuilderTab = { commitFile: (p) => { got = p; return 'committed'; } };\n"
-            "d.openMolecule('/projects/p/a.xyz').then((r) => {\n"
-            "  console.log(JSON.stringify({ got: got, r: r }));\n"
+            "let delegated = false;\n"
+            "window.molbuilder.molbuilderTab = { commitFile: () => { delegated = true; } };\n"
+            "d.openProjectFile('/projects/p/a.xyz').then((r) => {\n"
+            "  console.log(JSON.stringify({ ok: !!(r && r.ok),\n"
+            "    nAtoms: d.getElements().length,\n"
+            "    src: d.getSourceFile(),\n"
+            "    delegated: delegated }));\n"
             "});")
-        assert out == {"got": "/projects/p/a.xyz", "r": "committed"}
+        assert out["ok"] is True
+        assert out["nAtoms"] == 3
+        assert out["src"] == "/projects/p/a.xyz"
+        assert out["delegated"] is False, "coordinator must NOT delegate to the tab"
 
     def test_openMolecule_rejects_a_bad_input(self):
         out = _run_node(

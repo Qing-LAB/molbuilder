@@ -1189,6 +1189,11 @@ null. This is exactly what `/molview-demo` exercises: it embeds the module the w
 prescribes — one `openMolecule` — and the viewer, selection panel, Cell page, and unit-cell box are
 all live from that one call. If they are not, the contract is broken, not the demo.
 
+> **The project-file load/save coordinator** (`openProjectFile` / `saveProjectFile`)
+> and its layer split are specified in
+> [`structure-load-save-contract.md`](structure-load-save-contract.md). This section
+> is the atomic-install mechanism those doors are built on.
+
 **SETTLE-BEFORE-READY — the load's "done" signal fires only when the model is fully
 settled.** "No second install door" is not only about coherence between atoms and
 structure; it is a **timing** contract. The single write installs the FINAL model —

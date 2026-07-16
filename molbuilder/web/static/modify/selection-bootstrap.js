@@ -247,125 +247,33 @@
             store.subscribe(_refreshLoadUI);
         }
 
-        // The single "commit a structure file into the workspace"
-        // path.  Read the file ONCE, gate through structurePage so
-        // a dirty canvas fires the warning modal, then drive the
-        // viewer + selection-store atomically — without going
-        // through ``store.setSourceFile`` (which would re-read the
-        // file + re-invoke the viewer loader, racing the
-        // already-rendered structure and wasting a roundtrip).
-        // Used by the Load button AND the page-mount cross-tab
-        // handoff so canvas-state stays populated either way.
-        //
-        // Dependency resolution uses ``runtime.whenReady`` instead
-        // of a synchronous read so a future template change that
-        // reorders the structure modules below this script doesn't
-        // silently drop the warning-modal gate.  Pre-fix the
-        // ordering invariant was "lib/structure/* loads before
-        // ``DOMContentLoaded`` fires + selection-bootstrap runs"
-        // — true today (the classic-script load order in
-        // ``modify.html`` enforces it) but a single re-ordering
-        // would silently degrade to the no-canvas-state fallback.
-        // Falls back to a direct ``setSourceFile`` only when the
-        // orchestrator is genuinely absent (non-Molbuilder embeds);
-        // the candidate-only contract is unaffected.
-        async function _resolveStructurePage() {
-            // Fast path: already on window.
-            const sp0 = window.molbuilder
-                     && window.molbuilder.structurePage;
-            if (sp0) return sp0;
-            // Slow path: wait via the runtime registry.  If the
-            // runtime isn't installed at all (tests / non-Molbuilder
-            // embeds), return null and the caller drops to the
-            // legacy setSourceFile path.
-            const rt = window.molbuilder
-                    && window.molbuilder.runtime;
-            if (!rt || typeof rt.whenReady !== "function") return null;
-            try {
-                return await rt.whenReady("structure.page");
-            } catch (_) {
-                return null;
-            }
-        }
+        // "Commit a structure file into the workspace" -- now a THIN wrapper over the
+        // ONE load coordinator, ``molview.data.openProjectFile`` (structure-load-save-
+        // contract.md).  All the composition -- read the codec-enriched working copy
+        // (text + sidecar atoms/periodicity/annotations), install through the single
+        // open door in ONE store write, fall back when the sidecar is missing -- lives
+        // in molview.data now, so this tab neither hand-wires the seam nor reaches
+        // around a door into the store.  The tab's only jobs: inject the dirty-canvas
+        // WARNING (a UI concern the DOM-free data layer can't own) and surface an
+        // error banner.  Used by the Load button + the sidebar dblclick (onCommit).
         async function _commitFile(path) {
             if (!path) return;
-            const sp = await _resolveStructurePage();
-            const projectsApi = window.molbuilder
-                    && window.molbuilder.projects;
-            if (!sp || !projectsApi
-                || typeof projectsApi.readFile !== "function") {
-                store.setSourceFile(path);
+            const data = window.molbuilder.molview
+                      && window.molbuilder.molview.data;
+            if (!data || typeof data.openProjectFile !== "function") {
+                // Non-MolView embed (no data model): last-resort direct source set.
+                if (typeof store.setSourceFile === "function") store.setSourceFile(path);
                 return;
             }
-            const r = await projectsApi.readFile(path);
-            if (!r || !r.ok) {
+            const warn = window.molbuilder && window.molbuilder.warningModal;
+            const confirmDiscard =
+                (warn && typeof warn.confirmDiscardUnsaved === "function")
+                    ? () => warn.confirmDiscardUnsaved() : null;
+            const res = await data.openProjectFile(path, { confirmDiscard });
+            if (res && res.ok === false && !res.cancelled && res.error) {
                 const s = document.getElementById("status");
-                if (s) {
-                    s.textContent = (r && r.error)
-                        ? "Could not read file: " + r.error
-                        : "Could not read file.";
-                    s.className = "status error";
-                }
-                return;
+                if (s) { s.textContent = res.error; s.className = "status error"; }
             }
-            const format = path.toLowerCase().endsWith(".pdb")
-                ? "pdb" : "xyz";
-            // A6 (molview-migration-plan): load the workspace DATA through the
-            // working-copy framework -- the per-atom rows (element + the sidecar's
-            // regions/frozen, applied server-side by codec.load) + the full
-            // periodicity (cell/axis_kind/vacuum).  Read the working-copy data through
-            // the ONE data door (molview.data.readWorkingCopy), NOT a raw POST to
-            // /api/workingcopy/open -- consumers don't reach around the unified
-            // surface.  Returns null on failure -> a plain byte load.
-            let opened = null;
-            try {
-                const _d = window.molbuilder.molview && window.molbuilder.molview.data;
-                if (_d && typeof _d.readWorkingCopy === "function") {
-                    opened = await _d.readWorkingCopy(path);
-                }
-            } catch (_) { opened = null; }
-            const periodicity = (opened && opened.periodicity) || null;
-            // F1: carry the annotation channels opaquely so a later Save re-emits
-            // them (Modify doesn't edit annotations, but must not clobber them).
-            const annotations = (opened && opened.annotations) || null;
-            const sidecarAtoms = (opened && Array.isArray(opened.atoms))
-                ? opened.atoms : null;
-            // F4: suspend persistence across the text->atoms window so no draft is
-            // written pairing the new geometry with the PREVIOUS file's labels; resume
-            // at every exit (one resume per path).
-            const _dataD = window.molbuilder.molview
-                        && window.molbuilder.molview.data;
-            const _resumeLoad = () => {
-                if (_dataD && typeof _dataD.resumePersist === "function") _dataD.resumePersist();
-            };
-            if (_dataD && typeof _dataD.suspendPersist === "function") _dataD.suspendPersist();
-            // THE LOAD CONTRACT (molview-module.md §19.3 + save-flow.md): a file load
-            // is ONE call through the single open door.  Everything the molecule needs
-            // -- geometry text, periodicity, annotations, the sidecar-enriched atoms
-            // AND the source path -- rides IN so the WHOLE model (canvas + selection
-            // store + render) is installed in ONE synchronous write and is fully
-            // SETTLED before loadIntoCanvas resolves.  There is deliberately NO second
-            // store write after this: the old trailing `store.adoptSession(...)` reset
-            // the selection to [] a few hundred ms later (after `await
-            // _anchorTimeline()`'s HTTP), which silently clobbered any atom the user
-            // clicked in that gap -- the "selection never sticks right after Load"
-            // race (fixed 2026-07).
-            const gate = await sp.loadIntoCanvas(
-                { source_format: format, text: r.text, periodicity: periodicity,
-                  annotations: annotations, atoms: sidecarAtoms },
-                { kind: "file", file: path }
-            );
-            if (!gate.ok) { _resumeLoad(); return; }  // cancelled — leave viewer alone
-            // Fallback ONLY when readWorkingCopy failed (no sidecar atoms rode in):
-            // the plain build/load atoms are installed, but the .molstruct.json's
-            // regions/frozen overlay is missing.  refreshAtoms refetches the
-            // sidecar-applied rows from /api/selection/atoms -- and, unlike a fresh
-            // adoptSession, it does NOT reset the selection, so it cannot clobber a
-            // just-made pick even though it lands after the "ready" signal.
-            if (!sidecarAtoms && typeof store.refreshAtoms === "function") {
-                await store.refreshAtoms();
-            }
-            _resumeLoad();   // F4: load done -> resume + write the consistent state
         }
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => _commitFile(_candidate));

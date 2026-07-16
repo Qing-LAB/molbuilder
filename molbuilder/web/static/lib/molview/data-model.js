@@ -906,24 +906,125 @@
     // so consumers can stay on the unified ``ws.*`` API while the
     // underlying implementations migrate at their own pace.
 
-    /**
-     * Load a project-saved file into the canvas (.xyz / .pdb).
-     * Goes through the universal commit gate — warning modal fires
-     * if the canvas is dirty.  Delegates to ``molbuilderTab.commitFile``
-     * exposed in cd9655e.
-     */
-    function _loadFile(path) {
+    // ─── The project-file doors (structure-load-save-contract.md) ─────────────── //
+    //
+    // openProjectFile / saveProjectFile are the ONE concealed coordinator for
+    // "load / save a SAVED project file as a structure".  They compose the two
+    // layers a raw file open/save touches -- the format-blind FILE bytes and the
+    // structure MODEL -- so a tab never hand-wires readWorkingCopy + openMolecule +
+    // markSaved, and never reaches around a door into the store.
+    //
+    //   LAYER SPLIT (the contract):
+    //     * projects  = file bytes + paths (format-blind, shared by every tab).
+    //     * molview.data = the structure model + (de)serialisation (THESE doors).
+    //   The structure knowledge (the .xyz + .molstruct.json pairing, regions/frozen,
+    //   cell) lives HERE, never in the file layer.  molview.data stays DOM-free: the
+    //   dirty-canvas WARNING is an injected predicate (opts.confirmDiscard), so no
+    //   modal is imported here.
+    //
+    // openProjectFile: read the codec-enriched working copy (text + sidecar atoms /
+    // periodicity / annotations, ALL from ONE /api/workingcopy/open) and install it
+    // through the single open door (openMolecule) in ONE store write (the
+    // SETTLE-BEFORE-READY rule, §19.3.1).  Returns {ok, payload} | {ok:false,
+    // cancelled|error}.  No second store write, so a click on the just-loaded
+    // structure is never clobbered.
+    function openProjectFile(path, opts) {
+        opts = opts || {};
         if (typeof path !== "string" || !path) {
             return Promise.reject(new TypeError(
-                "molview.data.openMolecule(path): non-empty string required"));
+                "molview.data.openProjectFile(path): non-empty string required"));
         }
-        var tab = _molbuilderTab();
-        if (!tab || typeof tab.commitFile !== "function") {
-            return Promise.reject(_missing(
-                "molbuilderTab.commitFile (Phase 4 needs the Molbuilder "
-                + "tab's selection-bootstrap mounted)"));
+        // Dirty-canvas gate (UI policy, injected): a fresh open discards unsaved
+        // edits, so ask first when the caller supplied a confirm.  DOM-free here.
+        var gate = Promise.resolve(true);
+        if (typeof opts.confirmDiscard === "function" && isDirty()) {
+            gate = Promise.resolve(opts.confirmDiscard());
         }
-        return Promise.resolve(tab.commitFile(path));
+        return gate.then(function (proceed) {
+            if (!proceed) return { ok: false, cancelled: true };
+            return readWorkingCopy(path).then(function (opened) {
+                var text = opened && opened.data && opened.data.xyz;
+                if (!text) {
+                    // readWorkingCopy failed (bad path / codec error) or empty file.
+                    return { ok: false, error: "Could not open " + path };
+                }
+                var sidecarAtoms = (opened && Array.isArray(opened.atoms))
+                    ? opened.atoms : null;
+                return openMolecule({
+                    text:        text,
+                    filename:    path,
+                    source:      { kind: "file", file: path, generator_input: null },
+                    periodicity: (opened && opened.periodicity) || null,
+                    annotations: (opened && opened.annotations) || null,
+                    atoms:       sidecarAtoms,
+                }).then(function (r) {
+                    // Fallback: no sidecar atoms rode in -> refetch the sidecar-applied
+                    // rows.  refreshAtoms does NOT reset the selection (cannot clobber).
+                    if (!sidecarAtoms) {
+                        var st = _store();
+                        if (st && typeof st.refreshAtoms === "function") {
+                            return Promise.resolve(st.refreshAtoms())
+                                .then(function () { return { ok: true, payload: r }; });
+                        }
+                    }
+                    return { ok: true, payload: r };
+                });
+            });
+        });
+    }
+
+    // saveProjectFile: the inverse door.  Serialise the SETTLED model (exportFile ->
+    // {xyz, sidecar}) and write BOTH files atomically via /api/workingcopy/save, then
+    // mark saved (canvas dirty=false + store source re-anchor, one door).  A save
+    // READS the model; it never writes it.  Overwrite is UI policy: on a 409 (file
+    // exists) this returns {needsOverwrite:true} so the caller confirms + retries with
+    // {overwrite:true} -- the dialog stays in the UI layer, DOM-free here.
+    function saveProjectFile(path, opts) {
+        opts = opts || {};
+        if (typeof path !== "string" || !path) {
+            return Promise.reject(new TypeError(
+                "molview.data.saveProjectFile(path): non-empty string required"));
+        }
+        var blob = exportFile();   // model -> {xyz, sidecar}; null = empty OR desync
+        if (!blob) {
+            return Promise.resolve({ ok: false, error: isEmpty()
+                ? "save: workspace has no data"
+                : "save: workspace state is inconsistent (atom-count desync); "
+                  + "reload before saving." });
+        }
+        if (!root.fetch) {
+            return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
+        }
+        // b1: identify the workspace by the SAME key its draft was written under so
+        // the server drops the RIGHT draft; the file goes to the user-named target.
+        var ident = (typeof draftIdentity === "function") ? draftIdentity() : {};
+        return root.fetch("/api/workingcopy/save", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(Object.assign({}, ident, {
+                target: path, data: blob, overwrite: !!opts.overwrite,
+            })),
+        }).then(function (res) {
+            return res.json().then(
+                function (j) { return { status: res.status, body: j }; },
+                function ()  { return { status: res.status, body: null }; });
+        }).then(function (r) {
+            if (r.body && r.body.ok) {
+                markSaved(path);   // canvas dirty=false + store source re-anchor
+                return { ok: true, path: path };
+            }
+            if (r.status === 409) return { ok: false, needsOverwrite: true };
+            return { ok: false, error: (r.body && r.body.error) || "Save failed." };
+        }, function (err) {
+            return { ok: false, error: "Save failed: "
+                + (err && err.message ? err.message : String(err)) };
+        });
+    }
+
+    // openMolecule(pathString) delegates here -- the programmatic path-string open is
+    // the coordinator WITHOUT a UI gate (a modal belongs to an interactive Load).
+    function _loadFile(path) {
+        return openProjectFile(path);
     }
 
     /**
@@ -2069,6 +2170,8 @@
         markSaved:             markSaved,
         // ---- THE molecule + document doors (molview-module.md §19.3-19.4) ---- //
         openMolecule:          openMolecule,  // bring a NEW molecule in: {text,filename}|path -> whole model, atomic + timeline reset
+        openProjectFile:       openProjectFile, // load a SAVED project file (bytes+sidecar) -> model, ONE write (the load coordinator)
+        saveProjectFile:       saveProjectFile, // serialize + write BOTH files + markSaved (the save coordinator; openProjectFile's inverse)
         readWorkingCopy:       readWorkingCopy, // read a project file's codec-enriched data (periodicity/annotations/atoms)
         exportFile:            exportFile,    // serialize whole model -> {xyz,sidecar} project-file bytes (openMolecule's inverse)
         // The state timeline (§19.5): ONE save + ONE load, index-delta parameterized.

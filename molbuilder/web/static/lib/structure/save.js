@@ -116,90 +116,39 @@
     // contract removes.
 
     /**
-     * Post-save housekeeping.  The DATA is already on disk -- both files, written
-     * atomically by /api/workingcopy/save.  All this does is tell the model it was
-     * saved to ``path`` via the ONE unified door: ``markSavedTo`` -> molview.data
-     * ``markSaved`` clears the canvas dirty bit AND re-anchors the selection store's
-     * sourceFile (so later label edits target the NEW file).  save.js does NOT reach
-     * into the selection store itself -- it used to call ``selection.adoptSession(
-     * {sourceFile})`` here, a low-level poke; that re-anchor now lives inside
-     * markSaved (molview owns its store).
-     */
-    function _postSaveSuccess(path) {
-        _structurePage.markSavedTo(path);
-        return { ok: true, path: path };
-    }
-
-    /**
-     * THE save (workspace-contract.md §4.0.1): ONE call to /api/workingcopy/save
-     * writes the WHOLE dataset -- ``.xyz`` + ``.molstruct.json`` -- atomically from
-     * the store's scratch blob, via the working-copy persistence framework.  No
-     * more two-call writeFile + save-sidecar split.
+     * THE save -- now a THIN wrapper over the ONE save coordinator,
+     * ``molview.data.saveProjectFile`` (structure-load-save-contract.md).  The
+     * coordinator serialises the SETTLED model (exportFile), writes BOTH files --
+     * ``.xyz`` + ``.molstruct.json`` -- atomically via /api/workingcopy/save, and
+     * marks saved (canvas dirty=false + store source re-anchor, one door).  save.js
+     * no longer POSTs the endpoint or pokes the store itself.
      *
-     * Overwrite gate: post overwrite=false; on 409 (exists), confirm + retry
-     * overwrite=true.  A failure is SURFACED (returned), NEVER swallowed -- a lost
-     * ``.json`` can no longer be silent.
+     * Overwrite is UI policy and stays HERE: the coordinator returns
+     * ``needsOverwrite`` on a 409 (file exists); we confirm via the dialog and retry
+     * with ``overwrite:true``.  A failure is SURFACED (returned), never swallowed.
      */
     function _saveDataset(path) {
-        if (!root.fetch) {
-            return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
+        if (!_workspace || typeof _workspace.saveProjectFile !== "function") {
+            return Promise.resolve({ ok: false, error: "save: coordinator unavailable" });
         }
-        // D3: the model serialises ITSELF via molview.data.exportFile() ({xyz,sidecar})
-        // -- save.js no longer hand-rolls the regions/frozen scan.
-        var blob = (_workspace && typeof _workspace.exportFile === "function")
-            ? _workspace.exportFile() : null;
-        if (!blob) {
-            // exportFile() returns null for BOTH an empty model and a caught
-            // atom-count desync -- distinguish them so the user isn't told the
-            // opposite of what happened (review c-msg).
-            var hasData = _workspace
-                && typeof _workspace.getStructure === "function"
-                && _workspace.getStructure();
-            return Promise.resolve({ ok: false, error: hasData
-                ? "save: workspace state is inconsistent (atom-count desync); reload before saving."
-                : "save: workspace has no data" });
-        }
-        // b1: identify the workspace by the SAME key its draft was written under
-        // ({source} or {workspace_id}) so the server drops the RIGHT draft; the file
-        // is written to ``target`` (the user-named save-as path).
-        var ident = (_workspace && typeof _workspace.draftIdentity === "function")
-            ? _workspace.draftIdentity() : {};
         var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
-        function _post(overwrite) {
-            return root.fetch("/api/workingcopy/save", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify(Object.assign({}, ident, {
-                    target: path, data: blob, overwrite: !!overwrite,
-                })),
-            }).then(function (res) {
-                return res.json().then(function (j) {
-                    return { status: res.status, body: j };
-                }, function () {
-                    return { status: res.status, body: null };
-                });
-            });
-        }
-        return _post(false).then(function (r) {
-            if (r.body && r.body.ok) return _postSaveSuccess(path);
-            if (r.status === 409 && dialog
+        return _workspace.saveProjectFile(path, { overwrite: false }).then(function (r) {
+            if (r.ok) return { ok: true, path: r.path };
+            if (r.needsOverwrite && dialog
                     && typeof dialog.confirmOverwrite === "function") {
                 return dialog.confirmOverwrite(_basename(path)).then(function (proceed) {
                     if (!proceed) {
                         return { ok: false, cancelled: true, error: "Save cancelled." };
                     }
-                    return _post(true).then(function (r2) {
-                        if (r2.body && r2.body.ok) return _postSaveSuccess(path);
-                        return { ok: false,
-                                 error: (r2.body && r2.body.error) || "Save failed." };
-                    });
+                    return _workspace.saveProjectFile(path, { overwrite: true })
+                        .then(function (r2) {
+                            return r2.ok
+                                ? { ok: true, path: r2.path }
+                                : { ok: false, error: r2.error || "Save failed." };
+                        });
                 });
             }
-            return { ok: false, error: (r.body && r.body.error) || "Save failed." };
-        }, function (err) {
-            return { ok: false,
-                     error: "Save failed: "
-                          + (err && err.message ? err.message : String(err)) };
+            return { ok: false, error: r.error || "Save failed." };
         });
     }
 
