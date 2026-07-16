@@ -46,8 +46,17 @@ function _open(dialog) {
   const resolve = { fn: null };
   const promise = new Promise((res) => { resolve.fn = res; });
   _active = { dialog, resolve: resolve.fn };
-  dialog.addEventListener("cancel", () => _settle(null));
-  dialog.addEventListener("close",  () => _settle(null));
+  // Identity-guard the close/cancel listeners: ``dialog.close()`` fires ``close`` on a
+  // QUEUED task, so when one dialog settles and the caller SYNCHRONOUSLY opens the next
+  // (e.g. Copy: chooseDestinationDir -> chooseName), the FIRST dialog's late ``close``
+  // must not resolve the SECOND (now-active) one to null and tear it down.  Only settle
+  // when the event's own dialog is still the active one.
+  dialog.addEventListener("cancel", () => {
+    if (_active && _active.dialog === dialog) _settle(null);
+  });
+  dialog.addEventListener("close", () => {
+    if (_active && _active.dialog === dialog) _settle(null);
+  });
   try {
     if (typeof dialog.showModal === "function") dialog.showModal();
     else if (typeof dialog.show === "function") dialog.show();
