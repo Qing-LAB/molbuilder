@@ -194,6 +194,21 @@
     // ─── Reads: synthesise the unified state from legacy stores ─── //
 
     /** Return the structure slice (or null when nothing's loaded). */
+    // Serialise the CURRENT atoms (element + live x/y/z) to plain XYZ.  Used only when
+    // a frame is scrubbed (§14.5.4): the canvas text is frame 0, but setFrame moved the
+    // store atoms to frame i via setCoords, so ``getStructure().text`` / a save must
+    // reflect the VISIBLE frame, not frame 0 (was a text<->atoms divergence).
+    function _atomsToXyz(title) {
+        var els = getElements();
+        var co  = getCoordinates();
+        var lines = [String(els.length), title || ""];
+        for (var i = 0; i < els.length; i++) {
+            var p = co[i] || [0, 0, 0];
+            lines.push(els[i] + " " + Number(p[0]).toFixed(6) + " "
+                     + Number(p[1]).toFixed(6) + " " + Number(p[2]).toFixed(6));
+        }
+        return lines.join("\n") + "\n";
+    }
     function getStructure() {
         var cs = _canvas();
         var st = _store();
@@ -202,6 +217,13 @@
         if (!canvas) return null;
         var s = st ? st.getState() : null;
         var per = canvas.periodicity || null;
+        // Frame coherence (§14.5.4): a scrubbed frame (currentFrame > 0) lives in the
+        // store atoms, not canvas.text (frame 0).  Serialise the visible frame so text,
+        // atoms, and a save all agree; frame 0 / no-frames keeps the canvas text (fast
+        // path, unchanged).  Only trajectories scrub, and those are xyz -> format xyz.
+        var _scrubbed = currentFrame() > 0;
+        var _text = _scrubbed ? _atomsToXyz((s && s.title) || "") : canvas.text;
+        var _fmt  = _scrubbed ? "xyz" : canvas.source_format;
         // Defensive per-atom copy (workspace-contract.md §1.2.1): the store snapshot shares
         // the atom OBJECTS, so without cloning them a consumer mutating
         // getStructure().atoms[i].x would leak straight into the store.  Reuse the selection
@@ -209,8 +231,8 @@
         var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
                    || function (a) { return a; };
         return {
-            text:          canvas.text,
-            source_format: canvas.source_format,
+            text:          _text,
+            source_format: _fmt,
             title:         (s && s.title) || "",
             n_atoms:       s ? s.atoms.length : 0,
             atoms:         s ? s.atoms.map(_clone) : [],

@@ -909,6 +909,31 @@ class TestFrames:
         assert out["f2"] == [0, 3]          # setFrame(2) swapped the coords
         assert out["sel"] == [1]            # selection survives the frame swap
 
+    def test_setFrame_makes_getStructure_text_and_export_reflect_visible_frame(self):
+        """§14.5.4 coherence: after scrubbing to frame i, getStructure().text +
+        exportFile() serialize the VISIBLE frame (from the store atoms), not frame 0 --
+        text and atoms no longer diverge (was: text/export stuck at frame 0)."""
+        out = _run_node(
+            _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.openMolecule({ text:'x', filename:'/p/w.xyz' }).then(() => {\n"
+            "  d.reloadFrames([\n"
+            "    [[0,0,0],[0.957,0,0],[-0.24,0.927,0]],\n"
+            "    [[0,0,0],[0.957,0,0],[9.9,0,0]]]);\n"      # frame 1: atom 2 x = 9.9
+            "  d.setFrame(1);\n"
+            "  const s = d.getStructure();\n"
+            "  const blob = d.exportFile();\n"
+            "  console.log(JSON.stringify({\n"
+            "    fmt: s.source_format,\n"
+            "    current: d.currentFrame(),\n"
+            "    textHas99:   s.text.indexOf('9.900000') !== -1,\n"
+            "    exportHas99: blob && blob.xyz.indexOf('9.900000') !== -1 }));\n"
+            "});")
+        assert out["current"] == 1
+        assert out["fmt"] == "xyz"
+        assert out["textHas99"] is True, "getStructure().text must serialize the visible frame"
+        assert out["exportHas99"] is True, "exportFile() must save the visible frame"
+
     def test_wrong_atom_count_frame_is_a_hard_error(self):
         """§14.5 same-atoms invariant: a frame whose atom count differs
         from the loaded structure is rejected, never coerced."""
