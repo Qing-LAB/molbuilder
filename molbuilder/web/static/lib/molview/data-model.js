@@ -953,6 +953,11 @@
                 return openMolecule({
                     text:        text,
                     filename:    path,
+                    // readWorkingCopy returns the codec's CANONICAL XYZ (data.xyz)
+                    // even for a .pdb source, so declare xyz explicitly -- otherwise
+                    // /api/build/load reads "pdb" from the .pdb filename and parses
+                    // the XYZ text as PDB -> 400.
+                    format:      "xyz",
                     source:      { kind: "file", file: path, generator_input: null },
                     periodicity: (opened && opened.periodicity) || null,
                     annotations: (opened && opened.annotations) || null,
@@ -1261,6 +1266,7 @@
                 periodicity: input.periodicity || null,
                 annotations: input.annotations || null,
                 atoms:       Array.isArray(input.atoms) ? input.atoms : null,
+                format:      input.format || null,
             });
         }
         if (typeof input === "string" && input) {
@@ -1287,10 +1293,18 @@
     async function _loadText(text, filename, opts) {
         opts = opts || {};
         _trace("loadText:start", { filename: filename, len: (text || "").length });
+        // ``format`` is EXPLICIT when the caller knows the text's format regardless of
+        // the filename -- openProjectFile hands us the codec's canonical XYZ
+        // (``data.xyz``) while the source file may be ``.pdb``; without this,
+        // /api/build/load auto-detects "pdb" from the ``.pdb`` filename and parses the
+        // XYZ text as PDB -> 400.  Omitted -> the server auto-detects (filename ext,
+        // then content sniff), the raw-text/generator behaviour.
+        const _body = { text: text, filename: filename };
+        if (opts.format) _body.format = opts.format;
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ text: text, filename: filename }),
+            body:    JSON.stringify(_body),
         });
         const r = await resp.json();
         _trace("loadText:build-load:done", { ok: r.ok, n_atoms: r.n_atoms });
