@@ -275,6 +275,10 @@ function _renderSelectionStatus(filename, fullPath) {
 
 let _kebabActive = null;
 let _kebabGlobalsWired = false;
+// Last-call-wins navigation: the in-flight listing's AbortController, aborted when a
+// new openDir starts so a slow earlier response can't paint over a newer navigation
+// (projects-sidebar.md §5.5/§11.3 — matters on a remote filesystem).
+let _navController = null;
 
 function _dismissKebab() {
   if (!_kebabActive) return;
@@ -763,7 +767,18 @@ export async function openDir(absPath) {
   // selection.
   const prevFile = sessionStorage.getItem(SS_FILE) || "";
 
-  const resp = await apiList(absPath);
+  // Last-call-wins: abort any in-flight listing, then own the current one.  A slow
+  // response from an earlier dir click must not paint the DOM after a newer click.
+  if (_navController) { try { _navController.abort(); } catch (_) { /* gone */ } }
+  const controller = new AbortController();
+  _navController = controller;
+  const resp = await apiList(absPath, { signal: controller.signal });
+  // A newer openDir superseded us while we awaited (or this listing was aborted) ->
+  // that call owns the UI now; do not paint.
+  if (_navController !== controller || resp.aborted) {
+    return { ok: false, aborted: true };
+  }
+  _navController = null;
   if (!resp.ok) {
     _renderBreadcrumb(absPath);
     elList.innerHTML = "";
