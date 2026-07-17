@@ -562,6 +562,18 @@
         // read-only trajectory view (the SELECTION + structure are read off the
         // molview.data singleton — MolView conceals its internals).
         host.__molview_results_handle = _mv;
+        // Keep the force-vector diagnostic readout in sync with the DISPLAYED
+        // frame.  Playback / slider / step swap frames natively (setFrameArrows
+        // bakes the arrows in, so the arrows themselves need no per-frame work),
+        // but the "Showing N arrows (max |F| = …)" line is computed from
+        // state.data.forces[currentFrame] and would otherwise stay frozen on the
+        // frame it was last computed for — reading "No force data on this frame"
+        // while arrows are visibly drawn.  onFrameChange is a text-only refresh
+        // (no re-render), so subscribing here is cheap.
+        if (typeof mv.data.onFrameChange === "function") {
+            const _unsub = mv.data.onFrameChange(refreshForcesStatus);
+            if (typeof _unsub === "function") _cleanups.push(_unsub);
+        }
         // NOTE: force arrows are NOT re-derived per frame.  They are built for every
         // frame ONCE (buildArrowsPerFrame) on an overlay-option change and baked into
         // MolView's native animation (setFrameArrows), so playback draws arrows[frame]

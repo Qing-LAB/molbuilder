@@ -180,7 +180,13 @@
             cell:       _normaliseCell(opts.cell),
             labels:     _normaliseLabels(opts.labels),
             arrows:     Array.isArray(opts.arrows) ? opts.arrows.slice() : [],
-            overlayOn:  opts.overlayOn === true,   // force-arrow overlay visibility (View menu toggle)
+            // Force-arrow overlay visibility (View menu toggle).  Defaults OFF at
+            // construction: a fresh viewer / static structure with no forces must
+            // not draw an empty overlay layer.  A consumer that HANDS arrows drives
+            // this on/off from the payload itself (see _arrowsPerFrameHasAny in
+            // _setAnimationImpl) -- so the trajectory's "Show force vectors" checkbox
+            // maps straight through without a separate overlay-toggle round-trip.
+            overlayOn:  opts.overlayOn === true,
             pick:       _normalisePick(opts.pick),
             lattice:    _normaliseLattice(opts.lattice),
             cellBox:    _normaliseCellBox(opts.cellBox),
@@ -3506,6 +3512,19 @@
     /*  Animation control implementations (shared by handle methods)*/
     /* ------------------------------------------------------------ */
 
+    // The force-arrow overlay is gated by ``state.current.overlayOn`` (a fresh
+    // viewer defaults it OFF — a static structure with no forces must not draw an
+    // empty overlay layer; see _normaliseOpts).  A CONSUMER that HANDS the viewer a
+    // per-frame arrow set (setAnimation arrowsPerFrame) is expressing intent to draw
+    // those arrows, so we drive overlayOn off the payload itself: any non-empty
+    // frame -> overlay ON; an all-empty set (the consumer's "forces off") -> OFF.
+    // This maps a trajectory consumer's show-forces checkbox straight through to
+    // overlay visibility without needing a separate overlay-toggle round-trip.
+    function _arrowsPerFrameHasAny(apf) {
+        return Array.isArray(apf)
+            && apf.some(function (fr) { return fr && fr.length; });
+    }
+
     function _setAnimationImpl(state, next) {
         // Capture autoplay intent BEFORE _stopAnimationLoop, which now
         // syncs ``state.current.animation.paused = true`` (Phase 5g B-1
@@ -3533,6 +3552,10 @@
             // unconditionally — as we did pre-Phase-5h — would clobber
             // the preserved playhead just before autoplay resumed.
             state.current.animation = next;
+            // Handed arrows drive overlay visibility (see _arrowsPerFrameHasAny).
+            if (next.arrowsPerFrame !== undefined) {
+                state.current.overlayOn = _arrowsPerFrameHasAny(next.arrowsPerFrame);
+            }
             // Host-owned frame bar (MolView) -> suppress the embed's own strip so
             // there's exactly ONE playback bar.  Native frame swap + per-frame
             // arrows still work; only the strip DOM is skipped.
@@ -5664,6 +5687,22 @@
                                     .call(animation, f)) {
                                 cur[f] = animation[f];
                             }
+                        }
+                        // arrowsPerFrame changed -> update overlay visibility from the
+                        // handed set and redraw the CURRENT frame's arrows NOW, so a
+                        // paused viewer shows them immediately instead of only after the
+                        // next frame change (the "force vectors not showing" bug when
+                        // toggling forces on a paused trajectory).
+                        if (Object.prototype.hasOwnProperty
+                                .call(animation, "arrowsPerFrame")) {
+                            state.current.overlayOn =
+                                _arrowsPerFrameHasAny(cur.arrowsPerFrame);
+                            const _idx = cur.currentFrame || 0;
+                            const _fa = (cur.arrowsPerFrame
+                                         && cur.arrowsPerFrame[_idx]) || [];
+                            state.current.arrows = _fa.slice();
+                            _redrawArrows(state);
+                            state.viewer.render();
                         }
                         if (typeof animation.paused === "boolean") {
                             if (animation.paused) _pauseImpl(state);
