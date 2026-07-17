@@ -223,7 +223,13 @@
                 isPlaying: function () { return _playTimer != null; },
                 getLoop:   function () { return _loop; },
                 setLoop:   function (on) { _loop = !!on; },
-            }, store);
+            // Subscribe the bar to the DATA model's dedicated frame-change channel --
+            // NOT the selection store.  A native frame swap fires this channel only, so
+            // the slider/counter track the shown frame WITHOUT re-rendering the
+            // selection panel (which would steal focus from a filter input mid-play).
+            }, { subscribe: (typeof data.onFrameChange === "function")
+                    ? data.onFrameChange
+                    : (store && store.subscribe && store.subscribe.bind(store)) });
             cleanups.push(function () { try { fc.dispose && fc.dispose(); } catch (_) {} });
         }
 
@@ -341,6 +347,13 @@
             // and re-applies it across per-frame redraws (it never generates arrows/labels).
             // `arrows` = [{start,end,color,radius}, …]; `labels` = a setLabels spec (or false).
             setArrows: function (arrows) { if (_overlays) _overlays.setArrows(arrows); },
+            // Per-FRAME force arrows for a trajectory (§14.5.1): the consumer builds the whole
+            // arrowsPerFrame array ONCE (on an overlay-option change) and hands it here; MolView
+            // bakes it into the native animation so playback draws arrows[frame] with no
+            // per-frame synthesis.  `arrowsPerFrame` = [[{start,end,color,radius}…] per frame].
+            setFrameArrows: function (arrowsPerFrame) {
+                if (typeof data.setFrameArrows === "function") data.setFrameArrows(arrowsPerFrame);
+            },
             setLabels: function (labels) { if (_overlays) _overlays.setLabels(labels); },
             getStructure: function () {
                 return (typeof data.getStructure === "function")

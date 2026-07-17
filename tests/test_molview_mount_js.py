@@ -37,7 +37,8 @@ MODULES = [
 # frame axis (§14.5), and NOTHING else -- no store, no viewer, no DOM refs.
 HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
                "getSelection", "getStructure", "isPlaying", "onChange", "openMolecule",
-               "pause", "play", "setArrows", "setFrame", "setLabels", "undo"]
+               "pause", "play", "setArrows", "setFrame", "setFrameArrows", "setLabels",
+               "undo"]
 
 
 def _run_node(snippet: str) -> object:

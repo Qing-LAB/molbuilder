@@ -1692,21 +1692,84 @@
         const coords = fs.currentCoords();
         if (coords) st.setCoords(coords);   // coords-only swap + notify -> render reacts
     }
+    // Frame-change channel -- DELIBERATELY SEPARATE from the selection store's
+    // notify.  A native frame swap must update ONLY the frame-controls bar
+    // (slider/counter); firing the whole store would re-render the selection panel
+    // every frame and steal focus from a filter input the user is typing in during
+    // playback.  So the bar subscribes HERE (mount.js), not to the store.
+    var _frameListeners = [];
+    function onFrameChange(fn) {
+        if (typeof fn !== "function") return function () {};
+        _frameListeners.push(fn);
+        return function () {
+            var i = _frameListeners.indexOf(fn);
+            if (i >= 0) _frameListeners.splice(i, 1);
+        };
+    }
+    function _notifyFrame() {
+        for (var i = 0; i < _frameListeners.length; i++) {
+            try { _frameListeners[i](); } catch (_) {}
+        }
+    }
     function reloadFrames(frames, opts) {
+        opts = opts || {};
         const fs = _frameSeries();
         if (!fs) throw _missing("molview._createFrameSeries");
         _requireMatch(Array.isArray(frames) ? frames[0] : null, "reloadFrames");
         fs.reset(frames, opts);   // HARD reload -> resets to frame 0
-        _pushCurrentFrame();
+        // Fast NATIVE path (§14.5): hand the WHOLE trajectory to the embed's native
+        // animation.  3Dmol builds all frames ONCE and setAnimationFrame swaps them
+        // GPU-side -- no per-frame structure re-render.  Per-frame force arrows ride
+        // along baked-in (arrowsPerFrame), so playback never synthesises overlays.
+        // We do NOT push coords to the store (that would make mountRender rebuild the
+        // whole structure every frame -- the slow path this replaces).  MolView owns
+        // the frame bar, so the embed's own strip is suppressed (frameStrip:false).
+        const h = _handle();
+        if (h && typeof h.setAnimation === "function") {
+            try {
+                h.setAnimation({
+                    kind:           "trajectory",
+                    frames:         frames,
+                    arrowsPerFrame: Array.isArray(opts.arrowsPerFrame)
+                                        ? opts.arrowsPerFrame : null,
+                    frameStrip:     false,
+                    paused:         true,
+                });
+            } catch (_) { _pushCurrentFrame(); }
+        } else {
+            _pushCurrentFrame();   // no embed yet -> store-render fallback
+        }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
+        _notifyFrame();   // frame count (+ current) changed -> refresh the frame bar
         return fs.frameCount();
+    }
+    // Update the per-frame force-arrow overlays WITHOUT rebuilding the frames or
+    // restarting playback (§14.5.1).  The consumer builds the full arrowsPerFrame
+    // array ONCE when an overlay option changes and hands it here; the embed's
+    // partial-setAnimation live path swaps it in place (no per-frame synthesis).
+    function setFrameArrows(arrowsPerFrame) {
+        const h = _handle();
+        if (h && typeof h.setAnimation === "function") {
+            try {
+                h.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame)
+                                     ? arrowsPerFrame : [] });
+            } catch (_) {}
+        }
     }
     function addFrame(coords, opts) {
         const fs = _frameSeries();
         if (!fs) throw _missing("molview._createFrameSeries");
         _requireMatch(coords, "addFrame");
         fs.addFrame(coords, opts);   // append; does NOT change the current view
+        // Append to the LIVE native animation so the new frame is playable without a
+        // full reload (live-poll tail-append).
+        const h = _handle();
+        const a = (h && typeof h.getAnimation === "function") ? h.getAnimation() : null;
+        if (h && a && a.kind === "trajectory" && typeof h.appendFrames === "function") {
+            try { h.appendFrames([coords]); } catch (_) {}
+        }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
+        _notifyFrame();   // frame count changed -> refresh the frame bar
         return fs.frameCount();
     }
     function addFrames(list, opts) {
@@ -1721,7 +1784,25 @@
         const fs = _frameSeries();
         if (!fs) throw _missing("molview._createFrameSeries");
         fs.setFrame(i);            // throws if out of range
-        _pushCurrentFrame();
+        // Native frame swap when a trajectory animation is live (fast tier): the
+        // embed applies the frame's coords to the EXISTING model + redraws its baked
+        // per-frame arrows -- no store push, no structure rebuild.  Falls back to the
+        // store coords-swap when there's no native animation (single structure).
+        const h = _handle();
+        const a = (h && typeof h.getAnimation === "function") ? h.getAnimation() : null;
+        if (h && a && a.kind === "trajectory"
+                && typeof h.setAnimationFrame === "function") {
+            try {
+                h.setAnimationFrame(i);
+                // The viewer advanced natively (no store mutation).  Notify ONLY the
+                // frame-controls bar (not the store) so the slider/counter track the
+                // shown frame without re-rendering the selection panel.
+                _notifyFrame();
+            } catch (_) { _pushCurrentFrame(); }
+        } else {
+            _pushCurrentFrame();
+            _notifyFrame();
+        }
         return fs.currentFrame();
     }
     function getFrame(i)     { const fs = _frameSeries(); return fs ? fs.getFrame(i) : null; }
@@ -2229,6 +2310,8 @@
         undo:                  undo,
         // Frames — the coordinate time axis (workspace-contract.md §1.5)
         reloadFrames:          reloadFrames,
+        setFrameArrows:        setFrameArrows,
+        onFrameChange:         onFrameChange,
         addFrame:              addFrame,
         addFrames:             addFrames,
         setFrame:              setFrame,

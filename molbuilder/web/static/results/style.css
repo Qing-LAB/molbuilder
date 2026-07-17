@@ -597,3 +597,43 @@
 body:has(#results-file-picker-bar:not([hidden])) .results-status {
     display: none;
 }
+
+/* ---- Loading lock-down overlay (results/viewer.js) --------------------------
+ * While an async inspector (trajectory / structure / spectra) fetches + parses +
+ * mounts, this covers the inspector host so the PREVIOUS scene can't stay live +
+ * interactive (the user would mistake it for the new result).  The wrapper is a
+ * relative box created by the dispatcher; the overlay is its absolutely-positioned
+ * sibling of the host, so it survives the host's innerHTML churn during the mount.
+ * Lifted on molbuilder:inspector:ready (first render on screen). */
+.results-inspector-wrap { position: relative; }
+.results-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Opaque-enough to hide the stale scene + blur what shows through; blocks
+     * clicks/scrubs (pointer-events default auto on a covering element). */
+    background: color-mix(in srgb, var(--bg-page, #14181f) 78%, transparent);
+    backdrop-filter: blur(2px);
+    cursor: progress;
+    border-radius: var(--radius, 6px);
+}
+.results-loading-overlay[hidden] { display: none; }
+.results-loading-box {
+    /* The spinner inside is the shared ``.spinner`` primitive (page-shell.css);
+     * bump its size for this cover via the primitive's own --spinner-size var
+     * (§5 component-tunes-through-vars -- no re-declared spinner rule). */
+    --spinner-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px;
+    background: var(--bg-card, #1c222c);
+    border: 1px solid var(--border-strong, #3a3f48);
+    border-radius: var(--radius, 6px);
+    box-shadow: var(--shadow-card, 0 2px 8px rgba(0,0,0,0.3));
+    color: var(--text-primary, #e6e9ee);
+    font-size: 0.92rem;
+}

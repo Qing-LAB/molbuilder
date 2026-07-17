@@ -22,10 +22,11 @@
     const $ = (id) => document.getElementById(id);
 
     const els = {
-        host:        null,
-        fallback:    null,
-        fileReadout: null,
-        kindReadout: null,
+        host:           null,
+        fallback:       null,
+        fileReadout:    null,
+        kindReadout:    null,
+        loadingOverlay: null,   // lock-down cover shown during an async load
     };
 
     // The currently-mounted inspector's handle, or null when the
@@ -33,6 +34,16 @@
     // so handlers / timers / observers from the previous inspector
     // can't leak into the new one.
     let currentHandle = null;
+
+    // Inspectors that load ASYNC (fetch + parse + 3D mount) and dispatch
+    // ``molbuilder:inspector:ready`` when their first render is on screen.  ONLY
+    // these get the loading lock-down: while one loads, the PREVIOUS scene must not
+    // stay interactive (the user would mistake it for the new result).  Sync text
+    // inspectors (source / markdown) render instantly, so they need no cover.
+    const ASYNC_VIEWER_INSPECTORS = { trajectory: 1, structure: 1, spectra: 1 };
+    // Safety net: never leave the cover up forever if a ready event never lands.
+    let loadingTimer = null;
+    const LOADING_TIMEOUT_MS = 15000;
 
     // The mount context built once at init.  Captures the host
     // element + the standard /api/files/read wrapper.  Inspectors
@@ -80,18 +91,47 @@
         _renderStatus(file, null);
     }
 
+    // ---- Loading lock-down ------------------------------------------------ //
+    // While an async inspector loads, cover the host with an opaque "Loading /
+    // parsing…" overlay that BLOCKS interaction (pointer-events).  This kills the
+    // confusion the user hit: the previous scene staying live + interactive during
+    // the load, so a click/scrub reads as the new result until the view suddenly
+    // swaps.  Removed on ``molbuilder:inspector:ready`` (first render on screen) or
+    // the safety timer.  The overlay is a SIBLING of the host inside a relative
+    // wrapper, so it survives the host's innerHTML churn during the async mount.
+    function _showLoading(file) {
+        if (!els.loadingOverlay) return;
+        const base = (file || "").split("/").pop() || file || "";
+        const txt = els.loadingOverlay.querySelector(".results-loading-text");
+        if (txt) txt.textContent = base ? ("Loading " + base + " — parsing…") : "Loading…";
+        els.loadingOverlay.hidden = false;
+        if (loadingTimer) clearTimeout(loadingTimer);
+        loadingTimer = setTimeout(_hideLoading, LOADING_TIMEOUT_MS);
+    }
+    function _hideLoading() {
+        if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
+        if (els.loadingOverlay) els.loadingOverlay.hidden = true;
+    }
+
     function _onSelectionChange(sel) {
         const file = sel && sel.file ? sel.file : "";
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
+            _hideLoading();
             _showFallback(file);
             return;
         }
         const inspector = reg.pick(file);
         if (!inspector) {
+            _hideLoading();
             _showFallback(file);
             return;
         }
+        // Lock the view down BEFORE disposing the old inspector, so there is no
+        // window where the stale scene is live + interactive.  Only for async
+        // inspectors (the ready event lifts the cover); sync ones render instantly.
+        if (ASYNC_VIEWER_INSPECTORS[inspector.name]) _showLoading(file);
+        else _hideLoading();
         // Dispose the previous inspector BEFORE handing the host
         // to the next one -- listeners / timers / 3Dmol viewers
         // leak otherwise.
@@ -109,6 +149,39 @@
         els.fileReadout = $("results-current-file");
         els.kindReadout = $("results-current-kind");
         if (!els.host) return;   // template invariant broken; bail.
+
+        // Build the loading lock-down overlay: wrap the host in a relative box and
+        // add the overlay as a SIBLING, so it survives the host's innerHTML churn
+        // during an async mount (the inspector replaces host.innerHTML; a child
+        // overlay would be wiped).  Static markup -> innerHTML is a fixed literal.
+        if (els.host.parentNode && !els.loadingOverlay) {
+            const wrap = document.createElement("div");
+            wrap.className = "results-inspector-wrap";
+            els.host.parentNode.insertBefore(wrap, els.host);
+            wrap.appendChild(els.host);
+            const overlay = document.createElement("div");
+            overlay.className = "results-loading-overlay";
+            overlay.setAttribute("role", "status");
+            overlay.setAttribute("aria-live", "polite");
+            overlay.hidden = true;
+            const box = document.createElement("div");
+            box.className = "results-loading-box";
+            const spin = document.createElement("span");
+            spin.className = "spinner";
+            spin.setAttribute("aria-hidden", "true");
+            const txt = document.createElement("span");
+            txt.className = "results-loading-text";
+            txt.textContent = "Loading…";
+            box.appendChild(spin);
+            box.appendChild(txt);
+            overlay.appendChild(box);
+            wrap.appendChild(overlay);
+            els.loadingOverlay = overlay;
+        }
+        // Lift the lock-down when the async inspector signals its first render is on
+        // screen (frame bar populated / plots drawn / viewer non-blank).
+        document.addEventListener(
+            window.molbuilder.constants.EVENT_INSPECTOR_READY, _hideLoading);
 
         // Validate the registry is populated before the dispatch
         // wires up.  An empty registry means the inspector module

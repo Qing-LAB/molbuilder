@@ -136,8 +136,11 @@
 .mol-viewer-knobs {
     display:        flex;
     align-items:    center;
-    flex-wrap:      nowrap;   /* ONE line: View, Export, and the trajectory bar (which flexes to
-                                 fill).  isolate lives inside the View menu, not on the row. */
+    /* WRAP so a WIDE viewer keeps View / Export / trajectory-bar on ONE line, but a SMALL
+       viewer lets the trajectory bar drop to its OWN full-width row below View/Export instead
+       of overflowing the canvas.  (A single structure has no bar, so the row never wraps.) */
+    flex-wrap:      wrap;
+    row-gap:        var(--space-xs, 0.35rem);
     gap:            var(--space-sm, 0.5rem);
     padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
     background:     var(--bg-card, #1d2128);

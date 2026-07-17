@@ -304,8 +304,11 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    flex-wrap: nowrap;            /* the trajectory bar stays on the ONE knob-bar row */
-    flex: 1 1 auto; min-width: 0;
+    flex-wrap: nowrap;            /* the bar's OWN controls stay on one line; the slider flexes */
+    /* Grow to fill the knob-bar row, but a ~15rem basis makes the bar WRAP to its own full-width
+       row (the knob bar is flex-wrap:wrap) once View/Export leave it less than that -- so a small
+       viewer stacks the bar instead of overflowing the canvas. */
+    flex: 1 1 15rem;
     font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
     color: var(--text-secondary, #a8aebb);
 }

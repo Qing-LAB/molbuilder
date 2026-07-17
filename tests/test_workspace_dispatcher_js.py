@@ -183,6 +183,11 @@ _DATA_SURFACE = sorted([
     "save", "load",
     "generate", "applyOp",
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
+    # setFrameArrows: per-frame force overlays baked into the native animation;
+    # onFrameChange: the frame-only notification channel the frame bar subscribes
+    # to (separate from the selection store, so a frame swap doesn't re-render the
+    # panel + steal input focus during playback).
+    "setFrameArrows", "onFrameChange",
     "getFrame", "getForces", "currentForces", "currentFrame", "frameCount",
     "selection", "view",
     # §20 view-state lifecycle: the active molview registers its embed handle

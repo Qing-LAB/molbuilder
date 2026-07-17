@@ -246,3 +246,21 @@ button:disabled {
     flex: var(--card-weight, 1) 1 var(--card-basis, 320px);
     min-width: var(--card-min, 300px);
 }
+
+/* ---- Spinner — the ONE global loading indicator (§2.1 shared primitive) ------
+ * A small border-spinner used by any busy affordance (results loading lock-down,
+ * bundle-handoff action row, …).  Size tunes via --spinner-size so a caller
+ * doesn't re-declare the rule.  Consolidates the former per-component copies. */
+.spinner {
+    display: inline-block;
+    width: var(--spinner-size, 14px);
+    height: var(--spinner-size, 14px);
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+}
+.spinner[hidden] { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }

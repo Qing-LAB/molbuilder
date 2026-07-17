@@ -562,11 +562,11 @@
         // read-only trajectory view (the SELECTION + structure are read off the
         // molview.data singleton — MolView conceals its internals).
         host.__molview_results_handle = _mv;
-        // Re-derive + re-hand the force arrows on every data change (incl. each
-        // setFrame during playback): a per-frame setStructure clears the
-        // overlay, so the CONSUMER re-supplies it (molview-module §14.5.1).
-        const off = _mv.onChange(function () { drawForces(); });
-        if (typeof off === "function") _cleanups.push(off);
+        // NOTE: force arrows are NOT re-derived per frame.  They are built for every
+        // frame ONCE (buildArrowsPerFrame) on an overlay-option change and baked into
+        // MolView's native animation (setFrameArrows), so playback draws arrows[frame]
+        // with zero per-frame synthesis.  A per-frame onChange handler here was the
+        // cause of the slow animation and is deliberately gone.
         return _mv;
     })();
 
@@ -931,11 +931,11 @@
     /* ------------------------------------------------------------------ */
     //
     // MolView draws the arrows it is HANDED (molview-module.md §14.5.1); the
-    // inspector owns the force→arrow mapping.  drawForces re-derives the arrows
-    // for the CURRENT frame and hands them to MolView via handle.setArrows.  It
-    // is wired to the force knobs AND to handle.onChange, so the arrows
-    // re-derive for each frame as the trajectory plays (a per-frame
-    // setStructure clears the overlay; this re-supplies it).
+    // inspector owns the force→arrow mapping.  Arrows are built for EVERY frame
+    // ONCE (buildArrowsPerFrame) whenever an overlay OPTION changes (show-forces,
+    // scale, threshold, highlight, exclude-frozen) and baked into MolView's native
+    // animation via handle.setFrameArrows -- so playback draws arrows[frame] with
+    // NO per-frame synthesis (the animation is slow otherwise).
 
     function setForcesStatus(msg) {
         // Single point of truth for the diagnostic readout next to
@@ -946,9 +946,25 @@
         if (el) el.textContent = msg || "";
     }
 
+    // Build the FULL per-frame arrow set: arrowsPerFrame[t] = the arrows for
+    // frame t under the current knob settings.  O(frames × atoms), done ONCE per
+    // option change -- never per playback frame.
+    function buildArrowsPerFrame() {
+        if (!state.data || !Array.isArray(state.data.frames)) return [];
+        const apf = new Array(state.data.frames.length);
+        for (let t = 0; t < state.data.frames.length; t++) {
+            apf[t] = _buildArrowsForFrame(t);
+        }
+        return apf;
+    }
+
+    // Re-derive the whole per-frame overlay set + hand it to MolView in one shot.
+    // Wired to the force knobs (option change) and called once at load -- NOT per
+    // frame.  ``drawForces`` keeps its name so the knob wiring reads unchanged.
     function drawForces() {
-        if (!_mv || typeof _mv.setArrows !== "function") return;
-        _mv.setArrows(_buildArrowsForFrame(_curFrame()));
+        if (_mv && typeof _mv.setFrameArrows === "function") {
+            _mv.setFrameArrows(buildArrowsPerFrame());
+        }
         refreshForcesStatus();
     }
 
@@ -1005,7 +1021,10 @@
             });
         });
         try {
-            mv.data.reloadFrames(coordFrames);
+            // Build all frames into MolView's native animation ONCE, with the force
+            // arrows for every frame baked in (arrowsPerFrame) -- playback then swaps
+            // frames + arrows natively, no per-frame synthesis.
+            mv.data.reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
         } catch (e) {
             setStatus("Viewer failed to load frames: "
                 + (e && e.message ? e.message : String(e)), "error");
@@ -1015,10 +1034,7 @@
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
             try { mv.data.setFrame(seekIdx); } catch (_) {}
         }
-        // Re-derive the force arrows for the (new) current frame.  The onChange
-        // subscription also fires from openMolecule/reloadFrames, but call it
-        // explicitly so a load with forces-on paints arrows immediately.
-        drawForces();
+        refreshForcesStatus();
     }
 
     function showFrame(idx) {

@@ -132,29 +132,10 @@
     color: var(--text-secondary, #a4a4a4);
 }
 
-/* In-flight visual: pure CSS rotation, no JS animation loop.
- * Shown next to the status text while the POST is pending; hidden
- * by the JS once the request settles (success / error / timeout).
- * The [hidden] attribute keeps the element off the box layout so
- * the actions row doesn't reflow when the spinner toggles. */
-.bundle-handoff-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--border-subtle, rgba(255, 255, 255, 0.18));
-    border-top-color: var(--accent, #6cb1ff);
-    border-radius: 50%;
-    animation: bundle-handoff-spin 0.8s linear infinite;
-    vertical-align: middle;
-}
-
-.bundle-handoff-spinner[hidden] {
-    display: none;
-}
-
-@keyframes bundle-handoff-spin {
-    to { transform: rotate(360deg); }
-}
+/* In-flight visual: the shared ``.spinner`` primitive (page-shell.css).  The
+ * bundle-handoff-specific spinner rules + @keyframes were consolidated onto it
+ * (§2.1 one-shared-class); the element now carries ``class="spinner"`` +
+ * ``data-spinner`` (the JS finds it by the attribute, not the class). */
 
 .bundle-handoff-result {
     margin: 0;

@@ -3128,6 +3128,10 @@
                                   ? a.fps : 10,
                 paused:         a.paused !== false,  // default paused
                 loop:           a.loop !== false,    // default loop
+                // Auto-mount the embed's own frame strip (§6.3) UNLESS the host
+                // owns the frame bar (e.g. MolView's fused card drives playback
+                // through its own bar).  Default true = standalone embeds keep it.
+                frameStrip:     a.frameStrip !== false,
             };
         }
         return null;
@@ -3466,7 +3470,11 @@
             // unconditionally — as we did pre-Phase-5h — would clobber
             // the preserved playhead just before autoplay resumed.
             state.current.animation = next;
-            _buildFrameStrip(state);
+            // Host-owned frame bar (MolView) -> suppress the embed's own strip so
+            // there's exactly ONE playback bar.  Native frame swap + per-frame
+            // arrows still work; only the strip DOM is skipped.
+            if (next.frameStrip === false) _removeFrameStrip(state);
+            else _buildFrameStrip(state);
             _showTrajectoryFrame(state, next.currentFrame);
             if (autoplay) _playImpl(state);
         } else if (next && next.kind === "vibration") {
