@@ -1,12 +1,17 @@
-# UI design contract — layout & CSS framework
+# UI design contract — layout, CSS & module boundaries
 
 The **structural** counterpart to [`web-ui-coherence.md`](web-ui-coherence.md).
 That doc governs *data* coherence (two surfaces reporting on the same structure
 must agree). **This** doc governs *how UI is built* — the layout framework,
-CSS architecture, and responsive rules every tab follows, so the web UI stays
-one coherent system instead of N one-off pages.
+CSS architecture, responsive rules, **and the JS module boundaries** every tab
+follows, so the web UI stays one coherent system instead of N one-off pages.
 
-If you are adding or changing any UI, read the **Checklist** (§7) first.
+The through-line of every rule below is **one owner, one door**: one home per
+visual pattern (§2.1), per token (§1), per API surface and per in-memory model
+(§7). A second copy — a duplicated rule, a parallel token scheme, a raw `fetch`
+beside the wrapper — is the drift these rules exist to catch.
+
+If you are adding or changing any UI, read the **Checklist** (§9) first.
 
 ---
 
@@ -21,6 +26,18 @@ properties (`--bg-card`, `--border-soft`, `--text-primary`, `--accent`,
 - A component that needs a new colour/spacing adds a **token**, not a literal.
 - Fallbacks are allowed for embed-outside-the-shell safety:
   `var(--accent, #6ba6ff)`.
+- **One token vocabulary.** `tokens.css` names are canonical — `--bg-card`,
+  `--text-secondary`, `--success`, `--radius`/`--radius-sm`. Do **not** introduce
+  a parallel scheme for the same concept (`--surface-elevated` for a card bg,
+  `--fg` for text, `--radius-md`, `--ok`) — that is value-duplication one level
+  up, and the two schemes drift. An embeddable module may write
+  `var(--token, fallback)` so it renders in a foreign host, **but the token must
+  still be defined in `tokens.css`**. A `var(--x, …)` whose `--x` exists nowhere
+  is a **phantom token**: it silently *always* uses the fallback, so the palette
+  no longer controls it. (Known debt: the embed modules — `mol-viewer-embed`,
+  `results/bundle-handoff`, `system-load-monitor`, `trajectory-inspector` — carry
+  a second `--surface-*/--fg/--radius-md` vocabulary; unify onto `tokens.css` when
+  you touch them, don't extend it.)
 
 ## 2. CSS lives in layers — put a rule in the lowest layer that fits
 
@@ -50,6 +67,23 @@ to catch.
   it, reuse the class. If the block is already copied in ≥2 places, promote it to one
   shared class and delete the copies.
 - A genuinely unique one-off gets its own class; a pattern that appears twice does not.
+
+### 2.2 No page stylesheet is a disguised shared library
+
+The layer table's "Page = composition only" has one notorious violation worth
+naming so it isn't copied: `static/style.css` is headed *"Build page styles"* but
+actually holds shared form-page **components** — `.app-grid`, `.auto-detect-*`,
+`.viewer-*` / `.card-viewer`, `.issues-panel`, the form-control + `button` base,
+`.status`, `.hint`. Spectra and Transport must link the **whole** index sheet —
+dragging in inert index-only rules (`#generate-*`, `.tabs/.tab-btn`) — just to
+reach those shared parts.
+
+The target end-state: shared form-page components live in a **named shared sheet**
+(shell/primitive or a `lib/form-components.css`), index-only rules stay in the page
+sheet, and each page links only what it uses. Until that migration lands, the
+holding rule is: **never add a new shared component to `style.css`** — put it in the
+right module/shell layer (§2). A page sheet that a *different* page has to import is
+exactly the smell this rule catches.
 
 ## 3. Responsive layout is CONTENT-driven, never viewport-magic-numbers
 
@@ -126,14 +160,49 @@ Reuse these; don't reinvent them per tab.
   returns **defensive copies** ([`workspace-contract.md`](workspace-contract.md)
   § 1.2.1) — a UI surface can't mutate the store by holding a returned value.
 
-## 7. Per-module UI systems — the spec each panel follows (don't drift)
+## 7. Module & data boundaries — one door per concern (the JS side)
+
+The CSS rules above keep the *look* one system; these keep the *code* one system —
+the same "one owner, one door" principle applied to network, in-memory data, and
+persistence. Each boundary is authoritative in its own doc; this is the
+cross-cutting summary a UI change must respect (and the checklist, §9, enforces).
+
+- **One fetch caller per API surface.** UI code never calls `fetch()` for a shared
+  backend API directly — it goes through the module's HTTP wrapper, so
+  error / abort / caching normalise in **one** place. `/api/files/*` +
+  `/api/projects/*` → `lib/projects/api.js` (the uniform `{ok, error, aborted}`
+  envelope + `cache:"no-store"`). A raw `fetch("/api/files/…")` in a consumer is the
+  bug this catches ([`projects-sidebar.md`](projects-sidebar.md) Principle 6); a
+  source guard (`test_projects_api_envelope_js.py`) pins it.
+- **In-memory data has one owner; reach it only through accessors.** The live
+  structure / atoms / frames model is owned by `molview.data`
+  ([`molview-module.md`](molview-module.md)). A UI surface reads it through
+  accessors that return **defensive copies** (§6), never by holding a store
+  reference. Two panels showing the same structure agree because they read the
+  *same* door, not parallel copies.
+- **Format-blind layers stay format-blind.** The workspace does exactly two things —
+  session state + concealed file **bytes** access — and never interprets
+  structure or format; the *consumer* owns data + structure + format
+  ([`workspace-contract.md`](workspace-contract.md)). Persistence is **push-only**
+  and **write-ordered**: a later state write for the same index can't be overtaken
+  by a stale one (serialised write-chain).
+- **A concealed module is a complete seal.** MolView, VibrationView, and the
+  projects sidebar each own their DOM, CSS, and API end-to-end and drop in as one
+  unit; a host *wires* them, never reaches inside. A sibling capability is a **new
+  sealed module** (VibrationView is MolView's sibling, not a branch inside it), not
+  a flag bolted onto an existing one.
+- **The web UI is a thin wrapper over the Python API.** A tab *composes*
+  subcommands / accessors; business logic and science live in the Python layer,
+  not re-implemented in JS ([`architecture.md`](../architecture.md)).
+
+## 8. Per-module UI systems — the spec each panel follows (don't drift)
 
 Each module that owns a UI panel declares **here** the exact system it uses — its CSS
 file, tokens, layout mechanism, and shared classes — so a change stays *inside* that
 system instead of inventing a parallel one. **Adding a module with a panel? Add a
 subsection.** Editing one? Read its subsection first.
 
-### 7.1 MolView — the fused card · `lib/molview/fused-layout.css`
+### 8.1 MolView — the fused card · `lib/molview/fused-layout.css`
 
 - **Layout:** `.molview-card` is `container-type: inline-size`, with ONE source of truth
   for size in three named vars — `--viewer-edge` (`min(60vh, 560px)`), `--viewer-min`
@@ -155,7 +224,7 @@ subsection.** Editing one? Read its subsection first.
 - **Reuse:** Modify and every Results structure card mount the SAME card; a card change
   is one edit here, not per consumer.
 
-### 7.2 Selection / Cell panel · `lib/selection-panel.css`
+### 8.2 Selection / Cell panel · `lib/selection-panel.css`
 
 - **Tokens:** the panel's own `--ps-*` scale (`--ps-fg`, `--ps-fg-dim`, `--ps-bg-deep`,
   `--ps-border`, `--ps-hover`, `--ps-selected-*`). Panel rules use these — never raw hex.
@@ -166,9 +235,9 @@ subsection.** Editing one? Read its subsection first.
 - **Cell readout:** display-only (§6) — `#cell-*-value` spans + the `.cell-matrix` 3×3
   grid; filled by `renderCell` from the `ws.get*Info()` accessors.
 - **Display-only:** the panel never edits periodicity, and the view TOGGLES are NOT here
-  — they live in the viewer bar (§7.1). Editing periodicity is the Modify Cell op-tab.
+  — they live in the viewer bar (§8.1). Editing periodicity is the Modify Cell op-tab.
 
-## 8. Checklist — adding or changing a UI surface
+## 9. Checklist — adding or changing a UI surface
 
 1. **Tokens** — colours/spacing come from `var(--token)`; no literals.
 2. **No duplicate rule** (§2.1) — grep the pattern first; reuse the shared class
@@ -180,14 +249,17 @@ subsection.** Editing one? Read its subsection first.
 5. **Embeddable? Use `@container`**, not `@media` — so it's correct at any width.
 6. **Expose tuning as vars**, keep the layout rule literal-free.
 7. **Right layer** (§2) — primitive → `page-shell.css`; component → module CSS;
-   only composition in `<tab>/style.css`.
-8. **Follow the module's §7 subsection** — if the panel has one, stay in its system.
+   only composition in `<tab>/style.css`. **Never grow `style.css` with a new
+   shared component** (§2.2).
+8. **Follow the module's §8 subsection** — if the panel has one, stay in its system.
 9. **Display surfaces are read-only** through accessors (§6); edits are explicit.
-10. **Add a layout regression test** — e.g. sweep widths and assert no
+10. **One door for data + network** (§7) — no raw `fetch` for a shared API (go
+    through `api.js`); reach in-memory data only via the owning module's accessors.
+11. **Add a layout regression test** — e.g. sweep widths and assert no
     overlap/overflow (`test_workspace_cards_never_overlap`,
     `test_fused_no_overflow_when_squeezed`).
 
-## 9. What this document does NOT cover
+## 10. What this document does NOT cover
 
 - **Data/logic coherence** (two surfaces agreeing about a structure) →
   [`web-ui-coherence.md`](web-ui-coherence.md).
@@ -202,4 +274,7 @@ subsection.** Editing one? Read its subsection first.
 - [`mobile-layout.md`](mobile-layout.md) — auto-fit grids + `.card-row`.
 - [`web-ui-coherence.md`](web-ui-coherence.md) — the data-coherence companion.
 - [`structure-periodicity.md`](structure-periodicity.md) § 3b — display-vs-edit.
-- [`workspace-contract.md`](workspace-contract.md) § 1.2.1 — accessor / defensive-copy contract.
+- [`workspace-contract.md`](workspace-contract.md) § 1.2.1 — accessor / defensive-copy contract; push-only persistence.
+- [`molview-module.md`](molview-module.md) — `molview.data` owns the in-memory model + accessor API.
+- [`projects-sidebar.md`](projects-sidebar.md) Principle 6 — `api.js` is the sole fetch caller.
+- [`../architecture.md`](../architecture.md) — module roles/layers; web UI as a thin wrapper over the Python API.
