@@ -100,10 +100,10 @@ Current state (updated 2026-07-17):
 | **Modify** (`/molbuilder`) | MolView (concealed) | **done** — the reference consumer |
 | **Transport** (`/transport-calculation`) | MolView (`mode:"modify"`) | **done** — mounts on commit + sources gen labels from `molview.data` |
 | **Spectra** (`/spectrum-calculation`) | MolView (`mode:"readonly"`) | **done (Card 1)** — read-only inspect card via the shared include; VibrationView left Phase-1 (borrows its own embed) |
+| **structure-optimization** (`/structure-optimization`, `index.html`) | MolView (`mode:"readonly"`) | **done (display)** — full read-only card via the shared include; structure into `molview.data`.  k-grid stays a `SiestaConfig` form field (not on the Structure).  Follow-up: source Generate from `molview.data` + drop the raw `/api/files/read` (like Transport increment 2) |
 | **Results** (`/results`) | loads the full `molview/*` stack | **partial** — mostly on MolView; finish + ES-convert |
-| **structure-optimization** (`/structure-optimization`, `index.html`) | **old `viewer.js`** | **not started** — the tab omitted from the first plan (2026-07-17) |
 
-Order so far: Transport (done) → Spectra (done) → **structure-optimization** → Results.
+Order so far: Transport (done) → Spectra (done) → structure-optimization (done) → **Results**.
 `_molview_scripts.html` is the shared component-stack include (Transport + Spectra use
 it; migrating Modify / Results / molview-demo onto it is a follow-up).  Remaining per
 tab: the ES-module conversion + `window` shim + node-test `import()` re-point (deferred
