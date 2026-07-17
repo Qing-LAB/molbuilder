@@ -631,6 +631,30 @@
         canvas.style.height = card.height || DEFAULT_HEIGHT;
         section.appendChild(canvas);
 
+        // In-canvas quick-action overlay: tiny, half-transparent icon buttons in
+        // the canvas corner for the most-common view actions (reset / axes /
+        // labels).  Ghosted at rest so they don't obscure the molecule; brighten
+        // on hover.  A SECOND control for the same state the View menu toggles --
+        // kept in sync via _syncQuickbar (called from the axes/labels sync).
+        // Wired to the handle in _wireKnobBar (needs the handle).
+        const quickbar = document.createElement("div");
+        quickbar.className = "mol-viewer-quickbar";
+        [
+            { action: "reset",  glyph: "⟲", title: "Reset view" },
+            { action: "axes",   glyph: "✚", title: "Show / hide axes" },
+            { action: "labels", glyph: "#",       title: "Show / hide atom labels" },
+        ].forEach(function (q) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "mol-viewer-quick";
+            b.setAttribute("data-quick", q.action);
+            b.setAttribute("title", q.title);
+            b.setAttribute("aria-label", q.title);
+            b.textContent = q.glyph;
+            quickbar.appendChild(b);
+        });
+        canvas.appendChild(quickbar);
+
         // Phase 5d C2: don't return ``knobs`` — it's already in
         // state.current.knobs (the source of truth); returning it
         // here forced two parallel copies of the same data.
@@ -1740,10 +1764,26 @@
         }
     }
 
+    // Mirror the current axes / labels state onto the in-canvas quick-action
+    // buttons (aria-pressed drives the accent tint).  Called from the axes/labels
+    // sync helpers so the quickbar tracks changes from the View menu too.
+    function _syncQuickbar(state) {
+        if (!state.scaffold || !state.scaffold.canvas) return;
+        const bar = state.scaffold.canvas.querySelector(".mol-viewer-quickbar");
+        if (!bar) return;
+        const setP = function (action, on) {
+            const b = bar.querySelector('[data-quick="' + action + '"]');
+            if (b) b.setAttribute("aria-pressed", on ? "true" : "false");
+        };
+        setP("axes",   !!state.current.axes);
+        setP("labels", !!state.current.labels);
+    }
+
     function _syncKnobBarToLabels(state) {
         // Phase 6: Labels is now a single On/Off toggle.  ``labels
         // === null`` → unpressed; any LabelOpts → pressed.  Format is
         // a mount-time config; user-facing UI no longer picks it.
+        _syncQuickbar(state);
         if (!state.scaffold || !state.scaffold.knobsEl) return;
         const btn = state.scaffold.knobsEl.querySelector(
             '.mol-viewer-toggle[data-action="labels"]');
@@ -1773,6 +1813,7 @@
 
     function _syncKnobBarToAxes(state) {
         // Phase 6: Axes lives inside View → Axes as a toggle button.
+        _syncQuickbar(state);
         if (!state.scaffold || !state.scaffold.knobsEl) return;
         const btn = state.scaffold.knobsEl.querySelector(
             '.mol-viewer-toggle[data-action="axes"]');
@@ -1934,6 +1975,28 @@
             '.mol-viewer-action[data-action="reset"]');
         if (resetBtn) {
             resetBtn.addEventListener("click", () => handle.refit());
+        }
+
+        // In-canvas quick-action overlay -- a SECOND control for the same view
+        // state as the View menu.  Each button drives the exact same handle call
+        // as its menu twin (so state stays single-source); _syncQuickbar mirrors
+        // the state back onto the buttons (aria-pressed) when it changes anywhere.
+        const quickbar = state.scaffold && state.scaffold.canvas
+            && state.scaffold.canvas.querySelector(".mol-viewer-quickbar");
+        if (quickbar) {
+            const qReset = quickbar.querySelector('[data-quick="reset"]');
+            if (qReset) qReset.addEventListener("click", () => handle.refit());
+            const qAxes = quickbar.querySelector('[data-quick="axes"]');
+            if (qAxes) qAxes.addEventListener("click", () => {
+                handle.setAxes(state.current.axes ? false : true);
+            });
+            const qLabels = quickbar.querySelector('[data-quick="labels"]');
+            if (qLabels) qLabels.addEventListener("click", () => {
+                if (state.current.labels) handle.setLabels(false);
+                else handle.setLabels(state.lastLabelsConfig
+                                      || { atoms: "all", format: "index" });
+            });
+            _syncQuickbar(state);   // initial state reflect
         }
 
         // ----- Export menu ------------------------------------------

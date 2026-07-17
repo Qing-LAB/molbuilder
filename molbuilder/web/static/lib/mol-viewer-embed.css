@@ -643,3 +643,54 @@
         padding:    0.3rem 0.65rem;
     }
 }
+
+/* ---- In-canvas quick-action overlay (§6.x) -------------------------------
+ * Tiny half-transparent icon buttons in the canvas corner for the most-common
+ * view actions (Reset view / Show axes / Show labels).  Ghosted at rest so they
+ * don't obscure the molecule; the group brightens on hover.  A SECOND control for
+ * the same state the View menu toggles (aria-pressed mirrors it via _syncQuickbar).
+ * pointer-events gated to the buttons so the gaps don't block canvas rotation. */
+.mol-viewer-quickbar {
+    position:       absolute;
+    top:            6px;
+    left:           6px;
+    z-index:        3;
+    display:        flex;
+    flex-direction: column;
+    gap:            3px;
+    opacity:        0.3;
+    pointer-events: none;               /* only the buttons capture, not the gaps */
+    transition:     opacity 0.15s ease;
+}
+.mol-viewer-quickbar:hover,
+.mol-viewer-quickbar:focus-within { opacity: 1; }
+.mol-viewer-quick {
+    pointer-events: auto;
+    width:          22px;
+    height:         22px;
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    padding:        0;
+    font-size:      13px;
+    line-height:    1;
+    cursor:         pointer;
+    color:          var(--text-primary, #e6e9ee);
+    background:     color-mix(in srgb, var(--bg-card, #1d2128) 72%, transparent);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.12));
+    border-radius:  var(--radius-sm, 5px);
+    transition:     background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.mol-viewer-quick:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, #3a3f48);
+}
+.mol-viewer-quick[aria-pressed="true"] {
+    color:          var(--accent, #5fb6ff);
+    border-color:   var(--accent, #5fb6ff);
+    background:     var(--accent-bg, rgba(95, 182, 255, 0.14));
+}
+.mol-viewer-quick:focus-visible {
+    outline:        2px solid var(--accent, #5fb6ff);
+    outline-offset: 1px;
+}

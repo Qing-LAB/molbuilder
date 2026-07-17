@@ -348,8 +348,18 @@
     font-size: var(--text-2xs, 0.6875rem); user-select: none;
 }
 .mvf-speed-input {
-    width: 4em; margin: 0; padding: 1px 3px;
+    /* Wide enough for the full value (up to 3000 = 4 digits); the number spinners
+     * are hidden so they don't eat the width -- the user types the value.  Paired
+     * with the compact loop glyph (⟳) that frees the row space. */
+    width: 4.2em; min-width: 4.2em; margin: 0; padding: 1px 3px;
     font-size: var(--text-2xs, 0.6875rem);
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.mvf-speed-input::-webkit-outer-spin-button,
+.mvf-speed-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 /* The "Show ..." display-toggle group in the View menu.  The embed's own toggles
