@@ -2,7 +2,8 @@
  *
  * MolView renders this itself (like the isolate view-toggle), so a consumer that
  * hands MolView a trajectory gets the navigation UI for free.  A compact bar:
- *   play/pause   ──slider──   i / N .
+ *   ‹ play/pause › · loop · speed(ms) · ──slider── · i / N .
+ * Speed feeds api.play({fps}); loop feeds api.setLoop.
  *
  * Overlays (force arrows, atom-index labels) are NOT here: they are the CONSUMER's overlay
  * data, pushed via handle.setArrows / setLabels -- not a viewer toggle (molview-module §14.5.1).
@@ -23,17 +24,24 @@
         // Static template (no interpolation) -- one template literal so the XSS audit
         // (test_xss_audit.py) sees a safe single-literal RHS, not a concatenation.
         hostEl.innerHTML =
-            `<span class="mvf-transport"><button type="button" class="mvf-step mvf-prev" title="Previous frame" aria-label="Previous frame">‹</button><button type="button" class="mvf-play" title="Play / pause." aria-label="Play / pause">▶</button><button type="button" class="mvf-step mvf-next" title="Next frame" aria-label="Next frame">›</button></span><label class="mvf-loop" title="Loop at the ends (play + step wrap around)."><input type="checkbox" class="mvf-loop-cb"><span>loop</span></label><input type="range" class="mvf-slider" min="0" step="1" value="0" aria-label="Frame"><span class="mvf-counter" aria-live="polite"></span>`;
+            `<span class="mvf-transport"><button type="button" class="mvf-step mvf-prev" title="Previous frame" aria-label="Previous frame">‹</button><button type="button" class="mvf-play" title="Play / pause." aria-label="Play / pause">▶</button><button type="button" class="mvf-step mvf-next" title="Next frame" aria-label="Next frame">›</button></span><label class="mvf-loop" title="Loop at the ends (play + step wrap around)."><input type="checkbox" class="mvf-loop-cb"><span>loop</span></label><label class="mvf-speed" title="Playback speed (ms per frame)."><input type="number" class="mvf-speed-input" min="20" max="3000" step="20" value="150" aria-label="Playback speed (ms per frame)"><span>ms</span></label><input type="range" class="mvf-slider" min="0" step="1" value="0" aria-label="Frame"><span class="mvf-counter" aria-live="polite"></span>`;
 
         var prevBtn = hostEl.querySelector(".mvf-prev");
         var nextBtn = hostEl.querySelector(".mvf-next");
         var playBtn = hostEl.querySelector(".mvf-play");
         var loopCb  = hostEl.querySelector(".mvf-loop-cb");
+        var speedInput = hostEl.querySelector(".mvf-speed-input");
         var slider  = hostEl.querySelector(".mvf-slider");
         var counter = hostEl.querySelector(".mvf-counter");
         var doc     = root.document;
 
         function _loop() { return (typeof api.getLoop === "function") ? api.getLoop() : true; }
+        // Playback speed as ms-per-frame -> fps for api.play({fps}); clamped so a stray
+        // 0/blank can't divide-by-zero into a runaway loop.
+        function _fps() {
+            var ms = speedInput ? (parseInt(speedInput.value, 10) || 150) : 150;
+            return 1000 / Math.max(20, ms);
+        }
         function _syncPlay() {
             var on = api.isPlaying();
             playBtn.textContent = on ? "❙❙" : "▶";   // ❙❙ (pause) / ▶ (play)
@@ -60,9 +68,15 @@
             });
         }
         playBtn.addEventListener("click", function () {
-            if (api.isPlaying()) api.pause(); else api.play();
+            if (api.isPlaying()) api.pause(); else api.play({ fps: _fps() });
             _syncPlay();
         });
+        // Changing speed mid-playback restarts the timer at the new rate.
+        if (speedInput) {
+            speedInput.addEventListener("change", function () {
+                if (api.isPlaying()) { api.pause(); api.play({ fps: _fps() }); _syncPlay(); }
+            });
+        }
 
         function reflect() {
             var n = api.frameCount();
