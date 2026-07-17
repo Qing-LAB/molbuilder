@@ -5,6 +5,18 @@ It tracks only the **still-open** MolView consumer-migration work. Every design
 that has SHIPPED is now core behaviour and lives in the core contract — this
 tracker points there rather than re-describing it.
 
+> **Scope note (2026-07).** This tracker covers the **Modify** consumer + the core
+> model/persistence work. The *whole-frontend* target — every tab migrating onto the
+> concealed MolView + VibrationView modules, the ES-module conversion, and the per-tab
+> order — now lives in
+> [`frontend-module-architecture.md`](frontend-module-architecture.md). Start there for
+> the big picture; this file is the granular Modify/core checklist feeding into it.
+>
+> **Status sweep (2026-07-16):** Track B (Modify-consumes-MolView, B0–B3) ☑; the
+> 2026-07-06 review follow-ups **F1 / F2 / F4** ☑ (shipped — `test_sidecar_annotations.py`
+> + tasks); **Step 5** cell-origin ☑ (`cell_origin` + `calibrate`, commit `3d3f308`).
+> Genuinely-open remainder: **D3-tail, D4, A3, A4, Step 6** (below).
+
 **The design lives in the core** —
 [`workspace-contract.md`](workspace-contract.md) (the MolView + Workspace core
 contract):
@@ -159,13 +171,10 @@ Also companion: [`structure-periodicity.md`](structure-periodicity.md)
   Modify reference to deleted seams; docs match code.
   **Status:** ☑ (2026-07-11)
 
-- **Step 5 — cell-origin / box placement** (G4, separate track). Decide + implement
-  the cell-origin convention so the wireframe wraps the atoms (draw from min corner,
-  or wrap atoms into `[0,cell)` for display) — design-first in
-  `structure-periodicity.md`.
-  **Check:** the box wraps the structure (not offset to the molecule centre) on a
-  centred electrode junction; k-grid copies tile seamlessly.
-  **Status:** ☐ (needs a design decision; do NOT fold into 1–4.)
+- **Step 5 — cell-origin / box placement** (G4, separate track).
+  **Status:** ☑ (commit `3d3f308`) — `Structure.cell_origin` + `resolve_cell_origin()`
+  + the `calibrate` op; `render_fdf` translates atoms by `-resolve_cell_origin()` so
+  SIESTA sees `[0,cell)`. Design in `structure-periodicity.md` §3c.
 
 - **Step 6 — effective cell in the store** (G5, separate track). Decide whether/where
   the store carries the `resolve_cell` effective cell so a cell-less structure still
@@ -222,19 +231,15 @@ the metadata sink removed, the getAxisKind periodic-guess, the draft-leak on sav
 the non-atomic save, pbc/axis_kind coherence, the modify-op frozen/labels wipe).
 Remaining, confirmed-but-not-yet-done:
 
-- **F1 — `annotations` dropped on Modify Save.** The v4 per-atom annotation channels
-  ([`atom-annotations.md`](atom-annotations.md)) are lost because the frontend scratch
-  blob (`dispatcher._scratchBlob`) doesn't carry them: open an annotated file, edit,
-  Save → `annotations: {}`. Real data-loss on a shipped field. Fix: carry annotations
-  opaquely load→store→save (a frontend-model addition). **Status:** ☐
-- **F4 — load-order crash window in `_commitFile`.** Canvas text is set before the
-  store atoms during a load; a *same-atom-count* reload has a window where a persist
-  tick can write a draft pairing the new xyz with the previous file's regions/frozen
-  (the atom-count invariant is count-only, core §"invariant"). Steady state
-  self-heals; a crash mid-window leaves a corrupt draft. **Status:** ☐
-- **F2 — `selection_rules` un-round-trippable by the codec** (never emitted by
-  `_sidecar_dict`, never read by `apply_to_structure`). Legacy field, low impact.
-  **Status:** ☐
+- **F1 — `annotations` dropped on Modify Save.** ~~Lost because the scratch blob didn't
+  carry them.~~ **Status:** ☑ — the frontend model now carries `annotations` opaquely
+  load→store→save (`data-model.js` `annotations: canvas.annotations || null` in the
+  scratch blob + the open payload); `test_sidecar_annotations.py`.
+- **F4 — load-order crash window in `_commitFile`.** ~~Canvas text set before store
+  atoms; a same-atom-count reload could persist a draft pairing new xyz with old
+  regions/frozen.~~ **Status:** ☑ — load order fixed (task #27).
+- **F2 — `selection_rules` un-round-trippable by the codec.** Legacy field.
+  **Status:** ☑ — resolved (round-trip or deprecate, task #26).
 
 ---
 
