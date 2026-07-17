@@ -162,14 +162,10 @@
     // Drives the Generate button's enable state and the
     // ``structure_path`` field on the /api/transport/render POST.
     var _currentStructureFile = "";
-    // 2026-06-14 viewer-is-truth contract Phase 2: cache the
-    // committed structure's labels (frozen atoms + transport
-    // regions) at Load time so the Generate POST ships them
-    // DIRECTLY.  Empty defaults = "no labels"; the server uses
-    // them verbatim and skips disk re-read.  See _shared.
-    // apply_labels_to_struct on the server.
-    var _currentFrozenAtoms = [];
-    var _currentRegions = {};
+    // Viewer-is-truth (2026-07): the committed structure's labels (frozen atoms +
+    // electrode regions) live in the mounted MolView model (loaded from the sidecar
+    // by openProjectFile); the Generate POST sources them from molview.data at send
+    // time, so there is no separate label cache here.  See _shared.apply_labels_to_struct.
 
     function _refreshGenerateButton() {
         var btn = _$("transport-generate-btn");
@@ -279,29 +275,11 @@
                 _currentStructureFile = f;
                 // Show the structure in the MolView inspection card (viewer +
                 // selection/cell panel + view toggles).  Fire-and-forget: runs in
-                // parallel with the sidecar-label fetch + auto-analyze below.
+                // parallel with the auto-analyze below.  MolView reads the sidecar
+                // labels (frozen atoms + electrode regions) as part of the load, so
+                // the Generate POST sources them from molview.data — no separate
+                // sidecarLabels.fetch, no path-pointer indirection.
                 _showInMolview(f);
-                // Pull sidecar labels into in-memory state so the
-                // Generate POST can ship them directly (no path-
-                // pointer indirection on the server).  Helper
-                // always resolves; missing sidecar -> empty
-                // defaults.  Awaited so the commit-completion
-                // signal (UI Status + Generate button enable)
-                // happens AFTER labels are in state, not before.
-                var _sl = root.molbuilder && root.molbuilder.sidecarLabels;
-                if (_sl && typeof _sl.fetch === "function") {
-                    try {
-                        var labels = await _sl.fetch(f);
-                        _currentFrozenAtoms = labels.frozen_atoms || [];
-                        _currentRegions    = labels.regions || {};
-                    } catch (_) {
-                        _currentFrozenAtoms = [];
-                        _currentRegions    = {};
-                    }
-                } else {
-                    _currentFrozenAtoms = [];
-                    _currentRegions    = {};
-                }
                 _setCurrentStructureReadout(f);
                 _refreshGenerateButton();
                 _refreshAutoDetectButton();
@@ -644,19 +622,28 @@
             }
             btn.disabled = true;
             _setStatus("Generating…");
+            // Viewer-is-truth: source the frozen/region labels from the mounted
+            // MolView model — the exact structure the user just inspected — so what
+            // they SEE is what generates.  ``structure_path`` still ships for the
+            // GEOMETRY (the server reads + parses it).  When MolView isn't loaded
+            // (best-effort mount failed), OMIT the label keys so the server falls
+            // back to the disk sidecar at structure_path (apply_labels_to_struct
+            // keys on presence, not truthiness).
+            var _genBody = { params: params, structure_path: _currentStructureFile };
+            var _mvData = root.molbuilder && root.molbuilder.molview
+                       && root.molbuilder.molview.data;
+            if (_mvData
+                    && typeof _mvData.getFrozen === "function"
+                    && typeof _mvData.getRegions === "function"
+                    && typeof _mvData.isEmpty === "function"
+                    && !_mvData.isEmpty()) {
+                _genBody.frozen_atoms = _mvData.getFrozen() || [];
+                _genBody.regions      = _mvData.getRegions() || {};
+            }
             root.fetch("/api/transport/render", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    params:         params,
-                    // structure_path stays for back-compat /
-                    // logging; in-body labels below are
-                    // authoritative per the 2026-06-14 viewer-is-
-                    // truth contract.
-                    structure_path: _currentStructureFile,
-                    frozen_atoms:   _currentFrozenAtoms || [],
-                    regions:        _currentRegions || {},
-                }),
+                body:    JSON.stringify(_genBody),
             })
                 .then(function (r) {
                     return r.json().then(function (body) {

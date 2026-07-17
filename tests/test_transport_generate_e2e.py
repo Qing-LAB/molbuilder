@@ -92,6 +92,31 @@ def junction_xyz_file(tmp_path, monkeypatch):
     return p
 
 
+# Electrode/bridge labels for the 20-atom junction, used by the sidecar fixture.
+_JUNCTION_REGIONS = {
+    "L-electrode": [0, 1, 2, 3],
+    "R-electrode": [16, 17, 18, 19],
+    "bridge":      [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+}
+_JUNCTION_FROZEN = [0, 1, 2, 3, 16, 17, 18, 19]
+
+
+@pytest.fixture
+def junction_with_sidecar(junction_xyz_file):
+    """The junction .xyz + a matching .molstruct.json sidecar carrying the
+    electrode/bridge regions + frozen atoms — so ``openProjectFile`` loads them
+    into molview.data and the Generate POST can source them from there."""
+    from molbuilder.sidecars import molstruct as msj
+    payload = msj.to_dict(
+        n_atoms_total=20,
+        structure_hash=msj.sha256_of_file(junction_xyz_file),
+        regions=_JUNCTION_REGIONS,
+        frozen_atoms=_JUNCTION_FROZEN,
+    )
+    msj.save(msj.sidecar_path_for(junction_xyz_file), payload)
+    return junction_xyz_file
+
+
 def _open_transport(page, base_url):
     errors = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
@@ -159,6 +184,54 @@ def test_transport_commit_mounts_molview(
         timeout=10_000,
     )
     assert not errors, "uncaught JS errors after commit+mount: " + "; ".join(errors)
+
+
+def test_transport_generate_sources_labels_from_molview(
+        page, flask_server, junction_with_sidecar):
+    """Transport migration, increment 2 (viewer-is-truth): the Generate POST
+    sources ``frozen_atoms`` + electrode ``regions`` from the mounted MolView
+    model — loaded from the sidecar by ``openProjectFile`` — not from a separate
+    sidecar-labels fetch.  What the user SEES in the viewer is what generates.
+    """
+    import json
+    errors = _open_transport(page, flask_server)
+    tmp_dir = junction_with_sidecar.parent
+    page.wait_for_function(
+        "() => !!(window.molbuilder && window.molbuilder.projects"
+        "         && window.molbuilder.molview && window.molbuilder.molview.data"
+        "         && window.molbuilder.molview.mount)",
+        timeout=10_000,
+    )
+    page.evaluate(
+        "(a) => window.molbuilder.projects.publishCommit(a.dir, a.file)",
+        {"dir": str(tmp_dir.resolve()),
+         "file": str(junction_with_sidecar.resolve())},
+    )
+    # MolView loads the sidecar regions into its model.
+    page.wait_for_function(
+        "() => { const d = window.molbuilder.molview.data;"
+        "  const r = (d && typeof d.getRegions === 'function') ? d.getRegions() : null;"
+        "  return !!(r && r['L-electrode']); }",
+        timeout=15_000,
+    )
+    # 1. molview.data is the source of truth, in the server's expected shape.
+    labels = page.evaluate(
+        "() => { const d = window.molbuilder.molview.data;"
+        "  return { regions: d.getRegions(), frozen: d.getFrozen() }; }"
+    )
+    assert labels["regions"] == _JUNCTION_REGIONS
+    assert labels["frozen"] == _JUNCTION_FROZEN
+    # 2. The Generate POST carries those molview-sourced labels (structure_path
+    #    still ships for the geometry, which the server reads + parses).
+    with page.expect_request("**/api/transport/render") as req_info:
+        page.evaluate(
+            "() => document.getElementById('transport-generate-btn').click()")
+    body = json.loads(req_info.value.post_data)
+    assert body.get("regions") == _JUNCTION_REGIONS, (
+        "Generate must ship molview.data regions; got " + repr(body.get("regions")))
+    assert body.get("frozen_atoms") == _JUNCTION_FROZEN
+    assert body.get("structure_path"), "geometry still travels by structure_path"
+    assert not errors, "JS errors: " + "; ".join(errors)
 
 
 def test_transport_form_renders_schema_driven_fields(
