@@ -93,21 +93,21 @@ to become an ES module anyway.
 
 ## 5. Per-tab migration order
 
-Current state (observed 2026-07 — confirm details when a tab is started):
+Current state (updated 2026-07-17):
 
-| Tab | Viewer today | Migration |
+| Tab (route) | Viewer today | Migration |
 |---|---|---|
-| **Modify** | MolView (concealed) | **done** — the reference consumer |
-| **Results** | loads the full `molview/*` stack | **partial** — mostly on MolView; finish + ES-convert |
-| **Spectra** | old `mol-viewer.js` + `mol-viewer-embed.js` | onto MolView; **+ VibrationView** for spectrum modes |
-| **Transport** | form-driven; minimal/no 3D viewer | lightest — mostly form-schema + sidebar already |
+| **Modify** (`/molbuilder`) | MolView (concealed) | **done** — the reference consumer |
+| **Transport** (`/transport-calculation`) | MolView (`mode:"modify"`) | **done** — mounts on commit + sources gen labels from `molview.data` |
+| **Spectra** (`/spectrum-calculation`) | MolView (`mode:"readonly"`) | **done (Card 1)** — read-only inspect card via the shared include; VibrationView left Phase-1 (borrows its own embed) |
+| **Results** (`/results`) | loads the full `molview/*` stack | **partial** — mostly on MolView; finish + ES-convert |
+| **structure-optimization** (`/structure-optimization`, `index.html`) | **old `viewer.js`** | **not started** — the tab omitted from the first plan (2026-07-17) |
 
-Suggested order **Transport → Spectra → Results**: transport is the most self-contained
-(smallest viewer surface) so it establishes the tab-as-ES-module + shim pattern
-cheaply; spectra then exercises the MolView **and** VibrationView path; results finishes
-the stack it already partly uses. Each tab is one increment: migrate the tab onto the
-shared modules, convert the tab (and any module it is the last classic consumer of) to
-ES, drop the shim, re-point that tab's node tests to `import()`.
+Order so far: Transport (done) → Spectra (done) → **structure-optimization** → Results.
+`_molview_scripts.html` is the shared component-stack include (Transport + Spectra use
+it; migrating Modify / Results / molview-demo onto it is a follow-up).  Remaining per
+tab: the ES-module conversion + `window` shim + node-test `import()` re-point (deferred
+— the tabs are still classic scripts that reach `window.molbuilder.molview`).
 
 ## 6. Guardrails (every migration step)
 
