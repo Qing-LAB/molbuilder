@@ -1070,16 +1070,6 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Atom-index labels                                                  */
-    /* ------------------------------------------------------------------ */
-
-    function drawIndices() {
-        // Retired wrapper kept as a no-op for legacy callsites that
-        // might still reference it; safe to inline-delete in a
-        // follow-up once a grep confirms no remaining caller exists.
-    }
-
-    /* ------------------------------------------------------------------ */
     /*  Force-vector arrows                                                */
     /* ------------------------------------------------------------------ */
 
