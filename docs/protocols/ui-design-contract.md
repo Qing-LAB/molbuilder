@@ -85,6 +85,35 @@ holding rule is: **never add a new shared component to `style.css`** — put it 
 right module/shell layer (§2). A page sheet that a *different* page has to import is
 exactly the smell this rule catches.
 
+### 2.3 Namespaces — every class and private token has exactly one owner
+
+Extensibility means adding a module without colliding with, or silently overriding,
+another. This is already the norm for the newer modules — make it **universal**, and
+the drift in §2.1/§2.2/§1 stops being possible by construction.
+
+- **Module classes carry the module prefix.** `ps-*` (projects sidebar),
+  `selection-*`, `molview-*` / `mvf-*`, `bundle-*`, `system-*`, `convergence-*`,
+  `md-*` (markdown inspector), `schema-*` (form), `region-*`, `source-*`. A class
+  with **no** prefix must be a *deliberate global primitive* (`.card`, `.card-row`)
+  living in `page-shell.css` — never a component that merely happens to sit in a page
+  sheet. The un-namespaced shared bits still in `style.css` (`.status`, `.hint`,
+  `.issues-panel`, `.viewer-*`, `.auto-detect-*`, `.app-grid`) are **debt**: on
+  migration each moves to either a `page-shell` primitive (if truly global) or a
+  prefixed module class.
+- **Two token tiers, no third.** The **global palette** in `tokens.css` is the single
+  unprefixed vocabulary (`--bg-*`, `--text-*`, `--border-*`, `--accent-*`,
+  `--radius-*`, `--space-*`, `--success` / `--error` / `--warn-*`). **Module-private**
+  tokens are prefixed and defined by that module (`--ps-*`, `--sp-*`). A `--surface-*` /
+  `--fg` / `--radius-md` scheme for a palette concept is not a third tier — it is drift
+  (§1); map it onto the palette.
+- **One class = one owner = one home.** A selector is defined in exactly one file —
+  the module (or shell) that owns it. The four `.status` copies (`page-shell` + `style`
+  + `modify` + `spectra`, with drifting modifier sets and *two* different `.error`
+  tokens) are the anti-pattern this rule retires: consolidate to a single owner.
+- **JS mirrors this.** Each module hangs off one namespace
+  (`window.molbuilder.<module>`) and exposes one door (§7); no two modules reach into
+  the same state.
+
 ## 3. Responsive layout is CONTENT-driven, never viewport-magic-numbers
 
 The failure mode we keep hitting: a hardcoded `@media (max-width: 900px)` that
