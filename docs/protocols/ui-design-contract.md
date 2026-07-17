@@ -213,7 +213,16 @@ cross-cutting summary a UI change must respect (and the checklist, §9, enforces
   `/api/projects/*` → `lib/projects/api.js` (the uniform `{ok, error, aborted}`
   envelope + `cache:"no-store"`). A raw `fetch("/api/files/…")` in a consumer is the
   bug this catches ([`projects-sidebar.md`](projects-sidebar.md) Principle 6); a
-  source guard (`test_projects_api_envelope_js.py`) pins it.
+  source guard (`test_projects_api_envelope_js.py`) pins it *within the `projects/`
+  subtree*.
+  *Known gap (CSS-migration step 4, open):* `api.js` is an **ES module**, so only
+  ES-module code (`projects/*`) can `import` it. The classic-script consumers —
+  `spectra/viewer.js`, `viewer.js` (old Build), `inspectors/{source,registry,markdown}`,
+  `structure/sidecar-labels.js`, `molview/_selection-store-impl.js` — still raw-fetch
+  `/api/files/read|read_range|write`, each hand-rolling its own error handling. The
+  target is a global bridge (`window.molbuilder.filesApi = { read, write, readRange,
+  stat }` exported from `api.js`) that classic scripts call, so **all** consumers route
+  through the one envelope. Until then the rule holds only for module code.
 - **In-memory data has one owner; reach it only through accessors.** The live
   structure / atoms / frames model is owned by `molview.data`
   ([`molview-module.md`](molview-module.md)). A UI surface reads it through
