@@ -111,7 +111,9 @@ main {
 
 input[type="text"],
 input[type="number"],
-select {
+input[type="file"],
+select,
+textarea {
     font: inherit;
     color: var(--text-primary);
     background: var(--bg-input);
@@ -124,7 +126,7 @@ input:hover:not([type="checkbox"]):not([type="range"]),
 select:hover {
     border-color: var(--accent-strong);
 }
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--accent);
     background: var(--bg-input-focus);
@@ -141,6 +143,12 @@ input[type="range"] {
     background: transparent;
     cursor: pointer;
 }
+input[type="file"] {
+    padding: 4px 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+input::placeholder { color: var(--text-muted); }
 
 button {
     font: inherit;

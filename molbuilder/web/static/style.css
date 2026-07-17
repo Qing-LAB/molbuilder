@@ -1,43 +1,18 @@
-/* molbuilder Build page styles.
+/* style.css — the INDEX (Build) page's OWN styles.
  *
- * Shared design tokens (colors / radii / shadows / gaps) live in
- * static/lib/tokens.css; this file uses them via var(--...).  If
- * you need to tweak a token, edit it ONCE in tokens.css and every
- * page picks it up.  Page-local additions go below.
+ * Shared vocabulary moved out (ui-design-contract §2.2, CSS-migration step 2):
+ *   - global base (header / button / input / .card / .status / scrollbar) →
+ *     lib/page-shell.css (loaded on every page)
+ *   - form-page COMPONENTS (.app-grid, .auto-detect-*, .viewer-*, .issues-panel,
+ *     .hint, .fdf-*, button.primary, .card h2) → lib/form-components.css
+ * What remains here is genuinely index-only: the #generate/#analyze cards, the
+ * SIESTA/PySCF .tabs, the index fieldset forms, #viewer, the footer, tooltips.
+ * Design tokens live in lib/tokens.css; use them via var(--…).
  */
-@import url("lib/tokens.css");
-
-* { box-sizing: border-box; }
 
 html, body { height: 100%; }
 
-/* ``body { ... }`` removed 2026-05-19; the canonical rules live in
- * lib/page-shell.css which is linked first.  Header padding stays
- * per-page below because the build page wants slightly more vertical
- * room than the shared default. */
-
-/* ---- Header ---- */
-
-header {
-    padding: 18px 28px 14px;
-    background: linear-gradient(180deg,
-                                var(--header-gradient-top) 0%,
-                                var(--header-gradient-bottom) 100%),
-                var(--bg-card);
-    border-bottom: 1px solid var(--border-strong);
-}
-header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--text-primary);
-}
-header .tagline {
-    margin: 6px 0 0;
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-}
+/* ---- Header code (index tagline) ---- */
 header code {
     background: var(--accent-bg);
     color: var(--accent-hover);
@@ -47,42 +22,7 @@ header code {
     font-size: 0.85em;
 }
 
-/* ---- App grid ---- */
-
-/* Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10):
- *   1. card-viewer — Inspect structure + Load from sidebar
- *   2. #analyze-card — Auto-detect chemistry + rationale panel
- *      (scientific-guard step; promoted from a sub-affordance of
- *      card 1 because logically it sits BETWEEN inspect and
- *      generate — see scientific-validation.md § 2.5)
- *   3. #generate-card — SIESTA / PySCF script form
- *
- * The legacy 2-column layout (Build/Load on the left, viewer on
- * the right) is retired; structure data now comes from the
- * project sidebar (Molbuilder tab → Save → sidebar pick).
- */
-.app-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-    margin: var(--gap) auto;
-    /* Cap the overall workflow width so on ultrawide monitors the
-     * forms + viewer don't stretch into "two-thirds of a 27-inch
-     * screen per field" territory.  1400px gives 4 columns of the
-     * 320px param-grid + comfortable padding; auto margins centre
-     * it horizontally.  The viewport-side margin minimum keeps the
-     * inside breathing room on smaller windows where 1400px would
-     * touch the edges. */
-    max-width: 1400px;
-    width: calc(100% - 48px);
-}
-.app-grid > .card { margin: 0; }
-
-/* Generate card readability (task #295): vertical scroll
- * workflow with comfortable spacing between conceptual steps.
- * The form is dense by nature (SIESTA/PySCF have many knobs);
- * the goal is to make the SEPARATION between steps obvious
- * without changing the field set. */
+/* ---- Generate / Analyze cards (vertical workflow) ---- */
 #generate-card,
 #analyze-card {
     padding: 1.4rem 1.6rem;
@@ -98,17 +38,12 @@ header code {
     font-size: 0.92rem;
     line-height: 1.5;
 }
-/* Card 2 (Analyze) doesn't need the wide bottom margin on its
- * inner bar — the card padding already provides that.  Trim the
- * .auto-detect-bar / .auto-detect-panel block margins to match. */
 #analyze-card .auto-detect-bar { padding: 0; margin: 0 0 0.6rem; }
 #analyze-card .auto-detect-panel { margin: 0; }
 #generate-card .tabs {
     margin-bottom: 0.8rem;
 }
 #generate-card fieldset {
-    /* More vertical separation between fieldsets; each fieldset
-     * corresponds to a conceptual step (Job, Basis, SCF, etc.). */
     margin: 1.2rem 0;
     padding: 0.8rem 1rem 0.9rem;
     border: 1px solid var(--border-soft);
@@ -141,179 +76,11 @@ header code {
 }
 
 @media (max-width: 640px) {
-    .app-grid { margin: 10px; gap: 10px; }
-    header { padding: 14px 16px 10px; }
     #generate-card { padding: 0.9rem 1rem; }
 }
 
-/* Load-from-sidebar bar inside the viewer card (task #295). */
-.viewer-load-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    margin: 0.5rem 0 0.8rem;
-    padding: 0.6rem 0.8rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    flex-wrap: wrap;
-}
-.viewer-load-bar #load-from-sidebar-btn {
-    flex: 0 0 auto;
-}
-.viewer-load-bar #load-source-readout {
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-}
-
-/* Auto-detect bar (Phase 2 of the chemistry middle-layer work;
- * docs/protocols/scientific-validation.md § 2.5).  Visually
- * tighter than the load bar — secondary affordance triggered
- * after the structure loads. */
-.auto-detect-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    margin: 0 0 0.6rem;
-    padding: 0.4rem 0.8rem;
-}
-.auto-detect-bar #auto-detect-btn {
-    flex: 0 0 auto;
-}
-.auto-detect-bar #auto-detect-status {
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-}
-
-/* Rationale + warnings + per-metal hints surfaced after the user
- * clicks Auto-detect.  Collapsed by default until the handler
- * sets ``open=true``. */
-.auto-detect-panel {
-    margin: 0 0 0.8rem;
-    padding: 0.5rem 0.8rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    font-size: 0.92rem;
-}
-.auto-detect-panel summary {
-    cursor: pointer;
-    font-weight: 600;
-}
-.auto-detect-panel .auto-detect-rationale {
-    margin: 0.5rem 0;
-    color: var(--text-primary);
-}
-.auto-detect-panel .auto-detect-warnings {
-    margin: 0.3rem 0;
-    padding-left: 1.2rem;
-    color: var(--text-secondary);
-}
-.auto-detect-panel .auto-detect-warnings:empty,
-.auto-detect-panel .auto-detect-metals:empty {
-    display: none;
-}
-.auto-detect-panel .auto-detect-metals {
-    margin: 0.3rem 0;
-}
-.auto-detect-panel .auto-detect-metals dt {
-    font-weight: 600;
-    margin-top: 0.3rem;
-}
-.auto-detect-panel .auto-detect-metals dd {
-    margin: 0 0 0 1.2em;
-    color: var(--text-secondary);
-}
-
-/* ---- Cards ---- */
-
-/* ``.card { ... }`` removed 2026-05-19; the rules were byte-for-byte
- * identical to lib/page-shell.css's .card.  Per-card overrides below
- * (.card h2, .card h2 small, etc.) stay -- they layer page-specific
- * behaviour on top of the shared base. */
-
-.card h2 {
-    margin: 0 0 10px;
-    font-size: 1.02rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.005em;
-}
-.card h2 small { color: var(--text-muted); font-weight: 400; }
-.card h2 code {
-    background: var(--accent-bg);
-    color: var(--accent-hover);
-    padding: 0 5px;
-    border-radius: 3px;
-    font-size: 0.86em;
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-}
-
-/* ---- Form controls (shared) ---- */
-
-input[type="text"],
-input[type="number"],
-input[type="file"],
-select,
-textarea {
-    font: inherit;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 5px 8px;
-    transition: border-color 120ms, background 120ms, box-shadow 120ms;
-}
-input[type="text"]:hover,
-input[type="number"]:hover,
-select:hover {
-    border-color: var(--accent-strong);
-}
-input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-input-focus);
-    box-shadow: var(--shadow-input);
-}
-input[type="checkbox"] {
-    accent-color: var(--accent);
-    width: auto;
-    margin-right: 4px;
-    cursor: pointer;
-}
-input[type="range"] {
-    accent-color: var(--accent);
-    background: transparent;
-    height: 18px;
-}
-input[type="file"] {
-    padding: 4px 6px;
-    cursor: pointer;
-    color: var(--text-secondary);
-}
-input::placeholder { color: var(--text-muted); }
-
-/* Buttons -- generic + primary */
-button {
-    font: inherit;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 5px 14px;
-    cursor: pointer;
-    transition: background 120ms, border-color 120ms, color 120ms;
-}
-button:hover:not(:disabled) {
-    background: var(--bg-card-hover);
-    border-color: var(--accent-strong);
-}
-button:disabled {
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-button.primary,
+/* ---- Primary generate buttons (index IDs; the shared .primary base is in
+ *      form-components.css) ---- */
 #generate-fdf,
 #generate-pyscf {
     background: var(--accent-strong);
@@ -321,13 +88,11 @@ button.primary,
     color: var(--text-on-accent);
     font-weight: 500;
 }
-button.primary:hover:not(:disabled),
 #generate-fdf:hover:not(:disabled),
 #generate-pyscf:hover:not(:disabled) {
     background: var(--accent);
     border-color: var(--accent);
 }
-button.primary:disabled,
 #generate-fdf:disabled,
 #generate-pyscf:disabled {
     background: var(--bg-input);
@@ -335,179 +100,34 @@ button.primary:disabled,
     color: var(--text-muted);
 }
 
-/* ---- Status messages ---- */
-
+/* ---- Status base (index variant; severity modifiers live in page-shell) ---- */
 .status {
     margin-top: 8px;
     font-size: 0.88rem;
     min-height: 1.2em;
     color: var(--text-secondary);
 }
-/* Severity modifiers (.status.error/.ok/.warn/.muted) live ONCE in
- * page-shell.css (ui-design-contract §2.3). */
 
-/* ---- Validation issues panel ----
- * Replaces the older one-line "⚠ msg1 • msg2" status concatenation
- * with a structured per-issue list so warnings are scannable.  Each
- * <li> carries a data-severity attribute (warn/error/info) that picks
- * the left-bar accent colour and the leading glyph.  Populated by
- * renderIssues() in viewer.js, both from the live preflight endpoint
- * and from the post-Generate response. */
-/* 2026-05-28 [hidden]-attribute audit: ``display: flex`` below ties
- * on specificity with the UA ``[hidden]`` rule and wins, so
- * #fdf-issues + #pyscf-issues showed an empty flex container at page
- * load instead of being hidden until Generate produced issues.  This
- * guard restores the intended attribute-driven visibility. */
-.issues-panel[hidden] { display: none; }
-.issues-panel {
-    list-style: none;
-    margin: 8px 0 0 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.88rem;
-}
-/* Per-card issues panel (web-ui-coherence Rule 2): each
- * .workflow-group--<role> card has its own .card-issues panel at
- * the bottom so validator findings concerning that card's fields
- * land WITH those fields, not in a far-away residual panel.
- * Slight top margin + accent border so the panel reads as part of
- * the card it sits in. */
+/* ---- Per-card issues panel (index workflow cards) ---- */
 .workflow-group .card-issues {
     margin-top: 12px;
     padding-top: 8px;
     border-top: 1px solid var(--border-soft);
 }
-.issues-panel .issue-item {
-    padding: 6px 10px 6px 12px;
-    border-radius: 4px;
-    border-left: 3px solid var(--border-soft);
-    background: var(--bg-input);
-    color: var(--text-secondary);
-    line-height: 1.4;
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-}
-.issues-panel .issue-item::before {
-    flex: 0 0 auto;
-    font-weight: 700;
-    /* Default glyph -- per-severity overrides below. */
-    content: "•";
-}
-.issues-panel .issue-item[data-severity="warn"] {
-    border-left-color: var(--warn-soft);
-    color: #e8c98c; /* exempt: lightened warn-amber for text-on-dark */
-}
-.issues-panel .issue-item[data-severity="warn"]::before {
-    content: "⚠";
-    color: var(--warn-soft);
-}
-.issues-panel .issue-item[data-severity="error"] {
-    border-left-color: var(--error);
-    color: #ffb1b1; /* exempt: lightened error tint for text-on-dark */
-}
-.issues-panel .issue-item[data-severity="error"]::before {
-    content: "✗";
-    color: var(--error);
-}
-.issues-panel .issue-item[data-severity="info"] {
-    border-left-color: var(--accent);
-    color: var(--text-secondary);
-}
-.issues-panel .issue-item[data-severity="info"]::before {
-    content: "i";
-    color: var(--accent);
-}
-.issues-panel .issue-where {
-    flex: 0 0 auto;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.78rem;
-    opacity: 0.65;
-    margin-left: auto;
-    padding-left: 12px;
-}
 
-/* ---- Viewer card ---- */
-
-.card-viewer {
-    display: flex; flex-direction: column;
-    gap: 10px;
-}
-
-.viewer-header {
-    display: flex; flex-direction: column; gap: 6px;
-}
-.viewer-info {
-    display: flex; flex-wrap: wrap; gap: 6px 14px;
-    font-size: 0.86rem;
-    color: var(--text-secondary);
-    align-items: baseline;
-}
-.viewer-info .title {
-    font-weight: 600;
-    color: var(--text-primary);
-    word-break: break-all;
-}
-.viewer-info .meta {
-    display: inline-flex; gap: 6px; align-items: baseline;
-    flex-wrap: wrap;
-}
-.viewer-info .sep { color: var(--border-strong); }
-.viewer-info code {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    color: var(--text-mono);
-    background: var(--bg-input);
-    padding: 1px 6px;
-    border-radius: 3px;
-    border: 1px solid var(--border-soft);
-}
-
-/* Fixed-aspect viewer container -- 3Dmol canvas lives inside.  The
- * 1:1 aspect ratio is consistent across Build / Modify / Watch so
- * the user gets a predictable square no matter which tab they're on;
- * min-height / max-height keep the panel in a comfortable navigation
- * range (never tiny, never dominates the viewport).  We deliberately
- * render the canvas with a neutral background so the dark UI doesn't
- * shine through (chemistry viewers read better against white).  */
-/* Post-295 the Optimization tab is single-column, so the 560 px
- * viewer cap that worked inside the old 2-column grid leaves the
- * canvas floating in whitespace inside the card.  The cap stretches
- * to the full content width (clamped to a comfortable 56vh tall
- * square) so the viewer fills the Inspect card on wide screens
- * without growing taller than half the viewport. */
-.viewer-wrap {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    min-height: 320px;
-    max-height: 56vh;
-    margin: 0 auto;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: #ffffff; /* exempt: matches 3Dmol's canvas */
-    position: relative;
-    box-shadow: var(--shadow-card);
-}
+/* ---- Viewer mount (index 3Dmol canvas; .viewer-wrap chrome is in
+ *      form-components.css) ---- */
 #viewer { width: 100%; height: 100%; position: relative; }
 
-/* ``.viewer-controls`` block (the bespoke style/labels/axes details
- * controls under the canvas) was retired 2026-06-02 in favour of the
- * shared mol-viewer-embed knob bar; the CSS lived on here until
- * task #297 removed it as part of the optimization-tab cleanup. */
-
-/* Compatibility-locked fields (.is-locked) + their .lock-reason
- * hints live in lib/form-schema.css.  Disabled inputs/selects below
- * are page-wide so they stay here. */
+/* Disabled compatibility-locked inputs inside index fieldsets. */
 fieldset input:disabled,
 fieldset select:disabled {
     cursor: not-allowed;
     background: var(--bg-fieldset);
     color: var(--text-muted);
 }
-/* ---- Tabs (SIESTA / PySCF) ---- */
 
+/* ---- Tabs (SIESTA / PySCF) — index only ---- */
 .tabs {
     display: flex;
     gap: 4px;
@@ -547,15 +167,14 @@ fieldset select:disabled {
 }
 .tab-panel[hidden] { display: none; }
 
-/* ---- Fieldsets in parameter forms ---- */
-
+/* ---- Fieldsets in parameter forms — index only ---- */
 fieldset {
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     padding: 8px 12px 10px;
     margin: 0;
     background: var(--bg-fieldset);
-    min-width: 0;     /* allow grid items to shrink below content width */
+    min-width: 0;
 }
 fieldset legend {
     font-weight: 600;
@@ -564,11 +183,7 @@ fieldset legend {
     color: var(--accent);
     letter-spacing: 0.01em;
 }
-
-/* Default fieldset label style: stack name above input.  This is the
- * key fix for the PySCF-tab overflow: with side-by-side layout, long
- * label names like "preopt functional" pushed inputs out of the column.
- * Stacked is also more responsive on narrow viewports. */
+/* Stacked label: name above input (fixes long-label column overflow). */
 fieldset label {
     display: flex;
     flex-direction: column;
@@ -585,7 +200,6 @@ fieldset label > select {
     max-width: none;
     min-width: 0;
 }
-/* Inline checkboxes -- keep their existing horizontal layout */
 fieldset label > input[type="checkbox"] {
     width: auto;
     align-self: flex-start;
@@ -596,68 +210,7 @@ fieldset label:has(> input[type="checkbox"]) {
     gap: 6px;
 }
 
-/* ---- Param grid (the big SIESTA / PySCF parameter blocks) ---- */
-
-.hint {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    margin: 4px 0 12px;
-    line-height: 1.55;
-}
-
-/* ``.param-grid`` rule retired from style.css 2026-06-10 in favour
- * of the single source of truth in ``lib/form-schema.css``.  The
- * 190px minmax was visually cramped (label + input wanted ~300px)
- * and disagreed with form-schema.css's 220px copy, so any future
- * tweak had to be applied in two places.  See form-schema.css's
- * ``.param-grid`` for the live rule + responsive breakpoints. */
-
-/* ---- Schema-driven form ---- */
-/* All `.schema-*` and `.param-grid-pre` rules live in
- * ``lib/form-schema.css`` — the component-file home for the
- * schema renderer's DOM.  Duplicates here were silently
- * overriding form-schema.css because of load order
- * (form-schema → style.css) and produced the 2026-06-12
- * checkbox-as-bullet bug.  See CSS Phase 1 dedupe + the
- * tests/test_css_no_duplicate_selectors.py invariant. */
-
-/* ---- FDF / PySCF action row + output ---- */
-
-.fdf-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: 14px;
-    flex-wrap: wrap;
-}
-
-/* ``.disabled-tip`` lives in form-schema.css now (loaded on every
- * page that has the Save buttons -- Build /, Spectra /spectra).
- * Was here originally but spectra.html never linked style.css, so
- * the wrapper fell back to ``display: inline`` and broke the
- * baseline alignment in /spectra's action row.  Moved 2026-05-26.
- */
-
-.fdf-output {
-    margin-top: 12px;
-    padding: 12px 14px;
-    background: var(--bg-code);
-    color: var(--text-mono);
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 0.82rem;
-    line-height: 1.45;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    max-height: 360px;
-    overflow: auto;
-    white-space: pre;
-    /* Match scrollbar treatment to the rest of the dark UI */
-    scrollbar-color: var(--border-strong) transparent;
-    scrollbar-width: thin;
-}
-
-/* ---- Footer ---- */
-
+/* ---- Footer — index only ---- */
 footer {
     padding: 16px 28px;
     color: var(--text-muted);
@@ -674,20 +227,7 @@ footer a:hover {
     border-bottom-color: var(--accent);
 }
 
-/* ---- Scrollbars (webkit) ---- */
-
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-    background: var(--border-strong);
-    border-radius: 5px;
-    border: 2px solid var(--bg-page);
-}
-::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
-
-/* ---- Tooltips (use the native title= attribute, but soften with
- *      a default cursor when inputs have one) ---- */
-
+/* ---- Tooltips (native title=, softened cursor on inputs) ---- */
 label[title], fieldset[title], summary[title] {
     cursor: help;
 }

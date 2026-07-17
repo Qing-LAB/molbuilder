@@ -1,0 +1,277 @@
+/* form-components.css — the shared form-PAGE component vocabulary.
+ *
+ * ui-design-contract §2.2 / §2.3: these classes were stranded in the
+ * index page's ``style.css`` (headed "Build page styles") even though the
+ * Build, Spectra and Transport pages all use them.  Extracted here as a
+ * NAMED shared sheet so each form page links ONE component library instead
+ * of importing the whole index sheet (with its inert #generate-* /.tabs
+ * rules).  The element BASE (button/input/select/header/scrollbar/.card)
+ * lives in ``page-shell.css`` (loaded everywhere) — this file holds only the
+ * form-page CLASS components layered on top.
+ *
+ * Tokens come from ``lib/tokens.css`` via var(--…); no literals (§1).
+ * Load order on a form page: tokens → page-shell → form-components → <page>.
+ */
+
+/* ---- App grid — the vertical workflow column ---- */
+.app-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    margin: var(--gap) auto;
+    /* Cap width so ultrawide monitors don't stretch forms/viewer edge to
+     * edge; auto margins centre it; the calc keeps inside breathing room
+     * on smaller windows. */
+    max-width: 1400px;
+    width: calc(100% - 48px);
+}
+.app-grid > .card { margin: 0; }
+
+@media (max-width: 640px) {
+    .app-grid { margin: 10px; gap: 10px; }
+}
+
+/* ---- Card header (layered on page-shell's .card base) ---- */
+.card h2 {
+    margin: 0 0 10px;
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.005em;
+}
+.card h2 small { color: var(--text-muted); font-weight: 400; }
+.card h2 code {
+    background: var(--accent-bg);
+    color: var(--accent-hover);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 0.86em;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+/* ---- Primary action button (the .primary variant of page-shell's button) ---- */
+button.primary {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: var(--text-on-accent);
+    font-weight: 500;
+}
+button.primary:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+button.primary:disabled {
+    background: var(--bg-input);
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+}
+
+/* ---- Load-from-sidebar bar (inside the viewer card) ---- */
+.viewer-load-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0.5rem 0 0.8rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+.viewer-load-bar #load-from-sidebar-btn { flex: 0 0 auto; }
+.viewer-load-bar #load-source-readout {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
+/* ---- Auto-detect bar + rationale panel (scientific-validation §2.5) ---- */
+.auto-detect-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0 0 0.6rem;
+    padding: 0.4rem 0.8rem;
+}
+.auto-detect-bar #auto-detect-btn { flex: 0 0 auto; }
+.auto-detect-bar #auto-detect-status {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+.auto-detect-panel {
+    margin: 0 0 0.8rem;
+    padding: 0.5rem 0.8rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    font-size: 0.92rem;
+}
+.auto-detect-panel summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+.auto-detect-panel .auto-detect-rationale {
+    margin: 0.5rem 0;
+    color: var(--text-primary);
+}
+.auto-detect-panel .auto-detect-warnings {
+    margin: 0.3rem 0;
+    padding-left: 1.2rem;
+    color: var(--text-secondary);
+}
+.auto-detect-panel .auto-detect-warnings:empty,
+.auto-detect-panel .auto-detect-metals:empty {
+    display: none;
+}
+.auto-detect-panel .auto-detect-metals { margin: 0.3rem 0; }
+.auto-detect-panel .auto-detect-metals dt {
+    font-weight: 600;
+    margin-top: 0.3rem;
+}
+.auto-detect-panel .auto-detect-metals dd {
+    margin: 0 0 0 1.2em;
+    color: var(--text-secondary);
+}
+
+/* ---- Validation issues panel ----
+ * Structured per-issue list; each <li> carries data-severity picking the
+ * left-bar accent + leading glyph.  Populated by renderIssues(). */
+.issues-panel[hidden] { display: none; }
+.issues-panel {
+    list-style: none;
+    margin: 8px 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.88rem;
+}
+.issues-panel .issue-item {
+    padding: 6px 10px 6px 12px;
+    border-radius: 4px;
+    border-left: 3px solid var(--border-soft);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+.issues-panel .issue-item::before {
+    flex: 0 0 auto;
+    font-weight: 700;
+    content: "•";
+}
+.issues-panel .issue-item[data-severity="warn"] {
+    border-left-color: var(--warn-soft);
+    color: #e8c98c; /* exempt: lightened warn-amber for text-on-dark */
+}
+.issues-panel .issue-item[data-severity="warn"]::before {
+    content: "⚠";
+    color: var(--warn-soft);
+}
+.issues-panel .issue-item[data-severity="error"] {
+    border-left-color: var(--error);
+    color: #ffb1b1; /* exempt: lightened error tint for text-on-dark */
+}
+.issues-panel .issue-item[data-severity="error"]::before {
+    content: "✗";
+    color: var(--error);
+}
+.issues-panel .issue-item[data-severity="info"] {
+    border-left-color: var(--accent);
+    color: var(--text-secondary);
+}
+.issues-panel .issue-item[data-severity="info"]::before {
+    content: "i";
+    color: var(--accent);
+}
+.issues-panel .issue-where {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    opacity: 0.65;
+    margin-left: auto;
+    padding-left: 12px;
+}
+
+/* ---- Viewer card chrome (3Dmol canvas lives in .viewer-wrap) ---- */
+.card-viewer {
+    display: flex; flex-direction: column;
+    gap: 10px;
+}
+.viewer-header {
+    display: flex; flex-direction: column; gap: 6px;
+}
+.viewer-info {
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+    font-size: 0.86rem;
+    color: var(--text-secondary);
+    align-items: baseline;
+}
+.viewer-info .title {
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+.viewer-info .meta {
+    display: inline-flex; gap: 6px; align-items: baseline;
+    flex-wrap: wrap;
+}
+.viewer-info .sep { color: var(--border-strong); }
+.viewer-info code {
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    color: var(--text-mono);
+    background: var(--bg-input);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border-soft);
+}
+/* 1:1 square viewer container, consistent across Build / Modify / Watch;
+ * min/max-height keep it in a comfortable range; white canvas bg reads
+ * better for chemistry against the dark UI. */
+.viewer-wrap {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 320px;
+    max-height: 56vh;
+    margin: 0 auto;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: #ffffff; /* exempt: matches 3Dmol's canvas */
+    position: relative;
+    box-shadow: var(--shadow-card);
+}
+
+/* ---- Hint / helper text ---- */
+.hint {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 4px 0 12px;
+    line-height: 1.55;
+}
+
+/* ---- FDF / PySCF action row + generated-output box ---- */
+.fdf-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+.fdf-output {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--bg-code);
+    color: var(--text-mono);
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    max-height: 360px;
+    overflow: auto;
+    white-space: pre;
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+}
