@@ -1,0 +1,39 @@
+{#- Shared MolView + workspace + selection script stack (the concealed component).
+
+    The canonical load order for the FULL molview module (viewer + selection/cell panel
+    + view toggles + frames), mounted via ``molview.mount(host, ws, {mode, owner})``.
+    Extracted 2026-07 so a page adds the component with ONE include instead of a
+    hand-pasted copy (ui-design-contract §2.1 — one shared definition, not N copies).
+
+    Assumes the page has already loaded ``lib/molbuilder-runtime.js`` + ``lib/constants.js``
+    (app-global, loaded early in <head>).  Vendor 3Dmol stays a classic global.
+
+    Consumers today: Transport.  Migrating Modify / Results / molview-demo onto this
+    include is a follow-up (their inline copies are the same stack). -#}
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/view-controls.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_atom-channels.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_atom-index.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/_frame-series.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/mount-panel.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>

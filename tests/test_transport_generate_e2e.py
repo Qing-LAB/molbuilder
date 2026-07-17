@@ -115,6 +115,52 @@ def test_transport_page_loads_without_js_errors(page, flask_server):
     )
 
 
+def test_transport_commit_mounts_molview(
+        page, flask_server, junction_xyz_file):
+    """Committing a structure mounts the concealed MolView component into
+    ``#transport-molview-host`` — the same module Modify uses, in full
+    ``mode:"modify"`` (viewer + selection/cell panel + view toggles) — so the
+    user can inspect labels / electrode regions / unit cell / alignment before
+    generating.  Proves the display half of the Transport migration end-to-end.
+    """
+    errors = _open_transport(page, flask_server)
+    tmp_dir = junction_xyz_file.parent
+    # Wait for the molview stack + the sidebar commit channel + the empty host.
+    page.wait_for_function(
+        "() => !!(window.molbuilder && window.molbuilder.projects"
+        "         && window.molbuilder.molview"
+        "         && window.molbuilder.molview.mount"
+        "         && document.getElementById('transport-molview-host'))",
+        timeout=10_000,
+    )
+    # Drive the canonical commit path (dblclick equivalent).
+    page.evaluate(
+        "(a) => window.molbuilder.projects.publishCommit(a.dir, a.file)",
+        {"dir": str(tmp_dir.resolve()),
+         "file": str(junction_xyz_file.resolve())},
+    )
+    # mount builds the fused card + embeds a 3Dmol canvas into the host.
+    page.wait_for_function(
+        "() => {"
+        "  const h = document.getElementById('transport-molview-host');"
+        "  return !!h && !!h.querySelector('.molview-card')"
+        "         && !!h.querySelector('canvas');"
+        "}",
+        timeout=15_000,
+    )
+    # The full module carries the selection/cell panel too (mountPanel injects it
+    # async, AFTER the viewer canvas) — wait for it rather than checking early.
+    page.wait_for_function(
+        "() => {"
+        "  const h = document.getElementById('transport-molview-host');"
+        "  return !!h && !!h.querySelector('.panel-page-switch')"
+        "         && !!h.querySelector('#panel-page-selection');"
+        "}",
+        timeout=10_000,
+    )
+    assert not errors, "uncaught JS errors after commit+mount: " + "; ".join(errors)
+
+
 def test_transport_form_renders_schema_driven_fields(
         page, flask_server):
     """Schema endpoint drives the form; at least some inputs must

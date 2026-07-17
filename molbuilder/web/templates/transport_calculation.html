@@ -9,6 +9,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
+{# MolView component styles — the fused card (viewer + selection/cell panel) that
+   card 1 mounts for structure inspection. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    protocols/runtime-registry.md. #}
@@ -51,6 +57,10 @@
       <span id="transport-status" class="status" role="status"
             aria-live="polite"></span>
     </div>
+    {#- Empty host -> molview.mount builds the full fused card (viewer +
+        selection/cell panel + view toggles) here on first commit, for
+        checking labels / electrode regions / unit cell / alignment. -#}
+    <div id="transport-molview-host"></div>
   </section>
 
   {#- ===================== 2. Analyze chemistry ===================== -#}
@@ -199,6 +209,9 @@
   </section>
 </main>
 
+{# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
+   for structure inspection.  Loaded before transport/core.js, which mounts it. #}
+{% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>

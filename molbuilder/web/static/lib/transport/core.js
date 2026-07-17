@@ -194,6 +194,43 @@
         el.textContent = "Committed: " + name;
     }
 
+    // The mounted MolView handle (null until the first structure is committed).
+    var _mvHandle = null;
+
+    /**
+     * Display the committed structure in the concealed MolView component so the
+     * user can CHECK it before generating — atom/region labels, electrode regions,
+     * the unit cell, and alignment via the view toggles.  This is the SAME module
+     * Modify mounts, in full "modify" mode (interactive selection + cell panel +
+     * view menu); the geometry op-tabs are Modify-only and not part of the mount.
+     *
+     * Load the project file into MolView's data model (``openProjectFile`` — the
+     * load coordinator, ONE store write) then mount the fused card into the empty
+     * host on FIRST commit; later commits just reload the model and the mounted
+     * render reacts.  Best-effort: if the molview stack failed to load, the tab
+     * still works as a form generator (the viewer is an inspection aid).
+     */
+    function _showInMolview(path) {
+        var mv   = root.molbuilder && root.molbuilder.molview;
+        var ws   = root.molbuilder && root.molbuilder.workspace;
+        var data = mv && mv.data;
+        var host = _$("transport-molview-host");
+        if (!mv || !ws || !data || !host
+                || typeof mv.mount !== "function"
+                || typeof data.openProjectFile !== "function") {
+            return;
+        }
+        data.openProjectFile(path).then(function () {
+            if (_mvHandle) return;   // already mounted; openProjectFile redrew it
+            return mv.mount(host, ws, { mode: "modify", owner: "transport" })
+                .then(function (h) { _mvHandle = h; });
+        }).catch(function (e) {
+            if (root.console) {
+                root.console.error("[transport] MolView load/mount failed", e);
+            }
+        });
+    }
+
     /**
      * Subscribe to the universal commit channel so a sidebar
      * dblclick on a structure file updates the visible "current
@@ -240,6 +277,10 @@
                 }
                 _formDirty = false;
                 _currentStructureFile = f;
+                // Show the structure in the MolView inspection card (viewer +
+                // selection/cell panel + view toggles).  Fire-and-forget: runs in
+                // parallel with the sidecar-label fetch + auto-analyze below.
+                _showInMolview(f);
                 // Pull sidecar labels into in-memory state so the
                 // Generate POST can ship them directly (no path-
                 // pointer indirection on the server).  Helper
