@@ -308,6 +308,40 @@ class TestPeptideBuild:
         )
         assert atom_count == 3   # water.xyz
 
+    def test_commit_mounts_molview_card(
+            self, page, flask_server, water_xyz_file):
+        """structure-optimization migration: committing a structure mounts the
+        FULL concealed MolView component (mode:"readonly" — the same rich card
+        Modify uses, read-only) into #viewer-host, and the structure lives in
+        molview.data as the single source of truth (which Generate reads)."""
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => !!(window.molbuilder && window.molbuilder.projects"
+            "         && window.molbuilder.molview && window.molbuilder.molview.mount"
+            "         && document.getElementById('viewer-host'))",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        page.evaluate(
+            "(ctx) => window.molbuilder.projects.publishCommit(ctx.dir, ctx.file)",
+            {"dir": str(Path(p).parent), "file": p},
+        )
+        # The full fused card + 3Dmol canvas mount into the host.
+        page.wait_for_function(
+            "() => { const h = document.getElementById('viewer-host');"
+            "  return !!h && !!h.querySelector('.molview-card')"
+            "         && !!h.querySelector('canvas'); }",
+            timeout=15_000,
+        )
+        # molview.data holds the committed structure (the source of truth).
+        n = page.evaluate(
+            "() => { const d = window.molbuilder.molview.data;"
+            "  return (d && typeof d.getElements === 'function')"
+            "    ? d.getElements().length : 0; }"
+        )
+        assert n == 3   # water
+
     def test_generate_buttons_enable_after_sidebar_load(
             self, page, flask_server, water_xyz_file):
         """Pre-load, Generate.fdf + Generate.py are disabled

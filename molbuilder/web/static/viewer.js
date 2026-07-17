@@ -69,42 +69,15 @@
     // the embed's internal ResizeObserver tracks #viewer's
     // resizable container box (was a bespoke RO + window-resize
     // listener).  The handle is the only viewer touchpoint.
-    const _handle = window.molbuilder.viewer.embed(
-        $("viewer"),
-        {
-            // No xyz at mount -- Build loads structures asynchronously
-            // (via the Build / Load forms or the sidebar handoff);
-            // the viewer renders an empty canvas until the first
-            // setStructure call inside renderStructure() below.
-            style: {
-                rep:         "stick",
-                radiusScale: 1.0,
-            },
-            // No pick (the Build viewer is read-only -- the user
-            // edits via the build form, not via clicks on atoms).
-            pick:   { mode: "none" },
-            // Default canonical chrome (knob bar visible above
-            // the canvas) per § 7.1 usage pattern.
-            card:   { title: "Structure", showInfoLine: true,
-                      height: "100%" },
-            // Axes default OFF (2026-06-13) — explicit here for the
-            // cross-tab consistency rule that every embed mount
-            // states the axes default rather than relying on the
-            // embed's implicit "axes: opts.axes !== false" treatment
-            // (which defaults to TRUE).  Opt in via the knob bar.
-            axes:   false,
-            // Default export filename when the user clicks Save
-            // to project / Download from the Export popover.
-            export: { defaultName: "structure" },
-            // Surface viewer errors via the existing setStatus
-            // helper (defined below) instead of silently logging.
-            onError(err) {
-                try { setStatus("status", err.message || err.code,
-                                "err"); }
-                catch (_) {}
-            },
-        }
-    );
+    // The FULL concealed MolView component — the SAME rich card Modify (/molbuilder)
+    // mounts (fused viewer + selection/cell panel + view toggles) — but mode:"readonly"
+    // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
+    // not edit geometry.  The structure lives in molview.data as the single source of
+    // truth.  Mounted lazily on the first renderStructure().
+    const _mv   = window.molbuilder.molview;
+    const _ws   = window.molbuilder.workspace;
+    const _data = _mv && _mv.data;
+    let _mvHandle = null;
 
     // ----- Status helpers --------------------------------------------
     function setStatus(elId, msg, kind) {
@@ -1135,18 +1108,23 @@
     // shares the same UX.
 
     function renderStructure() {
-        if (!state.xyz) {
-            // No structure to mount.  setStructure with an empty
-            // xyz/pdb is a no-op in the embed; the empty state is
-            // rare (only at first page load before the user
-            // clicks Load from sidebar selection, or before the
-            // cross-tab handoff auto-loads a file from
-            // sessionStorage).  Leaves whatever was previously
-            // rendered until the user loads something.
-            return;
-        }
-        _handle.setStructure({ xyz: state.xyz });
-        _handle.refit();
+        if (!state.xyz) return;                 // nothing to show yet (pre-load)
+        if (!_mv || !_ws || !_data) return;     // molview stack missing (best-effort)
+        // Load the current structure text into MolView's model (the single source of
+        // truth) + mount the FULL fused card (mode:"readonly" — the build page reads
+        // the structure, it doesn't edit geometry through the viewer) on first render;
+        // later renders reload the model and the mounted render reacts.
+        _data.openMolecule({ text: state.xyz, filename: "structure.xyz" })
+            .then(function () {
+                if (_mvHandle) return;
+                return _mv.mount($("viewer-host"), _ws,
+                    { mode: "readonly", owner: "structure-opt" })
+                    .then(function (h) { _mvHandle = h; });
+            })
+            .catch(function (e) {
+                try { setStatus("status", (e && e.message) || "render failed", "err"); }
+                catch (_) {}
+            });
     }
 
     // ----- Downloads --------------------------------------------------

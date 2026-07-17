@@ -16,13 +16,14 @@
    2026-05-19 review (forms rendered unstyled). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+{# MolView component styles — the Inspect-structure card mounts the fused card. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<!-- 3Dmol.js: self-hosted under static/vendor/.  The CDN reference
-     was dropped in the internet-deployment hardening round (CSP no
-     longer allows third-party script sources).  Version + license +
-     citation: molbuilder/web/static/vendor/README.md. -->
-<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+{# 3Dmol + the mol-viewer stack now load via _molview_scripts.html at the end of
+   the body (self-hosted vendor; CSP blocks third-party sources). #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    It defines window.molbuilder.runtime which other modules call to
    register themselves + advertise readiness.  See design.md "Module
@@ -85,9 +86,9 @@
       <span id="load-status" class="status"></span>
     </div>
 
-    <div class="viewer-wrap" id="viewer-wrap">
-      <div id="viewer"></div>
-    </div>
+    {#- Empty host -> molview.mount builds the read-only fused card (viewer +
+        selection/cell panel + view toggles) here on the first structure load. -#}
+    <div id="viewer-host"></div>
   </section>
 
   {#- Card 2 — Analyze chemistry.  Promoted from sub-affordance
@@ -317,21 +318,15 @@
   <p>molbuilder &middot; <a href="/api/health">/api/health</a></p>
 </footer>
 
-<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{# FULL MolView component stack (viewer + selection/cell panel + warning-modal +
+   the selection stack) — the Inspect-structure card mounts the read-only fused
+   card.  One shared include instead of a hand-pasted copy (ui-design-contract
+   §2.1); the include also provides 3Dmol + mol-viewer-embed. #}
+{% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-{# warning-modal is shared across editor + form tabs.  Build's
-   sidebar-commit handler gates form-dirty discards through it; per
-   docs/tabs/architecture.md § 5.4 the modal's copy is the same
-   across tabs so the user sees a consistent "Unsaved
-   modifications" affordance everywhere. #}
-<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 {# sidecar-labels: viewer-is-truth contract helper.  Loaded BEFORE
    viewer.js so the optimization tab's _commitStructure can use it
    at Load time to pull frozen_atoms + regions into in-memory
