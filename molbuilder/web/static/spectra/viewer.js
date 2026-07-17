@@ -111,39 +111,28 @@
     }
 
     /**
-     * Bootstrap the Inspect-structure card: mount the 3Dmol
-     * embed, wire the Load button to ``/api/files/read`` + the
-     * sidebar's current pick, and subscribe to ``onCommit`` so
-     * dblclick on a sidebar .xyz/.pdb auto-loads.
+     * Bootstrap the Inspect-structure card: mount the read-only MolView
+     * component (lazily, on first load), wire the Load button, and subscribe to
+     * ``onCommit`` so a sidebar dblclick on a .xyz/.pdb loads it via
+     * ``molview.data.openProjectFile``.
      */
     function _bootstrapInspectCard() {
-        const viewerSlot = _$("viewer");
-        if (!viewerSlot) return;
-        const embedApi = (window.molbuilder
-                          && window.molbuilder.viewer
-                          && window.molbuilder.viewer.embed);
-        if (typeof embedApi !== "function") {
+        const host = _$("spectra-molview-host");
+        if (!host) return;
+        // Read-only MolView — the SAME concealed component Modify/Transport mount,
+        // in mode:"readonly" for structure demonstration only (view toggles +
+        // selection/cell panel, no editing).  Mounted lazily on the first load.
+        const mv   = window.molbuilder && window.molbuilder.molview;
+        const ws   = window.molbuilder && window.molbuilder.workspace;
+        const data = mv && mv.data;
+        if (!mv || !ws || !data || typeof mv.mount !== "function"
+                || typeof data.openProjectFile !== "function") {
             setStatus("load-status",
-                "Viewer unavailable: lib/mol-viewer-embed.js "
-                + "missing from the template script tags.", "error");
+                "Viewer unavailable: the MolView module failed to load "
+                + "(check the template script tags).", "error");
             return;
         }
-        const handle = embedApi(viewerSlot, {
-            style: { rep: "ball-and-stick", radiusScale: 1.0 },
-            card: {
-                title:        "",
-                showInfoLine: false,
-                height:       "420px",
-            },
-            // Axes default OFF (2026-06-13) — see
-            // lib/trajectory/core.js for the cross-tab consistency note.
-            axes: false,
-            // Spectra used to mount with rep="ball-and-stick" while
-            // every other tab defaulted to "stick".  2026-06-13: align
-            // to the project-wide default (stick) for consistency.
-            // Users can switch via the knob bar's Style menu.
-            style: { rep: "stick" },
-        });
+        let mvHandle = null;   // mounted on first structure load
 
         let _sidebarLastFile = "";
         let _loadSeq         = 0;
@@ -195,48 +184,28 @@
                 `Loading ${_basename(f)}…`, null);
             let text;
             try {
-                const r = await fetch(
-                    "/api/files/read?path=" + encodeURIComponent(f)
-                    + "&max_bytes=16777216"
-                );
-                const body = await r.json();
-                if (!r.ok || !body.ok) {
-                    setStatus("load-status",
-                        body.error || `Read failed (HTTP ${r.status}).`,
-                        "error");
-                    return;
+                // Load the committed file into MolView's model (openProjectFile —
+                // the load coordinator, ONE store write) + mount the read-only card
+                // on first load; the mounted render reacts to later loads.
+                await data.openProjectFile(f);
+                const s = data.getStructure();
+                text = (s && s.text) || "";
+                if (!mvHandle) {
+                    mvHandle = await mv.mount(host, ws,
+                        { mode: "readonly", owner: "spectra" });
                 }
-                text = body.text;
             } catch (e) {
                 setStatus("load-status",
-                    "Network error: " + (e && e.message ? e.message : e),
-                    "error");
+                    "Load failed: " + (e && e.message ? e.message : e), "error");
                 return;
             }
             if (mySeq !== _loadSeq) return;  // superseded by a newer load
             _sidebarLastFile = f;
-            // Push the bytes into spectra/core.js's in-memory
-            // holder (task #309, 2026-06-09 follow-up to #296).
-            // Pre-#309 we wrote to a hidden ``<textarea id="
-            // structure-text">``; that textarea is gone now and
-            // the inspector exposes a setter directly on its
-            // public API.
+            // Feed spectra/core.js's in-memory holder from the MolView model (the
+            // single source of truth) so the Generate POST has the structure bytes.
             const spec = (window.molbuilder || {}).spectraInspector;
             if (spec && typeof spec.setStructureText === "function") {
                 spec.setStructureText(text);
-            }
-            // Drop into the viewer.
-            try {
-                handle.setStructure(ext === "pdb"
-                    ? { pdb: text }
-                    : { xyz: text });
-                handle.refit();
-            } catch (e) {
-                // Viewer render error shouldn't block the load —
-                // surface but keep the in-memory holder populated
-                // (setStructureText already ran above) so Generate
-                // still has the bytes it needs.
-                console.warn("[spectra] viewer render failed:", e);
             }
             _updateInfo(_basename(f), text);
             setStatus("load-status",

@@ -149,6 +149,43 @@ def test_spectrum_form_renders_schema_driven_fields(
     )
 
 
+def test_spectrum_commit_mounts_readonly_molview(
+        page, flask_server, benzene_xyz_file):
+    """Spectra migration: committing a structure mounts the READ-ONLY MolView
+    card (the same concealed module Modify/Transport use) into
+    ``#spectra-molview-host`` and drives the load through data.openProjectFile —
+    replacing the old mol-viewer-embed + raw /api/files/read in spectra/viewer.js.
+    """
+    errors = _open_spectra(page, flask_server)
+    tmp_dir = benzene_xyz_file.parent
+    page.wait_for_function(
+        "() => !!(window.molbuilder && window.molbuilder.projects"
+        "         && window.molbuilder.molview && window.molbuilder.molview.mount"
+        "         && document.getElementById('spectra-molview-host'))",
+        timeout=10_000,
+    )
+    page.evaluate(
+        "(a) => window.molbuilder.projects.publishCommit(a.dir, a.file)",
+        {"dir": str(tmp_dir.resolve()),
+         "file": str(benzene_xyz_file.resolve())},
+    )
+    # The read-only fused card + 3Dmol canvas mount into the host.
+    page.wait_for_function(
+        "() => { const h = document.getElementById('spectra-molview-host');"
+        "  return !!h && !!h.querySelector('.molview-card')"
+        "         && !!h.querySelector('canvas'); }",
+        timeout=15_000,
+    )
+    # The load completed via MolView (status reads "Loaded …"), which also fed
+    # spectra/core.js's holder so Generate has the bytes.
+    page.wait_for_function(
+        "() => { const el = document.getElementById('load-status');"
+        "  return !!el && /loaded/i.test(el.textContent); }",
+        timeout=10_000,
+    )
+    assert not errors, "JS errors after commit+mount: " + "; ".join(errors)
+
+
 # --------------------------------------------------------------------- #
 #  Generate flow: contract end-to-end                                    #
 # --------------------------------------------------------------------- #

@@ -8,6 +8,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+{# MolView component styles — card 1 mounts the read-only fused card. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 {# Shared style.css — the Optimization tab's vertical-workflow rules
    (card layout + viewer chrome + form chrome) live here.  Task #296
@@ -73,9 +77,9 @@
       <span id="load-status" class="status"></span>
     </div>
 
-    <div class="viewer-wrap" id="viewer-wrap">
-      <div id="viewer"></div>
-    </div>
+    {#- Empty host -> molview.mount builds the read-only fused card (viewer +
+        selection/cell panel + view toggles) here on first structure load. -#}
+    <div id="spectra-molview-host"></div>
 
     {# Pre-task-#309 (2026-06-09) this card held a hidden
        ``<textarea id="structure-text">`` that the Load-from-
@@ -228,26 +232,14 @@
   <article id="methods-modal-body" class="methods-modal-body"></article>
 </dialog>
 
-{# Vendor + viewer stack — pulled in so the Inspect-structure card
-   can mount the same embedded 3Dmol viewer the Optimization tab
-   uses.  Same scripts the Optimization tab loads (templates/
-   index.html); 3Dmol's ~600 KB is heavier than the Spectra page
-   used to carry, but the visual parity the user asked for
-   requires the viewer. #}
-<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{# MolView component stack (viewer + selection/cell panel + warning-modal + the
+   selection stack) — card 1 mounts the read-only card.  Includes 3Dmol +
+   mol-viewer-embed, which VibrationView also borrows for the mode viewer.  One
+   shared include instead of a hand-pasted copy (ui-design-contract §2.1). #}
+{% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-{# warning-modal is shared across editor + form tabs.  Spectra's
-   sidebar-commit handler gates form-dirty discards through it
-   so a user mid-edit doesn't lose work to a stray dblclick on a
-   different structure. #}
-<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 {# sidecar-labels: viewer-is-truth contract helper.  Loaded BEFORE
    lib/spectra/core.js so the spectrum tab's Load handler can pull
    frozen_atoms + regions into in-memory state and ship them
