@@ -34,10 +34,21 @@ properties (`--bg-card`, `--border-soft`, `--text-primary`, `--accent`,
   `var(--token, fallback)` so it renders in a foreign host, **but the token must
   still be defined in `tokens.css`**. A `var(--x, …)` whose `--x` exists nowhere
   is a **phantom token**: it silently *always* uses the fallback, so the palette
-  no longer controls it. (Known debt: the embed modules — `mol-viewer-embed`,
-  `results/bundle-handoff`, `system-load-monitor`, `trajectory-inspector` — carry
-  a second `--surface-*/--fg/--radius-md` vocabulary; unify onto `tokens.css` when
-  you touch them, don't extend it.)
+  no longer controls it — and worse, if the *same* phantom name carries **different**
+  fallbacks at different sites (as `--border-subtle` does: rgba-white at .06/.08/.12/
+  .18; `--radius-md` at 8px vs 10px; `--text-tertiary` at #777 vs #7c7c7c), the sites
+  only *look* coordinated — defining the token would snap them together and shift most
+  of them.
+  *Known debt (CSS-migration step 3, open):* the embed modules — `mol-viewer-embed`,
+  `results/bundle-handoff`, `system-load-monitor`, `trajectory-inspector` — use a
+  **translucent-overlay** token family (`--surface-*`, `--border-subtle`) plus an
+  embed severity set (`--ok/--warn/--bad`), none defined in `tokens.css`. The overlay
+  *approach* is legitimate for embeddables (a translucent tint adapts to any host
+  background, like the `var(--token, fallback)` pattern itself) — the defects are that
+  the tokens are **undefined** and **internally inconsistent**. Resolve by either
+  promoting them into `tokens.css` as a documented **embeddable-overlay tier**
+  (consolidated to one value each), or collapsing onto the canonical palette — a
+  design decision, not a mechanical rename.
 
 ## 2. CSS lives in layers — put a rule in the lowest layer that fits
 
