@@ -560,24 +560,23 @@ class TestPartialTrajectoryInspectorEndpoint:
     """
 
     # Hand-picked from `grep -oE '\$\("[a-z0-9_-]+"\)' lib/trajectory/core.js`
-    # -- a representative slice covering each functional area
-    # (viewer host, frame controls, playback buttons, force overlay,
-    # atom-pick UI, plots).  We don't pin EVERY id (~30 of them; tested
-    # exhaustively in test_trajectory_inspector_partial.py::
+    # -- a representative slice covering each functional area (MolView
+    # mount host, force overlay, plots).  We don't pin EVERY id (~28 of
+    # them; tested exhaustively in test_trajectory_inspector_partial.py::
     # TestPartialIntegrity), just enough that a partial-id removal
     # caught by either test surfaces here too.
     REQUIRED_IDS = (
-        "viewer",                  # 3Dmol viewport container
+        "viewer-host",             # empty host molview.mount fills (task #34)
         "force-scale",             # force overlay magnitude knob
-        "inspect-atom-list-body",  # atom-pick table body
+        "hide-frozen",             # force-arrow frozen-atom filter
         "energy-plot",             # Plotly chart: per-frame energy
         "force-plot",              # Plotly chart: max force
         "scf-energy-plot",         # Plotly chart: SCF history (hidden when no data)
-        # Frame-strip controls (prev/play/pause/next/frame-slider/
-        # frame-idx) moved to the embed's auto-mounted frame strip
-        # in #246 A1 — they are intentionally NOT in the partial
-        # anymore.  See test_trajectory_inspector_partial.py
-        # EMBED_OWNED_IDS for the authoritative split.
+        # The viewer + frame bar + selection/atom-pick UI + playback
+        # controls all moved INTO MolView (task #34): the partial no
+        # longer declares #viewer, the frame strip, #inspect-*, #speed/
+        # #loop, #show-cell, or #save-frame.  See
+        # test_trajectory_inspector_partial.py for the authoritative set.
     )
 
     def test_endpoint_returns_html_200(self, web):

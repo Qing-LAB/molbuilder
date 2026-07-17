@@ -1,44 +1,33 @@
 """End-to-end smoke: hide-frozen toggle reaches the user as a
 visible affordance after a real trajectory mount.
 
-History (E1 demote, 2026-06-14 round-3 follow-up)
-=================================================
+Post-MolView migration (task #34)
+=================================
 
-Pre-E1-demote this file held 376 LoC of L5 contract checks
-covering:
+The trajectory inspector now mounts the concealed MolView module
+into an empty ``#viewer-host`` and is a DATA FEEDER; the only
+trajectory-specific control left is the force-vector producer,
+and ``#hide-frozen`` is a PURE force-arrow filter (MolView owns
+atom hiding in the viewer via its selection/isolate pipeline).
+The old ``#hide-frozen-row`` id + the setOverlays viewer-hide
+payload are gone, so the click-semantics / overlay-payload L2
+test (``test_hide_frozen_overlay_payload_js.py``) was retired.
 
-  1. The trajectory inspector mounts with a real SIESTA .out.
-  2. ``#hide-frozen-row`` is computed-visible after mount.
-  3. The Inspect checkbox starts unchecked.
-  4. Clicking the checkbox calls setOverlays with the right
-     ``selectorValue`` and ``style.hidden: true``.
-  5. Un-clicking clears the overlay.
-
-Per the round-3 R3-B test-pyramid audit + ``docs/protocols/test-
-strategy.md`` § 4: items (4) and (5) are pure JS function-chain
-contracts that an L2 Node test (``test_hide_frozen_overlay_payload
-_js.py``) drives in <1 s without a browser.  Only items (1) - (3)
-need the e2e tier -- they cover "the full chain (partial fetch +
-script-tag order + DOM mount + parser surfaces frozen_atoms via
-the real /api/watch/data response) actually wires up under
-Chromium."
-
-What this file pins after E1 demote
-===================================
+What this file pins now
+=======================
 
 A single e2e smoke that loads /results with a real SIESTA .out
 fixture containing the ``siesta: Constraints applied in the
-following order:`` echo, mounts the trajectory inspector, and
-asserts:
+following order:`` echo, mounts the trajectory inspector via the
+registry, and asserts:
 
-  * ``#hide-frozen-row`` is computed-visible (data-independent
-    UI-presence contract from the 2026-06-14 update).
-  * ``#hide-frozen`` checkbox is present + unchecked.
-  * After the parser surfaces ``runtime_info.frozen_atoms``, the
-    state.data field carries the expected indices.
-
-Click semantics + overlay-payload shape are NOT exercised here
-(L2 owns those).  See test_hide_frozen_overlay_payload_js.py.
+  * the ``#hide-frozen`` toggle is computed-visible after mount
+    (data-independent UI-presence contract) — it lives in the flat
+    force-controls block now, no ``#hide-frozen-row`` wrapper id.
+  * the ``#hide-frozen`` checkbox is present + starts unchecked.
+  * the full chain (partial fetch + script-tag order + MolView
+    mount + parser surfaces frame/scf/step content via the real
+    /api/watch/data response) actually wires up under Chromium.
 """
 from __future__ import annotations
 
@@ -186,17 +175,22 @@ def test_hide_frozen_row_and_data_visible_after_real_mount(
         str(out_path),
     )
 
-    page.wait_for_selector("#hide-frozen-row", timeout=8000)
+    page.wait_for_selector("#hide-frozen", timeout=8000)
 
-    # (i) row computed-visible regardless of data shape.
+    # (i) the toggle's enclosing row is computed-visible regardless of
+    # data shape.  Post-task-#34 the row is a plain <label> in the flat
+    # force-controls block (no #hide-frozen-row id); check the checkbox's
+    # closest label is displayed + laid out (offsetParent non-null).
     row_visible = page.evaluate(
         "() => {"
-        "  const row = document.getElementById('hide-frozen-row');"
-        "  return !!row && getComputedStyle(row).display !== 'none';"
+        "  const cb = document.getElementById('hide-frozen');"
+        "  const row = cb && cb.closest('label');"
+        "  return !!row && getComputedStyle(row).display !== 'none'"
+        "         && cb.offsetParent !== null;"
         "}"
     )
     assert row_visible, (
-        "#hide-frozen-row must be computed-visible after mount "
+        "the #hide-frozen toggle must be computed-visible after mount "
         "regardless of whether the parser has finished surfacing "
         "frozen_atoms (UI-presence-is-data-independent contract)."
     )

@@ -152,16 +152,14 @@ class TestTrajectoryInspectorPageshowRefresh:
         _open_results_and_select(
             page, flask_server, project_with_trajectory)
         # Wait for the trajectory inspector to land + the initial
-        # /api/watch/load to complete.  The frame strip's
-        # .frame-counter element renders "<i+1> / <total>" — i.e.
-        # the second number > 0 once frames have loaded.  (The old
-        # #frame-tot was retired during #246-A1 when the frame
-        # strip moved into the embed; see EMBED_OWNED_IDS in
-        # test_trajectory_inspector_partial.py.)
-        page.wait_for_selector("#viewer", timeout=5000)
+        # /api/watch/load to complete.  MolView's frame bar (task #34)
+        # renders a .mvf-counter element showing "<i+1> / <total>" —
+        # i.e. the second number > 0 once reloadFrames has populated the
+        # frame series and MolView shows the bar (frameCount > 1).
+        page.wait_for_selector("#viewer-host", timeout=5000)
         page.wait_for_function(
             """() => {
-                const el = document.querySelector('.frame-counter');
+                const el = document.querySelector('.mvf-counter');
                 if (!el) return false;
                 const ix = el.textContent.indexOf('/');
                 if (ix < 0) return false;
@@ -204,11 +202,11 @@ class TestTrajectoryInspectorPageshowRefresh:
             self, page, flask_server, project_with_trajectory):
         _open_results_and_select(
             page, flask_server, project_with_trajectory)
-        page.wait_for_selector("#viewer", timeout=5000)
+        page.wait_for_selector("#viewer-host", timeout=5000)
         # See pageshow test for the .frame-counter rationale.
         page.wait_for_function(
             """() => {
-                const el = document.querySelector('.frame-counter');
+                const el = document.querySelector('.mvf-counter');
                 if (!el) return false;
                 const ix = el.textContent.indexOf('/');
                 if (ix < 0) return false;

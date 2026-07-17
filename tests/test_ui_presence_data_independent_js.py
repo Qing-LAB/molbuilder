@@ -7,8 +7,11 @@ shape.  Their PRESENCE is a stable affordance; only their EFFECT
 depends on data.
 
 Pins from this session:
-  * trajectory-inspector ``#hide-frozen-row`` -- always visible
-    (covered by ``test_hide_frozen_visibility_transition_js.py``).
+  * trajectory-inspector hide-frozen toggle -- always visible.  (The
+    ``#hide-frozen-row`` wrapper + its ``refreshHideFrozenAvailability``
+    show/hide logic were retired in the MolView migration, task #34;
+    the toggle now lives in the always-rendered flat force-controls
+    block, so there is no JS visibility transition left to pin.)
   * spectra-inspector ``.modes-table .es-col`` headers -- always
     visible (no ``th.hidden = !anyES`` write).
   * mol-viewer-embed Animation Export section -- always visible

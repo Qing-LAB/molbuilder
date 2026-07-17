@@ -152,57 +152,48 @@ def test_refreshForcesStatus_honours_hide_frozen():
     _assert_honours_hide_frozen("refreshForcesStatus", body)
 
 
-def test_applyHideFrozen_dispatches_overlay_payload():
-    """The 3Dmol-overlay handler that actually hides the atoms.
-    Must read the toggle, look up the frozen set, and call the
-    embed's setOverlays.  The contract is documented in the
-    function's own header comment + the embed's overlay schema."""
-    body = _extract_fn_body("applyHideFrozen")
-    assert _TOGGLE_ID in body, (
-        f"applyHideFrozen() does not reference the {_TOGGLE_ID!r} "
-        f"checkbox id.  Without that, toggling on does nothing."
-    )
-    assert _FROZEN_SET_HELPER in body, (
-        f"applyHideFrozen() does not call {_FROZEN_SET_HELPER}().  "
-        f"Without that, the overlay payload has no indices to hide."
-    )
-    assert "setOverlays" in body, (
-        f"applyHideFrozen() does not call setOverlays().  Without "
-        f"that, the 3Dmol viewer never receives the hide-atoms "
-        f"payload and the visual effect is lost."
-    )
+# NOTE (task #34): the third computation the original 2026-06-14 fix
+# pinned — ``applyHideFrozen`` dispatching a 3Dmol setOverlays payload
+# to HIDE the frozen atoms in the viewer — was retired with the MolView
+# migration.  Atom hiding in the viewer is now MolView's job (its
+# selection/isolate render pipeline); the trajectory inspector's
+# ``hide-frozen`` checkbox is a PURE force-arrow filter.  So the two
+# remaining computations that DO still depend on the toggle
+# (_buildArrowsForFrame + refreshForcesStatus, both pinned above) are
+# the whole contract now, and the change listener only needs to rebuild
+# the arrows.
 
 
-def test_hide_frozen_change_listener_invokes_both_handlers():
-    """The change event on the hide-frozen checkbox must fire BOTH
-    applyHideFrozen (the viewer overlay) AND drawForces (the arrow
-    rebuild that picks up the frozen filter via
-    _buildArrowsForFrame).  If only one fires, the user sees the
-    toggle take partial effect — e.g., arrows suppress but atoms
-    stay visible, or atoms hide but arrows still draw on them."""
+def test_hide_frozen_change_listener_rebuilds_arrows():
+    """The change event on the hide-frozen checkbox must rebuild the
+    force arrows (drawForces), which re-derives the overlay for the
+    current frame with the frozen atoms filtered out via
+    _buildArrowsForFrame.  Post-task-#34 that is the toggle's ONLY
+    effect — MolView owns atom hiding in the viewer, so there is no
+    separate overlay handler to fire."""
     src = MODULE.read_text()
-    # Find the change listener wired to the hide-frozen checkbox.
-    # The codebase uses the ``_on($("hide-frozen"), "change", ...)``
-    # idiom; pick out the handler body.
-    match = re.search(
+    # The wiring is ``_on($("hide-frozen"), "change", drawForces)`` — a
+    # bare handler reference (the old inline function that also called
+    # applyHideFrozen is gone).  Accept either the bare reference or an
+    # inline function body that calls drawForces.
+    bare = re.search(
+        r'_on\(\$\("hide-frozen"\)\s*,\s*"change"\s*,\s*drawForces\s*\)',
+        src,
+    )
+    inline = re.search(
         r'_on\(\$\("hide-frozen"\)\s*,\s*"change"\s*,\s*'
         r'function\s*\(\s*\)\s*\{([^}]*)\}',
         src,
     )
-    assert match, (
-        "Could not locate the hide-frozen change listener in "
-        f"{MODULE}.  If the wiring was rewritten, update this "
-        "test's parser; the contract that both handlers fire on "
-        "toggle remains load-bearing."
+    assert bare or (inline and "drawForces" in inline.group(1)), (
+        "hide-frozen change listener does not rebuild the force arrows "
+        f"(drawForces) in {MODULE}.  Toggling 'Exclude frozen atoms' "
+        "would leave the previously-drawn arrows on frozen atoms until "
+        "the next frame change."
     )
-    handler = match.group(1)
-    assert "applyHideFrozen" in handler, (
-        "hide-frozen change listener does not call applyHideFrozen() "
-        "— the 3Dmol viewer would never hide the frozen atoms."
-    )
-    assert "drawForces" in handler, (
-        "hide-frozen change listener does not call drawForces() — "
-        "the force arrows would not rebuild, so previously drawn "
-        "arrows on frozen atoms would linger until the next frame "
-        "change."
+    # And it must NOT reach for the retired viewer-overlay handler.
+    assert not (inline and "applyHideFrozen" in inline.group(1)), (
+        "hide-frozen change listener still calls applyHideFrozen() — "
+        "that viewer-overlay handler was retired in the MolView "
+        "migration (task #34); atom hiding is MolView's job now."
     )

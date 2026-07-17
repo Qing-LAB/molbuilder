@@ -518,61 +518,57 @@
     // Expose for tests + future render-function migration.
     state._plottableFrames = plottableFrames;                          // eslint-disable-line camelcase
 
-    // #205 Part A migration: mount via the standard embed so the
-    // knob bar (Style / Labels / Axes / Reset / PNG / Background /
-    // Export) appears above the canvas, matching every other tab.
-    // ``_viewer3dmol()`` returns the underlying 3Dmol viewer so the
-    // existing inspector machinery (cell wireframe, atom indices,
-    // force arrows, movie-mode playback via addModelsAsFrames +
-    // setFrame, setClickable for picking) continues to work
-    // untouched.
+    // MolView migration (task #34): the trajectory inspector no longer embeds
+    // its own 3Dmol viewer.  It mounts the FULL concealed MolView module
+    // read-only (molview-module.md §18) into the empty #viewer-host and becomes
+    // a DATA FEEDER — it hands MolView the parsed coordinate frames
+    // (molview.data.reloadFrames / addFrame) and force-arrow overlays
+    // (handle.setArrows).  MolView owns the ENTIRE view: playback + speed +
+    // loop (the frame bar), unit-cell display, atom-index labels, selection +
+    // measurement + picking, and atom hiding (its render pipeline's
+    // isolate/selection).  See docs/protocols/frontend-module-architecture.md §5.
     //
-    // Part B follow-up: migrate playback to
-    // ``animation: { kind: "trajectory", frames, arrowsPerFrame }``
-    // + ``appendFrames`` for live polling; drop the raw setFrame /
-    // addModelsAsFrames / per-frame redraw loop.
-    const _handle = window.molbuilder.viewer.embed($("viewer"), {
-        style: { rep: "stick", radiusScale: 1.0 },
-        // Up-to-3 pick for the Inspect panel (task #299): 1 atom →
-        // xyz, 2 atoms → distance, 3 atoms → bond angle with the
-        // 2nd click as the vertex (the shared
-        // lib/selection/measurements.js computes all three from the
-        // current frame's coords).  ``halo: true`` draws the
-        // yellow sphere overlay; ``label: false`` keeps the
-        // viewer uncluttered (the Inspect panel shows the readout).
-        // Atom-list row clicks share the embed's pick state via
-        // handle.setPickedIndices (no separate halo path).
-        pick:  {
-            mode:  "triple",
-            halo:  true,    // accepts boolean per § 3.8 after #246 B7
-            label: false,
-            onPick() {
-                // #246 B3: pick state lives in the embed; read
-                // live via _handle.getPickedIndices() at each
-                // panel refresh.  No host-side mirror.
-                updateInspectPanel();
-                refreshAtomListHighlights();
-            },
-        },
-        card:  { title:        "Trajectory",
-                 showInfoLine: false,
-                 height:       "100%" },
-        // Axes default OFF (2026-06-13).  Pre-fix every tab mounted
-        // the embed with ``axes: true`` so axes always showed on
-        // first mount, but a tab that persists axes-state in
-        // sessionStorage (Modify) could remember "axes off" from a
-        // prior visit and show that on revisit — looking
-        // "unpredictable" to the user even though each tab was
-        // internally consistent.  Default OFF here matches the
-        // user's expectation that axes are an opt-in overlay.
-        axes:    false,
-        export:  { defaultName: "trajectory" },
-        onError(err) {
-            try { console.warn("[trajectory.inspector]",
-                                err.code, err.message); }
-            catch (_) {}
-        },
-    });
+    // mv.mount is async, but the partial-factory calls THIS mount synchronously
+    // (it returns {dispose, load}); so we kick the assembly off here and hold
+    // the handle in ``_mv`` once ready.  Loads that arrive before the handle
+    // resolves are safe: applyNewData sets state.data + the plots regardless,
+    // and rebuildModel() awaits ``_mvReady`` before feeding frames.
+    let _mv = null;
+    const _mvReady = (async function mountMolView() {
+        const mb = window.molbuilder || {};
+        const mv = mb.molview;
+        const ws = mb.workspace;
+        const host = $("viewer-host");
+        if (!host || !mv || typeof mv.mount !== "function" || !mv.data || !ws) {
+            setStatus("Viewer unavailable: the MolView module / persistence "
+                    + "layer is missing from results.html.", "error");
+            return null;
+        }
+        try {
+            _mv = await mv.mount(host, ws, {
+                mode:  "readonly",
+                owner: "results:trajectory",
+            });
+        } catch (e) {
+            setStatus("Viewer failed: "
+                + (e && e.message ? e.message : String(e)), "error");
+            return null;
+        }
+        if (!_mv) {
+            setStatus("Viewer failed: molview.mount returned null.", "error");
+            return null;
+        }
+        // Test hook: expose the mount handle so Playwright e2e can drive the
+        // read-only trajectory view (the SELECTION + structure are read off the
+        // molview.data singleton — MolView conceals its internals).
+        host.__molview_results_handle = _mv;
+        // Re-derive + re-hand the force arrows on every data change (incl. each
+        // setFrame during playback): a per-frame setStructure clears the
+        // overlay, so the CONSUMER re-supplies it (molview-module §14.5.1).
+        const off = _mv.onChange(function () { drawForces(); });
+        if (typeof off === "function") _cleanups.push(off);
+        return _mv;
+    })();
 
     /* ------------------------------------------------------------------ */
     /*  Status banner                                                      */
@@ -784,76 +780,18 @@
     // handle.setStructure re-applies the embed's current style on
     // every movie swap so no trajectory-side re-apply is needed.
 
-    // Cell line colour is contrast-driven so the box stays visible
-    // across every background option.  3Dmol takes integer or
-    // string colours; a string passes through unchanged when the
-    // user has selected one of the named backgrounds (white / black)
-    // and we likewise pass back our integer 0x... constants.
-    //
-    // Picks a dark grey on light backgrounds (white / light grey)
-    // and a light grey on dark backgrounds (black).  An unknown bg
-    // value (user-supplied via /bgcolor query string in dev) falls
-    // back to mid-grey, which is at least visible on most surfaces
-    // even if not optimal.
-    function cellLineColor() {
-        // Post-#205 the bespoke #bg <select> is gone; the embed's
-        // Background popover owns the canvas backdrop.  Read the
-        // current background via the public getter (#245 added it
-        // precisely so this consumer didn't need to reach into the
-        // test affordance surface).  B1, 2026-06-04.
-        let bg = "#ffffff";
-        try {
-            if (_handle && typeof _handle.getBackground === "function") {
-                bg = _handle.getBackground() || "#ffffff";
-            }
-        } catch (_) {}
-        bg = String(bg).toLowerCase();
-        if (bg === "black" || bg === "#000000" || bg === "#1c1c1c"
-            || bg === "0x000000") {
-            return 0xcccccc;
-        }
-        if (bg === "white" || bg === "#ffffff" || bg === "#eeeeee"
-            || bg === "0xeeeeee" || bg === "transparent") {
-            return 0x444444;
-        }
-        return 0x888888;       // unknown bg -- safe middle ground
-    }
+    // Unit-cell display, atom-index labels, and background are all MolView's
+    // now (its Cell page + knob bar): the periodicity passed to openMolecule
+    // drives the cell box, and the knob bar's Labels popover owns index labels.
+    // The trajectory inspector no longer computes a cell-line colour or wires a
+    // #show-cell / #show-indices control — those retired with the MolView
+    // migration (task #34).
 
-    // ------------------------------------------------------------ //
-    // #234 follow-up (2026-06-03): cell wireframe / atom-index      //
-    // labels / force vectors all migrated to the embed's            //
-    // declarative API.  drawCell / drawIndices / drawForces are     //
-    // now thin shims that delegate to applyCell / applyIndexLabels  //
-    // / applyForces below; the legacy state.cellShapes /            //
-    // .indexLabels / .forceShapes arrays + the HEAD_FRAC / CONE_SEGS//
-    // arrowhead constants are dead code but kept until a single     //
-    // cleanup commit retires them everywhere (the old draw*         //
-    // functions still hold onto the array names).                   //
-    // ------------------------------------------------------------ //
-
-    function applyCell() {
-        if (!_handle) return;
-        const cb = $("show-cell");
-        const lat = state.data && state.data.lattice;
-        if (cb && cb.checked && lat && lat.length === 3) {
-            _handle.setCell({ color: cellLineColor(), radius: 0.04 });
-        } else {
-            _handle.setCell(false);
-        }
-    }
-
-    // applyIndexLabels / drawIndices were retired 2026-06-13.  Atom-
-    // index labels are now exclusively controlled by the molview knob
-    // bar's Labels popover; the trajectory inspector's #show-indices
-    // checkbox was a duplicate that called the same handle.setLabels
-    // API with a different default font size, letting the two
-    // controls drift out of sync.  Removing the wrapper here + the
-    // template control + the listener wire keeps the knob bar as the
-    // sole owner per the file-top design note.
-
-    // Frozen-atom indices from runtime_info.frozen_atoms (sidecar-
-    // driven; see parsers/_sidecar.py).  Returns a Set<number> for
-    // O(1) membership; empty set when no sidecar / no frozen field.
+    // Frozen-atom indices from runtime_info.frozen_atoms (sidecar-driven; see
+    // parse/.../_sidecar.py).  Returns a Set<number> for O(1) membership; null
+    // when no sidecar / no frozen field.  Used ONLY to filter the force-arrow
+    // overlay now — atom HIDING in the viewer is MolView's job (its
+    // selection/isolate render pipeline), not this inspector's.
     function _frozenSet() {
         const rt = state.data && state.data.runtime_info;
         const arr = rt && rt.frozen_atoms;
@@ -861,62 +799,12 @@
         return new Set(arr);
     }
 
-    // Toggle the "Hide frozen atoms" overlay on the embed.  Single
-    // overlay entry whose ``style.hidden: true`` applies to every
-    // frozen index — same primitive selection-panel isolate-mode
-    // uses (mol-viewer-embed.js short-circuits empty stylespec to
-    // disable every rep + the bonds that touch those atoms).  The
-    // trajectory inspector has no other overlay sender, so a full
-    // setOverlays replace is safe here.
-    function applyHideFrozen() {
-        if (!_handle) return;
-        // G6 2026-06-14: re-render the Inspect atom-list so frozen
-        // rows disappear (when on) / re-appear (when off) in lockstep
-        // with the 3D viewer overlay.  Pre-fix the table was rendered
-        // once per rebuildModel and stayed atom-complete even after
-        // the user toggled hide-frozen on, so the user could pick a
-        // frozen atom that was visually hidden in the viewer.
-        rebuildInspectAtomList();
-        const cb = $("hide-frozen");
-        const frozen = _frozenSet();
-        if (!frozen || !cb || !cb.checked) {
-            _handle.setOverlays({ atoms: [] });
-            return;
-        }
-        _handle.setOverlays({
-            atoms: [{
-                indices: Array.from(frozen),
-                style: { hidden: true },
-            }],
-        });
-    }
-
-    // 2026-06-14: the "Hide frozen atoms" row is ALWAYS visible.
-    // Pre-fix this function gated visibility on
-    // ``runtime_info.frozen_atoms.size > 0`` and hid the row when
-    // the parser failed to surface indices -- which made the
-    // toggle silently vanish every time a SIESTA .out failed the
-    // filename-pairing heuristic, every time a Results-tab user
-    // loaded a constraint-free structure, etc.  The control's
-    // PRESENCE is a stable UI affordance; only its EFFECT depends
-    // on data.  When there are no frozen atoms, clicking the
-    // checkbox is a no-op (applyHideFrozen() returns early because
-    // _frozenSet() is empty).  Stable affordance, correct effect,
-    // no muscle-memory whiplash.
-    //
-    // Kept as a named no-op so the existing callsites compile and
-    // a future refactor can re-attach availability logic without a
-    // wider refactor.  All it does today is keep the checkbox in
-    // sync with state when external code resets frozen_atoms:
-    // un-check it so the user doesn't see a stale "hidden" filter.
-    function refreshHideFrozenAvailability() {
-        const frozen = _frozenSet();
-        if (frozen && frozen.size > 0) return;
-        const cb = $("hide-frozen");
-        if (cb && cb.checked) {
-            cb.checked = false;
-            applyHideFrozen();
-        }
+    // The frame MolView is currently showing.  MolView owns the playhead (its
+    // frame bar); the inspector reads it to build force arrows for the right
+    // frame.  0 before the handle resolves.
+    function _curFrame() {
+        return (_mv && typeof _mv.currentFrame === "function")
+            ? _mv.currentFrame() : 0;
     }
 
     // Build the ArrowSpec array for ONE frame given the current
@@ -983,21 +871,6 @@
         return arrows;
     }
 
-    // Build the FULL arrowsPerFrame array for the current
-    // trajectory.  Called at setAnimation time AND on every
-    // force-knob change (which calls handle.setAnimation with a
-    // partial { arrowsPerFrame } update; the embed's #233
-    // partial-update path mutates in place + refreshes the current
-    // frame without restarting the loop).
-    function buildArrowsPerFrame() {
-        if (!state.data || !state.data.frames) return null;
-        const apf = [];
-        for (let i = 0; i < state.data.frames.length; i++) {
-            apf.push(_buildArrowsForFrame(i));
-        }
-        return apf;
-    }
-
     function refreshForcesStatus() {
         const cb = $("show-forces");
         if (!cb || !cb.checked) {
@@ -1009,7 +882,7 @@
             return;
         }
         const forces = state.data.forces
-                       && state.data.forces[state.currentFrame];
+                       && state.data.forces[_curFrame()];
         if (!forces || !forces.length) {
             setForcesStatus(
                 "No force data on this frame "
@@ -1017,13 +890,13 @@
             return;
         }
         const fmin = parseFloat($("force-min").value) || 0.0;
-        // Honour the "Hide frozen atoms" toggle the same way
+        // Honour the "Exclude frozen atoms" toggle the same way
         // _buildArrowsForFrame does: skip frozen indices when the
         // checkbox is on so the reported max-force and arrow count
         // describe what's actually drawn (the unfrozen / free
         // atoms), not the whole frame.  Without this the status
         // line keeps reporting the frozen-atom max even after the
-        // user hides those arrows, which made the toggle look
+        // user excludes those arrows, which made the toggle look
         // like a no-op.
         const hideFrozen = $("hide-frozen") && $("hide-frozen").checked;
         const frozen = hideFrozen ? _frozenSet() : null;
@@ -1037,7 +910,7 @@
             if (mag >= fmin) drawn += 1;
         }
         const suffix = (frozen && frozen.size > 0)
-            ? " (frozen atoms hidden)"
+            ? " (frozen atoms excluded)"
             : "";
         if (drawn === 0) {
             setForcesStatus(
@@ -1053,32 +926,16 @@
         }
     }
 
-    function applyForces() {
-        if (!_handle || !state.data) return;
-        const apf = buildArrowsPerFrame();
-        try { _handle.setAnimation({ arrowsPerFrame: apf }); }
-        catch (_) {}
-        refreshForcesStatus();
-    }
-
-    function drawCell() {
-        // Thin shim — see applyCell above.  Kept under the legacy
-        // name so existing callers (rebuildModel, knob listeners,
-        // applyStructure restore paths) don't need updating in
-        // the same commit.
-        applyCell();
-    }
-
     /* ------------------------------------------------------------------ */
-    /*  Force-vector arrows                                                */
+    /*  Force-vector overlay                                               */
     /* ------------------------------------------------------------------ */
-
-    // #234 follow-up: force arrows are now an embed concern.  The
-    // embed's mol-axes.js ArrowSpec primitive owns the shaft + cone
-    // geometry; this file just builds an ArrowSpec[] per frame via
-    // _buildArrowsForFrame + buildArrowsPerFrame above and hands it
-    // to handle.setAnimation({arrowsPerFrame}).  HEAD_FRAC /
-    // CONE_SEGS constants gone with the bespoke addCylinder loop.
+    //
+    // MolView draws the arrows it is HANDED (molview-module.md §14.5.1); the
+    // inspector owns the force→arrow mapping.  drawForces re-derives the arrows
+    // for the CURRENT frame and hands them to MolView via handle.setArrows.  It
+    // is wired to the force knobs AND to handle.onChange, so the arrows
+    // re-derive for each frame as the trajectory plays (a per-frame
+    // setStructure clears the overlay; this re-supplies it).
 
     function setForcesStatus(msg) {
         // Single point of truth for the diagnostic readout next to
@@ -1090,366 +947,86 @@
     }
 
     function drawForces() {
-        // Thin shim -- see applyForces above (#234 follow-up).
-        applyForces();
+        if (!_mv || typeof _mv.setArrows !== "function") return;
+        _mv.setArrows(_buildArrowsForFrame(_curFrame()));
+        refreshForcesStatus();
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Inspect tab: 1-/2-/3-atom picking + live xyz/distance/angle        */
-    /* ------------------------------------------------------------------ */
-    //
-    // The embed owns halo rendering via pick.mode = "triple" + pick.halo;
-    // _postFramePositionRedraw re-renders halos every frame so they
-    // track trajectory motion.  Atom-list row clicks push into the
-    // embed's pick state via handle.setPickedIndices.  Single source
-    // of truth: the embed's pickedIndices.  Trajectory queries it
-    // live via _handle.getPickedIndices() in updateInspectPanel +
-    // refreshAtomListHighlights (no host-side mirror per D3
-    // contract, fixed in #246 B3).  Cap was raised from 2 to 3 in
-    // task #299 (2026-06-08); the readout uses the shared
-    // lib/selection/measurements.js math + display.
+    // Legacy picking / atom-list helpers (_picks, _framePositions,
+    // _frameAtomsMeta, updateInspectPanel, togglePickFromRow, clearAtomPicks,
+    // _toDisplayIndex, rebuildInspectAtomList, updateAtomListCoords,
+    // refreshAtomListHighlights) were removed with the MolView migration
+    // (task #34): atom picking + the distance/angle measurement readout are now
+    // MolView's selection panel + measurement overlay (molview-module §14.5.3),
+    // driven off the shared molview.data selection store.
 
-    function _picks() {
-        return _handle ? _handle.getPickedIndices() : [];
-    }
-
-    // The frame coords are stored as ``[element, x, y, z]`` quads;
-    // the shared measurements module wants ``[[x,y,z], …]`` and an
-    // optional atomsMeta array with element labels.  Cheap to build
-    // per-frame — n_atoms is small (single-digit hundreds for
-    // typical inputs) and updateInspectPanel runs at most once per
-    // displayed frame.
-    function _framePositions(frame) {
-        const out = new Array(frame.length);
-        for (let i = 0; i < frame.length; i++) {
-            const r = frame[i];
-            out[i] = r ? [r[1], r[2], r[3]] : null;
-        }
-        return out;
-    }
-    function _frameAtomsMeta(frame) {
-        const out = new Array(frame.length);
-        for (let i = 0; i < frame.length; i++) {
-            const r = frame[i];
-            out[i] = { index: i, element: r ? (r[0] || "?") : "?" };
-        }
-        return out;
-    }
-
-    function updateInspectPanel() {
-        const pa = _picks();
-        const frame = (state.data && state.data.frames[state.currentFrame])
-                    || [];
-        const readout = $("inspect-measurement");
-        if (!readout) return;
-        const meas = window.molbuilder
-                  && window.molbuilder.selection
-                  && window.molbuilder.selection.measurements;
-        let display = null;
-        if (meas && pa.length > 0) {
-            const positions = _framePositions(frame);
-            const atomsMeta = _frameAtomsMeta(frame);
-            // The embed's pickedIndices array is already in click
-            // order — same semantics as the Modify-tab store's
-            // pickOrder.  Pass it through both as the selection
-            // (the module dedups + bails on 4+) AND as the
-            // pickOrder so the angle vertex is the 2nd click.
-            const result = meas.compute(pa, atomsMeta, positions, pa);
-            if (result) display = result;
-        }
-        if (display) {
-            readout.hidden = false;
-            readout.dataset.kind = display.kind;
-            readout.textContent = display.display;
-        } else {
-            readout.hidden = true;
-            readout.textContent = "";
-        }
-        const hint  = $("inspect-hint");
-        const btn   = $("inspect-clear");
-        if (hint)  hint.hidden  = pa.length > 0;
-        if (btn)   btn.disabled = pa.length === 0;
-    }
-
-    // Toggle pick state for ``idx`` (0-based atom index): drop if
-    // already picked, append if new; cap at 3 picks total (a fourth
-    // pick drops the oldest, sliding the FIFO window forward).
-    // Drives the atom-list row click path; the embed handles the
-    // viewer-click path natively via its pick.mode = "triple"
-    // wiring (same cap, same FIFO semantics — kept in lock-step).
-    // Pushes the new state into the embed via setPickedIndices so
-    // halos stay in sync.
-    function togglePickFromRow(idx) {
-        if (!_handle) return;
-        const pa = _handle.getPickedIndices();
-        const existing = pa.indexOf(idx);
-        if (existing !== -1) {
-            pa.splice(existing, 1);
-        } else {
-            if (pa.length >= 3) pa.shift();
-            pa.push(idx);
-        }
-        _handle.setPickedIndices(pa);
-        updateInspectPanel();
-        refreshAtomListHighlights();
-    }
-
-    function clearAtomPicks() {
-        if (_handle) _handle.setPickedIndices([]);
-        updateInspectPanel();
-        refreshAtomListHighlights();
-    }
-
-    // 1-based display via the ONE shared rule (data-vocabulary § 3.1), not an
-    // ad-hoc i+1, so the trajectory atom-list # column agrees with the selector
-    // + viewer overlays.  Falls back to i+1 if _atom-index.js isn't loaded.
-    function _toDisplayIndex(i) {
-        const m = window.molbuilder && window.molbuilder.atomIndexModel;
-        return (m && typeof m.toDisplay === "function") ? m.toDisplay(i) : i + 1;
-    }
-
-    // Build the atom-list table inside the Inspect panel.  One row
-    // per atom: index, element, current-frame (x, y, z).  Rendered
-    // once per ``rebuildModel`` (atom identity is fixed across a
-    // trajectory); coordinates update on every showFrame() via
-    // updateAtomListCoords().  Row click toggles the pick.
-    function rebuildInspectAtomList() {
-        const tbody = $("inspect-atom-list-body");
-        if (!tbody) return;
-        tbody.innerHTML = "";
-        if (!state.data || !state.data.frames.length) return;
-        const frame = state.data.frames[state.currentFrame] || [];
-        // G6 2026-06-14: respect the hide-frozen toggle in the
-        // Inspect atom list.  Pre-fix the table still rendered one
-        // row per frozen atom + the row remained clickable, so the
-        // user could pick + measure an atom that was visually
-        // hidden in the 3D viewer.  Frozen rows now render as
-        // ``.inspect-atom-row--frozen`` (CSS-muted, non-clickable)
-        // when hide-frozen is on; this matches the force-arrow
-        // filter pattern at line 562.
-        const cb = $("hide-frozen");
-        const hideFrozen = !!(cb && cb.checked);
-        const frozen = hideFrozen ? _frozenSet() : null;
-        const frag = document.createDocumentFragment();
-        for (let i = 0; i < frame.length; i++) {
-            // Skip rendering frozen atoms entirely when hide-frozen
-            // is on -- a muted row is still a target for click +
-            // would carry a stale picked-state on toggle-off.
-            if (frozen && frozen.has(i)) continue;
-            const r = frame[i];
-            const tr = document.createElement("tr");
-            // dataset.atomIndex stays 0-based (matches the embed's
-            // pickedIndices and 3Dmol's atom.serial); the displayed ``#`` column is
-            // 1-based to match the overlay labels in the Overlays tab.
-            tr.dataset.atomIndex = String(i);
-
-            // Build cells via createElement + textContent.  ``r[0]``
-            // (element symbol) comes from the parsed trajectory file;
-            // a maliciously-crafted .molwatch.log with an element
-            // string like ``<img src=x onerror=...>`` would XSS via
-            // innerHTML interpolation.  textContent escapes the value.
-            const cellIdx = document.createElement("td");
-            cellIdx.className = "col-idx";
-            cellIdx.textContent = String(_toDisplayIndex(i));
-            const cellEl = document.createElement("td");
-            cellEl.className = "col-el";
-            cellEl.textContent = r[0] || "?";
-            const cellX = document.createElement("td");
-            cellX.className = "col-coord";
-            cellX.textContent = r[1].toFixed(2);
-            const cellY = document.createElement("td");
-            cellY.className = "col-coord";
-            cellY.textContent = r[2].toFixed(2);
-            const cellZ = document.createElement("td");
-            cellZ.className = "col-coord";
-            cellZ.textContent = r[3].toFixed(2);
-            tr.appendChild(cellIdx);
-            tr.appendChild(cellEl);
-            tr.appendChild(cellX);
-            tr.appendChild(cellY);
-            tr.appendChild(cellZ);
-
-            // Intentional NOT routed through _on(): the row gets GC'd
-            // with the tbody clear on the next renderAtomList() call,
-            // taking the listener with it.  Tracking these in
-            // _cleanups would grow the array unboundedly across
-            // re-renders without practical benefit.  A future
-            // event-delegation refactor (one tbody listener +
-            // event.target.closest("tr")) would let us track via _on.
-            tr.addEventListener("click", () => togglePickFromRow(i));
-            frag.appendChild(tr);
-        }
-        tbody.appendChild(frag);
-        refreshAtomListHighlights();
-    }
-
-    // Per-frame coord refresh: rebuilds only the .col-coord cells of
-    // each existing row so the row click handlers stay attached.
-    // Called from showFrame().
-    function updateAtomListCoords() {
-        const tbody = $("inspect-atom-list-body");
-        if (!tbody || !state.data || !state.data.frames.length) return;
-        const frame = state.data.frames[state.currentFrame] || [];
-        const rows  = tbody.children;
-        // G6 2026-06-14: when hide-frozen is on, rendered rows are
-        // a SUBSET of frame atoms — indexing rows[i] against
-        // frame[i] would mis-attribute coords to the wrong row.
-        // Read each row's dataset.atomIndex to find its source.
-        // Defensive: if the count matches frame.length we still use
-        // the index path (cheap parity for the common hide-frozen-
-        // off case).
-        if (rows.length === frame.length) {
-            for (let i = 0; i < frame.length; i++) {
-                const cells = rows[i].children;
-                cells[2].textContent = frame[i][1].toFixed(2);
-                cells[3].textContent = frame[i][2].toFixed(2);
-                cells[4].textContent = frame[i][3].toFixed(2);
-            }
+    // Feed the parsed trajectory to MolView.  A full (re)build: establish the
+    // atoms/elements + periodicity from frame 0 (a single-frame XYZ handed to
+    // openMolecule — the parser already did the parsing; this hands MolView the
+    // result), then hand it the whole coordinate series via reloadFrames.
+    // MolView's frame bar appears (frameCount > 1), and it owns playback /
+    // speed / loop / cell / labels / selection from there.  Async because
+    // openMolecule round-trips through the data model; awaits _mvReady so it
+    // never runs before the mount handle exists.  Optional ``seekIdx`` jumps to
+    // a frame after the reload (used to keep the playhead near the tail when a
+    // live poll forces a full rebuild).
+    async function rebuildModel(seekIdx) {
+        await _mvReady;
+        const mv = window.molbuilder && window.molbuilder.molview;
+        if (!_mv || !mv || !mv.data || !state.data
+                || !state.data.frames || !state.data.frames.length) {
             return;
         }
-        // hide-frozen path: rows are a filtered subset, use the
-        // per-row dataset.atomIndex to look up the right frame row.
-        for (let r = 0; r < rows.length; r++) {
-            const tr = rows[r];
-            const ai = Number(tr.dataset.atomIndex);
-            if (!Number.isInteger(ai) || ai < 0 || ai >= frame.length) {
-                // Stale row: atom count shrank, fall back to rebuild.
-                rebuildInspectAtomList();
-                return;
-            }
-            const cells = tr.children;
-            cells[2].textContent = frame[ai][1].toFixed(2);
-            cells[3].textContent = frame[ai][2].toFixed(2);
-            cells[4].textContent = frame[ai][3].toFixed(2);
-        }
-    }
-
-    function refreshAtomListHighlights() {
-        const tbody = $("inspect-atom-list-body");
-        if (!tbody) return;
-        const picked = new Set(_picks());
-        for (const tr of tbody.children) {
-            tr.classList.toggle(
-                "is-selected",
-                picked.has(Number(tr.dataset.atomIndex)),
-            );
-        }
-    }
-
-    function rebuildModel() {
-        if (!_handle || !state.data || !state.data.frames.length) {
-            // No data to mount; the next successful rebuildModel
-            // will replace whatever (if anything) is loaded.
-            return;
-        }
-        // #230 Part B: mount the first frame's structure via
-        // handle.setStructure + drive playback via handle.setAnimation
-        // ({kind: "trajectory", frames}).  Replaces the raw
-        // addModelsAsFrames + setFrame loop.  Trajectory-specific
-        // overlays (atom indices, force vectors, picked-atom halos,
-        // cell wireframe, atom-list coords) re-render per frame via
-        // the onFrame callback so they track each animated frame.
         const allFrames = state.data.frames;
-        // #234 follow-up: pass the lattice + first-frame xyz to
-        // setStructure so the embed owns the cell wireframe via
-        // setCell.  Drops the bespoke drawCell + state.cellShapes
-        // machinery.
+        // Frame 0 as a single-frame XYZ establishes the atom identity (elements)
+        // + coordinates; the lattice rides along as periodicity so MolView's
+        // Cell page + unit-cell box work (it NEVER parses — data-vocabulary).
         const firstFrameXyz = framesToMultiXyz([allFrames[0]]);
-        _handle.setStructure({
-            xyz:     firstFrameXyz,
-            lattice: state.data.lattice || undefined,
-        });
-        // Cell visibility tracks the #show-cell checkbox; applyCell
-        // reads the checkbox + lattice and toggles the embed's
-        // setCell.
-        applyCell();
-        // Extract per-frame coordinates ([x, y, z]) for the embed's
-        // animation API.  state.data.frames carries each atom as
-        // [sym, x, y, z, ...optional cols]; the embed's trajectory
-        // animation only needs the position triples.
+        const lat = state.data.lattice;
+        const periodicity = (Array.isArray(lat) && lat.length === 3)
+            ? { cell: lat } : null;
+        try {
+            await mv.data.openMolecule({
+                text:        firstFrameXyz,
+                filename:    (state.label || "trajectory") + ".xyz",
+                periodicity: periodicity,
+            });
+        } catch (e) {
+            setStatus("Viewer failed to load frame 0: "
+                + (e && e.message ? e.message : String(e)), "error");
+            return;
+        }
+        // Hand MolView the full coordinate series ([[x,y,z]...] per frame).  The
+        // frame-series enforces the same-atoms invariant against the structure
+        // just opened; reset lands on frame 0.
         const coordFrames = allFrames.map(function (frame) {
             return frame.map(function (atom) {
                 return [atom[1], atom[2], atom[3]];
             });
         });
-        // Phase 5f B-1: read the Inspect-tab playback knobs at
-        // mount so a user who set #speed / #loop BEFORE the file
-        // loaded gets their preferences honored (previously the
-        // partial-update path was a no-op pre-mount → user's
-        // pre-load slider changes silently dropped).  Phase 5g B-4:
-        // match the slider-change handler exactly (1000/ms as a
-        // float, no Math.round) so the same #speed value produces
-        // the same period whether read at mount or after a tick.
-        const speedEl = $("speed");
-        const loopEl  = $("loop");
-        const fpsAtMount = speedEl
-            ? 1000 / (parseInt(speedEl.value, 10) || 150)
-            : 10;
-        _handle.setAnimation({
-            kind:           "trajectory",
-            frames:         coordFrames,
-            // #234 follow-up: force vectors flip per frame via the
-            // embed's arrowsPerFrame contract per § 3.9.  Built
-            // from the trajectory's parsed forces + current force-
-            // knob settings; rebuilt on every knob change via a
-            // partial setAnimation update (#233).
-            arrowsPerFrame: buildArrowsPerFrame(),
-            fps:            fpsAtMount,
-            loop:           loopEl ? !!loopEl.checked : true,
-            paused:         true,
-            onFrame: function (idx, _h) {
-                state.currentFrame = idx;
-                // Pick halos + atom-index labels follow frames
-                // automatically via the embed's
-                // _postFramePositionRedraw; the embed's frame
-                // strip self-updates its counter / slider.  Only
-                // the trajectory's own per-frame DOM bookkeeping
-                // (Inspect panel atom list, force overlay status)
-                // is wired here.
-                updateInspectPanel();
-                updateAtomListCoords();
-                refreshForcesStatus();
-            },
-        });
-        // Atom-index labels: controlled exclusively by the molview
-        // knob bar's Labels popover (2026-06-13 — see comment above
-        // the retired applyIndexLabels stub).  No initial-render
-        // call needed; labels start hidden until the user clicks.
-        // Hide-frozen-atoms checkbox visibility + initial overlay
-        // sync (2026-06-13).  Reveal the row only when the parser
-        // surfaced frozen_atoms; apply the overlay if the user had
-        // it checked from a prior load.
-        refreshHideFrozenAvailability();
-        applyHideFrozen();
-        // Populate the Inspect-tab atom list now that the model is
-        // loaded; the list mirrors the per-frame coordinates and is
-        // the keyboard-friendly path to selection.
-        rebuildInspectAtomList();
-        if (state.firstFit) {
-            _handle.refit();
-            state.firstFit = false;
+        try {
+            mv.data.reloadFrames(coordFrames);
+        } catch (e) {
+            setStatus("Viewer failed to load frames: "
+                + (e && e.message ? e.message : String(e)), "error");
+            return;
         }
+        if (typeof seekIdx === "number"
+                && seekIdx > 0 && seekIdx < coordFrames.length) {
+            try { mv.data.setFrame(seekIdx); } catch (_) {}
+        }
+        // Re-derive the force arrows for the (new) current frame.  The onChange
+        // subscription also fires from openMolecule/reloadFrames, but call it
+        // explicitly so a load with forces-on paints arrows immediately.
+        drawForces();
     }
 
-    // applyStyleAndRewireClicks removed by #232 review cleanup.
-    // The embed's standard knob bar preserves clickability via the
-    // pickWired flag (#225) when its setStyle re-applies, so no
-    // trajectory-side re-arm is needed.  The bespoke dropdowns
-    // that used to call this helper are also gone (#205 Part A).
-
     function showFrame(idx) {
-        if (!state.data || !state.data.frames.length) return;
-        const n = state.data.frames.length;
+        if (!_mv || typeof _mv.setFrame !== "function") return;
+        const n = _mv.frameCount ? _mv.frameCount() : 0;
+        if (n <= 0) return;
         idx = Math.max(0, Math.min(n - 1, idx));
-        // #230 Part B: delegate to handle.setAnimationFrame; the
-        // embed fires onFrame which runs the per-frame side
-        // effects (updateInspectPanel, updateAtomListCoords,
-        // refreshForcesStatus).  Pick halos + atom-index labels
-        // follow frames natively in the embed via
-        // _postFramePositionRedraw.  See rebuildModel() above.
-        if (_handle && typeof _handle.setAnimationFrame === "function") {
-            _handle.setAnimationFrame(idx);
-        }
+        try { _mv.setFrame(idx); } catch (_) {}
     }
 
     /* ------------------------------------------------------------------ */
@@ -2731,7 +2308,7 @@
         const sameAtomCount = oldData
             && oldLen > 0 && newLen > 0
             && oldData.frames[0].length === r.data.frames[0].length;
-        const canAppend = _handle
+        const canAppend = _mv
             && sameAtomCount
             && newLen > oldLen
             && _latticeEqual(oldData && oldData.lattice,
@@ -2793,7 +2370,10 @@
             return;
         }
 
-        const wasAtEnd = !oldData || state.currentFrame >= oldLen - 1;
+        // The frame the user is on RIGHT NOW (MolView owns the playhead), read
+        // before the reload so a full rebuild can restore it / follow the tail.
+        const prevFrame = _curFrame();
+        const wasAtEnd  = !oldData || prevFrame >= oldLen - 1;
 
         // Contract § 2: full-rebuild path -- route the atomic
         // fileState replacement through transition('APPLY') so
@@ -2820,63 +2400,35 @@
             setStatus("File loaded ("+ state.label +") but no frames yet.", "");
             return;
         }
-        // Frames now exist -> enable the "Save current frame as XYZ"
-        // button (it's disabled-by-default in the template so users
-        // can't click it before any data is loaded).  The frame
-        // count + slider max are owned by the embed's auto-mounted
-        // frame strip (§ 6.3); no host-side DOM update needed.
-        $("save-frame").disabled = false;
+        // (Per-frame XYZ export moved to MolView's Export knob, which is
+        // current-frame-correct — the tab no longer carries its own save-frame
+        // button.  Frame count + slider are MolView's frame bar.)
 
         if (canAppend) {
-            // Strict tail-append: hand the new frames to the embed
-            // without resetting the animation loop.  Playback that
-            // was running keeps running; arrowsPerFrame for the new
-            // frames is recomputed from the updated state.data.
-            const wasPlaying = _handle.isAnimationPlaying();
+            // Strict tail-append: hand MolView ONLY the new frames (addFrames
+            // appends without disturbing the current view or MolView's playback
+            // timer), so a running animation keeps playing and the camera / the
+            // user's frame position don't snap.  MolView's frame bar counter
+            // updates itself off the store notification.
+            const mvData = window.molbuilder.molview.data;
             const newCoords = [];
             for (let i = oldLen; i < newLen; i++) {
                 newCoords.push(r.data.frames[i].map(
                     (atom) => [atom[1], atom[2], atom[3]]));
             }
-            _handle.appendFrames(newCoords);
-            // arrowsPerFrame is a live array on the animation; the
-            // embed's renderer reads it per-frame.  setAnimation
-            // with only ``arrowsPerFrame`` routes through the
-            // trajectory in-place fast path (no setInterval
-            // re-arm).  See mol-viewer-embed.js setAnimation merge.
-            try {
-                _handle.setAnimation({
-                    arrowsPerFrame: buildArrowsPerFrame(),
-                });
-            } catch (_) {}
-            // Seek to the new tail if the user was watching the end;
-            // otherwise leave the playhead where it is.
-            // showFrame() routes through setAnimationFrame which
-            // stops the loop as a side effect, so restore playback
-            // afterwards if we tore it down.
+            try { mvData.addFrames(newCoords); } catch (_) {}
+            // Follow the tail if the user was watching the end; otherwise leave
+            // the playhead where it is.
             if (wasAtEnd) showFrame(n - 1);
-            if (wasPlaying && !_handle.isAnimationPlaying()) {
-                try { _handle.playAnimation(); } catch (_) {}
-            }
-            // H2 2026-06-14 + I1 perf fix: the appended payload
-            // may carry a newly-populated ``runtime_info.frozen_atoms``
-            // that didn't exist on the prior poll's payload (e.g.
-            // SIESTA's constraints echo only appears after the
-            // first iteration, or a sidecar landed mid-run).  We
-            // call applyHideFrozen() to re-render the atom list +
-            // re-apply the embed overlay in one shot.  Pre-I1
-            // H2 also called rebuildInspectAtomList() explicitly
-            // here — but applyHideFrozen ALREADY calls it
-            // unconditionally (per the G6 fix), so the explicit
-            // call was a wasted double-rebuild on every appending
-            // tick.  Single applyHideFrozen() is the correct shape.
-            applyHideFrozen();
+            // Re-derive arrows for the current frame (the appended payload may
+            // also carry a newly-populated runtime_info.frozen_atoms that
+            // changes the excluded set).
+            drawForces();
         } else {
-            rebuildModel();
-            const targetIdx = wasAtEnd
-                ? n - 1
-                : Math.min(state.currentFrame, n - 1);
-            showFrame(targetIdx);
+            // Structure changed / frames shrank: full rebuild.  Keep the
+            // playhead near where it was (follow the tail if the user was at
+            // the end), applied inside rebuildModel after the reload.
+            rebuildModel(wasAtEnd ? n - 1 : Math.min(prevFrame, n - 1));
         }
         makePlots();
 
@@ -3073,12 +2625,8 @@
     // ?path=... query-param pre-fill) is gone for the same reason.
 
     async function loadByPath(path) {
-        // The embed's animation starts paused (initial setAnimation
-        // call below uses paused: true) so no host-side pause is
-        // needed -- rebuildModel() replaces the active animation.
-        // Drop atom picks: a fresh load means a new trajectory and
-        // the picked indices may not exist in the new model.
-        clearAtomPicks();
+        // A fresh load replaces the whole model (rebuildModel \u2192 openMolecule +
+        // reloadFrames); MolView owns the selection + playhead reset from there.
         setStatus("Loading\u2026", "");
         // Contract \u00a7 2: file-switch -> transition('LOADING').  This
         // single call runs the reset matrix (matrix \u00a7 3 row 1):
@@ -3176,13 +2724,14 @@
     // configuration (#speed, #loop) flows into the embed via
     // setAnimation partial updates per § 3.9.
 
-    // #205 Part A: #rep / #radius / #bg / #colorscheme are all
-    // owned by the embed's standard knob bar now.  Cell wireframe
-    // toggle remains a trajectory-specific overlay control.
-    _on($("show-cell"),   "change", drawCell);
-
-    /* Overlays — show-indices retired 2026-06-13 (now exclusively
-     * the knob bar's Labels popover; see template note). */
+    // Force-vector producer knobs — the ONE trajectory-specific control (task
+    // #34).  Each rebuilds the arrows for the current frame + re-hands them to
+    // MolView (drawForces → handle.setArrows).  Everything else the old aside
+    // owned (unit cell, atom-index labels, playback speed / loop, the atom-list
+    // Inspect panel + Clear button, and the per-frame Save-XYZ button) is now
+    // MolView's: playback + speed + loop are its frame bar, cell + labels are
+    // its Cell page / knob bar, selection + measurement are its panel, and
+    // per-frame structure export is its Export knob (current-frame-correct).
     _on($("show-forces"),  "change", drawForces);
     _on($("force-scale"), "input", (e) => {
         $("force-scale-val").textContent = parseFloat(e.target.value).toFixed(1);
@@ -3190,94 +2739,9 @@
     });
     _on($("force-min"),     "input",  drawForces);
     _on($("highlight-max"), "change", drawForces);
-    // Hide-frozen-atoms checkbox (2026-06-13).  Toggling sends a
-    // hide overlay to the embed + redraws arrows so the force
-    // filter takes effect on the current frame too.
-    _on($("hide-frozen"),   "change", function () {
-        applyHideFrozen();
-        drawForces();
-    });
-
-    // Playback configuration → embed animation partial-update
-    // (§ 3.9).  Speed slider is in ms-per-frame; fps = 1000/ms.
-    // Loop checkbox drives the embed's loop opt directly.
-    _on($("speed"), "change", () => {
-        if (!_handle) return;
-        const ms = parseInt($("speed").value, 10) || 150;
-        try { _handle.setAnimation({ fps: 1000 / ms }); }
-        catch (_) {}
-    });
-    _on($("loop"), "change", () => {
-        if (!_handle) return;
-        try { _handle.setAnimation({ loop: !!$("loop").checked }); }
-        catch (_) {}
-    });
-
-    /* ---- Inspect-tab: Clear-picks button ------------------------- */
-    _on($("inspect-clear"), "click", clearAtomPicks);
-
-    /* ---- Save current frame as XYZ ------------------------------- */
-    /* Hands the displayed structure off to the next step in the
-       user's pipeline -- e.g., dropping the relaxed molecule into a
-       tunneling-gap setup as a bridge.  The output is plain XYZ
-       (Angstrom), which any chemistry tool reads. */
-    _on($("save-frame"), "click", () => {
-        if (!state.data || !state.data.frames.length) return;
-        const idx = state.currentFrame;
-        const frame = state.data.frames[idx];
-        if (!frame || !frame.length) return;
-
-        // Comment line: include the engine, step index, and energy
-        // when known.  Anything we know stays out of the structural
-        // part of the file -- a downstream parser that doesn't
-        // recognise the comment just sees a regular XYZ.
-        const engine = (state.format && state.format !== "?")
-            ? state.format : "molwatch";
-        const energyEv = (state.data.energies || [])[idx];
-        const fileStem = (state.label && state.label.replace(/[^A-Za-z0-9._-]+/g, "_"))
-            || engine;
-        // Prefer per-stage step indices when present (multi-stage
-        // merge) -- those match the source log's numbering.  Fall
-        // back to the global iterations for single-stage runs.
-        const stepIdx = ((state.data.step_indices || [])[idx])
-                     ?? ((state.data.iterations  || [])[idx]);
-        const stepLabel = (stepIdx !== undefined && stepIdx !== null)
-            ? "step " + stepIdx : "frame " + idx;
-
-        let comment = "molwatch export from " + engine + " — " + stepLabel;
-        if (typeof energyEv === "number" && isFinite(energyEv)) {
-            comment += "  energy " + energyEv.toFixed(8) + " eV";
-        }
-
-        // Build the XYZ text.  Format: standard 4-column XYZ, fixed
-        // 8-decimal coordinates (matches molbuilder's _save_xyz).
-        const lines = [String(frame.length), comment];
-        for (const row of frame) {
-            const el = String(row[0]).padEnd(2);
-            const x  = (+row[1]).toFixed(8).padStart(14);
-            const y  = (+row[2]).toFixed(8).padStart(14);
-            const z  = (+row[3]).toFixed(8).padStart(14);
-            lines.push("   " + el + "  " + x + "  " + y + "  " + z);
-        }
-        const text = lines.join("\n") + "\n";
-
-        // Trigger a browser download.  Filename includes the step
-        // index so multiple saves don't collide.
-        const filename = fileStem + "_step" + (stepIdx !== undefined
-            ? stepIdx : idx) + ".xyz";
-        const blob = new Blob([text], { type: "chemical/x-xyz" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        setStatus("Saved " + filename + " (" + frame.length
-            + " atoms).", "ok");
-    });
+    // "Exclude frozen atoms" is a pure force-arrow filter now (MolView owns atom
+    // hiding), so toggling it only re-derives the arrows for the current frame.
+    _on($("hide-frozen"),   "change", drawForces);
 
     /* ---- Export all plot data as CSV ---------------------------- */
     /* Bundles every column displayed across the 4 trajectory plots
@@ -3317,31 +2781,9 @@
         setStatus("Exported " + a.download + ".", "ok");
     });
 
-    /* ---- Tabs (Style / Overlays / Playback) ---------------------- */
-    /* Compact controls: only one panel visible at a time so the
-       aside never outgrows the viewer height.  CSS does the visibility
-       toggle via `is-active`; we just sync the classes here.
-       Queries are scoped to rootEl -- the page may host OTHER
-       inspectors (spectra etc.) that also use a .ctab/.ctab-panel
-       convention; a document-wide query would cross-fire. */
-    rootEl.querySelectorAll(".ctab").forEach((btn) => {
-        _on(btn, "click", () => {
-            const target = btn.dataset.tab;
-            rootEl.querySelectorAll(".ctab").forEach((b) => {
-                const active = (b === btn);
-                b.classList.toggle("is-active", active);
-                // Sync aria-selected so screen readers track the
-                // active tab; the visual is-active class alone
-                // doesn't reach assistive tech.
-                b.setAttribute("aria-selected", active ? "true" : "false");
-            });
-            rootEl.querySelectorAll(".ctab-panel").forEach(
-                (p) => p.classList.toggle(
-                    "is-active", p.dataset.panel === target
-                )
-            );
-        });
-    });
+    // The tabbed controls aside (Display / Inspect ctabs) is gone: MolView owns
+    // the viewer + selection panel, and the tab's only control is the flat
+    // force-vector strip above.  No ctab visibility wiring needed.
 
     // Viewer resize: the embed installs its own ResizeObserver on the
     // canvas host so 3Dmol's WebGL viewport stays in sync as the card
@@ -3440,11 +2882,12 @@
             // matrix § 3 row "dispose / unmount" runs the full
             // reset (aborts, timer stop, bucket clears).
             transition("IDLE");
-            // handle.dispose() tears down the embed's animation loop,
-            // ResizeObserver, knob bar, models / shapes / labels and
-            // releases its references on the 3Dmol viewer.
-            if (_handle && typeof _handle.dispose === "function") {
-                try { _handle.dispose(); } catch (_) {}
+            // _mv.dispose() (the molview mount handle) tears down the WHOLE
+            // fused assembly — the embedded 3Dmol viewer + its animation loop /
+            // ResizeObserver / knob bar, the selection panel, the view + frame
+            // controls, the overlay controller, and every store subscription.
+            if (_mv && typeof _mv.dispose === "function") {
+                try { _mv.dispose(); } catch (_) {}
             }
         },
         /**

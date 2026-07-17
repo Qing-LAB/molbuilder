@@ -81,13 +81,16 @@ class TestPartialIntegrity:
     # the embed has no concept of and that have no equivalent on
     # /build, /modify, or the spectra inspector.
     TRAJECTORY_PARTIAL_IDS = {
-        # Embed mount target.  The frame strip itself (#prev /
-        # #play / #pause / #next / #frame-slider / #frame-idx /
-        # #frame-tot) moved into the embed in #246 A1; the partial
-        # is no longer responsible for declaring those IDs.  Any
-        # re-introduction would be caught by the embed-leak test
-        # below.
-        "viewer",
+        # MolView mount target (task #34): an EMPTY host div that
+        # molview.mount fills with the whole fused card (viewer +
+        # selection/Cell panel + view toggles + frame bar).  The
+        # trajectory inspector no longer declares a #viewer div, a
+        # frame strip, playback knobs (#speed / #loop), a unit-cell
+        # toggle (#show-cell), an atom-list Inspect panel, or a
+        # per-frame Save-XYZ button — MolView owns all of that.  The
+        # ONLY trajectory-specific control left is the force-vector
+        # producer (below).
+        "viewer-host",
         # Run-state badge + compact runtime-info one-liner.
         "run-state-badge", "run-state-label", "run-state-detail",
         "runtime-summary",
@@ -102,33 +105,18 @@ class TestPartialIntegrity:
         "parse-warnings",
         "parse-warnings-count",
         "parse-warnings-list",
-        # Trajectory-specific overlay toggles.  show-cell + show-
-        # indices wire to handle.setCell / handle.setLabels; show-
-        # forces drives the trajectory's arrowsPerFrame (DFT force
-        # vectors — the embed knows nothing about forces).
-        "show-cell",
-        # show-indices retired 2026-06-13 — atom-index labels now
-        # exclusively the molview knob bar's Labels popover.
+        # Force-vector PRODUCER — the ONE trajectory-specific control
+        # (task #34).  The inspector builds force arrows from the
+        # parsed per-frame forces + these knobs and hands them to
+        # MolView via handle.setArrows (molview-module §14.5.1 —
+        # MolView draws what it's handed; it knows nothing about
+        # forces).  #hide-frozen is a PURE arrow filter now (atom
+        # hiding in the viewer is MolView's selection/isolate job),
+        # so the row is always present.
         "show-forces", "forces-status",
-        # Hide-frozen-atoms toggle (2026-06-13).  Visible only when
-        # the parser surfaced runtime_info.frozen_atoms — hidden by
-        # default (the trajectory inspector reveals the row in
-        # refreshHideFrozenAvailability after a successful load).
-        "hide-frozen-row", "hide-frozen",
         "force-scale", "force-scale-val", "force-min",
         "highlight-max",
-        # Inspect panel (atom list + measurement chip).  The static
-        # A / B / |A-B| three-row table (inspect-table, inspect-a,
-        # inspect-b, inspect-d) was retired 2026-06-08 (task #299)
-        # and replaced by ``#inspect-measurement`` — a single chip
-        # that handles 1-atom xyz, 2-atom distance, and 3-atom angle
-        # via the shared ``lib/selection/measurements.js`` module.
-        # The chip is positioned by ``lib/selection/measurement-chip.css``.
-        "inspect-hint", "inspect-atom-list-body",
-        "inspect-measurement",
-        "inspect-clear",
-        # Trajectory playback knobs.
-        "speed", "loop", "save-frame",
+        "hide-frozen",
         # SCF banner + plots.
         "scf-section", "scf-title", "scf-status",
         "energy-plot", "force-plot",
@@ -588,19 +576,22 @@ class TestTrajectoryCoreMountContract:
             "duplicate wiring"
         )
 
-    def test_dispose_tears_down_3Dmol_viewer(self, viewer_js):
-        """dispose() must tear down the 3Dmol WebGL state so one
-        mount doesn't leak into the next.  Post-#236 the trajectory
-        no longer holds a raw viewer reference; the embed handle
-        carries the dispose responsibility and ``_handle.dispose()``
-        is the single call that drops models + shapes + labels +
-        ResizeObserver + animation loop in one go (matches the
-        spectra and modify dispose paths)."""
+    def test_dispose_tears_down_molview(self, viewer_js):
+        """dispose() must tear down the mounted MolView so one mount
+        doesn't leak into the next.  Post-task-#34 the trajectory
+        inspector mounts the whole MolView module (molview.mount) and
+        holds only the returned handle in ``_mv``; ``_mv.dispose()``
+        is the single call that tears down the embedded 3Dmol viewer
+        (models + shapes + labels + ResizeObserver + animation loop),
+        the selection panel, the view/frame controls, the overlay
+        controller, and every store subscription in one go."""
         body = self._dispose_body(viewer_js)
-        assert "_handle.dispose()" in body, (
-            "dispose() doesn't call _handle.dispose() -- the embed's "
-            "3Dmol bookkeeping (models + shapes + labels) leaks "
-            "across mounts.  Spectra core uses the same pattern."
+        assert "_mv.dispose()" in body, (
+            "dispose() doesn't call _mv.dispose() -- the whole MolView "
+            "assembly (embedded viewer + panel + controls + overlays + "
+            "subscriptions) leaks across mounts.  The structure inspector "
+            "(lib/inspectors/structure.js) uses the same handle.dispose() "
+            "pattern."
         )
 
     def test_module_exposes_trajectoryInspector_mount(self, viewer_js):

@@ -15,10 +15,11 @@ core is [`molview-migration-plan.md`](molview-migration-plan.md). This doc sits 
 those: the shape they all converge to.
 
 > **Status (2026-07):** the design principles + CSS unification are in place
-> (`ui-design-contract.md` §1–§9). This is the JS-side target that the *later*
-> per-tab migration executes against. Only **Modify** has migrated onto MolView so
-> far — the other tabs' old viewer stacks + raw file fetches are **expected
-> pre-migration state, not drift**.
+> (`ui-design-contract.md` §1–§9), and **every web tab's viewer now mounts the
+> concealed MolView module** — Modify, Transport, Spectra, structure-optimization, and
+> both Results inspectors (structure + trajectory, task #34). What remains is the
+> *delivery* target below (ES-module conversion + `window` shims + node-test
+> `import()`), not the viewer migration itself.
 
 ---
 
@@ -101,21 +102,28 @@ Current state (updated 2026-07-17):
 | **Transport** (`/transport-calculation`) | MolView (`mode:"modify"`) | **done** — mounts on commit + sources gen labels from `molview.data` |
 | **Spectra** (`/spectrum-calculation`) | MolView (`mode:"readonly"`) | **done (Card 1)** — read-only inspect card via the shared include; VibrationView left Phase-1 (borrows its own embed) |
 | **structure-optimization** (`/structure-optimization`, `index.html`) | MolView (`mode:"readonly"`) | **done (display)** — full read-only card via the shared include; structure into `molview.data`.  k-grid stays a `SiestaConfig` form field (not on the Structure).  Follow-up: source Generate from `molview.data` + drop the raw `/api/files/read` (like Transport increment 2) |
-| **Results** (`/results`) | structure inspector on MolView; trajectory on the old embed | **partial** — structure inspector done; **trajectory inspector is the remaining piece** (task #34, spec'd below); spectra inspector uses VibrationView (Phase-1) |
+| **Results** (`/results`) | structure + trajectory inspectors on MolView | **done** — structure inspector + **trajectory inspector** (task #34) both on MolView; spectra inspector uses VibrationView (Phase-1) |
 
-Order so far: Transport (done) → Spectra (done) → structure-optimization (done) →
-**Results** (structure inspector done; the **trajectory inspector** migration is task
-#34 — its own focused pass).
+Order: Transport (done) → Spectra (done) → structure-optimization (done) →
+**Results** structure inspector (done) → **Results trajectory inspector** (done,
+task #34) — every web tab's viewer is now MolView.
 
-> **Results trajectory inspector (task #34) — the mechanism + interface.** MolView owns
-> trajectory rendering: a trajectory is the SAME render pipeline with a `frame-select`
-> step at the front (§14.5 of [`molview-module.md`](molview-module.md)); a single
-> structure is the `frameCount()===1` case. So the inspector does not reimplement
-> playback — it **feeds** MolView (`data.reloadFrames(coords, {forces})` / `addFrame`
-> for live-poll), MolView renders the frame bar itself, and the inspector hands force
-> arrows via `handle.setArrows` on frame change. Per-frame scalars (energy/max-force)
-> stay in the inspector's Plotly chart. The surface-by-surface map (rebuildModel /
-> showFrame+controls / forces / cell / picking / live-append / keep) lives on task #34.
+> **Results trajectory inspector (task #34) — the mechanism + interface (shipped).**
+> MolView owns trajectory rendering: a trajectory is the SAME render pipeline with a
+> `frame-select` step at the front (§14.5 of [`molview-module.md`](molview-module.md)); a
+> single structure is the `frameCount()===1` case. So the inspector does not reimplement
+> playback — it **feeds** MolView and is a pure DATA FEEDER
+> (`lib/trajectory/core.js`): `mv.mount('#viewer-host', ws, {mode:"readonly",
+> owner:"results:trajectory"})`, then `data.openMolecule(frame0)` +
+> `data.reloadFrames(coords)` on load and `data.addFrames(newCoords)` for the live-poll
+> tail-append. MolView owns the whole view — the frame bar (playback + speed + loop),
+> unit-cell display (via the periodicity handed to `openMolecule`), atom-index labels,
+> selection + measurement + picking, and atom hiding (its selection/isolate). The tab
+> keeps ONLY the **force-vector producer** control: it builds arrows from the parsed
+> per-frame forces + its knobs and hands them to MolView via `handle.setArrows` on
+> `handle.onChange` (so they re-derive per frame). Per-frame scalars (energy/max-force)
+> stay in the inspector's Plotly charts; per-frame structure export is MolView's Export
+> knob (current-frame-correct). `#hide-frozen` is a pure force-arrow filter now.
 `_molview_scripts.html` is the shared component-stack include (Transport + Spectra use
 it; migrating Modify / Results / molview-demo onto it is a follow-up).  Remaining per
 tab: the ES-module conversion + `window` shim + node-test `import()` re-point (deferred

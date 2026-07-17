@@ -56,178 +56,65 @@
     padding: 14px 14px 14px;
 }
 
-/*
- * Viewer row: fixed-height viewer + a controls aside that's locked
- * to the same height.  align-items: start prevents the aside from
- * stretching to the viewer's height — any extra height triggers the
- * aside's internal scroll instead of pushing the plots row down.
- */
-/* Viewer-row layout:
+/* ---- Viewer + force-control layout (post-MolView migration) --------
  *
- *   [ square viewer ] [ controls aside grows to fill remaining width ]
- *
- * The viewer is a fixed-aspect square (1:1, 320-560 px clamped to
- * 60vh); the aside takes the remaining horizontal space so we
- * don't waste lateral room on wide displays.  Both panels share
- * the viewer's vertical extent via ``align-items: stretch`` -- the
- * aside ends up exactly as tall as the viewer is wide.  Internal
- * panel scroll (.ctab-panel.is-active) handles content overflow
- * inside the aside; the row itself never grows past the viewer's
- * height clamp.
- */
-.viewer-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: var(--gap);
-    align-items: stretch;
+ * The trajectory inspector no longer hand-builds a viewer + a tabbed
+ * controls aside.  ``#viewer-host`` is an empty div that molview.mount
+ * fills with the fused card (viewer + selection/Cell panel + view
+ * toggles + frame bar); MolView owns its own sizing (fused-layout.css).
+ * Below it sits the ONE trajectory-specific control: the force-vector
+ * producer.  See docs/protocols/frontend-module-architecture.md §5. */
+.trajectory-viewer-slot {
+    /* MolView's fused card owns its own dimensions + chrome; the slot
+     * just gives the force-control strip below a little breathing room. */
+    margin-bottom: var(--space-sm);
 }
 
-#viewer {
-    width: var(--viewer-extent);
-    height: var(--viewer-extent);
-    border: 1px solid var(--border-strong);
-    background: #ffffff;         /* same white bg as builder's viewer-wrap */
-    position: relative;
-    border-radius: var(--radius-sm);   /* matches builder's .viewer-wrap */
-    overflow: hidden;
-    box-shadow: var(--shadow-card);
-}
-
-/* ---- Controls aside (tabbed) ---- */
-
-.controls {
+/* Force-vector producer: a compact strip of knobs that build the arrow
+ * overlay the inspector hands to MolView (handle.setArrows).  Wraps so
+ * the knobs flow onto one or two rows depending on width. */
+.trajectory-force-controls {
     display: flex;
-    flex-direction: column;
-    gap: 0;
-    /* Track the viewer's square side length so the two panels align
-     * top + bottom; internal panel scroll handles content overflow. */
-    height: var(--viewer-extent);
-    background: var(--bg-card);
-    border: 1px solid var(--border-strong);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
     border-radius: var(--radius);
-    overflow: hidden;
-    box-shadow: var(--shadow-card);
-}
-
-/* Frame-strip CSS (.frame-strip, .frame-strip-row, .frame-counter,
-   .frame-strip-buttons) deleted in #246 A1 — the embed's auto-
-   mounted .mol-viewer-frame-strip (§ 6.3) owns the styles + DOM
-   now.  The partial used to ship a parallel strip with these
-   rules; the duplicate UI is gone. */
-
-.control-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-soft);
     background: var(--bg-card);
-}
-.ctab {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    padding: 8px 6px;
-    color: var(--text-secondary);
     font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: color 120ms, border-color 120ms, background 120ms;
+    color: var(--text-secondary);
 }
-.ctab:hover { color: var(--text-primary); background: var(--bg-card-hover); }
-.ctab.is-active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: var(--accent-bg);
-}
-
-.ctab-panel {
-    display: none;
-    padding: 12px 14px 14px;
-    overflow-y: auto;
-    flex: 1;          /* fills the remaining height of .controls */
-}
-.ctab-panel.is-active { display: block; }
-
-.ctab-panel label {
+.trajectory-force-controls label {
     display: flex;
     flex-direction: column;
     gap: 3px;
-    margin: 0 0 10px;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
+    margin: 0;
     min-width: 0;
+    color: var(--text-secondary);
 }
-.ctab-panel label.check {
+.trajectory-force-controls label.check {
     flex-direction: row;
     align-items: center;
-    justify-content: flex-start;     /* checkbox + label text flush left */
     gap: 8px;
-    margin: 8px 0;
     cursor: pointer;
     user-select: none;
 }
-/* 2026-06-14 [hidden]-attribute audit (mirrors style.css:357 for
- * .issues-panel).  The ``.ctab-panel label`` rules above set
- * ``display: flex`` which ties on specificity with the UA
- * ``[hidden]`` rule and wins, so a row with ``hidden=""`` stays
- * visible in the layout.  The trajectory inspector's
- * refreshHideFrozenAvailability sets ``hide-frozen-row``'s
- * ``hidden`` attribute to true when no frozen indices are
- * available; without this guard the user sees a clickable but
- * non-functional toggle (clicking it changes is_checked but
- * applyHideFrozen / _buildArrowsForFrame early-return because
- * _frozenSet() is null).  Restore attribute-driven visibility. */
-.ctab-panel label.check[hidden],
-.ctab-panel label[hidden] { display: none; }
-/* Stretch text inputs / numeric inputs / selects to the panel width,
-   but NOT checkboxes -- those keep their natural ~13px square so the
-   following label text sits immediately to the right of the box. */
-.ctab-panel label > input:not([type="checkbox"]),
-.ctab-panel label > select {
-    width: 100%;
+.trajectory-force-controls label.check > input[type="checkbox"] {
+    flex: 0 0 auto;
 }
-.ctab-panel label.check > input[type="checkbox"] {
-    flex: 0 0 auto;                   /* don't grow / shrink */
-}
-.ctab-panel .row-with-readout {
+.trajectory-force-controls .row-with-readout {
     display: flex;
     align-items: center;
     gap: 8px;
 }
-.ctab-panel .row-with-readout > input { flex: 1; }
-.ctab-panel .readout {
+.trajectory-force-controls .row-with-readout > input { flex: 1; }
+.trajectory-force-controls .readout {
     font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
     font-size: 0.82rem;
     color: var(--text-mono);
     min-width: 28px;
     text-align: right;
-}
-.ctab-panel .hint {
-    margin: 6px 0 0;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-}
-.ctab-panel .panel-sep {
-    border: 0;
-    border-top: 1px solid var(--border-soft);
-    margin: 14px 0 12px;
-}
-.ctab-panel .full-btn {
-    width: 100%;
-    padding: 7px 10px;
-    background: var(--accent-bg);
-    border-color: var(--accent-strong);
-    color: var(--accent);
-    font-weight: 500;
-}
-.ctab-panel .full-btn:hover:not(:disabled) {
-    background: var(--accent-strong);
-    color: var(--text-on-accent);
-    border-color: var(--accent);
-}
-.ctab-panel .full-btn:disabled {
-    background: transparent;
 }
 
 /* Generic form controls (input / select / button / checkbox /
@@ -428,83 +315,12 @@
     font-size: 0.85rem;
 }
 
-/* ---- Inspect tab: atom-pick + distance ----
- *
- * Two-atom picking lives in the right-hand control aside (4th tab).
- * The table stays compact -- the aside is narrow -- and the
- * distance row is highlighted via the accent colour so the user's
- * eye lands on it.
- */
-/* Inspect ctab-panel becomes a flex column: the atom-list grows to
- * fill the remaining height inside the controls aside (the ONE
- * scrollable region); the hint, distance table, and Clear button
- * stay anchored beneath at their natural sizes.  Drops the previous
- * double-scrollbar (panel + atom-list-wrap both had overflow auto).
- */
-.ctab-panel[data-panel="inspect"] {
-    display: none;
-    flex-direction: column;
-    overflow: hidden;    /* panel does NOT scroll; inner list does */
-    min-height: 0;
-}
-.ctab-panel[data-panel="inspect"].is-active {
-    display: flex;
-}
-
-/* The atom list is the only growing / scrolling child of the
- * Inspect panel.  ``flex: 1`` + ``min-height: 0`` lets it shrink
- * below its content height so the scrollbar appears inside it
- * (sticky <thead> stays pinned). */
-.inspect-list-wrap {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    margin: 6px 0 8px;
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm, 4px);
-    background: var(--bg-card);
-}
-.inspect-list {
-    width: 100%;
-    border-collapse: collapse;
-    font: 0.82rem ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-}
-.inspect-list thead th {
-    position: sticky;
-    top: 0;
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-align: left;
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--border-soft);
-    z-index: 1;
-}
-.inspect-list tbody td {
-    padding: 3px 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-}
-.inspect-list tbody tr {
-    cursor: pointer;
-    transition: background 0.08s;
-}
-.inspect-list tbody tr:hover {
-    background: var(--bg-card-hover, rgba(255, 255, 255, 0.05));
-}
-.inspect-list tbody tr.is-selected {
-    background: var(--warning-bg, rgba(251, 146, 60, 0.18));
-    color: var(--text-primary);
-}
-.inspect-list .col-idx   { width: 3em; color: var(--text-muted); }
-.inspect-list .col-el    { width: 3em; color: var(--text-primary); font-weight: 600; }
-.inspect-list .col-coord { text-align: right; color: var(--accent); }
-
-/* ``.inspect-table`` + ``.inspect-distance`` rules retired
- * 2026-06-09 (task #304): the static A / B / |A-B| table was
- * replaced by the single ``#inspect-measurement`` chip in
- * task #299.  The chip's styling lives in
- * lib/selection/measurement-chip.css; nothing in templates or
- * JS references the old class names. */
+/* ``.inspect-*`` rules (the trajectory inspector's own atom-list +
+ * measurement panel) were retired when the inspector migrated onto
+ * MolView (task #34).  Atom picking, the atom list, and the
+ * distance / angle measurement readout are now MolView's selection
+ * panel + measurement overlay (lib/selection/*, molview-module.md
+ * §14.5.3) — the trajectory inspector no longer owns that DOM. */
 
 /* ``.workflow-*`` rules (staged-relaxation guide on /watch) were
  * removed 2026-05-19 along with /watch.  The guide was a /watch.html-
@@ -514,11 +330,6 @@
 
 /* ---- Responsive breakpoints ---- */
 
-@media (max-width: 980px) {
-    /* Stack viewer above controls; controls expand to natural height. */
-    .viewer-row { grid-template-columns: 1fr; }
-    .controls   { height: auto; max-height: 60vh; }
-}
 @media (max-width: 640px) {
     /* ``.loader input[type="text"]`` + ``.loader-bar`` rules dropped
      * 2026-05-19 along with /watch's loader bar. */

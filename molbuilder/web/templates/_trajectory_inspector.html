@@ -97,167 +97,51 @@
 </section>
 
 <section class="card viewer-card">
-<section class="viewer-row">
-  <div id="viewer"></div>
+  {#- Empty host: molview.mount BUILDS the whole fused card (viewer +
+      selection/Cell panel + view toggles + frame bar) INSIDE this div
+      (molview-module.md §18, §14.5).  The trajectory inspector is a DATA
+      FEEDER: lib/trajectory/core.js hands MolView the parsed coordinate frames
+      (molview.data.reloadFrames / addFrame) and lets MolView own the ENTIRE
+      view — playback + speed + loop (the frame bar), unit-cell display,
+      atom-index labels, selection + measurement + picking, and atom hiding (its
+      render pipeline's isolate/selection).  See
+      docs/protocols/frontend-module-architecture.md §5. -#}
+  <div id="viewer-host" class="trajectory-viewer-slot"></div>
 
-  <aside class="controls">
-    <!-- The frame strip used to live here, but moved into the
-         embed in #205 (auto-mounts whenever animation.kind ===
-         "trajectory" per § 6.3 of the embed contract).  Dropping
-         the partial's parallel strip in #246 retired the
-         duplicate UI + the parallel state.playTimer playback
-         loop that was racing with the embed's own animation
-         cadence.  The Inspect tab still owns the playback config
-         (speed / loop) and the data-export knob (save-frame). -->
+  {#- The ONE trajectory-specific control: the FORCE-VECTOR PRODUCER.  MolView
+      draws overlays it is HANDED (molview-module.md §14.5.1 — it never
+      generates them); the inspector builds force arrows from the parsed
+      per-frame forces + these knobs and pushes them via handle.setArrows on
+      every frame change.  Everything the old controls aside used to own moved
+      into MolView. -#}
+  <section class="trajectory-force-controls" aria-label="Force-vector overlay">
+    <label class="check"
+      title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
+      <input type="checkbox" id="show-forces">
+      Show force vectors</label>
+    <span id="forces-status" class="readout" aria-live="polite"></span>
+    <label>Arrow length scale (&Aring; per eV/&Aring;)
+      <span class="row-with-readout">
+        <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
+        <span id="force-scale-val" class="readout">1.0</span>
+      </span>
+    </label>
+    <label>Hide |F| smaller than (eV/&Aring;)
+      <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
+    </label>
+    <label class="check"><input type="checkbox" id="highlight-max" checked>
+      Highlight largest force</label>
 
-    {#- 2026-06-12 layout v3: tabs condensed from FOUR (Style /
-        Overlays / Inspect / Playback) to TWO (Display / Inspect):
-
-          * Display merges the prior Style + Overlays + Playback —
-            everything that affects what the viewer renders or how it
-            plays.  Speed + Loop folded inline at the bottom so they
-            sit a click away from the embed's play button rather
-            than behind their own tab.
-          * Inspect keeps its atom list + measurement readout + Clear,
-            and gains the Save-current-frame action that lived in the
-            prior Playback tab.
-
-        The two-tab split tracks the actual question the user asks
-        when they switch tabs: "tweak rendering?" or "explore the
-        coordinates?". -#}
-    <nav class="control-tabs" role="tablist" aria-label="Viewer controls">
-      <button class="ctab is-active" data-tab="display" role="tab" aria-selected="true">Display</button>
-      <button class="ctab"           data-tab="inspect" role="tab" aria-selected="false">Inspect</button>
-    </nav>
-
-    <div class="ctab-panel is-active" data-panel="display" role="tabpanel">
-      {#- Style group: from the prior "Style" tab.  Representation /
-          Atom radius / Background / Color scheme are owned by the
-          embed's standard knob bar (above the canvas) after the
-          #205 migration; Show unit cell stays here as a trajectory-
-          specific overlay. -#}
-      <label class="check"><input type="checkbox" id="show-cell" checked>
-        Show unit cell</label>
-
-      <hr class="panel-sep">
-
-      {#- Overlays group: from the prior "Overlays" tab.  Force-
-          vector arrows + the diagnostic readout.  ``#show-indices``
-          was removed 2026-06-13 — atom-index labels are now
-          exclusively controlled by the molview knob bar's Labels
-          popover (the docstring at the top of this file already
-          says "the standard knob bar … owns all the per-viewer
-          chrome").  Pre-removal both controls called the same
-          ``handle.setLabels()`` with slightly different defaults
-          (the duplicate used fontSize=9; the knob-bar default
-          inherits whatever the last setLabels saw), so users could
-          flip them out of sync and see surprising font-size jumps. -#}
-      <label class="check"
-        title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
-        <input type="checkbox" id="show-forces">
-        Show force vectors</label>
-      <span id="forces-status" class="readout" aria-live="polite"></span>
-      <label>Arrow length scale (&Aring; per eV/&Aring;)
-        <span class="row-with-readout">
-          <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
-          <span id="force-scale-val" class="readout">1.0</span>
-        </span>
-      </label>
-      <label>Hide |F| smaller than (eV/&Aring;)
-        <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
-      </label>
-      <label class="check"><input type="checkbox" id="highlight-max" checked>
-        Highlight largest force</label>
-
-      {#- Hide-frozen-atoms toggle (2026-06-13).  Visible only when
-          the parser surfaced runtime_info.frozen_atoms (sidecar-
-          driven; see molbuilder/parsers/_sidecar.py).  When checked:
-            * frozen atoms render via overlay style.hidden:true
-              (same mechanism the selection-panel isolate mode uses)
-            * force-vector arrows on frozen atoms are skipped — their
-              forces are artificial (constraint-balancing) and not
-              physically meaningful. -#}
-      {#- 2026-06-14: this row is ALWAYS visible.  Pre-fix it hid
-          itself when ``runtime_info.frozen_atoms`` was empty, which
-          made the toggle disappear silently every time the parser
-          failed to surface the indices.  Worse, it broke muscle
-          memory: a user who learned the toggle was here didn't
-          find it on the next run, and assumed a regression.  The
-          control's PRESENCE doesn't depend on the data -- only its
-          EFFECT does.  When there are no frozen atoms, the toggle
-          is a no-op (it has nothing to hide); that's a fine UX
-          state and a stable one.  Removing the legacy ``hidden``
-          attribute + the ``refreshHideFrozenAvailability`` show/
-          hide call.  See lib/trajectory/core.js for the matching
-          code change. -#}
-      <label class="check" id="hide-frozen-row">
-        <input type="checkbox" id="hide-frozen">
-        Hide frozen atoms (filter force arrows to free atoms)</label>
-
-      <hr class="panel-sep">
-
-      {#- Playback group: from the prior "Playback" tab.  Speed +
-          Loop are placed at the bottom of Display so they sit a
-          single tab-click away from the embed's own play button. -#}
-      <label>Playback speed (ms / frame)
-        <input id="speed" type="number" min="20" max="3000" step="20" value="150">
-      </label>
-      <label class="check"><input type="checkbox" id="loop" checked>
-        Loop playback</label>
-    </div>
-
-    <div class="ctab-panel" data-panel="inspect" role="tabpanel">
-      <p class="hint" id="inspect-hint">
-        Click 1, 2, or 3 atoms — in the viewer or in the list
-        below — to read xyz, distance, or bond angle.  Three
-        atoms in click order: ∠A–B–C with B (the second click)
-        at the vertex.  Updates per frame as the trajectory
-        plays.
-      </p>
-      <div class="inspect-list-wrap">
-        <table class="inspect-list" aria-label="Atom list">
-          <thead>
-            <tr>
-              <th class="col-idx">#</th>
-              <th class="col-el">El</th>
-              <th class="col-coord">x</th>
-              <th class="col-coord">y</th>
-              <th class="col-coord">z</th>
-            </tr>
-          </thead>
-          <tbody id="inspect-atom-list-body"></tbody>
-        </table>
-      </div>
-      {# One-line measurement readout — xyz / distance / angle.
-         Filled by trajectory/core.js's updateInspectPanel via the
-         shared lib/selection/measurements.js (task #299, 2026-06-08
-         — replaces the legacy two-row A/B/|A-B| table when the
-         pick cap rose from 2 to 3). #}
-      <div id="inspect-measurement"
-           class="inspect-measurement selection-measurement-overlay"
-           hidden></div>
-      <button id="inspect-clear" class="full-btn" disabled
-        title="Drop the current atom picks.&#10;Loading a new file or trajectory also resets the selection.">
-        Clear selection
-      </button>
-
-      <hr class="panel-sep">
-
-      {#- 2026-06-12: Save-frame moved here from the prior Playback
-          tab.  Single-frame export is a data-handoff action that
-          composes naturally with the Inspect-tab atom list (look
-          at the frame's coordinates, then grab the file). -#}
-      <button id="save-frame" class="full-btn"
-        title="Download the currently displayed frame as a standard .xyz file (Angstrom).&#10;Useful for handing the relaxed structure to the next step (tunneling-gap construction, transport calc, etc.)."
-        disabled>
-        Save current frame as XYZ
-      </button>
-      <p class="hint">Exports the currently-displayed frame so you can
-        use the relaxed structure as input to the next step (e.g.,
-        dropping the molecule into a tunneling gap as a bridge).</p>
-    </div>
-  </aside>
-</section><!-- /.viewer-row -->
+    {#- "Exclude frozen atoms" affects the force OVERLAY only: frozen atoms'
+        forces are constraint-balancing artefacts, not physical free-atom
+        forces, so their arrows are skipped.  Atom HIDING in the viewer is
+        MolView's job (its selection/isolate render pipeline), not this
+        checkbox — hence the row is always present and a pure arrow filter. -#}
+    <label class="check"
+      title="Skip force arrows on frozen (constrained) atoms — their forces are constraint-balancing artefacts, not physical free-atom forces.&#10;Only affects the force overlay; hiding atoms in the viewer is done from MolView's selection panel.">
+      <input type="checkbox" id="hide-frozen">
+      Exclude frozen atoms from force arrows</label>
+  </section>
 </section><!-- /.card.viewer-card -->
 
 <!-- SCF-progress banner -- engine-agnostic title/status for the
