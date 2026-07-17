@@ -84,17 +84,11 @@ header .tagline {
 .status {
     color: var(--text-muted);
     font-size: 0.9rem;
-    margin-left: auto;
+    margin-left: auto;   /* right-aligns the status in the Modify action row */
     font-weight: normal;
 }
-/* Compound-class convention shared with Build (style.css) and the
- * trajectory inspector (lib/trajectory-inspector.css): the JS sets
- * ``className = "status ok"`` etc.  Keep the rules selector-aligned
- * across all three places so a future "add a severity" change is a
- * single CSS edit. */
-.status.ok    { color: var(--success); }
-.status.error { color: var(--error); }
-.status.warn  { color: var(--warn-soft); }
+/* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
+ * page-shell.css (ui-design-contract §2.3) — the "single CSS edit" home. */
 
 /* ---- Vertical workflow (2026-06-08 restructure) ----
  *

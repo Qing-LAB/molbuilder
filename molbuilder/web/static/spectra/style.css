@@ -223,9 +223,9 @@ button > code {
     color: var(--text-secondary);
     min-height: 1.1em;
 }
-.status.ok    { color: var(--success); }
-.status.error { color: var(--ps-danger-fg); }
-.status.muted { color: var(--text-secondary); opacity: 0.75; }
+/* Severity modifiers (.status.ok/.error/.warn/.muted) live ONCE in
+ * page-shell.css (ui-design-contract §2.3).  Note: .error unified onto the
+ * global --error (was the softer panel --ps-danger-fg) — one severity palette. */
 
 /* ---- Issues panel ---- */
 

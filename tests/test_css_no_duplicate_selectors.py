@@ -69,10 +69,10 @@ ALLOWLIST: dict[str, str] = {
     # `.spectra-tab .card`, etc. and let page-shell's base win
     # everywhere else.
     ".card":           "phase 3: scope per-tab .card overrides under .modify-tab / .spectra-tab parent",
-    ".status":         "phase 3: scope per-tab .status overrides",
-    ".status.error":   "phase 3: scope per-tab status variants",
-    ".status.ok":      "phase 3: scope per-tab status variants",
-    ".status.warn":    "phase 3: scope per-tab status variants",
+    ".status":         "phase 3: scope per-tab .status base overrides (position/size/resting colour)",
+    # .status.error/.ok/.warn/.muted: CONSOLIDATED into page-shell.css as the single
+    # home (ui-design-contract §2.3, CSS-migration step 1) — removed from the
+    # allowlist so this invariant now ENFORCES the one-home rule for severity colours.
     "header .tagline": "phase 3: scope per-tab .tagline overrides",
     # (`.viewer-controls` allowlist entry removed: it's no longer a cross-file
     #  duplicate -- only spectra/style.css defines it as a rule now.)

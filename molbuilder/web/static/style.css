@@ -343,9 +343,8 @@ button.primary:disabled,
     min-height: 1.2em;
     color: var(--text-secondary);
 }
-.status.error { color: var(--error); }
-.status.ok    { color: var(--success); }
-.status.warn  { color: var(--warn-soft); }
+/* Severity modifiers (.status.error/.ok/.warn/.muted) live ONCE in
+ * page-shell.css (ui-design-contract §2.3). */
 
 /* ---- Validation issues panel ----
  * Replaces the older one-line "⚠ msg1 • msg2" status concatenation
