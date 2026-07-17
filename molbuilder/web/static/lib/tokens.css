@@ -129,6 +129,7 @@
     --ps-fg-muted:        #999999;
     --ps-fg-dim:          #888888;   /* dimmer than fg-muted */
     --ps-border:          #2a2a2a;
+    --ps-bg-2:            var(--ps-border);   /* was a phantom (#2a2a2a) in projects-sidebar.css */
     --ps-border-strong:   #3a3a3a;
     --ps-hover:           #232323;
     --ps-selected:        #2d4a6e;
@@ -222,4 +223,33 @@
     --group-profile-accent: var(--accent);
     --group-stage-accent:   var(--warn-soft);
     --group-budget-accent:  var(--success);
+
+    /* --- Embeddable-overlay tier (CSS-migration step 3, 2026-07) ---
+     * The concealed embed modules (lib/mol-viewer-embed.css,
+     * lib/results/bundle-handoff.css, lib/system-load-monitor.css,
+     * lib/trajectory-inspector.css, lib/form-schema.css) render inside
+     * host pages, so they tint with TRANSLUCENT overlays that adapt to
+     * whatever background sits beneath them — rather than assuming a
+     * specific solid --bg-*.  These were previously undefined phantom
+     * tokens carried only by inline var(--x, fallback) fallbacks, which
+     * drifted (--border-subtle alone appeared at four different alphas).
+     * Promoted here as ONE value each so the palette controls them.
+     * The embed severity set aliases the canonical severity palette so
+     * there is ONE severity vocabulary app-wide. */
+    --surface-elevated:  rgba(20, 24, 28, 0.55);   /* raised panel over host bg */
+    --surface-hover:     rgba(255, 255, 255, 0.08);/* hover tint */
+    --surface-deep:      rgba(0, 0, 0, 0.18);      /* recessed well */
+    --surface-recessed:  rgba(0, 0, 0, 0.20);
+    --border-subtle:     rgba(255, 255, 255, 0.08);/* was .06/.08/.12/.18 — unified */
+    --bg-panel:          #20242b;                  /* embed panel solid bg */
+    --text-tertiary:     #7c7c7c;                  /* was #777/#7c7c7c — unified */
+    --radius-md:         8px;                       /* was 8px/10px — unified */
+    --font-sans:         system-ui, -apple-system, "Segoe UI", sans-serif;
+    --accent-fg:         #0a1018;                  /* dark text on an accent fill */
+    --accent-on:         var(--bg-page);           /* = #14171c */
+    --card-row-gap:      var(--gap);
+    /* Embed severity — aliases of the canonical palette (one vocabulary). */
+    --ok:                var(--success);
+    --warn:              var(--warning);
+    --bad:               var(--error);
 }
