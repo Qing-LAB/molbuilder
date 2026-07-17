@@ -101,9 +101,21 @@ Current state (updated 2026-07-17):
 | **Transport** (`/transport-calculation`) | MolView (`mode:"modify"`) | **done** — mounts on commit + sources gen labels from `molview.data` |
 | **Spectra** (`/spectrum-calculation`) | MolView (`mode:"readonly"`) | **done (Card 1)** — read-only inspect card via the shared include; VibrationView left Phase-1 (borrows its own embed) |
 | **structure-optimization** (`/structure-optimization`, `index.html`) | MolView (`mode:"readonly"`) | **done (display)** — full read-only card via the shared include; structure into `molview.data`.  k-grid stays a `SiestaConfig` form field (not on the Structure).  Follow-up: source Generate from `molview.data` + drop the raw `/api/files/read` (like Transport increment 2) |
-| **Results** (`/results`) | loads the full `molview/*` stack | **partial** — mostly on MolView; finish + ES-convert |
+| **Results** (`/results`) | structure inspector on MolView; trajectory on the old embed | **partial** — structure inspector done; **trajectory inspector is the remaining piece** (task #34, spec'd below); spectra inspector uses VibrationView (Phase-1) |
 
-Order so far: Transport (done) → Spectra (done) → structure-optimization (done) → **Results**.
+Order so far: Transport (done) → Spectra (done) → structure-optimization (done) →
+**Results** (structure inspector done; the **trajectory inspector** migration is task
+#34 — its own focused pass).
+
+> **Results trajectory inspector (task #34) — the mechanism + interface.** MolView owns
+> trajectory rendering: a trajectory is the SAME render pipeline with a `frame-select`
+> step at the front (§14.5 of [`molview-module.md`](molview-module.md)); a single
+> structure is the `frameCount()===1` case. So the inspector does not reimplement
+> playback — it **feeds** MolView (`data.reloadFrames(coords, {forces})` / `addFrame`
+> for live-poll), MolView renders the frame bar itself, and the inspector hands force
+> arrows via `handle.setArrows` on frame change. Per-frame scalars (energy/max-force)
+> stay in the inspector's Plotly chart. The surface-by-surface map (rebuildModel /
+> showFrame+controls / forces / cell / picking / live-append / keep) lives on task #34.
 `_molview_scripts.html` is the shared component-stack include (Transport + Spectra use
 it; migrating Modify / Results / molview-demo onto it is a follow-up).  Remaining per
 tab: the ES-module conversion + `window` shim + node-test `import()` re-point (deferred
