@@ -256,7 +256,9 @@
 .plots-toolbar-btn {
     appearance: none;
     background: var(--bg-card);
-    color: var(--fg);
+    color: var(--text-primary);   /* was var(--fg): a phantom token (undefined
+                                     everywhere) that fell back to the UA default,
+                                     dark-on-dark on the card.  §1 one-vocabulary. */
     border: 1px solid var(--border-strong);
     border-radius: var(--radius, 4px);
     padding: 4px 10px;
