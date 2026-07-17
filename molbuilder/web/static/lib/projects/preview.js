@@ -41,6 +41,7 @@
  */
 
 import { projects } from "./state.js";
+import { apiWrite, apiStat, apiRead, apiReadRange } from "./api.js";
 
 // Modal DOM handles, populated by initPreview().
 let elModal, elTitle, elMeta, elCmView, elError, elStatus, elFindBtn;
@@ -461,28 +462,14 @@ async function saveEdit() {
     elError.textContent = "";
     _setStatus("Saving…", null);
     elSaveBtn.disabled = true;
-    let resp;
-    try {
-        const r = await fetch("/api/files/write", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(body),
-        });
-        resp = await r.json();
-        if (!r.ok || !resp.ok) {
-            // 409 = mtime mismatch (someone else edited).  Other
-            // errors = path rejected, parent missing, etc.  The
-            // server's message is user-facing.
-            elError.textContent = resp && resp.error
-                ? resp.error
-                : `Save failed (HTTP ${r.status}).`;
-            _setStatus("", null);
-            elSaveBtn.disabled = !_isDirty();
-            return;
-        }
-    } catch (e) {
-        elError.textContent = "Network error: "
-            + (e && e.message ? e.message : String(e));
+    // Route through the api.js envelope: it normalises HTTP errors (409 =
+    // mtime mismatch, path rejected, parent missing -> the server's
+    // user-facing ``error``) AND network drops into one ``{ok:false, error}``
+    // shape, so success is simply ``resp.ok``.
+    const resp = await apiWrite(body.path, body.text,
+                                { expected_mtime: body.expected_mtime });
+    if (!resp.ok) {
+        elError.textContent = resp.error || "Save failed.";
         _setStatus("", null);
         elSaveBtn.disabled = !_isDirty();
         return;
@@ -567,34 +554,19 @@ export async function showPreview() {
     // without reading any bytes; for files past the bulk cap the
     // stat call is the only way to avoid wasting a /read request
     // that'll 413.
-    let size = null;
-    let mtime = null;
-    try {
-        const r = await fetch(
-            "/api/files/stat?path=" + encodeURIComponent(path)
-        );
-        const body = await r.json();
-        if (!r.ok || !body.ok) {
-            const msg = (body && body.error)
-                || `Could not stat file (HTTP ${r.status}).`;
-            console.error("[preview] stat failed:", msg);
-            elError.textContent = msg;
-            _state.readError = "stat";
-            _renderUiFromState();
-            return;
-        }
-        size  = body.size;
-        mtime = body.mtime;
-    } catch (e) {
-        console.error("[preview] stat threw:", e);
-        elError.textContent = "Network error: "
-            + (e && e.message ? e.message : String(e));
-        _state.readError = "network";
+    const statBody = await apiStat(path);
+    if (!statBody.ok) {
+        // Envelope folds HTTP error + network drop into one ``error`` string.
+        const msg = statBody.error || "Could not stat file.";
+        console.error("[preview] stat failed:", msg);
+        elError.textContent = msg;
+        _state.readError = statBody.error && /network/.test(statBody.error)
+            ? "network" : "stat";
         _renderUiFromState();
         return;
     }
-    _state.size  = size;
-    _state.mtime = mtime;
+    _state.size  = statBody.size;
+    _state.mtime = statBody.mtime;
 
     try {
         // Single-shot bulk read is bounded by the SERVER's bulk ceiling
@@ -603,10 +575,10 @@ export async function showPreview() {
         // the bulk path where the server hard-refuses (files.py), so they showed the
         // raw error with NO content while the paginated path (any size) sat unused.
         // Chunk above the bulk ceiling.
-        if (size <= BULK_READ_MAX_BYTES) {
+        if (_state.size <= BULK_READ_MAX_BYTES) {
             await _loadBulk(path);
         } else {
-            await _loadPaginated(path, size);
+            await _loadPaginated(path, _state.size);
         }
     } catch (e) {
         // Bulk/paginated handle their own elError today, but a
@@ -627,24 +599,11 @@ export async function showPreview() {
  */
 async function _loadBulk(path) {
     _state.mode = "bulk";
-    let body = null;
-    let httpStatus = 0;
-    try {
-        const r = await fetch(
-            "/api/files/read?path=" + encodeURIComponent(path)
-            + "&max_bytes=" + BULK_READ_MAX_BYTES
-        );
-        httpStatus = r.status;
-        body = await r.json();
-    } catch (e) {
-        elError.textContent = "Network error reading file: "
-            + (e && e.message ? e.message : String(e));
-        _state.readError = "network";
-        _renderUiFromState();
-        return;
-    }
-    if (!body || !body.ok) {
-        const reason = (body && body.error) || `HTTP ${httpStatus}`;
+    // Envelope read: ``maxBytes`` lifts the budget to the BULK ceiling; the
+    // returned ``{ok:false, error}`` folds HTTP + network failure alike.
+    const body = await apiRead(path, { maxBytes: BULK_READ_MAX_BYTES });
+    if (!body.ok) {
+        const reason = body.error || "read failed";
         console.error("[preview] /api/files/read failed:", reason);
         elError.textContent = reason;
         if (/not valid UTF-8/.test(reason)) {
@@ -652,7 +611,7 @@ async function _loadBulk(path) {
                        null);
             _state.readError = "binary";
         } else {
-            _state.readError = "other";
+            _state.readError = /network/.test(reason) ? "network" : "other";
         }
         _renderUiFromState();
         return;
@@ -733,30 +692,19 @@ async function _fetchNextRangeChunk(path) {
     _state.rangeAbort = ctrl;
     let body = null;
     try {
-        const r = await fetch(
-            "/api/files/read_range?path=" + encodeURIComponent(path)
-            + "&offset="    + _state.loadedBytes
-            + "&max_bytes=" + PAGE_BYTES,
-            { signal: ctrl.signal }
-        );
-        body = await r.json();
-        if (!r.ok || !body.ok) {
-            elError.textContent = (body && body.error)
-                || `Range read failed (HTTP ${r.status}).`;
-            _state.readError = "range";
+        body = await apiReadRange(path, _state.loadedBytes, PAGE_BYTES,
+                                  { signal: ctrl.signal });
+        // AbortError (modal closed mid-fetch) surfaces as ``aborted:true`` via
+        // the envelope; the editor is already torn down -> silent return, no
+        // error banner.
+        if (body.aborted) return;
+        if (!body.ok) {
+            elError.textContent = body.error || "Range read failed.";
+            _state.readError = /network/.test(body.error || "")
+                ? "network" : "range";
             _renderUiFromState();
             return;
         }
-    } catch (e) {
-        // AbortError fires when the modal was closed mid-fetch;
-        // the editor is already torn down and the response is
-        // irrelevant.  Silent return; do not surface as an error.
-        if (e && e.name === "AbortError") return;
-        elError.textContent = "Network error: "
-            + (e && e.message ? e.message : String(e));
-        _state.readError = "network";
-        _renderUiFromState();
-        return;
     } finally {
         _state.loadingMore = false;
         // Only clear the controller if it's still ours — a later

@@ -404,6 +404,26 @@ class TestAbortSignal:
         ''')
         assert out == {"wasSignalForwarded": True}
 
+    def test_apiRead_forwards_maxBytes(self):
+        """The preview inspector's BULK read lifts the budget above the
+        server default via ``opts.maxBytes`` -> ``&max_bytes=`` on the wire.
+        Omitting it must NOT append the param (server default applies)."""
+        out = _run_node('''
+            let withCap = null, withoutCap = null;
+            global.fetch = async (url, init) => {
+                if (url.indexOf("max_bytes") >= 0) withCap = url; else withoutCap = url;
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true, text: "x" }) };
+            };
+            await api.apiRead("/p", { maxBytes: 16777216 });
+            await api.apiRead("/p");
+            console.log(JSON.stringify({
+                capped:    withCap && withCap.indexOf("max_bytes=16777216") >= 0,
+                uncapped:  withoutCap && withoutCap.indexOf("max_bytes") < 0,
+            }));
+        ''')
+        assert out == {"capped": True, "uncapped": True}
+
     def test_apiList_forwards_signal(self):
         out = _run_node('''
             let captured = null;
@@ -656,3 +676,28 @@ class TestNoStoreCache:
         ''')
         assert out["cache"] == "no-store"
         assert out["signalIsSet"] is True
+
+
+# ----- Source guard: consumers must not bypass api.js -------------- #
+
+
+class TestNoRawFetchInPreview:
+    """projects-sidebar.md Principle 6: api.js is the SOLE fetch caller
+    for the /api/files/* endpoints.  preview.js (edit-save + the two read
+    paths) must route every file call through the envelope wrappers so the
+    uniform {ok,error,aborted} shape + no-store cache apply everywhere --
+    no scattered raw ``fetch("/api/files/...")`` that re-implements error
+    handling and silently diverges (the 2026-07 framework-bypass sweep)."""
+
+    def test_preview_has_no_raw_files_fetch(self):
+        src = (ROOT / "molbuilder/web/static/lib/projects/preview.js"
+               ).read_text(encoding="utf-8")
+        # No bare fetch( of an /api/files/ endpoint; all four sites
+        # (write / stat / read / read_range) now go through api.js.
+        assert 'fetch("/api/files' not in src and "fetch('/api/files" not in src, (
+            "preview.js must call api.js wrappers, not raw fetch(\"/api/files/...\")"
+        )
+        # And it must actually import the wrappers it now depends on.
+        assert 'from "./api.js"' in src, (
+            "preview.js should import its file IO from api.js"
+        )

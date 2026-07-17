@@ -118,10 +118,14 @@ export async function apiStat(path, opts) {
 
 export async function apiRead(path, opts) {
   opts = opts || {};
-  return await _fetchEnvelope(
-    "/api/files/read?path=" + encodeURIComponent(path),
-    { signal: opts.signal }
-  );
+  let url = "/api/files/read?path=" + encodeURIComponent(path);
+  // ``opts.maxBytes`` lifts the read budget above the server default so a
+  // bulk read can pull up to the caller's ceiling (the preview inspector's
+  // 16 MB BULK cap) in one shot; omitted -> server default applies.
+  if (opts.maxBytes != null) {
+    url += "&max_bytes=" + encodeURIComponent(opts.maxBytes);
+  }
+  return await _fetchEnvelope(url, { signal: opts.signal });
 }
 
 /** Read a byte window from ``path`` at ``offset`` (default 0) with a
