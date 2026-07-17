@@ -13,11 +13,11 @@ The structure editor's load / edit / save is simply the **structure application
 of the working-copy core** — no separate contract of its own:
 
 - **The core** (load → edit → save, draft, crash-recovery) —
-  [`working-copy-persistence.md`](working-copy-persistence.md), authoritative.
+  [`working-copy-persistence.md`](2026-07-05-working-copy-persistence.md), authoritative.
 - **The codec** (`.xyz` + `.molstruct.json`) — `molbuilder/workingcopy_structure.py`.
 - **The browser wiring** (hold labels in the working copy; Save / Save As →
   `/api/workingcopy/save`; this *replaces* the `writeLabel` auto-save) — designed
-  in [`molview-module.md`](molview-module.md) (the MolView module) +
+  in [`molview-module.md`](2026-07-06-molview-module.md) (the MolView module) +
   `working-copy-persistence.md`. Not yet built.
 
 There is **no** hash-gate, **no** "commit vs save" distinction, and **no**

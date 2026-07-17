@@ -27,7 +27,9 @@ Each archived doc has either been:
 | `2026-07-03-embedded-viewer.md` | **Superseded** — the standalone embedded-viewer contract | folded into the MolView module, now [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (§13 the viewer / handle) |
 | `2026-07-03-atom-selection.md` | **Superseded** — the standalone atom-selection module spec | folded into the MolView module, now [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (§12 store, §13 composition, §15 measurement) |
 | `2026-07-06-workspace-state.md` | **Closed** — the 2026-06-07 workspace-unification audit + Phases 1–9 migration log (all shipped) | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) (the live model + persistence contract; this file kept for the *why*) |
-| `../protocols/archive/molview-module.md` | **Superseded** — the standalone MolView module design+contract (2026-07-03) | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (the whole MolView module: viewer + selection + k-grid + measurement). *(Lives under `protocols/archive/`, alongside the other protocol-doc snapshots.)* |
+| `../protocols/archive/2026-07-06-molview-module.md` | **Superseded** — the standalone MolView module design+contract (2026-07-03) | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) Part II (the whole MolView module: viewer + selection + k-grid + measurement). *(Lives under `protocols/archive/`, alongside the other protocol-doc snapshots.)* |
+| `../protocols/archive/2026-07-05-browser-data-contract.md` | **Superseded** — the browser-owned transient-data (working-copy) contract; the "changed-underneath" hash-gate was removed | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) (§4 persistence — the live browser-data model) |
+| `../protocols/archive/2026-07-05-working-copy-persistence.md` | **Superseded** — the load/edit/save working-copy persistence spec | [`../protocols/workspace-contract.md`](../protocols/workspace-contract.md) §4 + §4.6 (the persistence contract + working-copy mechanism) |
 
 ## Audit principle
 

@@ -26,7 +26,7 @@ during the deprecation window.
 core contract + scoping invariants).
 
 Served at the `/watch` route by the unified molbuilder Flask app
-(see [`../protocols/watch-api.md`](../protocols/watch-api.md) for the route map).  The HTML
+(see [`watch-api.md`](2026-06-02-watch-api.md) for the route map).  The HTML
 page is a single-file dashboard.  No SPA framework, no build step —
 vanilla JS + 3Dmol.js + Plotly.
 

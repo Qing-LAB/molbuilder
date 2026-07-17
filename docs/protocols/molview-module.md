@@ -843,7 +843,7 @@ converted via `lib/molview/_atom-index.js` `toDisplay` at the edge. Never let a
 |---|---|---|
 | `embedded-viewer.md` (`archive/2026-07-03-embedded-viewer.md`) | the viewer contract | the viewer is part of this one module |
 | `atom-selection.md` (`archive/2026-07-03-atom-selection.md`) | the selection module | selection is part of this one module; its §404 (isolate on the adapter + global handle) was already superseded by isolate-in-store |
-| `molview-module.md` (`archive/molview-module.md`) | the standalone MolView module doc | folded here so the viewer + selection + the workspace model they share live in ONE core contract |
+| `molview-module.md` (`archive/2026-07-06-molview-module.md`) | the standalone MolView module doc | folded here so the viewer + selection + the workspace model they share live in ONE core contract |
 
 > **NOT superseded — `atom-annotations.md` stays LIVE.** Only the FUSED-VIEWER
 > material that had accreted into `atom-annotations.md` (the viewer/selection/

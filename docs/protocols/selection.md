@@ -107,8 +107,8 @@ Each tab that wants to consume sidebar selections:
 > with editable state subscribe to `onCommit` and gate their
 > "use this file" action through a dirty-state warning modal.
 > See [`projects-sidebar.md`](projects-sidebar.md) § 6 + § 9
-> for the universal model and [`tabs/architecture.md`](
-> ../tabs/architecture.md) § 9.2 for the per-tab status (B.5.3
+> for the universal model and [`tabs/architecture.md`](../tabs/architecture.md)
+> § 9.2 for the per-tab status (B.5.3
 > wired Build + Spectra to onCommit; B.5.2 wired Molbuilder
 > directly).
 

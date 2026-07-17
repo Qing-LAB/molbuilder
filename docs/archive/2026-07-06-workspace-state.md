@@ -21,7 +21,7 @@
 > (`lib/workspace/dispatcher.js`), the `ws.*` public API surface,
 > and consumer migration of all 6 known call sites.  The
 > contract is now sole-source-of-truth in
-> [`workspace-contract.md`](workspace-contract.md); a
+> [`workspace-contract.md`](../protocols/workspace-contract.md); a
 > contract-compliance test enforces zero legacy consumers.
 >
 > Phase 9 (retirement of the legacy public globals

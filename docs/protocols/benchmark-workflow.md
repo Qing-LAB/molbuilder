@@ -458,7 +458,7 @@ readiness check answers *is it ready to run* — and it is the **existing
 runs them (assistant-not-nanny). The full contract — Job A vs Job B, why
 the envs toolkit, the host-env / stdlib-only exemption, the
 `set -euo pipefail` run-time backstop — is owned by
-[`job-execution.md`](job-execution.md) § 3.4; the GPU specifics are in
+[`job-execution.md`](../job-execution.md) § 3.4; the GPU specifics are in
 slurm-integration.md § 7.9 / § 11.1.
 
 ### § 7.3 run-bench (target, built)

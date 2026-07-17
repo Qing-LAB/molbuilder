@@ -455,7 +455,7 @@ by the rule above rather than papered over inside the store.
 ## §4.6 The working-copy persistence mechanism
 
 > **Folded in from the former `working-copy-persistence.md`** (now
-> [archived](archive/working-copy-persistence.md)). This is the server-side
+> [archived](archive/2026-07-05-working-copy-persistence.md)). This is the server-side
 > mechanism that implements the **server draft** and the **files** surfaces of §4.1
 > — the generic core (`molbuilder/workingcopy.py`, L1) + the structure codec
 > (`workingcopy_structure.py`) + the `/api/workingcopy/*` routes. The client model
