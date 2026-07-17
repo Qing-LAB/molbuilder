@@ -105,68 +105,17 @@ header .tagline {
     gap: var(--gap);
     padding: var(--gap);
 }
+/* Page COMPOSITION only: the fused molview card sits in a flex column in the workspace grid.
+ * Everything about the VIEWER's dimensions -- the square (--viewer-extent), the fill-to-canvas
+ * chain, and the card's own content-width cap -- lives in the module (lib/molview/fused-
+ * layout.css), driven by the module's own --viewer-* vars.  This tab says NOTHING about the
+ * viewer's size; the concealed MolView card sizes itself in any host.  (The old
+ * .viewer-wrap / .viewer / .mol-viewer-card sizing rules that used to live here -- with copied
+ * 560 / 320 / 342 magic mirroring fused-layout.css -- were the module's job leaking into the
+ * tab; they moved into fused-layout.css so every consumer fits identically.) */
 .viewer-section {
-    /* Comfortable viewer height across desktop sizes; phone
-     * narrows below take 360 px so the viewer stays usable. */
     display: flex;
     flex-direction: column;
-    min-height: 480px;
-    /* Keep the "Structure & selection" card (header + fused viewer/panel) tied
-     * to the WIDTH ITS CONTENT ACTUALLY NEEDS, so the header never overhangs a
-     * viewer+panel pair that the fused-layout centres.  The fused card's content
-     * maxes at: viewer square (--viewer-edge = min(60vh, 560px)) + the fold rail
-     * (22px) + the panel floor (--panel-min = 320px).  Capping the section here
-     * makes the whole set one tight, edge-aligned card instead of a full-grid-
-     * width bar with symmetric empty margins.  (Values mirror fused-layout.css;
-     * the card grows to this cap, then spare row width goes to the Modify card.) */
-    max-width: calc(min(60vh, 560px) + 342px);
-}
-/* The wrap mirrors the canvas dimensions (centred, capped at
- * 560 px) so the absolute-positioned measurement chip anchors to
- * the actual canvas corner and not the card's full-width column.
- * Pre-task-303 we tried lifting the cap to let the viewer breathe
- * on 1440 px+ screens — that triggered an e2e timing regression
- * where the bigger canvas's redraw work slowed JS state
- * propagation past the 5 s test timeout on the dirty-canvas
- * navigation tests.  Keep the cap; if a future user complaint
- * justifies a bigger viewer, do it WITH a perf budget. */
-.viewer-section .viewer-wrap {
-    position: relative;
-    width: 100%;
-    max-width: 560px;
-    aspect-ratio: 1 / 1;
-    min-height: 320px;
-    /* Height cap == the fused card's viewer-edge (fused-layout.css --viewer-edge) so the
-     * square canvas and the layout's square bound never drift apart.  Keeps the 560 perf
-     * cap (see note above); do not lift without a perf budget. */
-    max-height: var(--viewer-edge, min(60vh, 560px));
-    margin: 0 auto;
-}
-/* The viewer HOST + the embed's card FILL the square wrap and CLIP.
- *
- * The module builds the host as ``.viewer`` (a CLASS, not ``#viewer``); the old
- * ``#viewer`` id selector was dead, so the host + its 3Dmol canvas were never
- * height-constrained.  3Dmol then initialised into an unbounded container and
- * over-sized the canvas, which spilled DOWN out of the square -- penetrating the
- * selection/cell panel below (and, at other widths, the modify card / footer)
- * once the layout stacked vertically.  Constraining the host + the embed card to
- * the wrap FROM PAGE LOAD (with overflow:hidden) lets 3Dmol size its canvas into
- * the square instead of overflowing it, and clips anything that still doesn't.
- *
- * (Also matches the dark UI: the transparent host inherits the card surface, so
- * there's no jarring white frame around the canvas.) */
-.viewer-section .viewer-wrap > .viewer {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    background: transparent;
-}
-.viewer-section .viewer-wrap > .viewer > .mol-viewer-card {
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
-    overflow: hidden;
 }
 
 /* Workspace layout (v5, 2026-07-08): the fused molview card (viewer + selection/cell

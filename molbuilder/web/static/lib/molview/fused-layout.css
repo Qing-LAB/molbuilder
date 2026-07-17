@@ -19,6 +19,13 @@
     --viewer-min: 320px;               /* min square width */
     --panel-min:  320px;               /* min panel width */
     --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
+
+    /* The card never needs to be wider than its own content: the viewer square (capped at
+     * --viewer-edge) + the fold rail + the panel floor.  Capping it HERE -- from the card's
+     * OWN vars, one source of truth -- means a host that drops the card into a wide column
+     * gets a tight, edge-aligned card instead of a full-width bar with big empty margins,
+     * with NO per-tab width magic.  (Below the stack threshold this doesn't bind.) */
+    max-width: calc(var(--viewer-edge) + var(--fold-w) + var(--panel-min));
 }
 
 /* WIDE (row): viewer | handle | panel.  justify-content:center so that when the card
@@ -54,6 +61,41 @@
     width: var(--viewer-extent);
     height: var(--viewer-extent);
     position: relative;            /* anchors the measurement-chip overlay */
+}
+
+/* The viewer chain FILLS the square, end to end -- so the embedded 3Dmol canvas is sized by
+ * the module's own square (--viewer-extent), never by the embed's standalone default height.
+ * This is the module OWNING its viewer sizing: a consumer drops the fused card into any host
+ * and the viewer fits, with zero per-tab CSS.  Each level fills its parent and clips, so a
+ * transient over-size during 3Dmol init can't spill out of the square (into the panel / the
+ * page below).  The embed's ``.mol-viewer-canvas`` is ``flex: 1 1 auto`` (mol-viewer-embed.css),
+ * so it absorbs whatever height is left under the knob bar -- no fixed canvas height anywhere. */
+.molview-viewer > .viewer-wrap {
+    width: 100%;
+    height: 100%;
+    position: relative;            /* anchors the measurement-chip overlay to the canvas */
+    overflow: hidden;              /* clip the 3Dmol canvas to the square */
+    /* Viewer chrome -- the module owns it (it BUILDS .viewer-wrap).  Moved here from
+     * form-components.css, dropping that sheet's parallel aspect-ratio / min-height /
+     * max-height:56vh sizing which duplicated (and drifted from -- 56vh vs the module's
+     * 60vh --viewer-edge) the square the module already sizes above. */
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: #ffffff;           /* matches 3Dmol's canvas; covered once the canvas paints */
+    box-shadow: var(--shadow-card);
+}
+.molview-viewer .viewer-wrap > .viewer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: transparent;       /* inherit the card surface -- no white frame */
+}
+.molview-viewer .viewer-wrap > .viewer > .mol-viewer-card {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Panel: the leftover width, with its own min-width.  overflow-x hidden keeps the fold

@@ -132,6 +132,12 @@
             if (viewer && typeof viewer.embed === "function") {
                 // Wire the render loop once the viewer handle is ready; molview owns it.
                 viewer.embed(built.viewerHost, {
+                    // The fused card sizes its viewer square itself (fused-layout.css
+                    // --viewer-extent), so the embed must FILL that square, not fall back to
+                    // its standalone default height (clamp(360px,52vh,500px)) which overflows a
+                    // small square and clips the molecule.  "100%" = "fill the host you're
+                    // given" -- the square is the single source of truth, no magic number here.
+                    card: { height: "100%" },
                     onReady: function (h) {
                         // Test hook: expose the viewer handle so e2e can read what was drawn
                         // (the owner never sees it -- it's not on the returned handle).

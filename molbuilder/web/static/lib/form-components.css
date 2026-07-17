@@ -226,22 +226,12 @@ button.primary:disabled {
     border-radius: 3px;
     border: 1px solid var(--border-soft);
 }
-/* 1:1 square viewer container, consistent across Build / Modify / Watch;
- * min/max-height keep it in a comfortable range; white canvas bg reads
- * better for chemistry against the dark UI. */
-.viewer-wrap {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    min-height: 320px;
-    max-height: 56vh;
-    margin: 0 auto;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: #ffffff; /* exempt: matches 3Dmol's canvas */
-    position: relative;
-    box-shadow: var(--shadow-card);
-}
+/* ``.viewer-wrap`` sizing + chrome moved to lib/molview/fused-layout.css (2026-07-17):
+ * ``.viewer-wrap`` is BUILT BY the MolView module (mount.js), so the module owns its
+ * dimensions + chrome.  This shared sheet used to re-size it here with its OWN magic
+ * (aspect-ratio, min-height:320px, max-height:56vh) that duplicated -- and drifted from
+ * (56vh vs the module's 60vh --viewer-edge) -- the square the module already defines.
+ * A concealed component sizes itself; no external sheet gets a say. */
 
 /* ---- Hint / helper text ---- */
 .hint {

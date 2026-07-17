@@ -5418,6 +5418,13 @@
             opts = opts || {};
             const sel = _selectionFromIndices(opts.indices);
             try {
+                // Sync the WebGL viewport to the canvas box FIRST, then fit.  3Dmol's
+                // zoomTo() frames against the camera's current aspect/size; if the box was
+                // resized (panel fold, window resize, a container that settled after the last
+                // fit) the viewport can be stale and zoomTo would frame to the wrong size --
+                // the molecule would spill out even after "Reset view".  resize()+zoomTo makes
+                // refit self-correcting: it always re-measures then frames to the live box.
+                state.viewer.resize();
                 state.viewer.zoomTo(sel);
                 if (typeof opts.pullback === "number"
                     && opts.pullback > 0 && opts.pullback !== 1) {

@@ -115,9 +115,10 @@ header code {
     border-top: 1px solid var(--border-soft);
 }
 
-/* ---- Viewer mount (index 3Dmol canvas; .viewer-wrap chrome is in
- *      form-components.css) ---- */
-#viewer { width: 100%; height: 100%; position: relative; }
+/* The old ``#viewer { width/height:100% }`` mount rule was removed 2026-07-17: the page
+ * hands MolView an empty ``#viewer-host`` and the module builds + sizes its own viewer
+ * (``.viewer`` is a CLASS, inside the fused card).  Viewer sizing is owned end-to-end by
+ * lib/molview/fused-layout.css -- no page rule sizes it. */
 
 /* Disabled compatibility-locked inputs inside index fieldsets. */
 fieldset input:disabled,

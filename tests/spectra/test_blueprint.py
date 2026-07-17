@@ -106,7 +106,12 @@ class TestSpectraPage:
         # the schema's structure_text was retired in favour of
         # spectraInspector.setStructureText() + an in-memory
         # holder.  Pin the new entry-point ids instead.
-        assert 'id="viewer"'                    in body
+        #
+        # task #62: the inspect card migrated to the concealed MolView
+        # module -- an EMPTY ``#spectra-molview-host`` that molview.mount
+        # builds the read-only fused card into (the old ``#viewer`` id-based
+        # 3Dmol mount is gone; the module builds a ``.viewer`` CLASS inside).
+        assert 'id="spectra-molview-host"'      in body
         assert 'id="load-from-sidebar-btn"'     in body
         assert 'id="generate-btn"'              in body
         # Methods-preview modal present (dialog element + handles).

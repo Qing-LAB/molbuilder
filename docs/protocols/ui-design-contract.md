@@ -263,6 +263,24 @@ subsection.** Editing one? Read its subsection first.
   and BOTH the viewer and the panel key their height off, so the two bottom-align at every
   width with **no JS** and no fixed height. `100cqw` is the card's own content width (content-
   driven, §3), so the viewer never fills the card (leftover → margin/panel).
+- **Fills down to the canvas — the module sizes its OWN embed (no page gets a say).** The
+  square is only correct if the 3Dmol canvas fills it. The chain
+  `.molview-viewer > .viewer-wrap > .viewer > .mol-viewer-card` is `height: 100%` +
+  `overflow: hidden` end to end (fused-layout.css owns `.viewer-wrap`'s sizing **and** its
+  chrome — border/radius/bg), and the embed's `.mol-viewer-canvas` is `flex: 1 1 auto`, so it
+  absorbs whatever height is left under the knob bar — **no fixed canvas height anywhere.**
+  `mount.js` embeds with `card: { height: "100%" }` so the viewer fills the square instead of
+  the embed's standalone default (`clamp(360px, 52vh, 500px)`), which would overflow a small
+  square and clip the molecule. `.molview-card` also caps ITSELF at
+  `calc(--viewer-edge + --fold-w + --panel-min)` (its own vars), so a host that drops it into a
+  wide column gets a tight, edge-aligned card. **A page sizes NOTHING here** — it hands an
+  empty `#viewer-host` and touches nothing else. (The prior debt where `modify/style.css` +
+  `form-components.css` re-sized `.viewer-wrap`/`.viewer`/`.mol-viewer-card` with copied
+  `560`/`320`/`56vh` — leaking the module's job into a tab, and drifting — is retired: a
+  concealed component that can't fit itself in an arbitrary host isn't sealed.)
+- **`refit()` (Reset view) is self-correcting:** it `resize()`s the WebGL viewport to the live
+  canvas box *then* `zoomTo()`s — so a fit is never framed against a stale size, and Reset
+  always re-contains the molecule regardless of intervening resizes.
 - **Stacked (`@container` under 664):** viewer + panel share one `--stack-extent`
   (`min(--viewer-edge, 100cqw)`) for a matching width; the fold handle becomes a **compact,
   centred grip** (hugs its chevron), never a full-width bar — so it can't read as wider than
