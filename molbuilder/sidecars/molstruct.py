@@ -552,11 +552,24 @@ def load(sidecar_path):
     return _load(sidecar_path)
 
 
+def load_text(text, *, source="<sidecar>"):
+    """Read-side convenience re-export: parse + validate sidecar JSON from a
+    STRING (not a path).  Delegates to
+    :func:`molbuilder.parse.sidecars.molstruct.load_text` so consumers have a
+    single ``molbuilder.sidecars.molstruct`` namespace (read + write).  The
+    ``/api/build/load`` seam uses this to apply an in-body sidecar whose bytes
+    the browser read through the projects file package.
+    """
+    from molbuilder.parse.sidecars.molstruct import load_text as _load_text
+    return _load_text(text, source=source)
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "MolstructJsonError",
     "apply_to_structure",
     "load",
+    "load_text",
     "save",
     "sha256_of_file",
     "sidecar_path_for",

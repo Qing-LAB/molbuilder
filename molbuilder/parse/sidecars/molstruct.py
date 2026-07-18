@@ -199,45 +199,40 @@ def _normalised_dict(
     }
 
 
-def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
-    """Read + validate a sidecar JSON.  Returns the parsed dict.
+def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
+    """Parse + validate a sidecar JSON **string** (the same strict checks
+    as :func:`_load`, minus the file read).  Returns the normalised dict.
 
-    Validation is strict: missing required fields, wrong types, out-
-    of-range indices, and unknown schema version all raise
-    :class:`MolstructJsonError` with a message that points at the
-    problem.
+    Used by ``/api/build/load``: the browser reads the ``.molstruct.json``
+    file's bytes through the concealed projects file package
+    (``projects.readFile``) and hands the CONTENT to the parse seam, which
+    validates from a string rather than re-reading a path.  ``source`` names
+    the origin for error messages (a path when called from :func:`_load`, a
+    placeholder for in-body content).
 
-    Region overlap (one atom in two regions) is INTENTIONALLY
-    permitted -- the data model is multi-label freeform tagging.
-    The on-disk schema is permissive about ``regions`` and
-    ``frozen_atoms`` (missing == empty); everything else is required.
+    Validation is strict: missing required fields, wrong types, out-of-range
+    indices, and unknown schema version all raise :class:`MolstructJsonError`.
+    Region overlap (one atom in two regions) is INTENTIONALLY permitted --
+    the model is multi-label freeform tagging.  ``regions`` / ``frozen_atoms``
+    are permissive (missing == empty); everything else is required.
     """
-    sidecar_path = Path(sidecar_path)
-    try:
-        # ``encoding="utf-8-sig"`` accepts an optional BOM (some
-        # Windows editors insert one) and decodes as UTF-8.
-        text = sidecar_path.read_text(encoding="utf-8-sig")
-    except OSError as exc:
-        raise MolstructJsonError(
-            f"failed to read sidecar {sidecar_path}: {exc}"
-        ) from exc
     try:
         data = _json.loads(text)
     except _json.JSONDecodeError as exc:
         raise MolstructJsonError(
-            f"sidecar {sidecar_path} is not valid JSON: {exc}"
+            f"sidecar {source} is not valid JSON: {exc}"
         ) from exc
 
     if not isinstance(data, dict):
         raise MolstructJsonError(
-            f"sidecar {sidecar_path}: top-level value must be an "
+            f"sidecar {source}: top-level value must be an "
             f"object; got {type(data).__name__}"
         )
 
     sv = data.get("schema_version")
     if sv not in _READABLE_SCHEMA_VERSIONS:
         raise MolstructJsonError(
-            f"sidecar {sidecar_path}: schema_version is {sv!r}; "
+            f"sidecar {source}: schema_version is {sv!r}; "
             f"this molbuilder build reads versions "
             f"{list(_READABLE_SCHEMA_VERSIONS)!r}"
         )
@@ -245,21 +240,20 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
     for key in ("n_atoms_total", "structure_hash"):
         if key not in data:
             raise MolstructJsonError(
-                f"sidecar {sidecar_path} missing required field "
-                f"{key!r}"
+                f"sidecar {source} missing required field {key!r}"
             )
 
     n = data["n_atoms_total"]
     if not isinstance(n, int) or n < 0:
         raise MolstructJsonError(
-            f"sidecar {sidecar_path}: n_atoms_total must be a non-"
+            f"sidecar {source}: n_atoms_total must be a non-"
             f"negative int; got {n!r}"
         )
 
     sh = data["structure_hash"]
     if not isinstance(sh, str) or len(sh) < 16:
         raise MolstructJsonError(
-            f"sidecar {sidecar_path}: structure_hash must be a hex "
+            f"sidecar {source}: structure_hash must be a hex "
             f"string of >= 16 chars; got {sh!r}"
         )
 
@@ -284,9 +278,22 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
             created_at      = data.get("created_at"),
         )
     except MolstructJsonError as exc:
+        raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
+
+
+def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
+    """Read + validate a sidecar JSON from a PATH.  Reads the bytes, then
+    delegates to :func:`load_text` for the parse + strict validation."""
+    sidecar_path = Path(sidecar_path)
+    try:
+        # ``encoding="utf-8-sig"`` accepts an optional BOM (some
+        # Windows editors insert one) and decodes as UTF-8.
+        text = sidecar_path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
         raise MolstructJsonError(
-            f"sidecar {sidecar_path}: {exc}"
+            f"failed to read sidecar {sidecar_path}: {exc}"
         ) from exc
+    return load_text(text, source=str(sidecar_path))
 
 
 class MolstructSidecarFileParser(FileParser):

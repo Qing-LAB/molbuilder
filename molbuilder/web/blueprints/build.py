@@ -643,6 +643,12 @@ def api_build_load():
     text: str = ""
     fmt: str = "auto"
     filename: str = ""
+    # The paired .molstruct.json CONTENT (raw JSON string), read by the browser
+    # through the concealed projects file package (``projects.readFile``) and
+    # handed in so this ONE parse seam applies the sidecar -- regions / frozen /
+    # cell / axis_kind / vacuum / annotations -- onto the parsed Structure.
+    # None (or the multipart upload path) -> a plain geometry load, no sidecar.
+    sidecar_text: str = ""
     if "file" in request.files:
         f = request.files["file"]
         filename = f.filename or ""
@@ -652,6 +658,7 @@ def api_build_load():
         text = body.get("text") or ""
         fmt = (body.get("format") or "auto").lower()
         filename = body.get("filename") or ""
+        sidecar_text = body.get("sidecar") or ""
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
@@ -680,6 +687,24 @@ def api_build_load():
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
+
+    # Apply the paired .molstruct.json (if the caller handed its content):
+    # regions / frozen / cell / axis_kind / vacuum / annotations land on the
+    # parsed Structure so ``ok_structure_response`` emits the ENRICHED atoms +
+    # periodicity + annotations in ONE response.  This is the parse seam
+    # ``molview.data.openMolecule`` calls after reading BOTH files through the
+    # projects file package -- the sidecar schema lives in one place
+    # (sidecars/molstruct), never in the file layer or the browser.
+    if sidecar_text.strip():
+        from molbuilder.sidecars import molstruct as _molstruct
+        try:
+            _molstruct.apply_to_structure(
+                struct, _molstruct.load_text(sidecar_text))
+        except _molstruct.MolstructJsonError as exc:
+            # A malformed / atom-count-mismatched sidecar is a client error, not
+            # a 500 -- surface the schema module's precise message.
+            return jsonify({"ok": False,
+                            "error": f"sidecar: {exc}"}), 400
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom
