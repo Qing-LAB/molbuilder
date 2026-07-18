@@ -1764,8 +1764,9 @@
         // Append to the LIVE native animation so the new frame is playable without a
         // full reload (live-poll tail-append).
         const h = _handle();
-        const a = (h && typeof h.getAnimation === "function") ? h.getAnimation() : null;
-        if (h && a && a.kind === "trajectory" && typeof h.appendFrames === "function") {
+        const kind = (h && typeof h.getAnimationKind === "function")
+            ? h.getAnimationKind() : null;
+        if (h && kind === "trajectory" && typeof h.appendFrames === "function") {
             try { h.appendFrames([coords]); } catch (_) {}
         }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
@@ -1789,8 +1790,11 @@
         // per-frame arrows -- no store push, no structure rebuild.  Falls back to the
         // store coords-swap when there's no native animation (single structure).
         const h = _handle();
-        const a = (h && typeof h.getAnimation === "function") ? h.getAnimation() : null;
-        if (h && a && a.kind === "trajectory"
+        // Cheap kind probe -- NOT getAnimation() (that clones the whole animation,
+        // incl. arrowsPerFrame, every frame -> O(frames) per swap, killing playback).
+        const kind = (h && typeof h.getAnimationKind === "function")
+            ? h.getAnimationKind() : null;
+        if (h && kind === "trajectory"
                 && typeof h.setAnimationFrame === "function") {
             try {
                 h.setAnimationFrame(i);
