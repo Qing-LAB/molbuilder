@@ -2,7 +2,9 @@
 
 > **Scope of this doc**: the *selection cursor* contract — what
 > `current_dir` / `current_file` mean, how tabs inquire/subscribe, and
-> the full `/api/files/*` endpoint list.
+> the sidebar-driven mutation endpoints (§ 6).  The read/list endpoints
+> (`list` / `stat` / `read` / `read_range` / `roots` / `download`) are
+> not restated here — they live in [`web-api.md`](web-api.md) § 3.
 >
 > For the sidebar as a whole — architecture, public API surface, data
 > shapes, CSS class catalogue, lock model, visual states, gaps — see
@@ -34,7 +36,7 @@ inquire when they need information.
 
 | Component | Role | Knows about |
 |---|---|---|
-| **Projects sidebar** | File browser; publishes selection state; file-system operations (mkdir, future rename/upload/delete) | The `projects/` filesystem tree only |
+| **Projects sidebar** | File browser; publishes selection state; file-system operations (mkdir, rename, upload, move, copy, delete) | The `projects/` filesystem tree only |
 | **Tabs** (Build, Modify, Spectra, Watch) | Each owns its own UX for loading inputs + generating outputs; pulls selection from the sidebar when needed | Their own file types + their own UI; pull `window.molbuilder.projects.*` |
 | **Backend `/api/files/*`** | Browse + manipulate the `projects/` tree under path-validation | The `projects/` root only |
 
@@ -152,10 +154,24 @@ The sidebar never:
 | `POST /api/projects/create` | `{name}` | name = `^[A-Za-z0-9_-]+$`; strict-create (409 if exists); atomic + READMEs | **Shipped** |
 | `POST /api/files/mkdir`     | `{parent, name}` | parent inside an allowed root; name validated against the depth-aware rule | **Shipped** |
 | `GET  /api/files/read`      | `path=...&max_bytes=...` | text content (size-capped); used by the file-preview modal | **Shipped** |
-| `POST /api/files/rename`    | `{path, new_name}` | same depth-aware naming + conflict rules as mkdir | Deferred (not stubbed) |
-| `POST /api/files/upload`    | multipart `{file, target_dir}` | (a) destination depth ≥ 1; (b) inside an allowed root; (c) filename regex allows dots for extensions; (d) inside `user/` depth 2+ free-form; (e) name conflict at destination = 409 | **Stub** (returns 501 with explanatory message; UI surface fully wired) |
-| `POST /api/files/write`     | `{path, text, expected_mtime}` | path inside allowed root; mtime-based conflict detection (409 on mismatch); UTF-8 only | **Stub** (501; the file-preview modal's Save button is disabled with `title="coming soon"`) |
-| `DELETE /api/files/delete`  | `{path, recursive}` | path inside allowed root; cannot delete picker root or a canonical-topic dir at depth 1; recursive flag required for non-empty dirs | **Stub** (501; UI shows per-entry × on hover at eligible depths + JS confirm dialog before sending the request) |
+| `POST /api/files/rename`    | `{path, new_name}` | same depth-aware naming + conflict rules as mkdir; sidecar-paired on `.xyz`/`.pdb` | **Shipped** |
+| `POST /api/files/move` / `copy` | `{path, dest_dir[, new_name]}` | inside allowed roots; sidecar-paired on `.xyz`/`.pdb`; 409 on destination conflict | **Shipped** |
+| `POST /api/files/upload`    | multipart `{file, target_dir}` | (a) destination depth ≥ 1; (b) inside an allowed root; (c) filename regex allows dots for extensions; (d) name conflict at destination = 409 (or `auto_rename`) | **Shipped** |
+| `POST /api/files/write`     | `{path, text, overwrite?, auto_rename?, expected_mtime?}` | path inside allowed root; mtime-based conflict detection (409 on mismatch); UTF-8 only | **Shipped** (the preview modal's Save writes through this — mtime-safe) |
+| `DELETE /api/files/delete`  | `{path, recursive}` | path inside allowed root; cannot delete picker root or a canonical-topic dir at depth 1; recursive flag required for non-empty dirs | **Shipped** |
+
+> **Endpoint status is authoritatively tracked in [`web-api.md`](web-api.md) § 3** — the
+> table above is the *selection/sidebar* view (which ops the sidebar drives). If this
+> column and `web-api.md` § 3 ever disagree, `web-api.md` wins. (Historical note: these
+> were 501 stubs in 2026-05; all shipped since. The `# Stubs (501 …)` comment header in
+> `blueprints/files.py` is itself stale.)
+
+> **Sidecar pairing.**  The `.xyz` ↔ `.molstruct.json` pairing rule —
+> which operations (rename / move / copy / delete) also act on the
+> paired sidecar, and when — is specified once in
+> [`projects-sidebar.md`](projects-sidebar.md) § 5.4.  The "sidecar-paired"
+> flags in the table above only mark which rows are sidecar-aware; they
+> do not re-specify the rule.
 
 `mkdir`'s name validation depends on the parent's depth inside the
 picker's root:

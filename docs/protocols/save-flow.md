@@ -113,22 +113,28 @@ If no dialog is mounted the save cannot proceed (there is no name to save to).
 final_path = dir + "/" + chosen_name
 ```
 
-### §3.4 Save the dataset — ONE atomic call, overwrite ALWAYS confirmed (§1)
+### §3.4 Save the dataset — through the ONE save door, overwrite ALWAYS confirmed (§1)
 
-`save.js::_saveDataset` asks the workspace to serialise ITSELF via
-`ws.getScratchBlob()` → `{xyz, sidecar:{regions, frozen_atoms, cell, axis_kind,
-vacuum, kgrid}}` (built from the §1.2.1 accessors — save.js no longer hand-rolls the
-scan) and writes it with a SINGLE `/api/workingcopy/save` call, identifying the draft
-to drop via `ws.draftIdentity()` — the server writes the `.xyz` + `.molstruct.json`
-pair (§4).
+`save.js::_saveDataset` calls the ONE format-aware save door,
+`projects.parser.saveMolecule(final_path, {overwrite})`
+([`structure-load-save-contract.md`](structure-load-save-contract.md) §2).  The door
+serialises the SETTLED model via `molview.data.exportFile()` → `{xyz, sidecar}` (built
+from the model accessors — save.js no longer hand-rolls the regions/frozen scan) and
+writes **BOTH** files through the projects file package `projects.writeFile` — geometry
+`.xyz` FIRST (the primary artifact), then the `.molstruct.json` sidecar (§4) — before
+calling `molview.data.markSaved(final_path)`.
+
+Overwrite is UI policy and stays in the panel: `saveMolecule` returns
+`{ok: false, needsOverwrite: true}` when the geometry target already exists (the
+`writeFile` "exists" gate); the panel confirms, then retries with `{overwrite: true}`:
 
 ```
-env = POST /api/workingcopy/save {source, target: final_path, data: blob, overwrite: false}
-if env.status == 409:                            # file already exists
+r = await projects.parser.saveMolecule(final_path, {overwrite: false})
+if r.needsOverwrite:                             # file already exists
     proceed = await saveDialog.confirmOverwrite(basename(final_path))
     if not proceed:
         return {ok: false, cancelled: true}
-    env = POST /api/workingcopy/save {source, target: final_path, data: blob, overwrite: true}
+    r = await projects.parser.saveMolecule(final_path, {overwrite: true})
 ```
 
 Overwrite is **always** confirmed — there is no save-back-to-source skip.  Any
@@ -137,17 +143,11 @@ returns `{ok:false, error}`), never swallowed.
 
 ### §3.5 Post-save — mark saved
 
-On `env.ok`:
-
-```
-structurePage.markSavedTo(final_path)     # dirty clears + last_save_to = final_path
-```
-
-The `.xyz` + `.molstruct.json` pair was already written together by the single
-`/api/workingcopy/save` call in §3.4 (§4 / workspace-contract.md §4.0: the
-WHOLE store's sidecar, hash-tied — regions + frozen_atoms + periodicity
-gathered from `ws.getAtoms()` / `ws.getStructure()`).  There is no separate
-sidecar POST.
+`markSaved` is done INSIDE the door (`molview.data.markSaved(final_path)` — dirty
+clears + the store's `sourceFile` re-anchors to `final_path`) once BOTH files land, so
+save.js does not mark saved itself.  The `.xyz` + `.molstruct.json` pair is written by
+the two `projects.writeFile` calls the door makes in §3.4 (geometry first, then the
+sidecar) — there is no single-endpoint POST and no separate sidecar POST.
 
 ---
 
@@ -171,25 +171,27 @@ ops).
 ### §4.2 Every save writes the WHOLE store's sidecar
 
 There is **no** save-back-vs-save-as distinction (workspace-contract.md §4.0 — the
-store is the truth; a save writes it whole).  `ws.getScratchBlob()` serialises the
-store (the ONE serialiser, shared by save + the crash-draft):
+store is the truth; a save writes it whole).  `molview.data.exportFile()` serialises
+the settled model to `{xyz, sidecar}` (the ONE serialiser):
 
-1. Gather from the store:
-   * `regions: {label: [indices]}` — from each atom's `labels[]` (`ws.getAtoms()`)
+1. Gather from the model:
+   * `regions: {label: [indices]}` — from each atom's `labels[]`
    * `frozen_atoms: [indices]` — atoms with `isFrozen=true`
-   * `periodicity: {cell, axis_kind, vacuum, kgrid}` — from `ws.getStructure()`
-2. The single `/api/workingcopy/save` call carries the whole blob (`{xyz, sidecar}`)
-   — the server writes the `.xyz` then **REPLACES** the entire sidecar atomically,
-   recomputing `structure_hash` from the just-written XYZ, so the `.xyz` + `.json`
-   pair is always coherent (no merge with prior contents).  (Before the 2026-06
-   unification this was a separate `/api/selection/save-sidecar` POST after a
-   `writeFile`; both were removed.)
+   * `periodicity: {cell, axis_kind, vacuum, kgrid}` — from the store's structure
+2. The door writes the pair with TWO `projects.writeFile` calls — geometry `.xyz`
+   first, then the `.molstruct.json` sidecar with `{overwrite: true}` (always, because
+   the sidecar is a dependent member of the pair we just wrote the geometry for; a
+   stale one must never survive).  The sidecar is **replaced** whole — no merge with
+   prior contents.  (Before the 2026-06 unification this went through a
+   `/api/workingcopy/save` endpoint, and earlier still a separate
+   `/api/selection/save-sidecar` POST; all were removed in favour of the two
+   `writeFile` calls.)
 
-This fires on EVERY save, even with no labels — it wipes any stale sidecar at the
+This fires on EVERY save, even with no labels — it overwrites any stale sidecar at the
 destination so the store's authoritative state (including "no labels") is what
-lands.  Unlike the old fire-and-forget sidecar POST, a failure now **fails the whole
-save** (`{ok:false, error}`) — `markSavedTo` runs only on success, so a lost `.json`
-can never be silent.
+lands.  Because the geometry is written first, a mid-failure leaves the dirty bit set
+for retry; the sidecar write failing **fails the whole save** (`{ok:false, error}`) —
+`markSaved` runs only after BOTH files land, so a lost `.json` can never be silent.
 
 ### §4.3 The atomic-write contract
 
@@ -259,16 +261,16 @@ Every clause is pinned by a test ID:
    label propagation.
 
 2. **Bulk sidecar-write endpoint.** *(Done — superseded.)* The
-   whole-store sidecar is now written in one shot by
-   `/api/workingcopy/save` (which carries `{regions, frozen_atoms,
-   periodicity}` alongside the XYZ). The interim
-   `/api/selection/save-sidecar` + `/api/selection/refresh-hash`
-   endpoints have been removed.
+   whole-store sidecar is now written by the save door
+   (`projects.parser.saveMolecule`) as the second of its two
+   `projects.writeFile` calls (`.xyz` then `.molstruct.json`). The
+   interim `/api/workingcopy/save`, `/api/selection/save-sidecar`, and
+   `/api/selection/refresh-hash` endpoints have all been removed.
 
 3. **Sidebar locked during in-flight save.**  Per
-   `projects-sidebar.md` § C2, file-list mutations are gated on
+   `projects-sidebar.md` § 8, file-list mutations are gated on
    the sidebar lock.  Save should acquire the lock for the
-   duration of the `/api/workingcopy/save` call so concurrent
+   duration of the two `projects.writeFile` calls so concurrent
    file mutations can't race.
 
 ---

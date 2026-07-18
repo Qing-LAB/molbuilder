@@ -1,4 +1,4 @@
-# Projects sidebar — architectural design
+# Projects sidebar — module MASTER + architectural design
 
 **Status**: design reference.  Defines the target architecture — the
 mission, principles, capabilities, lifecycle, failure-mode coverage —
@@ -9,10 +9,131 @@ When this doc and existing code disagree, **the doc wins** until a
 deliberate design change updates the doc.  Code changes are reviewed
 against the doc, not against other code.
 
-**New to the sidebar?** Start with the plain-language
-[`projects-sidebar-guide.md`](../projects-sidebar-guide.md) — the developer
-on-ramp (mental model, the `projects.*` API cheat-sheet, the
-`onChange`-vs-`onCommit` rule, gotchas). This doc is the precise design/contract.
+## This is THE MASTER for the Projects Sidebar module
+
+The **Projects Sidebar** is a fully **concealed, publicly-exposed
+module** — `window.molbuilder.projects.*` — that backs the whole
+app's file handling.  This document is the **master**: it presents the
+mission, the one public API surface, and the internal architecture,
+and it owns two aspects directly (byte I/O + paths in § 5, the lock
+model in § 8).  Every *other* aspect is a **single-source-of-truth
+contract** in its own doc, indexed in § 0.2 below.  The master
+**references** those aspects — it does not duplicate them.  Each fact
+has exactly ONE home.
+
+**Mental model (the plain-language on-ramp).**  The sidebar is a
+**cursor over the `projects/` directory**: it tracks *which directory
+you're in* (`current_dir`) and *which file is picked* (`current_file`),
+and it exposes filesystem operations (read / write / mkdir / upload /
+rename / …) scoped to that tree.  Tabs never poke the sidebar's DOM —
+they call the `window.molbuilder.projects.*` API and **subscribe** to
+changes.  The single rule to internalise:
+
+> **single-click = _preview_ (a candidate) → `onChange`;
+> double-click = _commit_ (open/load it) → `onCommit`.**
+
+A tab that "loads the selected structure" listens to `onCommit`, not
+`onChange`.  `onChange` reflects the current *candidate* (e.g. enabling
+a Load button); `onCommit` is the discrete "the user chose this — act
+on it".
+
+## At a glance — the module in three pictures
+
+New here?  These three pictures are the whole module; the dense contract is below.
+This friendly on-ramp is pitched at *newcomers* (it replaces the old standalone
+`projects-sidebar-guide.md`).
+
+**1 — What's *in* the module, and what merely *uses* it.**  The sidebar owns three
+things: the **selection cursor**, the **file byte layer**, and the **structure
+doors**.  Everything else — the tabs, the Results inspector framework — is a
+*consumer* that reacts to the selection, **not** part of the module.
+
+```mermaid
+flowchart TB
+  subgraph SB["molbuilder.projects — the concealed sidebar module"]
+    CUR["selection cursor<br/>onChange · onCommit<br/>getCurrentDir / getCurrentFile"]
+    BYTES["file byte layer<br/>readFile · writeFile<br/>move · copy · mkdir · upload"]
+    DOORS["parser doors<br/>openMolecule · saveMolecule"]
+    DOORS -->|"reads/writes bytes via"| BYTES
+  end
+  TABS["tabs: Modify · Transport · Spectra · Structure-opt"]
+  INSP["Results inspector FRAMEWORK<br/>(file-type → handler)"]
+  SRV[("server<br/>/api/files/* · /api/build/load")]
+  TABS -->|"subscribe + call the public API"| SB
+  INSP -->|"consumes the selection"| SB
+  BYTES --> SRV
+  DOORS -->|"parse"| SRV
+```
+
+**2 — Which call do I make?**  Reach for the layer that matches what you have.  Raw
+bytes of *any* file → the byte layer.  A *structure* (`.xyz` + its `.molstruct.json`
+sidecar) → the parser doors (which use the byte layer under the hood).  Two whole
+concerns live in **other** modules, not here.
+
+```mermaid
+flowchart TB
+  Q{"I have / want…"}
+  Q -->|"which file is picked"| SEL["onCommit(cb) · getCurrentFile()"]
+  Q -->|"a file's raw bytes<br/>(any type)"| B["readFile / writeFile<br/>(format-blind)"]
+  Q -->|"a STRUCTURE file"| D["parser.openMolecule / saveMolecule<br/>(format-aware)"]
+  D -->|"uses"| B
+  D --> M[("molview.data model<br/>(shows it — labels + cell ride along)")]
+  N["NOT here — separate modules:<br/>· session save/retract timeline → workspace<br/>· job-run checkpoints → run-checkpoints"]
+```
+
+**3 — What a click actually does.**  A single-click *previews* (a candidate); a
+double-click *commits*.  A tab reflects the candidate (e.g. enables a Load button)
+and acts on the commit.  Loading a structure funnels through the ONE door, which
+reads both files and parses.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant SB as sidebar
+  participant T as a tab
+  participant P as projects.parser
+  U->>SB: single-click a file
+  SB-->>T: onChange (candidate) → enable Load button
+  U->>SB: double-click the file
+  SB-->>T: onCommit(path)  — cursor already updated
+  T->>P: openMolecule(path)
+  P->>P: readFile .xyz + .molstruct.json → parse → install
+  P-->>T: model shows the structure (labels + cell ride along)
+```
+
+**The handful of rules a tab author must get right:**
+
+1. **`onCommit` to *act*, `onChange` to *reflect*.**  Loading on every `onChange`
+   fires on mere previews and causes re-render storms.
+2. **`onChange` fires once immediately on subscribe; `onCommit` does not.**  An
+   `onChange` handler must handle the current state on subscribe; `getCurrentFile()`
+   is already updated when your `onCommit` handler runs.
+3. **Loading on *mount* is different** — honor mount-restore: call
+   `ws.mountRestoreTarget()` and defer if the workspace snapshot already owns that
+   file, else you race the restore and clobber its state (the 2026-07 selection-loss
+   bug).  See [`workspace-contract.md`](workspace-contract.md) § 4.5.
+4. **Keep the unsubscribe fn** and call it on teardown; the **lock is
+   per-page-load** (a reload abandons an in-progress pipeline).
+
+```js
+const projects = window.molbuilder.projects;
+// reflect the candidate (enable a Load button when a structure is picked):
+projects.onChange((sel) => { loadBtn.disabled = !isLoadable(sel && sel.file); });
+// act when the user commits (double-click):
+projects.onCommit((sel) => {
+    if (isLoadable(sel.file)) projects.parser.openMolecule(sel.file);
+});
+```
+
+---
+
+**How to read this + its aspect docs.**  Skim § 0.1 (public API
+cheat-sheet) and § 0.2 (aspect index) first — they tell you *which*
+doc owns the contract you need.  Then use the § 0 table below to jump
+to the master section for the concern you're working on.  When a
+concern is owned by an aspect doc (selection semantics, the structure
+doors, the Save panel, the sidebar UI + preview modal), follow the
+cross-reference — the deep detail lives there, not here.
 
 **Related design surfaces**:
 * [`selection.md`](selection.md) — the selection-cursor contract; this
@@ -37,16 +158,158 @@ on-ramp (mental model, the `projects.*` API cheat-sheet, the
 
 ---
 
+## 0.1 The one public API surface
+
+Everything a tab may call lives under `window.molbuilder.projects.*`
+(plus the format-aware sub-namespace `window.molbuilder.projects.parser.*`).
+This is the complete surface exported by `lib/projects/state.js` and
+`lib/projects/parser.js` — grouped by role.  Exact signatures + return
+shapes are in § 5.4 (the C1–C8 tables); this is the at-a-glance map.
+
+**Selection & current-file tracking** — aspect A, semantics in
+[`selection.md`](selection.md):
+
+| Method | Role |
+|---|---|
+| `getCurrentDir()` / `getCurrentFile()` | read the cursor (sync) |
+| `getProjectsRoot()` / `atRoot()` | resolved root / at-root predicate |
+| `relativeToProjects(path)` | display-shorten a path |
+| `onChange(cb)` | subscribe to candidate/preview changes (fires once on register) |
+| `onCommit(cb)` | subscribe to commits (double-click); does NOT fire on register |
+| `publishCommit(dir, file)` | publish a commit programmatically |
+| `setShared(dir, file)` | cursor-only mutator (no re-list); lock-guarded |
+| `navigateTo(absPath, opts)` | list a dir + move the cursor; lock-guarded |
+| `refresh(opts)` | re-list the current dir |
+| `onProjectsRootResolved(cb)` | one-shot fire when the root resolves |
+
+**File byte I/O** — aspect B, owned by § 5 here (wire: [`web-api.md`](web-api.md) § 3):
+
+| Method | Role |
+|---|---|
+| `readFile(path, opts)` | read a file's bytes as text |
+| `readCurrentFile(opts)` | read the currently-selected file (`null` when none) |
+| `readRange(path, offset, maxBytes, opts)` | read a byte window (negative offset = from EOF) |
+| `writeFile(path, text\|Blob, opts)` | write to an exact path (Blob → upload route) |
+| `saveToWorkspace(text, filename, opts)` | write into `current_dir/<filename>` (`null` at root) |
+| `safeSave(text, filename, opts)` | Cancel-aware `saveToWorkspace` (§ 6.3) |
+| `isCancelError(err)` | predicate for every cancel shape (§ 6.3) |
+
+**Paths & directory layout** — aspect B (wire: [`web-api.md`](web-api.md) § 3):
+
+| Method | Role |
+|---|---|
+| `createProject(name, opts)` | bootstrap a project skeleton |
+| `mkdir(parent, name, opts)` | make a subdirectory |
+| `deleteEntry(path, recursive, opts)` | delete a file or (recursive) dir |
+| `rename(path, newName, opts)` | in-place basename change (sidecar-paired on `.xyz`/`.pdb`) |
+| `move(path, destDir, opts)` | move a file (sidecar-paired) |
+| `copy(path, destDir, opts)` | copy a file (sidecar-paired) |
+| `upload(targetDir, file, opts)` | upload a `File` into a dir |
+
+**Lifecycle — lock & concurrency** — aspect G, owned by § 8 here:
+
+| Method | Role |
+|---|---|
+| `lock(reason, cancelers)` / `unlock()` | acquire / release the pipeline lock |
+| `isLocked()` / `getLockReason()` | read lock state (sync) |
+| `onLockChange(cb)` | subscribe to lock acquire/release |
+| `cancelLockedOperation()` | run the registered cancelers (Cancel button hook) |
+
+**The format-aware structure doors** — `window.molbuilder.projects.parser.*`,
+aspect C, owned by [`structure-load-save-contract.md`](structure-load-save-contract.md):
+
+| Method | Role |
+|---|---|
+| `parser.openMolecule(path, { confirmDiscard? })` | THE load door: read `.xyz` + paired `.molstruct.json` bytes → install into the model |
+| `parser.saveMolecule(path, { overwrite? })` | THE save door: serialise the settled model → write geometry + sidecar |
+
+> **ONE ownership story.**  File **bytes** are owned by `projects`
+> (`readFile`/`writeFile` — format-blind, serve every tab).  Structure
+> **doors** (bytes ↔ model ↔ sidecar) are owned by `projects.parser`
+> (`openMolecule`/`saveMolecule` — format-aware).  Session **drafts**
+> (crash-restore of opaque bytes) are owned by the **workspace**, NOT
+> the sidebar — see [`workspace-contract.md`](workspace-contract.md).
+> State it once; don't re-derive it per caller.
+
+> **Deleted names.**  `molview.data.openProjectFile` /
+> `saveProjectFile` / `readWorkingCopy` are **GONE**.  The doors are
+> `projects.parser.openMolecule` / `saveMolecule` now; the model keeps
+> only the install/serialise primitives
+> (`molview.data.installMolecule` / `exportFile` / `markSaved`).  Any
+> doc or code still referencing the old `molview.data` file methods is
+> stale.
+
+There is **no** `downloadFile` / `download` / `list` / `stat` method on
+the public object.  Whole-file download is a direct
+`GET /api/files/download` from the kebab menu (see
+[`projects-sidebar-ui.md`](projects-sidebar-ui.md)); directory listings
+come back from `navigateTo`; `stat` is internal to the preview modal.
+`downloadFile` remains DEFERRED (§ 5.4 C3).
+
+---
+
+## 0.2 Aspect index
+
+The module is decomposed into a master (this doc) + focused
+single-source-of-truth aspect contracts.  Use this table to find the
+authority for a given slice; do not duplicate an aspect's detail here.
+
+| # | Aspect | Owns | Source-of-truth doc |
+|---|---|---|---|
+| **A** | **Selection & current-file tracking** | `onChange`/`onCommit`, `getCurrentDir`/`getCurrentFile`, single=preview vs double=commit, the tab contract | [`selection.md`](selection.md) |
+| **B** | **File byte I/O + paths + directory structure** | `readFile`/`writeFile`/`readRange`, `move`/`copy`/`rename`/`deleteEntry`/`mkdir`/`createProject`/`upload`; `relativeToProjects`/`getProjectsRoot`/`atRoot`; `.xyz`↔`.molstruct.json` pairing | **this doc § 5** (JS surface) → [`web-api.md`](web-api.md) § 3 (wire) |
+| **C** | **Structure load/save doors** | `parser.openMolecule`/`saveMolecule` (bytes ↔ model ↔ sidecar boundary) | [`structure-load-save-contract.md`](structure-load-save-contract.md) |
+| **D** | **Save-panel UI** | button enablement, name dialog, overwrite confirm | [`save-flow.md`](save-flow.md) |
+| **E** | **Sidebar UI + file-content preview** | tree / breadcrumb / mutation-bar / drawer / width-resize / filter + the **preview modal** (`lib/projects/preview.js` — CodeMirror view/edit/save, mtime-safe) | [`projects-sidebar-ui.md`](projects-sidebar-ui.md) |
+| **G** | **Lock & concurrency** | the lock model | **this doc § 8** → [`web-api.md`](web-api.md) § 3.5 (wire view) |
+
+> **Where's aspect F?**  The letters skip from E to G on purpose.  **F**
+> was the inspector-dispatch aspect; it was reclassified as a
+> **consumer** (the /results file-type → handler framework) and now
+> lives in § 0.2.1 below, not as a sidebar aspect.
+
+### 0.2.1 Consumers of the sidebar (referenced, NOT owned)
+
+The sidebar publishes a selection; these modules *react* to it and
+each own their own contract.  They are **consumers**, not sidebar
+aspects:
+
+* **Tabs** (Modify, Transport, Spectra, Structure-optimization) —
+  subscribe to `onCommit` and call
+  `projects.parser.openMolecule(path)` to load the pick.
+* **Results inspector registry** (`lib/inspectors/`: `registry.js` +
+  `structure`/`trajectory`/`source`/`markdown`/`spectra` handlers,
+  used by `results/viewer.js` + `lib/results/file-picker.js`) — a
+  **file-type → handler FRAMEWORK** that lives in the `/results` tab
+  and dispatches the sidebar selection to the right viewer by file
+  type.  Contract: [`inspector-registry.md`](inspector-registry.md).
+  **NOTE the name collision:** this "inspector" is the /results
+  file-type dispatcher — it is **NOT** the removed atom-selection
+  "inspector" panel (which was merged into the MolView selection
+  panel).
+
+---
+
 ## 1. Mission
 
-A single, content-agnostic file browser pinned to the left of every
-main tab.  It owns the user's notion of "where am I working" and
-mediates every filesystem mutation that touches `projects/`.
+A single file browser pinned to the left of every main tab.  It owns
+the user's notion of "where am I working" and mediates every
+filesystem mutation that touches `projects/`.
+
+**Two layers, one format-aware door.**  The **byte layer**
+(`readFile` / `writeFile` and the layout ops) is genuinely
+content-agnostic — it moves bytes and knows nothing about contents, so
+it serves every tab equally.  The **`parser` sub-namespace**
+(`projects.parser.openMolecule` / `saveMolecule`) is the ONE
+format-aware door: it alone understands the `.xyz` ↔ `.molstruct.json`
+structure pairing and the parse seam.  Content-awareness is confined to
+that single door; everything else stays format-blind.
 
 **The sidebar is passive.**  It publishes; tabs subscribe.  It never
-triggers a tab's loader, navigates between tabs, or knows which tab
-consumes which file type.  Tabs read the cursor when they need to and
-react to changes when they want to.
+triggers a tab's loader or navigates between tabs, and outside the
+`parser` door it does not interpret which tab consumes which file type.
+Tabs read the cursor when they need to and react to changes when they
+want to.
 
 **The sidebar is scoped to `projects/`.**  Files outside that root
 enter via upload; files leave only by being moved out of the tree
@@ -140,8 +403,8 @@ directory listing at a time.
 
 ### 3.1 Internal module architecture
 
-The sidebar itself is decomposed into eight units (one HTML
-partial + one stylesheet + one entry script + five behaviour
+The sidebar itself is decomposed into eleven units (one HTML
+partial + one stylesheet + one entry script + eight behaviour
 modules under `projects/`).  Each owns a single concern; cross-
 unit communication uses the unit's exported interface (never
 closure-state reads).  An implementer assigns a new feature to one
@@ -155,9 +418,11 @@ unit; if it doesn't fit, the unit list is wrong, not the feature.
 | **State** (`state.js`) | All three state pieces (§ 4) + the public API surface.  Owns subscriber sets + the publish loop.  Owns sessionStorage IO. | The `projects` object (public API surface, § 5); module-internal mutators for the bootstrap unit (`setProjectsRoot`, `setRefreshHandler`, `setNavigateToImpl`) and for the List unit (`setShared`).  `setNavigateToImpl(fn)` is how the bootstrap unit hands `list.js::openDir` to `state.js` so the public `projects.navigateTo` can delegate. |
 | **HTTP** (`api.js`) | One-to-one wrappers over `/api/files/*` and `/api/projects/*`.  Owns request shape + envelope-wrapping discipline (Principle 6). | A function per backend endpoint.  Sole module that calls `fetch`. |
 | **List** (`list.js`) | DOM rendering of breadcrumb + entry list; per-entry click handlers; navigation; lock-UI subscription + Cancel delegation. | `initList`, `initLockUI`, `openDir`, `restoreSelection` for the bootstrap unit.  `showPreview` is delegated to the Preview unit. |
-| **Forms** (`forms.js`) | "+" create-menu wiring (new project / new folder / upload).  Subscribes to `onChange` to drive depth-aware menu-item enablement.  Dialogs live in `dialogs.js`. | `initForms` for the bootstrap unit. |
+| **Mutation bar** (`mutation-bar.js`) | Header action-bar wiring (New project / New folder / Upload buttons; renamed from `forms.js` after the v2 buttons-not-dropdown revision).  Subscribes to `onChange` to drive depth-aware button enablement.  Dialogs live in `dialogs.js`. | `initForms` for the bootstrap unit. |
 | **Dialogs** (`dialogs.js`) | Modal `<dialog>` factory: `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive`.  Single-instance + ESC-as-cancel.  No HTTP. | `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive` (exports). |
 | **Preview** (`preview.js`) | File-preview modal; ESC / backdrop close. | `initPreview`, `showPreview` for sidebar + List unit. |
+| **Parser** (`parser.js`) | The format-aware **structure doors** — `openMolecule` / `saveMolecule` (aspect C).  Reads/writes bytes via State's `readFile`/`writeFile`; installs into / serialises from `molview.data` (looked up at call time — no import cycle).  Interprets the `.xyz` ↔ `.molstruct.json` pairing; parses nothing itself (the server applies the sidecar). | `parser` (mounted as `window.molbuilder.projects.parser` by the Entry unit). |
+| **Checkpoint** (`checkpoint.js`) | The sidebar **run-history panel** (`#ps-checkpoint`) — a checkpoint-domain CONSUMER that subscribes to `onChange` and shows git-snapshot controls for a canonical run directory.  Spec: [`run-checkpoints.md`](run-checkpoints.md) § 6. | `initCheckpointPanel` for the bootstrap unit. |
 
 **Module-boundary rule**: the only way one unit reads state owned by
 another is through that unit's exported interface.  No `import {
@@ -214,6 +479,7 @@ that has other modules.  The contracts:
 |---|---|---|
 | `molbuilder.runtime` | Sidebar registers; tabs `whenReady`. | Sidebar → registry (write); tabs → registry (read). |
 | Tab UIs (Build, Modify, Spectra, Results) | Tabs subscribe to selection + lock; tabs call public API for read/write/save. | Tabs → sidebar (pull only).  Sidebar publishes; sidebar NEVER reaches into a tab. |
+| `molbuilder.molview.data` (in-memory structure model) | The sidebar's `parser.js` door calls `installMolecule` / `exportFile` / `markSaved` on it to load/save structures.  Resolved by a CALL-TIME `window.molbuilder.molview.data` lookup, NOT a static import (the model is a classic script mounted on `window`; a static import would also invert the package dependency) — **no import cycle**. | Sidebar `parser` → model (call the install/serialise primitives).  The model owns no file endpoint. |
 | `molbuilder.atomSelection.*` (Modify-tab atom store) | None.  Sidebar holds file cursor; atom selection is per-tab + per-file. | No coupling. |
 | `molbuilder.inspectors.*` (Results-tab inspector registry) | Sidebar selection drives inspector dispatch via `onChange`. | Sidebar publishes; Results tab decides which inspector to mount. |
 | `molbuilder.formSchema.*` (Build form rendering) | None.  Forms inside the sidebar (create-project, mkdir, upload) use their own template-driven rendering. | No coupling. |
@@ -314,8 +580,17 @@ why the lock model exists (§ 8).
 The sidebar is the user's window into a remote workspace.  Every
 capability below is mediated by HTTP; latency, partial failure, and
 cancellation are first-class concerns.  Each capability bucket lists
-the operations it covers — exact method signatures live in the code
-and stabilise as the design finalises.
+the operations it covers — exact method signatures live in § 5.4.
+
+> **This section is the aspect-B authority** (file byte I/O + paths +
+> directory-layout ops).  It owns the **JS surface**; the **wire**
+> shapes (routes, status codes, per-endpoint field lists) live in
+> [`web-api.md`](web-api.md) § 3 — link there, do not re-table them
+> here.  The format-aware **structure doors** (`parser.openMolecule` /
+> `saveMolecule`) are a *different* aspect (C) — they orchestrate
+> `readFile`/`writeFile` from this layer but their contract is
+> [`structure-load-save-contract.md`](structure-load-save-contract.md),
+> not this section.
 
 ### 5.1 Capability buckets
 
@@ -323,10 +598,10 @@ and stabilise as the design finalises.
 |---|---|---|---|
 | **C1** | **Read the cursor + sidebar state** | Where am I (`getCurrentDir`).  What's selected (`getCurrentFile`).  What's the resolved root (`getProjectsRoot`).  Am I at the root (`atRoot`).  Path display helper (`relativeToProjects`).  Is a lock held (`isLocked`, `getLockReason`). | Synchronous; no network.  All cached in browser memory. |
 | **C2** | **Subscribe to state changes** | Cursor changes (`onChange`).  Lock changes (`onLockChange`).  Connection / root resolution (`onProjectsRootResolved` or via `runtime.whenReady`). | No network on subscribe; events fire when local state updates. |
-| **C3** | **Read file content** | Text of the currently-selected file (`readCurrentFile`).  Text of any file by path (`readFile`).  A byte window of a file at an absolute or from-EOF offset (`readRange`).  Future: streamed binary download (`downloadFile`). | Network per call.  Text is size-capped; range reads default 256 KB (16 MB cap); binary downloads stream. |
+| **C3** | **Read file content** | Text of the currently-selected file (`readCurrentFile`).  Text of any file by path (`readFile`).  A byte window of a file at an absolute or from-EOF offset (`readRange`).  Whole-file download ships as a direct `GET /api/files/download` (the kebab menu); a `downloadFile` JS wrapper is deferred. | Network per call.  Text is size-capped; range reads default 256 KB (16 MB cap); binary downloads stream. |
 | **C4** | **Write file content** | Write to an exact path (`writeFile`).  Write into current dir (`saveToWorkspace`).  Both support `expected_mtime` for concurrent-edit detection (409 on conflict). | Network per call.  Atomic on backend (temp + rename); browser sees success or no-op. |
 | **C5** | **Filesystem layout operations** | Create a project skeleton (`createProject`).  Create a subdirectory (`mkdir`).  Delete an entry (`deleteEntry`, with `recursive` flag for non-empty dirs).  Rename an entry (`rename`). | Network per call.  All envelope-returning. |
-| **C6** | **Local ↔ remote transfer** | Upload from laptop to remote workspace (`upload`, multipart).  Download from remote to laptop (`downloadFile`, browser-driven save).  Refresh the sidebar's view (`refresh`). | Network per call.  Upload + download may be slow; both must be cancellable.  Browser File API on the user side. |
+| **C6** | **Local ↔ remote transfer** | Upload from laptop to remote workspace (`upload`, multipart).  Download from remote to laptop ships as a direct `GET /api/files/download` (kebab); the `downloadFile` JS wrapper is deferred.  Refresh the sidebar's view (`refresh`). | Network per call.  Upload + download may be slow; both must be cancellable.  Browser File API on the user side. |
 | **C7** | **Navigate** | Drill the sidebar into an arbitrary directory path (`navigateTo`).  Used by tabs that want to focus the sidebar on the workspace they just created. | Triggers a list call; network. |
 | **C8** | **Acquire / release / cancel the lock** | Begin a multi-step pipeline (`lock(reason, cancelers)`).  Release (`unlock`).  Cancel button hook (`cancelLockedOperation` — usually wired automatically). | No network; pure local coordination. |
 
@@ -344,7 +619,7 @@ deliberate choice between them:
 |---|---|---|
 | `saveToWorkspace(text, name)` | `writeFile(path, text)` | `saveToWorkspace` writes into the user's current cursor dir + is a no-op at root.  `writeFile` writes to an exact path the caller already computed.  Generator tabs use `saveToWorkspace`; programmatic flows use `writeFile`. |
 | `readCurrentFile()` | `readFile(path)` | `readCurrentFile` is the common case (preview, "load what's selected").  `readFile` is for explicit-path reads from tab code. |
-| `downloadFile(path)` | `readFile(path)` + `Blob` ceremony | `downloadFile` produces a browser-driven save dialog with the right filename; `readFile` returns text for in-app use. |
+| `GET /api/files/download` (direct route) | `readFile(path)` + `Blob` ceremony | Whole-file download ships as a direct `GET /api/files/download` from the kebab (browser-native save, any file type); `readFile` returns text for in-app use.  A `downloadFile` JS wrapper on the public object is deferred (§5.4 C3). |
 | `upload(targetDir, file)` | `writeFile(path, text)` | Upload accepts arbitrary binary via multipart; write is text-only.  Upload's target is a directory; write's target is a full path. |
 | `lock()` + multi-step pipeline | One lock-free composite call | Multi-step crossings can fail per step; locking + per-step `AbortSignal` make recovery clean.  One mega-endpoint that does three things hides failure modes. |
 
@@ -396,10 +671,21 @@ type RootPayload     = { root: string };   // empty string before resolution
 onChange(cb: (p: SelectionPayload) => void): UnsubscribeFn
 onLockChange(cb: (p: LockPayload) => void): UnsubscribeFn
 onProjectsRootResolved(cb: (p: RootPayload) => void): UnsubscribeFn
+
+// Commit events (double-click / deliberate "use this file").  UNLIKE
+// the three above, onCommit does NOT fire-once-on-register — a commit
+// is a discrete event, not a state to mirror (§6).  publishCommit is
+// the mutator that fires it (list.js on dblclick; programmatic
+// callers too); it also updates the cursor (setShared) so subscribers
+// gating on getCurrentFile() see the new pick.
+onCommit(cb: (p: SelectionPayload) => void): UnsubscribeFn
+publishCommit(dir: string, file: string): void
 ```
 
-All three follow the §6 subscribe contract: fire-once-immediately on
-register, per-subscriber error isolation, unsubscribe closure.
+`onChange` / `onLockChange` / `onProjectsRootResolved` follow the §6
+subscribe contract: fire-once-immediately on register, per-subscriber
+error isolation, unsubscribe closure.  `onCommit` shares the error
+isolation + unsubscribe closure but does NOT fire on register.
 
 #### C3 — Read
 
@@ -410,6 +696,12 @@ type ReadOk  = { ok: true;  path: string; text: string };
 type ReadErr = { ok: false; error: string };
 type ReadResult = ReadOk | ReadErr | null;
 // null only for readCurrentFile when no file is selected.
+//
+// mtime: readCurrentFile does NOT carry mtime (it returns exactly
+// {ok, path, text}).  readFile passes the /api/files/read envelope
+// through, and readRange carries mtime explicitly (see its return
+// type below).  To pin an mtime for a conflict-checked write, read
+// via readRange / readFile, not readCurrentFile (§5.5).
 
 readCurrentFile(opts?: AsyncOpts): Promise<ReadResult>
 readFile(path: string, opts?: AsyncOpts):
@@ -433,10 +725,13 @@ readRange(path: string,
 // Browser-driven save dialog; resolves when download is INITIATED
 // (not when complete — browser owns the rest).
 //
-// Status: DEFERRED (2026-05-31).  Not implemented; needs a streaming
-// or signed-URL backend endpoint not yet designed.  Tabs that need
-// to surface a file to the user currently use readFile + a synthetic
-// <a download> element.  Tracked for a future iteration.
+// Status: the JS WRAPPER is DEFERRED.  Whole-file download already
+// SHIPS as a direct ``GET /api/files/download``
+// (``Content-Disposition: attachment``) — the kebab menu links to it
+// directly (see projects-sidebar-ui.md § 5.2).  What remains deferred
+// is folding that route into a ``downloadFile`` method on the public
+// ``projects`` object; tabs that need an in-JS download today use the
+// direct route (or readFile + a synthetic <a download>).
 downloadFile(path: string, opts?: AsyncOpts):
     Promise<{ ok: true; filename: string } | ReadErr>
 ```
@@ -447,6 +742,14 @@ downloadFile(path: string, opts?: AsyncOpts):
 type WriteOpts = AsyncOpts & {
     overwrite?:      boolean;   // default false
     expected_mtime?: number;    // for concurrent-edit detection
+    // Server-side suffix-picker: on a name conflict, write to a
+    // uniquely-suffixed name instead of clobbering.  Accepted in
+    // either casing (``autoRename`` from embed callers is forwarded
+    // to the server's ``auto_rename`` field).  When set on the Blob
+    // path, ``overwrite`` is intentionally omitted so the server
+    // falls through to the suffix-picker rather than clobbering.
+    auto_rename?:    boolean;
+    autoRename?:     boolean;
 };
 
 type WriteOk  = {
@@ -462,7 +765,11 @@ type WriteErr = {
     actual_mtime?: number;   // present on 409 edit-conflict
 };
 
-writeFile(path: string, text: string, opts?: WriteOpts):
+// ``text`` may be a string OR a Blob/File.  A Blob is routed to the
+// multipart upload endpoint (viewer animation / image-export
+// save-to-project); a string goes to /api/files/write.  Same
+// envelope shape on return either way.
+writeFile(path: string, text: string | Blob, opts?: WriteOpts):
     Promise<WriteOk | WriteErr>
 
 // Returns null silently when atRoot() is true (no write attempted).
@@ -480,8 +787,29 @@ createProject(name: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 mkdir(parent: string, name: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
-deleteEntry(path: string, recursive?: boolean, opts?: AsyncOpts):
-    Promise<LayoutOk | LayoutErr>
+
+// Delete a file or (with recursive) a directory.
+//
+// Sidecar pairing (2026-07): deleting a structure FILE (.xyz/.pdb)
+// ALSO removes its paired ``<stem>.molstruct.json`` — the mirror of
+// the rename/move/copy pairing — so no orphaned sidecar is left
+// behind.  The success envelope carries ``sidecar_removed``: the
+// absolute path of the sidecar that was removed, or ``null`` for
+// directories, non-structure files, and files with no sidecar.
+// Deleting a ``.molstruct.json`` directly is a plain single-file
+// delete (no pairing — the suffix isn't a structure file).
+//
+// ``opts.force`` (destructive): bypasses the backend's
+// canonical-topic-dir guard, which otherwise refuses to delete a
+// ``projects/<proj>/<topic>/`` directory at depth 2 (deleting it
+// would wipe the whole topic and orphan the project layout).  The
+// caller MUST show an explicit confirmation that warns about wiping
+// the whole subdirectory BEFORE passing ``force: true`` (the sidebar
+// topic-dir kebab does this).  Default false keeps the guard for
+// non-aware callers.
+deleteEntry(path: string, recursive?: boolean,
+            opts?: AsyncOpts & {force?: boolean}):
+    Promise<(LayoutOk & {sidecar_removed: string | null}) | LayoutErr>
 // In-place basename change.  Backend: POST /api/files/rename with
 // atomic-no-overwrite + canonical-topic protection mirroring delete.
 //
@@ -622,12 +950,26 @@ callback; the design does not prohibit it.  Behaviour:
   removed subscriber.
 
 **Race window between read and write.**  Tabs that do read-then-write
-must use `expected_mtime` from the read result.  The design exposes
-mtime on every read envelope precisely so tabs can pin it.
+must use `expected_mtime` from the read result.  `readRange` (and the
+`read` / `stat` wire envelopes) expose `mtime` precisely so tabs can
+pin it.  **Exception:** `readCurrentFile` returns only
+`{ok, path, text}` — it deliberately drops `mtime` (see `ReadOk` in
+§5.4 C3), so a tab that needs to pin the mtime for a subsequent
+conflict-checked write must read via `readRange` (or the underlying
+`read` endpoint) rather than `readCurrentFile`.
 
 ---
 
 ## 6. Subscribe model
+
+> **Mechanism here; semantics in aspect A.**  This section specifies
+> the subscribe *mechanism* the module implements (fire-once-on-
+> register, per-subscriber error isolation, the unsubscribe closure,
+> idempotent registration).  What a selection *means* — the
+> preview-vs-commit model, the tab contract, when a tab should act on
+> `onCommit` vs merely reflect `onChange` — is aspect A, owned by
+> [`selection.md`](selection.md).  Don't restate the selection
+> semantics here.
 
 The sidebar exposes four subscriber surfaces:
 
@@ -1040,274 +1382,20 @@ lock — they have no race risk with the in-progress pipeline.
 
 ---
 
-## 9. Visibility model
+## 9. Visibility model  ·  ## 10. Visual states — MOVED
 
-### 9.1 The trap (and the rule we follow because of it)
-
-The browser's `[hidden] { display: none }` rule and any author
-`.foo { display: <non-none> }` rule have the **same specificity**.
-On a tie, author CSS wins by cascade order.  An element with
-`class="foo"` AND `hidden=""` is rendered VISIBLE despite the
-attribute.
-
-**Today's rule**: every author `display:` rule on a class whose
-element may carry `hidden` MUST be paired with a `.foo[hidden]
-{ display: none }` guard.  Higher specificity wins the tie.
-
-### 9.2 Design direction
-
-The current pattern is fragile — it requires every CSS contributor
-to remember the guard rule and every reviewer to check for it.  The
-design's end state is:
-
-* One global helper class — `.is-hidden { display: none !important }`.
-* HTML `hidden=` is banned in sidebar templates; replaced by
-  `class="is-hidden"` toggled via a tiny `setVisible(el, bool)`
-  helper.
-* A CI grep flags any new use of `hidden=` so the bug class can't
-  re-enter.
-
-Until that migration completes, the guard rule (§ 9.1) is the
-contract.
-
-### 9.3 Narrow-viewport drawer (≤ 640 px)
-
-**Added 2026-06-02 for task #182.** The sidebar's default desktop
-layout (`position: fixed`, left, 18 rem wide, body shifted right by
-`padding-left: 18rem`) doesn't fit a phone-width viewport: at 360
-px viewport the body would have to be ≥ 648 px wide and produces a
-horizontal scrollbar.
-
-At viewport ≤ 640 px, the sidebar becomes a left-edge drawer:
-
-* **Body**: `padding-left` collapses to `0` (the sidebar is no
-  longer part of normal flow).
-* **Sidebar**: `transform: translateX(-100%)` slides it off-canvas
-  with a 180 ms ease-out transition.  Body class
-  `has-mobile-sidebar-open` resets the transform to bring it back
-  as a fixed-position overlay.
-* **Hamburger button** (`#ps-mobile-toggle`): fixed at top-left,
-  visible only at narrow widths via `display: none` outside the
-  media query.  Toggles the body class.  Aria: `aria-controls=
-  "projects-sidebar"`, `aria-expanded=` mirrors the class state.
-* **Backdrop** (`#ps-mobile-backdrop`): semi-transparent overlay
-  visible only when the drawer is open.  Click dismisses.
-* **Escape key**: dismisses (standard modal-overlay convention).
-* **Resize past breakpoint**: auto-dismisses so rotating from
-  portrait to landscape doesn't leave a stale "open" state.
-
-Z-index layering (bottom up):
-
-| Layer | z-index | Why |
-|---|---|---|
-| Page content | (none, normal flow) | — |
-| Backdrop | 85 | Dims the page but not the drawer |
-| Drawer sidebar | 90 | Overlays page + backdrop |
-| Toggle button | 95 | Stays tappable when drawer is open |
-| File-preview modal | 100 | Above the drawer so a modal opened FROM the drawer is not hidden behind it |
-
-A closed modal (`hidden` attr → `display: none`) doesn't
-participate in stacking, so the desktop case (sidebar `z-index: 5`,
-modal `100`) is unaffected.
-
-JS wiring lives in `lib/projects-sidebar.js::initMobileDrawer`; the
-function is a no-op if the optional toggle / backdrop elements are
-absent (forward-compat with future templates that drop the
-scaffolding).
-
-### 9.4 Desktop hide/show toggle (Phase B.5.4)
-
-On viewports ≥ 640 px the sidebar can be collapsed entirely so
-the active tab's workspace gets the full window width.  Three
-DOM affordances:
-
-* `#ps-collapse-toggle` — small "◀" button in the sidebar header
-  (`.ps-header`); click hides the sidebar.
-* `#ps-collapsed-handle` — accent-coloured floating dock tab
-  ("Projects" label + chevron) fixed at the page's left edge.
-  Hidden unless the sidebar is collapsed; click brings it back.
-  Lives outside `.projects-sidebar` so it stays visible when the
-  sidebar itself is hidden.
-* `body.is-projects-sidebar-collapsed` — body-level class.  When
-  set, the body's `padding-left` collapses to 0 and
-  `.projects-sidebar` slides off-canvas via `translateX(-100%)`
-  + `visibility: hidden` (keeps it out of the a11y tree).
-
-State persists in `sessionStorage` under
-`molbuilder.projects_sidebar_collapsed`.
-`lib/projects-sidebar.js::_restoreCollapsedState` reads it and
-applies the body class BEFORE the rest of init runs — so any
-layout-sensitive widget (Plotly chart, 3Dmol canvas, CSS-grid
-auto-fit) measures the correct geometry on its first paint.
-
-Below the 640 px breakpoint the desktop affordances hide and the
-mobile drawer (§ 9.3) takes over so the two systems don't double
-up.
-
-### 9.5 File-type filter (Phase B.5.5)
-
-A free-text filter input between the breadcrumb and the entry
-list hides files whose name doesn't match the query.  Folders
-always stay visible — they're navigation, not data — so the
-user can drill into a sub-folder even when the filter is active.
-
-Match rules:
-
-  * **Default**: case-insensitive substring (`"wat"` matches
-    `water.xyz`).
-  * **Leading-dot shortcut**: `".xyz"` matches files whose name
-    ends in `.xyz` only (not `water.xyz.bak`).  Use this for
-    "show me all XYZ files in this directory".
-  * **Empty query**: every file visible (the no-filter state).
-
-DOM:
-
-* `#ps-filter-input` (`<input type="search">`) — the query.
-* `#ps-filter-clear` (`<button>`) — × button revealed only when
-  the filter is active; click resets state + focuses the input.
-* `.ps-list .ps-entry.is-hidden { display: none }` — hidden
-  entries stay in the DOM (click handlers + dataset.path stay
-  live) so clearing the filter doesn't require a re-render.
-* `.ps-list.is-filtered-empty::before` — surfaces "(no match)"
-  when every entry is hidden by the filter (parallel to the
-  existing `.is-empty` "(empty)" affordance).
-
-State persists in `sessionStorage` under
-`molbuilder.projects_sidebar_filter`.  Re-applied after every
-`openDir` so a previously-active filter doesn't reset on
-directory change.
-
-JS lives in `lib/projects/list.js`:
-`_filterMatches`, `_applyFilter`, `_initFilter`.
-
----
-
-## 10. Visual states
-
-The conceptual UI states the design recognises.  Every state must
-be reachable from a known state mutation; no state may appear
-"because of CSS alone".
-
-| State | When | What the user sees |
-|---|---|---|
-| **Idle** | Page load, cursor unset | Breadcrumb at root; project list; "no file selected" |
-| **Browsing** | After navigating | Breadcrumb shows path; entries for that dir |
-| **File selected** | After clicking a file | Highlight on entry; "Selected: <name>" status |
-| **Empty directory** | Dir has no children | Empty list area with a `.is-empty` modifier |
-| **Listing error** | Backend returned `{ok:false}` | Inline error row in the list; cursor reset to the attempted path |
-| **Locked** | A pipeline holds the lock | Sidebar contents faded + non-interactive; banner with reason + Cancel |
-| **No project root** | Init's `apiRoots` returned empty | List replaced with a "no roots configured" message; lock UI still functional |
-| **Preview open** | User clicked preview on a file | Modal over the page; closes on ESC / backdrop / button |
-| **Kebab menu open** | User clicked ⋯ on an entry row | Per-entry action menu (View / Download / Rename / Move / Copy / Delete); auto-dismisses on outside click + ESC + scroll |
-| **Dialog open** | Any mutation modal active | <dialog> overlays page; primary input focused; ESC / Cancel resolve as null; only one dialog at a time |
-| **Dialog error** | Validation or backend rejection | Inline error in dialog; form keeps current value for retry |
-| **Resizing** | User dragging the right-edge handle | `--ps-w` updates live; body cursor:ew-resize; release persists to localStorage |
-
----
-
-## 10.1 Mutation UX (2026-06-12, v2)
-
-The sidebar's mutation surface is **buttons + modal dialogs**, not
-inline forms.  Two trigger points:
-
-* **Header action bar** — three SEPARATE buttons at the top of the
-  sidebar (revised 2026-06-12; the earlier v1 single "+" dropdown
-  was replaced because users couldn't see at a glance what actions
-  were available).  Each click opens its modal dialog directly:
-
-  | Button | Action | Disabled when |
-  |---|---|---|
-  | 🗂 New project | Modal for project name; backend bootstraps the canonical-topic tree | never |
-  | 📁 New folder | Modal for folder name in current dir | at the `projects/` root |
-  | ⬆ Upload | Modal with `<input type="file">` + Upload button | at the `projects/` root |
-
-  Icons sit above stacked text labels so the row stays compact at
-  narrow widths.  Stable anchor ids: `#ps-create-project-btn`,
-  `#ps-create-folder-btn`, `#ps-create-upload-btn`.
-
-* **Per-entry "⋯" kebab** — a button on the right edge of each
-  entry row.  Drops a contextual menu whose items are
-  eligibility-gated (ineligible items are omitted, not shown
-  greyed):
-
-  | Item | Available for | Result |
-  |---|---|---|
-  | View | files only | Sets `setShared(dir, file)` + opens the preview modal |
-  | Download | files only | Streams the file via `GET /api/files/download` (`Content-Disposition: attachment`); works for any kind (text, binary, multi-MB) |
-  | Rename… | anything `_isDeletableEntry` allows | Modal for new name; sidecar-pair on .xyz/.pdb |
-  | Move to… | files only | Tree-picker for destination dir; sidecar-paired |
-  | Copy to… | files only | Tree-picker; same-dir copy prompts for a new name |
-  | Delete | anything `_isDeletableEntry` allows | Destructive confirm modal; then `apiDelete` + refresh |
-
-  Eligibility check `_isDeletableEntry` is the source of truth for
-  "can the user mutate this": refuses the `projects/` root itself
-  and refuses canonical-topic dirs at depth 1 (would orphan the
-  project layout).
-
-**Dialogs** live in `lib/projects/dialogs.js` and follow the
-single-instance + ESC-as-Cancel pattern from
-`lib/structure/save-dialog.js`:
-
-* opening dialog A while A is already open returns the existing
-  pending promise (no stacking);
-* opening dialog A while a different dialog B is open silently
-  cancels B (resolves it to `null`) so the user's focus moves
-  cleanly to A.
-
-Destructive flows (overwrite confirm, delete) default-focus on
-Cancel — the user has to deliberately travel to the destructive
-button.
-
----
-
-## 10.2 Width resize (2026-06-12)
-
-The right edge of `.projects-sidebar` carries a 4px-wide drag
-handle (`#ps-resize-handle`).  Drag horizontally → `--ps-w`
-updates live; release → width persists to
-`localStorage.molbuilder.projects_sidebar_width` (px).  Restored
-BEFORE layout-sensitive widgets (Plotly, 3Dmol) paint, same
-reasoning as the collapsed-state restore.
-
-Bounds (JS-clamped):
-
-| Min | Max |
-|---|---|
-| 14rem (224px) | 40rem (640px) |
-
-Double-clicking the handle clears the persisted value (reverts to
-the default 18rem).  Handle is CSS-hidden when the sidebar is
-collapsed or running in narrow-viewport drawer mode.
-
----
-
-## 10.3 Preview modal (2026-06-12 polish)
-
-The kebab "View" action opens a CodeMirror 5 modal anchored to
-`#ps-preview-modal`.  Footer carries five buttons in this order:
-**Find… · Edit · Save · Close** (Find sits leftmost — discoverable
-entry point for the vendored CM search addons that were always
-loaded but previously only reachable via Ctrl-F).
-
-| Concern | Behavior | Implementation |
-|---|---|---|
-| Modal size | Fills 80 vh (always); `height: 80vh` on `.ps-preview-window` so the flex column has a definite slot for the absolutely-positioned CM editor to fill | CSS in `projects-sidebar.css`; pinned by `test_kebab_view_renders_file_content_visibly` |
-| Find | "Find…" button in footer → `_cm.execCommand("find")`.  Same command Ctrl-F binds to; tooltip lists the hotkey set | `preview.js::openFind` |
-| Ctrl-A / Cmd-A | Disabled (no-op) via `extraKeys` | Avoids a 225 s freeze on multi-MB docs in CM5's keymap-triggered selectAll path |
-| Selection cap | Any selection (mouse-drag, programmatic, shift-arrow) is clamped to `MAX_SELECTION_LINES = 1500` (~100 KB at typical line widths) via `beforeSelectionChange` | Line-based for O(1) cost per drag tick |
-| Selection contrast | `.CodeMirror-selected` background bumped to rgba(74,158,255,0.55) / 0.65 focused so the highlight reads against the dark canvas | CSS |
-| View-only threshold | Files > 1 MB load view-only — Edit button disabled.  The `is-view-only` class is reserved for future view-only CSS cues (no rule today) | `preview.js::_loadBulk` + `_loadPaginated` set `_state.editable = body.size <= VIEW_ONLY_BYTES` |
-| Whole-file capture | Kebab menu's **Download** item bypasses the editor entirely; streams via `GET /api/files/download` | No size cap, no UTF-8 cap |
-
----
-
-## 10.4 Breadcrumb (2026-06-12 pill upgrade)
-
-Each path segment renders as a pill-shaped chip with a `›`
-separator between segments.  The root chip carries a small ⌂
-glyph; the current (last) chip uses an accent fill so the user
-can tell where they are at a glance.  Non-current chips are
-keyboard-focusable (`role=link`, Enter/Space to navigate).
+> The sidebar's **UI + file-content preview** contract is **aspect E**
+> and now lives in its own doc:
+> **[`projects-sidebar-ui.md`](projects-sidebar-ui.md)**.
+>
+> Everything that used to be §§ 9–10 here — the `[hidden]` visibility
+> model, the narrow-viewport drawer, the desktop hide/show toggle, the
+> file-type filter, the visual-state table, the mutation UX
+> (buttons + dialogs + kebab), the width-resize handle, the breadcrumb
+> pills, and the **file-preview modal** — moved there verbatim.  The
+> public API those UI pieces call (`setShared`, `navigateTo`, `writeFile`,
+> `readFile`/`readRange`, `deleteEntry`/`rename`/`move`/`copy`/`upload`,
+> `lock`/`unlock`) is still specified here in §§ 5–8.
 
 ---
 
@@ -1382,7 +1470,15 @@ network / backend / concurrency / user-action / browser-platform.
 
 ## 12. Backend contract (capability level)
 
-The backend offers eight file-system primitives plus one
+> **Capability view only — the wire table has ONE home.**  The
+> per-route table (methods, query/body, success + error codes,
+> sidecar-pairing, `/api/files/download`) is
+> [`web-api.md`](web-api.md) § 3.1; the mutation-flow + lock wire view
+> is § 3.5; write-conflict detection is § 3.6.  The list below is the
+> *capability* map (what primitives exist) — do not duplicate the wire
+> fields here.
+
+The backend offers these file-system primitives plus a
 project-bootstrap operation.  All operate exclusively inside the
 configured `projects/` root.
 

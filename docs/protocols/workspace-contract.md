@@ -62,14 +62,14 @@
 > `persist` / `workspaceId` / `readPersistedSnapshot` / `mountRestoreTarget` / `STORAGE_KEY`.
 >
 > **How the project sidebar relates.** The projects sidebar is a
-> **separate** subsystem ([`projects-sidebar.md`](projects-sidebar.md) /
-> [`projects-sidebar-guide.md`](../projects-sidebar-guide.md)); it is not
+> **separate** subsystem ([`projects-sidebar.md`](projects-sidebar.md)); it is not
 > part of this contract. The **sole seam** between them is **mount-time
 > restore**: on a page mount the sidebar (and any load-on-mount surface)
 > MUST consult **`ws.mountRestoreTarget()`** and defer when the persisted
 > snapshot already owns the file it was about to load — see **§4.5**
-> (single-authority mount restore) ↔ projects-sidebar-guide **Rule 4**
-> ("Loading on *mount* is different"). Nothing else crosses.
+> (single-authority mount restore); the sidebar side is the "loading on
+> *mount* is different" rule in [`projects-sidebar.md`](projects-sidebar.md)
+> (§ "At a glance"). Nothing else crosses.
 >
 > **Companion docs:**
 >

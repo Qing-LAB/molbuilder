@@ -101,6 +101,6 @@ window.molbuilder.runtime.whenReady("myModule").then((myModule) => {
 
 - **`protocols/runtime-registry.md`** — the contract: exact error semantics,
   microtask-drain timing, the registered-modules list, the test map.
-- Related: most modules in `workspace-guide.md` / `projects-sidebar-guide.md` /
+- Related: most modules in `workspace-guide.md` / `protocols/projects-sidebar.md` /
   `molviewer-guide.md` publish themselves via `register` and are consumed via
   `whenReady`.

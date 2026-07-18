@@ -1143,8 +1143,10 @@ concerns can never be confused (two-saves-never-mix):
   whole session state at `state_index + delta`. `save(1)` = the tab's "Save state"; `load(-1)` =
   "Retract"; `load(0)` = reload. `pushState`/`popState`/`restoreSnapshot` are GONE — they were just
   these with a fixed delta.
-- **Document + molecule:** `exportFile()` serializes the model to project-file bytes;
-  `openMolecule(input)` brings a NEW molecule in (and RESETS the timeline).
+- **Document + molecule:** `openMolecule(input)` brings a NEW molecule IN (and RESETS the timeline);
+  `saveMolecule(path)` writes the model back out. These are the two high-level **molecule doors** a
+  tab calls (`structure-load-save-contract.md` §0); `exportFile()` is the in-memory serialiser
+  `saveMolecule` is built on, and `openProjectFile`/`saveProjectFile` are the byte ops beneath both.
 
 Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure`, `getScratchBlob`,
 `pushState`, `popState`, `restoreSnapshot`, file-writing `save(opts)`).
@@ -1153,8 +1155,9 @@ Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure
 |---|---|---|---|
 | **`save(delta=0)`** | → `ws.persist` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state save.** Serialize the current model (`getState`) and persist it at `state_index+delta`, moving `state_index` by `delta`. `save(1)` = a new undoable **checkpoint** ("Save state"; prunes any abandoned tail above); `save(0)` = re-save the current index in place. The explicit persist trigger (§19.5). |
 | **`load(delta=0)`** | → `ws.readState` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state restore.** Read the snapshot at `state_index+delta` and apply it to the WHOLE model, moving `state_index` by `delta`. `load(-1)` = **Retract**/undo; `load(0)` = reload / mount-restore. No-op if the target index < 0. Undo-only (a `save(1)` after a `load(-1)` overwrites the abandoned tail — no redo). Applies WITHOUT re-parsing or re-anchoring the timeline. |
-| **`openMolecule(input)`** | `{text, filename[, source, periodicity, annotations, atoms]}` → POST `/api/build/load`; a project-file path string → `molbuilderTab.commitFile` | `Promise<WorkspacePayload>` | Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune-all **then** anchor at index 0 — the order matters; see below). Caller `source`/`periodicity`/`annotations` override the server-derived (generator provenance + sidecar cell/annotations); `atoms` (sidecar-enriched per-atom rows a file open resolved via `readWorkingCopy`) **replace** the parsed atoms so the load installs the final per-atom state in ONE write — the caller does NO second store write (the SETTLE-BEFORE-READY rule, §19.3.1). |
-| **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). Writing the bytes to disk is the consumer's job — NOT the session-state save. |
+| **`openMolecule(input)`** | a project-file **path string** → read the `.xyz`+`.molstruct.json` bytes via `openProjectFile`, then parse; **or** `{text, filename[, source, periodicity, annotations, atoms]}` → POST `/api/build/load` | `Promise<WorkspacePayload>` | **The high-level LOAD door** (`structure-load-save-contract.md` §2). Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune-all **then** anchor at index 0 — the order matters; see below). For a path, the sidecar rides in from `openProjectFile`; for a text object the caller may pass `source`/`periodicity`/`annotations`/`atoms` to override the server-derived. Either way the load installs the final per-atom state in ONE write — the caller does NO second store write (the SETTLE-BEFORE-READY rule, §19.3.1). |
+| **`saveMolecule(path)`** | serialise (`exportFile`) → write bytes via `saveProjectFile` → POST `/api/workingcopy/save` | `Promise<{ok,path}\|{ok:false,needsOverwrite\|error}>` | **The high-level SAVE door** (`structure-load-save-contract.md` §2). Reads the settled model out to `{xyz, sidecar}`, writes BOTH files atomically, 409→`needsOverwrite`, on success clears dirty + re-anchors `sourceFile`. Never mutates the model. |
+| **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). The in-memory serialiser `saveMolecule` is built on — not itself the disk write, and not the session-state save. |
 | `generate(kind, input, opts)` | via the `structure.<kind>` generator | `Promise<WorkspacePayload>` | Produce a structure and open it (like `openMolecule`); dirty=true; resets the timeline. |
 | `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; clears the selection on any atom-count change (§19.3.2); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |
 | `markDirty()` / `markSaved(path)` | (in-memory) | `void` | Flip / clear the dirty bit + record `last_save_to`. |
@@ -1216,8 +1219,9 @@ null. This is exactly what `/molview-demo` exercises: it embeds the module the w
 prescribes — one `openMolecule` — and the viewer, selection panel, Cell page, and unit-cell box are
 all live from that one call. If they are not, the contract is broken, not the demo.
 
-> **The project-file load/save coordinator** (`openProjectFile` / `saveProjectFile`)
-> and its layer split are specified in
+> **The project-file molecule doors** (`openMolecule` / `saveMolecule`) and the
+> low-level byte ops beneath them (`openProjectFile` / `saveProjectFile`) — the
+> two-layer split — are specified in
 > [`structure-load-save-contract.md`](structure-load-save-contract.md). This section
 > is the atomic-install mechanism those doors are built on.
 
@@ -1243,21 +1247,23 @@ anchor's HTTP — so a consumer (or a test, or a fast user) that already acted o
 > single `openMolecule` call (`input.atoms`), so there is exactly one selection reset,
 > synchronously, before the gate — and the trailing `adoptSession` is deleted.
 
-**The correct load sequence** (a project-file open through the sidebar):
+**The correct load sequence** (a project-file open through the sidebar). The tab hands
+the committed **path** to the ONE door; the byte read lives *inside* `openMolecule`, not
+in the tab:
 
 ```mermaid
 sequenceDiagram
     participant U as User / Sidebar
-    participant SB as _commitFile (bootstrap)
-    participant WC as readWorkingCopy
-    participant OM as openMolecule (the ONE door)
+    participant SB as tab (hands over the picked path)
+    participant OM as openMolecule(path) — the ONE door
+    participant OPF as openProjectFile (bytes)
     participant AP as _applyWorkspacePayload (single sync point)
     participant ST as selection store + canvas
 
-    U->>SB: Load picked file
-    SB->>WC: read codec-enriched data
-    WC-->>SB: {text, periodicity, annotations, atoms(sidecar)}
-    SB->>OM: openMolecule({text, atoms, periodicity, annotations, source:file})
+    U->>SB: commit picked file
+    SB->>OM: openMolecule(path, {confirmDiscard})
+    OM->>OPF: read codec-enriched bytes
+    OPF-->>OM: {text, periodicity, annotations, atoms(sidecar)}
     OM->>AP: one payload (build/load parse + sidecar atoms override)
     AP->>ST: setStructure(text,cell) + adoptAtoms(atoms, sourceFile) + clearSelection
     Note over ST: ONE synchronous write — model FULLY SETTLED here.<br/>getNAtoms() now reports the new count (the "ready" gate).

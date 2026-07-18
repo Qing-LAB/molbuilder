@@ -1,167 +1,195 @@
-# Structure load / save contract — the ONE way a structure file is opened and saved
+# Structure load / save contract — the parser doors + the model primitives
 
-> **This is the authoritative contract for loading a saved structure file into the
-> workspace and saving it back.** Any code that opens or writes a project structure
-> file MUST go through the doors named here. Code that reaches around them (poking the
-> selection store, re-reading the file, doing a second install) is incorrect by
-> definition — the contract is right and the code is wrong.
+> **Authoritative contract for opening/saving a structure file.** The tab-facing doors are
+> `projects.parser.openMolecule(path)` / `saveMolecule(path)` (in the concealed sidebar
+> package); they move bytes through `projects.readFile`/`writeFile`, parse through the ONE
+> server seam, and install/serialise through the model's primitives
+> (`molview.data.installMolecule`/`exportFile`/`markSaved`). A tab calls a door and nothing
+> below it. Code that reaches around the doors (a second file stack, a raw
+> `/api/workingcopy` POST, poking the store) is wrong by definition.
 >
-> **Companion docs:**
-> * [`molview-module.md`](molview-module.md) §19 — the `molview.data` model + its API
->   (the doors live here); §19.3.1 the atomic-load internals + the load/save diagrams.
-> * [`workspace-contract.md`](workspace-contract.md) §4 — the persistence model
->   (session drafts, restore) the file save is distinct from.
-> * [`save-flow.md`](save-flow.md) — the Save-**panel UI** (dialog, button states).
-> * [`projects-sidebar.md`](projects-sidebar.md) — the file-access layer these doors
->   call into for bytes + paths.
+> **Aspect C** of the Projects Sidebar module — see the master
+> [`projects-sidebar.md`](projects-sidebar.md) (§ 0.2). **Companions:**
+> [`molview-module.md`](molview-module.md) §19 (the model primitives the doors call);
+> [`atom-annotations.md`](atom-annotations.md) (the sidecar schema `apply_to_structure`
+> reads); [`save-flow.md`](save-flow.md) (the Save **panel** UI over `saveMolecule`).
 
 ---
 
-## §1 Why this exists — the two-layer split
+## §0 The map — where every piece lives
 
-Loading or saving a *structure file* touches **two** concerns that live in **two**
-different modules. Keeping them separate is the whole design:
+| Concern | Home | Public name → `file:function` |
+|---|---|---|
+| **File bytes** (read/write ONE file, no parsing) | `molbuilder.projects` (`lib/projects/state.js`) | `readFile(path)` → `api.js:apiRead` → `/api/files/read` · `writeFile(path, text, {overwrite})` → `api.js:apiWrite` → `/api/files/write` |
+| **Molecule DOORS** — the ONE tab-facing surface | **`molbuilder.projects.parser`** (`lib/projects/parser.js`) | **`openMolecule(path, {confirmDiscard})`** — LOAD `:58` · **`saveMolecule(path, {overwrite})`** — SAVE `:111` |
+| **Model primitives** — called BY the doors | `molview.data` (`lib/molview/data-model.js`) | `installMolecule({text[,sidecar,source,…]})` — parse+install `:1182` · `exportFile()` → `{xyz, sidecar}` `:1652` · `markSaved(path)` `:876` |
+| **Parse seam** (xyz/pdb text [+ sidecar] → enriched Structure JSON) | `web/blueprints/build.py` | `POST /api/build/load` `:634` — parses, applies in-body `sidecar` via `molstruct.load_text`+`apply_to_structure`, returns enriched `atoms`+`periodicity`+`annotations` |
+| **Sidecar schema** (`.molstruct.json` ⇄ Structure) | `molbuilder/sidecars/molstruct.py` | `apply_to_structure(struct, dict)` `:467` · `load_text(text)` · `save(...)` `:412` · `sidecar_path_for(xyz)` `:90` |
+| **Load + mount** (open a picked file AND show the card) | `molview.mount` (`lib/molview/mount.js`) | the shared "open + show the card" (§6) |
+
+**Deleted (the old soup — a second file stack inside the model):**
+`molview.data.openProjectFile` / `saveProjectFile` / `readWorkingCopy` (they hit
+`/api/workingcopy/open|save`). **The MODEL owns no file endpoint; the DOORS own no
+parsing** — the parser doors orchestrate `readFile`→`/api/build/load`→`installMolecule`.
+(`/api/workingcopy/update` + `write-state`/`read-state` are a DIFFERENT concern —
+session-draft persistence, owned by the workspace — and are untouched.)
+
+---
+
+## §1 Two layers, one concealed file package
+
+The doors live in the **projects** package (the format-aware `parser` sub-namespace); they
+call **`molview.data`** for the model. Dependency points ONE way — `projects.parser →
+molview.data`, resolved by a **call-time** `window.molbuilder.molview.data` lookup, never a
+static import, so there is **no** `projects→molview→projects` cycle.
 
 ```mermaid
 flowchart TB
-    subgraph UI["Tab / UI layer  (wires buttons, owns UI policy)"]
-        LB["Load button / sidebar dblclick"]
-        SB["Save panel + dialog"]
+    subgraph TAB["Tab / UI  (buttons + injected UI policy)"]
+        B["Load / Save / sidebar dblclick"]
     end
-    subgraph MV["molview.data  (the structure MODEL — DOM-free)"]
-        OPF["openProjectFile(path)"]
-        SPF["saveProjectFile(path)"]
-        OM["openMolecule / exportFile / markSaved"]
+    subgraph PR["molbuilder.projects — the concealed sidebar package"]
+        direction TB
+        DOORS["parser.openMolecule / parser.saveMolecule  (format-aware DOORS)"]
+        BYTES["readFile / writeFile  (format-blind BYTES)"]
+        DOORS -->|"move bytes via"| BYTES
     end
-    subgraph PR["projects  (file access — FORMAT-BLIND, shared by every tab)"]
-        RF["readFile / writeFile / readRange"]
-        WC["/api/workingcopy/open · /save"]
+    subgraph MV["molview.data — the MODEL primitives (DOM-free)"]
+        IM["installMolecule({text,sidecar})"]
+        EF["exportFile() → {xyz, sidecar}"]
     end
-    LB --> OPF
-    SB --> SPF
-    OPF --> OM
-    SPF --> OM
-    OPF -->|codec-enriched bytes| WC
-    SPF -->|atomic .xyz + .molstruct.json| WC
-    MV -. never imports a modal / DOM .-> UI
+    SRV[("server: /api/files/*  ·  /api/build/load (parse + apply sidecar)")]
+    B --> DOORS
+    DOORS -->|"install / serialise"| MV
+    BYTES --> SRV
+    IM -->|"parse"| SRV
 ```
 
-| Layer | Owns | Knows about |
+| Layer | Owns | Never |
 |---|---|---|
-| **projects** (`lib/projects/*`) | file bytes + paths, the directory tree, the current sidebar selection, overwrite/mtime | **bytes + paths only — format-blind.** Serves *every* tab (structure, spectra, transport, logs) |
-| **molview.data** (`lib/molview/data-model.js`) | the in-memory structure model + its (de)serialisation | **structures** — the `.xyz` + `.molstruct.json` pairing, regions/frozen, cell, frames |
-| **tab / UI** (`selection-bootstrap.js`, `save.js`, `save-dialog.js`) | wiring buttons; **UI policy** — the dirty-canvas warning, the overwrite confirm, status banners | which button the user clicked |
+| **`projects`** byte layer (`readFile`/`writeFile`) | locating a file in the project dir + moving its **bytes** | parses a molecule; knows the model |
+| **`projects.parser`** doors | orchestrating read→parse→install (load) and serialise→write (save); the `.xyz`↔`.molstruct.json` pairing | owns a parser itself (it calls `/api/build/load` + `installMolecule`) |
+| **`molview.data`** model primitives | turning text (+sidecar) into the live molecule and back; the atomic install | fetches a file; owns a file endpoint |
+| **tab / UI** | wiring buttons; UI policy (dirty-warning, overwrite-confirm — **injected**, not imported) | reaches past a door |
 
-**The load/save contract belongs to `molview.data`, NOT the projects sidebar.** The
-sidebar is format-blind and shared; if structure load/save lived there, it would have
-to learn xyz/pdb parsing, sidecar pairing, regions, cells — and the next data type
-(a spectrum, a trajectory) would demand its own branch. Structure knowledge lives in
-MolView. The sidebar stays the file layer MolView *calls into* for bytes.
-
-**But it isn't wholly MolView's either.** UI policy — the dirty-canvas warning before
-a load, the overwrite confirm on save — is DOM and belongs to the tab. `molview.data`
-stays DOM-free: those gates are **injected** (an async predicate the tab supplies), so
-no modal is imported into the data layer.
+The byte layer knows the `.xyz`↔`.molstruct.json` *pairing* only as "which bytes travel
+together" (so do `apiMove`/`apiCopy`/`delete`); **interpreting** the pair — parsing, applying
+the sidecar schema — happens only inside `openMolecule` (via the server seam).
 
 ---
 
-## §2 The doors — `molview.data.openProjectFile` / `saveProjectFile`
+## §2 The doors
 
-These are the ONE coordinator. A tab calls one method; it never hand-wires the seam.
+### Load — `projects.parser.openMolecule(path, { confirmDiscard? })`
 
-### `openProjectFile(path, { confirmDiscard? }) → Promise<{ok, payload} | {ok:false, cancelled|error}>`
+A project-file **path** (the FILE door). (1) dirty-gate if `confirmDiscard` supplied
+(`false` → `{ok:false, cancelled:true}`); (2) `projects.readFile(path)` → the `.xyz` text;
+(3) `projects.readFile(sidecarPath)` → the `.molstruct.json` text (best-effort — a missing
+sidecar is fine, not an error); (4) `molview.data.installMolecule({ text, filename:path,
+sidecar })`, which `POST`s `/api/build/load {text, filename, sidecar}` (server parses +
+applies the sidecar) and installs the enriched model in ONE synchronous write (§4). Returns
+`{ok:true, payload}` | `{ok:false, cancelled|error}`.
 
-1. If the canvas is dirty and `confirmDiscard` was supplied, await it; `false` → cancel
-   (a fresh open discards unsaved edits).
-2. `readWorkingCopy(path)` — ONE `/api/workingcopy/open` returns the codec-enriched
-   data: the canonical **text** (`data.xyz`), the **sidecar atoms** (regions/frozen
-   already applied by `codec.load`), **periodicity**, **annotations**.
-3. `openMolecule({ text, filename, source:{kind:file}, periodicity, annotations, atoms })`
-   — the single open door installs the WHOLE model (canvas + selection store + render)
-   in **ONE synchronous store write** (§4).
-4. Fallback (only if `readWorkingCopy` returned no atoms): `refreshAtoms()` — refetches
-   the sidecar-applied rows **without** resetting the selection.
+> **Generated text is NOT a door call.** Generators (smiles/dna/…) have text and no file, so
+> they call `molview.data.installMolecule({text})` directly — the model primitive, not the
+> file door. `openMolecule` is *only* for a project-file path.
 
-### `saveProjectFile(path, { overwrite }) → Promise<{ok, path} | {ok:false, needsOverwrite|error}>`
+### Save — `projects.parser.saveMolecule(path, { overwrite? })`
 
-1. `exportFile()` — serialise the SETTLED model to `{xyz, sidecar}` (refuses a
-   geometry↔labels desync → returns null → `{ok:false, error}`).
-2. POST `/api/workingcopy/save` — writes BOTH files atomically.
-3. On 409 (file exists) → `{ok:false, needsOverwrite:true}` so the caller confirms +
-   retries with `{overwrite:true}` (the dialog is UI policy, stays in the tab).
-4. On success → `markSaved(path)` — clears the canvas dirty bit AND re-anchors the
-   selection store's `sourceFile` (one door; the tab never pokes the store).
+(1) `molview.data.exportFile()` → `{xyz, sidecar}` (refuses a geometry↔labels desync →
+`{ok:false, error}`); (2) `projects.writeFile(path, xyz, {overwrite})`; (3)
+`projects.writeFile(sidecarPath, JSON.stringify(sidecar), {overwrite:true})` — the sidecar is
+a dependent member of the pair, always overwritten; (4) `molview.data.markSaved(path)` —
+clears dirty + re-anchors the store `sourceFile`. On an "exists" envelope from step (2) →
+`{ok:false, needsOverwrite:true}` so the tab confirms + retries both writes with
+`{overwrite:true}` (the dialog is UI policy).
 
-**A save READS the model; it never writes it.** Load writes the model from bytes; save
-reads bytes from the model. They are inverses over the one model.
+> **`path` must be `.xyz`.** `saveMolecule` writes the model's **canonical XYZ**
+> (`exportFile` produces only `{xyz, sidecar}`; there is no PDB serialiser). A `.pdb` path
+> would receive XYZ bytes. **Asymmetry to know:** `openMolecule` *loads* a `.pdb` (the parse
+> seam sniffs PDB), but `saveMolecule` can only *save* `.xyz`. (The shipped caller,
+> `structure/save.js`, forces `.xyz`.)
 
----
-
-## §3 The rules every consumer MUST follow
-
-1. **Use the doors.** Load a project file with `openProjectFile`; save with
-   `saveProjectFile`. Do NOT: re-read the file yourself, call `openMolecule` +
-   a follow-up store write, POST `/api/workingcopy/{open,save}` raw, or call
-   `selection.adoptSession` / `setSourceFile` / `adoptAtoms` to "finish" a load/save.
-2. **One store write per load — settle before ready.** See §4. Never do a second store
-   write after the load's "ready" signal.
-3. **UI gates are injected, not imported.** The dirty-warning and overwrite-confirm are
-   the tab's; the data layer receives them as callbacks / return signals and stays
-   DOM-free.
-4. **The source re-anchor lives in `markSaved`.** After a save-as, `markSaved(path)`
-   re-points the store's `sourceFile`; consumers do not.
+**A save READS the model; a load WRITES it. Inverses over the one model.**
 
 ---
 
-## §4 SETTLE-BEFORE-READY — why one write, and the race it prevents
+## §3 Rules every consumer follows
 
-The load installs the FINAL model — atoms (sidecar-enriched), source path, periodicity,
-**and** the cleared selection — in ONE synchronous write, and the load's observable
-"ready" signals (`getNAtoms()` becomes the new count; `openProjectFile` resolves) fire
-at that write. **No second store write may follow**, because it would land *after* the
-ready signal and clobber whatever a consumer already did on the settled structure.
+1. **Call a door.** Load a project file with `projects.parser.openMolecule`; save with
+   `projects.parser.saveMolecule`. Generated text installs via `molview.data.installMolecule`.
+   Do NOT add a second file stack, POST `/api/workingcopy/{open,save}` or `/api/files/*` raw,
+   or poke `selection.adoptSession`/`setSourceFile` to "finish" a load/save.
+2. **One store write per load** (§4). No second write after the "ready" signal.
+3. **UI gates are injected, not imported** — the door + model layers stay DOM-free.
+4. **The sidebar publishes a path; a door consumes it** — subscribe to `projects.onCommit`,
+   hand the path to `openMolecule`.
+
+---
+
+## §4 SETTLE-BEFORE-READY — one write, and the race it prevents
+
+`installMolecule` installs the FINAL model — atoms (sidecar-enriched), source, periodicity,
+AND the cleared selection — in ONE synchronous write; the "ready" signals (`getNAtoms()`,
+`openMolecule` resolves) fire at that write. **No second store write may follow** — it would
+land after "ready" and clobber whatever a consumer already did on the settled structure.
 
 ```mermaid
 sequenceDiagram
-    participant U as User / Sidebar
-    participant OPF as openProjectFile
-    participant WC as readWorkingCopy
-    participant OM as openMolecule → _applyWorkspacePayload
-    participant ST as canvas + selection store
-
-    U->>OPF: load path (+ confirmDiscard if dirty)
-    OPF->>WC: /api/workingcopy/open
-    WC-->>OPF: {data.xyz, atoms(sidecar), periodicity, annotations}
-    OPF->>OM: one payload (sidecar atoms ride IN)
-    OM->>ST: setStructure + adoptAtoms(atoms, sourceFile) + clearSelection
-    Note over ST: ONE synchronous write — model FULLY SETTLED.<br/>getNAtoms() now reports the count (the READY gate).
-    OM->>OM: await _anchorTimeline() (prune + persist HTTP)
-    OM-->>OPF: resolve  — NO second store write
-    Note over U,ST: A click after the gate STAYS. There is no late reset.
+    participant U as Sidebar
+    participant D as projects.parser.openMolecule(path)
+    participant PR as projects.readFile
+    participant IM as molview.data.installMolecule
+    participant BL as /api/build/load
+    U->>D: commit path (+confirmDiscard if dirty)
+    D->>PR: read .xyz  +  read .molstruct.json
+    PR-->>D: xyz text, sidecar text
+    D->>IM: {text, filename, sidecar}
+    IM->>BL: parse + apply sidecar
+    BL-->>IM: enriched atoms + periodicity + annotations
+    Note over IM: ONE synchronous write — model SETTLED. getNAtoms() = ready gate.
+    IM->>IM: await _anchorTimeline() (prune + persist)
+    D-->>U: resolve — NO second store write
 ```
 
-> **The 2026-07 regression that defined this rule.** The Modify load used to call
-> `loadIntoCanvas(...)` (which installed atoms → opened the ready gate) and *then*
-> `await store.adoptSession({selection: [], ...})` to overlay the sidecar atoms. The
-> `adoptSession` ran ~300 ms later (after `await _anchorTimeline()`'s HTTP) and reset
-> the selection to `[]` — wiping any atom the user clicked in the gap. Intermittent (a
-> race between the out-of-process click and the in-process second write; worse under
-> load). The fix folded the sidecar atoms into the single `openMolecule` call and
-> deleted the trailing write — the origin of `openProjectFile`.
+> **The 2026-07 regression that defined this.** The load used to install atoms (open the
+> ready gate) then `await adoptSession({selection:[]})` ~300 ms later, wiping a click made in
+> the gap. Fix: sidecar atoms ride in on the single install; the trailing write is gone.
 
 ---
 
-## §5 Where each consumer sits (the current map)
+## §5 Consumer map (shipped)
 
-| Consumer | Flow | Uses |
+| Consumer | `file:function` | Call |
 |---|---|---|
-| **Modify tab** — Load button / sidebar dblclick (`selection-bootstrap._commitFile`) | load a project file | `molview.data.openProjectFile(path, {confirmDiscard})` |
-| **Modify tab** — Save panel (`structure/save.js`) | save a project file | `molview.data.saveProjectFile(path, {overwrite})` + the overwrite dialog |
-| **Generators** (smiles/dna/peptide/rna/name/file) | install generated TEXT (no path) | `structurePage.loadIntoCanvas(text)` → `openMolecule({text})` (no sidecar, no project file) |
-| **Results structure inspector** (`inspectors/structure.js`) | render a results file, read-only, with host-supplied view params | `openMolecule({text, filename, periodicity})` directly (not a project working-copy; caller owns text + periodicity override) |
-| **Structure-optimization tab** (`static/viewer.js`, `index.html`) | **pre-MolView** — its own load path | *not migrated;* deferred with the structure-optimization/fdf work |
+| Modify — Load / sidebar dblclick | `modify/selection-bootstrap.js:_commitFile` | `projects.parser.openMolecule(path, {confirmDiscard})` |
+| Modify — Save panel | `lib/structure/save.js:_saveDataset` | `projects.parser.saveMolecule(path, {overwrite})` + dialog |
+| Transport — sidebar commit | `lib/transport/core.js:_showInMolview` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
+| Spectra — sidebar commit | `spectra/viewer.js:_commitStructure` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
+| Results structure inspector | `lib/inspectors/structure.js` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
+| Structure-optimization | `static/viewer.js:_commitStructure` | `projects.parser.openMolecule(path)`; reads state off the model |
+| Generators (smiles/dna/…) | `lib/structure/*.js` → `page.js:loadIntoCanvas` | `molview.data.installMolecule({text})` (not a file door) |
+| Trajectory inspector | `lib/trajectory/core.js` | `molview.data.installMolecule({text})` + `reloadFrames(...)` (frames, not a project-file open) |
 
-The generators and the read-only inspector already go through the **single open door**
-(`openMolecule`) — they are not project-file load/save and correctly do not use the
-coordinator. The structure-optimization tab predates MolView and is a separate,
-deferred migration.
+Clicking a **`.molstruct.json`** in the sidebar shows its JSON via the `source` inspector —
+it is a *metadata* file; open the paired `.xyz` to view the structure.
+
+---
+
+## §6 Load + mount is ONE shared path
+
+Transport, Spectra, and the Results inspector each "open the picked file via
+`projects.parser.openMolecule(path)`, then `molview.mount(host, ws, {mode, owner})`." That
+pairing is a single concern (show a picked molecule); a tab supplies only host / mode /
+owner. When each hand-rolled its own copy they drifted — the inspector's read raw XYZ and
+dropped the sidecar (the label bug). One path = the sidecar-correct load, for every tab.
+
+---
+
+## §7 Status
+
+**Shipped (2026-07).** Server seam applies the in-body sidecar (`build.py`,
+`sidecars/molstruct.py:load_text`); the doors live in `lib/projects/parser.js`; every
+consumer above is repointed; the old `molview.data` file stack + the standalone
+`/api/workingcopy/open|save` door path are gone. This doc is the contract, not a migration
+plan.

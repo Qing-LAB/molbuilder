@@ -47,7 +47,7 @@ flowchart TD
 | Core | `molbuilder/checkpoint.py` (`Repo`) | git plumbing + big-binary archiving/verify — content-agnostic |
 | CLI | `molbuilder snapshot …` | the terminal / SSH surface |
 | HTTP | `molbuilder/web/blueprints/checkpoint.py` (`/api/checkpoint/*`) | thin contract for the UI |
-| Sidebar UI | `lib/projects/checkpoint.js` | the run-history panel (see `projects-sidebar-guide.md` §4.5) |
+| Sidebar UI | `lib/projects/checkpoint.js` | the run-history panel (see `protocols/run-checkpoints.md` §6) |
 | On disk | `.git/`, `.binsnapshots/<sha>/` + `MANIFEST`, `.mbcheckpoint.json` | commits, archived binaries, and the archive-config |
 
 ---
@@ -68,7 +68,7 @@ flowchart TD
 
 **Sidebar panel:** the same actions (Init / Checkpoint-now / Tag / Restore) for a
 run directory — appears only at run-dir depth 3, explicit-refresh only
-(`projects-sidebar-guide.md` §4.5).
+(`protocols/run-checkpoints.md` §6).
 
 **HTTP API:** `/api/checkpoint/{init,state,list,diff,commit,tag,restore,config,migrate-manifest}`
 (shapes in `web-api.md` §2). `state` is cheap (no archive walk); `restore`
@@ -121,5 +121,5 @@ returns advisories on dirty/corrupt trees.
 - **`protocols/run-checkpoints.md`** — the contract: the phase model (§4), the
   **restore safety contract (§4.6)**, engine-aware classification (§9), the
   archive format (§10), and the **sidebar UI integration (§6)**.
-- **`projects-sidebar-guide.md` §4.5** — the sidebar run-history panel.
+- **`protocols/projects-sidebar.md`** — the sidebar module that hosts the run-history panel (a checkpoint-domain consumer of the sidebar).
 - **`web-api.md` §2** — the `/api/checkpoint/*` route shapes.
