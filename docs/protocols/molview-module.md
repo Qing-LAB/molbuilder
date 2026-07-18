@@ -116,7 +116,7 @@ The owner uses only these; it never sees storage:
 | **Frame axis (§14.5)** — present for trajectories, inert for a static structure: | |
 | `handle.setFrame(i)` / `frameCount()` / `currentFrame()` / `getFrame(i)` | select / count / read the current frame / read one frame's coords. |
 | `handle.play()` / `pause()` / `isPlaying()` | drive playback (the frame bar's play button calls these). |
-| `handle.setArrows(arrows)` / `setLabels(labels)` | draw the overlays the CONSUMER supplies; MolView draws what it's handed, it does not generate them (§14.5.1). |
+| `handle.setFrameArrows(arrowsPerFrame)` / `setArrows(arrows)` / `setLabels(labels)` | draw the overlay the CONSUMER supplies (per-frame arrow set, single-frame arrows, or labels); MolView draws what it's handed + owns only the `overlayOn` show/hide (§14.5.1). |
 
 `mode` = `"modify"` (editable) or `"readonly"` (view + inspect). `owner` = this molview's
 identity (e.g. `"modify"`, `"results:<id>"`) for namespaced persistence.
@@ -626,35 +626,48 @@ result from its model.
 MolView renders a **trajectory** — a coordinate **time series** — by adding **ONE step at the
 FRONT** of the pipeline: **frame-select**. Everything downstream is unchanged.
 
-**The data model (the model owns the frames).** A structure's **coordinates** may be a time
-series (relaxation steps, an MD run). The atoms are **the same across every frame** — same count,
-same elements, same order, same annotations; only the coordinates (and optional per-frame forces)
-change. A single static structure is just the one-frame case (`frameCount() === 1`). The frame
-axis lives in the `molview.data` model (`lib/molview/_frame-series.js`): frame-**independent**
-data — atom identity + annotations, and the cell — is stored **once**; only **coordinates** (and
-optional **forces**) are per-frame.
+**The data model — ONE owner of the coordinates (task #33).** A structure's **coordinates** may
+be a time series (relaxation steps, an MD run). The atoms are **the same across every frame** —
+same count, same elements, same order, same annotations; only the coordinates change. A single
+static structure is just the one-frame case (`frameCount() === 1`).
+
+The frame **coordinates live in exactly ONE place: the 3dmol native movie** inside the embed
+(`viewer.addModelsAsFrames` — 3dmol parses all frames + computes bonds once). That movie IS both
+the render buffer and the coordinate store; nothing else keeps a coords copy:
+
+- **The embed** conceals 3dmol. It exposes the coords through `getFrameCoords(i)` (read a frame
+  without moving the view), `getAnimationFrame()` (current index), and `getFrameCount()` — and
+  swaps frames with `setAnimationFrame(i)` → native `viewer.setFrame(i)`, no rebuild.
+- **`molview.data`** is a thin **index/metadata coordinator** — it holds the current-frame index
+  + count and forwards every frame op to the embed. It keeps **no coordinate array** (this is why
+  the old `_frame-series.js` deep-copy — a *second* owner — was removed: the movie is the owner).
+- **The consuming inspector** (e.g. `trajectory/core.js`) owns the non-coordinate data only:
+  per-frame **forces** (to build the arrow overlay) and the **plot scalars** (energy, max-force,
+  step). It feeds coords to the movie once at load and reads them back via `getFrame(i)` when it
+  needs them — it does **not** keep a parallel coords copy.
 
 > **Same-atoms invariant (the linchpin).** Every frame has the same atoms — same count, same
-> element order, same identity. A frame that violates this is **rejected with an error, never
-> coerced.** That one rule is why selection / measurement / k-grid **compose across frames for
-> free** (they key off the atom *index*, which never changes) and why the fast native-frame
-> render is safe (§14.5.2). `addFrame` / `reloadFrames` enforce it — a mismatch is a hard error
-> (same class as the §19.1 atom-count guard).
+> element order, same identity. `reloadFrames` / `addFrame` **reject** a frame that violates it
+> with a hard error (same class as the §19.1 atom-count guard) *before* handing anything to the
+> movie — never coerce. That one rule is why selection / measurement / k-grid **compose across
+> frames for free** (they key off the atom *index*, which never changes) and why the native-frame
+> render is safe (§14.5.2).
 
 **Per-frame SCALARS are NOT molview data.** Energy, max-force, and step number belong to the
-consuming inspector's plot, not the structure — the model holds only coordinates + optional force
-*vectors*.
+consuming inspector's plot, not the structure. **Forces are the consumer's too** — the model
+holds neither; the inspector keeps forces to build its arrow overlay (§14.5.1).
 
-The full frame surface on `molview.data` (reads join §19.2, mutators join §19.3):
+The full frame surface on `molview.data` (reads join §19.2, mutators join §19.3) — all of it
+delegates coordinate storage to the embed's movie:
 
 | Call | Kind | Meaning |
 |---|---|---|
-| `openMolecule(fileOrText)` | replace | Load a molecule (the ONE open door, §19.3). Loads a **single** frame today; **PLANNED** — splitting a multi-frame `.xyz` into all frames is not implemented, so populate frames explicitly via `reloadFrames`. |
-| `reloadFrames(frames, {forces?})` | replace | **Hard reload** — discard the current frames, recreate the whole set (a job re-ran). Resets to frame 0. |
-| `addFrame(coords, {forces?})` / `addFrames(list, {forces?})` | append | Add frame(s) to the existing set (a running job **streams** new steps). Does not move the current frame. |
-| `setFrame(i)` | select | Make frame `i` current — pushes that frame's coords onto the store, so subscribers re-render. Throws if out of range. |
-| `getFrame(i)` / `getForces(i)` | read | One frame's coords / forces (a defensive copy). |
-| `currentFrame()` / `frameCount()` / `currentForces()` | read | The current index / the number of frames / the current frame's forces. |
+| `openMolecule(fileOrText)` | replace | Load a molecule (the ONE open door, §19.3). Establishes atom identity from frame 0; multi-frame is populated explicitly via `reloadFrames`. |
+| `reloadFrames(frames, {arrowsPerFrame?})` | replace | **Hard reload** — validates the invariant, then builds the native movie from all frames (resets to frame 0). Optional baked-in per-frame arrow overlays ride along. |
+| `addFrame(coords)` / `addFrames(list)` | append | Append frame(s) to the live movie (a running job **streams** new steps). Does not move the current frame. |
+| `setFrame(i)` | select | Make frame `i` current — native `viewer.setFrame(i)` swap; fires the frame-change channel (§14.5, bar only). Throws if out of range. |
+| `getFrame(i)` | read | One frame's coords, read from the movie (`getFrameCoords`) — does not move the view. |
+| `currentFrame()` / `frameCount()` | read | The current index / the number of frames (both from the movie). |
 
 #### 14.5.0 Persistence — multi-frame extxyz + the molstruct sidecar (no new format)
 
@@ -706,22 +719,32 @@ overlays are NOT viewer toggles (see §14.5.1). The same operations are on the *
 |---|---|
 | `setFrame(i)` / `frameCount()` / `getFrame(i)` | select / count / read a frame (from `molview.data`, §14.5). |
 | `play()` / `pause()` / `isPlaying()` | step through frames + state. |
-| `setArrows(arrows)` / `setLabels(labels)` | **draw the overlays the CONSUMER supplies** (arrows / labels). MolView draws what it's handed; the consumer owns force→arrow generation + normalization (§14.5.1). |
+| `setFrameArrows(arrowsPerFrame)` / `setArrows(arrows)` / `setLabels(labels)` | hand MolView the overlay the CONSUMER supplies — a per-frame arrow set (baked into the movie) or a single-frame arrow/label set. MolView draws what it's handed; the consumer owns force→arrow generation (§14.5.1). |
 
-#### 14.5.1 Overlays — MolView draws what it's HANDED (the consumer owns generation)
+#### 14.5.1 Overlays — MolView draws what it's HANDED; ONE visibility switch
 
-**MolView is a viewer: it does NOT synthesize overlays.** It exposes `handle.setArrows(arrows)`
-and `handle.setLabels(labels)`; the **consumer** decides what to draw and hands it in. MolView
-forwards the specs to the embed and re-applies them across a per-frame redraw (a `setStructure`
-clears the embed's overlays), so the consumer's overlay survives frame changes — but MolView
-never builds or normalizes them.
+**MolView is a viewer: it does NOT synthesize overlays.** The **consumer** decides what to draw
+(from its own force data + scaling) and hands it in; MolView draws it and owns only *whether* it
+is shown. Two facts keep this clean and fast:
 
-- **Force arrows** are *consumer* data. The consumer holds the per-frame forces, converts them
-  to arrow specs (`{start, end, color, radius}`) with **its own** scaling/normalization (which
-  differs by use — per-frame max, trajectory-global max, a fixed physical scale…), and pushes
-  them via `setArrows`. On a frame change the consumer recomputes and re-pushes. MolView reads
-  no force data and computes no geometry. *(This corrects the earlier design where the viewer
-  pulled `currentForces()` and synthesized `atom + force` arrows — that is the consumer's job.)*
+1. **Data is precomputed once, not per frame.** The consumer builds the arrow specs for **every
+   frame in one pass** whenever a force option changes (scale / threshold / exclude-frozen) and
+   hands the whole set via **`setFrameArrows(arrowsPerFrame)`** — `arrowsPerFrame[i]` is the
+   `{start, end, color, radius}[]` for frame `i`. There is **no per-frame synthesis**: MolView
+   bakes the set alongside the native movie, so a frame swap draws `arrowsPerFrame[frame]` with
+   zero recompute. Changing an option rebuilds the set once and re-hands it; MolView refreshes
+   the current frame in place. (A single-frame `setArrows(arrows)` also exists for static views.)
+2. **ONE visibility switch, MolView-owned.** Whether the arrows are drawn is the embed's single
+   `overlayOn` flag — the **"show overlay" view-toggle** (View menu + quickbar; the overlay *is*
+   the force vectors). Toggling it only adds/removes the arrow layer; the native movie is never
+   touched, so on/off is instant and never rebuilds frames. A consumer must **not** keep its own
+   show/hide control (that was the "two unsynced toggles" bug) — it owns the arrow *computation*
+   knobs (scale/threshold/frozen) only.
+
+Arrows for a frame are drawn as **ONE batched `GLShape`** (`viewer.addArrow` returns a shape, the
+rest append via `shape.addArrow`) — one scene object + one geometry, not N shapes (≈7× cheaper
+per frame). Per-arrow colour is preserved (e.g. a gold-highlighted max force).
+
 - **Atom-index labels** are likewise supplied via `setLabels` (e.g. `{atoms:"all", format:"index"}`);
   a generic "show labels" is also available as a viewer chrome toggle in the embed's View menu.
 
@@ -730,26 +753,30 @@ never builds or normalizes them.
 > has no viewer handle, so `setArrows`/`setLabels` are no-ops there; that path is being retired
 > (task #28).
 
-#### 14.5.2 Rendering — native setFrame + overlay redraw (the fast path)
+#### 14.5.2 Rendering — native setFrame + batched overlay (SHIPPED, task #33)
 
-> **Status — PLANNED acceleration, not yet shipped.** The current build renders each frame with
-> a **full pipeline pass + `setStructure`** (setFrame swaps the store's coords → the render's
-> signature changes → one rebuild), exactly like any other data change. That is correct and
-> demo-proven, just not yet optimised. The two-tier native-buffer path below is the design
-> target (Step 5 / task #33); it slots into the existing §14.2 signature guard without changing
-> the frame API or the data model. Until it lands, treat this subsection as the intended design.
+Scrubbing/playing is the hot path, so a trajectory is loaded into 3dmol's **native frame buffer**
+once and swapped natively:
 
-Scrubbing/playing is the hot path, so MolView will use 3dmol's **native frame buffer**:
+- **Load once.** `reloadFrames` → the embed builds the whole trajectory as a native multi-frame
+  model (`viewer.addModelsAsFrames`): 3dmol parses every frame + computes bonds a single time,
+  `setStyle` is applied once and **persists across frames**, and picking is re-wired on the new
+  atoms. 3dmol now owns the coordinates (§14.5); the embed drops any coords copy.
+- **Swap natively.** `setFrame(i)` → **`viewer.setFrame(i)`** — a swap to the pre-parsed frame
+  with **no `setStyle` rebuild**. The overlay (force arrows) is a separate batched shape redrawn
+  for the frame (§14.5.1); labels/halos track by index. Frame swap fires the frame-change
+  channel so the bar's slider + counter follow the shown frame in the same step.
+- **Stream.** `addFrame` clones the frame-0 atoms template + stamps the new coords into a new
+  native frame (live-poll tail append), so a running job extends the movie without a full reload.
 
-- **Index changed, pipeline shape unchanged** (isolate / k-grid / selection stable): every
-  frame's pipeline output is already loaded into 3dmol as native frames, so MolView calls
-  **`viewer.setFrame(i)`** — a coordinate-buffer swap, **no geometry rebuild**. The overlays
-  (labels, force arrows) are separate shapes, so MolView redraws just those for the frame —
-  cheap (a handful of shapes) versus a full rebuild.
-- **Pipeline SHAPE changed** (isolate/k-grid toggle, dims, selection-while-isolating, or a
-  new/streamed frame set): MolView recomputes the per-frame coordinate lists under the new view
-  and reloads the native-frame set (`addModelsAsFrames`). This is the two-tier extension of the
-  §14.2 signature guard.
+Measured (152-frame / 81-atom trajectory): `data.setFrame` **51 ms → ~4 ms** (overlay off) and
+**167 ms → ~21 ms** (overlay on, arrows one batched shape) — the old "overwrite one model +
+`setStyle` per frame + N arrow shapes" path is gone.
+
+> **Hot-path rule.** Nothing on the per-frame path may clone or reconstruct the frame set. The
+> data-model probes the embed with the cheap `getAnimationKind()` (never `getAnimation()`, which
+> clones the whole animation incl. `arrowsPerFrame`) to pick the native swap; reading a frame's
+> coords for export uses `getFrameCoords(i)` (a single frame), never a full-series rebuild.
 
 ```mermaid
 flowchart TD
