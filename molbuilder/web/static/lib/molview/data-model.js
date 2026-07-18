@@ -1781,23 +1781,24 @@
             } catch (_) {}
         }
     }
-    function addFrame(coords) {
-        _requireMatch(coords, "addFrame");   // count vs the loaded structure
-        // Append to the live native movie (live-poll tail-append); 3Dmol owns the coords.
+    function addFrame(coords) { return addFrames([coords]); }
+    // Append one OR MANY new frames in a SINGLE batched operation (a live poll can
+    // bring several new steps at once).  Validates the same-atoms invariant for every
+    // frame BEFORE anything reaches the movie, then hands the whole batch to the
+    // embed's native appendFrames in one call + fires ONE frame-bar notification --
+    // never a per-frame loop of handle calls / notifies.
+    function addFrames(list) {
+        const frames = Array.isArray(list) ? list : [];
+        if (!frames.length) return frameCount();
+        frames.forEach(function (coords) { _requireMatch(coords, "addFrames"); });
         const h = _handle();
         const kind = (h && typeof h.getAnimationKind === "function")
             ? h.getAnimationKind() : null;
         if (h && kind === "trajectory" && typeof h.appendFrames === "function") {
-            try { h.appendFrames([coords]); } catch (_) {}
+            try { h.appendFrames(frames); } catch (_) {}   // embed appends the whole batch
         }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
-        _notifyFrame();   // frame count changed -> refresh the frame bar
-        return frameCount();
-    }
-    function addFrames(list) {
-        (Array.isArray(list) ? list : []).forEach(function (coords) {
-            addFrame(coords);
-        });
+        _notifyFrame();   // frame count changed -> refresh the frame bar ONCE
         return frameCount();
     }
     function setFrame(i) {
