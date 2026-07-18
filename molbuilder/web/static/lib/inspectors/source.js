@@ -139,22 +139,10 @@
             // before any inspector mounts.
 
             function _fetchRange(offset, maxBytes) {
-                const proj = window.molbuilder
-                          && window.molbuilder.projects;
-                if (proj && typeof proj.readRange === "function") {
-                    return proj.readRange(file, offset, maxBytes);
-                }
-                const url = "/api/files/read_range?path="
-                          + encodeURIComponent(file)
-                          + "&offset="    + encodeURIComponent(offset)
-                          + "&max_bytes=" + encodeURIComponent(maxBytes);
-                return fetch(url, { credentials: "same-origin" })
-                    .then((r) => r.json())
-                    .catch((e) => ({
-                        ok: false,
-                        error: "network error: "
-                             + (e && e.message ? e.message : String(e)),
-                    }));
+                // Read the byte window through the framework-injected reader
+                // (ctx.readRange -> projects.readRange, the ONE byte layer); the handler
+                // never hand-rolls an /api/files/* fetch.
+                return ctx.readRange(file, offset, maxBytes);
             }
 
             function _renderStatus() {

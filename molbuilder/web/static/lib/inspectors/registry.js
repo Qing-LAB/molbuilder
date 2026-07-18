@@ -59,15 +59,17 @@
  * Mount context (third arg to ``mount(host, file, ctx)``):
  *
  *   ctx = {
- *     showError(message): void,         // render error inside host
- *     readFile(file):  Promise<{ok, text, error?}>,  // /api/files/read
+ *     showError(message): void,                        // render error inside host
+ *     readFile(file, opts?):  Promise<{ok, text, error?}>,          // -> projects.readFile
+ *     readRange(file, offset, maxBytes, opts?): Promise<{ok, text, eof, …}>, // -> projects.readRange
  *   };
  *
- * The DISPATCHER is responsible for constructing the context (see
- * createDefaultContext below for the standard one).  We pass it
- * EXPLICITLY into mount() so a non-default dispatcher (e.g. one
- * with a cached readFile, or a custom error renderer) can swap
- * implementations without patching the registry module.
+ * The framework is high-level DISPATCH; it does NOT implement file reading.  The default
+ * context INJECTS the sidebar's file layer (``projects.readFile`` / ``readRange`` -- the
+ * ONE byte-access implementation), so handlers read through ``ctx.*`` and never hand-roll
+ * an /api/files/* fetch.  We pass ctx EXPLICITLY into mount() so a non-default dispatcher
+ * (e.g. a cached reader or a custom error renderer) can swap implementations without
+ * patching the registry.
  *
  * Inspectors share the host element exclusively while mounted.  The
  * registry's mount() calls the inspector's mount() and returns its
@@ -187,6 +189,13 @@
      * captures ``host`` so callers don't have to pass it twice.
      */
     function createDefaultContext(host) {
+        // The framework is high-level DISPATCH; it does NOT own a file reader.  It
+        // INJECTS the sidebar's file layer (``projects.readFile`` / ``readRange`` -- the
+        // ONE byte-access implementation) so handlers never hand-roll an /api/files/*
+        // fetch.  Handlers read through ``ctx.readFile`` / ``ctx.readRange``.
+        function _projects() {
+            return (root.molbuilder && root.molbuilder.projects) || null;
+        }
         return {
             showError(message) {
                 host.innerHTML = "";
@@ -195,27 +204,27 @@
                 div.textContent = message;
                 host.appendChild(div);
             },
+            // Read a file's bytes as text.  ``opts.maxBytes`` raises the read budget
+            // (source inspector does this for multi-MB .out/.log); the server caps at 16
+            // MB.  Delegates to ``projects.readFile`` -- same envelope ({ok, text, error}).
             readFile(file, opts) {
-                // ``opts.maxBytes`` overrides the server-side 1 MB
-                // default; the inspector picks based on file kind
-                // (source inspector raises this for .out/.log which
-                // are routinely > 1 MB on real SIESTA runs).  The
-                // server caps at _MAX_READ_BYTES (16 MB today, in
-                // blueprints/files.py).  Passing more than the
-                // server cap returns 400, not 413 -- callers should
-                // not exceed it.
-                opts = opts || {};
-                let url = "/api/files/read?path="
-                        + encodeURIComponent(file);
-                if (opts.maxBytes) {
-                    url += "&max_bytes=" + encodeURIComponent(opts.maxBytes);
+                const p = _projects();
+                if (!p || typeof p.readFile !== "function") {
+                    return Promise.resolve({ ok: false,
+                        error: "projects file package unavailable" });
                 }
-                return fetch(url)
-                    .then(r => r.json())
-                    .catch(e => ({
-                        ok: false,
-                        error: "network error: " + (e && e.message),
-                    }));
+                return p.readFile(file, opts);
+            },
+            // Read a byte WINDOW at ``offset`` (negative = from EOF) capped at
+            // ``maxBytes`` -- the paginated source viewer.  Delegates to
+            // ``projects.readRange`` (envelope {ok, text, eof, file_size, …}).
+            readRange(file, offset, maxBytes, opts) {
+                const p = _projects();
+                if (!p || typeof p.readRange !== "function") {
+                    return Promise.resolve({ ok: false,
+                        error: "projects file package unavailable" });
+                }
+                return p.readRange(file, offset, maxBytes, opts);
             },
         };
     }

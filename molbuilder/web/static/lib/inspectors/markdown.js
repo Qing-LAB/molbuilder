@@ -188,17 +188,16 @@
             // user navigates away mid-load; everything below short-
             // circuits on it.
             (async () => {
-                // 1. Read file + capture mtime.
+                // 1. Read file + capture mtime -- through the framework-injected reader
+                //    (ctx.readFile -> projects.readFile, the ONE byte layer); no raw
+                //    /api/files/read fetch in the handler.
                 let initialText = "";
                 try {
-                    const r = await fetch("/api/files/read?path=" +
-                        encodeURIComponent(file));
-                    if (aborted) return;
-                    const body = await r.json();
+                    const body = await ctx.readFile(file);
                     if (aborted) return;
                     if (!body.ok) {
                         elStatus.textContent = "Read failed: " +
-                            (body.error || ("HTTP " + r.status));
+                            (body.error || "unknown");
                         return;
                     }
                     initialText = body.text || "";
