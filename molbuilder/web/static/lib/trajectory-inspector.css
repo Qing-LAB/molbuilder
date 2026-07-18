@@ -70,48 +70,58 @@
     margin-bottom: var(--space-sm);
 }
 
-/* Force-vector producer: a compact strip of knobs that build the arrow
- * overlay the inspector hands to MolView (handle.setArrows).  Wraps so
- * the knobs flow onto one or two rows depending on width. */
+/* Force-vector overlay knobs: the arrow-computation params the inspector
+ * feeds MolView (handle.setFrameArrows).  A titled group with one inline
+ * "label + control" field per knob, all on a consistent baseline; wraps to
+ * the next row when the card is narrow. */
 .trajectory-force-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 16px;
-    padding: 10px 12px;
+    gap: var(--space-xs) var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
     background: var(--bg-card);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
 }
-.trajectory-force-controls label {
+/* Group title on its own row above the knobs (matches .convergence-summary-title). */
+.trajectory-force-controls-title {
+    flex: 0 0 100%;
+    font-weight: var(--weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+/* One knob = label + control inline, baseline-aligned.  Every field (incl. the
+ * checkbox) shares this so the strip reads as one consistent row. */
+.trajectory-force-controls .tfc-field {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-xs);
     margin: 0;
     min-width: 0;
     color: var(--text-secondary);
 }
+.trajectory-force-controls .tfc-label { white-space: nowrap; }
 .trajectory-force-controls label.check {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
     cursor: pointer;
     user-select: none;
 }
 .trajectory-force-controls label.check > input[type="checkbox"] {
     flex: 0 0 auto;
 }
+.trajectory-force-controls #force-scale { width: 7rem; }
+.trajectory-force-controls #force-min   { width: 4.5rem; }
 .trajectory-force-controls .row-with-readout {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-xs);
 }
-.trajectory-force-controls .row-with-readout > input { flex: 1; }
 .trajectory-force-controls .readout {
     font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 0.82rem;
+    font-size: var(--text-xs);
     color: var(--text-mono);
     min-width: 28px;
     text-align: right;
