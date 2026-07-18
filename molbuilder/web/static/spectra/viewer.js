@@ -125,10 +125,12 @@
         const mv   = window.molbuilder && window.molbuilder.molview;
         const ws   = window.molbuilder && window.molbuilder.workspace;
         const data = mv && mv.data;
+        const proj = window.molbuilder && window.molbuilder.projects;
         if (!mv || !ws || !data || typeof mv.mount !== "function"
-                || typeof data.openProjectFile !== "function") {
+                || !proj || !proj.parser
+                || typeof proj.parser.openMolecule !== "function") {
             setStatus("load-status",
-                "Viewer unavailable: the MolView module failed to load "
+                "Viewer unavailable: the MolView / projects module failed to load "
                 + "(check the template script tags).", "error");
             return;
         }
@@ -184,10 +186,14 @@
                 `Loading ${_basename(f)}…`, null);
             let text;
             try {
-                // Load the committed file into MolView's model (openProjectFile —
-                // the load coordinator, ONE store write) + mount the read-only card
-                // on first load; the mounted render reacts to later loads.
-                await data.openProjectFile(f);
+                // Load the committed file through the format-aware sidebar door
+                // (projects.parser.openMolecule — reads .xyz+.molstruct.json + installs
+                // the model in ONE write) + mount the read-only card on first load; the
+                // mounted render reacts to later loads.
+                const r = await proj.parser.openMolecule(f);
+                if (r && r.ok === false) {
+                    throw new Error(r.error || ("Could not load " + f));
+                }
                 const s = data.getStructure();
                 text = (s && s.text) || "";
                 if (!mvHandle) {

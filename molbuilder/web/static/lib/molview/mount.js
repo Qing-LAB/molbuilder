@@ -9,7 +9,7 @@
  * not persistence.
  *
  *   molview.mount(hostEl, workspace, { mode, owner }) -> Promise<handle>
- *   handle = { openMolecule(fileOrText), exportFile(), undo(),         // WRITE
+ *   handle = { installMolecule({text}), exportFile(), undo(),          // WRITE
  *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
  *              setArrows(arrows), setLabels(labels),                  //   overlays (§14.5.1)
@@ -303,15 +303,16 @@
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
             // WORKSPACE (the single door) and the render reacts to the resulting workspace
             // change (§18.2) -- the owner never touches storage or triggers a redraw itself.
-            openMolecule: function (fileOrText) {
-                // "Open this molecule."  ONE door: data.openMolecule dispatches
-                // { text, filename } vs a project-file path string, and atomically
-                // replaces the whole model (and resets the session-state timeline).
-                // (Named to MATCH data.openMolecule -- the handle's `save`/`load`
-                // would collide with the data model's timeline save/load(delta).)
-                return (typeof data.openMolecule === "function")
-                    ? data.openMolecule(fileOrText)
-                    : Promise.reject(new Error("molview.openMolecule: data.openMolecule missing"));
+            installMolecule: function (input) {
+                // "Install this molecule from TEXT into the model" ({ text, filename };
+                // generators / demos).  Atomically replaces the whole model + resets the
+                // session-state timeline.  A project-file PATH load goes through the
+                // format-aware sidebar door (projects.parser.openMolecule), NOT the
+                // mounted handle -- files are the projects package's job
+                // (structure-load-save-contract.md).
+                return (typeof data.installMolecule === "function")
+                    ? data.installMolecule(input)
+                    : Promise.reject(new Error("molview.installMolecule: data.installMolecule missing"));
             },
             exportFile: function () {
                 // "Serialize this molecule" -> {xyz, sidecar} bytes (openMolecule's inverse).

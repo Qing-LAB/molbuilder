@@ -942,7 +942,7 @@
         const periodicity = (Array.isArray(lat) && lat.length === 3)
             ? { cell: lat } : null;
         try {
-            await mv.data.openMolecule({
+            await mv.data.installMolecule({
                 text:        firstFrameXyz,
                 filename:    (state.label || "trajectory") + ".xyz",
                 periodicity: periodicity,
@@ -2238,6 +2238,17 @@
         return true;
     }
 
+    // Fingerprint of the EXCLUDED (frozen) atom set -- if it changes between polls
+    // (e.g. a sidecar with frozen_atoms lands mid-run), the excluded arrows change
+    // for EVERY frame, so the incremental arrow-append must fall back to a full
+    // rebuild.  Stable string so ordering doesn't produce false diffs.
+    function _frozenFingerprint(data) {
+        const rt = data && data.runtime_info;
+        const arr = rt && rt.frozen_atoms;
+        return Array.isArray(arr)
+            ? arr.slice().sort(function (a, b) { return a - b; }).join(",") : "";
+    }
+
     function _scfFingerprint(data) {
         // Compact stable string over the SCF-history fields that
         // makePlots/renderScfProgress branch on.  Used by
@@ -2417,13 +2428,23 @@
             if (!appendedOk) {
                 rebuildModel(wasAtEnd ? n - 1 : Math.min(prevFrame, n - 1));
             } else {
+                // Arrows: append ONLY the NEW frames' arrows (the coords companion) so
+                // a poll doesn't rebuild the whole per-frame overlay set.  EXCEPTION:
+                // if the excluded FROZEN set changed (a sidecar landed), every frame's
+                // arrows change -> full rebuild.  Build BEFORE moving the playhead so
+                // the tail draws its arrows.
+                if (_frozenFingerprint(oldData) !== _frozenFingerprint(state.data)) {
+                    drawForces();   // excluded set changed -> re-derive ALL frames
+                } else {
+                    const newArrows = [];
+                    for (let i = oldLen; i < newLen; i++) {
+                        newArrows.push(_buildArrowsForFrame(i));
+                    }
+                    mvData.appendFrameArrows(newArrows);
+                }
                 // Follow the tail if the user was watching the end; otherwise leave
                 // the playhead where it is.
                 if (wasAtEnd) showFrame(n - 1);
-                // Re-derive arrows for the current frame (the appended payload may
-                // also carry a newly-populated runtime_info.frozen_atoms that
-                // changes the excluded set).
-                drawForces();
             }
         } else {
             // Structure changed / frames shrank: full rebuild.  Keep the

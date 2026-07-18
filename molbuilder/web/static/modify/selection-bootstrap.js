@@ -247,21 +247,21 @@
             store.subscribe(_refreshLoadUI);
         }
 
-        // "Commit a structure file into the workspace" -- now a THIN wrapper over the
-        // ONE load coordinator, ``molview.data.openProjectFile`` (structure-load-save-
-        // contract.md).  All the composition -- read the codec-enriched working copy
-        // (text + sidecar atoms/periodicity/annotations), install through the single
-        // open door in ONE store write, fall back when the sidecar is missing -- lives
-        // in molview.data now, so this tab neither hand-wires the seam nor reaches
-        // around a door into the store.  The tab's only jobs: inject the dirty-canvas
-        // WARNING (a UI concern the DOM-free data layer can't own) and surface an
-        // error banner.  Used by the Load button + the sidebar dblclick (onCommit).
+        // "Commit a structure file into the workspace" -- a THIN wrapper over the ONE
+        // format-aware load door, ``projects.parser.openMolecule`` (structure-load-save-
+        // contract.md).  All the composition -- read the .xyz + .molstruct.json via the
+        // projects file package, parse + apply the sidecar server-side, install through
+        // the model primitive in ONE store write, tolerate a missing sidecar -- lives in
+        // the parser door now, so this tab neither hand-wires the seam nor reaches around
+        // a door into the store.  The tab's only jobs: inject the dirty-canvas WARNING (a
+        // UI concern the DOM-free layer can't own) and surface an error banner.  Used by
+        // the Load button + the sidebar dblclick (onCommit).
         async function _commitFile(path) {
             if (!path) return;
-            const data = window.molbuilder.molview
-                      && window.molbuilder.molview.data;
-            if (!data || typeof data.openProjectFile !== "function") {
-                // Non-MolView embed (no data model): last-resort direct source set.
+            const proj = window.molbuilder && window.molbuilder.projects;
+            if (!proj || !proj.parser
+                    || typeof proj.parser.openMolecule !== "function") {
+                // No parser door on this page: last-resort direct source set.
                 if (typeof store.setSourceFile === "function") store.setSourceFile(path);
                 return;
             }
@@ -269,7 +269,7 @@
             const confirmDiscard =
                 (warn && typeof warn.confirmDiscardUnsaved === "function")
                     ? () => warn.confirmDiscardUnsaved() : null;
-            const res = await data.openProjectFile(path, { confirmDiscard });
+            const res = await proj.parser.openMolecule(path, { confirmDiscard });
             if (res && res.ok === false && !res.cancelled && res.error) {
                 const s = document.getElementById("status");
                 if (s) { s.textContent = res.error; s.className = "status error"; }

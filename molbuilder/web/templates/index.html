@@ -327,13 +327,6 @@
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-{# sidecar-labels: viewer-is-truth contract helper.  Loaded BEFORE
-   viewer.js so the optimization tab's _commitStructure can use it
-   at Load time to pull frozen_atoms + regions into in-memory
-   state, then ship them in the Generate POST body (no
-   structure_path indirection).  Mirrors the same hook in
-   spectra.html and transport_calculation.html. #}
-<script src="{{ url_for('static', filename='lib/structure/sidecar-labels.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 </body>
 </html>

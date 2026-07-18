@@ -69,9 +69,9 @@
 
     function _bind(workspaceApi, modalApi) {
         if (!workspaceApi
-                || typeof workspaceApi.openMolecule !== "function") {
+                || typeof workspaceApi.installMolecule !== "function") {
             throw new Error(
-                "structure-page: molview.data API missing (openMolecule)");
+                "structure-page: molview.data API missing (installMolecule)");
         }
         if (!modalApi
                 || typeof modalApi.confirmDiscardUnsaved !== "function") {
@@ -103,7 +103,7 @@
         // can't re-derive) are forwarded so the model keeps them.
         var filename = (source && source.file) || null;
         function _apply() {
-            return _workspace.openMolecule({
+            return _workspace.installMolecule({
                 text:        structure.text,
                 filename:    filename,
                 source:      source || null,
@@ -112,7 +112,7 @@
                 // Sidecar-enriched atoms (a project-file open resolved these via
                 // readWorkingCopy) ride IN so the load installs the FINAL per-atom
                 // state in ONE write -- the caller must NOT follow up with a second
-                // store write (see openMolecule's load contract).  Omitted by
+                // store write (see installMolecule's load contract).  Omitted by
                 // generators / raw-text loads.
                 atoms:       structure.atoms || null,
             }).then(function () { return { ok: true }; });

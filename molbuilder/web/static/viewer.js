@@ -48,13 +48,10 @@
         labels: [],           // 3Dmol label objects so we can clear them
         fdf: null,
         pyscf: null,
-        // 2026-06-14 viewer-is-truth contract: hold the loaded
-        // structure's labels in memory at Load time so the Generate
-        // POST can ship them DIRECTLY in the body -- no path-pointer
-        // indirection on the server.  Empty defaults mean "no labels
-        // on this structure" (an explicit user claim, not a hint to
-        // the server to consult disk).  Populated by sidecarLabels
-        // .fetch() inside _commitStructure on each successful Load.
+        // viewer-is-truth: the loaded structure's labels, shipped DIRECTLY in the
+        // Generate POST body (no server path-indirection).  Populated by
+        // _applyLoadedModel straight off the MODEL (getFrozen/getRegions) after the ONE
+        // door loads it -- not an out-of-band sidecar fetch.  Empty = "no labels".
         frozen_atoms: [],
         regions: {},
     };
@@ -273,34 +270,35 @@
         if (form)  form.textContent  = "—";
     }
 
-    function applyStructureResult(r) {
-        state.xyz = r.xyz;
-        state.pdb = r.pdb;
-        state.title = r.title;
+    // Populate the page state + info panel FROM THE MODEL (the single source of truth
+    // the ONE load door installed) -- NOT from a hand-rolled /api/build/load response +
+    // a separate sidecar fetch.  The Generate/preflight POST reads state.xyz + the
+    // sidecar labels; the info panel reads the counts; all come off molview.data.
+    function _applyLoadedModel(filename) {
+        const s = (_data && typeof _data.getStructure === "function")
+            ? _data.getStructure() : null;
+        const atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        const elements = (_data && typeof _data.getElements === "function")
+            ? _data.getElements() : atoms.map((a) => a && a.element);
+        const n_atoms = atoms.length;
+        state.xyz = (s && s.text) || "";
+        state.title = filename;
         state.fdf = null;
         state.pyscf = null;
-        // Stash the full response in case a future feature needs
-        // to replay it without re-fetching (e.g. an in-tab undo
-        // step on the Generate-input form).  Pre-task-#306 this
-        // was load-bearing for the now-retired ``builder-structure``
-        // sessionStorage round-trip; today it's an inexpensive
-        // bookkeeping slot.
-        state.last_response = r;
-        $("info-title").textContent     = r.title;
-        $("info-atoms").textContent     = r.n_atoms;
-        $("info-residues").textContent  = r.n_residues || "—";
-        $("info-formula").textContent   = formula(r.elements);
-        // Update the BlockSize textbox's placeholder to show the
-        // auto-picked value for this structure.  Empty input still
-        // means "use auto"; the placeholder just makes it visible.
-        // Defensive: the schema-driven SIESTA form may not have
-        // rendered yet on the very first applyStructureResult()
-        // call after a navigation.  Skip silently; the placeholder
-        // is just a hint, not load-bearing.
+        // The sidecar rode in on the door; read the labels straight off the model
+        // (no out-of-band sidecarLabels.fetch -- that was the second read path).
+        state.regions      = (_data && typeof _data.getRegions === "function")
+            ? _data.getRegions() : {};
+        state.frozen_atoms = (_data && typeof _data.getFrozen === "function")
+            ? _data.getFrozen() : [];
+        $("info-title").textContent     = filename;
+        $("info-atoms").textContent     = n_atoms;
+        $("info-residues").textContent  = "—";
+        $("info-formula").textContent   = formula(elements);
         const bs = $("p-block-size");
         if (bs) {
             bs.placeholder =
-                "auto (" + autoBlockSize(r.n_atoms) + ", n=" + r.n_atoms + ")";
+                "auto (" + autoBlockSize(n_atoms) + ", n=" + n_atoms + ")";
         }
         $("generate-fdf").disabled = false;
         $("generate-pyscf").disabled = false;
@@ -320,7 +318,7 @@
         clearIssues("pyscf-issues", "pyscf-form-container");
         refreshPreflightDebounced.siesta();
         refreshPreflightDebounced.pyscf();
-        renderStructure();
+        _ensureMounted();
     }
 
     // ----- Tabs (SIESTA / PySCF) -------------------------------------
@@ -646,100 +644,52 @@
             const mySeq = ++_sidebarLoadSeq;
             const filename = f.split("/").pop();
             setStatus("load-status", `Loading ${filename}…`);
-            let text;
-            try {
-                const rr = await fetch(
-                    "/api/files/read?path=" + encodeURIComponent(f)
-                );
-                const rb = await rr.json();
-                if (!rr.ok || !rb.ok) {
-                    setStatus("load-status",
-                        rb.error || "Read failed.", "error");
-                    clearStructureInfo("load failed: " + filename);
-                    return;
-                }
-                text = rb.text;
-            } catch (e) {
+            // ONE load door (structure-load-save-contract.md): read the .xyz + its
+            // .molstruct.json sidecar via the concealed projects parser and install the
+            // MODEL -- labels/regions/frozen ride along, so the read-only viewer shows
+            // them.  This replaces the old SECOND load path (hand-rolled /api/files/read
+            // + /api/build/load with NO sidecar + a separate sidecarLabels.fetch), which
+            // dropped the labels the Molbuilder tab shows -- the exact inconsistency.
+            const _proj2 = window.molbuilder && window.molbuilder.projects;
+            if (!_proj2 || !_proj2.parser
+                    || typeof _proj2.parser.openMolecule !== "function") {
                 setStatus("load-status",
-                    "Network error reading " + filename + ": " + e.message,
-                    "error");
+                    "Projects file package unavailable "
+                    + "(structure-load-save-contract).", "error");
+                clearStructureInfo("load failed: " + filename);
+                return;
+            }
+            let res;
+            try {
+                res = await _proj2.parser.openMolecule(f);
+            } catch (e) {
+                if (mySeq !== _sidebarLoadSeq) return;
+                setStatus("load-status", _formatFetchError(e), "error");
                 clearStructureInfo("load failed: " + filename);
                 return;
             }
             if (mySeq !== _sidebarLoadSeq) return;     // superseded
-            try {
-                const r = await fetch("/api/build/load", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: text,
-                        filename: filename,
-                        format: ext,
-                    }),
-                }).then((x) => x.json());
-                if (mySeq !== _sidebarLoadSeq) return;
-                if (!r.ok) {
-                    setStatus("load-status",
-                        r.error || "Load failed.", "error");
-                    clearStructureInfo("load failed: " + filename);
-                    return;
-                }
-                applyStructureResult(r);
-                // 2026-06-14 contract: pull the file's sidecar
-                // labels into in-memory state.  These travel with
-                // the bytes when Generate fires; no server-side
-                // disk re-read.  ``sidecarLabels.fetch`` always
-                // resolves (missing sidecar -> empty defaults), so
-                // this Promise can't reject the Load.
-                const _sl = window.molbuilder
-                         && window.molbuilder.sidecarLabels;
-                if (_sl && typeof _sl.fetch === "function") {
-                    try {
-                        const labels = await _sl.fetch(f);
-                        state.frozen_atoms = labels.frozen_atoms || [];
-                        state.regions     = labels.regions || {};
-                    } catch (_) {
-                        // Defensive -- helper is documented as never
-                        // throwing; if it does, default to empty
-                        // rather than silently keep stale labels
-                        // from the prior load.
-                        state.frozen_atoms = [];
-                        state.regions     = {};
-                    }
-                } else {
-                    state.frozen_atoms = [];
-                    state.regions     = {};
-                }
+            if (!res || res.ok === false) {
                 setStatus("load-status",
-                    `Loaded ${r.n_atoms}-atom ${ext.toUpperCase()} `
-                    + `from ${filename}.`, "ok");
-                // Flip the load-bar readout to "Loaded: <name>" so
-                // the user sees the pick is in the viewer (not just
-                // selected in the sidebar).  Defined further below in
-                // the same scope; reachable via function hoisting.
-                if (typeof _refreshLoadButton === "function") {
-                    _refreshLoadButton();
-                }
-                if (typeof _refreshAutoDetectButton === "function") {
-                    _refreshAutoDetectButton();
-                }
-                // Phase 3 (2026-06-10): auto-fire the analyzer so
-                // the chemistry rationale is visible by default,
-                // not gated behind a button click.  Forms are NOT
-                // pre-filled — the user must click Auto-detect to
-                // apply suggestions.  This closes the gap where a
-                // user who ignored the button saw no chemistry
-                // analysis until Generate-time (when the validator
-                // fired).  See scientific-validation.md § 2.5.
-                if (typeof _autoAnalyzeOnLoad === "function") {
-                    _autoAnalyzeOnLoad(_sidebarLastFile);
-                }
-            } catch (e) {
-                if (mySeq !== _sidebarLoadSeq) return;
-                setStatus("load-status",
-                    _formatFetchError(e), "error");
+                    (res && res.error) || "Load failed.", "error");
                 clearStructureInfo("load failed: " + filename);
+                return;
             }
+            // Populate page state + info panel FROM THE MODEL (single source of truth) +
+            // mount the read-only card.  The Generate/preflight POST + info panel now
+            // read the model, not a parallel hand-rolled response.
+            _applyLoadedModel(filename);
+            const _atoms = ((_data && _data.getStructure && _data.getStructure())
+                            || {}).atoms;
+            setStatus("load-status",
+                `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
+                + `${ext.toUpperCase()} from ${filename}.`, "ok");
+            // Flip the load-bar readout to "Loaded: <name>", refresh the auto-detect
+            // button, and auto-fire the analyzer (chemistry rationale visible by default;
+            // see scientific-validation.md § 2.5).  All hoisted, defined below in scope.
+            if (typeof _refreshLoadButton === "function") _refreshLoadButton();
+            if (typeof _refreshAutoDetectButton === "function") _refreshAutoDetectButton();
+            if (typeof _autoAnalyzeOnLoad === "function") _autoAnalyzeOnLoad(_sidebarLastFile);
         }   // close _commitStructure
 
         // Universal commit subscription — dblclick on a structure
@@ -1107,20 +1057,15 @@
     // labels are reached via the knob bar so every consumer site
     // shares the same UX.
 
-    function renderStructure() {
-        if (!state.xyz) return;                 // nothing to show yet (pre-load)
-        if (!_mv || !_ws || !_data) return;     // molview stack missing (best-effort)
-        // Load the current structure text into MolView's model (the single source of
-        // truth) + mount the FULL fused card (mode:"readonly" — the build page reads
-        // the structure, it doesn't edit geometry through the viewer) on first render;
-        // later renders reload the model and the mounted render reacts.
-        _data.openMolecule({ text: state.xyz, filename: "structure.xyz" })
-            .then(function () {
-                if (_mvHandle) return;
-                return _mv.mount($("viewer-host"), _ws,
-                    { mode: "readonly", owner: "structure-opt" })
-                    .then(function (h) { _mvHandle = h; });
-            })
+    // The model is loaded by the ONE door (projects.parser.openMolecule); this ONLY
+    // ensures the read-only MolView card is mounted on first load.  The mounted render
+    // reacts to the model on its own -- we must NOT re-install bare text here (that was
+    // the old second load path, and it would drop the sidecar labels the door loaded).
+    function _ensureMounted() {
+        if (!_mv || !_ws || !_data || _mvHandle) return;
+        _mv.mount($("viewer-host"), _ws,
+                { mode: "readonly", owner: "structure-opt" })
+            .then(function (h) { _mvHandle = h; })
             .catch(function (e) {
                 try { setStatus("status", (e && e.message) || "render failed", "err"); }
                 catch (_) {}

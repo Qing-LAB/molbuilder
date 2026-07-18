@@ -349,7 +349,7 @@ async function refresh(opts) {
  * pseudo-prep, etc.  For the "write into current_dir/<filename>"
  * pattern, use :func:`saveToWorkspace` instead.
  */
-async function writeFile(path, text, opts) {
+export async function writeFile(path, text, opts) {
   // Phase 6e: binary path.  Blob | File only — TypedArray /
   // ArrayBuffer fall through to the text path and the server
   // 400's with "text must be a string" (callers needing raw
@@ -514,7 +514,7 @@ function isCancelError(err) {
  *  which is the no-argument form keyed on the sidebar's current
  *  selection.  ``opts.signal`` honoured (per docs/protocols/
  *  projects-sidebar.md § C3). */
-async function readFile(path, opts) {
+export async function readFile(path, opts) {
   return await apiRead(path, opts);
 }
 

@@ -9,7 +9,7 @@
  *                     Save has happened in this session; otherwise
  *                     the panel disables ("Save as" comes later).
  *
- * On a successful write the orchestrator's ``markSavedTo`` runs —
+ * On a successful write the save door's ``molview.data.markSaved`` runs —
  * the dirty bit clears, ``last_save_to`` is recorded, and any
  * subsequent Load / Generate WILL NOT fire the warning modal
  * unless the user re-edits.
@@ -116,23 +116,25 @@
     // contract removes.
 
     /**
-     * THE save -- now a THIN wrapper over the ONE save coordinator,
-     * ``molview.data.saveProjectFile`` (structure-load-save-contract.md).  The
-     * coordinator serialises the SETTLED model (exportFile), writes BOTH files --
-     * ``.xyz`` + ``.molstruct.json`` -- atomically via /api/workingcopy/save, and
-     * marks saved (canvas dirty=false + store source re-anchor, one door).  save.js
-     * no longer POSTs the endpoint or pokes the store itself.
+     * THE save -- a THIN wrapper over the ONE format-aware save door,
+     * ``projects.parser.saveMolecule`` (structure-load-save-contract.md).  The door
+     * serialises the SETTLED model (molview.data.exportFile), writes BOTH files --
+     * ``.xyz`` + ``.molstruct.json`` -- through the projects file package
+     * (projects.writeFile), and marks saved (canvas dirty=false + store source
+     * re-anchor).  save.js no longer POSTs an endpoint or pokes the store itself.
      *
-     * Overwrite is UI policy and stays HERE: the coordinator returns
-     * ``needsOverwrite`` on a 409 (file exists); we confirm via the dialog and retry
-     * with ``overwrite:true``.  A failure is SURFACED (returned), never swallowed.
+     * Overwrite is UI policy and stays HERE: the door returns ``needsOverwrite`` when
+     * the target exists; we confirm via the dialog and retry with ``overwrite:true``.
+     * A failure is SURFACED (returned), never swallowed.
      */
     function _saveDataset(path) {
-        if (!_workspace || typeof _workspace.saveProjectFile !== "function") {
-            return Promise.resolve({ ok: false, error: "save: coordinator unavailable" });
+        var proj  = root.molbuilder && root.molbuilder.projects;
+        var saver = proj && proj.parser;
+        if (!saver || typeof saver.saveMolecule !== "function") {
+            return Promise.resolve({ ok: false, error: "save: parser door unavailable" });
         }
         var dialog = root.molbuilder && root.molbuilder.structureSaveDialog;
-        return _workspace.saveProjectFile(path, { overwrite: false }).then(function (r) {
+        return saver.saveMolecule(path, { overwrite: false }).then(function (r) {
             if (r.ok) return { ok: true, path: r.path };
             if (r.needsOverwrite && dialog
                     && typeof dialog.confirmOverwrite === "function") {
@@ -140,7 +142,7 @@
                     if (!proceed) {
                         return { ok: false, cancelled: true, error: "Save cancelled." };
                     }
-                    return _workspace.saveProjectFile(path, { overwrite: true })
+                    return saver.saveMolecule(path, { overwrite: true })
                         .then(function (r2) {
                             return r2.ok
                                 ? { ok: true, path: r2.path }
@@ -237,15 +239,16 @@
                 return { ok: false, error: "Please enter a file name." };
             }
             var finalPath = dir + "/" + base + ".xyz";
-            // ONE unified save (§4.0.1): writes the whole dataset (.xyz + .json)
-            // atomically via /api/workingcopy/save.  Overwrite is ALWAYS confirmed
-            // inside _saveDataset (409 -> confirm -> retry); no save-back skip.
+            // ONE save door: _saveDataset -> projects.parser.saveMolecule, which
+            // writes the whole dataset via projects.writeFile x2 (.xyz + then
+            // .molstruct.json).  Overwrite is ALWAYS confirmed inside _saveDataset
+            // (needsOverwrite -> confirm -> retry with overwrite:true); no save-back skip.
             return _saveDataset(finalPath).then(function (res) {
                 // On a successful write, refresh the sidebar listing so the new
                 // <name>.xyz (+ its sidecar) appears without a manual reload --
-                // the save wrote through /api/workingcopy/save, which the projects
-                // file layer doesn't observe on its own.  Best-effort; a refresh
-                // failure never fails the save.
+                // the door's writeFile calls do auto-refresh the current dir, but
+                // this is a belt-and-braces refresh for the save target.  Best-effort;
+                // a refresh failure never fails the save.
                 if (res && res.ok && _projects
                         && typeof _projects.refresh === "function") {
                     try { Promise.resolve(_projects.refresh()).catch(function () {}); }
@@ -259,13 +262,13 @@
     var _wired = false;
     var _unsubCanvas = null;
     // 2026-06-12: while a Save click is in flight, the workspace's
-    // subscriber callback fires DURING ``_postSaveSuccess`` (because
-    // ``markSavedTo`` + ``adoptSession`` both call ws.notify()).  The
+    // subscriber callback fires DURING the save (the door's
+    // ``molview.data.markSaved`` clears dirty + re-anchors the store -> notify()).  The
     // subscriber re-runs ``refreshState`` mid-save, which would re-
     // enable the button on a successful write — letting the user
-    // click Save AGAIN before the first save's /api/workingcopy/save
-    // call had finished and triggering a second dialog/POST
-    // for the same workspace.  Track the in-flight state at module
+    // click Save AGAIN before the first save's saveMolecule
+    // (projects.writeFile x2) had finished and triggering a second
+    // dialog/write for the same workspace.  Track the in-flight state at module
     // scope and OR it into the disabled computation so the button
     // stays disabled until the click handler's .then() clears the
     // flag.  Cleared on both success and failure paths.

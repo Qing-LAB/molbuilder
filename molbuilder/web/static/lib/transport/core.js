@@ -200,24 +200,32 @@
      * Modify mounts, in full "modify" mode (interactive selection + cell panel +
      * view menu); the geometry op-tabs are Modify-only and not part of the mount.
      *
-     * Load the project file into MolView's data model (``openProjectFile`` — the
-     * load coordinator, ONE store write) then mount the fused card into the empty
-     * host on FIRST commit; later commits just reload the model and the mounted
-     * render reacts.  Best-effort: if the molview stack failed to load, the tab
-     * still works as a form generator (the viewer is an inspection aid).
+     * Load the project file through the format-aware sidebar door
+     * (``projects.parser.openMolecule`` — reads the .xyz+.molstruct.json via the
+     * projects file package + installs the model in ONE write) then mount the fused
+     * card into the empty host on FIRST commit; later commits just reload the model
+     * and the mounted render reacts.  Best-effort: if the molview/projects stack
+     * failed to load, the tab still works as a form generator (the viewer is an aid).
      */
     function _showInMolview(path) {
         var mv   = root.molbuilder && root.molbuilder.molview;
         var ws   = root.molbuilder && root.molbuilder.workspace;
-        var data = mv && mv.data;
+        var proj = root.molbuilder && root.molbuilder.projects;
         var host = _$("transport-molview-host");
-        if (!mv || !ws || !data || !host
+        if (!mv || !ws || !host
                 || typeof mv.mount !== "function"
-                || typeof data.openProjectFile !== "function") {
+                || !proj || !proj.parser
+                || typeof proj.parser.openMolecule !== "function") {
             return;
         }
-        data.openProjectFile(path).then(function () {
-            if (_mvHandle) return;   // already mounted; openProjectFile redrew it
+        proj.parser.openMolecule(path).then(function (r) {
+            if (r && r.ok === false) {
+                if (root.console) {
+                    root.console.error("[transport] load failed", r.error);
+                }
+                return;
+            }
+            if (_mvHandle) return;   // already mounted; the reload redrew it
             return mv.mount(host, ws, { mode: "modify", owner: "transport" })
                 .then(function (h) { _mvHandle = h; });
         }).catch(function (e) {

@@ -883,7 +883,7 @@
         _refreshTitleReadout();   // initial paint (in case a structure is already loaded)
         // The old "clear undo history on save/load/discard" subscriber
         // is gone: the state timeline now lives on the model (§19.5),
-        // and ``openMolecule`` re-anchors it (prune + reset to index 0) while
+        // and ``installMolecule`` re-anchors it (prune + reset to index 0) while
         // ``save(1)`` prunes any abandoned tail -- the model owns
         // that lifecycle, so there is no in-viewer stack to clear.
 
@@ -1051,7 +1051,7 @@
         // ``load(0)`` reloads the current committed state from the
         // session mirror and applies it to the WHOLE model WITHOUT
         // re-anchoring the timeline or a network round-trip (unlike
-        // ``openMolecule``, the NEW-molecule door).  The data model
+        // ``installMolecule``, the NEW-molecule door).  The data model
         // reads the persisted snapshot itself, so this module no
         // longer touches the persistence layer here.  It restores
         // structure + selection + view + dirty + timeline position into molview.data; the
@@ -1128,7 +1128,7 @@
     // body is built INSIDE the module (data-model.applyOp._structureBody from molview.data) and
     // op results flow store -> UI via the molview.data subscription, not a consumer hand-off hook.
     // Load a structure text blob (XYZ or PDB) through the UNIFIED
-    // open door (``molview.data.openMolecule({text, filename})``), which
+    // open door (``molview.data.installMolecule({text, filename})``), which
     // sniffs the format from the filename + content and installs the
     // whole model atomically.  The function is named
     // ``loadStructureText`` because it genuinely accepts both formats.
@@ -1140,14 +1140,14 @@
     window.molbuilder.loadStructureText = async function (text, filename) {
         setStatus(`Loading ${filename}…`);
         const d = _data();
-        if (!d || typeof d.openMolecule !== "function") {
+        if (!d || typeof d.installMolecule !== "function") {
             const msg = "Data model unavailable; cannot load structure.";
             setStatus(msg, "error");
             throw new Error(msg);
         }
         let r;
         try {
-            r = await d.openMolecule({ text: text, filename: filename });
+            r = await d.installMolecule({ text: text, filename: filename });
         } catch (e) {
             const msg = (e && e.message) ? e.message : String(e);
             setStatus(msg, "error");

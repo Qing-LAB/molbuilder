@@ -485,15 +485,10 @@
     // (viewer.js ``_sidebarLastFile``) and parallel to /transport-
     // calculation (lib/transport/core.js ``_currentStructureFile``).
     let _committedStructureFile = "";
-    // 2026-06-14 viewer-is-truth contract Phase 2: cache the
-    // committed structure's labels at Load time so the Generate
-    // POST can ship them DIRECTLY (no server-side path-indirected
-    // sidecar re-read).  Populated by ``sidecarLabels.fetch()``
-    // inside _commitStructureForSpectra below; consumed by the
-    // /api/spectra/render POST.  Empty defaults mean "no labels"
-    // (the explicit truth, not "consult disk").
-    let _committedFrozenAtoms = [];
-    let _committedRegions = {};
+    // viewer-is-truth: the committed structure's labels (frozen/regions) are read
+    // straight off the MODEL (molview.data.getFrozen/getRegions) at Generate time -- see
+    // generateScript -- NOT cached from an out-of-band sidecar fetch.  We keep only the
+    // committed PATH above for the server-side sidecar fallback (body.structure_path).
 
     // ----- Status helper ----------------------------------------
     function setStatus(el, msg, kind) {
@@ -595,26 +590,9 @@
             // truth contract: same bug class as /structure-
             // optimization's prior ``getCurrentFile()`` read.
             _committedStructureFile = f;
-            // Phase 2: pull the file's sidecar labels into in-
-            // memory state so the Generate POST can ship them
-            // directly.  ``sidecarLabels.fetch`` always resolves
-            // (missing sidecar -> empty defaults), so this can't
-            // reject the Load.
-            const _sl = window.molbuilder
-                     && window.molbuilder.sidecarLabels;
-            if (_sl && typeof _sl.fetch === "function") {
-                try {
-                    const labels = await _sl.fetch(f);
-                    _committedFrozenAtoms = labels.frozen_atoms || [];
-                    _committedRegions    = labels.regions || {};
-                } catch (_) {
-                    _committedFrozenAtoms = [];
-                    _committedRegions    = {};
-                }
-            } else {
-                _committedFrozenAtoms = [];
-                _committedRegions    = {};
-            }
+            // The committed structure's labels are read off the MODEL at Generate time
+            // (generateScript), not fetched here -- no out-of-band sidecar read.  We only
+            // pin the committed PATH above (for the server-side sidecar fallback).
             await _reloadSchemaForCurrentStructure(fs).catch(() => {});
         }
         // Universal commit subscription — dblclick on a structure
@@ -771,20 +749,24 @@
         setStatus(els.generateStatus, "Rendering…");
         clearOutputs();
 
+        // Read the committed structure's labels straight off the MODEL (the single
+        // source of truth the sidebar parser door loaded) -- NOT a separate sidecar
+        // re-read.  ``structureText`` IS the model's committed text (getStructureText <-
+        // setStructureText <- projects.parser.openMolecule), so the labels match it.
+        const _md = ((window.molbuilder || {}).molview || {}).data;
         const body = {
             // ``structure_text`` (renamed 2026-05-22 from the
             // misleading ``xyz``): server sniffs XYZ vs PDB from
             // the first line of the content.
             structure_text: structureText,
             params:         collectParams(),
-            // 2026-06-14 viewer-is-truth contract: ship the
-            // labels we pulled in at Load time directly.  Server
-            // applies them verbatim; only when these keys are
-            // ABSENT does it fall back to disk sidecar discovery
-            // against ``structure_path``.  See _shared.apply_
-            // labels_to_struct on the server.
-            frozen_atoms:   _committedFrozenAtoms || [],
-            regions:        _committedRegions || {},
+            // viewer-is-truth: ship the model's labels directly.  Server applies them
+            // verbatim; only when ABSENT does it fall back to disk sidecar discovery
+            // against ``structure_path`` (_shared.apply_labels_to_struct).
+            frozen_atoms:   (_md && typeof _md.getFrozen === "function")
+                                ? _md.getFrozen() : [],
+            regions:        (_md && typeof _md.getRegions === "function")
+                                ? _md.getRegions() : {},
         };
         // Pass the current sidebar XYZ path (if any) so the server
         // can apply the .molstruct.json sidecar to the structure

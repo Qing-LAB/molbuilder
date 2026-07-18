@@ -8,8 +8,11 @@
  *                   (window.molbuilder.projects.*)
  *   list.js      -- breadcrumb + entry list + per-entry buttons +
  *                   openDir
- *   forms.js     -- + New project / + New subdir / + Upload file
+ *   mutation-bar.js -- New project / New folder / Upload action bar
  *   preview.js   -- file-preview modal
+ *   parser.js    -- format-aware structure doors (openMolecule /
+ *                   saveMolecule)
+ *   checkpoint.js -- run-history panel (checkpoint-domain consumer)
  *
  * This entry file imports each module, mounts the public API on
  * window, and runs the bootstrap (resolve projects/ root via
@@ -29,8 +32,14 @@ import {
 import { initForms } from "./projects/mutation-bar.js";
 import { initPreview } from "./projects/preview.js";
 import { initCheckpointPanel } from "./projects/checkpoint.js";
+import { parser } from "./projects/parser.js";
 
 window.molbuilder = window.molbuilder || {};
+// The format-aware sub-namespace: projects.parser.openMolecule / saveMolecule (the
+// structure-file DOORS).  Attached alongside the format-blind readFile/writeFile so the
+// whole file-handling surface lives under ONE `projects` namespace
+// (docs/protocols/structure-load-save-contract.md §0).
+projects.parser = parser;
 window.molbuilder.projects = projects;
 // Module-init contract (design.md "Module init contract"): also
 // register with the runtime so consumers can ``whenReady("projects")``

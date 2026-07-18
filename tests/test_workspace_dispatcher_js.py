@@ -16,11 +16,15 @@ Two layers, two docs, pinned here:
   + on-disk draft), format-blind.  Contract:
   ``docs/protocols/workspace-contract.md`` §3.5 / §4.
 
-The molecule + document doors are ``molview.data.openMolecule(input)``
-(input = ``{text, filename}`` OR a project-file path string; brings a NEW
-molecule in and RESETS the timeline) and ``molview.data.exportFile()``
-(whole model -> ``{xyz, sidecar}`` project-file bytes, openMolecule's
-inverse).  The SESSION-STATE timeline (§19.5) is ``save(delta=0)`` /
+The model install / serialise primitives are
+``molview.data.installMolecule({text, filename[, sidecar, ...]})`` (parses
+the text via /api/build/load, installs it in ONE store write, RESETS the
+timeline) and ``molview.data.exportFile()`` (whole model -> ``{xyz,
+sidecar}`` project-file bytes, installMolecule's inverse).  The FORMAT-AWARE
+project-file DOORS (``openMolecule(path)`` / ``saveMolecule(path)``) live in
+the projects package (``molbuilder.projects.parser``), NOT on molview.data,
+and are tested there — this file does NOT exercise them.  The SESSION-STATE
+timeline (§19.5) is ``save(delta=0)`` /
 ``load(delta=0)`` -- checkpoint / restore parameterized by an index delta
 (``save(1)`` = a new checkpoint, ``load(-1)`` = Retract, ``load(0)`` =
 reload from the mirror).  The pre-carve + superseded doors are GONE and
@@ -33,8 +37,8 @@ The stores the harness mounts (``structureCanvas`` = canvas-state,
 ``selection.store``) are MolView-INTERNAL (molview-module.md §19).  A
 few tests drive them directly to SET UP fixture state cheaply; the
 CONTRACT under test is always read/written through the public
-``molview.data.*`` surface.  Where an open must be exercised end-to-end
-the real ``openMolecule()`` door is used with a stubbed ``/api/build/load``.
+``molview.data.*`` surface.  Where an install must be exercised end-to-end
+the real ``installMolecule()`` primitive is used with a stubbed ``/api/build/load``.
 """
 from __future__ import annotations
 
@@ -142,7 +146,7 @@ def _run_node(snippet: str) -> object:
     return json.loads(last)
 
 
-# A load fixture: stub ``/api/build/load`` so ``molview.data.openMolecule()``
+# A load fixture: stub ``/api/build/load`` so ``molview.data.installMolecule()``
 # can drive the WHOLE atomic-load pipeline (§19.3.1) without a server.  Returns
 # a 3-atom water payload in the WorkspacePayload wire shape (§21).
 _STUB_WATER_FETCH = """
@@ -182,6 +186,7 @@ window.molbuilder.molview.data.attachViewHandle((function () {
         appendFrames: function (list) {
             if (_frames) list.forEach((f) => _frames.push(f.slice().map((p) => p.slice())));
         },
+        appendFrameArrows: function () { /* overlay-only; frames unaffected */ },
         setAnimationFrame: function (i) {
             if (_frames && i >= 0 && i < _frames.length) _cur = i;
         },
@@ -210,8 +215,7 @@ _DATA_SURFACE = sorted([
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
     "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
     "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
-    "markDirty", "markSaved", "openMolecule", "openProjectFile",
-    "saveProjectFile", "readWorkingCopy", "exportFile",
+    "markDirty", "markSaved", "installMolecule", "exportFile",
     "save", "load",
     "generate", "applyOp",
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
@@ -219,7 +223,7 @@ _DATA_SURFACE = sorted([
     # onFrameChange: the frame-only notification channel the frame bar subscribes
     # to (separate from the selection store, so a frame swap doesn't re-render the
     # panel + steal input focus during playback).
-    "setFrameArrows", "onFrameChange",
+    "setFrameArrows", "appendFrameArrows", "onFrameChange",
     # getForces/currentForces removed with the frame-series (task #33): forces are
     # the CONSUMER's data now, and coords are owned by the embed movie -- getFrame
     # reads a frame through the handle, not a data-model coords copy.
@@ -261,7 +265,7 @@ class TestDataModelSurface:
         assert out == _DATA_SURFACE
 
     def test_obsolete_doors_are_absent(self):
-        """The unified I/O is openMolecule()+exportFile()+save(delta)/
+        """The unified I/O is installMolecule()+exportFile()+save(delta)/
         load(delta); the pre-carve + superseded fixed-delta timeline
         doors must NOT be reachable on the public surface."""
         out = _run_node(
@@ -275,7 +279,7 @@ class TestDataModelSurface:
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"
             "console.log(JSON.stringify({\n"
-            "  openMolecule: typeof d.openMolecule,\n"
+            "  installMolecule: typeof d.installMolecule,\n"
             "  exportFile:   typeof d.exportFile,\n"
             "  save:         typeof d.save,\n"
             "  load:         typeof d.load,\n"
@@ -444,13 +448,13 @@ class TestGetStructureNullIffEmpty:
                        "atoms": [], "isDirty": False}
 
     def test_nonnull_with_atoms_after_a_load(self):
-        """§19.3.1 coherence invariant: after ONE openMolecule() the model is
+        """§19.3.1 coherence invariant: after ONE installMolecule() the model is
         populated across atoms + structure + periodicity together —
         getStructure() is non-null AND carries the loaded atoms."""
         out = _run_node(
             _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
             "  const s = d.getStructure();\n"
             "  console.log(JSON.stringify({\n"
             "    isEmpty:  d.isEmpty(),\n"
@@ -466,112 +470,13 @@ class TestGetStructureNullIffEmpty:
         assert out["elements"] == ["O", "H", "H"]
         assert out["head"] == "3"
 
-    def test_openMolecule_accepts_a_project_file_path_string(self):
-        """§19.3 + structure-load-save-contract.md: openMolecule() takes either
-        ``{text, filename}`` OR a project-file path string.  The string form is
-        the LOAD COORDINATOR (``openProjectFile``): it reads the codec-enriched
-        working copy (``readWorkingCopy``) and installs it in ONE store write.
-        It does NOT delegate back to the tab (the old ``molbuilderTab.commitFile``
-        inversion is gone)."""
-        stub = (
-            "global.window.fetch = function (url, opts) {\n"
-            "  return Promise.resolve({ ok: true, json: function () {\n"
-            "    return Promise.resolve({\n"
-            "      ok: true, source_format: 'xyz', n_atoms: 3,\n"
-            "      text: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n',\n"
-            "      data: { xyz: '3\\nh2o\\nO 0 0 0\\nH 0.957 0 0\\nH -0.24 0.927 0\\n',\n"
-            "              sidecar: {} },\n"
-            "      atoms: [\n"
-            "        {index:0, element:'O', x:0,     y:0,     z:0, regions:[], is_frozen:false},\n"
-            "        {index:1, element:'H', x:0.957, y:0,     z:0, regions:[], is_frozen:false},\n"
-            "        {index:2, element:'H', x:-0.24, y:0.927, z:0, regions:[], is_frozen:false}],\n"
-            "      periodicity: { cell: null }, annotations: {},\n"
-            "    });\n"
-            "  }});\n"
-            "};\n"
-        )
-        out = _run_node(
-            stub +
-            "const d = window.molbuilder.molview.data;\n"
-            "let delegated = false;\n"
-            "window.molbuilder.molbuilderTab = { commitFile: () => { delegated = true; } };\n"
-            "d.openProjectFile('/projects/p/a.xyz').then((r) => {\n"
-            "  console.log(JSON.stringify({ ok: !!(r && r.ok),\n"
-            "    nAtoms: d.getElements().length,\n"
-            "    src: d.getSourceFile(),\n"
-            "    delegated: delegated }));\n"
-            "});")
-        assert out["ok"] is True
-        assert out["nAtoms"] == 3
-        assert out["src"] == "/projects/p/a.xyz"
-        assert out["delegated"] is False, "coordinator must NOT delegate to the tab"
-
-    def test_saveProjectFile_writes_the_pair_and_marks_saved(self):
-        """structure-load-save-contract: saveProjectFile serialises the model
-        (exportFile), POSTs the whole dataset to /api/workingcopy/save with the
-        target + overwrite=false, and on success clears the dirty bit (markSaved).
-        This is the write logic that moved OUT of save.js into molview.data."""
-        stub = (
-            "let savePost = null;\n"
-            "global.window.fetch = function (url, opts) {\n"
-            "  const body = (opts && opts.body) ? JSON.parse(opts.body) : {};\n"
-            "  const j = (url === '/api/workingcopy/save')\n"
-            "    ? (savePost = {target: body.target, overwrite: body.overwrite,\n"
-            "                   hasXyz: !!(body.data && body.data.xyz)},\n"
-            "       {ok: true, saved: body.target})\n"
-            "    : {ok: true, source_format: 'xyz', n_atoms: 1,\n"
-            "       text: '1\\nx\\nH 0 0 0\\n',\n"
-            "       atoms: [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}]};\n"
-            "  return Promise.resolve({ ok: true, status: 200,\n"
-            "    json: function () { return Promise.resolve(j); } });\n"
-            "};\n"
-        )
-        out = _run_node(
-            stub +
-            "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: '1\\nx\\nH 0 0 0\\n', filename: '/p/x.xyz' })\n"
-            "  .then(() => d.markDirty())\n"
-            "  .then(() => d.saveProjectFile('/projects/p/out.xyz', { overwrite: false }))\n"
-            "  .then((r) => { console.log(JSON.stringify({\n"
-            "    r: r, post: savePost, dirtyAfter: d.isDirty() })); });")
-        assert out["r"] == {"ok": True, "path": "/projects/p/out.xyz"}
-        assert out["post"]["target"] == "/projects/p/out.xyz"
-        assert out["post"]["overwrite"] is False   # first try never clobbers
-        assert out["post"]["hasXyz"] is True        # the whole dataset rode in
-        assert out["dirtyAfter"] is False           # markSaved cleared the dirty bit
-
-    def test_saveProjectFile_signals_needsOverwrite_on_409(self):
-        """A 409 (file exists) is surfaced as {needsOverwrite:true} so the UI
-        layer confirms + retries with overwrite:true -- the overwrite DIALOG
-        stays out of the DOM-free data layer."""
-        stub = (
-            "global.window.fetch = function (url, opts) {\n"
-            "  if (url === '/api/workingcopy/save') {\n"
-            "    return Promise.resolve({ ok: false, status: 409,\n"
-            "      json: function () { return Promise.resolve({ ok: false, error: 'exists' }); } });\n"
-            "  }\n"
-            "  return Promise.resolve({ ok: true, status: 200, json: function () {\n"
-            "    return Promise.resolve({ ok: true, source_format: 'xyz', n_atoms: 1,\n"
-            "      text: '1\\nx\\nH 0 0 0\\n',\n"
-            "      atoms: [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}] });\n"
-            "  } });\n"
-            "};\n"
-        )
-        out = _run_node(
-            stub +
-            "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: '1\\nx\\nH 0 0 0\\n', filename: '/p/x.xyz' })\n"
-            "  .then(() => d.saveProjectFile('/projects/p/out.xyz', { overwrite: false }))\n"
-            "  .then((r) => { console.log(JSON.stringify(r)); });")
-        assert out == {"ok": False, "needsOverwrite": True}
-
-    def test_openMolecule_rejects_a_bad_input(self):
+    def test_installMolecule_rejects_a_bad_input(self):
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule(42).then(\n"
+            "d.installMolecule(42).then(\n"
             "  () => console.log(JSON.stringify({ rejected: false })),\n"
             "  (e) => console.log(JSON.stringify({ rejected: true,\n"
-            "     msg: /path string/.test(String(e.message)) })));")
+            "     msg: /installMolecule/.test(String(e.message)) })));")
         assert out == {"rejected": True, "msg": True}
 
 
@@ -583,7 +488,7 @@ class TestReadsAreDefensiveCopies:
         out = _run_node(
             _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
             "  const a = d.getAtoms();\n"
             "  a[0].x = 999; a[0].element = 'Xx';\n"       # mutate the returned copy
             "  const b = d.getAtoms();\n"
@@ -607,41 +512,6 @@ class TestReadsAreDefensiveCopies:
         assert out["arrLen"] == 2, "getStructure().annotations leaked a live reference"
 
 
-class TestReadWorkingCopy:
-    """§ working-copy read goes through the ONE data door: consumers call
-    ``molview.data.readWorkingCopy(path)`` instead of POSTing
-    /api/workingcopy/open raw (unified-API access)."""
-
-    def test_posts_the_path_and_returns_the_payload(self):
-        out = _run_node(
-            "const d = window.molbuilder.molview.data;\n"
-            "let posted = null;\n"
-            "global.window.fetch = (url, opts) => { posted = {url, body: JSON.parse(opts.body)};\n"
-            "  return Promise.resolve({ ok:true, json: () => Promise.resolve(\n"
-            "    { ok:true, periodicity:{cell:null}, annotations:{n:1} }) }); };\n"
-            "d.readWorkingCopy('/p/x.xyz').then(r => console.log(JSON.stringify({\n"
-            "  url: posted.url, path: posted.body.path,\n"
-            "  ok: !!(r && r.ok), hasAnno: !!(r && r.annotations) })));")
-        assert out["url"] == "/api/workingcopy/open"
-        assert out["path"] == "/p/x.xyz"
-        assert out["ok"] is True
-        assert out["hasAnno"] is True
-
-    def test_returns_null_on_a_failed_read(self):
-        out = _run_node(
-            "const d = window.molbuilder.molview.data;\n"
-            "global.window.fetch = () => Promise.resolve({ ok:false });\n"
-            "d.readWorkingCopy('/p/x.xyz').then(r => console.log(JSON.stringify({ r: r })));")
-        assert out["r"] is None
-
-    def test_modify_bootstrap_does_not_fetch_workingcopy_open_raw(self):
-        """The Modify consumer must route through readWorkingCopy, not a raw fetch."""
-        src = (ROOT / "molbuilder/web/static/modify/selection-bootstrap.js").read_text()
-        assert 'fetch("/api/workingcopy/open"' not in src, (
-            "selection-bootstrap.js POSTs /api/workingcopy/open raw -- route it "
-            "through molview.data.readWorkingCopy(path) instead")
-
-
 # --------------------------------------------------------------------- #
 #  4. exportFile() = the whole-model serialisation (molview-module.md §19.4) #
 # --------------------------------------------------------------------- #
@@ -649,7 +519,7 @@ class TestReadWorkingCopy:
 
 class TestExportFile:
     """exportFile() reads the ENTIRE model out to {xyz, sidecar}
-    project-file bytes — the inverse of openMolecule (§19.3.1 symmetry).
+    project-file bytes — the inverse of installMolecule (§19.3.1 symmetry).
     It is NOT a file writer (the old ``save(opts)`` door is gone) and it
     is NOT the session-state timeline save; persisting the bytes is the
     consumer's job (two-saves-never-mix)."""
@@ -658,7 +528,7 @@ class TestExportFile:
         out = _run_node(
             _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
             "  const blob = d.exportFile();\n"
             "  console.log(JSON.stringify({\n"
             "    keys:       blob ? Object.keys(blob).sort() : null,\n"
@@ -737,7 +607,7 @@ class TestDraftIdentity:
         out = _run_node(
             _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
             "  const id = d.draftIdentity();\n"
             "  console.log(JSON.stringify({\n"
             "    keys:      Object.keys(id).sort(),\n"
@@ -760,7 +630,7 @@ class TestDraftIdentity:
 class TestNoAutoPersist:
     """§19.5: persistence is EXPLICIT (push-only).  A data change (an
     edit, a periodicity/label edit, a frame append) updates the
-    in-memory model but writes NOTHING to disk — only ``openMolecule``
+    in-memory model but writes NOTHING to disk — only ``installMolecule``
     (the anchor), ``save``, and ``load`` touch ``ws.persist`` /
     ``ws.readState``.  suspendPersist/resumePersist survive as a
     coherence bracket but no longer release any write."""
@@ -805,7 +675,7 @@ class TestPersistRoundtrip:
         out = _run_node(
             _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text: 'unused', filename: '/p/water.xyz' }).then(() => {\n"
             "  setTimeout(() => {\n"
             "    const p = JSON.parse(sessionStorage.getItem(\n"
             "      window.molbuilder.workspace.STORAGE_KEY));\n"
@@ -989,7 +859,7 @@ class TestFrames:
         out = _run_node(
             _FAKE_EMBED + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'x', filename:'/p/w.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'x', filename:'/p/w.xyz' }).then(() => {\n"
             "  d.reloadFrames([\n"
             "    [[0,0,0],[0.957,0,0],[-0.24,0.927,0]],\n"
             "    [[0,0,0],[0.957,0,0],[9.9,0,0]]]);\n"      # frame 1: atom 2 x = 9.9
@@ -1035,7 +905,7 @@ class TestViewOpsMustNotPersist:
     DRAWN and must persist NOTHING.  Under push-only (§19.5) NOTHING
     auto-persists — not even a DATA change (a frame append flips the
     ``uncommitted`` flag instead of writing); persistence happens only on
-    an explicit save / load (or the openMolecule anchor).  So a view op
+    an explicit save / load (or the installMolecule anchor).  So a view op
     is doubly safe: it is neither data nor a checkpoint."""
 
     def test_setFrame_does_not_persist(self):
@@ -1136,7 +1006,7 @@ _wsStub.pruneStatesAbove = function (wid, above) {
 class TestStateTimeline:
     """molview-module.md §19.5: the model owns a ``state_index`` (0 = the
     opened anchor) and each index is a full ``getState()`` session
-    snapshot on disk.  ``openMolecule`` anchors a fresh timeline;
+    snapshot on disk.  ``installMolecule`` anchors a fresh timeline;
     ``save(1)`` commits an undoable checkpoint (advance + persist +
     tail-delete); ``load(-1)`` retracts (read index-1, apply, decrement,
     floor at 0); ``load(0)`` reloads from the mirror.  Persistence is
@@ -1145,13 +1015,13 @@ class TestStateTimeline:
     pruneStatesAbove / workspaceId), stubbed here."""
 
     def test_openMolecule_anchors_index_zero(self):
-        """§19.5: after ``openMolecule`` the timeline is reset — index 0,
+        """§19.5: after ``installMolecule`` the timeline is reset — index 0,
         the anchor snapshot persisted at index 0, the whole prior timeline
         pruned (above_index = -1)."""
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  console.log(JSON.stringify({\n"
             "    index:       d.state_index,\n"
             "    uncommitted: d.uncommitted,\n"
@@ -1175,7 +1045,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  window.molbuilder.structureCanvas.markDirty();\n"   # an edit -> uncommitted
             "  const before = d.uncommitted;\n"
             "  return d.save(1).then(() => {\n"
@@ -1202,7 +1072,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  return d.save(0).then(() => {\n"
             "    console.log(JSON.stringify({\n"
             "      index:      d.state_index,\n"
@@ -1225,7 +1095,7 @@ class TestStateTimeline:
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
             "const store = window.molbuilder.selection.store;\n"
-            "d.openMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
             "  store.setSelection([2, 1]);\n"                       # pickOrder [2,1] -> vertex 1
             "  store.setIsolate(true);\n"
             "  return d.save(0).then(() => {\n"                     # persist the snapshot
@@ -1273,7 +1143,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  return d.save(1);\n"                              # index 1 (disk[1]=water)
             "}).then(() => {\n"
             # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
@@ -1307,7 +1177,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  return d.save(1);\n"                              # index 1 (disk[1]=water); clean
             "}).then(() => {\n"
             "  return d.load(-1).then(() => {\n"                 # clean -> step back to 0
@@ -1330,7 +1200,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  return d.load(-1).then(() => {\n"
             "    console.log(JSON.stringify({ index:d.state_index, readIdx:_readIdx }));\n"
             "  });\n"
@@ -1345,7 +1215,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
             "  window.molbuilder.structureCanvas.setStructure(\n"
             "    {source_format:'xyz', text:'1\\nc\\nC 0 0 0\\n'}, {kind:'file', file:'/p/c.xyz'});\n"
@@ -1370,11 +1240,11 @@ class TestStateTimeline:
 
     def test_uncommitted_flips_on_edit_and_clears_after_save_and_load(self):
         """§19.5: ``uncommitted`` is true iff the model changed since the
-        last ``save``; openMolecule / save / load all clear it."""
+        last ``save``; installMolecule / save / load all clear it."""
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "d.openMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(() => {\n"
             "  const afterOpen = d.uncommitted;\n"               # false (anchor)
             "  d.reloadFrames([[[0,0,0],[0.9,0,0],[-0.2,0.9,0]]]);\n"  # frame DATA edit
             "  const afterEdit = d.uncommitted;\n"                # true
@@ -1423,7 +1293,7 @@ class TestAnchorTimelineDurableWrites:
     """Regression (2026-07-14): the state-timeline anchor write must be
     RACE-FREE.
 
-    ``openMolecule``'s index-0 anchor intermittently vanished (~20% of runs),
+    ``installMolecule``'s index-0 anchor intermittently vanished (~20% of runs),
     so a later Retract to index 0 read a missing file and no-op'd -- the flaky
     "retract never returns to the opened state" hang.  Root cause: within
     ``_anchorTimeline`` the two server calls had NO ordering between them --
@@ -1434,7 +1304,7 @@ class TestAnchorTimelineDurableWrites:
     FIX (ordering only): await the prune-all, THEN issue the anchor write.
     ``persist`` stays best-effort/fire-and-forget (workspace-contract: the
     on-disk state file is crash-safety, not a blocking write) -- making it
-    awaitable would force ``openMolecule`` to block on the durable write, which
+    awaitable would force ``installMolecule`` to block on the durable write, which
     is neither needed for the race nor free (it stalls the generation flow).
 
     Pin: the anchor's prune-all completes STRICTLY BEFORE the index-0 write is
@@ -1474,7 +1344,7 @@ class TestAnchorTimelineDurableWrites:
             "  return Promise.resolve({ ok:true, json:function(){ return Promise.resolve({ ok:true }); } });\n"
             "};\n"
             "(async () => {\n"
-            "  await window.molbuilder.molview.data.openMolecule({\n"
+            "  await window.molbuilder.molview.data.installMolecule({\n"
             "    text:'3\\\\nh2o\\\\nO 0 0 0\\\\nH 0.957 0 0\\\\nH -0.24 0.927 0\\\\n',\n"
             "    filename:'w.xyz' });\n"
             "  console.log(JSON.stringify(global.__o));\n"

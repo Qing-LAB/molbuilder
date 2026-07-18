@@ -4694,6 +4694,30 @@
             _refreshFrameStrip(state);
         }
 
+        // Append per-frame arrow overlays for NEWLY-added frames (the live-poll
+        // companion to appendFrames): the consumer builds arrows for just the new
+        // frames and hands them here, so we DON'T re-hand the whole arrowsPerFrame
+        // set on every tick.  Stays index-aligned with the movie's frames.  If the
+        // currently-shown frame is one we just gave arrows to, redraw it in place.
+        function appendFrameArrows(list) {
+            if (state.disposed) return;
+            const a = state.current.animation;
+            if (!a || a.kind !== "trajectory" || !Array.isArray(list)) return;
+            if (!Array.isArray(a.arrowsPerFrame)) a.arrowsPerFrame = [];
+            const startIdx = a.arrowsPerFrame.length;
+            for (const arrows of list) {
+                a.arrowsPerFrame.push(Array.isArray(arrows) ? arrows : []);
+            }
+            // Only redraw if the SHOWN frame is one we just added arrows for -- a user
+            // parked mid-run (frame < startIdx) needs no repaint from a tail append.
+            const idx = a.currentFrame;
+            if (idx >= startIdx && idx < a.arrowsPerFrame.length) {
+                state.current.arrows = (a.arrowsPerFrame[idx] || []).slice();
+                _redrawArrows(state);
+                state.viewer.render();
+            }
+        }
+
         function getCamera() {
             // Capture position / look-at / zoom / rotation as an
             // opaque blob per § 3.13.  The discriminator + version
@@ -6140,6 +6164,7 @@
 
             setAnimation:       setAnimation,
             appendFrames:       appendFrames,
+            appendFrameArrows:  appendFrameArrows,
             getAnimationKind:   getAnimationKind,
             getFrameCount:      getFrameCount,
             getFrameCoords:     getFrameCoords,

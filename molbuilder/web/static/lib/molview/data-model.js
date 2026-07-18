@@ -947,131 +947,18 @@
     // so consumers can stay on the unified ``ws.*`` API while the
     // underlying implementations migrate at their own pace.
 
-    // ─── The project-file doors (structure-load-save-contract.md) ─────────────── //
+    // ─── The model install / serialise primitives (structure-load-save-contract.md) ─── //
     //
-    // openProjectFile / saveProjectFile are the ONE concealed coordinator for
-    // "load / save a SAVED project file as a structure".  They compose the two
-    // layers a raw file open/save touches -- the format-blind FILE bytes and the
-    // structure MODEL -- so a tab never hand-wires readWorkingCopy + openMolecule +
-    // markSaved, and never reaches around a door into the store.
-    //
-    //   LAYER SPLIT (the contract):
-    //     * projects  = file bytes + paths (format-blind, shared by every tab).
-    //     * molview.data = the structure model + (de)serialisation (THESE doors).
-    //   The structure knowledge (the .xyz + .molstruct.json pairing, regions/frozen,
-    //   cell) lives HERE, never in the file layer.  molview.data stays DOM-free: the
-    //   dirty-canvas WARNING is an injected predicate (opts.confirmDiscard), so no
-    //   modal is imported here.
-    //
-    // openProjectFile: read the codec-enriched working copy (text + sidecar atoms /
-    // periodicity / annotations, ALL from ONE /api/workingcopy/open) and install it
-    // through the single open door (openMolecule) in ONE store write (the
-    // SETTLE-BEFORE-READY rule, §19.3.1).  Returns {ok, payload} | {ok:false,
-    // cancelled|error}.  No second store write, so a click on the just-loaded
-    // structure is never clobbered.
-    function openProjectFile(path, opts) {
-        opts = opts || {};
-        if (typeof path !== "string" || !path) {
-            return Promise.reject(new TypeError(
-                "molview.data.openProjectFile(path): non-empty string required"));
-        }
-        // Dirty-canvas gate (UI policy, injected): a fresh open discards unsaved
-        // edits, so ask first when the caller supplied a confirm.  DOM-free here.
-        var gate = Promise.resolve(true);
-        if (typeof opts.confirmDiscard === "function" && isDirty()) {
-            gate = Promise.resolve(opts.confirmDiscard());
-        }
-        return gate.then(function (proceed) {
-            if (!proceed) return { ok: false, cancelled: true };
-            return readWorkingCopy(path).then(function (opened) {
-                var text = opened && opened.data && opened.data.xyz;
-                if (!text) {
-                    // readWorkingCopy failed (bad path / codec error) or empty file.
-                    return { ok: false, error: "Could not open " + path };
-                }
-                var sidecarAtoms = (opened && Array.isArray(opened.atoms))
-                    ? opened.atoms : null;
-                return openMolecule({
-                    text:        text,
-                    filename:    path,
-                    // readWorkingCopy returns the codec's CANONICAL XYZ (data.xyz)
-                    // even for a .pdb source, so declare xyz explicitly -- otherwise
-                    // /api/build/load reads "pdb" from the .pdb filename and parses
-                    // the XYZ text as PDB -> 400.
-                    format:      "xyz",
-                    source:      { kind: "file", file: path, generator_input: null },
-                    periodicity: (opened && opened.periodicity) || null,
-                    annotations: (opened && opened.annotations) || null,
-                    atoms:       sidecarAtoms,
-                }).then(function (r) {
-                    // Fallback: no sidecar atoms rode in -> refetch the sidecar-applied
-                    // rows.  refreshAtoms does NOT reset the selection (cannot clobber).
-                    if (!sidecarAtoms) {
-                        var st = _store();
-                        if (st && typeof st.refreshAtoms === "function") {
-                            return Promise.resolve(st.refreshAtoms())
-                                .then(function () { return { ok: true, payload: r }; });
-                        }
-                    }
-                    return { ok: true, payload: r };
-                });
-            });
-        });
-    }
+    // The FORMAT-AWARE project-file DOORS -- `projects.parser.openMolecule(path)` /
+    // `saveMolecule(path)` -- live in the projects package (lib/projects/parser.js),
+    // NOT here.  molview.data owns only the MODEL primitives those doors call:
+    //   * installMolecule({text[, sidecar, source, periodicity, annotations]})
+    //       -- parse text (+ optional sidecar) via /api/build/load and install it into
+    //          the model in ONE write (also the generators' install path);
+    //   * exportFile()  -- serialise the settled model -> {xyz, sidecar};
+    //   * markSaved(path) -- clear dirty + re-anchor the store sourceFile.
+    // molview.data touches NO file endpoint; the projects package moves the bytes.
 
-    // saveProjectFile: the inverse door.  Serialise the SETTLED model (exportFile ->
-    // {xyz, sidecar}) and write BOTH files atomically via /api/workingcopy/save, then
-    // mark saved (canvas dirty=false + store source re-anchor, one door).  A save
-    // READS the model; it never writes it.  Overwrite is UI policy: on a 409 (file
-    // exists) this returns {needsOverwrite:true} so the caller confirms + retries with
-    // {overwrite:true} -- the dialog stays in the UI layer, DOM-free here.
-    function saveProjectFile(path, opts) {
-        opts = opts || {};
-        if (typeof path !== "string" || !path) {
-            return Promise.reject(new TypeError(
-                "molview.data.saveProjectFile(path): non-empty string required"));
-        }
-        var blob = exportFile();   // model -> {xyz, sidecar}; null = empty OR desync
-        if (!blob) {
-            return Promise.resolve({ ok: false, error: isEmpty()
-                ? "save: workspace has no data"
-                : "save: workspace state is inconsistent (atom-count desync); "
-                  + "reload before saving." });
-        }
-        if (!root.fetch) {
-            return Promise.resolve({ ok: false, error: "save: fetch unavailable" });
-        }
-        // b1: identify the workspace by the SAME key its draft was written under so
-        // the server drops the RIGHT draft; the file goes to the user-named target.
-        var ident = (typeof draftIdentity === "function") ? draftIdentity() : {};
-        return root.fetch("/api/workingcopy/save", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(Object.assign({}, ident, {
-                target: path, data: blob, overwrite: !!opts.overwrite,
-            })),
-        }).then(function (res) {
-            return res.json().then(
-                function (j) { return { status: res.status, body: j }; },
-                function ()  { return { status: res.status, body: null }; });
-        }).then(function (r) {
-            if (r.body && r.body.ok) {
-                markSaved(path);   // canvas dirty=false + store source re-anchor
-                return { ok: true, path: path };
-            }
-            if (r.status === 409) return { ok: false, needsOverwrite: true };
-            return { ok: false, error: (r.body && r.body.error) || "Save failed." };
-        }, function (err) {
-            return { ok: false, error: "Save failed: "
-                + (err && err.message ? err.message : String(err)) };
-        });
-    }
-
-    // openMolecule(pathString) delegates here -- the programmatic path-string open is
-    // the coordinator WITHOUT a UI gate (a modal belongs to an interactive Load).
-    function _loadFile(path) {
-        return openProjectFile(path);
-    }
 
     /**
      * Generate a structure via one of the Sources-card generators.
@@ -1273,49 +1160,40 @@
      * already negotiated.  See ``_applyWorkspacePayload`` for the
      * full canvas-state contract.
      */
-    // ---- THE openMolecule door (molview-module.md §19.3) ----------------------- //
-    // Bring a NEW molecule IN: ONE atomic operation that replaces the WHOLE model AND
-    // resets the session timeline (§19.5).  There is no other open door: `{text,
-    // filename}` parses raw structure text; a project-file path string loads a saved
-    // file.  Both land on the single sync point (_applyWorkspacePayload).
+    // ---- THE installMolecule model primitive (molview-module.md §19.3) --------- //
+    // Bring a NEW molecule IN from TEXT: ONE atomic operation that parses the text (+ an
+    // optional paired sidecar) via /api/build/load and replaces the WHOLE model AND
+    // resets the session timeline (§19.5), landing on the single sync point
+    // (_applyWorkspacePayload).  This is a MODEL primitive -- it does NOT read files.
+    // The FORMAT-AWARE project-file DOOR that reads a path lives in the projects package
+    // (projects.parser.openMolecule); it reads the .xyz + .molstruct.json off disk and
+    // hands their CONTENT here as { text, sidecar }.  Generators (text, no file) call
+    // this directly.
     //
-    // THE LOAD CONTRACT (why this is ONE door, one write):  everything the loaded
-    // molecule needs -- geometry text, periodicity, annotations, AND the
-    // sidecar-enriched per-atom rows (regions/frozen) + its source path -- rides IN on
-    // this single call and is installed by ONE synchronous `_applyWorkspacePayload`
-    // pass BEFORE the load resolves.  A caller must NEVER open the molecule and then
-    // do a SECOND store write (a follow-up `adoptSession`/`adoptAtoms`) to "finish"
-    // the load: the "ready" signal (getNAtoms, the load promise) fires at the single
-    // write, so any second write lands AFTER a consumer may have already acted on the
-    // settled structure and silently clobbers their state (the 2026-07 selection-wipe:
-    // Load, then a click that landed in the gap before a trailing adoptSession, was
-    // erased).  If you have sidecar atoms, pass them here as `input.atoms`.
-    function openMolecule(input) {
+    // THE LOAD CONTRACT (why ONE write): everything the loaded molecule needs -- geometry
+    // text, and (server-applied from the sidecar) periodicity/annotations/regions/frozen
+    // -- rides IN on this single call and is installed by ONE synchronous
+    // `_applyWorkspacePayload` pass BEFORE the load resolves.  A caller must NEVER install
+    // and then do a SECOND store write (a follow-up `adoptSession`/`adoptAtoms`): the
+    // "ready" signal (getNAtoms, the promise) fires at the single write, so any second
+    // write lands AFTER a consumer may have acted on the settled structure and silently
+    // clobbers it (the 2026-07 selection-wipe).
+    function installMolecule(input) {
         if (input && typeof input === "object" && typeof input.text === "string") {
-            // `source`      -> provenance (a generator names its kind/generator_input);
-            // `periodicity` -> sidecar cell/vacuum/axis_kind that /api/build/load
-            //                  cannot re-derive (a file-open supplies it);
-            // `annotations` -> the opaque sidecar channel carry.
-            // `atoms`       -> the codec-enriched per-atom rows (regions/frozen from the
-            //                  .molstruct.json sidecar) a project-file open resolved via
-            //                  readWorkingCopy.  Supplied here they REPLACE the plain
-            //                  /api/build/load atoms in the ONE install, so the load
-            //                  needs no second store write.  Omitted -> the build/load
-            //                  atoms are used (generators, raw-text opens).
             return _loadText(input.text, input.filename, {
                 source:      input.source || null,
                 periodicity: input.periodicity || null,
                 annotations: input.annotations || null,
                 atoms:       Array.isArray(input.atoms) ? input.atoms : null,
                 format:      input.format || null,
+                // The paired .molstruct.json CONTENT a project-file open read off disk;
+                // the server (/api/build/load) applies it.  Omitted for generators.
+                sidecar:     (typeof input.sidecar === "string") ? input.sidecar : null,
             });
         }
-        if (typeof input === "string" && input) {
-            return _loadFile(input);
-        }
         return Promise.reject(new TypeError(
-            "molview.data.openMolecule(input): pass { text, filename[, source, periodicity, annotations] } "
-          + "or a project-file path string"));
+            "molview.data.installMolecule(input): pass { text, filename"
+          + "[, sidecar, source, periodicity, annotations] }"));
     }
 
     // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).  Emits
@@ -1342,6 +1220,11 @@
         // then content sniff), the raw-text/generator behaviour.
         const _body = { text: text, filename: filename };
         if (opts.format) _body.format = opts.format;
+        // The paired .molstruct.json CONTENT (raw JSON string) a project-file open read
+        // through the projects package.  The server applies it (regions/frozen/cell/
+        // axis_kind/vacuum/annotations) so the response's atoms + periodicity +
+        // annotations come back ENRICHED -- the sidecar schema stays server-side.
+        if (opts.sidecar) _body.sidecar = opts.sidecar;
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -1779,6 +1662,15 @@
                 h.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame)
                                      ? arrowsPerFrame : [] });
             } catch (_) {}
+        }
+    }
+    // Append arrow overlays for NEWLY-added frames only (the live-poll companion to
+    // addFrames): the consumer builds arrows for just the new frames and hands them
+    // here, so a poll doesn't re-hand the whole arrowsPerFrame set (§14.5.1).
+    function appendFrameArrows(list) {
+        const h = _handle();
+        if (h && typeof h.appendFrameArrows === "function") {
+            try { h.appendFrameArrows(Array.isArray(list) ? list : []); } catch (_) {}
         }
     }
     function addFrame(coords) { return addFrames([coords]); }
@@ -2260,23 +2152,6 @@
 
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
 
-    // Read a PROJECT file's working-copy DATA (codec-enriched: per-atom regions/frozen +
-    // full periodicity + opaque annotations) through the ONE data door.  Consumers must
-    // NOT POST /api/workingcopy/open raw -- that reached around the unified surface (and
-    // the workspace can't own it: it returns INTERPRETED structure data, not the
-    // format-blind bytes the persistence layer deals in).  Returns the parsed payload, or
-    // null on any failure so the caller can fall back to a plain byte load.
-    function readWorkingCopy(path) {
-        if (typeof root.fetch !== "function") return Promise.resolve(null);
-        return root.fetch("/api/workingcopy/open", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ path: path }),
-        }).then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (j) { return (j && j.ok) ? j : null; })
-          .catch(function () { return null; });
-    }
-
     var api = {
         subscribe:             subscribe,
         getState:              getState,
@@ -2317,12 +2192,14 @@
         isEmpty:               isEmpty,
         markDirty:             markDirty,
         markSaved:             markSaved,
-        // ---- THE molecule + document doors (molview-module.md §19.3-19.4) ---- //
-        openMolecule:          openMolecule,  // bring a NEW molecule in: {text,filename}|path -> whole model, atomic + timeline reset
-        openProjectFile:       openProjectFile, // load a SAVED project file (bytes+sidecar) -> model, ONE write (the load coordinator)
-        saveProjectFile:       saveProjectFile, // serialize + write BOTH files + markSaved (the save coordinator; openProjectFile's inverse)
-        readWorkingCopy:       readWorkingCopy, // read a project file's codec-enriched data (periodicity/annotations/atoms)
-        exportFile:            exportFile,    // serialize whole model -> {xyz,sidecar} project-file bytes (openMolecule's inverse)
+        // ---- THE model install / serialise primitives (structure-load-save-contract.md §2) ---- //
+        // The FORMAT-AWARE project-file DOORS live in the projects package
+        // (projects.parser.openMolecule / saveMolecule).  molview.data owns only these
+        // MODEL primitives those doors call -- it touches NO file endpoint (the old
+        // openProjectFile/saveProjectFile/readWorkingCopy stack that POSTed
+        // /api/workingcopy/* is gone).
+        installMolecule:       installMolecule, // parse text (+ sidecar) via /api/build/load -> whole model, atomic + timeline reset (generators + parser.openMolecule)
+        exportFile:            exportFile,    // serialize whole model -> {xyz,sidecar} project-file bytes (parser.saveMolecule's serialiser)
         // The state timeline (§19.5): ONE save + ONE load, index-delta parameterized.
         // `state_index` / `uncommitted` are LIVE getters (defined on the mounted object below).
         // save(1) commits a checkpoint; load(-1) retracts to the previous index (undo-only);
@@ -2336,6 +2213,7 @@
         // Frames — the coordinate time axis; coords owned by the embed movie (§14.5).
         reloadFrames:          reloadFrames,
         setFrameArrows:        setFrameArrows,
+        appendFrameArrows:     appendFrameArrows,
         onFrameChange:         onFrameChange,
         addFrame:              addFrame,
         addFrames:             addFrames,

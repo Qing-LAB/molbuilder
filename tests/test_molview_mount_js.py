@@ -9,12 +9,13 @@ Node unit test pinning the POST-CARVE contract:
     HERE explicitly and labelled as a fallback -- it is not the contract path.)
   * §18.1 / §D -- the handle exposes exactly the owner-facing surface + the frame axis, and
     NO internals (no store / viewer / DOM).
-  * §19.3 -- there is ONE open door: ``data.openMolecule`` dispatches ``{text, filename}``
-    vs a project-file path string.  The obsolete doors (loadFromFile / loadFromText /
-    installStructure / getScratchBlob / applyPayload) are GONE and no handle method reaches
-    one.
+  * §19.3 -- the model install primitive is ``data.installMolecule({text, filename[, ...]})``
+    (text install).  Project-file PATH loads/saves go through the projects package
+    (``projects.parser.openMolecule`` / ``saveMolecule``), NOT the mounted handle.  The
+    obsolete doors (loadFromFile / loadFromText / installStructure / getScratchBlob /
+    applyPayload) are GONE and no handle method reaches one.
   * §19.4 -- ``handle.exportFile()`` returns the serialized bytes via ``data.exportFile``
-    (openMolecule's inverse).
+    (installMolecule's inverse).
 
 The handle is exercised through a STUBBED molview.data + panel; a persistence-only workspace
 is passed alongside with its own data methods wired as TRAPS.
@@ -36,7 +37,7 @@ MODULES = [
 # The complete §18.1 handle key set (sorted): the seven core owner-API calls (§D) + the
 # frame axis (§14.5), and NOTHING else -- no store, no viewer, no DOM refs.
 HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
-               "getSelection", "getStructure", "isPlaying", "onChange", "openMolecule",
+               "getSelection", "getStructure", "installMolecule", "isPlaying", "onChange",
                "pause", "play", "setArrows", "setFrame", "setFrameArrows", "setLabels",
                "undo"]
 
@@ -78,9 +79,10 @@ _HARNESS = """
         selection:    store,
         getStructure: () => { dataCalls.push('getStructure'); return structure; },
         subscribe:    (fn) => store.subscribe(fn),
-        // §19.3 -- the ONE open door (dispatches {text,filename} vs a path string INSIDE data.openMolecule).
-        openMolecule: (arg) => { dataCalls.push(['openMolecule', arg]); return Promise.resolve('loaded'); },
-        // §19.4 -- exportFile serialises the whole model to bytes (openMolecule's inverse).
+        // §19.3 -- the model install-from-text primitive ({text, filename}); the handle passes
+        // its input straight through.  (Project-file PATH doors live in projects.parser, not here.)
+        installMolecule: (arg) => { dataCalls.push(['installMolecule', arg]); return Promise.resolve('loaded'); },
+        // §19.4 -- exportFile serialises the whole model to bytes (installMolecule's inverse).
         exportFile:   () => { dataCalls.push('exportFile'); return { xyz: 'XYZ-BYTES', sidecar: {} }; },
         undo:         () => { dataCalls.push('undo'); return Promise.resolve('undone'); },
         setFrame:     (i) => { dataCalls.push(['setFrame', i]); return i; },
@@ -100,7 +102,7 @@ _HARNESS = """
         selection:    { getState: () => { wsTrap.push('selection'); return { indices: [] }; },
                         subscribe: () => (() => {}) },
         getStructure: () => { wsTrap.push('getStructure'); return null; },
-        openMolecule: () => { wsTrap.push('openMolecule'); return Promise.resolve(); },
+        installMolecule: () => { wsTrap.push('installMolecule'); return Promise.resolve(); },
         exportFile:   () => { wsTrap.push('exportFile'); return Promise.resolve(); },
         undo:         () => { wsTrap.push('undo'); return Promise.resolve(); },
         setFrame:     () => { wsTrap.push('setFrame'); },
@@ -115,37 +117,38 @@ _HARNESS = """
 
 def test_handle_surface_one_load_door_and_save_is_loads_inverse():
     """§18.1/§D: the handle exposes exactly the owner surface + frame axis, no internals.
-    §19.3: BOTH ``load(path)`` and ``load({text,...})`` route to the SINGLE ``data.openMolecule``
-    door (no loadFromFile/loadFromText split).  §19.4: ``save()`` returns the serialized bytes
-    via ``data.exportFile``."""
+    §19.3: ``handle.installMolecule(input)`` passes its input straight to the SINGLE
+    ``data.installMolecule`` primitive (no loadFromFile/loadFromText split; project-file PATH
+    doors live in projects.parser).  §19.4: ``save()`` returns the serialized bytes via
+    ``data.exportFile``."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then(async (h) => {
             const keys  = Object.keys(h).sort();
-            const r1    = await h.openMolecule('/path/to.xyz');                  // path string
-            const r2    = await h.openMolecule({ text: 'T', filename: 'm.xyz' }); // {text,...}
-            const bytes = await h.exportFile();                                // openMolecule's inverse -> bytes
+            const r1    = await h.installMolecule('/path/to.xyz');                  // passthrough
+            const r2    = await h.installMolecule({ text: 'T', filename: 'm.xyz' }); // {text,...}
+            const bytes = await h.exportFile();                                // installMolecule's inverse -> bytes
             console.log(JSON.stringify({ keys, r1, r2, bytes, dataCalls, obsoleteHit }));
         });
     """)
     assert out["keys"] == HANDLE_KEYS                 # §D surface + frame axis, no internals
-    # Both shapes hit the ONE data.openMolecule door -- the string and the {text,filename} object:
-    assert out["dataCalls"][0] == ["openMolecule", "/path/to.xyz"]
-    assert out["dataCalls"][1] == ["openMolecule", {"text": "T", "filename": "m.xyz"}]
+    # Both inputs pass straight through to the ONE data.installMolecule primitive:
+    assert out["dataCalls"][0] == ["installMolecule", "/path/to.xyz"]
+    assert out["dataCalls"][1] == ["installMolecule", {"text": "T", "filename": "m.xyz"}]
     assert out["dataCalls"][2] == "exportFile"
-    assert out["r1"] == "loaded" and out["r2"] == "loaded"       # returns data.openMolecule's promise
+    assert out["r1"] == "loaded" and out["r2"] == "loaded"       # returns data.installMolecule's promise
     assert out["bytes"] == {"xyz": "XYZ-BYTES", "sidecar": {}}   # save() = serialized bytes
     assert out["obsoleteHit"] == []                             # no handle method reached an obsolete door
 
 
 def test_all_handle_data_ops_route_to_molview_data_never_the_workspace():
     """§18/§C drift-guard: with a real molview.data present, EVERY handle data op
-    (getStructure / openMolecule / exportFile / undo / setFrame) hits molview.data; the
+    (getStructure / installMolecule / exportFile / undo / setFrame) hits molview.data; the
     persistence workspace's data traps stay empty."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then(async (h) => {
             const text = h.getStructure().text;
-            await h.openMolecule('/p.xyz');
-            await h.openMolecule({ text: 'T', filename: 'm.xyz' });
+            await h.installMolecule('/p.xyz');
+            await h.installMolecule({ text: 'T', filename: 'm.xyz' });
             await h.exportFile();
             await h.undo();
             h.setFrame(1);
@@ -153,8 +156,8 @@ def test_all_handle_data_ops_route_to_molview_data_never_the_workspace():
         });
     """)
     assert out["text"] == "XYZ"                       # read came from molview.data
-    assert out["dataCalls"] == ["getStructure", ["openMolecule", "/p.xyz"],
-                                ["openMolecule", {"text": "T", "filename": "m.xyz"}],
+    assert out["dataCalls"] == ["getStructure", ["installMolecule", "/p.xyz"],
+                                ["installMolecule", {"text": "T", "filename": "m.xyz"}],
                                 "exportFile", "undo", ["setFrame", 1]]
     assert out["wsTrap"] == []                        # workspace NEVER served data
 
@@ -223,7 +226,7 @@ _FALLBACK_HARNESS = """
         selection:    store,
         getStructure: () => { wsCalls.push('getStructure'); return { text: 'WS' }; },
         subscribe:    () => (() => {}),
-        openMolecule: (a) => { wsCalls.push(['openMolecule', a]); return Promise.resolve('ws-loaded'); },
+        installMolecule: (a) => { wsCalls.push(['installMolecule', a]); return Promise.resolve('ws-loaded'); },
         exportFile:   () => { wsCalls.push('exportFile'); return 'ws-bytes'; },
         undo:         () => { wsCalls.push('undo'); return Promise.resolve('ws-undone'); },
     };
@@ -240,7 +243,7 @@ def test_workspace_fallback_when_molview_data_absent():
     out = _run_node(_FALLBACK_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then(async (h) => {
             const text  = h.getStructure().text;
-            const r     = await h.openMolecule('/f.xyz');
+            const r     = await h.installMolecule('/f.xyz');
             const bytes = await h.exportFile();
             console.log(JSON.stringify({ text, r, bytes, wsCalls }));
         });
@@ -248,4 +251,4 @@ def test_workspace_fallback_when_molview_data_absent():
     assert out["text"] == "WS"                 # read fell back to the workspace
     assert out["r"] == "ws-loaded"
     assert out["bytes"] == "ws-bytes"
-    assert out["wsCalls"] == ["getStructure", ["openMolecule", "/f.xyz"], "exportFile"]
+    assert out["wsCalls"] == ["getStructure", ["installMolecule", "/f.xyz"], "exportFile"]

@@ -8,8 +8,9 @@
  * call -- ``molview.mount(host, workspace, {mode:"readonly", owner})``
  * -- which builds the fused card, embeds the viewer, and wires the
  * selection panel + measurement overlay + view-controls
- * for free.  The molecule is opened through the module's single data door,
- * ``molview.data.openMolecule({text, filename, periodicity})``.
+ * for free.  The molecule is opened through the ONE file door,
+ * ``projects.parser.openMolecule(path)`` (reads the .xyz + its .molstruct.json
+ * sidecar and installs the model -- labels + cell ride along).
  *
  * READ-ONLY means no EDIT controls (no modifier ops / Save-state) -- it has
  * NOTHING to do with persistence.  Like every other consumer, the Results
@@ -26,12 +27,11 @@
 (function (root) {
     "use strict";
 
-    // NOTE: this inspector is a VIEWER glue layer -- it must NOT parse structure
-    // files or .fdf for the cell.  molbuilder/parse/ already extracts that
-    // (StructureResult.cell); the results tab is
-    // responsible for concentrating them and passing them in as params
-    // (ctx.viewParams).  MolView only cares whether a periodicity was handed to
-    // it (via openMolecule) or not.
+    // NOTE: this inspector is a VIEWER glue layer -- it must NOT parse structure files
+    // or .fdf for the cell.  The ONE file door (projects.parser.openMolecule) reads the
+    // .xyz + its .molstruct.json sidecar, and the model DEDUCES the cell from that data
+    // (the .xyz's own lattice + the sidecar).  The inspector passes no cell / no
+    // periodicity -- there is no load-time override.
 
     const inspector = {
         name:        "structure",
@@ -114,41 +114,14 @@
             let handle   = null;
             let disposed = false;
 
-            ctx.readFile(file).then(async (r) => {
+            // The ONE door (projects.parser.openMolecule) reads the .xyz + its
+            // .molstruct.json sidecar and installs the model (labels + cell ride along
+            // -- MolView never parses).  No upfront ctx.readFile, no /api/selection/atoms
+            // prefetch -- those were second reads of the same file.  The cell is DEDUCED
+            // from the actual data (the .xyz's own lattice + the sidecar); there is no
+            // load-time cell override (edit it on the Cell page if a change is needed).
+            (async () => {
                 if (disposed) return;
-                if (!r.ok) {
-                    status.textContent = "Error: " + (r.error || "unknown");
-                    status.classList.add("inspector-inline-error");
-                    return;
-                }
-                const fmt = file.toLowerCase().endsWith(".pdb") ? "pdb" : "xyz";
-
-                // Periodicity (structure-periodicity.md): the cell comes from the
-                // dataset, read server-side and handed to MolView via openMolecule
-                // -- MolView NEVER parses.  ctx.viewParams wins if the host already
-                // supplied it; otherwise fetch the sidecar's full periodicity
-                // ({cell, axis_kind, vacuum}) from /api/selection/atoms.  Absent ->
-                // null: no unit-cell box, Cell page shows defaults.
-                const vp = (ctx && ctx.viewParams) || {};
-                let periodicity = vp.periodicity || (vp.cell ? { cell: vp.cell } : null);
-                if (!periodicity && fmt === "xyz") {
-                    try {
-                        const cr = await fetch("/api/selection/atoms", {
-                            method:  "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body:    JSON.stringify({ structure_path: file }),
-                        });
-                        if (cr.ok) {
-                            const cj = await cr.json();
-                            if (cj && cj.ok) {
-                                periodicity = cj.periodicity
-                                    || (cj.cell ? { cell: cj.cell } : null);
-                            }
-                        }
-                    } catch (_) { /* no cell -> no box */ }
-                    if (disposed) return;
-                }
-
                 const mv = (root.molbuilder && root.molbuilder.molview) || null;
                 if (!mv || typeof mv.mount !== "function" || !mv.data) {
                     status.textContent = (
@@ -201,21 +174,42 @@
                     // the SAME file we're about to show, RESTORE it (``load(0)`` brings
                     // back the selection / camera you left on reload) instead of a fresh
                     // ``openMolecule`` (which resets the timeline and drops that state).
-                    // A different file (you picked a new one) -> open fresh.
+                    // A different file (you picked a new one) -> open fresh through the
+                    // sidebar door so the .molstruct.json sidecar (labels/regions/frozen +
+                    // periodicity) rides along.  The registry only dispatches .xyz / .pdb
+                    // to this inspector (see `match`), so the picked file IS the structure
+                    // path -- no sidecar-path rewrite.  (Clicking the paired
+                    // .molstruct.json shows its JSON via the `source` inspector: it is a
+                    // metadata file; open the .xyz to view the structure.)
+                    const structPath = file;
                     const restoreTarget =
                         (typeof ws.mountRestoreTarget === "function")
                             ? ws.mountRestoreTarget() : null;
-                    if (restoreTarget && restoreTarget === file) {
+                    if (restoreTarget && restoreTarget === structPath) {
+                        // Same file this owner left -> restore its session state
+                        // (selection/camera) via the session-state timeline (a
+                        // separate module), NOT a fresh open.
                         await mv.data.load(0);
                     } else {
-                        // Open the molecule through the ONE data door.  Periodicity rides
-                        // along so the Cell page works.  This is a data change the
-                        // render reacts to on its own (molview owns the render loop).
-                        await mv.data.openMolecule({
-                            text:        r.text,
-                            filename:    file,
-                            periodicity: periodicity || null,
-                        });
+                        // Fresh open: the format-aware sidebar door reads the
+                        // .xyz + .molstruct.json (labels/regions/frozen + periodicity)
+                        // and installs the model -- the sidecar rides along, which is
+                        // what fixed the label-less atom list bug.
+                        const _proj = root.molbuilder && root.molbuilder.projects;
+                        if (!_proj || !_proj.parser
+                                || typeof _proj.parser.openMolecule !== "function") {
+                            status.textContent = "Viewer unavailable: the projects "
+                                + "file package is missing from the template.";
+                            status.classList.add("inspector-inline-error");
+                            return;
+                        }
+                        const res = await _proj.parser.openMolecule(structPath);
+                        if (res && res.ok === false) {
+                            status.textContent = "Error: "
+                                + (res.error || "could not load " + structPath);
+                            status.classList.add("inspector-inline-error");
+                            return;
+                        }
                     }
                     if (disposed) return;
 
@@ -256,7 +250,7 @@
                                        + (e && e.message ? e.message : String(e));
                     status.classList.add("inspector-inline-error");
                 }
-            });
+            })();
 
             return {
                 dispose() {

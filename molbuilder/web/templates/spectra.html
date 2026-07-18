@@ -240,11 +240,6 @@
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-{# sidecar-labels: viewer-is-truth contract helper.  Loaded BEFORE
-   lib/spectra/core.js so the spectrum tab's Load handler can pull
-   frozen_atoms + regions into in-memory state and ship them
-   directly in the Generate POST body. #}
-<script src="{{ url_for('static', filename='lib/structure/sidecar-labels.js') }}"></script>
 {# Shared inspector core -- exposes window.molbuilder.spectraInspector
    .mount, which spectra/viewer.js calls below for the /spectra page
    and lib/inspectors/spectra.js calls on /results.  Script-order
