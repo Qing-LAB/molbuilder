@@ -105,17 +105,17 @@ class TestPartialIntegrity:
         "parse-warnings",
         "parse-warnings-count",
         "parse-warnings-list",
-        # Force-vector PRODUCER — the ONE trajectory-specific control
-        # (task #34).  The inspector builds force arrows from the
-        # parsed per-frame forces + these knobs and hands them to
-        # MolView via handle.setArrows (molview-module §14.5.1 —
-        # MolView draws what it's handed; it knows nothing about
-        # forces).  #hide-frozen is a PURE arrow filter now (atom
-        # hiding in the viewer is MolView's selection/isolate job),
-        # so the row is always present.
-        "show-forces", "forces-status",
+        # Force-vector PRODUCER PARAMETERS — the trajectory-specific
+        # controls (task #34).  Force arrows are ALWAYS built from the
+        # parsed per-frame forces (largest highlighted) and handed to
+        # MolView (handle.setFrameArrows; molview-module §14.5.1 —
+        # MolView draws what it's handed).  Whether they're DRAWN is
+        # MolView's "show overlay" view-toggle, so there is no
+        # show-forces / highlight-max / status-readout control here —
+        # only the arrow-computation knobs.  #hide-frozen is a PURE
+        # arrow filter (atom hiding in the viewer is MolView's
+        # selection/isolate job), so the row is always present.
         "force-scale", "force-scale-val", "force-min",
-        "highlight-max",
         "hide-frozen",
         # SCF banner + plots.
         "scf-section", "scf-title", "scf-status",

@@ -58,7 +58,7 @@ EXPECTED_METHODS = sorted([
     "setStructure", "appendFrames",
     # Style + overlays + projection
     "setStyle", "setAxes", "setCell", "setLabels",
-    "setArrows", "setPick", "setBackground",
+    "setArrows", "setOverlay", "setPick", "setBackground",
     "setOverlays", "setAtomStyle", "setProjection",
     # Camera
     "getCamera", "setCamera",

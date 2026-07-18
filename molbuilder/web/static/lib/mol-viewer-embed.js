@@ -1781,8 +1781,10 @@
             const b = bar.querySelector('[data-quick="' + action + '"]');
             if (b) b.setAttribute("aria-pressed", on ? "true" : "false");
         };
-        setP("axes",   !!state.current.axes);
-        setP("labels", !!state.current.labels);
+        setP("axes",    !!state.current.axes);
+        setP("labels",  !!state.current.labels);
+        setP("cell",    !!state.current.cell);
+        setP("overlay", !!state.current.overlayOn);
     }
 
     function _syncKnobBarToLabels(state) {
@@ -1826,6 +1828,26 @@
         if (!btn) return;
         btn.setAttribute("aria-pressed",
             state.current.axes ? "true" : "false");
+    }
+
+    function _syncKnobBarToCell(state) {
+        _syncQuickbar(state);
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const btn = state.scaffold.knobsEl.querySelector(
+            '.mol-viewer-toggle[data-action="cell"]');
+        if (!btn) return;
+        btn.setAttribute("aria-pressed",
+            state.current.cell ? "true" : "false");
+    }
+
+    function _syncKnobBarToOverlay(state) {
+        _syncQuickbar(state);
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const btn = state.scaffold.knobsEl.querySelector(
+            '.mol-viewer-toggle[data-action="overlay"]');
+        if (!btn) return;
+        btn.setAttribute("aria-pressed",
+            state.current.overlayOn ? "true" : "false");
     }
 
     function _syncKnobBarToAnimation(state) {
@@ -1919,13 +1941,7 @@
             '.mol-viewer-toggle[data-action="overlay"]');
         if (overlayBtn) {
             overlayBtn.addEventListener("click", () => {
-                state.current.overlayOn = !state.current.overlayOn;
-                overlayBtn.setAttribute("aria-pressed",
-                    state.current.overlayOn ? "true" : "false");
-                _redrawArrows(state);
-                if (state.viewer && typeof state.viewer.render === "function") {
-                    state.viewer.render();
-                }
+                handle.setOverlay(!state.current.overlayOn);
             });
         }
 
@@ -1959,9 +1975,7 @@
             '.mol-viewer-toggle[data-action="cell"]');
         if (cellBtn) {
             cellBtn.addEventListener("click", () => {
-                const on = !state.current.cell;
-                handle.setCell(on ? true : false);
-                cellBtn.setAttribute("aria-pressed", String(on));
+                handle.setCell(state.current.cell ? false : true);
             });
         }
 
@@ -4067,6 +4081,22 @@
             state.current.cell = next;
             _redrawCell(state);
             state.viewer.render();
+            _syncKnobBarToCell(state);
+        }
+
+        // The SINGLE visibility switch for the force-arrow overlay (§14.5.1).  The
+        // consumer always HANDS the arrows (setArrows / setFrameArrows) whenever it
+        // has force data; whether they're drawn is this one flag — the View-menu
+        // "overlay" toggle and its quickbar twin both route here so there's exactly
+        // one control (no consumer-side "show forces" checkbox to desync).
+        function setOverlay(on) {
+            if (state.disposed) return;
+            const next = on === true;
+            if (state.current.overlayOn === next) return;
+            state.current.overlayOn = next;
+            _redrawArrows(state);
+            state.viewer.render();
+            _syncKnobBarToOverlay(state);
         }
 
         function setLabels(l) {
@@ -5688,15 +5718,15 @@
                                 cur[f] = animation[f];
                             }
                         }
-                        // arrowsPerFrame changed -> update overlay visibility from the
-                        // handed set and redraw the CURRENT frame's arrows NOW, so a
-                        // paused viewer shows them immediately instead of only after the
-                        // next frame change (the "force vectors not showing" bug when
-                        // toggling forces on a paused trajectory).
+                        // arrowsPerFrame changed (consumer re-computed the arrows after
+                        // a scale / threshold / exclude-frozen tweak) -> refresh the
+                        // CURRENT frame's arrow geometry in place.  Do NOT touch
+                        // overlayOn here: visibility is user-owned via setOverlay, so a
+                        // parameter change must never flip the overlay on or off.
+                        // _redrawArrows is gated on overlayOn, so this is a no-op paint
+                        // while the overlay is hidden and a live update while it's shown.
                         if (Object.prototype.hasOwnProperty
                                 .call(animation, "arrowsPerFrame")) {
-                            state.current.overlayOn =
-                                _arrowsPerFrameHasAny(cur.arrowsPerFrame);
                             const _idx = cur.currentFrame || 0;
                             const _fa = (cur.arrowsPerFrame
                                          && cur.arrowsPerFrame[_idx]) || [];
@@ -5811,6 +5841,7 @@
             setCell:            setCell,
             setLabels:          setLabels,
             setArrows:          setArrows,
+            setOverlay:         setOverlay,
             setPick:            setPick,
             setBackground:      setBackground,
             setOverlays:        setOverlays,

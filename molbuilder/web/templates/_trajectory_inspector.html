@@ -108,18 +108,17 @@
       docs/protocols/frontend-module-architecture.md §5. -#}
   <div id="viewer-host" class="trajectory-viewer-slot"></div>
 
-  {#- The ONE trajectory-specific control: the FORCE-VECTOR PRODUCER.  MolView
-      draws overlays it is HANDED (molview-module.md §14.5.1 — it never
-      generates them); the inspector builds force arrows from the parsed
-      per-frame forces + these knobs and pushes them via handle.setArrows on
-      every frame change.  Everything the old controls aside used to own moved
-      into MolView. -#}
-  <section class="trajectory-force-controls" aria-label="Force-vector overlay">
-    <label class="check"
-      title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
-      <input type="checkbox" id="show-forces">
-      Show force vectors</label>
-    <span id="forces-status" class="readout" aria-live="polite"></span>
+  {#- The trajectory-specific controls: the FORCE-VECTOR PRODUCER's PARAMETERS.
+      Force arrows are ALWAYS built (with the largest force highlighted) whenever
+      the parser captured per-frame forces, and handed to MolView
+      (handle.setFrameArrows) — MolView never generates overlays (molview-module.md
+      §14.5.1).  Whether the arrows are DRAWN is MolView's single "show overlay"
+      view-toggle (the overlay IS the force vectors); there is no show/hide control
+      here.  These knobs only shape HOW the arrows are computed — length scale,
+      magnitude threshold, and whether frozen-atom arrows are excluded.  Changing
+      any of them regenerates the arrows and MolView redraws them in place; the
+      overlay's visibility is unchanged. -#}
+  <section class="trajectory-force-controls" aria-label="Force-vector parameters">
     <label>Arrow length scale (&Aring; per eV/&Aring;)
       <span class="row-with-readout">
         <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
@@ -129,16 +128,14 @@
     <label>Hide |F| smaller than (eV/&Aring;)
       <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
     </label>
-    <label class="check"><input type="checkbox" id="highlight-max" checked>
-      Highlight largest force</label>
 
-    {#- "Exclude frozen atoms" affects the force OVERLAY only: frozen atoms'
+    {#- "Exclude frozen atoms" affects the force arrows only: frozen atoms'
         forces are constraint-balancing artefacts, not physical free-atom
         forces, so their arrows are skipped.  Atom HIDING in the viewer is
         MolView's job (its selection/isolate render pipeline), not this
         checkbox — hence the row is always present and a pure arrow filter. -#}
     <label class="check"
-      title="Skip force arrows on frozen (constrained) atoms — their forces are constraint-balancing artefacts, not physical free-atom forces.&#10;Only affects the force overlay; hiding atoms in the viewer is done from MolView's selection panel.">
+      title="Skip force arrows on frozen (constrained) atoms — their forces are constraint-balancing artefacts, not physical free-atom forces.&#10;Only affects the force arrows; hiding atoms in the viewer is done from MolView's selection panel.">
       <input type="checkbox" id="hide-frozen">
       Exclude frozen atoms from force arrows</label>
   </section>

@@ -562,18 +562,6 @@
         // read-only trajectory view (the SELECTION + structure are read off the
         // molview.data singleton — MolView conceals its internals).
         host.__molview_results_handle = _mv;
-        // Keep the force-vector diagnostic readout in sync with the DISPLAYED
-        // frame.  Playback / slider / step swap frames natively (setFrameArrows
-        // bakes the arrows in, so the arrows themselves need no per-frame work),
-        // but the "Showing N arrows (max |F| = …)" line is computed from
-        // state.data.forces[currentFrame] and would otherwise stay frozen on the
-        // frame it was last computed for — reading "No force data on this frame"
-        // while arrows are visibly drawn.  onFrameChange is a text-only refresh
-        // (no re-render), so subscribing here is cheap.
-        if (typeof mv.data.onFrameChange === "function") {
-            const _unsub = mv.data.onFrameChange(refreshForcesStatus);
-            if (typeof _unsub === "function") _cleanups.push(_unsub);
-        }
         // NOTE: force arrows are NOT re-derived per frame.  They are built for every
         // frame ONCE (buildArrowsPerFrame) on an overlay-option change and baked into
         // MolView's native animation (setFrameArrows), so playback draws arrows[frame]
@@ -820,10 +808,12 @@
     }
 
     // Build the ArrowSpec array for ONE frame given the current
-    // force-knob settings.  Returns [] when forces are off OR the
-    // parser didn't capture forces for this frame.
+    // force-knob settings.  Returns [] only when the parser didn't
+    // capture forces for this frame — arrows are ALWAYS built when
+    // force data exists (whether they're DRAWN is MolView's "show
+    // overlay" toggle, not a producer-side switch), with the largest
+    // force always highlighted.
     function _buildArrowsForFrame(frameIdx) {
-        if (!$("show-forces") || !$("show-forces").checked) return [];
         if (!state.data) return [];
         const frame  = state.data.frames[frameIdx];
         const forces = state.data.forces && state.data.forces[frameIdx];
@@ -831,7 +821,7 @@
 
         const fscale    = parseFloat($("force-scale").value) || 1.0;
         const fmin      = parseFloat($("force-min").value)   || 0.0;
-        const highlight = $("highlight-max").checked;
+        const highlight = true;   // largest force is always highlighted
         // When the "Hide frozen atoms" toggle is on, skip force
         // vectors on frozen atoms — their forces are constraint-
         // balancing artefacts, not physical free-atom forces.
@@ -883,80 +873,17 @@
         return arrows;
     }
 
-    function refreshForcesStatus() {
-        const cb = $("show-forces");
-        if (!cb || !cb.checked) {
-            setForcesStatus("Off — tick to overlay arrows.");
-            return;
-        }
-        if (!state.data) {
-            setForcesStatus("No trajectory loaded yet.");
-            return;
-        }
-        const forces = state.data.forces
-                       && state.data.forces[_curFrame()];
-        if (!forces || !forces.length) {
-            setForcesStatus(
-                "No force data on this frame "
-              + "(parser did not capture it).");
-            return;
-        }
-        const fmin = parseFloat($("force-min").value) || 0.0;
-        // Honour the "Exclude frozen atoms" toggle the same way
-        // _buildArrowsForFrame does: skip frozen indices when the
-        // checkbox is on so the reported max-force and arrow count
-        // describe what's actually drawn (the unfrozen / free
-        // atoms), not the whole frame.  Without this the status
-        // line keeps reporting the frozen-atom max even after the
-        // user excludes those arrows, which made the toggle look
-        // like a no-op.
-        const hideFrozen = $("hide-frozen") && $("hide-frozen").checked;
-        const frozen = hideFrozen ? _frozenSet() : null;
-        let maxMag = 0;
-        let drawn  = 0;
-        for (let i = 0; i < forces.length; i++) {
-            if (frozen && frozen.has(i)) continue;
-            const f   = forces[i];
-            const mag = Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
-            if (mag > maxMag) maxMag = mag;
-            if (mag >= fmin) drawn += 1;
-        }
-        const suffix = (frozen && frozen.size > 0)
-            ? " (frozen atoms excluded)"
-            : "";
-        if (drawn === 0) {
-            setForcesStatus(
-                "0 arrows shown (all |F| < threshold "
-              + fmin.toFixed(3) + " eV/Å; max |F| = "
-              + maxMag.toFixed(3) + ")" + suffix + ".");
-        } else {
-            setForcesStatus(
-                "Showing " + drawn + " arrow"
-              + (drawn === 1 ? "" : "s")
-              + " (max |F| = " + maxMag.toFixed(3) + " eV/Å)"
-              + suffix + ".");
-        }
-    }
-
     /* ------------------------------------------------------------------ */
     /*  Force-vector overlay                                               */
     /* ------------------------------------------------------------------ */
     //
     // MolView draws the arrows it is HANDED (molview-module.md §14.5.1); the
     // inspector owns the force→arrow mapping.  Arrows are built for EVERY frame
-    // ONCE (buildArrowsPerFrame) whenever an overlay OPTION changes (show-forces,
-    // scale, threshold, highlight, exclude-frozen) and baked into MolView's native
-    // animation via handle.setFrameArrows -- so playback draws arrows[frame] with
-    // NO per-frame synthesis (the animation is slow otherwise).
-
-    function setForcesStatus(msg) {
-        // Single point of truth for the diagnostic readout next to
-        // the Show-force-vectors checkbox.  Empty string clears the
-        // line so the toggle area stays compact when there's
-        // nothing to report.
-        const el = $("forces-status");
-        if (el) el.textContent = msg || "";
-    }
+    // ONCE (buildArrowsPerFrame) whenever a force PARAMETER changes (scale,
+    // threshold, exclude-frozen) and baked into MolView's native animation via
+    // handle.setFrameArrows -- so playback draws arrows[frame] with NO per-frame
+    // synthesis (the animation is slow otherwise).  Whether the arrows are DRAWN
+    // is MolView's "show overlay" view-toggle, not a producer-side switch here.
 
     // Build the FULL per-frame arrow set: arrowsPerFrame[t] = the arrows for
     // frame t under the current knob settings.  O(frames × atoms), done ONCE per
@@ -971,13 +898,14 @@
     }
 
     // Re-derive the whole per-frame overlay set + hand it to MolView in one shot.
-    // Wired to the force knobs (option change) and called once at load -- NOT per
-    // frame.  ``drawForces`` keeps its name so the knob wiring reads unchanged.
+    // Wired to the force knobs (parameter change) and called once at load -- NOT
+    // per frame.  MolView redraws the current frame in place (preserving the
+    // overlay's on/off visibility).  ``drawForces`` keeps its name so the knob
+    // wiring reads unchanged.
     function drawForces() {
         if (_mv && typeof _mv.setFrameArrows === "function") {
             _mv.setFrameArrows(buildArrowsPerFrame());
         }
-        refreshForcesStatus();
     }
 
     // Legacy picking / atom-list helpers (_picks, _framePositions,
@@ -1046,7 +974,6 @@
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
             try { mv.data.setFrame(seekIdx); } catch (_) {}
         }
-        refreshForcesStatus();
     }
 
     function showFrame(idx) {
@@ -2752,23 +2679,25 @@
     // configuration (#speed, #loop) flows into the embed via
     // setAnimation partial updates per § 3.9.
 
-    // Force-vector producer knobs — the ONE trajectory-specific control (task
-    // #34).  Each rebuilds the arrows for the current frame + re-hands them to
-    // MolView (drawForces → handle.setArrows).  Everything else the old aside
-    // owned (unit cell, atom-index labels, playback speed / loop, the atom-list
-    // Inspect panel + Clear button, and the per-frame Save-XYZ button) is now
-    // MolView's: playback + speed + loop are its frame bar, cell + labels are
-    // its Cell page / knob bar, selection + measurement are its panel, and
+    // Force-vector PRODUCER parameters — the trajectory-specific controls (task
+    // #34).  Force arrows are ALWAYS built when the file has force data (with the
+    // largest force highlighted) and handed to MolView; whether they're DRAWN is
+    // MolView's "show overlay" view-toggle, not a control here.  These knobs only
+    // shape HOW the arrows are computed; each re-derives the whole per-frame arrow
+    // set and re-hands it (drawForces → handle.setFrameArrows), and MolView redraws
+    // the current frame in place with the overlay's on/off visibility unchanged.
+    // Everything else the old aside owned (unit cell, atom-index labels, playback
+    // speed / loop, the atom-list Inspect panel + Clear button, and the per-frame
+    // Save-XYZ button) is MolView's: playback + speed + loop are its frame bar,
+    // cell + labels are its knob bar, selection + measurement are its panel, and
     // per-frame structure export is its Export knob (current-frame-correct).
-    _on($("show-forces"),  "change", drawForces);
     _on($("force-scale"), "input", (e) => {
         $("force-scale-val").textContent = parseFloat(e.target.value).toFixed(1);
         drawForces();
     });
     _on($("force-min"),     "input",  drawForces);
-    _on($("highlight-max"), "change", drawForces);
-    // "Exclude frozen atoms" is a pure force-arrow filter now (MolView owns atom
-    // hiding), so toggling it only re-derives the arrows for the current frame.
+    // "Exclude frozen atoms" is a pure force-arrow filter (MolView owns atom
+    // hiding), so toggling it only re-derives the arrows.
     _on($("hide-frozen"),   "change", drawForces);
 
     /* ---- Export all plot data as CSV ---------------------------- */

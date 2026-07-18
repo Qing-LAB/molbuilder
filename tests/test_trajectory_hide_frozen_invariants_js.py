@@ -1,17 +1,20 @@
 """Hide-frozen-atoms feature — source-text invariants.
 
-The trajectory inspector's "Hide frozen atoms" checkbox has three
-dependent computations.  Each must read the toggle, or the feature
-silently ignores half its promise:
+The trajectory inspector's "Exclude frozen atoms" checkbox gates the
+force-arrow computation.  The one surviving dependent computation must
+read the toggle, or the feature silently ignores its promise:
 
   1. ``_buildArrowsForFrame`` — must skip frozen indices when on
-     so force arrows don't draw on hidden atoms.
-  2. ``refreshForcesStatus`` — must filter the reported max |F|
-     and arrow count by the same skip rule, or the status line
-     keeps reporting the all-atom max after the user hides the
-     frozen ones (the 2026-06-14 user-reported bug).
-  3. ``applyHideFrozen`` — must dispatch the overlay payload that
-     hides the frozen atoms in the 3Dmol viewer.
+     so force arrows don't draw on frozen atoms.
+
+History: two other computations used to depend on this toggle.
+``refreshForcesStatus`` (a "Showing N arrows / max |F|" readout) was
+removed when the force overlay became a single MolView-owned switch —
+the arrow count/max is redundant with the on-page force plot.
+``applyHideFrozen`` (a 3Dmol overlay payload that hid frozen atoms in
+the viewer) was retired in the MolView migration (task #34); atom
+hiding is MolView's job.  So the arrow-builder filter below, plus the
+change listener that re-runs it, are the whole contract now.
 
 Why source-text, not a runtime test:
 * The functions live inside an IIFE and read closure-private
@@ -137,31 +140,6 @@ def test_buildArrowsForFrame_honours_hide_frozen():
     has hidden."""
     body = _extract_fn_body("_buildArrowsForFrame")
     _assert_honours_hide_frozen("_buildArrowsForFrame", body)
-
-
-def test_refreshForcesStatus_honours_hide_frozen():
-    """The status-line max-|F| + arrow-count computation skips
-    frozen atoms when the toggle is on so the reported values
-    describe what's actually drawn (not the whole frame).
-
-    Caught the 2026-06-14 regression where this function ignored
-    the toggle entirely: viewer arrows hid correctly but the
-    status line still said ``max |F| = <frozen atom's force>`` —
-    the toggle looked like a no-op on the readout."""
-    body = _extract_fn_body("refreshForcesStatus")
-    _assert_honours_hide_frozen("refreshForcesStatus", body)
-
-
-# NOTE (task #34): the third computation the original 2026-06-14 fix
-# pinned — ``applyHideFrozen`` dispatching a 3Dmol setOverlays payload
-# to HIDE the frozen atoms in the viewer — was retired with the MolView
-# migration.  Atom hiding in the viewer is now MolView's job (its
-# selection/isolate render pipeline); the trajectory inspector's
-# ``hide-frozen`` checkbox is a PURE force-arrow filter.  So the two
-# remaining computations that DO still depend on the toggle
-# (_buildArrowsForFrame + refreshForcesStatus, both pinned above) are
-# the whole contract now, and the change listener only needs to rebuild
-# the arrows.
 
 
 def test_hide_frozen_change_listener_rebuilds_arrows():

@@ -5228,52 +5228,61 @@ def watch_log_file_multi_step(tmp_path, monkeypatch):
     return str(p)
 
 
-def test_watch_show_forces_renders_arrows(
-        page, flask_server, watch_log_file_with_forces):
-    """Toggling 'Show force vectors' on a trajectory that carries
-    per-atom forces must add arrow shapes to the 3Dmol viewer.
-    User-reported regression: the toggle did nothing -- forces
-    were parsed but no arrows appeared.
+def _embed_handle_eval(page, expr):
+    """Evaluate ``expr`` against the embed test handle (``h``) mounted on
+    the viewer host.  ``expr`` is a JS expression using ``h``."""
+    return page.evaluate(
+        "() => { let h = null;"
+        "  document.querySelectorAll('*').forEach((e) => {"
+        "    if (e.__molview_test_handle) h = e.__molview_test_handle; });"
+        "  if (!h) return 'NO_HANDLE';"
+        f"  return ({expr}); }}"
+    )
 
-    Post-#234 follow-up: force vectors flow through the embed's
-    arrowsPerFrame contract per § 3.9.  The user-visible
-    diagnostic readout (#forces-status) carries the count;
-    we assert on that string instead of the legacy
-    drawForces() console.info "drew N" log.
+
+def test_watch_force_vectors_are_a_single_overlay_switch(
+        page, flask_server, watch_log_file_with_forces):
+    """A trajectory that carries per-atom forces draws its force arrows
+    with NO producer-side "show forces" control: the arrows are always
+    built and the overlay is visible by default, and MolView's single
+    "show overlay" switch (handle.setOverlay) is the one thing that
+    hides/shows them.
+
+    Post-overlay-unification (2026-07): the old #show-forces checkbox +
+    #forces-status readout were removed — there was a second, unsynced
+    toggle for the same thing.  The overlay IS the force vectors; the
+    only trajectory-side controls left shape HOW arrows are computed
+    (scale / threshold / exclude-frozen), never whether they show.
     """
     _load_watch_log(page, flask_server, watch_log_file_with_forces)
-    # 2026-06-12 layout v3: the four prior tabs (Style / Overlays /
-    # Inspect / Playback) condensed to TWO (Display / Inspect).
-    # Show-force-vectors lives in the Display tab now and that's the
-    # default-active tab, so no click is needed to reveal the
-    # checkbox — but keep an explicit click anyway as a tab-state
-    # assertion (a regression that broke the default-active tab
-    # would otherwise pass silently here).
-    page.locator('.ctab[data-tab="display"]').click()
-    chk = page.locator("#show-forces")
-    assert not chk.is_checked()
-    chk.check()
-    # Give the click a moment to fire applyForces synchronously
-    # (rebuild arrowsPerFrame + handle.setAnimation partial update
-    # + refreshForcesStatus).
     page.wait_for_timeout(300)
-    # The new status readout next to the toggle must reflect the
-    # render outcome ("Showing N arrows ..." / "Hidden ..." etc.)
-    # so a user who has all-tiny forces (everything below fmin)
-    # sees a clear "0 forces above the threshold" instead of an
-    # invisible failure.
-    status = page.locator("#forces-status").text_content() or ""
-    assert "2" in status and "arrow" in status.lower(), (
-        f"#forces-status should report N=2 arrows drawn; got {status!r}"
+    # Arrows are drawn by default — force data present => overlay on, no
+    # click needed (the fixture has 2 forces above the default threshold).
+    drawn = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
+    assert isinstance(drawn, int) and drawn >= 1, (
+        f"force arrows should be drawn on load; got {drawn!r} overlay shapes"
     )
-    # Toggle OFF and confirm the renderer ran again + the status
-    # flips to a "hidden" message.
-    chk.uncheck()
+    # The single visibility switch hides them...
+    page.evaluate(
+        "() => { document.querySelectorAll('*').forEach((e) => {"
+        "  if (e.__molview_test_handle) e.__molview_test_handle"
+        "    .setOverlay(false); }); }"
+    )
     page.wait_for_timeout(150)
-    assert not chk.is_checked()
-    status_off = page.locator("#forces-status").text_content() or ""
-    assert "off" in status_off.lower() or "hidden" in status_off.lower(), (
-        f"#forces-status should report toggle off; got {status_off!r}"
+    hidden = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
+    assert hidden == 0, (
+        f"setOverlay(false) should remove the arrows; got {hidden!r} shapes"
+    )
+    # ...and shows them again, from the same baked arrow data (no rebuild).
+    page.evaluate(
+        "() => { document.querySelectorAll('*').forEach((e) => {"
+        "  if (e.__molview_test_handle) e.__molview_test_handle"
+        "    .setOverlay(true); }); }"
+    )
+    page.wait_for_timeout(150)
+    shown = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
+    assert shown == drawn, (
+        f"setOverlay(true) should restore {drawn} arrows; got {shown!r}"
     )
 
 
