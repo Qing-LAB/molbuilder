@@ -935,21 +935,14 @@ def api_projects_create():
 
 
 # --------------------------------------------------------------------- #
-#  Stubs (501 Not Implemented) -- design captured; behaviour deferred   #
+#  File mutation endpoints (upload / write / rename / move / copy /      #
+#  delete) -- all SHIPPED                                                #
 # --------------------------------------------------------------------- #
 #
-# The frontend renders these endpoints' shape today so the design is
-# committed to + the UX surface is reviewable.  When the real feature
-# lands, swap the body of each route for the actual implementation.
-#
-# Why 501 and not a silent no-op:
-#   * 501 is the standards-correct response for a documented endpoint
-#     whose method is not yet implemented; clients can dispatch on it.
-#   * Returning {ok: false} in the standard error shape means the
-#     existing inline-error UI in the sidebar renders the message
-#     immediately, no special-case branch needed.
-#   * Tests pin both the status code (501) AND the error text so a
-#     future "oops we shipped the stub" lands loudly.
+# History: in 2026-05 these were deliberate 501-stub routes (design
+# captured + UX surface rendered while the behaviour was deferred); each
+# was then implemented, and the tests that pinned the 501 + error text
+# were updated to the real behaviour.  There are no 501 stubs left here.
 
 
 # Upload filename regex.  Allows the dot that ``validate_name``
