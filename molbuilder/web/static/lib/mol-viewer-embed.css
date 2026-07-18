@@ -255,6 +255,10 @@
 }
 .mol-viewer-rep-btn {
     flex:           1 1 calc(50% - 4px);
+    /* <button> does not inherit font by default -- take the compact menu-body
+       size (--text-2xs) so the style buttons match the other View-menu items
+       instead of the larger UA button default. */
+    font:           inherit;
     padding:        0.35rem 0.6rem;
     background:     var(--bg-input, #262b33);
     color:          var(--text-primary, #e6e9ee);
@@ -645,11 +649,13 @@
 }
 
 /* ---- In-canvas quick-action overlay (§6.x) -------------------------------
- * Tiny half-transparent icon buttons in the canvas corner for the most-common
- * view actions (Reset view / Show axes / Show labels).  Ghosted at rest so they
- * don't obscure the molecule; the group brightens on hover.  A SECOND control for
- * the same state the View menu toggles (aria-pressed mirrors it via _syncQuickbar).
- * pointer-events gated to the buttons so the gaps don't block canvas rotation. */
+ * Tiny half-transparent icon buttons in the canvas corner for the common view
+ * toggles (Reset / axes / unit cell / force overlay / labels, from the
+ * QUICKBAR_TOGGLES registry; the molview layer injects an isolate button too).
+ * Ghosted at rest so they don't obscure the molecule; the group brightens on
+ * hover.  A SECOND control for the same state the View menu toggles (aria-pressed
+ * mirrors it via _syncQuickbar).  pointer-events gated to the buttons so the gaps
+ * don't block canvas rotation. */
 .mol-viewer-quickbar {
     position:       absolute;
     top:            6px;

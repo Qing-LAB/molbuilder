@@ -589,6 +589,40 @@
     /*  Card scaffold construction                                   */
     /* ------------------------------------------------------------ */
 
+    // The in-canvas quick-action bar is DECLARED here once: a single registry of
+    // view-toggles that drives the button DOM, the click wiring, AND the
+    // aria-pressed sync (three sites that used to be hand-maintained in
+    // parallel).  Each toggle flips one piece of view state through the SAME
+    // handle method its View-menu twin uses, so the two controls stay a single
+    // source of truth and the existing reactive redraw responds; there is no
+    // separate "re-run the render" step.  Adding a toggle = adding one entry.
+    // ``stateless`` marks a one-shot action (reset) with no pressed state.
+    // Store-owned view toggles that live OUTSIDE the embed (isolate / "show
+    // selected only") are injected into this bar by the molview layer, not
+    // listed here — the embed knows nothing about the selection store.
+    const QUICKBAR_TOGGLES = [
+        { action: "reset",   glyph: "⟲", title: "Reset view", stateless: true,
+          run: function (state, handle) { handle.refit(); } },
+        { action: "axes",    glyph: "✚", title: "Show / hide axes",
+          read: function (state) { return !!state.current.axes; },
+          run:  function (state, handle) {
+              handle.setAxes(state.current.axes ? false : true); } },
+        { action: "cell",    glyph: "▦", title: "Show / hide unit cell",
+          read: function (state) { return !!state.current.cell; },
+          run:  function (state, handle) {
+              handle.setCell(state.current.cell ? false : true); } },
+        { action: "overlay", glyph: "➤", title: "Show / hide force vectors",
+          read: function (state) { return !!state.current.overlayOn; },
+          run:  function (state, handle) {
+              handle.setOverlay(state.current.overlayOn ? false : true); } },
+        { action: "labels",  glyph: "#", title: "Show / hide atom labels",
+          read: function (state) { return !!state.current.labels; },
+          run:  function (state, handle) {
+              if (state.current.labels) handle.setLabels(false);
+              else handle.setLabels(state.lastLabelsConfig
+                                    || { atoms: "all", format: "index" }); } },
+    ];
+
     function _buildCardScaffold(opts) {
         const card = opts.card || {};
 
@@ -638,18 +672,15 @@
         section.appendChild(canvas);
 
         // In-canvas quick-action overlay: tiny, half-transparent icon buttons in
-        // the canvas corner for the most-common view actions (reset / axes /
-        // labels).  Ghosted at rest so they don't obscure the molecule; brighten
-        // on hover.  A SECOND control for the same state the View menu toggles --
-        // kept in sync via _syncQuickbar (called from the axes/labels sync).
-        // Wired to the handle in _wireKnobBar (needs the handle).
+        // the canvas corner for the common view toggles (reset / axes / cell /
+        // overlay / labels — see QUICKBAR_TOGGLES).  Ghosted at rest so they
+        // don't obscure the molecule; brighten on hover.  A SECOND control for
+        // the same state the View menu toggles -- kept in sync via _syncQuickbar.
+        // Wired to the handle in _wireKnobBar (needs the handle).  The molview
+        // layer may inject extra store-owned toggles (isolate) after mount.
         const quickbar = document.createElement("div");
         quickbar.className = "mol-viewer-quickbar";
-        [
-            { action: "reset",  glyph: "⟲", title: "Reset view" },
-            { action: "axes",   glyph: "✚", title: "Show / hide axes" },
-            { action: "labels", glyph: "#",       title: "Show / hide atom labels" },
-        ].forEach(function (q) {
+        QUICKBAR_TOGGLES.forEach(function (q) {
             const b = document.createElement("button");
             b.type = "button";
             b.className = "mol-viewer-quick";
@@ -1777,14 +1808,16 @@
         if (!state.scaffold || !state.scaffold.canvas) return;
         const bar = state.scaffold.canvas.querySelector(".mol-viewer-quickbar");
         if (!bar) return;
-        const setP = function (action, on) {
-            const b = bar.querySelector('[data-quick="' + action + '"]');
-            if (b) b.setAttribute("aria-pressed", on ? "true" : "false");
-        };
-        setP("axes",    !!state.current.axes);
-        setP("labels",  !!state.current.labels);
-        setP("cell",    !!state.current.cell);
-        setP("overlay", !!state.current.overlayOn);
+        // Mirror each stateful toggle's current on/off onto its button
+        // (aria-pressed drives the accent tint).  Stateless actions (reset)
+        // have no ``read`` and are skipped.  Store-owned injected toggles
+        // (isolate) sync themselves from the molview layer.
+        QUICKBAR_TOGGLES.forEach(function (q) {
+            if (!q.read) return;
+            const b = bar.querySelector('[data-quick="' + q.action + '"]');
+            if (b) b.setAttribute("aria-pressed",
+                                  q.read(state) ? "true" : "false");
+        });
     }
 
     function _syncKnobBarToLabels(state) {
@@ -1828,6 +1861,18 @@
         if (!btn) return;
         btn.setAttribute("aria-pressed",
             state.current.axes ? "true" : "false");
+    }
+
+    // One-shot: reflect the CURRENT view-toggle flags onto BOTH controls (View
+    // menu buttons + in-canvas quickbar) for every toggle.  Used for the initial
+    // reflect after wiring so a mount that starts with a non-default flag (e.g.
+    // overlayOn:true) doesn't leave a control reading grey.  Per-flag setters call
+    // their own _syncKnobBarToX; this is just the batch for construction time.
+    function _syncAllToggles(state) {
+        _syncKnobBarToAxes(state);
+        _syncKnobBarToCell(state);
+        _syncKnobBarToOverlay(state);
+        _syncKnobBarToLabels(state);
     }
 
     function _syncKnobBarToCell(state) {
@@ -2004,20 +2049,18 @@
         const quickbar = state.scaffold && state.scaffold.canvas
             && state.scaffold.canvas.querySelector(".mol-viewer-quickbar");
         if (quickbar) {
-            const qReset = quickbar.querySelector('[data-quick="reset"]');
-            if (qReset) qReset.addEventListener("click", () => handle.refit());
-            const qAxes = quickbar.querySelector('[data-quick="axes"]');
-            if (qAxes) qAxes.addEventListener("click", () => {
-                handle.setAxes(state.current.axes ? false : true);
+            QUICKBAR_TOGGLES.forEach(function (q) {
+                const b = quickbar.querySelector(
+                    '[data-quick="' + q.action + '"]');
+                if (b) b.addEventListener("click", function () {
+                    q.run(state, handle);
+                });
             });
-            const qLabels = quickbar.querySelector('[data-quick="labels"]');
-            if (qLabels) qLabels.addEventListener("click", () => {
-                if (state.current.labels) handle.setLabels(false);
-                else handle.setLabels(state.lastLabelsConfig
-                                      || { atoms: "all", format: "index" });
-            });
-            _syncQuickbar(state);   // initial state reflect
         }
+        // Initial reflect: sync BOTH the View-menu buttons and the quickbar to the
+        // current flags for every toggle (not just the quickbar), so a mount that
+        // started with a non-default flag doesn't leave a control reading grey.
+        _syncAllToggles(state);
 
         // ----- Export menu ------------------------------------------
         const exportDet = bar.querySelector(".mol-viewer-menu-export");
@@ -3567,8 +3610,13 @@
             // the preserved playhead just before autoplay resumed.
             state.current.animation = next;
             // Handed arrows drive overlay visibility (see _arrowsPerFrameHasAny).
+            // This is a DERIVED write to overlayOn (not through setOverlay), so it
+            // MUST sync the overlay button/menu itself -- otherwise the flag is
+            // true on load but the control reads grey, and the first click (which
+            // toggles off the true flag) looks like a no-op (the double-click bug).
             if (next.arrowsPerFrame !== undefined) {
                 state.current.overlayOn = _arrowsPerFrameHasAny(next.arrowsPerFrame);
+                _syncKnobBarToOverlay(state);
             }
             // Host-owned frame bar (MolView) -> suppress the embed's own strip so
             // there's exactly ONE playback bar.  Native frame swap + per-frame
