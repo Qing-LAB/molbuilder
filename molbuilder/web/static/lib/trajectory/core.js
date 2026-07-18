@@ -2216,6 +2216,28 @@
         return true;
     }
 
+    // Compare frame ``idx`` between two frame arrays (each atom = [element, x, y, z]).
+    // Used to GUARD the incremental tail-append: before we append the new frames,
+    // the last frame we ALREADY hold (the shared boundary) must be byte-identical in
+    // the fresh parse -- proof the server didn't rewrite earlier steps and that our
+    // append point is aligned (no wrong / off-by-one / duplicate frame).  Any
+    // mismatch => we do NOT append; we fall back to a full atomic rebuild.
+    function _frameEqualAt(oldFrames, newFrames, idx) {
+        if (idx < 0) return true;   // nothing shared yet -> nothing to check
+        if (!Array.isArray(oldFrames) || !Array.isArray(newFrames)) return false;
+        const a = oldFrames[idx], b = newFrames[idx];
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            const pa = a[i], pb = b[i];
+            if (!pa || !pb) return false;
+            if (pa[0] !== pb[0]) return false;               // element identity
+            for (let k = 1; k <= 3; k++) {                   // coords (same parse -> exact)
+                if (Math.abs(pa[k] - pb[k]) > 1e-9) return false;
+            }
+        }
+        return true;
+    }
+
     function _scfFingerprint(data) {
         // Compact stable string over the SCF-history fields that
         // makePlots/renderScfProgress branch on.  Used by
@@ -2263,11 +2285,23 @@
         const sameAtomCount = oldData
             && oldLen > 0 && newLen > 0
             && oldData.frames[0].length === r.data.frames[0].length;
+        // Guards on the incremental tail-append (never add a wrong / extra frame):
+        //   - boundary check: the last frame we ALREADY hold is byte-identical in the
+        //     fresh parse (the server didn't rewrite history; our append point aligns).
+        //   - count-in-sync: the movie's live frame count equals our record (oldLen),
+        //     so appending (newLen-oldLen) frames lands us at exactly newLen.
+        // Either failing => NOT a provable continuation => full atomic rebuild instead.
+        const boundaryOk = _frameEqualAt(oldData && oldData.frames,
+                                         r.data && r.data.frames, oldLen - 1);
+        const countInSync = !_mv || (window.molbuilder.molview.data
+                                        .frameCount() === oldLen);
         const canAppend = _mv
             && sameAtomCount
             && newLen > oldLen
             && _latticeEqual(oldData && oldData.lattice,
-                             r.data    && r.data.lattice);
+                             r.data    && r.data.lattice)
+            && boundaryOk
+            && countInSync;
 
         // 2026-06-12: live-refresh no-new-frames short-circuit.
         //
@@ -2371,14 +2405,26 @@
                 newCoords.push(r.data.frames[i].map(
                     (atom) => [atom[1], atom[2], atom[3]]));
             }
-            try { mvData.addFrames(newCoords); } catch (_) {}
-            // Follow the tail if the user was watching the end; otherwise leave
-            // the playhead where it is.
-            if (wasAtEnd) showFrame(n - 1);
-            // Re-derive arrows for the current frame (the appended payload may
-            // also carry a newly-populated runtime_info.frozen_atoms that
-            // changes the excluded set).
-            drawForces();
+            let appendedOk = false;
+            try {
+                mvData.addFrames(newCoords);
+                // Post-check: the movie must now hold EXACTLY the server's count.
+                // A mismatch (an addFrame threw / dropped / doubled a frame) means
+                // the tail is out of sync -> resync via a full atomic rebuild rather
+                // than leave a wrong/extra frame on screen.
+                appendedOk = mvData.frameCount() === newLen;
+            } catch (_) { appendedOk = false; }
+            if (!appendedOk) {
+                rebuildModel(wasAtEnd ? n - 1 : Math.min(prevFrame, n - 1));
+            } else {
+                // Follow the tail if the user was watching the end; otherwise leave
+                // the playhead where it is.
+                if (wasAtEnd) showFrame(n - 1);
+                // Re-derive arrows for the current frame (the appended payload may
+                // also carry a newly-populated runtime_info.frozen_atoms that
+                // changes the excluded set).
+                drawForces();
+            }
         } else {
             // Structure changed / frames shrank: full rebuild.  Keep the
             // playhead near where it was (follow the tail if the user was at
