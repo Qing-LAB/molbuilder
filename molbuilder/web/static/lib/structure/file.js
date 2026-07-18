@@ -36,17 +36,11 @@
 (function (root) {
     "use strict";
 
-    var LOAD_URL = "/api/build/load";
-
-    var _fetch         = null;
     var _structurePage = null;
-    var _viewerLoader  = null;
 
     function configure(opts) {
         opts = opts || {};
-        if (opts.fetch)         _fetch         = opts.fetch;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
     /**
@@ -62,12 +56,8 @@
      */
     function _lazyResolve() {
         if (typeof root === "undefined" || !root.molbuilder) return;
-        if (!_fetch && root.fetch)
-            _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader && root.molbuilder.loadStructureText)
-            _viewerLoader = root.molbuilder.loadStructureText;
     }
 
     /**
@@ -88,66 +78,43 @@
             return Promise.resolve({
                 ok: false, error: "File appears to be empty." });
         }
-        // Lazy-resolve dependencies in case the script-load
-        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        // Lazy-resolve dependencies in case the script-load order put us above
+        // page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
-        if (!_fetch) {
-            return Promise.reject(new Error(
-                "file: fetch not configured"));
-        }
         if (!_structurePage) {
             return Promise.reject(new Error(
                 "file: structurePage not configured"));
         }
         var safeName = typeof filename === "string" ? filename : "";
-        return _fetch(LOAD_URL, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-                text:     text,
-                format:   "auto",
-                filename: safeName,
-            }),
-        })
-        .then(function (r) {
-            return r.json().then(function (body) {
-                return { httpOk: r.ok, body: body };
-            });
-        })
-        .then(function (env) {
-            var body = env.body || {};
-            if (!env.httpOk || !body.ok) {
-                return {
-                    ok:    false,
-                    error: body.error
-                            || ("HTTP error from " + LOAD_URL),
-                };
+        // ONE parse: hand the RAW uploaded text to the canvas load door, which installs
+        // via molview.data.installMolecule -> /api/build/load (the format is sniffed there
+        // from the filename / content).  Pre-fix this module POSTed /api/build/load itself
+        // AND THEN installMolecule POSTed it again -- the same uploaded bytes parsed
+        // twice.  An upload is a LOCAL file (no project sidecar), so this is a generator,
+        // not a project-file load; it never touches projects.readFile.
+        return _structurePage.loadIntoCanvas(
+            { text: text },
+            { kind: "file", file: safeName || null, generator_input: null }
+        ).then(function (gate) {
+            if (!gate || !gate.ok) {
+                return { ok: false, cancelled: !!(gate && gate.cancelled) };
             }
-            var format = (body.source_format === "pdb") ? "pdb" : "xyz";
-            var payload = (format === "pdb" && body.pdb)
-                ? body.pdb : body.xyz;
-            return _structurePage.loadIntoCanvas(
-                { source_format: format, text: payload },
-                { kind: "file", file: safeName || null,
-                  generator_input: null }
-            ).then(function (gate) {
-                if (!gate.ok) {
-                    return { ok: false, cancelled: true };
-                }
-                // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.  The old
-                // viewerLoader second load is removed — it would
-                // double-apply the same bytes.
-                return { ok: true, n_atoms: body.n_atoms };
-            });
-        })
-        .catch(function (err) {
-            return {
-                ok:    false,
-                error: "Could not reach " + LOAD_URL + ": "
-                     + (err && err.message ? err.message
-                                            : String(err)),
-            };
+            // n_atoms (cosmetic, for the status line) reads off the loaded MODEL --
+            // the single source; null if the model isn't reachable (test contexts).
+            var n = null;
+            try {
+                var d = root.molbuilder && root.molbuilder.molview
+                        && root.molbuilder.molview.data;
+                var s = d && typeof d.getStructure === "function" && d.getStructure();
+                if (s && Array.isArray(s.atoms)) n = s.atoms.length;
+            } catch (_) { /* n_atoms is cosmetic */ }
+            return { ok: true, n_atoms: n };
+        }).catch(function (err) {
+            // A parse failure inside installMolecule (the server rejected the uploaded
+            // bytes as XYZ/PDB) surfaces here -- turn it into the {ok:false, error}
+            // envelope the panel shows, instead of an unhandled rejection.
+            return { ok: false, error: (err && err.message)
+                ? err.message : String(err) };
         });
     }
 
@@ -203,7 +170,6 @@
         configure: configure,
         loadText:  loadText,
         wirePanel: wirePanel,
-        LOAD_URL:  LOAD_URL,
     };
 
     if (typeof module !== "undefined" && module.exports) {
@@ -212,11 +178,7 @@
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structureFile = api;
         configure({
-            fetch:         root.fetch
-                            ? root.fetch.bind(root)
-                            : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  root.molbuilder.loadStructureText,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

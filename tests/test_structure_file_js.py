@@ -2,8 +2,9 @@
 
 Pins the public API of ``molbuilder/web/static/lib/structure/
 file.js`` — the Sources-card panel that loads an XYZ / PDB file
-from the user's disk via FileReader + /api/build/load and routes
-the result through the canvas-state gate.
+from the user's disk via FileReader and installs it through the
+canvas-state load door (molview.data.installMolecule) -- ONE parse,
+no pre-POST to /api/build/load.
 
 Mirrors the test shape of test_structure_smiles_js.py since
 file.js follows the same structural twin pattern (different
@@ -70,13 +71,11 @@ class TestSurfacePresence:
                 configure: typeof fileMod.configure,
                 loadText:  typeof fileMod.loadText,
                 wirePanel: typeof fileMod.wirePanel,
-                LOAD_URL:  fileMod.LOAD_URL,
             }));
         ''')
         assert out["configure"] == "function"
         assert out["loadText"]  == "function"
         assert out["wirePanel"] == "function"
-        assert out["LOAD_URL"]  == "/api/build/load"
 
 
 class TestInputValidation:
@@ -98,25 +97,15 @@ class TestInputValidation:
 
 class TestHappyPath:
 
-    def test_xyz_upload_routes_through_canvas(self):
-        """Backend reports source_format=xyz; we route body.xyz
-        through loadIntoCanvas with kind="file"."""
+    def test_xyz_upload_routes_raw_text_through_canvas(self):
+        """The RAW uploaded text is handed to loadIntoCanvas ONCE (no pre-POST
+        to /api/build/load); n_atoms is read off the loaded model."""
         out = _run_node('''
-            let capturedBody = null;
             let canvasArgs = null;
+            globalThis.molbuilder = { molview: { data: {
+                getStructure: () => ({ atoms: [{}, {}, {}] }),
+            } } };
             fileMod.configure({
-                fetch: async (url, init) => {
-                    capturedBody = JSON.parse(init.body);
-                    return {
-                        ok: true,
-                        json: async () => ({
-                            ok: true,
-                            xyz: "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
-                            n_atoms: 3,
-                            source_format: "xyz",
-                        }),
-                    };
-                },
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
                         canvasArgs = {struct, src};
@@ -124,54 +113,27 @@ class TestHappyPath:
                     },
                 },
             });
-            const r = await fileMod.loadText(
-                "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
-                "water.xyz");
+            const RAW = "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n";
+            const r = await fileMod.loadText(RAW, "water.xyz");
             console.log(JSON.stringify({
-                envelope: r,
-                body:     capturedBody,
-                canvas:   canvasArgs,
+                envelope: r, canvas: canvasArgs, raw: RAW,
             }));
         ''')
         assert out["envelope"] == {"ok": True, "n_atoms": 3}
-        assert out["body"]["format"] == "auto"
-        assert out["body"]["filename"] == "water.xyz"
+        # RAW text handed straight to the load door -- ONE parse, no canonicalised copy.
+        assert out["canvas"]["struct"]["text"] == out["raw"]
         assert out["canvas"]["src"]["kind"] == "file"
         assert out["canvas"]["src"]["file"] == "water.xyz"
-        assert out["canvas"]["struct"]["source_format"] == "xyz"
 
-    def test_pdb_upload_routes_through_canvas_with_pdb_format(self):
-        """Backend reports source_format=pdb + body.pdb populated;
-        we route body.pdb (not body.xyz) through loadIntoCanvas."""
+    def test_pdb_upload_routes_raw_text_through_canvas(self):
+        """A .pdb upload hands its RAW text to loadIntoCanvas (the server sniffs
+        PDB from the filename); no body.pdb canonicalisation step."""
         out = _run_node('''
-            fileMod.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true,
-                        xyz: "5\\nMOL\\nC 0 0 0\\n...\\n",
-                        pdb: "HEADER PDB\\nATOM ...\\nEND\\n",
-                        n_atoms: 5,
-                        source_format: "pdb",
-                    }),
-                }),
-                structurePage: {
-                    loadIntoCanvas: async (struct, src) => ({ok: true,
-                        captured: {struct, src}}),
-                },
-            });
             let canvasArgs = null;
+            globalThis.molbuilder = { molview: { data: {
+                getStructure: () => ({ atoms: [{}, {}, {}, {}, {}] }),
+            } } };
             fileMod.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true,
-                        xyz: "5\\nMOL\\nC 0 0 0\\n...\\n",
-                        pdb: "HEADER PDB\\nATOM ...\\nEND\\n",
-                        n_atoms: 5,
-                        source_format: "pdb",
-                    }),
-                }),
                 structurePage: {
                     loadIntoCanvas: async (struct, src) => {
                         canvasArgs = {struct, src};
@@ -179,27 +141,26 @@ class TestHappyPath:
                     },
                 },
             });
-            await fileMod.loadText("HEADER\\nATOM...", "thing.pdb");
-            console.log(JSON.stringify(canvasArgs));
+            const RAW = "HEADER PDB\\nATOM ...\\nEND\\n";
+            const r = await fileMod.loadText(RAW, "thing.pdb");
+            console.log(JSON.stringify({ envelope: r, canvas: canvasArgs }));
         ''')
-        assert out["struct"]["source_format"] == "pdb"
-        assert "HEADER" in out["struct"]["text"]
+        assert out["envelope"]["ok"] is True
+        assert out["canvas"]["src"]["file"] == "thing.pdb"
+        assert "HEADER" in out["canvas"]["struct"]["text"]
 
 
 class TestErrorPaths:
 
-    def test_backend_failure_surfaces_message(self):
+    def test_parse_failure_surfaces_message(self):
+        """A parse failure now comes from installMolecule (via loadIntoCanvas)
+        rejecting; loadText's .catch turns it into an {ok:false, error} envelope."""
         out = _run_node('''
             fileMod.configure({
-                fetch: async () => ({
-                    ok: false,
-                    json: async () => ({
-                        ok: false,
-                        error: "Could not parse as XYZ or PDB",
-                    }),
-                }),
                 structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
+                    loadIntoCanvas: async () => {
+                        throw new Error("Could not parse as XYZ or PDB");
+                    },
                 },
             });
             const r = await fileMod.loadText("garbage", "broken.txt");
@@ -215,13 +176,6 @@ class TestErrorPaths:
         out = _run_node('''
             let loadCalls = 0;
             fileMod.configure({
-                fetch: async () => ({
-                    ok: true,
-                    json: async () => ({
-                        ok: true, xyz: "1\\nx\\nC 0 0 0\\n",
-                        n_atoms: 1, source_format: "xyz",
-                    }),
-                }),
                 structurePage: {
                     loadIntoCanvas: async () => {
                         loadCalls++;
@@ -238,14 +192,15 @@ class TestErrorPaths:
         assert out["envelope"] == {"ok": False, "cancelled": True}
         assert out["loadCalls"] == 1
 
-    def test_network_failure_returns_envelope(self):
+    def test_load_door_rejection_returns_envelope(self):
+        """A network / other rejection from the load door (installMolecule) is
+        caught into the {ok:false, error} envelope, not left unhandled."""
         out = _run_node('''
             fileMod.configure({
-                fetch: async () => {
-                    throw new TypeError("Failed to fetch");
-                },
                 structurePage: {
-                    loadIntoCanvas: async () => ({ok: true}),
+                    loadIntoCanvas: async () => {
+                        throw new TypeError("Failed to fetch");
+                    },
                 },
             });
             const r = await fileMod.loadText("1\\nx\\nC 0 0 0\\n", "x.xyz");
