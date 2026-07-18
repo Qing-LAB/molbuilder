@@ -202,7 +202,6 @@
 {#- snapshot-io loads BEFORE canvas-state (canvas-state reads it) -#}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_frame-series.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
 {#- selection panel + adapters (measurements.js already loaded above) -#}
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>

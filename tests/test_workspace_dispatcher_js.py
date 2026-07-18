@@ -51,7 +51,6 @@ DISPATCHER_PATH   = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
 STORE_PATH        = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
 CANVAS_PATH       = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
 SNAPSHOT_IO_PATH  = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
-FRAME_SERIES_PATH = ROOT / "molbuilder/web/static/lib/molview/_frame-series.js"
 DATA_MODEL_PATH   = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
 
 
@@ -61,8 +60,10 @@ def _run_node(snippet: str) -> object:
 
     Load order mirrors production: shared snapshot IO -> canvas-state
     impl -> selection-store impl -> the selection-store singleton ->
-    frame-series factory -> the MolView data model
-    (``molview.data``) -> the workspace persistence dispatcher.  The
+    the MolView data model (``molview.data``) -> the workspace
+    persistence dispatcher.  (Frame coords are owned by the embed movie,
+    §14.5, so no frame-series is loaded; frame tests attach a fake
+    embed handle.)  The
     canvas-state + selection-store impls are MolView-internal; the
     bootstrap mounts them where the data model's private escape
     hatches (``_canvas()`` / ``_store()``) look for them so a test can
@@ -83,7 +84,6 @@ def _run_node(snippet: str) -> object:
         "require(" + json.dumps(str(STORE_PATH)) + ");\n"
         "window.molbuilder.selection.store = "
         "  window.molbuilder.selection._createStore();\n"
-        "require(" + json.dumps(str(FRAME_SERIES_PATH)) + ");\n"
         "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
@@ -162,6 +162,38 @@ global.window.fetch = function (url, opts) {
 """
 
 
+# A fake embed handle: the frame COORDINATES are owned by the embed's native 3Dmol
+# movie (task #33, §14.5), so the data model delegates every frame op to the handle.
+# This in-memory stand-in implements just the frame slice of the handle surface
+# (setAnimation / setAnimationFrame / appendFrames + the cheap read probes) so frame
+# tests exercise the delegation without a real 3Dmol viewer.  Attach it AFTER the data
+# model loads and BEFORE the frame ops.
+_FAKE_EMBED = """
+window.molbuilder.molview.data.attachViewHandle((function () {
+    let _frames = null, _cur = 0, _kind = null;
+    const cp = (f) => f.map((p) => p.slice());
+    return {
+        setAnimation: function (a) {
+            if (a && a.kind === "trajectory") {
+                _frames = a.frames.map(cp); _kind = "trajectory"; _cur = 0;
+            }
+            // arrowsPerFrame-only partial update: ignore (overlay, not frames).
+        },
+        appendFrames: function (list) {
+            if (_frames) list.forEach((f) => _frames.push(f.slice().map((p) => p.slice())));
+        },
+        setAnimationFrame: function (i) {
+            if (_frames && i >= 0 && i < _frames.length) _cur = i;
+        },
+        getAnimationFrame: function () { return _cur; },
+        getAnimationKind:  function () { return _kind; },
+        getFrameCount:     function () { return _frames ? _frames.length : 0; },
+        getFrameCoords:    function (i) { return (_frames && _frames[i]) ? cp([_frames[i]])[0] : null; },
+    };
+})());
+"""
+
+
 # --------------------------------------------------------------------- #
 #  1. The public molview.data surface (molview-module.md §19)           #
 # --------------------------------------------------------------------- #
@@ -188,7 +220,10 @@ _DATA_SURFACE = sorted([
     # to (separate from the selection store, so a frame swap doesn't re-render the
     # panel + steal input focus during playback).
     "setFrameArrows", "onFrameChange",
-    "getFrame", "getForces", "currentForces", "currentFrame", "frameCount",
+    # getForces/currentForces removed with the frame-series (task #33): forces are
+    # the CONSUMER's data now, and coords are owned by the embed movie -- getFrame
+    # reads a frame through the handle, not a data-model coords copy.
+    "getFrame", "currentFrame", "frameCount",
     "selection", "view",
     # §20 view-state lifecycle: the active molview registers its embed handle
     # (attach/detach) so view.get/applyState reach it, and flushViewState mirrors
@@ -931,7 +966,7 @@ class TestFrames:
 
     def test_reload_then_setFrame_swaps_coords_and_keeps_selection(self):
         out = _run_node(
-            self._ATOMS2 +
+            _FAKE_EMBED + self._ATOMS2 +
             "const d = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.setSelection([1]);\n"
             "const nf = d.reloadFrames([[[0,0,0],[1,0,0]], [[0,0,0],[2,0,0]], [[0,0,0],[3,0,0]]]);\n"
@@ -949,10 +984,10 @@ class TestFrames:
 
     def test_setFrame_makes_getStructure_text_and_export_reflect_visible_frame(self):
         """§14.5.4 coherence: after scrubbing to frame i, getStructure().text +
-        exportFile() serialize the VISIBLE frame (from the store atoms), not frame 0 --
-        text and atoms no longer diverge (was: text/export stuck at frame 0)."""
+        exportFile() serialize the VISIBLE frame -- read on demand from the embed movie
+        (the coord owner, task #33), not frame 0.  Text/atoms no longer diverge."""
         out = _run_node(
-            _STUB_WATER_FETCH +
+            _FAKE_EMBED + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
             "d.openMolecule({ text:'x', filename:'/p/w.xyz' }).then(() => {\n"
             "  d.reloadFrames([\n"
@@ -976,7 +1011,7 @@ class TestFrames:
         """§14.5 same-atoms invariant: a frame whose atom count differs
         from the loaded structure is rejected, never coerced."""
         out = _run_node(
-            self._ATOMS2 +
+            _FAKE_EMBED + self._ATOMS2 +
             "const d = window.molbuilder.molview.data;\n"
             "d.reloadFrames([[[0,0,0],[1,0,0]]]);\n"
             "const ok = d.addFrame([[0,1,0],[1,1,0]]);\n"
@@ -1046,6 +1081,7 @@ class TestViewOpsMustNotPersist:
         """Load a 1-atom structure and open the async block the xfail
         snippets continue (they close the trailing ``}, 200);``)."""
         return (
+            _FAKE_EMBED +
             "const d = window.molbuilder.molview.data;\n"
             "window.molbuilder.selection.store.adoptAtoms(\n"
             "  [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"

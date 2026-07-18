@@ -25,8 +25,8 @@
  *     openMolecule, generate, applyOp, discard, undo,
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
  *     save, load, state_index, uncommitted,
- *     // Frames (molview-module.md §14.5)
- *     reloadFrames, addFrame, setFrame, getFrame, currentFrame, frameCount, currentForces,
+ *     // Frames (molview-module.md §14.5) — coords owned by the embed movie (single owner)
+ *     reloadFrames, setFrameArrows, addFrame, addFrames, setFrame, getFrame, currentFrame, frameCount,
  *     // Serialisation (the format is MolView's): project-file export + draft key + persist bracket
  *     exportFile, draftIdentity, suspendPersist, resumePersist,
  *     // Sub-namespaces
@@ -143,17 +143,10 @@
         }
         return _selectionStore;
     }
-    // The coordinate time axis (workspace-contract.md §1.5).  Lazily minted from the
-    // _frame-series.js factory; the frame API below (ws.addFrame / reloadFrames / setFrame /
-    // …) drives it, and setFrame pushes the current frame's coords onto the selection store.
-    let _frames = null;
-    function _frameSeries() {
-        if (_frames) return _frames;
-        const factory = root.molbuilder && root.molbuilder.molview
-                     && root.molbuilder.molview._createFrameSeries;
-        if (typeof factory === "function") _frames = factory();
-        return _frames;
-    }
+    // The coordinate time axis (§14.5) lives in the embed's native 3Dmol movie -- the
+    // SINGLE coord owner (task #33).  The frame API below (reloadFrames / addFrame /
+    // setFrame / getFrame / …) is a thin coordinator: it validates the same-atoms
+    // invariant and forwards to the embed handle; it holds NO coordinate copy of its own.
     // The 3Dmol embed handle is the view-state render target (§20).  The ACTIVE molview
     // registers it here at mount (onReady -> attachViewHandle); §18 "molview owns the whole
     // assembly", one active molview per page.  Pre-migration this was read off the tab-owned
@@ -209,6 +202,16 @@
         }
         return lines.join("\n") + "\n";
     }
+    // The VISIBLE frame's coords when a trajectory is scrubbed (currentFrame > 0),
+    // read from the embed movie (the single owner) ON DEMAND -- so getStructure /
+    // getCoordinates / export reflect the shown frame without a per-frame store push
+    // (§14.5.4).  Returns null for frame 0 / a static structure (fast path unchanged).
+    function _scrubbedFrameCoords() {
+        var cf = currentFrame();
+        if (cf <= 0) return null;
+        var fc = getFrame(cf);   // -> embed getFrameCoords(cf)
+        return (Array.isArray(fc) && fc.length === _atomsInternal().length) ? fc : null;
+    }
     function getStructure() {
         var cs = _canvas();
         var st = _store();
@@ -217,13 +220,13 @@
         if (!canvas) return null;
         var s = st ? st.getState() : null;
         var per = canvas.periodicity || null;
-        // Frame coherence (§14.5.4): a scrubbed frame (currentFrame > 0) lives in the
-        // store atoms, not canvas.text (frame 0).  Serialise the visible frame so text,
-        // atoms, and a save all agree; frame 0 / no-frames keeps the canvas text (fast
-        // path, unchanged).  Only trajectories scrub, and those are xyz -> format xyz.
-        var _scrubbed = currentFrame() > 0;
-        var _text = _scrubbed ? _atomsToXyz((s && s.title) || "") : canvas.text;
-        var _fmt  = _scrubbed ? "xyz" : canvas.source_format;
+        // Frame coherence (§14.5.4): a scrubbed frame's coords live in the embed movie
+        // (the single owner), not canvas.text (frame 0).  Serialise the visible frame so
+        // text, atoms, and a save all agree; frame 0 / no-frames keeps the canvas text
+        // (fast path, unchanged).  Only trajectories scrub, and those are xyz.
+        var _fc = _scrubbedFrameCoords();
+        var _text = _fc ? _atomsToXyz((s && s.title) || "") : canvas.text;
+        var _fmt  = _fc ? "xyz" : canvas.source_format;
         // Defensive per-atom copy (workspace-contract.md §1.2.1): the store snapshot shares
         // the atom OBJECTS, so without cloning them a consumer mutating
         // getStructure().atoms[i].x would leak straight into the store.  Reuse the selection
@@ -235,7 +238,12 @@
             source_format: _fmt,
             title:         (s && s.title) || "",
             n_atoms:       s ? s.atoms.length : 0,
-            atoms:         s ? s.atoms.map(_clone) : [],
+            // Overlay the visible frame's coords onto the (frame-independent) atom identity.
+            atoms:         s ? s.atoms.map(function (a, i) {
+                               var c = _clone(a);
+                               if (_fc) { c.x = _fc[i][0]; c.y = _fc[i][1]; c.z = _fc[i][2]; }
+                               return c;
+                           }) : [],
             // Periodicity rides with the geometry (structure-periodicity.md):
             // `lattice` = the cell (kept for existing consumers); `periodicity`
             // carries the full cell/axis_kind/vacuum so a save writes the
@@ -268,6 +276,9 @@
         return _atomsInternal().map(function (a) { return a.element; });
     }
     function getCoordinates() {
+        // Reflect the VISIBLE frame when scrubbed (§14.5.4) -- coords from the movie.
+        var fc = _scrubbedFrameCoords();
+        if (fc) return fc.map(function (p) { return [p[0], p[1], p[2]]; });
         return _atomsInternal().map(function (a) { return [a.x, a.y, a.z]; });
     }
     // RAW explicit cell -- null when unset.  Used by the render's base wireframe (draw a
@@ -501,7 +512,14 @@
         // getAtoms()[i].x / .labels.push(...).  Use the same _cloneAtom getStructure() does.
         var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
                    || function (a) { return a; };
-        return s.atoms.map(_clone);
+        // Reflect the VISIBLE frame when scrubbed (§14.5.4): overlay the current frame's
+        // coords (from the movie) onto the frame-independent atom identity.
+        var fc = _scrubbedFrameCoords();
+        return s.atoms.map(function (a, i) {
+            var c = _clone(a);
+            if (fc) { c.x = fc[i][0]; c.y = fc[i][1]; c.z = fc[i][2]; }
+            return c;
+        });
     }
 
     /**
@@ -1686,11 +1704,23 @@
                 + " does not match the loaded structure's " + n + " atoms (§1.5)");
         }
     }
-    function _pushCurrentFrame() {
-        const fs = _frameSeries(), st = _store();
-        if (!fs || !st || typeof st.setCoords !== "function") return;
-        const coords = fs.currentCoords();
-        if (coords) st.setCoords(coords);   // coords-only swap + notify -> render reacts
+    // Same-atoms invariant across a frame SET (§14.5): every frame same atom count.
+    // Enforced HERE (was the removed frame-series' job) before the coords reach the
+    // movie -- a mismatch is a hard error, never coerced.
+    function _requireSameAtoms(frames, label) {
+        if (!Array.isArray(frames) || frames.length < 1) {
+            throw new Error(label + ": needs at least one frame");
+        }
+        const n0 = Array.isArray(frames[0]) ? frames[0].length : 0;
+        for (let i = 0; i < frames.length; i++) {
+            const fr = frames[i];
+            if (!Array.isArray(fr) || fr.length !== n0) {
+                throw new Error(label + ": frame " + i + " has "
+                    + (Array.isArray(fr) ? fr.length : "?") + " atoms, expected "
+                    + n0 + " (same-atoms invariant, §14.5)");
+            }
+        }
+        return n0;
     }
     // Frame-change channel -- DELIBERATELY SEPARATE from the selection store's
     // notify.  A native frame swap must update ONLY the frame-controls bar
@@ -1713,40 +1743,35 @@
     }
     function reloadFrames(frames, opts) {
         opts = opts || {};
-        const fs = _frameSeries();
-        if (!fs) throw _missing("molview._createFrameSeries");
-        _requireMatch(Array.isArray(frames) ? frames[0] : null, "reloadFrames");
-        fs.reset(frames, opts);   // HARD reload -> resets to frame 0
-        // Fast NATIVE path (§14.5): hand the WHOLE trajectory to the embed's native
-        // animation.  3Dmol builds all frames ONCE and setAnimationFrame swaps them
-        // GPU-side -- no per-frame structure re-render.  Per-frame force arrows ride
-        // along baked-in (arrowsPerFrame), so playback never synthesises overlays.
-        // We do NOT push coords to the store (that would make mountRender rebuild the
-        // whole structure every frame -- the slow path this replaces).  MolView owns
-        // the frame bar, so the embed's own strip is suppressed (frameStrip:false).
+        // Same-atoms invariant + structure-identity check (§14.5) -- reject before
+        // anything reaches the movie; never coerce.
+        _requireSameAtoms(frames, "reloadFrames");
+        _requireMatch(frames[0], "reloadFrames");
+        // Single owner (§14.5.2): hand the WHOLE trajectory to the embed's native movie
+        // (addModelsAsFrames).  3Dmol parses all frames ONCE and setFrame swaps them with
+        // no rebuild; per-frame arrows ride along baked-in.  The data model keeps NO coords
+        // copy -- count/index/coords all read back through the embed.  We do NOT push to the
+        // store (that would make mountRender rebuild every frame).  MolView owns the frame
+        // bar, so the embed's own strip is suppressed (frameStrip:false).
         const h = _handle();
         if (h && typeof h.setAnimation === "function") {
-            try {
-                h.setAnimation({
-                    kind:           "trajectory",
-                    frames:         frames,
-                    arrowsPerFrame: Array.isArray(opts.arrowsPerFrame)
-                                        ? opts.arrowsPerFrame : null,
-                    frameStrip:     false,
-                    paused:         true,
-                });
-            } catch (_) { _pushCurrentFrame(); }
-        } else {
-            _pushCurrentFrame();   // no embed yet -> store-render fallback
+            h.setAnimation({
+                kind:           "trajectory",
+                frames:         frames,
+                arrowsPerFrame: Array.isArray(opts.arrowsPerFrame)
+                                    ? opts.arrowsPerFrame : null,
+                frameStrip:     false,
+                paused:         true,
+            });
         }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
         _notifyFrame();   // frame count (+ current) changed -> refresh the frame bar
-        return fs.frameCount();
+        return frameCount();
     }
-    // Update the per-frame force-arrow overlays WITHOUT rebuilding the frames or
-    // restarting playback (§14.5.1).  The consumer builds the full arrowsPerFrame
-    // array ONCE when an overlay option changes and hands it here; the embed's
-    // partial-setAnimation live path swaps it in place (no per-frame synthesis).
+    // Update the per-frame arrow overlays WITHOUT rebuilding the movie or restarting
+    // playback (§14.5.1).  The consumer builds the full arrowsPerFrame array ONCE when an
+    // overlay option changes and hands it here; the embed's partial-setAnimation live path
+    // swaps it in place (no per-frame synthesis).
     function setFrameArrows(arrowsPerFrame) {
         const h = _handle();
         if (h && typeof h.setAnimation === "function") {
@@ -1756,13 +1781,9 @@
             } catch (_) {}
         }
     }
-    function addFrame(coords, opts) {
-        const fs = _frameSeries();
-        if (!fs) throw _missing("molview._createFrameSeries");
-        _requireMatch(coords, "addFrame");
-        fs.addFrame(coords, opts);   // append; does NOT change the current view
-        // Append to the LIVE native animation so the new frame is playable without a
-        // full reload (live-poll tail-append).
+    function addFrame(coords) {
+        _requireMatch(coords, "addFrame");   // count vs the loaded structure
+        // Append to the live native movie (live-poll tail-append); 3Dmol owns the coords.
         const h = _handle();
         const kind = (h && typeof h.getAnimationKind === "function")
             ? h.getAnimationKind() : null;
@@ -1771,49 +1792,48 @@
         }
         if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
         _notifyFrame();   // frame count changed -> refresh the frame bar
-        return fs.frameCount();
+        return frameCount();
     }
-    function addFrames(list, opts) {
-        opts = opts || {};
-        const forcesList = Array.isArray(opts.forces) ? opts.forces : null;
-        (Array.isArray(list) ? list : []).forEach(function (coords, i) {
-            addFrame(coords, { forces: forcesList ? forcesList[i] : undefined });
+    function addFrames(list) {
+        (Array.isArray(list) ? list : []).forEach(function (coords) {
+            addFrame(coords);
         });
         return frameCount();
     }
     function setFrame(i) {
-        const fs = _frameSeries();
-        if (!fs) throw _missing("molview._createFrameSeries");
-        fs.setFrame(i);            // throws if out of range
-        // Native frame swap when a trajectory animation is live (fast tier): the
-        // embed applies the frame's coords to the EXISTING model + redraws its baked
-        // per-frame arrows -- no store push, no structure rebuild.  Falls back to the
-        // store coords-swap when there's no native animation (single structure).
+        const n = frameCount();
+        const idx = Math.floor(Number(i));
+        if (!(idx >= 0 && idx < n)) {
+            throw new Error("setFrame(" + i + ") out of range [0.." + (n - 1) + "]");
+        }
+        // Native frame swap (§14.5.2): the embed swaps to the pre-parsed movie frame.
+        // Cheap kind probe -- NOT getAnimation() (that clones the whole animation incl.
+        // arrowsPerFrame -> O(frames) per swap).  Notify ONLY the frame-controls bar (not
+        // the store) so the slider/counter track the shown frame without re-rendering the
+        // selection panel (which would steal input focus during playback).
         const h = _handle();
-        // Cheap kind probe -- NOT getAnimation() (that clones the whole animation,
-        // incl. arrowsPerFrame, every frame -> O(frames) per swap, killing playback).
         const kind = (h && typeof h.getAnimationKind === "function")
             ? h.getAnimationKind() : null;
-        if (h && kind === "trajectory"
-                && typeof h.setAnimationFrame === "function") {
-            try {
-                h.setAnimationFrame(i);
-                // The viewer advanced natively (no store mutation).  Notify ONLY the
-                // frame-controls bar (not the store) so the slider/counter track the
-                // shown frame without re-rendering the selection panel.
-                _notifyFrame();
-            } catch (_) { _pushCurrentFrame(); }
-        } else {
-            _pushCurrentFrame();
-            _notifyFrame();
+        if (h && kind === "trajectory" && typeof h.setAnimationFrame === "function") {
+            try { h.setAnimationFrame(idx); } catch (_) {}
         }
-        return fs.currentFrame();
+        _notifyFrame();
+        return currentFrame();
     }
-    function getFrame(i)     { const fs = _frameSeries(); return fs ? fs.getFrame(i) : null; }
-    function getForces(i)    { const fs = _frameSeries(); return fs ? fs.getForces(i) : null; }
-    function currentForces() { const fs = _frameSeries(); return fs ? fs.currentForces() : null; }
-    function currentFrame()  { const fs = _frameSeries(); return fs ? fs.currentFrame() : 0; }
-    function frameCount()    { const fs = _frameSeries(); return fs ? fs.frameCount() : 0; }
+    // Frame reads -- all delegate to the embed's native movie (the single coord owner,
+    // §14.5).  The data model holds no coordinate array of its own.
+    function getFrame(i) {
+        const h = _handle();
+        return (h && typeof h.getFrameCoords === "function") ? h.getFrameCoords(i) : null;
+    }
+    function currentFrame() {
+        const h = _handle();
+        return (h && typeof h.getAnimationFrame === "function") ? h.getAnimationFrame() : 0;
+    }
+    function frameCount() {
+        const h = _handle();
+        return (h && typeof h.getFrameCount === "function") ? h.getFrameCount() : 0;
+    }
 
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
 
@@ -2312,7 +2332,7 @@
         applyOp:               applyOp,
         discard:               discard,
         undo:                  undo,
-        // Frames — the coordinate time axis (workspace-contract.md §1.5)
+        // Frames — the coordinate time axis; coords owned by the embed movie (§14.5).
         reloadFrames:          reloadFrames,
         setFrameArrows:        setFrameArrows,
         onFrameChange:         onFrameChange,
@@ -2320,8 +2340,6 @@
         addFrames:             addFrames,
         setFrame:              setFrame,
         getFrame:              getFrame,
-        getForces:             getForces,
-        currentForces:         currentForces,
         currentFrame:          currentFrame,
         frameCount:            frameCount,
         selection:             selection,

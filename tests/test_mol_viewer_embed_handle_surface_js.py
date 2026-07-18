@@ -67,7 +67,7 @@ EXPECTED_METHODS = sorted([
     # Animation control
     "setAnimation", "playAnimation", "pauseAnimation",
     "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
-    "getAnimationKind", "getFrameCoords",
+    "getAnimationKind", "getFrameCount", "getFrameCoords",
     # Read accessors
     "getAtomCount", "getElements", "getAtomCoords",
     "getPickedIndices", "setPickedIndices",

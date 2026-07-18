@@ -4748,6 +4748,15 @@
             const a = state.current.animation;
             return a ? a.kind : null;
         }
+        // Frame count (task #33 single-owner): the trajectory's count comes from the
+        // native movie; a plain loaded structure is the one-frame case; nothing
+        // loaded is 0.  Cheap -- data-model.frameCount() forwards straight here.
+        function getFrameCount() {
+            if (state.disposed) return 0;
+            const a = state.current.animation;
+            if (a && a.kind === "trajectory") return _trajFrameCount(state);
+            return _atomCount(state.viewer) > 0 ? 1 : 0;
+        }
         // Read frame ``i``'s coords from the native movie WITHOUT changing the
         // displayed frame (single-owner accessor for export / round-trip).
         function getFrameCoords(i) {
@@ -4759,6 +4768,8 @@
             if (a && a.kind === "trajectory" && Array.isArray(a.frames)) {
                 return a.frames[i] ? a.frames[i].slice() : null;
             }
+            // Single structure (no trajectory): frame 0 is the current model.
+            if (!a && i === 0) return _atomCoords(state.viewer);
             return null;
         }
         function getBackground() {
@@ -6059,6 +6070,7 @@
             setAnimation:       setAnimation,
             appendFrames:       appendFrames,
             getAnimationKind:   getAnimationKind,
+            getFrameCount:      getFrameCount,
             getFrameCoords:     getFrameCoords,
             playAnimation:      playAnimation,
             pauseAnimation:     pauseAnimation,
