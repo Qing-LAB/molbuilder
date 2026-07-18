@@ -1213,6 +1213,17 @@
                     : null);
 
             if (opts.kind === "animation") {
+                // Trajectory clips can cover a SUB-RANGE of frames (inclusive).
+                if (typeof d.frameCount === "number" && d.frameCount > 1) {
+                    _row("start", "Start frame",
+                        _number(d.startFrame || 0, 0, d.frameCount - 1, 1),
+                        "First frame of the clip (0–" + (d.frameCount - 1) + ").");
+                    _row("end", "End frame",
+                        _number(typeof d.endFrame === "number"
+                                    ? d.endFrame : d.frameCount - 1,
+                                0, d.frameCount - 1, 1),
+                        "Last frame of the clip (inclusive).");
+                }
                 _row("fps", "Frame rate (fps)",
                     _number(d.fps || 30, 1, 120, 1),
                     "1–120 fps.  Higher = smoother + larger file.");
@@ -1377,6 +1388,21 @@
                 }
                 if (inputs.duration) {
                     out.duration = parseFloat(inputs.duration.value);
+                }
+                // Trajectory sub-range (inclusive): normalise so start <= end and
+                // both sit in [0, frameCount).  captureFrames maps the clip over it.
+                if (inputs.start || inputs.end) {
+                    var _nF = (opts.defaults && opts.defaults.frameCount) || 1;
+                    var _s = inputs.start ? parseInt(inputs.start.value, 10) : 0;
+                    var _e = inputs.end
+                        ? parseInt(inputs.end.value, 10) : (_nF - 1);
+                    if (!Number.isFinite(_s)) _s = 0;
+                    if (!Number.isFinite(_e)) _e = _nF - 1;
+                    _s = Math.max(0, Math.min(_nF - 1, _s));
+                    _e = Math.max(0, Math.min(_nF - 1, _e));
+                    if (_s > _e) { var _t = _s; _s = _e; _e = _t; }
+                    out.startFrame = _s;
+                    out.endFrame   = _e;
                 }
                 if (inputs.width) {
                     out.width = parseInt(inputs.width.value, 10) || 0;
@@ -1575,13 +1601,31 @@
         const stem = userExp.defaultName || "structure";
         const safe = String(stem).replace(/[^\w.\-]+/g, "_");
         const ext = format || "bin";
-        const out = { filename: safe + "." + ext };
+        // A single-frame (structure / image) export FROM a trajectory captures ONE
+        // frame of many, so encode the frame number in the default filename -> the
+        // file is self-describing (e.g. name_frame50.xyz).  A static structure or an
+        // animation export gets no frame suffix.
+        let base = safe;
+        if (kind === "structure" || kind === "image") {
+            const a = state.current && state.current.animation;
+            if (a && a.kind === "trajectory") {
+                const fr = (typeof a.currentFrame === "number") ? a.currentFrame : 0;
+                base = safe + "_frame" + fr;
+            }
+        }
+        const out = { filename: base + "." + ext };
         if (kind === "animation") {
             const a = state.current && state.current.animation;
             if (a && a.kind === "trajectory") {
                 out.fps = a.fps || 30;
                 const nF = _trajFrameCount(state) || 1;
                 out.duration = nF / (a.fps || 30);
+                // A trajectory clip can be a SUB-RANGE of frames (inclusive) --
+                // the dialog exposes start/end so the user isn't forced to encode
+                // the whole run.  Default = the whole run.
+                out.frameCount = nF;
+                out.startFrame = 0;
+                out.endFrame   = nF - 1;
             } else if (a && a.kind === "vibration") {
                 out.fps = 30;
                 out.duration = 1 / Math.max(0.01, a.speedHz || 1);
@@ -1699,6 +1743,8 @@
                 format:   format || "webm",
                 fps:      params.fps,
                 duration: params.duration,
+                startFrame: params.startFrame,
+                endFrame:   params.endFrame,
                 width:    params.width  || undefined,
                 height:   params.height || undefined,
                 videoBitsPerSecond: params.videoBitsPerSecond,
@@ -3027,8 +3073,24 @@
      * oscillation.  For trajectory: maps frameIdx → input frame
      * index, wrapping if duration exceeds one loop.
      */
+    // Normalised inclusive capture range [start, end] for a trajectory export --
+    // from opts.startFrame/endFrame (the dialog), defaulting to the whole run.
+    // null for a non-trajectory (vibration has no frame range).
+    function _captureRange(state, opts) {
+        const a = state.current && state.current.animation;
+        if (!a || a.kind !== "trajectory") return null;
+        const n = _trajFrameCount(state);
+        let s = (opts && typeof opts.startFrame === "number")
+            ? Math.floor(opts.startFrame) : 0;
+        let e = (opts && typeof opts.endFrame === "number")
+            ? Math.floor(opts.endFrame) : (n - 1);
+        s = Math.max(0, Math.min(n - 1, s));
+        e = Math.max(s, Math.min(n - 1, e));
+        return { start: s, end: e };
+    }
+
     function _driveAnimationFrame(state, frameIdx,
-                                  totalFrames, durationSec) {
+                                  totalFrames, durationSec, range) {
         const a = state.current.animation;
         if (!a) return;
         if (a.kind === "vibration") {
@@ -3056,10 +3118,16 @@
             _postFramePositionRedraw(state);
         } else if (a.kind === "trajectory") {
             const n = _trajFrameCount(state);
-            // Spread the capture across all input frames evenly so
-            // duration scales the playback rate independently of fps.
-            const inputIdx = Math.min(n - 1,
-                Math.floor((frameIdx / Math.max(1, totalFrames)) * n));
+            // Spread the capture across the chosen INCLUSIVE range [start, end]
+            // (default whole run) so duration scales the playback rate independently
+            // of fps, and a sub-range clip only touches its own frames.
+            var start = (range && typeof range.start === "number") ? range.start : 0;
+            var end   = (range && typeof range.end === "number") ? range.end : (n - 1);
+            start = Math.max(0, Math.min(n - 1, start));
+            end   = Math.max(start, Math.min(n - 1, end));
+            const span = end - start + 1;
+            const inputIdx = Math.min(end,
+                start + Math.floor((frameIdx / Math.max(1, totalFrames)) * span));
             _showTrajectoryFrame(state, inputIdx);
         }
     }
@@ -5193,7 +5261,8 @@
                 const ab = _aborted(opts.signal);
                 if (ab) return Promise.reject(ab);
                 if (i >= total) return Promise.resolve();
-                _driveAnimationFrame(state, i, total, duration);
+                _driveAnimationFrame(state, i, total, duration,
+                    _captureRange(state, opts));
                 state.viewer.render();
                 return _canvasToPngBlob(state, width, height)
                     .then((blob) => {
@@ -5402,7 +5471,8 @@
                         try { recorder.stop(); } catch (_) {}
                         return stopped.then(resolve);
                     }
-                    _driveAnimationFrame(state, i, total, duration);
+                    _driveAnimationFrame(state, i, total, duration,
+                    _captureRange(state, opts));
                     state.viewer.render();
                     if (typeof opts.onProgress === "function") {
                         try {
@@ -5548,7 +5618,8 @@
                             gif.render();
                             return;
                         }
-                        _driveAnimationFrame(state, i, total, duration);
+                        _driveAnimationFrame(state, i, total, duration,
+                    _captureRange(state, opts));
                         state.viewer.render();
                         try {
                             gif.addFrame(canvas, {
