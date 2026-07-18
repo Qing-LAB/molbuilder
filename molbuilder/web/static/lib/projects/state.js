@@ -19,6 +19,7 @@ import {
   apiCopy,
   apiCreateProject,
   apiDelete,
+  apiList,
   apiMkdir,
   apiMove,
   apiRead,
@@ -514,6 +515,14 @@ function isCancelError(err) {
  *  which is the no-argument form keyed on the sidebar's current
  *  selection.  ``opts.signal`` honoured (per docs/protocols/
  *  projects-sidebar.md § C3). */
+/** List a directory's entries for a CONSUMER (e.g. the Results file-picker) that needs to
+ *  enumerate a dir independently of the sidebar's own view -- so no tab hand-rolls an
+ *  ``/api/files/list`` fetch.  Format-blind; returns the ``/api/files/list`` envelope
+ *  (``{ok, entries, ...}`` | ``{ok:false, error}``).  ``opts.signal`` aborts a slow scan. */
+export async function listDir(path, opts) {
+  return await apiList(path, opts);
+}
+
 export async function readFile(path, opts) {
   return await apiRead(path, opts);
 }
@@ -827,6 +836,7 @@ export const projects = {
   // success so the tree stays in sync.
   readFile,
   readRange,
+  listDir,
   createProject,
   mkdir,
   deleteEntry,

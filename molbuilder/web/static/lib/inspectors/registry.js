@@ -62,6 +62,7 @@
  *     showError(message): void,                        // render error inside host
  *     readFile(file, opts?):  Promise<{ok, text, error?}>,          // -> projects.readFile
  *     readRange(file, offset, maxBytes, opts?): Promise<{ok, text, eof, …}>, // -> projects.readRange
+ *     writeFile(file, text, opts?): Promise<{ok, mtime} | {ok:false, error, actual_mtime}>, // -> projects.writeFile
  *   };
  *
  * The framework is high-level DISPATCH; it does NOT implement file reading.  The default
@@ -225,6 +226,18 @@
                         error: "projects file package unavailable" });
                 }
                 return p.readRange(file, offset, maxBytes, opts);
+            },
+            // Write a file's text through the sidebar file layer -- mtime-safe via
+            // ``opts.expected_mtime`` (envelope {ok, mtime} | {ok:false, error,
+            // actual_mtime} on a concurrent-edit conflict).  Delegates to
+            // ``projects.writeFile``; handlers never POST /api/files/write raw.
+            writeFile(file, text, opts) {
+                const p = _projects();
+                if (!p || typeof p.writeFile !== "function") {
+                    return Promise.resolve({ ok: false,
+                        error: "projects file package unavailable" });
+                }
+                return p.writeFile(file, text, opts);
             },
         };
     }

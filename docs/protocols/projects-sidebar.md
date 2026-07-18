@@ -189,6 +189,7 @@ shapes are in § 5.4 (the C1–C8 tables); this is the at-a-glance map.
 | `readFile(path, opts)` | read a file's bytes as text |
 | `readCurrentFile(opts)` | read the currently-selected file (`null` when none) |
 | `readRange(path, offset, maxBytes, opts)` | read a byte window (negative offset = from EOF) |
+| `listDir(path, opts)` | list a directory's entries for a consumer (e.g. the Results file-picker) — the `/api/files/list` envelope; `opts.signal` aborts |
 | `writeFile(path, text\|Blob, opts)` | write to an exact path (Blob → upload route) |
 | `saveToWorkspace(text, filename, opts)` | write into `current_dir/<filename>` (`null` at root) |
 | `safeSave(text, filename, opts)` | Cancel-aware `saveToWorkspace` (§ 6.3) |

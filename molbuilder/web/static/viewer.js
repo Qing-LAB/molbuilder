@@ -511,13 +511,12 @@
 
     // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //
     //
-    // The Projects sidebar publishes its current pick via
-    // ``window.molbuilder.projects.onChange``.  Each onChange fire
-    // brings ``{dir, file}``; when ``file`` ends with ``.xyz`` or
-    // ``.pdb`` we fetch its content via /api/files/read and POST to
-    // /api/build/load (same endpoint the file-upload button uses),
-    // so picking a structure in the sidebar auto-loads it into
-    // Build without making the user re-upload via the OS dialog.
+    // The Projects sidebar publishes commits via
+    // ``window.molbuilder.projects.onCommit``.  On a commit of a
+    // ``.xyz`` / ``.pdb`` we load it through the ONE file door
+    // (``projects.parser.openMolecule(path)``), which reads the .xyz +
+    // its .molstruct.json sidecar and installs the model -- so picking a
+    // structure in the sidebar auto-loads it without a re-upload.
     //
     // The previous behaviour was "Build doesn't listen to the
     // sidebar at all" -- which broke the natural workflow of

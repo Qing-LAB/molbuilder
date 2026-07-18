@@ -124,17 +124,13 @@
                 if (aborted || !dirty || elSave.disabled) return;
                 elSave.disabled      = true;
                 elStatus.textContent = "Saving…";
-                let r;
+                // Write through the framework-injected writer (ctx.writeFile ->
+                // projects.writeFile, the ONE byte layer); mtime-safe via
+                // expected_mtime.  No raw /api/files/write in the handler.
+                let env;
                 try {
-                    r = await fetch("/api/files/write", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify({
-                            path:            file,
-                            text:            cm ? cm.getValue() : "",
-                            expected_mtime:  mtime,
-                        }),
-                    });
+                    env = await ctx.writeFile(file, cm ? cm.getValue() : "",
+                        { expected_mtime: mtime });
                 } catch (e) {
                     if (aborted) return;
                     elStatus.textContent = "Save failed: " +
@@ -143,29 +139,22 @@
                     return;
                 }
                 if (aborted) return;
-                // CHECK STATUS BEFORE PARSING -- a 409 response body
-                // shape isn't guaranteed; we surface the conflict
-                // regardless of whether the server replied with JSON.
-                if (r.status === 409) {
-                    elStatus.textContent =
-                        "Conflict: this file was modified on disk "
-                        + "since you opened it.  Reload to see the "
-                        + "current version (your edits will be "
-                        + "lost), or save under a new name.";
+                if (!env || env.ok === false) {
+                    // A concurrent edit (mtime mismatch) surfaces actual_mtime.
+                    if (env && env.actual_mtime != null) {
+                        elStatus.textContent =
+                            "Conflict: this file was modified on disk "
+                            + "since you opened it.  Reload to see the "
+                            + "current version (your edits will be "
+                            + "lost), or save under a new name.";
+                    } else {
+                        elStatus.textContent = "Save failed: " +
+                            ((env && env.error) || "unknown");
+                    }
                     elSave.disabled = false;
                     return;
                 }
-                let body = null;
-                try { body = await r.json(); } catch (_) { /* swallow */ }
-                if (aborted) return;
-                if (!body || !body.ok) {
-                    elStatus.textContent = "Save failed: " +
-                        (body && body.error ? body.error :
-                            "HTTP " + r.status);
-                    elSave.disabled = false;
-                    return;
-                }
-                mtime          = body.mtime || null;
+                mtime          = env.mtime || null;
                 dirty          = false;
                 elDirty.hidden = true;
                 elSave.disabled = true;   // explicit: nothing to save now

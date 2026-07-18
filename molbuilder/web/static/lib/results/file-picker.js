@@ -68,8 +68,6 @@
 (function (root) {
     "use strict";
 
-    const LIST_ENDPOINT = "/api/files/list";
-
     // -------- pure helpers (exported for testing) --------------- //
 
     /**
@@ -481,21 +479,17 @@
 
             aborter = new AbortController();
             const signal = aborter.signal;
-            const url = LIST_ENDPOINT + "?path=" + encodeURIComponent(dir);
-            // ``cache: "no-store"`` is the load-bearing bit that fixes
-            // the "user clicks Results, sees stale dropdown" bug.
-            // Without it the browser HTTP cache returns the previous
-            // /api/files/list response (since the URL is identical to
-            // the prior scan's), so newly-generated result files don't
-            // appear until the user navigates the sidebar out + back
-            // in (which forces a different URL).  The directory
-            // listing is cheap + always live; no caching needed.
-            fetch(url, {
-                credentials: "same-origin",
-                signal:      signal,
-                cache:       "no-store",
-            })
-                .then(resp => resp.ok ? resp.json() : null)
+            // List through the sidebar file layer (projects.listDir -> /api/files/list)
+            // rather than a hand-rolled fetch -- the ONE file-access path.  ``apiList``
+            // already sends ``cache:no-store``, which is load-bearing: it fixes the "click
+            // Results, see stale dropdown" bug (an identical /api/files/list URL would
+            // otherwise serve the cached prior scan, hiding newly-generated result files
+            // until a sidebar out+back).  ``signal`` aborts a superseded scan.
+            const _proj = (window.molbuilder || {}).projects;
+            (_proj && typeof _proj.listDir === "function"
+                ? _proj.listDir(dir, { signal })
+                : Promise.resolve({ ok: false,
+                    error: "projects.listDir unavailable" }))
                 .then(body => {
                     if (disposed || signal.aborted) return;
                     if (!body || body.ok !== true) {
