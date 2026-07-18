@@ -2133,6 +2133,15 @@ def api_files_delete():
                           f"everything inside."),
             }), 409
 
+    # Sidecar pairing (2026-07): deleting a structure FILE (.xyz/.pdb) must also remove
+    # its paired .molstruct.json -- the mirror of the rename/move/copy pairing -- else the
+    # sidecar is orphaned (the labels/cell of a file that no longer exists).  None for
+    # directories, non-structure files, and files without an existing sidecar.  (Deleting
+    # a .molstruct.json directly is a single-file op -- _existing_paired_sidecar returns
+    # None for a non-structure suffix, same as rename.)
+    paired_sidecar = (None if resolved.is_dir()
+                      else _existing_paired_sidecar(resolved))
+
     try:
         if resolved.is_dir():
             if recursive:
@@ -2152,9 +2161,26 @@ def api_files_delete():
             "error": f"delete failed: {exc}",
         }), 500
 
+    # Remove the paired sidecar in lockstep.  The structure file is already gone, so a
+    # sidecar-removal failure is surfaced (the user can clean it up) but does not resurrect
+    # the structure.  See projects-sidebar-ui.md § 5.2 (sidecar pairing).
+    sidecar_removed = None
+    if paired_sidecar is not None:
+        try:
+            paired_sidecar.unlink()
+            sidecar_removed = str(paired_sidecar)
+        except OSError as exc:
+            return jsonify({
+                "ok": False,
+                "error": (f"deleted {resolved.name!r} but its paired sidecar "
+                          f"{paired_sidecar.name!r} could not be removed: {exc}.  "
+                          f"Remove it manually to avoid an orphaned sidecar."),
+            }), 500
+
     return jsonify({
         "ok":   True,
         "path": str(resolved),
+        "sidecar_removed": sidecar_removed,
     })
 
 

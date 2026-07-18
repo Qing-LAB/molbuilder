@@ -1160,6 +1160,59 @@ def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
 
 
 # --------------------------------------------------------------------- #
+#  DELETE /api/files/delete  (sidecar pairing)                          #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesDeleteSidecarPairing:
+    """2026-07: deleting a .xyz/.pdb file MUST also remove its paired
+    .molstruct.json -- the mirror of the rename/move/copy pairing -- else
+    the sidecar orphans (labels/cell of a file that no longer exists)."""
+
+    def _delete(self, web, path: Path, **body):
+        return web.delete(
+            "/api/files/delete",
+            json={"path": str(path), **body},
+        )
+
+    def test_xyz_delete_removes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        assert struct.exists() and sidecar.exists()
+        r = self._delete(web, struct)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        j = r.get_json()
+        assert j["ok"] is True
+        assert not struct.exists()
+        assert not sidecar.exists()          # the fix: no orphaned sidecar
+        assert j["sidecar_removed"] == str(sidecar)
+
+    def test_pdb_delete_removes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
+        r = self._delete(web, struct)
+        assert r.status_code == 200
+        assert not struct.exists()
+        assert not sidecar.exists()
+
+    def test_delete_without_sidecar_is_fine(self, web, picker_root):
+        struct = picker_root / "lonely.xyz"
+        struct.write_text("1\nx\nH 0 0 0\n")
+        r = self._delete(web, struct)
+        assert r.status_code == 200
+        assert r.get_json()["sidecar_removed"] is None
+        assert not struct.exists()
+
+    def test_deleting_the_sidecar_directly_is_single_file(self, web, picker_root):
+        # Deleting the .molstruct.json itself leaves the .xyz untouched (a
+        # single-file op, matching rename's "sidecar renamed directly" rule).
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        r = self._delete(web, sidecar)
+        assert r.status_code == 200
+        assert r.get_json()["sidecar_removed"] is None
+        assert not sidecar.exists()
+        assert struct.exists()
+
+
+# --------------------------------------------------------------------- #
 #  POST /api/files/rename  (sidecar pairing)                            #
 # --------------------------------------------------------------------- #
 
