@@ -206,7 +206,7 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 
 | Method | Signature | Contract |
 |---|---|---|
-| `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk transient draft (`/api/workingcopy/update`) keyed by `identity`. **Format-blind** — the consumer already serialised; this just writes bytes. |
+| `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk indexed state file (`/api/workspace/state/write`) keyed by `identity` `{workspace_id, state_index}`. **Format-blind** — the consumer already serialised; this just writes bytes. |
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
 | `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
@@ -265,7 +265,7 @@ on an explicit Save.
 |---|---|---|---|---|
 | **Server draft** | crash-safe transient | **YES** — the transient of record | **every edit** (the working-copy `update`) | `<project>/.molbuilder_workspace/<stem>.<session>.wc.json` — or, **sourceless**, `projects_root()/.molbuilder_workspace/` (§4.1.1) |
 | **`sessionStorage`** | fast same-tab-reload cache | no — an optional layer on top | every `notify()` tick (debounced 100 ms) | `sessionStorage["molbuilder.workspace.v1"]` (§4.4) |
-| **Files** — `<stem>.xyz` + `<stem>.molstruct.json` | the durable copy | the durable save | **only** an explicit Save (`/api/workingcopy/save`) | the project directory |
+| **Files** — `<stem>.xyz` + `<stem>.molstruct.json` | the durable copy | the durable save | **only** an explicit Save (`projects.parser.saveMolecule` → `/api/files/write`) | the project directory |
 
 - **Server draft = the authoritative crash-safe transient.** Mirrored to disk on
   **every** edit (the working-copy `update`, §4.6). It is what survives a crash or a
@@ -454,6 +454,15 @@ by the rule above rather than papered over inside the store.
 
 ## §4.6 The working-copy persistence mechanism
 
+> **⚠️ RETIRED (kept for historical context).** The `WorkingCopy` core
+> (`molbuilder/workingcopy.py`) and its `/api/workingcopy/{open,update,save,discard,
+> orphans,recover,clean}` door were **removed**. Opening/saving a structure now goes
+> through the projects-sidebar contract (`projects.parser` →
+> [`structure-load-save-contract.md`](structure-load-save-contract.md)); unsaved-edit
+> persistence is the workspace **state timeline** (§4.7, `/api/workspace/state/*`). The
+> only survivor is the format codec `workingcopy_structure.py` (`StructureCodec`), still
+> used by `/api/structure/resolve-cell`. The mechanism below is described as it was.
+
 > **Folded in from the former `working-copy-persistence.md`** (now
 > [archived](archive/2026-07-05-working-copy-persistence.md)). This is the server-side
 > mechanism that implements the **server draft** and the **files** surfaces of §4.1
@@ -635,7 +644,7 @@ store for it. What the workspace must provide:
 - **The state write is NON-BLOCKING but ERROR-EXPLICIT.** The on-disk state file is
   crash-recovery / retract-history durability *downstream* of the source of truth (the
   in-memory model + the **synchronous** `sessionStorage` mirror). So `persist` **fires** the
-  `write-state` POST and does **not** make the hot path (`openMolecule`, `save`) await the
+  `state/write` POST and does **not** make the hot path (`openMolecule`, `save`) await the
   durable disk write — blocking the editor on a disk round-trip buys no correctness and
   couples every checkpoint/open to server latency. **But a failure is never swallowed:** a
   rejected fetch (network) OR a non-2xx response (server refused — bad `workspace_id`, disk

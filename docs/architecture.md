@@ -22,6 +22,11 @@ persistence format: **find the capability in § 1 (task → tool) or § 2
 **shared infrastructure** (named adopters, its own doc), not a local patch —
 see `design.md` principle 8 ("Don't reinvent wheels").
 
+**Every code file opens with a module-provenance header** (which module it
+belongs to · its role/boundary · who uses it) — mandatory for framework-level
+code. See `protocols/code-conventions.md` § 1. Never judge code
+dead/removable from a surface glance; trace callers and read the header first.
+
 ---
 
 ## 1. Task → existing tool (check here first)
@@ -32,7 +37,8 @@ see `design.md` principle 8 ("Don't reinvent wheels").
 | Read `molbuilder.json` (scheduler, routing, activation, script-gen) | `runtime_config.get_scheduler/get_routing/get_script_generation/require_activation` | re-parse the JSON yourself |
 | Emit a run wrapper / `.sbatch` for a job | `runwrap.write_run_wrapper` / `render_sbatch` / `write_sbatch` | hand-write shell/sbatch |
 | Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.check_schema_major/schema_major/read_json/write_json` | hand-roll the schema check + IO |
-| Hold data the user is *editing but hasn't saved* (survives reload/crash; explicit save, overwrite or save-as) | the **`workingcopy` core** (`WorkingCopy.open/update/save`; `protocols/workspace-contract.md` §4.6); an app supplies a codec | auto-save to, or directly bond an edit to, the project `.xyz`/`.json` |
+| Persist the user's *unsaved* browser edits across tab switches / reload | the **workspace session state-timeline** (`lib/workspace/` → `/api/workspace/state/*`; `protocols/workspace-contract.md` §4.7) — format-blind opaque snapshots | auto-save to, or directly bond an edit to, the project `.xyz`/`.json` |
+| Save the edited structure to a project file (overwrite or save-as) | **`projects.parser.saveMolecule`** (`structure-load-save-contract.md`) → `/api/files/write` | a bespoke second file stack / `/api/workingcopy/*` (retired) |
 | Parse an engine `.out`/dir/sidecar into typed data | `parse.registry.parse/parse_dir/parse_text`; `parse.dirs.job.decode_run_dir` | write a bespoke parser |
 | Run a *set* of related jobs (stage ladder / sweep) | the `jobset` framework + `molbuilder jobset plan/prep/status/submit` | reimplement dir isolation / sbatch chaining |
 | Benchmark GPU/CPU knobs on a target | `molbuilder bench generate/prep/summarize/prep-run` (`bench/`) | reinvent the sweep/adapters |
@@ -67,7 +73,6 @@ the master doc for *running* a molbuilder-generated job on any target.
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
 | `persist` | L1 | shared **versioned-doc** schema check + JSON IO (atomic) | `check_schema_major`, `schema_major`, `read_json`, `write_json` | `protocols/data-vocabulary.md` § 1 |
-| `workingcopy` | L1 | **format-agnostic load/edit/save foundation** — a draft (survives reload/crash) + explicit save (overwrite or save-as) for *any* user-edited-then-saved artifact (apps plug in a `Codec`; single-user; no gate) | `WorkingCopy.{open,new,recover,update,save,discard}`; `list_orphans`/`discard_orphan`/`clean_all` | foundation `protocols/workspace-contract.md` §4.6 |
 | `parse/` | L2 | unified **parse stack** (File/Text/Dir parsers → typed `ParseResult`) | `parse.registry.{parse,parse_dir,parse_text}`; `parse.dirs.job.decode_run_dir` (→ `JobResult`) | `protocols/parse-module.md`, `protocols/job-decoder.md` |
 | `sidecars/`, `script_emit`, `script_bundle`, `bundle_writer` | L2 | write-side JSON sidecars + run-bundle handoff | `bundle_writer.write_bundle_as_handoff` | `protocols/sidecar-contract.md`, `protocols/bundle-contract.md`, `protocols/script-contract.md` |
 | `config/` | L1 | the **dataclasses** (SiestaConfig/PySCFConfig/spectra/transport) — the lingua franca | `config.siesta.SiestaConfig`, `config.pyscf.PySCFConfig`, … | `config.md`, `engines/*.md` |

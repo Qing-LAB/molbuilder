@@ -1,17 +1,25 @@
-/* The ONE owner of the workspace sessionStorage snapshot IO.
+/* Workspace sessionStorage snapshot IO — the sole owner of the session mirror read/write.
  *
- * Both the dispatcher (WRITES the unified snapshot on every change) and the canvas-state
- * module (READS it to restore your unsaved work on reload) go through THIS module.
+ * MODULE: workspace persistence (lib/workspace/) — the low-level sessionStorage half.
+ *   Mounts window.molbuilder.workspaceSnapshot = { setNamespace, read, write }.  This is the
+ *   ONLY place that touches sessionStorage for the workspace session mirror; everything else
+ *   goes through here so there is one key + one format.  Sibling: dispatcher.js (the transport
+ *   + public window.molbuilder.workspace surface).  Contract: workspace-contract.md §4.4.
  *
- * Why it exists (data-model tightening): the canvas used to reach "up" to the dispatcher
- * (`ws.readPersistedSnapshot()`) for the reload restore, which (a) inverts the layering
- * and (b) only worked because the dispatcher happened to have mounted first -- if a canvas
- * read ran before the dispatcher mounted, the restore silently returned nothing and your
- * unsaved edits were dropped (a dishonest reload).  sessionStorage is ALWAYS available and
- * needs no module to be mounted, so reading it here makes the restore deterministic.
+ * USED BY:
+ *   - lib/workspace/dispatcher.js — WRITES the unified snapshot on every persist() (via write),
+ *     READS it for readPersistedSnapshot()/workspaceId() (via read), and sets the owner
+ *     namespace via setNamespace (from useNamespace).
+ *   - lib/molview/_canvas-state-impl.js — READS it to restore unsaved work on reload.
  *
- * Format: `{ v: 1, state: { structure, selection, view, ... } }` -- written by the
- * dispatcher's `_serialise()`, version-gated on read.  Loads BEFORE canvas + dispatcher.
+ * Why the canvas reads HERE and not up through the dispatcher: the canvas used to call
+ * `ws.readPersistedSnapshot()`, which (a) inverts the layering and (b) only worked if the
+ * dispatcher had mounted first -- a canvas read before the dispatcher mounted silently returned
+ * nothing and dropped your unsaved edits (a dishonest reload).  sessionStorage is ALWAYS
+ * available and needs no module mounted, so reading it here makes the restore deterministic.
+ *
+ * Format: `{ v: 1, state: { structure, selection, view, ... } }` -- written by the data model's
+ * serialise, version-gated on read.  Loads BEFORE canvas + dispatcher.
  */
 (function (root) {
     "use strict";

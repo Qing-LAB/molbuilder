@@ -34,10 +34,13 @@
  *
  * Storage:
  *   - Live source of truth: this module's private ``_state`` variable.
- *   - Persistence: the workspace dispatcher writes the unified snapshot
+ *   - Persistence: the workspace layer writes the unified snapshot
  *     under ``sessionStorage["molbuilder.workspace.v1"]``
  *     (workspace-contract.md §4.1 — sole persistence key); this module
- *     reads from it via ``ws.readPersistedSnapshot()`` on init.
+ *     reads it on init via the shared snapshot-io owner
+ *     (``window.molbuilder.workspaceSnapshot.read()``) — NOT up through the
+ *     dispatcher — so the restore is deterministic regardless of mount order
+ *     (see lib/workspace/snapshot-io.js).
  *   - Tab close: sessionStorage is cleared by the browser (default
  *     per-tab semantics).
  *

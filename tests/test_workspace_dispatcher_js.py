@@ -405,7 +405,7 @@ class TestWorkspaceIsPersistenceOnly:
         out = _run_node(
             "var log = [];\n"
             "global.window.fetch = function (url, opts) {\n"
-            "  if (url === '/api/workingcopy/write-state') {\n"
+            "  if (url === '/api/workspace/state/write') {\n"
             "    var tag = JSON.parse(opts.body).data.tag;\n"
             "    log.push('sent:' + tag);\n"
             "    var delay = (tag === 'A') ? 40 : 0;\n"   # 1st write is the SLOW one
@@ -1328,14 +1328,14 @@ class TestAnchorTimelineDurableWrites:
             "             {index:1,element:'H',x:0.957,y:0,z:0,regions:[],is_frozen:false},\n"
             "             {index:2,element:'H',x:-0.24,y:0.927,z:0,regions:[],is_frozen:false}] }); } });\n"
             "  }\n"
-            "  if (url.indexOf('/api/workingcopy/prune-states') >= 0) {\n"
+            "  if (url.indexOf('/api/workspace/state/prune') >= 0) {\n"
             "    global.__o.above = b.above_index;\n"
             "    return new Promise(function (res) { setTimeout(function () {\n"
             "      global.__o.pruneResolved = true;\n"
             "      res({ ok:true, json:function(){ return Promise.resolve({ ok:true, removed:0 }); } });\n"
             "    }, 25); });\n"
             "  }\n"
-            "  if (url.indexOf('/api/workingcopy/write-state') >= 0) {\n"
+            "  if (url.indexOf('/api/workspace/state/write') >= 0) {\n"
             "    if (b.state_index === 0 && global.__o.writeAfterPrune === null) {\n"
             "      global.__o.writeAfterPrune = global.__o.pruneResolved;\n"
             "    }\n"
@@ -1382,7 +1382,7 @@ class TestPersistErrorIsExplicit:
     def test_non_2xx_write_surfaces_via_onPersistError(self):
         out = self._run_persist(
             "global.window.fetch = function (url) {\n"
-            "  var isWrite = String(url).indexOf('write-state') >= 0;\n"
+            "  var isWrite = String(url).indexOf('/state/write') >= 0;\n"
             "  return Promise.resolve({ ok: !isWrite, status: isWrite ? 500 : 200,\n"
             "    json: function () { return Promise.resolve({ ok: !isWrite }); } });\n"
             "};\n")

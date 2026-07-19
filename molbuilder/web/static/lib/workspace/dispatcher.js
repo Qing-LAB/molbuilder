@@ -1,11 +1,34 @@
-/* Workspace — the PERSISTENCE layer (workspace-contract.md).
+/* Workspace — the session-persistence layer.
  *
- * This module is ONLY session state + concealed file access.  It holds NO in-memory data model
- * and never interprets what it stores: the MolView data model (lib/molview/data-model.js) owns
- * the structure/selection/periodicity/frames and their format, serialises itself, and hands the
- * BYTES here to persist.  The workspace writes them format-blind.
+ * MODULE: workspace persistence  (lib/workspace/; contract: docs/protocols/workspace-contract.md).
+ *   Two files make up the module:
+ *     - dispatcher.js  (this file)  -> window.molbuilder.workspace       : persist/restore
+ *         transport, session identity, owner namespace, non-blocking error surface.
+ *     - snapshot-io.js              -> window.molbuilder.workspaceSnapshot: the SOLE sessionStorage
+ *         read/write owner (namespaced); this file delegates every sessionStorage touch to it.
+ *   Server backend: POST /api/workspace/state/{write,read,prune} (blueprints/workspace.py) —
+ *   the on-disk indexed STATE TIMELINE (workspace-contract §4.7).
  *
- * Public surface (mounted on ``window.molbuilder.workspace``):
+ * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
+ *   interprets what it stores.  The MolView data model (lib/molview/data-model.js) owns the
+ *   structure/selection/periodicity/frames + their format, serialises itself, and hands the BYTES
+ *   here to persist; this layer writes them format-blind.  The DEBOUNCE + suspend/resume + the
+ *   "when the data changed" decision live in the data model — persist() here is a synchronous
+ *   write of the bytes it is handed.
+ *
+ * USED BY (callers of window.molbuilder.workspace):
+ *   - lib/molview/data-model.js — the state save/retract TIMELINE: persist(), readState(),
+ *     pruneStatesAbove(), workspaceId().  The primary consumer; it owns WHEN to write.
+ *   - lib/molview/mount.js — useNamespace(owner) at each mount, so one owner's session never
+ *     overwrites another's (per-owner key isolation).
+ *   - lib/molview/_canvas-state-impl.js — reload restore; reads the session snapshot via the
+ *     shared snapshot-io owner (NOT this dispatcher — see that file's rationale).
+ *   - tabs that mount a molview hand window.molbuilder.workspace to molview.mount:
+ *     modify/, spectra/viewer.js, transport/core.js, static/viewer.js, molview/demo.js,
+ *     lib/inspectors/structure.js.
+ *   - a UI notification layer subscribes to onPersistError() to warn on a failed disk write.
+ *
+ * Public surface (window.molbuilder.workspace):
  *   - persist(sessionBytes, snapshotBlob, identity)  -- write the consumer's serialised state now
  *                                                    (session mirror + on-disk indexed state file).
  *   - readState(identity)      -- read the opaque snapshot bytes at {workspace_id, state_index}
@@ -16,10 +39,9 @@
  *   - readPersistedSnapshot()  -- the persisted session snapshot (or null).
  *   - mountRestoreTarget()     -- the source-file a mount-time restore owns (single-authority
  *                                 rule, workspace-contract §4.5), or null.
+ *   - useNamespace(owner)      -- switch the active owner namespace (mirror key + workspace_id).
+ *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
  *   - STORAGE_KEY              -- the sessionStorage key (shared constant).
- *
- * The DEBOUNCE + suspend/resume live in the data model (it owns "when the data changed"); this
- * layer's persist() is a synchronous write of the bytes it is handed.
  */
 (function (root) {
     "use strict";
@@ -164,7 +186,7 @@
         var idx = identity && identity.state_index;
         _stateWriteChain = _stateWriteChain.then(function () {
             _trace("http:write-state:issue", { idx: idx });
-            return root.fetch("/api/workingcopy/write-state", {
+            return root.fetch("/api/workspace/state/write", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
@@ -203,7 +225,7 @@
      */
     function readState(identity) {
         if (!root.fetch || !identity) return Promise.resolve(null);
-        return root.fetch("/api/workingcopy/read-state", {
+        return root.fetch("/api/workspace/state/read", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(identity),
@@ -223,7 +245,7 @@
     function pruneStatesAbove(workspace_id, index) {
         if (!root.fetch || !workspace_id) return Promise.resolve();
         _trace("http:prune-states:issue", { above: index });
-        return root.fetch("/api/workingcopy/prune-states", {
+        return root.fetch("/api/workspace/state/prune", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),

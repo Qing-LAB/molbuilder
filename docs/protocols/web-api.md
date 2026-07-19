@@ -824,46 +824,41 @@ lives in [`molview-module.md`](molview-module.md) §12.
 | `/api/selection/atoms` | POST | `{structure_path}` | `{ok, n_atoms, atoms: [{index, element, atom_name?, residue_name?, chain_id?, is_frozen, regions}]}` |
 | `/api/selection/eval` | POST | `{structure_path, rule}` | `{ok, selected_indices, count, n_atoms_total}` |
 
-Sidecar writes (regions / frozen_atoms / periodicity) now go
-through the unified `/api/workingcopy/save` (§ 6.1b), which writes
-the `.xyz` + `.json` pair in one call and recomputes the sidecar's
-`structure_hash` against the bytes it just wrote.  The former
-`/api/selection/save-sidecar` + `/api/selection/refresh-hash`
-endpoints were removed once that unification landed (they had no
-remaining frontend caller).  See
-[`save-flow.md`](save-flow.md) § 4.2 / § 4.3 for the
-Save vs. Save-as label-propagation contracts.
+Sidecar writes (regions / frozen_atoms / periodicity) go through the projects
+sidebar save door — `projects.parser.saveMolecule` writes the `.xyz` + `.json`
+pair via `/api/files/write` and recomputes the sidecar's `structure_hash`
+against the bytes just written (see
+[`structure-load-save-contract.md`](structure-load-save-contract.md)).  The
+former `/api/selection/save-sidecar` + `/api/selection/refresh-hash` endpoints
+were removed once that unification landed.  See [`save-flow.md`](save-flow.md)
+§ 4.2 / § 4.3 for the Save vs. Save-as label-propagation contracts.
 
-### 6.1b Working-copy endpoints (`/api/workingcopy/*`)
+> The `/api/workingcopy/*` structure-editor door (`open` / `update` / `save` /
+> `discard` / `orphans` / `recover` / `clean`) was **retired** — superseded by
+> the projects-sidebar contract above.  Only the workspace state timeline
+> (renamed `/api/workspace/state/*`, § 6.1c) remains.
 
-Load / edit (draft) / save for the structure editor — the working-copy core
-([`workspace-contract.md`](workspace-contract.md) §4.6): `open` loads,
-`update` mirrors edits to a draft (survives reload/crash), `save` writes the
-`.xyz`+`.json` pair (overwrite, or save-as via `target`); `orphans` / `recover` /
-`clean` are the explicit crash-recovery.
+### 6.1c Workspace state timeline (`/api/workspace/state/*`)
+
+The workspace session-persistence backend (`blueprints/workspace.py`;
+[`workspace-contract.md`](workspace-contract.md) §4.7) — the push-only state
+timeline behind MolView's Save-state / Retract (`molview-module.md` §19.5).
+**Distinct from the §6.1b door above:** these routes move OPAQUE session bytes,
+never structure.  Sole client: `lib/workspace/dispatcher.js`.
 
 | Route | Method | Body | Success |
 |---|---|---|---|
-| `/api/workingcopy/open` | POST | `{path}` | `{ok, session, source, data}` |
-| `/api/workingcopy/update` | POST | `{source, data}` | `{ok}` |
-| `/api/workingcopy/save` | POST | `{source, target?, data}` | `{ok, saved}` |
-| `/api/workingcopy/discard` | POST | `{source}` | `{ok}` |
-| `/api/workingcopy/orphans` | POST | `{path}` | `{ok, orphans: [{scratch, source, session, ts}]}` |
-| `/api/workingcopy/recover` | POST | `{scratch}` | `{ok, source, data}` |
-| `/api/workingcopy/clean` | POST | `{path}` | `{ok, removed}` |
-| `/api/workingcopy/write-state` | POST | `{workspace_id, state_index, data}` | `{ok}` |
-| `/api/workingcopy/read-state` | POST | `{workspace_id, state_index}` | `{ok, data}` (404 with `data:null` when the index is absent) |
-| `/api/workingcopy/prune-states` | POST | `{workspace_id, above_index}` | `{ok, removed}` (`above_index = -1` clears the whole timeline) |
+| `/api/workspace/state/write` | POST | `{workspace_id, state_index, data}` | `{ok}` |
+| `/api/workspace/state/read` | POST | `{workspace_id, state_index}` | `{ok, data}` (404 with `data:null` when the index is absent) |
+| `/api/workspace/state/prune` | POST | `{workspace_id, above_index}` | `{ok, removed}` (`above_index = -1` clears the whole timeline) |
 
-The `*-state` trio backs the **push-only state timeline** (MolView's
-Save-state / Retract — `molview-module.md` §19.5): each checkpoint writes
-one opaque, format-blind snapshot to
+Each `state/write` writes one opaque, format-blind snapshot to
 `<workspace_id>.<state_index>.wc.json` (kept as a rolling window of the
-most-recent indices); `read-state` fetches the snapshot a Retract navigates
-to; `prune-states` tail-deletes the abandoned indices above a given point
-after the timeline forks. These bytes are stored verbatim — never routed
-through `StructureCodec` — so the timeline is agnostic to what the MolView
-data model serialises into it.
+most-recent indices); `state/read` fetches the snapshot a Retract navigates to;
+`state/prune` tail-deletes the abandoned indices above a given point after the
+timeline forks. These bytes are stored verbatim — never routed through
+`StructureCodec` — so the timeline is agnostic to what the MolView data model
+serialises into it.
 
 ### 6.2 Atom row shape (`/api/selection/atoms`)
 

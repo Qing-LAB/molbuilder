@@ -69,9 +69,6 @@ _L1_MODULES = {
     "engine_atom_index", # single-point 0-based -> per-engine atom-index
                          # translation (pure int math); the engine translators
                          # consume it.
-    "workingcopy",       # format-agnostic transient working-copy core (scratch +
-                         # source-hash commit gate + crash-recovery); depends only
-                         # on `persist` + stdlib.  Codec is duck-typed.
 
 
     "persist",           # versioned-document helpers (@major schema check +
