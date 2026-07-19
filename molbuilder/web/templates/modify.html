@@ -832,6 +832,7 @@
    (page.js, save.js, selection-panel.js, viewer-adapter.js,
    selection-bootstrap.js) so each consumer's IIFE can bind
    against ws.* immediately. #}
+<script src="{{ url_for('static', filename='lib/molview/_state-timeline-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 {# Warning modal — independent primitive used by page.js's gate. #}

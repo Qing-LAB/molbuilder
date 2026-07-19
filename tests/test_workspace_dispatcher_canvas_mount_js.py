@@ -46,6 +46,7 @@ STATIC = ROOT / "molbuilder/web/static"
 WORKSPACE_FILES = [
     STATIC / "lib/molview/_selection-store-impl.js",
     STATIC / "lib/molview/_canvas-state-impl.js",
+    STATIC / "lib/molview/_state-timeline-impl.js",
     STATIC / "lib/molview/data-model.js",
     STATIC / "lib/workspace/dispatcher.js",
 ]

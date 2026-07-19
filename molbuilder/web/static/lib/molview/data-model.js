@@ -578,18 +578,36 @@
     var _wired = false;
 
     // ─── State timeline (molview-module.md §19.5) ────────────────── //
-    // Push-only undo: the model owns a `state_index` (position in the tab's operation
-    // sequence; 0 = the opened anchor) and an `uncommitted` flag (true iff the in-memory
-    // model changed since the last `save` -- what a `load(-1)` would discard).  There is
-    // NO automatic write on change: only `openMolecule` (the ONE anchor write), `save`, and
-    // `load` touch disk.  save/load are SERIALIZED through `_pushPopChain` so the index
-    // advances/retreats only after each workspace round-trip resolves.
-    var _stateIndex = 0;
-    var _uncommitted = false;
+    // Push-only undo: the state-timeline submodule (`_timeline`, below) owns the `state_index`
+    // (position in the tab's operation sequence; 0 = the opened anchor) and the `uncommitted`
+    // flag (true iff the in-memory model changed since the last `save` -- what a `load(-1)` would
+    // discard).  There is NO automatic write on change: only `openMolecule` (the ONE anchor
+    // write), `save`, and `load` touch disk.  save/load are SERIALIZED through the submodule's
+    // push/pop chain so the index advances/retreats only after each workspace round-trip resolves.
+    // The state timeline (Save-state / Retract) is a MolView-internal SUBMODULE
+    // (lib/molview/_state-timeline-impl.js): it owns `state_index`, the `uncommitted` flag, and
+    // the ordered save/load chain.  This model injects the serialise / applySnapshot / workspace
+    // / trace seams and still owns WHEN the data changed — it calls `_timeline.markUncommitted()`
+    // on every data change.  Browser: the factory is a global mounted by the sibling <script>
+    // loaded before this file.  Node tests: fall back to require() so bootstraps that require()
+    // data-model.js need no extra wiring.  (`_serialise` / `_applySnapshot` / `_ws` / `_trace`
+    // are hoisted function declarations, so passing them here — before their source lines — is
+    // safe.)
+    var _mkTimeline = (root.molbuilder && root.molbuilder.molview
+                       && root.molbuilder.molview._createStateTimeline) || null;
+    if (!_mkTimeline && typeof require === "function") {
+        try { _mkTimeline = require("./_state-timeline-impl.js").createStateTimeline; }
+        catch (_) { /* no require (browser/bundler) -> the global path above */ }
+    }
+    var _timeline = _mkTimeline({
+        serialise:     _serialise,
+        applySnapshot: _applySnapshot,
+        getWorkspace:  _ws,
+        trace:         _trace,
+    });
     // Guard set true while an internal apply (openMolecule / load snapshot application) drives
     // the stores, so the resulting canvas/frame signals do NOT mark the model uncommitted.
     var _applying = false;
-    var _pushPopChain = Promise.resolve();
 
     function _notify() {
         // Defensive copy: a subscriber that synchronously calls
@@ -623,7 +641,7 @@
         if (cs && typeof cs.onChange === "function") {
             cs.onChange(function () {
                 _notify();
-                if (!_applying) _uncommitted = true;
+                if (!_applying) _timeline.markUncommitted();
             });
         }
         // Selection store fires on atoms / selection / coords / isolate.  Those
@@ -864,7 +882,7 @@
         // would then skip it and Save could miss it.  Guarded by _applying so a
         // snapshot restore that re-sets the dirty bit doesn't spuriously mark
         // the model uncommitted (load() sets the committed flag afterward).
-        if (!_applying) _uncommitted = true;
+        if (!_applying) _timeline.markUncommitted();
         return cs.markDirty();
     }
 
@@ -934,7 +952,7 @@
         if (!v) return;                            // no embed / no view -> leave the mirror as-is
         m.state.view = v;
         var wid = ws.workspaceId();
-        var idx = (typeof m.state.state_index === "number") ? m.state.state_index : _stateIndex;
+        var idx = (typeof m.state.state_index === "number") ? m.state.state_index : _timeline.stateIndex;
         try { ws.persist(m, null, { workspace_id: wid, state_index: idx }); }   // MIRROR ONLY
         catch (_) { /* best-effort on unload */ }
     }
@@ -1266,7 +1284,7 @@
         // Anchor a fresh timeline (§19.5): prune the previous molecule's state files, reset
         // state_index to 0, and write this loaded structure as the index-0 anchor.
         _trace("loadText:anchor:begin");
-        await _anchorTimeline();
+        await _timeline.anchor();
         _trace("loadText:anchor:awaited -> return");
         return r;
     }
@@ -1559,10 +1577,9 @@
      * Undo the last modifier op.  Delegates to the modify-tab's
      * ``applyUndo`` (Phase 4 exposed it on the runtime registry).
      */
-    // Undo IS `load(-1)` (§19.5) -- kept as an alias so the mount handle's `undo()` and any
-    // legacy caller resolve to the state-timeline retract.  The old in-memory undo stack
+    // Undo IS `load(-1)` (§19.5): the model's public `undo` delegates to the state-timeline
+    // submodule (`_timeline.undo`, mounted on the api below).  The old in-memory undo stack
     // (and its `modify.applyUndo` delegation) was retired with the state timeline.
-    function undo() { return load(-1); }
 
     // ─── Frames — the coordinate time axis (workspace-contract.md §1.5) ─────── //
     // The caller (a Results trajectory inspector, a live-job stream) decides the op; the
@@ -1647,7 +1664,7 @@
                 paused:         true,
             });
         }
-        if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
+        if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         _notifyFrame();   // frame count (+ current) changed -> refresh the frame bar
         return frameCount();
     }
@@ -1689,7 +1706,7 @@
         if (h && kind === "trajectory" && typeof h.appendFrames === "function") {
             try { h.appendFrames(frames); } catch (_) {}   // embed appends the whole batch
         }
-        if (!_applying) _uncommitted = true;   // frame DATA changed -> uncommitted (§19.5)
+        if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         _notifyFrame();   // frame count changed -> refresh the frame bar ONCE
         return frameCount();
     }
@@ -1795,7 +1812,7 @@
                 view:         view.getState(),
                 // The timeline position, so a reload restores WHERE in the undo history
                 // we are (not just the geometry) -- §19.5.
-                state_index:  _stateIndex,
+                state_index:  _timeline.stateIndex,
             },
         };
     }
@@ -1894,9 +1911,8 @@
     // earlier version keyed by the source file, which made the auto-persist try to
     // resolve a load-time filename as a real project path -> a spurious 400 for anything
     // loaded from bytes rather than an on-disk project file.)
-    function draftIdentity() {
-        return { workspace_id: (_ws() ? _ws().workspaceId() : null) };
-    }
+    // (`draftIdentity` itself lives in the state-timeline submodule; the model re-exposes it on
+    // the api below as `_timeline.draftIdentity`.)
 
     // F4: persistence is SUSPENDED across a multi-step load (_commitFile sets the
     // canvas text, then adopts the store atoms a network-round-trip later).  A
@@ -2013,141 +2029,10 @@
         _notify();
     }
 
-    // Serialize save/load through _pushPopChain so state_index advances/retreats only after
-    // each workspace round-trip resolves.  A rejected op must NOT poison the chain -- keep an
-    // error-swallowing tail as the next op's predecessor, but return the real op promise so
-    // the caller sees the rejection.
-    function _enqueue(fn) {
-        var op = _pushPopChain.then(fn);
-        _pushPopChain = op.catch(function () { /* keep the chain alive */ });
-        return op;
-    }
-
-    // save(delta=0) (§19.5): session-state save, index-delta parameterized.  Serialize the
-    // current snapshot and persist it (MIRROR + disk) at state_index+delta; ON SUCCESS move
-    // the index to that target and clear `uncommitted`.  delta>0 (a new checkpoint, e.g.
-    // save(1)="Save state") additionally tail-deletes every abandoned index above the target
-    // (the divergent tail left after a load(-1)).  delta=0 re-saves the current index in
-    // place.  A rejected persist does NOT move the index.
-    function save(delta) {
-        delta = delta || 0;
-        return _enqueue(function () {
-            var ws = _ws();
-            if (!ws || typeof ws.persist !== "function") return;
-            var wid    = ws.workspaceId();
-            var target = _stateIndex + delta;
-            var snap   = _serialise();
-            // _serialise() stamps `state_index: _stateIndex` (the CURRENT index),
-            // but this snapshot is FILED at `target` (= _stateIndex + delta) and
-            // becomes the session mirror.  Stamp it with `target` so the file's
-            // self-reported index matches where it lives -- otherwise every saved
-            // snapshot reports one-too-low, and a reload's load(0) (which reads
-            // the mirror's internal state_index) restores _stateIndex off by one,
-            // so the next Retract skips a saved state (the "retract loses states
-            // after loading back" bug).
-            snap.state.state_index = target;
-            return Promise.resolve(
-                ws.persist(snap, snap, { workspace_id: wid, state_index: target })
-            ).then(function () {
-                _stateIndex  = target;
-                _uncommitted = false;
-                if (delta > 0 && typeof ws.pruneStatesAbove === "function") {
-                    // Fire-and-forget: this prunes indices strictly ABOVE the
-                    // just-written `target`, so unlike the anchor case there is no
-                    // delete-vs-write race to order (it never touches `target` or
-                    // below).  Best-effort, like the write itself.
-                    ws.pruneStatesAbove(wid, target);   // drop the abandoned tail
-                }
-            });
-        });
-    }
-
-    // load(delta=0) (§19.5): session-state restore, index-delta parameterized.
-    //   delta=0  -> RELOAD / mount-restore: read the sessionStorage MIRROR (the current
-    //              committed snapshot + its state_index) and apply it.  No index move beyond
-    //              adopting the mirror's own state_index.  Synchronous mirror read.
-    //   delta!=0 -> navigate the on-disk timeline: read {workspace_id, state_index+delta},
-    //              APPLY that snapshot to the whole model, move the index to the target, and
-    //              clear `uncommitted`.  load(-1)=Retract/undo.  No-op if the target < 0 or
-    //              the snapshot is missing.  Re-mirrors the applied snapshot (MIRROR ONLY, no
-    //              disk write) so a later reload restores THIS index.  Discards uncommitted
-    //              changes.  Undo-only (a save after a load(-1) overwrites the abandoned tail).
-    function load(delta) {
-        delta = delta || 0;
-        return _enqueue(function () {
-            var ws = _ws();
-            if (!ws) return;
-            if (delta === 0) {
-                var m = (typeof ws.readPersistedSnapshot === "function")
-                    ? ws.readPersistedSnapshot() : null;
-                if (m) {
-                    _applySnapshot(m);
-                    _stateIndex = (m.state && typeof m.state.state_index === "number")
-                        ? m.state.state_index : _stateIndex;
-                    _uncommitted = false;
-                }
-                return;
-            }
-            var target = _stateIndex + delta;
-            // Retract semantics (delta < 0): UNCOMMITTED edits are a working state
-            // sitting ABOVE the current committed checkpoint, so the FIRST step of a
-            // Retract reverts them to that checkpoint -- it must NOT skip past a SAVED
-            // checkpoint.  An uncommitted state therefore consumes the first unit of a
-            // retract: from [checkpoint N + uncommitted edit], load(-1) restores N
-            // (discards the edit) and only a SECOND load(-1) steps to N-1.  (This also
-            // lets you undo uncommitted work sitting on the index-0 anchor, which used
-            // to be a no-op because target went negative.)
-            if (delta < 0 && _uncommitted) {
-                target += 1;
-            }
-            if (target < 0) return;                    // can't go below the anchor
-            if (typeof ws.readState !== "function") return;
-            var wid = ws.workspaceId();
-            return Promise.resolve(
-                ws.readState({ workspace_id: wid, state_index: target })
-            ).then(function (snap) {
-                if (snap == null) return;   // missing history file -> no-op, index unchanged
-                _applySnapshot(snap);
-                _stateIndex  = target;
-                _uncommitted = false;
-                if (typeof ws.persist === "function") {
-                    // MIRROR ONLY (snapshotBlob=null) -- so a later reload restores THIS index.
-                    return ws.persist(snap, null, { workspace_id: wid, state_index: target });
-                }
-            });
-        });
-    }
-
-    // `openMolecule` anchors a FRESH timeline (§19.5): prune every existing {workspace_id}.* state
-    // file, reset state_index to 0, and write the loaded structure as the index-0 anchor.
-    // This is the ONE automatic write; everything after is explicit save(delta).
-    function _anchorTimeline() {
-        var ws = _ws();
-        _stateIndex  = 0;
-        _uncommitted = false;
-        if (!ws || typeof ws.persist !== "function") return Promise.resolve();
-        var wid = ws.workspaceId();
-        var snap = _serialise();
-        // ORDER MATTERS: pruneStatesAbove(-1) DELETES every {wid}.* state file
-        // (the old timeline).  It MUST fully complete BEFORE the index-0 anchor
-        // write is ISSUED -- otherwise the two HTTP calls race and a late-landing
-        // delete-all unlinks the just-written anchor, so a later Retract to index
-        // 0 reads a missing file and no-ops (the intermittent "retract never
-        // returns to the opened state" hang).  ``pruneStatesAbove`` returns its
-        // fetch promise, so awaiting it before calling ``persist`` is sufficient;
-        // the anchor write itself stays best-effort/fire-and-forget (persist is
-        // crash-safety, not a blocking write -- workspace-contract), and by the
-        // time any Retract reads index 0 it has long since landed.
-        _trace("anchor:prune:issue", { wid: wid });
-        var prune = (typeof ws.pruneStatesAbove === "function")
-            ? Promise.resolve(ws.pruneStatesAbove(wid, -1))
-            : Promise.resolve();
-        return prune.then(function () {
-            _trace("anchor:prune:resolve -> persist:issue");
-            ws.persist(snap, snap, { workspace_id: wid, state_index: 0 });
-            _trace("anchor:persist:issued");
-        });
-    }
+    // The save-state / retract mechanics (`_enqueue`, `save`, `load`, `undo`, anchor) live in the
+    // state-timeline submodule (`_state-timeline-impl.js`), built as `_timeline` above.  The model
+    // injects `_serialise` / `_applySnapshot` (kept here — they read/write the model) and exposes
+    // the public save/load/undo (mapped to `_timeline.*` on the api below).
 
 
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
@@ -2178,7 +2063,7 @@
         getRegions:            getRegions,
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
-        draftIdentity:         draftIdentity,  // the draft key a Save must drop (b1)
+        draftIdentity:         _timeline.draftIdentity,  // the draft key a Save must drop (b1)
         suspendPersist:        suspendPersist, // F4: bracket a multi-step load
         resumePersist:         resumePersist,
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
@@ -2204,12 +2089,12 @@
         // `state_index` / `uncommitted` are LIVE getters (defined on the mounted object below).
         // save(1) commits a checkpoint; load(-1) retracts to the previous index (undo-only);
         // load(0) reloads from the mirror.
-        save:                  save,
-        load:                  load,
+        save:                  _timeline.save,
+        load:                  _timeline.load,
         generate:              generate,
         applyOp:               applyOp,
         discard:               discard,
-        undo:                  undo,
+        undo:                  _timeline.undo,
         // Frames — the coordinate time axis; coords owned by the embed movie (§14.5).
         reloadFrames:          reloadFrames,
         setFrameArrows:        setFrameArrows,
@@ -2234,11 +2119,11 @@
     // ``api`` (module.exports / runtime.register) and the mount both carry live reads.
     function _defineTimelineGetters(target) {
         Object.defineProperty(target, "state_index", {
-            get: function () { return _stateIndex; },
+            get: function () { return _timeline.stateIndex; },
             enumerable: true, configurable: true,
         });
         Object.defineProperty(target, "uncommitted", {
-            get: function () { return _uncommitted; },
+            get: function () { return _timeline.uncommitted; },
             enumerable: true, configurable: true,
         });
     }
