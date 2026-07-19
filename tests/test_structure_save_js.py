@@ -39,13 +39,31 @@ def _run_node(snippet: str) -> object:
                 lastSaveTo: null,
             }}, initial || {{}});
             const calls = [];
+            // save.js's SAVE door is the GLOBAL ``projects.parser.saveMolecule``
+            // (structure-load-save-contract.md) -- NOT a canvas method.  Mount a fake
+            // there that records each call (path + overwrite) and returns a configurable
+            // envelope queue (default: success), so these tests pin save.js's COMPOSITION
+            // (name normalisation, overwrite retry, refresh, result mapping).  The write
+            // itself (exportFile -> projects.writeFile x2) is tested elsewhere.  Recorded
+            // into the same ``calls`` array the tests read via ``c._saveCalls()``.
+            global.molbuilder = global.molbuilder || {{}};
+            global.molbuilder.projects = global.molbuilder.projects || {{}};
+            global.molbuilder.projects.parser = {{
+                saveMolecule: (path, opts) => {{
+                    calls.push({{path: path,
+                                 overwrite: !!(opts && opts.overwrite)}});
+                    const q = state.saveResults;
+                    const r = (q && q.length) ? q.shift()
+                                              : {{ok: true, path: path}};
+                    return Promise.resolve(r);
+                }},
+            }};
             return {{
                 isEmpty:        () => state.empty,
                 isDirty:        () => state.dirty,
                 getStructure:   () => state.structure,
-                // D3: save.js serialises via molview.data.exportFile() (the accessor
-                // builder), not its own scan.  The fake returns the codec shape
-                // from its structure so the save-flow tests exercise the same path.
+                // save.js reads getStructure()/isEmpty(); the projects.parser door
+                // (faked above) is what serialises via exportFile.  Kept for shape.
                 exportFile: () => (state.structure ? {{
                     xyz: (state.structure.text || ""),
                     sidecar: {{ n_atoms_total: 0, structure_hash: "", regions: {{}},
@@ -54,24 +72,6 @@ def _run_node(snippet: str) -> object:
                 }} : null),
                 getSource:      () => state.source,
                 getLastSavedTo: () => state.lastSaveTo,
-                // The save COORDINATOR (molview.data.saveProjectFile) is what
-                // save.js delegates to now (it owns exportFile + the
-                // /api/workingcopy/save POST + markSaved).  The fake records
-                // each call (path + overwrite) and returns a configurable
-                // envelope queue (default: success) so these tests pin save.js's
-                // COMPOSITION (name normalisation, overwrite retry, refresh,
-                // result mapping) -- the POST itself is tested at the
-                // molview.data level (test_workspace_dispatcher_js).
-                saveProjectFile: (path, opts) => {{
-                    calls.push({{path: path,
-                                 overwrite: !!(opts && opts.overwrite)}});
-                    const q = state.saveResults;
-                    const r = (q && q.length) ? q.shift()
-                                              : {{ok: true, path: path}};
-                    return Promise.resolve(r);
-                }},
-                // Phase 10 — workspace-contract.md §2.1 — fake the
-                // ws.* surface, not the legacy canvas.onChange.
                 subscribe:      () => () => {{}},
                 _calls:         () => calls.slice(),
                 _saveCalls:     () => calls.slice(),
@@ -123,25 +123,6 @@ def _run_node(snippet: str) -> object:
                 }},
             }};
             return calls;
-        }}
-        // The unified save posts /api/workingcopy/save via global.fetch.  Mount a
-        // fake returning {{status, json}} (or {{throw}}) + record the calls.
-        function _mountFetch(responder) {{
-            const calls = [];
-            global.fetch = (url, opts) => {{
-                let body = null;
-                try {{ body = opts && opts.body ? JSON.parse(opts.body) : null; }}
-                catch (_) {{ body = null; }}
-                calls.push({{ url, body }});
-                const res = responder ? responder(calls.length - 1, body)
-                                      : {{ status: 200, json: {{ ok: true, saved: url }} }};
-                if (res.throw) return Promise.reject(new TypeError(res.throw));
-                return Promise.resolve({{
-                    status: res.status,
-                    json: () => Promise.resolve(res.json),
-                }});
-            }};
-            return {{ calls: () => calls.slice() }};
         }}
         const save = require({json.dumps(str(module_path))});
         try {{
@@ -266,9 +247,9 @@ class TestTargetPath:
 class TestSaveFlow:
 
     def test_delegates_to_the_save_coordinator_with_the_named_target(self):
-        """save.js composes the flow; the WRITE is the coordinator's
-        (molview.data.saveProjectFile).  The user names the file; save() resolves
-        the sidebar dir + name, appends .xyz, and calls saveProjectFile ONCE with
+        """save.js composes the flow; the WRITE is the door's
+        (projects.parser.saveMolecule).  The user names the file; save() resolves
+        the sidebar dir + name, appends .xyz, and calls saveMolecule ONCE with
         overwrite:false (no clobber on the first try)."""
         out = _run_node('''
             const c = _mkFakeCanvas({

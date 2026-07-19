@@ -74,8 +74,8 @@ _SYNTHETIC_PDB = (
 def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
     """Write a ``.molstruct.json`` sidecar next to ``struct_path`` DIRECTLY
     via the codec.  Formerly seeded with a ``POST /api/selection/save-sidecar``
-    before that endpoint was removed (the save was unified onto
-    ``/api/workingcopy/save``).  ``save-sidecar`` was REPLACE-all, so one
+    before that endpoint was removed (the save is now the projects.parser door →
+    ``/api/files/write``).  ``save-sidecar`` was REPLACE-all, so one
     ``to_dict`` mirrors a single endpoint call."""
     from molbuilder.sidecars import molstruct as _msj
     payload = _msj.to_dict(

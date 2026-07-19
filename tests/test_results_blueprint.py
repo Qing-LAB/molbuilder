@@ -339,10 +339,15 @@ class TestInspectorModulesServed:
             "per-inspector maxBytes overrides have no seam to reach "
             "the backend"
         )
-        # opts.maxBytes flows into the URL as ``max_bytes=``.
-        assert "max_bytes=" in body, (
-            "readFile no longer threads maxBytes into the request URL "
-            "-- the opts.maxBytes override is silently ignored"
+        # opts (incl. maxBytes) is threaded through to the projects file
+        # layer -- ctx.readFile DELEGATES to ``projects.readFile(file, opts)``,
+        # which builds the ``max_bytes=`` URL (lib/projects/api.js).  The seam
+        # is the pass-through of ``opts``, not a URL built here.
+        assert "p.readFile(file, opts)" in body or \
+               "readFile(file, opts)" in body, (
+            "createDefaultContext.readFile no longer passes opts through to "
+            "projects.readFile -- the opts.maxBytes override has no seam to "
+            "reach the backend"
         )
 
 

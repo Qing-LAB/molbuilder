@@ -73,7 +73,7 @@ def _seed_sidecar(root, *, n_atoms, regions=None, frozen=None,
     """Write a ``.molstruct.json`` sidecar next to ``name`` DIRECTLY via
     the codec.  This is the seed path formerly done with a
     ``POST /api/selection/save-sidecar`` before that endpoint was removed
-    (the save was unified onto ``/api/workingcopy/save``).  ``save-sidecar``
+    (the save is now the projects.parser door → ``/api/files/write``).  ``save-sidecar``
     was REPLACE-all, so a single ``to_dict`` mirrors one endpoint call."""
     from molbuilder.sidecars import molstruct as _msj
     xyz = root / name

@@ -489,8 +489,8 @@ def test_bundle_handoff_html_has_spinner_element(tmp_path):
     html = Path("molbuilder/web/templates/_bundle_handoff_panel.html").read_text()
     assert "data-spinner" in html, (
         "_bundle_handoff_panel.html no longer carries a [data-spinner] "
-        "element; the JS spinner toggle becomes a no-op.")
-    assert "bundle-handoff-spinner" in html
+        "element; the JS spinner toggle becomes a no-op (bundle-handoff.js "
+        "looks it up via the [data-spinner] attribute hook).")
 
 
 def test_bundle_handoff_default_target_is_subdir(tmp_path):
