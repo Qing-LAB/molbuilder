@@ -19,7 +19,7 @@
  *   public save/load/undo/anchor + the live ``state_index`` / ``uncommitted`` getters to it; the
  *   model calls ``markUncommitted()`` on every data change (guarded by the model's own
  *   ``_applying`` flag).  The workspace persistence layer (lib/workspace/dispatcher.js,
- *   POST /api/workspace/state/*) is reached ONLY through the injected ``getWorkspace`` accessor.
+ *   POST /api/state-timeline/*) is reached ONLY through the injected ``getWorkspace`` accessor.
  */
 (function (root) {
     "use strict";

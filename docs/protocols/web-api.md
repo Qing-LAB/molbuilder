@@ -836,11 +836,11 @@ were removed once that unification landed.  See [`save-flow.md`](save-flow.md)
 > The `/api/workingcopy/*` structure-editor door (`open` / `update` / `save` /
 > `discard` / `orphans` / `recover` / `clean`) was **retired** — superseded by
 > the projects-sidebar contract above.  Only the workspace state timeline
-> (renamed `/api/workspace/state/*`, § 6.1c) remains.
+> (renamed `/api/state-timeline/*`, § 6.1c) remains.
 
-### 6.1c Workspace state timeline (`/api/workspace/state/*`)
+### 6.1c State timeline (`/api/state-timeline/*`)
 
-The workspace session-persistence backend (`blueprints/workspace.py`;
+The workspace session-persistence backend (`blueprints/state_timeline.py`;
 [`workspace-contract.md`](workspace-contract.md) §4.7) — the push-only state
 timeline behind MolView's Save-state / Retract (`molview-module.md` §19.5).
 **Distinct from the §6.1b door above:** these routes move OPAQUE session bytes,
@@ -848,9 +848,9 @@ never structure.  Sole client: `lib/workspace/dispatcher.js`.
 
 | Route | Method | Body | Success |
 |---|---|---|---|
-| `/api/workspace/state/write` | POST | `{workspace_id, state_index, data}` | `{ok}` |
-| `/api/workspace/state/read` | POST | `{workspace_id, state_index}` | `{ok, data}` (404 with `data:null` when the index is absent) |
-| `/api/workspace/state/prune` | POST | `{workspace_id, above_index}` | `{ok, removed}` (`above_index = -1` clears the whole timeline) |
+| `/api/state-timeline/write` | POST | `{workspace_id, state_index, data}` | `{ok}` |
+| `/api/state-timeline/read` | POST | `{workspace_id, state_index}` | `{ok, data}` (404 with `data:null` when the index is absent) |
+| `/api/state-timeline/prune` | POST | `{workspace_id, above_index}` | `{ok, removed}` (`above_index = -1` clears the whole timeline) |
 
 Each `state/write` writes one opaque, format-blind snapshot to
 `<workspace_id>.<state_index>.wc.json` (kept as a rolling window of the

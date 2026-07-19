@@ -31,8 +31,8 @@
 `molview.data.openProjectFile` / `saveProjectFile` / `readWorkingCopy` (they hit
 `/api/workingcopy/open|save`). **The MODEL owns no file endpoint; the DOORS own no
 parsing** — the parser doors orchestrate `readFile`→`/api/build/load`→`installMolecule`.
-(The workspace session state-timeline — `/api/workspace/state/*`
-(`blueprints/workspace.py`) — is a DIFFERENT concern, session persistence owned
+(The workspace session state-timeline — `/api/state-timeline/*`
+(`blueprints/state_timeline.py`) — is a DIFFERENT concern, session persistence owned
 by the workspace, and is untouched.  The old `/api/workingcopy/update` draft is
 obsolete, pending the workingcopy-door retirement.)
 

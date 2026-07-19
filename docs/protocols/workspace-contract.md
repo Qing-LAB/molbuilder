@@ -206,7 +206,7 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 
 | Method | Signature | Contract |
 |---|---|---|
-| `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk indexed state file (`/api/workspace/state/write`) keyed by `identity` `{workspace_id, state_index}`. **Format-blind** — the consumer already serialised; this just writes bytes. |
+| `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk indexed state file (`/api/state-timeline/write`) keyed by `identity` `{workspace_id, state_index}`. **Format-blind** — the consumer already serialised; this just writes bytes. |
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
 | `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
@@ -459,7 +459,7 @@ by the rule above rather than papered over inside the store.
 > orphans,recover,clean}` door were **removed**. Opening/saving a structure now goes
 > through the projects-sidebar contract (`projects.parser` →
 > [`structure-load-save-contract.md`](structure-load-save-contract.md)); unsaved-edit
-> persistence is the workspace **state timeline** (§4.7, `/api/workspace/state/*`). The
+> persistence is the workspace **state timeline** (§4.7, `/api/state-timeline/*`). The
 > only survivor is the format codec `workingcopy_structure.py` (`StructureCodec`), still
 > used by `/api/structure/resolve-cell`. The mechanism below is described as it was.
 

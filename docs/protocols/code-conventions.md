@@ -29,8 +29,8 @@ unrelated concerns** behind one URL prefix:
 - the **obsolete** structure "working-copy door" (`/open`, `/save`, `/update`, …),
   superseded by the projects-sidebar contract and no longer called by any client;
 - the **live workspace/state-timeline persistence** (the `*-state` routes, used by
-  `lib/workspace/dispatcher.js`) — since extracted to `blueprints/workspace.py` at
-  `/api/workspace/state/*`, which is exactly the fix this rule drives;
+  `lib/workspace/dispatcher.js`) — since extracted to `blueprints/state_timeline.py` at
+  `/api/state-timeline/*`, which is exactly the fix this rule drives;
 - and functions imported by *other* live routes (`StructureCodec`, used by
   `/api/structure/resolve-cell`).
 

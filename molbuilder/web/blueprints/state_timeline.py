@@ -1,10 +1,12 @@
-"""``/api/workspace/state/*`` — the workspace session state-timeline (server backend).
+"""``/api/state-timeline/*`` — the STATE TIMELINE (server backend).
 
-MODULE: workspace persistence (server half).  The on-disk, FORMAT-BLIND indexed
-session snapshots that back the browser's undo/retract history
-(workspace-contract.md §4.7).  The browser writes one opaque JSON blob per
-history index and reads it back verbatim on a popState; the server just moves
-bytes and never parses structure here.
+MODULE: the state timeline — the workspace-persistence subsystem's on-disk half.
+FORMAT-BLIND indexed session snapshots that back the browser's undo/retract
+history (workspace-contract.md §4.7).  The browser writes one opaque JSON blob
+per history index and reads it back verbatim on a popState; the server just moves
+bytes and never parses structure here.  (The subsystem's other half — the
+sessionStorage session mirror — is client-only; this file is purely the state
+timeline, which is why it is named ``state_timeline.py`` and not ``workspace.py``.)
 
 ROLE: byte storage keyed by ``{workspace_id, state_index}`` under
 ``<projects_root>/.molbuilder_workspace/states/<workspace_id>.<state_index>.wc.json``.
@@ -30,7 +32,7 @@ from flask import Blueprint, jsonify, request
 from molbuilder import persist
 from molbuilder.projects import projects_root
 
-bp = Blueprint("workspace", __name__)
+bp = Blueprint("state_timeline", __name__)
 
 # Opaque session snapshots filed under ``<workspace_id>.<state_index>.wc.json``.
 # NEVER parsed as structure; the server just moves JSON bytes.  Validate the id
@@ -98,7 +100,7 @@ def _state_indices(ws_id: str):
     return sorted(out)
 
 
-@bp.route("/api/workspace/state/write", methods=["POST"])
+@bp.route("/api/state-timeline/write", methods=["POST"])
 def ws_write_state():
     """Write ONE opaque session snapshot to ``<workspace_id>.<state_index>.wc.json``
     (FORMAT-BLIND — the bytes are stored verbatim, never parsed as structure).
@@ -123,7 +125,7 @@ def ws_write_state():
     return jsonify({"ok": True})
 
 
-@bp.route("/api/workspace/state/read", methods=["POST"])
+@bp.route("/api/state-timeline/read", methods=["POST"])
 def ws_read_state():
     """Return the opaque JSON at ``<workspace_id>.<state_index>.wc.json`` (what a
     popState navigating to a history index fetches), or 404 with data=null."""
@@ -142,7 +144,7 @@ def ws_read_state():
         return _bad(f"could not read state {ws_id}.{idx}: {e}", 500)
 
 
-@bp.route("/api/workspace/state/prune", methods=["POST"])
+@bp.route("/api/state-timeline/prune", methods=["POST"])
 def ws_prune_states():
     """Tail-delete every state file whose index > ``above_index`` (the abandoned
     tail after a popState).  ``above_index = -1`` clears the whole timeline."""

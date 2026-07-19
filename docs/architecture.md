@@ -37,7 +37,7 @@ dead/removable from a surface glance; trace callers and read the header first.
 | Read `molbuilder.json` (scheduler, routing, activation, script-gen) | `runtime_config.get_scheduler/get_routing/get_script_generation/require_activation` | re-parse the JSON yourself |
 | Emit a run wrapper / `.sbatch` for a job | `runwrap.write_run_wrapper` / `render_sbatch` / `write_sbatch` | hand-write shell/sbatch |
 | Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.check_schema_major/schema_major/read_json/write_json` | hand-roll the schema check + IO |
-| Persist the user's *unsaved* browser edits across tab switches / reload | the **workspace session state-timeline** (`lib/workspace/` → `/api/workspace/state/*`; `protocols/workspace-contract.md` §4.7) — format-blind opaque snapshots | auto-save to, or directly bond an edit to, the project `.xyz`/`.json` |
+| Persist the user's *unsaved* browser edits across tab switches / reload | the **workspace session state-timeline** (`lib/workspace/` → `/api/state-timeline/*`; `protocols/workspace-contract.md` §4.7) — format-blind opaque snapshots | auto-save to, or directly bond an edit to, the project `.xyz`/`.json` |
 | Save the edited structure to a project file (overwrite or save-as) | **`projects.parser.saveMolecule`** (`structure-load-save-contract.md`) → `/api/files/write` | a bespoke second file stack / `/api/workingcopy/*` (retired) |
 | Parse an engine `.out`/dir/sidecar into typed data | `parse.registry.parse/parse_dir/parse_text`; `parse.dirs.job.decode_run_dir` | write a bespoke parser |
 | Run a *set* of related jobs (stage ladder / sweep) | the `jobset` framework + `molbuilder jobset plan/prep/status/submit` | reimplement dir isolation / sbatch chaining |

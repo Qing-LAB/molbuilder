@@ -6,7 +6,7 @@
  *         transport, session identity, owner namespace, non-blocking error surface.
  *     - snapshot-io.js              -> window.molbuilder.workspaceSnapshot: the SOLE sessionStorage
  *         read/write owner (namespaced); this file delegates every sessionStorage touch to it.
- *   Server backend: POST /api/workspace/state/{write,read,prune} (blueprints/workspace.py) —
+ *   Server backend: POST /api/state-timeline/{write,read,prune} (blueprints/state_timeline.py) —
  *   the on-disk indexed STATE TIMELINE (workspace-contract §4.7).
  *
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
@@ -186,7 +186,7 @@
         var idx = identity && identity.state_index;
         _stateWriteChain = _stateWriteChain.then(function () {
             _trace("http:write-state:issue", { idx: idx });
-            return root.fetch("/api/workspace/state/write", {
+            return root.fetch("/api/state-timeline/write", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify(Object.assign({}, identity || {}, { data: snapshotBlob })),
@@ -225,7 +225,7 @@
      */
     function readState(identity) {
         if (!root.fetch || !identity) return Promise.resolve(null);
-        return root.fetch("/api/workspace/state/read", {
+        return root.fetch("/api/state-timeline/read", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(identity),
@@ -245,7 +245,7 @@
     function pruneStatesAbove(workspace_id, index) {
         if (!root.fetch || !workspace_id) return Promise.resolve();
         _trace("http:prune-states:issue", { above: index });
-        return root.fetch("/api/workspace/state/prune", {
+        return root.fetch("/api/state-timeline/prune", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ workspace_id: workspace_id, above_index: index }),
