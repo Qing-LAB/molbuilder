@@ -113,6 +113,9 @@ schema strings + the config↔exchange parameter vocabulary is
 
 - **`design.md`** — mission, the L1/L2/L3 Architecture in narrative form, the
   10 design principles, anti-patterns, and the decisions log.
+- **`protocols/web-module-map.md`** — the **front-end + web-API module index**
+  (framework · special module · submodule · consumer; goals, APIs, data shapes).
+  The JS/web complement to this file's § 2 Python subsystem index.
 - **`protocols/*.md`** — the per-subsystem contracts (the authoritative
   source for each row above).
 - **`job-execution.md`** — the master doc for *running* a generated job
