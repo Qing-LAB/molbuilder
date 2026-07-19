@@ -16,10 +16,10 @@ USED BY:
     ``state/write``, ``readState`` POSTs ``state/read``, ``pruneStatesAbove`` POSTs
     ``state/prune``.  That dispatcher is the sole client of these routes.
 
-History: these routes lived at ``/api/workingcopy/*`` in ``blueprints/workingcopy.py``
-alongside an obsolete structure-editor "door".  The live persistence was extracted
-here and renamed to match its real module; the door remains in ``workingcopy.py``
-pending its own retirement.
+History: these routes lived at ``/api/workingcopy/*`` alongside an obsolete
+structure-editor "door" (open/save/update/…).  The live persistence was extracted
+here and renamed to match its real module; the door — and ``blueprints/workingcopy.py``
++ ``molbuilder/workingcopy.py`` — were then removed entirely.
 """
 from __future__ import annotations
 

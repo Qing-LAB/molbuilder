@@ -1,11 +1,18 @@
-"""Structure + sidecar codec — the first application of the working-copy core
-(workspace-contract.md §4.6 — the persistence mechanism).
+"""Structure + sidecar codec (``StructureCodec``).
 
-Loads/saves a structure as the pair ``<stem>.xyz`` (coordinates) +
-``<stem>.molstruct.json`` (labels/annotations).  The working ``data`` is a
-:class:`~molbuilder.structure.Structure`.  Plugging this into
-:mod:`molbuilder.workingcopy` gives the structure editor a draft (survives
-reload/crash) + an explicit save (overwrite or save-as).
+MODULE: a standalone L2 codec for the ``<stem>.xyz`` (coordinates) +
+``<stem>.molstruct.json`` (labels/annotations) file pair.  ``load`` parses the
+``.xyz``/``.pdb`` source and applies the companion sidecar into a
+:class:`~molbuilder.structure.Structure`; ``files`` serialises one back to the
+pair; ``scratch_blob`` / ``from_scratch`` round-trip it through an in-memory
+``{xyz, sidecar}`` blob.  It never learns what an atom means beyond structure +
+sidecar.
+
+USED BY: ``/api/structure/resolve-cell`` (web/blueprints/build.py) — rebuilds a
+Structure from a scratch blob via ``from_scratch`` to resolve the effective cell.
+(This codec also *used* to back the ``molbuilder.workingcopy`` working-copy core +
+the ``/api/workingcopy/*`` structure-editor door; both were retired — the codec is
+the survivor.)
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -25,7 +32,8 @@ def _sha256_bytes(b: bytes) -> str:
 
 
 class StructureCodec:
-    """Codec plugging structure + sidecar into :mod:`molbuilder.workingcopy`."""
+    """``.xyz`` + ``.molstruct.json`` ⇄ :class:`~molbuilder.structure.Structure`
+    (+ in-memory scratch round-trip)."""
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path) -> Structure:

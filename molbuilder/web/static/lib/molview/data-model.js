@@ -1231,8 +1231,8 @@
         opts = opts || {};
         _trace("loadText:start", { filename: filename, len: (text || "").length });
         // ``format`` is EXPLICIT when the caller knows the text's format regardless of
-        // the filename -- openProjectFile hands us the codec's canonical XYZ
-        // (``data.xyz``) while the source file may be ``.pdb``; without this,
+        // the filename -- the parser door (projects.parser.openMolecule) hands us the
+        // canonical XYZ while the source file may be ``.pdb``; without this,
         // /api/build/load auto-detects "pdb" from the ``.pdb`` filename and parses the
         // XYZ text as PDB -> 400.  Omitted -> the server auto-detects (filename ext,
         // then content sniff), the raw-text/generator behaviour.
@@ -1828,8 +1828,9 @@
             ? cs.getLastSavedTo() : null;
     }
 
-    // The working-copy scratch blob {xyz, sidecar} -- the codec shape
-    // /api/workingcopy/{save,update} consume.  ONE serialisation of the workspace,
+    // The scratch blob {xyz, sidecar} -- the codec shape `exportFile` emits for a
+    // project-file save (projects.writeFile) and `/api/structure/resolve-cell`
+    // consumes (StructureCodec.from_scratch).  ONE serialisation of the workspace,
     // for BOTH the durable save AND the transient draft, built entirely through the
     // §1.2.1 accessors (getRegions/getFrozen) -- no hand-rolled scan.  The periodicity
     // is persisted RAW (null when truly unset) so the file is truthful; a reader gets

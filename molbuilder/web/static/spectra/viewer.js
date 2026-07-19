@@ -114,7 +114,7 @@
      * Bootstrap the Inspect-structure card: mount the read-only MolView
      * component (lazily, on first load), wire the Load button, and subscribe to
      * ``onCommit`` so a sidebar dblclick on a .xyz/.pdb loads it via
-     * ``molview.data.openProjectFile``.
+     * ``projects.parser.openMolecule``.
      */
     function _bootstrapInspectCard() {
         const host = _$("spectra-molview-host");

@@ -164,7 +164,7 @@
     var _currentStructureFile = "";
     // Viewer-is-truth (2026-07): the committed structure's labels (frozen atoms +
     // electrode regions) live in the mounted MolView model (loaded from the sidecar
-    // by openProjectFile); the Generate POST sources them from molview.data at send
+    // by projects.parser.openMolecule); the Generate POST sources them from molview.data at send
     // time, so there is no separate label cache here.  See _shared.apply_labels_to_struct.
 
     function _refreshGenerateButton() {

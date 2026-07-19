@@ -110,7 +110,7 @@
                 periodicity: structure.periodicity || null,
                 annotations: structure.annotations || null,
                 // Sidecar-enriched atoms (a project-file open resolved these via
-                // readWorkingCopy) ride IN so the load installs the FINAL per-atom
+                // the parser door) ride IN so the load installs the FINAL per-atom
                 // state in ONE write -- the caller must NOT follow up with a second
                 // store write (see installMolecule's load contract).  Omitted by
                 // generators / raw-text loads.
