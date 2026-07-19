@@ -55,17 +55,16 @@ function _mkFakeCanvas(initial) {
         getStructure:   () => state.structure,
         getSource:      () => state.source,
         getLastSavedTo: () => state.lastSaveTo,
-        // The ONE atomic whole-model load door.  loadIntoCanvas
-        // forwards {text, filename, source, periodicity,
-        // annotations}; record the full arg so tests can assert
-        // the payload, and mirror text/source into the state so
-        // getStructure() reflects the load.
-        openMolecule: (arg) => {
+        // The ONE atomic whole-model load door (molview.data model primitive).
+        // installMolecule forwards {text, filename, source, periodicity,
+        // annotations}; record the full arg so tests can assert the payload,
+        // and mirror text/source into the state so getStructure() reflects the load.
+        installMolecule: (arg) => {
             state.empty     = false;
             state.dirty     = false;
             state.structure = { text: arg.text };
             state.source    = arg.source;
-            calls.push({fn: "openMolecule", arg: arg,
+            calls.push({fn: "installMolecule", arg: arg,
                         structure: { text: arg.text },
                         source: arg.source});
             return Promise.resolve();
@@ -220,7 +219,7 @@ class TestLoadGateEmptyCanvas:
         assert out["envelope"] == {"ok": True}
         # Routed through the ONE atomic load door with the text +
         # generator source riding on the load payload.
-        loads = [c for c in out["canvasCalls"] if c["fn"] == "openMolecule"]
+        loads = [c for c in out["canvasCalls"] if c["fn"] == "installMolecule"]
         assert len(loads) == 1
         assert loads[0]["arg"]["text"] == "1\nC\nC 0 0 0\n"
         assert loads[0]["arg"]["source"]["kind"] == "smiles"
@@ -250,7 +249,7 @@ class TestLoadGateCleanCanvas:
                 envelope:   r,
                 modalCalls: modal._calls(),
                 lastSet:    canvas._calls().filter(
-                                c => c.fn === "openMolecule"
+                                c => c.fn === "installMolecule"
                             ).pop(),
             }));
         ''')
@@ -279,7 +278,7 @@ class TestLoadGateDirtyCanvas:
                 envelope:   r,
                 modalCalls: modal._calls(),
                 lastSet:    canvas._calls().filter(
-                                c => c.fn === "openMolecule"
+                                c => c.fn === "installMolecule"
                             ).pop(),
             }));
         ''')
@@ -305,7 +304,7 @@ class TestLoadGateDirtyCanvas:
                 { kind: "file", file: "/p/b.xyz" }
             );
             const setCalls = canvas._calls().filter(
-                c => c.fn === "openMolecule");
+                c => c.fn === "installMolecule");
             console.log(JSON.stringify({
                 envelope:   r,
                 modalCalls: modal._calls(),
