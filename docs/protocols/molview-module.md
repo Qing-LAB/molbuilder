@@ -108,7 +108,7 @@ The owner uses only these; it never sees storage:
 | Call | Plain meaning |
 |---|---|
 | `molview.mount(host, workspace, {mode, owner})` → `handle` | Put a molview on the page, backed by `workspace`, identified by `owner`. |
-| `handle.openMolecule(fileOrText)` | "Open this molecule." |
+| `handle.installMolecule({text, filename})` | "Install this molecule from text" (generators / demos). A project **file** loads through the projects sidebar door `projects.parser.openMolecule(path)` — which installs into the SAME model — because files are the projects package's job, not the handle's. |
 | `handle.getStructure()` / `handle.getSelection()` | "Give me the current molecule / what's selected" — a **copy**. |
 | `handle.exportFile()` / `handle.undo()` | "Export its bytes" / "retract one checkpoint (= `data.load(-1)`)." |
 | `handle.onChange(fn)` | "Tell me when something changed," so the page can refresh its own bits. |
@@ -146,8 +146,9 @@ or 3-D code yourself.
 2. Get the **workspace** it should use — the real persistence layer. Every consumer
    (Modify and read-only Results alike) persists its session state through it.
 3. **`mount`** molview into the host.
-4. Wire **your page's buttons to the handle's API** (`openMolecule` / `exportFile` / `undo`) — never to
-   storage.
+4. Wire **your page's buttons to the handle's API** (`installMolecule` / `exportFile` / `undo`) —
+   never to storage. (A project-**file** Load button calls the projects door
+   `projects.parser.openMolecule(path)` instead, which installs into the same model.)
 5. React to **`onChange`** to refresh your page's own bits; **`dispose`** on teardown.
 
 ```mermaid
@@ -156,8 +157,8 @@ sequenceDiagram
     participant MV as MolView
     participant WS as Storage (workspace)
     Owner->>MV: mount(host, workspace, {mode, owner})
-    Note over Owner,MV: user clicks "Load"
-    Owner->>MV: handle.openMolecule(file)
+    Note over Owner,MV: user clicks "Load" (generated text)
+    Owner->>MV: handle.installMolecule({text})
     MV->>WS: write the molecule
     MV->>MV: run render pipeline → draw once
     MV-->>Owner: onChange fires
@@ -174,7 +175,9 @@ Owner code, in plain shape:
 const handle = await molview.mount(hostEl, workspace, { mode: "modify", owner: "modify" });
 
 // 4: wire page buttons to the API — NOT to storage
-openButton.onclick = () => handle.openMolecule(pickedFile);
+//    (generated text installs directly; a project FILE goes via the projects door:
+//     openButton.onclick = () => molbuilder.projects.parser.openMolecule(pickedPath); )
+generateButton.onclick = () => handle.installMolecule({ text: generatedXyz });
 exportButton.onclick = () => handle.exportFile();
 undoButton.onclick = () => handle.undo();
 
@@ -662,7 +665,7 @@ delegates coordinate storage to the embed's movie:
 
 | Call | Kind | Meaning |
 |---|---|---|
-| `openMolecule(fileOrText)` | replace | Load a molecule (the ONE open door, §19.3). Establishes atom identity from frame 0; multi-frame is populated explicitly via `reloadFrames`. |
+| `installMolecule({text})` | replace | Load a molecule (the model's LOAD primitive, §19.3; the `projects.parser.openMolecule` door calls it for a file). Establishes atom identity from frame 0; multi-frame is populated explicitly via `reloadFrames`. |
 | `reloadFrames(frames, {arrowsPerFrame?})` | replace | **Hard reload** — validates the invariant, then builds the native movie from all frames (resets to frame 0). Optional baked-in per-frame arrow overlays ride along. |
 | `addFrame(coords)` / `addFrames(list)` | append | Append frame(s) to the live movie (a running job **streams** new steps). Does not move the current frame. |
 | `setFrame(i)` | select | Make frame `i` current — native `viewer.setFrame(i)` swap; fires the frame-change channel (§14.5, bar only). Throws if out of range. |
@@ -914,7 +917,7 @@ molview.mount(hostEl, workspace, opts) -> handle
 - **`opts`** = `{ mode: "modify" | "readonly", owner?: string }`.
 - **`handle`** — the **owner-facing API of §D**. The complete key set (the exact `Object.keys`
   the demo pins, sorted):
-  `{ openMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
+  `{ installMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
   ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying, setArrows, setLabels }`.
   The first seven are the core owner API (§D); the rest are the **frame axis** (§14.5), present
   on every handle but inert for a static structure (`frameCount() === 1`). It exposes **no
@@ -1143,21 +1146,25 @@ concerns can never be confused (two-saves-never-mix):
   whole session state at `state_index + delta`. `save(1)` = the tab's "Save state"; `load(-1)` =
   "Retract"; `load(0)` = reload. `pushState`/`popState`/`restoreSnapshot` are GONE — they were just
   these with a fixed delta.
-- **Document + molecule:** `openMolecule(input)` brings a NEW molecule IN (and RESETS the timeline);
-  `saveMolecule(path)` writes the model back out. These are the two high-level **molecule doors** a
-  tab calls (`structure-load-save-contract.md` §0); `exportFile()` is the in-memory serialiser
-  `saveMolecule` is built on, and `openProjectFile`/`saveProjectFile` are the byte ops beneath both.
+- **Document + molecule:** the high-level **molecule doors** a tab calls are
+  `projects.parser.openMolecule(path)` / `saveMolecule(path)` — they live in the **projects**
+  package (`structure-load-save-contract.md` §0), own the file bytes (`projects.readFile` /
+  `projects.writeFile` → `/api/files/*`), and CALL molview's own primitives:
+  `installMolecule(input)` brings a NEW molecule IN from text (+ optional sidecar) and RESETS the
+  timeline; `exportFile()` serialises the model back to `{xyz, sidecar}` (the door's inverse);
+  `markSaved(path)` records the save. **`molview.data` owns NO file endpoint** — it has no
+  `openMolecule`/`saveMolecule`; those names are the projects doors, not molview methods.
 
-Every historical door is gone (`loadFromText`, `loadFromFile`, `installStructure`, `getScratchBlob`,
-`pushState`, `popState`, `restoreSnapshot`, file-writing `save(opts)`).
+Every historical molview door is gone (`loadFromText`, `loadFromFile`, `installStructure`,
+`getScratchBlob`, `pushState`, `popState`, `restoreSnapshot`, file-writing `save(opts)`, and the
+`openProjectFile`/`saveProjectFile`/`readWorkingCopy` file stack — files are the projects package's job now).
 
 | Method | Server route | Returns | Side effects |
 |---|---|---|---|
 | **`save(delta=0)`** | → `ws.persist` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state save.** Serialize the current model (`getState`) and persist it at `state_index+delta`, moving `state_index` by `delta`. `save(1)` = a new undoable **checkpoint** ("Save state"; prunes any abandoned tail above); `save(0)` = re-save the current index in place. The explicit persist trigger (§19.5). |
 | **`load(delta=0)`** | → `ws.readState` at `{workspace_id, state_index+delta}` | `Promise<void>` | **Session-state restore.** Read the snapshot at `state_index+delta` and apply it to the WHOLE model, moving `state_index` by `delta`. `load(-1)` = **Retract**/undo; `load(0)` = reload / mount-restore. No-op if the target index < 0. Undo-only (a `save(1)` after a `load(-1)` overwrites the abandoned tail — no redo). Applies WITHOUT re-parsing or re-anchoring the timeline. |
-| **`openMolecule(input)`** | a project-file **path string** → read the `.xyz`+`.molstruct.json` bytes via `openProjectFile`, then parse; **or** `{text, filename[, source, periodicity, annotations, atoms]}` → POST `/api/build/load` | `Promise<WorkspacePayload>` | **The high-level LOAD door** (`structure-load-save-contract.md` §2). Bring a NEW molecule IN — one atomic op that replaces the WHOLE model (§19.3.1) AND **resets the timeline** (prune-all **then** anchor at index 0 — the order matters; see below). For a path, the sidecar rides in from `openProjectFile`; for a text object the caller may pass `source`/`periodicity`/`annotations`/`atoms` to override the server-derived. Either way the load installs the final per-atom state in ONE write — the caller does NO second store write (the SETTLE-BEFORE-READY rule, §19.3.1). |
-| **`saveMolecule(path)`** | serialise (`exportFile`) → write bytes via `projects.writeFile` → `/api/files/write` (×2: `.xyz` + `.molstruct.json`) | `Promise<{ok,path}\|{ok:false,needsOverwrite\|error}>` | **The high-level SAVE door** (`projects.parser`, see `structure-load-save-contract.md` §2). Reads the settled model out to `{xyz, sidecar}`, writes BOTH files atomically, 409→`needsOverwrite`, on success clears dirty + re-anchors `sourceFile`. Never mutates the model. |
-| **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | Serialize the whole model to **project-file** bytes (structure + sidecar). Refuses a geometry↔labels atom-count desync (returns `null`). The in-memory serialiser `saveMolecule` is built on — not itself the disk write, and not the session-state save. |
+| **`installMolecule(input)`** | `{text, filename[, source, periodicity, annotations, atoms]}` → POST `/api/build/load` | `Promise<WorkspacePayload>` | **The model's LOAD primitive** — what the `projects.parser.openMolecule` door calls after reading the bytes (and what generators/demos call directly with text). Parse text (+ optional sidecar) → replace the WHOLE model (§19.3.1) AND **reset the timeline** (prune-all **then** anchor at index 0 — order matters; see below). Installs the final per-atom state in ONE write — the caller does NO second store write (SETTLE-BEFORE-READY, §19.3.1). A project-file **path** is the projects door's job, not this primitive. |
+| **`exportFile()`** | (in-memory) | `{xyz, sidecar}` | **The model's SAVE primitive** — serialise the whole model to **project-file** bytes (structure + sidecar); `installMolecule`'s inverse. Refuses a geometry↔labels atom-count desync (returns `null`). Not itself a disk write: the `projects.parser.saveMolecule` door calls this, then writes both files via `projects.writeFile`. Not the session-state save. |
 | `generate(kind, input, opts)` | via the `structure.<kind>` generator | `Promise<WorkspacePayload>` | Produce a structure and open it (like `openMolecule`); dirty=true; resets the timeline. |
 | `applyOp(op, args)` | POST `/api/modify/<op>` | `Promise<WorkspacePayload>` | Modifier op (not an open): replaces the structure via the single internal sync point; clears the selection on any atom-count change (§19.3.2); dirty=true. Does NOT checkpoint — the consumer calls `save(1)` for an undo step. |
 | `markDirty()` / `markSaved(path)` | (in-memory) | `void` | Flip / clear the dirty bit + record `last_save_to`. |
@@ -1219,9 +1226,9 @@ null. This is exactly what `/molview-demo` exercises: it embeds the module the w
 prescribes — one `openMolecule` — and the viewer, selection panel, Cell page, and unit-cell box are
 all live from that one call. If they are not, the contract is broken, not the demo.
 
-> **The project-file molecule doors** (`openMolecule` / `saveMolecule`) and the
-> low-level byte ops beneath them (`openProjectFile` / `saveProjectFile`) — the
-> two-layer split — are specified in
+> **The project-file molecule doors** (`projects.parser.openMolecule` /
+> `saveMolecule`) and the low-level byte ops beneath them (`projects.readFile` /
+> `projects.writeFile`) — the two-layer split — are specified in
 > [`structure-load-save-contract.md`](structure-load-save-contract.md). This section
 > is the atomic-install mechanism those doors are built on.
 
@@ -1255,8 +1262,8 @@ in the tab:
 sequenceDiagram
     participant U as User / Sidebar
     participant SB as tab (hands over the picked path)
-    participant OM as openMolecule(path) — the ONE door
-    participant OPF as openProjectFile (bytes)
+    participant OM as projects.parser.openMolecule(path) — the ONE door
+    participant OPF as projects.readFile (bytes)
     participant AP as _applyWorkspacePayload (single sync point)
     participant ST as selection store + canvas
 
