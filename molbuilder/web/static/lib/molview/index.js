@@ -16,5 +16,7 @@
  * When `mount` and its whole subtree are modules, the classic stack + globals go away.
  */
 import "./_atom-index.js";        // publishes window.molbuilder.atomIndexModel (transitional)
+import "./_atom-channels.js";     // publishes window.molbuilder.atomChannelModel (transitional)
 
 export * from "./_atom-index.js";
+export * from "./_atom-channels.js";
