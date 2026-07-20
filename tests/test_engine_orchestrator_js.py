@@ -188,3 +188,52 @@ def test_append_before_load_is_hard_error():
         console.log(JSON.stringify({ threw }));
     """)
     assert out["threw"] is True                # no identity to append to
+
+
+# ---- the async paint-yield path (browser has requestAnimationFrame; node doesn't, so we
+#      inject a controllable one to exercise the busy scrim + burst coalescing) ------------- #
+
+_RAF = """
+    let _q = [], _id = 0;
+    global.requestAnimationFrame = (fn) => { _q.push({ id: ++_id, fn }); return _id; };
+    global.cancelAnimationFrame  = (id) => { _q = _q.filter(x => x.id !== id); };
+    // The regen uses a NESTED double rAF, so draining re-fills the queue -- loop till empty.
+    function flushRaf() { let g = 0; while (_q.length && g++ < 100) { _q.shift().fn(); } }
+"""
+
+
+def test_paint_yield_shows_busy_before_the_blocking_load():
+    out = _run_node(_RAF + """
+        const { io, e } = mk();
+        e.setData(DATA);                       // schedules the regen behind a paint yield
+        const before = { names: io._names(),
+                         busy: io._calls.filter(c => c.name === "setBusy").map(c => c.args[0]) };
+        flushRaf();                            // the paint happened -> now the heavy load runs
+        const after = io._names();
+        console.log(JSON.stringify({ before, after }));
+    """)
+    # BEFORE the paint: busy scrim is on, but loadFrames has NOT run (that's the whole point --
+    # the scrim paints before the freeze).
+    assert out["before"]["busy"] == ["Updating view…"]
+    assert "loadFrames" not in out["before"]["names"]
+    # AFTER the paint yield: the load runs and busy clears.
+    assert "loadFrames" in out["after"]
+    assert out["after"][-1] == "setBusy"       # last call clears busy (null)
+
+
+def test_burst_of_structural_changes_coalesces_to_one_load():
+    out = _run_node(_RAF + """
+        const { io, store, e } = mk();
+        e.setData(DATA);                       // regen #1 scheduled
+        store._set({ indices: [1], isolate: true });   // regen #2 -> cancels #1, reschedules
+        store._set({ indices: [1, 2], isolate: true }); // regen #3 -> cancels #2, reschedules
+        flushRaf();
+        const loads = io._calls.filter(c => c.name === "loadFrames");
+        console.log(JSON.stringify({
+            loadCount: loads.length,
+            drawn: loads.length ? loads[0].args[0].frames[0].positions.length : -1,
+        }));
+    """)
+    # a burst collapses to ONE load of the LATEST state (isolate on, selection {1,2} -> 2 atoms).
+    assert out["loadCount"] == 1
+    assert out["drawn"] == 2

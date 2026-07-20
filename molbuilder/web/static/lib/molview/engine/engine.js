@@ -140,8 +140,13 @@
             if (!_data) return;                       // nothing loaded yet.
             _flags = _readFlags();
             var sig = _structSig();
-            if (sig !== _prevStructSig) _structuralRegen();   // drawn set / arrows changed -> reload.
-            else _applyCurrentOverlays();                     // overlay-only -> re-apply, no reload.
+            if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set/arrows -> reload.
+            // Overlay-only. If a structural regen is already scheduled (paint yield pending), the
+            // movie is NOT rebuilt yet -- painting overlays now would key them to the OLD model.
+            // The pending regen reads the latest _flags when it fires and applies overlays then,
+            // so just let it.
+            if (_regenRaf != null) return;
+            _applyCurrentOverlays();
         }
 
         // ---- public API (§9) ------------------------------------------------------------- //
@@ -197,6 +202,10 @@
             var idx = Math.floor(Number(i));
             if (!(idx >= 0 && idx < frameCount())) return;
             _frame = idx;
+            // If a structural regen is pending (paint yield), the movie is not rebuilt yet --
+            // don't swap/paint the stale model. Record the frame; the regen restores it (it does
+            // swapFrame(_frame) + applies overlays when it fires).
+            if (_regenRaf != null) { _notifyFrame(); return; }
             embedIo.swapFrame(idx);
             _applyCurrentOverlays();          // labels/halos follow the shown frame.
             _notifyFrame();
