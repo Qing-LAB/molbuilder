@@ -87,11 +87,11 @@ def test_multiframe_load_is_setStructure_then_setAnimation():
     assert out["animFrames"] == [[[0, 0, 0], [1, 0, 0]], [[0, 0, 1], [1, 0, 1]]]
     assert out["arrowsPerFrame"] == 2                # one arrow set per frame, baked in
     assert out["frameStrip"] is False               # MolView owns the frame bar, not the embed
-    # arrows are BAKED (arrowsPerFrame) -- they must NOT ALSO be applied via setArrows, else the
-    # frame-0 arrow layer draws twice. Labels/halos are applied on top.
+    # loadFrames is COORDINATES ONLY -- overlays (labels/halos/arrows) are the engine's job,
+    # applied right after. loadFrames must not touch those doors.
+    assert "setLabels" not in out["order"]
+    assert "setOverlays" not in out["order"]
     assert "setArrows" not in out["order"]
-    assert "setLabels" in out["order"]
-    assert "setOverlays" in out["order"]
 
 
 def test_single_frame_load_is_plain_structure_no_movie():
@@ -100,11 +100,9 @@ def test_single_frame_load_is_plain_structure_no_movie():
         embedIo.create(h).loadFrames({ frames: [F[0]] });
         console.log(JSON.stringify({ order: names(h) }));
     """)
-    # one frame = a static structure: NO setAnimation (frameCount stays 1 -> no frame bar).
-    # No baked arrows, so frame-0 arrows ARE applied directly via setArrows.
-    assert "setStructure" in out["order"]
-    assert "setAnimation" not in out["order"]
-    assert "setArrows" in out["order"]
+    # one frame = a static structure: setStructure ONLY (no movie, no frame bar). Overlays --
+    # including this frame's arrows -- are applied by the engine afterwards, not here.
+    assert out["order"] == ["setStructure"]
 
 
 def test_swap_frame_is_native_no_rebuild():

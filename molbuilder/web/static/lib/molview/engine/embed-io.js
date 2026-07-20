@@ -64,22 +64,15 @@
         if (o.axes    !== undefined && typeof handle.setAxes     === "function") handle.setAxes(o.axes);
     }
 
-    // The CURRENT-frame overlay spec carried ON a ProcessedFrame (labels/halos/arrows).
-    // Scene-level cell/axis are handed separately by the engine (they are not per-atom).
-    function _overlayOf(pf) {
-        return { labels: pf.labels, halos: pf.halos, arrows: pf.arrows };
-    }
-
     function createEmbedIo(handle) {
         if (!handle) throw new Error("engine.embedIo.create: a viewer handle is required");
 
-        // STRUCTURAL REGEN (§3, §8): load all processed frames as ONE native movie.
-        //   1 frame  -> a plain static structure (no frame bar; frameCount === 1).
-        //   N frames -> setStructure(frame0) establishes identity + count, then setAnimation
-        //               builds the native multi-frame movie (addModelsAsFrames) with the
-        //               per-frame arrows baked in. Overlays for the shown frame ride on top.
-        // The engine ALWAYS hands ProcessedFrame[]; the static-vs-movie split is embedIo's
-        // 3Dmol-format detail, not a second render path.
+        // STRUCTURAL REGEN (§3, §8): load all processed frames as ONE native movie -- COORDINATES
+        // only. setStructure(frame0) establishes atom identity + count; a multi-frame set becomes
+        // the native movie (addModelsAsFrames) with the per-frame arrows BAKED in (a native swap
+        // shows frame i's arrows for free, §3). Labels/halos (and a single frame's arrows) are the
+        // ENGINE's job -- it applies the shown frame's overlays right after this (the single render
+        // place). loadFrames does NOT apply them; doing so would just double-draw frame 0.
         function loadFrames(movie) {
             movie = movie || {};
             var frames = Array.isArray(movie.frames) ? movie.frames : [];
@@ -91,10 +84,6 @@
                 cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
             });
             if (frames.length > 1 && typeof handle.setAnimation === "function") {
-                // Multi-frame: bake the per-frame arrows INTO the movie so a native swap shows
-                // frame i's arrows with zero recompute (§3). Apply frame-0 labels/halos on top,
-                // but NOT arrows -- those are baked here; re-applying via setArrows would double
-                // the frame-0 arrow layer.
                 handle.setAnimation({
                     kind:           "trajectory",
                     frames:         frames.map(function (f) { return f.positions; }),
@@ -102,11 +91,6 @@
                     frameStrip:     false,
                     paused:         true,
                 });
-                _applyOverlays(handle, { labels: f0.labels, halos: f0.halos });
-            } else {
-                // Single static frame: no movie, so no baked arrows -- apply frame-0's arrows
-                // (and labels/halos) directly.
-                _applyOverlays(handle, _overlayOf(f0));
             }
         }
 
