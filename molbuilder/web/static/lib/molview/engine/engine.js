@@ -162,6 +162,7 @@
             _prevStructSig = _structSig();
             _prevArrowSig = _arrowSig();
             _yieldPaint(function () {
+                embedIo.beginBatch();   // §1/§5: process all frames + overlays, then 3Dmol paints ONCE
                 try {
                     var processed = _processAll();
                     embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
@@ -169,10 +170,12 @@
                     if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
                     _applyCurrentOverlays();
                 } finally {
-                    // ALWAYS release the lock + scrim, even if the rebuild threw (a malformed
-                    // frame, a 3Dmol error). Without this a throw mid-regen wedges the viewer
-                    // locked + busy forever -- every later render/showFrame/appendFrames refuses
-                    // until reload (§8 "the lock releases" once 3Dmol is ready).
+                    // ALWAYS release: end the batch (the single paint for the whole regen), then
+                    // clear the lock + scrim -- even if the rebuild threw (a malformed frame, a
+                    // 3Dmol error). Without this a throw mid-regen wedges the viewer locked + busy
+                    // forever -- every later render/showFrame/appendFrames refuses until reload
+                    // (§8 "the lock releases" once 3Dmol is ready).
+                    embedIo.endBatch();
                     embedIo.setBusy(null);
                     _locked = false;
                 }
@@ -257,8 +260,11 @@
             var idx = Math.floor(Number(i));
             if (!(idx >= 0 && idx < frameCount())) return;
             _frame = idx;
-            embedIo.swapFrame(idx);
-            _applyCurrentOverlays();          // labels/halos follow the shown frame.
+            embedIo.beginBatch();             // swap + overlay re-apply -> ONE render (§1/§5)
+            try {
+                embedIo.swapFrame(idx);
+                _applyCurrentOverlays();      // labels/halos follow the shown frame.
+            } finally { embedIo.endBatch(); }
             _notifyFrame();
         }
         function play(playOpts) {

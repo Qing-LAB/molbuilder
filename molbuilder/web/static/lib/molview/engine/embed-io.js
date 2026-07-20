@@ -67,6 +67,13 @@
     function createEmbedIo(handle) {
         if (!handle) throw new Error("engine.embedIo.create: a viewer handle is required");
 
+        // §1/§5: a MolView update prepares all data in one run, then 3Dmol renders ONCE. The embed
+        // batches renders behind a depth counter; embedIo opens a batch around any multi-door op,
+        // and the engine (§8) wraps a whole tier update, so the paint fires once at the outermost
+        // close instead of once per setStructure/setOverlays/setCell/setAxes/setLabels door.
+        function beginBatch() { if (typeof handle.beginBatch === "function") handle.beginBatch(); }
+        function endBatch()   { if (typeof handle.endBatch   === "function") handle.endBatch(); }
+
         // STRUCTURAL REGEN (§3, §8): load all processed frames as ONE native movie -- COORDINATES
         // only. setStructure(frame0) establishes atom identity + count; a multi-frame set becomes
         // the native movie (addModelsAsFrames) with the per-frame arrows BAKED in (a native swap
@@ -77,21 +84,24 @@
             movie = movie || {};
             var frames = Array.isArray(movie.frames) ? movie.frames : [];
             if (!frames.length) return;
-            var f0 = frames[0];
-            handle.setStructure({
-                xyz:     _buildXyz(f0.elements, f0.positions),
-                lattice: movie.cell !== undefined ? movie.cell : null,
-                cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
-            });
-            if (frames.length > 1 && typeof handle.setAnimation === "function") {
-                handle.setAnimation({
-                    kind:           "trajectory",
-                    frames:         frames.map(function (f) { return f.positions; }),
-                    arrowsPerFrame: frames.map(function (f) { return f.arrows || []; }),
-                    frameStrip:     false,
-                    paused:         true,
+            beginBatch();                                  // setStructure + setAnimation -> ONE render
+            try {
+                var f0 = frames[0];
+                handle.setStructure({
+                    xyz:     _buildXyz(f0.elements, f0.positions),
+                    lattice: movie.cell !== undefined ? movie.cell : null,
+                    cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
                 });
-            }
+                if (frames.length > 1 && typeof handle.setAnimation === "function") {
+                    handle.setAnimation({
+                        kind:           "trajectory",
+                        frames:         frames.map(function (f) { return f.positions; }),
+                        arrowsPerFrame: frames.map(function (f) { return f.arrows || []; }),
+                        frameStrip:     false,
+                        paused:         true,
+                    });
+                }
+            } finally { endBatch(); }
         }
 
         // NATIVE SWAP (§3, §8): switch to a pre-parsed frame -- no processing, no rebuild.
@@ -116,7 +126,8 @@
         // OVERLAY REFRESH (§8): (re)apply overlays on the current frame without rebuilding
         // the movie. `overlay` is { labels?, halos?, arrows?, cellBox?, axes? }.
         function applyOverlays(overlay) {
-            _applyOverlays(handle, overlay);
+            beginBatch();                                  // labels + halos + cell + axis -> ONE render
+            try { _applyOverlays(handle, overlay); } finally { endBatch(); }
         }
 
         // OVERLAY REFRESH of the BAKED per-frame arrows (§8): re-hand the whole arrowsPerFrame
@@ -153,6 +164,8 @@
             applyOverlays: applyOverlays,
             setFrameArrows: setFrameArrows,
             setBusy:       setBusy,
+            beginBatch:    beginBatch,   // engine wraps a whole §8 tier update -> ONE render
+            endBatch:      endBatch,
             frameCount:    frameCount,
             currentFrame:  currentFrame,
             animationKind: animationKind,

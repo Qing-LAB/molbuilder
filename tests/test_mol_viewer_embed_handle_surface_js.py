@@ -86,6 +86,9 @@ EXPECTED_METHODS = sorted([
     "captureFrames", "exportAnimation",
     # Lifecycle
     "refit", "setPivot", "render", "dispose",
+    # Batched render (molview-render-streamline.md §1/§5: coalesce a multi-door
+    # update into ONE 3Dmol paint at the outermost close).
+    "beginBatch", "endBatch",
     # Escape hatch
     "_viewer3dmol",
 ])

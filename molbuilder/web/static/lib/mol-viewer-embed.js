@@ -2623,6 +2623,17 @@
         }
     }
 
+    // The SINGLE 3Dmol render primitive (molview-render-streamline.md §1/§5: the streamline
+    // prepares all data in one run, then 3Dmol renders ONCE). MODULE-LEVEL (takes the instance
+    // ``state``) so EVERY draw site -- the constructor AND the redraw helpers here -- calls the
+    // same primitive. While a batch is open (state._renderDepth>0) it just marks the scene dirty;
+    // the paint fires exactly once at the outermost endBatch, not once per door touched.
+    function _render(state) {
+        if (!state || state.disposed || !state.viewer) return;
+        if (state._renderDepth > 0) { state._renderDirty = true; return; }
+        try { state.viewer.render(); } catch (_) {}
+    }
+
     function _redrawPickHalos(state) {
         // Clear previous halos + auto-labels (review fix D5).
         for (const s of state.pickShapes) {
@@ -2635,7 +2646,7 @@
         state.pickLabels = [];
         const pick = state.current.pick;
         if (!pick) {
-            state.viewer.render();
+            _render(state);
             return;
         }
         try {
@@ -2679,7 +2690,7 @@
                 }
             }
         } catch (_) {}
-        state.viewer.render();
+        _render(state);
     }
 
     /* ------------------------------------------------------------ */
@@ -3408,7 +3419,7 @@
             _applyCoords(state.viewer, out);
             _rebuildGeometryForCoordChange(state);
             _postFramePositionRedraw(state);
-            state.viewer.render();
+            _render(state);
             state._anim.rafId = requestAnimationFrame(tick);
         };
         state._anim.rafId = requestAnimationFrame(tick);
@@ -3545,7 +3556,7 @@
             _redrawArrows(state);
         }
         _postFramePositionRedraw(state);
-        state.viewer.render();
+        _render(state);
         _refreshFrameStrip(state);
     }
 
@@ -3702,7 +3713,7 @@
             _applyCoords(state.viewer, state._anim.vibrationBaseline);
             _rebuildGeometryForCoordChange(state);
             _postFramePositionRedraw(state);
-            state.viewer.render();
+            _render(state);
         }
         state._anim.vibrationBaseline = null;
         if (next && next.kind === "trajectory") {
@@ -4147,7 +4158,7 @@
                 state.viewer.zoomTo();
             }
             state.hasFirstStructure = true;
-            state.viewer.render();
+            _render(state);
             _refreshInfoLine(state);
         }
 
@@ -4188,7 +4199,7 @@
             // re-applied after the base style is reset (setStyle is
             // a replace, not an add).
             _redrawOverlayStyles(state);
-            state.viewer.render();
+            _render(state);
             // Programmatic→UI sync per § 4.1.  setStyle covers both
             // the style picker (rep changed) and the background
             // swatch (setBackground routes through setStyle).
@@ -4237,7 +4248,7 @@
             if (_equalNormalised(state.current.axes, next)) return;
             state.current.axes = next;
             _redrawAxes(state);
-            state.viewer.render();
+            _render(state);
             _syncToggles(state);
         }
 
@@ -4247,7 +4258,7 @@
             if (_equalNormalised(state.current.cell, next)) return;
             state.current.cell = next;
             _redrawCell(state);
-            state.viewer.render();
+            _render(state);
             _syncToggles(state);
         }
 
@@ -4262,7 +4273,7 @@
             if (state.current.overlayOn === next) return;
             state.current.overlayOn = next;
             _redrawArrows(state);
-            state.viewer.render();
+            _render(state);
             _syncToggles(state);
         }
 
@@ -4312,7 +4323,7 @@
             if (_equalNormalised(state.current.labels, next)) return;
             state.current.labels = next;
             _redrawLabels(state);
-            state.viewer.render();
+            _render(state);
             _syncToggles(state);
         }
 
@@ -4327,7 +4338,7 @@
             }
             state.explicitLabels = (Array.isArray(list) && list.length)
                 ? _drawExplicitLabels(state.viewer, list) : [];
-            state.viewer.render();
+            _render(state);
         }
 
         function setProjection(p) {
@@ -4349,7 +4360,7 @@
             if (state.viewer
                 && typeof state.viewer.setProjection === "function") {
                 state.viewer.setProjection(next);
-                state.viewer.render();
+                _render(state);
             }
             _syncKnobBarToProjection(state);
         }
@@ -4384,7 +4395,7 @@
             if (JSON.stringify(state.current.arrows) === JSON.stringify(next)) return;
             state.current.arrows = next;
             _redrawArrows(state);
-            state.viewer.render();
+            _render(state);
         }
 
         function setPick(p) {
@@ -4562,7 +4573,7 @@
             _redrawOverlayStyles(state);
             _redrawOverlayHalosAndMarkers(state);
             _redrawPickHalos(state);   // pick draws above overlay halos
-            state.viewer.render();
+            _render(state);
         }
 
         function setAtomStyle(selector, style) {
@@ -4674,7 +4685,7 @@
             if (idx >= startIdx && idx < a.arrowsPerFrame.length) {
                 state.current.arrows = (a.arrowsPerFrame[idx] || []).slice();
                 _redrawArrows(state);
-                state.viewer.render();
+                _render(state);
             }
         }
 
@@ -4709,7 +4720,7 @@
             try {
                 if (typeof state.viewer.setView === "function") {
                     state.viewer.setView(s.data);
-                    state.viewer.render();
+                    _render(state);
                 }
             } catch (_) {}
         }
@@ -5247,7 +5258,7 @@
                 if (i >= total) return Promise.resolve();
                 _driveAnimationFrame(state, i, total, duration,
                     _captureRange(state, opts));
-                state.viewer.render();
+                _render(state);
                 return _canvasToPngBlob(state, width, height)
                     .then((blob) => {
                         blobs.push(blob);
@@ -5286,7 +5297,7 @@
                                 state._anim.vibrationBaseline);
                             _rebuildGeometryForCoordChange(state);
                             _postFramePositionRedraw(state);
-                            state.viewer.render();
+                            _render(state);
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -5370,7 +5381,7 @@
                     if (typeof state.viewer.resize === "function") {
                         state.viewer.resize();
                     }
-                    state.viewer.render();
+                    _render(state);
                 } catch (e) {
                     canvas.width = origW; canvas.height = origH;
                     try { state.viewer.resize(); } catch (_) {}
@@ -5457,7 +5468,7 @@
                     }
                     _driveAnimationFrame(state, i, total, duration,
                     _captureRange(state, opts));
-                    state.viewer.render();
+                    _render(state);
                     if (typeof opts.onProgress === "function") {
                         try {
                             opts.onProgress((i + 1) / total,
@@ -5473,7 +5484,7 @@
                     if (resized && !state.disposed) {
                         canvas.width = origW; canvas.height = origH;
                         try { state.viewer.resize(); } catch (_) {}
-                        try { state.viewer.render(); } catch (_) {}
+                        try { _render(state); } catch (_) {}
                     }
                     return new Blob(chunks, { type: "video/webm" });
                 },
@@ -5481,7 +5492,7 @@
                     if (resized && !state.disposed) {
                         canvas.width = origW; canvas.height = origH;
                         try { state.viewer.resize(); } catch (_) {}
-                        try { state.viewer.render(); } catch (_) {}
+                        try { _render(state); } catch (_) {}
                     }
                     throw err;
                 }
@@ -5530,7 +5541,7 @@
                         if (typeof state.viewer.resize === "function") {
                             state.viewer.resize();
                         }
-                        state.viewer.render();
+                        _render(state);
                     } catch (e) {
                         canvas.width = origW; canvas.height = origH;
                         try { state.viewer.resize(); } catch (_) {}
@@ -5552,7 +5563,7 @@
                     if (!resized || state.disposed) return;
                     canvas.width = origW; canvas.height = origH;
                     try { state.viewer.resize(); } catch (_) {}
-                    try { state.viewer.render(); } catch (_) {}
+                    try { _render(state); } catch (_) {}
                 };
                 return new Promise((resolve, reject) => {
                     let cancelled = false;
@@ -5604,7 +5615,7 @@
                         }
                         _driveAnimationFrame(state, i, total, duration,
                     _captureRange(state, opts));
-                        state.viewer.render();
+                        _render(state);
                         try {
                             gif.addFrame(canvas, {
                                 copy: true, delay: delayMs,
@@ -5720,7 +5731,7 @@
                                 state._anim.vibrationBaseline);
                             _rebuildGeometryForCoordChange(state);
                             _postFramePositionRedraw(state);
-                            state.viewer.render();
+                            _render(state);
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -5826,7 +5837,7 @@
                     && opts.pullback > 0 && opts.pullback !== 1) {
                     state.viewer.zoom(opts.pullback, 0);
                 }
-                state.viewer.render();
+                _render(state);
             } catch (_) {}
         }
 
@@ -5848,9 +5859,21 @@
             const sel = _selectionFromIndices(opts.indices);
             try { state.viewer.center(sel, 0); } catch (_) {}
         }
+        // Render batch control. The real primitive _render(state) is MODULE-LEVEL (so the redraw
+        // helpers reach it too); these manipulate THIS instance's batch depth. While a batch is
+        // open, _render coalesces and 3Dmol paints ONCE at the outermost endBatch (§1/§5), not
+        // once per door touched.
+        function beginBatch() { state._renderDepth = (state._renderDepth || 0) + 1; }
+        function endBatch() {
+            if (state._renderDepth > 0) state._renderDepth--;
+            if (!state._renderDepth && state._renderDirty) {
+                state._renderDirty = false;
+                _render(state);
+            }
+        }
         function render() {
             if (state.disposed) return;
-            try { state.viewer.render(); } catch (_) {}
+            try { _render(state); } catch (_) {}
         }
 
         function dispose() {
@@ -6004,7 +6027,7 @@
                                          && cur.arrowsPerFrame[_idx]) || [];
                             state.current.arrows = _fa.slice();
                             _redrawArrows(state);
-                            state.viewer.render();
+                            _render(state);
                         }
                         if (typeof animation.paused === "boolean") {
                             if (animation.paused) _pauseImpl(state);
@@ -6228,6 +6251,9 @@
             refit:              refit,
             setPivot:           setPivot,
             render:             render,
+            // §1/§5: coalesce a multi-door update into ONE 3Dmol paint.
+            beginBatch:         beginBatch,
+            endBatch:           endBatch,
             dispose:            dispose,
             _viewer3dmol:       _viewer3dmol,
             _test:              _buildTestHandle(state),

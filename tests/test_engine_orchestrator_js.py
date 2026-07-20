@@ -30,6 +30,9 @@ _BOOT = """
                     loadFrames: rec("loadFrames"), swapFrame: rec("swapFrame"),
                     appendFrames: rec("appendFrames"), applyOverlays: rec("applyOverlays"),
                     setFrameArrows: rec("setFrameArrows"), setBusy: rec("setBusy"),
+                    // render-coalescing plumbing (§1/§5): non-recording no-ops so the primitive
+                    // call-SEQUENCE assertions below are unaffected by batch open/close.
+                    beginBatch: () => {}, endBatch: () => {},
                     frameCount: () => 0, currentFrame: () => 0, animationKind: () => null };
             }
             // Stub store: getState + subscribe + a _set that patches state and fires subscribers.
