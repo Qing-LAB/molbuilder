@@ -56,6 +56,12 @@ STORE_PATH        = ROOT / "molbuilder/web/static/lib/molview/_selection-store-i
 CANVAS_PATH       = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
 SNAPSHOT_IO_PATH  = ROOT / "molbuilder/web/static/lib/workspace/snapshot-io.js"
 DATA_MODEL_PATH   = ROOT / "molbuilder/web/static/lib/molview/data-model.js"
+# The render engine (molview-render-streamline.md): the data model delegates every render to
+# it, so frame tests attach a real engine (over a permissive fake handle -- see _FAKE_EMBED).
+ATOM_INDEX_PATH   = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
+ENG_PROCESS_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
+ENG_EMBEDIO_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js"
+ENG_ENGINE_PATH   = ROOT / "molbuilder/web/static/lib/molview/engine/engine.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -88,6 +94,10 @@ def _run_node(snippet: str) -> object:
         "require(" + json.dumps(str(STORE_PATH)) + ");\n"
         "window.molbuilder.molview.selection.store = "
         "  window.molbuilder.molview.selection._createStore();\n"
+        "require(" + json.dumps(str(ATOM_INDEX_PATH)) + ");\n"
+        "require(" + json.dumps(str(ENG_PROCESS_PATH)) + ");\n"
+        "require(" + json.dumps(str(ENG_EMBEDIO_PATH)) + ");\n"
+        "require(" + json.dumps(str(ENG_ENGINE_PATH)) + ");\n"
         "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
@@ -173,29 +183,34 @@ global.window.fetch = function (url, opts) {
 # tests exercise the delegation without a real 3Dmol viewer.  Attach it AFTER the data
 # model loads and BEFORE the frame ops.
 _FAKE_EMBED = """
-window.molbuilder.molview.data.attachViewHandle((function () {
+(function () {
     let _frames = null, _cur = 0, _kind = null;
     const cp = (f) => f.map((p) => p.slice());
-    return {
+    // A permissive fake 3Dmol handle: the frame-movie slice (so a trajectory round-trips) PLUS
+    // no-op stubs for every door the render engine's embedIo drives (setStructure/setBusy/
+    // overlays/...). The data model now delegates every render to the ENGINE, which we attach
+    // over this handle; the engine holds the clean frames, so data.getFrame/frameCount read the
+    // engine's own state -- this handle just absorbs the engine's draw calls without a real viewer.
+    const fake = {
         setAnimation: function (a) {
-            if (a && a.kind === "trajectory") {
-                _frames = a.frames.map(cp); _kind = "trajectory"; _cur = 0;
-            }
-            // arrowsPerFrame-only partial update: ignore (overlay, not frames).
+            if (a && a.kind === "trajectory") { _frames = a.frames.map(cp); _kind = "trajectory"; _cur = 0; }
         },
-        appendFrames: function (list) {
-            if (_frames) list.forEach((f) => _frames.push(f.slice().map((p) => p.slice())));
-        },
-        appendFrameArrows: function () { /* overlay-only; frames unaffected */ },
-        setAnimationFrame: function (i) {
-            if (_frames && i >= 0 && i < _frames.length) _cur = i;
-        },
+        appendFrames: function (list) { if (_frames) list.forEach((f) => _frames.push(cp(f))); },
+        appendFrameArrows: function () {},
+        setAnimationFrame: function (i) { if (_frames && i >= 0 && i < _frames.length) _cur = i; },
         getAnimationFrame: function () { return _cur; },
         getAnimationKind:  function () { return _kind; },
         getFrameCount:     function () { return _frames ? _frames.length : 0; },
         getFrameCoords:    function (i) { return (_frames && _frames[i]) ? cp([_frames[i]])[0] : null; },
+        // embedIo draw doors -- no-ops (no real 3Dmol here).
+        setStructure: function () {}, setBusy: function () {}, setAtomLabels: function () {},
+        setOverlays: function () {}, setCell: function () {}, setAxes: function () {}, setArrows: function () {},
     };
-})());
+    const data = window.molbuilder.molview.data;
+    data.attachViewHandle(fake);
+    const engine = window.molbuilder.molview.engine.create(fake, { store: data.selection });
+    data.attachEngine(engine);
+})();
 """
 
 
@@ -233,6 +248,9 @@ _DATA_SURFACE = sorted([
     # (attach/detach) so view.get/applyState reach it, and flushViewState mirrors
     # the live view on pagehide (persistence is otherwise push-only).
     "attachViewHandle", "detachViewHandle", "flushViewState",
+    # The render engine (molview-render-streamline.md): the active molview registers
+    # it here; the data model builds StructureData + delegates every render to it.
+    "attachEngine", "detachEngine",
     # §19.5 state timeline — save(delta)/load(delta) + the two live reads.
     "state_index", "uncommitted",
 ])
