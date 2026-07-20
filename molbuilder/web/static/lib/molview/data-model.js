@@ -866,8 +866,12 @@
         // (getState() direct) would see different field names.
         subscribe:       function (fn) {
             var s = _store(); if (!s) throw _missing("selection store");
-            return s.subscribe(function (legacyState) {
-                fn(_selectionSnapshot(legacyState));
+            // Forward the store's `changes` (the dirty-bit array) as the 2nd arg so consumers
+            // (the panel) can do the minimal update -- a selection click diffs highlight instead
+            // of rebuilding all rows. Dropping it here made every consumer see `undefined` and
+            // over-render (the ~1.2s freeze).
+            return s.subscribe(function (legacyState, changes) {
+                fn(_selectionSnapshot(legacyState), changes);
             });
         },
         // Per workspace-contract.md §5 — atomically install path +

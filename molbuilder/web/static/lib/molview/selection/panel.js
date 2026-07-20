@@ -516,7 +516,7 @@
         let _lastAtomsRef = null;
         let _lastRenderMode = null;          // "empty" | "simple" | "virtual"
 
-        function renderAtomList(s) {
+        function renderAtomList(s, changes) {
             if (!els.atomList) return;
             // Empty state.
             if (s.atoms.length === 0) {
@@ -552,7 +552,16 @@
                 : (_forced === "simple"
                     ? false
                     : s.atoms.length >= VSCROLL_THRESHOLD);
-            const atomsChanged = (s.atoms !== _lastAtomsRef);
+            // Rebuild rows only when their CONTENT could change (atoms adopted or labels edited)
+            // or on the initial render (changes === undefined). A pure selection change (the store
+            // marks only CHANGE.SELECTION) falls through to the cheap _diffSelection. The store's
+            // dirty-bit set is what makes "did the rows change?" truthful -- the old object-identity
+            // check on s.atoms was defeated by the snapshot cloning a fresh array every click (the
+            // ~1.2s freeze on a 444-atom structure). Empty/unknown changes -> rebuild (safe).
+            const atomsChanged = (changes === undefined)
+                || changes.length === 0
+                || changes.indexOf("atoms") >= 0
+                || changes.indexOf("labels") >= 0;
 
             if (useVirtual) {
                 _renderVirtual(s, selected, atomsChanged);
@@ -973,12 +982,12 @@
 
         // ----- subscribe ------------------------------------------- //
 
-        const unsubscribe = store.subscribe((s) => {
+        const unsubscribe = store.subscribe((s, changes) => {
             renderStatus(s);
             renderMeasurement(s);
             renderMode(s);
             renderFilters(s);
-            renderAtomList(s);
+            renderAtomList(s, changes);   // uses `changes` to rebuild-vs-diff (the ~1.2s fix)
             renderAssignTarget(s);
         });
 

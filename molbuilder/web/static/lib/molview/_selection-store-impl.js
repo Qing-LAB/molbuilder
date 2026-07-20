@@ -248,6 +248,10 @@
 
     function _create() {
         const state = _initialState();
+        // Change-kinds for the dirty-bit set (see _notify). A mutating op passes ONLY its own kind.
+        const CHANGE = { SELECTION: "selection", ATOMS: "atoms", COORDS: "coords",
+                         LABELS: "labels", FILTERS: "filters", MODE: "mode", VIEW: "view",
+                         SOURCE: "source", STATUS: "status" };
         const subscribers = new Set();
         let pending = false;
         let inflight = null;
@@ -291,14 +295,28 @@
             };
         }
 
-        function _notify() {
+        // Dirty-bit set. Each mutating op passes ITS OWN change-kind to _notify(kind); the kinds
+        // accumulate across the coalesced window and are handed to subscribers as a `changes`
+        // array, then cleared. So every consumer does only the op that change needs -- a selection
+        // click marks SELECTION -> the panel diffs highlight (not a 444-row rebuild) and the engine
+        // re-applies halos (not a regen). An op that marks nothing yields an empty `changes`, which
+        // consumers treat as "unknown -> do the safe full update" (never stale, just not optimal).
+        let _dirty = {};
+        // Mark a change-kind WITHOUT firing (accumulates into the next _notify). For a body that
+        // mutates state but relies on a LATER _notify (e.g. _fetchAtoms runs inside _run, which
+        // notifies at the end): the body marks its kind so the terminal notify carries it too.
+        function _mark(kind) { if (kind) _dirty[kind] = true; }
+        function _notify(kind) {
+            if (kind) _dirty[kind] = true;
             if (pending) return;
             pending = true;
             Promise.resolve().then(() => {
                 pending = false;
+                const changes = Object.keys(_dirty);
+                _dirty = {};
                 const snap = _snapshot();
                 subscribers.forEach((fn) => {
-                    try { fn(snap); }
+                    try { fn(snap, changes); }
                     catch (e) {
                         if (root.console) root.console.error(
                             "[selection.store] subscriber threw", e
@@ -336,6 +354,9 @@
         }
 
         async function _fetchAtoms(signal) {
+            // Every path here replaces state.atoms; the notify comes LATER from _run (marked
+            // STATUS), so mark ATOMS now or the panel would DIFF (stale rows) instead of rebuild.
+            _mark(CHANGE.ATOMS);
             if (!state.sourceFile) {
                 state.atoms = [];
                 return;
@@ -388,7 +409,7 @@
             const signal = _newSignal();
             state.loading = true;
             state.error   = null;
-            _notify();
+            _notify(CHANGE.STATUS);
             try {
                 await body(signal);
             } catch (e) {
@@ -397,7 +418,7 @@
             } finally {
                 if (!signal.aborted) {
                     state.loading = false;
-                    _notify();
+                    _notify(CHANGE.STATUS);
                 }
             }
         }
@@ -435,7 +456,7 @@
             const next = path || null;
             if (next === state.sourceFile) return;
             state.sourceFile = next;
-            _notify();
+            _notify(CHANGE.STATUS);
         }
 
         // Inject the structure loader.  Called by the page
@@ -568,7 +589,7 @@
             state.pickOrder = state.pickOrder.filter(
                 (i) => surviving.has(i));
             state.error = null;
-            _notify();
+            _notify(CHANGE.ATOMS);
         }
 
         /**
@@ -592,7 +613,7 @@
                 state.atoms[i].y = Number(p[1]);
                 state.atoms[i].z = Number(p[2]);
             }
-            _notify();
+            _notify(CHANGE.COORDS);
         }
 
         // ----------------------------------------------------------- //
@@ -606,7 +627,7 @@
             }
             if (mode === state.mode) return Promise.resolve();
             state.mode = mode;
-            _notify();
+            _notify(CHANGE.MODE);
             return Promise.resolve();
         }
 
@@ -617,7 +638,7 @@
             const next = !!on;
             if (next === state.isolate) return;
             state.isolate = next;
-            _notify();
+            _notify(CHANGE.VIEW);
         }
 
         // Set a view-toggle flag (task #64). One setter for all of them: the View menu / rail
@@ -630,7 +651,7 @@
                 : !!value;
             if (state[name] === next) return;
             state[name] = next;
-            _notify();
+            _notify(CHANGE.VIEW);
         }
 
         // Auto-clear "show selected only" when a selection change EMPTIES the set
@@ -644,7 +665,7 @@
             if (state.isolate && prevLen > 0 && state.selection.length === 0) {
                 state.isolate = false;
             }
-            _notify();
+            _notify(CHANGE.SELECTION);
         }
 
         // ----------------------------------------------------------- //
@@ -731,7 +752,7 @@
             });
             state.selection = Array.from(merged).sort((a, b) => a - b);
             state.pickOrder = state.pickOrder.concat(additions);
-            _notify();
+            _notify(CHANGE.SELECTION);
             return Promise.resolve();
         }
 
@@ -776,7 +797,7 @@
                 return Promise.reject(new TypeError("filters must be array"));
             }
             state.filters = filters.slice();
-            _notify();
+            _notify(CHANGE.FILTERS);
             return Promise.resolve();
         }
 
@@ -822,7 +843,7 @@
             }
             if (c === state.combinator) return Promise.resolve();
             state.combinator = c;
-            _notify();
+            _notify(CHANGE.FILTERS);
             return Promise.resolve();
         }
 
@@ -983,7 +1004,7 @@
                 a.labels   = byIndex.get(i) ? byIndex.get(i).slice() : [];
                 a.isFrozen = frozenSet.has(i);
             }
-            _notify();
+            _notify(CHANGE.LABELS);
         }
 
         // ----------------------------------------------------------- //
@@ -997,7 +1018,7 @@
             }
             state.selection = [];
             state.pickOrder = [];
-            _notify();
+            _notify(CHANGE.SELECTION);
             return Promise.resolve();
         }
 
@@ -1138,7 +1159,7 @@
             adoptSession:    function (o)     { return s.adoptSession(o); },
             getState:        function ()      { return _ephemeralSnapshot(s.getState()); },
             subscribe:       function (fn)    {
-                return s.subscribe(function (st) { fn(_ephemeralSnapshot(st)); });
+                return s.subscribe(function (st, changes) { fn(_ephemeralSnapshot(st), changes); });
             },
         };
     }
