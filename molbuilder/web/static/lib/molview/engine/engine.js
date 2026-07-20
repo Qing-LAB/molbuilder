@@ -162,13 +162,20 @@
             _prevStructSig = _structSig();
             _prevArrowSig = _arrowSig();
             _yieldPaint(function () {
-                var processed = _processAll();
-                embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
-                // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
-                if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
-                _applyCurrentOverlays();
-                embedIo.setBusy(null);
-                _locked = false;
+                try {
+                    var processed = _processAll();
+                    embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
+                    // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
+                    if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
+                    _applyCurrentOverlays();
+                } finally {
+                    // ALWAYS release the lock + scrim, even if the rebuild threw (a malformed
+                    // frame, a 3Dmol error). Without this a throw mid-regen wedges the viewer
+                    // locked + busy forever -- every later render/showFrame/appendFrames refuses
+                    // until reload (§8 "the lock releases" once 3Dmol is ready).
+                    embedIo.setBusy(null);
+                    _locked = false;
+                }
             });
         }
 

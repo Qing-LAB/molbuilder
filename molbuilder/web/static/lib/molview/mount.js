@@ -31,8 +31,8 @@
  *
  * ASSEMBLY -- two paths, chosen by the host you pass:
  *  - EMPTY host  -> molview BUILDS the fused card, EMBEDS the viewer, and OWNS the render
- *    loop (molview.mountRender): the full component.  This is the target every consumer
- *    converges to.
+ *    loop (the render engine, engine/engine.js): the full component.  This is the target
+ *    every consumer converges to.
  *  - PRE-BUILT card (a host already carrying .molview-card > .molview-panel, e.g. Modify's
  *    template today) -> molview only wires the existing panel / toggles / fold; that host
  *    still owns its own viewer + render.  Transitional -- retired when the consumer passes an
@@ -167,8 +167,9 @@
                         }
                         // The render ENGINE (molview-render-streamline.md) is the SINGLE render
                         // place: data.attachEngine feeds it StructureData; it reads the view flags
-                        // from the store and draws through embedIo. It replaces the old
-                        // mountRender / mountIsolateRender / mountOverlays controllers.
+                        // from the store and draws through embedIo. The engine (engine/engine.js)
+                        // is now the single render place; the old pre-engine render controllers
+                        // are deleted.
                         if (mvApi && mvApi.engine && typeof mvApi.engine.create === "function") {
                             const engine = mvApi.engine.create(h, { store: store });
                             if (data && typeof data.attachEngine === "function") {

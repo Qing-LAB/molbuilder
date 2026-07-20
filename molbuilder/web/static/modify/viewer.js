@@ -98,9 +98,8 @@
     }
     // NOTE (Track B migration): the base render, the explicit-cell wireframe, and the
     // isolate render controller USED to live here (`_drawBase` / the cell accessors).
-    // They are gone: the concealed MolView module owns the render loop (render.js composes
-    // mountIsolateRender + mountMeasurementOverlay, driven by molview.data), so Modify no
-    // longer draws anything itself.
+    // They are gone: the concealed MolView module owns the render loop (the render engine
+    // in molview/engine/ draws from molview.data), so Modify no longer draws anything itself.
 
     // --------------------------------------------------------------- //
     //  The 3Dmol viewer is EMBEDDED BY THE MODULE.                     //

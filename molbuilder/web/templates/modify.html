@@ -799,13 +799,7 @@
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
-{# molview render pipeline: the isolate render controller + compute. #}
-<script src="{{ url_for('static', filename='lib/molview/render-pipeline.js') }}"></script>
-{# molview.mount's EMPTY-HOST build path (Track B) owns the render loop, so /modify now
-   loads the full render composer: measurement-overlay + render (mountRender composes
-   mountIsolateRender + mountMeasurementOverlay).  render depends on measurement-overlay. #}
 <script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
@@ -850,9 +844,8 @@
 <script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/selection/mount-panel.js') }}"></script>
-{# molview.mount's build path also wires the frame overlays + the trajectory bar
-   (mountOverlays / mountFrameControls); load them before mount.js. #}
-<script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
+{# molview.mount's build path also wires the trajectory bar (mountFrameControls);
+   load it before mount.js. #}
 <script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/engine/process.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/engine/embed-io.js') }}"></script>

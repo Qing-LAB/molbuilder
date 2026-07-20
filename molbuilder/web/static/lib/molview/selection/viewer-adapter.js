@@ -1,17 +1,16 @@
-/* Atom-selection viewer-adapter -- declarative consumer of the
- * selection store on top of the embedded MolViewer (#229 Part B
- * migration, 2026-06-03).
+/* Atom-selection viewer-adapter -- declarative click-to-select
+ * consumer of the selection store on top of the embedded MolViewer
+ * (#229 Part B migration, 2026-06-03).
  *
- * Subscribes to the selection store and paints overlays via the
- * embed handle's declarative ``setOverlays`` API:
- *   * per-region color halos
- *   * frozen-atom red marker halos
- *   * selection halo on the current pick set
+ * Picking + the isolate view-toggle spec only.  The render engine
+ * (engine/process.js) owns ALL halo/overlay derivation (region tints
+ * / frozen markers / selection halo) per
+ * docs/protocols/molview-render-streamline.md § 2.4/§ 7.3 -- the
+ * adapter no longer paints.
  *
  * Click handling: routes through the embed's PickOpts.onPick so
- * clicks reach the store via store.toggle.  The embed's own
- * halo/label rendering is DISABLED (we paint everything via
- * setOverlays so the store stays the single source of truth).
+ * clicks reach the store via store.toggle.  The store stays the
+ * single source of truth for the selection.
  *
  * Public surface:
  *
@@ -26,45 +25,6 @@
  */
 (function (root) {
     "use strict";
-
-    // Default per-region palette.  Mirrors the green/red tag colors
-    // in the panel's atom-list so the viewer "agrees" with the panel
-    // on what each region looks like.
-    const REGION_COLORS = {
-        "L-electrode": "#7fc97f",
-        "R-electrode": "#beaed4",
-        "bridge":      "#fdc086",
-        "interface":   "#ffff99",
-    };
-
-    // Halo geometry constants (Å).  ``radius`` picks a sphere big
-    // enough to read as a halo, small enough not to swamp neighbours.
-    // ``opacity`` < 1 lets the underlying atom show through.
-    const HALO_REGION = { radius: 0.5, opacity: 0.35 };
-    const HALO_FROZEN = { color: "#ff5050", radius: 0.25, opacity: 0.85 };
-    const HALO_SELECT = { color: "yellow", radius: 0.7, opacity: 0.45 };
-
-    // Stable-but-cheap label-to-color hash for unknown labels.
-    function _fallbackColor(label) {
-        let h = 0;
-        for (let i = 0; i < label.length; i++) {
-            h = ((h << 5) - h + label.charCodeAt(i)) | 0;
-        }
-        const palette = ["#a6d8a4", "#ffb482", "#a6c8ff", "#ffa6c5",
-                         "#d4b8ff", "#ffd17c", "#7cdfdf", "#ff9b9b"];
-        return palette[Math.abs(h) % palette.length];
-    }
-
-    function _colorFor(label) {
-        // hasOwnProperty.call -- a label like ``"constructor"`` or
-        // ``"__proto__"`` must not pierce through to the Object
-        // prototype.  Labels are user-controlled (free-form via the
-        // "+ new region label" input).
-        if (Object.prototype.hasOwnProperty.call(REGION_COLORS, label)) {
-            return REGION_COLORS[label];
-        }
-        return _fallbackColor(label);
-    }
 
     // isolate ("show selected only") is a view TOGGLE whose on/off value lives in
     // the selection store (the viewer needs to know WHICH atoms are selected to hide
@@ -130,8 +90,8 @@
         //
         // CONTRACT: a viewer click forwards to ``store.toggle(atom)`` -- the
         // STORE is the single source of truth for the selection (§13.2).  The
-        // embed runs in "single" pick mode with halos/labels OFF (the adapter
-        // paints every halo via setOverlays), so the embed's own pick buffer is
+        // embed runs in "single" pick mode with halos/labels OFF (the render
+        // engine paints every halo), so the embed's own pick buffer is
         // NOT a second selection: it only tracks the click to report WHICH atom
         // to toggle.  A multi-atom selection is still built by clicking -- each
         // click toggles one atom in the store, which accumulates them; the
@@ -183,145 +143,13 @@
             );
         }
 
-        // ----- render ---------------------------------------------- //
-        //
-        // Build an OverlaySpec from the store state.  Overlay entries process in array
-        // order; later halos sit on top, so selection is pushed LAST (brightest yellow,
-        // largest radius -> the "live" set reads above the frozen + region halos).
-        //
-        // The adapter paints halos ONLY on the plain, full-list base draw, where the drawn
-        // atom index equals the unit-cell index the halos are keyed on.  "Show selected
-        // only" (isolate) is a REAL list filter in the render controller (mountIsolateRender),
-        // NOT an opacity/hidden trick here -- so when isolate is on the adapter stands its
-        // overlays down entirely (the derived list has a different index space).  isolate is
-        // STORE state (the single source of truth): the panel/view-controls drive it via
-        // store.setIsolate; this adapter is a pure consumer with no isolate control of its own.
-
-        function render(s) {
-            s = s || {};
-            // DISPLAY-ONLY view (molview-module.md §14.3): while isolate is on, the viewer
-            // shows a DERIVED atom list -- isolate FILTERS it to the selected atoms (a real
-            // filter, in the render controller -- NOT a hidden/opacity trick).  The drawn
-            // atom index no longer equals the unit-cell index, so these overlay entries
-            // (keyed by unit-cell index) would land on the wrong atoms.  Stand every overlay
-            // down; the panel is the selection surface in this mode.  The render controller
-            // (mountIsolateRender) owns the derived draw; the adapter paints halos only on the
-            // plain, full-list base draw, where drawn index == unit-cell index.
-            const isolating = !!s.isolate
-                && (Array.isArray(s.indices) ? s.indices.length : 0) > 0;
-            if (isolating) {
-                try { handle.setOverlays(null); } catch (_) { /* already clear */ }
-                return;
-            }
-
-            const atoms = [];
-
-            // 1. Region tints -- group by first label so each atom
-            //    gets exactly one tint.  (An atom can carry multiple
-            //    labels; the panel surfaces all of them in the label
-            //    column.  The viewer picks the first for color so
-            //    users still see the primary grouping at a glance.)
-            //
-            //    Use a Map (not ``{}``) so a label named ``__proto__``
-            //    or ``constructor`` doesn't piggyback on
-            //    Object.prototype: reading ``byRegion["__proto__"]``
-            //    on a plain object returns Object.prototype (which
-            //    has no ``push``), so the legacy form crashed the
-            //    whole render and the try/catch swallowed it, leaving
-            //    overlays silently disabled for the rest of the page
-            //    lifetime.  Map keys are stored separately from any
-            //    prototype.
-            const byRegion = new Map();
-            (s.atoms || []).forEach((a) => {
-                const label = (a.labels && a.labels[0]) || null;
-                if (!label) return;
-                let bucket = byRegion.get(label);
-                if (!bucket) {
-                    bucket = [];
-                    byRegion.set(label, bucket);
-                }
-                bucket.push(a.index);
-            });
-            byRegion.forEach((indices, label) => {
-                const filtered = indices;
-                if (!filtered.length) return;
-                atoms.push({
-                    indices: filtered,
-                    halo: {
-                        color:   _colorFor(label),
-                        radius:  HALO_REGION.radius,
-                        opacity: HALO_REGION.opacity,
-                    },
-                });
-            });
-
-            // 2. Frozen markers -- tiny red ball on each frozen atom.
-            const frozenIdx = (s.atoms || [])
-                .filter((a) => a.isFrozen)
-                .map((a) => a.index);
-            const frozenFiltered = frozenIdx;
-            if (frozenFiltered.length) {
-                atoms.push({
-                    indices: frozenFiltered,
-                    halo:    { color:   HALO_FROZEN.color,
-                               radius:  HALO_FROZEN.radius,
-                               opacity: HALO_FROZEN.opacity },
-                });
-            }
-
-            // 3. Selection halo -- largest ball + brightest, so it
-            //    reads as the "live" set above region tints.  In
-            //    isolate mode the selection IS the visible set, so
-            //    no filter is needed here.
-            // Phase 10 (workspace-contract.md §5): subscriber state
-            // shape is the contract object — selection lives on
-            // ``indices``, not ``selection``.
-            const sel = Array.isArray(s.indices) ? s.indices : [];
-            if (sel.length) {
-                atoms.push({
-                    indices: sel.slice(),
-                    halo:    { color:   HALO_SELECT.color,
-                               radius:  HALO_SELECT.radius,
-                               opacity: HALO_SELECT.opacity },
-                });
-            }
-
-            try { handle.setOverlays({ atoms: atoms }); }
-            catch (e) {
-                if (root.console) root.console.warn(
-                    "[viewer-adapter] setOverlays failed", e
-                );
-            }
-        }
-
-        // ----- subscribe ------------------------------------------- //
-        //
-        // The store's setSourceFile awaits loadStructureText BEFORE
-        // firing subscribers, so the viewer's model is already
-        // swapped by the time we paint overlays here.  No race, no
-        // rerender dance.
-        //
-        // ``paintHalos:false`` -> the render ENGINE (molview-render-streamline.md) owns halos;
-        // the adapter then does CLICK-TO-SELECT ONLY and never calls setOverlays (two owners of
-        // one door would race, esp. under isolate). Picking is wired above regardless.
-
-        const _paintHalos = !opts || opts.paintHalos !== false;
-        const unsubscribe = _paintHalos
-            ? store.subscribe((s) => render(s))
-            : function () {};
-
         function dispose() {
-            try { unsubscribe(); } catch (e) { /* ignore */ }
             // Detach the click handler so 3Dmol stops routing
             // clicks into the orphaned store reference.  Setting
             // mode: "none" disables pick entirely.
             try {
                 handle.setPick({ mode: "none" });
             } catch (e) { /* ignore */ }
-            // Drop our overlay set so the page's base style returns
-            // to view (handle.setOverlays(null) clears all entries).
-            try { handle.setOverlays(null); }
-            catch (e) { /* ignore */ }
         }
 
         return {
@@ -335,8 +163,6 @@
     root.molbuilder.molview.selection.viewerAdapter = {
         attach:         attach,
         isolateToggle:  isolateToggle,   // spec for the embed's addViewToggle
-        _fallbackColor: _fallbackColor,   // exported for tests
-        REGION_COLORS:  REGION_COLORS,
     };
     // Module-init contract: register with runtime (design.md).
     if (root.molbuilder.runtime

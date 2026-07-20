@@ -186,6 +186,11 @@
         _engine = engine || null;
         _engineFrameUnsub = (_engine && typeof _engine.onFrameChange === "function")
             ? _engine.onFrameChange(_notifyFrame) : function () {};
+        // Backfill on attach: a session restore (or any load) runs at DOMContentLoaded, BEFORE
+        // the embed's onReady attaches the engine -- so the _pushToEngine() at load time found
+        // no engine and no-op'd, leaving the viewer blank for a restored structure. Push the
+        // already-loaded structure now that the engine is here (no-op if nothing is loaded).
+        if (_engine) _pushToEngine();
     }
     function detachEngine(engine) {
         if (engine && engine !== _engine) return;
