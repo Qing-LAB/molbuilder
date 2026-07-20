@@ -91,6 +91,10 @@
                 cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
             });
             if (frames.length > 1 && typeof handle.setAnimation === "function") {
+                // Multi-frame: bake the per-frame arrows INTO the movie so a native swap shows
+                // frame i's arrows with zero recompute (§3). Apply frame-0 labels/halos on top,
+                // but NOT arrows -- those are baked here; re-applying via setArrows would double
+                // the frame-0 arrow layer.
                 handle.setAnimation({
                     kind:           "trajectory",
                     frames:         frames.map(function (f) { return f.positions; }),
@@ -98,9 +102,12 @@
                     frameStrip:     false,
                     paused:         true,
                 });
+                _applyOverlays(handle, { labels: f0.labels, halos: f0.halos });
+            } else {
+                // Single static frame: no movie, so no baked arrows -- apply frame-0's arrows
+                // (and labels/halos) directly.
+                _applyOverlays(handle, _overlayOf(f0));
             }
-            // Frame-0 labels/halos (per-frame arrows are baked above via arrowsPerFrame).
-            _applyOverlays(handle, _overlayOf(f0));
         }
 
         // NATIVE SWAP (§3, §8): switch to a pre-parsed frame -- no processing, no rebuild.

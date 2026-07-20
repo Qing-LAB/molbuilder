@@ -42,6 +42,7 @@
         var _storeUnsub = _noop;
         var _playTimer = null;
         var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
+        var _regenRaf = null;        // pending structural-regen paint yield (coalesces bursts).
 
         function _blankFlags() {
             return { selection: [], isolate: false, showIndex: false, showForces: false,
@@ -109,15 +110,29 @@
                 + "|force:" + (_flags.showForces ? "1" : "0")
                 + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
         }
+        // Yield a paint so the busy scrim actually shows BEFORE the blocking movie rebuild
+        // freezes the thread. loadFrames (setStructure + addModelsAsFrames) is synchronous and
+        // blocks; without a yield, setBusy(on)->work->setBusy(off) run in one turn and the
+        // browser never paints the scrim. A double rAF guarantees a paint between. On a burst of
+        // changes the pending regen is cancelled so only the latest state draws. In node (no
+        // requestAnimationFrame) it runs synchronously so the pure logic stays testable.
+        function _yieldPaint(fn) {
+            var raf = root.requestAnimationFrame, caf = root.cancelAnimationFrame;
+            if (typeof raf !== "function") { fn(); return; }
+            if (_regenRaf != null && typeof caf === "function") caf(_regenRaf);
+            _regenRaf = raf(function () { _regenRaf = raf(function () { _regenRaf = null; fn(); }); });
+        }
         function _structuralRegen() {
             embedIo.setBusy("Updating view…");
-            var processed = _processAll();
-            embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
-            // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
-            if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
-            _applyCurrentOverlays();
-            embedIo.setBusy(null);
-            _prevStructSig = _structSig();
+            _prevStructSig = _structSig();     // record the request's signature synchronously.
+            _yieldPaint(function () {
+                var processed = _processAll();
+                embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
+                // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
+                if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
+                _applyCurrentOverlays();
+                embedIo.setBusy(null);
+            });
         }
 
         // THE render entry (§5): read the flags, pick the minimal tier by what changed (§8).
@@ -219,6 +234,10 @@
 
         function dispose() {
             pause();
+            if (_regenRaf != null && typeof root.cancelAnimationFrame === "function") {
+                root.cancelAnimationFrame(_regenRaf); _regenRaf = null;
+            }
+            try { embedIo.setBusy(null); } catch (_) {}
             try { _storeUnsub(); } catch (_) {}
             _frameListeners = [];
         }
