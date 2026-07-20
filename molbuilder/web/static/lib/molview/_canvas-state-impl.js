@@ -427,24 +427,18 @@
         reloadFromStorage: reloadFromStorage,
     };
 
-    // UMD-ish export.  In Node test contexts (canvas-state-only
-    // unit tests) ``module.exports`` carries the api so tests can
-    // ``require()`` it without a DOM.  In the browser the api is mounted on the PRIVATE
-    // ``window.molbuilder.molview._canvasState`` slot — the legacy
-    // ``window.molbuilder.structureCanvas`` global + the ``runtime.register(
-    // "structure.canvas", ...)`` are gone.  data-model.js reads from
-    // ``molview._canvasState`` (this mount) and also honours a legacy ``structureCanvas``
-    // mount as a test-only escape hatch for harnesses that ``require()`` this file and
-    // assign the return value manually.
+    // UMD-ish mount: ALWAYS mount on the PRIVATE ``window.molbuilder.molview._canvasState``
+    // slot (browser + Node test contexts both read it) AND ALSO expose the api as
+    // ``module.exports`` under CommonJS.  data-model.js reads from ``molview._canvasState``.
+    // The canvas store is part of MolView's concealed data model, NOT the (persistence-only)
+    // workspace (2026-07 carve).  Merge (``|| {}``) so it survives any script-load order.
+    // (An unconditional global mount matters under the ES-module test harness, where a dynamic
+    // ``import()`` of this CommonJS file still defines ``module`` — an else-gated mount would
+    // never run there.  Mirrors data-model.js's UMD mount.)
+    root.molbuilder = root.molbuilder || {};
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview._canvasState = api;
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
-    } else {
-        root.molbuilder = root.molbuilder || {};
-        // Mount on the MolView namespace -- the canvas store is part of MolView's
-        // concealed data model, NOT the (persistence-only) workspace (2026-07 carve).
-        // data-model.js merges ``molview`` with ``|| {}``, so this survives regardless of
-        // script-load order.
-        root.molbuilder.molview = root.molbuilder.molview || {};
-        root.molbuilder.molview._canvasState = api;
     }
 })(typeof window !== "undefined" ? window : globalThis);

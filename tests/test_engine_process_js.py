@@ -4,12 +4,9 @@ Node unit test: processFrame is a pure function. We assert §2 end to end -- the
 filter, the drawn->original sourceIndex map, original-index labels under isolation, the
 region/frozen/selection halo layering in drawn-index space, and force→arrow derivation.
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
@@ -17,28 +14,21 @@ MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
 INDEX_HELPER = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
 
 
+_BOOT = """
+    const processFrame = globalThis.molbuilder.molview.engine.process.processFrame;
+    // 4 atoms on the x-axis. atom 1 = region "bridge"; atom 3 = frozen.
+    const COORDS = [[0,0,0],[1,0,0],[2,0,0],[3,0,0]];
+    const IDENTITY = {
+        elements:    ["C","N","O","H"],
+        annotations: [{}, { label: "bridge" }, {}, { frozen: true }],
+    };
+"""
+
+
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + INDEX_HELPER.read_text() + "\n"
-            + MODULE.read_text() + "\n"
-            + """
-            const processFrame = global.molbuilder.molview.engine.process.processFrame;
-            // 4 atoms on the x-axis. atom 1 = region "bridge"; atom 3 = frozen.
-            const COORDS = [[0,0,0],[1,0,0],[2,0,0],[3,0,0]];
-            const IDENTITY = {
-                elements:    ["C","N","O","H"],
-                annotations: [{}, { label: "bridge" }, {}, { frozen: true }],
-            };
-            """
-            + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    # ES-module harness (tests/_node_esm): imports the L1 index module (ESM) + the process
+    # module (classic IIFE), each publishing its global; the snippet reads through the global.
+    return run_node([INDEX_HELPER, MODULE], _BOOT + snippet)
 
 
 def test_no_isolate_draws_all_atoms_identity_source():

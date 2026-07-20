@@ -322,9 +322,13 @@ frame's labels/halos; that is the only tier that reparses coordinates and raises
 
 **Lock during an update.** A structural regen runs behind a paint yield (so the busy scrim shows
 before the freeze, §4) and **locks the viewer** for the whole update: the scrim blocks the user
-and **every API call is refused** (`setData` / `appendFrames` / `showFrame` / a flag change) until
-3Dmol is fully ready, then the lock releases. One update at a time — no coalescing, no racing the
-half-built movie, no chasing sub-100 ms call windows. Simple and tight.
+and **every view-side call is refused** (`appendFrames` / `showFrame` / a flag change) until 3Dmol
+is fully ready, then the lock releases. **`setData` is the one exception — it SUPERSEDES the
+in-flight regen** rather than being refused: a full load is authoritative data (the latest data
+wins), so a two-step load (`installMolecule` then `reloadFrames`) both land instead of the second
+being dropped and the movie loading as a single frame. Superseding cancels the pending regen and
+starts the new one from the latest data/flags. Otherwise: one update at a time — no coalescing, no
+racing the half-built movie, no chasing sub-100 ms call windows. Simple and tight.
 
 ```mermaid
 flowchart TD

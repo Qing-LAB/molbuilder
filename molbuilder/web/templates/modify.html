@@ -816,10 +816,13 @@
    Per workspace-contract.md §8 these are deprecated public
    surfaces; consumers go through ``window.molbuilder.workspace.*``
    instead. #}
-{# Pure per-atom channel model (atom-annotations.md §5, L1) + atom index-base
-   helper (data-vocabulary.md §3.1) — loaded BEFORE the store/panel. #}
+{# Pure per-atom channel model (atom-annotations.md §5, L1), classic — loaded BEFORE the
+   store/panel.  The atom index-base helper (data-vocabulary.md §3.1) now ships inside the
+   MolView ES module (index.js) — a ``type="module"`` script is deferred, so it executes AFTER
+   these classic scripts, before DOMContentLoaded; safe because ``atomIndexModel`` is read only
+   at render time.  ESM migration: the classic entries below fold into index.js over time. #}
 <script src="{{ url_for('static', filename='lib/molview/_atom-channels.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_atom-index.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
 {# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>

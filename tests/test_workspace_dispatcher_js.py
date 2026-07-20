@@ -43,11 +43,9 @@ the real ``installMolecule()`` primitive is used with a stubbed ``/api/build/loa
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,96 +62,79 @@ ENG_EMBEDIO_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js
 ENG_ENGINE_PATH   = ROOT / "molbuilder/web/static/lib/molview/engine/engine.js"
 
 
+# Load order mirrors production: shared snapshot IO -> canvas-state impl -> selection-store
+# impl -> the L1 index (ESM) + render engine (process/embed-io/engine) -> the MolView data
+# model (``molview.data``) -> the workspace persistence dispatcher.  (Frame coords are owned by
+# the embed movie, §14.5, so no frame-series is loaded; frame tests attach a fake embed handle.)
+# The canvas-state + selection-store impls self-mount on the MolView namespace where the data
+# model's private escape hatches (``_canvas()`` / ``_store()``) look for them, so a test can
+# seed fixture state cheaply.  Loaded through the shared ES-module harness (tests/_node_esm) so
+# the mix of classic-IIFE and now-ESM files (``_atom-index``) all load through one importer.
+# Mimics production bootstrap ordering: the selection-store singleton is created (SEED_STORE,
+# right after the store impl) BEFORE the data model imports, so the model's import-time
+# ``_ensureSubscribed`` adopts that instance instead of forking its own private one.
+SEED_STORE_PATH = ROOT / "tests/support/seed_selection_store.js"
+_FILES = [
+    SNAPSHOT_IO_PATH, CANVAS_PATH, STORE_PATH, SEED_STORE_PATH,
+    ATOM_INDEX_PATH, ENG_PROCESS_PATH, ENG_EMBEDIO_PATH, ENG_ENGINE_PATH,
+    DATA_MODEL_PATH, DISPATCHER_PATH,
+]
+
+# Browser stubs injected BEFORE the module imports (the harness has already set
+# ``window``/``molbuilder``): event bus, document, sessionStorage, and the runtime registry.
+_GLOBALS = """
+    const _events = {};
+    global.window.addEventListener = (evt, cb) => {
+        (_events[evt] = _events[evt] || []).push(cb);
+    };
+    global.window.__fireEvent = (evt) => {
+        (_events[evt] || []).forEach((cb) => cb({}));
+    };
+    global.document = {
+        readyState: "complete",
+        addEventListener: () => {},
+        getElementById:  () => null,
+    };
+    const _storage = {};
+    global.sessionStorage = {
+        getItem:    (k) => (_storage[k] == null ? null : _storage[k]),
+        setItem:    (k, v) => { _storage[k] = String(v); },
+        removeItem: (k) => { delete _storage[k]; },
+    };
+    const _registry = {};
+    const _waiters  = {};
+    global.molbuilder.runtime = {
+        register: (name, value) => {
+            _registry[name] = value;
+            if (_waiters[name]) {
+                _waiters[name].forEach((res) => res(value));
+                delete _waiters[name];
+            }
+        },
+        whenReady: (name) => {
+            if (name in _registry) return Promise.resolve(_registry[name]);
+            return new Promise((res) => {
+                (_waiters[name] = _waiters[name] || []).push(res);
+            });
+        },
+    };
+"""
+
 def _run_node(snippet: str) -> object:
-    """Run a Node snippet with the MolView data model + workspace
-    dispatcher loaded over a minimal browser stub.
+    """Run a Node snippet with the MolView data model + workspace dispatcher loaded over a
+    minimal browser stub.  The snippet drives ``window.molbuilder.molview.data.*`` (the data
+    model) and ``window.molbuilder.workspace.*`` (persistence) and prints a JSON blob as its
+    LAST stdout line.
 
-    Load order mirrors production: shared snapshot IO -> canvas-state
-    impl -> selection-store impl -> the selection-store singleton ->
-    the MolView data model (``molview.data``) -> the workspace
-    persistence dispatcher.  (Frame coords are owned by the embed movie,
-    §14.5, so no frame-series is loaded; frame tests attach a fake
-    embed handle.)  The
-    canvas-state + selection-store impls are MolView-internal; the
-    bootstrap mounts them where the data model's private escape
-    hatches (``_canvas()`` / ``_store()``) look for them so a test can
-    seed fixture state cheaply.
-
-    The snippet drives ``window.molbuilder.molview.data.*`` (the data
-    model) and ``window.molbuilder.workspace.*`` (persistence) and
-    prints a JSON blob as its LAST stdout line.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-
-    bootstrap = (
-        "require(" + json.dumps(str(SNAPSHOT_IO_PATH)) + ");\n"
-        "window.molbuilder.structureCanvas = require("
-        + json.dumps(str(CANVAS_PATH)) + ");\n"
-        "require(" + json.dumps(str(STORE_PATH)) + ");\n"
-        "window.molbuilder.molview.selection.store = "
-        "  window.molbuilder.molview.selection._createStore();\n"
-        "require(" + json.dumps(str(ATOM_INDEX_PATH)) + ");\n"
-        "require(" + json.dumps(str(ENG_PROCESS_PATH)) + ");\n"
-        "require(" + json.dumps(str(ENG_EMBEDIO_PATH)) + ");\n"
-        "require(" + json.dumps(str(ENG_ENGINE_PATH)) + ");\n"
-        "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
-        "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
-        + snippet
-    )
-    header = """
-        const _events = {};
-        global.window = global;
-        global.window.addEventListener = (evt, cb) => {
-            (_events[evt] = _events[evt] || []).push(cb);
-        };
-        global.window.__fireEvent = (evt) => {
-            (_events[evt] || []).forEach((cb) => cb({}));
-        };
-        global.document = {
-            readyState: "complete",
-            addEventListener: () => {},
-            getElementById:  () => null,
-        };
-        const _storage = {};
-        global.sessionStorage = {
-            getItem:    (k) => (_storage[k] == null ? null : _storage[k]),
-            setItem:    (k, v) => { _storage[k] = String(v); },
-            removeItem: (k) => { delete _storage[k]; },
-        };
-        global.molbuilder = global.molbuilder || {};
-        global.window.molbuilder = global.molbuilder;
-        const _registry = {};
-        const _waiters  = {};
-        global.molbuilder.runtime = {
-            register: (name, value) => {
-                _registry[name] = value;
-                if (_waiters[name]) {
-                    _waiters[name].forEach((res) => res(value));
-                    delete _waiters[name];
-                }
-            },
-            whenReady: (name) => {
-                if (name in _registry) return Promise.resolve(_registry[name]);
-                return new Promise((res) => {
-                    (_waiters[name] = _waiters[name] || []).push(res);
-                });
-            },
-        };
-    """
-    full = header + bootstrap
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", full],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-    last = proc.stdout.strip().splitlines()[-1]
-    return json.loads(last)
+    The selection-store singleton is mounted by SEED_STORE_PATH (in ``_FILES``, right after the
+    store impl and before the data model), so the model adopts it at import and the snippet
+    reads/seeds that same canonical instance."""
+    # Legacy alias: a few snippets seed fixture geometry via ``window.molbuilder.structureCanvas``
+    # (the old require()-return slot).  The canvas now self-mounts on ``molview._canvasState``;
+    # point the legacy name at the SAME instance so those seeds reach the data model's _canvas().
+    alias = ("window.molbuilder.structureCanvas = "
+             "window.molbuilder.molview._canvasState;\n")
+    return run_node(_FILES, alias + snippet, globals_js=_GLOBALS)
 
 
 # A load fixture: stub ``/api/build/load`` so ``molview.data.installMolecule()``

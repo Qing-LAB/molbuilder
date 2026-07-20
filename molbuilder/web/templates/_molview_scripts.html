@@ -8,6 +8,13 @@
     Assumes the page has already loaded ``lib/molbuilder-runtime.js`` + ``lib/constants.js``
     (app-global, loaded early in <head>).  Vendor 3Dmol stays a classic global.
 
+    ESM MIGRATION (in progress): ``molview/index.js`` is a ``type="module"`` script -- ALWAYS
+    deferred, so it executes AFTER the classic scripts here, before DOMContentLoaded.  Document
+    order below is therefore load order for the classic scripts only; the module runs last.
+    That is safe because the one global it publishes (``atomIndexModel``) is read only at
+    render / user-interaction time (well after DOMContentLoaded), never at classic-script
+    load time.  As more of the stack converts, the classic entries collapse into the module. -#}
+
     Consumers today: Transport.  Migrating Modify / Results / molview-demo onto this
     include is a follow-up (their inline copies are the same stack). -#}
 <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
@@ -20,7 +27,7 @@
 <script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/render.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_atom-channels.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_atom-index.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>

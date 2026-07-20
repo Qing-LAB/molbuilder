@@ -9,12 +9,9 @@ index helper. We assert the §8 tier chosen for each change:
   toggle isolate   -> STRUCTURAL REGEN (reload -- drawn atom set changed)
   appendFrames     -> APPEND (validate + extend; hard error on atom-count mismatch)
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODS = [
@@ -24,13 +21,7 @@ MODS = [
 ]
 
 
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + "\n".join(m.read_text() for m in MODS) + "\n"
-            + """
+_BOOT = """
             // Stub embedIo: record every primitive call by name.
             function makeIo() {
                 const calls = [];
@@ -60,13 +51,13 @@ def _run_node(snippet: str) -> object:
             const mk = (init) => { const io = makeIo(), store = makeStore(init);
                 const e = engineNs.create({}, { embedIo: io, store: store });
                 return { io, store, e }; };
-            """
-            + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+"""
+
+
+def _run_node(snippet: str) -> object:
+    # ES-module harness: imports the L1 index (ESM) + process + engine (classic IIFE), each
+    # publishing its global; the bootstrap + snippet then drive engine.create through the global.
+    return run_node(MODS, _BOOT + snippet)
 
 
 def test_setData_is_structural_regen_with_busy():
