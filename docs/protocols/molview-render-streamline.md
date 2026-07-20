@@ -314,6 +314,12 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
 A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
 frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
 
+**Coalescing.** The structural regen runs behind a paint yield (so the busy scrim shows before the
+freeze, §4). While one is pending, further changes fold into it rather than racing the
+not-yet-rebuilt movie: a burst of structural changes collapses to a **single** reload of the
+latest state; a `showFrame` only records the frame (the regen restores it); a streamed **append**
+just grows the clean data (the regen reloads it in). Nothing paints onto the stale movie.
+
 ```mermaid
 flowchart TD
     CH["a data/flag change → engine.update(delta)"] --> Q{"what changed?"}

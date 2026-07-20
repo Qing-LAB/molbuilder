@@ -211,14 +211,22 @@
             var forces = Array.isArray(appendOpts.forces) ? appendOpts.forces : null;
             var startF = _data.frames.length;
             list.forEach(function (coords, i) {
-                _data.frames.push(coords);
+                _data.frames.push(coords);       // clean source of truth grows first.
                 if (_data.forcesPerFrame) _data.forcesPerFrame.push(forces ? forces[i] : null);
             });
             _epoch++;
-            var processedNew = list.map(function (_, i) { return processFrame(_frameInput(startF + i), _identity(), _flags); });
-            embedIo.appendFrames({ frames: processedNew });
             _prevStructSig = _structSig();   // epoch bumped, but appended (not reloaded) -> stay in sync.
             _prevArrowSig = _arrowSig();
+            // If a structural regen is already scheduled (paint yield pending), the movie is about
+            // to be rebuilt from _data.frames -- which now includes these. Appending to the stale
+            // (not-yet-rebuilt) movie could even mismatch its atom count (e.g. an isolate regen is
+            // pending). So skip the incremental append; the pending regen picks them up.
+            if (_regenRaf == null) {
+                var processedNew = list.map(function (_, i) {
+                    return processFrame(_frameInput(startF + i), _identity(), _flags);
+                });
+                embedIo.appendFrames({ frames: processedNew });
+            }
             _notifyFrame();
             return frameCount();
         }

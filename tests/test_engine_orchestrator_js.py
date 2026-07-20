@@ -257,3 +257,27 @@ def test_burst_of_structural_changes_coalesces_to_one_load():
     # a burst collapses to ONE load of the LATEST state (isolate on, selection {1,2} -> 2 atoms).
     assert out["loadCount"] == 1
     assert out["drawn"] == 2
+
+
+def test_append_during_pending_regen_folds_into_the_reload():
+    out = _run_node(_RAF + """
+        const { io, store, e } = mk();
+        e.setData(DATA);                              // regen #1 scheduled (paint pending)
+        store._set({ indices: [1], isolate: true });  // regen #2: movie will be 1-atom/frame
+        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]); // a stream frame arrives DURING the pending regen
+        const beforeFlush = io._names();
+        flushRaf();
+        const load = io._calls.find(c => c.name === "loadFrames");
+        console.log(JSON.stringify({
+            appendedIncrementally: beforeFlush.includes("appendFrames"),
+            loadFrames: load ? load.args[0].frames.length : -1,
+            atomsPerFrame: load ? load.args[0].frames[0].positions.length : -1,
+            frameCount: e.frameCount(),
+        }));
+    """)
+    # no incremental append onto the not-yet-rebuilt (full-atom) movie -- the pending regen
+    # rebuilds from the clean data, which now includes the appended frame.
+    assert out["appendedIncrementally"] is False
+    assert out["loadFrames"] == 3          # 2 original + 1 appended, all in the one reload
+    assert out["atomsPerFrame"] == 1       # isolate [1] -> 1 atom/frame (no count mismatch)
+    assert out["frameCount"] == 3
