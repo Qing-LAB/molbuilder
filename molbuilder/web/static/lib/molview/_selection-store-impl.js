@@ -96,12 +96,22 @@
             // handle.  Isolate only takes visual effect with a non-empty
             // selection (the adapter render gates on selSet.size > 0).
             isolate:    false,
+            // View-toggle flags -- the render engine (molview-render-streamline.md §7.2) reads
+            // these from the store; the View menu / rail toggles WRITE them via setViewFlag.
+            // The store is the single source of view state (task #64); the engine renders from it.
+            showIndex:  false,     // atom-index labels
+            showForces: false,     // force-vector overlay
+            showCell:   true,      // unit-cell box
+            showAxis:   true,      // axes
+            forceScale: undefined, // Å per force unit (undefined -> engine default)
             filters:    [],
             combinator: "or",
             loading:    false,
             error:      null,
         };
     }
+    // The view-toggle flag names (task #64). Booleans except forceScale (number|undefined).
+    var VIEW_FLAG_NAMES = ["showIndex", "showForces", "showCell", "showAxis", "forceScale"];
 
     // --------------------------------------------------------------- //
     //  Rule translation: JS filters[] + combinator -> server rule     //
@@ -269,6 +279,11 @@
                 pickOrder:  state.pickOrder.slice(),
                 mode:       state.mode,
                 isolate:    state.isolate,
+                showIndex:  state.showIndex,
+                showForces: state.showForces,
+                showCell:   state.showCell,
+                showAxis:   state.showAxis,
+                forceScale: state.forceScale,
                 filters:    state.filters.slice(),
                 combinator: state.combinator,
                 loading:    state.loading,
@@ -602,6 +617,19 @@
             const next = !!on;
             if (next === state.isolate) return;
             state.isolate = next;
+            _notify();
+        }
+
+        // Set a view-toggle flag (task #64). One setter for all of them: the View menu / rail
+        // writes here; the render engine reads the flag from the snapshot and re-renders.
+        // Booleans are coerced; forceScale takes a number (anything else -> undefined = default).
+        function setViewFlag(name, value) {
+            if (VIEW_FLAG_NAMES.indexOf(name) === -1) return;
+            const next = (name === "forceScale")
+                ? (typeof value === "number" ? value : undefined)
+                : !!value;
+            if (state[name] === next) return;
+            state[name] = next;
             _notify();
         }
 
@@ -998,6 +1026,7 @@
             // mode
             setMode:            setMode,
             setIsolate:         setIsolate,
+            setViewFlag:        setViewFlag,     // view-toggle flags (task #64; §7.2)
             // selection editing
             toggleAtom:         toggleAtom,
             setSelection:       setSelection,

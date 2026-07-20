@@ -176,11 +176,32 @@ class TestInitialState:
             # (Phase 5) so the panel checkbox + viewer adapter drive/read
             # it through the store instead of a cross-module handle.
             "isolate":    False,
+            # View-toggle flags moved into the store (task #64) so the render engine
+            # (molview-render-streamline.md §7.2) reads them from the single source of view
+            # state. (forceScale defaults to `undefined`, which JSON.stringify omits.)
+            "showIndex":  False,
+            "showForces": False,
+            "showCell":   True,
+            "showAxis":   True,
             "filters":    [],
             "combinator": "or",
             "loading":    False,
             "error":      None,
         }
+
+    def test_view_flags_set_and_snapshot(self):
+        out = _run_node(
+            "const store = window.molbuilder.molview.selection._createStore();\n"
+            "store.setViewFlag('showIndex', true);\n"
+            "store.setViewFlag('showCell', false);\n"
+            "store.setViewFlag('forceScale', 0.5);\n"
+            "store.setViewFlag('bogus', true);\n"        # unknown flag ignored
+            "const s = store.getState();\n"
+            "console.log(JSON.stringify({ showIndex: s.showIndex, showCell: s.showCell,\n"
+            "  forceScale: s.forceScale, hasBogus: ('bogus' in s) }));"
+        )
+        assert out == {"showIndex": True, "showCell": False,
+                       "forceScale": 0.5, "hasBogus": False}
 
     def test_get_state_returns_snapshot_not_live(self):
         """``getState()`` must return a snapshot the caller can
