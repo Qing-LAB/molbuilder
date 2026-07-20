@@ -36,6 +36,7 @@ def _run_node(snippet: str) -> object:
                     appendFrames:      rec("appendFrames"),
                     appendFrameArrows: rec("appendFrameArrows"),
                     setLabels:         rec("setLabels"),
+                    setAtomLabels:     rec("setAtomLabels"),
                     setOverlays:       rec("setOverlays"),
                     setArrows:         rec("setArrows"),
                     setCell:           rec("setCell"),
@@ -147,11 +148,11 @@ def test_apply_overlays_forwards_only_present_fields():
     out = _run_node("""
         const h = makeHandle();
         const io = embedIo.create(h);
-        io.applyOverlays({ labels: {atoms:"all"}, halos: null });  // arrows/cell/axes absent
+        io.applyOverlays({ labels: [{position:[0,0,0],text:"1"}], halos: null });  // arrows/cell/axes absent
         console.log(JSON.stringify({ names: names(h) }));
     """)
     # only the two provided doors are touched; an absent field never clears another overlay.
-    assert "setLabels" in out["names"]
+    assert "setAtomLabels" in out["names"]     # labels -> the explicit-text door
     assert "setOverlays" in out["names"]
     assert "setArrows" not in out["names"]
     assert "setCell" not in out["names"]

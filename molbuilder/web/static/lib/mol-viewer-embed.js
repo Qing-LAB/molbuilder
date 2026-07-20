@@ -2380,6 +2380,29 @@
         return handles;
     }
 
+    // Draw EXPLICIT labels: text at a world position, supplied by the caller. Unlike
+    // _drawAtomLabels (which derives text from the model's atoms -> the DRAWN index), these
+    // carry their own text, so the render engine can show the ORIGINAL 1-based atom index even
+    // under isolation, where the drawn index != the original (molview-render-streamline.md §2.4).
+    function _drawExplicitLabels(viewer, list) {
+        const handles = [];
+        for (let i = 0; i < list.length; i++) {
+            const entry = list[i] || {};
+            const p = Array.isArray(entry.position) ? entry.position : [0, 0, 0];
+            try {
+                handles.push(viewer.addLabel(String(entry.text), {
+                    position:          { x: p[0], y: p[1], z: p[2] },
+                    fontSize:          12,
+                    fontColor:         "#222",
+                    backgroundColor:   "rgba(255,255,255,0.7)",
+                    backgroundOpacity: 0.7,
+                    inFront:           true,
+                }));
+            } catch (_) { /* skip a bad entry */ }
+        }
+        return handles;
+    }
+
     /* ------------------------------------------------------------ */
     /*  Arrow overlays                                               */
     /* ------------------------------------------------------------ */
@@ -3836,6 +3859,7 @@
             cellShapes:          [],
             cellAxesHandle:      null,   // a/b/c arrows drawn WITH the unit-cell box
             labelHandles:        [],
+            explicitLabels:      [],   // engine-driven {position,text} labels (setAtomLabels)
             arrowShapes:         [],
             arrowLabels:         [],
             pickShapes:          [],
@@ -4290,6 +4314,20 @@
             _redrawLabels(state);
             state.viewer.render();
             _syncToggles(state);
+        }
+
+        // Engine-driven EXPLICIT atom labels: `list` = [{position:[x,y,z], text}] (or null/[]
+        // to clear). Independent of the "show labels" view toggle (which drives setLabels); the
+        // render engine owns these and re-applies them for the shown frame. Self-managing: clears
+        // its previous handles first, so a re-apply never leaks or double-draws.
+        function setAtomLabels(list) {
+            if (state.disposed) return;
+            for (let i = 0; i < state.explicitLabels.length; i++) {
+                try { state.viewer.removeLabel(state.explicitLabels[i]); } catch (_) {}
+            }
+            state.explicitLabels = (Array.isArray(list) && list.length)
+                ? _drawExplicitLabels(state.viewer, list) : [];
+            state.viewer.render();
         }
 
         function setProjection(p) {
@@ -6129,6 +6167,8 @@
             setAxes:            setAxes,
             setCell:            setCell,
             setLabels:          setLabels,
+            // setAtomLabels: engine-driven explicit {position,text} labels (see the fn above)
+            setAtomLabels:      setAtomLabels,
             setArrows:          setArrows,
             setOverlay:         setOverlay,
             setPick:            setPick,

@@ -57,7 +57,7 @@
     // overlay refresh that changes only labels doesn't clear halos, and vice versa).
     function _applyOverlays(handle, o) {
         o = o || {};
-        if (o.labels  !== undefined && typeof handle.setLabels   === "function") handle.setLabels(o.labels);
+        if (o.labels  !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
         if (o.halos   !== undefined && typeof handle.setOverlays === "function") handle.setOverlays(o.halos);
         if (o.arrows  !== undefined && typeof handle.setArrows   === "function") handle.setArrows(o.arrows);
         if (o.cellBox !== undefined && typeof handle.setCell     === "function") handle.setCell(o.cellBox);
