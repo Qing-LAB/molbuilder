@@ -314,11 +314,11 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
 A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
 frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
 
-**Coalescing.** The structural regen runs behind a paint yield (so the busy scrim shows before the
-freeze, §4). While one is pending, further changes fold into it rather than racing the
-not-yet-rebuilt movie: a burst of structural changes collapses to a **single** reload of the
-latest state; a `showFrame` only records the frame (the regen restores it); a streamed **append**
-just grows the clean data (the regen reloads it in). Nothing paints onto the stale movie.
+**Lock during an update.** A structural regen runs behind a paint yield (so the busy scrim shows
+before the freeze, §4) and **locks the viewer** for the whole update: the scrim blocks the user
+and **every API call is refused** (`setData` / `appendFrames` / `showFrame` / a flag change) until
+3Dmol is fully ready, then the lock releases. One update at a time — no coalescing, no racing the
+half-built movie, no chasing sub-100 ms call windows. Simple and tight.
 
 ```mermaid
 flowchart TD

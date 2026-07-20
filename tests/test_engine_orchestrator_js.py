@@ -241,43 +241,29 @@ def test_paint_yield_shows_busy_before_the_blocking_load():
     assert out["after"][-1] == "setBusy"       # last call clears busy (null)
 
 
-def test_burst_of_structural_changes_coalesces_to_one_load():
+def test_locked_during_update_refuses_api_until_ready():
     out = _run_node(_RAF + """
         const { io, store, e } = mk();
-        e.setData(DATA);                       // regen #1 scheduled
-        store._set({ indices: [1], isolate: true });   // regen #2 -> cancels #1, reschedules
-        store._set({ indices: [1, 2], isolate: true }); // regen #3 -> cancels #2, reschedules
-        flushRaf();
-        const loads = io._calls.filter(c => c.name === "loadFrames");
+        e.setData(DATA);                    // starts an update -> LOCKED (scrim on, load deferred)
+        // Every API call is refused while locked -- no swap, no append, no re-render:
+        e.showFrame(1);
+        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]);
+        store._set({ indices: [1], isolate: true });
+        const during = { names: io._names(), current: e.currentFrame(), count: e.frameCount() };
+        flushRaf();                         // update completes -> UNLOCKED
+        io._calls.length = 0;
+        e.showFrame(1);                     // now allowed
         console.log(JSON.stringify({
-            loadCount: loads.length,
-            drawn: loads.length ? loads[0].args[0].frames[0].positions.length : -1,
+            during,
+            afterUnlockSwapped: io._names().includes("swapFrame"),
+            afterUnlockCurrent: e.currentFrame(),
         }));
     """)
-    # a burst collapses to ONE load of the LATEST state (isolate on, selection {1,2} -> 2 atoms).
-    assert out["loadCount"] == 1
-    assert out["drawn"] == 2
-
-
-def test_append_during_pending_regen_folds_into_the_reload():
-    out = _run_node(_RAF + """
-        const { io, store, e } = mk();
-        e.setData(DATA);                              // regen #1 scheduled (paint pending)
-        store._set({ indices: [1], isolate: true });  // regen #2: movie will be 1-atom/frame
-        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]); // a stream frame arrives DURING the pending regen
-        const beforeFlush = io._names();
-        flushRaf();
-        const load = io._calls.find(c => c.name === "loadFrames");
-        console.log(JSON.stringify({
-            appendedIncrementally: beforeFlush.includes("appendFrames"),
-            loadFrames: load ? load.args[0].frames.length : -1,
-            atomsPerFrame: load ? load.args[0].frames[0].positions.length : -1,
-            frameCount: e.frameCount(),
-        }));
-    """)
-    # no incremental append onto the not-yet-rebuilt (full-atom) movie -- the pending regen
-    # rebuilds from the clean data, which now includes the appended frame.
-    assert out["appendedIncrementally"] is False
-    assert out["loadFrames"] == 3          # 2 original + 1 appended, all in the one reload
-    assert out["atomsPerFrame"] == 1       # isolate [1] -> 1 atom/frame (no count mismatch)
-    assert out["frameCount"] == 3
+    # while locked: no swap/append/reload happened, and nothing mutated.
+    assert "swapFrame" not in out["during"]["names"]
+    assert "appendFrames" not in out["during"]["names"]
+    assert out["during"]["current"] == 0
+    assert out["during"]["count"] == 2         # the refused append did not grow the data
+    # after the update completes the lock releases and the API works.
+    assert out["afterUnlockSwapped"] is True
+    assert out["afterUnlockCurrent"] == 1

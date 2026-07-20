@@ -43,7 +43,8 @@
         var _storeUnsub = _noop;
         var _playTimer = null;
         var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
-        var _regenRaf = null;        // pending structural-regen paint yield (coalesces bursts).
+        var _regenRaf = null;        // pending structural-regen paint yield (for dispose cleanup).
+        var _locked = false;         // an update is in flight -> the viewer is busy; API is refused.
 
         function _blankFlags() {
             return { selection: [], isolate: false, showIndex: false, showForces: false,
@@ -131,22 +132,24 @@
             return "force:" + (_flags.showForces ? "1" : "0")
                  + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
         }
-        // Yield a paint so the busy scrim actually shows BEFORE the blocking movie rebuild
-        // freezes the thread. loadFrames (setStructure + addModelsAsFrames) is synchronous and
-        // blocks; without a yield, setBusy(on)->work->setBusy(off) run in one turn and the
-        // browser never paints the scrim. A double rAF guarantees a paint between. On a burst of
-        // changes the pending regen is cancelled so only the latest state draws. In node (no
-        // requestAnimationFrame) it runs synchronously so the pure logic stays testable.
+        // Yield a paint so the busy scrim shows BEFORE the blocking movie rebuild freezes the
+        // thread. loadFrames (setStructure + addModelsAsFrames) is synchronous; without a yield,
+        // setBusy(on)->work->setBusy(off) run in one turn and the browser never paints the scrim.
+        // A double rAF guarantees a paint between. In node (no requestAnimationFrame) it runs
+        // synchronously. No cancel/coalesce needed -- the LOCK guarantees one update at a time.
         function _yieldPaint(fn) {
-            var raf = root.requestAnimationFrame, caf = root.cancelAnimationFrame;
+            var raf = root.requestAnimationFrame;
             if (typeof raf !== "function") { fn(); return; }
-            if (_regenRaf != null && typeof caf === "function") caf(_regenRaf);
             _regenRaf = raf(function () { _regenRaf = raf(function () { _regenRaf = null; fn(); }); });
         }
+        // A structural regen LOCKS the viewer for the whole update: the busy scrim blocks the
+        // user and every API call is refused (the guards below) until 3Dmol is fully ready. ONE
+        // update at a time -- no coalescing, no window-chasing.
         function _structuralRegen() {
+            _locked = true;
             embedIo.setBusy("Updating view…");
-            _prevStructSig = _structSig();     // record the request's signatures synchronously.
-            _prevArrowSig = _arrowSig();       // a reload re-bakes the current-flags arrows too.
+            _prevStructSig = _structSig();
+            _prevArrowSig = _arrowSig();
             _yieldPaint(function () {
                 var processed = _processAll();
                 embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
@@ -154,19 +157,16 @@
                 if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
                 _applyCurrentOverlays();
                 embedIo.setBusy(null);
+                _locked = false;
             });
         }
 
         // THE render entry (§5): read the flags, pick the minimal tier by what changed (§8).
         function render() {
-            if (!_data) return;                       // nothing loaded yet.
+            if (!_data || _locked) return;            // nothing loaded, or an update is in flight.
             _flags = _readFlags();
             var sig = _structSig();
             if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set changed -> reload.
-            // If a structural regen is already scheduled (paint yield pending), the movie is NOT
-            // rebuilt yet -- painting overlays now would key them to the OLD model. The pending
-            // regen reads the latest _flags when it fires and applies everything then, so let it.
-            if (_regenRaf != null) return;
             // Force overlay/scale changed -> re-bake the per-frame arrows IN PLACE (no coord
             // reload) for a loaded movie. A static frame's arrows ride the overlay refresh below.
             if (_arrowSig() !== _prevArrowSig && frameCount() > 1) { _arrowRefresh(); return; }
@@ -177,6 +177,7 @@
         // ---- public API (§9) ------------------------------------------------------------- //
         // FULL LOAD (§6.1): replace everything, fix identity from frame 0, reset to frame 0.
         function setData(data) {
+            if (_locked) return;                      // an update is in flight -> refuse until ready.
             data = data || {};
             var frames = Array.isArray(data.frames) ? data.frames : [];
             if (!frames.length) throw new Error("engine.setData: needs at least one frame");
@@ -198,6 +199,7 @@
         function appendFrames(coordsList, appendOpts) {
             appendOpts = appendOpts || {};
             if (!_data) throw new Error("engine.appendFrames: nothing loaded (no atom identity)");
+            if (_locked) return frameCount();         // an update is in flight -> refuse until ready.
             var list = Array.isArray(coordsList) ? coordsList : [];
             if (!list.length) return frameCount();
             var n = _data.frames[0].length;
@@ -232,14 +234,10 @@
         }
         // NATIVE SWAP (§3): the frame channel. Set the shown frame + re-apply its overlays. No busy.
         function showFrame(i) {
-            if (!_data) return;
+            if (!_data || _locked) return;            // an update is in flight -> refuse until ready.
             var idx = Math.floor(Number(i));
             if (!(idx >= 0 && idx < frameCount())) return;
             _frame = idx;
-            // If a structural regen is pending (paint yield), the movie is not rebuilt yet --
-            // don't swap/paint the stale model. Record the frame; the regen restores it (it does
-            // swapFrame(_frame) + applies overlays when it fires).
-            if (_regenRaf != null) { _notifyFrame(); return; }
             embedIo.swapFrame(idx);
             _applyCurrentOverlays();          // labels/halos follow the shown frame.
             _notifyFrame();
@@ -277,6 +275,7 @@
 
         function dispose() {
             pause();
+            _locked = false;
             if (_regenRaf != null && typeof root.cancelAnimationFrame === "function") {
                 root.cancelAnimationFrame(_regenRaf); _regenRaf = null;
             }
