@@ -43,7 +43,8 @@
         var _storeUnsub = _noop;
         var _playTimer = null;
         var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
-        var _regenRaf = null;        // pending structural-regen paint yield (for dispose cleanup).
+        var _regenRaf = null;        // pending structural-regen paint yield (rAF id).
+        var _regenTimer = null;      // fallback timer (a backgrounded tab suspends rAF).
         var _locked = false;         // an update is in flight -> the viewer is busy; API is refused.
 
         function _blankFlags() {
@@ -132,20 +133,30 @@
             return "force:" + (_flags.showForces ? "1" : "0")
                  + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
         }
+        function _cancelPendingRegen() {
+            if (_regenRaf != null && typeof root.cancelAnimationFrame === "function") root.cancelAnimationFrame(_regenRaf);
+            if (_regenTimer != null && typeof root.clearTimeout === "function") root.clearTimeout(_regenTimer);
+            _regenRaf = null; _regenTimer = null;
+        }
         // Yield a paint so the busy scrim shows BEFORE the blocking movie rebuild freezes the
         // thread. loadFrames (setStructure + addModelsAsFrames) is synchronous; without a yield,
         // setBusy(on)->work->setBusy(off) run in one turn and the browser never paints the scrim.
         // A double rAF guarantees a paint between. In node (no requestAnimationFrame) it runs
-        // synchronously. No cancel/coalesce needed -- the LOCK guarantees one update at a time.
+        // synchronously. A backgrounded tab SUSPENDS rAF (it would never fire -> busy stuck, lock
+        // stuck), so a setTimeout fallback runs the regen anyway; whichever fires first wins.
         function _yieldPaint(fn) {
             var raf = root.requestAnimationFrame;
-            if (typeof raf !== "function") { fn(); return; }
-            _regenRaf = raf(function () { _regenRaf = raf(function () { _regenRaf = null; fn(); }); });
+            if (typeof raf !== "function") { fn(); return; }   // node
+            var ran = false;
+            var go = function () { if (ran) return; ran = true; _cancelPendingRegen(); fn(); };
+            _regenRaf = raf(function () { _regenRaf = raf(go); });
+            if (typeof root.setTimeout === "function") _regenTimer = root.setTimeout(go, 200);
         }
         // A structural regen LOCKS the viewer for the whole update: the busy scrim blocks the
-        // user and every API call is refused (the guards below) until 3Dmol is fully ready. ONE
-        // update at a time -- no coalescing, no window-chasing.
+        // user and view-side API calls are refused until 3Dmol is ready. A NEW load supersedes a
+        // pending one (latest data/flags win) -- setData is authoritative, not a click to refuse.
         function _structuralRegen() {
+            _cancelPendingRegen();   // supersede any in-flight regen with this latest one.
             _locked = true;
             embedIo.setBusy("Updating view…");
             _prevStructSig = _structSig();
@@ -177,7 +188,8 @@
         // ---- public API (§9) ------------------------------------------------------------- //
         // FULL LOAD (§6.1): replace everything, fix identity from frame 0, reset to frame 0.
         function setData(data) {
-            if (_locked) return;                      // an update is in flight -> refuse until ready.
+            // setData is authoritative data (a load) -- it SUPERSEDES a pending regen rather than
+            // being refused, so a 2-step load (installMolecule then reloadFrames) both land.
             data = data || {};
             var frames = Array.isArray(data.frames) ? data.frames : [];
             if (!frames.length) throw new Error("engine.setData: needs at least one frame");
@@ -286,9 +298,7 @@
         function dispose() {
             pause();
             _locked = false;
-            if (_regenRaf != null && typeof root.cancelAnimationFrame === "function") {
-                root.cancelAnimationFrame(_regenRaf); _regenRaf = null;
-            }
+            _cancelPendingRegen();
             try { embedIo.setBusy(null); } catch (_) {}
             try { _storeUnsub(); } catch (_) {}
             _frameListeners = [];

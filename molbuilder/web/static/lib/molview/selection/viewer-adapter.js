@@ -300,8 +300,15 @@
         // firing subscribers, so the viewer's model is already
         // swapped by the time we paint overlays here.  No race, no
         // rerender dance.
+        //
+        // ``paintHalos:false`` -> the render ENGINE (molview-render-streamline.md) owns halos;
+        // the adapter then does CLICK-TO-SELECT ONLY and never calls setOverlays (two owners of
+        // one door would race, esp. under isolate). Picking is wired above regardless.
 
-        const unsubscribe = store.subscribe((s) => render(s));
+        const _paintHalos = !opts || opts.paintHalos !== false;
+        const unsubscribe = _paintHalos
+            ? store.subscribe((s) => render(s))
+            : function () {};
 
         function dispose() {
             try { unsubscribe(); } catch (e) { /* ignore */ }

@@ -165,54 +165,61 @@
                                 catch (_) {}
                             });
                         }
-                        if (mvApi && typeof mvApi.mountRender === "function") {
-                            const rc = mvApi.mountRender(h, data, store, {
-                                viewerHost: built.viewerHost,
-                                // The render streamline OWNS overlay re-apply: a redraw
-                                // (setStructure) clears the embed's overlays, so right after
-                                // it redraws it asks the overlay controller to re-draw the
-                                // consumer's overlays.  This replaces the overlay controller's
-                                // own store subscription (which fired on every unrelated change
-                                // and clobbered the view toggles).  `_overlays` is set just
-                                // below; the thunk closes over it, so post-mount redraws see it.
-                                afterRedraw: function () {
-                                    if (_overlays) _overlays.refresh();
-                                },
+                        // The render ENGINE (molview-render-streamline.md) is the SINGLE render
+                        // place: data.attachEngine feeds it StructureData; it reads the view flags
+                        // from the store and draws through embedIo. It replaces the old
+                        // mountRender / mountIsolateRender / mountOverlays controllers.
+                        if (mvApi && mvApi.engine && typeof mvApi.engine.create === "function") {
+                            const engine = mvApi.engine.create(h, { store: store });
+                            if (data && typeof data.attachEngine === "function") {
+                                data.attachEngine(engine);
+                            }
+                            cleanups.push(function () {
+                                try { if (data && data.detachEngine) data.detachEngine(engine); } catch (_) {}
+                                try { engine && engine.dispose && engine.dispose(); } catch (_) {}
                             });
-                            cleanups.push(function () { try { rc.dispose(); } catch (_) {} });
                         }
-                        // Viewer-adapter: selection halos + isolate opacity + click-to-select
-                        // reach the viewer (the same attach mountPanel does, §13.2).
+                        // Viewer-adapter: click-to-select ONLY. Halos are the engine's job now, so
+                        // the adapter does NOT paint overlays (paintHalos:false); it just routes
+                        // in-window picks to the store (and stands down under isolate itself).
                         const adapter = selApi && selApi.viewerAdapter;
                         if (adapter && typeof adapter.attach === "function") {
-                            const ah = adapter.attach(h, { store: store, mode: mode });
+                            const ah = adapter.attach(h, { store: store, mode: mode, paintHalos: false });
                             cleanups.push(function () {
                                 try { ah && ah.dispose && ah.dispose(); } catch (_) {}
                             });
                         }
-                        // Overlay controller (§14.5.1): MolView draws the arrows/labels the
-                        // CONSUMER hands it (handle.setArrows / setLabels).  It holds NO store
-                        // subscription -- the render streamline calls its refresh() after each
-                        // redraw (afterRedraw above), so overlays survive redraws WITHOUT the
-                        // controller firing on unrelated store changes.
-                        if (mvApi && typeof mvApi.mountOverlays === "function") {
-                            _overlays = mvApi.mountOverlays(h);
-                            cleanups.push(function () {
-                                try { _overlays && _overlays.dispose(); } catch (_) {}
-                            });
-                        }
-                        // isolate ("show selected only") is view toggle #5: added through the
-                        // embed's ONE view-toggle path so it gets a canvas button + a View-menu
-                        // entry exactly like axes/labels/overlay/cell (no separate control).  Its
-                        // on/off value lives in the selection store; the spec comes from the
-                        // selection viewer-adapter.  The trajectory bar goes on the knob-bar ROW
-                        // next to View/Export (gated on frameCount by frame-controls itself).
+                        // isolate ("show selected only") toggle -- store-backed (writes
+                        // store.setIsolate; the ENGINE reads store.isolate and renders it as a
+                        // structural regen, so a trajectory SURVIVES isolate). The other view
+                        // toggles (axes/labels/cell/overlay) remain the embed's built-ins for now;
+                        // rerouting them to store flags is the follow-up (task #64).
                         const adapterMod = selApi && selApi.viewerAdapter;
                         if (adapterMod && typeof adapterMod.isolateToggle === "function"
                             && typeof h.addViewToggle === "function") {
                             const iso = h.addViewToggle(adapterMod.isolateToggle(store));
                             cleanups.push(function () {
                                 try { iso && iso.dispose && iso.dispose(); } catch (_) {}
+                            });
+                        }
+                        // Measurement readout -- a SEPARATE interaction layer (§2.4), not the render
+                        // machine. It reads the panel selection + the CURRENT frame's clean coords
+                        // (data.getFrame -> engine.getFrame) and repaints on selection OR frame
+                        // change. It owns its own overlay in the viewer window.
+                        if (mvApi && typeof mvApi.mountMeasurementOverlay === "function") {
+                            const meas = mvApi.mountMeasurementOverlay(built.viewerHost, {
+                                store: store,
+                                coordsProvider: function () {
+                                    return (data && typeof data.getFrame === "function")
+                                        ? (data.getFrame(data.currentFrame()) || []) : [];
+                                },
+                            });
+                            const measFrameUnsub = (data && typeof data.onFrameChange === "function")
+                                ? data.onFrameChange(function () { try { meas.render && meas.render(); } catch (_) {} })
+                                : function () {};
+                            cleanups.push(function () {
+                                try { measFrameUnsub(); } catch (_) {}
+                                try { meas && meas.dispose && meas.dispose(); } catch (_) {}
                             });
                         }
                         const knobs = built.viewerHost.querySelector(".mol-viewer-knobs");

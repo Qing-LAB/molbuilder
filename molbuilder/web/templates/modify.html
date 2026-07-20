@@ -851,6 +851,9 @@
    (mountOverlays / mountFrameControls); load them before mount.js. #}
 <script src="{{ url_for('static', filename='lib/molview/frame-overlays.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/engine/process.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/engine/embed-io.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/molview/engine/engine.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*

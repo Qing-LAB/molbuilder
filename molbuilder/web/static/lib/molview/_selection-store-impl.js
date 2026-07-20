@@ -1088,6 +1088,8 @@
     function _ephemeralSnapshot(st) {
         if (!st) {
             return { indices: [], mode: "click", isolate: false,
+                     showIndex: false, showForces: false, showCell: true, showAxis: true,
+                     forceScale: undefined,
                      filters: [],
                      combinator: "or", loading: false, error: null, atoms: [],
                      sourceFile: null, pickOrder: [] };
@@ -1096,6 +1098,12 @@
             indices:    Array.isArray(st.selection) ? st.selection.slice() : [],
             mode:       st.mode || "click",
             isolate:    !!st.isolate,
+            // View-toggle flags (task #64) -- the render engine reads these through this snapshot.
+            showIndex:  !!st.showIndex,
+            showForces: !!st.showForces,
+            showCell:   !!st.showCell,
+            showAxis:   !!st.showAxis,
+            forceScale: st.forceScale,
             filters:    (st.filters || []).map(function (f) { return Object.assign({}, f); }),
             combinator: st.combinator || "or",
             loading:    !!st.loading,
@@ -1116,6 +1124,7 @@
             clear:           function ()      { return s.clearSelection(); },
             setMode:         function (m)     { return s.setMode(m); },
             setIsolate:      function (on)    { return s.setIsolate(on); },
+            setViewFlag:     function (n, v)  { return s.setViewFlag(n, v); },   // task #64
             setFilters:      function (f)     { return s.setFilters(f); },
             addFilter:       function (f)     { return s.addFilter(f); },
             removeFilter:    function (i)     { return s.removeFilter(i); },

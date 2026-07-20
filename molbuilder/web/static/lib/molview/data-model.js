@@ -170,6 +170,64 @@
     function detachViewHandle(h) {
         if (!h || h === _viewHandle) _viewHandle = null;
     }
+
+    // ── The render engine (molview-render-streamline.md) ─────────────────────────────── //
+    // The data model OWNS the data; the engine is the single render place. mount.js registers
+    // the engine here at onReady (attachEngine). The data model builds StructureData (§7.1) from
+    // its atoms + periodicity and hands it to the engine; the engine reads view flags from the
+    // store and draws. The data model never touches 3Dmol -- every draw goes engine -> embedIo.
+    var _engine = null;
+    var _engineFrameUnsub = function () {};
+    // Register the engine + relay its frame channel into the data model's onFrameChange, so the
+    // frame bar / measurement (which subscribe to data.onFrameChange) track engine-driven swaps
+    // and playback regardless of when they subscribed (before or after the engine attaches).
+    function attachEngine(engine) {
+        try { _engineFrameUnsub(); } catch (_) {}
+        _engine = engine || null;
+        _engineFrameUnsub = (_engine && typeof _engine.onFrameChange === "function")
+            ? _engine.onFrameChange(_notifyFrame) : function () {};
+    }
+    function detachEngine(engine) {
+        if (engine && engine !== _engine) return;
+        try { _engineFrameUnsub(); } catch (_) {}
+        _engineFrameUnsub = function () {};
+        _engine = null;
+    }
+
+    // Build the engine's cell (explicit lattice + the origin that wraps the atoms), or null.
+    function _cellForEngine() {
+        var info = (typeof getUnitCellInfo === "function") ? getUnitCellInfo() : null;
+        var lattice = info && info.value;
+        if (!lattice) return null;
+        var origin = (typeof getUnitCellOrigin === "function") ? getUnitCellOrigin() : null;
+        return { lattice: lattice, origin: origin || [0, 0, 0] };
+    }
+    // Build StructureData (§7.1) for the given coordinate frames, taking atom IDENTITY
+    // (elements + annotations) and the cell from the CURRENT store atoms / periodicity.
+    function _structureDataFor(frames, forces) {
+        var s = _store() && _store().getState();
+        var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        return {
+            frames:         frames,
+            elements:       atoms.map(function (a) { return a.element; }),
+            annotations:    atoms.map(function (a) {
+                return { label:  (a.labels && a.labels[0]) || undefined,
+                         frozen: !!a.isFrozen };
+            }),
+            cell:           _cellForEngine(),
+            forcesPerFrame: Array.isArray(forces) ? forces : null,
+        };
+    }
+    // Push the CURRENT single structure (one frame, from the store atoms) to the engine.
+    // Called after a load/edit adopts atoms -- the engine re-renders from this clean data.
+    function _pushToEngine() {
+        if (!_engine) return;
+        var s = _store() && _store().getState();
+        var atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
+        if (!atoms.length) return;
+        var frame = atoms.map(function (a) { return [a.x, a.y, a.z]; });
+        _engine.setData(_structureDataFor([frame], null));
+    }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime)
             ? root.molbuilder.runtime : null;
@@ -1139,6 +1197,9 @@
             // nested us inside its own suspend bracket -- the counter handles it).
             resumePersist();
         }
+        // The atoms are settled -> hand the single-frame structure to the render engine
+        // (it re-renders from this clean data). A trajectory caller follows with reloadFrames.
+        _pushToEngine();
     }
 
     /**
@@ -1645,71 +1706,34 @@
     }
     function reloadFrames(frames, opts) {
         opts = opts || {};
-        // Same-atoms invariant + structure-identity check (§14.5) -- reject before
-        // anything reaches the movie; never coerce.
+        // Same-atoms invariant + structure-identity check (§6) -- reject before anything
+        // reaches the engine; never coerce.
         _requireSameAtoms(frames, "reloadFrames");
         _requireMatch(frames[0], "reloadFrames");
-        // Single owner (§14.5.2): hand the WHOLE trajectory to the embed's native movie
-        // (addModelsAsFrames).  3Dmol parses all frames ONCE and setFrame swaps them with
-        // no rebuild; per-frame arrows ride along baked-in.  The data model keeps NO coords
-        // copy -- count/index/coords all read back through the embed.  We do NOT push to the
-        // store (that would make mountRender rebuild every frame).  MolView owns the frame
-        // bar, so the embed's own strip is suppressed (frameStrip:false).
-        const h = _handle();
-        if (h && typeof h.setAnimation === "function") {
-            h.setAnimation({
-                kind:           "trajectory",
-                frames:         frames,
-                arrowsPerFrame: Array.isArray(opts.arrowsPerFrame)
-                                    ? opts.arrowsPerFrame : null,
-                frameStrip:     false,
-                paused:         true,
-            });
-        }
+        // Hand the WHOLE trajectory to the render engine as StructureData (§6.1): it re-renders
+        // (structural regen) with all frames + the per-frame forces (from which it builds the
+        // force arrows). The engine owns the movie; the data model no longer drives 3Dmol.
+        // (Legacy opts.arrowsPerFrame -- pre-built arrows -- is superseded by opts.forces; a
+        // consumer still on arrowsPerFrame gets no force overlay until it moves to forces.)
+        if (_engine) _engine.setData(_structureDataFor(frames, opts.forces));
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
-        _notifyFrame();   // frame count (+ current) changed -> refresh the frame bar
         return frameCount();
     }
-    // Update the per-frame arrow overlays WITHOUT rebuilding the movie or restarting
-    // playback (§14.5.1).  The consumer builds the full arrowsPerFrame array ONCE when an
-    // overlay option changes and hands it here; the embed's partial-setAnimation live path
-    // swaps it in place (no per-frame synthesis).
-    function setFrameArrows(arrowsPerFrame) {
-        const h = _handle();
-        if (h && typeof h.setAnimation === "function") {
-            try {
-                h.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame)
-                                     ? arrowsPerFrame : [] });
-            } catch (_) {}
-        }
-    }
-    // Append arrow overlays for NEWLY-added frames only (the live-poll companion to
-    // addFrames): the consumer builds arrows for just the new frames and hands them
-    // here, so a poll doesn't re-hand the whole arrowsPerFrame set (§14.5.1).
-    function appendFrameArrows(list) {
-        const h = _handle();
-        if (h && typeof h.appendFrameArrows === "function") {
-            try { h.appendFrameArrows(Array.isArray(list) ? list : []); } catch (_) {}
-        }
-    }
+    // Force overlays are built by the engine from the raw forces (reloadFrames' opts.forces +
+    // the store forceScale flag), so these two hand-built-arrow doors are retired no-ops
+    // (kept so a not-yet-migrated consumer doesn't throw). They will be removed in cleanup.
+    function setFrameArrows() { /* retired: engine builds arrows from forces (§8) */ }
+    function appendFrameArrows() { /* retired: see setFrameArrows */ }
     function addFrame(coords) { return addFrames([coords]); }
-    // Append one OR MANY new frames in a SINGLE batched operation (a live poll can
-    // bring several new steps at once).  Validates the same-atoms invariant for every
-    // frame BEFORE anything reaches the movie, then hands the whole batch to the
-    // embed's native appendFrames in one call + fires ONE frame-bar notification --
-    // never a per-frame loop of handle calls / notifies.
-    function addFrames(list) {
+    // Append one OR MANY new frames (a live poll can bring several at once). Validates the
+    // same-atoms invariant, then hands the batch to the engine (§6.2 append -- extend, no reload).
+    function addFrames(list, opts) {
+        opts = opts || {};
         const frames = Array.isArray(list) ? list : [];
         if (!frames.length) return frameCount();
         frames.forEach(function (coords) { _requireMatch(coords, "addFrames"); });
-        const h = _handle();
-        const kind = (h && typeof h.getAnimationKind === "function")
-            ? h.getAnimationKind() : null;
-        if (h && kind === "trajectory" && typeof h.appendFrames === "function") {
-            try { h.appendFrames(frames); } catch (_) {}   // embed appends the whole batch
-        }
+        if (_engine) _engine.appendFrames(frames, { forces: opts.forces });
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
-        _notifyFrame();   // frame count changed -> refresh the frame bar ONCE
         return frameCount();
     }
     function setFrame(i) {
@@ -1718,33 +1742,23 @@
         if (!(idx >= 0 && idx < n)) {
             throw new Error("setFrame(" + i + ") out of range [0.." + (n - 1) + "]");
         }
-        // Native frame swap (§14.5.2): the embed swaps to the pre-parsed movie frame.
-        // Cheap kind probe -- NOT getAnimation() (that clones the whole animation incl.
-        // arrowsPerFrame -> O(frames) per swap).  Notify ONLY the frame-controls bar (not
-        // the store) so the slider/counter track the shown frame without re-rendering the
-        // selection panel (which would steal input focus during playback).
-        const h = _handle();
-        const kind = (h && typeof h.getAnimationKind === "function")
-            ? h.getAnimationKind() : null;
-        if (h && kind === "trajectory" && typeof h.setAnimationFrame === "function") {
-            try { h.setAnimationFrame(idx); } catch (_) {}
-        }
-        _notifyFrame();
+        // Native frame swap (§3): the engine swaps to the pre-parsed movie frame + re-applies
+        // the shown frame's overlays. It fires its OWN frame channel (engine.onFrameChange),
+        // which the frame bar + measurement subscribe to -- not the selection store.
+        if (_engine) _engine.showFrame(idx);
         return currentFrame();
     }
-    // Frame reads -- all delegate to the embed's native movie (the single coord owner,
-    // §14.5).  The data model holds no coordinate array of its own.
+    // Frame reads -- delegate to the render engine (the single coord + frame owner, §7.1/§9).
+    // getFrame returns the CLEAN original-indexed coords (all atoms), the accessor measurement
+    // reads by the panel's original atom index.
     function getFrame(i) {
-        const h = _handle();
-        return (h && typeof h.getFrameCoords === "function") ? h.getFrameCoords(i) : null;
+        return _engine ? _engine.getFrame(i) : null;
     }
     function currentFrame() {
-        const h = _handle();
-        return (h && typeof h.getAnimationFrame === "function") ? h.getAnimationFrame() : 0;
+        return _engine ? _engine.currentFrame() : 0;
     }
     function frameCount() {
-        const h = _handle();
-        return (h && typeof h.getFrameCount === "function") ? h.getFrameCount() : 0;
+        return _engine ? _engine.frameCount() : 0;
     }
 
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
@@ -2113,6 +2127,8 @@
         view:                  view,
         attachViewHandle:      attachViewHandle,   // §20: the active molview registers its embed
         detachViewHandle:      detachViewHandle,   // handle here at mount (retires modify.handle)
+        attachEngine:          attachEngine,       // the render engine (molview-render-streamline.md)
+        detachEngine:          detachEngine,
         flushViewState:        flushViewState,     // §20: pagehide flush -- mirror the live view
     };
 
