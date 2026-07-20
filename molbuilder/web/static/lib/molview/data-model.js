@@ -797,6 +797,12 @@
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setIsolate(on);
         },
+        // View-toggle flags (task #64): the render engine reads these; the View menu / rail
+        // toggles WRITE them here. molview-render-streamline.md §7.2.
+        setViewFlag:     function (name, value) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.setViewFlag(name, value);
+        },
         setFilters:      function (filters) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setFilters(filters);

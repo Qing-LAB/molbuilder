@@ -42,10 +42,8 @@
 
         function render() {
             const s = store.getState() || {};
-            // ISOLATE keeps the measurement working: the drawn atoms ARE the selected atoms,
-            // the readout is derived from the selection (still curated via the panel), and we
-            // simply re-key the coords below (§14.3, molview-module.md).
-            // Ordered picks: pickOrder (click order -> angle vertex) else indices.
+            // Ordered picks: pickOrder (click order -> angle vertex) else indices. Both are
+            // ORIGINAL 0-based atom indices, curated via the panel (§7.3 interaction contract).
             const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
                 ? s.pickOrder
                 : (Array.isArray(s.indices) ? s.indices : []);
@@ -54,26 +52,11 @@
                 el.textContent = "";
                 return;
             }
-            // meas.compute indexes positions[] by GLOBAL atom index.  When isolate is on the
-            // viewer draws ONLY the selected atoms, so coordsProvider() returns them in the
-            // render controller's VISIBLE order (= s.indices filtered to valid, matching
-            // computeRender's isolate filter in render-pipeline.js).  Re-key that filtered
-            // list back to global index so each pick reads the right atom's coords.  (Kept
-            // in lock-step with computeRender's isolate order.)
-            let coords = coordsProvider() || [];
-            const isolating = !!s.isolate
-                && Array.isArray(s.indices) && s.indices.length > 0;
-            if (isolating) {
-                const natoms = (s.atoms || []).length;
-                const visible = s.indices.filter(function (i) {
-                    return i >= 0 && i < natoms;
-                });
-                const byGlobal = [];
-                for (let m = 0; m < visible.length; m++) {
-                    byGlobal[visible[m]] = coords[m];
-                }
-                coords = byGlobal;
-            }
+            // coordsProvider() is the CURRENT frame's CLEAN, ORIGINAL-indexed coords (all atoms,
+            // via engine.getFrame -- never the isolate-filtered draw). meas.compute indexes by
+            // GLOBAL atom index, which is exactly this array's index -> NO re-keying, and it works
+            // identically whether or not isolate is on (molview-render-streamline.md §7.3).
+            const coords = coordsProvider() || [];
             const result = meas.compute(picks, s.atoms || [], coords, picks);
             if (result && result.display) {
                 el.hidden = false;

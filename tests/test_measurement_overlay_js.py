@@ -99,29 +99,24 @@ def test_dispose_removes_the_overlay():
     assert out["before"] == 1 and out["after"] == 0
 
 
-def test_measurement_works_under_isolate_via_global_rekey():
-    """molview-module.md §14.3: under ISOLATE the viewer draws ONLY the selected atoms, so
-    coordsProvider() returns them in visible (filtered) order.  The overlay must RE-KEY those
-    coords back to GLOBAL atom index so the distance is between the right atoms -- isolate
-    KEEPS the measurement.
+def test_measurement_works_under_isolate_reading_original_coords():
+    """molview-render-streamline.md §7.3: under ISOLATE the render engine draws a re-indexed
+    (filtered) model, but measurement does NOT read that. coordsProvider() is the CURRENT
+    frame's CLEAN, ORIGINAL-indexed coords (engine.getFrame -- ALL atoms), and meas.compute
+    indexes them by the panel's original atom index. No re-key -- the array IS in global order,
+    so isolate on/off is identical.
 
-    Select global atoms 1 & 2 -- coords (1,0,0) and (0,1,0) -- with isolate on; the viewer
-    then draws just those two, so coordsProvider returns [[1,0,0],[0,1,0]] (visible order).
-    The distance must be |(1,0,0)-(0,1,0)| = sqrt(2) ~ 1.414, proving the re-key mapped the
-    filtered coords onto picks 1 & 2 (a naive positions[1]/positions[2] read of the filtered
-    array would measure the wrong pair or hide)."""
+    Select global atoms 1 & 2 -- coords (1,0,0) and (0,1,0) -- isolate on; coordsProvider
+    returns the FULL original coords. Distance |(1,0,0)-(0,1,0)| = sqrt(2) ~ 1.414."""
     out = _run_node(_HARNESS + """
-        // isolate on, atoms 1 & 2 selected -> viewer draws only those, in visible order.
-        const filtered = [coords[1], coords[2]];   // what getAtomCoords returns under isolate
-        const store = makeStore({ pickOrder: [1,2], indices: [1,2], atoms,
-                                  isolate: true });
-        mk(viewerHost, { store, coordsProvider: () => filtered });
+        const store = makeStore({ pickOrder: [1,2], indices: [1,2], atoms, isolate: true });
+        mk(viewerHost, { store, coordsProvider: () => coords });   // FULL original coords (getFrame)
         console.log(JSON.stringify(snap()));
     """)
     assert out["hidden"] is False, "measurement must stay visible under isolate"
     assert out["kind"] == "distance"
     assert "1.41" in out["text"], (
-        f"distance must be sqrt(2)~1.414 (re-keyed to atoms 1 & 2); got {out['text']!r}")
+        f"distance must be sqrt(2)~1.414 read at original indices 1 & 2; got {out['text']!r}")
 
 
 def test_angle_vertex_is_pickOrder_second_not_index_order():
