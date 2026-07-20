@@ -38,7 +38,7 @@ def _run_node(snippet: str) -> object:
                 return { _calls: calls, _names: () => calls.map(c => c.name),
                     loadFrames: rec("loadFrames"), swapFrame: rec("swapFrame"),
                     appendFrames: rec("appendFrames"), applyOverlays: rec("applyOverlays"),
-                    setBusy: rec("setBusy"),
+                    setFrameArrows: rec("setFrameArrows"), setBusy: rec("setBusy"),
                     frameCount: () => 0, currentFrame: () => 0, animationKind: () => null };
             }
             // Stub store: getState + subscribe + a _set that patches state and fires subscribers.
@@ -122,6 +122,26 @@ def test_toggle_showIndex_is_overlay_refresh_no_reload():
         console.log(JSON.stringify({ names: io._names() }));
     """)
     assert out["names"] == ["applyOverlays"]   # overlay refresh ONLY -- no reload, no busy
+
+
+def test_toggle_showForces_is_in_place_arrow_rebake_not_a_reload():
+    out = _run_node("""
+        const io = makeIo(), store = makeStore();
+        const e = engineNs.create({}, { embedIo: io, store: store });
+        const withForces = Object.assign({}, DATA, {
+            forcesPerFrame: [ [[0,0,0],[0,1,0],[0,0,0]], [[0,0,0],[0,2,0],[0,0,0]] ] });
+        e.setData(withForces);
+        io._calls.length = 0;
+        store._set({ showForces: true });      // turn the force overlay on
+        const sfa = io._calls.find(c => c.name === "setFrameArrows");
+        console.log(JSON.stringify({ names: io._names(),
+            perFrame: sfa ? sfa.args[0].length : -1 }));
+    """)
+    # a force toggle re-bakes the arrows IN PLACE -- NOT a coord reload, NOT busy.
+    assert "setFrameArrows" in out["names"]
+    assert "loadFrames" not in out["names"]
+    assert "setBusy" not in out["names"]
+    assert out["perFrame"] == 2                 # both frames' arrows re-baked
 
 
 def test_toggle_isolate_is_structural_regen():

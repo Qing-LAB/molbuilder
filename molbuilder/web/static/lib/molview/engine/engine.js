@@ -39,6 +39,7 @@
         var _frame = 0;              // current frame (the frame channel, §7.2) -- NOT a view flag.
         var _flags = _blankFlags();
         var _prevStructSig = null;   // last structural signature (the §8 tier decision).
+        var _prevArrowSig = null;    // last force-overlay signature (in-place arrow re-bake tier).
         var _storeUnsub = _noop;
         var _playTimer = null;
         var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
@@ -90,25 +91,45 @@
         // does not re-hand them here.
         function _applyCurrentOverlays() {
             var pf = processFrame(_frameInput(_frame), _identity(), _flags);
-            embedIo.applyOverlays({
+            var overlay = {
                 labels:  _flags.showIndex ? pf.labels : false,
                 halos:   pf.halos,
                 cellBox: _cellBox(),
                 axes:    !!_flags.showAxis,
+            };
+            // Multi-frame: arrows are BAKED into the movie (a swap shows them free), so they are
+            // NOT re-handed here -- that would double the layer. Single static frame: no movie,
+            // so its arrows ARE applied here.
+            if (frameCount() <= 1) overlay.arrows = pf.arrows;
+            embedIo.applyOverlays(overlay);
+        }
+        // Arrow refresh (§8): re-bake every frame's arrows in place -- the coordinate movie is
+        // untouched (no reparse). Multi-frame only; a static frame's arrows ride _applyCurrentOverlays.
+        function _arrowRefresh() {
+            var arrowsPerFrame = _data.frames.map(function (_, f) {
+                var pf = processFrame(_frameInput(f), _identity(), _flags);
+                return pf.arrows || [];
             });
+            embedIo.setFrameArrows(arrowsPerFrame);
+            _prevArrowSig = _arrowSig();
         }
 
         // ---- the §8 tiers ---------------------------------------------------------------- //
-        // STRUCTURAL signature: everything that changes the DRAWN ATOM SET or the baked per-frame
-        // arrows. A change here => reload the movie. (selection only counts while isolating;
-        // force overlay/scale count because the arrows are baked per frame.)
+        // STRUCTURAL signature: what changes the DRAWN ATOM SET (=> reload the coordinate movie).
+        // selection only counts while isolating. Force overlay/scale is NOT here -- the arrows
+        // are baked per frame but can be re-baked IN PLACE (see _arrowRefresh), so a force change
+        // is an overlay refresh, not a coord reload (§8).
         function _structSig() {
             var isoOn = _flags.isolate && _flags.selection.length > 0;
             return _epoch
-                + "|iso:"   + (isoOn ? "1" : "0")
-                + "|sel:"   + (isoOn ? _flags.selection.join(",") : "")
-                + "|force:" + (_flags.showForces ? "1" : "0")
-                + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
+                + "|iso:" + (isoOn ? "1" : "0")
+                + "|sel:" + (isoOn ? _flags.selection.join(",") : "");
+        }
+        // Force-overlay signature: the baked per-frame arrows depend on this. A change re-bakes
+        // the arrows in place (no coord reload) -- the §8 arrow flavour of an overlay refresh.
+        function _arrowSig() {
+            return "force:" + (_flags.showForces ? "1" : "0")
+                 + "|scale:" + (_flags.showForces ? (_flags.forceScale === undefined ? "d" : _flags.forceScale) : "");
         }
         // Yield a paint so the busy scrim actually shows BEFORE the blocking movie rebuild
         // freezes the thread. loadFrames (setStructure + addModelsAsFrames) is synchronous and
@@ -124,7 +145,8 @@
         }
         function _structuralRegen() {
             embedIo.setBusy("Updating view…");
-            _prevStructSig = _structSig();     // record the request's signature synchronously.
+            _prevStructSig = _structSig();     // record the request's signatures synchronously.
+            _prevArrowSig = _arrowSig();       // a reload re-bakes the current-flags arrows too.
             _yieldPaint(function () {
                 var processed = _processAll();
                 embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
@@ -140,13 +162,16 @@
             if (!_data) return;                       // nothing loaded yet.
             _flags = _readFlags();
             var sig = _structSig();
-            if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set/arrows -> reload.
-            // Overlay-only. If a structural regen is already scheduled (paint yield pending), the
-            // movie is NOT rebuilt yet -- painting overlays now would key them to the OLD model.
-            // The pending regen reads the latest _flags when it fires and applies overlays then,
-            // so just let it.
+            if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set changed -> reload.
+            // If a structural regen is already scheduled (paint yield pending), the movie is NOT
+            // rebuilt yet -- painting overlays now would key them to the OLD model. The pending
+            // regen reads the latest _flags when it fires and applies everything then, so let it.
             if (_regenRaf != null) return;
-            _applyCurrentOverlays();
+            // Force overlay/scale changed -> re-bake the per-frame arrows IN PLACE (no coord
+            // reload) for a loaded movie. A static frame's arrows ride the overlay refresh below.
+            if (_arrowSig() !== _prevArrowSig && frameCount() > 1) { _arrowRefresh(); return; }
+            _applyCurrentOverlays();          // overlay refresh (labels/halos/cell/axis; + arrows if static).
+            _prevArrowSig = _arrowSig();      // static-frame arrows were handled here; stay in sync.
         }
 
         // ---- public API (§9) ------------------------------------------------------------- //
@@ -193,6 +218,7 @@
             var processedNew = list.map(function (_, i) { return processFrame(_frameInput(startF + i), _identity(), _flags); });
             embedIo.appendFrames({ frames: processedNew });
             _prevStructSig = _structSig();   // epoch bumped, but appended (not reloaded) -> stay in sync.
+            _prevArrowSig = _arrowSig();
             _notifyFrame();
             return frameCount();
         }

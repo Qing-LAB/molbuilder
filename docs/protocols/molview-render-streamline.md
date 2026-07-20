@@ -236,6 +236,7 @@ ViewFlags = {                // the view store — LOW frequency (user toggles/c
   isolate:      boolean,     // "show selected only".
   showIndex:    boolean,     // atom-index labels overlay.
   showForces:   boolean,     // force-vector overlay.
+  forceScale:   number,      // Å per force unit for the arrows (the consumer's scaling knob).
   showCell:     boolean,     // unit-cell box overlay.
   showAxis:     boolean,     // axis overlay.
 }
@@ -257,16 +258,21 @@ ProcessedFrame = {
   positions:   Vec3[],      // atoms actually drawn (filtered to selection when isolate on).
   sourceIndex: int[],       // sourceIndex[m] = ORIGINAL atom index of drawn atom m.
   elements:    string[],    // element per drawn atom (elements[sourceIndex[m]]).
-  labels:      Label[] | null,   // index labels (showIndex) — text = the ORIGINAL index.
-  halos:       Halo[],           // region tint / frozen marker / selection halo, per drawn atom.
-  arrows:      Arrow[] | null,   // force vectors for THIS frame (showForces).
+  labels:      Label[] | null,          // index labels (showIndex), or null.
+  halos:       OverlaySpec | null,      // selection/region/frozen highlights, or null.
+  arrows:      Arrow[] | null,          // force vectors for THIS frame (showForces), or null.
 }
-// Scene-level, computed once (same every frame unless the cell changes): cellBox, axes.
-//
-// Label / Halo / Arrow / cellBox are OPAQUE overlay specs that `embedIo` (§9.1) understands
-// and hands to 3Dmol — `process.js` builds them but never touches 3Dmol. Their exact fields
-// are owned by `embedIo`; the rest of the engine treats them as data.
+
+Label       = { position: Vec3, text: string }   // text = 1-based ORIGINAL index (§2.4).
+Arrow       = { start: Vec3, end: Vec3 }          // start = atom pos; end = pos + force·scale.
+OverlaySpec = { atoms: HaloEntry[] }              // drawn in array order (region → frozen → select).
+HaloEntry   = { indices: int[],                   // DRAWN indices (0..nDrawn-1), not original.
+                halo: { color: string, radius: number, opacity: number } }
 ```
+
+Scene-level, computed once (same every frame unless the cell changes): `cellBox`, `axes`.
+`process.js` builds all of the above as plain data and **never touches 3Dmol**; `embedIo` (§9.1)
+is what hands them to the viewer.
 
 `sourceIndex` is the **drawn → original** index map. It is why labels/halos show the original
 index under isolation (§2.4), and it is what an **interaction layer** (click-to-select,
@@ -291,6 +297,22 @@ never by system size (**no atom-count threshold, no magic number** — finding C
 A cell edit is **overlay refresh**, not a regen: the atoms don't move, only the cell box +
 axis change. A streamed append **extends** the movie (§6.2) — it is *not* a reload; only
 `isolate`/`selection`-while-isolating and a full new load rebuild the movie.
+
+**How the overlays ride the movie (the mechanism behind the tiers).** The native movie holds
+**coordinates only**. Overlays attach two ways, and this is why the tiers split the way they do:
+
+- **Force arrows are BAKED per frame** into the movie at load (an `arrowsPerFrame` set), so a
+  **native swap shows frame *i*'s arrows for free** (§3, no recompute). A `showForces` /
+  `forceScale` change therefore re-derives the arrows for **every** frame and **re-bakes them in
+  place** (`setFrameArrows` → a partial animation update) — the coordinates are **not** reparsed.
+  That is why it is an **overlay refresh**, not a structural regen.
+- **Labels + halos are RE-APPLIED for the shown frame** on each swap. They sit at atom
+  coordinates, and a native frame swap moves the atoms but not free-standing label/halo objects —
+  so the engine re-applies the current frame's labels/halos after every `swapFrame` (and on an
+  overlay refresh). This is light (one frame's worth), not a movie rebuild.
+
+A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
+frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
 
 ```mermaid
 flowchart TD
@@ -351,7 +373,8 @@ molbuilder.molview.engine.embedIo   // the ONLY 3Dmol-touching primitives:
                                      //   loadFrames(processed[], {cell})  — multi-frame load (§3)
                                      //   swapFrame(i)                      — native swap
                                      //   appendFrames(processed[])         — extend the movie (§6.2)
-                                     //   applyOverlays(processed[])        — labels/halos/arrows/cell/axis
+                                     //   applyOverlays(overlay)            — labels/halos/arrows/cell/axis
+                                     //   setFrameArrows(arrowsPerFrame)    — re-bake arrows in place (§8)
                                      //   setBusy(msg | null)               — the §4 scrim
 ```
 

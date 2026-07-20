@@ -129,6 +129,22 @@ def test_append_extends_movie_with_new_frames_and_arrows():
     assert out["appendArrows"] == 1                          # its arrows appended alongside
 
 
+def test_setFrameArrows_rebakes_in_place_without_coord_reload():
+    out = _run_node("""
+        const h = makeHandle();
+        embedIo.create(h).setFrameArrows([[{start:[0,0,0],end:[0,1,0]}], []]);
+        const anim = byName(h, "setAnimation");
+        console.log(JSON.stringify({
+            names: names(h),
+            arrowsPerFrame: anim.length ? anim[0].args[0].arrowsPerFrame.length : -1,
+        }));
+    """)
+    # a partial setAnimation({arrowsPerFrame}) ONLY -- no setStructure / addModelsAsFrames.
+    assert out["names"] == ["setAnimation"]
+    assert "setStructure" not in out["names"]
+    assert out["arrowsPerFrame"] == 2              # both frames' arrows re-handed
+
+
 def test_apply_overlays_forwards_only_present_fields():
     out = _run_node("""
         const h = makeHandle();

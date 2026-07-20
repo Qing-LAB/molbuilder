@@ -135,6 +135,17 @@
             _applyOverlays(handle, overlay);
         }
 
+        // OVERLAY REFRESH of the BAKED per-frame arrows (§8): re-hand the whole arrowsPerFrame
+        // set for the movie WITHOUT reparsing coordinates (setAnimation partial update). This is
+        // how a force overlay/scale change stays an overlay refresh -- the arrows are baked per
+        // frame (so a native swap shows them free), but re-baking them does not touch the coords.
+        // Multi-frame only; a static structure's arrows go through applyOverlays.
+        function setFrameArrows(arrowsPerFrame) {
+            if (typeof handle.setAnimation === "function") {
+                handle.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame) ? arrowsPerFrame : [] });
+            }
+        }
+
         // The §4 busy scrim. `null` clears it.
         function setBusy(msg) {
             if (typeof handle.setBusy === "function") handle.setBusy(msg);
@@ -156,6 +167,7 @@
             swapFrame:     swapFrame,
             appendFrames:  appendFrames,
             applyOverlays: applyOverlays,
+            setFrameArrows: setFrameArrows,
             setBusy:       setBusy,
             frameCount:    frameCount,
             currentFrame:  currentFrame,
