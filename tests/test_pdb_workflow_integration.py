@@ -79,10 +79,9 @@ def _seed_sidecar_for(struct_path, *, n_atoms, regions=None, frozen=None):
     ``to_dict`` mirrors a single endpoint call."""
     from molbuilder.sidecars import molstruct as _msj
     payload = _msj.to_dict(
+        {"regions": regions or {}, "frozen_atoms": frozen or []},
         n_atoms_total=n_atoms,
         structure_hash=_msj.sha256_of_file(struct_path),
-        regions=regions or {},
-        frozen_atoms=frozen or [],
     )
     _msj.save(_msj.sidecar_path_for(struct_path), payload)
 

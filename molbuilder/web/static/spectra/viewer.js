@@ -196,9 +196,13 @@
                 }
                 const s = data.getStructure();
                 text = (s && s.text) || "";
-                if (!mvHandle) {
-                    mvHandle = await mv.mount(host, ws,
+                if (!mvHandle || !mvHandle.ok) {
+                    // Cache ONLY a live handle (mount contract: failure ->
+                    // {ok:false}); a failed mount must not stick, so the next
+                    // structure load retries instead of staying viewer-less.
+                    const _h = await mv.mount(host, ws,
                         { mode: "readonly", owner: "spectra" });
+                    mvHandle = (_h && _h.ok) ? _h : null;
                 }
             } catch (e) {
                 setStatus("load-status",

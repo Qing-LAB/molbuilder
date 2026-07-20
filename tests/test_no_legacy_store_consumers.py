@@ -2,7 +2,7 @@
 
 Enforces that no consumer outside the workspace-dispatcher internals
 references the legacy globals ``window.molbuilder.structureCanvas``
-or ``window.molbuilder.selection.store``.
+or ``window.molbuilder.molview.selection.store``.
 
 Per workspace-contract.md §8, the only legitimate readers of those
 globals are:
@@ -14,7 +14,7 @@ globals are:
     the structureCanvas global, but places the singleton on the
     private molview._canvasState slot the data model consumes
   * lib/molview/_selection-store-impl.js — Phase 9 (2026-06-13)
-    moved out of lib/selection/store.js; no longer mounts the
+    moved out of lib/molview/selection/store.js; no longer mounts the
     selection.store global, but exposes the _createStore factory
     the dispatcher consumes
 
@@ -57,14 +57,14 @@ ALLOW_LIST = {
 # Matches direct reads of the three deprecated globals listed in
 # workspace-contract.md §8:
 #   * ``window.molbuilder.structureCanvas``
-#   * ``window.molbuilder.selection.store``
+#   * ``window.molbuilder.molview.selection.store``
 #   * ``window.molbuilder.modify.state`` (the modify-tab IIFE state)
 # Also matches the ``root.``/``mb.``/``globalThis.`` variants.
 # Comments and "Internal as of Phase 9" banner lines are stripped
 # before pattern matching.
 LEGACY_PATTERN = re.compile(
     r"""\b(window|root|mb|globalThis)\.molbuilder\.
-        (structureCanvas|selection\.store|modify\.state)\b""",
+        (structureCanvas|molview\.selection\.store|modify\.state)\b""",
     re.VERBOSE,
 )
 
@@ -230,7 +230,7 @@ function noop() {
     def test_multiple_consumers_all_flagged(self, tmp_path):
         path = self._make_file(tmp_path, """\
 function a() { return window.molbuilder.structureCanvas; }
-function b() { return root.molbuilder.selection.store; }
+function b() { return root.molbuilder.molview.selection.store; }
 """)
         hits = _scan_file(path)
         assert len(hits) == 2
@@ -241,7 +241,7 @@ function b() { return root.molbuilder.selection.store; }
 def test_no_legacy_store_consumers_outside_allow_list():
     """No consumer file outside the implementation allow-list may
     reference ``window.molbuilder.structureCanvas`` or
-    ``window.molbuilder.selection.store``.
+    ``window.molbuilder.molview.selection.store``.
 
     See workspace-contract.md §8.  If this test fails, the failing
     file should be migrated to use ``window.molbuilder.workspace.*``

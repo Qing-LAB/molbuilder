@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 from typing import Any, List, Tuple
 
-from .structure import Structure, annotations_to_json
+from .structure import Structure
 from .sidecars import molstruct
 
 
@@ -82,16 +82,11 @@ class StructureCodec:
         # structure_hash is the sha256 of the .xyz we are about to write, so the
         # committed sidecar's hash matches the committed .xyz (the atom-identity
         # invariant the generation gate relies on).
+        # ONE metadata authority: the struct serialises its own field set
+        # (metadata_to_dict), and to_dict layers the envelope on -- no field is
+        # hand-listed here, so this can't drift from the dataclass.
         return molstruct.to_dict(
+            struct.metadata_to_dict(),
             n_atoms_total  = struct.n_atoms,
             structure_hash = _sha256_bytes(xyz_bytes),
-            regions        = dict(struct.regions or {}),
-            frozen_atoms   = list(struct.frozen_atoms or []),
-            annotations    = annotations_to_json(struct.annotations),
-            cell           = struct.cell.tolist() if struct.cell is not None else None,
-            cell_origin    = (struct.cell_origin.tolist()
-                              if struct.cell_origin is not None else None),
-            pbc            = [bool(x) for x in struct.pbc] if struct.pbc is not None else None,
-            axis_kind      = list(struct.axis_kind) if struct.axis_kind is not None else None,
-            vacuum         = list(struct.vacuum),
         )

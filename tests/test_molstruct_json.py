@@ -83,23 +83,23 @@ class TestToDict:
 
     def test_regions_sorted_and_deduped(self):
         d = msj.to_dict(
+            {"regions": {"L-electrode": [3, 1, 1, 0]}},
             n_atoms_total=10, structure_hash="b" * 32,
-            regions={"L-electrode": [3, 1, 1, 0]},
         )
         assert d["regions"]["L-electrode"] == [0, 1, 3]
 
     def test_frozen_atoms_sorted_and_deduped(self):
         d = msj.to_dict(
+            {"frozen_atoms": [5, 1, 1, 0]},
             n_atoms_total=10, structure_hash="b" * 32,
-            frozen_atoms=[5, 1, 1, 0],
         )
         assert d["frozen_atoms"] == [0, 1, 5]
 
     def test_region_out_of_range_raises(self):
         with pytest.raises(msj.MolstructJsonError, match="out of range"):
             msj.to_dict(
+                {"regions": {"L-electrode": [5]}},
                 n_atoms_total=3, structure_hash="b" * 32,
-                regions={"L-electrode": [5]},
             )
 
     def test_region_overlap_is_allowed(self):
@@ -107,8 +107,8 @@ class TestToDict:
         at once.  Engines that need a disjoint partition validate
         that separately at engine-load time."""
         d = msj.to_dict(
+            {"regions": {"a": [0, 1], "b": [1, 2]}},
             n_atoms_total=4, structure_hash="b" * 32,
-            regions={"a": [0, 1], "b": [1, 2]},
         )
         assert d["regions"]["a"] == [0, 1]
         assert d["regions"]["b"] == [1, 2]
@@ -116,8 +116,8 @@ class TestToDict:
     def test_empty_label_raises(self):
         with pytest.raises(msj.MolstructJsonError, match="non-empty"):
             msj.to_dict(
+                {"regions": {"": [0]}},
                 n_atoms_total=3, structure_hash="b" * 32,
-                regions={"": [0]},
             )
 
     def test_bad_n_atoms_raises(self):
@@ -138,11 +138,11 @@ class TestSaveLoadRoundTrip:
     def test_round_trip_identity(self, tmp_path):
         xyz = _write_xyz(tmp_path, n=6)
         payload = msj.to_dict(
+            {"regions": {"L-electrode": [0, 1], "R-electrode": [4, 5],
+                         "bridge": [2, 3]},
+             "frozen_atoms": [0, 5]},
             n_atoms_total=6,
             structure_hash=msj.sha256_of_file(xyz),
-            regions={"L-electrode": [0, 1], "R-electrode": [4, 5],
-                     "bridge": [2, 3]},
-            frozen_atoms=[0, 5],
         )
         side = msj.sidecar_path_for(xyz)
         msj.save(side, payload)
@@ -174,9 +174,9 @@ class TestSaveLoadRoundTrip:
         """
         xyz = _write_xyz(tmp_path, n=4)
         payload = msj.to_dict(
+            {"regions": {"α-helix": [0, 1], "β-sheet": [2, 3]}},
             n_atoms_total=4,
             structure_hash=msj.sha256_of_file(xyz),
-            regions={"α-helix": [0, 1], "β-sheet": [2, 3]},
         )
         side = msj.sidecar_path_for(xyz)
         msj.save(side, payload)
@@ -200,9 +200,9 @@ class TestSaveLoadRoundTrip:
         xyz = _write_xyz(tmp_path, n=4)
         side = msj.sidecar_path_for(xyz)
         payload = msj.to_dict(
+            {"regions": {"L-electrode": [0, 1]}},
             n_atoms_total=4,
             structure_hash=msj.sha256_of_file(xyz),
-            regions={"L-electrode": [0, 1]},
         )
         # Write the payload with a UTF-8 BOM prepended — simulates a
         # sidecar that was hand-edited in an editor that always emits
@@ -247,9 +247,9 @@ class TestWithLockSerialisation:
             # lands on disk.
             regions[key] = [0, 1, 2]
             payload = msj.to_dict(
+                {"regions": regions},
                 n_atoms_total=4,
                 structure_hash="0" * 64,
-                regions=regions,
             )
             msj.save(side, payload)
 
@@ -384,9 +384,9 @@ class TestApplyToStructure:
     def test_applies_labels_and_frozen(self, tmp_path):
         s = self._struct(n=4)
         data = msj.to_dict(
+            {"regions": {"L-electrode": [0, 1], "R-electrode": [3]},
+             "frozen_atoms": [0]},
             n_atoms_total=4, structure_hash="b" * 32,
-            regions={"L-electrode": [0, 1], "R-electrode": [3]},
-            frozen_atoms=[0],
         )
         msj.apply_to_structure(s, data)
         assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3]}
@@ -441,9 +441,8 @@ class TestSchemaVersioning:
     def test_writes_current_schema_with_frozen_atoms_key(self, tmp_path):
         """Canonical write: the key is ``frozen_atoms``."""
         d = msj.to_dict(
+            {"regions": {"L-electrode": [0]}, "frozen_atoms": [1, 2]},
             n_atoms_total=3, structure_hash="b" * 32,
-            regions={"L-electrode": [0]},
-            frozen_atoms=[1, 2],
         )
         assert d["schema_version"] == msj.SCHEMA_VERSION   # current (5; kgrid dropped)
         assert "frozen_atoms" in d
@@ -476,9 +475,9 @@ class TestSelectionRules:
         )
         rule = FirstN(ByElement(("Au",)), 4)
         payload = msj.to_dict(
+            {"regions": {"L-electrode": [0, 1, 2, 3]}},
             n_atoms_total=6,
             structure_hash=self._hash(tmp_path),
-            regions={"L-electrode": [0, 1, 2, 3]},
             selection_rules={"L-electrode": rule_to_json(rule)},
         )
         side = tmp_path / "out.molstruct.json"
@@ -491,9 +490,9 @@ class TestSelectionRules:
         from molbuilder.selection import All, to_json as rule_to_json
         with pytest.raises(msj.MolstructJsonError, match="doesn't match"):
             msj.to_dict(
+                {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
                 structure_hash=self._hash(tmp_path),
-                regions={"L-electrode": [0]},
                 selection_rules={
                     # 'bridge' isn't in regions and isn't 'frozen_atoms':
                     "bridge": rule_to_json(All()),
@@ -503,18 +502,18 @@ class TestSelectionRules:
     def test_malformed_rule_raises(self, tmp_path):
         with pytest.raises(msj.MolstructJsonError, match="invalid rule"):
             msj.to_dict(
+                {"regions": {"L-electrode": [0]}},
                 n_atoms_total=6,
                 structure_hash=self._hash(tmp_path),
-                regions={"L-electrode": [0]},
                 selection_rules={"L-electrode": {"op": "not_a_real_op"}},
             )
 
     def test_rule_for_frozen_atoms_is_allowed(self, tmp_path):
         from molbuilder.selection import ByElement, to_json as rule_to_json
         d = msj.to_dict(
+            {"frozen_atoms": [0, 1]},
             n_atoms_total=6,
             structure_hash=self._hash(tmp_path),
-            frozen_atoms=[0, 1],
             selection_rules={
                 "frozen_atoms": rule_to_json(ByElement(("Au",))),
             },
@@ -547,9 +546,9 @@ class TestPbcFollowsAxisKind:
     """Review F3: pbc is the DERIVED view of axis_kind, not of cell-presence."""
 
     def test_isolated_axis_keeps_pbc_false_despite_cell(self):
-        d = msj.to_dict(n_atoms_total=2, structure_hash="0" * 32,
-                        cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]],
-                        axis_kind=["periodic", "periodic", "isolated"])
+        d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+                         "axis_kind": ["periodic", "periodic", "isolated"]},
+                        n_atoms_total=2, structure_hash="0" * 32)
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "isolated")
@@ -557,8 +556,8 @@ class TestPbcFollowsAxisKind:
         assert tuple(bool(x) for x in s.pbc) == (True, True, False)
 
     def test_celled_without_axis_kind_or_pbc_is_periodic(self):
-        d = msj.to_dict(n_atoms_total=2, structure_hash="0" * 32,
-                        cell=[[10, 0, 0], [0, 10, 0], [0, 0, 10]])
+        d = msj.to_dict({"cell": [[10, 0, 0], [0, 10, 0], [0, 0, 10]]},
+                        n_atoms_total=2, structure_hash="0" * 32)
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "periodic")

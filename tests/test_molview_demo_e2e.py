@@ -58,7 +58,7 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
     # molview BUILT the full component into the empty host.
     page.wait_for_selector("#molview-demo-host .molview-card .molview-panel", timeout=20000)
     assert page.locator("#molview-demo-host .molview-viewer").count() == 1
-    assert page.locator("#molview-demo-host .viewer-toggles .vc-isolate").count() == 1
+    assert page.locator("#molview-demo-host .mol-viewer-quick[data-quick=isolate]").count() == 1
 
     # the handle exposes the full §D surface (load/save/undo + getStructure/getSelection +
     # onChange + dispose) -- and only that (no internals).
@@ -245,43 +245,39 @@ def test_molview_demo_load_is_atomic_across_the_whole_model(page, flask_server):
 
 
 def test_molview_demo_view_menu_layout(page, flask_server):
-    """Pin the View-menu structure the user asked for: Reset is the FIRST item, and the
-    display toggles (axes / labels / overlay / unit cell + MolView's injected 'selected only')
-    live in ONE untitled group -- no per-toggle subheadings.  Also that the
-    'unit cell' toggle actually flips (draws the cell wireframe from the fed lattice).
+    """Pin the view-toggle RAIL structure: Reset is the FIRST button, followed by the
+    display toggles (axes / labels / overlay / unit cell) and MolView's injected
+    'selected only' (isolate) last.  All view toggles now live on the always-visible
+    left rail (.mol-viewer-quickbar) -- the View dropdown holds only style / background /
+    projection, no toggles and no reset.  Also that the 'unit cell' toggle actually flips
+    (draws the cell wireframe from the fed lattice).
 
-    (k-grid used to inject a SECOND consumer toggle here; Phase 2a removed k-grid from
+    (k-grid used to inject a SECOND consumer toggle; Phase 2a removed k-grid from
     MolView entirely -- it's reciprocal-space BZ sampling, not geometry -- so exactly ONE
-    consumer toggle ('selected only') is now re-homed into this group.)"""
+    consumer toggle ('selected only') is now on the rail.)"""
     page.goto(f"{flask_server}/molview-demo")
-    page.wait_for_selector("#molview-demo-host .mol-viewer-menu-view", timeout=20000)
-    # Load the trajectory so the injected isolate/k-grid toggles are present in the group.
+    page.wait_for_selector("#molview-demo-host .mol-viewer-quickbar", timeout=20000)
+    # Load the trajectory so the injected isolate toggle is present on the rail.
     page.click("#demo-trajectory")
 
-    view = "#molview-demo-host .mol-viewer-menu-view .mol-viewer-menu-body"
-    # 1. Reset is the first item of the menu body.
-    first_action = page.evaluate(
-        "() => { const b = document.querySelector('" + view + "');"
-        "  return b.firstElementChild.querySelector('[data-action]').getAttribute('data-action'); }")
-    assert first_action == "reset"
-
-    # 2. One untitled toggle group carrying the toggles (no heading inside it).  The
-    #    consumer-injected 'selected only' toggle (class .viewer-toggle) is re-homed here;
-    #    post-k-grid-removal there is exactly ONE such injected toggle.
-    grp = "#molview-demo-host .mol-viewer-menu-view .mol-viewer-menu-toggles"
+    rail = "#molview-demo-host .mol-viewer-quickbar"
+    # 1. The injected isolate button lands on the rail (exactly one; wait for it).
     page.wait_for_function(
-        "() => { const g = document.querySelector('" + grp + "');"
-        "  return g && g.querySelectorAll('.viewer-toggle').length === 1; }",
+        "() => { const g = document.querySelector('" + rail + "');"
+        "  return g && g.querySelectorAll('.mol-viewer-quick[data-quick=isolate]').length === 1; }",
         timeout=5000)
-    actions = page.eval_on_selector_all(
-        grp + " .mol-viewer-toggle", "els => els.map(e => e.getAttribute('data-action'))")
-    assert actions == ["axes", "labels", "overlay", "cell"]
-    assert page.locator(grp + " .mol-viewer-menu-heading").count() == 0
 
-    # 3. The 'unit cell' toggle flips its pressed state on click (open the menu first: the
-    #    View <details> dropdown is collapsed, so the toggle isn't clickable until expanded).
-    cell = grp + ' .mol-viewer-toggle[data-action="cell"]'
+    # 2. Rail order = built-in VIEW_TOGGLES (reset first) + the injected isolate last.
+    actions = page.eval_on_selector_all(
+        rail + " .mol-viewer-quick", "els => els.map(e => e.getAttribute('data-quick'))")
+    assert actions == ["reset", "axes", "labels", "overlay", "cell", "isolate"]
+    # The View dropdown no longer carries any toggles.
+    assert page.locator(
+        "#molview-demo-host .mol-viewer-menu-view .mol-viewer-toggle").count() == 0
+
+    # 3. The 'unit cell' toggle flips its pressed state on click.  The rail is always
+    #    visible, so there is no menu to open first.
+    cell = rail + ' .mol-viewer-quick[data-quick="cell"]'
     assert page.locator(cell).get_attribute("aria-pressed") == "false"
-    page.locator("#molview-demo-host .mol-viewer-menu-view > summary").click()
     page.locator(cell).click()
     assert page.locator(cell).get_attribute("aria-pressed") == "true"

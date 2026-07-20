@@ -1,12 +1,12 @@
 /* **Workspace-internal as of Phase 9 (2026-06-13)** — this module
  * no longer mounts a public singleton on
- * ``window.molbuilder.selection.store``.  The workspace
+ * ``window.molbuilder.molview.selection.store``.  The workspace
  * dispatcher (lib/workspace/dispatcher.js) creates + holds the
  * one process-wide instance via the ``_createStore`` factory
  * exported below.  Every external consumer goes through
  * ``window.molbuilder.workspace.selection.*`` (=``ws.selection.*``).
  *
- * The factory stays mounted under ``window.molbuilder.selection.
+ * The factory stays mounted under ``window.molbuilder.molview.selection.
  * _createStore`` so per-test isolation (Node L2 tests + a future
  * Playwright `_test` hook) can spin up fresh stores without
  * driving the dispatcher.
@@ -605,6 +605,20 @@
             _notify();
         }
 
+        // Auto-clear "show selected only" when a selection change EMPTIES the set
+        // (non-empty -> empty) while isolate is on: an isolate view with nothing
+        // selected would show nothing.  This is a selection-STATE rule, so it lives
+        // in the store (moved here from the old view-controls toggle).  It fires ONLY
+        // on the empty TRANSITION -- setIsolate() does not route through here -- so
+        // "check the box, then click an atom" still works (checking while empty keeps
+        // the flag; the click that follows leaves the set non-empty).
+        function _afterSelectionChange(prevLen) {
+            if (state.isolate && prevLen > 0 && state.selection.length === 0) {
+                state.isolate = false;
+            }
+            _notify();
+        }
+
         // ----------------------------------------------------------- //
         //  PUBLIC: click-mode editing  (client-side, no HTTP)         //
         // ----------------------------------------------------------- //
@@ -613,6 +627,7 @@
             if (typeof index !== "number") {
                 return Promise.reject(new TypeError("index must be number"));
             }
+            const prevLen = state.selection.length;
             const i = state.selection.indexOf(index);
             if (i === -1) {
                 // Insert in sorted order so consumers always see a
@@ -636,7 +651,7 @@
                 state.pickOrder = state.pickOrder.filter(
                     (j) => j !== index);
             }
-            _notify();
+            _afterSelectionChange(prevLen);
             return Promise.resolve();
         }
 
@@ -650,6 +665,7 @@
             // callers that pass [1, 0, 2] get
             // selection=[0,1,2] (set semantics) and
             // pickOrder=[1,0,2] (vertex = middle = 0).
+            const prevLen = state.selection.length;
             const seen = new Set();
             const orderedIn = [];
             indices.forEach((x) => {
@@ -663,7 +679,7 @@
             // post-return (or chaining off ``state``) can't bleed
             // into the store.  Symmetric with every other mutator.
             state.pickOrder = orderedIn.slice();
-            _notify();
+            _afterSelectionChange(prevLen);
             return Promise.resolve();
         }
 
@@ -698,12 +714,13 @@
             if (!Array.isArray(indices)) {
                 return Promise.reject(new TypeError("indices must be array"));
             }
+            const prevLen = state.selection.length;
             const drop = new Set(indices.filter((i) => typeof i === "number"));
             const survivingPickOrder = state.pickOrder.filter(
                 (i) => !drop.has(i));
             state.selection = state.selection.filter((i) => !drop.has(i));
             state.pickOrder = survivingPickOrder;
-            _notify();
+            _afterSelectionChange(prevLen);
             return Promise.resolve();
         }
 
@@ -1011,8 +1028,9 @@
     // test harnesses + a future per-instance test hook can spin
     // up isolated stores.
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.selection = root.molbuilder.selection || {};
-    root.molbuilder.selection._createStore = _create;
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
+    root.molbuilder.molview.selection._createStore = _create;
 
     // Phase 5 (fused module): the ws.selection SURFACE, built around ANY raw
     // store.  selection-panel + viewer-adapter consume the renamed surface
@@ -1089,15 +1107,15 @@
     // Public factory for a fresh, ISOLATED selection with the ws.selection
     // surface — pass it to selectionPanel.mount(host,{store}) +
     // viewerAdapter.attach(handle,{store}).
-    root.molbuilder.selection.createEphemeralStore = function () {
+    root.molbuilder.molview.selection.createEphemeralStore = function () {
         return _surface(_create());
     };
     // The ONE surface-snapshot shaper (raw state -> the {indices,...} surface
     // shape).  The dispatcher's ws.selection.getState/subscribe delegate to THIS
     // (was a hand-maintained character-identical twin -- now a single source).
-    root.molbuilder.selection._surfaceSnapshot = _ephemeralSnapshot;
+    root.molbuilder.molview.selection._surfaceSnapshot = _ephemeralSnapshot;
     // Exposed so the dispatcher's getStructure() (which reads the RAW store snapshot, not
     // this surface shaper) can apply the SAME defensive per-atom copy -- workspace-contract
     // §1.2.1 immutable reads, one shared helper.
-    root.molbuilder.selection._cloneAtom = _cloneAtom;
+    root.molbuilder.molview.selection._cloneAtom = _cloneAtom;
 })(typeof window !== "undefined" ? window : globalThis);

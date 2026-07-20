@@ -100,6 +100,10 @@
         load("water").then(function () {
             return mv.mount(host, ws, { mode: "modify", owner: "molview-demo" });
         }).then(function (handle) {
+            if (!handle || !handle.ok) {   // mount contract: failure -> {ok:false}
+                say("Mount failed: " + ((handle && handle.error) || "unknown"));
+                return;
+            }
             mvHandle = handle;
             window.__molview = handle;   // poke the §D API from the console
             handle.onChange(updateForceArrows);   // recompute per-frame force arrows on a frame change

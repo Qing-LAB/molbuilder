@@ -43,25 +43,32 @@ Contract: [`projects-sidebar.md`](projects-sidebar.md), [`structure-load-save-co
 **Public API:** `projects.readFile/writeFile/readRange/listDir`, `projects.parser.openMolecule/saveMolecule`, `projects.onCommit/onChange`, `projects.getCurrentDir/getCurrentFile/refresh`.
 **Loading:** ES modules (`<script type="module">`).
 
-### 2.2 Workspace persistence — `molbuilder.workspace` (state timeline)
-**Goal:** session-state persistence — undo/retract history + tab-switch survival. Holds
-NO data model; writes format-blind bytes. Contract: [`workspace-contract.md`](workspace-contract.md) §4.
-**Public API:** `workspace.persist(sessionBytes, snapshotBlob, identity)`, `readState(identity)`, `pruneStatesAbove(id, index)`, `workspaceId()`, `readPersistedSnapshot()`, `mountRestoreTarget()`, `useNamespace(owner)`, `onPersistError(fn)`.
-**Server:** `blueprints/state_timeline.py` → `/api/state-timeline/{write,read,prune}`.
+### 2.2 Workspace — `molbuilder.workspace` (**tab-switch + page-refresh persistence ONLY**)
+**Goal:** persist the in-flight session so it SURVIVES a tab switch or a page refresh — the
+`sessionStorage` session mirror + mount-time restore. **A DIFFERENT concern from the
+save/retract undo timeline**, which is MolView's submodule (§ 2.3 / § 3), not Workspace's.
+Holds NO data model. Contract: [`workspace-contract.md`](workspace-contract.md).
+**Public API (its own concern):** `readPersistedSnapshot()`, `mountRestoreTarget()`, `workspaceId()`, `useNamespace(owner)`, the session-mirror write, `onPersistError(fn)`.
+> **Structural note (pending split):** `dispatcher.js` today ALSO carries the on-disk
+> state-timeline transport (`persist`→disk, `readState`, `pruneStatesAbove` →
+> `/api/state-timeline/*`, `blueprints/state_timeline.py`). That belongs to MolView's
+> save/retract submodule — the workspace mixing it in is debt to unwind.
 
-### 2.3 MolView — `molbuilder.molview` (concealed 3-D viewer + data model)
-**Goal:** the embeddable structure viewer that owns the in-memory data model, render
-pipeline, and persistence wiring. Contract: [`molview-module.md`](molview-module.md).
+### 2.3 MolView — `molbuilder.molview` (concealed 3-D viewer + data model + **selection**)
+**Goal:** the embeddable structure viewer. Owns the in-memory data model, the render
+pipeline, persistence wiring, **and the atom-selection subsystem** (store + panel + adapter
++ measurements). **Selection is PART of MolView — not a separate module** (the point of the
+MolView consolidation). Contract: [`molview-module.md`](molview-module.md).
 **Public API:** `molview.mount(host, workspace, {mode, owner}) → handle`; `molview.data`
-(the model: `installMolecule`, `exportFile`, `markSaved`, `save`/`load`/`undo`,
-`getStructure/getSelection/getElements/...`, `generate`, `applyOp`, frames API).
+(model: `installMolecule`, `exportFile`, `markSaved`, `save`/`load`/`undo`, `generate`,
+`applyOp`, frames, **+ `molview.data.selection`** = the store); `molview.selection.*`
+(panel / adapter / measurements — see § 2.4).
 **Loading:** IIFE + global-mount; `molview.data` also `require()`-able for node tests.
 
-### 2.4 Selection — `molbuilder.selection` (atom selection)
-**Goal:** the atom-selection store + panel + viewer adapter (single/preview→commit cursor).
-Contract: [`selection.md`](selection.md), atom-annotations.
-**Public API:** `selection.store` (mode/filters/combinator/isolate/selection), `selection.mountPanel(...)`, `selection.measurements.{xyz,distance,angle}`, `selection.viewerAdapter`.
-> **Cross-module note:** the store *implementation* lives in `lib/molview/_selection-store-impl.js` but mounts on `molbuilder.selection` — MolView owns the code, selection owns the namespace.
+### 2.4 Selection — a **sub-part of MolView** (§ 2.3), not its own module
+The store lives in `lib/molview/_selection-store-impl.js` and is exposed as
+`molview.data.selection` (`molview-module.md § 12`); the panel + adapter + measurements are
+MolView's selection UI, under `molview.selection.*`. All of it is MolView's.
 
 ### 2.5 Inspector framework — `molbuilder.inspectors` (Results file-type dispatch)
 **Goal:** the seam that maps a sidebar-selected file to the right file-type handler on the
@@ -73,10 +80,13 @@ Results tab. A FRAMEWORK (dispatch), not a content parser. Contract: results-tab
 **Goal:** the standard embeddable 3-D viewer (3Dmol wrapper) that MolView composes over.
 `viewer.embed(host, opts) → handle`.
 
-### 2.7 VibrationView — `lib/vibrationview/` (normal-mode animation)
-**Goal:** a concealed normal-mode animation package — SIBLING of MolView (not part of it),
-used by the spectra inspector. Files: `vibrationview.js` + `mode-math.js`.
-(Task #51: give it its own complete 3Dmol seal, fully separate from MolView.)
+### 2.7 VibrationView — `molbuilder.vibrationview` (**own complete concealed 3Dmol package**)
+**Goal:** a COMPLETE, self-contained concealed packaging of 3Dmol, purpose-built for
+**spectrum vibration animation**. A SIBLING of MolView — its own seal, NOT part of MolView
+and NOT a facet of the shared `viewer`. Files: `lib/vibrationview/{vibrationview.js,
+mode-math.js}`. Used by the spectra inspector.
+> **Residue (task #51):** it still wraps the shared `molbuilder.viewer` embed today; #51
+> gives it its own independent 3Dmol seal so the package is genuinely self-contained.
 
 ---
 

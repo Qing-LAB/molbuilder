@@ -40,7 +40,7 @@ def _run_node(snippet: str) -> object:
     As of Phase 9 (2026-06-13) the module no longer auto-mounts a
     public singleton; the workspace dispatcher owns the one
     process-wide instance.  Tests call
-    ``window.molbuilder.selection._createStore()`` to spin up
+    ``window.molbuilder.molview.selection._createStore()`` to spin up
     fresh isolated instances — that factory stays mounted under
     the existing namespace exactly so test harnesses (here + a
     future Playwright `_test` hook) can build their own.
@@ -98,7 +98,7 @@ def _with_store(setup: str, body: str) -> str:
     contract accepts a partial session restore.
     """
     return f"""
-        const store = window.molbuilder.selection._createStore();
+        const store = window.molbuilder.molview.selection._createStore();
         {setup}
         {body}
     """
@@ -122,7 +122,7 @@ class TestStoreAPISurface:
         impl before they surface in the Playwright tests.  (The public renamed surface is
         TestEphemeralStore's job.)"""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "console.log(JSON.stringify({\n"
             "  reads:         typeof store.getState === 'function' && "
             "                  typeof store.subscribe === 'function',\n"
@@ -157,7 +157,7 @@ class TestInitialState:
 
     def test_initial_state_shape(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "console.log(JSON.stringify(store.getState()));"
         )
         assert out == {
@@ -188,7 +188,7 @@ class TestInitialState:
         consumers that read-and-spread end up mutating the store's
         internal state via aliasing."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "const snap = store.getState();\n"
             "snap.selection.push(42);\n"
             "snap.mode = 'filter';\n"
@@ -219,7 +219,7 @@ class TestAdoptAtoms:
 
     def test_replaces_atoms_with_normalised_rows(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptAtoms([\n"
             "  {index: 0, element: 'C', regions: ['L-electrode'], is_frozen: false, atom_name: 'CA'},\n"
             "  {index: 1, element: 'H', regions: [],              is_frozen: true},\n"
@@ -239,7 +239,7 @@ class TestAdoptAtoms:
         that no longer exist MUST be dropped.  Otherwise downstream
         ops resolve indices against the wrong list."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([0, 2, 5]).then(() => {\n"
             "  // Pretend a Delete op shrank the structure to 2 atoms.\n"
             "  store.adoptAtoms([\n"
@@ -257,7 +257,7 @@ class TestAdoptAtoms:
         microtask-deferred (the store coalesces synchronous
         mutations), so the test awaits microtasks before counting."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let calls = 0;\n"
             "store.subscribe(() => { calls++; });\n"
             "// Subscribe fires immediately via the deferred notify\n"
@@ -277,7 +277,7 @@ class TestAdoptAtoms:
 
     def test_rejects_non_array(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "try { store.adoptAtoms({not: 'an array'}); "
             "  console.log(JSON.stringify('resolved')); }\n"
             "catch (e) { console.log(JSON.stringify(e.name)); }"
@@ -300,7 +300,7 @@ class TestAdoptSessionAtoms:
         server here; if the store tried to fetch, the test would
         fail."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptSession({\n"
             "  sourceFile: 'projects/x/water.xyz',\n"
             "  selection:  [1],\n"
@@ -328,7 +328,7 @@ class TestAdoptSessionAtoms:
         adopted atoms length (delete shrank the structure), drop
         them — same invariant as adoptAtoms."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptSession({\n"
             "  sourceFile: 'projects/x/water.xyz',\n"
             "  selection:  [0, 2, 5],\n"
@@ -350,7 +350,7 @@ class TestAdoptSessionAtoms:
         can verify atoms stays empty and sourceFile is set
         (no synchronous fill from a phantom atoms field)."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore({\n"
+            "const store = window.molbuilder.molview.selection._createStore({\n"
             "  fetch: () => Promise.reject(new Error('fetch-skip')),\n"
             "});\n"
             "store.adoptSession({\n"
@@ -375,7 +375,7 @@ class TestToggleAtom:
 
     def test_toggle_into_empty_selection(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.toggleAtom(3).then(() => {\n"
             "  console.log(JSON.stringify(store.getState().selection));\n"
             "});"
@@ -384,7 +384,7 @@ class TestToggleAtom:
 
     def test_toggle_inserts_in_sorted_order(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "Promise.all([\n"
             "  store.toggleAtom(7),\n"
             "  store.toggleAtom(2),\n"
@@ -398,7 +398,7 @@ class TestToggleAtom:
 
     def test_toggle_existing_removes(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "Promise.all([\n"
             "  store.toggleAtom(1),\n"
             "  store.toggleAtom(2),\n"
@@ -411,7 +411,7 @@ class TestToggleAtom:
 
     def test_toggle_rejects_non_number(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.toggleAtom('not a number')\n"
             "  .then(() => { console.log(JSON.stringify('resolved')); })\n"
             "  .catch((e) => { console.log(JSON.stringify(e.name)); });"
@@ -423,7 +423,7 @@ class TestSetSelection:
 
     def test_set_replaces_selection(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.toggleAtom(1)\n"
             "  .then(() => store.setSelection([5, 6, 7]))\n"
             "  .then(() => console.log(JSON.stringify(store.getState().selection)));"
@@ -432,7 +432,7 @@ class TestSetSelection:
 
     def test_set_sorts_and_dedupes(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([7, 3, 7, 1, 3, 5]).then(() => {\n"
             "  console.log(JSON.stringify(store.getState().selection));\n"
             "});"
@@ -445,7 +445,7 @@ class TestSetSelection:
         param) must be sanitised -- otherwise the next
         ``toggleAtom`` ``.indexOf`` comparison silently fails."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, '2', null, 3.5, 4]).then(() => {\n"
             "  console.log(JSON.stringify(store.getState().selection));\n"
             "});"
@@ -457,7 +457,7 @@ class TestSetSelection:
 
     def test_set_rejects_non_array(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection('not array').then(() => {\n"
             "  console.log(JSON.stringify('resolved'));\n"
             "}).catch((e) => console.log(JSON.stringify(e.name)));"
@@ -469,7 +469,7 @@ class TestAddRemoveSelection:
 
     def test_add_unions_into_selection(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, 3])\n"
             "  .then(() => store.addToSelection([2, 3, 5]))\n"
             "  .then(() => console.log(JSON.stringify(store.getState().selection)));"
@@ -479,7 +479,7 @@ class TestAddRemoveSelection:
 
     def test_remove_subtracts(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, 2, 3, 4, 5])\n"
             "  .then(() => store.removeFromSelection([2, 4, 99]))\n"
             "  .then(() => console.log(JSON.stringify(store.getState().selection)));"
@@ -495,7 +495,7 @@ class TestSelectAllAndInvert:
 
     def test_select_all_with_no_atoms_is_empty(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.selectAll().then(() => {\n"
             "  console.log(JSON.stringify(store.getState().selection));\n"
             "});"
@@ -504,7 +504,7 @@ class TestSelectAllAndInvert:
 
     def test_invert_empty_with_no_atoms_is_empty(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.invertSelection().then(() => {\n"
             "  console.log(JSON.stringify(store.getState().selection));\n"
             "});"
@@ -516,7 +516,7 @@ class TestClearSelection:
 
     def test_clear_drops_all(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, 2, 3])\n"
             "  .then(() => store.clearSelection())\n"
             "  .then(() => console.log(JSON.stringify(store.getState().selection)));"
@@ -528,7 +528,7 @@ class TestClearSelection:
         subscribers (otherwise spurious renders happen).  Verified
         via subscriber count."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let fires = 0;\n"
             "// Skip the fire-once-on-subscribe to count only mutations.\n"
             "const unsub = store.subscribe(() => { fires += 1; });\n"
@@ -549,7 +549,7 @@ class TestSetMode:
 
     def test_default_mode_is_click(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "console.log(JSON.stringify(store.getState().mode));"
         )
         assert out == "click"
@@ -557,7 +557,7 @@ class TestSetMode:
     def test_switching_mode_preserves_selection(self):
         """Selection is shared across modes per molview-module.md §12."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, 2, 3])\n"
             "  .then(() => store.setMode('filter'))\n"
             "  .then(() => store.setMode('click'))\n"
@@ -567,7 +567,7 @@ class TestSetMode:
 
     def test_rejects_unknown_mode(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setMode('xyzzy').then(() => {\n"
             "  console.log(JSON.stringify('resolved'));\n"
             "}).catch((e) => console.log(JSON.stringify(e.message)));"
@@ -579,14 +579,14 @@ class TestCombinator:
 
     def test_default_is_or(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "console.log(JSON.stringify(store.getState().combinator));"
         )
         assert out == "or"
 
     def test_set_to_and(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setCombinator('and').then(() => {\n"
             "  console.log(JSON.stringify(store.getState().combinator));\n"
             "});"
@@ -595,7 +595,7 @@ class TestCombinator:
 
     def test_rejects_unknown(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setCombinator('xor').then(() => {\n"
             "  console.log(JSON.stringify('resolved'));\n"
             "}).catch((e) => console.log(JSON.stringify(e.message)));"
@@ -612,7 +612,7 @@ class TestFilterDrafts:
 
     def test_add_filter(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.addFilter({kind: 'by_element', value: 'Au'}).then(() => {\n"
             "  console.log(JSON.stringify(store.getState().filters));\n"
             "});"
@@ -621,7 +621,7 @@ class TestFilterDrafts:
 
     def test_set_filters_replaces(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.addFilter({kind: 'by_element', value: 'Au'})\n"
             "  .then(() => store.setFilters([\n"
             "    {kind: 'by_index', value: '0-3'},\n"
@@ -636,7 +636,7 @@ class TestFilterDrafts:
 
     def test_remove_filter_at_index(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setFilters([\n"
             "  {kind: 'by_element', value: 'Au'},\n"
             "  {kind: 'by_index',   value: '0-3'},\n"
@@ -651,7 +651,7 @@ class TestFilterDrafts:
 
     def test_update_filter_replaces_row(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setFilters([\n"
             "  {kind: 'by_element', value: 'Au'},\n"
             "  {kind: 'by_index',   value: '0-3'},\n"
@@ -669,7 +669,7 @@ class TestFilterDrafts:
 
     def test_remove_filter_out_of_range_rejects(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.removeFilter(0).then(() => {\n"
             "  console.log(JSON.stringify('resolved'));\n"
             "}).catch((e) => console.log(JSON.stringify(e.message)));"
@@ -678,7 +678,7 @@ class TestFilterDrafts:
 
     def test_add_filter_rejects_non_object(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.addFilter('not an object').then(() => {\n"
             "  console.log(JSON.stringify('resolved'));\n"
             "}).catch((e) => console.log(JSON.stringify(e.name)));"
@@ -703,7 +703,7 @@ class TestPickOrderSnapshot:
 
     def test_pickOrder_present_in_getState(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "Promise.all([\n"
             "  store.toggleAtom(5),\n"
             "  store.toggleAtom(0),\n"
@@ -728,7 +728,7 @@ class TestPickOrderSnapshot:
         """Mutating the returned ``pickOrder`` array must not poison
         the store — same contract as ``selection``."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setSelection([1, 0, 2]).then(() => {\n"
             "  const snap = store.getState();\n"
             "  snap.pickOrder.push(999);\n"
@@ -742,7 +742,7 @@ class TestPickOrderSnapshot:
         """Subscribers (the panel renderer) see ``pickOrder`` on
         every notification, not just on a separate getState() call."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let last = null;\n"
             "store.subscribe((s) => { last = s; });\n"
             "store.setSelection([3, 7, 1]).then(() => {\n"
@@ -768,7 +768,7 @@ class TestSubscribe:
         so the subscriber can render its initial UI without a
         separate getState() call."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let captured = null;\n"
             "store.subscribe((s) => { captured = s; });\n"
             "// Wait one microtask tick for the initial fire.\n"
@@ -784,7 +784,7 @@ class TestSubscribe:
 
     def test_mutation_fires_subscriber(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let fires = 0;\n"
             "store.subscribe(() => { fires += 1; });\n"
             "Promise.resolve()\n"
@@ -799,7 +799,7 @@ class TestSubscribe:
 
     def test_unsubscribe_stops_notifications(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let fires = 0;\n"
             "const unsub = store.subscribe(() => { fires += 1; });\n"
             "Promise.resolve()\n"
@@ -815,7 +815,7 @@ class TestSubscribe:
 
     def test_subscribe_rejects_non_function(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let err = null;\n"
             "try { store.subscribe('not a function'); }\n"
             "catch (e) { err = e.name; }\n"
@@ -827,7 +827,7 @@ class TestSubscribe:
         """Per § 6 (error semantics): one buggy subscriber must NOT
         prevent other subscribers from receiving the notification."""
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let aFires = 0, bFires = 0;\n"
             "store.subscribe(() => { aFires += 1; throw new Error('A broken'); });\n"
             "store.subscribe(() => { bFires += 1; });\n"
@@ -854,7 +854,7 @@ class TestEphemeralStore:
 
     def test_isolated_instances_with_panel_surface(self):
         out = _run_node("""
-            const sel = window.molbuilder.selection;
+            const sel = window.molbuilder.molview.selection;
             const a = sel.createEphemeralStore();
             const b = sel.createEphemeralStore();
             // Every method selection-panel + viewer-adapter call on the store.
@@ -887,7 +887,7 @@ class TestIsolateState:
 
     def test_set_isolate_flips_state(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.setIsolate(true);\n"
             "console.log(JSON.stringify(store.getState().isolate));"
         )
@@ -897,7 +897,7 @@ class TestIsolateState:
         # _notify() is async + coalesced (Promise.resolve().then), so await a tick after
         # each mutation to let the (possibly coalesced) notification flush.
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "let n = 0;\n"
             "store.subscribe(() => { n++; });\n"
             "const tick = () => new Promise((r) => setTimeout(r, 0));\n"
@@ -928,7 +928,7 @@ class TestWriteLabelInMemory:
             "let fetched = false;\n"
             "window.fetch = () => { fetched = true;\n"
             "  return Promise.reject(new Error('writeLabel must not fetch')); };\n"
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptAtoms([\n"
             "  {index: 0, element: 'Au', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'Au', regions: [], is_frozen: false},\n"
@@ -947,7 +947,7 @@ class TestWriteLabelInMemory:
 
     def test_replace_then_remove_region(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptAtoms([\n"
             "  {index: 0, element: 'Au', regions: ['L-electrode'], is_frozen: false},\n"
             "  {index: 1, element: 'Au', regions: ['L-electrode'], is_frozen: false},\n"
@@ -962,7 +962,7 @@ class TestWriteLabelInMemory:
 
     def test_frozen_atoms_target_in_memory(self):
         out = _run_node(
-            "const store = window.molbuilder.selection._createStore();\n"
+            "const store = window.molbuilder.molview.selection._createStore();\n"
             "store.adoptAtoms([\n"
             "  {index: 0, element: 'C', regions: [], is_frozen: false},\n"
             "  {index: 1, element: 'C', regions: [], is_frozen: false},\n"

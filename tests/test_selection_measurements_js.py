@@ -1,10 +1,10 @@
-"""Unit tests for ``lib/selection/measurements.js`` — the shared
+"""Unit tests for ``lib/molview/selection/measurements.js`` — the shared
 xyz / distance / angle helpers used by the Modify-tab Selection
 panel and the Results-tab trajectory inspector.
 
 Run by spawning Node with a tiny harness that loads the module
 (it has a ``module.exports`` branch alongside the
-``window.molbuilder.selection.measurements`` registration).
+``window.molbuilder.molview.selection.measurements`` registration).
 
 The math here is small but load-bearing — both consumers display
 the result to the user, and drift between the two (different
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD = ROOT / "molbuilder/web/static/lib/selection/measurements.js"
+MOD = ROOT / "molbuilder/web/static/lib/molview/selection/measurements.js"
 
 
 def _run_node(snippet: str) -> object:

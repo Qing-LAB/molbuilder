@@ -3,7 +3,7 @@ large structures correctly, via BOTH render paths (diff-only + virtual
 scroll).
 
 The implementation picks a path automatically based on atom count
-(``VSCROLL_THRESHOLD = 2000`` in ``lib/selection-panel.js``).  This
+(``VSCROLL_THRESHOLD = 2000`` in ``lib/molview/selection/panel.js``).  This
 test uses the panel's force-mode switch to drive each path against
 two structures explicitly:
 
@@ -231,7 +231,7 @@ def _force_mode(page, mode):
     the store -- the panel reads forceRenderMode on every render."""
     page.evaluate(
         """(mode) => {
-            window.molbuilder.selectionPanel.forceRenderMode = mode;
+            window.molbuilder.molview.selection.panel.forceRenderMode = mode;
             // Force a notify so the panel re-renders with the new mode.
             const s = window.molbuilder.molview.data.selection;
             const cur = s.getState().indices;

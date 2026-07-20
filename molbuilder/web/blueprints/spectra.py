@@ -420,11 +420,13 @@ def api_spectra_render():
     # blocks emission, but the HTTP exchange succeeded — the server
     # ran the check and is reporting back.  HTTP 200 explicit so
     # the intent is visible at the call site.
-    if any(i.severity == "error" for i in issues):
+    errors_only = [i for i in issues if i.severity == "error"]
+    if errors_only:
         return jsonify({
-            "ok":     False,
-            "error":  "preflight failed; see issues",
-            "issues": _issues_to_json(issues, cfg=cfg),
+            "ok":          False,
+            "error":       "preflight failed; see issues",
+            "issues":      _issues_to_json(issues, cfg=cfg),
+            "errors_only": _issues_to_json(errors_only, cfg=cfg),
         }), 200
 
     # Render the script + Methods text + bibliography keys.

@@ -29,7 +29,6 @@ Spec: ``docs/protocols/results-tab.md``.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from flask import Blueprint, jsonify, make_response, render_template, request
 

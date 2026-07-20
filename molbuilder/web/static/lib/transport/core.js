@@ -225,9 +225,11 @@
                 }
                 return;
             }
-            if (_mvHandle) return;   // already mounted; the reload redrew it
+            if (_mvHandle && _mvHandle.ok) return;   // already mounted; the reload redrew it
             return mv.mount(host, ws, { mode: "modify", owner: "transport" })
-                .then(function (h) { _mvHandle = h; });
+                // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
+                // so a failed mount doesn't permanently block a later remount.
+                .then(function (h) { _mvHandle = (h && h.ok) ? h : null; });
         }).catch(function (e) {
             if (root.console) {
                 root.console.error("[transport] MolView load/mount failed", e);

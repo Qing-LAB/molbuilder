@@ -27,7 +27,8 @@ from molbuilder.parse.types import SidecarResult
 from molbuilder.sidecars.molstruct import (
     SCHEMA_VERSION,
     MolstructJsonError,
-    normalise_cell_pbc,
+    normalise_selection_rules,
+    structure_fields_via_dataclass,
 )
 
 from ._helpers import build_sidecar_result
@@ -51,6 +52,7 @@ def _normalised_dict(
     frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
+    cell_origin: Optional[Any] = None,
     pbc: Optional[Any] = None,
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
@@ -79,121 +81,38 @@ def _normalised_dict(
             f"{structure_hash!r})"
         )
 
-    normed_regions: Dict[str, List[int]] = {}
-    if regions:
-        for name, idxs in regions.items():
-            if not isinstance(name, str) or not name:
-                raise MolstructJsonError(
-                    f"region label must be non-empty string; got "
-                    f"{name!r}"
-                )
-            unique = sorted({int(i) for i in idxs})
-            for idx in unique:
-                if not 0 <= idx < n_atoms_total:
-                    raise MolstructJsonError(
-                        f"regions[{name!r}]: atom index {idx} out of "
-                        f"range [0, {n_atoms_total})"
-                    )
-            normed_regions[name] = unique
-
-    normed_frozen: List[int] = []
-    if frozen_atoms:
-        unique = sorted({int(i) for i in frozen_atoms})
-        for idx in unique:
-            if not 0 <= idx < n_atoms_total:
-                raise MolstructJsonError(
-                    f"frozen_atoms: atom index {idx} out of range "
-                    f"[0, {n_atoms_total})"
-                )
-        normed_frozen = unique
-
-    normed_rules: Dict[str, Any] = {}
-    if selection_rules:
-        # Import locally to keep the import graph narrow -- selection.py
-        # is a leaf utility module and we only need it here if the
-        # caller is using selection rules at all.
-        from molbuilder.selection import from_json as _rule_from_json
-        from molbuilder.selection import to_json as _rule_to_json
-        from molbuilder.selection import SelectionError
-        valid_targets = set(normed_regions) | {"frozen_atoms"}
-        for target, rule_payload in selection_rules.items():
-            if not isinstance(target, str) or not target:
-                raise MolstructJsonError(
-                    f"selection_rules: target label must be non-empty "
-                    f"string; got {target!r}"
-                )
-            if target not in valid_targets:
-                raise MolstructJsonError(
-                    f"selection_rules: target {target!r} doesn't match "
-                    f"any region or 'frozen_atoms' (known: "
-                    f"{sorted(valid_targets)!r})"
-                )
-            try:
-                rule = _rule_from_json(rule_payload)
-            except SelectionError as exc:
-                raise MolstructJsonError(
-                    f"selection_rules[{target!r}]: invalid rule: {exc}"
-                ) from exc
-            # Re-serialise so the stored form is normalised.
-            normed_rules[target] = _rule_to_json(rule)
-
-    normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
-
-    # Periodicity kind / vacuum (structure-periodicity.md; additive @ v4).
-    # (k-grid dropped @ v5 -- a SAMPLING knob on SiestaConfig / TransportConfig,
-    # not a geometry field.  A "kgrid" key in a pre-v5 sidecar is ignored below.)
-    _KINDS = ("periodic", "isolated", "transport")
-    normed_axis_kind = None
-    if axis_kind is not None:
-        ak = [str(k) for k in axis_kind]
-        if len(ak) != 3 or any(k not in _KINDS for k in ak):
-            raise MolstructJsonError(
-                f"axis_kind must be exactly 3 of {_KINDS}; got {axis_kind!r}")
-        normed_axis_kind = ak
-    normed_vacuum = None
-    if vacuum is not None:
-        v = [float(x) for x in vacuum]
-        if len(v) != 3:
-            raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
-        normed_vacuum = v
-
-    # Extensible annotation channels (schema v4; atom-annotations.md § 3).
-    # Absent on v3.  Round-trip each channel through AtomChannel so a
-    # hand-edited sidecar is validated + normalised here (clear error at
-    # load time, not deep in a consumer).
-    normed_annotations: Dict[str, Any] = {}
-    if annotations:
-        from molbuilder.structure import AtomChannel as _AtomChannel
-        for name, ch in annotations.items():
-            try:
-                channel = _AtomChannel.from_json(ch)
-            except (KeyError, TypeError, ValueError) as exc:
-                raise MolstructJsonError(
-                    f"annotations[{name!r}]: invalid channel: {exc}") from exc
-            # Validate atom indices against n_atoms_total here (mirrors the
-            # regions/frozen checks above) so a bad sidecar fails at load,
-            # not deep in a consumer.
-            idxs = (channel.data.keys() if channel.kind == "value"
-                    else channel.data)
-            for idx in idxs:
-                if not 0 <= int(idx) < n_atoms_total:
-                    raise MolstructJsonError(
-                        f"annotations[{name!r}]: atom index {idx} out of "
-                        f"range [0, {n_atoms_total})")
-            normed_annotations[name] = channel.to_json()
+    # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
+    # authority, SHARED byte-for-byte with the write validator (to_dict).  This
+    # is what closes the read/write drift that silently dropped cell_origin: a
+    # field cannot exist on one side and not the other, because there is only one
+    # side.  ``selection_rules`` (a sidecar-only pass-through) shares its one
+    # validator too.
+    fields = structure_fields_via_dataclass(n_atoms_total, {
+        "regions":      regions,
+        "frozen_atoms": frozen_atoms,
+        "cell":         cell,
+        "cell_origin":  cell_origin,
+        "pbc":          pbc,
+        "axis_kind":    axis_kind,
+        "vacuum":       vacuum,
+        "annotations":  annotations,
+    })
+    normed_rules = normalise_selection_rules(
+        selection_rules, set(fields["regions"]))
 
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
         "structure_hash":  structure_hash,
-        "regions":         normed_regions,
-        "frozen_atoms":    normed_frozen,
+        "regions":         fields["regions"],
+        "frozen_atoms":    fields["frozen_atoms"],
         "selection_rules": normed_rules,
-        "cell":            normed_cell,
-        "pbc":             normed_pbc,
-        "axis_kind":       normed_axis_kind,
-        "vacuum":          normed_vacuum,
-        "annotations":     normed_annotations,
+        "cell":            fields["cell"],
+        "cell_origin":     fields["cell_origin"],
+        "pbc":             fields["pbc"],
+        "axis_kind":       fields["axis_kind"],
+        "vacuum":          fields["vacuum"],
+        "annotations":     fields["annotations"],
         "created_by":      str(created_by),
         "created_at":      created_at,
     }
@@ -270,6 +189,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             frozen_atoms    = data.get("frozen_atoms"),
             selection_rules = data.get("selection_rules"),
             cell            = data.get("cell"),
+            cell_origin     = data.get("cell_origin"),
             pbc             = data.get("pbc"),
             axis_kind       = data.get("axis_kind"),
             vacuum          = data.get("vacuum"),

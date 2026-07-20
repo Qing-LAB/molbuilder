@@ -24,7 +24,6 @@ path the CLI exercises).  Real filesystem; no mocks.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -286,7 +285,8 @@ def api_checkpoint_config_get():
         return _protocol_error(str(exc))
     repo = Repo(str(path))
     if not repo.initialized:
-        return _advisory(f"{path} is not a checkpoint repo.", where="path")
+        return _protocol_error(
+            "not a checkpoint repo; run init first", code=409)
     return jsonify({"ok": True, "archive_globs": repo.archive_globs()})
 
 
@@ -305,7 +305,8 @@ def api_checkpoint_config_set():
         return _protocol_error("archive_globs must be a list of glob strings")
     repo = Repo(str(path))
     if not repo.initialized:
-        return _advisory(f"{path} is not a checkpoint repo.", where="path")
+        return _protocol_error(
+            "not a checkpoint repo; run init first", code=409)
     try:
         updated = repo.set_archive_globs(globs)
     except CheckpointError as exc:

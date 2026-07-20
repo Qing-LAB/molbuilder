@@ -32,8 +32,8 @@
         if (typeof coordsProvider !== "function") {
             throw new Error("mountMeasurementOverlay: a coordsProvider() is required");
         }
-        const meas = root.molbuilder && root.molbuilder.selection
-                   && root.molbuilder.selection.measurements;
+        const meas = root.molbuilder && root.molbuilder.molview && root.molbuilder.molview.selection
+                   && root.molbuilder.molview.selection.measurements;
 
         const el = document.createElement("div");
         el.className = "molview-measurement-overlay selection-measurement-overlay";

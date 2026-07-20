@@ -108,10 +108,9 @@ def junction_with_sidecar(junction_xyz_file):
     into molview.data and the Generate POST can source them from there."""
     from molbuilder.sidecars import molstruct as msj
     payload = msj.to_dict(
+        {"regions": _JUNCTION_REGIONS, "frozen_atoms": _JUNCTION_FROZEN},
         n_atoms_total=20,
         structure_hash=msj.sha256_of_file(junction_xyz_file),
-        regions=_JUNCTION_REGIONS,
-        frozen_atoms=_JUNCTION_FROZEN,
     )
     msj.save(msj.sidecar_path_for(junction_xyz_file), payload)
     return junction_xyz_file

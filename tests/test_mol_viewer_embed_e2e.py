@@ -2034,10 +2034,13 @@ class TestHandleSurface:
                         ".mol-viewer-rep-btn.is-active");
                     return b ? b.getAttribute("data-rep") : null;
                 };
-                const labelsBtn = bar.querySelector(
-                    '.mol-viewer-toggle[data-action="labels"]');
-                const axesBtn = bar.querySelector(
-                    '.mol-viewer-toggle[data-action="axes"]');
+                // Labels / Axes toggles moved to the always-visible left RAIL
+                // (.mol-viewer-quickbar), a sibling of the knob bar under host;
+                // the rep buttons + bg swatches still live in the knob `bar`.
+                const labelsBtn = host.querySelector(
+                    '.mol-viewer-quick[data-quick="labels"]');
+                const axesBtn = host.querySelector(
+                    '.mol-viewer-quick[data-quick="axes"]');
                 const activeBg = () => {
                     const b = bar.querySelector(
                         ".mol-viewer-bg-swatch.is-active");

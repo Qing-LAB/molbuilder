@@ -97,10 +97,10 @@ class TestSidecarRoundTrip:
     def test_round_trip_through_to_dict_and_apply(self):
         from molbuilder.sidecars import molstruct as ms
         d = ms.to_dict(
+            {"cell": [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+             "axis_kind": ["periodic", "periodic", "transport"],
+             "vacuum": [0.0, 0.0, 0.0]},
             n_atoms_total=2, structure_hash="a" * 64,
-            cell=[[5, 0, 0], [0, 5, 0], [0, 0, 10]],
-            axis_kind=["periodic", "periodic", "transport"],
-            vacuum=[0.0, 0.0, 0.0],
         )
         assert d["axis_kind"] == ["periodic", "periodic", "transport"]
         assert d["vacuum"] == [0.0, 0.0, 0.0]
@@ -117,10 +117,11 @@ class TestSidecarRoundTrip:
         junction's box survives a save/reload; dropped when there's no explicit cell."""
         from molbuilder.sidecars import molstruct as ms
         d = ms.to_dict(
+            {"cell": [[5, 0, 0], [0, 5, 0], [0, 0, 10]],
+             "cell_origin": [-2.5, -2.5, -5.0],
+             "axis_kind": ["periodic", "periodic", "transport"],
+             "vacuum": [0.0, 0.0, 0.0]},
             n_atoms_total=2, structure_hash="a" * 64,
-            cell=[[5, 0, 0], [0, 5, 0], [0, 0, 10]],
-            cell_origin=[-2.5, -2.5, -5.0],
-            axis_kind=["periodic", "periodic", "transport"], vacuum=[0.0, 0.0, 0.0],
         )
         assert d["schema_version"] == 6
         assert d["cell_origin"] == [-2.5, -2.5, -5.0]
@@ -128,8 +129,8 @@ class TestSidecarRoundTrip:
         ms.apply_to_structure(s, d)
         assert np.allclose(s.cell_origin, [-2.5, -2.5, -5.0])
         # No explicit cell -> cell_origin is meaningless and dropped.
-        d2 = ms.to_dict(n_atoms_total=1, structure_hash="b" * 64,
-                        cell_origin=[1, 2, 3])
+        d2 = ms.to_dict({"cell_origin": [1, 2, 3]},
+                        n_atoms_total=1, structure_hash="b" * 64)
         assert d2["cell_origin"] is None
 
     def test_pre_v5_kgrid_key_is_ignored_on_read(self):
@@ -144,8 +145,8 @@ class TestSidecarRoundTrip:
     def test_invalid_axis_kind_rejected_at_build(self):
         from molbuilder.sidecars import molstruct as ms
         with pytest.raises(ms.MolstructJsonError, match="axis_kind"):
-            ms.to_dict(n_atoms_total=1, structure_hash="a" * 64,
-                       axis_kind=["periodic", "nope", "isolated"])
+            ms.to_dict({"axis_kind": ["periodic", "nope", "isolated"]},
+                       n_atoms_total=1, structure_hash="a" * 64)
 
     def test_v3_sidecar_absent_fields_keeps_defaults(self):
         from molbuilder.sidecars import molstruct as ms

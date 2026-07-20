@@ -1,4 +1,4 @@
-"""Node unit test for ``lib/selection/mount-panel.js`` -- the reusable fused
+"""Node unit test for ``lib/molview/selection/mount-panel.js`` -- the reusable fused
 selection-panel composition (Phase 5 S2).
 
 Verifies the wiring (partial fetched + inserted, the CALLER's store forwarded to
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/selection/mount-panel.js"
+MODULE = ROOT / "molbuilder/web/static/lib/molview/selection/mount-panel.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -39,10 +39,10 @@ def test_mountpanel_forwards_store_and_attaches_handle():
         const HANDLE = { setOverlays: function () {}, _tag: "viewer" };
         // The module IIFE already created global.molbuilder{.selection.mountPanel};
         // ADD to it (don't overwrite -- that would drop mountPanel).
-        global.molbuilder.selectionPanel = {
+        global.molbuilder.molview.selection.panel = {
             mount: function (host, opts) { calls.mount = opts; return { _tag: "panel" }; },
         };
-        global.molbuilder.selection.viewerAdapter = {
+        global.molbuilder.molview.selection.viewerAdapter = {
             attach: function (h, opts) {
                 calls.attach = { handle: h._tag, store: opts.store._tag, mode: opts.mode };
                 return { _tag: "adapter" };
@@ -54,7 +54,7 @@ def test_mountpanel_forwards_store_and_attaches_handle():
         };
         const host = { innerHTML: "" };
         (async () => {
-            const r = await global.molbuilder.selection.mountPanel(
+            const r = await global.molbuilder.molview.selection.mountPanel(
                 host, { store: STORE, viewerHandle: HANDLE, mode: "readonly" });
             console.log(JSON.stringify({
                 htmlInserted:  host.innerHTML.indexOf("selection-atom-list") >= 0,
@@ -82,12 +82,12 @@ def test_mountpanel_renders_banner_on_fetch_failure():
             return { setAttribute: function () {},
                      set textContent(v) { created = v; }, get textContent() { return created; } };
         } };
-        global.molbuilder.selectionPanel = {
+        global.molbuilder.molview.selection.panel = {
             mount: function () { throw new Error("must not mount on fetch failure"); } };
         global.fetch = function () { return Promise.resolve({ ok: false, status: 503 }); };
         const host = { innerHTML: "seed", appendChild: function () {} };
         (async () => {
-            const r = await global.molbuilder.selection.mountPanel(host, { viewerHandle: {} });
+            const r = await global.molbuilder.molview.selection.mountPanel(host, { viewerHandle: {} });
             console.log(JSON.stringify({
                 panel: r.panel, adapter: r.adapterHandle, banner: created, cleared: host.innerHTML }));
         })();

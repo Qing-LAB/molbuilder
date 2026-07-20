@@ -81,9 +81,9 @@ def _write_sidecar(xyz_path: Path, regions: dict) -> Path:
     )
     sidecar_path = sidecar_path_for(xyz_path)
     payload = to_dict(
+        {"regions": regions},
         n_atoms_total=len(xyz_path.read_text().splitlines()) - 2,
         structure_hash=sha256_of_file(xyz_path),
-        regions=regions,
     )
     sidecar_path.write_text(json.dumps(payload))
     return sidecar_path

@@ -162,8 +162,9 @@
                         }
                         return;
                     }
-                    if (!handle) {
-                        status.textContent = "Viewer failed: molview.mount returned null.";
+                    if (!handle || !handle.ok) {
+                        status.textContent = "Viewer failed: "
+                            + ((handle && handle.error) || "molview.mount failed.");
                         status.classList.add("inspector-inline-error");
                         return;
                     }

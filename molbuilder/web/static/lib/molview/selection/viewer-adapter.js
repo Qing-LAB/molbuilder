@@ -66,6 +66,36 @@
         return _fallbackColor(label);
     }
 
+    // isolate ("show selected only") is a view TOGGLE whose on/off value lives in
+    // the selection store (the viewer needs to know WHICH atoms are selected to hide
+    // the rest).  This factory returns the toggle SPEC the embed renders through its
+    // ONE view-toggle path (handle.addViewToggle): a canvas quick button + a View-menu
+    // entry, byte-identical to the built-in axes/labels/overlay/cell toggles.  The
+    // spec's read/run/subscribe close over the store; the "auto-clear isolate when the
+    // selection empties" rule lives in the store (a selection-state rule), not here.
+    function isolateToggle(store) {
+        return {
+            action:    "isolate",
+            glyph:     "◉",
+            label:     "Show selected only",
+            title:     "Hide unselected atoms so the current selection stands out.",
+            read:      function () {
+                const s = (store && store.getState && store.getState()) || {};
+                return !!s.isolate;
+            },
+            run:       function () {
+                const s = (store && store.getState && store.getState()) || {};
+                if (store && typeof store.setIsolate === "function") {
+                    store.setIsolate(!s.isolate);
+                }
+            },
+            subscribe: function (cb) {
+                return (store && typeof store.subscribe === "function")
+                    ? store.subscribe(cb) : function () {};
+            },
+        };
+    }
+
     function attach(handle, opts) {
         if (!handle || typeof handle.setOverlays !== "function") {
             throw new Error(
@@ -73,22 +103,20 @@
               + "(window.molbuilder.viewer.embed return value), got "
               + (handle && typeof handle));
         }
-        // Phase 10 (workspace-contract.md §5): bind against ws.selection,
-        // not the legacy selection.store global.  ws.selection
-        // exposes the full toggle/subscribe/getState surface used
-        // by this adapter.
-        // Phase 5 (fused module): a caller MAY pass its own store instance
-        // (``opts.store``) so a readonly/ephemeral inspector paints from an
-        // ISOLATED selection; defaults to the workspace singleton (Modify
-        // unchanged).
-        const store = (opts && opts.store) || (root.molbuilder
-                       && root.molbuilder.workspace
-                       && root.molbuilder.molview && root.molbuilder.molview.data
-                       && root.molbuilder.molview.data.selection);
+        // The selection store lives on molview.data (molview-module.md §12) --
+        // resolve it DIRECTLY, not gated on the workspace persistence layer (a
+        // page can mount a viewer without the dispatcher; gating on `workspace`
+        // wrongly short-circuited to null there).  A caller MAY pass its own
+        // store (``opts.store``) so a readonly/ephemeral inspector paints from an
+        // ISOLATED selection; otherwise it's the molview.data singleton (Modify).
+        const store = (opts && opts.store)
+            || (root.molbuilder && root.molbuilder.molview
+                && root.molbuilder.molview.data
+                && root.molbuilder.molview.data.selection);
         if (!store) {
             throw new Error(
-                "viewer-adapter.attach: ws.selection missing; "
-                + "load lib/workspace/dispatcher.js first"
+                "viewer-adapter.attach: no selection store; pass opts.store or "
+                + "load lib/molview/data-model.js (molview.data.selection)"
             );
         }
         // Phase 5 (fused module, decision A / § 6.4): viewer clicks ALWAYS feed
@@ -295,9 +323,11 @@
     }
 
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.selection = root.molbuilder.selection || {};
-    root.molbuilder.selection.viewerAdapter = {
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
+    root.molbuilder.molview.selection.viewerAdapter = {
         attach:         attach,
+        isolateToggle:  isolateToggle,   // spec for the embed's addViewToggle
         _fallbackColor: _fallbackColor,   // exported for tests
         REGION_COLORS:  REGION_COLORS,
     };
@@ -306,6 +336,6 @@
         && typeof root.molbuilder.runtime.register === "function") {
         root.molbuilder.runtime.register(
             "selection.viewerAdapter",
-            root.molbuilder.selection.viewerAdapter);
+            root.molbuilder.molview.selection.viewerAdapter);
     }
 })(typeof window !== "undefined" ? window : globalThis);

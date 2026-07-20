@@ -79,7 +79,7 @@ STRICT_FILES: set[str] = {
     "lib/selection-panel.css",
     "lib/tabs.css",
     "lib/mol-viewer-embed.css",
-    "lib/selection/measurement-chip.css",
+    "lib/molview/selection/measurement-chip.css",
     "spectra/style.css",
 }
 

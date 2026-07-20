@@ -22,7 +22,7 @@
  *     getUnitCellInfo, getUnitCellOrigin, getVacuumInfo, getAxisKindInfo,
  *     setUnitCell, setVacuum, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
- *     openMolecule, generate, applyOp, discard, undo,
+ *     installMolecule, generate, applyOp, discard, undo,
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
  *     save, load, state_index, uncommitted,
  *     // Frames (molview-module.md §14.5) — coords owned by the embed movie (single owner)
@@ -65,7 +65,7 @@
  *
  *   - canvas-state (``window.molbuilder.structureCanvas``)
  *     - owns structure text + source provenance + dirty flag.
- *   - selection store (``window.molbuilder.selection.store``)
+ *   - selection store (``window.molbuilder.molview.selection.store``)
  *     - owns the atoms list (element + coords + per-atom metadata) + selection + filters + mode.
  *
  * The Modify tab is now a pure CONSUMER: it holds NO structure data (no per-state mirror,
@@ -121,7 +121,7 @@
     // order in its require chain).
     //
     // Test escape hatch: if a harness pre-mounted an instance on
-    // ``root.molbuilder.selection.store`` BEFORE the dispatcher
+    // ``root.molbuilder.molview.selection.store`` BEFORE the dispatcher
     // loaded, honour it.  This lets test setup share the same
     // store instance the dispatcher reads (so stubs of e.g.
     // ``refreshAtoms`` affect what the dispatcher sees) without
@@ -130,14 +130,16 @@
     function _store() {
         if (_selectionStore) return _selectionStore;
         if (root.molbuilder
-            && root.molbuilder.selection
-            && root.molbuilder.selection.store) {
-            _selectionStore = root.molbuilder.selection.store;
+            && root.molbuilder.molview
+            && root.molbuilder.molview.selection
+            && root.molbuilder.molview.selection.store) {
+            _selectionStore = root.molbuilder.molview.selection.store;
             return _selectionStore;
         }
         const factory = (root.molbuilder
-                         && root.molbuilder.selection
-                         && root.molbuilder.selection._createStore);
+                         && root.molbuilder.molview
+                         && root.molbuilder.molview.selection
+                         && root.molbuilder.molview.selection._createStore);
         if (typeof factory === "function") {
             _selectionStore = factory();
         }
@@ -179,7 +181,7 @@
 
     function _missing(name) {
         return new Error(
-            "workspace dispatcher: " + name + " not available on this "
+            "molview.data: " + name + " not available on this "
             + "page.  Phase 4 wires the dispatcher on /molbuilder; "
             + "other tabs do not host the canvas.");
     }
@@ -231,7 +233,7 @@
         // the atom OBJECTS, so without cloning them a consumer mutating
         // getStructure().atoms[i].x would leak straight into the store.  Reuse the selection
         // module's shared _cloneAtom (same copy the ws.selection.getState() surface uses).
-        var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
+        var _clone = (root.molbuilder.molview && root.molbuilder.molview.selection && root.molbuilder.molview.selection._cloneAtom)
                    || function (a) { return a; };
         return {
             text:          _text,
@@ -510,7 +512,7 @@
         // Defensive per-atom copy (workspace-contract §1.2.1): the store snapshot SHARES
         // the atom OBJECTS, so a bare .slice() lets a consumer mutate the store by writing
         // getAtoms()[i].x / .labels.push(...).  Use the same _cloneAtom getStructure() does.
-        var _clone = (root.molbuilder.selection && root.molbuilder.selection._cloneAtom)
+        var _clone = (root.molbuilder.molview && root.molbuilder.molview.selection && root.molbuilder.molview.selection._cloneAtom)
                    || function (a) { return a; };
         // Reflect the VISIBLE frame when scrubbed (§14.5.4): overlay the current frame's
         // coords (from the movie) onto the frame-independent atom identity.
@@ -581,7 +583,7 @@
     // Push-only undo: the state-timeline submodule (`_timeline`, below) owns the `state_index`
     // (position in the tab's operation sequence; 0 = the opened anchor) and the `uncommitted`
     // flag (true iff the in-memory model changed since the last `save` -- what a `load(-1)` would
-    // discard).  There is NO automatic write on change: only `openMolecule` (the ONE anchor
+    // discard).  There is NO automatic write on change: only `installMolecule` (the ONE anchor
     // write), `save`, and `load` touch disk.  save/load are SERIALIZED through the submodule's
     // push/pop chain so the index advances/retreats only after each workspace round-trip resolves.
     // The state timeline (Save-state / Retract) is a MolView-internal SUBMODULE
@@ -605,7 +607,7 @@
         getWorkspace:  _ws,
         trace:         _trace,
     });
-    // Guard set true while an internal apply (openMolecule / load snapshot application) drives
+    // Guard set true while an internal apply (installMolecule / load snapshot application) drives
     // the stores, so the resulting canvas/frame signals do NOT mark the model uncommitted.
     var _applying = false;
 
@@ -621,7 +623,7 @@
                 // the dispatcher.  Log and continue.
                 if (root.console && root.console.warn) {
                     root.console.warn(
-                        "workspace dispatcher: subscriber threw", e);
+                        "molview.data: subscriber threw", e);
                 }
             }
         }
@@ -697,7 +699,7 @@
      * Returns a fresh defensive copy.
      */
     function _selectionSnapshot(st) {
-        return root.molbuilder.selection._surfaceSnapshot(st);
+        return root.molbuilder.molview.selection._surfaceSnapshot(st);
     }
 
     var selection = {

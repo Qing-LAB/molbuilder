@@ -102,7 +102,7 @@
         }
 
         // (The isolate view TOGGLE was removed from the panel -- it lives in
-        // the viewer-controls bar now, molview.mountViewControls.)
+        // the viewer's left toggle RAIL now (molview injects it via the embed's addViewToggle).)
 
         const $ = (id) => rootEl.querySelector("#" + id);
         const els = {
@@ -273,15 +273,20 @@
         // and is unit-tested in tests/test_selection_measurements_js.py.
         function renderMeasurement(s) {
             if (!els.measurement) return;
-            const ns = root.molbuilder && root.molbuilder.selection;
-            const meas = ns && ns.measurements;
-            const provider = ns && ns.positionsProvider;
-            if (!meas || typeof provider !== "function") {
+            const mv = root.molbuilder && root.molbuilder.molview;
+            const meas = mv && mv.selection && mv.selection.measurements;
+            // Coordinates come from molview.data (a sibling within MolView) --
+            // the frame-aware current coords -- NOT from a global a consumer
+            // decorated onto the namespace.  getCoordinates() reflects the shown
+            // frame, so the readout matches the viewer.
+            const dataApi = mv && mv.data;
+            if (!meas || !dataApi
+                || typeof dataApi.getCoordinates !== "function") {
                 els.measurement.hidden = true;
                 els.measurement.textContent = "";
                 return;
             }
-            const positions = provider();
+            const positions = dataApi.getCoordinates() || [];
             const result = meas.compute(
                 s.indices, s.atoms, positions, s.pickOrder);
             if (!result) {
@@ -472,7 +477,7 @@
         // needing a synthetic 5000+ atom fixture.  Resolution order
         // (first match wins):
         //
-        //   1. ``window.molbuilder.selectionPanel.forceRenderMode``
+        //   1. ``window.molbuilder.molview.selection.panel.forceRenderMode``
         //      -- programmatic; what tests typically set.
         //   2. ``sessionStorage["molbuilder.panelMode"]``
         //      -- survives reloads in the same tab; convenient
@@ -487,8 +492,8 @@
         const _PANEL_MODE_KEY = "molbuilder.panelMode";
         function _resolveForceMode() {
             try {
-                const w = root.molbuilder && root.molbuilder.selectionPanel
-                          && root.molbuilder.selectionPanel.forceRenderMode;
+                const w = root.molbuilder && root.molbuilder.molview && root.molbuilder.molview.selection && root.molbuilder.molview.selection.panel
+                          && root.molbuilder.molview.selection.panel.forceRenderMode;
                 if (w === "virtual" || w === "simple") return w;
             } catch (_) { /* not yet set */ }
             try {
@@ -880,7 +885,7 @@
         // mutator; no fallback needed.
         on(els.invertBtn, "click", () => store.invert());
         // "Show selected only" (isolate) is a VIEW toggle that
-        // now live in the viewer-controls bar (molview.mountViewControls), by the viewer
+        // now live on the viewer's left toggle RAIL (molview injects them via addViewToggle), by the viewer
         // they affect -- not in this panel.  The isolate auto-clear-on-empty is handled
         // there.  Both still drive the SAME store; the panel just no longer hosts them.
 
@@ -996,14 +1001,16 @@
     // reaching into module internals:
     //
     //   // force virtual scroll on every structure:
-    //   window.molbuilder.selectionPanel.forceRenderMode = "virtual";
+    //   window.molbuilder.molview.selection.panel.forceRenderMode = "virtual";
     //   // back to auto (production default):
-    //   window.molbuilder.selectionPanel.forceRenderMode = null;
+    //   window.molbuilder.molview.selection.panel.forceRenderMode = null;
     //
     // Also resolvable via sessionStorage["molbuilder.panelMode"]
     // or the URL query ``?panel-mode=virtual``; see the comment
     // block near VSCROLL_THRESHOLD for the resolution order.
-    root.molbuilder.selectionPanel = {
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
+    root.molbuilder.molview.selection.panel = {
         mount:            mount,
         forceRenderMode:  null,
     };
@@ -1015,6 +1022,6 @@
     if (root.molbuilder.runtime
         && typeof root.molbuilder.runtime.register === "function") {
         root.molbuilder.runtime.register(
-            "selection.panel", root.molbuilder.selectionPanel);
+            "selection.panel", root.molbuilder.molview.selection.panel);
     }
 })(typeof window !== "undefined" ? window : globalThis);

@@ -9,7 +9,7 @@ contract.
 Public surface here
 -------------------
 
-* :data:`SCHEMA_VERSION`            — current on-disk schema (5).
+* :data:`SCHEMA_VERSION`            — current on-disk schema (6).
 * :exc:`MolstructJsonError`         — raised on malformed input or
   invariant violations.  Canonical home; the read-side re-imports.
 * :func:`sidecar_path_for`          — canonical ``<stem>.molstruct
@@ -17,7 +17,7 @@ Public surface here
 * :func:`sha256_of_file`            — content hash for the
   ``structure_hash`` field.
 * :func:`to_dict`                   — build the canonical sidecar
-  dict from raw fields.  Normalises + validates.
+  dict from the metadata FIELDS dict + envelope.  Normalises + validates.
 * :func:`with_lock`                 — POSIX advisory lock context-
   manager for read-modify-write cycles.  No-op on Windows.
 * :func:`save`                      — atomic write of a canonical
@@ -51,7 +51,6 @@ import contextlib
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
-import math as _math
 import os
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
@@ -128,91 +127,97 @@ def _now_iso_z() -> str:
 # --------------------------------------------------------------------- #
 
 
-def normalise_cell_pbc(
-    cell: Optional[Any], pbc: Optional[Any],
-) -> "tuple[Optional[List[List[float]]], List[bool]]":
-    """Validate + canonicalise the optional periodic lattice.
+# NOTE: the standalone ``normalise_cell_pbc`` / ``normalise_cell_origin`` field
+# validators were REMOVED once the metadata contract landed -- cell / pbc /
+# axis_kind / vacuum / cell_origin are now validated in exactly ONE place,
+# ``Structure.__post_init__`` (reached via ``structure_fields_via_dataclass`` ->
+# ``apply_metadata_dict``).  Keeping a second copy here is what let cell_origin
+# drift between the write + read paths; there is no second copy now.
 
-    ``cell`` is a 3x3 of lattice vectors (rows, Angstrom) or None;
-    ``pbc`` is a length-3 of per-axis periodicity bools or None.
-    Returns ``(cell_out, pbc_out)`` where ``cell_out`` is a list of 3
-    lists of 3 floats (JSON-friendly) or None, and ``pbc_out`` is a
-    list of 3 bools (defaults to all-periodic when a cell is present,
-    all-False otherwise).  Additive-optional in schema v3 — absence is
-    a valid (non-periodic) structure.
+
+def structure_fields_via_dataclass(
+    n_atoms_total: int, raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate + canonicalise the Structure metadata fields through the ONE
+    dataclass authority (data-vocabulary.md): apply ``raw`` to a scratch
+    N-atom :class:`~molbuilder.structure.Structure` -- which validates every
+    field exactly as a live structure does -- then read it back normalised via
+    ``metadata_to_dict``.  Shared by the write validator (:func:`to_dict`) and
+    the read validator (``parse/sidecars/molstruct._normalised_dict``) so the
+    two can never enumerate a different field set (the cell_origin drift).
+    Raises :class:`MolstructJsonError` on any invalid field.
     """
-    cell_out: Optional[List[List[float]]] = None
-    if cell is not None:
+    from molbuilder.structure import Structure
+    import numpy as _np
+    n = int(n_atoms_total)
+    scratch = Structure(elements=["C"] * n, positions=_np.zeros((n, 3)))
+    try:
+        scratch.apply_metadata_dict(raw)
+    except (ValueError, TypeError) as exc:
+        raise MolstructJsonError(str(exc)) from exc
+    return scratch.metadata_to_dict()
+
+
+def normalise_selection_rules(
+    selection_rules: Optional[Dict[str, Any]],
+    valid_regions,
+) -> Dict[str, Any]:
+    """Validate the sidecar-only ``selection_rules`` map (NOT a Structure field):
+    each target must name a normalised region or the literal ``"frozen_atoms"``,
+    and each value is re-parsed through :mod:`molbuilder.selection` so a
+    malformed recipe fails at sidecar-build time.  Shared by the write + read
+    validators so the rule schema is enforced in ONE place.
+    """
+    normed: Dict[str, Any] = {}
+    if not selection_rules:
+        return normed
+    from molbuilder.selection import from_json as _rule_from_json
+    from molbuilder.selection import to_json as _rule_to_json
+    from molbuilder.selection import SelectionError
+    valid_targets = set(valid_regions) | {"frozen_atoms"}
+    for target, rule_payload in selection_rules.items():
+        if not isinstance(target, str) or not target:
+            raise MolstructJsonError(
+                f"selection_rules: target label must be non-empty string; "
+                f"got {target!r}")
+        if target not in valid_targets:
+            raise MolstructJsonError(
+                f"selection_rules: target {target!r} doesn't match any region "
+                f"or 'frozen_atoms' (known: {sorted(valid_targets)!r})")
         try:
-            rows = [[float(x) for x in row] for row in cell]
-        except (TypeError, ValueError) as exc:
+            rule = _rule_from_json(rule_payload)
+        except SelectionError as exc:
             raise MolstructJsonError(
-                f"cell must be a 3x3 numeric matrix; got {cell!r} ({exc})"
-            ) from exc
-        if len(rows) != 3 or any(len(r) != 3 for r in rows):
-            raise MolstructJsonError(
-                f"cell must be 3x3 (3 lattice-vector rows); got "
-                f"{len(rows)} row(s)"
-            )
-        if any(not _math.isfinite(x) for r in rows for x in r):
-            raise MolstructJsonError("cell entries must all be finite")
-        # Reject a singular/degenerate lattice (zero volume / parallel
-        # vectors) -- it breaks downstream reciprocal-space math.  3x3
-        # determinant via the rule of Sarrus (avoid a numpy dependency
-        # in this stdlib-light sidecar module).
-        a, b, c = rows
-        det = (a[0] * (b[1] * c[2] - b[2] * c[1])
-               - a[1] * (b[0] * c[2] - b[2] * c[0])
-               + a[2] * (b[0] * c[1] - b[1] * c[0]))
-        if abs(det) < 1e-8:
-            raise MolstructJsonError(
-                "cell is singular/degenerate (near-zero volume); the "
-                "three lattice vectors must be linearly independent")
-        cell_out = rows
-    if pbc is None:
-        pbc_out = [cell_out is not None] * 3
-    else:
-        try:
-            pbc_out = [bool(b) for b in pbc]
-        except TypeError as exc:
-            raise MolstructJsonError(
-                f"pbc must be a length-3 list of bools; got {pbc!r}"
-            ) from exc
-        if len(pbc_out) != 3:
-            raise MolstructJsonError(
-                f"pbc must have exactly 3 entries (one per axis); got "
-                f"{len(pbc_out)}"
-            )
-    return cell_out, pbc_out
+                f"selection_rules[{target!r}]: invalid rule: {exc}") from exc
+        normed[target] = _rule_to_json(rule)   # re-serialise -> normalised
+    return normed
 
 
 def to_dict(
+    fields: Optional[Dict[str, Any]] = None,
     *,
     n_atoms_total: int,
     structure_hash: str,
-    regions: Optional[Dict[str, List[int]]] = None,
-    frozen_atoms: Optional[List[int]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
-    cell: Optional[Any] = None,
-    cell_origin: Optional[Any] = None,
-    pbc: Optional[Any] = None,
-    axis_kind: Optional[Any] = None,
-    vacuum: Optional[Any] = None,
-    annotations: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build the sidecar dict in canonical form.  Doesn't write
-    anywhere; use :func:`save` for that.
+    """Build the canonical sidecar dict from the metadata FIELDS dict + envelope.
 
-    Indices in ``regions`` are sorted + deduped per region (mirrors
-    Structure's own normalisation).  ``frozen_atoms`` is sorted +
-    deduped globally.  ``selection_rules`` is an optional dict keyed
-    by region label (or the literal ``"frozen_atoms"``) whose values
-    are JSON rule trees from :mod:`molbuilder.selection`; the tree
-    is validated by re-parsing it through :func:`from_json` so a
-    malformed recipe is caught at sidecar-build time, not at
-    engine-load time.
+    ``fields`` is the metadata field dict -- the SAME shape
+    :meth:`Structure.metadata_to_dict` produces (``regions`` / ``frozen_atoms``
+    / ``cell`` / ``cell_origin`` / ``pbc`` / ``axis_kind`` / ``vacuum`` /
+    ``annotations``).  STRICT type: ``annotations`` are JSON channel dicts, NOT
+    ``AtomChannel`` objects -- serialise a live map with
+    :func:`molbuilder.structure.annotations_to_json` first.  A subset is fine
+    (an absent key -> the Structure default).  This ONE dict-shaped parameter
+    matches ``apply_metadata_dict`` / ``apply_to_structure`` -- the whole
+    metadata API set speaks the same format.
+
+    The envelope (``schema_version`` / ``n_atoms_total`` / ``structure_hash`` /
+    ``created_*``) and the sidecar-only ``selection_rules`` (keyed by region
+    label or the literal ``"frozen_atoms"``, each a JSON rule tree validated by
+    re-parsing through :func:`molbuilder.selection.from_json`) are layered on.
+    Doesn't write anywhere; use :func:`save` for that.
     """
     if not isinstance(n_atoms_total, int) or n_atoms_total < 0:
         raise MolstructJsonError(
@@ -225,131 +230,28 @@ def to_dict(
             f"{structure_hash!r})"
         )
 
-    # Region membership is NOT mutually exclusive (an atom may carry
-    # multiple labels).  Engines that need a disjoint partition check
-    # separately at engine-load time.
-    normed_regions: Dict[str, List[int]] = {}
-    if regions:
-        for name, idxs in regions.items():
-            if not isinstance(name, str) or not name:
-                raise MolstructJsonError(
-                    f"region label must be non-empty string; got "
-                    f"{name!r}"
-                )
-            unique = sorted({int(i) for i in idxs})
-            for idx in unique:
-                if not 0 <= idx < n_atoms_total:
-                    raise MolstructJsonError(
-                        f"regions[{name!r}]: atom index {idx} out of "
-                        f"range [0, {n_atoms_total})"
-                    )
-            normed_regions[name] = unique
-
-    normed_frozen: List[int] = []
-    if frozen_atoms:
-        unique = sorted({int(i) for i in frozen_atoms})
-        for idx in unique:
-            if not 0 <= idx < n_atoms_total:
-                raise MolstructJsonError(
-                    f"frozen_atoms: atom index {idx} out of range "
-                    f"[0, {n_atoms_total})"
-                )
-        normed_frozen = unique
-
-    normed_rules: Dict[str, Any] = {}
-    if selection_rules:
-        # Import locally to keep the import graph narrow -- selection
-        # is a leaf utility we only need when the caller is using
-        # selection rules at all.
-        from molbuilder.selection import from_json as _rule_from_json
-        from molbuilder.selection import to_json as _rule_to_json
-        from molbuilder.selection import SelectionError
-        valid_targets = set(normed_regions) | {"frozen_atoms"}
-        for target, rule_payload in selection_rules.items():
-            if not isinstance(target, str) or not target:
-                raise MolstructJsonError(
-                    f"selection_rules: target label must be non-empty "
-                    f"string; got {target!r}"
-                )
-            if target not in valid_targets:
-                raise MolstructJsonError(
-                    f"selection_rules: target {target!r} doesn't match "
-                    f"any region or 'frozen_atoms' (known: "
-                    f"{sorted(valid_targets)!r})"
-                )
-            try:
-                rule = _rule_from_json(rule_payload)
-            except SelectionError as exc:
-                raise MolstructJsonError(
-                    f"selection_rules[{target!r}]: invalid rule: {exc}"
-                ) from exc
-            # Re-serialise so the stored form is normalised (in case
-            # the caller built it by hand with stray keys).
-            normed_rules[target] = _rule_to_json(rule)
-
-    normed_cell, normed_pbc = normalise_cell_pbc(cell, pbc)
-
-    # Periodicity kind / vacuum (structure-periodicity.md; additive @ v4).
-    # axis_kind is authoritative; pbc above is its derived ASE view.
-    # (k-grid was dropped @ v5: it's a reciprocal-space SAMPLING knob that
-    # belongs on SiestaConfig / TransportConfig, not the geometry sidecar.)
-    _KINDS = ("periodic", "isolated", "transport")
-    normed_axis_kind = None
-    if axis_kind is not None:
-        ak = [str(k) for k in axis_kind]
-        if len(ak) != 3 or any(k not in _KINDS for k in ak):
-            raise MolstructJsonError(
-                f"axis_kind must be exactly 3 of {_KINDS}; got {axis_kind!r}")
-        normed_axis_kind = ak
-    normed_vacuum = None
-    if vacuum is not None:
-        v = [float(x) for x in vacuum]
-        if len(v) != 3:
-            raise MolstructJsonError(f"vacuum must have 3 entries; got {vacuum!r}")
-        normed_vacuum = v
-    # cell_origin (schema v6; structure-periodicity.md § 3c): the world-space low
-    # corner an EXPLICIT cell emanates from, so an electrode-junction cell wraps
-    # off-origin atoms.  Only meaningful with an explicit cell; dropped otherwise.
-    normed_cell_origin = None
-    if cell_origin is not None and normed_cell is not None:
-        co = [float(x) for x in cell_origin]
-        if len(co) != 3 or not all(_math.isfinite(x) for x in co):
-            raise MolstructJsonError(
-                f"cell_origin must be 3 finite floats; got {cell_origin!r}")
-        normed_cell_origin = co
-
-    # Extensible per-atom annotation channels (schema v4; atom-annotations.md
-    # § 3).  Additive alongside regions/frozen_atoms (which are still written
-    # -- "dual-write" so v3 readers keep working).  Accepts a mapping of
-    # {name: AtomChannel} (serialised) or already-JSON channel dicts.
-    normed_annotations: Dict[str, Any] = {}
-    if annotations:
-        from molbuilder.structure import AtomChannel as _AtomChannel
-        for name, ch in annotations.items():
-            if isinstance(ch, _AtomChannel):
-                normed_annotations[name] = ch.to_json()
-            elif isinstance(ch, dict) and "kind" in ch:
-                # round-trip a raw channel dict through the type so a
-                # hand-built one is normalised + validated.
-                normed_annotations[name] = _AtomChannel.from_json(ch).to_json()
-            else:
-                raise MolstructJsonError(
-                    f"annotations[{name!r}] must be an AtomChannel or a "
-                    f"channel dict with a 'kind'; got {type(ch).__name__}")
+    # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
+    # authority (a scratch N-atom Structure IS the schema).  Shared verbatim with
+    # the read side + apply_to_structure, so no field can drift between them.
+    fields = structure_fields_via_dataclass(n_atoms_total, fields or {})
+    # selection_rules -- a sidecar-only pass-through (not a Structure field),
+    # validated against the normalised region set (one shared validator).
+    normed_rules = normalise_selection_rules(
+        selection_rules, set(fields["regions"]))
 
     return {
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
         "structure_hash":  structure_hash,
-        "regions":         normed_regions,
-        "frozen_atoms":    normed_frozen,
+        "regions":         fields["regions"],
+        "frozen_atoms":    fields["frozen_atoms"],
         "selection_rules": normed_rules,
-        "cell":            normed_cell,
-        "cell_origin":     normed_cell_origin,
-        "pbc":             normed_pbc,
-        "axis_kind":       normed_axis_kind,
-        "vacuum":          normed_vacuum,
-        "annotations":     normed_annotations,
+        "cell":            fields["cell"],
+        "cell_origin":     fields["cell_origin"],
+        "pbc":             fields["pbc"],
+        "axis_kind":       fields["axis_kind"],
+        "vacuum":          fields["vacuum"],
+        "annotations":     fields["annotations"],
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
@@ -465,17 +367,23 @@ def save(
 
 
 def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
-    """Copy ``sidecar_data``'s ``regions`` + ``frozen_atoms`` onto
-    ``struct``.  Validates that the sidecar's ``n_atoms_total``
-    matches the structure's atom count — a mismatch usually means
-    the user edited the XYZ separately and the sidecar's indices no
-    longer point at the right atoms.
+    """Apply a loaded sidecar payload's metadata onto ``struct`` IN PLACE.
 
-    The sidecar's ``structure_hash`` is NOT verified here — the
-    caller (typically the transport script generator) compares it
-    against the on-disk XYZ's hash with a path it knows about.
-    Doing the hash check here would couple this module to the XYZ
-    file location.
+    Delegates the whole field set (regions / frozen_atoms / cell / cell_origin /
+    pbc / axis_kind / vacuum / annotations) to
+    :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
+    dict->struct authority (data-vocabulary.md).  Because the writer
+    (``Structure.metadata_to_dict``) and this reader share that one method, they
+    can no longer drift a field (the class of bug that dropped ``cell_origin`` on
+    reload).  ``selection_rules`` is a sidecar-only pass-through (not a Structure
+    field) and is intentionally not applied here.
+
+    Validates that the sidecar's ``n_atoms_total`` matches the structure's atom
+    count -- a mismatch usually means the XYZ was edited separately and the
+    sidecar's indices no longer point at the right atoms.  The sidecar's
+    ``structure_hash`` is NOT verified here (the caller compares it against the
+    on-disk XYZ's hash with a path it knows about).  A pre-v5 ``kgrid`` key is
+    ignored (k-grid is a sampling knob on the config, not a geometry field).
     """
     sidecar_n = sidecar_data.get("n_atoms_total")
     struct_n = len(struct.elements)
@@ -486,58 +394,12 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
-    struct.regions      = dict(sidecar_data.get("regions") or {})
-    struct.frozen_atoms = list(sidecar_data.get("frozen_atoms") or [])
-
-    # Extensible annotation channels (schema v4; atom-annotations.md § 3).
-    # Absent on a v3 sidecar -> leave struct.annotations empty (regions +
-    # frozen above already carry the built-ins).
-    ann_raw = sidecar_data.get("annotations")
-    if ann_raw:
-        from molbuilder.structure import annotations_from_json
-        struct.annotations = annotations_from_json(ann_raw)
-
-    # Periodic lattice (additive-optional, v3).  Absent / null cell ->
-    # leave the structure non-periodic.  Re-validated through the same
-    # normaliser the writer uses, so a hand-edited sidecar fails here
-    # with a clear message rather than deep in an emitter.
-    cell_raw = sidecar_data.get("cell")
-    pbc_raw  = sidecar_data.get("pbc")
-    norm_cell, norm_pbc = normalise_cell_pbc(cell_raw, pbc_raw)
-    if norm_cell is not None:
-        import numpy as _np
-        struct.cell = _np.asarray(norm_cell, dtype=float)
-        # cell_origin (v6; § 3c): the low corner an explicit cell wraps off-origin
-        # atoms from.  Only meaningful WITH a cell (mirrors the writer's guard).
-        co_raw = sidecar_data.get("cell_origin")
-        if co_raw is not None:
-            struct.cell_origin = _np.asarray(
-                [float(x) for x in co_raw], dtype=float)
-
-    # axis_kind is AUTHORITATIVE (structure-periodicity.md); pbc is its DERIVED view.
-    # Resolve axis_kind: explicit wins; else a present cell => periodic-all (the
-    # convention a bare celled structure follows); else a bare pbc records intent;
-    # else keep the Structure's own default.  Then re-derive pbc FROM it so the two
-    # can NEVER contradict (review F3 / a-c#1 — pbc used to be set from cell-presence
-    # and could disagree with an isolated/transport axis_kind).
-    # Precedence: explicit axis_kind > explicit pbc (derive axis_kind from it) >
-    # a bare cell (periodic-all convention).  Explicit pbc MUST win over the cell
-    # convention, else a stored pbc=(T,T,F) is clobbered to all-periodic.
-    ak = sidecar_data.get("axis_kind")
-    if ak is not None:
-        struct.axis_kind = tuple(str(k) for k in ak)
-    elif norm_pbc is not None:
-        struct.axis_kind = tuple("periodic" if b else "isolated" for b in norm_pbc)
-    elif norm_cell is not None:
-        struct.axis_kind = ("periodic", "periodic", "periodic")
-    if struct.axis_kind is not None:
-        struct.pbc = tuple(k != "isolated" for k in struct.axis_kind)
-
-    vac = sidecar_data.get("vacuum")
-    if vac is not None:
-        struct.vacuum = tuple(float(x) for x in vac)
-    # (A "kgrid" key from a pre-v5 sidecar is intentionally ignored: k-grid is
-    # no longer a geometry field -- it lives on SiestaConfig / TransportConfig.)
+    try:
+        struct.apply_metadata_dict(sidecar_data)
+    except (ValueError, TypeError) as exc:
+        # Surface field-validation failures as the sidecar-layer error type,
+        # preserving the clear per-field message from the dataclass invariants.
+        raise MolstructJsonError(str(exc)) from exc
 
 
 def load(sidecar_path):

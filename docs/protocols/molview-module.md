@@ -749,7 +749,20 @@ rest append via `shape.addArrow`) — one scene object + one geometry, not N sha
 per frame). Per-arrow colour is preserved (e.g. a gold-highlighted max force).
 
 - **Atom-index labels** are likewise supplied via `setLabels` (e.g. `{atoms:"all", format:"index"}`);
-  a generic "show labels" is also available as a viewer chrome toggle in the embed's View menu.
+  a generic "show labels" is also available as a viewer **rail toggle** (which drives the *same*
+  embed `setLabels` door — see below).
+
+3. **The overlay controller re-applies INSIDE the render streamline — it has no store subscription
+   of its own.** A redraw (`setStructure`) clears the embed's overlays, so the render controller
+   calls the overlay controller's `refresh()` immediately after each redraw (`render.js`
+   `afterRedraw`). It must re-apply **only when a redraw actually happened** — NOT on every store
+   change. The overlay controller re-applies **only what the consumer handed it** (`_arrows`/
+   `_labels`); when the consumer set nothing it does **not** touch `setArrows`/`setLabels`, because
+   those embed doors are ALSO driven by the "Show overlay"/"Show labels" **rail toggles**. (An
+   earlier version subscribed to the store directly and force-cleared `setLabels(false)` on any
+   change — a mode switch / selection click wiped the user's "Show labels" toggle. Two owners of
+   one door: fixed by coupling re-apply to the render, and by never force-clearing a door the
+   consumer never set.)
 
 > **Requires the owned-viewer mount path.** Overlays draw only where molview owns the render —
 > the **empty-host** `mount(host, ws)` path (§18.2). On the legacy pre-built-card path molview
@@ -916,17 +929,99 @@ molview.mount(hostEl, workspace, opts) -> handle
   takes **no** loader / embed / data hooks.
 - **`opts`** = `{ mode: "modify" | "readonly", owner?: string }`.
 - **`handle`** — the **owner-facing API of §D**. The complete key set (the exact `Object.keys`
-  the demo pins, sorted):
-  `{ installMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
-  ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying, setArrows, setLabels }`.
-  The first seven are the core owner API (§D); the rest are the **frame axis** (§14.5), present
-  on every handle but inert for a static structure (`frameCount() === 1`). It exposes **no
-  internals** — not the viewer handle, not the store, not DOM refs. (Maintainers reach the
-  internal composition through the module itself, §13; the owner never does.)
+  `test_molview_mount_js.py::HANDLE_KEYS` pins, sorted):
+  `{ ok, installMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
+  ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying, setArrows,`
+  ` setFrameArrows, setLabels }`.
+  `ok` is the mount-contract flag (§18.4); the core owner API (installMolecule / exportFile /
+  undo / getStructure / getSelection / onChange / dispose) is §D; the rest are the **frame axis**
+  (§14.5), present on every handle but inert for a static structure (`frameCount() === 1`). It
+  exposes **no internals** — not the viewer handle, not the store, not DOM refs. (Maintainers
+  reach the internal composition through the module itself, §13; the owner never does.)
 
 The caller's ONLY job is to pass the right workspace + mode (+ owner). **Persistence is the
 workspace's concern; the data model + protection are molview's** — molview just uses the
 workspace to store bytes.
+
+### 18.4 The mount CONTRACT — `mount()` ALWAYS returns a `{ dispose, ok }` handle
+
+`mount()` is `async` and **never resolves to a sentinel `null`**. It ALWAYS resolves to a handle
+carrying `dispose` (so a caller can tear down unconditionally):
+
+- **success** → the full handle above, with **`ok: true`**.
+- **failure** (missing host / workspace / store, selection module absent, or the panel failed to
+  mount) → **`{ ok: false, error: "<reason>", dispose: () => {} }`** (a no-op disposer). mount
+  also `console.warn`s the reason, and a panel-mount failure shows its own inline banner.
+
+**The consumer rule — branch on `.ok`, never on truthiness:**
+
+```js
+const handle = await molview.mount(host, workspace, { mode, owner });
+if (!handle || !handle.ok) {           // a FAILED mount is a truthy object -> check .ok
+    showError(handle && handle.error); // NOT `if (!handle)` — that never fires now
+    return;
+}
+// ... use handle; call handle.dispose() on teardown (safe even on the failure handle) ...
+```
+
+Every page consumer (`selection-bootstrap`, `inspectors/structure`, `trajectory/core`,
+`spectra/viewer`, `transport/core`, `molview/demo`) follows this. **Cache the handle ONLY when
+`ok`** — caching a failure handle (e.g. `if (mvHandle) return;`) permanently blocks a later
+remount. Why a handle-with-flag rather than a throw: a failed mount is an expected, recoverable
+state (prerequisites still loading, a bad file), not an exception; the uniform `{dispose}` shape
+means no call site special-cases a sentinel.
+
+### 18.5 Injecting a store-backed view toggle — `handle.addViewToggle(spec)`
+
+The viewer's **view toggles live on the left rail** (the `.mol-viewer-quickbar`, a column beside
+the canvas inside `.mol-viewer-stage`) — reset / axes / labels / overlay / unit cell are the
+embed's own; a **store-backed** toggle whose on/off value lives OUTSIDE the embed (the selection
+store's `isolate` = "Show selected only") is injected by the molview layer through the embed's ONE
+toggle path:
+
+```js
+// molview layer (mount.js onReady), NOT the embed:
+const iso = embedHandle.addViewToggle(
+    selection.viewerAdapter.isolateToggle(store));  // spec closes over the store
+cleanups.push(() => iso.dispose());                  // wired into the mount's teardown
+```
+
+`addViewToggle(spec)` renders a rail button + wires it + subscribes, using the SAME registry path
+as the built-in toggles, and returns `{ dispose }`. `spec = { action, glyph, label, title,
+read(), run(), subscribe(cb) }`; `read`/`run` close over the external store, `subscribe` lets the
+embed re-sync the button when the store changes. The embed itself **never imports the selection
+store** — the store stays concealed behind the injected spec. (There is **no** View-menu entry for
+toggles; they are rail-only. The View **menu** holds only style / background / projection.)
+
+### 18.6 The busy↔ready surface — gated SOLELY by the render streamline
+
+There is **ONE** busy path and it lives in exactly one place: **the render streamline**
+(`render.js`). The embed exposes `handle.setBusy(msg | null)` (a gray scrim + message over the
+canvas that blocks canvas clicks), and **the render controller is its only caller.** No option
+handler, no toggle, no consumer sets busy directly.
+
+The rule that makes this a single correct path:
+
+> **Every option / parameter change becomes a data/state-flag update, and that flag change drives
+> the render streamline.** Nothing handcrafts a render (or a busy state) outside it. So when a
+> change needs a re-render — a structure edit, isolate on/off, a selection while isolating, a load
+> — the render line reacts to the flag, turns the scrim **on**, renders, and turns it **off**.
+> Callers rely on the render line for busy; they never manage it themselves.
+
+- **When it shows.** `render.js`'s single `onStoreChange` runs on every store/data change. A file
+  **load** in flight (`store.loading`) → `"Loading…"`. A re-render whose draw is big enough to
+  freeze the thread → `"Updating view…"` — sized precisely: a full base draw (structure change, or
+  isolate turning OFF) counts the whole structure; an isolate-ON draw counts only the **selected**
+  atoms. Below the threshold (~1200 atoms) nothing shows (no flicker).
+- **The paint-yield contract.** `setBusy` is synchronous *display only*, and a 3Dmol swap **blocks
+  the main thread** — so the scrim would never paint if it were set in the same tick as the work.
+  The render line shows the scrim, waits **two `requestAnimationFrame`s** (one paint), THEN runs
+  the blocking draw, THEN clears (cancelling any prior pending frame on re-entry, so only the
+  latest state draws).
+- **Why not per-caller busy.** If toggles / consumers set busy themselves, you get the exact class
+  of bug this replaces: a control (or a controller like the isolate render) that renders *outside*
+  the streamline freezes the tab with no scrim, and two owners of the busy state drift. One render
+  line, one busy gate.
 
 ### 18.2 molview OWNS the whole assembly
 
@@ -934,9 +1029,9 @@ workspace to store bytes.
 - **Embeds the viewer itself** and **subscribes to its own data model** — when the structure
   changes (a load, an edit), molview re-renders. So "Load a new file" stops being special
   glue: it is a `molview.data` write molview reacts to.
-- `selection.mountPanel(panelHost, {store: molview.data.selection, mode})`;
-  `molview.mountViewControls`; wires the fold; `mountKgridRender` (unit cell / dims from the
-  `molview.data.get*` accessors, §14.2); `mountMeasurementOverlay`.
+- `selection.mountPanel(panelHost, {store: molview.data.selection, mode})`; injects the isolate
+  rail toggle via `handle.addViewToggle` (§18.5); wires the fold; `mountRender` (base draw +
+  unit cell / dims from the `molview.data.get*` accessors, §14.2); `mountMeasurementOverlay`.
 - `dispose()` tears it all down (panel, controls, overlays, k-grid, subscriptions).
 
 ### 18.3 Persistence is the WORKSPACE's, not molview's
@@ -1023,6 +1118,12 @@ it is the ONLY way anything reads or writes the molecule. On a data change it se
 `ws.persist(...)` — the workspace stores the bytes format-blind (§18.3). The authoritative surface
 is the `api` object at the end of `data-model.js`; this section documents it, reconciled to that
 code.
+
+> **Structure metadata (periodicity / regions / frozen / annotations)** that reaches this model
+> — where it comes from, and the rule for adding/removing a metadata key — is the
+> **structure-metadata contract in [`data-vocabulary.md` §5](./data-vocabulary.md)**: one get/set
+> on `molbuilder.Structure` (`metadata_to_dict` / `apply_metadata_dict`), a JSON dict that crosses
+> every boundary, no field-list duplication. All callers comply with that contract.
 
 The `_`-prefixed store files (`_canvas-state-impl.js` = text + source + periodicity + dirty;
 `_selection-store-impl.js` = atoms + selection + filters; `_frame-series.js` = the frame axis) are

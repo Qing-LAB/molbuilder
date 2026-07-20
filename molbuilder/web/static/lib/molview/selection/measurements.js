@@ -279,7 +279,8 @@
     }
     if (root) {
         root.molbuilder = root.molbuilder || {};
-        root.molbuilder.selection = root.molbuilder.selection || {};
-        root.molbuilder.selection.measurements = api;
+        root.molbuilder.molview = root.molbuilder.molview || {};
+        root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
+        root.molbuilder.molview.selection.measurements = api;
     }
 })(typeof window !== "undefined" ? window : null);

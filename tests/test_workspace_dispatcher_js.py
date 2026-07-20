@@ -86,8 +86,8 @@ def _run_node(snippet: str) -> object:
         "window.molbuilder.structureCanvas = require("
         + json.dumps(str(CANVAS_PATH)) + ");\n"
         "require(" + json.dumps(str(STORE_PATH)) + ");\n"
-        "window.molbuilder.selection.store = "
-        "  window.molbuilder.selection._createStore();\n"
+        "window.molbuilder.molview.selection.store = "
+        "  window.molbuilder.molview.selection._createStore();\n"
         "require(" + json.dumps(str(DATA_MODEL_PATH)) + ");\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
@@ -559,7 +559,7 @@ class TestExportFile:
             "     axis_kind:['periodic','periodic','transport'],\n"
             "     vacuum:[0,0,15]}},\n"
             "  {kind:'file', file:'/p/x.xyz'});\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "window.molbuilder.molview.selection.store.adoptAtoms([\n"
             "  {index:0, element:'Au', x:0, y:0, z:0, regions:['L-electrode'], is_frozen:true},\n"
             "  {index:1, element:'S',  x:1, y:0, z:0, regions:['BDT'], is_frozen:false}]);\n"
             "const s = d.exportFile();\n"
@@ -582,7 +582,7 @@ class TestExportFile:
             "cs.setStructure({source_format:'xyz',\n"
             "  text:'3\\nx\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n'},\n"    # geometry: 3 atoms
             "  {kind:'file', file:'/p/x.xyz'});\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"       # store: only 2 atoms
+            "window.molbuilder.molview.selection.store.adoptAtoms([\n"       # store: only 2 atoms
             "  {index:0, element:'O', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
             "  {index:1, element:'H', x:1, y:0, z:0, regions:[], is_frozen:false}]);\n"
             "const blob = d.exportFile();\n"
@@ -655,7 +655,7 @@ class TestNoAutoPersist:
             "window.molbuilder.workspace.persist = function () { n++; };\n"
             "const d = window.molbuilder.molview.data;\n"
             "d.suspendPersist();\n"
-            "window.molbuilder.selection.store.adoptAtoms(\n"
+            "window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "  [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
             "d.resumePersist();\n"
             "setTimeout(() => { console.log(JSON.stringify({ persists: n })); }, 200);")
@@ -736,10 +736,10 @@ class TestPersistRoundtrip:
     def test_getState_snapshot_is_a_defensive_copy(self):
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "window.molbuilder.molview.selection.store.adoptAtoms([\n"
             "  {index:0, element:'O', regions:[], is_frozen:false},\n"
             "  {index:1, element:'H', regions:[], is_frozen:false}]);\n"
-            "Promise.resolve().then(() => window.molbuilder.selection.store.setSelection([0,1]))\n"
+            "Promise.resolve().then(() => window.molbuilder.molview.selection.store.setSelection([0,1]))\n"
             ".then(() => {\n"
             "  const snap = d.getState();\n"
             "  snap.selection.indices.push(999);\n"       # mutate the copy
@@ -770,13 +770,13 @@ class TestSubscribeAndSelection:
             "const unsub = d.subscribe(() => { calls++; });\n"
             "Promise.resolve().then(() => {\n"
             "  calls = 0;\n"
-            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
             "  return Promise.resolve();\n"
             "}).then(() => {\n"
             "  afterChange = calls;\n"
             "  unsub();\n"
-            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
             "  return Promise.resolve();\n"
             "}).then(() => {\n"
@@ -792,7 +792,7 @@ class TestSubscribeAndSelection:
             "d.subscribe(() => { good++; });\n"
             "Promise.resolve().then(() => {\n"
             "  good = 0;\n"
-            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "    [{index:0, element:'C', regions:[], is_frozen:false}]);\n"
             "  return Promise.resolve();\n"
             "}).then(() => { console.log(JSON.stringify(good)); });")
@@ -804,14 +804,14 @@ class TestSubscribeAndSelection:
         ``indices``)."""
         out = _run_node(
             "const d = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "window.molbuilder.molview.selection.store.adoptAtoms([\n"
             "  {index:0, element:'O', regions:[], is_frozen:false},\n"
             "  {index:1, element:'H', regions:[], is_frozen:false},\n"
             "  {index:2, element:'H', regions:[], is_frozen:false}]);\n"
             "Promise.resolve().then(() => d.selection.set([0, 2])).then(() => {\n"
             "  const s = d.selection.getState();\n"
             "  console.log(JSON.stringify({\n"
-            "    onStore:  window.molbuilder.selection.store.getState().selection,\n"
+            "    onStore:  window.molbuilder.molview.selection.store.getState().selection,\n"
             "    indices:  s.indices,\n"
             "    hasLegacy: 'selection' in s,\n"
             "  }));\n"
@@ -829,7 +829,7 @@ class TestSubscribeAndSelection:
 class TestFrames:
 
     _ATOMS2 = (
-        "window.molbuilder.selection.store.adoptAtoms([\n"
+        "window.molbuilder.molview.selection.store.adoptAtoms([\n"
         "  {index:0, element:'O', x:0, y:0, z:0},\n"
         "  {index:1, element:'H', x:1, y:0, z:0}]);\n"
     )
@@ -838,14 +838,14 @@ class TestFrames:
         out = _run_node(
             _FAKE_EMBED + self._ATOMS2 +
             "const d = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.setSelection([1]);\n"
+            "window.molbuilder.molview.selection.store.setSelection([1]);\n"
             "const nf = d.reloadFrames([[[0,0,0],[1,0,0]], [[0,0,0],[2,0,0]], [[0,0,0],[3,0,0]]]);\n"
             "const f0 = d.getAtoms().map(a => a.x);\n"
             "d.setFrame(2);\n"
             "const f2 = d.getAtoms().map(a => a.x);\n"
             "console.log(JSON.stringify({ nf, count: d.frameCount(),\n"
             "  current: d.currentFrame(), f0, f2,\n"
-            "  sel: window.molbuilder.selection.store.getState().selection }));")
+            "  sel: window.molbuilder.molview.selection.store.getState().selection }));")
         assert out["nf"] == 3 and out["count"] == 3
         assert out["f0"] == [0, 1]          # reload lands on frame 0
         assert out["current"] == 2
@@ -932,13 +932,13 @@ class TestViewOpsMustNotPersist:
     def test_selection_change_does_not_persist(self):
         out = _run_node(
             self._boot_one_frame() +
-            "  window.molbuilder.selection.store.adoptAtoms([\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms([\n"
             "    {index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false},\n"
             "    {index:1, element:'H', x:0, y:0, z:0.7, regions:[], is_frozen:false}]);\n"
             "  setTimeout(() => {\n"
             "    let n = 0;\n"
             "    window.molbuilder.workspace.persist = function () { n++; };\n"
-            "    window.molbuilder.selection.store.setSelection([1]);\n"   # VIEW op
+            "    window.molbuilder.molview.selection.store.setSelection([1]);\n"   # VIEW op
             "    setTimeout(() => {\n"
             "      console.log(JSON.stringify({ selectionPersisted: n > 0 }));\n"
             "    }, 200);\n"
@@ -953,7 +953,7 @@ class TestViewOpsMustNotPersist:
         return (
             _FAKE_EMBED +
             "const d = window.molbuilder.molview.data;\n"
-            "window.molbuilder.selection.store.adoptAtoms(\n"
+            "window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "  [{index:0, element:'H', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
             "window.molbuilder.structureCanvas.setStructure(\n"
             "  {source_format:'xyz', text:'1\\n\\nH 0 0 0\\n'}, {kind:'x', file:null});\n"
@@ -1094,7 +1094,7 @@ class TestStateTimeline:
         out = _run_node(
             _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
             "const d = window.molbuilder.molview.data;\n"
-            "const store = window.molbuilder.selection.store;\n"
+            "const store = window.molbuilder.molview.selection.store;\n"
             "d.installMolecule({ text:'x', filename:'/p/water.xyz' }).then(() => {\n"
             "  store.setSelection([2, 1]);\n"                       # pickOrder [2,1] -> vertex 1
             "  store.setIsolate(true);\n"
@@ -1149,7 +1149,7 @@ class TestStateTimeline:
             # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
             "  window.molbuilder.structureCanvas.setStructure(\n"
             "    {source_format:'xyz', text:'1\\nc\\nC 0 0 0\\n'}, {kind:'file', file:'/p/c.xyz'});\n"
-            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "    [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
             "  const beforeEls = d.getElements();\n"
             "  return d.load(-1).then(() => {\n"
@@ -1219,7 +1219,7 @@ class TestStateTimeline:
             # An UNCOMMITTED edit: replace the live model with a 1-atom carbon.
             "  window.molbuilder.structureCanvas.setStructure(\n"
             "    {source_format:'xyz', text:'1\\nc\\nC 0 0 0\\n'}, {kind:'file', file:'/p/c.xyz'});\n"
-            "  window.molbuilder.selection.store.adoptAtoms(\n"
+            "  window.molbuilder.molview.selection.store.adoptAtoms(\n"
             "    [{index:0, element:'C', x:0, y:0, z:0, regions:[], is_frozen:false}]);\n"
             "  const beforeEls = d.getElements();\n"
             "  return d.load(0).then(() => {\n"

@@ -171,7 +171,9 @@ def test_dispose_unsubscribes_everything():
         console.log(JSON.stringify({ beforeStore, beforeData,
                                      afterStore: storeSubs.length, afterData: dataSubs.length }));
     """)
-    # kg + the structure-redraw both subscribe to the store; the redraw also subscribes to the
-    # data model (for periodicity-edit redraws).  dispose() tears them all down.
-    assert out["beforeStore"] == 2 and out["afterStore"] == 0
+    # The render streamline is the SOLE store subscriber now (onStoreChange): it reads every
+    # flag -- structure, selection, isolate -- and drives the isolate controller via refresh().
+    # The isolate controller no longer holds its own subscription.  The redraw also subscribes
+    # to the data model (for periodicity-edit redraws).  dispose() tears them all down.
+    assert out["beforeStore"] == 1 and out["afterStore"] == 0
     assert out["beforeData"] == 1 and out["afterData"] == 0

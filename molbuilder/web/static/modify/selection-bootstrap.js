@@ -61,7 +61,7 @@
             mode: "modify",
             owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
         });
-        if (!_mounted) return;   // mount rendered its own banner / prerequisites absent
+        if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
 
         // 2b. Inject the viewer-specific XYZ loader into the store so
         // the store doesn't reach into ``window.molbuilder`` to do

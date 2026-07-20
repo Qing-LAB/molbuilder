@@ -931,7 +931,7 @@ class TestPartialSpectraInspectorEndpoint:
 class TestPartialSelectionPanelEndpoint:
     """Pin the GET /partials/selection-panel contract.
 
-    The selection panel (lib/selection-panel.js) fetches this partial
+    The selection panel (lib/molview/selection/panel.js) fetches this partial
     on /modify (and later /spectra) and assigns it to a host
     container's innerHTML.  Same shape + cache contract as the
     inspector partials -- one HTTP contract across all partials so
@@ -971,7 +971,7 @@ class TestPartialSelectionPanelEndpoint:
         "selection-target-info-btn",
         "selection-target-info-panel",
         # [Selection|Cell] page switch + Cell-page periodicity readout (§3b;
-        # lib/selection-panel.js renderCell fills these; MolView is display-only).
+        # lib/molview/selection/panel.js renderCell fills these; MolView is display-only).
         "panel-page-radio-selection",
         "panel-page-radio-cell",
         "panel-page-selection",
@@ -1003,7 +1003,7 @@ class TestPartialSelectionPanelEndpoint:
         body = web.get("/partials/selection-panel").get_data(as_text=True)
         assert f'id="{element_id}"' in body, (
             f"selection partial is missing {element_id!r}; "
-            f"lib/selection-panel.js will fail on $() lookup."
+            f"lib/molview/selection/panel.js will fail on $() lookup."
         )
 
     def test_partial_has_no_undocumented_ids(self, web):

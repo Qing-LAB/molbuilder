@@ -201,15 +201,13 @@ def _load_water(page, water_xyz_file):
 
 
 def _click_view_toggle(page, kind):
-    """Toggle a molview View-menu view-control (kind = "isolate").
+    """Toggle a molview view-control (kind = "isolate").
 
-    Track B: this toggle lives in the embed's View menu (a <details>) as a chip whose
-    <input> is CSS-hidden, so a .check() on the input times out.  Open the menu, then
-    CLICK THE LABEL (which flips the hidden checkbox)."""
-    cls = {"isolate": "vc-isolate"}[kind]
-    if not page.locator(".mol-viewer-menu-view").evaluate("el => el.open"):
-        page.locator(".mol-viewer-menu-view > summary").click()
-    page.locator(f".viewer-toggles .viewer-toggle:has(.{cls})").click()
+    Every view toggle (reset / axes / labels / overlay / cell / isolate) is the
+    SAME ``.mol-viewer-quick[data-quick=...]`` button on the embed's always-
+    visible left RAIL (``.mol-viewer-quickbar``).  No menu to open -- click the
+    rail button for ``kind`` directly."""
+    page.locator(f'.mol-viewer-quick[data-quick={kind}]').click()
 
 
 def _load_file(page, xyz_path, expected_atoms):
@@ -1815,7 +1813,7 @@ def test_modify_open_edit_save_preserves_annotations(
     annotations, so every Modify Save wrote annotations:{}."""
     from pathlib import Path as _P
     import json as _json
-    from molbuilder.structure import AtomChannel
+    from molbuilder.structure import AtomChannel, annotations_to_json
     from molbuilder.sidecars import molstruct as _msj
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     project_dir = tmp_path / "test_project"
@@ -1825,8 +1823,9 @@ def test_modify_open_edit_save_preserves_annotations(
     # Seed the sidecar with a per-atom annotation channel.
     sidecar = _msj.sidecar_path_for(water_xyz)
     _msj.save(sidecar, _msj.to_dict(
-        n_atoms_total=3, structure_hash=_msj.sha256_of_file(water_xyz),
-        annotations={"charge": AtomChannel("value", {0: -0.8, 1: 0.4, 2: 0.4})}))
+        {"annotations": annotations_to_json(
+            {"charge": AtomChannel("value", {0: -0.8, 1: 0.4, 2: 0.4})})},
+        n_atoms_total=3, structure_hash=_msj.sha256_of_file(water_xyz)))
     _open_modify(page, flask_server)
     _load_water_via_button(page, str(water_xyz))
     _wait_panel_ready(page)
@@ -2092,9 +2091,9 @@ def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
     _open_modify(page, flask_server)
     _load_file(page, str(water_xyz), expected_atoms=3)
     _wait_panel_ready(page)
-    # The module rendered the isolate toggle into the View menu (.viewer-toggles chip).
-    assert page.locator(".viewer-toggles .vc-isolate").count() == 1
-    # Select an atom, then isolate via the View menu -> the STORE's isolate flag flips.
+    # The module rendered the isolate toggle onto the always-visible left RAIL.
+    assert page.locator(".mol-viewer-quick[data-quick=isolate]").count() == 1
+    # Select an atom, then isolate via the rail -> the STORE's isolate flag flips.
     page.evaluate("() => window.molbuilder.molview.data.selection.toggle(0)")
     _click_view_toggle(page, "isolate")
     page.wait_for_function(
@@ -3594,11 +3593,10 @@ def test_axes_have_fixed_length_at_origin(
     bug)."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # Post-Phase-6: axes toggle lives inside View → Axes as a
-    # button with data-action="axes".  Click handler is wired even
-    # when the View menu is closed; the menu is purely cosmetic.
+    # Post-rail: axes toggle lives on the always-visible left RAIL as
+    # a button with data-quick="axes".
     axes_btn = page.locator(
-        '.mol-viewer-toggle[data-action="axes"]')
+        '.mol-viewer-quick[data-quick="axes"]')
     # 2026-06-13 cross-tab consistency: axes default OFF on every
     # tab (modify, structure-opt, trajectory, spectra).  Click to
     # turn axes ON before probing arrow geometry.
@@ -3740,9 +3738,8 @@ def test_reset_view_recentres_camera(
         v.setView(view);
         v.render();
     }""")
-    # Open the View menu, then click "Reset view" (data-action="reset" -> handle.refit).
-    page.locator(".mol-viewer-menu-view > summary").click()
-    page.locator('.mol-viewer-menu-view [data-action="reset"]').click()
+    # Click "Reset view" on the always-visible left RAIL (data-quick="reset" -> handle.refit).
+    page.locator('.mol-viewer-quick[data-quick="reset"]').click()
     after = page.evaluate(
         "() => window.__molbuilder_modify_test.getViewer().getView()"
     )
@@ -3754,11 +3751,10 @@ def test_reset_view_recentres_camera(
 
 
 def test_reset_view_no_op_without_structure(page, flask_server):
-    """Clicking View > Reset view with no structure loaded must not raise a JS error
+    """Clicking Reset view (left rail) with no structure loaded must not raise a JS error
     (the module's refit no-ops on an empty viewer)."""
     errors = _open_modify(page, flask_server)
-    page.locator(".mol-viewer-menu-view > summary").click()
-    page.locator('.mol-viewer-menu-view [data-action="reset"]').click()
+    page.locator('.mol-viewer-quick[data-quick="reset"]').click()
     page.wait_for_timeout(100)
     assert errors == [], f"JS error on Reset-view no-op: {errors}"
 
@@ -4709,10 +4705,10 @@ def test_measurement_readout_shows_xyz_distance_angle(
         # 2026-06-13 workspace-contract.md §5: ws.selection.getState()
         # snapshot returns ``indices`` (NOT legacy ``selection``).
         # See _selectionSnapshot in lib/workspace/dispatcher.js.
-        "() => window.molbuilder.selection.measurements.compute("
+        "() => window.molbuilder.molview.selection.measurements.compute("
         "  window.molbuilder.molview.data.selection.getState().indices,"
         "  window.molbuilder.molview.data.selection.getState().atoms,"
-        "  window.molbuilder.selection.positionsProvider(),"
+        "  window.molbuilder.molview.data.getCoordinates(),"
         "  window.molbuilder.molview.data.selection.getState().pickOrder"
         ").vertexIndex"
     )

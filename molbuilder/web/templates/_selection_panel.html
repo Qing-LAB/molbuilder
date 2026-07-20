@@ -2,7 +2,7 @@
 
     Mounted by tabs that need atom selection (initially /modify; later
     /spectra to replace the three frozen-atoms inputs).  Owned by
-    ``lib/selection-panel.js`` which subscribes via the workspace
+    ``lib/molview/selection/panel.js`` which subscribes via the workspace
     dispatcher (``ws.selection.subscribe`` → the store instance the
     dispatcher created from ``lib/molview/_selection-store-impl.js``).
 
@@ -181,8 +181,8 @@
         Invert
       </button>
     </div>
-    {#- "Show selected only" (isolate) moved to the viewer-controls bar
-        (molview.mountViewControls) -- it's a VIEW toggle, so it lives by the viewer. -#}
+    {#- "Show selected only" (isolate) moved to the viewer's left toggle RAIL
+        (molview injects it via the embed's addViewToggle) -- a VIEW toggle, so it lives by the viewer. -#}
   </div>
 
   <!-- Bulk label operations on the current selection.  Three verbs
@@ -202,7 +202,7 @@
       </label>
       <select id="selection-assign-target"
               class="selection-assign-select">
-        {#- Populated dynamically by lib/selection-panel.js
+        {#- Populated dynamically by lib/molview/selection/panel.js
             (renderAssignTarget). -#}
       </select>
       <button type="button" id="selection-target-info-btn"

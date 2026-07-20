@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = [
-    ROOT / "molbuilder/web/static/lib/selection/measurements.js",
+    ROOT / "molbuilder/web/static/lib/molview/selection/measurements.js",
     ROOT / "molbuilder/web/static/lib/molview/measurement-overlay.js",
 ]
 

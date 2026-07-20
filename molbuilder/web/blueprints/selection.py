@@ -72,11 +72,10 @@ that doesn't reference a region.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 
-from molbuilder import selection
 from molbuilder.sidecars import molstruct as molstruct_json
 from molbuilder.selection import (
     Rule, SelectionError, evaluate,

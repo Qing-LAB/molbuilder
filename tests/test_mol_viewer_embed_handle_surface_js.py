@@ -62,8 +62,10 @@ EXPECTED_METHODS = sorted([
     "setOverlays", "setAtomStyle", "setProjection",
     # Camera
     "getCamera", "setCamera",
-    # Knob bar
-    "setKnobs",
+    # Knob bar + injected view toggles (molview adds isolate via this)
+    "setKnobs", "addViewToggle",
+    # Busy<->ready surface (the ONE loading/render scrim)
+    "setBusy",
     # Animation control
     "setAnimation", "playAnimation", "pauseAnimation",
     "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
@@ -206,72 +208,65 @@ def _view_menu_source() -> str:
     return src[start.start():end.start()]
 
 
-class TestViewMenuStructure:
-    """PIN 3 — Reset first, then ONE untitled toggle group."""
+def _view_toggles_source() -> str:
+    """The body of the ``VIEW_TOGGLES`` registry array — the single
+    source that stamps out the left-RAIL toggle buttons."""
+    src = MODULE.read_text()
+    start = re.search(r"const VIEW_TOGGLES = \[", src)
+    assert start, "Could not find the VIEW_TOGGLES registry."
+    end = src.find("];", start.start())
+    assert end != -1
+    return src[start.start():end]
 
-    def test_reset_view_is_the_first_menu_item(self):
-        body = _view_menu_source()
-        reset = body.find('data-action", "reset"')
-        toggles = body.find("mol-viewer-menu-toggles")
-        style = body.find('_menuSection("style"')
-        assert reset != -1, "No reset button in the View menu."
-        assert "Reset view" in body, "Reset button lacks its label."
-        assert toggles != -1, "No .mol-viewer-menu-toggles group."
-        assert reset < toggles, (
-            "Reset view must come BEFORE the toggle group.")
-        assert style == -1 or reset < style, (
-            "Reset view must be the first menu item (before Style).")
 
-    def test_toggle_group_is_a_single_untitled_section(self):
-        """The display toggles live in ONE ``_menuSection("toggles",
-        null)`` — an untitled group (null heading = no <h4>)."""
-        body = _view_menu_source()
-        assert '_menuSection("toggles", null)' in body, (
-            "Toggle group must be created untitled: "
-            '_menuSection("toggles", null).')
-        assert "mol-viewer-menu-toggles" in body, (
-            "Toggle group must carry the .mol-viewer-menu-toggles class.")
+class TestViewToggleRegistry:
+    """PIN 3 — the view toggles live on the left RAIL, built from the ONE
+    VIEW_TOGGLES registry (NOT in the View dropdown menu anymore).  The
+    menu holds only the richer style/background/projection controls, so
+    there is one control per toggle (no rail-vs-menu duplication)."""
 
-    def test_axes_labels_overlay_cell_are_in_the_one_group(self):
-        """axes / labels / overlay / cell are added via ``_addToggle``
-        directly into the single toggles group — no per-toggle
-        heading/section wrapping any of them."""
-        body = _view_menu_source()
-        group = body.find("mol-viewer-menu-toggles")
-        style = body.find('_menuSection("style"')
-        assert group != -1
-        region_end = style if style != -1 else len(body)
-        region = body[group:region_end]
-        for action, label in [
-            ("axes", "Show axes"),
-            ("labels", "Show labels"),
-            ("overlay", "Show overlay"),
-            ("cell", "Show unit cell"),
-        ]:
-            call = f'_addToggle("{action}"'
-            assert call in region, (
-                f"{action} toggle must be added into the single toggles "
-                f"group via {call}.")
-            assert label in region, (
-                f"{action} toggle must carry its label {label!r}.")
-        # No extra _menuSection heading interleaved between the four
-        # toggles and the group start (they share ONE untitled group).
-        interleaved = re.findall(
-            r'_menuSection\("(?!toggles)[a-z]+",\s*"', region)
-        assert not interleaved, (
-            f"A titled sub-section is interleaved among the display "
-            f"toggles: {interleaved}. They must all sit in the ONE "
-            f"untitled toggles group.")
+    def test_reset_axes_labels_overlay_cell_are_registry_entries(self):
+        """reset / axes / labels / overlay / cell are entries in the ONE
+        VIEW_TOGGLES registry, each with its data-key ``action``."""
+        reg = _view_toggles_source()
+        for action in ["reset", "axes", "labels", "overlay", "cell"]:
+            assert f'action: "{action}"' in reg, (
+                f"{action} must be a VIEW_TOGGLES registry entry "
+                f'(action: "{action}").')
 
-    def test_show_unit_cell_toggle_exists_with_cell_action(self):
-        """PIN 3 — a 'Show unit cell' toggle wired to
-        data-action=\"cell\" exists."""
-        body = _view_menu_source()
+    def test_stateful_toggles_carry_their_menu_label(self):
+        """The stateful toggles carry their human label (used for the
+        button title + injected-menu text)."""
+        reg = _view_toggles_source()
+        for label in ["Show axes", "Show labels",
+                      "Show overlay", "Show unit cell"]:
+            assert label in reg, (
+                f"VIEW_TOGGLES is missing the {label!r} label.")
+
+    def test_cell_toggle_is_knob_gated(self):
+        """The unit-cell toggle is gated by knobs.cell (via its
+        ``knob: \"cell\"`` field), preserved from the menu design."""
+        reg = _view_toggles_source()
         assert re.search(
-            r'_addToggle\(\s*"cell"\s*,\s*"Show unit cell"\s*,'
-            r'\s*knobs\.cell\s*\)', body), (
-            'Missing the "Show unit cell" (data-action="cell") toggle '
-            "wired to knobs.cell.")
+            r'action:\s*"cell".*?knob:\s*"cell"', reg, re.DOTALL), (
+            'The cell toggle must carry knob: "cell" so it is gated '
+            "on knobs.cell.")
+
+    def test_view_menu_has_no_toggle_duplication(self):
+        """The View dropdown must NOT re-render the toggles or a reset
+        action — those live on the rail now (no duplication)."""
+        body = _view_menu_source()
+        assert "mol-viewer-menu-toggles" not in body, (
+            "The View menu still builds a toggle group; toggles moved "
+            "to the left rail (remove the menu-toggles group).")
+        assert '_addToggle(' not in body, (
+            "The View menu still calls _addToggle; toggles are rail-only "
+            "now.")
+        assert 'data-action", "reset"' not in body, (
+            "The View menu still has a Reset action; reset is a rail "
+            "button now.")
+        assert '_menuSection("style"' in body, (
+            "The View menu must still hold the Style section.")
 
 
 # --------------------------------------------------------------------- #

@@ -554,8 +554,9 @@
                 + (e && e.message ? e.message : String(e)), "error");
             return null;
         }
-        if (!_mv) {
-            setStatus("Viewer failed: molview.mount returned null.", "error");
+        if (!_mv || !_mv.ok) {
+            setStatus("Viewer failed: "
+                + ((_mv && _mv.error) || "molview.mount failed."), "error");
             return null;
         }
         // Test hook: expose the mount handle so Playwright e2e can drive the

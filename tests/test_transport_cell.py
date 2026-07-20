@@ -74,8 +74,8 @@ def test_copy_translated_preserve_cell_and_pbc():
 
 
 def test_sidecar_cell_round_trip(tmp_path):
-    d = msj.to_dict(n_atoms_total=1, structure_hash="0" * 32,
-                    cell=HEX, pbc=(True, True, False))
+    d = msj.to_dict({"cell": HEX, "pbc": (True, True, False)},
+                    n_atoms_total=1, structure_hash="0" * 32)
     assert d["pbc"] == [True, True, False]
     p = tmp_path / "x.molstruct.json"
     msj.save(p, d)

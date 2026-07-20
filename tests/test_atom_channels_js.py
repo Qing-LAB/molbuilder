@@ -92,7 +92,7 @@ def test_selection_panel_frozen_name_matches_l1():
     l1_frozen = _run(
         "console.log(JSON.stringify(M.FROZEN_CHANNEL));").strip().strip('"')
     panel = (Path(__file__).resolve().parent.parent
-             / "molbuilder/web/static/lib/selection-panel.js").read_text()
+             / "molbuilder/web/static/lib/molview/selection/panel.js").read_text()
     m = re.search(r'FROZEN_TAG_LABEL\s*=\s*"([^"]+)"', panel)
     assert m, "FROZEN_TAG_LABEL literal not found in selection-panel.js"
     assert m.group(1) == l1_frozen, (

@@ -56,11 +56,11 @@
         const wrap       = _el("div", "viewer-wrap");
         const viewerHost = _el("div", "viewer");
         wrap.appendChild(viewerHost);
-        // The viewer chrome -- the isolate toggle + the trajectory bar -- is PLACED INTO the
-        // embed's knob bar (the View/Export row) after the viewer embeds (see onReady), so it
-        // lines up on ONE row with View/Export, within the viewer width.  Created here, parented
-        // there.  Gated: shown ONLY for a trajectory (frameCount > 1).
-        const vcHost     = _el("span", "viewer-toggles");
+        // The trajectory bar is PLACED INTO the embed's knob bar (the View/Export row)
+        // after the viewer embeds (see onReady), so it lines up on ONE row with
+        // View/Export, within the viewer width.  Created here, parented there.  Gated:
+        // shown ONLY for a trajectory (frameCount > 1).  (The isolate toggle is added to
+        // the embed's own toggle path via handle.addViewToggle -- no host element here.)
         const fcHost     = _el("div", "molview-frame-controls");   // trajectory bar (§14.5)
         fcHost.hidden = true;   // shown by mountFrameControls only when a trajectory is loaded
         viewerCol.appendChild(wrap);
@@ -76,8 +76,18 @@
         body.appendChild(panelHost);
         card.appendChild(body);
         hostEl.appendChild(card);
-        return { card: card, panelHost: panelHost, vcHost: vcHost, fcHost: fcHost,
+        return { card: card, panelHost: panelHost, fcHost: fcHost,
                  foldBtn: foldBtn, viewerHost: viewerHost };
+    }
+
+    // Uniform mount contract: mount() ALWAYS resolves to a handle carrying
+    // ``dispose`` (never a sentinel null).  A failure returns a no-op-disposer
+    // handle with ``ok:false`` + a reason, so a consumer branches on ``handle.ok``
+    // and can still call ``handle.dispose()`` unconditionally.  Success handles
+    // carry ``ok:true`` (see the return block below).
+    function _failMount(msg) {
+        if (root.console) root.console.warn("[molview.mount] " + msg);
+        return { ok: false, error: msg, dispose: function () {} };
     }
 
     async function mount(hostEl, workspace, opts) {
@@ -85,14 +95,16 @@
         const mode   = opts.mode || "modify";
         const owner  = opts.owner || (workspace && workspace.owner) || null;
         const mb     = root.molbuilder || {};
-        const selApi = mb.selection;
+        const selApi = mb.molview && mb.molview.selection;
         const mvApi  = mb.molview;
         // DATA comes from MolView's own data model; `workspace` is only the persistence layer.
         const data   = (mb.molview && mb.molview.data) || workspace;
         const store  = data && data.selection;
 
-        if (!hostEl || !workspace || !store) return null;
-        if (!selApi || typeof selApi.mountPanel !== "function") return null;
+        if (!hostEl || !workspace || !store)
+            return _failMount("missing host / workspace / data store");
+        if (!selApi || typeof selApi.mountPanel !== "function")
+            return _failMount("selection.mountPanel unavailable (load order?)");
 
         // Tell the workspace who this molview belongs to, so IT namespaces its saving
         // points (sessionStorage mirror key + the on-disk state-file id) by `owner` --
@@ -119,7 +131,6 @@
             ? hostEl
             : ((hostEl.closest && hostEl.closest(".molview-card")) || null);
         let panelHost = card && card.querySelector(".molview-panel");
-        let vcHost    = card && card.querySelector(".viewer-toggles");
         let fcHost    = card && card.querySelector(".molview-frame-controls");
         let foldBtn   = card && card.querySelector(".molview-fold-btn");
 
@@ -127,7 +138,7 @@
             // EMPTY host: build the DOM, embed the viewer, own the render (the full component).
             const built = _buildCard(hostEl);
             card = built.card; panelHost = built.panelHost;
-            vcHost = built.vcHost; fcHost = built.fcHost; foldBtn = built.foldBtn;
+            fcHost = built.fcHost; foldBtn = built.foldBtn;
             const viewer = mb.viewer;
             if (viewer && typeof viewer.embed === "function") {
                 // Wire the render loop once the viewer handle is ready; molview owns it.
@@ -155,8 +166,19 @@
                             });
                         }
                         if (mvApi && typeof mvApi.mountRender === "function") {
-                            const rc = mvApi.mountRender(h, data, store,
-                                                         { viewerHost: built.viewerHost });
+                            const rc = mvApi.mountRender(h, data, store, {
+                                viewerHost: built.viewerHost,
+                                // The render streamline OWNS overlay re-apply: a redraw
+                                // (setStructure) clears the embed's overlays, so right after
+                                // it redraws it asks the overlay controller to re-draw the
+                                // consumer's overlays.  This replaces the overlay controller's
+                                // own store subscription (which fired on every unrelated change
+                                // and clobbered the view toggles).  `_overlays` is set just
+                                // below; the thunk closes over it, so post-mount redraws see it.
+                                afterRedraw: function () {
+                                    if (_overlays) _overlays.refresh();
+                                },
+                            });
                             cleanups.push(function () { try { rc.dispose(); } catch (_) {} });
                         }
                         // Viewer-adapter: selection halos + isolate opacity + click-to-select
@@ -169,26 +191,31 @@
                             });
                         }
                         // Overlay controller (§14.5.1): MolView draws the arrows/labels the
-                        // CONSUMER hands it (handle.setArrows / setLabels) and re-applies them
-                        // across per-frame redraws -- it never generates or normalizes them.
+                        // CONSUMER hands it (handle.setArrows / setLabels).  It holds NO store
+                        // subscription -- the render streamline calls its refresh() after each
+                        // redraw (afterRedraw above), so overlays survive redraws WITHOUT the
+                        // controller firing on unrelated store changes.
                         if (mvApi && typeof mvApi.mountOverlays === "function") {
-                            _overlays = mvApi.mountOverlays(h, store);
+                            _overlays = mvApi.mountOverlays(h);
                             cleanups.push(function () {
                                 try { _overlays && _overlays.dispose(); } catch (_) {}
                             });
                         }
-                        // the isolate toggle joins the embed's untitled toggle group in the
-                        // View menu (one group with Show axes/labels/overlay/unit cell).  The
-                        // trajectory bar goes on the knob-bar ROW next to View/Export (one line),
-                        // shown only for a trajectory (frame-controls gates itself on frameCount).
+                        // isolate ("show selected only") is view toggle #5: added through the
+                        // embed's ONE view-toggle path so it gets a canvas button + a View-menu
+                        // entry exactly like axes/labels/overlay/cell (no separate control).  Its
+                        // on/off value lives in the selection store; the spec comes from the
+                        // selection viewer-adapter.  The trajectory bar goes on the knob-bar ROW
+                        // next to View/Export (gated on frameCount by frame-controls itself).
+                        const adapterMod = selApi && selApi.viewerAdapter;
+                        if (adapterMod && typeof adapterMod.isolateToggle === "function"
+                            && typeof h.addViewToggle === "function") {
+                            const iso = h.addViewToggle(adapterMod.isolateToggle(store));
+                            cleanups.push(function () {
+                                try { iso && iso.dispose && iso.dispose(); } catch (_) {}
+                            });
+                        }
                         const knobs = built.viewerHost.querySelector(".mol-viewer-knobs");
-                        const toggleGroup = built.viewerHost.querySelector(
-                            ".mol-viewer-menu-view .mol-viewer-menu-toggles");
-                        const viewMenuBody = built.viewerHost.querySelector(
-                            ".mol-viewer-menu-view .mol-viewer-menu-body");
-                        if (toggleGroup)       { toggleGroup.appendChild(vcHost); }
-                        else if (viewMenuBody) { viewMenuBody.appendChild(vcHost); }
-                        else if (knobs)        { knobs.appendChild(vcHost); }   // fallback: no View menu
                         if (knobs) { knobs.appendChild(fcHost); }
                     },
                 });
@@ -197,14 +224,12 @@
 
         // Panel (atom selection + the Cell page), bound to the workspace's store.
         const panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
-        if (!panelMount || !panelMount.panel) return null;   // mountPanel showed its own banner
+        if (!panelMount || !panelMount.panel)
+            return _failMount("selection panel failed to mount (see banner)");
         cleanups.push(function () { try { panelMount.dispose && panelMount.dispose(); } catch (_) {} });
 
-        // View-controls bar (the isolate toggle) -- same store, no parallel state.
-        if (vcHost && mvApi && typeof mvApi.mountViewControls === "function") {
-            const vc = mvApi.mountViewControls(vcHost, store);
-            cleanups.push(function () { try { vc.dispose && vc.dispose(); } catch (_) {} });
-        }
+        // (isolate "show selected only" is added as view toggle #5 via the embed's
+        // addViewToggle in the onReady above -- no separate control bar.)
 
         // Frame controls bar (§14.5) -- play/pause + slider + counter.  MolView renders it (like
         // the view-toggles); hidden until a trajectory is loaded (frameCount > 1).  Overlays are
@@ -300,6 +325,10 @@
         }
         const _offs = [];   // onChange subscriptions, torn down on dispose
         return {
+            ok: true,   // uniform mount contract: a live handle -> ok:true (see _failMount)
+            // (No owner-facing setBusy: busy is gated SOLELY by the render streamline
+            // -- an owner changes state, the render line turns the scrim on + recovers.
+            // There is one busy path, and consumers do not touch it.  §18.6.)
             // WRITE side (§D): the owner asks molview to load / save / undo; molview asks the
             // WORKSPACE (the single door) and the render reacts to the resulting workspace
             // change (§18.2) -- the owner never touches storage or triggers a redraw itself.
@@ -383,4 +412,11 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview.mount = mount;
+    // Module-init contract (molbuilder-runtime.js): register so consumers can
+    // ``whenReady("molview")`` instead of racing on the namespace, like every
+    // other module (projects / inspectors / selection.* / molview.data).
+    if (root.molbuilder.runtime
+        && typeof root.molbuilder.runtime.register === "function") {
+        root.molbuilder.runtime.register("molview", root.molbuilder.molview);
+    }
 })(typeof window !== "undefined" ? window : this);

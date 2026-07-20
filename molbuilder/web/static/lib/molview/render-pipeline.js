@@ -142,13 +142,16 @@
             }
         }
 
-        const unsub = store.subscribe(function () { _render(); });
+        // NO store subscription: the isolate view is re-rendered ONLY when the render
+        // streamline calls refresh() (render.js onStoreChange, which reads the isolate flag
+        // + selection and gates busy).  Subscribing here handcrafted a SECOND render outside
+        // the streamline -- it raced render.js's base draw (leaving the FULL structure shown
+        // after an edit while isolating) and bypassed the busy scrim (froze the tab on a big
+        // isolate render).  The controller reads live state on each refresh(), so it needs no
+        // subscription of its own.
         return {
             refresh: function () { _render(); },
-            dispose: function () {
-                disposed = true;
-                try { unsub(); } catch (_) { /* already gone */ }
-            },
+            dispose: function () { disposed = true; },
         };
     }
 

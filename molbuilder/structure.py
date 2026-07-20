@@ -189,7 +189,10 @@ def annotations_to_json(ann: "dict[str, AtomChannel]") -> dict:
 
 
 def annotations_from_json(obj: Optional[dict]) -> "dict[str, AtomChannel]":
-    """Deserialize an annotations map from the sidecar (§ 3)."""
+    """Deserialize an annotations map from the sidecar (§ 3).  STRICT: each
+    value must be a JSON channel dict.  ``AtomChannel`` objects live only
+    in-memory on a Structure; the metadata dict that crosses the API boundary
+    (metadata_to_dict / apply_metadata_dict / to_dict) is always JSON."""
     return {name: AtomChannel.from_json(v) for name, v in (obj or {}).items()}
 
 
@@ -489,6 +492,72 @@ class Structure:
         for i, kind in enumerate(self.axis_kind):
             origin[i] = lo[i] - (self.vacuum[i] if kind == "isolated" else 0.0)
         return origin
+
+    # ------------------------------------------------------------------ #
+    #  Sidecar-metadata contract -- the ONE get/set (data-vocabulary.md)  #
+    # ------------------------------------------------------------------ #
+    # The persisted ``.molstruct.json`` sidecar IS the serialization of this
+    # dataclass's metadata.  These TWO methods are the SINGLE place the
+    # metadata field set is enumerated: ``metadata_to_dict`` (struct -> dict)
+    # and ``apply_metadata_dict`` (dict -> struct).  The sidecar read + write
+    # modules and the workspace codec ALL route through them, so the write and
+    # read paths physically cannot drift a field -- the exact class of bug that
+    # silently dropped ``cell_origin`` on reload.  Add a metadata field = add it
+    # to the dataclass + these two methods, and nowhere else.
+    #
+    # SCOPE = the dataclass's OWN metadata (periodicity + selection tags +
+    # annotations).  ``selection_rules`` is NOT a Structure field (a sidecar-only
+    # pass-through) and the JSON envelope (schema_version / n_atoms_total /
+    # structure_hash / created_by / created_at) belongs to the sidecar layer;
+    # both sit AROUND this contract, not inside it.
+
+    def metadata_to_dict(self) -> dict:
+        """Serialize this structure's metadata to a JSON-friendly dict (the
+        sidecar field set).  The fields are already validated by
+        ``__post_init__``; this is a pure conversion to JSON types."""
+        return {
+            "regions":      {k: list(v)
+                             for k, v in (self.regions or {}).items()},
+            "frozen_atoms": list(self.frozen_atoms or []),
+            "cell":         self.cell.tolist() if self.cell is not None else None,
+            "cell_origin":  (self.cell_origin.tolist()
+                             if self.cell_origin is not None else None),
+            "pbc":          ([bool(x) for x in self.pbc]
+                             if self.pbc is not None else None),
+            "axis_kind":    (list(self.axis_kind)
+                             if self.axis_kind is not None else None),
+            "vacuum":       [float(x) for x in self.vacuum],
+            "annotations":  annotations_to_json(self.annotations),
+        }
+
+    def apply_metadata_dict(self, data: Optional[dict]) -> None:
+        """Apply a sidecar metadata dict onto this structure IN PLACE, then
+        re-run the dataclass's own reconciliation + validation
+        (``__post_init__``) so there is ONE validator.
+
+        Full-REPLACE semantics: an absent key resets that field to its default
+        (absent cell -> non-periodic; absent regions -> none), matching a v3
+        back-read.  Raises ``ValueError`` on any invalid field (bad cell,
+        out-of-range index, ...), sourced from the same invariants a freshly
+        constructed Structure enforces."""
+        data = data or {}
+        self.regions      = dict(data.get("regions") or {})
+        self.frozen_atoms = list(data.get("frozen_atoms") or [])
+        self.cell         = (np.asarray(data["cell"], dtype=float)
+                             if data.get("cell") is not None else None)
+        self.cell_origin  = (np.asarray(data["cell_origin"], dtype=float)
+                             if data.get("cell_origin") is not None else None)
+        self.pbc          = (tuple(bool(x) for x in data["pbc"])
+                             if data.get("pbc") is not None else None)
+        self.axis_kind    = (tuple(str(k) for k in data["axis_kind"])
+                             if data.get("axis_kind") is not None else None)
+        self.vacuum       = (tuple(float(x) for x in data["vacuum"])
+                             if data.get("vacuum") is not None else (0.0, 0.0, 0.0))
+        self.annotations  = annotations_from_json(data.get("annotations"))
+        # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
+        # axis_kind<->pbc reconciliation (axis_kind authoritative), cell_origin
+        # only-with-a-cell, and region/frozen/annotation indices in range.
+        self.__post_init__()
 
     def _validate_regions(self, n: int) -> None:
         """Per-atom index in [0, n); region names are non-empty

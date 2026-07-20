@@ -12,11 +12,17 @@
 
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
-    min-width: 340px;              /* whole-card floor (>= --viewer-min) */
+
+    /* The view-toggle RAIL (mol-viewer-stage's left column) is added to the LEFT of the
+     * canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
+     * size instead of shrinking -- i.e. the viewer grows by the rail, it doesn't lose view
+     * space.  ONE source of truth for the rail width. */
+    --rail-w: 30px;
+    min-width: calc(340px + var(--rail-w));   /* whole-card floor (>= --viewer-min) + rail */
 
     /* ONE source of truth for the square's size + the stack threshold. */
-    --viewer-edge: min(60vh, 560px);   /* max square edge (== the viewer's max-height) */
-    --viewer-min: 320px;               /* min square width */
+    --viewer-edge: min(60vh, calc(560px + var(--rail-w)));   /* max square edge + rail */
+    --viewer-min: calc(320px + var(--rail-w));               /* min square width + rail */
     --panel-min:  320px;               /* min panel width */
     --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
 
@@ -236,12 +242,14 @@
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
 /* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
-   the threshold is the DERIVED sum --viewer-min(320) + --fold-w(22) + --panel-min(320) = 664
-   (contract §7.1 -- the one named breakpoint, no second magic number).  Above it, the row's
-   shared --viewer-extent keeps the viewer + panel bottom-aligned at any width; below it even
-   --viewer-min won't fit beside --panel-min, so we go VERTICAL: viewer on top (a centred
-   square), panel below.  The handle becomes a compact centred grip; fold collapses height. */
-@container (max-width: 664px) {
+   the threshold is the DERIVED sum --viewer-min(320 + --rail-w 30 = 350) + --fold-w(22) +
+   --panel-min(320) = 692 (contract §7.1 -- the one named breakpoint).  It MUST track
+   --viewer-min: the rail added 30px to the viewer square, so the row needs 30px more before
+   both mins fit -- otherwise between 664 and 692 the row layout is on but --viewer-min +
+   --panel-min overflow the card.  (@container can't read var(), so this literal mirrors the
+   sum by hand.)  Above it, the row's shared --viewer-extent keeps the viewer + panel
+   bottom-aligned; below it we go VERTICAL: viewer on top (a centred square), panel below. */
+@container (max-width: 692px) {
     /* ONE stacked square edge -- capped at --viewer-edge (which already carries the sole
      * allowed 60vh, §7.1), else the CARD's own width (100cqw).  Reused by the viewer AND the
      * panel so both columns share one width and align; no fresh viewport magic number. */
@@ -280,22 +288,6 @@
     .molview-card.is-folded .molview-panel { height: 0; min-height: 0; }
     .molview-card.is-folded .molview-fold-chevron { transform: rotate(90deg); }
 }
-
-/* Viewer view-controls toggles (view-controls.js) -- the "Show selected only" /
- * checkbox that lives in EVERY molview's viewer control bar. */
-.viewer-toggles { display: inline-flex; gap: 0.9rem; align-items: center; flex-wrap: wrap; }
-/* [hidden] must win over the display above (the chrome is gated to trajectories, mount.js). */
-.viewer-toggles[hidden] { display: none; }
-.viewer-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font: 12px/1.2 system-ui, sans-serif;
-    color: var(--text-secondary, #a8aebb);
-    cursor: pointer;
-    user-select: none;
-}
-.viewer-toggle input { margin: 0; cursor: pointer; }
 
 /* Frame controls bar (§14.5) -- the trajectory playback UI molview renders in the controls
  * area.  Hidden via the [hidden] attribute until a trajectory is loaded (frameCount > 1);
@@ -362,46 +354,3 @@
     margin: 0;
 }
 
-/* The "Show ..." display-toggle group in the View menu.  The embed's own toggles
- * (axes / labels / overlay / unit cell) AND MolView's injected isolate toggle share
- * ONE compact chip style and WRAP so they share rows.  (Reset stays a plain button, above.) */
-.mol-viewer-menu-view .mol-viewer-menu-toggles {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-/* Injected wrapper: let its two labels join the wrap directly (no nested column box). */
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggles { display: contents; }
-/* One chip look for BOTH toggle kinds -- compact, auto-width, wrapping. */
-.mol-viewer-menu-view .mol-viewer-menu-toggles .mol-viewer-toggle,
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle {
-    display: inline-flex;
-    align-items: center;
-    width: auto;
-    margin: 0;
-    padding: 0.25rem 0.5rem;
-    font: var(--text-2xs, 0.6875rem)/1.2 system-ui, sans-serif;
-    color: var(--text-primary, #e6e9ee);
-    background: var(--bg-input, #262b33);
-    border: 1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius: var(--radius-sm, 6px);
-    cursor: pointer;
-    user-select: none;
-}
-/* Hollow ○ (off) / filled ● (on) indicator -- the embed button already has one via its own
- * ::before; give the injected checkbox label a matching one and hide the native box. */
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle input { display: none; }
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle::before {
-    content: "\25CB";            /* ○ */
-    margin-right: 0.5em;
-    color: var(--text-muted, #97a0ad);
-}
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle:has(input:checked)::before {
-    content: "\25CF";            /* ● */
-    color: var(--accent, #5fb6ff);
-}
-/* "On" chip highlight -- button reflects aria-pressed, label reflects :checked. */
-.mol-viewer-menu-view .mol-viewer-menu-toggles .viewer-toggle:has(input:checked) {
-    border-color: var(--accent, #5fb6ff);
-    background: var(--bg-input-focus, #2c323b);
-}

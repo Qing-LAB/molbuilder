@@ -231,7 +231,7 @@ class TestKnownAdvisorySitesAreHTTP200:
         (BLUEPRINT_DIR / "build.py",     '"issues": merged_issues,\n        }), 200'),
         # spectra.py::api_spectra_render preflight failure.
         (BLUEPRINT_DIR / "spectra.py",
-         '"issues": _issues_to_json(issues, cfg=cfg),\n        }), 200'),
+         '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),
         # transport.py::api_transport_render preflight failure.
         (BLUEPRINT_DIR / "transport.py",
          '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),

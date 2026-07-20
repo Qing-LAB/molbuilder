@@ -78,10 +78,9 @@ def _seed_sidecar(root, *, n_atoms, regions=None, frozen=None,
     from molbuilder.sidecars import molstruct as _msj
     xyz = root / name
     payload = _msj.to_dict(
+        {"regions": regions or {}, "frozen_atoms": frozen or []},
         n_atoms_total=n_atoms,
         structure_hash=_msj.sha256_of_file(xyz),
-        regions=regions or {},
-        frozen_atoms=frozen or [],
     )
     _msj.save(_msj.sidecar_path_for(xyz), payload)
 

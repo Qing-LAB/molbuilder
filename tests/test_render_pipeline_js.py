@@ -87,11 +87,14 @@ _CTL_SETUP = """
 
 
 def test_isolate_filters_the_render_list_on_enable_restores_on_disable():
+    # The controller holds NO store subscription -- the render streamline reads the flag
+    # + selection and calls refresh() (render.js onStoreChange).  So the test drives it the
+    # same way: set the flag, then refresh().
     out = _run_node(_CTL_SETUP + """
         const afterMount = handleCalls.length;                      // off -> no-op
-        store._set({ isolate: true, indices: [1] });                // enable -> filter
+        store._set({ isolate: true, indices: [1] }); ctl.refresh(); // enable -> filter
         const enabledN = handleCalls[handleCalls.length-1].xyz.split('\\n')[0];
-        store._set({ isolate: false });                             // disable -> restore
+        store._set({ isolate: false }); ctl.refresh();              // disable -> restore
         const restored = handleCalls[handleCalls.length-1].xyz;
         ctl.dispose();
         console.log(JSON.stringify({
@@ -101,12 +104,12 @@ def test_isolate_filters_the_render_list_on_enable_restores_on_disable():
     assert out["afterMount"] == 0        # isolate off at mount -> no derived draw
     assert out["enabledN"] == "1"        # only the 1 selected atom is drawn
     assert out["restored"] == "UNIT"     # disable restores the unit-cell xyz
-    assert out["subs"] == 0              # dispose() unsubscribed
+    assert out["subs"] == 0              # controller holds NO subscription of its own
 
 
 def test_isolate_with_empty_selection_does_not_derive():
     out = _run_node(_CTL_SETUP + """
-        store._set({ isolate: true, indices: [] });   // isolate on, but nothing selected
+        store._set({ isolate: true, indices: [] }); ctl.refresh();  // isolate on, nothing selected
         console.log(JSON.stringify({ calls: handleCalls.length }));
     """)
     assert out["calls"] == 0             # no "selected only" of zero atoms -> plain base draw

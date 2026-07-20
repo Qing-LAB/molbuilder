@@ -1163,15 +1163,9 @@
     // (No ``modify.handle`` runtime registration: the module owns the viewer + attaches
     // the selection adapter to it, so selection-bootstrap no longer waits on it.)
 
-    // Selection-driven measurement readout: the legacy panel path calls this provider to
-    // compute xyz / distance / angle for the current selection.  Coordinates come LIVE from
-    // molview.data (``_coords()`` -> getCoordinates); returning an empty array signals "positions not
-    // available yet" and the panel hides the readout.  See
-    // ``lib/selection/measurements.js`` for the shape and
-    // ``lib/selection-panel.js`` ``renderMeasurement`` for the
-    // consumer.
-    window.molbuilder.selection = window.molbuilder.selection || {};
-    window.molbuilder.selection.positionsProvider = function () {
-        return _coords();
-    };
+    // (The selection panel's measurement readout reads its coordinates straight
+    // from molview.data.getCoordinates() -- a sibling within MolView -- so this
+    // page no longer decorates a ``positionsProvider`` onto the molview.selection
+    // namespace.  Concealment flows one way: consumers call INTO MolView, they
+    // don't hang members ON it.)
 })();

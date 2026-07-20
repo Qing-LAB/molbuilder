@@ -1,7 +1,7 @@
 /* molview render loop -- "molview owns the render" (molview-module.md §14).
  *
- * Given a viewer HANDLE + the workspace + the selection store, this draws the current
- * structure once and re-draws on every workspace change -- reading EVERYTHING through ws.*
+ * Given a viewer HANDLE + the dataModel + the selection store, this draws the current
+ * structure once and re-draws on every dataModel change -- reading EVERYTHING through ws.*
  * (no local structure copy; that is the data-unification the design mandates, §14.0 "always
  * recompute from the CLEAN unit cell" = the data model).
  *
@@ -15,7 +15,7 @@
  *                             instead of the base, NOT a second draw on top (§14.2)
  * plus the measurement overlay (mountMeasurementOverlay, §15), coords read from the handle.
  *
- *   molview.mountRender(handle, workspace, store, { viewerHost }) -> { refresh, dispose }
+ *   molview.mountRender(handle, dataModel, store, { viewerHost }) -> { refresh, dispose }
  *
  * It composes the existing molview pieces (mountIsolateRender, mountMeasurementOverlay) -- it
  * does not reimplement them.  mount.js assembles this with the viewer embed to make the
@@ -26,10 +26,10 @@
 
     function _noop() {}
 
-    function mountRender(handle, workspace, store, opts) {
+    function mountRender(handle, dataModel, store, opts) {
         opts = opts || {};
         var mv = (root.molbuilder && root.molbuilder.molview) || {};
-        if (!handle || !workspace || !store) {
+        if (!handle || !dataModel || !store) {
             return { refresh: _noop, dispose: _noop };
         }
 
@@ -58,11 +58,11 @@
         // The RESOLVED lattice (explicit cell, OR the bbox+vacuum default) -- used to detect
         // cell changes in the structure signature, never for the base draw.
         function getCell() {
-            if (typeof workspace.getUnitCellInfo === "function") {
-                var info = workspace.getUnitCellInfo();
+            if (typeof dataModel.getUnitCellInfo === "function") {
+                var info = dataModel.getUnitCellInfo();
                 if (info && info.value) return info.value;
             }
-            return (typeof workspace.getUnitCell === "function") ? workspace.getUnitCell() : null;
+            return (typeof dataModel.getUnitCell === "function") ? dataModel.getUnitCell() : null;
         }
         // The EXPLICIT cell ONLY (raw, null for a cell-less molecule) -- what the BASE draw
         // passes as its lattice.  A user/imported cell draws a wireframe box + cell-scaled
@@ -70,7 +70,7 @@
         // NOT feed the resolved bbox here -- that would draw a spurious box + extent-scaled
         // axes for every cell-less molecule (the bbox belongs to tiling, via getCell).
         function getExplicitCell() {
-            return (typeof workspace.getUnitCell === "function" && workspace.getUnitCell())
+            return (typeof dataModel.getUnitCell === "function" && dataModel.getUnitCell())
                 || null;
         }
 
@@ -84,11 +84,11 @@
         // SEPARATE from `lattice` (the explicit cell, which drives the a/b/c axes) so a
         // cell-less molecule still shows Cartesian xyz axes but gets a bbox+vacuum box.
         function getCellBox() {
-            var resolved = (typeof workspace.getUnitCellInfo === "function")
-                ? (workspace.getUnitCellInfo().value || null) : null;
+            var resolved = (typeof dataModel.getUnitCellInfo === "function")
+                ? (dataModel.getUnitCellInfo().value || null) : null;
             if (!resolved) return null;
-            var origin = (typeof workspace.getUnitCellOrigin === "function")
-                ? workspace.getUnitCellOrigin() : null;
+            var origin = (typeof dataModel.getUnitCellOrigin === "function")
+                ? dataModel.getUnitCellOrigin() : null;
             return { lattice: resolved, origin: origin };
         }
         function drawBase() {
@@ -147,23 +147,96 @@
             var cell = getCell();
             return sig + "|cell:" + (cell ? JSON.stringify(cell) : "none");
         }
-        function redrawIfStructureChanged() {
-            var sig = _structureSig();
-            if (sig === _prevSig) return;
-            _prevSig = sig;
-            drawBase();
-            if (iso && typeof iso.refresh === "function") iso.refresh();
+
+        // Busy<->ready: the ONE surface is handle.setBusy(msg|null) (embed §6.x).  The
+        // render controller drives it -- a file LOAD in flight or a big-system REDRAW
+        // shows the scrim; a small/fast redraw doesn't (avoids flicker).  For a heavy
+        // redraw we YIELD a paint (double requestAnimationFrame) so the scrim actually
+        // appears BEFORE the blocking 3Dmol swap freezes the thread; cancel on re-entry
+        // so only the latest state draws (drawBase reads the live store).
+        var BUSY_ATOM_THRESHOLD = 1200;   // atoms above which a swap is slow enough to scrim
+        var _rafId = null;
+        function _setBusy(msg) {
+            if (handle && typeof handle.setBusy === "function") handle.setBusy(msg);
         }
-        redrawIfStructureChanged();   // initial draw
+        function _atomCount() {
+            var st = store.getState();
+            return (st && st.atoms) ? st.atoms.length : 0;
+        }
+        // Isolate state signature (isolate flag + the selected indices, since the derived
+        // "show selected only" list is those atoms).  A change here means the isolate view
+        // must re-render even when the STRUCTURE is unchanged (a selection click while
+        // isolating, or the toggle flipping).
+        var _prevIso = null;
+        function _isoState() {
+            var st = store.getState() || {};
+            var on = !!st.isolate
+                && (Array.isArray(st.indices) ? st.indices.length : 0) > 0;
+            return on ? ("on:" + (st.indices || []).join(",")) : "off";
+        }
+        function _renderNow(structChanged) {
+            if (structChanged) drawBase();                 // full base draw
+            // iso.refresh() renders the DERIVED list (isolate on) or restores drawBase
+            // (isolate just turned off).  It is driven ONLY from here now -- mountIsolate-
+            // Render holds no store subscription of its own (two subscriptions raced: its
+            // derived draw + render's full drawBase left the viewer showing the FULL
+            // structure after an edit while isolating).
+            if (iso && typeof iso.refresh === "function") iso.refresh();
+            // A redraw (setStructure) cleared the embed's overlays -- re-apply the consumer's
+            // overlays HERE, inside the render streamline (the overlay controller has no store
+            // subscription of its own; that used to clobber the view toggles).
+            if (typeof opts.afterRedraw === "function") opts.afterRedraw();
+        }
+
+        // THE render streamline == the ONE place setBusy is gated.  Every store/data change
+        // that needs a re-render (structure edit, isolate on/off, selection while isolating)
+        // routes through here: it turns the busy scrim ON, YIELDS a paint, renders, then
+        // clears -- so a big-system re-render never freezes the tab with no busy block.  No
+        // consumer sets busy; they change state and this line gates the render + recovery.
+        function onStoreChange() {
+            var st = store.getState();
+            if (st && st.loading) { _setBusy("Loading…"); return; }    // load in flight
+            var sig = _structureSig();
+            var isoNow = _isoState();
+            var structChanged = (sig !== _prevSig);
+            var isoChanged = (isoNow !== _prevIso);
+            if (!structChanged && !isoChanged) { _setBusy(null); return; }
+            var wasOn = (_prevIso || "").slice(0, 3) === "on:";
+            var nowOn = isoNow.slice(0, 3) === "on:";
+            _prevSig = sig; _prevIso = isoNow;
+            // How big is the NEXT draw?  A FULL base draw (structure change, or isolate just
+            // turned OFF -> drawBase) is the whole structure; an isolate-ON draw is only the
+            // SELECTED atoms.  Scrim only when THAT draw is big enough to freeze the thread.
+            var fullDraw = structChanged || (wasOn && !nowOn);
+            var idxN = Array.isArray(st && st.indices) ? st.indices.length : 0;
+            var renderSize = fullDraw ? _atomCount() : (nowOn ? idxN : 0);
+            if (renderSize >= BUSY_ATOM_THRESHOLD) {
+                _setBusy("Updating view…");
+                if (_rafId) cancelAnimationFrame(_rafId);
+                _rafId = requestAnimationFrame(function () {
+                    _rafId = requestAnimationFrame(function () {
+                        _rafId = null;
+                        _renderNow(structChanged);
+                        _setBusy(null);
+                    });
+                });
+            } else {
+                _renderNow(structChanged);
+                _setBusy(null);
+            }
+        }
+        onStoreChange();   // initial draw
 
         var storeUnsub = (typeof store.subscribe === "function")
-            ? store.subscribe(redrawIfStructureChanged) : _noop;
-        var wsUnsub = (typeof workspace.subscribe === "function")
-            ? workspace.subscribe(redrawIfStructureChanged) : _noop;
+            ? store.subscribe(onStoreChange) : _noop;
+        var wsUnsub = (typeof dataModel.subscribe === "function")
+            ? dataModel.subscribe(onStoreChange) : _noop;
 
         return {
-            refresh: redrawIfStructureChanged,
+            refresh: onStoreChange,
             dispose: function () {
+                if (_rafId) { try { cancelAnimationFrame(_rafId); } catch (_) {} _rafId = null; }
+                _setBusy(null);
                 try { storeUnsub(); } catch (_) {}
                 try { wsUnsub(); } catch (_) {}
                 try { iso.dispose(); } catch (_) {}

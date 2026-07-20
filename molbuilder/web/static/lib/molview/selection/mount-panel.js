@@ -11,7 +11,7 @@
  * Results inspectors mount selection with a few lines + an EPHEMERAL store
  * (selection.createEphemeralStore()) that never touches the workspace.
  *
- *   window.molbuilder.selection.mountPanel(host, opts) -> Promise<handle>
+ *   window.molbuilder.molview.selection.mountPanel(host, opts) -> Promise<handle>
  *
  * opts:
  *   store           : store the panel + adapter drive.  DEFAULT = the workspace
@@ -84,15 +84,16 @@
         // 2. mount the panel against the store.  The panel + adapter share ALL
         // state through the store (selection, filters, isolate), so the panel
         // needs no reference to the adapter -- no handle threading.
-        if (!mb.selectionPanel || typeof mb.selectionPanel.mount !== "function") {
+        const _panelMod = mb.molview && mb.molview.selection && mb.molview.selection.panel;
+        if (!_panelMod || typeof _panelMod.mount !== "function") {
             _renderFailure(host, "selectionPanel module missing");
             return { panel: null, adapterHandle: null };
         }
-        const panel = mb.selectionPanel.mount(host, { store: store, mode: opts.mode });
+        const panel = _panelMod.mount(host, { store: store, mode: opts.mode });
 
         // 3. attach the viewer-adapter to the viewer handle.
         let adapterHandle = null;
-        const adapter = mb.selection && mb.selection.viewerAdapter;
+        const adapter = mb.molview && mb.molview.selection && mb.molview.selection.viewerAdapter;
         const handle = await _resolveHandle(opts);
         if (adapter && typeof adapter.attach === "function" && handle) {
             adapterHandle = adapter.attach(handle, { store: store, mode: opts.mode });
@@ -101,6 +102,7 @@
     }
 
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.selection = root.molbuilder.selection || {};
-    root.molbuilder.selection.mountPanel = mountPanel;
+    root.molbuilder.molview = root.molbuilder.molview || {};
+    root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
+    root.molbuilder.molview.selection.mountPanel = mountPanel;
 })(typeof window !== "undefined" ? window : globalThis);

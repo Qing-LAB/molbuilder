@@ -2,7 +2,7 @@
 
 Pins the halo-render contract documented in
 ``docs/protocols/molview-module.md`` § 13.3 against the actual
-``lib/selection/viewer-adapter.js`` source, in BOTH directions:
+``lib/molview/selection/viewer-adapter.js`` source, in BOTH directions:
 
   * the named-region color table (``REGION_COLORS``) in the code must
     match the table in the doc exactly — a color edit on either side
@@ -31,7 +31,7 @@ import pytest
 pytestmark = pytest.mark.module
 
 ROOT = Path(__file__).resolve().parents[1]
-ADAPTER = ROOT / "molbuilder/web/static/lib/selection/viewer-adapter.js"
+ADAPTER = ROOT / "molbuilder/web/static/lib/molview/selection/viewer-adapter.js"
 DOC = ROOT / "docs/protocols/molview-module.md"
 
 

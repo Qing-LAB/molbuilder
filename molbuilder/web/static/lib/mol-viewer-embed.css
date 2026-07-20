@@ -75,6 +75,34 @@
     overflow:       hidden;
 }
 
+/* Busy scrim -- the ONE busy<->ready surface (handle.setBusy(msg|null)).  A gray
+ * scrim + centered message over the canvas while a HEAVY render / load is in flight,
+ * so a stale frame doesn't read as "done" and clicks can't hit a mid-rebuild scene.
+ * ``pointer-events: auto`` blocks canvas interaction while shown; ``[hidden]`` removes
+ * it.  Driven by the render controller (loading + big-system redraws) and by any
+ * consumer marking its own slow op busy. */
+.mol-viewer-busy {
+    position:       absolute;
+    inset:          0;
+    z-index:        4;                 /* above quickbar/overlays, below the export modal */
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    background:     color-mix(in srgb, var(--bg-card, #1d2128) 60%, transparent);
+    pointer-events: auto;              /* eat clicks on the mid-render scene */
+    cursor:         progress;
+}
+.mol-viewer-busy[hidden] { display: none; }
+.mol-viewer-busy-msg {
+    padding:        0.35rem 0.8rem;
+    font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
+    color:          var(--text-primary, #e6e9ee);
+    background:     var(--bg-card-hover, #232831);
+    border:         1px solid var(--border-strong, rgba(255,255,255,0.14));
+    border-radius:  var(--radius-md, 8px);
+    box-shadow:     0 4px 16px rgba(0,0,0,0.4);
+}
+
 /* Bare-mode CSS removed by #208 after all five consumer sites
    migrated to the standard chrome (2026-06-03).  The deprecated
    ``opts.card.bare`` opt is ignored by _buildCardScaffold; the
@@ -233,11 +261,6 @@
 }
 /* Untitled display-toggle group: the axes / labels / overlay / unit-cell buttons
    (plus MolView's injected isolate checkbox) stacked with a small gap. */
-.mol-viewer-menu-toggles {
-    display:        flex;
-    flex-direction: column;
-    gap:            0.28rem;
-}
 .mol-viewer-menu-heading {
     margin:         0 0 0.2rem 0;
     font-size:      var(--text-2xs, 0.6875rem);
@@ -259,7 +282,8 @@
        size (--text-2xs) so the style buttons match the other View-menu items
        instead of the larger UA button default. */
     font:           inherit;
-    padding:        0.35rem 0.6rem;
+    line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
+    padding:        0.12rem 0.45rem;
     background:     var(--bg-input, #262b33);
     color:          var(--text-primary, #e6e9ee);
     border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
@@ -291,7 +315,7 @@
     margin-top:     0.4rem;
 }
 .mol-viewer-radius-row > label {
-    font-size:      0.8rem;
+    font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
     color:          var(--text-muted, #97a0ad);
     flex:           0 0 auto;
 }
@@ -301,7 +325,7 @@
     accent-color:   var(--accent, #5fb6ff);
 }
 .mol-viewer-radius-row > output {
-    font-size:      0.78rem;
+    font-size:      var(--text-2xs, 0.6875rem);
     color:          var(--text-primary, #e6e9ee);
     font-variant-numeric: tabular-nums;
     min-width:      2.2rem;
@@ -345,7 +369,8 @@
    carries its own caret + system menu UI on click. */
 .mol-viewer-select {
     width:          100%;
-    padding:        0.4rem 0.6rem;
+    line-height:    1.3;
+    padding:        0.15rem 0.45rem;
     background:     var(--bg-input, #262b33);
     color:          var(--text-primary, #e6e9ee);
     border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
@@ -648,32 +673,33 @@
     }
 }
 
-/* ---- In-canvas quick-action overlay (§6.x) -------------------------------
- * Tiny half-transparent icon buttons in the canvas corner for the common view
- * toggles (Reset / axes / unit cell / force overlay / labels, from the
- * QUICKBAR_TOGGLES registry; the molview layer injects an isolate button too).
- * Ghosted at rest so they don't obscure the molecule; the group brightens on
- * hover.  A SECOND control for the same state the View menu toggles (aria-pressed
- * mirrors it via _syncQuickbar).  pointer-events gated to the buttons so the gaps
- * don't block canvas rotation. */
+/* ---- Left toggle RAIL + stage (§6.x) -------------------------------------
+ * The view toggles (Reset / axes / labels / overlay / unit cell, from the
+ * VIEW_TOGGLES registry; the molview layer injects an isolate button too) live
+ * in a vertical rail OUTSIDE the 3-D canvas -- always visible, never over the
+ * molecule, no dropdown needed.  The STAGE is a flex row: rail | canvas. */
+.mol-viewer-stage {
+    display:        flex;
+    align-items:    stretch;
+    gap:            6px;
+    flex:           1 1 auto;
+    min-height:     0;
+    min-width:      0;
+}
+.mol-viewer-stage > .mol-viewer-canvas {
+    flex:           1 1 auto;
+    min-width:      0;                   /* let the canvas shrink; the rail keeps its width */
+}
 .mol-viewer-quickbar {
-    position:       absolute;
-    top:            6px;
-    left:           6px;
-    z-index:        3;
+    flex:           0 0 auto;
+    align-self:     flex-start;          /* rail hugs the top-left, doesn't stretch tall */
     display:        flex;
     flex-direction: column;
-    gap:            3px;
-    opacity:        0.3;
-    pointer-events: none;               /* only the buttons capture, not the gaps */
-    transition:     opacity 0.15s ease;
+    gap:            4px;
 }
-.mol-viewer-quickbar:hover,
-.mol-viewer-quickbar:focus-within { opacity: 1; }
 .mol-viewer-quick {
-    pointer-events: auto;
-    width:          22px;
-    height:         22px;
+    width:          24px;
+    height:         24px;
     display:        flex;
     align-items:    center;
     justify-content: center;

@@ -254,7 +254,7 @@ class TestNoUnsafeInnerHTML:
             # ``_selection_panel.html``, no user data) to host.innerHTML -- the
             # SAME trust boundary + pattern as the inspector partials above and
             # the modify selection-bootstrap.
-            ("lib/selection/mount-panel.js", "host.innerHTML = await r.text()"),
+            ("lib/molview/selection/mount-panel.js", "host.innerHTML = await r.text()"),
             # Markdown inspector: the live-preview pane assigns
             # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
             # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes

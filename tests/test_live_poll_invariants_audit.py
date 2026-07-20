@@ -42,7 +42,7 @@ Background
   reset value and the seek is a no-op.  Shipped 2026-06-12 as
   task #353.
 
-* ``lib/selection-panel.js`` ``_isolateUnsubscribe`` — the
+* ``lib/molview/selection/panel.js`` ``_isolateUnsubscribe`` — the
   auto-uncheck-on-empty subscriber's unsubscribe handle MUST be
   pushed into the panel's ``cleanups`` array so ``dispose()`` tears
   it down.  Pre-fix it was fire-and-forget — every /modify
@@ -315,61 +315,51 @@ class TestFrameSliderHandlerSnapshotPattern:
 # --------------------------------------------------------------------- #
 
 
-class TestViewControlsIsolateUnsubscribeCleanup:
-    """The isolate ("Show selected only") auto-clear-on-empty wiring
-    subscribes to the selection store.  That subscriber's unsubscribe
-    handle MUST be returned via the mount's ``dispose()`` so a
-    mount→dispose cycle tears it down.
+class TestInjectedToggleUnsubscribeCleanup:
+    """The isolate ("Show selected only") toggle subscribes to the
+    selection store to keep its button + menu entry in sync.  That
+    subscriber's unsubscribe handle MUST be torn down when the toggle
+    is disposed so a mount→dispose cycle doesn't strand it.
 
-    The auto-uncheck-on-empty behaviour used to live in
-    ``selection-panel.js``.  It moved to ``molview/view-controls.js``
-    (``mountViewControls``): there is NO standalone "Show selected
-    only" checkbox any more.  ``view-controls.js`` is the sole author
-    of the "Show selected only" (isolate) + "Show k-grid" toggle
-    elements, and ``molview/mount.js`` grafts that rendered node into
-    the embed's **View dropdown menu** (``.mol-viewer-menu-view
-    .mol-viewer-menu-toggles``), alongside the embed's native Show
-    axes / labels / overlay / unit-cell toggles.  So the toggle is a
-    View-menu item, not a bar — but the store subscription that powers
-    its auto-uncheck lives here.  The leak invariant is unchanged;
-    only its home moved.
-
-    Pre-fix the subscribe call was fire-and-forget: every mount→dispose
-    cycle stranded a closure holding the ``iso`` checkbox reference.
-    A long-running session that opens /modify dozens of times
-    accumulated those closures.
+    History: the auto-uncheck-on-empty behaviour lived in
+    ``selection-panel.js``, then ``molview/view-controls.js``.  Both
+    are gone.  Isolate is now view toggle #5, injected through the
+    embed's ONE view-toggle path (``handle.addViewToggle`` in
+    ``mol-viewer-embed.js``): the embed renders its button + menu entry
+    and owns the store subscription that keeps them synced.  The
+    subscription's unsubscribe handle is captured in ``addViewToggle``
+    and invoked from the returned ``dispose()``.  The auto-clear rule
+    itself moved into the store (``_afterSelectionChange``), so this
+    test now pins only the SUBSCRIBER-LEAK invariant at its new home.
 
     Pin the capture + the dispose teardown so a refactor can't
     silently revert."""
 
     @pytest.fixture(scope="class")
-    def view_controls_body(self):
-        return (_LIB / "molview" / "view-controls.js").read_text()
+    def embed_body(self):
+        return (_LIB / "mol-viewer-embed.js").read_text()
 
-    def test_isolate_subscriber_captures_unsubscribe_handle(
-            self, view_controls_body):
-        """The auto-uncheck wiring assigns the return value of
-        store.subscribe(...) to a variable — that's the unsubscribe
-        handle.  Verify the capture exists."""
+    def test_injected_toggle_captures_unsubscribe_handle(self, embed_body):
+        """addViewToggle assigns the return value of
+        spec.subscribe(...) to a variable — the unsubscribe handle."""
         assert re.search(
-            r"(?:var|let|const)\s+unsub\s*=\s*store\.subscribe",
-            view_controls_body,
-        ), ("view-controls.js auto-uncheck-on-empty wiring no "
-            "longer captures its store.subscribe() return value; "
-            "the subscriber leaks every viewer mount cycle.")
+            r"unsub\s*=\s*spec\.subscribe",
+            embed_body,
+        ), ("addViewToggle no longer captures its spec.subscribe() "
+            "return value; the injected-toggle (isolate) subscriber "
+            "leaks every viewer mount cycle.")
 
-    def test_isolate_unsubscribe_is_called_in_dispose(
-            self, view_controls_body):
+    def test_injected_toggle_unsubscribe_is_called_in_dispose(
+            self, embed_body):
         """The captured unsubscribe handle must be invoked from the
-        mount's returned ``dispose()`` so teardown removes it."""
-        # Match `dispose: function () { try { unsub(); } catch (_) ... }`
+        toggle's returned ``dispose()`` so teardown removes it."""
+        # Match `dispose: function () { ... if (unsub) unsub(); ... }`
         assert re.search(
             r"dispose\s*:\s*function\s*\([^)]*\)\s*\{[^}]*"
             r"unsub\s*\(\s*\)",
-            view_controls_body, re.DOTALL,
-        ), ("view-controls.js mount does NOT call unsub() in its "
-            "dispose(); every mount cycle leaks the store "
-            "subscriber closure.")
+            embed_body, re.DOTALL,
+        ), ("addViewToggle's dispose() does NOT call unsub(); every "
+            "mount cycle leaks the injected-toggle store subscriber.")
 
 
 # --------------------------------------------------------------------- #

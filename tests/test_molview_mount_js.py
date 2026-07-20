@@ -37,9 +37,10 @@ MODULES = [
 # The complete §18.1 handle key set (sorted): the seven core owner-API calls (§D) + the
 # frame axis (§14.5), and NOTHING else -- no store, no viewer, no DOM refs.
 HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
-               "getSelection", "getStructure", "installMolecule", "isPlaying", "onChange",
-               "pause", "play", "setArrows", "setFrame", "setFrameArrows", "setLabels",
-               "undo"]
+               "getSelection", "getStructure", "installMolecule", "isPlaying",
+               "ok",   # uniform mount contract: success handle -> ok:true (mount.js _failMount)
+               "onChange", "pause", "play", "setArrows", "setFrame",
+               "setFrameArrows", "setLabels", "undo"]
 
 
 def _run_node(snippet: str) -> object:
@@ -94,7 +95,7 @@ _HARNESS = """
         getScratchBlob:   () => { obsoleteHit.push('getScratchBlob'); },
         applyPayload:     () => { obsoleteHit.push('applyPayload'); },
     };
-    global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
+    global.molbuilder.molview.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
 
     // THE PERSISTENCE WORKSPACE -- no data role.  Every data method is a TRAP.
     const workspace = {
@@ -221,7 +222,7 @@ _FALLBACK_HARNESS = """
     // NO molview.data mounted -> mount falls back to the workspace as the data source.
     global.molbuilder = global.molbuilder || {};
     global.molbuilder.molview = global.molbuilder.molview || {};   // keep .mount; leave .data UNSET
-    global.molbuilder.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
+    global.molbuilder.molview.selection = { mountPanel: async () => ({ panel: {}, dispose: () => {} }) };
     const workspace = {
         selection:    store,
         getStructure: () => { wsCalls.push('getStructure'); return { text: 'WS' }; },

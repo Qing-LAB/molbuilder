@@ -156,3 +156,95 @@ End-to-end element+position tests bind the full user→engine round-trip.
   add a row.
 - A producer that reads config and writes an exchange file → it is the
   translation point; cite this doc at that boundary.
+
+
+## § 5 The structure-metadata contract — ONE get/set, no drift
+
+The **structure metadata** (periodicity + selection tags + per-atom annotations) that rides in
+the `.molstruct.json` sidecar and reaches the MolView viewer has exactly **one** serialization
+authority: **`molbuilder.Structure` itself**. This section is the rule every caller MUST comply
+with when adding or removing a metadata key.
+
+### § 5.1 The two methods that ARE the contract
+
+```
+Structure.metadata_to_dict()  -> dict     # struct  -> JSON metadata dict   (THE writer)
+Structure.apply_metadata_dict(dict) -> None  # JSON metadata dict -> struct (THE reader)
+```
+
+- **Scope** = the dataclass's own fields: `regions`, `frozen_atoms`, `cell`, `cell_origin`,
+  `pbc`, `axis_kind`, `vacuum`, `annotations`.
+- **Strict type** = the dict is **JSON** (lists / dicts / bools / floats). `annotations` are JSON
+  channel dicts, **never `AtomChannel` objects** — `AtomChannel` lives only in-memory on the
+  struct; serialize a live map with `annotations_to_json(...)` before it crosses the boundary.
+- `apply_metadata_dict` is **full-replace**: an absent key resets that field to its default
+  (absent `cell` → non-periodic; absent `regions` → none). It re-runs `Structure.__post_init__`,
+  so **all field validation lives in one place** (the dataclass invariants) — there is no second
+  validator to drift from.
+- **NOT in scope** (they sit *around* the contract, not inside it): `selection_rules` (a
+  sidecar-only pass-through, not a Structure field) and the sidecar **envelope**
+  (`schema_version` / `n_atoms_total` / `structure_hash` / `created_by` / `created_at`).
+
+### § 5.2 The data flow (one authority, every direction)
+
+```
+                         Structure  (in-memory SSOT; AtomChannel objects live here)
+                            │  ▲
+        metadata_to_dict()  │  │  apply_metadata_dict(dict)   ← the ONLY struct⇄dict crossing
+            (JSON out)      ▼  │      (JSON in, __post_init__ validates)
+                    ┌───────────────────┐
+                    │  JSON metadata dict│  (regions, frozen_atoms, cell, cell_origin,
+                    │   = §5.1 field set │   pbc, axis_kind, vacuum, annotations)
+                    └───────────────────┘
+                    ▲     ▲            │ ▲
+   sidecars.to_dict │     │ workingcopy│ │ parse ._normalised_dict / apply_to_structure
+   (+envelope,      │     │ _sidecar_  │ │  (both route through structure_fields_via_dataclass
+    selection_rules)│     │ dict       │ │   → a scratch Structure = the schema)
+                    │     │            ▼ │
+          .molstruct.json on disk  ◄────┘         web structure_to_dict → periodicity block
+                    │                                          │
+                    └──────────────────────────────────────────▼
+                                            molview.data  →  the 3-D viewer + panel
+```
+
+**The invariant:** the field list is enumerated **once** (the two methods above). `to_dict` and
+the read-side `_normalised_dict` both validate by *round-tripping through a scratch Structure*
+(`structure_fields_via_dataclass`), so a field cannot exist on the write side but not the read
+side. (This is the exact bug that silently dropped `cell_origin` on reload before the contract:
+the write path knew the field, the read path didn't.)
+
+### § 5.3 How to ADD a metadata key
+
+1. Add the field to the `Structure` dataclass (`structure.py`) **with its `__post_init__`
+   validation + reconciliation** — this is now the *only* place the field is validated.
+2. Add it to **`metadata_to_dict()`** (serialize → JSON) and **`apply_metadata_dict()`**
+   (deserialize + assign). Nowhere else.
+3. If it must survive the sidecar, bump `SCHEMA_VERSION` and add the new version to the read
+   module's `_READABLE_SCHEMA_VERSIONS`.
+4. If MolView must display/edit it, surface it in the web `structure_to_dict` periodicity block
+   and read it in `molview.data`.
+5. Add a **save → load → apply round-trip test** (see `test_cell_origin_survives_the_disk_roundtrip`).
+
+You do **not** touch `to_dict`, `_normalised_dict`, `apply_to_structure`, or `_sidecar_dict` —
+they read the field set from the two methods, so they pick it up for free.
+
+### § 5.4 How to REMOVE a metadata key
+
+Delete it from the dataclass + `metadata_to_dict` + `apply_metadata_dict`. Old sidecars that
+still carry it load fine — `apply_metadata_dict` ignores unknown keys. (Do NOT leave a "read it
+but never write it" half-migration; that is what the contract exists to prevent.)
+
+### § 5.5 Worked example (`cell_origin`)
+
+```python
+# WRITE: a live struct -> sidecar dict (annotations already JSON via metadata_to_dict)
+payload = molstruct.to_dict(struct.metadata_to_dict(),
+                            n_atoms_total=struct.n_atoms, structure_hash=h)
+molstruct.save(path, payload)
+
+# READ: sidecar -> struct (one crossing; __post_init__ validates)
+loaded = molstruct.load(path)              # -> normalised JSON dict, cell_origin preserved
+molstruct.apply_to_structure(back, loaded) # -> back.cell_origin == the saved value
+```
+
+Never hand-build the field kwargs; never pass an `AtomChannel` into `to_dict`/`apply_*`.

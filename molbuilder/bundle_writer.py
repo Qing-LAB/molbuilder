@@ -122,12 +122,14 @@ def write_bundle_as_handoff(bundle: BundleResult,
     # loader will check.
     structure_hash = _msj.sha256_of_file(xyz_path)
     sidecar_payload = _msj.to_dict(
+        {
+            "regions":      bundle.regions or None,
+            "frozen_atoms": bundle.frozen_atoms or None,
+            "cell":         bundle.structure.cell,
+            "pbc":          bundle.structure.pbc,
+        },
         n_atoms_total=len(bundle.structure.elements),
         structure_hash=structure_hash,
-        regions=bundle.regions or None,
-        frozen_atoms=bundle.frozen_atoms or None,
-        cell=bundle.structure.cell,
-        pbc=bundle.structure.pbc,
         created_by="molbuilder bundle_writer",
     )
     _msj.save(sidecar_path, sidecar_payload)

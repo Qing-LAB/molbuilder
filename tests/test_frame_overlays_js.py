@@ -30,16 +30,14 @@ def _run_node(snippet: str) -> object:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-# A stubbed embed handle (records the last setArrows/setLabels) + a sync-notify store.  The
-# overlay controller takes ONLY (handle, store) -- no workspace, no force data.
+# A stubbed embed handle (records the last setArrows/setLabels).  The overlay controller takes
+# ONLY (handle) -- no store subscription (the render streamline calls refresh() after a redraw),
+# no workspace, no force data.
 _HARNESS = """
     const handle = { arrows: null, labels: null,
         setArrows: (a) => { handle.arrows = a; },
         setLabels: (l) => { handle.labels = l; } };
-    const subs = [];
-    const store = { subscribe: (fn) => { subs.push(fn); return () => {}; },
-                    notify: () => subs.forEach(fn => fn()) };
-    const ov = global.molbuilder.molview.mountOverlays(handle, store);
+    const ov = global.molbuilder.molview.mountOverlays(handle);
 """
 
 
@@ -66,13 +64,14 @@ def test_setLabels_draws_exactly_what_it_is_handed():
 
 
 def test_overlays_persist_verbatim_across_a_redraw():
-    """A per-frame setStructure clears the embed's overlays; a store change re-applies the
-    CONSUMER's last-set arrows/labels EXACTLY -- the controller never recomputes them."""
+    """A redraw (setStructure) clears the embed's overlays; the render streamline then calls
+    refresh(), which re-applies the CONSUMER's last-set arrows/labels EXACTLY -- never
+    recomputed, and never off an unrelated store change (the controller has no store sub)."""
     out = _run_node(_HARNESS + """
         ov.setArrows([{start:[0,0,0], end:[2,0,0]}]);
         ov.setLabels({atoms:'all', format:'index'});
         handle.arrows = 'CLEARED'; handle.labels = 'CLEARED';   // the redraw wiped them
-        store.notify();                                          // a redraw happened
+        ov.refresh();                                           // render streamline: post-redraw
         console.log(JSON.stringify({arrows: handle.arrows, labels: handle.labels}));
     """)
     assert out["arrows"] == [{"start": [0, 0, 0], "end": [2, 0, 0]}]
@@ -81,16 +80,17 @@ def test_overlays_persist_verbatim_across_a_redraw():
 
 def test_controller_reads_no_force_data_and_synthesizes_nothing():
     """(task e2) The viewer must NOT pull force data or build arrow geometry.  Even with a
-    workspace exposing currentForces present, the controller never touches it, and with no
-    consumer-set overlay the drawn arrows stay empty."""
+    workspace exposing currentForces present, the controller never touches it, and with NO
+    consumer-set overlay a refresh() draws nothing (it must NOT force-clear a door the consumer
+    never set -- that would clobber a view toggle)."""
     out = _run_node(_HARNESS + """
         let forcesRead = 0;
         global.workspace = { currentForces: () => { forcesRead++; return [[1,0,0]]; } };
-        store.notify(); store.notify();       // redraws, but the consumer set NO overlay
+        ov.refresh(); ov.refresh();           // post-redraw, but the consumer set NO overlay
         console.log(JSON.stringify({forcesRead, arrows: handle.arrows}));
     """)
     assert out["forcesRead"] == 0             # never reached for force data
-    assert out["arrows"] == []                # nothing synthesized (empty, not computed)
+    assert out["arrows"] is None              # untouched -- nothing synthesized, nothing forced
 
 
 def test_dispose_clears_overlays_and_stops_reapplying():
@@ -100,7 +100,7 @@ def test_dispose_clears_overlays_and_stops_reapplying():
         ov.dispose();
         const cleared = {arrows: handle.arrows, labels: handle.labels};
         handle.arrows = 'X'; handle.labels = 'X';
-        store.notify();                        // must NOT re-apply after dispose
+        ov.refresh();                          // must NOT re-apply after dispose
         console.log(JSON.stringify({cleared,
             afterNotify: {arrows: handle.arrows, labels: handle.labels}}));
     """)
