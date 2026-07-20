@@ -263,6 +263,16 @@
 
         function frameCount() { return _data ? _data.frames.length : 0; }
         function currentFrame() { return _frame; }
+        // Read a frame's CLEAN, ORIGINAL-indexed coords (all atoms, never the isolate-filtered
+        // draw). This is the accessor the interaction layer uses: measurement takes the panel
+        // selection (original 0-based indices) and reads those atoms' coords here at the current
+        // frame -- no drawn->original translation, no in-window picking (§7.3 interaction note).
+        // Returns a defensive copy; null if out of range.
+        function getFrame(i) {
+            var idx = (i === undefined) ? _frame : Math.floor(Number(i));
+            if (!_data || !(idx >= 0 && idx < _data.frames.length)) return null;
+            return _data.frames[idx].map(function (p) { return [p[0], p[1], p[2]]; });
+        }
         // The frame-bar subscribes HERE (not the view store) so playback never re-renders the panel.
         function onFrameChange(fn) {
             if (typeof fn !== "function") return _noop;
@@ -298,6 +308,7 @@
             render:        render,
             frameCount:    frameCount,
             currentFrame:  currentFrame,
+            getFrame:      getFrame,
             onFrameChange: onFrameChange,
             dispose:       dispose,
         };

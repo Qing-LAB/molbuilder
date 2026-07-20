@@ -200,6 +200,24 @@ def test_append_atom_count_mismatch_is_hard_error():
     assert out["hasCount"] is True
 
 
+def test_getFrame_returns_clean_original_coords_not_the_filtered_draw():
+    out = _run_node("""
+        const { store, e } = mk();
+        e.setData(DATA);
+        store._set({ indices: [1], isolate: true });   // isolate -> the DRAW is 1 atom
+        console.log(JSON.stringify({
+            frame0: e.getFrame(0),        // still all 3 original atoms
+            current: e.getFrame(),        // defaults to current frame
+            oob: e.getFrame(9),
+        }));
+    """)
+    # getFrame returns the CLEAN original-indexed coords (all 3 atoms) regardless of isolate,
+    # so measurement can index it by the panel's original atom index.
+    assert out["frame0"] == [[0, 0, 0], [1, 0, 0], [2, 0, 0]]
+    assert out["current"] == [[0, 0, 0], [1, 0, 0], [2, 0, 0]]
+    assert out["oob"] is None
+
+
 def test_append_before_load_is_hard_error():
     out = _run_node("""
         const { e } = mk();

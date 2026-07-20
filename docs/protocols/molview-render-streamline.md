@@ -275,10 +275,16 @@ Scene-level, computed once (same every frame unless the cell changes): `cellBox`
 is what hands them to the viewer.
 
 `sourceIndex` is the **drawn → original** index map. It is why labels/halos show the original
-index under isolation (§2.4), and it is what an **interaction layer** (click-to-select,
-measurement — see the example in §11) translates through so a click on the derived view
-resolves to the right original atom. Picking and measurement are **not** the render machine;
-the engine only **exposes `sourceIndex`** so they can translate.
+index under isolation (§2.4). It is **not** needed for picking under isolation, because:
+
+**Interaction under isolation.** While isolate is on, the 3-D window is **display-only** —
+**in-window click-to-select is OFF**. The user curates the selection through the **panel**
+(atom list / filter), which always speaks original 0-based indices, so there is no ambiguity
+and nothing to translate. **Measurement** (a separate interaction layer, not the render
+machine) takes its atoms from that **panel selection** and reads their coordinates from the
+**current frame** (`engine.getFrame(currentFrame)`), so it stays correct and frame-aware
+without touching the drawn geometry. In-window picking returns when isolate is off (drawn
+index == original index again).
 
 ## 8. The minimal update — one engine, three costs (finding B)
 
