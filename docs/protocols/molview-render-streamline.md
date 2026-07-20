@@ -68,7 +68,10 @@ are:
 - **Atom index.** The atom-index labels. If selection/isolation dropped atoms, the index
   shown must still be the atom's **original** index — so when the atom list has been
   filtered, the index is **translated** so each kept atom shows its original index, not its
-  new position in the filtered list.
+  new position in the filtered list. The displayed number is **1-based** (SIESTA / Fortran
+  convention; `data-vocabulary.md` §3.1) — internal indices (`sourceIndex`, `selection`) stay
+  **0-based**; only the label text is converted, through the shared L1 helper
+  `molbuilder.atomIndexModel.toDisplay` (reused, never re-derived as a bare `+1`).
 - **Selection halos (three highlight layers).** The highlights that show what is selected:
   (a) **region color tints** (each region label its own color), (b) **frozen-atom markers**,
   and (c) the **selection halo** on the current pick set. Region tints and frozen markers come

@@ -1,0 +1,165 @@
+"""process -- the PURE per-frame processor (molview-render-streamline.md §2, §7.3).
+
+Node unit test: processFrame is a pure function. We assert §2 end to end -- the selection
+filter, the drawn->original sourceIndex map, original-index labels under isolation, the
+region/frozen/selection halo layering in drawn-index space, and force→arrow derivation.
+"""
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
+# process.js reuses the L1 index helper for 1-based (SIESTA) label text -- load it first.
+INDEX_HELPER = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
+
+
+def _run_node(snippet: str) -> object:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    full = ("global.window = global;\n"
+            + INDEX_HELPER.read_text() + "\n"
+            + MODULE.read_text() + "\n"
+            + """
+            const processFrame = global.molbuilder.molview.engine.process.processFrame;
+            // 4 atoms on the x-axis. atom 1 = region "bridge"; atom 3 = frozen.
+            const COORDS = [[0,0,0],[1,0,0],[2,0,0],[3,0,0]];
+            const IDENTITY = {
+                elements:    ["C","N","O","H"],
+                annotations: [{}, { label: "bridge" }, {}, { frozen: true }],
+            };
+            """
+            + snippet)
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
+                          capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_no_isolate_draws_all_atoms_identity_source():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
+                                { selection: [1, 3], isolate: false });
+        console.log(JSON.stringify({ positions: pf.positions, sourceIndex: pf.sourceIndex,
+                                     elements: pf.elements }));
+    """)
+    # selection WITHOUT isolate does not filter -- every atom drawn, identity source map.
+    assert out["positions"] == [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]]
+    assert out["sourceIndex"] == [0, 1, 2, 3]
+    assert out["elements"] == ["C", "N", "O", "H"]
+
+
+def test_isolate_keeps_only_selected_and_maps_source_index():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
+                                { selection: [3, 1], isolate: true });   // out-of-order selection
+        console.log(JSON.stringify({ positions: pf.positions, sourceIndex: pf.sourceIndex,
+                                     elements: pf.elements }));
+    """)
+    # drawn in ORIGINAL order (ascending): atoms 1 and 3 kept.
+    assert out["positions"] == [[1, 0, 0], [3, 0, 0]]
+    assert out["sourceIndex"] == [1, 3]            # drawn m -> original atom
+    assert out["elements"] == ["N", "H"]
+
+
+def test_index_labels_show_original_index_under_isolation():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
+                                { selection: [1, 3], isolate: true, showIndex: true });
+        console.log(JSON.stringify({ labels: pf.labels }));
+    """)
+    # two drawn atoms; the label TEXT is the ORIGINAL index, 1-based (SIESTA convention via
+    # atomIndexModel.toDisplay): original atoms 1 and 3 -> display "2" and "4". NOT the drawn
+    # 0/1. Placed at the drawn atom's position.
+    assert out["labels"] == [
+        {"position": [1, 0, 0], "text": "2"},
+        {"position": [3, 0, 0], "text": "4"},
+    ]
+
+
+def test_labels_null_when_showindex_off():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY, { showIndex: false });
+        console.log(JSON.stringify({ labels: pf.labels }));
+    """)
+    assert out["labels"] is None
+
+
+def test_halos_region_frozen_selection_layered_in_drawn_space():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
+                                { selection: [1], isolate: false });
+        console.log(JSON.stringify(pf.halos));
+    """)
+    # all 4 drawn (isolate off), drawn index == original index. Order: region, frozen, selection.
+    atoms = out["atoms"]
+    assert atoms[0]["indices"] == [1]                 # region "bridge" on atom 1
+    assert atoms[0]["halo"]["color"] == "#fdc086"     # bridge palette colour
+    assert atoms[1]["indices"] == [3]                 # frozen marker on atom 3
+    assert atoms[1]["halo"]["color"] == "#ff5050"
+    assert atoms[2]["indices"] == [1]                 # selection halo on atom 1, drawn LAST (on top)
+    assert atoms[2]["halo"]["color"] == "yellow"
+
+
+def test_halos_indices_translate_to_drawn_space_under_isolate():
+    out = _run_node("""
+        const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
+                                { selection: [1, 3], isolate: true });
+        console.log(JSON.stringify(pf.halos));
+    """)
+    # drawn = [atom1, atom3] -> drawn indices 0,1. region "bridge" (atom1) -> drawn 0;
+    # frozen (atom3) -> drawn 1; selection {1,3} -> drawn [0,1].
+    atoms = out["atoms"]
+    assert atoms[0]["indices"] == [0]      # bridge region on drawn 0 (orig atom 1)
+    assert atoms[1]["indices"] == [1]      # frozen on drawn 1 (orig atom 3)
+    assert atoms[2]["indices"] == [0, 1]   # selection halo -> both drawn atoms
+
+
+def test_halos_null_when_nothing_to_highlight():
+    out = _run_node("""
+        const pf = processFrame({ coords: [[0,0,0]] }, { elements: ["C"], annotations: [{}] },
+                                { selection: [], isolate: false });
+        console.log(JSON.stringify({ halos: pf.halos }));
+    """)
+    assert out["halos"] is None
+
+
+def test_forces_build_arrows_for_drawn_atoms_with_scale():
+    out = _run_node("""
+        const forces = [[0,0,0],[0,1,0],[0,0,0],[0,0,2]];
+        const pf = processFrame({ coords: COORDS, forces: forces }, IDENTITY,
+                                { selection: [1, 3], isolate: true, showForces: true, forceScale: 2 });
+        console.log(JSON.stringify({ arrows: pf.arrows }));
+    """)
+    # drawn atoms 1 and 3; arrow end = pos + force*scale(2).
+    assert out["arrows"] == [
+        {"start": [1, 0, 0], "end": [1, 2, 0]},    # atom1 force (0,1,0)*2 -> +2 in y
+        {"start": [3, 0, 0], "end": [3, 0, 4]},    # atom3 force (0,0,2)*2 -> +4 in z
+    ]
+
+
+def test_arrows_null_without_forces_or_when_overlay_off():
+    out = _run_node("""
+        const noForce = processFrame({ coords: COORDS, forces: null }, IDENTITY, { showForces: true });
+        const off     = processFrame({ coords: COORDS, forces: [[0,0,1],[0,0,1],[0,0,1],[0,0,1]] },
+                                     IDENTITY, { showForces: false });
+        console.log(JSON.stringify({ noForce: noForce.arrows, off: off.arrows }));
+    """)
+    assert out["noForce"] is None
+    assert out["off"] is None
+
+
+def test_single_frame_is_just_processed_once():
+    # §2.1 single frame = frame[0]; the processor runs the same on a one-frame set.
+    out = _run_node("""
+        const pf = processFrame({ coords: [[5,5,5]], forces: null },
+                                { elements: ["Fe"], annotations: [{}] }, {});
+        console.log(JSON.stringify({ positions: pf.positions, sourceIndex: pf.sourceIndex }));
+    """)
+    assert out["positions"] == [[5, 5, 5]]
+    assert out["sourceIndex"] == [0]
