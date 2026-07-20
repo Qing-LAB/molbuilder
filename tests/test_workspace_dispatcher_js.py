@@ -1287,6 +1287,37 @@ class TestStateTimeline:
         assert out["order"] == [1, 2]            # first-in first-out, not by write speed
         assert out["index"] == 2                 # sequential advance, no interleave
 
+    def test_anchor_supersedes_an_inflight_save(self):
+        """Opening a NEW molecule while a Save is still mid-round-trip must SUPERSEDE that
+        save: the anchor prunes its timeline + resets the index OFF the serialization chain,
+        so when the held persist finally resolves the stale save must NOT move the index off
+        the anchor's 0.  Regression for the anchor-race generation guard (2026-07): each op
+        captures the timeline generation when requested; anchor() bumps it; a stale op aborts."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "let releaseSave = null;\n"
+            "d.installMolecule({ text:'unused', filename:'/p/a.xyz' }).then(async () => {\n"
+            # Hold ONLY the save's persist (its target index is 1); let the next anchor's
+            # index-0 persist resolve normally so installMolecule(b) can complete.
+            "  const realPersist = _wsStub.persist;\n"
+            "  _wsStub.persist = function (sb, blob, id) {\n"
+            "    if (id.state_index === 1) {\n"
+            "      return new Promise((res) => { releaseSave = () => { realPersist(sb, blob, id); res(); }; });\n"
+            "    }\n"
+            "    return realPersist(sb, blob, id);\n"
+            "  };\n"
+            "  window.molbuilder.structureCanvas.markDirty();\n"   # an edit -> save(1) targets index 1
+            "  const savePromise = d.save(1);        // enqueued; its persist is HELD pending\n"
+            "  await d.installMolecule({ text:'unused', filename:'/p/b.xyz' });  // anchors -> generation++\n"
+            "  const idxAfterAnchor = d.state_index; // anchor reset the index to 0\n"
+            "  releaseSave();                        // the superseded save now resolves\n"
+            "  await savePromise;\n"
+            "  console.log(JSON.stringify({ idxAfterAnchor: idxAfterAnchor, idxFinal: d.state_index }));\n"
+            "});")
+        assert out["idxAfterAnchor"] == 0    # opening the new molecule reset the index
+        assert out["idxFinal"] == 0          # the in-flight save was superseded -> did NOT advance to 1
+
 
 class TestAnchorTimelineDurableWrites:
     """Regression (2026-07-14): the state-timeline anchor write must be

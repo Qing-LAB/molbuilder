@@ -42,6 +42,12 @@
         var _stateIndex   = 0;
         var _uncommitted  = false;
         var _pushPopChain = Promise.resolve();
+        // Timeline generation.  `anchor()` (opening a NEW molecule) bumps this to INVALIDATE any
+        // save/load of the PREVIOUS molecule still queued or mid-round-trip: anchor prunes the old
+        // {wid}.* files and resets the index off-chain, so a stale save/load must NOT move the
+        // index or apply an old snapshot over the freshly-opened structure.  Each op captures the
+        // generation when it is REQUESTED and aborts if it changed by the time it runs / resolves.
+        var _generation   = 0;
 
         // The model calls this on every data change (guarded by its own `_applying` flag so a
         // snapshot restore doesn't spuriously mark the model uncommitted).
@@ -70,7 +76,9 @@
         // place.  A rejected persist does NOT move the index.
         function save(delta) {
             delta = delta || 0;
+            var gen = _generation;                       // capture at request time
             return _enqueue(function () {
+                if (gen !== _generation) return;         // a new molecule superseded this save
                 var ws = getWorkspace();
                 if (!ws || typeof ws.persist !== "function") return;
                 var wid    = ws.workspaceId();
@@ -88,6 +96,7 @@
                 return Promise.resolve(
                     ws.persist(snap, snap, { workspace_id: wid, state_index: target })
                 ).then(function () {
+                    if (gen !== _generation) return;     // superseded during the round-trip
                     _stateIndex  = target;
                     _uncommitted = false;
                     if (delta > 0 && typeof ws.pruneStatesAbove === "function") {
@@ -113,7 +122,9 @@
         //              changes.  Undo-only (a save after a load(-1) overwrites the abandoned tail).
         function load(delta) {
             delta = delta || 0;
+            var gen = _generation;                       // capture at request time
             return _enqueue(function () {
+                if (gen !== _generation) return;         // a new molecule superseded this load
                 var ws = getWorkspace();
                 if (!ws) return;
                 if (delta === 0) {
@@ -145,6 +156,7 @@
                 return Promise.resolve(
                     ws.readState({ workspace_id: wid, state_index: target })
                 ).then(function (snap) {
+                    if (gen !== _generation) return;   // superseded during the round-trip
                     if (snap == null) return;   // missing history file -> no-op, index unchanged
                     applySnapshot(snap);
                     _stateIndex  = target;
@@ -164,6 +176,10 @@
         // file, reset state_index to 0, and write the loaded structure as the index-0 anchor.
         // This is the ONE automatic write; everything after is explicit save(delta).
         function anchor() {
+            // Supersede any save/load of the PREVIOUS molecule still queued or mid-round-trip:
+            // bumping the generation makes each of them abort (it checks `gen !== _generation`)
+            // instead of moving the index or applying a stale snapshot over the new structure.
+            _generation++;
             var ws = getWorkspace();
             _stateIndex  = 0;
             _uncommitted = false;
