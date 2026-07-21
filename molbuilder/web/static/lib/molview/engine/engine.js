@@ -46,7 +46,6 @@ function create(handle, opts) {
     var _prevStructSig = null;   // last structural signature (the §8 tier decision).
     var _prevArrowSig = null;    // last force-overlay signature (in-place arrow re-bake tier).
     var _storeUnsub = _noop;
-    var _playTimer = null;
     var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
     var _regenRaf = null;        // pending structural-regen paint yield (rAF id).
     var _regenTimer = null;      // fallback timer (a backgrounded tab suspends rAF).
@@ -272,24 +271,10 @@ function create(handle, opts) {
         } finally { embedIo.endBatch(); }
         _notifyFrame();
     }
-    function play(playOpts) {
-        playOpts = playOpts || {};
-        if (frameCount() <= 1) return;
-        var fps = (typeof playOpts.fps === "number" && playOpts.fps > 0) ? playOpts.fps : 10;
-        pause();
-        if (typeof globalThis.setInterval !== "function") return;
-        _playTimer = globalThis.setInterval(function () {
-            var n = frameCount();
-            if (n <= 1) { pause(); return; }
-            var next = _frame + 1;
-            if (next >= n) next = 0;       // loop
-            showFrame(next);
-        }, 1000 / fps);
-    }
-    function pause() {
-        if (_playTimer != null && typeof globalThis.clearInterval === "function") globalThis.clearInterval(_playTimer);
-        _playTimer = null;
-    }
+    // Playback (the setInterval loop) lives ONE layer up, in mount.js (`_play`/`_stopPlay`),
+    // which drives the frame-controls bar through `data.setFrame`.  The engine only exposes the
+    // per-frame door (`showFrame`); it deliberately owns no timer, so there is a single playback
+    // owner (§ single-loop) rather than a rival engine-side interval.
 
     function frameCount() { return _data ? _data.frames.length : 0; }
     function currentFrame() { return _frame; }
@@ -314,7 +299,6 @@ function create(handle, opts) {
     }
 
     function dispose() {
-        pause();
         _locked = false;
         _cancelPendingRegen();
         try { embedIo.setBusy(null); } catch (_) {}
@@ -331,8 +315,6 @@ function create(handle, opts) {
         setData:       setData,
         appendFrames:  appendFrames,
         showFrame:     showFrame,
-        play:          play,
-        pause:         pause,
         render:        render,
         frameCount:    frameCount,
         currentFrame:  currentFrame,
