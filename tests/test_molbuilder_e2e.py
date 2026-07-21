@@ -240,7 +240,7 @@ def _load_file(page, xyz_path, expected_atoms):
         " if (t && typeof t.commitFile === 'function') {"
         "   return t.commitFile(path);"
         " }"
-        " return window.molbuilder.molview.data.selection.setSourceFile(path);"
+        " throw new Error('molbuilderTab.commitFile unavailable');"
         "}",
         str(p),
     )

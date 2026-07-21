@@ -261,8 +261,14 @@
             const proj = window.molbuilder && window.molbuilder.projects;
             if (!proj || !proj.parser
                     || typeof proj.parser.openMolecule !== "function") {
-                // No parser door on this page: last-resort direct source set.
-                if (typeof store.setSourceFile === "function") store.setSourceFile(path);
+                // No parser door on this page -- the page can't load a structure
+                // without it (the old store-side Path-A load-fetch is gone).
+                // Nothing to fall back to; warn and no-op.
+                if (window.console && window.console.warn) {
+                    window.console.warn(
+                        "[selection-bootstrap] cannot commit file: projects "
+                        + "parser door (openMolecule) not available on this page");
+                }
                 return;
             }
             const warn = window.molbuilder && window.molbuilder.warningModal;

@@ -887,44 +887,16 @@
             }
             return s.adoptSession(opts);
         },
-        // Per workspace-contract.md §5 — set the path that the
-        // selection store regards as its source-of-truth for sidecar
-        // labels (frozen_atoms, regions).  Fallback path when
-        // ``adoptSession`` isn't available; the store internally
-        // refetches atoms from /api/selection/atoms.
-        setSourceFile:   function (path) {
-            var s = _store(); if (!s) throw _missing("selection store");
-            if (typeof s.setSourceFile !== "function") {
-                throw _missing("selection.store.setSourceFile");
-            }
-            return s.setSourceFile(path);
-        },
-        // Per workspace-contract.md §5 — set the async atom-loader
-        // the store uses for ``setSourceFile`` / ``refreshAtoms``.
-        // Wired once on page mount by selection-bootstrap so the
-        // store's lazy-fetch path goes through the modify-tab's
-        // loadStructureText (which is itself a ws.loadFromText
-        // alias).
+        // Per workspace-contract.md §5 — set the async atom-loader the store
+        // holds (setLoader / structureLoader; still wired at page mount by
+        // selection-bootstrap).  A separate cleanup owns this setter's fate;
+        // the store's Path-A lazy-fetch that consumed the loader is gone.
         setLoader:       function (loader) {
             var s = _store(); if (!s) throw _missing("selection store");
             if (typeof s.setLoader !== "function") {
                 throw _missing("selection.store.setLoader");
             }
             return s.setLoader(loader);
-        },
-        // Per workspace-contract.md §5 — refetch atoms from
-        // ``/api/selection/atoms`` for the current sourceFile.  The
-        // endpoint applies the ``.molstruct.json`` sidecar so this
-        // overlays the workspace atoms with frozen_atoms + regions
-        // data — needed after ``adoptSession({atoms})`` installs
-        // build-load atoms (which lack sidecar enrichment because
-        // /api/build/load doesn't apply sidecars).
-        refreshAtoms:    function () {
-            var s = _store(); if (!s) throw _missing("selection store");
-            if (typeof s.refreshAtoms !== "function") {
-                throw _missing("selection.store.refreshAtoms");
-            }
-            return s.refreshAtoms();
         },
     };
 

@@ -69,7 +69,6 @@
 
     const EVAL_URL    = "/api/selection/eval";
     const ATOMS_URL   = "/api/selection/atoms";
-    const FILES_READ  = "/api/files/read";
 
     function _initialState() {
         return {
@@ -373,31 +372,6 @@
             state.error = null;
         }
 
-        async function _loadViewer(signal) {
-            if (!state.sourceFile) return true;
-            // No injected loader == headless mode: skip viewer load,
-            // fetch atoms only.
-            if (typeof structureLoader !== "function") return true;
-            const url = FILES_READ + "?path="
-                      + encodeURIComponent(state.sourceFile);
-            const { ok, body } = await _getJson(url, signal);
-            if (!ok) {
-                state.error = (body && body.error)
-                    ? body.error : "file read failed";
-                return false;
-            }
-            const filename = state.sourceFile.split("/").pop();
-            try {
-                await structureLoader(body.text, filename);
-            } catch (e) {
-                if (e && e.name === "AbortError") throw e;
-                state.error = "loader failed: "
-                            + (e && e.message ? e.message : String(e));
-                return false;
-            }
-            return true;
-        }
-
         // Async mutator runner: loading=true notify, run body, then
         // loading=false notify.  Cancels any in-flight previous async
         // mutator via AbortController.  Clears ``state.error`` at
@@ -426,24 +400,6 @@
         // ----------------------------------------------------------- //
         //  PUBLIC: source file                                        //
         // ----------------------------------------------------------- //
-
-        function setSourceFile(path) {
-            const next = path || null;
-            if (next === state.sourceFile) return Promise.resolve();
-            return _run(async (signal) => {
-                state.sourceFile = next;
-                state.atoms      = [];
-                state.selection  = [];   // a fresh file starts empty
-                state.pickOrder  = [];
-                if (next === null) return;
-                // If the viewer failed to load, don't pull atoms --
-                // showing rows for a structure the user can't see in
-                // 3D is more confusing than the visible error banner.
-                const ok = await _loadViewer(signal);
-                if (!ok) return;
-                await _fetchAtoms(signal);
-            });
-        }
 
         // A SAVE just wrote the in-memory model to ``path``; re-anchor sourceFile so
         // later label edits target the new file.  SYNCHRONOUS + sourceFile-ONLY: a
@@ -529,12 +485,6 @@
                     return;
                 }
                 if (!state.sourceFile) return;
-                await _fetchAtoms(signal);
-            });
-        }
-
-        function refreshAtoms() {
-            return _run(async (signal) => {
                 await _fetchAtoms(signal);
             });
         }
@@ -1037,9 +987,7 @@
             knownChannels:      knownChannels,
             subscribe:          subscribe,
             // source file
-            setSourceFile:      setSourceFile,
             noteSavedTo:        noteSavedTo,      // save-as source re-anchor (sync, no reload)
-            refreshAtoms:       refreshAtoms,
             adoptAtoms:         adoptAtoms,
             setCoords:          setCoords,        // frame coord-swap (workspace §1.5)
             adoptSession:       adoptSession,
