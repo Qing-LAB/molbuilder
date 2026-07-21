@@ -12,6 +12,7 @@
 
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
+    position: relative;            /* containing block for the top-right persistence indicator */
 
     /* The view-toggle RAIL (mol-viewer-stage's left column) is added to the LEFT of the
      * canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
