@@ -354,3 +354,28 @@
     margin: 0;
 }
 
+
+/* §19.5 PERSISTENCE-SUSPEND INDICATOR.  A small pill in the card's top-right, shown ONLY while a
+ * multi-step data operation has paused saving (data.onPersistStateChange).  The card is a query
+ * container (container-type above), which also makes it the containing block for this absolutely
+ * positioned overlay -- so it anchors to the card, not the page. */
+.molview-persist-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.6;
+    color: var(--text);
+    background: color-mix(in srgb, var(--warn) 22%, var(--bg-input, #262b33));
+    border: 1px solid var(--warn);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-card);
+    pointer-events: none;   /* never intercept viewer drags; the visible text carries the meaning */
+}
+.molview-persist-indicator[hidden] { display: none; }

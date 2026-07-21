@@ -665,6 +665,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         serialise:     _serialise,
         applySnapshot: _applySnapshot,
         getWorkspace:  _ws,
+        // Route the timeline's save/load/anchor WRITES through the suspend gate (reads/prune still
+        // use getWorkspace directly).  This is what makes suspendPersist() gate the timeline.
+        persist:       _persist,
         trace:         _trace,
     });
     // Guard set true while an internal apply (installMolecule / load snapshot application) drives
@@ -986,7 +989,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         m.state.view = v;
         var wid = ws.workspaceId();
         var idx = (typeof m.state.state_index === "number") ? m.state.state_index : _timeline.stateIndex;
-        try { ws.persist(m, null, { workspace_id: wid, state_index: idx }); }   // MIRROR ONLY
+        // MIRROR ONLY, routed through the suspend gate (held if a multi-step op is in flight).
+        try { _persist(m, null, { workspace_id: wid, state_index: idx }); }
         catch (_) { /* best-effort on unload */ }
     }
 
@@ -1354,13 +1358,73 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // the PREVIOUS file's regions/frozen (the atom-count invariant only catches a
     // count change, not a same-count swap).  Suspend around the load; resume writes
     // the now-consistent state once.
+    // THE atomic gate variable: >0 == persistence SUSPENDED.  A nesting COUNTER (not a bool) so
+    // nested suspend brackets compose -- each suspendPersist() must be paired with a resumePersist().
+    // JS is single-threaded so ++/-- are atomic; `_persist()` below is the single chokepoint EVERY
+    // persist write flows through and CONSULTS this counter, which is what makes the framework real.
     var _persistSuspended = 0;
-    function suspendPersist() { _persistSuspended++; }
+    // A persist requested while suspended is HELD here (last-writer-wins == the bracketed operation's
+    // FINAL coherent state) and flushed ONCE when the counter returns to 0.  A suspend bracket is
+    // meant to wrap ONE coherent multi-step operation, so coalescing to its final persist is correct
+    // -- do not wrap several DISTINCT checkpoint saves in a single bracket.
+    var _pendingPersist = null;
+
+    // suspendPersist / resumePersist (molview.data.*): the framework bracket a consumer wraps a
+    // multi-step data operation with so no INTERIM (inconsistent) state is persisted -- "suspend
+    // around the op; resume writes the now-consistent state once."  Pair them (try/finally); the
+    // counter tolerates nesting.
+    // Observers of the suspend state (the UI indicator subscribes here).  Fired ONLY on the
+    // 0<->suspended EDGE transitions, not on every nested suspend/resume, so the indicator toggles
+    // once per bracket.
+    var _persistListeners = [];
+    function _notifyPersistState() {
+        var on = _persistSuspended > 0;
+        for (var i = 0; i < _persistListeners.length; i++) {
+            try { _persistListeners[i](on); } catch (_) { /* an observer must not break the gate */ }
+        }
+    }
+    function suspendPersist() {
+        _persistSuspended++;
+        if (_persistSuspended === 1) _notifyPersistState();       // 0 -> suspended (leading edge)
+    }
     function resumePersist() {
-        // Push-only (§19.5): there is NO auto-write to release on resume.  suspend/resume
-        // survive only as a coherence bracket around a multi-step apply (they suppress the
-        // interim states from a would-be reader); the counter is the whole contract now.
         if (_persistSuspended > 0) _persistSuspended--;
+        if (_persistSuspended === 0) {
+            // On the OUTERMOST resume, flush the one coherent state the bracket last requested...
+            if (_pendingPersist) {
+                var p = _pendingPersist;
+                _pendingPersist = null;
+                _writePersist(p.session, p.snapshot, p.identity);
+            }
+            _notifyPersistState();                                 // suspended -> 0 (trailing edge)
+        }
+    }
+    // Observability (molview.data.*): the UI reflects the suspend state via these.
+    function isPersistSuspended() { return _persistSuspended > 0; }
+    function onPersistStateChange(fn) {
+        if (typeof fn !== "function") return function () {};
+        _persistListeners.push(fn);
+        return function () {
+            var i = _persistListeners.indexOf(fn);
+            if (i >= 0) _persistListeners.splice(i, 1);
+        };
+    }
+
+    // THE persist chokepoint (§19.5): the state timeline's save/load/anchor AND flushViewState all
+    // route through here, so `suspendPersist()` actually gates them.  Suspended -> HOLD + coalesce
+    // (a later request supersedes an earlier one); otherwise write straight through.  Returns the
+    // ws.persist promise (or a resolved promise when deferred / no workspace).
+    function _persist(session, snapshot, identity) {
+        if (_persistSuspended > 0) {
+            _pendingPersist = { session: session, snapshot: snapshot, identity: identity };
+            return Promise.resolve();
+        }
+        return _writePersist(session, snapshot, identity);
+    }
+    function _writePersist(session, snapshot, identity) {
+        var ws = _ws();
+        if (!ws || typeof ws.persist !== "function") return Promise.resolve();
+        return Promise.resolve(ws.persist(session, snapshot, identity));
     }
 
     // The workspace PERSISTENCE layer (lib/workspace/dispatcher.js) -- data-model hands it
@@ -1498,8 +1562,10 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         atomFor3Dmol:          atomFor3Dmol,
         toAddAtoms:            toAddAtoms,
         draftIdentity:         _timeline.draftIdentity,  // the draft key a Save must drop (b1)
-        suspendPersist:        suspendPersist, // F4: bracket a multi-step load
-        resumePersist:         resumePersist,
+        suspendPersist:        suspendPersist, // F4: bracket a multi-step data op (holds persists)
+        resumePersist:         resumePersist,  //     -> flushes the coalesced final state on the outermost resume
+        isPersistSuspended:    isPersistSuspended,   // current gate state (the UI indicator reads this)
+        onPersistStateChange:  onPersistStateChange, // subscribe to 0<->suspended edges (UI indicator)
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
         setUnitCell:           setUnitCell,

@@ -35,6 +35,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var applySnapshot = deps.applySnapshot;
         var getWorkspace  = deps.getWorkspace;
         var trace         = deps.trace || function () {};
+        // WRITE seam: every persist goes through the data model's suspend gate (deps.persist) so
+        // suspendPersist() can hold/coalesce it.  Fallback to the raw workspace.persist for a
+        // timeline constructed without the gate (direct-construction tests).
+        var persist       = deps.persist || function (session, snapshot, identity) {
+            var w = getWorkspace();
+            return (w && typeof w.persist === "function")
+                ? Promise.resolve(w.persist(session, snapshot, identity)) : Promise.resolve();
+        };
 
         // Position in the tab's operation history; `_uncommitted` = the model changed since the
         // last `save` (what a `load(-1)` would discard).  save/load are SERIALIZED through
@@ -95,7 +103,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // after loading back" bug).
                 snap.state.state_index = target;
                 return Promise.resolve(
-                    ws.persist(snap, snap, { workspace_id: wid, state_index: target })
+                    persist(snap, snap, { workspace_id: wid, state_index: target })
                 ).then(function () {
                     if (gen !== _generation) return;     // superseded during the round-trip
                     _stateIndex  = target;
@@ -164,7 +172,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     _uncommitted = false;
                     if (typeof ws.persist === "function") {
                         // MIRROR ONLY (snapshotBlob=null) -- so a later reload restores THIS index.
-                        return ws.persist(snap, null, { workspace_id: wid, state_index: target });
+                        return persist(snap, null, { workspace_id: wid, state_index: target });
                     }
                 });
             });
@@ -203,7 +211,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 : Promise.resolve();
             return prune.then(function () {
                 trace("anchor:prune:resolve -> persist:issue");
-                ws.persist(snap, snap, { workspace_id: wid, state_index: 0 });
+                persist(snap, snap, { workspace_id: wid, state_index: 0 });
                 trace("anchor:persist:issued");
             });
         }

@@ -233,6 +233,32 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             return _failMount("selection panel failed to mount (see banner)");
         cleanups.push(function () { try { panelMount.dispose && panelMount.dispose(); } catch (_) {} });
 
+        // §19.5 PERSISTENCE INDICATOR: reflect the suspend gate so the user SEES when saves are
+        // deferred (a consumer bracketing a multi-step data operation via suspendPersist).  Hidden
+        // unless suspended; a synchronous internal bracket (a modify op) toggles it 0->1->0 with no
+        // paint between, so it only becomes visible during a genuine async deferral window.
+        if (card && data && typeof data.onPersistStateChange === "function") {
+            const pind = _el("div", "molview-persist-indicator");
+            pind.hidden = true;
+            pind.setAttribute("role", "status");
+            pind.setAttribute("aria-live", "polite");
+            pind.title = "Saving is paused while a multi-step edit is in progress; "
+                       + "your changes are saved when it finishes.";
+            pind.textContent = "⏸ Saving paused";
+            card.appendChild(pind);
+            const _setPersistInd = function (on) {
+                pind.hidden = !on;
+                if (card.classList) card.classList.toggle("molview-persist-suspended", !!on);
+            };
+            try { _setPersistInd(typeof data.isPersistSuspended === "function" && data.isPersistSuspended()); }
+            catch (_) {}
+            const _offPersist = data.onPersistStateChange(_setPersistInd);
+            cleanups.push(function () {
+                try { _offPersist && _offPersist(); } catch (_) {}
+                try { pind.remove(); } catch (_) {}
+            });
+        }
+
         // (isolate "show selected only" is added as view toggle #5 via the embed's
         // addViewToggle in the onReady above -- no separate control bar.)
 

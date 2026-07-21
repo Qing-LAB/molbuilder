@@ -215,7 +215,8 @@ _DATA_SURFACE = sorted([
     "getUnitCellInfo", "getUnitCellOrigin", "getVacuumInfo",
     "getAxisKindInfo", "getAtomsByLabel", "getFrozen", "getRegions",
     "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
-    "resumePersist", "commitPeriodicity", "setUnitCell", "setLattice",
+    "resumePersist", "isPersistSuspended", "onPersistStateChange",
+    "commitPeriodicity", "setUnitCell", "setLattice",
     "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
     "markDirty", "markSaved", "installMolecule", "exportFile",
     "save", "load",
@@ -1446,3 +1447,61 @@ class TestPersistErrorIsExplicit:
 
 
 # --------------------------------------------------------------------- #
+
+
+class TestSuspendPersistGate:
+    """The suspendPersist / resumePersist FRAMEWORK (molview-module §19.5): a consumer brackets a
+    multi-step data operation so no INTERIM state is persisted.  The atomic counter gates the ONE
+    persist chokepoint every writer (timeline save/load/anchor + flushViewState) routes through:
+    while suspended a persist is HELD + coalesced; the outermost resume flushes the final state
+    ONCE.  isPersistSuspended + onPersistStateChange expose the state to the UI."""
+
+    def test_suspend_holds_persist_and_resume_flushes_once(self):
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "const edges = [];\n"
+            # Subscribe AFTER install so we isolate OUR bracket: installMolecule's own
+            # applyWorkspacePayload runs a synchronous suspend/resume that also fires the edges
+            # (harmless -- no paint between, so no UI flash -- but it would pollute the assertion).
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(async function () {\n"
+            "  d.onPersistStateChange(function (on) { edges.push(on); });\n"
+            "  const baseline = _persistIdx.length;\n"          # persists so far (the anchor)
+            "  d.suspendPersist();\n"
+            "  const suspended = d.isPersistSuspended();\n"
+            "  await d.save(1);\n"                              # a persist attempt WHILE suspended
+            "  const during = _persistIdx.length;\n"            # must be unchanged -> held
+            "  d.resumePersist();\n"
+            "  const after = _persistIdx.length;\n"             # +1 -> the coalesced flush
+            "  console.log(JSON.stringify({\n"
+            "    suspended: suspended, resumed: d.isPersistSuspended(),\n"
+            "    baseline: baseline, during: during, after: after, edges: edges,\n"
+            "  }));\n"
+            "});")
+        assert out["suspended"] is True
+        assert out["resumed"] is False
+        assert out["during"] == out["baseline"], "a persist reached the workspace WHILE suspended"
+        assert out["after"] == out["baseline"] + 1, "resume did not flush exactly one coherent persist"
+        assert out["edges"] == [True, False], "the 0<->suspended edges did not fire once each"
+
+    def test_nested_suspend_only_flushes_on_outermost_resume(self):
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(async function () {\n"
+            "  const baseline = _persistIdx.length;\n"
+            "  d.suspendPersist(); d.suspendPersist();\n"       # nested x2
+            "  await d.save(1);\n"
+            "  d.resumePersist();\n"                            # inner resume -> still suspended
+            "  const afterInner = _persistIdx.length;\n"
+            "  const stillSuspended = d.isPersistSuspended();\n"
+            "  d.resumePersist();\n"                            # outer resume -> flush
+            "  const afterOuter = _persistIdx.length;\n"
+            "  console.log(JSON.stringify({\n"
+            "    baseline: baseline, afterInner: afterInner,\n"
+            "    stillSuspended: stillSuspended, afterOuter: afterOuter,\n"
+            "  }));\n"
+            "});")
+        assert out["afterInner"] == out["baseline"], "flushed on a NESTED (inner) resume"
+        assert out["stillSuspended"] is True
+        assert out["afterOuter"] == out["baseline"] + 1, "outermost resume did not flush once"
