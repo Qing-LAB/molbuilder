@@ -1034,6 +1034,20 @@ The rule that makes this a single correct path:
   unit cell / dims from the `molview.data.get*` accessors, §14.2); `mountMeasurementOverlay`.
 - `dispose()` tears it all down (panel, controls, overlays, k-grid, subscriptions).
 
+**Sizing contract (embedded module, `fused-layout.css`).** The card declares `min-width` = its
+DERIVED absolute minimum (`max(--viewer-min, --panel-min)`, the *stacked* floor) and `width: 100%`
+with NO module `max-width`: it FILLS its host, and the OWNER (tab) decides the actual width per use
+case, so header + panels always share one width by construction (no per-tab CSS, no measurement).
+Narrower than the row's `viewer+fold+panel` → the card flips to the stacked layout (`@container`);
+narrower than the min → `mount()` renders a blank card + a clear error (`.molview-embed-error`)
+instead of overflowing. Folding the panel expands the viewer to fill the freed width.
+
+**Viewer-overlay framework (`_viewer-overlay.js`).** `createViewerOverlay(anchorEl, {corner, kind,
+text, …})` is the ONE concealed primitive for corner pills over the viewer (the persistence
+indicator today; the measurement chip is the migration target) — one shared `.molview-overlay` class,
+token-styled, so every overlay is consistent with no per-consumer tweaking. Anchored to the viewer
+(not the card) so it tracks the viewer in every fold state.
+
 ### 18.3 Persistence is the WORKSPACE's, not molview's
 
 **Every consumer passes the REAL workspace — persistence is universal session state, NOT a
@@ -1576,8 +1590,16 @@ for the two saves (§19.5) — do not confuse them:
 - `draftIdentity()` → the key a timeline snapshot is filed under: `{workspace_id, state_index}` — the
   tab id plus the position in the operation timeline (§19.5). No filename (two-saves-never-mix); the
   `state_index` selects WHICH snapshot file.
-- `suspendPersist()` / `resumePersist()` — bracket a multi-step load so a mid-load read/write can't
-  pair the new geometry with the previous file's labels.
+- `suspendPersist()` / `resumePersist()` — the framework bracket a consumer wraps a multi-step data
+  operation with so no INTERIM (inconsistent) state is persisted; on the outermost `resumePersist`
+  the coalesced final state flushes ONCE. Every persist writer (the timeline save/load/anchor +
+  `flushViewState`) routes through the ONE gated chokepoint that consults the atomic suspend counter.
+  Pair them with try/finally (an unpaired `suspendPersist` wedges all future persistence). CONTRACT:
+  the bracket suppresses interim/automatic persists — do NOT wrap an explicit index-advancing
+  `save()` in it (call `save()` after resume). Coalescing never drops a pending disk snapshot for a
+  later mirror-only write.
+- `isPersistSuspended()` / `onPersistStateChange(fn)` — observe the gate (the "⏸ Saving paused" card
+  overlay subscribes here); `fn(on)` fires only on the 0↔suspended edges, once per bracket.
 
 **Persistence is EXPLICIT (push-only) — there is NO automatic write on change.** A data change (an
 edit, `applyOp`, a cell/label edit) updates the in-memory model but writes NOTHING to disk until the

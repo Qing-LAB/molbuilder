@@ -93,19 +93,33 @@ mode-math.js}`. Used by the spectra inspector.
 ## 3. Submodules (package-private, grouped by their special module)
 
 ### MolView (`lib/molview/`)
+All files are ES modules aggregated by `index.js` (which also re-exports `mount`).  The render engine
+lives in `engine/`, the selection UI in `selection/`.  `data-model.js` is the `molview.data` hub; it
+DELEGATES to three injected-factory submodules (the god-hub split) rather than doing everything itself.
+
 | File | Role |
 |---|---|
-| `data-model.js` | the in-memory model + public `molview.data` surface (the package hub) |
-| `mount.js` | `molview.mount` — assembles viewer + panel + render + overlays into ONE handle |
-| `render.js` | the render loop — "molview owns the render" (§14): handle + workspace → draw |
-| `view-controls.js` | the display-toggle control bar (axes/labels/cell/isolate) |
-| `measurement-overlay.js` | paints the geometry readout (§15) |
+| `index.js` | the ES entry: imports the whole graph + `export { mount }` (single-import door) |
+| `data-model.js` | the in-memory model + public `molview.data` surface (the hub; delegates below) |
+| `_operations.js` | injected factory: the modifier-op pipeline (`applyOp` + `/api/modify` round-trips) |
+| `_serialise.js` | injected factory: model → bytes (session snapshot + project-file `{xyz,sidecar}`) |
+| `_install.js` | injected factory: bytes → model (`applyWorkspacePayload` atomic sync, `installMolecule`, `generate`) |
+| `mount.js` | `molview.mount` — assembles viewer + panel + engine + overlays into ONE handle; owns the sizing-contract check |
+| `engine/engine.js` | THE render place (§8 tiers, movie, frame channel) |
+| `engine/process.js` | pure per-frame processor (drawn-set filter, halos, arrows, labels) |
+| `engine/embed-io.js` | the ONE seal over the 3Dmol handle |
+| `selection/panel.js` | the selection/cell DOM panel |
+| `selection/mount-panel.js` | fetch partial + mount the panel + attach the adapter |
+| `selection/viewer-adapter.js` | click→store picking + isolate toggle |
+| `selection/measurements.js` | pure xyz/distance/angle math (L1) |
+| `measurement-overlay.js` | the geometry-readout overlay |
+| `_viewer-overlay.js` | the concealed viewer-overlay framework (`createViewerOverlay`) — corner pills, tokens |
+| `frame-controls.js` | the trajectory playback bar (slider/counter) |
 | `_canvas-state-impl.js` | the structure canvas store (`molview._canvasState`) — what's loaded + dirty/source |
-| `_selection-store-impl.js` | the selection store impl (mounts on `molbuilder.selection`) |
-| `_state-timeline-impl.js` | **save/retract/undo mechanics** — the state-timeline submodule (this session) |
+| `_selection-store-impl.js` | the selection store impl (factory; the ONE store the UI shares via `data.selection`) |
+| `_state-timeline-impl.js` | save/retract/undo mechanics — the state-timeline submodule |
 | `_atom-channels.js` | per-atom channel model (L1) — the annotations layer |
 | `_atom-index.js` | 0-based-internal ↔ 1-based-user index conversion (L1) |
-| `_frame-series.js` | the trajectory frame series (native movie) |
 
 ### Projects (`lib/projects/`) — ES modules
 | File | Role |
