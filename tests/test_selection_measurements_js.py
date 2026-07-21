@@ -14,29 +14,22 @@ prompted the extraction.  Pin every contract.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD = ROOT / "molbuilder/web/static/lib/molview/selection/measurements.js"
 
 
 def _run_node(snippet: str) -> object:
-    if shutil.which("node") is None:
-        pytest.skip("Node not available in this environment")
-    harness = (
-        f"const m = require({json.dumps(str(MOD))});\n"
-        + snippet
+    # measurements.js is now a native ES module; load it via the shared ESM
+    # harness and read the API through the transitional global (bound to ``m``
+    # so the per-test snippets below stay unchanged).
+    return run_node(
+        [MOD],
+        "const m = globalThis.molbuilder.molview.selection.measurements;\n" + snippet,
     )
-    out = subprocess.run(
-        ["node", "-e", harness],
-        check=True, capture_output=True, text=True,
-        timeout=30,
-    )
-    return json.loads(out.stdout)
 
 
 WATER = [

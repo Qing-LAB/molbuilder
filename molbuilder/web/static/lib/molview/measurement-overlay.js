@@ -16,78 +16,78 @@
  * coordsProvider() so it's correct at whatever frame is on screen.  Hidden for
  * n atoms outside {1,2,3}.
  */
-(function (root) {
-    "use strict";
+"use strict";
 
-    function mountMeasurementOverlay(viewerHost, opts) {
-        opts = opts || {};
-        const store = opts.store;
-        const coordsProvider = opts.coordsProvider;
-        if (!viewerHost || typeof viewerHost.appendChild !== "function") {
-            throw new Error("mountMeasurementOverlay: a viewerHost element is required");
-        }
-        if (!store || typeof store.getState !== "function") {
-            throw new Error("mountMeasurementOverlay: a store with getState() is required");
-        }
-        if (typeof coordsProvider !== "function") {
-            throw new Error("mountMeasurementOverlay: a coordsProvider() is required");
-        }
-        const meas = root.molbuilder && root.molbuilder.molview && root.molbuilder.molview.selection
-                   && root.molbuilder.molview.selection.measurements;
+const root = (typeof window !== "undefined") ? window : globalThis;
 
-        const el = document.createElement("div");
-        el.className = "molview-measurement-overlay selection-measurement-overlay";
-        el.hidden = true;
-        viewerHost.appendChild(el);
+export function mountMeasurementOverlay(viewerHost, opts) {
+    opts = opts || {};
+    const store = opts.store;
+    const coordsProvider = opts.coordsProvider;
+    if (!viewerHost || typeof viewerHost.appendChild !== "function") {
+        throw new Error("mountMeasurementOverlay: a viewerHost element is required");
+    }
+    if (!store || typeof store.getState !== "function") {
+        throw new Error("mountMeasurementOverlay: a store with getState() is required");
+    }
+    if (typeof coordsProvider !== "function") {
+        throw new Error("mountMeasurementOverlay: a coordsProvider() is required");
+    }
+    const meas = root.molbuilder && root.molbuilder.molview && root.molbuilder.molview.selection
+               && root.molbuilder.molview.selection.measurements;
 
-        function render() {
-            const s = store.getState() || {};
-            // Ordered picks: pickOrder (click order -> angle vertex) else indices. Both are
-            // ORIGINAL 0-based atom indices, curated via the panel (§7.3 interaction contract).
-            const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
-                ? s.pickOrder
-                : (Array.isArray(s.indices) ? s.indices : []);
-            if (!meas || picks.length < 1 || picks.length > 3) {
-                el.hidden = true;
-                el.textContent = "";
-                return;
-            }
-            // coordsProvider() is the CURRENT frame's CLEAN, ORIGINAL-indexed coords (all atoms,
-            // via engine.getFrame -- never the isolate-filtered draw). meas.compute indexes by
-            // GLOBAL atom index, which is exactly this array's index -> NO re-keying, and it works
-            // identically whether or not isolate is on (molview-render-streamline.md §7.3).
-            const coords = coordsProvider() || [];
-            const result = meas.compute(picks, s.atoms || [], coords, picks);
-            if (result && result.display) {
-                el.hidden = false;
-                el.dataset.kind = result.kind;
-                el.textContent = result.display;
-            } else {
-                el.hidden = true;
-                el.textContent = "";
-            }
+    const el = document.createElement("div");
+    el.className = "molview-measurement-overlay selection-measurement-overlay";
+    el.hidden = true;
+    viewerHost.appendChild(el);
+
+    function render() {
+        const s = store.getState() || {};
+        // Ordered picks: pickOrder (click order -> angle vertex) else indices. Both are
+        // ORIGINAL 0-based atom indices, curated via the panel (§7.3 interaction contract).
+        const picks = (Array.isArray(s.pickOrder) && s.pickOrder.length)
+            ? s.pickOrder
+            : (Array.isArray(s.indices) ? s.indices : []);
+        if (!meas || picks.length < 1 || picks.length > 3) {
+            el.hidden = true;
+            el.textContent = "";
+            return;
         }
-
-        let _unsub = null;
-        if (typeof store.subscribe === "function") {
-            _unsub = store.subscribe(function () { render(); });   // fires immediately
+        // coordsProvider() is the CURRENT frame's CLEAN, ORIGINAL-indexed coords (all atoms,
+        // via engine.getFrame -- never the isolate-filtered draw). meas.compute indexes by
+        // GLOBAL atom index, which is exactly this array's index -> NO re-keying, and it works
+        // identically whether or not isolate is on (molview-render-streamline.md §7.3).
+        const coords = coordsProvider() || [];
+        const result = meas.compute(picks, s.atoms || [], coords, picks);
+        if (result && result.display) {
+            el.hidden = false;
+            el.dataset.kind = result.kind;
+            el.textContent = result.display;
         } else {
-            render();
+            el.hidden = true;
+            el.textContent = "";
         }
-
-        return {
-            render: render,
-            dispose: function () {
-                if (_unsub) { try { _unsub(); } catch (_) {} }
-                if (el.parentNode) el.parentNode.removeChild(el);
-            },
-        };
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.molview = root.molbuilder.molview || {};
-    root.molbuilder.molview.mountMeasurementOverlay = mountMeasurementOverlay;
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = { mountMeasurementOverlay: mountMeasurementOverlay };
+    let _unsub = null;
+    if (typeof store.subscribe === "function") {
+        _unsub = store.subscribe(function () { render(); });   // fires immediately
+    } else {
+        render();
     }
-})(typeof window !== "undefined" ? window : globalThis);
+
+    return {
+        render: render,
+        dispose: function () {
+            if (_unsub) { try { _unsub(); } catch (_) {} }
+            if (el.parentNode) el.parentNode.removeChild(el);
+        },
+    };
+}
+
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.mountMeasurementOverlay = mountMeasurementOverlay;
+}

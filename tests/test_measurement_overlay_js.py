@@ -5,12 +5,9 @@ Node unit test: driven by the SELECTION (pickOrder), it shows position / distanc
 coordsProvider (frame-independent store); dispose removes the overlay.  The real
 measurements.js math is loaded (true integration).
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = [
@@ -20,17 +17,10 @@ MODULES = [
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + "\n".join(m.read_text() for m in MODULES) + "\n" + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n"
-                    f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    # Both modules are now native ES modules; the shared ESM harness imports
+    # them (running their transitional ``window.molbuilder.*`` publish) and the
+    # snippet reads through the global exactly as before.
+    return run_node(MODULES, snippet)
 
 
 # Stubs: a document that makes capturable elements, a viewerHost, a sync-notify

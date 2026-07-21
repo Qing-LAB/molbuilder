@@ -186,9 +186,6 @@
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
-{# Shared xyz / distance / angle math — read by trajectory + structure
-   inspectors below (and by /molbuilder; same pure module). #}
-<script src="{{ url_for('static', filename='lib/molview/selection/measurements.js') }}"></script>
 {# The FULL MolView module (molview-module.md §18) -- the structure inspector mounts it
    READ-ONLY via molview.mount's empty-host build path (same script set + dependency order
    as the /molview-demo template, molview/demo.js), including the persistence dispatcher.
@@ -203,14 +200,9 @@
 <script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/_state-timeline-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/data-model.js') }}"></script>
-{#- selection panel + adapters (measurements.js already loaded above) -#}
-<script src="{{ url_for('static', filename='lib/molview/selection/panel.js') }}"></script>
+{#- selection panel + adapters now load via molview/index.js (ESM); region defs stay classic -#}
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/selection/viewer-adapter.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/selection/mount-panel.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
 {#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}
-<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>

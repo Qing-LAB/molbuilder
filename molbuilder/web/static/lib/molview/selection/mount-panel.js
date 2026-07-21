@@ -30,79 +30,82 @@
  * handle is available.  On partial-fetch failure it renders an inline banner
  * (as the bootstrap does) and resolves { panel: null, adapterHandle: null }.
  */
-(function (root) {
-    "use strict";
+"use strict";
 
-    const DEFAULT_PARTIAL = "/partials/selection-panel";
+const root = (typeof window !== "undefined") ? window : globalThis;
 
-    function _mb() { return root.molbuilder || {}; }
+const DEFAULT_PARTIAL = "/partials/selection-panel";
 
-    function _renderFailure(host, message) {
-        const banner = document.createElement("div");
-        banner.className = "selection-bootstrap-error";
-        banner.setAttribute("role", "alert");
-        banner.textContent = "Selection panel failed to load: " + message;
-        host.innerHTML = "";
-        host.appendChild(banner);
-    }
+function _mb() { return root.molbuilder || {}; }
 
-    async function _fetchPartial(host, url) {
-        try {
-            const r = await fetch(url);
-            if (!r.ok) {
-                _renderFailure(host, "HTTP " + r.status + " from " + url);
-                return false;
-            }
-            host.innerHTML = await r.text();
-            return true;
-        } catch (e) {
-            _renderFailure(host, (e && e.message) ? e.message : String(e));
+function _renderFailure(host, message) {
+    const banner = document.createElement("div");
+    banner.className = "selection-bootstrap-error";
+    banner.setAttribute("role", "alert");
+    banner.textContent = "Selection panel failed to load: " + message;
+    host.innerHTML = "";
+    host.appendChild(banner);
+}
+
+async function _fetchPartial(host, url) {
+    try {
+        const r = await fetch(url);
+        if (!r.ok) {
+            _renderFailure(host, "HTTP " + r.status + " from " + url);
             return false;
         }
+        host.innerHTML = await r.text();
+        return true;
+    } catch (e) {
+        _renderFailure(host, (e && e.message) ? e.message : String(e));
+        return false;
     }
+}
 
-    async function _resolveHandle(opts) {
-        if (opts.viewerHandle) return opts.viewerHandle;
-        const key = opts.viewerHandleKey;
-        if (!key) return null;
-        const rt = _mb().runtime;
-        if (!rt || typeof rt.whenReady !== "function") return null;
-        try { return await rt.whenReady(key); }
-        catch (_) { return null; }
+async function _resolveHandle(opts) {
+    if (opts.viewerHandle) return opts.viewerHandle;
+    const key = opts.viewerHandleKey;
+    if (!key) return null;
+    const rt = _mb().runtime;
+    if (!rt || typeof rt.whenReady !== "function") return null;
+    try { return await rt.whenReady(key); }
+    catch (_) { return null; }
+}
+
+export async function mountPanel(host, opts) {
+    opts = opts || {};
+    if (!host) throw new Error("selection.mountPanel: host is required");
+    const mb = _mb();
+    const store = opts.store || (mb.molview && mb.molview.data && mb.molview.data.selection);
+
+    // 1. fetch + insert the partial.
+    const ok = await _fetchPartial(host, opts.partialUrl || DEFAULT_PARTIAL);
+    if (!ok) return { panel: null, adapterHandle: null };
+
+    // 2. mount the panel against the store.  The panel + adapter share ALL
+    // state through the store (selection, filters, isolate), so the panel
+    // needs no reference to the adapter -- no handle threading.
+    const _panelMod = mb.molview && mb.molview.selection && mb.molview.selection.panel;
+    if (!_panelMod || typeof _panelMod.mount !== "function") {
+        _renderFailure(host, "selectionPanel module missing");
+        return { panel: null, adapterHandle: null };
     }
+    const panel = _panelMod.mount(host, { store: store, mode: opts.mode });
 
-    async function mountPanel(host, opts) {
-        opts = opts || {};
-        if (!host) throw new Error("selection.mountPanel: host is required");
-        const mb = _mb();
-        const store = opts.store || (mb.molview && mb.molview.data && mb.molview.data.selection);
-
-        // 1. fetch + insert the partial.
-        const ok = await _fetchPartial(host, opts.partialUrl || DEFAULT_PARTIAL);
-        if (!ok) return { panel: null, adapterHandle: null };
-
-        // 2. mount the panel against the store.  The panel + adapter share ALL
-        // state through the store (selection, filters, isolate), so the panel
-        // needs no reference to the adapter -- no handle threading.
-        const _panelMod = mb.molview && mb.molview.selection && mb.molview.selection.panel;
-        if (!_panelMod || typeof _panelMod.mount !== "function") {
-            _renderFailure(host, "selectionPanel module missing");
-            return { panel: null, adapterHandle: null };
-        }
-        const panel = _panelMod.mount(host, { store: store, mode: opts.mode });
-
-        // 3. attach the viewer-adapter to the viewer handle.
-        let adapterHandle = null;
-        const adapter = mb.molview && mb.molview.selection && mb.molview.selection.viewerAdapter;
-        const handle = await _resolveHandle(opts);
-        if (adapter && typeof adapter.attach === "function" && handle) {
-            adapterHandle = adapter.attach(handle, { store: store, mode: opts.mode });
-        }
-        return { panel: panel, adapterHandle: adapterHandle };
+    // 3. attach the viewer-adapter to the viewer handle.
+    let adapterHandle = null;
+    const adapter = mb.molview && mb.molview.selection && mb.molview.selection.viewerAdapter;
+    const handle = await _resolveHandle(opts);
+    if (adapter && typeof adapter.attach === "function" && handle) {
+        adapterHandle = adapter.attach(handle, { store: store, mode: opts.mode });
     }
+    return { panel: panel, adapterHandle: adapterHandle };
+}
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.molview = root.molbuilder.molview || {};
-    root.molbuilder.molview.selection = root.molbuilder.molview.selection || {};
-    root.molbuilder.molview.selection.mountPanel = mountPanel;
-})(typeof window !== "undefined" ? window : globalThis);
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.selection = window.molbuilder.molview.selection || {};
+    window.molbuilder.molview.selection.mountPanel = mountPanel;
+}

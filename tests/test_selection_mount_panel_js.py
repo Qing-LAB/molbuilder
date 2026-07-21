@@ -8,28 +8,19 @@ integration itself is owned by the Playwright E2E.
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/molview/selection/mount-panel.js"
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = "global.window = global;\n" + MODULE.read_text() + "\n" + snippet
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n"
-                    f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    # mount-panel.js is now a native ES module; the shared ESM harness imports
+    # it (running its transitional ``window.molbuilder.*`` publish) and the
+    # snippet drives it through the global exactly as before.
+    return run_node([MODULE], snippet)
 
 
 def test_mountpanel_forwards_store_and_attaches_handle():

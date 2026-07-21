@@ -799,7 +799,6 @@
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/measurement-overlay.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
@@ -834,19 +833,14 @@
 {# Warning modal — independent primitive used by page.js's gate. #}
 <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 {# Selection panel + helpers.  Bind ws.selection (Phase 10). #}
-<script src="{{ url_for('static', filename='lib/molview/selection/measurements.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/selection/panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 {# Inline script for popover init lifted out to its own JS file
    so the CSP `script-src 'self'` contract holds.  Pre-fix the
    inline block was silently dropped in production and the
    popover never wired up. #}
 <script src="{{ url_for('static', filename='lib/region-label-popover-init.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/selection/viewer-adapter.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/selection/mount-panel.js') }}"></script>
 {# molview.mount's build path also wires the trajectory bar (mountFrameControls);
    load it before mount.js. #}
-<script src="{{ url_for('static', filename='lib/molview/frame-controls.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/molview/mount.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*

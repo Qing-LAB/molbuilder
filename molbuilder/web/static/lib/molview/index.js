@@ -20,9 +20,21 @@ import "./_atom-channels.js";     // publishes window.molbuilder.atomChannelMode
 import "./engine/process.js";     // publishes window.molbuilder.molview.engine.process (transitional)
 import "./engine/embed-io.js";    // publishes window.molbuilder.molview.engine.embedIo (transitional)
 import "./engine/engine.js";      // publishes window.molbuilder.molview.engine.create (transitional)
+import "./selection/measurements.js";  // publishes ...molview.selection.measurements (transitional)
+import "./selection/panel.js";         // publishes ...molview.selection.panel (transitional)
+import "./selection/viewer-adapter.js";// publishes ...molview.selection.viewerAdapter (transitional)
+import "./selection/mount-panel.js";   // publishes ...molview.selection.mountPanel (transitional)
+import "./measurement-overlay.js";     // publishes ...molview.mountMeasurementOverlay (transitional)
+import "./frame-controls.js";          // publishes ...molview.mountFrameControls (transitional)
 
 export * from "./_atom-index.js";
 export * from "./_atom-channels.js";
 export * from "./engine/process.js";
 export * from "./engine/embed-io.js";
 export * from "./engine/engine.js";
+export * from "./selection/measurements.js";
+export * from "./selection/panel.js";
+export * from "./selection/viewer-adapter.js";
+export * from "./selection/mount-panel.js";
+export * from "./measurement-overlay.js";
+export * from "./frame-controls.js";
