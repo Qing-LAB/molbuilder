@@ -24,6 +24,7 @@ import "./selection/measurements.js";  // publishes ...molview.selection.measure
 import "./selection/panel.js";         // publishes ...molview.selection.panel (transitional)
 import "./selection/viewer-adapter.js";// publishes ...molview.selection.viewerAdapter (transitional)
 import "./selection/mount-panel.js";   // publishes ...molview.selection.mountPanel (transitional)
+import "./data-model.js";              // publishes ...molview.data (transitional); reads store/canvas globals
 import "./measurement-overlay.js";     // publishes ...molview.mountMeasurementOverlay (transitional)
 import "./frame-controls.js";          // publishes ...molview.mountFrameControls (transitional)
 
@@ -36,5 +37,6 @@ export * from "./selection/measurements.js";
 export * from "./selection/panel.js";
 export * from "./selection/viewer-adapter.js";
 export * from "./selection/mount-panel.js";
+export * from "./data-model.js";
 export * from "./measurement-overlay.js";
 export * from "./frame-controls.js";

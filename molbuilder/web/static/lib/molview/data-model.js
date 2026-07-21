@@ -85,8 +85,9 @@
  *
  * Tests: tests/test_workspace_dispatcher_js.py.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     // ─── Internal references resolved on demand ─────────────────── //
 
@@ -2151,7 +2152,8 @@
     // `uncommitted` flag) even before any UI consumer subscribes.  Push-only: NO auto-write.
     _ensureSubscribed();
 
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = api;
-    }
-})(typeof window !== "undefined" ? window : globalThis);
+    // ── ESM public surface (the MolView ESM migration) ──
+    // The transitional global (``root.molbuilder.molview.data`` above) is the §3.2 shim that
+    // classic consumers still read; this named export is what index.js re-exports for module
+    // consumers.  Both reference the SAME ``api`` object.
+    export const data = api;

@@ -11,8 +11,8 @@ Descended from the 2026-06-14 BLOCKER (then the dispatcher's
 ``workspace``).  The invariant now: every module that assigns a shared namespace
 MERGES it (``root.molbuilder.<ns> = root.molbuilder.<ns> || {}`` /
 ``Object.assign``), so data-model.js mounting ``molview.data`` must not clobber
-``molview._canvasState``.  This test loads the four workspace/molview JS files in
-production order in a vm sandbox (browser-like: no ``module`` global) and asserts:
+``molview._canvasState``.  This test loads the workspace/molview JS files in
+production order through the shared ES-module harness (tests/_node_esm) and asserts:
 
   (a) the private ``_canvasState`` slot survives the full load, and
   (b) a canvas write is READABLE end-to-end through the data model's
@@ -28,21 +28,23 @@ mount must have preserved and reads it back through the public API.
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
+
+from _node_esm import run_node
 
 pytestmark = pytest.mark.module
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
 
-# Production script-tag order: the two internal store impls, then the
-# MolView data model, then the workspace persistence dispatcher.
+# Production script-tag order: the two internal store impls, the state-timeline
+# factory, then the MolView data model, then the workspace persistence dispatcher.
+# data-model.js is now an ES module (the MolView ESM migration), so it loads through
+# the shared ES-module harness (tests/_node_esm.run_node) rather than a classic vm
+# script -- the ``export`` it now carries is a SyntaxError under a sloppy-script vm run.
 WORKSPACE_FILES = [
     STATIC / "lib/molview/_selection-store-impl.js",
     STATIC / "lib/molview/_canvas-state-impl.js",
@@ -51,49 +53,38 @@ WORKSPACE_FILES = [
     STATIC / "lib/workspace/dispatcher.js",
 ]
 
+# Minimal browser stubs the dispatcher/data-model touch at load (pagehide listener,
+# document, sessionStorage, runtime registry).  Injected before the module imports.
+_GLOBALS = """
+    global.window.addEventListener = () => {};
+    global.document = {
+        readyState: "complete",
+        addEventListener: () => {},
+        getElementById:  () => null,
+    };
+    const _storage = {};
+    global.sessionStorage = {
+        getItem:    (k) => (_storage[k] == null ? null : _storage[k]),
+        setItem:    (k, v) => { _storage[k] = String(v); },
+        removeItem: (k) => { delete _storage[k]; },
+    };
+    global.molbuilder.runtime = {
+        register:  () => {},
+        whenReady: () => new Promise(() => {}),
+    };
+"""
 
-def _run_node(script: str) -> dict:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", script],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
-        )
-    last = proc.stdout.strip().splitlines()[-1]
-    return json.loads(last)
+# Resolve the public surfaces from the globals the modules publish, so the snippet
+# bodies read ``ws`` / ``molview`` / ``data`` exactly as before.
+_PREAMBLE = """
+    const ws = window.molbuilder && window.molbuilder.workspace;
+    const molview = window.molbuilder && window.molbuilder.molview;
+    const data = molview && molview.data;
+"""
 
 
-def _bootstrap_js() -> str:
-    """Load the workspace/molview files in production order into a vm
-    sandbox that mimics the browser (no ``module`` global, so each IIFE
-    takes its browser mount branch).  Exposes ``ws`` (the workspace
-    persistence surface) and ``data`` (the MolView data model)."""
-    paths_js = json.dumps([str(p) for p in WORKSPACE_FILES])
-    return dedent(f"""
-        const fs = require("fs");
-        const vm = require("vm");
-        const sandbox = {{ window: {{}}, console }};
-        sandbox.globalThis = sandbox;
-        const ctx = vm.createContext(sandbox);
-        for (const f of {paths_js}) {{
-            vm.runInContext(
-                fs.readFileSync(f, "utf8"),
-                ctx,
-                {{ filename: f }}
-            );
-        }}
-        const ws = sandbox.window.molbuilder
-                && sandbox.window.molbuilder.workspace;
-        const molview = sandbox.window.molbuilder
-                && sandbox.window.molbuilder.molview;
-        const data = molview && molview.data;
-    """)
+def _run_node(snippet: str) -> dict:
+    return run_node(WORKSPACE_FILES, _PREAMBLE + snippet, globals_js=_GLOBALS)
 
 
 def test_canvas_state_mount_survives_dispatcher_load():
@@ -101,7 +92,7 @@ def test_canvas_state_mount_survives_dispatcher_load():
     ``_canvasState`` slot MUST still be on ``molview`` (data-model.js merges
     ``molview`` with ``|| {}``, so mounting ``molview.data`` must not clobber it),
     and the data model + its public surface MUST be mounted."""
-    out = _run_node(_bootstrap_js() + dedent("""
+    out = _run_node(dedent("""
         console.log(JSON.stringify({
             workspace_present:    !!ws,
             molview_present:      !!molview,
@@ -132,7 +123,7 @@ def test_canvas_write_is_readable_through_the_data_model():
     surface (getStructure / isEmpty).  The pre-fix dispatcher wiped the
     slot, so the data model's ``_canvas()`` resolved null and every read
     came back empty."""
-    out = _run_node(_bootstrap_js() + dedent("""
+    out = _run_node(dedent("""
         try {
             // Seed the canvas through the internal slot the mount must
             // have preserved (the public door is load(), which needs a

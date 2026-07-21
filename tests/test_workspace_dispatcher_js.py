@@ -60,12 +60,18 @@ ATOM_INDEX_PATH   = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
 ENG_PROCESS_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/process.js"
 ENG_EMBEDIO_PATH  = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js"
 ENG_ENGINE_PATH   = ROOT / "molbuilder/web/static/lib/molview/engine/engine.js"
+# The state-timeline factory (``_state-timeline-impl.js``) self-mounts
+# ``molbuilder.molview._createStateTimeline``; the data model builds ``_timeline`` from it at
+# import.  Production loads it as a classic <script> BEFORE the data model runs; mirror that here
+# (the data model is now an ES module, so its internal require() node fallback no longer fires).
+STATE_TIMELINE_PATH = ROOT / "molbuilder/web/static/lib/molview/_state-timeline-impl.js"
 
 
 # Load order mirrors production: shared snapshot IO -> canvas-state impl -> selection-store
-# impl -> the L1 index (ESM) + render engine (process/embed-io/engine) -> the MolView data
-# model (``molview.data``) -> the workspace persistence dispatcher.  (Frame coords are owned by
-# the embed movie, §14.5, so no frame-series is loaded; frame tests attach a fake embed handle.)
+# impl -> the L1 index (ESM) + render engine (process/embed-io/engine) -> the state-timeline
+# factory -> the MolView data model (``molview.data``) -> the workspace persistence dispatcher.
+# (Frame coords are owned by the embed movie, §14.5, so no frame-series is loaded; frame tests
+# attach a fake embed handle.)
 # The canvas-state + selection-store impls self-mount on the MolView namespace where the data
 # model's private escape hatches (``_canvas()`` / ``_store()``) look for them, so a test can
 # seed fixture state cheaply.  Loaded through the shared ES-module harness (tests/_node_esm) so
@@ -77,7 +83,7 @@ SEED_STORE_PATH = ROOT / "tests/support/seed_selection_store.js"
 _FILES = [
     SNAPSHOT_IO_PATH, CANVAS_PATH, STORE_PATH, SEED_STORE_PATH,
     ATOM_INDEX_PATH, ENG_PROCESS_PATH, ENG_EMBEDIO_PATH, ENG_ENGINE_PATH,
-    DATA_MODEL_PATH, DISPATCHER_PATH,
+    STATE_TIMELINE_PATH, DATA_MODEL_PATH, DISPATCHER_PATH,
 ]
 
 # Browser stubs injected BEFORE the module imports (the harness has already set
