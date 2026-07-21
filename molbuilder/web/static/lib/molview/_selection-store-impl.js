@@ -440,6 +440,11 @@
                 : [];
             const preFetched = Array.isArray(atoms) ? atoms : null;
             return _run(async (signal) => {
+                // adoptSession ALWAYS replaces state.atoms (pre-fetched list, or [] then _fetchAtoms).
+                // Mark ATOMS now: the pre-fetched branch returns without its own notify and rides
+                // _run's terminal STATUS -- unmarked, a consumer (panel) would DIFF over a swapped
+                // atom set (stale rows) instead of rebuilding. (_fetchAtoms marks ATOMS too; a set.)
+                _mark(CHANGE.ATOMS);
                 state.sourceFile = sourceFile || null;
                 state.atoms      = preFetched
                     ? preFetched.map(_normaliseAtom) : [];
