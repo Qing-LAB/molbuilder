@@ -816,10 +816,8 @@
    read only at render time.  ESM migration: the classic entries below fold into index.js over
    time (frontend-module-architecture.md §3). #}
 <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
 {# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface
    for workspace state.  Loaded AFTER its internal stores
@@ -827,7 +825,6 @@
    (page.js, save.js, selection-panel.js, viewer-adapter.js,
    selection-bootstrap.js) so each consumer's IIFE can bind
    against ws.* immediately. #}
-<script src="{{ url_for('static', filename='lib/molview/_state-timeline-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 {# Warning modal — independent primitive used by page.js's gate. #}
 <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>

@@ -21,8 +21,9 @@
  *   ``_applying`` flag).  The workspace persistence layer (lib/workspace/dispatcher.js,
  *   POST /api/state-timeline/*) is reached ONLY through the injected ``getWorkspace`` accessor.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     // deps: { serialise: () -> snapshot,
     //         applySnapshot: (snap) -> void,
@@ -231,7 +232,8 @@
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview._createStateTimeline = createStateTimeline;
 
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = { createStateTimeline: createStateTimeline };
-    }
-})(typeof window !== "undefined" ? window : globalThis);
+// ── ESM public surface (the MolView ESM migration) ──
+// The transitional global mounted above (``molview._createStateTimeline``) is the §3.2 shim
+// that data-model.js reads (lazily) at runtime; this named export is what index.js
+// re-exports for module consumers.  Same factory function.
+export { createStateTimeline };

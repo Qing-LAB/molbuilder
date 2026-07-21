@@ -24,6 +24,12 @@ import "./selection/measurements.js";  // publishes ...molview.selection.measure
 import "./selection/panel.js";         // publishes ...molview.selection.panel (transitional)
 import "./selection/viewer-adapter.js";// publishes ...molview.selection.viewerAdapter (transitional)
 import "./selection/mount-panel.js";   // publishes ...molview.selection.mountPanel (transitional)
+// The store/state layer MUST import before data-model.js: data-model reads these three
+// globals at its module body (_store()/_canvas() via _ensureSubscribed(), _createStateTimeline
+// at runtime), so their side-effect publishes have to run first.
+import "./_selection-store-impl.js";   // publishes ...molview.selection._createStore (transitional)
+import "./_canvas-state-impl.js";      // publishes ...molview._canvasState (transitional)
+import "./_state-timeline-impl.js";    // publishes ...molview._createStateTimeline (transitional)
 import "./data-model.js";              // publishes ...molview.data (transitional); reads store/canvas globals
 import "./measurement-overlay.js";     // publishes ...molview.mountMeasurementOverlay (transitional)
 import "./frame-controls.js";          // publishes ...molview.mountFrameControls (transitional)
@@ -37,6 +43,9 @@ export * from "./selection/measurements.js";
 export * from "./selection/panel.js";
 export * from "./selection/viewer-adapter.js";
 export * from "./selection/mount-panel.js";
+export * from "./_selection-store-impl.js";
+export * from "./_canvas-state-impl.js";
+export * from "./_state-timeline-impl.js";
 export * from "./data-model.js";
 export * from "./measurement-overlay.js";
 export * from "./frame-controls.js";

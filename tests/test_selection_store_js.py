@@ -22,16 +22,35 @@ this file is the lowest layer (node JS unit) for the
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from _node_esm import run_node
+
 
 ROOT   = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/molview/_selection-store-impl.js"
+
+
+# Browser stubs the store touches (fetch / AbortController / queueMicrotask).
+# The store mounts its ``_createStore`` factory globally as an ES-module side
+# effect (the MolView ESM migration), so the shared ``run_node`` dynamic-import
+# harness loads it and the snippets read the factory through the global exactly
+# as before.
+_GLOBALS = """
+    global.fetch = () => Promise.resolve({
+        ok: false,
+        json: () => Promise.resolve({}),
+    });
+    global.AbortController = function () {
+        this.signal = {};
+        this.abort = () => {};
+    };
+    if (typeof global.queueMicrotask !== "function") {
+        global.queueMicrotask = (cb) => Promise.resolve().then(cb);
+    }
+"""
 
 
 def _run_node(snippet: str) -> object:
@@ -45,41 +64,7 @@ def _run_node(snippet: str) -> object:
     the existing namespace exactly so test harnesses (here + a
     future Playwright `_test` hook) can build their own.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    bootstrap = """
-        global.window = global;
-        // No DOM in this test environment.  The store doesn't actually
-        // touch the DOM at module init -- only the HTTP wrappers
-        // touch ``fetch``, which we stub below.
-        global.fetch = () => Promise.resolve({
-            ok: false,
-            json: () => Promise.resolve({}),
-        });
-        global.AbortController = function () {
-            this.signal = {};
-            this.abort = () => {};
-        };
-        // Some store paths use ``queueMicrotask`` for the notify loop.
-        // Node has it built in, but we ensure compatibility with
-        // older runtimes.
-        if (typeof global.queueMicrotask !== "function") {
-            global.queueMicrotask = (cb) => Promise.resolve().then(cb);
-        }
-    """
-    full = bootstrap + "\n" + MODULE.read_text() + "\n" + snippet
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", full],
-        capture_output=True, text=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node([MODULE], snippet, globals_js=_GLOBALS, timeout=15)
 
 
 # Helper: build a "fresh store, set its atoms, then evaluate snippet" wrapper.

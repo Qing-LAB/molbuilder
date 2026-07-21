@@ -25,12 +25,11 @@ Covered:
 """
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from _node_esm import run_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,20 +37,18 @@ MODULE = ROOT / "molbuilder/web/static/lib/molview/_canvas-state-impl.js"
 
 
 def _run_node(snippet: str, *, prelude: str = "") -> object:
-    """Run a JS snippet against canvas-state.js as a CommonJS module.
+    """Run a JS snippet against ``_canvas-state-impl.js``.
 
-    The module's UMD branch sees ``module`` defined and exports its
-    API on ``module.exports`` -- we ``require()`` it and assign to
-    ``canvas`` for the snippet to use.
+    The module is now a native ES module (the MolView ESM migration): it mounts
+    its API globally at ``window.molbuilder.molview._canvasState`` as a side
+    effect (and ``export const canvasState``), so the shared ``run_node``
+    dynamic-import harness loads it and we alias the mounted api to ``canvas``
+    for the snippet -- exactly the object the old ``require()`` returned.
 
-    ``prelude`` runs BEFORE the require call -- useful for priming
+    ``prelude`` runs BEFORE the module import -- useful for priming
     sessionStorage with content the module should pick up on init.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    module_path = MODULE.resolve()
-    bootstrap = f"""
+    globals_js = f"""
         const _store = new Map();
         global.sessionStorage = {{
             getItem:    k => _store.has(k) ? _store.get(k) : null,
@@ -62,39 +59,20 @@ def _run_node(snippet: str, *, prelude: str = "") -> object:
             _peek:      () => Object.fromEntries(_store),
         }};
         {prelude}
-        const canvas = require({json.dumps(str(module_path))});
-        try {{
-            (async () => {{
-                {snippet}
-            }})().catch(err => {{
-                console.log(JSON.stringify({{
-                    __test_unexpected_throw: true,
-                    message: err && err.message ? err.message : String(err),
-                    stack:   err && err.stack ? err.stack : null,
-                }}));
-            }});
-        }} catch (err) {{
+    """
+    wrapped = f"""
+        const canvas = globalThis.molbuilder.molview._canvasState;
+        await (async () => {{
+            {snippet}
+        }})().catch(err => {{
             console.log(JSON.stringify({{
                 __test_unexpected_throw: true,
                 message: err && err.message ? err.message : String(err),
                 stack:   err && err.stack ? err.stack : null,
             }}));
-        }}
+        }});
     """
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", bootstrap],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    last_line = proc.stdout.strip().splitlines()[-1]
-    out = json.loads(last_line)
+    out = run_node([MODULE], wrapped, globals_js=globals_js, timeout=15)
     if isinstance(out, dict):
         assert "__test_unexpected_throw" not in out, (
             "module threw: " + str(out)

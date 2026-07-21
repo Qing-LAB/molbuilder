@@ -194,11 +194,8 @@
    controls, NOT no persistence. #}
 {#- molview stores (back the singleton window.molbuilder.molview.data) -#}
 <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_selection-store-impl.js') }}"></script>
 {#- snapshot-io loads BEFORE canvas-state (canvas-state reads it) -#}
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_canvas-state-impl.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/molview/_state-timeline-impl.js') }}"></script>
 {#- selection panel + adapters now load via molview/index.js (ESM); region defs stay classic -#}
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 {#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}

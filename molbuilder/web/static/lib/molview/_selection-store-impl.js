@@ -57,8 +57,9 @@
  * mutators (the ones that hit the server) fire twice: at start
  * (loading=true) and end (loading=false).  Reentrance is safe.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     // The channel/index FEATURES (knownChannels, the 1-based by_index shift)
     // depend on the L1 models (atom-channels.js / atom-index.js); the rest of
@@ -1106,4 +1107,10 @@
     // this surface shaper) can apply the SAME defensive per-atom copy -- workspace-contract
     // §1.2.1 immutable reads, one shared helper.
     root.molbuilder.molview.selection._cloneAtom = _cloneAtom;
-})(typeof window !== "undefined" ? window : globalThis);
+
+// ── ESM public surface (the MolView ESM migration) ──
+// The transitional globals mounted above (``molview.selection._createStore`` /
+// ``createEphemeralStore`` / ``_surfaceSnapshot`` / ``_cloneAtom``) are the §3.2 shim that
+// classic consumers + data-model.js still read; this named export is what index.js
+// re-exports for module consumers.  Same ``_create`` factory as ``_createStore``.
+export { _create as createStore };

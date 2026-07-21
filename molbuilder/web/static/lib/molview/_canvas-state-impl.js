@@ -65,8 +65,9 @@
  * state collapses that round-trip.  See
  * ``docs/tabs/architecture.md`` § 5 for the full design.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     // Empty canvas — the initial state and the post-clear() state.
     function _emptyState() {
@@ -438,7 +439,9 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview._canvasState = api;
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = api;
-    }
-})(typeof window !== "undefined" ? window : globalThis);
+
+// ── ESM public surface (the MolView ESM migration) ──
+// The unconditional global mount above (``molview._canvasState``) is the §3.2 shim that
+// data-model.js reads at load; this named export is what index.js re-exports for module
+// consumers.  Both reference the SAME ``api`` object.
+export const canvasState = api;
