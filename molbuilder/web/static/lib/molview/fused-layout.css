@@ -12,7 +12,6 @@
 
 .molview-card {
     container-type: inline-size;   /* enables the @container query below */
-    position: relative;            /* containing block for the top-right persistence indicator */
 
     /* The view-toggle RAIL (mol-viewer-stage's left column) is added to the LEFT of the
      * canvas.  Fold its width into the square's min + max so the CANVAS keeps its former
@@ -356,27 +355,35 @@
 }
 
 
-/* §19.5 PERSISTENCE-SUSPEND INDICATOR.  A small pill in the card's top-right, shown ONLY while a
- * multi-step data operation has paused saving (data.onPersistStateChange).  The card is a query
- * container (container-type above), which also makes it the containing block for this absolutely
- * positioned overlay -- so it anchors to the card, not the page. */
-.molview-persist-indicator {
+/* ── VIEWER-OVERLAY FRAMEWORK ─────────────────────────────────────────────────────────────── //
+ * ONE shared class for every corner overlay the MolView module draws over the viewer square
+ * (persistence indicator, and -- migrating -- the measurement chip).  The concealed factory
+ * lib/molview/_viewer-overlay.js builds the element with these classes so EVERY overlay is
+ * positioned + styled identically, from TOKENS only, with no per-consumer tweaking.  Anchors to
+ * .viewer-wrap (position: relative already), so it tracks the viewer in every fold state. */
+.molview-overlay {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 5;
+    z-index: 5;                       /* the module's viewer-overlay layer (matches the chip) */
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.6;
-    color: var(--text);
-    background: color-mix(in srgb, var(--warn) 22%, var(--bg-input, #262b33));
-    border: 1px solid var(--warn);
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    max-width: calc(100% - 2 * var(--space-sm));
+    font-size: var(--text-2xs);
+    line-height: var(--line-snug);
+    color: var(--text-primary);
+    background: var(--bg-card-elev, var(--bg-card));
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-card);
-    pointer-events: none;   /* never intercept viewer drags; the visible text carries the meaning */
+    pointer-events: none;             /* never intercept viewer drags; the text carries the meaning */
 }
-.molview-persist-indicator[hidden] { display: none; }
+.molview-overlay[hidden] { display: none; }
+/* Corner placement modifiers (the factory picks one). */
+.molview-overlay--top-right    { top: var(--space-sm);    right: var(--space-sm); }
+.molview-overlay--top-left     { top: var(--space-sm);    left:  var(--space-sm); }
+.molview-overlay--bottom-right { bottom: var(--space-sm); right: var(--space-sm); }
+.molview-overlay--bottom-left  { bottom: var(--space-sm); left:  var(--space-sm); }
+/* Semantic tint modifiers (border + surface), consistent with the palette's severity tokens. */
+.molview-overlay--warn { border-color: var(--warn);   background: var(--warning-bg); }
+.molview-overlay--info { border-color: var(--accent); }

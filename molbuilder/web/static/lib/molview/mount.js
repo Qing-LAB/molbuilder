@@ -39,6 +39,10 @@
  */
 "use strict";
 
+// The concealed viewer-overlay framework -- one consistent, token-styled corner overlay for the
+// whole module (import, not a global, so the dependency is legible).
+import { createViewerOverlay } from "./_viewer-overlay.js";
+
 const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _el(tag, cls) {
@@ -238,24 +242,27 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // unless suspended; a synchronous internal bracket (a modify op) toggles it 0->1->0 with no
         // paint between, so it only becomes visible during a genuine async deferral window.
         if (card && data && typeof data.onPersistStateChange === "function") {
-            const pind = _el("div", "molview-persist-indicator");
-            pind.hidden = true;
-            pind.setAttribute("role", "status");
-            pind.setAttribute("aria-live", "polite");
-            pind.title = "Saving is paused while a multi-step edit is in progress; "
-                       + "your changes are saved when it finishes.";
-            pind.textContent = "⏸ Saving paused";
-            card.appendChild(pind);
-            const _setPersistInd = function (on) {
-                pind.hidden = !on;
-                if (card.classList) card.classList.toggle("molview-persist-suspended", !!on);
-            };
-            try { _setPersistInd(typeof data.isPersistSuspended === "function" && data.isPersistSuspended()); }
-            catch (_) {}
-            const _offPersist = data.onPersistStateChange(_setPersistInd);
+            // The overlay FRAMEWORK owns placement + token styling; mount only binds it to the
+            // persist-suspend signal.  Anchor to the VIEWER (always visible), NOT the card: when the
+            // panel folds the card keeps its width but the panel area goes empty, so a card anchor
+            // would strand the pill in that gap; the viewer square shows in every fold state.
+            const _pindAnchor = (card.querySelector
+                && (card.querySelector(".viewer-wrap") || card.querySelector(".molview-viewer")))
+                || card;
+            const persistOverlay = createViewerOverlay(_pindAnchor, {
+                corner: "top-right", kind: "warn", role: "status", live: "polite",
+                text: "⏸ Saving paused",
+                title: "Saving is paused while a multi-step edit is in progress; "
+                     + "your changes are saved when it finishes.",
+            });
+            try {
+                persistOverlay.toggle(typeof data.isPersistSuspended === "function"
+                                      && data.isPersistSuspended());
+            } catch (_) {}
+            const _offPersist = data.onPersistStateChange(function (on) { persistOverlay.toggle(on); });
             cleanups.push(function () {
                 try { _offPersist && _offPersist(); } catch (_) {}
-                try { pind.remove(); } catch (_) {}
+                persistOverlay.dispose();
             });
         }
 
