@@ -25,14 +25,15 @@
     --panel-min:  320px;               /* min panel width */
     --fold-w:     22px;                /* the fold-handle rail's width (row layout) */
 
-    /* THE SIZING CONTRACT (embedded-module).  min-width = what MolView ABSOLUTELY needs to render
-     * -- the viewer square's min + the fold rail + the panel floor -- DERIVED from the same vars,
-     * never a lone magic number.  There is NO module max-width: the card FILLS its host (width:
-     * 100%), and the PARENT container decides how wide per use case (Modify/Results/Spectra/demo);
-     * the module just fills what it is handed, so header + panels always share one width.  A parent
-     * that hands it LESS than min-width is a broken embed -- mount.js detects that and renders a
-     * blank window + error instead of overflowing (see _failMount width check). */
-    --molview-min-width: calc(var(--viewer-min) + var(--fold-w) + var(--panel-min));
+    /* THE SIZING CONTRACT (embedded-module).  min-width = what MolView ABSOLUTELY needs to render,
+     * DERIVED from the same vars (never a lone magic number).  It is the STACKED minimum
+     * (max(--viewer-min, --panel-min)), NOT the row sum: below the row's viewer+fold+panel width the
+     * card FLIPS to the vertical stacked layout (viewer over panel, the @container query below), so
+     * the card can legitimately be narrower than the row -- it just stacks.  The floor is the wider
+     * of the two stacked pieces; only a host narrower than THAT is a broken embed (mount.js renders a
+     * blank window + error).  There is NO module max-width: the card FILLS its host (width: 100%),
+     * and the PARENT decides how wide per use case, so header + panels always share one width. */
+    --molview-min-width: max(var(--viewer-min), var(--panel-min));
     width: 100%;
     min-width: var(--molview-min-width);
 }
