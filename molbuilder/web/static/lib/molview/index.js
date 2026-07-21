@@ -24,13 +24,13 @@ import "./selection/measurements.js";  // publishes ...molview.selection.measure
 import "./selection/panel.js";         // publishes ...molview.selection.panel (transitional)
 import "./selection/viewer-adapter.js";// publishes ...molview.selection.viewerAdapter (transitional)
 import "./selection/mount-panel.js";   // publishes ...molview.selection.mountPanel (transitional)
-// The store/state layer MUST import before data-model.js: data-model reads these three
-// globals at its module body (_store()/_canvas() via _ensureSubscribed(), _createStateTimeline
-// at runtime), so their side-effect publishes have to run first.
-import "./_selection-store-impl.js";   // publishes ...molview.selection._createStore (transitional)
-import "./_canvas-state-impl.js";      // publishes ...molview._canvasState (transitional)
-import "./_state-timeline-impl.js";    // publishes ...molview._createStateTimeline (transitional)
-import "./data-model.js";              // publishes ...molview.data (transitional); reads store/canvas globals
+// The store/state layer.  data-model.js IMPORTS createStore/canvasState/createStateTimeline
+// directly (real ES edges), so ES resolution -- not this list's order -- guarantees they evaluate
+// first; these entries remain so the transitional shims (the node-test injection seam) still publish.
+import "./_selection-store-impl.js";   // publishes ...molview.selection._createStore (test seam)
+import "./_canvas-state-impl.js";      // publishes ...molview._canvasState (test seam)
+import "./_state-timeline-impl.js";    // publishes ...molview._createStateTimeline (test seam)
+import "./data-model.js";              // publishes ...molview.data (transitional)
 import "./measurement-overlay.js";     // publishes ...molview.mountMeasurementOverlay (transitional)
 import "./frame-controls.js";          // publishes ...molview.mountFrameControls (transitional)
 // mount.js reads its deps (molview.data / .engine / .selection + the viewer embed) at mount()

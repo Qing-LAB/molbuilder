@@ -30,9 +30,8 @@
  * scale flag; the streamline owns the geometry.
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
- * §4) that ALSO publishes the transitional browser global
- * (``window.molbuilder.molview.engine.process``, §3) so still-classic consumers (engine.js)
- * keep reading it until they convert.
+ * §4).  engine.js IMPORTS it directly; the browser-global publish at the bottom is a TEST SEAM
+ * (tests/test_engine_process_js.py reads molview.engine.process), not a production consumer edge.
  */
 "use strict";
 
@@ -186,7 +185,8 @@ function processFrame(frame, identity, flags) {
 
 export const process = { processFrame: processFrame };
 
-// ── Transitional global (removed once every consumer imports this module) ──
+// TEST SEAM: tests/test_engine_process_js.py reads globalThis.molbuilder.molview.engine.process.
+// engine.js imports the export above; production reads no global.  Window-guarded.
 if (typeof window !== "undefined") {
     window.molbuilder = window.molbuilder || {};
     window.molbuilder.molview = window.molbuilder.molview || {};

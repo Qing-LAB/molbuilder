@@ -38,9 +38,8 @@
  * them verbatim. embedIo never interprets their fields.
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
- * §4) that ALSO publishes the transitional browser global
- * (``window.molbuilder.molview.engine.embedIo``, §3) so still-classic consumers (engine.js)
- * keep reading it until they convert.
+ * §4).  engine.js IMPORTS it directly; the browser-global publish at the bottom is a TEST SEAM
+ * (tests/test_engine_embed_io_js.py reads molview.engine.embedIo), not a production consumer edge.
  */
 "use strict";
 
@@ -178,7 +177,8 @@ function createEmbedIo(handle) {
 
 export const embedIo = { create: createEmbedIo };
 
-// ── Transitional global (removed once every consumer imports this module) ──
+// TEST SEAM: tests/test_engine_embed_io_js.py reads globalThis.molbuilder.molview.engine.embedIo.
+// engine.js imports the export above; production reads no global.  Window-guarded.
 if (typeof window !== "undefined") {
     window.molbuilder = window.molbuilder || {};
     window.molbuilder.molview = window.molbuilder.molview || {};

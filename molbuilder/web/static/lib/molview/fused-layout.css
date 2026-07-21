@@ -196,7 +196,7 @@
 .molview-fold-btn {
     flex: 0 0 auto;
     align-self: stretch;
-    width: 22px;
+    width: var(--fold-w);   /* the SAME rail width the layout math reserves (one source of truth) */
     display: flex;
     align-items: center;
     justify-content: center;

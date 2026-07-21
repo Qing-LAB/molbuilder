@@ -47,7 +47,7 @@
  */
 "use strict";
 
-const root = (typeof window !== "undefined") ? window : globalThis;
+import { atomIndexModel } from "../_atom-index.js";
 
 function _vec3sub(a, b) {
     return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -97,8 +97,8 @@ function angleDeg(a, b, c) {
 // not an ad-hoc idx+1, so every surface agrees.  Falls back to idx+1 only
 // when the model isn't loaded (e.g. a pure node measurement-math test).
 function _toDisplay(idx) {
-    const m = root && root.molbuilder && root.molbuilder.atomIndexModel;
-    return (m && typeof m.toDisplay === "function") ? m.toDisplay(idx) : idx + 1;
+    return (atomIndexModel && typeof atomIndexModel.toDisplay === "function")
+        ? atomIndexModel.toDisplay(idx) : idx + 1;
 }
 
 function labelOf(idx, atomsMeta) {
@@ -268,6 +268,9 @@ function _geometricVertexOrder(selection, positions) {
     ];
 }
 
+// TEST SEAM: the node unit test (tests/test_selection_measurements_js.py) reads this via
+// globalThis.molbuilder.molview.selection.measurements; production consumers (panel.js,
+// measurement-overlay.js) IMPORT the `measurements` export below, so this publish is test-only.
 export const measurements = {
     compute:   compute,
     distance:  distance,
@@ -275,7 +278,10 @@ export const measurements = {
     labelOf:   labelOf,
 };
 
-// ── Transitional global (removed once every consumer imports this module) ──
+
+// TEST SEAM publish (see the comment on `export const measurements` above): the node unit test
+// reads globalThis.molbuilder.molview.selection.measurements.  Window-guarded (node has no window
+// unless the harness stubs one).  Production consumers import the export; do not read this global.
 if (typeof window !== "undefined") {
     window.molbuilder = window.molbuilder || {};
     window.molbuilder.molview = window.molbuilder.molview || {};
