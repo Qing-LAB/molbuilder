@@ -231,6 +231,31 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             }
         }
 
+        // SIZING CONTRACT (embedded module, fused-layout.css --molview-min-width): the card needs at
+        // least (viewer square min + fold + panel min) to render.  If the PARENT hands it LESS, that
+        // is a broken embed -- render a blank window + a clear message instead of overflowing (the
+        // module owns its minimum; the parent owns the actual width).  Guarded on getComputedStyle
+        // (absent in the node test) + a laid-out host (width 0 == display:none/detached -> skip, not
+        // an error).
+        if (card && typeof root.getComputedStyle === "function" && card.parentElement
+                && typeof card.parentElement.getBoundingClientRect === "function") {
+            const _need = parseFloat(root.getComputedStyle(card).minWidth) || 0;
+            const _have = card.parentElement.getBoundingClientRect().width;
+            if (_need > 0 && _have > 0 && _have < _need - 1) {
+                while (card.firstChild) card.removeChild(card.firstChild);
+                // Drop the min-width so the error message itself fits the too-small host.
+                if (card.classList) card.classList.add("molview-card--unmountable");
+                const emsg = _el("div", "molview-embed-error");
+                emsg.setAttribute("role", "alert");
+                emsg.textContent = "MolView needs at least " + Math.round(_need)
+                    + " px of width to show the structure; this area is only "
+                    + Math.round(_have) + " px. Widen the window or container.";
+                card.appendChild(emsg);
+                return _failMount("host too narrow (" + Math.round(_have)
+                    + "px < " + Math.round(_need) + "px min)");
+            }
+        }
+
         // Panel (atom selection + the Cell page), bound to the workspace's store.
         const panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
         if (!panelMount || !panelMount.panel)
