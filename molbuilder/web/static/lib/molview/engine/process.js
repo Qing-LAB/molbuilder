@@ -6,7 +6,7 @@
  *           data, then hands the result to embedIo.
  *
  * PURE: no 3Dmol, no DOM, no store, no time (its one dependency is the equally-pure L1 index
- * helper `molbuilder.atomIndexModel`, §16). `processFrame(frame, identity, flags)` is a
+ * helper `atomIndexModel`, IMPORTED from ../_atom-index.js, §16). `processFrame(frame, identity, flags)` is a
  * function of its inputs only -- so it is node-unit-testable in isolation. It performs §2:
  *
  *   §2.3 selection filter  -> which atoms are DRAWN (isolate on + selection -> selected only)
@@ -35,6 +35,8 @@
  * keep reading it until they convert.
  */
 "use strict";
+
+import { atomIndexModel } from "../_atom-index.js";
 
 // ---- Overlay style tokens (moved here from the selection viewer-adapter, which no longer
 // paints; the streamline owns all overlay derivation). Named constants, not inline
@@ -147,14 +149,10 @@ function processFrame(frame, identity, flags) {
     // is 1-based (SIESTA/Fortran convention, data-vocabulary.md §3.1 / molview-module §16):
     // sourceIndex stays 0-based internal, but the label text goes through the L1 helper
     // `atomIndexModel.toDisplay` -- REUSED, never re-derived (a bare `a+1` would drift).
-    // Read via the global (the leaf publishes it, §16) -- NOT imported.
+    // IMPORTED from the pure L1 index leaf (§16) -- always resolved, no load-order guard needed.
     var labels = null;
     if (flags.showIndex) {
-        var idxModel = globalThis.molbuilder && globalThis.molbuilder.atomIndexModel;
-        var toDisplay = idxModel && idxModel.toDisplay;
-        if (typeof toDisplay !== "function") {
-            throw new Error("process: molbuilder.atomIndexModel.toDisplay unavailable (load order)");
-        }
+        var toDisplay = atomIndexModel.toDisplay;
         labels = drawn.map(function (a, m) {
             return { position: positions[m], text: String(toDisplay(a)) };   // 1-based, SIESTA
         });

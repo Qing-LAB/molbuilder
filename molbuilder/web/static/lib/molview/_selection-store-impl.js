@@ -59,6 +59,8 @@
  */
 "use strict";
 
+import { atomIndexModel } from "./_atom-index.js";
+
 const root = (typeof window !== "undefined") ? window : globalThis;
 
     // The channel/index FEATURES (knownChannels, the 1-based by_index shift)
@@ -139,7 +141,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // the server by_index_range rule is 0-based -- shift at this
                 // boundary (data-vocabulary.md § 3.1).
                 const expression =
-                    root.molbuilder.atomIndexModel.shiftExpression(raw, -1);
+                    atomIndexModel.shiftExpression(raw, -1);
                 return { op: "by_index_range", expression: expression };
             }
             case "by_residue": {

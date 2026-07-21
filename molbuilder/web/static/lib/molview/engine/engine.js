@@ -27,13 +27,17 @@
  */
 "use strict";
 
+import { process as processMod } from "./process.js";
+import { embedIo as embedIoMod } from "./embed-io.js";
+
 function _noop() {}
 
 function create(handle, opts) {
     opts = opts || {};
-    var eng = (globalThis.molbuilder && globalThis.molbuilder.molview && globalThis.molbuilder.molview.engine) || {};
-    var processFrame = (opts.process || eng.process || {}).processFrame;
-    var embedIo = opts.embedIo || (eng.embedIo && eng.embedIo.create(handle));
+    // Deps are IMPORTED from the sibling submodules; `opts.process`/`opts.embedIo` stay as the
+    // node-test injection seam (a test can pass a stub without the real 3Dmol embed).
+    var processFrame = (opts.process || processMod).processFrame;
+    var embedIo = opts.embedIo || embedIoMod.create(handle);
     var store = opts.store || null;
     if (typeof processFrame !== "function") throw new Error("engine.create: process.processFrame missing");
     if (!embedIo) throw new Error("engine.create: embedIo missing (no handle?)");
