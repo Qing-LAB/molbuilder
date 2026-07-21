@@ -18,7 +18,7 @@
  */
 "use strict";
 
-const root = (typeof window !== "undefined") ? window : globalThis;
+import { measurements } from "./selection/measurements.js";   // pure geometry leaf (4a import)
 
 export function mountMeasurementOverlay(viewerHost, opts) {
     opts = opts || {};
@@ -33,8 +33,7 @@ export function mountMeasurementOverlay(viewerHost, opts) {
     if (typeof coordsProvider !== "function") {
         throw new Error("mountMeasurementOverlay: a coordsProvider() is required");
     }
-    const meas = root.molbuilder && root.molbuilder.molview && root.molbuilder.molview.selection
-               && root.molbuilder.molview.selection.measurements;
+    const meas = measurements;   // imported pure geometry leaf (4a)
 
     const el = document.createElement("div");
     el.className = "molview-measurement-overlay selection-measurement-overlay";

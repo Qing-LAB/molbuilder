@@ -13,6 +13,12 @@
  */
 "use strict";
 
+// 4a real-import graph: the pure leaves this panel depends on are IMPORTED (legible edges).
+// The `molview.data` reads stay RUNTIME lookups on purpose -- they resolve the currently-active
+// data instance (the active-instance seam; task #47 multi-embed keeps it dynamic).
+import { atomIndexModel } from "../_atom-index.js";
+import { measurements } from "./measurements.js";
+
 const root = (typeof window !== "undefined") ? window : globalThis;
 
 // Filter kinds exposed in the UI.
@@ -274,8 +280,7 @@ function mount(rootEl, opts) {
     // and is unit-tested in tests/test_selection_measurements_js.py.
     function renderMeasurement(s) {
         if (!els.measurement) return;
-        const mv = root.molbuilder && root.molbuilder.molview;
-        const meas = mv && mv.selection && mv.selection.measurements;
+        const meas = measurements;   // imported pure leaf (4a)
         // Coordinates come from molview.data (a sibling within MolView) --
         // the frame-aware current coords -- NOT from a global a consumer
         // decorated onto the namespace.  getCoordinates() reflects the shown
@@ -323,7 +328,7 @@ function mount(rootEl, opts) {
     // store's atom.index is 0-based.  Convert only for display, via the
     // shared L1 helper (loaded first by modify.html).
     function _toDisplayIndex(i) {
-        return root.molbuilder.atomIndexModel.toDisplay(i);
+        return atomIndexModel.toDisplay(i);
     }
 
     function knownLabels(s) {
