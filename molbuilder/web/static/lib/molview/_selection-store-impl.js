@@ -1113,6 +1113,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 // ── ESM public surface (the MolView ESM migration) ──
 // The transitional globals mounted above (``molview.selection._createStore`` /
 // ``createEphemeralStore`` / ``_surfaceSnapshot`` / ``_cloneAtom``) are the §3.2 shim that
-// classic consumers + data-model.js still read; this named export is what index.js
-// re-exports for module consumers.  Same ``_create`` factory as ``_createStore``.
-export { _create as createStore };
+// classic consumers still read; these named exports are what index.js re-exports and what
+// data-model.js imports directly (the 4a real-import graph).  Same underlying functions.
+export { _create as createStore, _cloneAtom as cloneAtom, _ephemeralSnapshot as surfaceSnapshot };

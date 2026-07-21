@@ -87,6 +87,15 @@
  */
 "use strict";
 
+// 4a real-import graph: the data model's dependencies are IMPORTED (not resolved via
+// window.molbuilder.* at call time), so the edges are legible from these lines.  All three are
+// single instances per module load -- canvasState is a module singleton; the store factory +
+// timeline factory are each called ONCE by this module (it is their sole creator), so importing
+// them keeps the one-instance-per-page invariant the whole UI shares through `data.selection`.
+import { createStore, cloneAtom, surfaceSnapshot } from "./_selection-store-impl.js";
+import { canvasState } from "./_canvas-state-impl.js";
+import { createStateTimeline } from "./_state-timeline-impl.js";
+
 const root = (typeof window !== "undefined") ? window : globalThis;
 
     // ─── Internal references resolved on demand ─────────────────── //
@@ -101,15 +110,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // layer.  Test escape hatch: a harness that ``require()``s the impl and assigns the
     // return value to ``root.molbuilder.structureCanvas`` is honoured too.
     function _canvas() {
-        if (root.molbuilder
-            && root.molbuilder.molview
-            && root.molbuilder.molview._canvasState) {
-            return root.molbuilder.molview._canvasState;
-        }
-        if (root.molbuilder && root.molbuilder.structureCanvas) {
-            return root.molbuilder.structureCanvas;
-        }
-        return null;
+        // The canvas is a module singleton, IMPORTED (4a).  Kept as a resolver (not an inline
+        // ref) so the split-out sub-modules can be handed it uniformly.
+        return canvasState;
     }
 
     // Phase 9 (2026-06-13): the selection store is no longer a
@@ -129,21 +132,19 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // re-exposing the legacy global in production templates.
     let _selectionStore = null;
     function _store() {
+        // The ONE store instance this data model owns: created ONCE via the imported factory
+        // (4a) and cached.  This module is the store's sole creator; the whole UI shares this
+        // instance through `data.selection` (mount passes it to the panel/engine/adapter), so a
+        // single create here IS the single source of truth.
         if (_selectionStore) return _selectionStore;
-        if (root.molbuilder
-            && root.molbuilder.molview
-            && root.molbuilder.molview.selection
-            && root.molbuilder.molview.selection.store) {
-            _selectionStore = root.molbuilder.molview.selection.store;
-            return _selectionStore;
-        }
-        const factory = (root.molbuilder
-                         && root.molbuilder.molview
-                         && root.molbuilder.molview.selection
-                         && root.molbuilder.molview.selection._createStore);
-        if (typeof factory === "function") {
-            _selectionStore = factory();
-        }
+        // TEST-INJECTION SEAM: a node harness (tests/support/seed_selection_store.js) may pre-mount
+        // a store at `molview.selection.store` BEFORE this model loads so the test and the model
+        // share ONE instance.  PRODUCTION never mounts that global (Phase 9 concealed the raw store
+        // behind `data.selection`), so in the browser this is undefined and the model creates its
+        // own single instance via the imported factory.  Either way there is exactly one store.
+        const seeded = root.molbuilder && root.molbuilder.molview
+                    && root.molbuilder.molview.selection && root.molbuilder.molview.selection.store;
+        _selectionStore = seeded || createStore();
         return _selectionStore;
     }
     // The coordinate time axis (§14.5) lives in the embed's native 3Dmol movie -- the
@@ -297,8 +298,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // the atom OBJECTS, so without cloning them a consumer mutating
         // getStructure().atoms[i].x would leak straight into the store.  Reuse the selection
         // module's shared _cloneAtom (same copy the ws.selection.getState() surface uses).
-        var _clone = (root.molbuilder.molview && root.molbuilder.molview.selection && root.molbuilder.molview.selection._cloneAtom)
-                   || function (a) { return a; };
+        var _clone = cloneAtom;
         return {
             text:          _text,
             source_format: _fmt,
@@ -576,8 +576,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // Defensive per-atom copy (workspace-contract §1.2.1): the store snapshot SHARES
         // the atom OBJECTS, so a bare .slice() lets a consumer mutate the store by writing
         // getAtoms()[i].x / .labels.push(...).  Use the same _cloneAtom getStructure() does.
-        var _clone = (root.molbuilder.molview && root.molbuilder.molview.selection && root.molbuilder.molview.selection._cloneAtom)
-                   || function (a) { return a; };
+        var _clone = cloneAtom;
         // Reflect the VISIBLE frame when scrubbed (§14.5.4): overlay the current frame's
         // coords (from the movie) onto the frame-independent atom identity.
         var fc = _scrubbedFrameCoords();
@@ -654,18 +653,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // (lib/molview/_state-timeline-impl.js): it owns `state_index`, the `uncommitted` flag, and
     // the ordered save/load chain.  This model injects the serialise / applySnapshot / workspace
     // / trace seams and still owns WHEN the data changed — it calls `_timeline.markUncommitted()`
-    // on every data change.  Browser: the factory is a global mounted by the sibling <script>
+    // on every data change.  The factory is IMPORTED (4a); this module is its sole caller.  Browser: the factory is a global mounted by the sibling <script>
     // loaded before this file.  Node tests: fall back to require() so bootstraps that require()
     // data-model.js need no extra wiring.  (`_serialise` / `_applySnapshot` / `_ws` / `_trace`
     // are hoisted function declarations, so passing them here — before their source lines — is
     // safe.)
-    var _mkTimeline = (root.molbuilder && root.molbuilder.molview
-                       && root.molbuilder.molview._createStateTimeline) || null;
-    if (!_mkTimeline && typeof require === "function") {
-        try { _mkTimeline = require("./_state-timeline-impl.js").createStateTimeline; }
-        catch (_) { /* no require (browser/bundler) -> the global path above */ }
-    }
-    var _timeline = _mkTimeline({
+    var _timeline = createStateTimeline({
         serialise:     _serialise,
         applySnapshot: _applySnapshot,
         getWorkspace:  _ws,
@@ -763,7 +756,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * Returns a fresh defensive copy.
      */
     function _selectionSnapshot(st) {
-        return root.molbuilder.molview.selection._surfaceSnapshot(st);
+        return surfaceSnapshot(st);
     }
 
     var selection = {
