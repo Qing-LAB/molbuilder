@@ -5,25 +5,16 @@ every call, and assert it maps the engine's plain data (§7.3 ProcessedFrame) on
 embed doors -- the multi-frame load sequence, the native swap, the append path, the overlay
 forwarding, and busy. No 3Dmol here; the handle is a spy.
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/molview/engine/embed-io.js"
 
 
-def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + MODULE.read_text() + "\n"
-            # A spy handle: every door records (name, args); reads return canned values.
-            + """
+_BOOT = """
+            // A spy handle: every door records (name, args); reads return canned values.
             function makeHandle(reads) {
                 reads = reads || {};
                 const calls = [];
@@ -47,7 +38,7 @@ def _run_node(snippet: str) -> object:
                     getAnimationKind:  () => reads.kind,
                 };
             }
-            const embedIo = global.molbuilder.molview.engine.embedIo;
+            const embedIo = globalThis.molbuilder.molview.engine.embedIo;
             // Two processed frames: 2 atoms each. (positions differ per frame.)
             const F = [
                 { positions: [[0,0,0],[1,0,0]], elements: ["C","H"],
@@ -57,13 +48,13 @@ def _run_node(snippet: str) -> object:
             ];
             const names = (h) => h._calls.map(c => c.name);
             const byName = (h, n) => h._calls.filter(c => c.name === n);
-            """
-            + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+"""
+
+
+def _run_node(snippet: str) -> object:
+    # ES-module harness (tests/_node_esm): imports the embed-io module (ESM), which publishes
+    # its global via the transitional shim; the bootstrap + snippet drive it through the global.
+    return run_node([MODULE], _BOOT + snippet)
 
 
 def test_multiframe_load_is_setStructure_then_setAnimation():

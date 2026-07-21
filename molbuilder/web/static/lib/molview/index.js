@@ -17,6 +17,12 @@
  */
 import "./_atom-index.js";        // publishes window.molbuilder.atomIndexModel (transitional)
 import "./_atom-channels.js";     // publishes window.molbuilder.atomChannelModel (transitional)
+import "./engine/process.js";     // publishes window.molbuilder.molview.engine.process (transitional)
+import "./engine/embed-io.js";    // publishes window.molbuilder.molview.engine.embedIo (transitional)
+import "./engine/engine.js";      // publishes window.molbuilder.molview.engine.create (transitional)
 
 export * from "./_atom-index.js";
 export * from "./_atom-channels.js";
+export * from "./engine/process.js";
+export * from "./engine/embed-io.js";
+export * from "./engine/engine.js";

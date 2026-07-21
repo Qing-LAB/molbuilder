@@ -36,147 +36,152 @@
  * The Arrow / LabelOpts / HaloOverlay / cellBox specs are exactly what the embed doors accept
  * (setArrows / setLabels / setOverlays / setCell) -- process.js builds them; embedIo forwards
  * them verbatim. embedIo never interprets their fields.
+ *
+ * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
+ * §4) that ALSO publishes the transitional browser global
+ * (``window.molbuilder.molview.engine.embedIo``, §3) so still-classic consumers (engine.js)
+ * keep reading it until they convert.
  */
-(function (root) {
-    "use strict";
+"use strict";
 
-    // The 3Dmol XYZ wire format for one frame: "<n>\n<comment>\n<el x y z>...".
-    // The ONLY format knowledge in the engine; kept here so process.js/engine.js stay data-only.
-    function _buildXyz(elements, positions) {
-        var n = positions.length;
-        var lines = [String(n), "molview"];
-        for (var i = 0; i < n; i++) {
-            var p = positions[i];
-            lines.push((elements[i] || "X") + " " + p[0] + " " + p[1] + " " + p[2]);
-        }
-        return lines.join("\n");
+// The 3Dmol XYZ wire format for one frame: "<n>\n<comment>\n<el x y z>...".
+// The ONLY format knowledge in the engine; kept here so process.js/engine.js stay data-only.
+function _buildXyz(elements, positions) {
+    var n = positions.length;
+    var lines = [String(n), "molview"];
+    for (var i = 0; i < n; i++) {
+        var p = positions[i];
+        lines.push((elements[i] || "X") + " " + p[0] + " " + p[1] + " " + p[2]);
     }
+    return lines.join("\n");
+}
 
-    // Apply the CURRENT-frame overlays the engine hands us. Each field is forwarded to its
-    // embed door ONLY when present (an absent field leaves that door untouched -- so an
-    // overlay refresh that changes only labels doesn't clear halos, and vice versa).
-    function _applyOverlays(handle, o) {
-        o = o || {};
-        if (o.labels  !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
-        if (o.halos   !== undefined && typeof handle.setOverlays === "function") handle.setOverlays(o.halos);
-        if (o.arrows  !== undefined && typeof handle.setArrows   === "function") handle.setArrows(o.arrows);
-        if (o.cellBox !== undefined && typeof handle.setCell     === "function") handle.setCell(o.cellBox);
-        if (o.axes    !== undefined && typeof handle.setAxes     === "function") handle.setAxes(o.axes);
-    }
+// Apply the CURRENT-frame overlays the engine hands us. Each field is forwarded to its
+// embed door ONLY when present (an absent field leaves that door untouched -- so an
+// overlay refresh that changes only labels doesn't clear halos, and vice versa).
+function _applyOverlays(handle, o) {
+    o = o || {};
+    if (o.labels  !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
+    if (o.halos   !== undefined && typeof handle.setOverlays === "function") handle.setOverlays(o.halos);
+    if (o.arrows  !== undefined && typeof handle.setArrows   === "function") handle.setArrows(o.arrows);
+    if (o.cellBox !== undefined && typeof handle.setCell     === "function") handle.setCell(o.cellBox);
+    if (o.axes    !== undefined && typeof handle.setAxes     === "function") handle.setAxes(o.axes);
+}
 
-    function createEmbedIo(handle) {
-        if (!handle) throw new Error("engine.embedIo.create: a viewer handle is required");
+function createEmbedIo(handle) {
+    if (!handle) throw new Error("engine.embedIo.create: a viewer handle is required");
 
-        // §1/§5: a MolView update prepares all data in one run, then 3Dmol renders ONCE. The embed
-        // batches renders behind a depth counter; embedIo opens a batch around any multi-door op,
-        // and the engine (§8) wraps a whole tier update, so the paint fires once at the outermost
-        // close instead of once per setStructure/setOverlays/setCell/setAxes/setLabels door.
-        function beginBatch() { if (typeof handle.beginBatch === "function") handle.beginBatch(); }
-        function endBatch()   { if (typeof handle.endBatch   === "function") handle.endBatch(); }
+    // §1/§5: a MolView update prepares all data in one run, then 3Dmol renders ONCE. The embed
+    // batches renders behind a depth counter; embedIo opens a batch around any multi-door op,
+    // and the engine (§8) wraps a whole tier update, so the paint fires once at the outermost
+    // close instead of once per setStructure/setOverlays/setCell/setAxes/setLabels door.
+    function beginBatch() { if (typeof handle.beginBatch === "function") handle.beginBatch(); }
+    function endBatch()   { if (typeof handle.endBatch   === "function") handle.endBatch(); }
 
-        // STRUCTURAL REGEN (§3, §8): load all processed frames as ONE native movie -- COORDINATES
-        // only. setStructure(frame0) establishes atom identity + count; a multi-frame set becomes
-        // the native movie (addModelsAsFrames) with the per-frame arrows BAKED in (a native swap
-        // shows frame i's arrows for free, §3). Labels/halos (and a single frame's arrows) are the
-        // ENGINE's job -- it applies the shown frame's overlays right after this (the single render
-        // place). loadFrames does NOT apply them; doing so would just double-draw frame 0.
-        function loadFrames(movie) {
-            movie = movie || {};
-            var frames = Array.isArray(movie.frames) ? movie.frames : [];
-            if (!frames.length) return;
-            beginBatch();                                  // setStructure + setAnimation -> ONE render
-            try {
-                var f0 = frames[0];
-                handle.setStructure({
-                    xyz:     _buildXyz(f0.elements, f0.positions),
-                    lattice: movie.cell !== undefined ? movie.cell : null,
-                    cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
+    // STRUCTURAL REGEN (§3, §8): load all processed frames as ONE native movie -- COORDINATES
+    // only. setStructure(frame0) establishes atom identity + count; a multi-frame set becomes
+    // the native movie (addModelsAsFrames) with the per-frame arrows BAKED in (a native swap
+    // shows frame i's arrows for free, §3). Labels/halos (and a single frame's arrows) are the
+    // ENGINE's job -- it applies the shown frame's overlays right after this (the single render
+    // place). loadFrames does NOT apply them; doing so would just double-draw frame 0.
+    function loadFrames(movie) {
+        movie = movie || {};
+        var frames = Array.isArray(movie.frames) ? movie.frames : [];
+        if (!frames.length) return;
+        beginBatch();                                  // setStructure + setAnimation -> ONE render
+        try {
+            var f0 = frames[0];
+            handle.setStructure({
+                xyz:     _buildXyz(f0.elements, f0.positions),
+                lattice: movie.cell !== undefined ? movie.cell : null,
+                cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
+            });
+            if (frames.length > 1 && typeof handle.setAnimation === "function") {
+                handle.setAnimation({
+                    kind:           "trajectory",
+                    frames:         frames.map(function (f) { return f.positions; }),
+                    arrowsPerFrame: frames.map(function (f) { return f.arrows || []; }),
+                    frameStrip:     false,
+                    paused:         true,
                 });
-                if (frames.length > 1 && typeof handle.setAnimation === "function") {
-                    handle.setAnimation({
-                        kind:           "trajectory",
-                        frames:         frames.map(function (f) { return f.positions; }),
-                        arrowsPerFrame: frames.map(function (f) { return f.arrows || []; }),
-                        frameStrip:     false,
-                        paused:         true,
-                    });
-                }
-            } finally { endBatch(); }
-        }
-
-        // NATIVE SWAP (§3, §8): switch to a pre-parsed frame -- no processing, no rebuild.
-        function swapFrame(i) {
-            if (typeof handle.setAnimationFrame === "function") handle.setAnimationFrame(i);
-        }
-
-        // APPEND (§6.2, §8): extend the movie with the processed NEW frames only. Does not
-        // move the shown frame. Arrows for the new frames append alongside.
-        function appendFrames(tail) {
-            tail = tail || {};
-            var frames = Array.isArray(tail.frames) ? tail.frames : [];
-            if (!frames.length) return;
-            if (typeof handle.appendFrames === "function") {
-                handle.appendFrames(frames.map(function (f) { return f.positions; }));
             }
-            if (typeof handle.appendFrameArrows === "function") {
-                handle.appendFrameArrows(frames.map(function (f) { return f.arrows || []; }));
-            }
-        }
-
-        // OVERLAY REFRESH (§8): (re)apply overlays on the current frame without rebuilding
-        // the movie. `overlay` is { labels?, halos?, arrows?, cellBox?, axes? }.
-        function applyOverlays(overlay) {
-            beginBatch();                                  // labels + halos + cell + axis -> ONE render
-            try { _applyOverlays(handle, overlay); } finally { endBatch(); }
-        }
-
-        // OVERLAY REFRESH of the BAKED per-frame arrows (§8): re-hand the whole arrowsPerFrame
-        // set for the movie WITHOUT reparsing coordinates (setAnimation partial update). This is
-        // how a force overlay/scale change stays an overlay refresh -- the arrows are baked per
-        // frame (so a native swap shows them free), but re-baking them does not touch the coords.
-        // Multi-frame only; a static structure's arrows go through applyOverlays.
-        function setFrameArrows(arrowsPerFrame) {
-            if (typeof handle.setAnimation === "function") {
-                handle.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame) ? arrowsPerFrame : [] });
-            }
-        }
-
-        // The §4 busy scrim. `null` clears it.
-        function setBusy(msg) {
-            if (typeof handle.setBusy === "function") handle.setBusy(msg);
-        }
-
-        // Reads -- the native movie is the single coord owner (§7.1).
-        function frameCount() {
-            return (typeof handle.getFrameCount === "function") ? handle.getFrameCount() : 0;
-        }
-        function currentFrame() {
-            return (typeof handle.getAnimationFrame === "function") ? handle.getAnimationFrame() : 0;
-        }
-        function animationKind() {
-            return (typeof handle.getAnimationKind === "function") ? handle.getAnimationKind() : null;
-        }
-
-        return {
-            loadFrames:    loadFrames,
-            swapFrame:     swapFrame,
-            appendFrames:  appendFrames,
-            applyOverlays: applyOverlays,
-            setFrameArrows: setFrameArrows,
-            setBusy:       setBusy,
-            beginBatch:    beginBatch,   // engine wraps a whole §8 tier update -> ONE render
-            endBatch:      endBatch,
-            frameCount:    frameCount,
-            currentFrame:  currentFrame,
-            animationKind: animationKind,
-        };
+        } finally { endBatch(); }
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.molview = root.molbuilder.molview || {};
-    root.molbuilder.molview.engine = root.molbuilder.molview.engine || {};
-    root.molbuilder.molview.engine.embedIo = { create: createEmbedIo };
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = { create: createEmbedIo };
+    // NATIVE SWAP (§3, §8): switch to a pre-parsed frame -- no processing, no rebuild.
+    function swapFrame(i) {
+        if (typeof handle.setAnimationFrame === "function") handle.setAnimationFrame(i);
     }
-})(typeof window !== "undefined" ? window : globalThis);
+
+    // APPEND (§6.2, §8): extend the movie with the processed NEW frames only. Does not
+    // move the shown frame. Arrows for the new frames append alongside.
+    function appendFrames(tail) {
+        tail = tail || {};
+        var frames = Array.isArray(tail.frames) ? tail.frames : [];
+        if (!frames.length) return;
+        if (typeof handle.appendFrames === "function") {
+            handle.appendFrames(frames.map(function (f) { return f.positions; }));
+        }
+        if (typeof handle.appendFrameArrows === "function") {
+            handle.appendFrameArrows(frames.map(function (f) { return f.arrows || []; }));
+        }
+    }
+
+    // OVERLAY REFRESH (§8): (re)apply overlays on the current frame without rebuilding
+    // the movie. `overlay` is { labels?, halos?, arrows?, cellBox?, axes? }.
+    function applyOverlays(overlay) {
+        beginBatch();                                  // labels + halos + cell + axis -> ONE render
+        try { _applyOverlays(handle, overlay); } finally { endBatch(); }
+    }
+
+    // OVERLAY REFRESH of the BAKED per-frame arrows (§8): re-hand the whole arrowsPerFrame
+    // set for the movie WITHOUT reparsing coordinates (setAnimation partial update). This is
+    // how a force overlay/scale change stays an overlay refresh -- the arrows are baked per
+    // frame (so a native swap shows them free), but re-baking them does not touch the coords.
+    // Multi-frame only; a static structure's arrows go through applyOverlays.
+    function setFrameArrows(arrowsPerFrame) {
+        if (typeof handle.setAnimation === "function") {
+            handle.setAnimation({ arrowsPerFrame: Array.isArray(arrowsPerFrame) ? arrowsPerFrame : [] });
+        }
+    }
+
+    // The §4 busy scrim. `null` clears it.
+    function setBusy(msg) {
+        if (typeof handle.setBusy === "function") handle.setBusy(msg);
+    }
+
+    // Reads -- the native movie is the single coord owner (§7.1).
+    function frameCount() {
+        return (typeof handle.getFrameCount === "function") ? handle.getFrameCount() : 0;
+    }
+    function currentFrame() {
+        return (typeof handle.getAnimationFrame === "function") ? handle.getAnimationFrame() : 0;
+    }
+    function animationKind() {
+        return (typeof handle.getAnimationKind === "function") ? handle.getAnimationKind() : null;
+    }
+
+    return {
+        loadFrames:    loadFrames,
+        swapFrame:     swapFrame,
+        appendFrames:  appendFrames,
+        applyOverlays: applyOverlays,
+        setFrameArrows: setFrameArrows,
+        setBusy:       setBusy,
+        beginBatch:    beginBatch,   // engine wraps a whole §8 tier update -> ONE render
+        endBatch:      endBatch,
+        frameCount:    frameCount,
+        currentFrame:  currentFrame,
+        animationKind: animationKind,
+    };
+}
+
+export const embedIo = { create: createEmbedIo };
+
+// ── Transitional global (removed once every consumer imports this module) ──
+if (typeof window !== "undefined") {
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.molview = window.molbuilder.molview || {};
+    window.molbuilder.molview.engine = window.molbuilder.molview.engine || {};
+    window.molbuilder.molview.engine.embedIo = embedIo;
+}
