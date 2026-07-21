@@ -96,6 +96,7 @@ import { createStore, cloneAtom, surfaceSnapshot } from "./_selection-store-impl
 import { canvasState } from "./_canvas-state-impl.js";
 import { createStateTimeline } from "./_state-timeline-impl.js";
 import { createOperations } from "./_operations.js";
+import { createSerialiser } from "./_serialise.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -1552,152 +1553,41 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // ─── Persistence (Phase 8) ─────────────────────────────────── //
 
     /**
-     * Phase 8 of the workspace-state migration (2026-06-07): the
-     * dispatcher owns the unified sessionStorage mirror under
-     * ``molbuilder.workspace.v1``.  The legacy per-store mirrors
-     * (``molbuilder.structure_canvas`` and ``modify-state``) are
-     * still actively writing in parallel — a follow-up commit
-     * will retire them once ``restoreModifyState`` is migrated to
-     * read from the unified key (workspace-state.md § 6 step 8
-     * "what did NOT land" sub-list).  Until then a refresh
-     * gracefully falls back to whichever mirror has data.
-     *
-     * Schema:
-     *
-     *   {
-     *     v:        1,
-     *     saved_at: "<ISO 8601>",
-     *     state: {
-     *       structure:   <ws.getStructure() snapshot, or null>,
-     *       source:      <ws.getSource() snapshot>,
-     *       dirty:       <ws.isDirty()>,
-     *       last_save_to: <canvas-state.getLastSavedTo()>,
-     *       selection:   <ws.getSelection()>,
-     *       view:        <ws.view.getState()>,
-     *     },
-     *   }
-     *
-     * Restore policy mirrors the per-store dirty-gated heuristic
-     * landed in cd9655e: when ``dirty=true`` OR ``source.file=null``
-     * the saved snapshot is authoritative; otherwise the source
-     * file on disk is.  This protects unsaved edits while letting
-     * external file changes propagate.
-     *
-     * On the modify-tab restoreModifyState already runs at
-     * ``DOMContentLoaded``; the dispatcher's restore is layered
-     * on top: it reads ``molbuilder.workspace.v1`` first; falls
-     * back to the legacy mirrors when absent.
+     * Persistence (§19.5): the model is PUSH-ONLY -- the state timeline (save/load/anchor) is the
+     * ONLY writer, handing serialised BYTES to the workspace dispatcher (lib/workspace/dispatcher.js),
+     * which owns the single sessionStorage mirror.  There are NO legacy per-store mirrors and no
+     * auto-write (the old ``structure_canvas`` / ``modify-state`` parallel writers were removed).
+     * The session-snapshot shape (v/saved_at/workspace_id/state{structure,source,dirty,last_save_to,
+     * selection,view,state_index}) is defined by the serialiser codec below; the restore side reads
+     * ``state.dirty`` + ``state.source.file`` to decide saved-snapshot vs disk-refetch.
      */
-    function _serialise() {
-        // The snapshot always carries the full structure (including
-        // ``structure.atoms``).  The cd9655e dirty-gate
-        // ("when canvas is clean AND has a source file, refetch
-        // from disk on restore so external changes propagate") is
-        // applied AT RESTORE TIME — the snapshot consumer reads
-        // ``state.dirty`` + ``state.source.file`` and decides
-        // whether to install the saved atoms or force a disk
-        // refetch.  Earlier this gate lived here and nulled out
-        // ``structure.atoms`` — but downstream consumers also
-        // derive ``elements`` / ``atom_names`` / etc. from
-        // ``atoms[]``, so nulling it broke the IIFE state restore
-        // (empty Anchor readouts, broken refreshSelectionUI).
-        return {
-            v:            1,
-            saved_at:     new Date().toISOString(),
-            // Keep the sourceless-workspace draft id stable across a same-tab
-            // reload (so we recover the same server draft, not a fresh orphan).
-            workspace_id: (_ws() ? _ws().workspaceId() : null),
-            state: {
-                structure:    getStructure(),
-                source:       getSource(),
-                dirty:        isDirty(),
-                last_save_to: _lastSavedTo(),
-                selection:    getSelection(),
-                view:         view.getState(),
-                // The timeline position, so a reload restores WHERE in the undo history
-                // we are (not just the geometry) -- §19.5.
-                state_index:  _timeline.stateIndex,
-            },
-        };
-    }
+    // The serialisation codec (model -> bytes, BOTH shapes) is extracted to _serialise.js as an
+    // injected factory; the hub wires it with read-only accessors + thunks for the state defined
+    // above (view / _timeline / _ws).  `_serialise` / `_scratchBlob` stay as hoisted delegators so
+    // the timeline's injected `serialise` seam + `exportFile()` keep their existing references.
+    var _serialiser = createSerialiser({
+        getStructure:   getStructure,
+        getSource:      getSource,
+        getSelection:   getSelection,
+        getElements:    getElements,
+        getRegions:     getRegions,
+        getFrozen:      getFrozen,
+        isDirty:        isDirty,
+        getCanvas:      _canvas,
+        viewGetState:   function () { return view.getState(); },
+        getStateIndex:  function () { return _timeline.stateIndex; },
+        getWorkspaceId: function () { return _ws() ? _ws().workspaceId() : null; },
+    });
+
+    function _serialise() { return _serialiser.serialise(); }
 
     // Reload-restore is now `load(0)` (§19.5): it reads the sessionStorage MIRROR
     // (the current committed snapshot + state_index) and applies it to the WHOLE model
     // WITHOUT re-anchoring the timeline.  The former standalone `restoreSnapshot(snap)`
     // door was folded into that delta-parameterized `load`.
 
-    function _lastSavedTo() {
-        var cs = _canvas();
-        return (cs && typeof cs.getLastSavedTo === "function")
-            ? cs.getLastSavedTo() : null;
-    }
-
-    // The scratch blob {xyz, sidecar} -- the codec shape `exportFile` emits for a
-    // project-file save (projects.writeFile) and `/api/structure/resolve-cell`
-    // consumes (StructureCodec.from_scratch).  ONE serialisation of the workspace,
-    // for BOTH the durable save AND the transient draft, built entirely through the
-    // §1.2.1 accessors (getRegions/getFrozen) -- no hand-rolled scan.  The periodicity
-    // is persisted RAW (null when truly unset) so the file is truthful; a reader gets
-    // the defaults from the accessors.
-    // The geometry's own atom count from the text, or null if unparseable.  Handles
-    // both source formats (review c-PDB: a PDB has no leading count line, so the
-    // xyz-only parse skipped the invariant).
-    function _geometryAtomCount(text, format) {
-        if (format === "pdb") {
-            var n = 0, lines = String(text).split("\n");
-            for (var i = 0; i < lines.length; i++) {
-                if (/^(ATOM|HETATM)/.test(lines[i])) n++;
-            }
-            return n;
-        }
-        var first = String(text).split("\n", 1)[0];   // xyz: first line = atom count
-        var c = parseInt(first, 10);
-        return (isFinite(c) && String(c) === first.trim()) ? c : null;
-    }
-
-    function _scratchBlob() {
-        var s = getStructure();
-        if (!s || !s.text) return null;
-        // INVARIANT (review c): the geometry (text, from the canvas store) and the
-        // labels/frozen (indices, from the selection store) live in two stores.  They
-        // MUST index the same atom set.  If they desync, refuse to serialise -- a
-        // mismatched .xyz/.json pair (regions pointing outside the geometry) must
-        // NEVER reach disk.  Surfaces the bug instead of silently corrupting.
-        var nGeom = _geometryAtomCount(s.text, s.source_format);
-        var nStore = getElements().length;
-        if (nGeom !== null && nStore !== nGeom) {
-            if (root.console && root.console.error) {
-                root.console.error(
-                    "workspace: atom-count desync -- geometry has " + nGeom
-                    + " atoms but the store holds " + nStore
-                    + "; refusing to serialise a mismatched .xyz/.json pair.");
-            }
-            return null;
-        }
-        var per = s.periodicity || {};
-        return {
-            xyz: s.text,
-            sidecar: {
-                n_atoms_total:   getElements().length || s.n_atoms || 0,
-                structure_hash:  "",
-                regions:         getRegions(),
-                frozen_atoms:    getFrozen(),
-                cell:            per.cell || null,
-                // §3c: the low corner an explicit cell wraps off-origin atoms from,
-                // saved so an electrode junction's box survives a save/reload.
-                cell_origin:     per.cell_origin || null,
-                axis_kind:       per.axis_kind || null,
-                vacuum:          per.vacuum || null,
-                // (no kgrid: it's a sampling knob on SiestaConfig, not geometry)
-                // F1: re-emit the annotation channels carried opaquely from load, so
-                // a Modify Save preserves them instead of clobbering to {}.
-                annotations:     s.annotations || {},
-                // F2: `selection_rules` is NOT a working-copy field -- the codec
-                // neither reads it on open nor writes it on save, so emitting an
-                // empty {} was meaningless noise.  Dropped.
-            },
-        };
-    }
+    // exportFile()'s project-file blob {xyz, sidecar} -- delegated to the serialiser codec.
+    function _scratchBlob() { return _serialiser.scratchBlob(); }
 
     // Keep the transient DRAFT in sync with memory on every edit -- the contract's
     // "update = the only automatic disk write" (workspace-contract.md).  The draft
