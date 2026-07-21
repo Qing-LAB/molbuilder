@@ -33,6 +33,10 @@ import "./_state-timeline-impl.js";    // publishes ...molview._createStateTimel
 import "./data-model.js";              // publishes ...molview.data (transitional); reads store/canvas globals
 import "./measurement-overlay.js";     // publishes ...molview.mountMeasurementOverlay (transitional)
 import "./frame-controls.js";          // publishes ...molview.mountFrameControls (transitional)
+// mount.js reads its deps (molview.data / .engine / .selection + the viewer embed) at mount()
+// CALL time (runtime), never at module body -- so it loads LAST, and its transitional
+// window.molbuilder.molview.mount shim + `export { mount }` make the single-import entry work.
+import "./mount.js";                   // publishes ...molview.mount (transitional)
 
 export * from "./_atom-index.js";
 export * from "./_atom-channels.js";
@@ -49,3 +53,4 @@ export * from "./_state-timeline-impl.js";
 export * from "./data-model.js";
 export * from "./measurement-overlay.js";
 export * from "./frame-controls.js";
+export { mount } from "./mount.js";

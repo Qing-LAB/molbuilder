@@ -37,8 +37,9 @@
  *    still owns its own viewer + render.  Transitional -- retired when the consumer passes an
  *    empty host and lets molview own everything.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _el(tag, cls) {
         const e = root.document.createElement(tag);
@@ -415,4 +416,5 @@
         && typeof root.molbuilder.runtime.register === "function") {
         root.molbuilder.runtime.register("molview", root.molbuilder.molview);
     }
-})(typeof window !== "undefined" ? window : this);
+
+export { mount };

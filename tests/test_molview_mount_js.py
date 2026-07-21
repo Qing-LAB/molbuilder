@@ -20,14 +20,15 @@ Node unit test pinning the POST-CARVE contract:
 The handle is exercised through a STUBBED molview.data + panel; a persistence-only workspace
 is passed alongside with its own data methods wired as TRAPS.
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
+# mount.js is now a native ES module (the MolView ESM migration): the ``export { mount }`` it
+# carries is a SyntaxError under a sloppy CommonJS text-concat run, so it loads through the
+# shared ES-module harness (tests/_node_esm.run_node), which dynamic-``import()``s it -- the
+# transitional ``window.molbuilder.molview.mount`` shim publish still fires the same global.
 MODULES = [
     ROOT / "molbuilder/web/static/lib/molview/mount.js",
 ]
@@ -41,17 +42,7 @@ HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame"
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + "\n".join(m.read_text() for m in MODULES) + "\n" + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\n"
-                    f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node(MODULES, snippet)
 
 
 # ---- The CONTRACT harness: a real molview.data is present (§18 / §C) ------------------- #
