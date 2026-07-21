@@ -395,8 +395,8 @@
         // A SAVE just wrote the in-memory model to ``path``; re-anchor sourceFile so
         // later label edits target the new file.  SYNCHRONOUS + sourceFile-ONLY: a
         // save does NOT change the model, so this must NOT reload, refetch, or touch
-        // atoms/selection (contrast setSourceFile, which is a fresh OPEN and clears
-        // everything).  This is the door molview.data.markSaved routes through, so a
+        // atoms/selection (contrast a fresh OPEN via adoptAtoms/adoptSession, which
+        // replaces atoms + selection).  This is the door molview.data.markSaved routes through, so a
         // save flow never reaches into the store to hand-set the source (the old
         // save.js `adoptSession({sourceFile})` reach-around).
         function noteSavedTo(path) {
@@ -410,8 +410,8 @@
         // viewer.  Used by /modify's sessionStorage restore path
         // where the viewer model has already been populated
         // synchronously via ``applyStructure(...)``.  Differs from
-        // setSourceFile in two ways:
-        //   1. it skips _loadViewer entirely (the viewer is already
+        // a fresh open (adoptAtoms) in two ways:
+        //   1. it does NOT re-populate the viewer (already
         //      populated -- re-loading would discard the camera /
         //      indices and double-fetch over HTTP for no gain);
         //   2. it accepts a pre-validated selection that survives
@@ -481,7 +481,7 @@
          *
          * ``sourceFile`` (optional): when a file-open drives this
          * call it names the loaded path so the store's sourceFile
-         * (the "Loaded: X" readout + any later refreshAtoms) is set
+         * (the "Loaded: X" readout + any later adoptAtoms) is set
          * in the SAME synchronous write as the atoms.  This is what
          * lets a file load install atoms+source+selection in ONE
          * store write (the load contract — see
@@ -829,14 +829,15 @@
                 state.pickOrder = state.selection.slice();
                 state.error     = null;
                 // Race safety net.  applyFilter shares the _run
-                // abort signal with setSourceFile, so a sequence
+                // abort signal with an async open (adoptSession's
+                // disk-fetch path), so a sequence
                 //   1. user picks B in the sidebar
-                //   2. setSourceFile(B) starts; state.atoms is
-                //      synchronously cleared; the file-load + atom
-                //      fetch are pending
+                //   2. adoptSession(B) starts; state.atoms is
+                //      synchronously cleared; the atom fetch is
+                //      pending
                 //   3. user clicks Apply filter before the load
                 //      finishes
-                // aborts setSourceFile mid-fetch -- state.atoms
+                // aborts adoptSession mid-fetch -- state.atoms
                 // never gets repopulated -- while the server happily
                 // evaluates against the on-disk XYZ and we set
                 // state.selection above.  The user ends up with
@@ -1017,8 +1018,8 @@
     // so a readonly/ephemeral inspector can own an ISOLATED selection.
     //
     // This is the SHARED-CONSUMER subset.  The dispatcher's ws.selection is a
-    // SUPERSET: it adds workspace-lifecycle methods (getAtoms, setSourceFile,
-    // refreshAtoms) that the singleton needs but readonly inspectors do not —
+    // SUPERSET: it adds workspace-lifecycle methods (getAtoms, adoptAtoms,
+    // adoptSession) that the singleton needs but readonly inspectors do not —
     // the shared consumers (panel/adapter/mount-panel) call only the common set,
     // so the ephemeral surface intentionally omits those.  The snapshot shape is
     // a single source: ws.selection delegates to _surfaceSnapshot (below), so

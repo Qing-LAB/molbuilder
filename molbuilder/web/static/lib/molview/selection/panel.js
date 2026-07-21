@@ -32,8 +32,8 @@ const FILTER_KINDS = [
 // transport-region names).  Plus any other labels currently
 // on the structure get added dynamically by renderAssignTarget.
 //
-// Must stay in sync with the canonical region colors that
-// ``lib/selection/viewer-adapter.js`` paints (the REGION_COLORS
+// Must stay in sync with the canonical region colors in
+// ``lib/molview/engine/process.js`` (the REGION_COLORS
 // map): any label the viewer paints a first-class color for
 // should be assignable from this dropdown without typing
 // ``__new__``.  ``interface`` was previously paintable but not
@@ -975,7 +975,7 @@ function mount(rootEl, opts) {
     // Seed the Assign-target <select> from BUILTIN_TARGETS before
     // any store notify lands -- otherwise a user who opens
     // /modify, clicks the Target dropdown before the first
-    // setSourceFile resolves, sees an empty <select>.  The first
+    // store notify (adopt) lands, sees an empty <select>.  The first
     // store notify will call renderAssignTarget which folds in
     // user-defined labels on top.
     renderAssignTarget({ atoms: [] });

@@ -5,8 +5,8 @@
  *   ‹ play/pause › · loop · speed(ms) · ──slider── · i / N .
  * Speed feeds api.play({fps}); loop feeds api.setLoop.
  *
- * Overlays (force arrows, atom-index labels) are NOT here: they are the CONSUMER's overlay
- * data, pushed via handle.setArrows / setLabels -- not a viewer toggle (molview-module §14.5.1).
+ * Overlays (force arrows, atom-index labels) are NOT here: force arrows are baked by the
+ * engine from each frame's forces -- not a viewer toggle (molview-module §14.5.1).
  *
  * SHOWN only for a trajectory (frameCount > 1); a single static structure has no bar.  It
  * subscribes to the store so the slider + counter track the current frame (incl. during

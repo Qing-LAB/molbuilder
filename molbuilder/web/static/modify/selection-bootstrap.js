@@ -139,9 +139,10 @@
             // whole model in a single write (§19.3.1).  Exposed for
             // tests that need to drive the canonical sidebar→canvas
             // flow without depending on DOM clicks.
-            // (The old `commitCandidate` -- a `store.setSourceFile`
-            // reach-around that RELOADED the file -- was dead and is
-            // removed; loading goes through commitFile only.)
+            // (The old `commitCandidate` -- a reach-around that
+            // RELOADED the file instead of going through `_commitFile`
+            // -> `openMolecule` -- was dead and is removed; loading
+            // goes through commitFile only.)
             commitFile:       _commitFile,
         };
 

@@ -124,7 +124,7 @@
     // ``root.molbuilder.molview.selection.store`` BEFORE the dispatcher
     // loaded, honour it.  This lets test setup share the same
     // store instance the dispatcher reads (so stubs of e.g.
-    // ``refreshAtoms`` affect what the dispatcher sees) without
+    // ``adoptAtoms`` affect what the dispatcher sees) without
     // re-exposing the legacy global in production templates.
     let _selectionStore = null;
     function _store() {
@@ -1203,8 +1203,7 @@
      *
      * Returns the canonical workspace payload (text + atoms +
      * extras) so callers can use ``r.atoms`` for follow-up store
-     * sync (e.g. selection-bootstrap's setSourceFile via
-     * adoptSession).  Throws on network error or non-ok envelope —
+     * sync (e.g. selection-bootstrap's adoptSession).  Throws on network error or non-ok envelope —
      * symmetric with ``applyOp``.
      *
      * Caller-owned canvas-state: the apply call uses

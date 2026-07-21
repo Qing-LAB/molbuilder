@@ -892,7 +892,7 @@
         // current selection" button was further removed 2026-05-20
         // when the selection store began auto-loading on sidebar
         // change.  The sidebar -> selection-bootstrap.js ->
-        // store.setSourceFile -> loadStructureText path is the ONLY
+        // projects.parser.openMolecule -> installMolecule path is the ONLY
         // supported loader.  Test contract:
         // tests/test_web_files.py::TestNoLocalFileInputs pins that
         // #load-btn and #file-picker are NOT in the rendered
