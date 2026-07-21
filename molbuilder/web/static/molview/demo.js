@@ -52,44 +52,19 @@
             return;
         }
 
-        var mvHandle   = null;    // the mounted handle (setArrows / currentFrame / onChange)
-        var trajLoaded = false;   // draw force arrows only while a trajectory is loaded
-
-        // CONSUMER-owned overlay: the demo builds force arrows from ITS OWN force data (with its
-        // own scale) and hands them to MolView via handle.setArrows.  MolView draws exactly what
-        // it's handed and never generates arrows (molview-module.md §14.5.1); the "Overlay"
-        // View-menu toggle shows/hides them.
-        function updateForceArrows() {
-            if (!mvHandle || typeof mvHandle.setArrows !== "function") return;
-            if (!trajLoaded) { mvHandle.setArrows([]); return; }
-            var i = (typeof mvHandle.currentFrame === "function") ? mvHandle.currentFrame() : 0;
-            var coords = TRAJECTORY.frames[i], forces = TRAJECTORY.forces[i], arrows = [];
-            if (coords && forces) {
-                for (var k = 0; k < coords.length; k++) {
-                    var f = forces[k];
-                    if (Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]) < 1e-9) continue;
-                    var p = coords[k];
-                    arrows.push({ start: [p[0], p[1], p[2]],
-                                  end:   [p[0] + f[0], p[1] + f[1], p[2] + f[2]],
-                                  color: "#f0a020", radius: 0.06 });
-                }
-            }
-            mvHandle.setArrows(arrows);
-        }
-
         function load(name) {
-            trajLoaded = false;
             return data.installMolecule({ text: SAMPLES[name], filename: "demo-" + name + ".xyz" })
-                .then(function () { updateForceArrows(); say("loaded " + name + " — panel + render updated."); })
+                .then(function () { say("loaded " + name + " — panel + render updated."); })
                 .catch(function (e) { say("load failed: " + (e && e.message)); });
         }
 
-        // Load the structure (frame 0) then hand MolView's data model the full frame series.
+        // Load the structure (frame 0) then hand MolView's data model the full frame series
+        // WITH its per-frame forces.  The render engine builds the force arrows itself from
+        // ``forces`` (molview-render-streamline.md §2.4 / §11) -- the demo does NOT push arrows;
+        // the "Overlay" View-menu toggle shows/hides what the engine baked.
         function loadTrajectory() {
             return data.installMolecule({ text: TRAJECTORY.text, filename: "demo-traj.xyz" }).then(function () {
                 var n = data.reloadFrames(TRAJECTORY.frames, { forces: TRAJECTORY.forces });
-                trajLoaded = true;
-                updateForceArrows();
                 say("loaded a " + n + "-frame trajectory — play/scrub with the bar; turn on "
                     + "'Overlay' in the View menu to see per-frame force arrows.");
             }).catch(function (e) { say("trajectory load failed: " + (e && e.message)); });
@@ -104,9 +79,7 @@
                 say("Mount failed: " + ((handle && handle.error) || "unknown"));
                 return;
             }
-            mvHandle = handle;
             window.__molview = handle;   // poke the §D API from the console
-            handle.onChange(updateForceArrows);   // recompute per-frame force arrows on a frame change
             say("Mounted. Try the panel (Selection ↔ Cell tabs), the view toggles, and the "
                 + "sample buttons; the render reacts through molview.data.  __molview holds the handle.");
             document.getElementById("demo-water").addEventListener("click", function () { load("water"); });

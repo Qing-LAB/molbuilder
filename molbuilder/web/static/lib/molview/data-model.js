@@ -887,17 +887,6 @@
             }
             return s.adoptSession(opts);
         },
-        // Per workspace-contract.md §5 — set the async atom-loader the store
-        // holds (setLoader / structureLoader; still wired at page mount by
-        // selection-bootstrap).  A separate cleanup owns this setter's fate;
-        // the store's Path-A lazy-fetch that consumed the loader is gone.
-        setLoader:       function (loader) {
-            var s = _store(); if (!s) throw _missing("selection store");
-            if (typeof s.setLoader !== "function") {
-                throw _missing("selection.store.setLoader");
-            }
-            return s.setLoader(loader);
-        },
     };
 
     // ─── Canvas write helpers (workspace-contract.md §3) ─────────── //

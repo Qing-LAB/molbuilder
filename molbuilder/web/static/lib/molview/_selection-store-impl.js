@@ -254,15 +254,6 @@
         const subscribers = new Set();
         let pending = false;
         let inflight = null;
-        // Loader callback: ``async (text, filename) => void``.  The
-        // page bootstrap injects the viewer's loader here via
-        // ``setLoader`` so the store stays free of DOM / 3Dmol /
-        // page-specific globals (spec §5 rule 3: "no DOM, no 3Dmol,
-        // no Flask -- pure data + fetch").  Without a loader, the
-        // store still fetches the atom list but does not attempt to
-        // populate any viewer -- useful in headless contexts (tests,
-        // tabs that just want the atom list).
-        let structureLoader = null;
 
         function _snapshot() {
             return {
@@ -413,20 +404,6 @@
             if (next === state.sourceFile) return;
             state.sourceFile = next;
             _notify(CHANGE.STATUS);
-        }
-
-        // Inject the structure loader.  Called by the page
-        // bootstrap with the viewer-specific loader (e.g.
-        // modify/viewer.js's ``loadStructureText``, which accepts
-        // both XYZ and PDB content -- the server's /api/build/load
-        // sniffs the format).  Pass
-        // ``null`` to detach (the store falls back to atom-list-
-        // only / "headless" mode).
-        function setLoader(fn) {
-            if (fn !== null && typeof fn !== "function") {
-                throw new TypeError("setLoader(fn): function or null required");
-            }
-            structureLoader = fn;
         }
 
         // Rehydrate from a session snapshot WITHOUT re-loading the
@@ -991,7 +968,6 @@
             adoptAtoms:         adoptAtoms,
             setCoords:          setCoords,        // frame coord-swap (workspace §1.5)
             adoptSession:       adoptSession,
-            setLoader:          setLoader,
             // mode
             setMode:            setMode,
             setIsolate:         setIsolate,
@@ -1101,7 +1077,6 @@
             setCombinator:   function (c)     { return s.setCombinator(c); },
             applyFilter:     function ()      { return s.applyFilter(); },
             writeLabel:      function (t, ix) { return s.writeLabel(t, ix); },
-            setLoader:       function (fn)    { return s.setLoader(fn); },
             // Install atoms directly (readonly inspectors pass atoms built from
             // the viewer handle; providing ``atoms`` skips any server fetch).
             adoptSession:    function (o)     { return s.adoptSession(o); },

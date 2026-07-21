@@ -12,7 +12,6 @@
  *   handle = { installMolecule({text}), exportFile(), undo(),          // WRITE
  *              setFrame(i), getFrame(i), frameCount(), currentFrame(), // FRAMES (§14.5)
  *              play(opts), pause(), isPlaying(),                       //   navigation + playback
- *              setArrows(arrows), setLabels(labels),                  //   overlays (§14.5.1)
  *              getStructure(), getSelection(),                         // READ
  *              onChange(fn), dispose() }                               // notify + teardown
  *     The full §D owner-facing API + the frame axis (§14.5).  Every call goes through the
@@ -117,9 +116,6 @@
 
         const cleanups = [];
 
-        // Overlay controller (§14.5.1): MolView DRAWS overlays the consumer hands it (arrows /
-        // labels, via the handle's setArrows/setLabels) -- it never generates them.
-        let _overlays = null;
         // Frame playback state -- declared HERE (before mountFrameControls, which reads _loop via
         // its getLoop callback during setup) to avoid a temporal-dead-zone on _loop.
         let _playTimer = null, _loop = true;   // _loop: playback + single-step wrap at the ends
@@ -240,8 +236,9 @@
         // addViewToggle in the onReady above -- no separate control bar.)
 
         // Frame controls bar (§14.5) -- play/pause + slider + counter.  MolView renders it (like
-        // the view-toggles); hidden until a trajectory is loaded (frameCount > 1).  Overlays are
-        // NOT here: they are the consumer's (handle.setArrows / setLabels), not a viewer toggle.
+        // the view-toggles); hidden until a trajectory is loaded (frameCount > 1).  Force/label
+        // overlays are NOT here: the render engine bakes them from the data's per-frame forces
+        // (molview-render-streamline.md §2.4), not a consumer push or a viewer toggle.
         if (fcHost && mvApi && typeof mvApi.mountFrameControls === "function") {
             const fc = mvApi.mountFrameControls(fcHost, {
                 setFrame:     function (i) { return data.setFrame(i); },
@@ -312,8 +309,8 @@
         // defensive-copy, workspace-contract §1.2.1).  `onChange` is the ONE change channel
         // (§E rule 4): the owner subscribes here instead of reaching for ws.subscribe /
         // store.subscribe itself.  (load / save / undo -- the WRITE side -- land in B2.)
-        // Frame playback + overlay-toggle helpers -- MolView owns them; both the returned
-        // handle AND the frame-controls bar (mountFrameControls) drive them.
+        // Frame playback helpers -- MolView owns them; both the returned handle AND the
+        // frame-controls bar (mountFrameControls) drive them.
         function _stopPlay() {
             if (_playTimer != null) { root.clearInterval(_playTimer); _playTimer = null; }
         }
@@ -381,18 +378,9 @@
             play:  function (opts) { _play(opts); },
             pause: function () { _stopPlay(); },
             isPlaying: function () { return _playTimer != null; },
-            // Overlay API (§14.5.1) -- the consumer hands MolView what to DRAW; MolView draws it
-            // and re-applies it across per-frame redraws (it never generates arrows/labels).
-            // `arrows` = [{start,end,color,radius}, …]; `labels` = a setLabels spec (or false).
-            setArrows: function (arrows) { if (_overlays) _overlays.setArrows(arrows); },
-            // Per-FRAME force arrows for a trajectory (§14.5.1): the consumer builds the whole
-            // arrowsPerFrame array ONCE (on an overlay-option change) and hands it here; MolView
-            // bakes it into the native animation so playback draws arrows[frame] with no
-            // per-frame synthesis.  `arrowsPerFrame` = [[{start,end,color,radius}…] per frame].
-            setFrameArrows: function (arrowsPerFrame) {
-                if (typeof data.setFrameArrows === "function") data.setFrameArrows(arrowsPerFrame);
-            },
-            setLabels: function (labels) { if (_overlays) _overlays.setLabels(labels); },
+            // (No consumer overlay API: the render engine bakes force arrows / labels from the
+            // data's per-frame forces itself -- molview-render-streamline.md §2.4. The old
+            // consumer-push doors -- setArrows / setLabels / setFrameArrows -- are gone.)
             getStructure: function () {
                 return (typeof data.getStructure === "function")
                     ? data.getStructure() : null;

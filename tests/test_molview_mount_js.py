@@ -37,8 +37,7 @@ MODULES = [
 HANDLE_KEYS = ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
                "getSelection", "getStructure", "installMolecule", "isPlaying",
                "ok",   # uniform mount contract: success handle -> ok:true (mount.js _failMount)
-               "onChange", "pause", "play", "setArrows", "setFrame",
-               "setFrameArrows", "setLabels", "undo"]
+               "onChange", "pause", "play", "setFrame", "undo"]
 
 
 def _run_node(snippet: str) -> object:

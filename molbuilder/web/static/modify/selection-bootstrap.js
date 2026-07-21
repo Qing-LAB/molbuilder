@@ -63,24 +63,9 @@
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
 
-        // 2b. Inject the viewer-specific XYZ loader into the store so
-        // the store doesn't reach into ``window.molbuilder`` to do
-        // its own file-load (spec §5 rule 3: the store has no DOM
-        // and no 3Dmol; the page wires those in).  modify/viewer.js
-        // exposes ``window.molbuilder.loadStructureText`` once its
-        // DOMContentLoaded runs; if missing, the store falls back
-        // to atom-list-only mode -- still functional, just no
-        // viewer.
-        // Bind through the molview.data.selection namespace — the
-        // unified DATA surface.  setLoader passes through to the
-        // store's same method but keeps the legacy store private.
-        const _data0 = window.molbuilder.molview
-                    && window.molbuilder.molview.data;
-        if (_data0 && _data0.selection
-                 && typeof _data0.selection.setLoader === "function"
-                 && window.molbuilder.loadStructureText) {
-            _data0.selection.setLoader(window.molbuilder.loadStructureText);
-        }
+        // (The old store-loader injection is gone: the store no longer holds a
+        // structure loader -- the render engine draws from molview.data, and file
+        // loads flow through the unified ``molview.data.installMolecule`` door.)
 
         // 3. Sidebar selection sets a CANDIDATE — does NOT commit
         // the viewer load.  The user reviews the candidate path in

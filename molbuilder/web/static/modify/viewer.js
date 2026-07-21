@@ -1131,9 +1131,8 @@
     // sniffs the format from the filename + content and installs the
     // whole model atomically.  The function is named
     // ``loadStructureText`` because it genuinely accepts both formats.
-    // This global alias stays so existing consumers (selection-
-    // bootstrap, the Sources-card generators' injected ``viewerLoader``,
-    // the selection store's setLoader, the page-mount test hook) keep
+    // This global alias stays so existing consumers (the Sources-card
+    // generators' injected ``viewerLoader``, the page-mount test hook) keep
     // working; they now flow through the unified load door rather than
     // the old persistence-layer text loader that was removed.
     window.molbuilder.loadStructureText = async function (text, filename) {
