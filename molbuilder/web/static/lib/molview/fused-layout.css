@@ -246,6 +246,13 @@
     opacity: 0;
     pointer-events: none;
 }
+/* Folded: the panel is gone and the viewer no longer needs to be a square bottom-aligned with it,
+ * so give the viewer the freed width -- folding EXPANDS the view instead of leaving an empty gap.
+ * Height stays --viewer-extent (capped at --viewer-edge); the viewer becomes a wide rectangle. */
+.molview-card.is-folded .molview-viewer {
+    flex: 1 1 auto;
+    width: auto;
+}
 .molview-card.is-folded .molview-fold-chevron { transform: rotate(0deg); }  /* folded: point RIGHT -- clicking reveals the panel */
 
 /* ---- STACK only when the card is too NARROW to hold BOTH min-widths side by side:
