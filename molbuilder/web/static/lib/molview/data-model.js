@@ -97,6 +97,7 @@ import { canvasState } from "./_canvas-state-impl.js";
 import { createStateTimeline } from "./_state-timeline-impl.js";
 import { createOperations } from "./_operations.js";
 import { createSerialiser } from "./_serialise.js";
+import { createInstall } from "./_install.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -1010,169 +1011,28 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // molview.data touches NO file endpoint; the projects package moves the bytes.
 
 
-    /**
-     * Generate a structure via one of the Sources-card generators.
-     * Dispatches by ``kind`` to the matching ``structure.{kind}``
-     * module's ``generate(input, opts)`` method.  Each generator
-     * already routes through ``structurePage.loadIntoCanvas`` +
-     * ``loadStructureText`` so the warning-modal gate + Phase 2
-     * extras (backend_used, etc.) are honoured automatically.
-     */
-    function generate(kind, input, opts) {
-        var key = String(kind || "").toLowerCase();
-        var moduleName = _GENERATOR_MODULE_BY_KIND[key];
-        if (!moduleName) {
-            return Promise.reject(new Error(
-                "workspace.generate: unknown kind " + JSON.stringify(kind)
-                + "; expected one of "
-                + Object.keys(_GENERATOR_MODULE_BY_KIND).join(", ")));
-        }
-        var mod = root.molbuilder && root.molbuilder[moduleName];
-        if (!mod || typeof mod.generate !== "function") {
-            return Promise.reject(_missing(
-                moduleName + " (generator not loaded on this page)"));
-        }
-        return mod.generate(input, opts || {});
-    }
-
-    var _GENERATOR_MODULE_BY_KIND = {
-        smiles:  "structureSmiles",
-        name:    "structureName",
-        dna:     "structureDna",
-        rna:     "structureRna",
-        peptide: "structurePeptide",
-        file:    "structureFile",
-    };
-
-    /**
-     * Apply a server-returned workspace payload to every store
-     * atomically.  Phase 5 (2026-06-07) — the single cross-store
-     * sync point.
-     *
-     * Side effects, in order:
-     *   1. canvas-state.replaceContent(text)  when ``touchCanvas``
-     *      (modifier-op flow; flips the dirty bit).  Generator + sidebar
-     *      flows pass ``touchCanvas: false`` because canvas-state was
-     *      already set via ``structurePage.loadIntoCanvas`` (dirty=false).
-     *   2. (removed) There is no longer a modify-tab ``applyStructure`` hook -- consumers
-     *      hold no mirror; the module owns the data and fires a subscription (step 5).
-     *   3. ``opts.resetSelection`` clears the selection (§19.3.2): any atom-count
-     *      change, plus the sidebar / generator load flow.  Count-preserving
-     *      transforms pass ``resetSelection:false`` and keep the selection.
-     *   4. Dispatcher subscribers are notified.
-     */
-    function _applyWorkspacePayload(payload, opts) {
-        opts = opts || {};
-        var touchCanvas    = opts.touchCanvas !== false;
-        var resetSelection = !!opts.resetSelection;
-        var text = payload && (payload.text || payload.xyz);
-
-        var st = _store();
-
-        // ATOMIC load/replace (§19.3.1 + F4): suspend persistence across the WHOLE
-        // multi-store write so the intermediate steps (canvas install/replace, THEN
-        // adoptAtoms) never publish a transient geometry<->labels atom-count desync.
-        // Exactly one coherent persist fires on resume.  try/finally so a mid-write
-        // throw can never leave persistence wedged suspended.
-        suspendPersist();
-        try {
-
-        // 1. Canvas-state — text + periodicity + dirty bit.  A modifier op that
-        //    recaptured a cell (e.g. add-electrodes) carries `periodicity` in the
-        //    payload; passing it keeps the store's periodicity in step with the
-        //    new geometry (workspace-contract.md §4.0).  Omitted -> kept as-is.
-        var cs = _canvas();
-        var fmt = payload && payload.source_format;
-        if (touchCanvas && cs && text
-                && typeof cs.replaceContent === "function") {
-            cs.replaceContent(text, payload && payload.periodicity,
-                              payload && payload.annotations);
-        } else if (!touchCanvas && cs && text && opts.installSource
-                && (fmt === "xyz" || fmt === "pdb")
-                && typeof cs.setStructure === "function") {
-            // A FRESH LOAD (`installSource` set): install the WHOLE structure into
-            // the canvas -- text + periodicity, dirty=false -- REPLACING whatever was
-            // there.  This is what makes loading ONE atomic operation: the SAME sync
-            // point that adopts the atoms below (step 3) also (re)writes the canvas
-            // here, so after a single call getStructure(), getUnitCell(), and
-            // getAtoms() ALL reflect the just-loaded structure and stay coherent
-            // across re-loads (load water, then benzene -> the canvas is benzene, not
-            // stuck on water).  There is no second "load into canvas" door.  Only
-            // loadFromText sets `installSource`; generator/sidebar flows install the
-            // canvas via their own path (loadIntoCanvas/adoptSession) and never reach
-            // here, so their source provenance is untouched.  A modifier op takes the
-            // replaceContent (dirty=true) branch above.
-            cs.setStructure(
-                { source_format: fmt, text: text,
-                  periodicity:   payload.periodicity || null,
-                  annotations:   payload.annotations || null },
-                opts.installSource);
-        }
-
-        // 2. (removed) The old modify-tab ``applyStructure`` hook is GONE.  The module no
-        //    longer calls OUT to a consumer to mirror the structure into a local state.*
-        //    copy -- consumers read the single source through the unified API and react to
-        //    the subscription fired below.  Keeping the module free of consumer callbacks is
-        //    the point of the concealed data model.
-
-        // 3. Selection store atoms — the BOMB-0 cross-store sync.
-        //    Single source of truth: this is the ONLY place the
-        //    dispatcher consults ``payload.atoms``.
-        if (st && Array.isArray(payload.atoms)
-                && typeof st.adoptAtoms === "function") {
-            // Distribute the payload's TOP-LEVEL metadata arrays onto each atom before it
-            // enters the store.  /api/build/load returns atom_names / residue_ids /
-            // residue_names / chain_ids as PARALLEL ARRAYS, not per-atom, so without this the
-            // store -- and thus getStructure() -- would drop them, forcing consumers to keep a
-            // parallel state.* mirror.  Distributing here makes molview.data the COMPLETE
-            // single source.  Values can be 0/"" legitimately -> guard with != null, and never
-            // overwrite an atom that already carries the field (adoptSession's per-atom shape).
-            var _META = [["residue_ids", "residue_id"], ["atom_names", "atom_name"],
-                         ["residue_names", "residue_name"], ["chain_ids", "chain_id"]];
-            for (var _mi = 0; _mi < _META.length; _mi++) {
-                var _arr = payload && payload[_META[_mi][0]];
-                if (!Array.isArray(_arr) || _arr.length !== payload.atoms.length) continue;
-                var _key = _META[_mi][1];
-                for (var _ai = 0; _ai < payload.atoms.length; _ai++) {
-                    var _at = payload.atoms[_ai];
-                    if (_at && _at[_key] == null && _arr[_ai] != null) {
-                        _at[_key] = _arr[_ai];
-                    }
-                }
-            }
-            // sourceFile rides IN on the SAME synchronous adopt when this is a file
-            // open (installSource.kind === "file"): atoms + source land together, so
-            // after this one write the store is fully settled -- no trailing
-            // adoptSession is needed to name the file (the old second write that
-            // clobbered a just-made selection).  A generator (kind !== "file") has no
-            // source path, so sourceFile stays as-is (null for a fresh generate).
-            var _srcFile = (opts.installSource
-                            && opts.installSource.kind === "file")
-                ? (opts.installSource.file || null) : undefined;
-            st.adoptAtoms(payload.atoms, _srcFile);
-        }
-
-        // 4. §19.3.2 atom-count selection rule: any count-changing mutation (grow/shrink)
-        //    -- and a load/generate -- passes resetSelection and CLEARS the selection.  A
-        //    cleared selection can never mis-point at a shifted index, so there is no server
-        //    ``selection_remap`` (retired).  Count-preserving transforms pass
-        //    resetSelection:false and leave the selection untouched.
-        if (resetSelection && st && typeof st.clearSelection === "function") {
-            st.clearSelection();
-        }
-
-        // 5. Notify dispatcher subscribers.
-        _notify();
-
-        } finally {
-            // One coherent persist for the whole atomic load (no-op if a caller
-            // nested us inside its own suspend bracket -- the counter handles it).
-            resumePersist();
-        }
-        // The atoms are settled -> hand the single-frame structure to the render engine
-        // (it re-renders from this clean data). A trajectory caller follows with reloadFrames.
-        _pushToEngine();
-    }
+    // ─── Install / codec write-back (bytes -> model) — extracted to _install.js ─── //
+    // The atomic cross-store sync point (applyWorkspacePayload), the install primitives
+    // (installMolecule/loadText), and generate live in their own injected-factory submodule.
+    // The hub wires it with the stores + the persist bracket + notify/engine-push; the `_applying`
+    // flag STAYS here (set via the setApplying seam) since notify/markDirty/frame writers read it.
+    var _install = createInstall({
+        getStore:       _store,
+        getCanvas:      _canvas,
+        suspendPersist: suspendPersist,
+        resumePersist:  resumePersist,
+        notify:         _notify,
+        pushToEngine:   _pushToEngine,
+        trace:          _trace,
+        missing:        _missing,
+        setApplying:    function (b) { _applying = b; },
+        anchor:         function () { return _timeline.anchor(); },
+    });
+    // Hoisted delegators so the api entries + the operations applyWorkspacePayload injection +
+    // the timeline _applySnapshot keep their existing references unchanged.
+    function _applyWorkspacePayload(payload, opts) { return _install.applyWorkspacePayload(payload, opts); }
+    function installMolecule(input) { return _install.installMolecule(input); }
+    function generate(kind, input, opts) { return _install.generate(kind, input, opts); }
 
     /**
      * Apply a modifier op (delete / add_atom / orient / translate /
@@ -1187,66 +1047,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * to the modify-tab's ``postOp``.  The reverse is now true:
      * modify-tab's postOp is a thin wrapper around this method.
      */
-    /**
-     * Parse structure bytes (XYZ / PDB) through ``/api/build/load``
-     * and install the result atomically.  Used by every "load
-     * existing bytes into the workspace" flow — sidebar
-     * commitFile (reads file from disk + passes text here), every
-     * Sources-card generator (the engine returned text, we want
-     * canonical metadata).  The previous IIFE-local
-     * ``window.molbuilder.loadStructureText`` is now a thin alias
-     * over this method.
-     *
-     * Returns the canonical workspace payload (text + atoms +
-     * extras) so callers can use ``r.atoms`` for follow-up store
-     * sync (e.g. selection-bootstrap's adoptSession).  Throws on network error or non-ok envelope —
-     * symmetric with ``applyOp``.
-     *
-     * Caller-owned canvas-state: the apply call uses
-     * ``touchCanvas: false`` because every documented call site
-     * (sidebar commitFile via ``structurePage.loadIntoCanvas``,
-     * the Sources-card generators that pre-set canvas-state before
-     * invoking ``viewerLoader``) already drove the
-     * canvas-state side-effect.  Forcing a second canvas write
-     * here would clobber the dirty-bit handshake the caller
-     * already negotiated.  See ``_applyWorkspacePayload`` for the
-     * full canvas-state contract.
-     */
-    // ---- THE installMolecule model primitive (molview-module.md §19.3) --------- //
-    // Bring a NEW molecule IN from TEXT: ONE atomic operation that parses the text (+ an
-    // optional paired sidecar) via /api/build/load and replaces the WHOLE model AND
-    // resets the session timeline (§19.5), landing on the single sync point
-    // (_applyWorkspacePayload).  This is a MODEL primitive -- it does NOT read files.
-    // The FORMAT-AWARE project-file DOOR that reads a path lives in the projects package
-    // (projects.parser.openMolecule); it reads the .xyz + .molstruct.json off disk and
-    // hands their CONTENT here as { text, sidecar }.  Generators (text, no file) call
-    // this directly.
-    //
-    // THE LOAD CONTRACT (why ONE write): everything the loaded molecule needs -- geometry
-    // text, and (server-applied from the sidecar) periodicity/annotations/regions/frozen
-    // -- rides IN on this single call and is installed by ONE synchronous
-    // `_applyWorkspacePayload` pass BEFORE the load resolves.  A caller must NEVER install
-    // and then do a SECOND store write (a follow-up `adoptSession`/`adoptAtoms`): the
-    // "ready" signal (getNAtoms, the promise) fires at the single write, so any second
-    // write lands AFTER a consumer may have acted on the settled structure and silently
-    // clobbers it (the 2026-07 selection-wipe).
-    function installMolecule(input) {
-        if (input && typeof input === "object" && typeof input.text === "string") {
-            return _loadText(input.text, input.filename, {
-                source:      input.source || null,
-                periodicity: input.periodicity || null,
-                annotations: input.annotations || null,
-                atoms:       Array.isArray(input.atoms) ? input.atoms : null,
-                format:      input.format || null,
-                // The paired .molstruct.json CONTENT a project-file open read off disk;
-                // the server (/api/build/load) applies it.  Omitted for generators.
-                sidecar:     (typeof input.sidecar === "string") ? input.sidecar : null,
-            });
-        }
-        return Promise.reject(new TypeError(
-            "molview.data.installMolecule(input): pass { text, filename"
-          + "[, sidecar, source, periodicity, annotations] }"));
-    }
 
     // Ordered event tracer (diagnostic; no-op unless window.__MV_TRACE).  Emits
     // "[MV-TRACE <ms>] <event> <json?>" so ONE reproduction shows the exact
@@ -1261,67 +1061,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         } catch (_) { /* tracing never throws */ }
     }
 
-    async function _loadText(text, filename, opts) {
-        opts = opts || {};
-        _trace("loadText:start", { filename: filename, len: (text || "").length });
-        // ``format`` is EXPLICIT when the caller knows the text's format regardless of
-        // the filename -- the parser door (projects.parser.openMolecule) hands us the
-        // canonical XYZ while the source file may be ``.pdb``; without this,
-        // /api/build/load auto-detects "pdb" from the ``.pdb`` filename and parses the
-        // XYZ text as PDB -> 400.  Omitted -> the server auto-detects (filename ext,
-        // then content sniff), the raw-text/generator behaviour.
-        const _body = { text: text, filename: filename };
-        if (opts.format) _body.format = opts.format;
-        // The paired .molstruct.json CONTENT (raw JSON string) a project-file open read
-        // through the projects package.  The server applies it (regions/frozen/cell/
-        // axis_kind/vacuum/annotations) so the response's atoms + periodicity +
-        // annotations come back ENRICHED -- the sidecar schema stays server-side.
-        if (opts.sidecar) _body.sidecar = opts.sidecar;
-        const resp = await root.fetch("/api/build/load", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify(_body),
-        });
-        const r = await resp.json();
-        _trace("loadText:build-load:done", { ok: r.ok, n_atoms: r.n_atoms });
-        if (!r.ok) {
-            throw new Error(r.error || "Load failed.");
-        }
-        // Loading is ONE operation: hand the payload to the single sync point, which
-        // populates the WHOLE model (canvas text + periodicity AND atoms) coherently.
-        // Caller-supplied provenance + sidecar overrides ride on the load door itself (no
-        // side-channel, §19.3): a generator's `source` (kind/generator_input), and the
-        // sidecar `periodicity`/`annotations` a file-open carries but /api/build/load can't
-        // re-derive, are applied OVER the server-parsed payload.  `installSource` names where
-        // these bytes came from so the sync point seeds the canvas; `_applying` is held true
-        // so the driven canvas signal does not mark the fresh load uncommitted.
-        if (opts.periodicity) r.periodicity = opts.periodicity;
-        if (opts.annotations) r.annotations = opts.annotations;
-        // Sidecar-enriched atoms (regions/frozen the .molstruct.json carries, which
-        // /api/build/load cannot re-derive) REPLACE the plain parsed atoms so the ONE
-        // install below is the FINAL per-atom state -- no second store write to overlay
-        // them afterwards.  This is what closes the load-order gap (see openMolecule).
-        if (opts.atoms) r.atoms = opts.atoms;
-        var installSource = opts.source
-            || { kind: "file", file: filename || null, generator_input: null };
-        _applying = true;
-        try {
-            _applyWorkspacePayload(r, {
-                touchCanvas:    false,
-                resetSelection: true,
-                installSource:  installSource,
-            });
-        } finally {
-            _applying = false;
-        }
-        _trace("loadText:applyPayload:done");
-        // Anchor a fresh timeline (§19.5): prune the previous molecule's state files, reset
-        // state_index to 0, and write this loaded structure as the index-0 anchor.
-        _trace("loadText:anchor:begin");
-        await _timeline.anchor();
-        _trace("loadText:anchor:awaited -> return");
-        return r;
-    }
 
     // Build the op-request STRUCTURE body from molview.data's OWN accessors.  The module
     // owns the data, so it constructs the request itself -- consumers pass ONLY op-PARAMS
