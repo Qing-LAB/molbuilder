@@ -1505,3 +1505,43 @@ class TestSuspendPersistGate:
         assert out["afterInner"] == out["baseline"], "flushed on a NESTED (inner) resume"
         assert out["stillSuspended"] is True
         assert out["afterOuter"] == out["baseline"] + 1, "outermost resume did not flush once"
+
+    def test_coalesce_never_drops_a_disk_snapshot_for_a_later_mirror_only(self):
+        """P1 (review Finding 1b): while suspended, a DISK save followed by a MIRROR-only persist must
+        coalesce WITHOUT losing the disk snapshot -- else the checkpoint file is never written and a
+        later Retract to that index reads nothing.  The single flush on resume must carry the blob."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(async function () {\n"
+            # record whether each ws.persist carried a disk blob (snapshot) vs mirror-only
+            "  const blobs = [];\n"
+            "  const _origP = window.molbuilder.workspace.persist;\n"
+            "  window.molbuilder.workspace.persist = function (sb, blob, id) {\n"
+            "    blobs.push(blob != null); return _origP.call(this, sb, blob, id);\n"
+            "  };\n"
+            "  d.suspendPersist();\n"
+            "  await d.save(0);\n"           # DISK save at index 0 (snapshot != null) -- deferred
+            "  d.flushViewState();\n"        # MIRROR-only (blob null) at the same index -- coalesces
+            "  const blobsDuring = blobs.slice();\n"   # nothing reaches the workspace while suspended
+            "  d.resumePersist();\n"         # ONE coalesced flush
+            "  console.log(JSON.stringify({ blobsDuring: blobsDuring, blobsAfter: blobs }));\n"
+            "});")
+        assert out["blobsDuring"] == [], "a write reached the workspace WHILE suspended"
+        assert out["blobsAfter"] == [True], \
+            "the coalesced flush dropped the disk snapshot (wrote mirror-only)"
+
+    def test_unbalanced_resume_is_a_noop_with_no_spurious_edge(self):
+        """P1 (review Finding 4): a resumePersist() with no matching suspend must NOT decrement past 0
+        nor fire a spurious 'false' edge to observers."""
+        out = _run_node(
+            _STUB_TIMELINE_WS + _STUB_WATER_FETCH +
+            "const d = window.molbuilder.molview.data;\n"
+            "d.installMolecule({ text:'unused', filename:'/p/water.xyz' }).then(function () {\n"
+            "  const edges = [];\n"
+            "  d.onPersistStateChange(function (on) { edges.push(on); });\n"
+            "  d.resumePersist();\n"          # unbalanced -- never suspended
+            "  console.log(JSON.stringify({ edges: edges, suspended: d.isPersistSuspended() }));\n"
+            "});")
+        assert out["edges"] == [], "unbalanced resume fired a spurious edge"
+        assert out["suspended"] is False

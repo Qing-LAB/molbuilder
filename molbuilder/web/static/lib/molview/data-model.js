@@ -1363,10 +1363,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // JS is single-threaded so ++/-- are atomic; `_persist()` below is the single chokepoint EVERY
     // persist write flows through and CONSULTS this counter, which is what makes the framework real.
     var _persistSuspended = 0;
-    // A persist requested while suspended is HELD here (last-writer-wins == the bracketed operation's
-    // FINAL coherent state) and flushed ONCE when the counter returns to 0.  A suspend bracket is
-    // meant to wrap ONE coherent multi-step operation, so coalescing to its final persist is correct
-    // -- do not wrap several DISTINCT checkpoint saves in a single bracket.
+    // A persist requested while suspended is HELD here (shape { session, snapshot, identity }) and
+    // flushed ONCE when the counter returns to 0.  Coalescing keeps the LATEST session/identity but
+    // NEVER drops a pending DISK snapshot for a later MIRROR-only request (that would lose a
+    // checkpoint).  A bracket is meant to wrap ONE coherent op (a stable state_index); do not wrap
+    // several DISTINCT checkpoint saves in one bracket.
     var _pendingPersist = null;
 
     // suspendPersist / resumePersist (molview.data.*): the framework bracket a consumer wraps a
@@ -1386,17 +1387,25 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function suspendPersist() {
         _persistSuspended++;
         if (_persistSuspended === 1) _notifyPersistState();       // 0 -> suspended (leading edge)
+        else if (_persistSuspended > 16 && root.console && root.console.warn) {
+            // Runaway nesting is almost certainly a suspendPersist() with no matching resumePersist()
+            // (a bracket missing its try/finally).  Left unpaired it wedges ALL future persistence, so
+            // surface it rather than fail silently.
+            root.console.warn("[molview] persistence suspended " + _persistSuspended
+                + " levels deep -- a suspendPersist() without a matching resumePersist()?");
+        }
     }
     function resumePersist() {
-        if (_persistSuspended > 0) _persistSuspended--;
-        if (_persistSuspended === 0) {
-            // On the OUTERMOST resume, flush the one coherent state the bracket last requested...
-            if (_pendingPersist) {
-                var p = _pendingPersist;
-                _pendingPersist = null;
-                _writePersist(p.session, p.snapshot, p.identity);
-            }
-            _notifyPersistState();                                 // suspended -> 0 (trailing edge)
+        if (_persistSuspended === 0) return;   // unbalanced extra resume -> no-op, no spurious edge
+        _persistSuspended--;
+        if (_persistSuspended !== 0) return;   // still inside an outer bracket
+        // Trailing edge FIRST, THEN flush: a throwing/rejecting write must not skip the notify and
+        // leave the "Saving paused" indicator stuck visible.
+        _notifyPersistState();                                     // suspended -> 0 (trailing edge)
+        if (_pendingPersist) {
+            var p = _pendingPersist;
+            _pendingPersist = null;
+            _writePersist(p.session, p.snapshot, p.identity);      // flush the coalesced state ONCE
         }
     }
     // Observability (molview.data.*): the UI reflects the suspend state via these.
@@ -1411,15 +1420,25 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     // THE persist chokepoint (§19.5): the state timeline's save/load/anchor AND flushViewState all
-    // route through here, so `suspendPersist()` actually gates them.  Suspended -> HOLD + coalesce
-    // (a later request supersedes an earlier one); otherwise write straight through.  Returns the
-    // ws.persist promise (or a resolved promise when deferred / no workspace).
+    // route through here, so `suspendPersist()` actually gates them.  Not suspended -> write straight
+    // through.  Suspended -> HOLD + coalesce into _pendingPersist, flushed once at the outermost
+    // resume.  Returns a RESOLVED promise on defer (the write is best-effort crash-safety, not awaited
+    // by the caller).  CONTRACT: the bracket is for suppressing INTERIM / automatic persists during a
+    // multi-step op -- do NOT wrap an explicit index-advancing `save()` in a suspend bracket (its
+    // index advance would decouple from the deferred write); call save() AFTER resume instead.
     function _persist(session, snapshot, identity) {
-        if (_persistSuspended > 0) {
+        if (_persistSuspended <= 0) return _writePersist(session, snapshot, identity);
+        if (!_pendingPersist) {
             _pendingPersist = { session: session, snapshot: snapshot, identity: identity };
-            return Promise.resolve();
+        } else {
+            // Coalesce onto the existing pending: take the LATEST session/identity, but keep a DISK
+            // snapshot if EITHER request carried one -- a later MIRROR-only request (snapshot==null)
+            // must NOT drop a pending checkpoint.
+            _pendingPersist.session  = session;
+            _pendingPersist.identity = identity;
+            if (snapshot != null) _pendingPersist.snapshot = snapshot;
         }
-        return _writePersist(session, snapshot, identity);
+        return Promise.resolve();
     }
     function _writePersist(session, snapshot, identity) {
         var ws = _ws();
