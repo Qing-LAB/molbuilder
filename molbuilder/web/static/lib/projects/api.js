@@ -125,6 +125,13 @@ export async function apiRead(path, opts) {
   if (opts.maxBytes != null) {
     url += "&max_bytes=" + encodeURIComponent(opts.maxBytes);
   }
+  // ``missingOk`` -- read of an OPTIONAL file: a missing file returns 200 with
+  // ``{ok:true, exists:false, text:null}`` instead of a 404, so the browser logs no
+  // failed-resource console error for a normal absent-optional-file (e.g. a bare .xyz
+  // with no .molstruct.json sidecar == empty metadata).
+  if (opts.missingOk) {
+    url += "&missing_ok=1";
+  }
   return await _fetchEnvelope(url, { signal: opts.signal });
 }
 

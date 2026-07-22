@@ -113,7 +113,12 @@ class TestResultsRegistryScripts:
     all inspectors have registered."""
 
     REQUIRED_SCRIPTS = [
-        "lib/mol-viewer.js",
+        # The MolView module door.  The 3Dmol embed (mol-viewer.js + mol-*.js) is no
+        # longer a standalone <script> tag -- it is imported by lib/molview/index.js
+        # (the ESM graph, results.html §"3Dmol embed is now an ES module").  Assert the
+        # DOOR is present (which transitively provides mol-viewer) instead of the retired
+        # raw tag -- same capability, current contract.
+        "lib/molview/index.js",
         "lib/xyz-io.js",
         "lib/path-utils.js",
         "lib/inspectors/registry.js",

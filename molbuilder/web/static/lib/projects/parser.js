@@ -75,14 +75,20 @@ export async function openMolecule(path, opts) {
   if (!xyzEnv || xyzEnv.ok === false || typeof xyzEnv.text !== "string") {
     return { ok: false, error: (xyzEnv && xyzEnv.error) || ("Could not read " + path) };
   }
-  // Paired .molstruct.json -- best-effort (a 404 / missing sidecar is fine, not an error).
+  // Paired .molstruct.json -- OPTIONAL: a missing sidecar just means EMPTY metadata
+  // (a normal label-less load), NOT an error.  Read it with ``missingOk`` so an absent
+  // sidecar returns a 200 "no file" (``exists:false``) instead of a 404 -- otherwise the
+  // browser logs a spurious "Failed to load resource: 404" console error on every bare
+  // .xyz open (structure-load-save-contract §2; the "not an error" intent, now honoured
+  // at the transport, not just swallowed after the fetch already failed).
   let sidecarText = null;
   try {
-    const scEnv = await readFile(_sidecarPathFor(path));
-    if (scEnv && scEnv.ok !== false && typeof scEnv.text === "string") {
+    const scEnv = await readFile(_sidecarPathFor(path), { missingOk: true });
+    if (scEnv && scEnv.ok !== false && scEnv.exists !== false
+        && typeof scEnv.text === "string") {
       sidecarText = scEnv.text;
     }
-  } catch (_) { /* no sidecar -> label-less load */ }
+  } catch (_) { /* defensive: any read failure -> empty-metadata label-less load */ }
   // Install: the model parses the xyz + (server-applied) sidecar in ONE write.  The cell
   // is DEDUCED from the actual data -- the .xyz's own lattice (extended-xyz) and the
   // .molstruct.json sidecar -- and is NEVER overridden at load time.  A caller that needs
