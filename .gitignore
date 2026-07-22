@@ -82,3 +82,6 @@ projects/*
 
 # Persistent E2E failure diagnostics (capture_on_fail harness)
 test-artifacts/
+
+# live test-progress files (tools/testrun.py)
+.test-progress/
