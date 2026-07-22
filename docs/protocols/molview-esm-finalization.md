@@ -142,6 +142,23 @@ into `static/structure-optimization/`, matching `modify/` etc.:
 
 ## 6. Status checklist (update as steps land)
 
+**Read/load rule + Phase-C shim cleanup (2026-07):**
+- [x] All consumers apply the read/load rule: `import { mount, formula }`; **look up** `molview.data`
+      (never import it). Composition-root data injection reverted; `page.js` looks up at call time.
+- [x] `window.molbuilder.fmt` shim DROPPED (pure helper; every reader imports `formula`).
+- [ ] `window.molbuilder.style` / `.axes` shims — droppable the same way: the embed still reads them
+      via the global (`mol-viewer-embed.js` ~L2271/2713/2756/2880); convert to
+      `import { spec } from "./mol-style.js"` / `import { axes } from "./mol-axes.js"`, then delete
+      the publishes. **Touches the embed render path — verify a browser render (style + axes toggle).**
+- [ ] `window.molbuilder.molview.mount` shim — no readers (all `import { mount }`); droppable, but
+      mind `runtime.register("molview", …)` which reads the global.
+- [ ] KEEP (design seams, NOT shims): `molview.data` / `.selection` (live read doors, §D.0);
+      `molbuilder.viewer` (shared embed seal); the node-test-seam publishes.
+
+---
+
+### (historical) original phased checklist
+
 - [x] Phase A: `index.js` exports `mount`, `data`, `formula`.
 - [x] structure-opt dir created; `viewer.js` + `style.css` `git mv`'d into it; `index.html` links/tag repointed to the new path + `type="module"`.
 - [x] structure-opt `viewer.js` converted to `import { mount, data, formula }`; ALL molview/fmt global reads deleted; **browser-verified** (card mounts, `#info-formula`=`C6H4S2Au432` compact — root-fixed, no getter band-aid).
