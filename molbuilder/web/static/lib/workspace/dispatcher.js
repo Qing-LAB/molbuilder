@@ -106,12 +106,34 @@
      * structure.  Every mount-time writer MUST honor this and defer when it equals the file it
      * was about to load (the two-writer mount race).  Order-independent: reads the SAME persisted
      * snapshot the restore derives from.
+     *
+     * CAUTION: a null return is AMBIGUOUS -- it means EITHER "no restorable snapshot" OR "a
+     * restorable snapshot with no source file" (a GENERATED structure: SMILES / RNA / peptide /
+     * name build has ``structure.text`` but no ``source.file``).  A mount-time writer that needs
+     * to know "does the restore own the canvas AT ALL" (regardless of by-file identity) must use
+     * ``hasRestorableSnapshot()`` below, NOT a ``!== mountRestoreTarget()`` file comparison --
+     * the latter wrongly treats a generated structure as "no snapshot" and clobbers it.
      */
     function mountRestoreTarget() {
         var snap = readPersistedSnapshot();
         if (!snap || !snap.state || !snap.state.structure
                 || !snap.state.structure.text) return null;
         return (snap.state.source && snap.state.source.file) || null;
+    }
+
+    /**
+     * MOUNT-RESTORE OWNERSHIP (workspace-contract.md §4.5).  True iff the persisted snapshot
+     * carries a restorable structure (``structure.text`` present), whether or not it came from a
+     * file.  This is the invariant a mount-time writer actually needs: when it is true, the
+     * mount-time restore is the SOLE authority for the canvas and no other writer may load
+     * anything -- persistency wins over a stale sidebar selection (file load stays explicit).
+     * Unlike ``mountRestoreTarget()`` this does not conflate "no snapshot" with "file-less
+     * generated structure".
+     */
+    function hasRestorableSnapshot() {
+        var snap = readPersistedSnapshot();
+        return !!(snap && snap.state && snap.state.structure
+                  && snap.state.structure.text);
     }
 
     // ─── Writes (persist) — format-blind ──────────────────────────── //
@@ -273,6 +295,7 @@
         workspaceId:           workspaceId,
         readPersistedSnapshot: readPersistedSnapshot,
         mountRestoreTarget:    mountRestoreTarget,
+        hasRestorableSnapshot: hasRestorableSnapshot,
         onPersistError:        onPersistError,   // subscribe to non-blocking write failures
         STORAGE_KEY:           STORAGE_KEY,
     };

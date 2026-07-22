@@ -209,7 +209,8 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 | `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk indexed state file (`/api/state-timeline/write`) keyed by `identity` `{workspace_id, state_index}`. **Format-blind** — the consumer already serialised; this just writes bytes. |
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
-| `ws.mountRestoreTarget()` | `() → string \| null` | The source-file a mount-time restore will hydrate, or `null`. Every mount-time writer MUST honor it (§4.5). Order-independent — derived from the persisted snapshot. |
+| `ws.mountRestoreTarget()` | `() → string \| null` | The source-**file** a mount-time restore will hydrate, or `null`. Order-independent — derived from the persisted snapshot. **`null` is ambiguous**: it means EITHER "no restorable snapshot" OR "a restorable snapshot with no source file" (a **generated** structure — SMILES / RNA / peptide / name build). Use it to compare by-file identity, NOT to decide whether a restore exists at all — for that use `hasRestorableSnapshot()`. |
+| `ws.hasRestorableSnapshot()` | `() → boolean` | **True iff the persisted snapshot carries a restorable structure** (`structure.text` present), whether or not it came from a file. This is the invariant a mount-time writer needs (§4.5): when true, the mount-time restore is the **sole authority** for the canvas and no other writer may load anything — **persistency wins over a stale sidebar selection; file load stays explicit**. A `!== mountRestoreTarget()` file comparison must NOT be used for this — it mis-reads a generated (file-less) structure as "no snapshot" and clobbers it (the RNA-wipe bug, fixed 2026-07-22). |
 | `ws.onPersistError(handler)` | `((detail) → void) → unsubscribe` | Subscribe to **non-blocking** state-write failures (§4.7). `persist` fires the on-disk write fire-and-forget, but every failure (rejected fetch OR non-2xx) is reported here (`detail = {op, state_index?, above_index?, status?, error?}`) — plus `console.error` + a `molbuilder:persist-error` DOM event. The UI subscribes to warn the user; the write is never silently swallowed. Returns an unsubscribe fn. |
 | `ws.useNamespace(owner)` | `(string\|null) → void` | Declare the active consumer's `owner`, folding it into the mirror key (`<base>::<owner>`) and clearing the cached `workspace_id` so it recomputes per namespace. Set by `molview.mount`; also by any restore that runs before mount (molview-module.md §18.4). `null` → the base key. |
 | `ws.STORAGE_KEY` | `string` | The **base** `sessionStorage` key (`molbuilder.workspace.v1`; shared constant `SS_WORKSPACE`). The live key is namespaced by the active `owner` (§4.4.1). |
@@ -404,8 +405,8 @@ that wants to hydrate the data model from the persisted snapshot:
 
 - `viewer.js::restoreModifyState` restores the full snapshot
   (structure **+ selection** + camera + chrome) from §4.4.
-- `selection-bootstrap.js` re-commits `projects.getCurrentFile()` for a
-  genuine cross-tab handoff.
+- `selection-bootstrap.js` seeds the canvas from `projects.getCurrentFile()`
+  — but ONLY when there is no restorable snapshot (an empty canvas).
 - (future) any new tab/surface that loads-on-mount.
 
 The selection store (`molview.data.selection`) is a **shared, mutable, async**
@@ -420,28 +421,43 @@ BOMB-0/2 / "MUST await" / "selector tracks the old file" fixes).
 
 **THE CONTRACT (every mount-time writer MUST honor it):**
 
-> On page mount, the **snapshot restore is the SOLE authority** for
-> hydrating the workspace from the persisted snapshot.  Before any *other*
-> surface issues a load/commit on mount, it MUST consult
-> **`ws.mountRestoreTarget()`** — the source-file the snapshot restore will
-> hydrate (or `null`).  If that equals the file the surface was about to
-> load, the surface **MUST defer** (do not commit).  A file the snapshot
-> does **not** own (a genuinely different / new structure — a real cross-tab
-> handoff) is not subject to this and still loads.
+> On page mount, if this tab has **any restorable persisted snapshot**, the
+> **snapshot restore is the SOLE authority** for hydrating the workspace.  No
+> other surface may issue a load/commit on mount.  A surface that loads-on-
+> mount MUST first consult **`ws.hasRestorableSnapshot()`** and, when it is
+> true, **defer** (reflect a candidate at most).  A surface may seed the
+> canvas from its own source (e.g. the sidebar's selected file) **only when
+> there is no restorable snapshot at all** — an empty canvas, the genuine
+> "arrived here to work on this file" case.
+
+**Persistency wins; file load is explicit.**  A file merely *selected* in the
+sidebar is a **candidate**, never a command — switching away and back must
+restore what MolView held, not silently swap in whatever the sidebar still
+highlights.  The user loads a different file explicitly (the Load button / a
+dblclick).
+
+**Do NOT gate on `initial !== mountRestoreTarget()`.**  `mountRestoreTarget()`
+returns a *source-file path*, which is `null` for a **generated** structure
+(SMILES / RNA / peptide / name build — it has restorable `structure.text` but
+no source file).  A file-comparison then reads a generated structure as "no
+snapshot" and auto-commits the stale sidebar file **over** it — the RNA-wipe
+bug (fixed 2026-07-22).  The correct gate is the file-agnostic
+`hasRestorableSnapshot()`.
 
 ```js
 // selection-bootstrap.js — the canonical honoring of the contract:
-const target = ws.mountRestoreTarget();          // file the restore owns, or null
-if (isLoadableStructure(initial) && initial !== target) {
-    commitFile(initial);        // cross-tab handoff: snapshot doesn't own it
+const hasRestore = ws.hasRestorableSnapshot();   // is there ANY restorable structure?
+if (isLoadableStructure(initial) && !hasRestore) {
+    commitFile(initial);        // empty canvas: seed from the sidebar pick
 } else if (isLoadableStructure(initial)) {
-    setCandidate(initial);      // DEFER — restoreModifyState owns hydration
+    setCandidate(initial);      // DEFER — restore (file-based OR generated) owns the canvas
 }
 ```
 
-`ws.mountRestoreTarget()` is **order-independent**: it derives from the SAME
-persisted snapshot the restore uses, so a caller need not know whether the
-restore has already run.  Live (non-mount) user actions — a sidebar
+Both `ws.hasRestorableSnapshot()` and `ws.mountRestoreTarget()` are
+**order-independent**: they derive from the SAME persisted snapshot the restore
+uses, so a caller need not know whether the restore has already run.  Live
+(non-mount) user actions — a sidebar
 dblclick, the Load button — are NOT gated: they are explicit intent and
 must load.
 

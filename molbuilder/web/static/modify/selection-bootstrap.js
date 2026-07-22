@@ -156,27 +156,40 @@ function _mvdata() {
         if (projects) {
             const initial = projects.getCurrentFile() || "";
             // MOUNT-RESTORE OWNERSHIP (workspace-contract.md § "Mount-time
-            // restore").  If the persisted snapshot will restore THIS same
-            // file, the snapshot restore (viewer.js::restoreModifyState) is
-            // the sole authority for hydrating it -- re-committing here would
-            // race the restore and clobber the restored selection (the
-            // two-writer mount race, fixed 2026-07-01).  Only a file the
-            // snapshot does NOT own (a genuine cross-tab handoff of a
-            // different/new structure) is committed on mount.
+            // restore").  PERSISTENCY WINS.  If this tab has ANY restorable
+            // persisted snapshot -- the structure MolView held when you left
+            // the tab, whether you loaded it from a file OR generated it
+            // (SMILES / RNA / peptide / name build) -- then the snapshot
+            // restore (viewer.js::restoreModifyState) is the SOLE authority
+            // for the canvas.  We must NOT auto-commit the sidebar's selected
+            // file: that would clobber your restored work, and file load is
+            // an EXPLICIT action (the Load button / a dblclick), not a side
+            // effect of a file still being highlighted in the sidebar.
+            //
+            // We seed from the sidebar ONLY when there is no restorable
+            // snapshot at all (an empty canvas): that is the genuine
+            // "arrived here to work on this file" case.  We deliberately do
+            // NOT compare ``initial`` against ``mountRestoreTarget()`` -- a
+            // generated structure has restorable text but no source file, so
+            // that file comparison mis-reads it as "no snapshot" and wipes
+            // it (the RNA-wipe bug).  ``hasRestorableSnapshot()`` is the
+            // file-agnostic invariant.
             const _ws = window.molbuilder && window.molbuilder.workspace;
-            const _restoreTarget = (_ws
-                && typeof _ws.mountRestoreTarget === "function")
-                ? _ws.mountRestoreTarget() : null;
-            if (_isLoadableStructure(initial) && initial !== _restoreTarget) {
-                // Cross-tab handoff (no snapshot owns this file): commit
-                // immediately on mount.  Goes through the same _commitFile
-                // path as the Load button so canvas-state stays in sync.
+            const _hasRestore = !!(_ws
+                && typeof _ws.hasRestorableSnapshot === "function"
+                && _ws.hasRestorableSnapshot());
+            if (_isLoadableStructure(initial) && !_hasRestore) {
+                // Empty canvas + a loadable sidebar pick: seed it on mount.
+                // Goes through the same _commitFile path as the Load button
+                // so canvas-state stays in sync.
                 _commitFile(initial);
                 _setCandidate(initial);
             } else if (_isLoadableStructure(initial)) {
-                // Snapshot restore owns this file -- reflect the candidate for
-                // the Load-button readout, but DO NOT re-commit (defer to
-                // restoreModifyState, per the contract above).
+                // A restorable snapshot exists (file-based OR generated) --
+                // the restore owns the canvas.  Reflect the candidate for the
+                // Load-button readout, but DO NOT commit (defer to
+                // restoreModifyState; the user loads explicitly if they want
+                // to swap to this file).
                 _setCandidate(initial);
             }
             projects.onChange((sel) => {

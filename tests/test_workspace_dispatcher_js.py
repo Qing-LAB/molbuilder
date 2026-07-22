@@ -331,7 +331,8 @@ class TestDataModelSurface:
 
 
 class TestWorkspaceIsPersistenceOnly:
-    _PERSIST_SURFACE = ["STORAGE_KEY", "mountRestoreTarget", "onPersistError",
+    _PERSIST_SURFACE = ["STORAGE_KEY", "hasRestorableSnapshot",
+                        "mountRestoreTarget", "onPersistError",
                         "persist", "pruneStatesAbove", "readPersistedSnapshot",
                         "readState", "useNamespace", "workspaceId"]
 
@@ -738,6 +739,46 @@ class TestPersistRoundtrip:
             "console.log(JSON.stringify(\n"
             "  window.molbuilder.workspace.mountRestoreTarget()));")
         assert out is None
+
+    def test_hasRestorableSnapshot_false_when_absent(self):
+        """§4.5: no persisted snapshot -> nothing to restore."""
+        out = _run_node(
+            "sessionStorage.removeItem(window.molbuilder.workspace.STORAGE_KEY);\n"
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.hasRestorableSnapshot()));")
+        assert out is False
+
+    def test_hasRestorableSnapshot_true_for_a_file_loaded_structure(self):
+        out = _run_node(
+            "sessionStorage.setItem(window.molbuilder.workspace.STORAGE_KEY,\n"
+            "  JSON.stringify({ v: 1, state: {\n"
+            "    structure: { text: '1\\nx\\nC 0 0 0\\n' },\n"
+            "    source:    { kind: 'file', file: '/p/target.xyz' } } }));\n"
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.hasRestorableSnapshot()));")
+        assert out is True
+
+    def test_hasRestorableSnapshot_true_for_a_generated_structure(self):
+        """RNA-wipe regression (2026-07-22): a GENERATED structure has
+        restorable ``structure.text`` but NO ``source.file`` -- so
+        ``mountRestoreTarget()`` is null while ``hasRestorableSnapshot()``
+        is TRUE.  The Modify bootstrap must gate its mount-time seed on
+        the latter (the file-agnostic invariant), NOT on a
+        ``!== mountRestoreTarget()`` file comparison, or it auto-loads the
+        stale sidebar selection and wipes the generated structure.  This
+        test pins the exact state pair that reproduced the bug."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "sessionStorage.setItem(ws.STORAGE_KEY,\n"
+            "  JSON.stringify({ v: 1, state: {\n"
+            "    structure: { text: '9\\nethanol\\nC 0 0 0\\n' },\n"
+            "    source:    { kind: 'generator',\n"
+            "                 generator_input: { type: 'smiles', value: 'CCO' },\n"
+            "                 file: null } } }));\n"
+            "console.log(JSON.stringify({\n"
+            "  hasRestorable: ws.hasRestorableSnapshot(),\n"   # TRUE: it IS restorable
+            "  restoreTarget: ws.mountRestoreTarget() }));")   # null: no source file
+        assert out == {"hasRestorable": True, "restoreTarget": None}
 
     def test_getState_snapshot_is_a_defensive_copy(self):
         out = _run_node(
