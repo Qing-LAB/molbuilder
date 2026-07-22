@@ -11,13 +11,10 @@
  *   1. Read the SMILES input; refuse empty.
  *   2. POST {kind: "smiles", input: <smiles>} to /api/build/molecule.
  *      RDKit on the server returns {ok, xyz, n_atoms, ...}.
- *   3. Route the generated XYZ through
- *      ``structurePage.loadIntoCanvas`` — that's where the dirty-
- *      canvas warning-modal fires, so a user who's mid-edit doesn't
- *      lose work to a stray Generate click.
- *   4. On canvas-accept, hand the XYZ to the viewer via
- *      ``window.molbuilder.loadStructureText`` so 3Dmol actually
- *      renders the molecule.
+ *   3. Route the generated XYZ through ``structurePage.loadIntoCanvas``
+ *      — that's where the dirty-canvas warning-modal fires (a user
+ *      mid-edit doesn't lose work), and on accept it installs + renders
+ *      the model through the MolView door (``molview.data.installMolecule``).
  *
  * Errors / cancellation surface in #smiles-status (network drop,
  * 4xx from RDKit, user-cancel on the warning modal).
@@ -29,9 +26,6 @@
  * Design ref: docs/tabs/architecture.md § 5.1 (panel 2: SMILES
  * generator) + § 5.4 (warning-modal gates Load + Generate).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
-// Sources-card loader adapter -> MolView's ONE door (data.installMolecule); no window.* global.
-const _loadText = (text, filename) => mvData.installMolecule({ text: text, filename: filename });
 
 (function (root) {
     "use strict";
@@ -41,13 +35,11 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
     // Injected at bind() time (production) or via configure() (tests).
     var _fetch         = null;
     var _structurePage = null;
-    var _viewerLoader  = null;
 
     function configure(opts) {
         opts = opts || {};
         if (opts.fetch)         _fetch         = opts.fetch;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
     /**
@@ -67,8 +59,6 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader)
-            _viewerLoader = _loadText;
     }
 
     /**
@@ -129,9 +119,7 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
                     return { ok: false, cancelled: true };
                 }
                 // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.  The old
-                // viewerLoader second load is removed — it would
-                // double-apply the same bytes.
+                // which parses + renders the structure itself.
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used };
             });
@@ -238,7 +226,6 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
                             ? root.fetch.bind(root)
                             : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  _loadText,
         });
         // Wire the panel on DOMContentLoaded — the orchestrator's
         // auto-bind ran via canvas-state + warning-modal loading

@@ -1,6 +1,6 @@
 """Unit tests for the file-upload generator panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 file.js`` — the Sources-card panel that loads an XYZ / PDB file
 from the user's disk via FileReader and installs it through the
 canvas-state load door (molview.data.installMolecule) -- ONE parse,
@@ -21,7 +21,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/file.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/file.js"
 
 
 def _run_node(snippet: str) -> object:
@@ -112,6 +112,7 @@ class TestHappyPath:
                         return {ok: true};
                     },
                 },
+                workspace: globalThis.molbuilder.molview.data,
             });
             const RAW = "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n";
             const r = await fileMod.loadText(RAW, "water.xyz");
@@ -140,6 +141,7 @@ class TestHappyPath:
                         return {ok: true};
                     },
                 },
+                workspace: globalThis.molbuilder.molview.data,
             });
             const RAW = "HEADER PDB\\nATOM ...\\nEND\\n";
             const r = await fileMod.loadText(RAW, "thing.pdb");

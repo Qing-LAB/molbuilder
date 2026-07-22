@@ -1,6 +1,6 @@
 """Unit tests for the SMILES generator panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 smiles.js`` — the Sources-card panel that POSTs to
 ``/api/build/molecule`` and routes the generated XYZ through the
 canvas-state gate.
@@ -21,7 +21,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/smiles.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/smiles.js"
 
 
 def _run_node(snippet: str) -> object:

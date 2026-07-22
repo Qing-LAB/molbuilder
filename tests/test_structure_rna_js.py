@@ -16,7 +16,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/rna.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/rna.js"
 
 
 def _run_node(snippet: str) -> object:

@@ -5,7 +5,7 @@
 > Transform subtab) inside the renamed `/molbuilder` tab.  The Sources
 > card on the same tab (Load + SMILES + Save) is documented in
 > [`tabs/architecture.md`](architecture.md) § 5; their wiring is
-> shared via `lib/structure/` modules.
+> shared via `modify/structure/` modules.
 >
 > Code, tests, and the UI must follow this spec; if any of them
 > diverge, update this document in the same commit.  Pointer in

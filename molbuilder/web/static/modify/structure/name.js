@@ -1,53 +1,43 @@
-/* Peptide-builder generator panel — Molbuilder-tab Source.
+/* Generate-from-name panel — Molbuilder-tab Source.
  *
- * Wires the Sources card's "Generate peptide" panel.  Identical
- * shape to smiles.js + name.js; only the request kind ("peptide"
- * instead of "smiles" / "name") and the field IDs differ.  The
- * backend dispatches to ``build_peptide`` which expects a one-
- * letter amino-acid sequence (e.g. "ACDEF") and returns a 3-D
- * structure built via AmberTools' tleap (extended chain by
- * default).
+ * Wires the Sources card's "Generate from name" panel.  Identical
+ * shape to ``smiles.js``; the only differences are the input
+ * field id (`#name-input`), the button id
+ * (`#name-generate-btn`), the status id (`#name-status`), and
+ * the request body's ``kind`` ("name" instead of "smiles").  The
+ * backend dispatches to ``build_from_name`` which hits PubChem
+ * (or local lookup) for the IUPAC / common name.
  *
  * Flow:
- *   1. Read the sequence input; refuse empty / illegal codes.
- *   2. POST {kind: "peptide", input: <sequence>} to
- *      /api/build/molecule.
- *   3. Route through structurePage.loadIntoCanvas.
- *   4. Hand to ``loadStructureText`` for viewer render.
+ *   1. Read the name input; refuse empty.
+ *   2. POST {kind: "name", input: <name>} to /api/build/molecule.
+ *   3. Route the generated XYZ through ``structurePage.loadIntoCanvas``
+ *      — the dirty-canvas warning-modal fires there, and on accept it
+ *      installs + renders via the MolView door (``molview.data.installMolecule``).
  *
- * Errors surface in #peptide-status (illegal codes server-side,
- * tleap failure, network drop).  Cancellation on the dirty-
- * canvas warning modal surfaces as "Kept existing workspace."
+ * Errors / cancellation surface in #name-status.
  *
- * Test seam: ``configure(opts)`` lets tests inject a fake
- * fetch + structurePage + viewer-loader.
+ * Test seam: ``configure(opts)`` lets tests inject a fake fetch +
+ * structurePage + viewer-loader so the Node-only unit tests can
+ * drive the state machine without a real DOM or HTTP roundtrip.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 4: peptide
- * builder).
+ * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: name
+ * lookup, part of the "others" generator group).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
-// Sources-card loader adapter -> MolView's ONE door (data.installMolecule); no window.* global.
-const _loadText = (text, filename) => mvData.installMolecule({ text: text, filename: filename });
 
 (function (root) {
     "use strict";
 
     var BUILD_URL = "/api/build/molecule";
-    // One-letter amino-acid codes the backend's tleap path
-    // recognises.  Used for client-side validation so the user
-    // gets a clear inline error before the request hits the
-    // network instead of waiting for tleap to fail.
-    var VALID_AA = /^[ACDEFGHIKLMNPQRSTVWY]+$/i;
 
+    // Injected at bind() time (production) or via configure() (tests).
     var _fetch         = null;
     var _structurePage = null;
-    var _viewerLoader  = null;
 
     function configure(opts) {
         opts = opts || {};
         if (opts.fetch)         _fetch         = opts.fetch;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
     /**
@@ -67,52 +57,39 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader)
-            _viewerLoader = _loadText;
     }
 
     /**
-     * Generate a peptide from a one-letter amino-acid sequence.
+     * Generate a structure from ``name`` (IUPAC / common /
+     * trade) and route it through the canvas-state gate.
      *
-     * @param {string} sequence
+     * @param {string} name
      * @returns {Promise<{ok: boolean,
      *                    cancelled?: boolean,
      *                    error?: string,
      *                    n_atoms?: number}>}
      */
-    function generate(sequence) {
-        if (typeof sequence !== "string" || !sequence.trim()) {
+    function generate(name) {
+        if (typeof name !== "string" || !name.trim()) {
             return Promise.resolve({
-                ok: false,
-                error: "Enter a peptide sequence first (one-letter codes).",
-            });
-        }
-        var trimmed = sequence.trim().toUpperCase().replace(/\s+/g, "");
-        if (!VALID_AA.test(trimmed)) {
-            return Promise.resolve({
-                ok:    false,
-                error: "Sequence must use one-letter amino-acid codes "
-                     + "(ACDEFGHIKLMNPQRSTVWY).  Got: "
-                     + JSON.stringify(sequence),
-            });
+                ok: false, error: "Enter a name first." });
         }
         // Lazy-resolve dependencies in case the script-load
         // order put us above page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
         if (!_fetch) {
             return Promise.reject(new Error(
-                "peptide: fetch not configured"));
+                "name: fetch not configured"));
         }
         if (!_structurePage) {
             return Promise.reject(new Error(
-                "peptide: structurePage not configured"));
+                "name: structurePage not configured"));
         }
+        var trimmed = name.trim();
         return _fetch(BUILD_URL, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({
-                kind: "peptide", input: trimmed,
-            }),
+            body:    JSON.stringify({ kind: "name", input: trimmed }),
         })
         .then(function (r) {
             return r.json().then(function (body) {
@@ -130,16 +107,14 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             }
             return _structurePage.loadIntoCanvas(
                 { source_format: "xyz", text: body.xyz },
-                { kind: "peptide",
-                  generator_input: { sequence: trimmed } }
+                { kind: "name",
+                  generator_input: { name: trimmed } }
             ).then(function (gate) {
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
                 // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.  The old
-                // viewerLoader second load is removed — it would
-                // double-apply the same bytes.
+                // which parses + renders the structure itself.
                 return { ok: true, n_atoms: body.n_atoms };
             });
         })
@@ -157,12 +132,13 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
     function wirePanel(opts) {
         opts = opts || {};
         var doc = opts.doc || root.document;
-        if (!doc || _wired) return;
+        if (!doc) return;
+        if (_wired) return;
         _wired = true;
 
-        var input  = doc.getElementById("peptide-input");
-        var button = doc.getElementById("peptide-generate-btn");
-        var status = doc.getElementById("peptide-status");
+        var input  = doc.getElementById("name-input");
+        var button = doc.getElementById("name-generate-btn");
+        var status = doc.getElementById("name-status");
         if (!input || !button) return;
 
         function setStatus(msg, kind) {
@@ -174,16 +150,19 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
         }
 
         button.addEventListener("click", function () {
-            var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
+            // Capture the name at click time so the success status
+            // reports what was BUILT, not whatever the user typed
+            // while the request was in flight.
+            var echo = input.value.trim();
             button.disabled = true;
-            setStatus("Generating peptide…", "generating");
+            setStatus("Generating…", "generating");
             generate(echo).then(function (r) {
                 button.disabled = false;
                 if (r.ok) {
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from sequence " + echo);
+                        + " from " + echo);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
                 } else {
@@ -193,6 +172,7 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             });
         });
 
+        // Enter inside the input triggers Generate too.
         input.addEventListener("keydown", function (ev) {
             if (ev.key === "Enter" && !button.disabled) {
                 ev.preventDefault();
@@ -206,20 +186,18 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
         generate:  generate,
         wirePanel: wirePanel,
         BUILD_URL: BUILD_URL,
-        VALID_AA:  VALID_AA,
     };
 
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     } else {
         root.molbuilder = root.molbuilder || {};
-        root.molbuilder.structurePeptide = api;
+        root.molbuilder.structureName = api;
         configure({
             fetch:         root.fetch
                             ? root.fetch.bind(root)
                             : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  _loadText,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {
@@ -232,7 +210,7 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
         if (root.molbuilder.runtime
             && typeof root.molbuilder.runtime.register === "function") {
             root.molbuilder.runtime.register(
-                "structure.peptide", api);
+                "structure.name", api);
         }
     }
 })(typeof window !== "undefined" ? window : globalThis);

@@ -4,7 +4,7 @@
 lifecycle**: how a molecule gets *into* the workspace (build from a name,
 SMILES, DNA/RNA sequence, peptide, or a file) and *out* of it (save, with its
 `.molstruct.json` sidecar). It's the glue for the Sources + Save panels
-(`lib/structure/*`).
+(`modify/structure/*`).
 
 **What this is NOT.** The authoritative contract, or the backend builders.
 `protocols/save-flow.md` is the sole source of truth for the Save panel/dialog/
@@ -46,12 +46,12 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `lib/structure/page.js` | **the load gate** — `structurePage.loadIntoCanvas` + `markDirtyAfterModification` / `markSavedTo` / `getCanvasSnapshot` |
-| `lib/structure/{name,smiles,dna,rna,peptide,file}.js` | the six **Source panels** (build/fetch → gate) |
-| `lib/structure/warning-modal.js` | the "you have unsaved edits" Discard/Cancel modal |
-| `lib/structure/save.js` | **`structureSave`** — destination resolution + the write |
-| `lib/structure/save-dialog.js` | the confirm-name dialog (single-instance) |
-| `lib/structure/sidecar-labels.js` | the `.molstruct.json` label pairing |
+| `modify/structure/page.js` | **the load gate** — `structurePage.loadIntoCanvas` + `markDirtyAfterModification` / `markSavedTo` / `getCanvasSnapshot` |
+| `modify/structure/{name,smiles,dna,rna,peptide,file}.js` | the six **Source panels** (build/fetch → gate) |
+| `lib/warning-modal.js` | the "you have unsaved edits" Discard/Cancel modal |
+| `modify/structure/save.js` | **`structureSave`** — destination resolution + the write |
+| `modify/structure/save-dialog.js` | the confirm-name dialog (single-instance) |
+| `modify/structure/sidecar-labels.js` | the `.molstruct.json` label pairing |
 
 ---
 

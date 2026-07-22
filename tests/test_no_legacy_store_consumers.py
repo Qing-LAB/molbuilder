@@ -10,7 +10,7 @@ globals are:
   * lib/workspace/dispatcher.js — delegates to them as internal
     implementation
   * lib/molview/_canvas-state-impl.js — Phase 9 (2026-06-13)
-    moved out of lib/structure/canvas-state.js; no longer mounts
+    moved out of modify/structure/canvas-state.js; no longer mounts
     the structureCanvas global, but places the singleton on the
     private molview._canvasState slot the data model consumes
   * lib/molview/_selection-store-impl.js — Phase 9 (2026-06-13)

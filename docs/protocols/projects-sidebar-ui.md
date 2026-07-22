@@ -204,7 +204,7 @@ The kebab menu auto-dismisses on outside click + ESC + scroll.
 
 Dialogs live in `lib/projects/dialogs.js` and follow the
 single-instance + ESC-as-Cancel pattern from
-`lib/structure/save-dialog.js`:
+`modify/structure/save-dialog.js`:
 
 * opening dialog A while A is already open returns the existing pending
   promise (no stacking);

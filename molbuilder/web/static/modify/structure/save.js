@@ -35,7 +35,6 @@
  *
  * Design ref: docs/tabs/architecture.md § 5.6 (Save options).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
 
 (function (root) {
     "use strict";
@@ -76,9 +75,8 @@ import { data as mvData } from "/static/lib/molview/index.js";
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        // DATA reads bind to molview.data (the in-memory model); ``workspace``
-        // is now persistence-only.  Late-arriving mount: re-resolve at call time.
-        if (!_workspace) _workspace = mvData;
+        // NOTE: _workspace (molview.data) is NOT self-wired -- the Modify composition
+        // root (selection-bootstrap.js) injects it via configure({workspace}).
     }
 
     /**
@@ -389,10 +387,8 @@ import { data as mvData } from "/static/lib/molview/index.js";
         configure({
             projects:      root.molbuilder.projects,
             structurePage: root.molbuilder.structurePage,
-            // DATA surface is molview.data (the in-memory model); ``workspace``
-            // is persistence-only now.  Lazy-resolve in ``_lazyResolve`` also
-            // picks up molview.data at call time so a late-arriving mount works.
-            workspace:     mvData,
+            // workspace (molview.data) is injected by the composition root
+            // (selection-bootstrap.js) after it mounts MolView -- not self-wired here.
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

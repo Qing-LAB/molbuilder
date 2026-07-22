@@ -33,16 +33,17 @@
  * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: file
  * upload, part of the "others" generator group).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
 
 (function (root) {
     "use strict";
 
     var _structurePage = null;
+    var _workspace     = null;   // molview.data -- injected by the composition root
 
     function configure(opts) {
         opts = opts || {};
         if (opts.structurePage) _structurePage = opts.structurePage;
+        if (opts.workspace)     _workspace     = opts.workspace;
     }
 
     /**
@@ -105,7 +106,7 @@ import { data as mvData } from "/static/lib/molview/index.js";
             // the single source; null if the model isn't reachable (test contexts).
             var n = null;
             try {
-                var d = mvData;
+                var d = _workspace;
                 var s = d && typeof d.getStructure === "function" && d.getStructure();
                 if (s && Array.isArray(s.atoms)) n = s.atoms.length;
             } catch (_) { /* n_atoms is cosmetic */ }

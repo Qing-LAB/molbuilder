@@ -92,7 +92,7 @@ Readers of MolView globals that must become `import` consumers (grep-verified th
 | `lib/trajectory/core.js` | Results | module | `molview`, `molview.data` |
 | `lib/transport/core.js` | Transport | module | `molview` |
 | `lib/inspectors/structure.js` | Results | module | `molview` |
-| `lib/structure/{file,save,page}.js` | Modify source panels | classic → **make module** | `molview.data.installMolecule`, `fmt` |
+| `modify/structure/{file,save,page}.js` | Modify source panels | classic → **make module** | `molview.data.installMolecule`, `fmt` |
 | `molview/demo.js` | demo | module | `molview` |
 
 Internal MolView cross-module global-reads to convert to imports (Phase B): `data-model.js`
@@ -103,7 +103,7 @@ Internal MolView cross-module global-reads to convert to imports (Phase B): `dat
 
 `modify/viewer.js` publishes `window.molbuilder.loadStructureText(text, filename)` — a thin alias
 that just calls `molview.data.installMolecule({text, filename})` (+ a status message). The Sources-card
-generators (`lib/structure/{smiles,dna,rna,peptide,name}.js`) consume it as their injected
+generators (`modify/structure/{smiles,dna,rna,peptide,name}.js`) consume it as their injected
 `viewerLoader` (a dependency-injection seam, kept via `configure({viewerLoader: …})` + a
 `_lazyResolve` fallback). This is a transitional `window.molbuilder.*` shim and comes out in Phase B/C:
 
@@ -140,7 +140,7 @@ into `static/structure-optimization/`, matching `modify/` etc.:
 - [x] Test path refs updated for the move; affected suites green (`test_format_fetch_error`/`test_form_state_persistence`/`test_viewer_structure_path`/`test_in_body_labels`/`test_live_poll_invariants` = 49 pass; `test_web`/`test_xss_audit`/`test_css_no_duplicate_selectors` = 515 pass).
 - [x] Phase B (already-module consumers): `demo.js`, `modify/selection-bootstrap.js`, `spectra/viewer.js`, `lib/transport/core.js`, `lib/inspectors/structure.js`, `lib/trajectory/core.js` — all `window.molbuilder.molview`/`.fmt` reads replaced with `import { data, formula }`; syntax-clean; demo browser-verified (card mounts, water loads).
 - [x] Phase B (Modify classic files): `modify/viewer.js` + `modify/periodicity.js` → `import { data, formula }`; modify.html tags → `type="module"`. **Browser-verified**: card mounts, `title-readout`=`H2O` (imported formula), `loadStructureText("water")`→ok (Sources-card loader path works with viewer.js deferred, via `_lazyResolve`).
-- [x] Phase B (classic consumers → module): all 8 `lib/structure/*` converted — **browser-verified** (SMILES `CCO`→9 atoms, title `C2H6O`, generator's own status fires; no load-order breakage) — `smiles/dna/rna/peptide/name` import `data` + inject a `_loadText = (t,f)=>data.installMolecule({text,filename})` adapter as `viewerLoader` (no more `loadStructureText` read); `file/save/page` import `data` (was `molview.data`). modify.html's 8 generator tags → `type="module"`. node-clean. **Pending browser-verify after restart** (biggest load-order risk: 8 classic→deferred modules reading `structurePage`/`warningModal` globals). `loadStructureText` publish RETAINED (E2E hook + Modify status) with a follow-up note to remove it.
+- [x] Phase B (classic consumers → module): all 8 `modify/structure/*` converted — **browser-verified** (SMILES `CCO`→9 atoms, title `C2H6O`, generator's own status fires; no load-order breakage) — `smiles/dna/rna/peptide/name` import `data` + inject a `_loadText = (t,f)=>data.installMolecule({text,filename})` adapter as `viewerLoader` (no more `loadStructureText` read); `file/save/page` import `data` (was `molview.data`). modify.html's 8 generator tags → `type="module"`. node-clean. **Pending browser-verify after restart** (biggest load-order risk: 8 classic→deferred modules reading `structurePage`/`warningModal` globals). `loadStructureText` publish RETAINED (E2E hook + Modify status) with a follow-up note to remove it.
 - [ ] Phase B: internal cross-module reads (`data-model.js`, `selection/panel.js`, `mol-viewer-embed.js`) + node-test seams converted.
 - [ ] Phase C: all transitional shim publishes deleted (per-global, re-grep first).
 - [ ] Phase D: `molview-module.md` / `web-module-map.md` updated; full suite + every tab browser-verified.

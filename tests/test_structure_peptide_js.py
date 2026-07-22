@@ -1,6 +1,6 @@
 """Unit tests for the peptide generator panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 peptide.js`` — the Sources-card panel that POSTs to
 ``/api/build/molecule`` with kind="peptide" and routes the
 generated XYZ through the canvas-state gate.
@@ -16,7 +16,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/peptide.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/peptide.js"
 
 
 def _run_node(snippet: str) -> object:

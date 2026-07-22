@@ -23,9 +23,6 @@
  * Design ref: docs/tabs/architecture.md § 5.1 (panel 3: 3DNA
  * helix builder).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
-// Sources-card loader adapter -> MolView's ONE door (data.installMolecule); no window.* global.
-const _loadText = (text, filename) => mvData.installMolecule({ text: text, filename: filename });
 
 (function (root) {
     "use strict";
@@ -37,13 +34,11 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
 
     var _fetch         = null;
     var _structurePage = null;
-    var _viewerLoader  = null;
 
     function configure(opts) {
         opts = opts || {};
         if (opts.fetch)         _fetch         = opts.fetch;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
     /**
@@ -63,8 +58,6 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader)
-            _viewerLoader = _loadText;
     }
 
     /**
@@ -271,9 +264,7 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
                     return { ok: false, cancelled: true };
                 }
                 // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.  The old
-                // viewerLoader second load is removed — it would
-                // double-apply the same bytes.
+                // which parses + renders the structure itself.
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used,
                          // Builder warnings (e.g. a mismatched-duplex clash) to
@@ -380,7 +371,6 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
                             ? root.fetch.bind(root)
                             : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  _loadText,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

@@ -55,8 +55,6 @@
  * Design ref: docs/tabs/architecture.md § 5.2 (no auto-load on
  * sidebar selection) + § 5.4 (warning-modal contract).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
-
 (function (root) {
     "use strict";
 
@@ -186,15 +184,11 @@ import { data as mvData } from "/static/lib/molview/index.js";
     } else {
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structurePage = api;
-        // Auto-bind to MolView's data model + the warning modal when
-        // both are present.  The page template loads the molview
-        // data-model (+ its stores) and warning-modal.js BEFORE
-        // page.js, so both are mounted at this point.  page.js binds
-        // against ``molview.data`` for DATA ops; ``workspace`` is the
-        // persistence layer and is not bound here.
-        if (mvData && root.molbuilder.warningModal) {
-            _bind(mvData, root.molbuilder.warningModal);
-        }
+        // NO self-wire here.  page.js is PURE dependency-injection: the Modify tab's
+        // COMPOSITION ROOT (modify/selection-bootstrap.js, which imports molview.data)
+        // calls ``structurePage._bind(data, warningModal)`` after it mounts MolView.
+        // This module never reaches for window.molbuilder.molview.data itself
+        // (molview-esm-finalization.md: no self-wire / no global read).
         if (root.molbuilder.runtime
             && typeof root.molbuilder.runtime.register === "function") {
             root.molbuilder.runtime.register(

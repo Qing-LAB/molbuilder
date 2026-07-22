@@ -165,12 +165,12 @@ sequenceDiagram
 | Consumer | `file:function` | Call |
 |---|---|---|
 | Modify — Load / sidebar dblclick | `modify/selection-bootstrap.js:_commitFile` | `projects.parser.openMolecule(path, {confirmDiscard})` |
-| Modify — Save panel | `lib/structure/save.js:_saveDataset` | `projects.parser.saveMolecule(path, {overwrite})` + dialog |
+| Modify — Save panel | `modify/structure/save.js:_saveDataset` | `projects.parser.saveMolecule(path, {overwrite})` + dialog |
 | Transport — sidebar commit | `lib/transport/core.js:_showInMolview` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
 | Spectra — sidebar commit | `spectra/viewer.js:_commitStructure` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
 | Results structure inspector | `lib/inspectors/structure.js` | `projects.parser.openMolecule(path)` + `molview.mount` (§6) |
 | Structure-optimization | `static/viewer.js:_commitStructure` | `projects.parser.openMolecule(path)`; reads state off the model |
-| Generators (smiles/dna/…) | `lib/structure/*.js` → `page.js:loadIntoCanvas` | `molview.data.installMolecule({text})` (not a file door) |
+| Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js:loadIntoCanvas` | `molview.data.installMolecule({text})` (not a file door) |
 | Trajectory inspector | `lib/trajectory/core.js` | `molview.data.installMolecule({text})` + `reloadFrames(...)` (frames, not a project-file open) |
 
 Clicking a **`.molstruct.json`** in the sidebar shows its JSON via the `source` inspector —

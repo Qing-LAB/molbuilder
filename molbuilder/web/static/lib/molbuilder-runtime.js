@@ -38,8 +38,8 @@
  *   "workspace"                 -- lib/workspace/dispatcher.js  (Phase 10 — the public surface)
  *   "selection.panel"           -- lib/selection-panel.js
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
- *   "structure.page"            -- lib/structure/page.js
- *   "structure.save"            -- lib/structure/save.js
+ *   "structure.page"            -- modify/structure/page.js
+ *   "structure.save"            -- modify/structure/save.js
  *   "modify.loadStructureText"  -- modify/viewer.js (per-tab; accepts XYZ + PDB)
  *   "inspectors"                -- lib/inspectors/registry.js
  *

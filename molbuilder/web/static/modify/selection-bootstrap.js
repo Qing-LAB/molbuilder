@@ -64,6 +64,25 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
 
+        // ---- COMPOSITION ROOT (molview-esm-finalization.md §4.1) --------------------------
+        // This bootstrap is the ONE place that imports molview.data; it now WIRES the Modify
+        // tab's structure orchestrators with it (+ the warning modal).  page/save/file.js are
+        // pure dependency-injection: they never reach for window.molbuilder.molview.data
+        // themselves.  Wired here, after MolView is mounted, so the model is live.
+        (function _wireStructureModules() {
+            const mb = window.molbuilder || {};
+            const wm = mb.warningModal;
+            if (mb.structurePage && wm && typeof mb.structurePage._bind === "function") {
+                mb.structurePage._bind(mvData, wm);
+            }
+            if (mb.structureSave && typeof mb.structureSave.configure === "function") {
+                mb.structureSave.configure({ workspace: mvData });
+            }
+            if (mb.structureFile && typeof mb.structureFile.configure === "function") {
+                mb.structureFile.configure({ workspace: mvData });
+            }
+        })();
+
         // (The old store-loader injection is gone: the store no longer holds a
         // structure loader -- the render engine draws from molview.data, and file
         // loads flow through the unified ``molview.data.installMolecule`` door.)

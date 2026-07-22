@@ -1,6 +1,6 @@
 """Unit tests for the Molbuilder-tab page orchestrator.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 page.js`` — the gate every Sources panel routes Load / Generate
 calls through.  The orchestrator's one load-bearing job is the
 unsaved-modifications check:
@@ -24,7 +24,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/page.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/page.js"
 
 
 # Fake canvas-state + warning-modal — minimum surface the page

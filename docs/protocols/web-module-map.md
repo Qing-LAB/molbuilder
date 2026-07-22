@@ -168,7 +168,7 @@ DELEGATES to three injected-factory submodules (the god-hub split) rather than d
 | `lib/transport/core.js` | molview + projects.parser + Generate POST from `molview.data.getFrozen/getRegions` |
 | `lib/trajectory/core.js` | molview-with-frames + Plotly traces |
 | `results/viewer.js` + `lib/results/file-picker.js` | inspectors.registry dispatch + projects.listDir |
-| `lib/structure/{page,save,save-dialog,warning-modal,file,smiles,dna,rna,peptide,name}.js` | Modify-tab Source panels → `molview.data.installMolecule` / `projects.parser.saveMolecule` |
+| `modify/structure/{page,save,save-dialog,warning-modal,file,smiles,dna,rna,peptide,name}.js` | Modify-tab Source panels → `molview.data.installMolecule` / `projects.parser.saveMolecule` |
 | `lib/system-load-monitor.js` | `/api/system-load` strip |
 
 ---
@@ -212,7 +212,7 @@ DELEGATES to three injected-factory submodules (the god-hub split) rather than d
 - The **`lib/molview/` package + the `mol-*.js` embed files** are now **ES modules** too (aggregated
   by `molview/index.js`), each *also* publishing a **transitional `window.molbuilder.*` shim** so its
   still-classic consumers keep working until they migrate.
-- The remaining files (the tab consumers + `lib/structure/*` etc.) are still **IIFE + global-mount**
+- The remaining files (the tab consumers + `modify/structure/*` etc.) are still **IIFE + global-mount**
   on `window.molbuilder.*`, loaded via plain `<script>`; many *also* `module.exports` for node
   `require()`. **These are what still read MolView's shims** — so MolView's shims can only be dropped
   as these consumers convert (the package-by-package plan below).
@@ -242,7 +242,7 @@ next opened for other work.
 **Status (package-by-package):** `lib/projects/*` ✅ and the **`lib/molview/` package (+ `mol-*.js`)
 ✅** are ES modules. MolView keeps its transitional `window.molbuilder.*` shims because its
 **consumers are not yet modules** — Modify (`modify/viewer.js`, `periodicity.js`,
-`selection-bootstrap.js`), the structure-opt `viewer.js`, `lib/structure/*`, `lib/transport/core.js`,
+`selection-bootstrap.js`), the structure-opt `viewer.js`, `modify/structure/*`, `lib/transport/core.js`,
 `lib/trajectory/core.js`, `lib/inspectors/structure.js` still read the globals. **Dropping MolView's
 shims is therefore NOT a MolView-package task — it is gated on converting those consumers** (the next
 packages in this plan). Until then the shims are the correct, required bridge (§3 transition rule).

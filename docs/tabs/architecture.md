@@ -569,7 +569,7 @@ docs; renamed paths break by design.  See § 3.2.
 - `templates/modify.html` (renamed to `templates/molbuilder.html`)
   — new panel layout.
 - `static/modify/style.css` — foldable panel styles.
-- New module `static/lib/structure/canvas-state.js` — the
+- New module `static/modify/structure/canvas-state.js` — the
   canvas-state primitive + sessionStorage mirror + dirty flag.
   (`structure/` here is the JS namespace for canvas data, not
   the user-facing tab name; the tab is the Molbuilder tab.)
@@ -578,9 +578,9 @@ docs; renamed paths break by design.  See § 3.2.
   mounting `window.molbuilder.structureCanvas`; the dispatcher
   owns the singleton.  Historical name preserved here for
   context with the original design proposal.
-- New module `static/lib/structure/warning-modal.js` — the
+- New module `static/lib/warning-modal.js` — the
   "unsaved modifications" modal.
-- `static/lib/structure/generators/` — one module per
+- `static/modify/structure/generators/` — one module per
   migrated generator (smiles.js, threedna.js, …).
 - `molbuilder/web/blueprints/build.py` — Build-tab generator
   endpoints move to a new `molbuilder.py` blueprint (or stay

@@ -1,6 +1,6 @@
 """Unit tests for the name-lookup generator panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 name.js`` — the Sources-card panel that POSTs to
 ``/api/build/molecule`` with kind="name" and routes the
 generated XYZ through the canvas-state gate.
@@ -20,7 +20,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/name.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/name.js"
 
 
 def _run_node(snippet: str) -> object:

@@ -1,6 +1,6 @@
 """Unit tests for the DNA generator panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 dna.js``: validates ACGT-only sequences, accepts a helix form
 (B/A/Z), POSTs the right body to /api/build/molecule, routes
 the result through structurePage.loadIntoCanvas.
@@ -16,7 +16,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/dna.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/dna.js"
 
 
 def _run_node(snippet: str) -> object:

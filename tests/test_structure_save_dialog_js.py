@@ -1,6 +1,6 @@
 """Unit tests for the Save-panel name + overwrite confirm dialogs.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 save-dialog.js`` — the two modals the Save panel routes a Save
 click through:
 
@@ -24,7 +24,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/save-dialog.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/save-dialog.js"
 
 
 _DOM_PRELUDE = r"""

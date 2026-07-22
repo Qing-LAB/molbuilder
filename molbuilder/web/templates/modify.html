@@ -823,7 +823,7 @@
    against ws.* immediately. #}
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 {# Warning modal — independent primitive used by page.js's gate. #}
-<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/warning-modal.js') }}"></script>
 {# Selection panel + helpers.  Bind ws.selection (Phase 10). #}
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 {# Inline script for popover init lifted out to its own JS file
@@ -837,14 +837,14 @@
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
    + the warning modal; the generators (smiles/name/dna/rna/...)
    wire their Generate buttons against structurePage. #}
-<script type="module" src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/dna.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/rna.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/save-dialog.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/page.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/smiles.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/name.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/dna.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/rna.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/peptide.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/file.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/save-dialog.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/structure/save.js') }}"></script>
 </body>
 </html>

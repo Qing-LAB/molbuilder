@@ -1,50 +1,39 @@
-/* Generate-from-name panel — Molbuilder-tab Source.
+/* RNA-builder generator panel — Molbuilder-tab Source.
  *
- * Wires the Sources card's "Generate from name" panel.  Identical
- * shape to ``smiles.js``; the only differences are the input
- * field id (`#name-input`), the button id
- * (`#name-generate-btn`), the status id (`#name-status`), and
- * the request body's ``kind`` ("name" instead of "smiles").  The
- * backend dispatches to ``build_from_name`` which hits PubChem
- * (or local lookup) for the IUPAC / common name.
+ * Wires the Sources card's "Generate RNA" panel.  POSTs
+ * ``{kind: "rna", input: <sequence>, form: <A|B|Z>}`` to
+ * /api/build/molecule.  Backend dispatches to ``build_rna`` which
+ * picks the best installed backend (3DNA preferred, AmberTools
+ * fallback, RDKit last) for an ssRNA from a 1-letter sequence.
  *
- * Flow:
- *   1. Read the name input; refuse empty.
- *   2. POST {kind: "name", input: <name>} to /api/build/molecule.
- *   3. Route the generated XYZ through
- *      ``structurePage.loadIntoCanvas`` — that's where the dirty-
- *      canvas warning-modal fires.
- *   4. On canvas-accept, hand the XYZ to the viewer via
- *      ``window.molbuilder.loadStructureText``.
+ * Differences from dna.js:
+ *   * Alphabet — ACGU (uracil) instead of ACGT (thymine).
+ *   * Default form — A (canonical right-handed RNA helix)
+ *     instead of B.
  *
- * Errors / cancellation surface in #name-status.
+ * Everything else (flow shape, status messages, cancel
+ * semantics) is identical to dna.js / smiles.js / name.js /
+ * peptide.js.
  *
- * Test seam: ``configure(opts)`` lets tests inject a fake fetch +
- * structurePage + viewer-loader so the Node-only unit tests can
- * drive the state machine without a real DOM or HTTP roundtrip.
- *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: name
- * lookup, part of the "others" generator group).
+ * Design ref: docs/tabs/architecture.md § 5.1 (panel 4: 3DNA
+ * helix builder — RNA variant).
  */
-import { data as mvData } from "/static/lib/molview/index.js";
-// Sources-card loader adapter -> MolView's ONE door (data.installMolecule); no window.* global.
-const _loadText = (text, filename) => mvData.installMolecule({ text: text, filename: filename });
 
 (function (root) {
     "use strict";
 
     var BUILD_URL = "/api/build/molecule";
+    var VALID_RNA = /^[ACGU]+$/i;
+    var VALID_FORMS = ["A", "B", "Z"];
+    var VALID_BACKENDS = ["auto", "threedna", "amber", "rdkit"];
 
-    // Injected at bind() time (production) or via configure() (tests).
     var _fetch         = null;
     var _structurePage = null;
-    var _viewerLoader  = null;
 
     function configure(opts) {
         opts = opts || {};
         if (opts.fetch)         _fetch         = opts.fetch;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
     /**
@@ -64,41 +53,62 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader)
-            _viewerLoader = _loadText;
     }
 
-    /**
-     * Generate a structure from ``name`` (IUPAC / common /
-     * trade) and route it through the canvas-state gate.
-     *
-     * @param {string} name
-     * @returns {Promise<{ok: boolean,
-     *                    cancelled?: boolean,
-     *                    error?: string,
-     *                    n_atoms?: number}>}
-     */
-    function generate(name) {
-        if (typeof name !== "string" || !name.trim()) {
+    function generate(sequence, opts) {
+        opts = opts || {};
+        if (typeof sequence !== "string" || !sequence.trim()) {
             return Promise.resolve({
-                ok: false, error: "Enter a name first." });
+                ok: false,
+                error: "Enter an RNA sequence first (ACGU).",
+            });
+        }
+        var trimmed = sequence.trim().toUpperCase().replace(/\s+/g, "");
+        if (!VALID_RNA.test(trimmed)) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Sequence must use ACGU only.  Got: "
+                     + JSON.stringify(sequence),
+            });
+        }
+        var form = opts.form || "A";
+        if (VALID_FORMS.indexOf(form) < 0) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Helix form must be one of "
+                     + VALID_FORMS.join(", ") + ".  Got: "
+                     + JSON.stringify(form),
+            });
+        }
+        var backend = opts.backend || "auto";
+        if (VALID_BACKENDS.indexOf(backend) < 0) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Backend must be one of "
+                     + VALID_BACKENDS.join(", ") + ".  Got: "
+                     + JSON.stringify(backend),
+            });
         }
         // Lazy-resolve dependencies in case the script-load
         // order put us above page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
         if (!_fetch) {
             return Promise.reject(new Error(
-                "name: fetch not configured"));
+                "rna: fetch not configured"));
         }
         if (!_structurePage) {
             return Promise.reject(new Error(
-                "name: structurePage not configured"));
+                "rna: structurePage not configured"));
         }
-        var trimmed = name.trim();
         return _fetch(BUILD_URL, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ kind: "name", input: trimmed }),
+            body:    JSON.stringify({
+                kind:    "rna",
+                input:   trimmed,
+                form:    form,
+                backend: backend,
+            }),
         })
         .then(function (r) {
             return r.json().then(function (body) {
@@ -116,17 +126,19 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             }
             return _structurePage.loadIntoCanvas(
                 { source_format: "xyz", text: body.xyz },
-                { kind: "name",
-                  generator_input: { name: trimmed } }
+                { kind: "rna",
+                  generator_input: {
+                      sequence: trimmed, form: form,
+                      backend: backend,
+                  } }
             ).then(function (gate) {
                 if (!gate.ok) {
                     return { ok: false, cancelled: true };
                 }
                 // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.  The old
-                // viewerLoader second load is removed — it would
-                // double-apply the same bytes.
-                return { ok: true, n_atoms: body.n_atoms };
+                // which parses + renders the structure itself.
+                return { ok: true, n_atoms: body.n_atoms,
+                         backend_used: body.backend_used };
             });
         })
         .catch(function (err) {
@@ -143,13 +155,14 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
     function wirePanel(opts) {
         opts = opts || {};
         var doc = opts.doc || root.document;
-        if (!doc) return;
-        if (_wired) return;
+        if (!doc || _wired) return;
         _wired = true;
 
-        var input  = doc.getElementById("name-input");
-        var button = doc.getElementById("name-generate-btn");
-        var status = doc.getElementById("name-status");
+        var input   = doc.getElementById("rna-input");
+        var formSel = doc.getElementById("rna-form-select");
+        var backendSel = doc.getElementById("rna-backend-select");
+        var button  = doc.getElementById("rna-generate-btn");
+        var status  = doc.getElementById("rna-status");
         if (!input || !button) return;
 
         function setStatus(msg, kind) {
@@ -161,19 +174,25 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
         }
 
         button.addEventListener("click", function () {
-            // Capture the name at click time so the success status
-            // reports what was BUILT, not whatever the user typed
-            // while the request was in flight.
-            var echo = input.value.trim();
+            var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
+            var formChoice = (formSel && formSel.value) || "A";
+            var backendChoice = (backendSel && backendSel.value) || "auto";
             button.disabled = true;
-            setStatus("Generating…", "generating");
-            generate(echo).then(function (r) {
+            setStatus("Generating RNA…", "generating");
+            generate(echo, {
+                form: formChoice, backend: backendChoice,
+            }).then(function (r) {
                 button.disabled = false;
                 if (r.ok) {
+                    var backendNote = r.backend_used
+                        && r.backend_used !== backendChoice
+                        ? " (" + r.backend_used + ")"
+                        : "";
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from " + echo);
+                        + " from " + formChoice + "-form "
+                        + echo + backendNote);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
                 } else {
@@ -183,7 +202,6 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
             });
         });
 
-        // Enter inside the input triggers Generate too.
         input.addEventListener("keydown", function (ev) {
             if (ev.key === "Enter" && !button.disabled) {
                 ev.preventDefault();
@@ -193,23 +211,24 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
     }
 
     var api = {
-        configure: configure,
-        generate:  generate,
-        wirePanel: wirePanel,
-        BUILD_URL: BUILD_URL,
+        configure:   configure,
+        generate:    generate,
+        wirePanel:   wirePanel,
+        BUILD_URL:   BUILD_URL,
+        VALID_RNA:   VALID_RNA,
+        VALID_FORMS: VALID_FORMS,
     };
 
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     } else {
         root.molbuilder = root.molbuilder || {};
-        root.molbuilder.structureName = api;
+        root.molbuilder.structureRna = api;
         configure({
             fetch:         root.fetch
                             ? root.fetch.bind(root)
                             : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  _loadText,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {
@@ -222,7 +241,7 @@ const _loadText = (text, filename) => mvData.installMolecule({ text: text, filen
         if (root.molbuilder.runtime
             && typeof root.molbuilder.runtime.register === "function") {
             root.molbuilder.runtime.register(
-                "structure.name", api);
+                "structure.rna", api);
         }
     }
 })(typeof window !== "undefined" ? window : globalThis);

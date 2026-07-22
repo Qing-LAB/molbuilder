@@ -714,7 +714,7 @@ The following surfaces existed pre-Phase-10 but are now **deleted**:
 
 A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/molview/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py` (shipped 2026-06-09 with Phase 10 Fix 4).
 
-**Implementation status:** the legacy module paths `lib/structure/canvas-state.js` + `lib/selection/store.js` are GONE.  Their bodies live at `lib/molview/_canvas-state-impl.js` + `lib/molview/_selection-store-impl.js` — **MolView-internal** helpers the data model (`data-model.js`) loads to build its singletons.
+**Implementation status:** the legacy module paths `modify/structure/canvas-state.js` + `lib/selection/store.js` are GONE.  Their bodies live at `lib/molview/_canvas-state-impl.js` + `lib/molview/_selection-store-impl.js` — **MolView-internal** helpers the data model (`data-model.js`) loads to build its singletons.
 
 * Every consumer goes through `molview.data.*` (for the molecule) / `ws.*` (for persistence) — enforced by `tests/test_no_legacy_store_consumers.py`.
 * `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` are NO LONGER mounted in production.  The data model reads canvas-state from the private `window.molbuilder.workspace._canvasState` slot (still where `_canvas-state-impl.js` mounts it) and constructs its selection-store singleton via the `_createStore` factory at module init.

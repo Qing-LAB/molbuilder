@@ -54,7 +54,7 @@ These rules make the Save semantics one-line learnable:
 
 ## §2 The Save panel — button enablement
 
-Located in `lib/structure/save.js::refreshState()`.  The button
+Located in `modify/structure/save.js::refreshState()`.  The button
 disables when ANY of the following is true:
 
 | Disabled when | Why |
@@ -77,7 +77,7 @@ The readout text reflects the next user action:
 
 ## §3 The Save flow — step by step
 
-The implementation lives in `lib/structure/save.js::save()`.  On
+The implementation lives in `modify/structure/save.js::save()`.  On
 Save-button click:
 
 ### §3.1 Resolve destination directory
@@ -211,7 +211,7 @@ refused before the atomic write begins.
 ## §5 Default focus + safe-action discipline
 
 Both modals follow the warning-modal pattern (per
-`lib/structure/warning-modal.js`):
+`lib/warning-modal.js`):
 
 | Modal | Default focus | Destructive action |
 |---|---|---|

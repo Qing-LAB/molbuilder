@@ -10,7 +10,7 @@ disk-sidecar re-read when these keys are present.
 **Source of the labels (post MolView migration):** the labels are read
 straight off the concealed MolView data model — ``molview.data.getFrozen()``
 / ``getRegions()`` — at Generate time.  The earlier design fetched them via a
-client ``lib/structure/sidecar-labels.js`` helper at Load time and cached
+client ``modify/structure/sidecar-labels.js`` helper at Load time and cached
 them in tab-local ``_committed*`` / ``_current*`` variables; that helper +
 those caches were removed when the tabs migrated to reading the model
 directly (the sidecar is now applied server-side by ``/api/build/load``).  The

@@ -1,6 +1,6 @@
 """Unit tests for the Save panel module.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 save.js`` — the Sources-card panel that writes the workspace
 structure back to disk.
 
@@ -21,7 +21,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/save.js"
+MODULE = ROOT / "molbuilder/web/static/modify/structure/save.js"
 
 
 def _run_node(snippet: str) -> object:

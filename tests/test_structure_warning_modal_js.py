@@ -1,6 +1,6 @@
 """Unit tests for the Structure-tab discard-unsaved warning modal.
 
-Pins the public API of ``molbuilder/web/static/lib/structure/
+Pins the public API of ``molbuilder/web/static/modify/structure/
 warning-modal.js`` — the single-source-of-truth dialog for "you
 have unsaved canvas modifications, continuing will discard them"
 across the Structure tab.
@@ -30,7 +30,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/structure/warning-modal.js"
+MODULE = ROOT / "molbuilder/web/static/lib/warning-modal.js"
 
 
 # Minimum-viable DOM stub the modal helper needs:
