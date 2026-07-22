@@ -6373,7 +6373,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 return {
                     axes:          !!mb.axes,
                     style:         !!mb.style,
-                    format:        !!mb.fmt,
+                    format:        typeof formula === "function",   // imported from ./mol-format.js
                     projects:      !!mb.projects,
                     clipboard:     !!(root.navigator
                                       && root.navigator.clipboard),

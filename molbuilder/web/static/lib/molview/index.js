@@ -20,7 +20,7 @@
 // embed feature-detects at run time.  Loaded here so the whole embed is in the module graph (no
 // classic <script> stack); mount.js imports `viewer` from mol-viewer-embed.
 import "../mol-style.js";         // publishes window.molbuilder.style
-import "../mol-format.js";        // publishes window.molbuilder.fmt
+import "../mol-format.js";        // formula() -- re-exported below; no global (pure helper, imported)
 import "../mol-axes.js";          // publishes window.molbuilder.axes
 import "../mol-viewer.js";        // publishes window.molbuilder.viewer (base: .create)
 import "../mol-viewer-embed.js";  // extends the viewer with .embed

@@ -1,12 +1,11 @@
 /* molbuilder shared formatting helpers used by multiple viewers.
  *
  * Single source of truth for numeric / chemical-formula presentation so the Build and Modify
- * viewers can't drift.  A native ES module (the MolView embed graph); it ALSO publishes the
- * transitional ``window.molbuilder.fmt`` global for any not-yet-migrated classic reader.
+ * viewers can't drift.  A native ES module: every consumer `import { formula }`s it from the
+ * MolView door (molview/index.js) — there is NO `window.molbuilder.fmt` global (a pure stateless
+ * helper, so it was dropped once every reader imported it; molview-esm-finalization.md).
  */
 "use strict";
-
-const root = (typeof window !== "undefined") ? window : globalThis;
 
 /**
  * Format a list of element symbols as a Hill-ordered chemical formula string, with subscripts
@@ -34,8 +33,3 @@ export function formula(elements) {
     });
     return parts.join("");
 }
-
-// ── Transitional global (§3.2 shim): mirrors mol-style.js; classic consumers read molbuilder.fmt. ──
-root.molbuilder = root.molbuilder || {};
-root.molbuilder.fmt = root.molbuilder.fmt || {};
-root.molbuilder.fmt.formula = formula;
