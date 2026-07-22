@@ -10,11 +10,10 @@
  *   colorscheme : string | null (null/undefined drops the key so 3Dmol uses its defaultcolors)
  *
  * A native ES module (the MolView embed graph); it ALSO publishes the transitional
- * ``window.molbuilder.style`` global for any not-yet-migrated classic reader.
+ * Consumers `import { spec }` from it (the MolView embed graph); no window.molbuilder.style global.
  */
 "use strict";
 
-const root = (typeof window !== "undefined") ? window : globalThis;
 
 export function spec(opts) {
     opts = opts || {};
@@ -46,7 +45,3 @@ export function spec(opts) {
     }
 }
 
-// ── Transitional global (§3.2 shim).  Idempotent. ──
-root.molbuilder = root.molbuilder || {};
-root.molbuilder.style = root.molbuilder.style || {};
-root.molbuilder.style.spec = spec;

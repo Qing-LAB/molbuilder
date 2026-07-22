@@ -15,13 +15,14 @@
  * publish + exposing exports); the rest still load as classic <script> globals until they flip.
  * When `mount` and its whole subtree are modules, the classic stack + globals go away.
  */
-// The 3Dmol viewer embed (mol-*.js) -- now ES modules in the graph.  mol-viewer-embed imports
-// mol-viewer (the shared `viewer` object); mol-style/format/axes publish their globals which the
-// embed feature-detects at run time.  Loaded here so the whole embed is in the module graph (no
-// classic <script> stack); mount.js imports `viewer` from mol-viewer-embed.
-import "../mol-style.js";         // publishes window.molbuilder.style
+// The 3Dmol viewer embed (mol-*.js) -- ES modules in the graph.  mol-viewer-embed imports
+// mol-viewer (the shared `viewer` object) and imports mol-style/mol-format/mol-axes directly
+// (pure stateless helpers -- no globals; the embed `import`s spec/formula/axes).  Loaded here so
+// the whole embed is in the module graph (no classic <script> stack); mount.js imports `viewer`
+// from mol-viewer-embed.
+import "../mol-style.js";         // spec() -- imported by the embed; no global (pure helper)
 import "../mol-format.js";        // formula() -- re-exported below; no global (pure helper, imported)
-import "../mol-axes.js";          // publishes window.molbuilder.axes
+import "../mol-axes.js";          // axes.draw() -- imported by the embed; no global (pure helper)
 import "../mol-viewer.js";        // publishes window.molbuilder.viewer (base: .create)
 import "../mol-viewer-embed.js";  // extends the viewer with .embed
 import "./_atom-index.js";        // publishes window.molbuilder.atomIndexModel (transitional)

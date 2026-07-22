@@ -27,6 +27,8 @@
 // indented, harmless.)
 import { viewer } from "./mol-viewer.js";
 import { formula } from "./mol-format.js";   // Hill formula formatter (sibling in the molview embed graph)
+import { spec as buildStyleSpec } from "./mol-style.js";  // 3Dmol style-spec builder (Style menu)
+import { axes as molAxes } from "./mol-axes.js";          // xyz/cell axis drawer (Axes toggle)
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -2268,7 +2270,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     /* ------------------------------------------------------------ */
 
     function _applyStyle(viewer, style) {
-        const styleApi = (root.molbuilder || {}).style;
+        const styleApi = { spec: buildStyleSpec };
         let spec;
         if (styleApi && typeof styleApi.spec === "function") {
             // mol-style.js's switch uses ``ballstick`` (one word) for
@@ -2710,7 +2712,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             state.axesHandle = null;
         }
         if (!state.current.axes) return;
-        const axesApi = (root.molbuilder || {}).axes;
+        const axesApi = molAxes;
         if (!axesApi || typeof axesApi.draw !== "function") return;
         const a = state.current.axes;
         // "Show axes" is ALWAYS the Cartesian x/y/z compass at the world origin --
@@ -2753,7 +2755,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // corner as the box and scaled to the a/b/c lengths.  The Cartesian x/y/z
         // compass is the SEPARATE "Show axes" overlay (structure-periodicity.md
         // Issue #3).
-        const axesApi = (root.molbuilder || {}).axes;
+        const axesApi = molAxes;
         if (axesApi && typeof axesApi.draw === "function") {
             state.cellAxesHandle = axesApi.draw(state.viewer, {
                 cell:   lattice,
@@ -2877,7 +2879,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         _applyStyle(state.viewer, state.current.style);
 
         if (!state.current.overlays) return;
-        const styleApi = (root.molbuilder || {}).style;
+        const styleApi = { spec: buildStyleSpec };
         let atoms = [];
         try {
             const model = state.viewer.getModel();
@@ -6371,8 +6373,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // injection (§ 9.3 spec).
                 const mb = (root.molbuilder || {});
                 return {
-                    axes:          !!mb.axes,
-                    style:         !!mb.style,
+                    axes:          typeof molAxes.draw === "function",   // imported from ./mol-axes.js
+                    style:         typeof buildStyleSpec === "function", // imported from ./mol-style.js
                     format:        typeof formula === "function",   // imported from ./mol-format.js
                     projects:      !!mb.projects,
                     clipboard:     !!(root.navigator

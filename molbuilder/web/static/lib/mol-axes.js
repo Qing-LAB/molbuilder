@@ -40,7 +40,6 @@
  */
 "use strict";
 
-const root = (typeof window !== "undefined") ? window : globalThis;
 // (IIFE unwrapped -> native ES module; the former body stays indented, harmless.)
 
     // Fixed length for the Cartesian-mode triad.  At 1.5 Å the triad
@@ -233,6 +232,3 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         _buildAxisSpecs:  _buildAxisSpecs,  // exported for unit tests
         _looksLikeCell:   _looksLikeCell,   // exported for unit tests
     };
-    // ── Transitional global (§3.2 shim): mol-viewer-embed feature-detects molbuilder.axes. ──
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.axes = axes;
