@@ -101,11 +101,12 @@ header code {
 }
 
 /* ---- Status base (index variant; severity modifiers live in page-shell) ---- */
+/* Structure-opt layout tweak ONLY.  The base .status (color / font-size /
+ * line-height / severity modifiers) is owned by lib/page-shell.css, which this
+ * page also loads — do not re-declare those here (framework vs tab, symmetry). */
 .status {
     margin-top: 8px;
-    font-size: 0.88rem;
     min-height: 1.2em;
-    color: var(--text-secondary);
 }
 
 /* ---- Per-card issues panel (index workflow cards) ---- */

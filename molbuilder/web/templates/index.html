@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-components.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='structure-optimization/style.css') }}">
 {# 3Dmol + the mol-viewer stack now load via _molview_scripts.html at the end of
    the body (self-hosted vendor; CSP blocks third-party sources). #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
@@ -327,6 +327,6 @@
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-<script src="{{ url_for('static', filename='viewer.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='structure-optimization/viewer.js') }}"></script>
 </body>
 </html>

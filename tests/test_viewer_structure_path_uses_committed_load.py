@@ -32,7 +32,7 @@ import pytest
 
 
 REPO = Path(__file__).resolve().parents[1]
-VIEWER_JS = REPO / "molbuilder/web/static/viewer.js"
+VIEWER_JS = REPO / "molbuilder/web/static/structure-optimization/viewer.js"
 
 
 @pytest.fixture(scope="module")

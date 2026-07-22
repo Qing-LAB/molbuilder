@@ -148,6 +148,7 @@ tab: the ES-module conversion + `window` shim + node-test `import()` re-point (d
 
 - [`ui-design-contract.md`](ui-design-contract.md) — UI/CSS + the §7 module-boundary principles this doc realizes in JS.
 - [`molview-module.md`](molview-module.md) · [`vibrationview.md`](vibrationview.md) · [`workspace-contract.md`](workspace-contract.md) · [`projects-sidebar.md`](projects-sidebar.md) — the per-module designs.
+- [`molview-esm-finalization.md`](molview-esm-finalization.md) — **principles + plan for finishing MolView's ESM conversion** (fully concealed, dump the shims, one import door; the phased A→B→C→D order; consumer inventory; the structure-optimization dir move). Read this before touching MolView's loading.
 - [`molview-migration-plan.md`](molview-migration-plan.md) — the MolView core open-work tracker.
 - [`web-ui-coherence.md`](web-ui-coherence.md) — the data-coherence companion.
 - [`../architecture.md`](../architecture.md) — the top-level subsystem index.

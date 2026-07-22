@@ -63,3 +63,4 @@ export * from "./data-model.js";
 export * from "./measurement-overlay.js";
 export * from "./frame-controls.js";
 export { mount } from "./mount.js";
+export { formula } from "../mol-format.js";   // Hill chemical-formula formatter (consumers import this)

@@ -44,7 +44,7 @@ import pytest
 pytestmark = pytest.mark.module
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/viewer.js"
+MODULE = ROOT / "molbuilder/web/static/structure-optimization/viewer.js"
 
 
 def _extract_fn_source(name: str) -> str:

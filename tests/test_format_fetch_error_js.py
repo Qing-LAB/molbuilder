@@ -41,7 +41,7 @@ pytestmark = pytest.mark.module
 
 
 _ROOT = Path(__file__).resolve().parents[1]
-_VIEWER = _ROOT / "molbuilder/web/static/viewer.js"
+_VIEWER = _ROOT / "molbuilder/web/static/structure-optimization/viewer.js"
 
 
 def _have_node():

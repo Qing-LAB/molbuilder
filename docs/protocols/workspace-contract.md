@@ -611,10 +611,21 @@ The core is generic and **codec-pluggable**; nothing in it is structure-specific
 
 ### 4.7 The state timeline — indexed, push-only session persistence
 
+> **Whose feature this is.** The state timeline is **MolView's**, not the workspace's. It is a
+> MolView submodule (`molview-module.md §19.5`) whose job is letting the user retract molecule-edit
+> state. The workspace's ONLY role here is what it is for everything else: a **persistent-file
+> primitive** — store / read / prune **opaque, format-blind** indexed blobs in the project's
+> `.molbuilder_workspace/` subdir. The workspace neither knows nor cares that these blobs form an
+> "undo timeline"; it interprets **nothing**. MolView (the *consumer*) supplies all the meaning —
+> `state_index`, when to checkpoint, how retract moves the index, the prune-before-anchor policy —
+> and reaches this primitive through the workspace's public API. That layering (MolView = policy,
+> workspace = mechanism) is deliberate: building the timeline on a generic file primitive is the
+> natural, correct decision, and the transport stays here rather than being duplicated into MolView.
+
 The automatic session draft is **not** a single file that a debounce keeps fresh. It is a **sequence
 of indexed snapshot files** — the tab's undo timeline. The data model owns the timeline semantics
 (`state_index`, `save(delta)`, `load(delta)` — molview-module.md §19.5); the workspace is the format-blind
-store for it. What the workspace must provide:
+store for it. What the workspace provides (as the generic file primitive — nothing timeline-aware):
 
 - **Indexed save.** `persist(...)` files a snapshot under the identity `{workspace_id, state_index}`
   → `<projects_root>/.molbuilder_workspace/<workspace_id>.<state_index>.wc.json`. The dispatcher

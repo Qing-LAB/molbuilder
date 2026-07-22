@@ -511,7 +511,7 @@ class TestWorkflowGroupSchemaConsistency:
         import dataclasses
         from molbuilder.config.siesta import SiestaConfig
 
-        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+        viewer = (_LIB / ".." / "structure-optimization" / "viewer.js").resolve().read_text()
         # Extract the union of all stage-preset keys across the
         # three sub-presets (coarse / medium / tight).
         block = re.search(
@@ -560,7 +560,7 @@ class TestWorkflowGroupSchemaConsistency:
         allowlist is a silent no-op; an ID in the allowlist but
         not in any preset is dead config."""
         import re
-        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+        viewer = (_LIB / ".." / "structure-optimization" / "viewer.js").resolve().read_text()
 
         dict_block = re.search(
             r"const\s+STAGE_PRESETS\s*=\s*\{(.+?)\n\s*\};",
@@ -676,7 +676,7 @@ class TestWorkflowGroupSchemaConsistency:
         """
         import re
         chip = (_LIB / "detection-chip.js").resolve().read_text()
-        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+        viewer = (_LIB / ".." / "structure-optimization" / "viewer.js").resolve().read_text()
         transport = (_LIB / "transport" / "core.js").resolve().read_text()
 
         # The lib defines BOTH helpers.

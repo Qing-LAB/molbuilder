@@ -32,7 +32,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "molbuilder/web/static"
 
-VIEWER_JS = STATIC / "viewer.js"
+VIEWER_JS = STATIC / "structure-optimization" / "viewer.js"
 SPECTRA_CORE = STATIC / "lib/spectra/core.js"
 TRANSPORT_CORE = STATIC / "lib/transport/core.js"
 

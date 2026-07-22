@@ -31,6 +31,7 @@
  * /results where that banner doesn't exist.
  */
 
+import { mount } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -539,13 +540,13 @@
         const mv = mb.molview;
         const ws = mb.workspace;
         const host = $("viewer-host");
-        if (!host || !mv || typeof mv.mount !== "function" || !mv.data || !ws) {
+        if (!host || !mv || typeof mount !== "function" || !mv.data || !ws) {
             setStatus("Viewer unavailable: the MolView module / persistence "
                     + "layer is missing from results.html.", "error");
             return null;
         }
         try {
-            _mv = await mv.mount(host, ws, {
+            _mv = await mount(host, ws, {
                 mode:  "readonly",
                 owner: "results:trajectory",
             });

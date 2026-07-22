@@ -1,7 +1,7 @@
 # MolView module — contract
 
 > The **MolView module** is the **self-contained structure component**: the 3-D viewer, atom
-> selection, k-grid display, measurement — **and the in-memory data model behind them.** It
+> selection, measurement — **and the in-memory data model behind them.** It
 > **OWNS its data** (structure · selection · periodicity · frames) in memory and **conceals both
 > that data AND its API** in one module. Nothing outside reaches its data except through its API.
 >
@@ -59,21 +59,28 @@ page reuses molview by learning one small API. (The owner may still use the work
 ### B. The render — ONE coordinate pipeline → ONE draw
 
 molview turns the stored molecule into pixels with a **pipeline of coordinate steps** that
-ends in a **single 3dmol draw**. Every step only computes *which coordinates to show*;
-k-grid is the **last** step. There is **no second render and nothing layered on top.**
+ends in a **single 3dmol draw**. Every step only computes *which coordinates to show* and
+*what overlays to hang on them*; the **isolate** filter (show selected atoms only) is the one
+display-only step that changes the drawn atom set. There is **no second render and nothing
+layered on top** — one `process` pass → one `setStructure`.
 
 ```mermaid
 flowchart LR
-    SRC["source atom coords<br/>clean unit cell, from storage"]
-    SEL["step: isolate<br/>selected-only → which atoms are drawn"]
-    KG["step: k-grid tiling<br/>repeat by the lattice — LAST step"]
+    SRC["source atom coords<br/>clean, from the in-memory model"]
+    ISO["step: isolate (display-only)<br/>selected-only → which atoms are drawn"]
+    OVL["step: overlays<br/>labels · halos · force arrows · cell box · axes"]
     DRAW["3dmol draws — ONCE"]
-    SRC --> SEL --> KG --> DRAW
+    SRC --> ISO --> OVL --> DRAW
 ```
 
-"k-grid ON" only means the final list is the *repeated* unit cell instead of the bare one —
-3dmol still draws that one list once. It **always recomputes from the clean unit cell** in
-storage (never from an already-tiled list). Full detail: §14.
+Isolate is **display-only**: it filters the *render list*, never the stored data (`getFrame(i)`
+always returns the full, original-indexed coords). molview **always recomputes from the clean
+model** — never from an already-filtered list. Full detail: §14.
+
+> **k-grid is NOT a render step and has no place in molview.** It is an FDF/SIESTA
+> reciprocal-space *sampling* parameter that lives on `SiestaConfig` (config land), never on
+> molview's geometry or render. molview neither tiles the cell nor stores a k-grid. (Earlier
+> drafts of this doc showed a "k-grid tiling" render step — that was never built and is gone.)
 
 ### C. How molview holds its data — and persists through the workspace
 
@@ -103,23 +110,46 @@ writes those bytes format-blind (§C, §18.3).
 
 ### D. The API — what the owner calls (the contract with the owner)
 
+**The entry point is one ES-module import.** MolView is a native ES module; you embed it with a
+single import of its entry file — the whole dependency graph loads behind that one line, in the
+right order, with no hand-maintained `<script>` stack:
+
+```html
+<script type="module">
+  import { mount } from "/static/lib/molview/index.js";
+  const handle = await mount(hostEl, workspace, { mode: "modify", owner: "modify" });
+</script>
+```
+
+`mount` is **async** — it builds the card, embeds the 3Dmol viewer, mounts the panel, and
+resolves to the `handle`. (A transitional global `window.molbuilder.molview.mount` still exists
+for not-yet-migrated classic scripts, but new code imports `mount`; see §18.1 and the
+load-order note in §F.)
+
 The owner uses only these; it never sees storage:
 
 | Call | Plain meaning |
 |---|---|
-| `molview.mount(host, workspace, {mode, owner})` → `handle` | Put a molview on the page, backed by `workspace`, identified by `owner`. |
+| `mount(host, workspace, {mode, owner})` → `Promise<handle>` | Put a molview on the page, backed by `workspace`, identified by `owner`. Async. |
 | `handle.installMolecule({text, filename})` | "Install this molecule from text" (generators / demos). A project **file** loads through the projects sidebar door `projects.parser.openMolecule(path)` — which installs into the SAME model — because files are the projects package's job, not the handle's. |
 | `handle.getStructure()` / `handle.getSelection()` | "Give me the current molecule / what's selected" — a **copy**. |
 | `handle.exportFile()` / `handle.undo()` | "Export its bytes" / "retract one checkpoint (= `data.load(-1)`)." |
-| `handle.onChange(fn)` | "Tell me when something changed," so the page can refresh its own bits. |
+| `handle.onChange(fn)` → unsubscribe | "Tell me when something changed," so the page can refresh its own bits. Returns an off-fn. |
 | `handle.dispose()` | Remove the molview and release everything. |
+| `handle.ok` | `true` on a successful mount; a **failed** mount (e.g. host too narrow) resolves to `{ ok:false, error, dispose }` — check it. |
 | **Frame axis (§14.5)** — present for trajectories, inert for a static structure: | |
 | `handle.setFrame(i)` / `frameCount()` / `currentFrame()` / `getFrame(i)` | select / count / read the current frame / read one frame's coords. |
-| `handle.play()` / `pause()` / `isPlaying()` | drive playback (the frame bar's play button calls these). |
-| `handle.setFrameArrows(arrowsPerFrame)` / `setArrows(arrows)` / `setLabels(labels)` | draw the overlay the CONSUMER supplies (per-frame arrow set, single-frame arrows, or labels); MolView draws what it's handed + owns only the `overlayOn` show/hide (§14.5.1). |
+| `handle.play(opts)` / `pause()` / `isPlaying()` | drive playback (the frame bar's play button calls these). |
 
 `mode` = `"modify"` (editable) or `"readonly"` (view + inspect). `owner` = this molview's
 identity (e.g. `"modify"`, `"results:<id>"`) for namespaced persistence.
+
+**Overlays are data-driven, not handle calls.** There is no `setArrows` / `setLabels` /
+`setFrameArrows` on the handle (they were removed). Force vectors ride in **with the data**: the
+consumer hands frames + per-atom forces to `data.reloadFrames(frames, { forces })` (or
+`addFrames`), and the render engine builds the arrows itself (force → arrow is owned by
+`engine/process.js`, §14). The owner only toggles *visibility* through the view flags
+(`data.selection.setViewFlag("showForces", true)`); index labels and halos work the same way.
 
 The **frame-axis** rows are the full handle surface for trajectories (§14.5); on a single static
 structure they are still present but no-ops (`frameCount() === 1`, and the frame bar stays
@@ -168,11 +198,14 @@ sequenceDiagram
     Owner->>MV: handle.dispose()  (leaving the page)
 ```
 
-Owner code, in plain shape:
+Owner code, in plain shape (a `type="module"` script):
 
-```
-// 2-3: get the workspace, mount molview into the host
-const handle = await molview.mount(hostEl, workspace, { mode: "modify", owner: "modify" });
+```js
+import { mount } from "/static/lib/molview/index.js";
+
+// 2-3: get the workspace, mount molview into the host (async)
+const handle = await mount(hostEl, workspace, { mode: "modify", owner: "modify" });
+if (!handle.ok) { /* host too narrow, etc. — handle.error explains */ }
 
 // 4: wire page buttons to the API — NOT to storage
 //    (generated text installs directly; a project FILE goes via the projects door:
@@ -185,6 +218,30 @@ undoButton.onclick = () => handle.undo();
 handle.onChange(() => refreshTitle(handle.getStructure()));
 onPageLeave(() => handle.dispose());
 ```
+
+> **Load-order gotcha for classic co-scripts.** `molview/index.js` is a `<script type="module">`,
+> which the browser **defers** — it runs *after* every classic `<script>` on the page, just
+> before `DOMContentLoaded`. A `type="module"` consumer is safe automatically: its `import` of
+> the entry forces the whole graph (and its transitional `window.molbuilder.*` globals) to
+> execute *before* the consumer's own body. But a **classic** co-script on the same page must
+> **never capture a molview global in a load-time `const`** — at classic-load time the module
+> has not run yet, so `window.molbuilder.molview` / `.fmt` are still `undefined`. Read them at
+> **call time** instead:
+>
+> ```js
+> // WRONG — frozen undefined; the mount guard silently bails, no viewer ever appears:
+> const mv = window.molbuilder.molview;
+> function ensureMounted() { if (!mv) return; mv.mount(host, ws, opts); }
+>
+> // RIGHT — resolved when the click / whenReady / render actually fires (well after load):
+> const mv = () => window.molbuilder && window.molbuilder.molview;
+> function ensureMounted() { const m = mv(); if (!m) return; m.mount(host, ws, opts); }
+> ```
+>
+> (This exact bug took out the structure-optimization tab's viewer and the Modify tab's formula
+> readout during the ESM migration — both classic scripts, both froze `undefined`.) The clean
+> fix is to make the consumer a `type="module"` script and `import { mount }`; where that isn't
+> done yet, the call-time getter is mandatory.
 
 **The two real ways it's used** (same component, different workspace + mode):
 
@@ -1609,7 +1666,27 @@ are the ONLY save/load triggers; each fires `ws.persist(...)` / `ws.readState(..
 identity `{workspace_id, state_index+delta}`. The workspace writes/reads them format-blind
 (workspace-contract §4).
 
+> **Mechanism vs. policy — why the timeline calls the workspace (and why that is NOT a leak).**
+> The state timeline is a **MolView submodule** (`_state-timeline-impl.js`) that owns all the
+> *policy*: what a checkpoint means, when one is taken, how `state_index` moves, retract, the
+> prune-before-anchor sequencing. It owns **none** of the *mechanism*: it does not open files, key
+> filenames, or touch the server. For the bytes it **builds on top of the Workspace's persistent-file
+> primitive** — the generic, format-blind "store / read / prune indexed opaque blobs in the project's
+> `.molbuilder_workspace/` subdir" service ([`workspace-contract.md`](workspace-contract.md) §4.7) —
+> reached through the Workspace's **public API** (`getWorkspace().persist / readState /
+> pruneStatesAbove`), exactly like any consumer uses a module's door. This is correct layering, not
+> mixing: MolView keeps the meaning, the Workspace keeps the bytes; neither reaches into the other's
+> internals. Persisting the timeline is the *natural* use of a persistent-file primitive — the
+> transport belongs in the Workspace, **not** duplicated inside MolView.
+
 ### 19.5 The state timeline — one `save`/`load`, parameterized by an index delta
+
+**The state timeline is a self-contained MolView submodule** (`_state-timeline-impl.js`). Its
+purpose is narrow: preserve molecule-structure *session state* across a modification session so the
+user can **retract to a previous state**. It owns the retract *policy* end-to-end and stores its
+snapshots on the Workspace's persistent-file primitive (§19.4 "mechanism vs. policy"). MolView is its
+**only** user — but "only user" means the *logic* lives here, NOT that MolView re-implements file
+persistence: it consumes the Workspace's public byte-store, which is the correct, non-duplicative design.
 
 The model owns a **`state_index`**: the position in the tab's operation sequence. Each index is a
 full **state snapshot** on disk (`{workspace_id}.{state_index}.wc.json`). **`save(delta)` and

@@ -20,6 +20,7 @@
  * Design ref: docs/tabs/architecture.md § 8 (Transport tab —
  * Phase D form skeleton).
  */
+import { mount } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -213,7 +214,7 @@
         var proj = root.molbuilder && root.molbuilder.projects;
         var host = _$("transport-molview-host");
         if (!mv || !ws || !host
-                || typeof mv.mount !== "function"
+                || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
             return;
@@ -226,7 +227,7 @@
                 return;
             }
             if (_mvHandle && _mvHandle.ok) return;   // already mounted; the reload redrew it
-            return mv.mount(host, ws, { mode: "modify", owner: "transport" })
+            return mount(host, ws, { mode: "modify", owner: "transport" })
                 // Cache ONLY a live handle (mount contract: failure -> {ok:false}),
                 // so a failed mount doesn't permanently block a later remount.
                 .then(function (h) { _mvHandle = (h && h.ok) ? h : null; });

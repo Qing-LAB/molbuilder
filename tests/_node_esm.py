@@ -20,6 +20,12 @@ module converts — no per-module test churn at conversion time.
   * ``snippet`` : JS run after the imports. Top-level ``await`` is allowed (module context). It
                   MUST ``console.log(JSON.stringify(...))`` its result as the LAST stdout line.
   * ``globals_js``: extra browser-stub JS injected BEFORE the imports (fetch/AbortController/…).
+  * ``static_root``: when a file imports another module via the browser-absolute specifier
+                     ``/static/…`` (the URL Flask serves it under), Node's ESM loader would try
+                     the real filesystem root and fail. Pass the ``web/static`` dir here to install
+                     a resolve hook mapping ``/static/…`` → that dir — mirroring the browser's
+                     static root so consumer modules (e.g. ``import {mount} from
+                     "/static/lib/molview/index.js"``) resolve in Node too.
 """
 from __future__ import annotations
 
@@ -31,14 +37,31 @@ from pathlib import Path
 import pytest
 
 
-def run_node(files, snippet: str, *, globals_js: str = "", timeout: int = 20):
+def run_node(files, snippet: str, *, globals_js: str = "", static_root=None, timeout: int = 20):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
     imports = "\n".join(
         f"await import({json.dumps(Path(f).resolve().as_uri())});" for f in files
     )
+    hook = ""
+    if static_root is not None:
+        root_uri = Path(static_root).resolve().as_uri().rstrip("/") + "/"
+        hook = (
+            "import { registerHooks } from 'node:module';\n"
+            f"const __STATIC_ROOT = {json.dumps(root_uri)};\n"
+            "registerHooks({\n"
+            "  resolve(spec, ctx, next) {\n"
+            "    if (spec.startsWith('/static/')) {\n"
+            "      return { url: new URL(spec.slice('/static/'.length), __STATIC_ROOT).href,\n"
+            "               shortCircuit: true };\n"
+            "    }\n"
+            "    return next(spec, ctx);\n"
+            "  }\n"
+            "});\n"
+        )
     program = (
+        f"{hook}"
         "globalThis.window = globalThis;\n"
         "globalThis.molbuilder = globalThis.molbuilder || {};\n"
         f"{globals_js}\n"

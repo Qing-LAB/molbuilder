@@ -58,6 +58,6 @@
   <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 
   {#- External file (not inline) so it satisfies the app CSP script-src 'self'. -#}
-  <script src="{{ url_for('static', filename='molview/demo.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='molview/demo.js') }}"></script>
 </body>
 </html>

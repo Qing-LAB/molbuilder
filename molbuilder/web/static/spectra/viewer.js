@@ -34,6 +34,7 @@
  *     for the form's structure_text field.  Skipping the build/
  *     load roundtrip keeps the load fast.
  */
+import { mount } from "/static/lib/molview/index.js";
 (function () {
     "use strict";
 
@@ -94,20 +95,14 @@
         }
         if (title)   title.textContent   = filename || "loaded";
         if (atomsEl) atomsEl.textContent = String(nAtoms || elements.length || "—");
-        // Use the shared formula helper if available; else a
-        // minimal element-count fallback.
-        const fmt = (window.molbuilder && window.molbuilder.fmt
-                     && typeof window.molbuilder.fmt.formula === "function")
-            ? window.molbuilder.fmt.formula
-            : (els) => {
-                const counts = {};
-                els.forEach((e) => { counts[e] = (counts[e] || 0) + 1; });
-                return Object.keys(counts).sort()
-                    .map((k) => k + (counts[k] > 1 ? counts[k] : ""))
-                    .join("");
-            };
-        if (formula) formula.textContent = elements.length
-            ? fmt(elements) : "—";
+        // The Hill formula() belongs to the molview module (static/lib/mol-format.js, published as
+        // window.molbuilder.fmt.formula, pulled into the graph by molview/index.js) -- call it
+        // rather than re-implement the element counting here.  Resolved at CALL time: mol-format.js
+        // loads via <script type="module"> (DEFERRED) so it publishes after this classic script.
+        const fmt = window.molbuilder && window.molbuilder.fmt;
+        if (formula) formula.textContent =
+            (elements.length && fmt && typeof fmt.formula === "function")
+                ? fmt.formula(elements) : "—";
     }
 
     /**
@@ -126,7 +121,7 @@
         const ws   = window.molbuilder && window.molbuilder.workspace;
         const data = mv && mv.data;
         const proj = window.molbuilder && window.molbuilder.projects;
-        if (!mv || !ws || !data || typeof mv.mount !== "function"
+        if (!mv || !ws || !data || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
             setStatus("load-status",
@@ -200,7 +195,7 @@
                     // Cache ONLY a live handle (mount contract: failure ->
                     // {ok:false}); a failed mount must not stick, so the next
                     // structure load retries instead of staying viewer-less.
-                    const _h = await mv.mount(host, ws,
+                    const _h = await mount(host, ws,
                         { mode: "readonly", owner: "spectra" });
                     mvHandle = (_h && _h.ok) ? _h : null;
                 }

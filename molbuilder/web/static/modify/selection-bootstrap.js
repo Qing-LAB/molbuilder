@@ -17,6 +17,8 @@
  * in the module/store.  See docs/protocols/molview-module.md for the full
  * architecture.
  */
+import { mount } from "/static/lib/molview/index.js";
+
 (function () {
     "use strict";
 
@@ -52,12 +54,12 @@
         // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview
         // reacts to the workspace it was given.
         const _mv = window.molbuilder && window.molbuilder.molview;
-        if (!_mv || typeof _mv.mount !== "function") {
+        if (!_mv || typeof mount !== "function") {
             console.error("[selection-bootstrap] molview.mount missing");
             _renderFailure(host, "molview.mount module missing");
             return;
         }
-        const _mounted = await _mv.mount(host, window.molbuilder.workspace, {
+        const _mounted = await mount(host, window.molbuilder.workspace, {
             mode: "modify",
             owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
         });

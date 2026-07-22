@@ -196,7 +196,7 @@
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 {#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/vibrationview/mode-math.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
@@ -211,7 +211,7 @@
 <script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
 {# ...then specific-but-not-compound (.xyz/.pdb)... #}
-<script src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
 {# Markdown inspector (.md) -- split-pane editor + live preview.
    Registered BEFORE source.js so .md files dispatch to the rich
    editor rather than the read-only paginated viewer.  See task #32. #}

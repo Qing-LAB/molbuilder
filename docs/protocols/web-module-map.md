@@ -63,7 +63,13 @@ MolView consolidation). Contract: [`molview-module.md`](molview-module.md).
 (model: `installMolecule`, `exportFile`, `markSaved`, `save`/`load`/`undo`, `generate`,
 `applyOp`, frames, **+ `molview.data.selection`** = the store); `molview.selection.*`
 (panel / adapter / measurements — see § 2.4).
-**Loading:** IIFE + global-mount; `molview.data` also `require()`-able for node tests.
+**Loading:** **ES modules** — the whole `lib/molview/` package + the `mol-*.js` embed files are
+native ES modules aggregated by `molview/index.js` (single-import door: `import { mount } from
+"/static/lib/molview/index.js"`). Each module still *also* publishes its `window.molbuilder.*`
+value as a **transitional §3.2 shim** so the not-yet-migrated classic consumers (Modify's
+`viewer.js`/`periodicity.js`, the structure-generators, the structure-opt `viewer.js`, etc.) keep
+working; those shims come out package-by-package as their consumers become ES modules (§7). Node
+tests `import()` the modules (see `tests/_node_esm.py`).
 
 ### 2.4 Selection — a **sub-part of MolView** (§ 2.3), not its own module
 The store lives in `lib/molview/_selection-store-impl.js` and is exposed as
@@ -156,7 +162,7 @@ DELEGATES to three injected-factory submodules (the god-hub split) rather than d
 
 | Consumer | Uses |
 |---|---|
-| `viewer.js` (structure-optimization tab) | molview.mount, projects.parser, workspace |
+| `structure-optimization/viewer.js` (structure-opt tab; ES-module `import` consumer) | `import { mount, data, formula }` from molview door; projects.parser; workspace (classic global) |
 | `modify/selection-bootstrap.js` | molview.mount + selection.mountPanel + projects.parser |
 | `lib/spectra/core.js` | molview (read-only inspect) + VibrationView + Plotly |
 | `lib/transport/core.js` | molview + projects.parser + Generate POST from `molview.data.getFrozen/getRegions` |
@@ -203,7 +209,13 @@ DELEGATES to three injected-factory submodules (the god-hub split) rather than d
 
 **Today it's a hybrid, no bundler — Flask serves files raw:**
 - `lib/projects/*` (9 files) are **ES modules** (`import`/`export`), loaded via `<script type="module">`.
-- Everything else (~60 files) is **IIFE + global-mount** on `window.molbuilder.*`, loaded via plain `<script>` in a hand-ordered list; ~46 of these *also* `module.exports` so node-driven unit tests can `require()` them.
+- The **`lib/molview/` package + the `mol-*.js` embed files** are now **ES modules** too (aggregated
+  by `molview/index.js`), each *also* publishing a **transitional `window.molbuilder.*` shim** so its
+  still-classic consumers keep working until they migrate.
+- The remaining files (the tab consumers + `lib/structure/*` etc.) are still **IIFE + global-mount**
+  on `window.molbuilder.*`, loaded via plain `<script>`; many *also* `module.exports` for node
+  `require()`. **These are what still read MolView's shims** — so MolView's shims can only be dropped
+  as these consumers convert (the package-by-package plan below).
 
 **Should the IIFE modules become ES modules? (advantages vs cost)**
 
@@ -223,7 +235,14 @@ is broad and touches the most-used files.
 *Assessment:* the projects package proves native ESM works here with no build step, and
 the benefits (kill load-order fragility + make dependencies explicit) directly serve the
 provenance goal. But it's a **large, all-at-once-per-consumer** migration — a module can't
-be half-ESM/half-global for its consumers. **Recommendation: incremental, package-by-package**
-(next natural candidate: the `molview/` package, which is already internally cohesive),
-each package converted with its consumers in one commit — not a big-bang. Not urgent; do it
-when a package is next opened for other work.
+be half-ESM/half-global for its consumers. **Recommendation: incremental, package-by-package**,
+each package converted with its consumers — not a big-bang. Not urgent; do it when a package is
+next opened for other work.
+
+**Status (package-by-package):** `lib/projects/*` ✅ and the **`lib/molview/` package (+ `mol-*.js`)
+✅** are ES modules. MolView keeps its transitional `window.molbuilder.*` shims because its
+**consumers are not yet modules** — Modify (`modify/viewer.js`, `periodicity.js`,
+`selection-bootstrap.js`), the structure-opt `viewer.js`, `lib/structure/*`, `lib/transport/core.js`,
+`lib/trajectory/core.js`, `lib/inspectors/structure.js` still read the globals. **Dropping MolView's
+shims is therefore NOT a MolView-package task — it is gated on converting those consumers** (the next
+packages in this plan). Until then the shims are the correct, required bridge (§3 transition rule).

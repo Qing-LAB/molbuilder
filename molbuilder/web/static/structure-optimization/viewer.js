@@ -1,11 +1,19 @@
-/* molbuilder web UI client.
+/* molbuilder web UI client — the structure-optimization tab page controller.
  *
  * Three concerns:
  *   1. POST /api/build/molecule with the user's input -> get back XYZ + meta.
- *   2. Render the XYZ in 3Dmol with style controls.
+ *   2. Mount the concealed MolView component to render + inspect the structure.
  *   3. POST /api/build/fdf with the XYZ + form values -> get back FDF text,
  *      offer it as a Blob download.
+ *
+ * MolView is consumed through its ONE public door (molview-esm-finalization.md): the ES-module
+ * import below.  No `window.molbuilder.molview` / `.fmt` global reads — those are the transitional
+ * shims we are dumping.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
+ * classic global, read at call time.
  */
+import { mount as mvMount, data as mvData, formula as mvFormula }
+    from "/static/lib/molview/index.js";
+
 (function () {
     "use strict";
 
@@ -71,9 +79,11 @@
     // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
     // not edit geometry.  The structure lives in molview.data as the single source of
     // truth.  Mounted lazily on the first renderStructure().
-    const _mv   = window.molbuilder.molview;
-    const _ws   = window.molbuilder.workspace;
-    const _data = _mv && _mv.data;
+    // MolView is imported through its one door (top of file): `mvMount`, `mvData`, `mvFormula`.
+    // `_data()` returns the imported molview.data singleton.  Workspace is a SEPARATE module still
+    // published as a classic global (`window.molbuilder.workspace`); read it at call time.
+    const _ws   = () => (window.molbuilder && window.molbuilder.workspace) || null;
+    const _data = () => mvData;
     let _mvHandle = null;
 
     // ----- Status helpers --------------------------------------------
@@ -275,11 +285,12 @@
     // a separate sidecar fetch.  The Generate/preflight POST reads state.xyz + the
     // sidecar labels; the info panel reads the counts; all come off molview.data.
     function _applyLoadedModel(filename) {
-        const s = (_data && typeof _data.getStructure === "function")
-            ? _data.getStructure() : null;
+        const d = _data();
+        const s = (d && typeof d.getStructure === "function")
+            ? d.getStructure() : null;
         const atoms = (s && Array.isArray(s.atoms)) ? s.atoms : [];
-        const elements = (_data && typeof _data.getElements === "function")
-            ? _data.getElements() : atoms.map((a) => a && a.element);
+        const elements = (d && typeof d.getElements === "function")
+            ? d.getElements() : atoms.map((a) => a && a.element);
         const n_atoms = atoms.length;
         state.xyz = (s && s.text) || "";
         state.title = filename;
@@ -287,10 +298,10 @@
         state.pyscf = null;
         // The sidecar rode in on the door; read the labels straight off the model
         // (no out-of-band sidecarLabels.fetch -- that was the second read path).
-        state.regions      = (_data && typeof _data.getRegions === "function")
-            ? _data.getRegions() : {};
-        state.frozen_atoms = (_data && typeof _data.getFrozen === "function")
-            ? _data.getFrozen() : [];
+        state.regions      = (d && typeof d.getRegions === "function")
+            ? d.getRegions() : {};
+        state.frozen_atoms = (d && typeof d.getFrozen === "function")
+            ? d.getFrozen() : [];
         $("info-title").textContent     = filename;
         $("info-atoms").textContent     = n_atoms;
         $("info-residues").textContent  = "—";
@@ -678,7 +689,8 @@
             // mount the read-only card.  The Generate/preflight POST + info panel now
             // read the model, not a parallel hand-rolled response.
             _applyLoadedModel(filename);
-            const _atoms = ((_data && _data.getStructure && _data.getStructure())
+            const _d = _data();
+            const _atoms = ((_d && _d.getStructure && _d.getStructure())
                             || {}).atoms;
             setStatus("load-status",
                 `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
@@ -1040,11 +1052,10 @@
         });   // close runtime.whenReady("projects").then(...)
     }
 
-    // formula() lives in static/lib/mol-format.js; loaded by the
-    // template above.  Local alias keeps callers below readable.
-    const formula = (window.molbuilder && window.molbuilder.fmt
-                     ? window.molbuilder.fmt.formula
-                     : (els) => (els && els.length ? els.join("") : "—"));
+    // formula() is imported from MolView's door (mvFormula, top of file) — the Hill formatter in
+    // static/lib/mol-format.js.  Imported, so it is always the real function (no global-read, no
+    // load-order fallback, no "OHH" full-expansion bug).
+    const formula = mvFormula;
 
     // ----- 2. Render --------------------------------------------------
     // The standard knob bar (style picker / labels popover / axes /
@@ -1061,8 +1072,9 @@
     // reacts to the model on its own -- we must NOT re-install bare text here (that was
     // the old second load path, and it would drop the sidecar labels the door loaded).
     function _ensureMounted() {
-        if (!_mv || !_ws || !_data || _mvHandle) return;
-        _mv.mount($("viewer-host"), _ws,
+        const ws = _ws();
+        if (!ws || !mvData || _mvHandle) return;
+        mvMount($("viewer-host"), ws,
                 { mode: "readonly", owner: "structure-opt" })
             .then(function (h) { _mvHandle = h; })
             .catch(function (e) {

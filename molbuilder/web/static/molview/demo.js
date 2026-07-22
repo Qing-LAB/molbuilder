@@ -3,7 +3,12 @@
  * Mounts the FULL component via molview.mount's empty-host build path against the real
  * workspace, and wires the sample-load buttons.  External file (not inline) so it satisfies
  * the app CSP (script-src 'self').
+ *
+ * ES module: it IMPORTS { mount } from the concealed MolView module (the single-import contract)
+ * instead of reading the transitional window.molbuilder.molview.mount global.
  */
+import { mount } from "/static/lib/molview/index.js";
+
 (function () {
     "use strict";
 
@@ -47,7 +52,7 @@
         var statusEl = document.getElementById("demo-status");
         function say(m) { if (statusEl) statusEl.textContent = m; }
 
-        if (!ws || !mv || !data || typeof mv.mount !== "function" || !host) {
+        if (!ws || !mv || !data || typeof mount !== "function" || !host) {
             say("molview / workspace failed to load — check the console.");
             return;
         }
@@ -73,7 +78,7 @@
         // Load a first sample, THEN mount the full component (its render loop draws it on
         // onReady + re-draws whenever the workspace changes).
         load("water").then(function () {
-            return mv.mount(host, ws, { mode: "modify", owner: "molview-demo" });
+            return mount(host, ws, { mode: "modify", owner: "molview-demo" });
         }).then(function (handle) {
             if (!handle || !handle.ok) {   // mount contract: failure -> {ok:false}
                 say("Mount failed: " + ((handle && handle.error) || "unknown"));

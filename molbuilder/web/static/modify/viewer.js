@@ -263,20 +263,21 @@
     // text, not a File object.  Accepts XYZ and PDB content alike --
     // the server's /api/build/load sniffs the format.)
 
-    // formula() lives in static/lib/mol-format.js; loaded by the template above.  Used by
-    // the #title-readout updater (wired on the molview.data subscription in DOMContentLoaded).
-    const formula = (window.molbuilder && window.molbuilder.fmt
-                     ? window.molbuilder.fmt.formula
-                     : (els) => (els && els.length ? els.join("") : "—"));
-
     // Update the section header's #title-readout from the LIVE structure (unified API).
+    // The Hill formula() belongs to the molview module (static/lib/mol-format.js, published as
+    // window.molbuilder.fmt.formula and pulled into the graph by molview/index.js) -- we call it
+    // here rather than re-implement it.  Resolved at CALL time, never captured in a load-time
+    // const: mol-format.js loads via <script type="module"> (DEFERRED), so it publishes AFTER this
+    // classic script runs.  By the time the readout fires (on the molview.data subscription, well
+    // after every module has executed) fmt.formula is present.
     function _refreshTitleReadout() {
         const el = $("title-readout");
         if (!el) return;
         const d = _data();
         const s = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
         const title = (s && s.title) || "";
-        const f = formula(_elements());
+        const fmt = window.molbuilder && window.molbuilder.fmt;
+        const f = (fmt && typeof fmt.formula === "function") ? fmt.formula(_elements()) : "";
         el.textContent = title ? `${title} (${f})` : (s ? f : "");
     }
 

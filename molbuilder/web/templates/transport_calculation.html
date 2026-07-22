@@ -217,7 +217,7 @@
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 {# transport/core.js sources frozen_atoms + electrode regions from the mounted
    MolView model (molview.data) at Generate time — no separate sidecar-labels fetch. #}
-<script src="{{ url_for('static', filename='lib/transport/core.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/transport/core.js') }}"></script>
 
 </body>
 </html>

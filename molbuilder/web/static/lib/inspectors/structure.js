@@ -24,6 +24,7 @@
  * host is NOT a .molview-card, so molview.mount takes its empty-host build
  * path and owns the whole assembly).
  */
+import { mount } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -123,7 +124,7 @@
             (async () => {
                 if (disposed) return;
                 const mv = (root.molbuilder && root.molbuilder.molview) || null;
-                if (!mv || typeof mv.mount !== "function" || !mv.data) {
+                if (!mv || typeof mount !== "function" || !mv.data) {
                     status.textContent = (
                         "Viewer unavailable: the MolView module is missing "
                         + "from the template script tags."
@@ -152,7 +153,7 @@
                     // wired read-only (no assign/write controls); the measurement
                     // overlay and view-controls (Show selected only) all come
                     // for free through molview.mount.
-                    handle = await mv.mount(molviewHost, ws, {
+                    handle = await mount(molviewHost, ws, {
                         mode:  "readonly",
                         owner: "results:structure",
                     });

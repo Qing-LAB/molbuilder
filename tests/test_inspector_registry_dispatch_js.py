@@ -29,9 +29,6 @@ same contract over different inputs).
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -47,74 +44,44 @@ STATIC = ROOT / "molbuilder/web/static"
 # --------------------------------------------------------------------- #
 
 
-def _run_node(snippet: str) -> object:
-    """Load the registry + 4 inspector modules under Node + run the
-    snippet.  Returns the JSON-parsed last line of stdout.
+from _node_esm import run_node
 
-    The script-tag order in ``templates/results.html`` is load-bearing
-    — first-match-wins means a different order mis-routes compound
-    extensions (``.spectra.json`` → source instead of spectra).
-    Mirror that order exactly.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    bootstrap = """
-        // Minimal DOM stubs — the registry's match() functions are
-        // pure, but the inspector module IIFEs reach for `document` /
-        // `window` at load time when they wire helpers.  No-op stubs
-        // let the modules load; no test in this file reaches mount.
-        global.window = global;
-        global.globalThis = global;
-        global.document = {
-            createElement: () => ({
-                appendChild: () => undefined,
-                setAttribute: () => undefined,
-                style: {},
-            }),
-            createTextNode: () => ({}),
-            createDocumentFragment: () => ({ appendChild: () => undefined }),
-            getElementById: () => null,
-            querySelector: () => null,
-            querySelectorAll: () => [],
-        };
-        global.window.molbuilder = global.window.molbuilder || {};
-        global.window.molbuilder.runtime = {
-            register: () => undefined,
-            whenReady: () => Promise.resolve(),
-        };
-    """
-    modules = [
-        "lib/inspectors/registry.js",
-        "lib/inspectors/_partial_inspector_factory.js",
-        "lib/inspectors/trajectory.js",
-        "lib/inspectors/spectra.js",
-        "lib/inspectors/structure.js",
-        "lib/inspectors/source.js",
-    ]
-    full = bootstrap + "\n"
-    for rel in modules:
-        full += (STATIC / rel).read_text() + "\n"
-    full += snippet
-    with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".js", delete=False, encoding="utf-8") as tmp:
-        tmp.write(full)
-        tmp_path = tmp.name
-    try:
-        proc = subprocess.run(
-            [node, tmp_path],
-            capture_output=True, text=True, timeout=15,
-        )
-    finally:
-        try: Path(tmp_path).unlink()
-        except OSError: pass
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}"
-        )
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+# Mirror the results.html load order EXACTLY (first-match-wins routing).  structure.js is now an ES
+# module (it imports { mount }); the others are classic IIFEs.  run_node dynamic-imports each -- a
+# classic IIFE runs + publishes its global, an ES module runs + exports; structure.js's `import`
+# transitively loads the whole molview graph, which the DOM/storage stub below lets load in Node.
+_INSPECTOR_MODULES = [
+    STATIC / "lib/inspectors/registry.js",
+    STATIC / "lib/inspectors/_partial_inspector_factory.js",
+    STATIC / "lib/inspectors/trajectory.js",
+    STATIC / "lib/inspectors/spectra.js",
+    STATIC / "lib/inspectors/structure.js",
+    STATIC / "lib/inspectors/source.js",
+]
+
+_STUB = """
+globalThis.document = {
+    createElement: () => ({ appendChild(){}, setAttribute(){}, style:{},
+                            classList:{ add(){}, remove(){}, toggle(){}, contains:()=>false },
+                            querySelector:()=>null, querySelectorAll:()=>[], addEventListener(){} }),
+    createTextNode: () => ({}),
+    createDocumentFragment: () => ({ appendChild(){} }),
+    getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
+    addEventListener(){},
+};
+globalThis.localStorage   = { getItem:()=>null, setItem(){}, removeItem(){} };
+globalThis.sessionStorage = { getItem:()=>null, setItem(){}, removeItem(){} };
+globalThis.fetch = () => Promise.resolve({ ok:true, json:()=>Promise.resolve({}), text:()=>Promise.resolve("") });
+globalThis.molbuilder = globalThis.molbuilder || {};
+globalThis.molbuilder.runtime = { register:()=>undefined, whenReady:()=>Promise.resolve() };
+"""
+
+
+def _run_node(snippet: str) -> object:
+    """ES-module harness: dynamic-import the registry + inspector modules (in results.html order),
+    then run the snippet.  The stub lets the molview graph structure.js pulls in load in Node;
+    static_root resolves structure.js's browser-absolute ``/static/…`` import of molview/index.js."""
+    return run_node(_INSPECTOR_MODULES, snippet, globals_js=_STUB, static_root=STATIC)
 
 
 def _batch_eval(filenames: list[str], js_expr: str) -> dict[str, object]:
