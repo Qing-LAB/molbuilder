@@ -1131,10 +1131,12 @@ import { data as mvData, formula as mvFormula } from "/static/lib/molview/index.
     // sniffs the format from the filename + content and installs the
     // whole model atomically.  The function is named
     // ``loadStructureText`` because it genuinely accepts both formats.
-    // This global alias stays so existing consumers (the Sources-card
-    // generators' injected ``viewerLoader``, the page-mount test hook) keep
-    // working; they now flow through the unified load door rather than
-    // the old persistence-layer text loader that was removed.
+    // NOTE (ESM finalization): the Sources-card generators NO LONGER read this global -- they
+    // import { data } and inject their own ``(text,filename)=>data.installMolecule(...)`` adapter
+    // (molview-esm-finalization.md §4.1).  This alias is RETAINED only as (a) the page-mount E2E
+    // hook (test_molbuilder_e2e.py) and (b) the loader that emits the Modify #status feedback.
+    // FOLLOW-UP: remove it once the E2E hook is repointed to data.installMolecule and the "Loaded
+    // N-atom" status is rewired (it is the last window.molbuilder.* alias this file publishes).
     window.molbuilder.loadStructureText = async function (text, filename) {
         setStatus(`Loading ${filename}…`);
         const d = _data();

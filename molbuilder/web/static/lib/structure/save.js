@@ -35,6 +35,8 @@
  *
  * Design ref: docs/tabs/architecture.md § 5.6 (Save options).
  */
+import { data as mvData } from "/static/lib/molview/index.js";
+
 (function (root) {
     "use strict";
 
@@ -76,9 +78,7 @@
             _structurePage = root.molbuilder.structurePage;
         // DATA reads bind to molview.data (the in-memory model); ``workspace``
         // is now persistence-only.  Late-arriving mount: re-resolve at call time.
-        if (!_workspace     && root.molbuilder.molview
-                            && root.molbuilder.molview.data)
-            _workspace     = root.molbuilder.molview.data;
+        if (!_workspace) _workspace = mvData;
     }
 
     /**
@@ -392,8 +392,7 @@
             // DATA surface is molview.data (the in-memory model); ``workspace``
             // is persistence-only now.  Lazy-resolve in ``_lazyResolve`` also
             // picks up molview.data at call time so a late-arriving mount works.
-            workspace:     root.molbuilder.molview
-                        && root.molbuilder.molview.data,
+            workspace:     mvData,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

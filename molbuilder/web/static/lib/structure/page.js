@@ -55,6 +55,8 @@
  * Design ref: docs/tabs/architecture.md § 5.2 (no auto-load on
  * sidebar selection) + § 5.4 (warning-modal contract).
  */
+import { data as mvData } from "/static/lib/molview/index.js";
+
 (function (root) {
     "use strict";
 
@@ -190,11 +192,8 @@
         // page.js, so both are mounted at this point.  page.js binds
         // against ``molview.data`` for DATA ops; ``workspace`` is the
         // persistence layer and is not bound here.
-        if (root.molbuilder.molview
-            && root.molbuilder.molview.data
-            && root.molbuilder.warningModal) {
-            _bind(root.molbuilder.molview.data,
-                  root.molbuilder.warningModal);
+        if (mvData && root.molbuilder.warningModal) {
+            _bind(mvData, root.molbuilder.warningModal);
         }
         if (root.molbuilder.runtime
             && typeof root.molbuilder.runtime.register === "function") {

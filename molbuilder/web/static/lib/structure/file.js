@@ -33,6 +33,8 @@
  * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: file
  * upload, part of the "others" generator group).
  */
+import { data as mvData } from "/static/lib/molview/index.js";
+
 (function (root) {
     "use strict";
 
@@ -103,8 +105,7 @@
             // the single source; null if the model isn't reachable (test contexts).
             var n = null;
             try {
-                var d = root.molbuilder && root.molbuilder.molview
-                        && root.molbuilder.molview.data;
+                var d = mvData;
                 var s = d && typeof d.getStructure === "function" && d.getStructure();
                 if (s && Array.isArray(s.atoms)) n = s.atoms.length;
             } catch (_) { /* n_atoms is cosmetic */ }

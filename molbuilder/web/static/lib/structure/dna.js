@@ -23,6 +23,10 @@
  * Design ref: docs/tabs/architecture.md § 5.1 (panel 3: 3DNA
  * helix builder).
  */
+import { data as mvData } from "/static/lib/molview/index.js";
+// Sources-card loader adapter -> MolView's ONE door (data.installMolecule); no window.* global.
+const _loadText = (text, filename) => mvData.installMolecule({ text: text, filename: filename });
+
 (function (root) {
     "use strict";
 
@@ -59,8 +63,8 @@
             _fetch = root.fetch.bind(root);
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_viewerLoader && root.molbuilder.loadStructureText)
-            _viewerLoader = root.molbuilder.loadStructureText;
+        if (!_viewerLoader)
+            _viewerLoader = _loadText;
     }
 
     /**
@@ -376,7 +380,7 @@
                             ? root.fetch.bind(root)
                             : undefined,
             structurePage: root.molbuilder.structurePage,
-            viewerLoader:  root.molbuilder.loadStructureText,
+            viewerLoader:  _loadText,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

@@ -837,14 +837,14 @@
 {# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
    + the warning modal; the generators (smiles/name/dna/rna/...)
    wire their Generate buttons against structurePage. #}
-<script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/dna.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/rna.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/dna.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/rna.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save-dialog.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
 </body>
 </html>
