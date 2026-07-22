@@ -146,14 +146,28 @@ into `static/structure-optimization/`, matching `modify/` etc.:
 - [x] All consumers apply the read/load rule: `import { mount, formula }`; **look up** `molview.data`
       (never import it). Composition-root data injection reverted; `page.js` looks up at call time.
 - [x] `window.molbuilder.fmt` shim DROPPED (pure helper; every reader imports `formula`).
-- [ ] `window.molbuilder.style` / `.axes` shims — droppable the same way: the embed still reads them
-      via the global (`mol-viewer-embed.js` ~L2271/2713/2756/2880); convert to
-      `import { spec } from "./mol-style.js"` / `import { axes } from "./mol-axes.js"`, then delete
-      the publishes. **Touches the embed render path — verify a browser render (style + axes toggle).**
-- [ ] `window.molbuilder.molview.mount` shim — no readers (all `import { mount }`); droppable, but
-      mind `runtime.register("molview", …)` which reads the global.
-- [ ] KEEP (design seams, NOT shims): `molview.data` / `.selection` (live read doors, §D.0);
-      `molbuilder.viewer` (shared embed seal); the node-test-seam publishes.
+- [x] `window.molbuilder.style` / `.axes` shims DROPPED (commit `0d6bcb2`). `mol-style.spec` and
+      `mol-axes.draw` are stateless MolView-internal helpers, not external state — the embed now
+      `import`s them (`import { spec as buildStyleSpec } from "./mol-style.js"` / `import { axes as
+      molAxes } from "./mol-axes.js"`) instead of feature-detecting the globals; the dep-status
+      object reports them from the imports. Unused `const root` + the publishes removed from both
+      files; `index.js` comments corrected. **Browser-verified** on the demo: molecule renders
+      (style spec applied), axes toggle fires with 0 JS errors, both globals gone.
+- [x] `window.molbuilder.molview.mount` — **KEEP** (reclassified: it is a live seam, NOT a dead
+      shim). It has no *production* readers (all consumers `import { mount }`), but it is the node
+      entry point in `test_molview_mount_js.py` (`global.molbuilder.molview.mount(...)`) and the
+      mount-readiness sentinel in 3 E2E gates (`… && window.molbuilder.molview.mount`), and
+      `runtime.register("molview", …)` registers that namespace object (which also carries the kept
+      `.data` / `.selection` doors). Same category as the node-test seams below → stays.
+- [x] KEEP (design seams, NOT shims): `molview.data` / `.selection` (live read doors, §D.0);
+      `molview.mount` (node-test entry + E2E readiness sentinel, above); `molbuilder.viewer` (shared
+      embed seal); the node-test-seam publishes (`_selection-store-impl` / `_canvas-state-impl` /
+      `_state-timeline-impl`).
+
+**Result: every *dead transitional* shim is now gone (`fmt`, `style`, `axes`). What remains
+published are live seams — read doors, the shared-embed seal, and the node-test/E2E entry points —
+which are architecture, not migration scaffolding. The MolView ESM conversion's shim-cleanup is
+complete.**
 
 ---
 
