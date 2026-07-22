@@ -126,6 +126,64 @@ resolves to the `handle`. (A transitional global `window.molbuilder.molview.moun
 for not-yet-migrated classic scripts, but new code imports `mount`; see §18.1 and the
 load-order note in §F.)
 
+#### D.0 Reading is DECOUPLED from loading — two different things
+
+> **This is the core usage rule. Read it before touching MolView.**
+
+The molecule data lives **inside** MolView (it is concealed internal state). There are two
+completely separate concerns, and you must not conflate them:
+
+- **Loading / writing data is an EXPLICIT operation.** Data gets *into* MolView only through a
+  deliberate call — `installMolecule({text, …})` (from generated text), a project-file open
+  (`projects.parser.openMolecule(path)`), a modifier op (`applyOp`), or a checkpoint
+  (`save`/`load`). These are the *only* ways the model changes. Nothing loads data implicitly.
+- **Reading data is a SEPARATE, at-the-moment lookup.** Whoever wants the current data **asks
+  MolView for it at the moment it needs it** and gets **whatever MolView currently has — including
+  nothing**. A reader must **never hold a fixed reference to the data**; it looks it up each time.
+
+Concretely, that means only the **stateless** pieces are `import`ed; the **live data** is **looked
+up at runtime**:
+
+| What you need | How you get it | Why |
+|---|---|---|
+| `mount` (the entry) | `import { mount }` from the door | a function, always the same |
+| `formula(elements)` (a helper) | `import { formula }` from the door | a pure function, no state |
+| **the molecule data** | **look it up: `window.molbuilder.molview.data`** at the moment you read | it is MolView's live internal state; reading must return *what MolView has right now*, decoupled from when/how it was loaded |
+
+So a consumer that reads the model does, at read time:
+
+```js
+const data = window.molbuilder && window.molbuilder.molview && window.molbuilder.molview.data;
+const s = (data && data.getStructure) ? data.getStructure() : null;   // null = MolView has no data
+```
+
+**Never** `import { data }` and hold it — that wires the reader into MolView's internals and
+couples reading to loading. `window.molbuilder.molview.data` is therefore **not** a transitional
+shim to delete: it is MolView's permanent **front door for reading the current data**. (For tests,
+a module may accept an injected data stub through a `configure`/`_bind` seam — that is test
+plumbing; production always looks it up.)
+
+**How this fits the persistence layer + tab-return (the whole point of the split).** The
+persistence module (the **workspace**, `workspace-contract.md`) keeps each tab's session data
+recoverable across tab-switch / refresh. It plugs into the read/load split cleanly:
+
+- The workspace is **passed to `mount(host, workspace, {owner})`** — MolView *receives* it (it does
+  not import it; when the workspace itself becomes an ES module later, this injection point is
+  unchanged). `owner` namespaces the tab so tab A never restores tab B's data (`useNamespace(owner)`).
+- **Restore is a LOAD.** On mount / when the user returns to a tab, MolView restores that tab's
+  persisted session (`ws.readPersistedSnapshot()` → `applyWorkspacePayload` / `adoptSession`) —
+  i.e. it *loads* the saved bytes into `molview.data`. This is an explicit write, exactly like any
+  other load. **"What MolView holds when you switch back to a tab" = the data this restore loaded.**
+- **A data change PERSISTS.** After a load/edit/checkpoint, MolView serializes and calls
+  `ws.persist(...)` (namespaced by `owner`) so the session survives the next tab-switch/refresh.
+- **Reading is unaffected.** A reader still just looks up `window.molbuilder.molview.data` and gets
+  whatever is loaded *now* — which, right after a tab-return, is the restored data (or *nothing* if
+  that tab had none). Reading never triggers a load or a restore.
+- **On mount, defer to MolView's restore — do NOT clobber it.** A consumer that also loads on mount
+  (e.g. the projects sidebar reacting to a selection) MUST consult `ws.mountRestoreTarget()` and
+  stand down when the restore already owns the file (`workspace-contract.md §4.5`). Only *explicit
+  user action* (clicking Load / Generate) writes over a restored session.
+
 The owner uses only these; it never sees storage:
 
 | Call | Plain meaning |

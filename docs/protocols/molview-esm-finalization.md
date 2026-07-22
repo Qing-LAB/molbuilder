@@ -17,12 +17,21 @@ this doc collapses into a short "done" note and the design lives in
 1. **Architecture, not patching.** Do not paper over a broken global read with a call-time getter or
    a local shim. The fix is to convert the consumer to `import` from the module. Band-aids are
    forbidden; they leave the obsolete pattern in place.
-2. **One public door, fully concealed.** MolView is embedded through **exactly one** entry:
-   `import { mount, data, formula, … } from "/static/lib/molview/index.js"`. Nothing outside MolView
-   reaches its internals. Package-private files are never imported directly by a consumer.
-3. **Dump the transitional shims.** Every `window.molbuilder.molview.* / .fmt / .style / .axes /
-   .viewer = …` publish is transitional scaffolding. The end state has **zero** of them. Keeping
-   them is not acceptable as a resting state — they exist only to bridge the migration.
+2. **Import the stateless pieces; LOOK UP the live data.** This is the core rule (molview-module.md
+   §D.0). Two different things, never conflated:
+   - **`mount` and `formula`** are stateless → `import { mount, formula } from
+     "/static/lib/molview/index.js"`.
+   - **`molview.data`** is MolView's live internal state → **looked up at runtime**
+     (`window.molbuilder.molview.data`), **never imported or injected into a reader**. Reading is
+     decoupled from loading: loading/writing is an explicit op (`installMolecule`/`applyOp`/`save`);
+     reading returns *what MolView has right now* (including nothing). A fixed `import { data }`
+     wires the reader into MolView's internals and couples reading to loading — forbidden.
+     (Tests may inject a data stub through a `configure`/`_bind` seam; production always looks up.)
+3. **Dump the transitional shims that are pure scaffolding — but NOT the design seams.** Publishes
+   that only existed to bridge the migration (e.g. `window.molbuilder.fmt` once every reader
+   `import`s `formula`) get deleted. But **`window.molbuilder.molview.data` is a permanent front
+   door for reading** (rule 2), **not** scaffolding — it stays. Likewise `molview.data.selection`
+   (read the same way) and the projects↔molview lookup in `parser.js` (deliberate decoupling).
 4. **No blind moves / no blind sed.** Before moving or renaming, distinguish what belongs to the
    **whole web framework** from what belongs to **one tab**. Verify each change file-by-file; never a
    blanket namespace `sed`. (See [[feedback_no_blind_sed_namespace_rename]].)

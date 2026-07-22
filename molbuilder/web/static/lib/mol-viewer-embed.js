@@ -26,6 +26,7 @@
 // file resolves to the one object carrying create + embed.  (IIFE unwrapped; the former body stays
 // indented, harmless.)
 import { viewer } from "./mol-viewer.js";
+import { formula } from "./mol-format.js";   // Hill formula formatter (sibling in the molview embed graph)
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 
@@ -2252,9 +2253,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     function _formula(viewer) {
-        const fmt = (root.molbuilder || {}).fmt;
-        if (!fmt || typeof fmt.formula !== "function") return "";
-        return fmt.formula(_elements(viewer));
+        return formula(_elements(viewer));   // imported from ./mol-format.js
     }
 
     function _infoLineText(viewer) {
@@ -3820,13 +3819,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             throw _throwable(
                 "missing_dependency",
                 "viewer.embed: lib/mol-viewer.js must be loaded first"
-            );
-        }
-        if (!root.molbuilder || !root.molbuilder.fmt) {
-            throw _throwable(
-                "missing_dependency",
-                "viewer.embed: lib/mol-format.js must be loaded first "
-              + "(expected window.molbuilder.fmt)"
             );
         }
 
