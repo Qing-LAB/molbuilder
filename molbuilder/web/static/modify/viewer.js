@@ -20,7 +20,13 @@
  *
  * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
  */
-import { data as mvData, formula as mvFormula } from "/static/lib/molview/index.js";
+import { formula as mvFormula } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 
 (function () {
     "use strict";
@@ -47,7 +53,7 @@ import { data as mvData, formula as mvFormula } from "/static/lib/molview/index.
     // directly -- reload-restore is ``molview.data.load(0)`` (§19.5),
     // which reads the session mirror inside the data model.
     function _data() {
-        return mvData;   // the in-memory molview.data model, imported from the door
+        return _mvdata();   // the in-memory molview.data model, imported from the door
     }
 
     // ----- Selection helpers ----------------------------------------- //

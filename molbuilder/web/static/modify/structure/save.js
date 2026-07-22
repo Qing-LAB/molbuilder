@@ -75,8 +75,10 @@
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        // NOTE: _workspace (molview.data) is NOT self-wired -- the Modify composition
-        // root (selection-bootstrap.js) injects it via configure({workspace}).
+        // _workspace = molview.data, LOOKED UP live (molview-module.md §D.0); reading is
+        // decoupled from loading.  A test injects a stub via configure({workspace}).
+        if (!_workspace && root.molbuilder.molview && root.molbuilder.molview.data)
+            _workspace = root.molbuilder.molview.data;
     }
 
     /**
@@ -387,8 +389,8 @@
         configure({
             projects:      root.molbuilder.projects,
             structurePage: root.molbuilder.structurePage,
-            // workspace (molview.data) is injected by the composition root
-            // (selection-bootstrap.js) after it mounts MolView -- not self-wired here.
+            // workspace (molview.data) is LOOKED UP in _lazyResolve at call time; a test
+            // may inject a stub here via configure({workspace}).
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

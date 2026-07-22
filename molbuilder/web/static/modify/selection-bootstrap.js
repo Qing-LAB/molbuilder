@@ -17,7 +17,13 @@
  * in the module/store.  See docs/protocols/molview-module.md for the full
  * architecture.
  */
-import { mount, data as mvData } from "/static/lib/molview/index.js";
+import { mount } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. page/save/file look it up themselves; here it's the guard + store read.
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 
 (function () {
     "use strict";
@@ -53,7 +59,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
         // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview
         // reacts to the workspace it was given.
-        if (typeof mount !== "function" || !mvData) {
+        if (typeof mount !== "function" || !_mvdata()) {
             console.error("[selection-bootstrap] molview import missing");
             _renderFailure(host, "molview module missing");
             return;
@@ -63,25 +69,6 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
             owner: "modify",   // namespaces this tab's workspace saving points (§18.4)
         });
         if (!_mounted || !_mounted.ok) return;   // mount contract: failure -> {ok:false}; it warned already
-
-        // ---- COMPOSITION ROOT (molview-esm-finalization.md §4.1) --------------------------
-        // This bootstrap is the ONE place that imports molview.data; it now WIRES the Modify
-        // tab's structure orchestrators with it (+ the warning modal).  page/save/file.js are
-        // pure dependency-injection: they never reach for window.molbuilder.molview.data
-        // themselves.  Wired here, after MolView is mounted, so the model is live.
-        (function _wireStructureModules() {
-            const mb = window.molbuilder || {};
-            const wm = mb.warningModal;
-            if (mb.structurePage && wm && typeof mb.structurePage._bind === "function") {
-                mb.structurePage._bind(mvData, wm);
-            }
-            if (mb.structureSave && typeof mb.structureSave.configure === "function") {
-                mb.structureSave.configure({ workspace: mvData });
-            }
-            if (mb.structureFile && typeof mb.structureFile.configure === "function") {
-                mb.structureFile.configure({ workspace: mvData });
-            }
-        })();
 
         // (The old store-loader injection is gone: the store no longer holds a
         // structure loader -- the render engine draws from molview.data, and file
@@ -107,7 +94,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         // file, adopt session, subscribe to selection changes).  This
         // is the only surface; the legacy ``selection.store`` global
         // is a private implementation detail.
-        const store    = mvData.selection;
+        const store    = _mvdata() && _mvdata().selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py

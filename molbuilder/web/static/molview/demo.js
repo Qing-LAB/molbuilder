@@ -7,7 +7,13 @@
  * ES module: it IMPORTS { mount } from the concealed MolView module (the single-import contract)
  * instead of reading the transitional window.molbuilder.molview.mount global.
  */
-import { mount, data as mvData } from "/static/lib/molview/index.js";
+import { mount } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 
 (function () {
     "use strict";
@@ -46,7 +52,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
 
     ready(function () {
         var ws   = window.molbuilder && window.molbuilder.workspace;     // persistence layer (separate module, classic global)
-        var data = mvData;                                               // the in-memory DATA model (imported from the molview door)
+        var data = _mvdata();                                               // the in-memory DATA model (imported from the molview door)
         var host = document.getElementById("molview-demo-host");
         var statusEl = document.getElementById("demo-status");
         function say(m) { if (statusEl) statusEl.textContent = m; }

@@ -20,7 +20,13 @@
  * Design ref: docs/tabs/architecture.md § 8 (Transport tab —
  * Phase D form skeleton).
  */
-import { mount, data as mvData } from "/static/lib/molview/index.js";
+import { mount } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 (function (root) {
     "use strict";
 
@@ -640,7 +646,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
             // back to the disk sidecar at structure_path (apply_labels_to_struct
             // keys on presence, not truthiness).
             var _genBody = { params: params, structure_path: _currentStructureFile };
-            var _mvData = mvData;
+            var _mvData = _mvdata();
             if (_mvData
                     && typeof _mvData.getFrozen === "function"
                     && typeof _mvData.getRegions === "function"

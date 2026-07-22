@@ -38,12 +38,10 @@
     "use strict";
 
     var _structurePage = null;
-    var _workspace     = null;   // molview.data -- injected by the composition root
 
     function configure(opts) {
         opts = opts || {};
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.workspace)     _workspace     = opts.workspace;
     }
 
     /**
@@ -106,7 +104,8 @@
             // the single source; null if the model isn't reachable (test contexts).
             var n = null;
             try {
-                var d = _workspace;
+                var d = root.molbuilder && root.molbuilder.molview
+                        && root.molbuilder.molview.data;
                 var s = d && typeof d.getStructure === "function" && d.getStructure();
                 if (s && Array.isArray(s.atoms)) n = s.atoms.length;
             } catch (_) { /* n_atoms is cosmetic */ }

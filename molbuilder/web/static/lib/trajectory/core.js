@@ -31,7 +31,13 @@
  * /results where that banner doesn't exist.
  */
 
-import { mount, data as mvData } from "/static/lib/molview/index.js";
+import { mount } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 (function (root) {
     "use strict";
 
@@ -539,7 +545,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         const mb = window.molbuilder || {};
         const ws = mb.workspace;
         const host = $("viewer-host");
-        if (!host || typeof mount !== "function" || !mvData || !ws) {
+        if (!host || typeof mount !== "function" || !_mvdata() || !ws) {
             setStatus("Viewer unavailable: the MolView module / persistence "
                     + "layer is missing from results.html.", "error");
             return null;
@@ -929,7 +935,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
     // live poll forces a full rebuild).
     async function rebuildModel(seekIdx) {
         await _mvReady;
-        if (!_mv || !mvData || !state.data
+        if (!_mv || !_mvdata() || !state.data
                 || !state.data.frames || !state.data.frames.length) {
             return;
         }
@@ -942,7 +948,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         const periodicity = (Array.isArray(lat) && lat.length === 3)
             ? { cell: lat } : null;
         try {
-            await mvData.installMolecule({
+            await _mvdata().installMolecule({
                 text:        firstFrameXyz,
                 filename:    (state.label || "trajectory") + ".xyz",
                 periodicity: periodicity,
@@ -964,7 +970,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
             // Build all frames into MolView's native animation ONCE, with the force
             // arrows for every frame baked in (arrowsPerFrame) -- playback then swaps
             // frames + arrows natively, no per-frame synthesis.
-            mvData.reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
+            _mvdata().reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
         } catch (e) {
             setStatus("Viewer failed to load frames: "
                 + (e && e.message ? e.message : String(e)), "error");
@@ -972,7 +978,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         }
         if (typeof seekIdx === "number"
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
-            try { mvData.setFrame(seekIdx); } catch (_) {}
+            try { _mvdata().setFrame(seekIdx); } catch (_) {}
         }
     }
 
@@ -2304,7 +2310,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
         // Either failing => NOT a provable continuation => full atomic rebuild instead.
         const boundaryOk = _frameEqualAt(oldData && oldData.frames,
                                          r.data && r.data.frames, oldLen - 1);
-        const countInSync = !_mv || (mvData.frameCount() === oldLen);
+        const countInSync = !_mv || (_mvdata().frameCount() === oldLen);
         const canAppend = _mv
             && sameAtomCount
             && newLen > oldLen
@@ -2416,12 +2422,12 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
             }
             let appendedOk = false;
             try {
-                mvData.addFrames(newCoords);
+                _mvdata().addFrames(newCoords);
                 // Post-check: the movie must now hold EXACTLY the server's count.
                 // A mismatch (an addFrame threw / dropped / doubled a frame) means
                 // the tail is out of sync -> resync via a full atomic rebuild rather
                 // than leave a wrong/extra frame on screen.
-                appendedOk = mvData.frameCount() === newLen;
+                appendedOk = _mvdata().frameCount() === newLen;
             } catch (_) { appendedOk = false; }
             if (!appendedOk) {
                 rebuildModel(wasAtEnd ? n - 1 : Math.min(prevFrame, n - 1));
@@ -2438,7 +2444,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
                     for (let i = oldLen; i < newLen; i++) {
                         newArrows.push(_buildArrowsForFrame(i));
                     }
-                    mvData.appendFrameArrows(newArrows);
+                    _mvdata().appendFrameArrows(newArrows);
                 }
                 // Follow the tail if the user was watching the end; otherwise leave
                 // the playhead where it is.

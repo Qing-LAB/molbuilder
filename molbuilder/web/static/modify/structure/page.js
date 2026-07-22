@@ -64,8 +64,15 @@
     // getLastSavedTo / subscribe.  ``molbuilder.workspace`` is the
     // persistence layer only and is no longer bound here.  Public
     // methods are unchanged so existing consumers see no API drift.
-    var _workspace = null;
-    var _modal     = null;
+    var _workspace = null;   // TEST override (set by _bind); production looks up (below)
+    var _modal     = null;   // TEST override (set by _bind); production looks up (below)
+
+    // molview.data + warningModal are LOOKED UP at call time (molview-module.md §D.0): read the
+    // LIVE model through the door, never import/auto-bind it (the molview module is deferred, so it
+    // is not published when this classic script loads).  A test injects stubs via _bind.
+    function _ws()  { return _workspace || (root.molbuilder && root.molbuilder.molview
+                                            && root.molbuilder.molview.data) || null; }
+    function _mod() { return _modal || (root.molbuilder && root.molbuilder.warningModal) || null; }
 
     function _bind(workspaceApi, modalApi) {
         if (!workspaceApi
@@ -89,7 +96,7 @@
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
      */
     function loadIntoCanvas(structure, source) {
-        if (!_workspace || !_modal) {
+        if (!_ws() || !_mod()) {
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
@@ -103,7 +110,7 @@
         // can't re-derive) are forwarded so the model keeps them.
         var filename = (source && source.file) || null;
         function _apply() {
-            return _workspace.installMolecule({
+            return _ws().installMolecule({
                 text:        structure.text,
                 filename:    filename,
                 source:      source || null,
@@ -118,17 +125,17 @@
             }).then(function () { return { ok: true }; });
         }
         // Empty canvas — load directly; no warning.
-        if (_workspace.isEmpty()) {
+        if (_ws().isEmpty()) {
             return _apply();
         }
         // Clean canvas — load directly; no warning.  The user has
         // saved (or just loaded) the current canvas; overwriting it
         // does not lose modifications.
-        if (!_workspace.isDirty()) {
+        if (!_ws().isDirty()) {
             return _apply();
         }
         // Dirty canvas — ask before overwriting.
-        return _modal.confirmDiscardUnsaved().then(function (proceed) {
+        return _mod().confirmDiscardUnsaved().then(function (proceed) {
             if (!proceed) {
                 return { ok: false, cancelled: true };
             }
@@ -137,37 +144,37 @@
     }
 
     function markDirtyAfterModification() {
-        if (!_workspace) {
+        if (!_ws()) {
             throw new Error("structure-page: not bound");
         }
-        _workspace.markDirty();
+        _ws().markDirty();
     }
 
     function markSavedTo(path) {
-        if (!_workspace) {
+        if (!_ws()) {
             throw new Error("structure-page: not bound");
         }
-        _workspace.markSaved(path);
+        _ws().markSaved(path);
     }
 
     function getCanvasSnapshot() {
-        if (!_workspace) {
+        if (!_ws()) {
             throw new Error("structure-page: not bound");
         }
         return {
-            isEmpty:      _workspace.isEmpty(),
-            isDirty:      _workspace.isDirty(),
-            structure:    _workspace.getStructure(),
-            source:       _workspace.getSource(),
-            lastSaveTo:   _workspace.getLastSavedTo(),
+            isEmpty:      _ws().isEmpty(),
+            isDirty:      _ws().isDirty(),
+            structure:    _ws().getStructure(),
+            source:       _ws().getSource(),
+            lastSaveTo:   _ws().getLastSavedTo(),
         };
     }
 
     function onCanvasChange(cb) {
-        if (!_workspace) {
+        if (!_ws()) {
             throw new Error("structure-page: not bound");
         }
-        return _workspace.subscribe(cb);
+        return _ws().subscribe(cb);
     }
 
     var api = {
@@ -184,11 +191,6 @@
     } else {
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structurePage = api;
-        // NO self-wire here.  page.js is PURE dependency-injection: the Modify tab's
-        // COMPOSITION ROOT (modify/selection-bootstrap.js, which imports molview.data)
-        // calls ``structurePage._bind(data, warningModal)`` after it mounts MolView.
-        // This module never reaches for window.molbuilder.molview.data itself
-        // (molview-esm-finalization.md: no self-wire / no global read).
         if (root.molbuilder.runtime
             && typeof root.molbuilder.runtime.register === "function") {
             root.molbuilder.runtime.register(

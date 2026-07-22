@@ -112,7 +112,6 @@ class TestHappyPath:
                         return {ok: true};
                     },
                 },
-                workspace: globalThis.molbuilder.molview.data,
             });
             const RAW = "3\\nH2O\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n";
             const r = await fileMod.loadText(RAW, "water.xyz");
@@ -141,7 +140,6 @@ class TestHappyPath:
                         return {ok: true};
                     },
                 },
-                workspace: globalThis.molbuilder.molview.data,
             });
             const RAW = "HEADER PDB\\nATOM ...\\nEND\\n";
             const r = await fileMod.loadText(RAW, "thing.pdb");

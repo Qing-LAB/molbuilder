@@ -12,7 +12,13 @@
  * TransportConfig, not geometry -- structure-periodicity.md.)
  * No auto-commit: editing a field only stages; the group's Update button commits.
  */
-import { data as mvData } from "/static/lib/molview/index.js";
+
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 
 (function () {
     "use strict";
@@ -23,7 +29,7 @@ import { data as mvData } from "/static/lib/molview/index.js";
     // DATA access (getStructure / get*Info / commitPeriodicity / subscribe) is the
     // in-memory model on molview.data; ``workspace`` is persistence-only now.
     function data() {
-        return mvData;   // the in-memory molview.data model, imported from the door
+        return _mvdata();   // the in-memory molview.data model, imported from the door
     }
     function hasStructure() {
         var w = data();

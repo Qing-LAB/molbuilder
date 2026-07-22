@@ -34,7 +34,13 @@
  *     for the form's structure_text field.  Skipping the build/
  *     load roundtrip keeps the load fast.
  */
-import { mount, data as mvData, formula as mvFormula } from "/static/lib/molview/index.js";
+import { mount, formula as mvFormula } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 (function () {
     "use strict";
 
@@ -113,7 +119,7 @@ import { mount, data as mvData, formula as mvFormula } from "/static/lib/molview
         // in mode:"readonly" for structure demonstration only (view toggles +
         // selection/cell panel, no editing).  Mounted lazily on the first load.
         const ws   = window.molbuilder && window.molbuilder.workspace;
-        const data = mvData;
+        const data = _mvdata();
         const proj = window.molbuilder && window.molbuilder.projects;
         if (!ws || !data || typeof mount !== "function"
                 || !proj || !proj.parser

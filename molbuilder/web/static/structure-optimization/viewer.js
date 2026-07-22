@@ -11,8 +11,14 @@
  * shims we are dumping.  Workspace (`window.molbuilder.workspace`) is a SEPARATE module, still a
  * classic global, read at call time.
  */
-import { mount as mvMount, data as mvData, formula as mvFormula }
+import { mount as mvMount, formula as mvFormula }
     from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 
 (function () {
     "use strict";
@@ -79,11 +85,11 @@ import { mount as mvMount, data as mvData, formula as mvFormula }
     // because this tab READS the structure (to generate SIESTA/PySCF scripts), it does
     // not edit geometry.  The structure lives in molview.data as the single source of
     // truth.  Mounted lazily on the first renderStructure().
-    // MolView is imported through its one door (top of file): `mvMount`, `mvData`, `mvFormula`.
+    // MolView is imported through its one door (top of file): `mvMount`, `_mvdata()`, `mvFormula`.
     // `_data()` returns the imported molview.data singleton.  Workspace is a SEPARATE module still
     // published as a classic global (`window.molbuilder.workspace`); read it at call time.
     const _ws   = () => (window.molbuilder && window.molbuilder.workspace) || null;
-    const _data = () => mvData;
+    const _data = () => _mvdata();
     let _mvHandle = null;
 
     // ----- Status helpers --------------------------------------------
@@ -1073,7 +1079,7 @@ import { mount as mvMount, data as mvData, formula as mvFormula }
     // the old second load path, and it would drop the sidecar labels the door loaded).
     function _ensureMounted() {
         const ws = _ws();
-        if (!ws || !mvData || _mvHandle) return;
+        if (!ws || !_mvdata() || _mvHandle) return;
         mvMount($("viewer-host"), ws,
                 { mode: "readonly", owner: "structure-opt" })
             .then(function (h) { _mvHandle = h; })

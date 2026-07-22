@@ -24,7 +24,13 @@
  * host is NOT a .molview-card, so molview.mount takes its empty-host build
  * path and owns the whole assembly).
  */
-import { mount, data as mvData } from "/static/lib/molview/index.js";
+import { mount } from "/static/lib/molview/index.js";
+// molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
+// §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
+function _mvdata() {
+    return (window.molbuilder && window.molbuilder.molview
+            && window.molbuilder.molview.data) || null;
+}
 (function (root) {
     "use strict";
 
@@ -123,7 +129,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
             // load-time cell override (edit it on the Cell page if a change is needed).
             (async () => {
                 if (disposed) return;
-                if (typeof mount !== "function" || !mvData) {
+                if (typeof mount !== "function" || !_mvdata()) {
                     status.textContent = (
                         "Viewer unavailable: the MolView module is missing "
                         + "from the template script tags."
@@ -190,7 +196,7 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
                         // Same file this owner left -> restore its session state
                         // (selection/camera) via the session-state timeline (a
                         // separate module), NOT a fresh open.
-                        await mvData.load(0);
+                        await _mvdata().load(0);
                     } else {
                         // Fresh open: the format-aware sidebar door reads the
                         // .xyz + .molstruct.json (labels/regions/frozen + periodicity)
@@ -214,8 +220,8 @@ import { mount, data as mvData } from "/static/lib/molview/index.js";
                     }
                     if (disposed) return;
 
-                    const elems = (typeof mvData.getElements === "function"
-                        && mvData.getElements()) || [];
+                    const elems = (typeof _mvdata().getElements === "function"
+                        && _mvdata().getElements()) || [];
                     status.textContent = elems.length > 0
                         ? "Loaded " + elems.length + " atoms."
                         : "Loaded.";
