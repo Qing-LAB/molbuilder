@@ -134,9 +134,9 @@ class TestBuildViewerDimensions:
         non-zero width AND height after the page boots.  A 0-width
         or 0-height canvas is the visual symptom of the CSS
         wrapper collapse bug (#198 stage 5 hotfix)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
-        w, h = _canvas_dimensions(page, "#viewer")
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host", timeout=_BOOT_TIMEOUT_MS)
+        w, h = _canvas_dimensions(page, "#molview-host")
         assert w > 0, f"viewer canvas width is {w}; expected > 0"
         assert h > 0, f"viewer canvas height is {h}; expected > 0"
 
@@ -149,12 +149,12 @@ class TestBuildViewerDimensions:
         failed to initialise (e.g. a regression that called
         ``viewer.create`` on a 0x0 host before this commit's
         double-rAF resize fix)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host", timeout=_BOOT_TIMEOUT_MS)
         # Give 3Dmol a beat to mount its WebGL canvas + the
         # embed's double-rAF resize() + render() to fire.
         page.wait_for_timeout(500)
-        assert _has_webgl_canvas(page, "#viewer"), (
+        assert _has_webgl_canvas(page, "#molview-host"), (
             "3Dmol WebGL canvas missing or 0x0 inside .mol-viewer-canvas; "
             "viewer is visually blank"
         )
@@ -239,8 +239,8 @@ class TestCameraControl:
         data: any} per § 3.13 even before any structure is
         loaded.  The opaque ``data`` field may be null/undefined;
         the discriminator + version MUST be stable."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(300)
         cam = page.evaluate("""
@@ -276,8 +276,8 @@ class TestCameraControl:
     def test_setCamera_round_trip(self, page, flask_server):
         """getCamera → mutate → setCamera back restores the view.
         The view BEFORE refit must round-trip via the opaque blob."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(300)
         result = page.evaluate("""
@@ -320,8 +320,8 @@ class TestCameraControl:
         """Per § 3.13 forward-compat: a CameraState with the wrong
         ``_viewer`` or ``_version`` is silently ignored — no
         error, no camera change."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(300)
         out = page.evaluate("""
@@ -367,8 +367,8 @@ class TestTestHandle:
 
     def test_test_handle_has_expected_methods(
             self, page, flask_server):
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         keys = page.evaluate("""
@@ -409,8 +409,8 @@ class TestTestHandle:
         ``format`` should all be true; the integration deps
         (projects / clipboard / mediaRecorder / gif) vary by
         environment."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         status = page.evaluate("""
@@ -446,8 +446,8 @@ class TestTestHandle:
             self, page, flask_server):
         """setOverlays with N halos should bump getOverlayShapeCount
         by N (visual-invariant assertion without _viewer3dmol)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -486,8 +486,8 @@ class TestTestHandle:
             self, page, flask_server):
         """getCanvasElement returns the 3Dmol-mounted <canvas>,
         not the wrapper div."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(300)
         kind = page.evaluate("""
@@ -525,8 +525,8 @@ class TestExportData:
         """clipboard target writes structure text via the injected
         clipboardApi.writeText mock; onExport fires with the right
         info."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -566,8 +566,8 @@ class TestExportData:
         """project target writes via the injected projectsApi.
         writeFile mock; path is constructed as currentDir + "/" +
         filename per § 2.5.4."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -610,8 +610,8 @@ class TestExportData:
     def test_export_to_project_rejects_when_no_active_dir(
             self, page, flask_server):
         """No currentDir → reject with code: no_project per § 5.3."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -649,8 +649,8 @@ class TestScreenshot:
 
     def test_screenshot_returns_dataurl_and_blob(
             self, page, flask_server):
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(500)
         out = page.evaluate("""
@@ -715,8 +715,8 @@ class TestHandleSurface:
         Regression test for D1/N1: spectra amplitude/speed sliders
         called setAnimation({amplitude: v}) on every tick, which
         previously normalised to null and STOPPED the vibration."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -763,8 +763,8 @@ class TestHandleSurface:
         (single: 1, pair: 2).  Pinned for #236: trajectory's atom-
         list row click drives picks via this API instead of a
         bespoke halo path."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -832,8 +832,8 @@ class TestHandleSurface:
         deselect and toggle the last-clicked atom back on -- so one stray
         atom stayed selected after every delete.  The buffer is cleared; the
         host re-syncs the pick display from its own store."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -894,8 +894,8 @@ class TestHandleSurface:
         single bad value, and asserts the error code + that the
         setter either halted (for halt cases) or proceeded with the
         documented default."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -973,8 +973,8 @@ class TestHandleSurface:
         cell}.  Regression test for B1 (#238) — VALID_AXES_MODES used
         to be ["auto", "world"] which silently coerced the legal
         cartesian / cell modes."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1016,8 +1016,8 @@ class TestHandleSurface:
         lattice on the current structure dispatches invalid_input
         + halts (so the user doesn't silently get Cartesian when
         they asked for cell)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1053,8 +1053,8 @@ class TestHandleSurface:
         """Per § 3.2 Phase 5d: getBackground + getLattice complete
         the D3/D4 round-trip story for the cell-bearing structures
         and background field that applyState already accepted."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1095,8 +1095,8 @@ class TestHandleSurface:
         getStructureText(), lattice: getLattice()}}) preserves the
         cell, which means setAxes({mode: "cell"}) keeps working
         post-restore."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1148,8 +1148,8 @@ class TestHandleSurface:
         null in _normalisePick — trajectory atom-pick halos
         rendered nothing.  Pin the alias + verify the embed
         actually draws a halo shape after setPickedIndices."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1196,8 +1196,8 @@ class TestHandleSurface:
         silently stopping playback.  /results trajectory's
         #speed and #loop sliders surfaced the bug to end users.
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1246,8 +1246,8 @@ class TestHandleSurface:
         the loop.  Single source of truth: state.current.animation
         .paused tracks state._anim.playing.
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1315,8 +1315,8 @@ class TestHandleSurface:
         value just before autoplay resumed.  Symptom: a user paused
         on frame 5 who snapshots+applies would land on frame 0.
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1385,8 +1385,8 @@ class TestHandleSurface:
         This test reads atom coords through 3Dmol's
         ``selectedAtoms({})`` after a ``setAnimationFrame`` call
         and asserts they match the frame's input coords."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1446,8 +1446,8 @@ class TestHandleSurface:
         spectra (mode animation didn't show).  This test runs the
         vibration for a couple of frames and asserts the atom's
         x position moves away from baseline."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1506,8 +1506,8 @@ class TestHandleSurface:
         right number of atoms but at wrong positions (silent
         try/catch around _loadStructure was the original concern)
         would have passed every state-machine test."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1558,8 +1558,8 @@ class TestHandleSurface:
         state, but if the 3Dmol setStyle({}, spec) call breaks
         silently, the canvas shows the old rep while the test still
         passes."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1616,8 +1616,8 @@ class TestHandleSurface:
         try/catch (line ~1226 of mol-viewer-embed.js), so a future
         3Dmol API rename would leave state advancing while the canvas
         kept the old colour."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1681,8 +1681,8 @@ class TestHandleSurface:
         verified the 3Dmol labels actually appeared with the right
         format.  Doc § 3.6 promises format dispatch maps
         'element'→element symbol, 'name'→atom name, 'index'→serial."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1755,8 +1755,8 @@ class TestHandleSurface:
         Compares the first and last blob byte-by-byte; for a real
         vibration their PNGs MUST differ because the atom positions
         are different at different cosine phases."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1827,8 +1827,8 @@ class TestHandleSurface:
         through a real coord change: snapshot at frame 2, advance to
         frame 5, applyState(snapshot), verify atom coords match frame
         2's input."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1890,8 +1890,8 @@ class TestHandleSurface:
         /modify viewer had a bespoke #radius input; the Phase 6b
         slider gives every embed consumer the same control through
         the documented contract instead of bespoke chrome."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -1955,15 +1955,15 @@ class TestHandleSurface:
         the wrap's right edge (the popover is wider than the
         Export trigger).
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
             async () => {
                 // Open the Export menu on the live #viewer card.
                 const det = document.querySelector(
-                    "#viewer .mol-viewer-menu-export");
+                    "#molview-host .mol-viewer-menu-export");
                 const summary = det.querySelector(":scope > summary");
                 summary.click();
                 await new Promise(r => requestAnimationFrame(r));
@@ -2012,8 +2012,8 @@ class TestHandleSurface:
         driving viewer state from a non-knob source (keyboard
         shortcut, restore-from-snapshot) leaves the chrome lying.
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2108,8 +2108,8 @@ class TestHandleSurface:
         the last-clicked atom back on after a delete).  Regression test
         for B2 (#238), updated for the silent-clear contract.
         """
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2168,8 +2168,8 @@ class TestHandleSurface:
         window.molbuilder.viewer.*.  Regression test for B3 (#238) —
         the doc used to list a fictional _normaliseExport and omit
         _normaliseKnobs from the actual export."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         present = page.evaluate("""
@@ -2199,8 +2199,8 @@ class TestHandleSurface:
         """Per § 9.4: the frame-strip exposes data-action="prev|play|
         next" + slider with aria-label="Trajectory frame".  Pinned by
         I2 (#238) — these selectors used to be promised but absent."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         present = page.evaluate("""
@@ -2251,8 +2251,8 @@ class TestHandleSurface:
         (#239) — overlays used to persist unconditionally, leaving
         index-keyed highlights pointing at the wrong atoms after a
         type-swap or file-swap."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2300,8 +2300,8 @@ class TestHandleSurface:
         trajectory animation in place; current frame index is
         preserved; playback continues if it was running.  Pinned
         for I10 (#239) — appendFrames had zero behavioral coverage."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2345,8 +2345,8 @@ class TestHandleSurface:
             self, page, flask_server):
         """Per § 5.3: appendFrames with wrong-atom-count frame fires
         invalid_input + halts (rejects the extension)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2387,8 +2387,8 @@ class TestHandleSurface:
         We can't easily probe 3Dmol's internal pivot, so we verify
         the call doesn't throw + that the underlying viewer.center
         was reached by comparing the camera pos before/after."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         ok = page.evaluate("""
@@ -2422,8 +2422,8 @@ class TestHandleSurface:
         by rebuilding the knob bar DOM in place + re-wiring it.
         Pinned for I10 (#239) — setKnobs had zero behavioral
         coverage."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2461,8 +2461,8 @@ class TestHandleSurface:
         """Per § 5.3: setKnobs with non-array backgroundPresets
         dispatches invalid_input.  Pinned for I10 (#239) — this row
         was not in the #237 case set."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         errs = page.evaluate("""
@@ -2492,8 +2492,8 @@ class TestHandleSurface:
         ``setX(getX())`` is idempotent — the embed's internal state
         diff equals the prior state, so no spurious re-renders happen.
         Pinned for Bundle 4 (#241)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2566,8 +2566,8 @@ class TestHandleSurface:
         capturing the modifier state at mousedown.  A press-then-
         release without movement (a click) does NOT fire it.
         Pinned for Bundle 4 (#241)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2647,8 +2647,8 @@ class TestHandleSurface:
         """Per § 3.15: a host onDragStart/onDragEnd callback that
         throws must not break pointer handling.  The embed catches +
         logs, then continues."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         ok = page.evaluate("""
@@ -2700,8 +2700,8 @@ class TestHandleSurface:
         index mapping itself).  ``preservePick: false`` forces clear
         even when elements DO match.  Regression test for Bundle 5
         (#242)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2753,8 +2753,8 @@ class TestHandleSurface:
         calling setOverlays before setStructure would clear them
         on the next structure swap; applyState gets the ordering
         right."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2806,8 +2806,8 @@ class TestHandleSurface:
         """Per § 4.2.2: the round-trip pattern getX-then-applyState
         round-trips cleanly.  Snapshot every section, then re-apply
         and verify the embed's state matches."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2864,8 +2864,8 @@ class TestHandleSurface:
     def test_applyState_bad_input_dispatches(self, page, flask_server):
         """Per § 5.3: applyState with a non-object argument fires
         invalid_input and halts."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         errs = page.evaluate("""
@@ -2893,8 +2893,8 @@ class TestHandleSurface:
         """Per § 3.2 + Phase 5b: captureFrames drives the animation
         deterministically + captures one PNG blob per frame.  For a
         2-fps × 1-sec capture, expect 2 blobs."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -2938,8 +2938,8 @@ class TestHandleSurface:
             self, page, flask_server):
         """Per § 5.3: captureFrames rejects with static_structure
         when ``opts.animation`` is null."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         code = page.evaluate("""
@@ -2967,8 +2967,8 @@ class TestHandleSurface:
         """Per § 5.3: exportAnimation({format: "webm"}) rejects with
         no_media_recorder when MediaRecorder is unavailable.  The
         testInjection slot lets the test force-mock the absence."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         code = page.evaluate("""
@@ -3009,8 +3009,8 @@ class TestHandleSurface:
         gif.min.js IS shipped in /static/vendor/ — the lazy-load
         path would otherwise succeed (covered separately by
         test_exportAnimation_gif_produces_real_blob)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         code = page.evaluate("""
@@ -3051,8 +3051,8 @@ class TestHandleSurface:
         proof that GIF export works — the test fails if either
         vendor file goes missing OR if the gif.js integration
         breaks."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         # Allow plenty of time — gif.js encodes off the main
         # thread but small frames still take a beat.
@@ -3112,8 +3112,8 @@ class TestHandleSurface:
             self, page, flask_server):
         """Per § 5.3: target ∉ {project, download} → invalid_input.
         Animation export has no clipboard target per § 3.2."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         code = page.evaluate("""
@@ -3152,8 +3152,8 @@ class TestHandleSurface:
         and resolves with {filename, bytes}.  Uses testInjection to
         supply a deterministic recorder so the test isn't tied to
         Chromium's MediaRecorder timing."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3210,8 +3210,8 @@ class TestHandleSurface:
         """target: "project" calls window.molbuilder.projects.
         writeFile.  Uses testInjection to mock the projects API so
         the test doesn't depend on a real project being open."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3277,8 +3277,8 @@ class TestHandleSurface:
         atom-count mismatch) must NOT clear or replace the active
         animation.  Pinned for #237: regression guard against a future
         edit that validates after _setAnimationImpl runs."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3340,8 +3340,8 @@ class TestHandleSurface:
         the full registry dispatch.
 
         Pins § 6.2 chrome-consistency across all five consumers."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         signatures = page.evaluate("""
@@ -3420,8 +3420,8 @@ class TestHandleSurface:
         Catches a regression where, say, a future tab silently mounts
         with the spectra dark backdrop, or spectra silently flips to
         white."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         actual = page.evaluate("""
@@ -3486,8 +3486,8 @@ class TestHandleSurface:
             self, page, flask_server):
         """The ``_test`` affordance object is documented in § 9.2
         and required by the test suite; it's not a function."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3576,8 +3576,8 @@ class TestAnimationRebuildPerf:
         timing infrastructure recorded the right number of samples
         and produced finite numbers — perf interpretation is by
         eye (look at the printed line)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         xyz = _make_synthetic_xyz(n_atoms)
@@ -3696,8 +3696,8 @@ class TestAnimationExportUX:
         silent drop.  This catches the JSON-only bug class where
         a Blob hitting JSON.stringify({text: blob}) flattens to
         {} and the file lands empty / errored."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3794,8 +3794,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """Same bug class as the animation case but for the .png
         screenshot path — also went through _writeToProject(Blob)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3841,8 +3841,8 @@ class TestAnimationExportUX:
         """Outside-click should dismiss any open knob-bar menu.
         Before Phase 6e the menu only closed when the user clicked
         the trigger again, which was annoying."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3895,8 +3895,8 @@ class TestAnimationExportUX:
         section affordance regardless of payload.  Buttons inside
         get disabled when state.current.animation is null, which
         is the visible no-op surface the test below now asserts."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -3939,8 +3939,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """Mounting a trajectory animation should reveal the
         Animation section in the Export menu."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         hidden = page.evaluate("""
@@ -3984,8 +3984,8 @@ class TestAnimationExportUX:
         dialog's Export button THEN puts up the progress modal.
         Cancelling the dialog runs nothing.  This test walks that
         full chain."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4084,8 +4084,8 @@ class TestAnimationExportUX:
         """Cancelling the params dialog should NOT trigger any
         export call.  exportAnimation must never run when the user
         cancels."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4155,8 +4155,8 @@ class TestAnimationExportUX:
         all the way through to the projectsApi.writeFile path.
         This guards against the dialog gathering values but the
         confirm handler still using defaults."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4220,8 +4220,8 @@ class TestAnimationExportUX:
         injected projectsApi.  This test stubs ONLY the real prod
         shape (``getCurrentDir``) and asserts save-to-project
         works."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4267,8 +4267,8 @@ class TestAnimationExportUX:
         test stubs and any host code still passing it work; this
         test pins that compat path so a future cleanup doesn't
         silently break it without flagging."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4312,8 +4312,8 @@ class TestAnimationExportUX:
         don't see a spurious error banner.  Mirrors the
         params-dialog Cancel policy (which already filters
         aborted)."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4383,8 +4383,8 @@ class TestAnimationExportUX:
     def test_dialog_escape_cancels_no_export(
             self, page, flask_server):
         """LANDMINE #6: Esc should cancel the params dialog."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4436,8 +4436,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """LANDMINE #6: Enter in any dialog field should confirm
         the export."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4485,8 +4485,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """LANDMINE #6: clicking the modal backdrop (outside the
         card) cancels the dialog without running the export."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4539,8 +4539,8 @@ class TestAnimationExportUX:
         """LANDMINE #9: handle.dispose() while a params dialog is
         up must remove the dialog from the DOM so it can't post
         edits to a dead handle."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4583,8 +4583,8 @@ class TestAnimationExportUX:
         rejects with code:"disposed" and the orchestrator filters
         it the same way it filters "aborted" — neither should
         surface as an onError to the host."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4628,8 +4628,8 @@ class TestAnimationExportUX:
         handler should NOT fire when the user presses Esc inside
         the embed's params dialog.  stopPropagation +
         stopImmediatePropagation guard this."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4680,8 +4680,8 @@ class TestAnimationExportUX:
         project saves; this test asserts the camelCase →
         snake_case conversion lands in state.js writeFile's call
         to apiWrite."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4729,8 +4729,8 @@ class TestAnimationExportUX:
         only asserted DOM emptiness miss leaks of the close()
         closures themselves.  This test reads the Set count via
         the test affordance."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4780,8 +4780,8 @@ class TestAnimationExportUX:
         ``aborted`` flag.  After the fix, _writeToProject re-codes
         an aborted envelope to ``code:"aborted"`` so the upstream
         catch filter silences it."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4858,8 +4858,8 @@ class TestAnimationExportUX:
 
         Trigger path: programmatic exportData with a writeFile
         that simulates the disposed reject."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4915,8 +4915,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """LANDMINE-1: a slow upload may complete after dispose;
         onExport must NOT fire on a dead handle."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -4971,8 +4971,8 @@ class TestAnimationExportUX:
         """LANDMINE-3: progress modal didn't honour Esc.  The
         params dialog did; users hit Esc on the modal and
         nothing happened.  Now Esc → Cancel."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -5050,8 +5050,8 @@ class TestAnimationExportUX:
         ONLY resolves abort when the signal fires, so a regression
         that drops opts.signal from _writeToProject would deadlock
         the await."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -5122,8 +5122,8 @@ class TestAnimationExportUX:
         """Phase 6e fourth-review LANDMINE-6: empty filename used
         to silently fall back to the default name; now the dialog
         shows an inline error and refuses to confirm."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
@@ -5191,8 +5191,8 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """LANDMINE-6 mirror: `../escape.xyz` etc must be caught
         client-side, not just by the server's path resolver."""
-        page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#viewer .mol-viewer-canvas",
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate("""
