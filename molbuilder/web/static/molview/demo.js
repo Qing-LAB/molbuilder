@@ -7,7 +7,7 @@
  * ES module: it IMPORTS { mount } from the concealed MolView module (the single-import contract)
  * instead of reading the transitional window.molbuilder.molview.mount global.
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData } from "/static/lib/molview/index.js";
 
 (function () {
     "use strict";
@@ -45,14 +45,13 @@ import { mount } from "/static/lib/molview/index.js";
     }
 
     ready(function () {
-        var ws   = window.molbuilder && window.molbuilder.workspace;     // persistence layer
-        var mv   = window.molbuilder && window.molbuilder.molview;
-        var data = mv && mv.data;                                        // the in-memory DATA model
+        var ws   = window.molbuilder && window.molbuilder.workspace;     // persistence layer (separate module, classic global)
+        var data = mvData;                                               // the in-memory DATA model (imported from the molview door)
         var host = document.getElementById("molview-demo-host");
         var statusEl = document.getElementById("demo-status");
         function say(m) { if (statusEl) statusEl.textContent = m; }
 
-        if (!ws || !mv || !data || typeof mount !== "function" || !host) {
+        if (!ws || !data || typeof mount !== "function" || !host) {
             say("molview / workspace failed to load — check the console.");
             return;
         }

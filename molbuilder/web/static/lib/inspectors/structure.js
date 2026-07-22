@@ -24,7 +24,7 @@
  * host is NOT a .molview-card, so molview.mount takes its empty-host build
  * path and owns the whole assembly).
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -123,8 +123,7 @@ import { mount } from "/static/lib/molview/index.js";
             // load-time cell override (edit it on the Cell page if a change is needed).
             (async () => {
                 if (disposed) return;
-                const mv = (root.molbuilder && root.molbuilder.molview) || null;
-                if (!mv || typeof mount !== "function" || !mv.data) {
+                if (typeof mount !== "function" || !mvData) {
                     status.textContent = (
                         "Viewer unavailable: the MolView module is missing "
                         + "from the template script tags."
@@ -191,7 +190,7 @@ import { mount } from "/static/lib/molview/index.js";
                         // Same file this owner left -> restore its session state
                         // (selection/camera) via the session-state timeline (a
                         // separate module), NOT a fresh open.
-                        await mv.data.load(0);
+                        await mvData.load(0);
                     } else {
                         // Fresh open: the format-aware sidebar door reads the
                         // .xyz + .molstruct.json (labels/regions/frozen + periodicity)
@@ -215,8 +214,8 @@ import { mount } from "/static/lib/molview/index.js";
                     }
                     if (disposed) return;
 
-                    const elems = (typeof mv.data.getElements === "function"
-                        && mv.data.getElements()) || [];
+                    const elems = (typeof mvData.getElements === "function"
+                        && mvData.getElements()) || [];
                     status.textContent = elems.length > 0
                         ? "Loaded " + elems.length + " atoms."
                         : "Loaded.";

@@ -34,7 +34,7 @@
  *     for the form's structure_text field.  Skipping the build/
  *     load roundtrip keeps the load fast.
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData, formula as mvFormula } from "/static/lib/molview/index.js";
 (function () {
     "use strict";
 
@@ -95,14 +95,9 @@ import { mount } from "/static/lib/molview/index.js";
         }
         if (title)   title.textContent   = filename || "loaded";
         if (atomsEl) atomsEl.textContent = String(nAtoms || elements.length || "—");
-        // The Hill formula() belongs to the molview module (static/lib/mol-format.js, published as
-        // window.molbuilder.fmt.formula, pulled into the graph by molview/index.js) -- call it
-        // rather than re-implement the element counting here.  Resolved at CALL time: mol-format.js
-        // loads via <script type="module"> (DEFERRED) so it publishes after this classic script.
-        const fmt = window.molbuilder && window.molbuilder.fmt;
-        if (formula) formula.textContent =
-            (elements.length && fmt && typeof fmt.formula === "function")
-                ? fmt.formula(elements) : "—";
+        // The Hill formula() is imported from MolView's door (mvFormula = mol-format.js).  `formula`
+        // here is the DOM readout node; mvFormula is the formatter function.
+        if (formula) formula.textContent = elements.length ? mvFormula(elements) : "—";
     }
 
     /**
@@ -117,11 +112,10 @@ import { mount } from "/static/lib/molview/index.js";
         // Read-only MolView — the SAME concealed component Modify/Transport mount,
         // in mode:"readonly" for structure demonstration only (view toggles +
         // selection/cell panel, no editing).  Mounted lazily on the first load.
-        const mv   = window.molbuilder && window.molbuilder.molview;
         const ws   = window.molbuilder && window.molbuilder.workspace;
-        const data = mv && mv.data;
+        const data = mvData;
         const proj = window.molbuilder && window.molbuilder.projects;
-        if (!mv || !ws || !data || typeof mount !== "function"
+        if (!ws || !data || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
             setStatus("load-status",

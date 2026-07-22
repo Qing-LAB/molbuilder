@@ -17,7 +17,7 @@
  * in the module/store.  See docs/protocols/molview-module.md for the full
  * architecture.
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData } from "/static/lib/molview/index.js";
 
 (function () {
     "use strict";
@@ -53,10 +53,9 @@ import { mount } from "/static/lib/molview/index.js";
         // uniform ws.* data interface) -- no store/embed/loader wiring here.  Modify's
         // DATA orchestration (loader, sidebar candidate, Load button) stays below; molview
         // reacts to the workspace it was given.
-        const _mv = window.molbuilder && window.molbuilder.molview;
-        if (!_mv || typeof mount !== "function") {
-            console.error("[selection-bootstrap] molview.mount missing");
-            _renderFailure(host, "molview.mount module missing");
+        if (typeof mount !== "function" || !mvData) {
+            console.error("[selection-bootstrap] molview import missing");
+            _renderFailure(host, "molview module missing");
             return;
         }
         const _mounted = await mount(host, window.molbuilder.workspace, {
@@ -89,7 +88,7 @@ import { mount } from "/static/lib/molview/index.js";
         // file, adopt session, subscribe to selection changes).  This
         // is the only surface; the legacy ``selection.store`` global
         // is a private implementation detail.
-        const store    = window.molbuilder.molview.data.selection;
+        const store    = mvData.selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py

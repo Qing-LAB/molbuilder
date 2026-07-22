@@ -31,7 +31,7 @@
  * /results where that banner doesn't exist.
  */
 
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -537,10 +537,9 @@ import { mount } from "/static/lib/molview/index.js";
     let _mv = null;
     const _mvReady = (async function mountMolView() {
         const mb = window.molbuilder || {};
-        const mv = mb.molview;
         const ws = mb.workspace;
         const host = $("viewer-host");
-        if (!host || !mv || typeof mount !== "function" || !mv.data || !ws) {
+        if (!host || typeof mount !== "function" || !mvData || !ws) {
             setStatus("Viewer unavailable: the MolView module / persistence "
                     + "layer is missing from results.html.", "error");
             return null;
@@ -930,8 +929,7 @@ import { mount } from "/static/lib/molview/index.js";
     // live poll forces a full rebuild).
     async function rebuildModel(seekIdx) {
         await _mvReady;
-        const mv = window.molbuilder && window.molbuilder.molview;
-        if (!_mv || !mv || !mv.data || !state.data
+        if (!_mv || !mvData || !state.data
                 || !state.data.frames || !state.data.frames.length) {
             return;
         }
@@ -944,7 +942,7 @@ import { mount } from "/static/lib/molview/index.js";
         const periodicity = (Array.isArray(lat) && lat.length === 3)
             ? { cell: lat } : null;
         try {
-            await mv.data.installMolecule({
+            await mvData.installMolecule({
                 text:        firstFrameXyz,
                 filename:    (state.label || "trajectory") + ".xyz",
                 periodicity: periodicity,
@@ -966,7 +964,7 @@ import { mount } from "/static/lib/molview/index.js";
             // Build all frames into MolView's native animation ONCE, with the force
             // arrows for every frame baked in (arrowsPerFrame) -- playback then swaps
             // frames + arrows natively, no per-frame synthesis.
-            mv.data.reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
+            mvData.reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
         } catch (e) {
             setStatus("Viewer failed to load frames: "
                 + (e && e.message ? e.message : String(e)), "error");
@@ -974,7 +972,7 @@ import { mount } from "/static/lib/molview/index.js";
         }
         if (typeof seekIdx === "number"
                 && seekIdx > 0 && seekIdx < coordFrames.length) {
-            try { mv.data.setFrame(seekIdx); } catch (_) {}
+            try { mvData.setFrame(seekIdx); } catch (_) {}
         }
     }
 
@@ -2306,8 +2304,7 @@ import { mount } from "/static/lib/molview/index.js";
         // Either failing => NOT a provable continuation => full atomic rebuild instead.
         const boundaryOk = _frameEqualAt(oldData && oldData.frames,
                                          r.data && r.data.frames, oldLen - 1);
-        const countInSync = !_mv || (window.molbuilder.molview.data
-                                        .frameCount() === oldLen);
+        const countInSync = !_mv || (mvData.frameCount() === oldLen);
         const canAppend = _mv
             && sameAtomCount
             && newLen > oldLen
@@ -2412,7 +2409,6 @@ import { mount } from "/static/lib/molview/index.js";
             // timer), so a running animation keeps playing and the camera / the
             // user's frame position don't snap.  MolView's frame bar counter
             // updates itself off the store notification.
-            const mvData = window.molbuilder.molview.data;
             const newCoords = [];
             for (let i = oldLen; i < newLen; i++) {
                 newCoords.push(r.data.frames[i].map(

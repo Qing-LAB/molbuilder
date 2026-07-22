@@ -20,7 +20,7 @@
  * Design ref: docs/tabs/architecture.md § 8 (Transport tab —
  * Phase D form skeleton).
  */
-import { mount } from "/static/lib/molview/index.js";
+import { mount, data as mvData } from "/static/lib/molview/index.js";
 (function (root) {
     "use strict";
 
@@ -209,11 +209,10 @@ import { mount } from "/static/lib/molview/index.js";
      * failed to load, the tab still works as a form generator (the viewer is an aid).
      */
     function _showInMolview(path) {
-        var mv   = root.molbuilder && root.molbuilder.molview;
         var ws   = root.molbuilder && root.molbuilder.workspace;
         var proj = root.molbuilder && root.molbuilder.projects;
         var host = _$("transport-molview-host");
-        if (!mv || !ws || !host
+        if (!ws || !host
                 || typeof mount !== "function"
                 || !proj || !proj.parser
                 || typeof proj.parser.openMolecule !== "function") {
@@ -641,8 +640,7 @@ import { mount } from "/static/lib/molview/index.js";
             // back to the disk sidecar at structure_path (apply_labels_to_struct
             // keys on presence, not truthiness).
             var _genBody = { params: params, structure_path: _currentStructureFile };
-            var _mvData = root.molbuilder && root.molbuilder.molview
-                       && root.molbuilder.molview.data;
+            var _mvData = mvData;
             if (_mvData
                     && typeof _mvData.getFrozen === "function"
                     && typeof _mvData.getRegions === "function"
