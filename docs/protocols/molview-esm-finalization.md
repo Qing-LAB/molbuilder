@@ -99,6 +99,19 @@ Internal MolView cross-module global-reads to convert to imports (Phase B): `dat
 (`molview.selection.store`), `selection/panel.js` (`molview.data`), `mol-viewer-embed.js`
 (`molbuilder.fmt`), plus the node-test seams.
 
+### 4.1 Kill the `window.molbuilder.loadStructureText` global
+
+`modify/viewer.js` publishes `window.molbuilder.loadStructureText(text, filename)` — a thin alias
+that just calls `molview.data.installMolecule({text, filename})` (+ a status message). The Sources-card
+generators (`lib/structure/{smiles,dna,rna,peptide,name}.js`) consume it as their injected
+`viewerLoader` (a dependency-injection seam, kept via `configure({viewerLoader: …})` + a
+`_lazyResolve` fallback). This is a transitional `window.molbuilder.*` shim and comes out in Phase B/C:
+
+- The generators become ES modules and inject **`data.installMolecule`** (imported from the door,
+  bound) as their `viewerLoader` — the DI pattern stays, the *global* goes.
+- `modify/viewer.js` stops publishing `window.molbuilder.loadStructureText`; the global disappears.
+- Net: the load path is `generator → data.installMolecule` through imports, no global alias.
+
 ---
 
 ## 5. The structure-optimization dir move (symmetry — principle 5)
@@ -126,7 +139,8 @@ into `static/structure-optimization/`, matching `modify/` etc.:
 - [x] structure-opt `style.css` stripped to tab-only (`.status` reduced to its layout tweak; page-shell owns the base — zero visual change).
 - [x] Test path refs updated for the move; affected suites green (`test_format_fetch_error`/`test_form_state_persistence`/`test_viewer_structure_path`/`test_in_body_labels`/`test_live_poll_invariants` = 49 pass; `test_web`/`test_xss_audit`/`test_css_no_duplicate_selectors` = 515 pass).
 - [x] Phase B (already-module consumers): `demo.js`, `modify/selection-bootstrap.js`, `spectra/viewer.js`, `lib/transport/core.js`, `lib/inspectors/structure.js`, `lib/trajectory/core.js` — all `window.molbuilder.molview`/`.fmt` reads replaced with `import { data, formula }`; syntax-clean; demo browser-verified (card mounts, water loads).
-- [ ] Phase B (classic consumers → module): `modify/viewer.js`, `modify/periodicity.js`, `lib/structure/{file,save,page}.js`.
+- [x] Phase B (Modify classic files): `modify/viewer.js` + `modify/periodicity.js` → `import { data, formula }`; modify.html tags → `type="module"`. **Browser-verified**: card mounts, `title-readout`=`H2O` (imported formula), `loadStructureText("water")`→ok (Sources-card loader path works with viewer.js deferred, via `_lazyResolve`).
+- [ ] Phase B (classic consumers → module): `lib/structure/{smiles,dna,rna,peptide,name,file,save,page}.js` (Sources-card generators) → import `data`; inject `data.installMolecule` adapter as `viewerLoader`; then delete the `loadStructureText` global from `modify/viewer.js` (§4.1).
 - [ ] Phase B: internal cross-module reads (`data-model.js`, `selection/panel.js`, `mol-viewer-embed.js`) + node-test seams converted.
 - [ ] Phase C: all transitional shim publishes deleted (per-global, re-grep first).
 - [ ] Phase D: `molview-module.md` / `web-module-map.md` updated; full suite + every tab browser-verified.

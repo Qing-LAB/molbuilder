@@ -20,6 +20,8 @@
  *
  * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
  */
+import { data as mvData, formula as mvFormula } from "/static/lib/molview/index.js";
+
 (function () {
     "use strict";
 
@@ -45,9 +47,7 @@
     // directly -- reload-restore is ``molview.data.load(0)`` (§19.5),
     // which reads the session mirror inside the data model.
     function _data() {
-        return (window.molbuilder
-                && window.molbuilder.molview
-                && window.molbuilder.molview.data) || null;
+        return mvData;   // the in-memory molview.data model, imported from the door
     }
 
     // ----- Selection helpers ----------------------------------------- //
@@ -276,8 +276,7 @@
         const d = _data();
         const s = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
         const title = (s && s.title) || "";
-        const fmt = window.molbuilder && window.molbuilder.fmt;
-        const f = (fmt && typeof fmt.formula === "function") ? fmt.formula(_elements()) : "";
+        const f = mvFormula(_elements());
         el.textContent = title ? `${title} (${f})` : (s ? f : "");
     }
 

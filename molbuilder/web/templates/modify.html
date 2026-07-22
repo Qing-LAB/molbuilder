@@ -796,9 +796,9 @@
      formula renderer (Hill order with C+H first). -->
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js (below). -#}
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-<script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
-<script src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
 {# Selection store + canvas-state — internal implementation
    modules behind the workspace dispatcher.  Loaded FIRST so the
    dispatcher (loaded immediately after) has them to delegate to.
