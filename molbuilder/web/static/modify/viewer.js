@@ -270,12 +270,9 @@ function _mvdata() {
     // the server's /api/build/load sniffs the format.)
 
     // Update the section header's #title-readout from the LIVE structure (unified API).
-    // The Hill formula() belongs to the molview module (static/lib/mol-format.js, published as
-    // window.molbuilder.fmt.formula and pulled into the graph by molview/index.js) -- we call it
-    // here rather than re-implement it.  Resolved at CALL time, never captured in a load-time
-    // const: mol-format.js loads via <script type="module"> (DEFERRED), so it publishes AFTER this
-    // classic script runs.  By the time the readout fires (on the molview.data subscription, well
-    // after every module has executed) fmt.formula is present.
+    // The Hill formula() belongs to the molview module (static/lib/mol-format.js) -- we `import`
+    // it (as mvFormula, top of file, from the molview door) rather than re-implement it.  It is a
+    // pure stateless helper, so it is a direct ES import (no global lookup, no load-order dance).
     function _refreshTitleReadout() {
         const el = $("title-readout");
         if (!el) return;

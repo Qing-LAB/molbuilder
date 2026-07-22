@@ -4,13 +4,15 @@
  * line) plus an atom-radius scale.  This module is the single source of truth for the
  * per-representation sizing numbers so both viewers stay in lock-step.
  *
- * Invocation: molbuilder.style.spec({ rep, scale, colorscheme }) -> a 3Dmol style object.
+ * Invocation: import { spec } from "./mol-style.js"; spec({ rep, scale, colorscheme }) -> a 3Dmol
+ * style object.
  *   rep         : "stick" | "ballstick" | "sphere" | "line"
  *   scale       : number, atom-radius scale factor (default 1.0)
  *   colorscheme : string | null (null/undefined drops the key so 3Dmol uses its defaultcolors)
  *
- * A native ES module (the MolView embed graph); it ALSO publishes the transitional
- * Consumers `import { spec }` from it (the MolView embed graph); no window.molbuilder.style global.
+ * A native ES module in the MolView embed graph; the embed `import`s `spec` directly.  It is a
+ * pure, stateless helper (a MolView-internal Style-menu detail), so there is NO
+ * window.molbuilder.style global -- nothing external ever reaches in to set a style.
  */
 "use strict";
 

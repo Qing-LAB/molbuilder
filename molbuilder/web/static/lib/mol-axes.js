@@ -23,20 +23,17 @@
  *     Pairs naturally with the cell-wireframe overlay that the
  *     trajectory inspector already draws.
  *
- * Public API.  Attaches to ``window.molbuilder.axes``:
+ * Public API.  ``export const axes`` (the MolView embed graph):
  *
  *   draw(viewer, opts) -> { clear: () => void }
+ *
+ * A native ES module; the embed `import`s `axes` directly (``import { axes } from
+ * "./mol-axes.js"``).  It is a pure, stateless helper (a MolView-internal Axes-toggle detail),
+ * so there is NO window.molbuilder.axes global -- nothing external ever reaches in to draw axes.
  *
  * Pure logic lives in ``_buildAxisSpecs(opts)`` (no 3Dmol dependency)
  * so it can be unit-tested under Node without a browser.  See
  * tests/test_mol_axes_js.py.
- *
- * Registry note: this module follows the same sync-IIFE convention
- * as ``mol-style`` / ``mol-format`` / ``mol-viewer`` (see
- * docs/protocols/runtime-registry.md § 4 "Non-registered
- * globals"). Classic script tag in document order; no runtime
- * registration needed because every consumer loads AFTER this file
- * via the template's script order.
  */
 "use strict";
 
@@ -66,8 +63,8 @@
      * for a given options object.  Pure: no 3Dmol calls, no DOM, no
      * mutation of opts.  Returns an array of three plain objects.
      *
-     * Exported (via window.molbuilder.axes._buildAxisSpecs) for unit
-     * testing; production callers should use ``draw(viewer, opts)``.
+     * Exported (on the `axes` object: ``axes._buildAxisSpecs``) for
+     * unit testing; production callers should use ``draw(viewer, opts)``.
      */
     function _buildAxisSpecs(opts) {
         opts = opts || {};

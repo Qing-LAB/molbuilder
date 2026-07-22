@@ -89,15 +89,23 @@ These attach to `window.molbuilder.<x>` without going through the
 registry because they load as classic synchronous scripts BEFORE
 any `type="module"` consumer could ask for them:
 
-- `viewer` — `lib/mol-viewer.js`
-- `style` — `lib/mol-style.js`
-- `fmt` — `lib/mol-format.js`
 - `formSchema` — `lib/form-schema.js`
 - `path` — `lib/path-utils.js`
 
 Consumers that need them can read `window.molbuilder.<x>`
 directly — the load-order guarantee is enforced by the `<script>`
 tag order in templates.
+
+**MolView embed helpers — no longer globals (ESM migration).**
+`lib/mol-style.js` (`style`) and `lib/mol-format.js` (`fmt`) used to
+sit in the list above, but they are now pure ES modules in the
+MolView embed graph and publish **no** global — the embed `import`s
+`spec` / `formula` (and `axes` from `lib/mol-axes.js`) directly.
+`lib/mol-viewer.js` is also an ES module now (imported via
+`lib/molview/index.js`) but still publishes `window.molbuilder.viewer`
+on purpose: it is the shared-embed **seal** (`.create` / `.embed`),
+a live door other subsystems read, not migration scaffolding. See
+`docs/protocols/molview-esm-finalization.md`.
 
 ---
 
