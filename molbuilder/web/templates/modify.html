@@ -794,11 +794,7 @@
 <!-- Shared lib helpers used by every viewer (Build / Watch / Modify).
      mol-style.js: 3Dmol style-spec builder.  mol-format.js: chemical-
      formula renderer (Hill order with C+H first). -->
-<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js (below). -#}
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}

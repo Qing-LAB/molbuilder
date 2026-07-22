@@ -25,12 +25,11 @@ and not reachable from this runtime harness.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
+
+from _node_esm import run_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,47 +37,11 @@ MODULE = ROOT / "molbuilder/web/static/lib/mol-viewer-embed.js"
 
 
 def _run_node(snippet: str) -> object:
-    """Load the embed module under Node with the minimal globals it
-    needs, run ``snippet``, and return the parsed JSON of its last
-    stdout line.
-
-    Uses a temp file rather than ``node -e`` because the module text is
-    past the kernel's ARG_MAX.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    bootstrap = """
-        global.window = global;
-        // The embed module references window.molbuilder.viewer at load
-        // time; the pure helpers we test don't need 3Dmol, so we stub
-        // the namespace so module load is silent.
-        global.window.molbuilder = global.window.molbuilder || {};
-        global.window.molbuilder.viewer =
-            global.window.molbuilder.viewer || {};
-    """
-    full = bootstrap + "\n" + MODULE.read_text() + "\n" + snippet
-    with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".js", delete=False,
-            encoding="utf-8") as tmp:
-        tmp.write(full)
-        tmp_path = tmp.name
-    try:
-        proc = subprocess.run(
-            [node, tmp_path],
-            capture_output=True, text=True, timeout=15,
-        )
-    finally:
-        try:
-            Path(tmp_path).unlink()
-        except OSError:
-            pass
-    if proc.returncode != 0:
-        pytest.fail(
-            f"node exited {proc.returncode}\n"
-            f"stderr:\n{proc.stderr}\n"
-            f"stdout:\n{proc.stdout}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    """ES-module harness (tests/_node_esm): dynamic-import the embed -- now a native ES module
+    that imports mol-viewer.js and publishes ``window.molbuilder.viewer`` (the §3.2 shim).  The
+    snippet reads the internal helpers (``_normaliseOpts`` etc.) through that global.  The pure
+    helpers we test need no 3Dmol at module-load time."""
+    return run_node([MODULE], snippet)
 
 
 # --------------------------------------------------------------------- #

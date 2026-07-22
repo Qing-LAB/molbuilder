@@ -179,11 +179,7 @@
    ``.log`` / ``.json``).  See lib/inspectors/registry.js §
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
-<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 {# The FULL MolView module (molview-module.md §18) -- the structure inspector mounts it

@@ -38,8 +38,10 @@
  * registration needed because every consumer loads AFTER this file
  * via the template's script order.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
+// (IIFE unwrapped -> native ES module; the former body stays indented, harmless.)
 
     // Fixed length for the Cartesian-mode triad.  At 1.5 Å the triad
     // is longer than a typical bond (~1.4 Å) and short enough to stay
@@ -226,10 +228,11 @@
         };
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.axes = {
+    export const axes = {
         draw:             draw,
         _buildAxisSpecs:  _buildAxisSpecs,  // exported for unit tests
         _looksLikeCell:   _looksLikeCell,   // exported for unit tests
     };
-})(typeof window !== "undefined" ? window : this);
+    // ── Transitional global (§3.2 shim): mol-viewer-embed feature-detects molbuilder.axes. ──
+    root.molbuilder = root.molbuilder || {};
+    root.molbuilder.axes = axes;

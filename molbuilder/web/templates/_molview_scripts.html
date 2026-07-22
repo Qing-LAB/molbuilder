@@ -18,11 +18,8 @@
     Consumers today: Transport.  Migrating Modify / Results / molview-demo onto this
     include is a follow-up (their inline copies are the same stack). -#}
 <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
+{#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js -- no classic
+    <script> stack.  Vendor 3Dmol above stays a classic global (read at embed() call time). -#}
 <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>

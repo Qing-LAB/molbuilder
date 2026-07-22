@@ -19,8 +19,15 @@
  * lands first + gets exercised by /modify / Build / structure-
  * inspector migrations before the animation loop is added.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+// Native ES module (the MolView embed graph).  Import the shared `viewer` object from mol-viewer.js
+// and EXTEND it with `.embed` (+ the _normalise* helpers) below -- so `import { viewer }` from this
+// file resolves to the one object carrying create + embed.  (IIFE unwrapped; the former body stays
+// indented, harmless.)
+import { viewer } from "./mol-viewer.js";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     /* ------------------------------------------------------------ */
     /*  CSS class constants                                          */
@@ -6468,4 +6475,8 @@
         && typeof root.molbuilder.runtime.register === "function") {
         root.molbuilder.runtime.register("viewer", root.molbuilder.viewer);
     }
-})(typeof window !== "undefined" ? window : this);
+
+// The shared viewer object (imported from mol-viewer.js, extended with .embed above) is the module
+// export; mount.js imports it.  root.molbuilder.viewer === this object (the §3.2 shim), so classic
+// readers and ESM importers see the SAME create+embed surface.
+export { viewer };
