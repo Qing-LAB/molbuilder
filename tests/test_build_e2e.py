@@ -589,16 +589,21 @@ class TestBuildSecondVisitExternalChange:
             timeout=_BOOT_TIMEOUT_MS,
         )
 
-    def test_external_xyz_replacement_reloads_on_revisit(
+    def test_external_xyz_replacement_reloads_on_explicit_load(
             self, page, flask_server, tmp_path, monkeypatch):
-        """Stronger version: user picks water.xyz on /build, leaves
-        the tab, the file content is REPLACED on disk (different
-        atom count), user comes back to /build.  Viewer MUST show
-        the new atom count -- not the stale 3-atom water.
+        """User picks water.xyz on /build, leaves the tab, the file
+        content is REPLACED on disk (different atom count), user
+        comes back to /build.
 
-        Catches: a hypothetical sidebar-pick loader that caches the
-        last-loaded XYZ text and skips the re-fetch on identical
-        path."""
+        NEW contract (2026-07-22, persistency wins / explicit load):
+        the revisit KEEPS the tab's own loaded data -- the tab does
+        NOT auto-reload the sidebar file, so it still shows the
+        3-atom water it held.  The externally-changed file is picked
+        up only when the user EXPLICITLY clicks Load, which forces a
+        fresh re-read from disk (bypassing the same-path dedup) and
+        surfaces the new 5-atom structure.  This pins both halves:
+        (a) no silent auto-swap on revisit, (b) explicit Load always
+        re-reads current disk bytes."""
         # Pin tmp_path as picker root + write the initial 3-atom XYZ.
         _register_tmp_as_picker_root(tmp_path, monkeypatch)
         xyz_path = tmp_path / "structure.xyz"
@@ -636,8 +641,16 @@ class TestBuildSecondVisitExternalChange:
         time.sleep(0.5)
 
         page.goto(f"{flask_server}/structure-optimization")
-        # The new structure must appear; the OLD cached "3" must
-        # NOT be what the viewer shows.
+        # Persistency wins: the tab KEEPS its own 3-atom data on revisit;
+        # the externally-changed file is NOT auto-reloaded.
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        # The sidebar still points at the (now-changed) file, so an EXPLICIT
+        # Load re-reads it from disk -- the new 5-atom structure appears.
+        page.locator("#load-from-sidebar-btn").click()
         page.wait_for_function(
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '5'",

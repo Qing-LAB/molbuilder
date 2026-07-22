@@ -717,22 +717,56 @@ function _mvdata() {
             : _proj.onChange.bind(_proj);
         subscribe(_commitStructure);
 
-        // Cross-tab handoff: if the user arrived here with a
-        // sessionStorage selection already in place (the Molbuilder
-        // tab's save-first Send button, task #294, or the user
-        // having picked a file in the sidebar before navigating),
-        // commit it once on mount so the viewer + Generate buttons
-        // come up populated.  The "Load from sidebar selection"
-        // button below is the EXPLICIT entry point for subsequent
-        // re-loads after a sidebar pick; the mount-time commit is
-        // the cross-tab handoff path.
+        // PERSISTENCY WINS on mount (workspace-contract.md §4.5): keep THIS tab's
+        // own MolView data.  If the tab already holds a structure from an earlier
+        // load -- persisted in the workspace session mirror under owner
+        // "structure-opt" -- RESTORE it.  The user may have changed directory in
+        // the Projects sidebar since loading it, so the sidebar pointer
+        // (``getCurrentFile()``) is NOT the tab's structure any more; the tab must
+        // keep the data it loaded, not auto-swap to whatever the sidebar now points
+        // at.  File load is EXPLICIT: a sidebar pick is only a candidate; the "Load
+        // from sidebar selection" button (below) is the sole commit gesture.
+        //
+        // Seed from the sidebar pick ONLY when the tab has no data yet (an empty
+        // canvas) -- the genuine first-arrival / cross-tab handoff.  We gate on
+        // ``hasRestorableSnapshot()`` (does this tab hold ANY structure?), NOT on a
+        // sidebar-path comparison: the data is restorable regardless of which file
+        // (or none) it came from.
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
-        if (_initialFile) {
-            const _initialDir = (typeof _proj.getCurrentDir === "function")
-                ? _proj.getCurrentDir() : "";
-            _commitStructure({ dir: _initialDir, file: _initialFile });
-        }
+        (async function _restoreOrSeedOnMount() {
+            const _wsP = (window.molbuilder || {}).workspace;
+            // Declare this tab's namespace BEFORE reading the session mirror so the
+            // read sees the ::structure-opt state this tab last wrote (idempotent
+            // with molview.mount's later useNamespace; molview-module.md §18.4).
+            if (_wsP && typeof _wsP.useNamespace === "function") {
+                _wsP.useNamespace("structure-opt");
+            }
+            const _hasData = !!(_wsP
+                && typeof _wsP.hasRestorableSnapshot === "function"
+                && _wsP.hasRestorableSnapshot());
+            const _d = _data();
+            if (_hasData && _d && typeof _d.load === "function") {
+                // Restore MolView's own data (reload-restore primitive: no network,
+                // no timeline re-anchor -- unlike installMolecule), then populate the
+                // page chrome (info panel + Generate buttons) FROM the restored model.
+                try {
+                    await _d.load(0);
+                    const src = (_d.getSource && _d.getSource()) || null;
+                    const rf  = (src && src.file) ? String(src.file) : "";
+                    _sidebarLastFile = rf;
+                    _applyLoadedModel(rf ? rf.split("/").pop()
+                                         : "restored structure");
+                } catch (_e) {
+                    // Restore failed -> leave the canvas empty; the user can Load.
+                }
+            } else if (_initialFile) {
+                // Empty canvas + a sidebar pick: seed it once (first load / handoff).
+                const _initialDir = (typeof _proj.getCurrentDir === "function")
+                    ? _proj.getCurrentDir() : "";
+                _commitStructure({ dir: _initialDir, file: _initialFile });
+            }
+        })();
 
         // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //
         //
@@ -807,6 +841,13 @@ function _mvdata() {
                 if (!_isLoadable(_candidatePath)) return;
                 const _dir = (typeof _proj.getCurrentDir === "function")
                     ? _proj.getCurrentDir() : "";
+                // Explicit Load = "load the current file NOW".  Always re-read
+                // from disk, even if it is the same path the tab already holds
+                // (restored on mount, or loaded earlier this session): the file
+                // may have changed on disk and the user asked for a fresh load.
+                // Clear the same-file dedup guard so _commitStructure does not
+                // short-circuit.  (The auto/subscribe path keeps the dedup.)
+                _sidebarLastFile = "";
                 _commitStructure({ dir: _dir, file: _candidatePath });
             });
         }

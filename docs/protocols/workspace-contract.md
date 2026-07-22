@@ -403,10 +403,15 @@ runtime state; restoring them would be incorrect (e.g.
 **Why this exists.**  On a page mount there can be MORE THAN ONE surface
 that wants to hydrate the data model from the persisted snapshot:
 
-- `viewer.js::restoreModifyState` restores the full snapshot
+- Modify `viewer.js::restoreModifyState` restores the full snapshot
   (structure **+ selection** + camera + chrome) from §4.4.
-- `selection-bootstrap.js` seeds the canvas from `projects.getCurrentFile()`
+- Modify `selection-bootstrap.js` seeds the canvas from `projects.getCurrentFile()`
   — but ONLY when there is no restorable snapshot (an empty canvas).
+- Structure-optimization `viewer.js` (`_restoreOrSeedOnMount`) does BOTH on its
+  own tab: if `hasRestorableSnapshot()` it restores this tab's own data via
+  `data.load(0)` (the user may have changed directory in the sidebar since the
+  load — the tab keeps the data it loaded, not whatever the sidebar now points
+  at); otherwise it seeds the empty canvas from the sidebar pick.
 - (future) any new tab/surface that loads-on-mount.
 
 The selection store (`molview.data.selection`) is a **shared, mutable, async**

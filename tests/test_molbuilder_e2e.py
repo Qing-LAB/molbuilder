@@ -4614,6 +4614,60 @@ def test_build_structure_survives_navigation(
     assert page.locator("#generate-pyscf").is_enabled()
 
 
+def test_structure_opt_keeps_its_data_across_a_sidebar_directory_change(
+        page, flask_server, water_xyz_file):
+    """Persistency wins (workspace-contract.md §4.5): the
+    structure-optimization tab keeps ITS OWN loaded structure across
+    a tab round-trip, even when the Projects sidebar pointer has
+    moved on (the user changed directory / selection after loading).
+
+    Regression for the 'sidebar auto-load clobbers the loaded
+    structure' bug (2026-07-22): the tab used to re-commit
+    ``getCurrentFile()`` on every mount, so a directory change wiped
+    the structure the user had loaded.  It must now RESTORE its own
+    MolView data (``data.load(0)``) and treat the sidebar pointer as
+    a candidate only — file load is EXPLICIT (the Load button)."""
+    import os as _os
+    # Load water into structure-opt via the sidebar pointer (empty-canvas seed).
+    page.add_init_script(
+        "sessionStorage.setItem('molbuilder.current_file',"
+        f" {repr(water_xyz_file)});"
+        "sessionStorage.setItem('molbuilder.current_dir',"
+        f" {repr(_os.path.dirname(water_xyz_file))});"
+    )
+    page.goto(f"{flask_server}/structure-optimization")
+    page.wait_for_function(
+        "() => !document.getElementById('generate-fdf').disabled",
+        timeout=8000,
+    )
+    n_atoms_loaded = page.locator("#info-atoms").inner_text()
+    assert n_atoms_loaded and n_atoms_loaded != "—"
+
+    # Simulate the user changing directory in the sidebar AFTER the load:
+    # the pointer no longer names the loaded structure.
+    page.evaluate(
+        "() => { sessionStorage.setItem('molbuilder.current_file', '');"
+        "        sessionStorage.setItem('molbuilder.current_dir',"
+        "                               '/tmp/some-other-project'); }"
+    )
+    # Round-trip: away to /results and back.
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
+    page.locator('a.app-tab[href="/structure-optimization"]').click()
+    page.wait_for_url(f"{flask_server}/structure-optimization")
+    page.wait_for_function(
+        "() => !document.getElementById('generate-fdf').disabled",
+        timeout=5000,
+    )
+    # The tab kept ITS data — NOT wiped by the moved sidebar pointer.
+    n_atoms_after = page.locator("#info-atoms").inner_text()
+    assert n_atoms_after == n_atoms_loaded, (
+        "structure-opt lost its loaded structure after a sidebar "
+        f"directory change: was {n_atoms_loaded!r}, now {n_atoms_after!r}"
+    )
+    assert page.locator("#generate-fdf").is_enabled()
+
+
 def test_build_structure_state_round_trips_modify(
         page, flask_server, water_xyz_file):
     """Modify's pagehide save persists into the workspace
