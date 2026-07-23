@@ -436,14 +436,45 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // Direct label -> atom-indices lookup.  (Scans the per-atom layout today; becomes
     // a plain ``regions[label]`` read once D4 makes the internals columnar -- the
     // caller never sees the difference, which is the point of the accessor.)
+    // An atom "carries" a label if it is in the atom's region labels OR it is the
+    // built-in "frozen" flag -- regions and frozen are queried UNIFORMLY ("frozen" is
+    // the frozen tag channel, atom-annotations.md).  The ONE label-membership rule.
+    function _atomHasLabel(atom, label) {
+        if (!atom) return false;
+        if (label === "frozen" && atom.isFrozen) return true;
+        return ((atom.labels || []).indexOf(label) !== -1);
+    }
+    // Indices of atoms carrying `label` (a region name OR the built-in "frozen").
     function getAtomsByLabel(label) {
         var atoms = _atomsInternal();
         var out = [];
         for (var i = 0; i < atoms.length; i++) {
-            var labels = (atoms[i] && atoms[i].labels) || [];
-            if (labels.indexOf(label) !== -1) out.push(i);
+            if (_atomHasLabel(atoms[i], label)) out.push(i);
         }
         return out;
+    }
+    // The unified "which atoms carry label X, and WHERE are they" accessor: rows
+    // { index, element, x, y, z } (the getAtoms row shape; coords reflect the VISIBLE
+    // frame via getCoordinates) for every atom carrying `label` (a region name OR
+    // "frozen").  Consumers no longer combine getAtomsByLabel + getCoordinates by hand.
+    function getLabelAtoms(label) {
+        var atoms = _atomsInternal();
+        var coords = getCoordinates();
+        var out = [];
+        for (var i = 0; i < atoms.length; i++) {
+            if (!_atomHasLabel(atoms[i], label)) continue;
+            var c = coords[i] || [0, 0, 0];
+            out.push({ index: i, element: atoms[i] && atoms[i].element,
+                       x: c[0], y: c[1], z: c[2] });
+        }
+        return out;
+    }
+    // All label NAMES present on the structure -- every region key, plus "frozen" when
+    // any atom is frozen.  The set to enumerate for a label picker / iterate over.
+    function getLabels() {
+        var names = Object.keys(getRegions() || {});
+        if (getFrozen().length) names.push("frozen");
+        return names;
     }
     function getFrozen() {
         var atoms = _atomsInternal();
@@ -1635,7 +1666,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         getUnitCellOriginInfo: getUnitCellOriginInfo,   // §3c Origin editor display
         getVacuumInfo:         getVacuumInfo,
         getAxisKindInfo:       getAxisKindInfo,
-        getAtomsByLabel:       getAtomsByLabel,
+        getAtomsByLabel:       getAtomsByLabel,   // label -> [index] (region or "frozen")
+        getLabelAtoms:         getLabelAtoms,     // label -> [{index, element, x, y, z}]
+        getLabels:             getLabels,         // all label names (regions + "frozen")
         getFrozen:             getFrozen,
         getRegions:            getRegions,
         atomFor3Dmol:          atomFor3Dmol,
