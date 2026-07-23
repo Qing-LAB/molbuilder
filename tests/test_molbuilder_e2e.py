@@ -5397,23 +5397,17 @@ def _load_watch_log(page, base_url, log_path):
     # initially-hidden table (the Inspect tab isn't active by
     # default) so we don't wait for visibility, only for
     # presence in the DOM.
-    page.wait_for_selector(
-        "#inspect-atom-list-body tr",
-        state="attached", timeout=8000)
-    # Phase 5f B-4: the atom-list populates from rebuildModel
-    # AFTER setAnimation runs (trajectory/core.js:760) — but
-    # rebuildModel calls setAnimation synchronously, so the atom
-    # list landing IS evidence that setAnimation didn't throw.
-    # Belt-and-braces: also assert the embed's frame strip is
-    # showing a non-zero frame count, which catches a regression
-    # where setAnimation silently rejects with invalid_input
-    # (e.g. atom-count mismatch) while atom-list still renders.
+    # The trajectory inspector mounts MolView readonly and installs the
+    # trajectory into molview.data.  Wait on the DATA MODEL (the source of
+    # truth): its structure has atoms once the trajectory loaded.  The old
+    # "#inspect-atom-list-body populated" signal is gone -- the separate
+    # atom-list Inspect tab was removed when the inspector migrated onto
+    # MolView; atom inspection is MolView's selection panel now.
     page.wait_for_function(
-        "() => {"
-        "  const el = document.querySelector("
-        "    '.mol-viewer-frame-strip .frame-counter');"
-        "  return el && /\\d+/.test(el.textContent || '');"
-        "}",
+        "() => window.molbuilder && window.molbuilder.molview"
+        " && window.molbuilder.molview.data"
+        " && typeof window.molbuilder.molview.data.getElements === 'function'"
+        " && window.molbuilder.molview.data.getElements().length > 0",
         timeout=8000,
     )
 
@@ -5487,107 +5481,6 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     )
     assert last_val >= 7, (
         f"end-of-track drag should land near frame 9; got value={last_val}"
-    )
-
-
-def test_watch_inspect_atom_list_populates(page, flask_server, watch_log_file):
-    """Loading a trajectory populates the Inspect-tab atom list with
-    one row per atom; the displayed ``#`` column is 1-based."""
-    _load_watch_log(page, flask_server, watch_log_file)
-    page.locator(".ctab[data-tab='inspect']").click()
-    page.wait_for_function(
-        "() => document.querySelectorAll('#inspect-atom-list-body tr').length === 3"
-    )
-    rows = page.locator("#inspect-atom-list-body tr")
-    # First row: 1-based index "1", element "O".
-    cells = rows.nth(0).locator("td")
-    assert cells.nth(0).inner_text() == "1"
-    assert cells.nth(1).inner_text() == "O"
-
-
-def test_watch_inspect_row_click_picks_atom(page, flask_server, watch_log_file):
-    """Clicking a row in the Inspect atom list adds the atom to the
-    pick list (visible via the row's .is-selected class) and the
-    chip shows the atom's xyz readout (task #299: 1-atom picks
-    surface xyz before the user adds a second click)."""
-    _load_watch_log(page, flask_server, watch_log_file)
-    page.locator(".ctab[data-tab='inspect']").click()
-    page.locator("#inspect-atom-list-body tr").nth(0).click()
-    page.wait_for_selector("#inspect-atom-list-body tr.is-selected")
-    # The hint goes away; the measurement chip becomes visible.
-    page.wait_for_function(
-        "() => !document.getElementById('inspect-measurement').hidden"
-    )
-    text = page.locator("#inspect-measurement").inner_text()
-    # 1-atom readout: "O #1 — (x, y, z) Å".  Kind is "xyz".
-    assert text.startswith("O #1"), text
-    assert "Å" in text
-    assert page.evaluate(
-        "() => document.getElementById('inspect-measurement').dataset.kind"
-    ) == "xyz"
-
-
-def test_watch_inspect_distance_renders_with_two_picks(
-        page, flask_server, watch_log_file):
-    """Picking two atoms computes |A-B| and renders it in the
-    chip.  Water's O and first H sit (0,0,0) and (0.957,0,0) so
-    the distance is 0.957 A."""
-    _load_watch_log(page, flask_server, watch_log_file)
-    page.locator(".ctab[data-tab='inspect']").click()
-    page.locator("#inspect-atom-list-body tr").nth(0).click()  # O
-    page.locator("#inspect-atom-list-body tr").nth(1).click()  # H1
-    page.wait_for_function(
-        "() => document.getElementById('inspect-measurement')"
-        "      .dataset.kind === 'distance'"
-    )
-    text = page.locator("#inspect-measurement").inner_text()
-    # Format: "|O #1 – H #2| = 0.9570 Å"
-    assert "O #1" in text and "H #2" in text, text
-    assert "0.957" in text and "Å" in text, text
-
-
-def test_watch_inspect_clear_button_drops_picks(
-        page, flask_server, watch_log_file):
-    """Clear-selection drops every pick; the hint reappears, the
-    chip hides, and the Clear button disables again."""
-    _load_watch_log(page, flask_server, watch_log_file)
-    page.locator(".ctab[data-tab='inspect']").click()
-    page.locator("#inspect-atom-list-body tr").nth(0).click()
-    page.locator("#inspect-atom-list-body tr").nth(1).click()
-    btn = page.locator("#inspect-clear")
-    assert btn.is_enabled()
-    btn.click()
-    page.wait_for_function(
-        "() => !document.getElementById('inspect-hint').hidden"
-        " && document.getElementById('inspect-measurement').hidden"
-    )
-    assert btn.is_disabled()
-
-
-def test_watch_inspect_three_atoms_shows_angle_with_middle_click_as_vertex(
-        page, flask_server, watch_log_file):
-    """Task #299: bumping the pick cap from 2 to 3 lets the user
-    read a bond angle directly.  Click order [O, H1, H2] (the
-    H is the second click) would have O at the vertex — water's
-    H–O–H angle is ~104.5°.  Pin both the angle kind and the
-    'H – O – H' shape."""
-    _load_watch_log(page, flask_server, watch_log_file)
-    page.locator(".ctab[data-tab='inspect']").click()
-    page.locator("#inspect-atom-list-body tr").nth(1).click()  # H1
-    page.locator("#inspect-atom-list-body tr").nth(0).click()  # O (vertex)
-    page.locator("#inspect-atom-list-body tr").nth(2).click()  # H2
-    page.wait_for_function(
-        "() => document.getElementById('inspect-measurement')"
-        "      .dataset.kind === 'angle'"
-    )
-    text = page.locator("#inspect-measurement").inner_text()
-    # The vertex (O) sits between the two H labels in the display.
-    assert "O #1" in text and text.count("H #") == 2, text
-    import re
-    m = re.search(r"=\s*([0-9.]+)°", text)
-    assert m, f"expected an angle value in {text!r}"
-    assert 100.0 <= float(m.group(1)) <= 110.0, (
-        f"H-O-H angle should be ~104.5°, got {m.group(1)}° in {text!r}"
     )
 
 
