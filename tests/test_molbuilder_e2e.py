@@ -3913,6 +3913,60 @@ def test_apply_rotate_z_90_origin_pivot(
     assert abs(coords[1][2] - 0.0)    < 1e-3, coords[1]
 
 
+def test_cell_origin_editor_sets_and_displays_origin(
+        page, flask_server, tmp_path, monkeypatch):
+    """§3c + structure-authority.md: the Cell op-tab EXPOSES the unit-cell origin
+    (the corner the box is drawn from) as an editable field.  A structure with an
+    EXPLICIT cell enables the origin group; entering a corner + Update commits an
+    explicit cell_origin, and the DATA MODEL (molview.data.getUnitCellOrigin, the
+    single source) reflects it after the server re-resolve -- the box moves, the
+    atoms stay.  Pins the write accessor the consolidation added
+    (setCellOrigin / commitPeriodicity's cell_origin branch); before it, the store
+    silently dropped cell_origin."""
+    import hashlib
+    import json
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "junction.xyz"
+    xyz.write_text("2\njunction\nC 0 0 0\nH 1 0 0\n")
+    (tmp_path / "junction.molstruct.json").write_text(json.dumps({
+        "schema_version": 3, "n_atoms_total": 2,
+        "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
+        "regions": {}, "frozen_atoms": [], "selection_rules": {},
+        "cell": [[10, 0, 0], [0, 10, 0], [0, 0, 20]],
+    }))
+    _open_modify(page, flask_server)
+    _load_file(page, str(xyz), expected_atoms=2)
+
+    # Precondition: the explicit cell loaded from the sidecar (the origin group is
+    # enabled only with one -- cell_origin is meaningless without an explicit cell).
+    page.wait_for_function(
+        "() => { const d = window.molbuilder.molview.data;"
+        "  return d.getUnitCellInfo && d.getUnitCellInfo().isDefault === false; }"
+    )
+    _open_op_tab(page, "cell")
+    page.wait_for_function(
+        "() => { const b = document.querySelector('#pv-org-update');"
+        "  return b && !b.disabled; }"
+    )
+    for el, val in (("pv-org-a", "1.5"), ("pv-org-b", "2.5"), ("pv-org-c", "3.5")):
+        page.locator(f"#{el}").evaluate(
+            "(e, v) => { e.value = v; "
+            "e.dispatchEvent(new Event('input', {bubbles: true})); }", val)
+    page.locator("#pv-org-update").click()
+
+    # DATA MODEL (single source) shows the new drawn corner after the server
+    # re-resolve: explicit cell + cell_origin -> resolved_cell_origin = cell_origin.
+    page.wait_for_function(
+        "() => { const o = window.molbuilder.molview.data.getUnitCellOrigin();"
+        "  return o && Math.abs(o[0]-1.5)<1e-6 && Math.abs(o[1]-2.5)<1e-6"
+        "         && Math.abs(o[2]-3.5)<1e-6; }"
+    )
+    info = page.evaluate(
+        "() => window.molbuilder.molview.data.getUnitCellOriginInfo()")
+    assert info["raw"] == [1.5, 2.5, 3.5], info      # the explicit override is stored
+    assert info["isDefault"] is False, info          # no longer the auto corner
+
+
 # --------------------------------------------------------------------- #
 #  State timeline: "Save state" + "Retract" (molview-module.md §19.5)   #
 #                                                                       #

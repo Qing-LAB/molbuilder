@@ -405,6 +405,21 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var per = _periodicityInternal() || {};
         return per.resolved_cell_origin || null;
     }
+    // §3b/§3c display accessor for the Cell page's Origin editor -- the { value,
+    // raw, isDefault } shape the other cell editors use.  `value` = the corner the
+    // box is DRAWN from (resolved_cell_origin, server-resolved); `raw` = the stored
+    // explicit override (cell_origin, null when unset); `isDefault` = no explicit
+    // override (the origin is the auto-resolved bbox/world corner).  The editor
+    // shows `value`, tags default off `isDefault`, and commits an explicit `raw`.
+    function getUnitCellOriginInfo() {
+        var per = _periodicityInternal() || {};
+        var raw = per.cell_origin || null;
+        return {
+            value:     per.resolved_cell_origin || null,
+            raw:       raw,
+            isDefault: raw == null,
+        };
+    }
     function getVacuumInfo() {
         var v = getVacuum();
         return { value: v, isDefault: (v[0] === 0 && v[1] === 0 && v[2] === 0) };
@@ -476,6 +491,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }      // getLattice's pair
     function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
     function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
+    // §3c: set the raw cell_origin -- the low corner an EXPLICIT cell is drawn from
+    // (an electrode junction whose cell wraps off-origin atoms).  Moves the BOX, not
+    // the atoms (SIESTA gets the shift at generation).  Pass null to clear (fall back
+    // to the resolved corner).  Only meaningful with an explicit cell; the server
+    // drops it otherwise.  Commit via commitPeriodicity so resolved_cell_origin
+    // (the drawn corner) re-resolves.
+    function setCellOrigin(origin) { _setPeriodicity({ cell_origin: origin }); }
     // §3b: the Cell page's "Update" commit -- apply an explicit periodicity edit, then
     // re-resolve the effective cell through the ONE server resolver (§3a) and write the
     // fresh resolved_cell back so the render + display stay consistent.  Returns a
@@ -483,10 +505,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // cell edit needs the server to recompute the bbox+vacuum default.
     function commitPeriodicity(patch) {
         patch = patch || {};
-        if ("cell"      in patch) setUnitCell(patch.cell);
-        if ("vacuum"    in patch) setVacuum(patch.vacuum);
-        if ("axis_kind" in patch) setAxisKind(patch.axis_kind);
+        if ("cell"        in patch) setUnitCell(patch.cell);
+        if ("cell_origin" in patch) setCellOrigin(patch.cell_origin);   // §3c raw corner
+        if ("vacuum"      in patch) setVacuum(patch.vacuum);
+        if ("axis_kind"   in patch) setAxisKind(patch.axis_kind);
         if (patch.cell) return Promise.resolve();   // explicit cell wins
+        // A cell_origin / vacuum / axis_kind / cleared-cell edit re-resolves through
+        // the server so resolved_cell (§3a) + resolved_cell_origin (§3c, the DRAWN
+        // corner = cell_origin for an explicit cell) stay consistent with the edit.
         var blob = _scratchBlob();
         if (!blob || !root.fetch) return Promise.resolve();
         return root.fetch("/api/structure/resolve-cell", {
@@ -1606,6 +1632,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // §3b display accessors ({ value, isDefault }) for the Cell page:
         getUnitCellInfo:       getUnitCellInfo,
         getUnitCellOrigin:     getUnitCellOrigin,
+        getUnitCellOriginInfo: getUnitCellOriginInfo,   // §3c Origin editor display
         getVacuumInfo:         getVacuumInfo,
         getAxisKindInfo:       getAxisKindInfo,
         getAtomsByLabel:       getAtomsByLabel,
@@ -1622,6 +1649,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
         setUnitCell:           setUnitCell,
         setLattice:            setUnitCell,   // alias
+        setCellOrigin:         setCellOrigin,   // §3c raw corner (explicit-cell offset)
         setAxisKind:           setAxisKind,
         setVacuum:             setVacuum,
         setLabel:              setLabel,

@@ -148,20 +148,27 @@ The periodicity parameters surface in two kinds of place with different jobs:
 **Display (read-only, mirrors in-memory) — the MolView "Cell" page.** The molview panel
 has two switchable pages, `[ Selection | Cell ]` as header tabs, sharing the panel.  The
 **Cell page is DISPLAY-ONLY**: it shows vacuum (x/y/z), the unit cell as a **3×3 matrix**
-(non-orthogonal-ready), axis_kind/pbc per axis, and the k-grid (a display toggle + the
-dims).  Each field is read through the molview read API and shows **"(default)" + the
-resolved value** when unset (vacuum `0`, cell = bbox a/b/c, kgrid `1×1×1`), or the
-explicit value once set.  The read accessor returns `{ value, isDefault }` so the page
+(non-orthogonal-ready), the **cell origin** (the low corner the box is drawn from, §3c —
+`getUnitCellOriginInfo().value` = `resolved_cell_origin`), axis_kind/pbc per axis, and the
+k-grid (a display toggle + the dims).  Each field is read through the molview read API and
+shows **"(default)" + the resolved value** when unset (vacuum `0`, cell = bbox a/b/c,
+origin = the auto molecule/world corner, kgrid `1×1×1`), or the explicit value once set.  The read accessor returns `{ value, isDefault }` so the page
 can render the "(default)" tag while still handing out a usable number.  The MolView
 provides **no Update button** — it never writes; it only mirrors the in-memory data.
 
 **Edit (write, via the set-API + per-group Update) — the Modify functions.** Editing
 lives in the Modify functions, NOT in the MolView.  Each parameter GROUP — vacuum, pbc
-(axis_kind), unit cell, k-grid — has its **own explicit "Update" button**, so each group
-can independently stay at its default or be committed.  Editing a group STAGES a change;
-it does NOT touch the in-memory structure until that group's Update is pressed, which
-commits via `ws.commitPeriodicity` (vacuum / pbc / cell — re-resolving the effective cell
-through the ONE server resolver, § 3a) or `ws.setKgrid` (k-grid — no re-resolve needed).
+(axis_kind), unit cell, **cell origin**, k-grid — has its **own explicit "Update" button**,
+so each group can independently stay at its default or be committed.  Editing a group
+STAGES a change; it does NOT touch the in-memory structure until that group's Update is
+pressed, which commits via `ws.commitPeriodicity` (vacuum / pbc / cell / **cell_origin** —
+re-resolving the effective cell + drawn corner through the ONE server resolver, § 3a/3c) or
+`ws.setKgrid` (k-grid — no re-resolve needed).  **Cell origin** (`ws.setCellOrigin` via
+`commitPeriodicity({cell_origin})`) is enabled **only with an explicit cell** — `cell_origin`
+is the offset an explicit cell emanates from and the dataclass drops it otherwise (§3c);
+with a bbox+vacuum cell the corner is auto (`bbox_min − vacuum`) and shown read-only.
+Editing the origin moves the **box**, not the atoms; **"Calibrate coordinates to cell"**
+bakes the shift into the coordinates (moves atoms into `[0,cell)`, clears the origin).
 Until a group's Update, that group keeps its computed default and no set-API is called
 for it.  The 3×3 cell is populated either by adding metal atoms (as a lattice, § 4) or
 edited manually.  The fdf / structure-optimization tabs expose the same groups against

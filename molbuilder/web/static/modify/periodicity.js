@@ -139,6 +139,24 @@ function _mvdata() {
         }
         var calBtn = $("pv-cell-calibrate");
         if (calBtn) calBtn.disabled = !explicitCell;
+
+        // § 3c: the cell origin -- the low corner the box is drawn from.  Shows the
+        // RESOLVED corner (getUnitCellOriginInfo().value); editing it sets an explicit
+        // cell_origin.  cell_origin is ONLY meaningful with an explicit cell (the
+        // dataclass drops it otherwise), so the group is enabled only there -- with a
+        // bbox+vacuum cell the corner is auto and there is nothing to override.
+        if (w.getUnitCellOriginInfo) {
+            var oInfo = w.getUnitCellOriginInfo();
+            var ov = oInfo.value || [0, 0, 0];
+            setIdle($("pv-org-a"), round(ov[0] || 0));
+            setIdle($("pv-org-b"), round(ov[1] || 0));
+            setIdle($("pv-org-c"), round(ov[2] || 0));
+            tag("pv-org-tag", oInfo.isDefault);
+            var orgNa = $("pv-org-na");
+            if (orgNa) orgNa.hidden = explicitCell;
+            var orgBtn = $("pv-org-update");
+            if (orgBtn) orgBtn.disabled = !explicitCell;
+        }
     }
 
     function num(id, dflt, isInt) {
@@ -162,6 +180,12 @@ function _mvdata() {
             commit({ axis_kind: ["pv-axis-a", "pv-axis-b", "pv-axis-c"].map(function (id) {
                 return $(id) ? $(id).value : "isolated";
             }) });
+        });
+        // § 3c: commit an explicit cell_origin -- moves the box corner; the server
+        // re-resolves resolved_cell_origin (the drawn corner) through commitPeriodicity.
+        var org = $("pv-org-update");
+        if (org) org.addEventListener("click", function () {
+            commit({ cell_origin: [num("pv-org-a", 0), num("pv-org-b", 0), num("pv-org-c", 0)] });
         });
         var cell = $("pv-cell-update");
         if (cell) cell.addEventListener("click", function () {

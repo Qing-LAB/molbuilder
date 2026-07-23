@@ -775,6 +775,29 @@
           </button>
         </fieldset>
 
+        <fieldset class="op-block">
+          <legend>Cell origin (Å) <span id="pv-org-tag" class="pv-tag"></span></legend>
+          {#- § 3c: the low corner the EXPLICIT cell box is drawn from (an electrode
+              junction whose cell wraps off-origin atoms).  Editing moves the BOX, not
+              the atoms -- SIESTA gets the shift at generation, or bake it with
+              "Calibrate coordinates to cell" above.  Only meaningful with an explicit
+              cell; with a bounding-box cell the corner is auto (molecule bbox - vacuum)
+              and this group is disabled. -#}
+          <div class="op-row pv-vec">
+            <input type="number" id="pv-org-a" class="pv-num" step="0.1"
+                   aria-label="cell origin x" />
+            <input type="number" id="pv-org-b" class="pv-num" step="0.1"
+                   aria-label="cell origin y" />
+            <input type="number" id="pv-org-c" class="pv-num" step="0.1"
+                   aria-label="cell origin z" />
+          </div>
+          <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
+          <p id="pv-org-na" class="pv-note" hidden>
+            The cell origin applies to an explicit cell only. Set a unit cell above
+            first; otherwise the box corner is the molecule's bounding box (auto).
+          </p>
+        </fieldset>
+
       </div><!-- /.optab-panel data-op-panel="cell" -->
     </div>
   </aside>

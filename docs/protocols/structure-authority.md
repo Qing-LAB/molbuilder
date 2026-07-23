@@ -245,7 +245,14 @@ periodicity object with **no field list**. Named-key reads happen ONLY in
 `getAxisKind`, …) — the single JS key-namer. The one deliberate exception is
 `setPeriodicity` (a WRITE accessor that edits specific lattice keys on a Cell-page
 edit); it names the keys it *manages*, which is legitimate — it is an editor, not
-a carry.
+a carry. It is now **spread-based** (deep-clone `cur`, overlay only patched keys),
+so it can no longer DROP a field it doesn't list — which closed the last write-path
+gap: `cell_origin` had **no** write accessor at all (the store silently dropped it),
+so the origin could arrive from a sidecar but the UI couldn't set it. The Cell-page
+**Origin editor** (`setCellOrigin` → `commitPeriodicity({cell_origin})` →
+`getUnitCellOriginInfo` display, structure-periodicity.md §3b) is that write path;
+`cell_origin` is now a first-class field across read (verbatim carry), write
+(spread editor), and UI (display + edit).
 
 **Why `_install.js:230` stays (corrected — the design first said "remove it").**
 Tracing every `installMolecule` caller: `openMolecule`, `modify/viewer`, the

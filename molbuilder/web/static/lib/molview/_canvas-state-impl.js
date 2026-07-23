@@ -287,10 +287,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     /**
-     * Merge a periodicity PATCH into the canvas (cell / axis_kind / vacuum)
-     * WITHOUT touching the geometry text — the write path for UI edits of the lattice
-     * (§1.2.1 write accessors).  Only the provided keys change; the rest are kept.
-     * Marks dirty + notifies.
+     * Merge a periodicity PATCH into the canvas (cell / cell_origin / axis_kind /
+     * vacuum) WITHOUT touching the geometry text — the write path for UI edits of
+     * the lattice (§1.2.1 write accessors).  Only the provided keys change; every
+     * OTHER key (including any server-added field) is preserved via a verbatim
+     * deep-clone of the current periodicity -- so this editor can no longer DROP a
+     * field it doesn't explicitly list (that dropped cell_origin: structure-
+     * authority.md).  Marks dirty + notifies.
      */
     function setPeriodicity(patch) {
         _ensureInit();
@@ -298,22 +301,26 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         if (!patch || typeof patch !== "object") {
             throw new TypeError("setPeriodicity: patch must be an object");
         }
-        var cur = _state.periodicity
-            || { cell: null, resolved_cell: null, resolved_cell_origin: null,
-                 axis_kind: null, vacuum: [0, 0, 0] };
-        _state.periodicity = _normPeriodicity({
-            cell:      "cell"      in patch ? patch.cell      : cur.cell,
-            // resolved_cell + its origin are DERIVED -- written back after the server
-            // re-resolves an edit (§3a); an explicit `cell` set clears the stale values.
-            resolved_cell: "cell" in patch ? null
-                           : ("resolved_cell" in patch ? patch.resolved_cell
-                              : cur.resolved_cell),
-            resolved_cell_origin: "cell" in patch ? null
-                           : ("resolved_cell_origin" in patch ? patch.resolved_cell_origin
-                              : cur.resolved_cell_origin),
-            axis_kind: "axis_kind" in patch ? patch.axis_kind : cur.axis_kind,
-            vacuum:    "vacuum"    in patch ? patch.vacuum    : cur.vacuum,
-        });
+        // Start from a full copy of the CURRENT periodicity (all keys preserved),
+        // then overlay only the patched keys.  No hand-listed field set.
+        var next = _clonePeriodicity(_state.periodicity) || {};
+        if ("cell" in patch) {
+            next.cell = patch.cell;
+            // resolved_cell + its origin are DERIVED (§3a): an explicit `cell`
+            // set clears the stale values; the server re-resolves + writes them
+            // back.  A patch that also carries resolved_* (the write-back) wins.
+            next.resolved_cell = null;
+            next.resolved_cell_origin = null;
+        }
+        // §3c: the raw low corner an EXPLICIT cell emanates from -- the editable
+        // origin.  Applied verbatim; __post_init__ on the server drops it if there
+        // is no explicit cell (only meaningful with one).
+        if ("cell_origin" in patch) next.cell_origin = patch.cell_origin;
+        if ("resolved_cell" in patch) next.resolved_cell = patch.resolved_cell;
+        if ("resolved_cell_origin" in patch) next.resolved_cell_origin = patch.resolved_cell_origin;
+        if ("axis_kind" in patch) next.axis_kind = patch.axis_kind;
+        if ("vacuum" in patch) next.vacuum = patch.vacuum;
+        _state.periodicity = _normPeriodicity(next);
         _state.dirty = true;
         _notify();
     }

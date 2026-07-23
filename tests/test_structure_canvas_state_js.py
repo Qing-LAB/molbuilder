@@ -247,6 +247,32 @@ class TestSetStructure:
         assert out["afterModify"]["vacuum"] == [1, 1, 1]       # modify replaced it
         assert out["afterModify"]["cell"] == [[6, 0, 0], [0, 6, 0], [0, 0, 12]]
 
+    def test_setperiodicity_applies_and_preserves_cell_origin(self):
+        """§3c: setPeriodicity applies an explicit cell_origin AND preserves it
+        across an UNRELATED edit (vacuum).  The editor is now spread-based, so it
+        can no longer drop a field it doesn't hand-list -- the gap that let
+        cell_origin vanish (structure-authority.md)."""
+        out = _run_node('''
+            canvas.setStructure(
+                { source_format: "xyz", text: "1\\nC\\nC 0 0 0\\n",
+                  periodicity: { cell: [[5,0,0],[0,5,0],[0,0,10]],
+                                 axis_kind: ["periodic","periodic","transport"],
+                                 vacuum: [0,0,0] } },
+                { kind: "file", file: "/p/a.xyz" }
+            );
+            canvas.setPeriodicity({ cell_origin: [1.5, 2.5, 3.5] });
+            const afterOrigin = canvas.getStructure().periodicity;
+            canvas.setPeriodicity({ vacuum: [1, 1, 1] });   // unrelated edit
+            const afterVacuum = canvas.getStructure().periodicity;
+            console.log(JSON.stringify({ afterOrigin, afterVacuum }));
+        ''')
+        assert out["afterOrigin"]["cell_origin"] == [1.5, 2.5, 3.5]
+        # The unrelated vacuum edit must NOT drop cell_origin (the field-preserve
+        # guarantee of the spread-based editor).
+        assert out["afterVacuum"]["cell_origin"] == [1.5, 2.5, 3.5]
+        assert out["afterVacuum"]["vacuum"] == [1, 1, 1]
+        assert out["afterVacuum"]["cell"] == [[5, 0, 0], [0, 5, 0], [0, 0, 10]]
+
 
 # ----- markDirty ------------------------------------------------- #
 

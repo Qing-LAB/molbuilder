@@ -141,6 +141,7 @@ function mount(rootEl, opts) {
         pageCell:        $("panel-page-cell"),
         cellAxis:        $("cell-axis-value"),
         cellVacuum:      $("cell-vacuum-value"),
+        cellOrigin:      $("cell-origin-value"),
         cellMatrix:      $("cell-matrix-value"),
         cellTag:         $("cell-matrix-tag"),
         // Measurement readout lives OUTSIDE the panel partial —
@@ -941,6 +942,13 @@ function mount(rootEl, opts) {
             const v = dm.getVacuumInfo();
             els.cellVacuum.textContent =
                 _fmtVec(v.value || [0, 0, 0]) + _tag(v.isDefault);
+        }
+        // § 3c: the drawn box corner (resolved_cell_origin); "(default)" when it is
+        // the auto molecule/world corner (no explicit cell_origin override).
+        if (els.cellOrigin && dm.getUnitCellOriginInfo) {
+            const o = dm.getUnitCellOriginInfo();
+            els.cellOrigin.textContent =
+                _fmtVec(o.value || [0, 0, 0]) + _tag(o.isDefault);
         }
         if (els.cellMatrix && dm.getUnitCellInfo) {
             const c = dm.getUnitCellInfo();
