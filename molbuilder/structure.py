@@ -559,6 +559,108 @@ class Structure:
         # only-with-a-cell, and region/frozen/annotation indices in range.
         self.__post_init__()
 
+    # ------------------------------------------------------------------ #
+    #  Whole-structure codec -- the ONE (de)serialiser (structure-        #
+    #  authority.md § 3.1).  ``to_dict``/``from_dict`` carry coordinates  #
+    #  + per-atom columns + the full metadata block (delegated to         #
+    #  ``metadata_to_dict``/``apply_metadata_dict``) as a single          #
+    #  round-trippable dict: ``Structure.from_dict(s.to_dict())`` == s.   #
+    #  Outside this class NOBODY assembles or picks apart a structure     #
+    #  dict -- that is what let ``cell_origin`` drift on every hand-rolled #
+    #  repack.  Add a field = add it here + the two metadata methods,     #
+    #  nowhere else.                                                       #
+    # ------------------------------------------------------------------ #
+
+    def to_dict(self) -> dict:
+        """The ONE canonical serialiser: everything needed to reconstruct this
+        Structure -- coordinates, per-atom identity columns, AND the full
+        metadata field set (nested under ``metadata`` via
+        :meth:`metadata_to_dict`).  Loss-free + filesystem-free; the round-trip
+        unit the persistence + sidecar + CLI layers store.  Inverse:
+        :meth:`from_dict`."""
+        return {
+            "title":         self.title or "",
+            "elements":      list(self.elements),
+            "positions":     self.positions.tolist(),
+            "atom_names":    list(self.atom_names)    if self.atom_names    else [],
+            "residue_ids":   list(self.residue_ids)   if self.residue_ids   else [],
+            "residue_names": list(self.residue_names) if self.residue_names else [],
+            "chain_ids":     list(self.chain_ids)     if self.chain_ids     else [],
+            "metadata":      self.metadata_to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Structure":
+        """The ONE canonical deserialiser -- inverse of :meth:`to_dict`.
+        Constructs a Structure from the canonical dict, then applies +
+        validates the metadata through the SAME single authority
+        (:meth:`apply_metadata_dict` -> ``__post_init__``) a freshly built
+        Structure runs.  Outside this class NOBODY picks coordinate / metadata
+        keys out of a structure dict."""
+        if data is None:
+            raise ValueError("Structure.from_dict: data is None")
+        s = cls(
+            elements=list(data["elements"]),
+            positions=np.asarray(data["positions"], dtype=float),
+            atom_names=list(data.get("atom_names")    or []) or None,
+            residue_ids=list(data.get("residue_ids")   or []) or None,
+            residue_names=list(data.get("residue_names") or []) or None,
+            chain_ids=list(data.get("chain_ids")     or []) or None,
+            title=data.get("title", "") or "",
+        )
+        # Full-replace + revalidate the metadata block through the ONE codec.
+        s.apply_metadata_dict(data.get("metadata"))
+        return s
+
+    def to_wire(self) -> dict:
+        """The read-only server->client view (structure-authority.md § 3.2):
+        the metadata-bearing portion of the wire response, assembled by
+        Structure so no blueprint enumerates a field.  It is the identity
+        columns + the FULL ``periodicity`` block (the raw cell/origin PLUS the
+        server-resolved ``resolved_cell`` / ``resolved_cell_origin``, computed
+        HERE via the one resolver so they can never drift or drop) +
+        ``annotations``.
+
+        The web layer composes this with its own render/validation concerns
+        (the flat ``atoms`` list, ``issues``, ``text``, ``extra``); it must NOT
+        re-list any periodicity / metadata field.  Not round-tripped by
+        :meth:`from_dict` -- ``resolved_*`` are derived, read-only fields."""
+        # The ONE resolver (structure-periodicity.md § 3a/3c), run once, here.
+        # A periodic axis without a lattice raises -> no resolved box (None),
+        # matching the previous hand-rolled behaviour in _shared.
+        try:
+            _rc = self.resolve_cell()
+            resolved_cell = _rc.tolist() if _rc is not None else None
+        except Exception:  # noqa: BLE001
+            resolved_cell = None
+        try:
+            _ro = self.resolve_cell_origin()
+            resolved_origin = _ro.tolist() if _ro is not None else None
+        except Exception:  # noqa: BLE001
+            resolved_origin = None
+        return {
+            "title":         self.title or "",
+            "elements":      list(self.elements),
+            "atom_names":    list(self.atom_names)    if self.atom_names    else [],
+            "residue_ids":   list(self.residue_ids)   if self.residue_ids   else [],
+            "residue_names": list(self.residue_names) if self.residue_names else [],
+            "chain_ids":     list(self.chain_ids)     if self.chain_ids     else [],
+            "n_residues":    self.n_residues,
+            "periodicity": {
+                "cell":                 self.cell.tolist() if self.cell is not None else None,
+                "cell_origin":          (self.cell_origin.tolist()
+                                         if self.cell_origin is not None else None),
+                "resolved_cell":        resolved_cell,
+                "resolved_cell_origin": resolved_origin,
+                "axis_kind":            (list(self.axis_kind)
+                                         if self.axis_kind is not None else None),
+                "vacuum":               [float(x) for x in self.vacuum],
+                # (No "kgrid": a sampling knob on the config, not geometry --
+                # structure-periodicity.md.)
+            },
+            "annotations":   annotations_to_json(self.annotations),
+        }
+
     def _validate_regions(self, n: int) -> None:
         """Per-atom index in [0, n); region names are non-empty
         strings.  Indices within each region are sorted + deduped

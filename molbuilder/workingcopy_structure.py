@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, List, Tuple
 
@@ -29,6 +30,26 @@ from .sidecars import molstruct
 
 def _sha256_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
+
+
+def _metadata_is_default(meta: dict) -> bool:
+    """True when a metadata dict (``Structure.metadata_to_dict`` output) carries
+    nothing worth a sidecar -- a plain molecule (no cell / origin / pbc /
+    regions / frozen / annotations / vacuum / non-isolated axis).  Decides
+    whether the ``.molstruct.json`` half of the pair exists at all
+    (``no .json == empty metadata``)."""
+    if meta.get("cell") is not None or meta.get("cell_origin") is not None:
+        return False
+    if meta.get("regions") or meta.get("frozen_atoms") or meta.get("annotations"):
+        return False
+    if meta.get("pbc") and any(meta["pbc"]):
+        return False
+    if any(float(v) != 0.0 for v in (meta.get("vacuum") or ())):
+        return False
+    ak = meta.get("axis_kind")
+    if ak and any(k != "isolated" for k in ak):
+        return False
+    return True
 
 
 class StructureCodec:
@@ -65,6 +86,56 @@ class StructureCodec:
                                     indent=2) + "\n").encode("utf-8")
         return [(target, xyz_bytes),
                 (molstruct.sidecar_path_for(target), sidecar_bytes)]
+
+    # ---- write the pair to disk, atomically -------------------------- #
+    def write(self, struct: Structure, target, *, atomic: bool = True) -> Path:
+        """Write ``struct`` to the ``<stem>.xyz`` + ``<stem>.molstruct.json``
+        pair on disk and return the geometry path.  THE paired-file door
+        (structure-authority.md § 3.3): owns the pairing rule + the
+        both-or-neither atomicity so no caller re-derives the sidecar path or
+        re-implements the write order.
+
+        Atomicity: each half is staged to a temp sibling and ``os.replace``-d
+        (per-file atomic).  The geometry is swapped first, then the sidecar, so
+        the only visible interleaving is OLD-sidecar + NEW-geometry for a tiny
+        window -- never a torn file.  When ``struct`` carries no metadata worth
+        persisting AND a stale sidecar exists, it is removed so the pair can't
+        disagree (``no .json == empty metadata``, matching :meth:`load`)."""
+        target = Path(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        xyz_text = struct.to_xyz()
+        meta = struct.metadata_to_dict()
+        sidecar_path = molstruct.sidecar_path_for(target)
+        want_sidecar = not _metadata_is_default(meta)
+
+        if atomic:
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(xyz_text)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, target)
+        else:
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(xyz_text)
+
+        if want_sidecar:
+            payload = molstruct.to_dict(
+                meta,
+                n_atoms_total  = struct.n_atoms,
+                structure_hash = _sha256_bytes(xyz_text.encode("utf-8")),
+            )
+            molstruct.save(sidecar_path, payload)   # tempfile + os.replace atomic
+        elif sidecar_path.exists():
+            sidecar_path.unlink()
+        return target
+
+    # ---- read the pair from disk (alias of load, symmetric name) ----- #
+    def read(self, source_path) -> Structure:
+        """Symmetric read-side name for :meth:`load` -- parse the geometry +
+        apply its paired sidecar into a Structure (missing sidecar => empty
+        metadata, not an error)."""
+        return self.load(source_path)
 
     # ---- scratch round-trip ------------------------------------------ #
     def scratch_blob(self, struct: Structure) -> Any:
