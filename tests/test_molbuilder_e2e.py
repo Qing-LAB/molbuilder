@@ -2999,6 +2999,8 @@ def test_view_state_persists_across_tab_reload(
     (``data.attachViewHandle`` at mount ``onReady``), so getState/applyState
     work; and the pagehide flush (``data.flushViewState``) writes the live view
     into the mirror even though a view-only change has no push-persist trigger.
+    The axes MENU flag rides the STORE (showAxis) -- the flag the engine renders
+    from -- serialized in the selection slice + restored on load (task #64).
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
@@ -3011,31 +3013,35 @@ def test_view_state_persists_across_tab_reload(
         "        return !!(v && v.camera != null); }"
     ), "data.view.getState() must expose a live camera once the embed handle attaches"
 
-    # Flip a menu setting (axes) through the unified view API and confirm it took.
+    # Flip the axes VIEW FLAG through the DATA MODEL -- the store flag the render
+    # ENGINE draws from (render-streamline §7.2 / task #64), NOT the embed view
+    # slice.  The store flag is the source of truth; persistence + the engine read it.
     a0 = page.evaluate(
-        "() => !!window.molbuilder.molview.data.view.getState().axes")
+        "() => !!window.molbuilder.molview.data.selection.getState().showAxis")
     page.evaluate(
-        "(want) => window.molbuilder.molview.data.view.applyState({axes: want})",
+        "(want) => window.molbuilder.molview.data.selection"
+        "            .setViewFlag('showAxis', want)",
         not a0)
     assert page.evaluate(
-        "() => !!window.molbuilder.molview.data.view.getState().axes"
-    ) == (not a0), "applyState({axes}) must flip the axes knob"
+        "() => !!window.molbuilder.molview.data.selection.getState().showAxis"
+    ) == (not a0), "setViewFlag('showAxis') must flip the axes flag"
 
     # Flush the view into the session mirror (what pagehide does), then reload
     # the tab -- sessionStorage survives a same-tab reload.
     page.evaluate("() => window.molbuilder.molview.data.flushViewState()")
     page.reload()
     page.wait_for_function(
-        "() => !!window.molbuilder"
-        "      && typeof window.molbuilder.loadStructureText === 'function'")
+        "() => !!(window.molbuilder && window.molbuilder.molview"
+        "        && window.molbuilder.molview.data"
+        "        && window.molbuilder.molview.data.view)")
     _wait_panel_ready(page)
 
-    # The restored view must carry the flipped axes state, not the default --
-    # applied by attachViewHandle once the embed re-initialises on the new page.
+    # The restored STORE must carry the flipped axes flag -- persisted in the
+    # selection slice (getSelection) + re-applied to the store on load (§7.2 / #64).
     page.wait_for_function(
         "(want) => { const d = window.molbuilder.molview.data;"
-        "            const v = d && d.view && d.view.getState();"
-        "            return !!(v && !!v.axes === want); }",
+        "            return !!(d && d.selection"
+        "                      && !!d.selection.getState().showAxis === want); }",
         arg=(not a0),
     )
 

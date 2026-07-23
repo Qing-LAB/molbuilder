@@ -549,6 +549,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             filters:    s.filters.map(function (f) { return Object.assign({}, f); }),
             combinator: s.combinator,
             isolate:    !!s.isolate,
+            // View-toggle flags (task #64, render-streamline §7.2): the ENGINE renders
+            // from THESE store flags, so they are the view state that must survive a tab
+            // round-trip (axes / unit-cell / index-labels / force overlay + scale).
+            showAxis:   !!s.showAxis,
+            showCell:   !!s.showCell,
+            showIndex:  !!s.showIndex,
+            showForces: !!s.showForces,
+            forceScale: s.forceScale,
         };
     }
 
@@ -987,6 +995,22 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         try { v = view.getState(); } catch (_) { v = null; }
         if (!v) return;                            // no embed / no view -> leave the mirror as-is
         m.state.view = v;
+        // task #64: the store's view-toggle flags (showAxis/showCell/showIndex/showForces)
+        // are the view state the ENGINE renders from -- refresh them in the persisted
+        // selection slice from the LIVE store so a view-only toggle (setViewFlag, which has
+        // no push-persist trigger) survives, exactly like the embed camera/style in
+        // m.state.view above.  Only patches the flags; the rest of the selection slice
+        // (indices/pickOrder/mode/...) stays as last persisted.
+        if (m.state.selection) {
+            try {
+                var liveSel = getSelection();
+                m.state.selection.showAxis   = liveSel.showAxis;
+                m.state.selection.showCell   = liveSel.showCell;
+                m.state.selection.showIndex  = liveSel.showIndex;
+                m.state.selection.showForces = liveSel.showForces;
+                m.state.selection.forceScale = liveSel.forceScale;
+            } catch (_) { /* best-effort */ }
+        }
         var wid = ws.workspaceId();
         var idx = (typeof m.state.state_index === "number") ? m.state.state_index : _timeline.stateIndex;
         // MIRROR ONLY, routed through the suspend gate (held if a multi-step op is in flight).
@@ -1523,6 +1547,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     st.setCombinator(sel.combinator);
                 if (typeof st.setIsolate === "function" && typeof sel.isolate === "boolean")
                     st.setIsolate(sel.isolate);
+                // View-toggle flags (task #64): restore what the ENGINE renders from, so
+                // axes / cell / index-labels / forces survive a tab round-trip.
+                if (typeof st.setViewFlag === "function") {
+                    ["showAxis", "showCell", "showIndex", "showForces"].forEach(function (k) {
+                        if (typeof sel[k] === "boolean") st.setViewFlag(k, sel[k]);
+                    });
+                    if (sel.forceScale !== undefined)
+                        st.setViewFlag("forceScale", sel.forceScale);
+                }
                 if (typeof st.setSelection === "function") {
                     var order = (Array.isArray(sel.pickOrder) && sel.pickOrder.length)
                         ? sel.pickOrder
