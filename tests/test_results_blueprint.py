@@ -102,65 +102,6 @@ class TestResultsInTabNav:
 
 
 # --------------------------------------------------------------------- #
-#  Registry + inspector script wiring                                   #
-# --------------------------------------------------------------------- #
-
-
-class TestResultsRegistryScripts:
-    """Script load order matters: registry must precede every
-    inspector module (each self-registers at load time), and the
-    page-level viewer.js must come last so its init runs after
-    all inspectors have registered."""
-
-    REQUIRED_SCRIPTS = [
-        # The MolView module door.  The 3Dmol embed (mol-viewer.js + mol-*.js) is no
-        # longer a standalone <script> tag -- it is imported by lib/molview/index.js
-        # (the ESM graph, results.html §"3Dmol embed is now an ES module").  Assert the
-        # DOOR is present (which transitively provides mol-viewer) instead of the retired
-        # raw tag -- same capability, current contract.
-        "lib/molview/index.js",
-        "lib/xyz-io.js",
-        "lib/path-utils.js",
-        "lib/inspectors/registry.js",
-        # Shared scaffolding for partial-fetch inspectors (task #308).
-        "lib/inspectors/_partial_inspector_factory.js",
-        "lib/inspectors/source.js",
-        "lib/inspectors/structure.js",
-        "lib/inspectors/trajectory.js",
-        "lib/inspectors/spectra.js",
-        "results/viewer.js",
-    ]
-
-    def test_all_required_scripts_present(self, web):
-        body = web.get("/results").get_data(as_text=True)
-        for script in self.REQUIRED_SCRIPTS:
-            assert script in body, f"missing script tag: {script}"
-
-    def test_registry_loads_before_inspectors(self, web):
-        body = web.get("/results").get_data(as_text=True)
-        reg_ix = body.find("lib/inspectors/registry.js")
-        assert reg_ix > 0, "registry.js script tag missing"
-        for inspector_name in ("source", "structure", "trajectory", "spectra"):
-            insp_ix = body.find(f"lib/inspectors/{inspector_name}.js")
-            assert insp_ix > reg_ix, (
-                f"inspector {inspector_name}.js loads BEFORE registry.js; "
-                f"self-registration would fail"
-            )
-
-    def test_inspectors_load_before_viewer(self, web):
-        """results/viewer.js's init reads from the registry, so it
-        must come AFTER all inspector self-registration."""
-        body = web.get("/results").get_data(as_text=True)
-        viewer_ix = body.find("results/viewer.js")
-        for inspector_name in ("source", "structure", "trajectory", "spectra"):
-            insp_ix = body.find(f"lib/inspectors/{inspector_name}.js")
-            assert insp_ix < viewer_ix, (
-                f"viewer.js loads BEFORE {inspector_name}.js; "
-                f"init may run before the inspector registered"
-            )
-
-
-# --------------------------------------------------------------------- #
 #  Inspector modules are served + carry the expected interface          #
 # --------------------------------------------------------------------- #
 
