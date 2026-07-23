@@ -71,44 +71,39 @@ def transport_src() -> str:
 
 
 class TestOptimizationTabContract:
-    """viewer.js drives /api/build/fdf and /api/build/pyscf."""
+    """viewer.js drives /api/build/fdf and /api/build/pyscf.
 
-    def test_state_holds_frozen_atoms_and_regions(self, viewer_src):
-        """The tab-local ``state`` object must include
-        ``frozen_atoms`` and ``regions`` so they survive between
-        the model read and Generate."""
-        assert re.search(r"frozen_atoms\s*:\s*\[\s*\]", viewer_src), (
-            "state must initialise ``frozen_atoms: []``"
-        )
-        assert re.search(r"regions\s*:\s*\{\s*\}", viewer_src), (
-            "state must initialise ``regions: {}``"
-        )
+    Symmetric with the Spectrum + Transport contracts below: labels are read
+    FRESH off the model (``getFrozen`` / ``getRegions``) at Generate time -- there
+    is NO ``state.*`` mirror to desync (unified-API access; the 2026-07 audit
+    removed the load-time mirror this tab alone still kept)."""
 
-    def test_siesta_post_body_carries_labels(self, viewer_src):
+    def test_siesta_post_body_carries_labels_from_model(self, viewer_src):
         body = _post_body_around(viewer_src, 'fetch("/api/build/fdf"')
-        assert "frozen_atoms:" in body and "state.frozen_atoms" in body, (
-            "SIESTA Generate POST body must carry "
-            "``frozen_atoms: state.frozen_atoms`` (or || []).  See the "
-            "viewer-is-truth contract."
+        assert "frozen_atoms:" in body and "getFrozen" in body, (
+            "SIESTA Generate POST body must carry ``frozen_atoms`` sourced from "
+            "``getFrozen()`` (read FRESH off the model, not a state.* mirror)."
         )
-        assert "regions:" in body and "state.regions" in body, (
-            "SIESTA Generate POST body must carry ``regions: state.regions``"
+        assert "regions:" in body and "getRegions" in body, (
+            "SIESTA Generate POST body must carry ``regions`` from ``getRegions()``"
         )
 
-    def test_pyscf_post_body_carries_labels(self, viewer_src):
+    def test_pyscf_post_body_carries_labels_from_model(self, viewer_src):
         body = _post_body_around(viewer_src, 'fetch("/api/build/pyscf"')
-        assert "frozen_atoms:" in body and "state.frozen_atoms" in body
-        assert "regions:" in body and "state.regions" in body
+        assert "frozen_atoms:" in body and "getFrozen" in body
+        assert "regions:" in body and "getRegions" in body
 
-    def test_load_handler_populates_state_from_model(self, viewer_src):
-        """The commit-load path must populate ``state.frozen_atoms`` /
-        ``state.regions`` from the MODEL (``getFrozen`` / ``getRegions``),
-        NOT an out-of-band sidecar fetch."""
-        assert "getFrozen" in viewer_src and "getRegions" in viewer_src, (
-            "viewer.js must read labels off the model (getFrozen/getRegions)"
+    def test_no_stale_label_mirror(self, viewer_src):
+        """The old load-time ``state.frozen_atoms`` / ``state.regions`` mirror was
+        removed with the 2026-07 unified-API audit -- the model read at Generate
+        time is the ONE source; guard against its reintroduction (matches the
+        Spectrum + Transport anti-cache guards)."""
+        assert "state.frozen_atoms" not in viewer_src, (
+            "no state.* label mirror: read getFrozen() fresh at emit"
         )
-        assert re.search(r"state\.frozen_atoms\s*=", viewer_src)
-        assert re.search(r"state\.regions\s*=", viewer_src)
+        assert "state.regions" not in viewer_src, (
+            "no state.* label mirror: read getRegions() fresh at emit"
+        )
 
 
 # --------------------------------------------------------------------- #

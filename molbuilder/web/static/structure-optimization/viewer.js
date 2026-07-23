@@ -62,12 +62,9 @@ function _mvdata() {
         labels: [],           // 3Dmol label objects so we can clear them
         fdf: null,
         pyscf: null,
-        // viewer-is-truth: the loaded structure's labels, shipped DIRECTLY in the
-        // Generate POST body (no server path-indirection).  Populated by
-        // _applyLoadedModel straight off the MODEL (getFrozen/getRegions) after the ONE
-        // door loads it -- not an out-of-band sidecar fetch.  Empty = "no labels".
-        frozen_atoms: [],
-        regions: {},
+        // (labels -- regions / frozen -- are NOT held here: the Generate POST reads
+        // them FRESH off the model via getRegions/getFrozen at emit time, so there is
+        // no state.* mirror to desync.  viewer-is-truth, unified-API.)
     };
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
@@ -302,12 +299,9 @@ function _mvdata() {
         state.title = filename;
         state.fdf = null;
         state.pyscf = null;
-        // The sidecar rode in on the door; read the labels straight off the model
-        // (no out-of-band sidecarLabels.fetch -- that was the second read path).
-        state.regions      = (d && typeof d.getRegions === "function")
-            ? d.getRegions() : {};
-        state.frozen_atoms = (d && typeof d.getFrozen === "function")
-            ? d.getFrozen() : [];
+        // Labels (regions / frozen) are NOT mirrored into state -- the Generate POST
+        // reads them FRESH off the model (getRegions / getFrozen) at emit time so they
+        // can never desync from the live model (unified-API access, no state.* copy).
         $("info-title").textContent     = filename;
         $("info-atoms").textContent     = n_atoms;
         $("info-residues").textContent  = "—";
@@ -1335,10 +1329,12 @@ function _mvdata() {
                     // the server consumes these directly and skips
                     // sidecar re-read when the keys are present
                     // (even when empty).  See _shared.apply_labels_
-                    // to_struct docstring.  Pulled into state at
-                    // Load time inside _commitStructure.
-                    frozen_atoms: state.frozen_atoms || [],
-                    regions:      state.regions || {},
+                    // to_struct docstring.  Read FRESH off the model
+                    // at emit (unified API, getFrozen/getRegions) --
+                    // never a state.* mirror that could desync from
+                    // the live labels (matches the spectra tab).
+                    frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
+                    regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
                 }),
                 signal: _signal,
             }).then(x => x.json());
@@ -1719,11 +1715,11 @@ function _mvdata() {
                     // structure_path: back-compat fallback when
                     // in-body labels aren't present.
                     structure_path: _structPathPy || null,
-                    // In-body labels (viewer-is-truth contract);
-                    // pulled into state at Load time.  Server
-                    // prefers these over sidecar re-read.
-                    frozen_atoms: state.frozen_atoms || [],
-                    regions:      state.regions || {},
+                    // In-body labels (viewer-is-truth contract), read
+                    // FRESH off the model at emit (unified API) -- not a
+                    // state.* mirror.  Server prefers these over sidecar.
+                    frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
+                    regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
                 }),
                 signal: _signalPy,
             }).then(x => x.json());
