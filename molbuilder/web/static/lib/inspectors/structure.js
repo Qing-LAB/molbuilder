@@ -237,17 +237,30 @@ function _mvdata() {
                     // browser paints the 3Dmol canvas before the picker meta clears
                     // -- matches the trajectory inspector's pattern (core.js).
                     try {
-                        const dispatch = () => document.dispatchEvent(
-                            new CustomEvent(
-                                ((root.molbuilder || {}).constants || {})
-                                    .EVENT_INSPECTOR_READY
-                                || "molbuilder:inspector:ready",
-                                { detail: { inspector: "structure" } }
-                            )
-                        );
+                        var _readyFired = false;
+                        const dispatch = function () {
+                            if (_readyFired) return;   // fire ONCE (rAF + timer race)
+                            _readyFired = true;
+                            document.dispatchEvent(
+                                new CustomEvent(
+                                    ((root.molbuilder || {}).constants || {})
+                                        .EVENT_INSPECTOR_READY
+                                    || "molbuilder:inspector:ready",
+                                    { detail: { inspector: "structure" } }
+                                )
+                            );
+                        };
+                        // Prefer a post-paint dispatch (double-rAF) so the 3Dmol
+                        // canvas is on screen before the picker drops its "parsing…"
+                        // overlay -- no flash of empty viewer.  BUT rAF is paused in a
+                        // BACKGROUNDED tab, which would leave the overlay stuck until
+                        // the picker's 15s fallback ("parsing for a long time").  A
+                        // short timer guarantees the ready signal fires regardless of
+                        // paints; whichever wins, ``dispatch`` runs exactly once.
                         if (typeof requestAnimationFrame === "function") {
                             requestAnimationFrame(
                                 () => requestAnimationFrame(dispatch));
+                            setTimeout(dispatch, 250);
                         } else {
                             dispatch();
                         }
