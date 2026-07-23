@@ -3392,8 +3392,9 @@ def test_delete_button_disabled_without_selection(
 def test_apply_delete_drops_selected_row(
         page, flask_server, water_xyz_file):
     """Select index 0 (the O), click Apply Delete -> structure shrinks
-    from 3 to 2 atoms.  The two H atoms survive (verified by reading
-    elements from the live viewer state)."""
+    from 3 to 2 atoms.  The two H atoms survive (verified against
+    MolView's data model -- the source of truth for the delete op;
+    3Dmol rendering is irrelevant to whether the data changed)."""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
@@ -3402,10 +3403,8 @@ def test_apply_delete_drops_selected_row(
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
-    elements = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map((a) => a.elem);
-    }""")
+    elements = page.evaluate(
+        "() => window.molbuilder.molview.data.getElements()")
     assert elements == ["H", "H"]
     # The legacy ``#atom-count`` readout was removed -- the canonical
     # "how many atoms now?" check goes through the test hook above
@@ -3814,10 +3813,10 @@ def test_apply_orient_lays_anchor_pair_along_z(
         " /Oriented/.test(document.querySelector('#edit-status').textContent)"
     )
     # After orient, atoms 0 and 3 must lie on the z axis (x ~ 0, y ~ 0).
-    coords = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
-    }""")
+    # Read the coordinates from MolView's data model (the op's target) --
+    # not 3Dmol's render state.
+    coords = page.evaluate(
+        "() => window.molbuilder.molview.data.getCoordinates()")
     assert abs(coords[0][0]) < 1e-3 and abs(coords[0][1]) < 1e-3, coords[0]
     assert abs(coords[3][0]) < 1e-3 and abs(coords[3][1]) < 1e-3, coords[3]
     assert errors == [], f"JS errors during orient: {errors}"
@@ -5014,7 +5013,7 @@ def test_apply_electrode_pair_mode_builds_au_junction(
         page, flask_server, ss_pair_xyz_file):
     """End-to-end: 2-atom S pair -> select both -> Apply pair-mode
     Au(111) 2x2x1 -> structure grows to 10 atoms (2 S + 8 Au).
-    Elements are read from the live viewer state."""
+    Elements are read from MolView's data model (the op's target)."""
     errors = _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     _set_selection(page, [0, 1])
@@ -5033,10 +5032,8 @@ def test_apply_electrode_pair_mode_builds_au_junction(
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 10"
     )
-    elements = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map((a) => a.elem);
-    }""")
+    elements = page.evaluate(
+        "() => window.molbuilder.molview.data.getElements()")
     assert sum(1 for e in elements if e == "Au") == 8
     assert sum(1 for e in elements if e == "S")  == 2
     assert errors == [], f"JS errors during electrode apply: {errors}"
