@@ -3864,10 +3864,14 @@ def test_apply_rotate_z_90_centroid_default(
     page.wait_for_function(
         "() => /Rotated/.test(document.querySelector('#edit-status').textContent)"
     )
-    coords = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
-    }""")
+    # Read the DATA MODEL (molview.data.getCoordinates via getState().positions),
+    # NOT getViewer().selectedAtoms() -- the 3Dmol viewer is a RENDER target the
+    # engine repaints on a deferred double-rAF (engine.js §8/§9), so reading it
+    # right after the status races the paint and sees the pre-rotate coords.  A
+    # transform is a pure coordinate write to the model; assert the model (the
+    # single source), which the op updates synchronously.
+    coords = page.evaluate(
+        "() => window.__molbuilder_modify_test.getState().positions")
     # Centroid = (1.5, 1.5, 0).  Atom 1 at (1, 1, 0) -> centroid frame
     # (-0.5, -0.5, 0) -> rotate 90° -> (0.5, -0.5, 0) -> world (2, 1, 0).
     assert abs(coords[1][0] - 2.0) < 1e-3, coords[1]
@@ -3896,10 +3900,10 @@ def test_apply_rotate_z_90_origin_pivot(
     page.wait_for_function(
         "() => /Rotated/.test(document.querySelector('#edit-status').textContent)"
     )
-    coords = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
-    }""")
+    # Model read (single source), not the deferred 3Dmol render target -- see
+    # test_apply_rotate_z_90_centroid_default.
+    coords = page.evaluate(
+        "() => window.__molbuilder_modify_test.getState().positions")
     assert abs(coords[1][0] - (-1.0)) < 1e-3, coords[1]
     assert abs(coords[1][1] - 1.0)    < 1e-3, coords[1]
     assert abs(coords[1][2] - 0.0)    < 1e-3, coords[1]
