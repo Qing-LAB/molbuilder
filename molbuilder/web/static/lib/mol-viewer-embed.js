@@ -4255,9 +4255,23 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
         function setCell(c) {
             if (state.disposed) return;
-            const next = _normaliseCell(c);
-            if (_equalNormalised(state.current.cell, next)) return;
+            const next = _normaliseCell(c);            // visibility + style {color,radius}|null
+            // §3a: setCell ALSO carries the box GEOMETRY {lattice, origin} -- embed-io
+            // hands ``_cellBox()`` here on an overlay refresh (e.g. a showCell toggle).
+            // Store it in ``state.current.cellBox`` (the field the draw at _redrawCell
+            // reads for the anchor corner) -- WITHOUT this, only the full-regen
+            // setStructure path set cellBox, so toggling the cell ON after a load (the
+            // default, since showCell starts OFF) drew the box from the WORLD ORIGIN
+            // instead of the resolved cell_origin corner (silent: the `(box && box.
+            // origin)||null` guard swallowed the missing field -> [0,0,0]).  A bare
+            // true/false visibility toggle keeps the current geometry.
+            const nextBox = (c && typeof c === "object" && c.lattice !== undefined)
+                            ? _normaliseCellBox(c)
+                            : state.current.cellBox;
+            if (_equalNormalised(state.current.cell, next)
+                && _equalNormalised(state.current.cellBox, nextBox)) return;
             state.current.cell = next;
+            state.current.cellBox = nextBox;
             _redrawCell(state);
             _render(state);
             _syncToggles(state);
