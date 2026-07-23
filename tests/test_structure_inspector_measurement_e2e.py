@@ -224,7 +224,10 @@ def test_results_view_controls_bar_drives_store(
     _open_results(page, flask_server)
     _mount_structure(page, str(xyz))
     slot = ".structure-viewer-slot"
-    _count = f"() => {_VH}.getAtomCount()"
+    # Precondition: the structure is loaded.  Assert the DATA MODEL (source of
+    # truth) -- getAtomCount() reads the embed's 3Dmol model, which lags the
+    # data render and raced this to 0 (render-timing).
+    _count = "() => window.molbuilder.molview.data.getElements().length"
     assert page.evaluate(_count) == 2
     # isolate: select an atom, then CLICK the rail isolate toggle -> store.isolate flips.
     page.evaluate(f"() => {_SEL}.set([0])")
