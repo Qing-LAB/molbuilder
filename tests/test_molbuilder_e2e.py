@@ -1992,6 +1992,47 @@ def test_subset_transform_rotates_only_selected_atoms(
         f"selected atoms must move: {before} -> {after}"
 
 
+def test_calibrate_ignores_partial_selection_and_calibrates_the_whole_structure(
+        page, flask_server, tmp_path, monkeypatch):
+    """calibrate is inherently WHOLE-structure: it moves ALL atoms into [0,cell) and
+    clears cell_origin (§3c).  So it must ignore a partial selection and take the
+    whole-structure path -- NOT the subset path, which would move only the selected
+    atom and leave cell_origin set.  Discriminator: only the whole-structure calibrate
+    clears cell_origin.  Pins the registry `wholeOnly` guard."""
+    import hashlib
+    import json
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "jx.xyz"
+    xyz.write_text("2\njx\nS 0 0 -3\nS 0 0 3\n")
+    (tmp_path / "jx.molstruct.json").write_text(json.dumps({
+        "schema_version": 3, "n_atoms_total": 2,
+        "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
+        "regions": {}, "frozen_atoms": [], "selection_rules": {},
+        "cell": [[4, 0, 0], [0, 4, 0], [0, 0, 10]],
+        "cell_origin": [-2, -2, -5],
+    }))
+    _open_modify(page, flask_server)
+    _load_file(page, str(xyz), expected_atoms=2)
+    # cell_origin loaded from the sidecar (explicit cell + off-origin corner).
+    page.wait_for_function(
+        "() => { const o = window.molbuilder.molview.data.getUnitCellOrigin();"
+        "  return o && Math.abs(o[0] + 2) < 1e-6; }")
+    # Select ONE atom, then calibrate -- it must still calibrate the WHOLE structure.
+    _set_selection(page, [0])
+    page.evaluate(
+        "() => window.molbuilder.molview.data.applyOp('calibrate', {})"
+        "  .then(() => null)")
+    # cell_origin CLEARED (only the whole-structure calibrate does this) + EVERY atom
+    # inside [0, cell) -- proves the partial selection was ignored (not a subset op).
+    page.wait_for_function(
+        "() => window.molbuilder.molview.data.getUnitCellOrigin() === null")
+    coords = page.evaluate("() => window.molbuilder.molview.data.getCoordinates()")
+    assert len(coords) == 2, coords
+    for c in coords:
+        assert (-1e-6 <= c[0] <= 4 + 1e-6 and -1e-6 <= c[1] <= 4 + 1e-6
+                and -1e-6 <= c[2] <= 10 + 1e-6), f"atom outside [0,cell): {coords}"
+
+
 def test_delete_with_no_selection_is_rejected(page, flask_server, water_xyz_file):
     """§19.3.2 empty-policy (module-owned): delete with an empty group REJECTS -- never
     'delete all by accident'.  The rule lives in the module, not the caller."""

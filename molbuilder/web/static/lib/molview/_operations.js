@@ -44,6 +44,8 @@ export function createOperations(deps) {
     //   scalar     true -> groupField takes a single int (group[0]), not an array
     //   shape      "transform" (count kept, selection KEPT) | "grow" | "shrink" (count changes,
     //              selection CLEARED) -- drives the count invariant + the atom-count selection rule
+    //   wholeOnly  true -> ALWAYS the whole-structure path, never the subset path, even with a
+    //              partial selection (an op that has no per-subset meaning, e.g. calibrate)
     //   mapGroup   optional (group)->indices op-specific ordering (electrode top/bottom by z)
     var _OP_REGISTRY = {
         "translate": { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
@@ -60,8 +62,10 @@ export function createOperations(deps) {
         },
         "delete":    { role: "subject", empty: "reject", arity: null,   groupField: "indices",      shape: "shrink" },
         // § 3c: rigid whole-structure calibrate -> atoms into [0,cell), cell at origin.
-        // Count-preserving (selection kept); no group.
-        "calibrate": { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform" },
+        // Count-preserving (selection kept); no group.  wholeOnly: calibrate moves ALL
+        // atoms + clears cell_origin -- there is no per-subset meaning, so it ALWAYS
+        // takes the whole-structure path even when a partial selection is active.
+        "calibrate": { role: "subject", empty: "all",    arity: null,   groupField: null,           shape: "transform", wholeOnly: true },
     };
     var _mutating = false;   // §19.3.2 serialize: at most ONE structure mutation in flight.
 
@@ -222,8 +226,10 @@ export function createOperations(deps) {
         _mutating = true;
         var run;
         // Dispatch: a transform on a SUBSET (subject smaller than all) uses the subset
-        // orchestration; everything else takes the whole-structure path.
-        if (desc.shape === "transform" && desc.role === "subject"
+        // orchestration so ONLY the selected atoms move + the box stays put; everything
+        // else -- selection none/all, a wholeOnly op (calibrate), grow/shrink -- takes
+        // the whole-structure path (the box moves WITH the atoms, § 3c).
+        if (desc.shape === "transform" && desc.role === "subject" && !desc.wholeOnly
                 && group.length > 0 && group.length < nAll) {
             run = _subsetTransform(op, group, args);
         } else {
