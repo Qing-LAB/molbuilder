@@ -222,6 +222,18 @@ Cell = {
 }
 ```
 
+> **Embed contract — the box GEOMETRY rides BOTH the movie and the overlay door.**
+> `cellBox = {lattice, origin}` reaches the embed two ways: `setStructure({cellBox})`
+> (structural regen) AND `setCell(cellBox)` (overlay refresh — what a `showCell`
+> toggle produces, since `showCell` defaults OFF so the box arrives via `setCell`).
+> BOTH must persist `state.current.cellBox`; the wireframe draw reads the anchor
+> `origin` from there. A 2026-07 bug had `setCell` write only `state.current.cell`
+> (visibility/style) and never `cellBox`, so the box silently drew from `[0,0,0]`
+> instead of `cell_origin` (the `(box && box.origin) || null` guard swallowed the
+> missing field — no error). **Tests must assert the DRAWN wireframe corner, not
+> just `getUnitCellOrigin()` (the data was correct throughout);** see
+> `test_setCell_overlay_anchors_box_at_origin_not_world`.
+
 - The atom **count, `elements`, and `annotations` are fixed at load from frame [0]** and are
   identical for every frame (the same-atoms invariant, §6). A frame carries **coordinates
   only**.

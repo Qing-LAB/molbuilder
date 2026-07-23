@@ -1010,6 +1010,59 @@ class TestHandleSurface:
                 f"({out[mode]!r}); see B1 review finding"
             )
 
+    def test_setCell_overlay_anchors_box_at_origin_not_world(
+            self, page, flask_server):
+        """REGRESSION (cell-origin render bug, 2026-07): the unit-cell box must be
+        drawn from the cell_origin CORNER, not the world origin.  The bug was in the
+        OVERLAY path -- setCell({lattice, origin}) after load (what embed-io hands on
+        a showCell toggle) wrote only ``state.current.cell`` (style) and NEVER
+        ``state.current.cellBox``, so the draw's ``(box && box.origin) || null``
+        SILENTLY defaulted the anchor to [0,0,0] (no thrown error -- the && guard
+        swallowed it).  Asserts the DRAWN wireframe corner, not the data model
+        (getUnitCellOrigin was correct the whole time; only the render dropped it)."""
+        page.goto(f"{flask_server}/molbuilder")
+        page.wait_for_selector("#molview-host .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                // structure loaded WITHOUT a box; the OVERLAY path then hands the
+                // box geometry via setCell -- exactly the sequence a showCell toggle
+                // produces (default showCell is OFF, so the box arrives via setCell).
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "2\\nx\\nC 0 0 0\\nH 1 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                h.setCell({ lattice: [[10,0,0],[0,10,0],[0,0,10]],
+                            origin: [-3, -4, -5] });
+                const v = h._viewer3dmol();
+                const pts = [];
+                for (const s of (v.shapes || [])) {
+                    const cyl = s && s.intersectionShape
+                                  && s.intersectionShape.cylinder;
+                    if (!cyl) continue;
+                    for (const c of cyl) {
+                        if (c.c1) pts.push([c.c1.x, c.c1.y, c.c1.z]);
+                        if (c.c2) pts.push([c.c2.x, c.c2.y, c.c2.z]);
+                    }
+                }
+                let mn = [1e9, 1e9, 1e9];
+                for (const p of pts) for (let i=0;i<3;i++) if (p[i]<mn[i]) mn[i]=p[i];
+                h.dispose(); host.remove();
+                return { box_min: mn, n_endpoints: pts.length };
+            }
+        """)
+        assert out["n_endpoints"] > 0, "no cell wireframe was drawn"
+        # box_min must be the ORIGIN corner [-3,-4,-5], NOT the world origin [0,0,0].
+        for got, want in zip(out["box_min"], [-3.0, -4.0, -5.0]):
+            assert abs(got - want) < 1e-6, (
+                f"cell box drawn from {out['box_min']} -- must anchor at the "
+                f"cell_origin [-3,-4,-5], not the world origin")
+
     def test_setAxes_cell_without_lattice_halts(
             self, page, flask_server):
         """Per § 5.3 Phase 5d: setAxes({mode: "cell"}) without a
