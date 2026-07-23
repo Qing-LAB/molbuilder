@@ -86,53 +86,41 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         };
     }
 
-    // Normalise a periodicity object to the canonical shape, or null.
-    // structure-periodicity.md: cell (3x3 | null), axis_kind
-    // ([str,str,str] | null), vacuum ([n,n,n]).  This rides ALONGSIDE the
-    // geometry so a save writes the whole structure (workspace-contract.md
-    // §4.0).  (k-grid is NOT geometry -- it's a sampling knob on
-    // SiestaConfig / TransportConfig -- so it is not carried here.)
+    // Deep-clone a plain-JSON value (nested arrays + scalars) preserving EVERY key.
+    // The periodicity block is server-owned JSON (Python Structure.to_wire,
+    // structure-authority.md § 3.2); this store carries it VERBATIM instead of copying a
+    // hand-maintained field list.  A field the server adds (or renames) rides through
+    // untouched -- no whitelist here can silently drop it (that is exactly what let
+    // cell_origin drift).  The ONE JS key-namer for periodicity is data-model.js's
+    // accessors (getUnitCell / getUnitCellOrigin / getVacuum / getAxisKind / ...).
+    function _deepCloneJson(v) {
+        if (Array.isArray(v)) return v.map(_deepCloneJson);
+        if (v && typeof v === "object") {
+            var out = {};
+            for (var k in v) {
+                if (Object.prototype.hasOwnProperty.call(v, k)) out[k] = _deepCloneJson(v[k]);
+            }
+            return out;
+        }
+        return v;   // string / number / bool / null / undefined
+    }
+
+    // Normalise a periodicity object for the WRITE boundary: carry it verbatim (deep-
+    // copied so an inbound reference can't alias _state), or null for a non-object.  See
+    // structure-periodicity.md for the field semantics (cell / cell_origin / resolved_cell
+    // / resolved_cell_origin / axis_kind / vacuum; k-grid is NOT geometry, never here) --
+    // but this function no longer enumerates them: the shape is whatever the server sent.
     function _normPeriodicity(p) {
         if (!p || typeof p !== "object") return null;
-        return {
-            cell:      p.cell || null,
-            // §3c: the raw low corner an EXPLICIT cell emanates from (an electrode
-            // junction's cell wraps off-origin atoms).  This one IS saved (round-trips
-            // through the sidecar); null for a derived cell / imported crystal.
-            cell_origin: p.cell_origin || null,
-            // §3a resolved (effective) cell from the ONE (server) resolver; the display
-            // accessor surfaces it.  Carried for the render, never saved (save writes
-            // the raw `cell`); refreshed by every server response.
-            resolved_cell: p.resolved_cell || null,
-            // §3a/3c: the corner the resolved box is anchored at (cell_origin for an
-            // explicit wrapping cell; atom_min-vacuum for a bbox+vacuum cell; null for
-            // an imported crystal).  Carried for the render so the box WRAPS the atoms.
-            resolved_cell_origin: p.resolved_cell_origin || null,
-            axis_kind: p.axis_kind || null,
-            vacuum:    Array.isArray(p.vacuum) ? p.vacuum.slice(0, 3) : [0, 0, 0],
-        };
+        return _deepCloneJson(p);
     }
 
     // Deep copy for the READ boundary (§1.2.1 concealment).  getStructure() hands callers
-    // a periodicity they CANNOT use to mutate _state in place -- matrices copied row-wise,
-    // flat arrays sliced.  Without this every `ws.getUnitCellInfo().value` / `.periodicity`
-    // was a live reference into the store (the "defensive copies" the header promises).
+    // a periodicity they CANNOT use to mutate _state in place.  Same verbatim deep-clone --
+    // no field list, so every key (incl. any the server added) survives the read boundary.
     function _clonePeriodicity(p) {
         if (!p) return null;
-        var mat = function (m) {
-            return Array.isArray(m)
-                ? m.map(function (r) { return Array.isArray(r) ? r.slice() : r; })
-                : null;
-        };
-        return {
-            cell:          mat(p.cell),
-            cell_origin:   Array.isArray(p.cell_origin) ? p.cell_origin.slice() : null,
-            resolved_cell: mat(p.resolved_cell),
-            resolved_cell_origin: Array.isArray(p.resolved_cell_origin)
-                                    ? p.resolved_cell_origin.slice() : null,
-            axis_kind:     Array.isArray(p.axis_kind) ? p.axis_kind.slice() : null,
-            vacuum:        Array.isArray(p.vacuum) ? p.vacuum.slice() : null,
-        };
+        return _deepCloneJson(p);
     }
 
     // Defensive DEEP copy of the opaque annotations payload (workspace-contract §1.2.1):

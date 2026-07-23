@@ -173,10 +173,11 @@ def test_measurement_overlay_renders_xyz_distance_angle_via_selection(
     page.wait_for_function(f"() => document.querySelector('{_OVL}').hidden")
 
 
-def _write_xyz_with_cell_sidecar(tmp_path, cell):
-    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell`.  This is the
-    dataset the host reads periodicity from (structure-periodicity.md § 8); the
-    viewer never parses -- the cell rides the dataset (molview.data)."""
+def _write_xyz_with_cell_sidecar(tmp_path, cell, cell_origin=None):
+    """A .xyz + its .molstruct.json sidecar carrying a 3x3 `cell` (and an optional
+    `cell_origin`, § 3c).  This is the dataset the host reads periodicity from
+    (structure-periodicity.md § 8); the viewer never parses -- the cell + origin
+    ride the dataset (molview.data)."""
     import hashlib
     import json
     xyz = tmp_path / "periodic.xyz"
@@ -186,6 +187,10 @@ def _write_xyz_with_cell_sidecar(tmp_path, cell):
         "structure_hash": hashlib.sha256(xyz.read_bytes()).hexdigest(),
         "regions": {}, "frozen_atoms": [], "cell": cell, "selection_rules": {},
     }
+    if cell_origin is not None:
+        # § 3c: an EXPLICIT cell that wraps off-origin atoms (an electrode
+        # junction) stores the low corner so the box wraps the structure.
+        sidecar["cell_origin"] = cell_origin
     (tmp_path / "periodic.molstruct.json").write_text(json.dumps(sidecar))
     return xyz
 
@@ -210,6 +215,32 @@ def test_sidecar_cell_reaches_viewer(
     # the cell reached the viewer (box can draw)
     lat = page.evaluate(f"() => {_VH}.getLattice()")
     assert lat is not None, "sidecar cell should reach getLattice()"
+
+
+def test_sidecar_cell_origin_reaches_viewer(
+        page, flask_server, tmp_path, monkeypatch):
+    """END-TO-END pin (structure-authority.md § 5): a sidecar carrying an EXPLICIT
+    cell WITH a non-zero `cell_origin` (§ 3c, an electrode-junction cell that wraps
+    off-origin atoms) must survive the whole Python->wire->JS path so the data
+    model reports that origin -- NOT 0.  This is the invariant that would have
+    caught the recurring `cell_origin -> 0` drift at the UI, not just in a unit
+    test: it reads molview.data.getUnitCellOrigin() (the single JS key-namer for
+    the origin), which surfaces the server's resolved_cell_origin
+    (= struct.resolve_cell_origin()).  For an explicit cell + cell_origin the
+    server resolves the origin TO that corner."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = _write_xyz_with_cell_sidecar(
+        tmp_path, [[10, 0, 0], [0, 10, 0], [0, 0, 20]],
+        cell_origin=[1.5, 2.5, 3.5])
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+
+    origin = page.evaluate(
+        "() => window.molbuilder.molview.data.getUnitCellOrigin()")
+    assert origin is not None, "cell_origin dropped on the way to the viewer (was None)"
+    assert abs(origin[0] - 1.5) < 1e-6, origin
+    assert abs(origin[1] - 2.5) < 1e-6, origin
+    assert abs(origin[2] - 3.5) < 1e-6, origin
 
 
 def test_results_view_controls_bar_drives_store(

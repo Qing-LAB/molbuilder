@@ -234,15 +234,29 @@ from `metadata_to_dict` → `structure_fields_via_dataclass` → `**fields`.
 | `/api/build/load` seam | parse text, `apply_to_structure`, hand-repack | parse text → `Structure`, return `struct.to_wire()` |
 | CLI load/save | `from_xyz` + separate sidecar calls | `StructureCodec().read(path)` / `.write(struct, path)` (L2 door, §3.3) |
 | Sidecar `to_dict` | lists each metadata field | `**fields` spread (§3.4) |
-| JS `data-model.js` | `r.periodicity.resolved_cell_origin` picked in many spots | carry `periodicity` verbatim; ONE `getUnitCellOrigin()` accessor names the key |
-| JS `_canvas-state-impl.js:_normPeriodicity` | field whitelist (drops unknowns) | **deleted** — carry the sub-dict whole |
-| JS `_install.js:230` blind `r.periodicity = opts.periodicity` | overwrites server-resolved periodicity | **removed** — the server seam is the only periodicity source |
+| JS `data-model.js` | `r.periodicity.resolved_cell_origin` read in accessors | unchanged — this IS the single JS key-namer (`getUnitCellOrigin`, …) |
+| JS `_canvas-state-impl.js:_normPeriodicity` + `_clonePeriodicity` | field whitelist (6 hand-listed keys; drops any unknown) | **verbatim deep-clone** (`_deepCloneJson`) — carry the whole sub-dict; a server-added field survives |
+| JS `_install.js:230` `if (opts.periodicity) r.periodicity = opts.periodicity` | *(kept)* | **kept** — traced callers: it is a **verbatim carry**, not a key clobber (below) |
 
-**JS rule mirror:** the browser carries the wire dict's `periodicity`,
-`metadata`, `atoms` as opaque blobs. Named-key reads happen ONLY in
-`data-model.js` accessors (`getUnitCellOrigin`, `getUnitCell`, …) — the single
-JS key-namer. No tab, no persistence path, no install path reaches into the
-sub-dict to pick or replace a field.
+**JS rule mirror:** the browser carries the wire dict's `periodicity` /
+`annotations` / `atoms` as opaque blobs — the store deep-clones the whole
+periodicity object with **no field list**. Named-key reads happen ONLY in
+`data-model.js` accessors (`getUnitCellOrigin`, `getUnitCell`, `getVacuum`,
+`getAxisKind`, …) — the single JS key-namer. The one deliberate exception is
+`setPeriodicity` (a WRITE accessor that edits specific lattice keys on a Cell-page
+edit); it names the keys it *manages*, which is legitimate — it is an editor, not
+a carry.
+
+**Why `_install.js:230` stays (corrected — the design first said "remove it").**
+Tracing every `installMolecule` caller: `openMolecule`, `modify/viewer`, the
+demos and `structure/page.js` do **not** hand-build periodicity — they omit it
+(server derives from text + sidecar) or carry `structure.periodicity` **verbatim**
+(a prior server response). Only `trajectory/core.js` builds `{cell: lat}` from the
+trajectory's own lattice — the one place that info lives (no sidecar). Line 230
+overlays these onto the `/api/build/load` re-parse (which, without a sidecar,
+would otherwise lose the cell). It carries the blob whole; it never picks or drops
+a server key. Consistent with the verbatim rule, not a violation. The real drift
+surface was the whitelist above.
 
 ---
 
@@ -307,9 +321,12 @@ Python codec.
    `ok_structure_response` + the build/load seam through `to_wire`. Run the
    blueprint + E2E suites.
 3. **Spread** the sidecar `to_dict` envelope (§3.4); delete the field list.
-4. **JS**: delete `_normPeriodicity` whitelist + the `_install.js:230` blind
-   replace; carry `periodicity` verbatim; confirm the single
-   `getUnitCellOrigin` accessor. Extend the E2E fixture (non-zero origin).
+4. **JS**: replace the `_normPeriodicity`/`_clonePeriodicity` field whitelist
+   with a verbatim `_deepCloneJson`; keep `_install.js:230` (traced: verbatim
+   carry, load-bearing for the sidecar-less re-install + trajectory paths);
+   confirm `data-model.js` accessors are the single key-namer. Extend the E2E
+   fixture (non-zero origin). **✅ DONE** (whitelist removed; line 230 kept + doc
+   corrected).
 5. **CLI**: route load/save through `StructureCodec().read`/`.write` (§3.3).
 
 Each step is independently testable and leaves the field set named in exactly
