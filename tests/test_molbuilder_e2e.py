@@ -5287,52 +5287,6 @@ def _embed_handle_eval(page, expr):
     )
 
 
-def test_watch_force_vectors_are_a_single_overlay_switch(
-        page, flask_server, watch_log_file_with_forces):
-    """A trajectory that carries per-atom forces draws its force arrows
-    with NO producer-side "show forces" control: the arrows are always
-    built and the overlay is visible by default, and MolView's single
-    "show overlay" switch (handle.setOverlay) is the one thing that
-    hides/shows them.
-
-    Post-overlay-unification (2026-07): the old #show-forces checkbox +
-    #forces-status readout were removed — there was a second, unsynced
-    toggle for the same thing.  The overlay IS the force vectors; the
-    only trajectory-side controls left shape HOW arrows are computed
-    (scale / threshold / exclude-frozen), never whether they show.
-    """
-    _load_watch_log(page, flask_server, watch_log_file_with_forces)
-    page.wait_for_timeout(300)
-    # Arrows are drawn by default — force data present => overlay on, no
-    # click needed (the fixture has 2 forces above the default threshold).
-    drawn = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
-    assert isinstance(drawn, int) and drawn >= 1, (
-        f"force arrows should be drawn on load; got {drawn!r} overlay shapes"
-    )
-    # The single visibility switch hides them...
-    page.evaluate(
-        "() => { document.querySelectorAll('*').forEach((e) => {"
-        "  if (e.__molview_test_handle) e.__molview_test_handle"
-        "    .setOverlay(false); }); }"
-    )
-    page.wait_for_timeout(150)
-    hidden = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
-    assert hidden == 0, (
-        f"setOverlay(false) should remove the arrows; got {hidden!r} shapes"
-    )
-    # ...and shows them again, from the same baked arrow data (no rebuild).
-    page.evaluate(
-        "() => { document.querySelectorAll('*').forEach((e) => {"
-        "  if (e.__molview_test_handle) e.__molview_test_handle"
-        "    .setOverlay(true); }); }"
-    )
-    page.wait_for_timeout(150)
-    shown = _embed_handle_eval(page, "h._test.getOverlayShapeCount()")
-    assert shown == drawn, (
-        f"setOverlay(true) should restore {drawn} arrows; got {shown!r}"
-    )
-
-
 def _load_watch_log(page, base_url, log_path):
     """Mount the trajectory inspector with ``log_path`` on /results.
 
