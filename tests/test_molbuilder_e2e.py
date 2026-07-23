@@ -5433,24 +5433,24 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     """
     _load_watch_log(page, flask_server, watch_log_file_multi_step)
     page.wait_for_selector(
-        ".mol-viewer-frame-strip .frame-slider", timeout=8000
+        ".molview-frame-controls .mvf-slider", timeout=8000
     )
     # The 10-frame fixture pins slider max = 9.
     page.wait_for_function(
-        "() => document.querySelector('.frame-slider').max === '9'"
+        "() => document.querySelector('.mvf-slider').max === '9'"
     )
 
     # (a) Programmatic input event.
     page.evaluate(
         "() => {"
-        "  const s = document.querySelector('.frame-slider');"
+        "  const s = document.querySelector('.mvf-slider');"
         "  s.value = '5';"
         "  s.dispatchEvent(new Event('input', {bubbles: true}));"
         "}"
     )
     page.wait_for_timeout(150)
     counter_after_prog = page.evaluate(
-        "() => document.querySelector('.frame-counter').textContent"
+        "() => document.querySelector('.mvf-counter').textContent"
     )
     assert "6 / 10" in counter_after_prog, (
         f"programmatic input to value=5 should show frame 6/10 "
@@ -5458,7 +5458,7 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     )
 
     # (b) Real mouse drag from one end to the other.
-    rect = page.locator(".frame-slider").bounding_box()
+    rect = page.locator(".mvf-slider").bounding_box()
     start_x = rect["x"] + 4
     end_x = rect["x"] + rect["width"] - 4
     y = rect["y"] + rect["height"] / 2
@@ -5470,14 +5470,14 @@ def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
     page.mouse.up()
     page.wait_for_timeout(200)
     counter_after_drag = page.evaluate(
-        "() => document.querySelector('.frame-counter').textContent"
+        "() => document.querySelector('.mvf-counter').textContent"
     )
     # End-of-track drag should land at the last frame (or near it).
     assert "/ 10" in counter_after_drag, (
         f"drag should land at a frame; got {counter_after_drag!r}"
     )
     last_val = page.evaluate(
-        "() => parseInt(document.querySelector('.frame-slider').value, 10)"
+        "() => parseInt(document.querySelector('.mvf-slider').value, 10)"
     )
     assert last_val >= 7, (
         f"end-of-track drag should land near frame 9; got value={last_val}"
