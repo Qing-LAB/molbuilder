@@ -240,18 +240,19 @@ def to_dict(
         selection_rules, set(fields["regions"]))
 
     return {
+        # Envelope -- the sidecar LAYER's own keys (not Structure fields).
         "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
         "structure_hash":  structure_hash,
-        "regions":         fields["regions"],
-        "frozen_atoms":    fields["frozen_atoms"],
+        # The Structure metadata block, VERBATIM from the ONE codec
+        # (metadata_to_dict, via structure_fields_via_dataclass): regions /
+        # frozen_atoms / cell / cell_origin / pbc / axis_kind / vacuum /
+        # annotations.  Spread -- NOT re-listed -- so a field added to the
+        # dataclass rides onto the sidecar automatically and this layer can no
+        # longer drop or drift one (structure-authority.md § 3.4).
+        **fields,
+        # selection_rules -- a sidecar-only pass-through (not a Structure field).
         "selection_rules": normed_rules,
-        "cell":            fields["cell"],
-        "cell_origin":     fields["cell_origin"],
-        "pbc":             fields["pbc"],
-        "axis_kind":       fields["axis_kind"],
-        "vacuum":          fields["vacuum"],
-        "annotations":     fields["annotations"],
         "created_by":      str(created_by),
         "created_at":      created_at or _now_iso_z(),
     }
