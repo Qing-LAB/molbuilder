@@ -103,8 +103,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // The store is the single source of view state (task #64); the engine renders from it.
             showIndex:  false,     // atom-index labels
             showForces: false,     // force-vector overlay
-            showCell:   true,      // unit-cell box
-            showAxis:   true,      // axes
+            showCell:   false,     // unit-cell box  -- default OFF (cross-tab consistency
+            showAxis:   false,     // axes           -- 2026-06-13); matches engine.js fallback
             forceScale: undefined, // Å per force unit (undefined -> engine default)
             filters:    [],
             combinator: "or",
@@ -1042,7 +1042,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     function _ephemeralSnapshot(st) {
         if (!st) {
             return { indices: [], mode: "click", isolate: false,
-                     showIndex: false, showForces: false, showCell: true, showAxis: true,
+                     showIndex: false, showForces: false, showCell: false, showAxis: false,
                      forceScale: undefined,
                      filters: [],
                      combinator: "or", loading: false, error: null, atoms: [],
