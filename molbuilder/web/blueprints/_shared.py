@@ -31,7 +31,6 @@ from flask import jsonify
 from molbuilder.structure import (
     Structure,
     annotations_from_json,
-    annotations_to_json,
 )
 from molbuilder.validation import validate_geometry
 
@@ -381,24 +380,15 @@ def structure_to_dict(
     """
     extras = dict(extra) if extra else {}
     base = workspace_payload(struct, extra=extras)
-    # The ONE resolver (§ 3a): struct.resolve_cell() -- an explicit cell wins, else
-    # per-axis bbox+vacuum.  Sent as `resolved_cell` so the client render / k-grid + the
-    # display accessor surface it WITHOUT re-implementing the math (single source of
-    # truth, shared with the fdf/save path).  None only when unresolvable.
-    try:
-        _rc = struct.resolve_cell()
-        _resolved_cell = _rc.tolist() if _rc is not None else None
-    except Exception:  # noqa: BLE001 -- periodic axis w/o lattice -> no resolved box
-        _resolved_cell = None
-    # § 3a: the CORNER the resolved box is anchored at.  For a bbox+vacuum cell
-    # (no explicit cell) it's (atom_min - vacuum) per isolated axis, so the box
-    # WRAPS the atoms instead of starting at the world origin.  None for an
-    # explicit cell (atoms already placed within it) or an empty structure.
-    try:
-        _ro = struct.resolve_cell_origin()
-        _resolved_origin = _ro.tolist() if _ro is not None else None
-    except Exception:  # noqa: BLE001
-        _resolved_origin = None
+    # The drift-prone block -- the full `periodicity` (raw cell/origin + the
+    # server-RESOLVED cell/origin via the ONE resolver) + `annotations` + the
+    # identity columns -- is assembled by the Structure itself
+    # (`struct.to_wire()`, structure-authority.md § 3.2).  This helper no longer
+    # hand-lists a single metadata field or re-runs a resolver, so a field added
+    # to `metadata_to_dict` rides onto every endpoint automatically and the
+    # `cell_origin` drop-on-repack bug cannot recur.  The web layer only adds its
+    # OWN concerns (render `atoms`, `issues`, `text`/`xyz`, `extra`).
+    wire = struct.to_wire()
     return {
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
@@ -407,35 +397,22 @@ def structure_to_dict(
         "n_atoms":       base["n_atoms"],
         "atoms":         base["atoms"],
         "lattice":       base["lattice"],
-        # Full periodicity (structure-periodicity.md) so it rides with the
-        # geometry into the store -- a captured electrode cell survives the
-        # modify op (workspace-contract.md §4.0).  `lattice` above stays as the
-        # cell alias for existing consumers.
-        "periodicity": {
-            "cell":          struct.cell.tolist() if struct.cell is not None else None,
-            "cell_origin":   (struct.cell_origin.tolist()
-                              if struct.cell_origin is not None else None),  # § 3c raw corner
-            "resolved_cell": _resolved_cell,   # § 3a effective cell (server-resolved)
-            "resolved_cell_origin": _resolved_origin,  # § 3a/3c box anchor corner
-            "axis_kind":     list(struct.axis_kind) if struct.axis_kind is not None else None,
-            "vacuum":        list(struct.vacuum),
-            # (No "kgrid": it's a SAMPLING knob on SiestaConfig / TransportConfig,
-            # not geometry -- structure-periodicity.md.)
-        },
-        # Per-atom annotation channels (atom-annotations.md) ride back with the geometry so a
-        # modify op preserves them index-aligned (the op reindexed them server-side).  The
-        # canonical carrier the client's molview.data reads on apply (§19.3.2 round-trip).
-        "annotations":   annotations_to_json(struct.annotations),
+        # Structure-owned: full periodicity (incl. resolved_cell/_origin) +
+        # annotations ride with the geometry into the store so a captured
+        # electrode cell survives the modify op (workspace-contract.md §4.0).
+        "periodicity":   wire["periodicity"],
+        "annotations":   wire["annotations"],
         "issues":        base["issues"],
         "extra":         base["extra"],
-        # Legacy aliases for existing modify-tab consumers.
+        # Legacy aliases for existing modify-tab consumers (identity columns
+        # also sourced from the ONE view so they can't diverge).
         "xyz":           base["text"],
-        "elements":      list(struct.elements),
-        "atom_names":    list(struct.atom_names),
-        "residue_ids":   list(struct.residue_ids),
-        "residue_names": list(struct.residue_names),
-        "chain_ids":     list(struct.chain_ids),
-        "n_residues":    struct.n_residues,
+        "elements":      wire["elements"],
+        "atom_names":    wire["atom_names"],
+        "residue_ids":   wire["residue_ids"],
+        "residue_names": wire["residue_names"],
+        "chain_ids":     wire["chain_ids"],
+        "n_residues":    wire["n_residues"],
         # Endpoint-specific keys at the top level for back-compat
         # with existing JS consumers.  Phase 4+ readers go through
         # ``extra`` instead.
