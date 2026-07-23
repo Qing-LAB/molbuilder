@@ -89,9 +89,13 @@ class TestOpsPreservePeriodicity:
         _assert_lattice_preserved(
             add_atom(periodic_dimer, "S", 0, [1.5, 0, 0]), periodic_dimer)
 
-    def test_orient_preserves_lattice(self, periodic_dimer):
-        _assert_lattice_preserved(
-            orient_along_axis(periodic_dimer, (0, 5), axis="z"), periodic_dimer)
+    def test_orient_preserves_axis_kind_and_vacuum(self, periodic_dimer):
+        # orient is a whole-structure rotation -> it ROTATES the lattice vectors
+        # (checked in TestRigidTransformMovesTheBox); the non-geometric axis_kind /
+        # vacuum tags still carry verbatim.
+        out = orient_along_axis(periodic_dimer, (0, 5), axis="z")
+        assert out.axis_kind == periodic_dimer.axis_kind
+        assert out.vacuum == periodic_dimer.vacuum
 
     def test_rotate_preserves_axis_kind_and_vacuum(self, periodic_dimer):
         # A rotation ROTATES the lattice vectors (checked in
@@ -422,6 +426,19 @@ class TestRigidTransformMovesTheBox:
         out = s.translated((10.0, 0.0, 0.0))
         assert np.allclose(out.cell_origin, [11.0, 2.0, 3.0], atol=1e-9)  # corner follows
         assert np.allclose(out.cell, s.cell, atol=1e-9)                   # vectors invariant
+
+    def test_orient_moves_the_box(self):
+        # orient is ALWAYS whole-structure (anchors only define the rotation), so it
+        # moves the box too: the atoms' fractional coords in the (rotated) box are
+        # unchanged -- the box still wraps the structure.
+        s = self._boxed()
+        out = orient_along_axis(s, (0, 1), axis="z", center="none")
+        def frac(st):
+            rel = st.positions - st.cell_origin
+            return np.linalg.solve(st.cell.T, rel.T).T
+        assert np.allclose(frac(out), frac(s), atol=1e-9)
+        # the lattice vectors actually rotated (not left axis-aligned)
+        assert not np.allclose(out.cell, s.cell)
 
 
 def test_rotate_around_z_default_no_op(linear_dimer):

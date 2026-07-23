@@ -231,15 +231,21 @@ transport cell. (This was the 2026-07 bug: cell right-size, wrong corner.)
    without it — but it lets the user *see* and *save* the exact SIESTA coordinate frame.
 
 5. **A rigid WHOLE-structure transform moves the box WITH the atoms.** `Structure.affine`
-   (the one primitive `translated` / `rotate_around_axis` route through) applies the same
-   map to the atoms AND the box, so an explicit cell keeps wrapping the structure:
-   translation moves the `cell_origin` corner (vectors are translation-invariant); a
-   whole-structure **rotation** rotates the lattice **vectors** (`cell @ Rᵀ`) *and* the
-   `cell_origin` corner (about the pivot). A rotation that left an axis-aligned box behind
-   the rotated atoms was the bug. (A **selection-only** transform is NOT rigid-whole — the
-   Modify subset path sends a cell-less sub-structure, so it never moves the box; only some
-   atoms move within it. `orient_along_axis` intentionally keeps the cell fixed: its job is
-   to align the molecule *to* a frame, not rotate the frame.)
+   (the ONE primitive `translated` / `rotate_around_axis` / `orient_along_axis` route
+   through) applies the same map to the atoms AND the box, so an explicit cell keeps
+   wrapping the structure: translation moves the `cell_origin` corner (vectors are
+   translation-invariant); a whole-structure **rotation** (rotate *or* orient) rotates the
+   lattice **vectors** (`cell @ Rᵀ`) *and* the `cell_origin` corner (about the pivot). A
+   rotation that left an axis-aligned box behind the rotated atoms was the bug.
+
+   **The rule — the box moves iff the transform is WHOLE-structure:** the Modify dispatch
+   (`_operations.js` `applyOp`) sends a `role: "subject"` transform through the
+   **whole-structure** path when the selection is empty (→ all atoms) OR is all atoms, and
+   through the **subset** path (a cell-less sub-structure; atoms map back into the fixed
+   box) when the selection is a proper subset. A partial selection means "transform only
+   these atoms" → the box (and origin) stays put. `orient` is `role: "anchor"` (the anchors
+   only *define* the rotation; every atom moves), so it is ALWAYS whole-structure and always
+   moves the box.
 
 ```mermaid
 flowchart LR

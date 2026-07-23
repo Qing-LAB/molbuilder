@@ -346,30 +346,21 @@ def orient_along_axis(
         target = np.array([0.0, cos_t, sin_t])
 
     R = _rotation_matrix_from_a_to_b(direction, target)
-    new_pos = struct.positions @ R.T
-
+    # The post-rotation recentre is a translation of the ROTATED frame: for "first"
+    # the rotated anchor a0 lands at the origin; for "midpoint" the rotated anchor
+    # midpoint does.  Express the whole op as the affine ``x -> x @ Rᵀ + t``.
     if center == "first":
-        new_pos = new_pos - new_pos[a0]
+        t = -(struct.positions[a0] @ R.T)
     elif center == "midpoint":
-        midpoint = 0.5 * (new_pos[a0] + new_pos[a1])
-        new_pos = new_pos - midpoint
-    # "none": no translation
-
-    # Pure rotation: atom indices are unchanged so frozen_atoms +
-    # regions carry through verbatim.
-    return Structure(
-        elements=list(struct.elements),
-        positions=new_pos,
-        atom_names=list(struct.atom_names),
-        residue_ids=list(struct.residue_ids),
-        residue_names=list(struct.residue_names),
-        chain_ids=list(struct.chain_ids),
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=list(struct.frozen_atoms),
-        annotations=copy_annotations(struct.annotations),
-        **struct._carry_periodicity(),   # a rigid rotation keeps the lattice
-    )
+        t = -0.5 * ((struct.positions[a0] + struct.positions[a1]) @ R.T)
+    else:  # "none"
+        t = np.zeros(3)
+    # orient is ALWAYS a whole-structure rotation (the anchors only DEFINE the
+    # rotation; every atom moves), so the unit-cell box rotates WITH the atoms --
+    # lattice vectors + the cell_origin corner (structure-periodicity.md § 3c),
+    # via the ONE affine primitive.  (A partial-selection edit never reaches orient:
+    # its role is "anchor", so applyOp always takes the whole-structure path.)
+    return struct.affine(R, t)
 
 
 def rotate_around_axis(
