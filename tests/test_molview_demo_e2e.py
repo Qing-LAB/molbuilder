@@ -66,9 +66,8 @@ def test_molview_demo_mounts_and_viewer_tracks_the_loaded_structure(page, flask_
         "() => window.__molview && typeof window.__molview.onChange === 'function'")
     keys = page.evaluate("() => Object.keys(window.__molview).sort()")
     assert keys == ["currentFrame", "dispose", "exportFile", "frameCount", "getFrame",
-                    "getSelection", "getStructure", "isPlaying", "onChange", "openMolecule",
-                    "pause", "play", "setArrows", "setFrame", "setFrameArrows", "setLabels",
-                    "undo"]
+                    "getSelection", "getStructure", "installMolecule", "isPlaying", "ok",
+                    "onChange", "pause", "play", "setFrame", "undo"]
 
     # THE FIX: the VIEWER shows the water sample loaded on mount (render reads store atoms).
     page.wait_for_function(_viewer_atoms_is(3), timeout=10000)

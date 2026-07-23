@@ -6206,7 +6206,7 @@ def test_selection_panel_height_is_stable_across_atomlist_filter_switch(
     so a content-sized panel WOULD differ -- this catches the regression."""
     _open_modify(page, flask_server)
     page.evaluate(
-        "(t) => window.molbuilder.molview.data.openMolecule("
+        "(t) => window.molbuilder.molview.data.installMolecule("
         "  { text: t, filename: 'benzene.xyz' })", _BENZENE_XYZ)
     page.wait_for_function(
         "() => { const p = document.querySelector('.molview-panel');"
