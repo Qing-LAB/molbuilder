@@ -74,7 +74,13 @@ class TestOpsPreservePeriodicity:
     wipe the periodic cell / transport axis / vacuum / k-grid.  Before the fix
     delete/add/orient/rotate/translate dropped them and a subsequent SIESTA
     FDF omitted LatticeVectors / the k-grid -- a scientifically wrong cell,
-    no warning."""
+    no warning.
+
+    NB: ``axis_kind`` / ``vacuum`` are non-geometric and carry VERBATIM through
+    every op.  The lattice VECTORS carry verbatim through atom-count edits +
+    translation (translation-invariant), but a whole-structure ROTATION rotates
+    them WITH the atoms so the box keeps wrapping the structure (§ 3c) -- that is
+    checked separately in :class:`TestRigidTransformMovesTheBox`, not here."""
 
     def test_delete_preserves_lattice(self, periodic_dimer):
         _assert_lattice_preserved(delete_atoms(periodic_dimer, [1]), periodic_dimer)
@@ -87,11 +93,17 @@ class TestOpsPreservePeriodicity:
         _assert_lattice_preserved(
             orient_along_axis(periodic_dimer, (0, 5), axis="z"), periodic_dimer)
 
-    def test_rotate_preserves_lattice(self, periodic_dimer):
-        _assert_lattice_preserved(
-            rotate_around_axis(periodic_dimer, axis="z", angle=30), periodic_dimer)
+    def test_rotate_preserves_axis_kind_and_vacuum(self, periodic_dimer):
+        # A rotation ROTATES the lattice vectors (checked in
+        # TestRigidTransformMovesTheBox), but the non-geometric axis_kind / vacuum
+        # tags still carry verbatim.
+        out = rotate_around_axis(periodic_dimer, axis="z", angle=30)
+        assert out.axis_kind == periodic_dimer.axis_kind
+        assert out.vacuum == periodic_dimer.vacuum
 
     def test_translate_preserves_lattice(self, periodic_dimer):
+        # Translation is lattice-VECTOR-invariant (only the origin corner moves),
+        # so cell / axis_kind / vacuum all carry verbatim.
         _assert_lattice_preserved(periodic_dimer.translated((1, 0, 0)), periodic_dimer)
 
     def test_center_preserves_lattice(self, periodic_dimer):
@@ -350,8 +362,66 @@ def test_orient_rejects_bad_axis(linear_dimer):
 
 
 # --------------------------------------------------------------------- #
-#  rotate_around_axis                                                   #
+#  A whole-structure rigid transform moves the unit-cell BOX with the    #
+#  atoms so it keeps wrapping them (structure-periodicity.md § 3c).       #
 # --------------------------------------------------------------------- #
+
+
+class TestRigidTransformMovesTheBox:
+    """A rigid whole-structure transform (rotate / translate) must move the
+    explicit unit-cell box WITH the atoms -- the lattice vectors and the
+    world-space origin corner -- else the box stops wrapping the structure
+    (the bug: a rotation left an axis-aligned box behind the rotated atoms)."""
+
+    # +90° about z: R = [[0,-1,0],[1,0,0],[0,0,1]]; atoms/vectors map via `@ Rᵀ`.
+    _RT = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])  # Rᵀ
+
+    def _boxed(self):
+        return Structure(
+            elements=["C", "H"],
+            positions=np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
+            cell=np.diag([10.0, 10.0, 20.0]),
+            cell_origin=np.array([1.0, 2.0, 3.0]),
+            axis_kind=("periodic", "periodic", "transport"),
+            vacuum=(5.0, 5.0, 0.0),
+        )
+
+    def test_rotate_origin_pivot_rotates_vectors_and_origin(self):
+        s = self._boxed()
+        out = rotate_around_axis(s, axis="z", angle=90.0, center="origin")
+        # atoms rotate about the world origin
+        assert np.allclose(out.positions, [[0, 1, 0], [0, 2, 0]], atol=1e-9)
+        # lattice VECTORS rotate the same way (cell @ Rᵀ)
+        assert np.allclose(out.cell, s.cell @ self._RT, atol=1e-9)
+        # the world-space origin CORNER rotates about the pivot (origin): origin @ Rᵀ
+        assert np.allclose(out.cell_origin, s.cell_origin @ self._RT, atol=1e-9)
+        # non-geometric tags carry verbatim
+        assert out.axis_kind == s.axis_kind and out.vacuum == s.vacuum
+
+    def test_rotate_centroid_pivot_rotates_origin_about_centroid(self):
+        s = self._boxed()
+        out = rotate_around_axis(s, axis="z", angle=90.0, center="centroid")
+        c = s.positions.mean(axis=0)
+        # origin corner rotates about the SAME centroid the atoms pivot on
+        assert np.allclose(out.cell_origin, (s.cell_origin - c) @ self._RT + c, atol=1e-9)
+        assert np.allclose(out.cell, s.cell @ self._RT, atol=1e-9)
+
+    def test_rotation_keeps_the_box_wrapping_the_atoms(self):
+        # The invariant the fix exists for: after a whole-structure rotation, every
+        # atom's FRACTIONAL coordinate in the (rotated) box is unchanged -- the box
+        # still wraps the atoms exactly as before.
+        s = self._boxed()
+        out = rotate_around_axis(s, axis="z", angle=37.0, center="centroid")
+        def frac(st):
+            rel = st.positions - st.cell_origin      # world -> box-corner frame
+            return np.linalg.solve(st.cell.T, rel.T).T
+        assert np.allclose(frac(out), frac(s), atol=1e-9)
+
+    def test_translate_moves_origin_not_vectors(self):
+        s = self._boxed()
+        out = s.translated((10.0, 0.0, 0.0))
+        assert np.allclose(out.cell_origin, [11.0, 2.0, 3.0], atol=1e-9)  # corner follows
+        assert np.allclose(out.cell, s.cell, atol=1e-9)                   # vectors invariant
 
 
 def test_rotate_around_z_default_no_op(linear_dimer):

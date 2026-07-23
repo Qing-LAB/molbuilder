@@ -1226,18 +1226,36 @@ class Structure:
             **self._carry_periodicity(),
         )
 
-    def translated(self, vec: Sequence[float]) -> "Structure":
-        v = np.asarray(vec, dtype=float).reshape(3)
+    def affine(self, linear: Sequence[Sequence[float]],
+               translation: Sequence[float]) -> "Structure":
+        """Apply one rigid/affine map ``x -> x @ linearᵀ + translation`` to the
+        WHOLE structure -- atoms AND the unit-cell box -- so an explicit box keeps
+        wrapping the atoms after a rigid transform (§ 3c).  THE single transform
+        primitive ``translated`` / ``rotate_around_axis`` route through.
+
+        * atoms:        ``positions @ linearᵀ + translation``
+        * lattice VECTORS (``cell`` rows): ``cell @ linearᵀ`` -- the vectors rotate/
+          shear with the linear part; the translation cancels (they are differences
+          of points).
+        * cell ORIGIN (``cell_origin``, the world-space corner): the FULL affine
+          ``cell_origin @ linearᵀ + translation`` -- it is a point and follows the
+          atoms.
+
+        A DERIVED cell (``cell`` None) / unset origin (``cell_origin`` None) needs no
+        update: ``resolve_cell`` / ``resolve_cell_origin`` recompute it from the new
+        atom extents.  Index-preserving, so regions / frozen / annotations / axis_kind
+        / vacuum / pbc carry verbatim.  For a pure rotation ``linear`` is orthogonal
+        (det +1), so the cell stays non-singular."""
+        L = np.asarray(linear, dtype=float).reshape(3, 3)
+        t = np.asarray(translation, dtype=float).reshape(3)
         per = self._carry_periodicity()
-        # A rigid translation leaves the lattice VECTORS unchanged, but the cell's
-        # world-space corner moves WITH the atoms so the box keeps wrapping them
-        # (§ 3c).  (A derived cell has cell_origin None -> recomputed from the new
-        # atom extents anyway.)
+        if per.get("cell") is not None:
+            per["cell"] = per["cell"] @ L.T
         if per.get("cell_origin") is not None:
-            per["cell_origin"] = per["cell_origin"] + v
+            per["cell_origin"] = per["cell_origin"] @ L.T + t
         return Structure(
             elements      = list(self.elements),
-            positions     = self.positions + v,
+            positions     = self.positions @ L.T + t,
             atom_names    = list(self.atom_names),
             residue_ids   = list(self.residue_ids),
             residue_names = list(self.residue_names),
@@ -1248,6 +1266,12 @@ class Structure:
             annotations   = copy_annotations(self.annotations),
             **per,
         )
+
+    def translated(self, vec: Sequence[float]) -> "Structure":
+        # A rigid translation: linear part = identity (lattice vectors unchanged),
+        # the cell's world-space corner moves WITH the atoms (§ 3c).  Routed through
+        # the ONE affine primitive so atoms + box stay consistent.
+        return self.affine(np.eye(3), np.asarray(vec, dtype=float).reshape(3))
 
     def centered(self) -> "Structure":
         """Translate so the **atom-coordinate mean** lands at the

@@ -230,6 +230,17 @@ transport cell. (This was the 2026-07 bug: cell right-size, wrong corner.)
    agree, atoms in `[0,cell)`. Calibration is OPTIONAL — generation is correct with or
    without it — but it lets the user *see* and *save* the exact SIESTA coordinate frame.
 
+5. **A rigid WHOLE-structure transform moves the box WITH the atoms.** `Structure.affine`
+   (the one primitive `translated` / `rotate_around_axis` route through) applies the same
+   map to the atoms AND the box, so an explicit cell keeps wrapping the structure:
+   translation moves the `cell_origin` corner (vectors are translation-invariant); a
+   whole-structure **rotation** rotates the lattice **vectors** (`cell @ Rᵀ`) *and* the
+   `cell_origin` corner (about the pivot). A rotation that left an axis-aligned box behind
+   the rotated atoms was the bug. (A **selection-only** transform is NOT rigid-whole — the
+   Modify subset path sends a cell-less sub-structure, so it never moves the box; only some
+   atoms move within it. `orient_along_axis` intentionally keeps the cell fixed: its job is
+   to align the molecule *to* a frame, not rotate the frame.)
+
 ```mermaid
 flowchart LR
     subgraph EDIT["EDIT — molecule pinned at origin (convenience)"]

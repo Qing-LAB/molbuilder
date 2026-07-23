@@ -1153,30 +1153,47 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     the client's cell to defaults -> the next SIESTA FDF silently dropped
     LatticeVectors.  (k-grid is NOT geometry -- a stray ``kgrid`` in the payload
     is ignored and never echoed back; structure-periodicity.md.)"""
+    import numpy as np
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
         "axis_kind": ["periodic", "periodic", "transport"],
         "vacuum": [5.0, 5.0, 0.0],
         "kgrid": [2, 2, 8],   # legacy key -> ignored, not echoed back
     }
-    # A count-changing op (delete) AND a transform (rotate) must both preserve it.
-    for op, extra in (("delete", {"indices": [1]}),
-                      ("rotate", {"axis": "z", "angle": 30})):
-        r = web_client.post(f"/api/modify/{op}", json={
-            "xyz": _H2O_XYZ, "periodicity": periodicity, **extra})
-        body = r.get_json()
-        assert body["ok"] is True, f"{op}: {body}"
-        per = body["periodicity"]
-        assert per["cell"] == periodicity["cell"], f"{op} dropped the cell"
-        assert per["axis_kind"] == periodicity["axis_kind"], f"{op} dropped axis_kind"
-        assert per["vacuum"] == periodicity["vacuum"], f"{op} dropped vacuum"
-        assert "kgrid" not in per, f"{op} should not echo k-grid (not geometry)"
+    # A count-changing op (delete) carries the lattice VERBATIM.
+    body = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ, "periodicity": periodicity, "indices": [1]}).get_json()
+    assert body["ok"] is True, body
+    per = body["periodicity"]
+    assert per["cell"] == periodicity["cell"], "delete dropped/changed the cell"
+    assert per["axis_kind"] == periodicity["axis_kind"], "delete dropped axis_kind"
+    assert per["vacuum"] == periodicity["vacuum"], "delete dropped vacuum"
+    assert "kgrid" not in per, "delete should not echo k-grid (not geometry)"
+
+    # A rigid ROTATION rotates the lattice VECTORS with the atoms (cell @ Rᵀ, origin
+    # pivot -- structure-periodicity.md §3c); it must not DROP them or leave an
+    # axis-aligned box behind.  axis_kind / vacuum are non-geometric -> verbatim.
+    body = web_client.post("/api/modify/rotate", json={
+        "xyz": _H2O_XYZ, "periodicity": periodicity, "axis": "z", "angle": 30}).get_json()
+    assert body["ok"] is True, body
+    per = body["periodicity"]
+    th = np.radians(30.0)
+    R = np.array([[np.cos(th), -np.sin(th), 0.0],
+                  [np.sin(th),  np.cos(th), 0.0], [0.0, 0.0, 1.0]])
+    assert per["cell"] is not None, "rotate dropped the cell"
+    assert np.allclose(per["cell"], np.array(periodicity["cell"]) @ R.T), \
+        "rotate must rotate the lattice vectors with the atoms"
+    assert per["axis_kind"] == periodicity["axis_kind"], "rotate dropped axis_kind"
+    assert per["vacuum"] == periodicity["vacuum"], "rotate dropped vacuum"
+    assert "kgrid" not in per, "rotate should not echo k-grid (not geometry)"
 
 
 def test_modify_op_round_trips_cell_origin(web_client):
-    """§3c: a modify op on an electrode junction must not drop cell_origin (the
-    corner that makes the box wrap the off-origin atoms), or the box would jump to
-    the origin after any edit."""
+    """§3c: a rigid whole-structure ROTATION on an electrode junction rotates the
+    cell_origin corner WITH the atoms (about the pivot -- origin by default), so the
+    box keeps wrapping the off-origin atoms.  It must neither DROP it (box jumps to
+    the origin) nor leave it behind (box stops wrapping the atoms)."""
+    import numpy as np
     periodicity = {
         "cell": [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 12.0]],
         "cell_origin": [-2.0, -2.0, -6.0],
@@ -1185,7 +1202,13 @@ def test_modify_op_round_trips_cell_origin(web_client):
     r = web_client.post("/api/modify/rotate", json={
         "xyz": _H2O_XYZ, "periodicity": periodicity, "axis": "z", "angle": 15})
     per = r.get_json()["periodicity"]
-    assert per["cell_origin"] == [-2.0, -2.0, -6.0], "rotate dropped cell_origin"
+    th = np.radians(15.0)
+    R = np.array([[np.cos(th), -np.sin(th), 0.0],
+                  [np.sin(th),  np.cos(th), 0.0], [0.0, 0.0, 1.0]])
+    assert per["cell_origin"] is not None, "rotate dropped cell_origin"
+    # origin pivot (endpoint default): cell_origin -> cell_origin @ Rᵀ
+    assert np.allclose(per["cell_origin"], np.array(periodicity["cell_origin"]) @ R.T), \
+        "rotate must rotate the cell_origin corner with the atoms"
 
 
 def test_modify_calibrate_moves_atoms_into_the_cell(web_client):

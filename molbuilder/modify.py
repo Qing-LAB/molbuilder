@@ -429,28 +429,18 @@ def rotate_around_axis(
         R = np.array([[ c, 0.0,  s],
                       [0.0, 1.0, 0.0],
                       [-s, 0.0,  c]])
+    # Rotation about a pivot p is the affine ``x -> (x - p) @ Rᵀ + p`` = ``x @ Rᵀ + t``
+    # with ``t = p - p @ Rᵀ``.  Routed through ``Structure.affine`` so the WHOLE box --
+    # lattice VECTORS (cell) AND the world-space CORNER (cell_origin) -- rotates WITH the
+    # atoms (structure-periodicity.md § 3c); a rigid whole-structure rotation that left
+    # the box behind would stop it wrapping the rotated atoms.  (The Modify SUBSET path
+    # sends a cell-less sub-structure, so a selection-only rotate never touches the box.)
     if center == "centroid":
-        # Rotate about the atom centroid by subtracting it, rotating
-        # in the centroid frame, then translating back.
-        centroid = struct.positions.mean(axis=0)
-        new_pos = (struct.positions - centroid) @ R.T + centroid
-    else:
-        new_pos = struct.positions @ R.T
-    # Pure rotation: atom indices are unchanged so frozen_atoms +
-    # regions carry through verbatim.
-    return Structure(
-        elements=list(struct.elements),
-        positions=new_pos,
-        atom_names=list(struct.atom_names),
-        residue_ids=list(struct.residue_ids),
-        residue_names=list(struct.residue_names),
-        chain_ids=list(struct.chain_ids),
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=list(struct.frozen_atoms),
-        annotations=copy_annotations(struct.annotations),
-        **struct._carry_periodicity(),   # a rigid rotation keeps the lattice
-    )
+        pivot = struct.positions.mean(axis=0)
+        t = pivot - pivot @ R.T
+    else:  # origin
+        t = np.zeros(3)
+    return struct.affine(R, t)
 
 
 # --------------------------------------------------------------------- #
