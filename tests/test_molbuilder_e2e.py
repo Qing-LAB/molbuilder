@@ -831,6 +831,8 @@ def test_show_selected_only_filters_the_render_list(
         "      && window.__molbuilder_modify_test"
         "      && window.__molbuilder_modify_test.getViewer()"
     )
+    # 3dmol-ok: render assertion -- verifies the molecule is DRAWN (count of
+    # drawn atoms under isolate), a wait-gated render check, not a data value.
     drawn_count = (
         "() => { const v = window.__molbuilder_modify_test"
         "    && window.__molbuilder_modify_test.getViewer();"
@@ -2534,6 +2536,8 @@ def test_3dmol_atom_serial_matches_zero_based_index(
     0-based contract by reading atom records via the test hook."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
+    # 3dmol-ok: pins the 3Dmol adapter's 0-based atom.serial contract -- reading
+    # the render model's serial/clickable IS the subject under test, not data.
     atoms = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
         return v.selectedAtoms({}).map((a) => ({
@@ -3321,6 +3325,8 @@ def test_clickable_survives_repeated_apply_style(
             f'.mol-viewer-rep-btn[data-rep="{rep}"]'
         ).dispatch_event("click")
         page.wait_for_timeout(50)
+    # 3dmol-ok: asserts a RENDER fact (atom clickability persists across rep
+    # changes), not a data value.
     clickable_after = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
         return v.selectedAtoms({}).every((a) => a.clickable);
@@ -3561,12 +3567,10 @@ def test_apply_add_atom_appends_h_at_offset(
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 4"
     )
-    last_elem = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        const atoms = v.selectedAtoms({});
-        return atoms[atoms.length - 1].elem;
-    }""")
-    assert last_elem == "H"
+    # DATA read via molview.data (the single source), NOT the deferred 3Dmol
+    # render target -- the element the add op wrote lives in the model.
+    els = page.evaluate("() => window.molbuilder.molview.data.getElements()")
+    assert els[-1] == "H"
     assert errors == [], f"JS errors during add_atom: {errors}"
 
 
@@ -3865,7 +3869,7 @@ def test_apply_rotate_z_90_centroid_default(
         "() => /Rotated/.test(document.querySelector('#edit-status').textContent)"
     )
     # Read the DATA MODEL (molview.data.getCoordinates via getState().positions),
-    # NOT getViewer().selectedAtoms() -- the 3Dmol viewer is a RENDER target the
+    # NOT the 3Dmol viewer's drawn atoms -- the 3Dmol viewer is a RENDER target the
     # engine repaints on a deferred double-rAF (engine.js §8/§9), so reading it
     # right after the status races the paint and sees the pre-rotate coords.  A
     # transform is a pure coordinate write to the model; assert the model (the
@@ -4335,11 +4339,9 @@ def test_modify_structure_survives_navigation_to_watch_and_back(
         "      && window.__molbuilder_modify_test.getNAtoms() === 3"
     )
     # First atom is still O (not e.g. "" if restore mangled metadata).
-    first_elem = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({})[0].elem;
-    }""")
-    assert first_elem == "O"
+    # Model read (single source), not the deferred 3Dmol render target.
+    els = page.evaluate("() => window.molbuilder.molview.data.getElements()")
+    assert els[0] == "O"
 
 
 def test_load_button_readout_switches_picked_to_loaded(
@@ -4520,10 +4522,8 @@ def test_modify_state_after_op_survives_navigation(
         "() => window.__molbuilder_modify_test"
         "      && window.__molbuilder_modify_test.getNAtoms() === 2"
     )
-    elements = page.evaluate("""() => {
-        const v = window.__molbuilder_modify_test.getViewer();
-        return v.selectedAtoms({}).map((a) => a.elem);
-    }""")
+    # Model read (single source), not the deferred 3Dmol render target.
+    elements = page.evaluate("() => window.molbuilder.molview.data.getElements()")
     assert elements == ["H", "H"]
 
 
