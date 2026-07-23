@@ -2319,11 +2319,11 @@ class TestHandleSurface:
                         fps: 10, paused: true,
                     },
                 });
-                const beforeN = h._test.getCurrent().animation.frames.length;
+                const beforeN = h._test.getCurrent().animation.frameCount;
                 h.setAnimationFrame(2);
                 const beforeFrame = h.getAnimationFrame();
                 h.appendFrames([[[0.3,0,0]],[[0.4,0,0]]]);
-                const afterN = h._test.getCurrent().animation.frames.length;
+                const afterN = h._test.getCurrent().animation.frameCount;
                 const afterFrame = h.getAnimationFrame();
                 h.dispose();
                 host.remove();
@@ -2368,7 +2368,7 @@ class TestHandleSurface:
                 });
                 h.appendFrames([[[0,0,0],[1,0,0]]]);   // 2 atoms not 1
                 const finalN =
-                    h._test.getCurrent().animation.frames.length;
+                    h._test.getCurrent().animation.frameCount;
                 h.dispose();
                 host.remove();
                 return { errs, finalN };
