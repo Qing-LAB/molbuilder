@@ -163,8 +163,12 @@ class TestInitialState:
             # state. (forceScale defaults to `undefined`, which JSON.stringify omits.)
             "showIndex":  False,
             "showForces": False,
-            "showCell":   True,
-            "showAxis":   True,
+            # axes + unit-cell overlays default OFF (commit 1cd3bc5, store
+            # view-flag defaults) -- the deliberate default the render streamline
+            # ships (molview-render-streamline.md §7.2).  This expectation was
+            # stale (True) until the test was reconciled to the shipped default.
+            "showCell":   False,
+            "showAxis":   False,
             "filters":    [],
             "combinator": "or",
             "loading":    False,
