@@ -76,10 +76,22 @@ export async function openMolecule(path, opts) {
   // bytes or derives the sidecar path (that was the raw-text/second-file-stack seam the
   // consolidation exists to abolish).  The cell is DEDUCED from the file data (the .xyz's
   // own lattice + the sidecar) and is never overridden at load time.
-  const payload = await model.installMolecule({
-    path:   path,
-    source: { kind: "file", file: path, generator_input: null },
-  });
+  // Contract (§2): openMolecule NEVER throws -- it returns {ok:false, error} on any
+  // failure, like its guard cases above.  The file-only load surfaces a missing/
+  // unreadable file OR a parse/sidecar error as a rejected installMolecule (the
+  // server returns 404/400 -> _loadText throws); catch it here so a caller doing
+  // `if (!r.ok)` (transport/core, inspectors/structure, selection-bootstrap) can't
+  // crash on a bad path.  (Before the file-only move the browser's readFile caught
+  // the missing-file case; that guard now lives here.)
+  let payload;
+  try {
+    payload = await model.installMolecule({
+      path:   path,
+      source: { kind: "file", file: path, generator_input: null },
+    });
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || ("Could not load " + path) };
+  }
   return { ok: true, payload: payload };
 }
 
