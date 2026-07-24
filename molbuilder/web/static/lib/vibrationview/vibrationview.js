@@ -54,11 +54,22 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return JSON.stringify({ e: geom.elements, p: geom.positions, f: frozen });
     }
 
+    // Uniform mount contract (matches molview.mount): a failure returns a no-op-disposer
+    // handle with ``ok:false`` + a reason -- NEVER a sentinel null -- so a consumer branches
+    // on ``handle.ok`` and can call ``handle.dispose()`` unconditionally.  Success handles
+    // carry ``ok:true``.
+    function _failMount(msg) {
+        if (root.console) root.console.warn("[vibrationview.mount] " + msg);
+        return { ok: false, error: msg, dispose: function () {} };
+    }
+
     export function mount(host, opts) {
         opts = opts || {};
         var mb = root.molbuilder || {};
         var viewer = mb.viewer;   // shared-embed borrow: RUNTIME lookup (Phase 1, see header)
-        if (!host || !viewer || typeof viewer.embed !== "function") return null;
+        if (!host || !viewer || typeof viewer.embed !== "function") {
+            return _failMount("missing host or shared viewer embed (load order?)");
+        }
 
         var geom          = _validGeom(opts.geometry) ? opts.geometry : null;
         var freeAtomIdx   = Array.isArray(opts.freeAtomIdx) ? opts.freeAtomIdx : null;
@@ -142,9 +153,10 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 } catch (_) {}
             },
         });
-        if (!handle) return null;
+        if (!handle) return _failMount("viewer.embed returned no handle");
 
         return {
+            ok: true,   // uniform mount contract: a live handle -> ok:true (see _failMount)
             showMode: function (mode) {
                 if (!mode || !Array.isArray(mode.displacements)) return;
                 _adoptModeInputs(mode);

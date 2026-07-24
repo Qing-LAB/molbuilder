@@ -107,9 +107,18 @@ def test_modify_template_loads_the_js_module():
     asserts both script tags are present + the init module exists.
     """
     html = MODIFY_HTML.read_text()
-    assert "region-label-definitions.js" in html, (
-        "modify.html does not load lib/region-label-definitions.js; "
-        "the ⓘ button will be a no-op"
+    # The library tag rides the SHARED molview stack include (2026-07 template
+    # dedup): modify.html pulls _molview_scripts.html, which carries
+    # region-label-definitions.js -- assert the chain, not a hand-pasted tag.
+    assert '{% include "_molview_scripts.html" %}' in html, (
+        "modify.html no longer pulls the shared molview stack include; "
+        "region-label-definitions.js would not load and the ⓘ button "
+        "will be a no-op"
+    )
+    include_html = (MODIFY_HTML.parent / "_molview_scripts.html").read_text()
+    assert "region-label-definitions.js" in include_html, (
+        "_molview_scripts.html does not load lib/region-label-definitions.js; "
+        "the ⓘ button will be a no-op on every molview page"
     )
     assert "region-label-popover-init.js" in html, (
         "modify.html does not load lib/region-label-popover-init.js; "

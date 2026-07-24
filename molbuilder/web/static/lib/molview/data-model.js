@@ -504,7 +504,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var cs = _canvas();
         if (cs && typeof cs.setPeriodicity === "function") cs.setPeriodicity(patch);
     }
-    function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }      // getLattice's pair
+    function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }
     function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
     function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
     // §3c: set the raw cell_origin -- the low corner an EXPLICIT cell is drawn from
@@ -773,7 +773,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     function subscribe(fn) {
         if (typeof fn !== "function") {
-            throw new TypeError("workspace.subscribe(fn): function required");
+            throw new TypeError("molview.data.subscribe(fn): function required");
         }
         _ensureSubscribed();
         _subscribers.push(fn);
@@ -1645,7 +1645,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         getElements:           getElements,
         getCoordinates:        getCoordinates,
         getUnitCell:           getUnitCell,
-        getLattice:            getUnitCell,   // alias
         getAxisKind:           getAxisKind,
         getVacuum:             getVacuum,
         // §3b display accessors ({ value, isDefault }) for the Cell page:
@@ -1667,7 +1666,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
         commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
         setUnitCell:           setUnitCell,
-        setLattice:            setUnitCell,   // alias
         setCellOrigin:         setCellOrigin,   // §3c raw corner (explicit-cell offset)
         setAxisKind:           setAxisKind,
         setVacuum:             setVacuum,

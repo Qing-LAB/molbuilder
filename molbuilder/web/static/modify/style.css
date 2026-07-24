@@ -4,7 +4,6 @@
  * static/lib/tokens.css; this file uses them via var(--...).
  * Page-local additions go below.
  */
-@import url("../lib/tokens.css");
 
 * { box-sizing: border-box; }
 
@@ -267,11 +266,11 @@ header .tagline {
     font-size: 0.92rem;
     cursor: pointer;
 }
-.init-tab:hover { color: var(--text-primary); border-color: var(--border); }
+.init-tab:hover { color: var(--text-primary); border-color: var(--border-strong); }
 .init-tab.is-active {
     color: var(--text-primary);
-    background: var(--bg-card-emphasis, var(--bg-card));
-    border-color: var(--accent, currentColor);
+    background: var(--bg-card-hover);   /* was the phantom --bg-card-emphasis (never defined) */
+    border-color: var(--accent, #6ba6ff);
 }
 
 .init-tab-panel {

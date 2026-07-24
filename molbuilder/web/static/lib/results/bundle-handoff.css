@@ -12,7 +12,7 @@
     padding: var(--space-md, 16px) var(--space-lg, 20px);
     margin-top: var(--space-md, 16px);
     background: var(--surface-elevated, rgba(20, 24, 28, 0.55));
-    color: var(--text-primary, #e7e7e7);
+    color: var(--text-primary, #e6e9ef);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
     font-size: 13px;
@@ -35,7 +35,7 @@
 
 .bundle-handoff-sub {
     margin: 0;
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
     font-size: 12px;
 }
 
@@ -62,7 +62,7 @@
 .bundle-handoff-field .label {
     font-weight: 600;
     font-size: 12px;
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
     letter-spacing: 0.03em;
     text-transform: uppercase;
 }
@@ -79,7 +79,7 @@
 
 .bundle-handoff-field input[type="text"]:focus {
     outline: none;
-    border-color: var(--accent, #6cb1ff);
+    border-color: var(--accent, #6ba6ff);
 }
 
 .bundle-handoff-field .hint {
@@ -97,7 +97,7 @@
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
 }
 
 .bundle-handoff-actions {
@@ -111,7 +111,7 @@
     padding: 6px 18px;
     font-size: 13px;
     font-weight: 600;
-    background: var(--accent, #6cb1ff);
+    background: var(--accent, #6ba6ff);
     color: var(--accent-fg, #0a1018);
     border: 0;
     border-radius: 4px;
@@ -129,7 +129,7 @@
 
 .bundle-handoff-status {
     font-size: 12px;
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
 }
 
 /* In-flight visual: the shared ``.spinner`` primitive (page-shell.css).  The
@@ -177,14 +177,14 @@
 }
 
 .bundle-handoff-no-labels {
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
     font-style: italic;
 }
 
 .bundle-handoff-notes {
     margin: 6px 0 0 0;
     padding-left: 1.2em;
-    color: var(--text-secondary, #a4a4a4);
+    color: var(--text-secondary, #a8aebb);
     font-size: 11.5px;
 }
 

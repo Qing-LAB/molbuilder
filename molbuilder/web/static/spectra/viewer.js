@@ -13,12 +13,12 @@
  *      mount a 3Dmol embed in ``#viewer-wrap`` and hook the
  *      ``#load-from-sidebar-btn`` so the user can pick a
  *      structure file in the Projects sidebar and click Load to
- *      see it in the viewer.  Loading also pushes the raw bytes
- *      into the spectra inspector via
- *      ``window.molbuilder.spectraInspector.setStructureText(text)``
- *      — the in-memory holder that backs ``getStructureText()``
- *      (task #309, 2026-06-09).  The pre-#309 path through a
- *      hidden ``<textarea id="structure-text">`` is gone.
+ *      see it in the viewer.  The spectra inspector's Generate POST
+ *      reads the structure OFF THE MODEL at send time
+ *      (core.js getStructureText -> molview.data.getStructure().text)
+ *      -- no push, no in-memory holder (the old setStructureText
+ *      seam + the pre-#309 hidden ``<textarea id="structure-text">``
+ *      are both gone).
  *
  * Mirrors the Optimization tab's pattern in static/viewer.js
  * (the Load button, the info readout, the sidebar onCommit
@@ -77,33 +77,30 @@ function _mvdata() {
     }
 
     /**
-     * Update the static info readout below the viewer header.
-     * Title shows the basename of the loaded file; atom count +
-     * formula are parsed from the XYZ payload.  Cheap; runs
-     * synchronously after every successful Load.
+     * Update the static info readout below the viewer header.  Title shows the
+     * basename of the loaded file; atom count + formula are READ FROM THE MODEL
+     * (molview.data.getElements -- the structure the Load just installed), never
+     * re-parsed from text: MolView already parsed it, and the inspector rule is
+     * "no structure parsing in a consumer" (lib/inspectors/structure.js).
+     * Runs synchronously after every successful Load (the model is settled).
      */
-    function _updateInfo(filename, xyzText) {
+    function _updateInfo(filename) {
         const title   = _$("info-title");
         const atomsEl = _$("info-atoms");
         const formula = _$("info-formula");
-        if (!xyzText) {
+        const d = _mvdata();
+        const elements = (d && typeof d.getElements === "function") ? d.getElements() : [];
+        if (!elements.length) {
             if (title)   title.textContent   = "no structure loaded";
             if (atomsEl) atomsEl.textContent = "—";
             if (formula) formula.textContent = "—";
             return;
         }
-        const lines = xyzText.split(/\r?\n/);
-        const nAtoms = parseInt((lines[0] || "").trim(), 10);
-        const elements = [];
-        for (let i = 2; i < lines.length && elements.length < nAtoms; i++) {
-            const parts = lines[i].trim().split(/\s+/);
-            if (parts.length >= 4) elements.push(parts[0]);
-        }
         if (title)   title.textContent   = filename || "loaded";
-        if (atomsEl) atomsEl.textContent = String(nAtoms || elements.length || "—");
+        if (atomsEl) atomsEl.textContent = String(elements.length);
         // The Hill formula() is imported from MolView's door (mvFormula = mol-format.js).  `formula`
         // here is the DOM readout node; mvFormula is the formatter function.
-        if (formula) formula.textContent = elements.length ? mvFormula(elements) : "—";
+        if (formula) formula.textContent = mvFormula(elements);
     }
 
     /**
@@ -206,13 +203,10 @@ function _mvdata() {
             }
             if (mySeq !== _loadSeq) return;  // superseded by a newer load
             _sidebarLastFile = f;
-            // Feed spectra/core.js's in-memory holder from the MolView model (the
-            // single source of truth) so the Generate POST has the structure bytes.
-            const spec = (window.molbuilder || {}).spectraInspector;
-            if (spec && typeof spec.setStructureText === "function") {
-                spec.setStructureText(text);
-            }
-            _updateInfo(_basename(f), text);
+            // (No push into spectra/core.js: its Generate POST reads the structure
+            // OFF THE MODEL at send time -- getStructureText() -> molview.data --
+            // so there is no second in-memory copy to feed or drift.)
+            _updateInfo(_basename(f));
             setStatus("load-status",
                 `Loaded ${_basename(f)}.`, "ok");
             _refreshLoadButton();

@@ -54,12 +54,9 @@
     // via the Inspect-structure card's "Load from sidebar selection"
     // button (task #309, 2026-06-09 follow-up to #296).  Pre-#309
     // the bytes were stored in a hidden ``<textarea id="structure-
-    // text">``; the textarea was the only carrier and double-served
-    // as the only DOM contract.  Task #309 retires the textarea —
-    // ``setStructureText`` writes here, ``getStructureText`` reads
-    // from here first and falls back to the textarea ONLY in test
-    // contexts that still mount the DOM with the old shape.
-    let _loadedStructureText = "";
+    // text">``; then in a module-level ``_loadedStructureText`` holder.
+    // BOTH are gone (2026-07): ``getStructureText`` reads the structure
+    // OFF THE MODEL (molview.data) at call time -- no second copy.
 
     function mountInspector(rootEl, opts) {
     rootEl = rootEl || document;
@@ -72,10 +69,9 @@
         spectrumChart:  null,
         // ``structureText`` slot removed 2026-06-10 along with the
         // ``$("structure-text")`` lookup in init() — the underlying
-        // ``<textarea id="structure-text">`` was retired in task #309
-        // (2026-06-09); structure bytes now live in the module-level
-        // ``_loadedStructureText`` populated via the public
-        // ``setStructureText`` setter.
+        // ``<textarea id="structure-text">`` was retired in task #309;
+        // structure bytes are read OFF THE MODEL (getStructureText ->
+        // molview.data) at call time.
         // xyzFile / xyzLoadBtn / xyzStatus removed 2026-05-18: the
         // in-template <input type="file" id="xyz-file"> + sibling
         // load-button were dropped when the projects sidebar took
@@ -726,15 +722,15 @@
     }
 
     function getStructureText() {
-        // The module-level ``_loadedStructureText`` is populated by
-        // the Inspect-structure card's Load handler
-        // (spectra/viewer.js _commitStructure → setStructureText).
-        // XYZ or PDB content both accepted; the server sniffs the
-        // format.  The pre-#309 fallback to a hidden
-        // ``<textarea id="structure-text">`` was retired 2026-06-10
-        // along with the ``els.structureText`` slot — no in-tree
-        // test or template still mounts that DOM shape.
-        return _loadedStructureText ? _loadedStructureText.trim() : "";
+        // Read the committed structure OFF THE MODEL at call time
+        // (molview.data.getStructure().text -- the single source of truth the
+        // Inspect-structure card's Load installed).  No in-memory copy: the old
+        // ``_loadedStructureText`` holder was a second home for module state a
+        // consumer must never keep (it could only drift).  XYZ or PDB content
+        // both accepted; the server sniffs the format.
+        const d = ((window.molbuilder || {}).molview || {}).data;
+        const st = (d && typeof d.getStructure === "function") ? d.getStructure() : null;
+        return (st && typeof st.text === "string") ? st.text.trim() : "";
     }
 
     // ----- Render button: POST /api/spectra/render -------------
@@ -751,8 +747,8 @@
 
         // Read the committed structure's labels straight off the MODEL (the single
         // source of truth the sidebar parser door loaded) -- NOT a separate sidecar
-        // re-read.  ``structureText`` IS the model's committed text (getStructureText <-
-        // setStructureText <- projects.parser.openMolecule), so the labels match it.
+        // re-read.  ``structureText`` IS the model's committed text (getStructureText
+        // reads molview.data.getStructure().text), so the labels match it.
         const _md = ((window.molbuilder || {}).molview || {}).data;
         const body = {
             // ``structure_text`` (renamed 2026-05-22 from the
@@ -2153,9 +2149,8 @@
     // Geometry source priority:
     //   1. results.equilibrium.elements + positions_ang
     //      (preferred; works after page reload).
-    //   2. Parsed from getStructureText() (the in-memory holder
-    //      populated by the Inspect-structure card's Load handler
-    //      — see setStructureText / _loadedStructureText).
+    //   2. Parsed from getStructureText() (the MODEL's committed text,
+    //      molview.data.getStructure().text).
     //
     // The mode shape is faithful (eigenvector_display carries the
     // direction + relative amplitudes correctly, with max(|L|)=1 per
@@ -2183,10 +2178,8 @@
             };
         }
         // Fallback: parse the XYZ the user loaded via the
-        // Inspect-structure card (module-level
-        // ``_loadedStructureText``; the legacy textarea fallback
-        // continues to work for test contexts that still mount
-        // the pre-#296 DOM shape).
+        // Inspect-structure card (getStructureText -> the MODEL's
+        // committed text).
         const structureText = getStructureText();
         if (!structureText) return null;
         try {
@@ -2253,10 +2246,20 @@
             setStatus(els.viewerStatus, "vibration viewer unavailable", "muted");
             return;
         }
-        state.vib = vv.mount(els.modeViewer, {
+        const vh = vv.mount(els.modeViewer, {
             amplitude: state.animAmplitude,
             speedHz:   state.animSpeed,
         });
+        // Uniform mount contract: a failure is {ok:false, dispose} -- never null -- so
+        // branch on .ok; internally state.vib stays null-on-failure (the existing guards).
+        if (!vh || vh.ok === false) {
+            state.vib = null;
+            setStatus(els.viewerStatus,
+                      "vibration viewer unavailable"
+                      + (vh && vh.error ? " (" + vh.error + ")" : ""), "muted");
+            return;
+        }
+        state.vib = vh;
     }
 
     // _buildFrameMovie removed by #231 Part B.  The embed's
@@ -2909,18 +2912,8 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
-        /**
-         * Push raw structure bytes into the module's in-memory
-         * holder so Generate / Methods read them via
-         * ``getStructureText`` without depending on the legacy
-         * hidden ``<textarea id="structure-text">``.  Called by
-         * spectra/viewer.js's Load-from-sidebar handler after a
-         * successful ``/api/files/read``.  Pass an empty string
-         * to clear (e.g. on dispose or before a fresh load).
-         */
-        setStructureText(text) {
-            _loadedStructureText = typeof text === "string" ? text : "";
-        },
+        // (setStructureText removed 2026-07: getStructureText reads the model
+        //  at call time; there is no in-memory holder to feed.)
     };
 
 })(typeof window !== "undefined" ? window : this);

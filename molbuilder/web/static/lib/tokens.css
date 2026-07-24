@@ -18,6 +18,7 @@
     --bg-page:        #14171c;     /* body */
     --bg-card:        #1d2128;     /* cards */
     --bg-card-hover:  #232831;
+    --bg-card-elev:   #232a35;     /* elevated tile bg (plot tiles, molview overlays) */
     --bg-input:       #262b33;     /* form controls */
     --bg-input-focus: #2c323b;
     --bg-fieldset:    #1f242c;

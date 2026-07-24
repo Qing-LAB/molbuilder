@@ -91,7 +91,7 @@
      * 60vh --viewer-edge) the square the module already sizes above. */
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    background: #ffffff;           /* matches 3Dmol's canvas; covered once the canvas paints */
+    background: #ffffff;           /* exempt: matches 3Dmol's own canvas clear colour (vendor-fixed), not a theme surface; covered once the canvas paints */
     box-shadow: var(--shadow-card);
 }
 .molview-viewer .viewer-wrap > .viewer {
@@ -235,7 +235,7 @@
 }
 .molview-fold-btn:active { background: var(--border-strong, #3a3f48); }
 .molview-fold-btn:focus-visible {
-    outline: 2px solid var(--accent, #3b82f6);
+    outline: 2px solid var(--accent, #6ba6ff);
     outline-offset: -2px;
 }
 
@@ -332,7 +332,7 @@
 .mvf-play:hover, .mvf-step:hover { background: var(--bg-input-focus, #2c323b); }
 .mvf-slider {
     flex: 1 1 4rem; min-width: 3rem;
-    accent-color: var(--accent, #5fb6ff);
+    accent-color: var(--accent, #6ba6ff);
     cursor: pointer;
 }
 .mvf-counter { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }

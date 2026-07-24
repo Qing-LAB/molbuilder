@@ -59,9 +59,7 @@ EXCLUDE_PATH_SUBSTRS = ("vendor", "codemirror")
 # whenever a cleanup commit reduces the count; do NOT grow without
 # a plan.  Goal: drive every entry to zero, then promote to
 # STRICT_FILES below.
-HEX_BUDGET: dict[str, tuple[int, str]] = {
-    "lib/trajectory-inspector.css": (1, "phase 4: one #ffffff in the run-state header (covered by warn-pastel exemptions plus 1 stray)"),
-}
+HEX_BUDGET: dict[str, tuple[int, str]] = {}   # empty 2026-07 -- every sheet is STRICT
 
 # Files allowed ZERO raw hex (anything outside protected regions
 # OR not on an /* exempt: ... */ line is a bug).  Phase 3
@@ -70,17 +68,26 @@ HEX_BUDGET: dict[str, tuple[int, str]] = {
 # STRICT after promoting their palettes (--ps-*, --sp-*) into
 # tokens.css and replacing raw hex with token references.
 STRICT_FILES: set[str] = {
-    "style.css",
+    # ("style.css" removed 2026-07: the file was deleted in the #58 split.)
     "results/style.css",
     "modify/style.css",
+    "structure-optimization/style.css",
+    "spectra/style.css",
     "lib/page-shell.css",
     "lib/form-schema.css",
+    "lib/form-components.css",
     "lib/projects-sidebar.css",
     "lib/selection-panel.css",
     "lib/tabs.css",
     "lib/mol-viewer-embed.css",
     "lib/molview/selection/measurement-chip.css",
-    "spectra/style.css",
+    "lib/molview/fused-layout.css",
+    "lib/inspectors/markdown.css",
+    "lib/inspectors/spectra.css",
+    "lib/trajectory-inspector.css",
+    "lib/system-load-monitor.css",
+    "lib/results/bundle-handoff.css",
+    "lib/app-notifications.css",
 }
 
 # tokens.css is its own thing — that file IS the home for hex.

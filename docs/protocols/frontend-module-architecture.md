@@ -144,6 +144,41 @@ tab: the ES-module conversion + `window` shim + node-test `import()` re-point (d
 - **Verify at the page level** — `test_pages_no_js_errors` + the tab's E2E must stay
   green (there is no visual-regression net; a console error is the tripwire).
 
+## 7. Door conventions — the seam contract matrix (2026-07 audit)
+
+The four doors were built at different times and speak DIFFERENT error models.  The matrix
+below is the DOCUMENTED state (deliberate where noted); a new door or method follows the
+convention of its own module, and a consumer moving between modules consults THIS table
+rather than assuming one model.
+
+| Door | Async failure | "Nothing there" | Bad input | AbortSignal | Error side-channel |
+|---|---|---|---|---|---|
+| `molview.mount` / `vibrationview.mount` | resolves/returns `{ok:false, error, dispose(){}}` — **never a sentinel null**; success carries `ok:true`.  Branch on `.ok`; call `.dispose()` unconditionally. | — | — | no | console.warn |
+| `molview.data` | `Promise.reject(Error)` (installMolecule / applyOp / generate / save / load) | reads → `null` / empty defaults | **validate-and-throw, never coerce** (frame ops, subscribe) | no | — |
+| `workspace` (ws.*) | **never rejects** — `readState` resolves `null` on ANY failure (missing / network / malformed are indistinguishable **by design**: the caller treats every miss as "re-anchor"); `persist` is fire-and-forget | `null` | silent no-op | no | `onPersistError(fn)` + the `molbuilder:persist-error` DOM event — every disk-write failure surfaces here, never swallowed |
+| `projects` (files) | uniform `{ok:false, error}` envelope, never throws; `null` = a deliberate third state (no file selected) | `null` | envelope | **yes** — every file op threads `opts.signal` | — |
+| `projects.parser` (structure doors) | envelope, never throws | — | envelope | no (the doors wrap single POSTs; add signals only with a real cancel UI) | — |
+
+**Cancellation vocabulary** (four shapes exist; `state.js isCancelError()` is the one
+recognizer — use it, do not string-match): fetch's `AbortError` → api.js maps it to
+`{ok:false, error:"aborted", aborted:true}`; a user-cancelled dialog/gate resolves
+`{ok:false, cancelled:true}`; the embed's ViewerError uses `code:"aborted"`.
+
+**Lifecycles — two philosophies, on purpose:** `molview.mount` / `vibrationview.mount`
+return DISPOSABLE components (dispose fully unwinds: attachments → embed → card DOM, LIFO);
+`workspace` / `projects` are PAGE-LIFETIME singletons whose only lifecycle surface is each
+subscription's returned unsubscribe fn.
+
+**Subscriptions:** every subscribe-like door returns an unsubscribe fn (the one universal
+convention).  Fire-once-on-subscribe holds for `data.subscribe` / projects `onChange` /
+`onLockChange` / `onProjectsRootResolved`; NOT for `onCommit` (a user event, not state) nor
+`onPersistError` / `onFrameChange` / `onPersistStateChange` (event channels).  Duplicate
+registration: projects **throws**; the others silently allow it.
+
+**Wire vs surface naming:** snake_case fields (`state_index`, `workspace_id`,
+`actual_mtime`) are WIRE shapes passed through verbatim; camelCase is the JS surface.  A
+door never renames wire fields — the boundary is visible on purpose.
+
 ## References
 
 - [`ui-design-contract.md`](ui-design-contract.md) — UI/CSS + the §7 module-boundary principles this doc realizes in JS.

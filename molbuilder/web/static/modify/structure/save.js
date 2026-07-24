@@ -48,7 +48,7 @@
     // is unchanged in shape.  Old ``canvas`` opt is still accepted
     // by configure() for test contexts that pass a fake — the test
     // fake just needs the ws.* method names.
-    var _workspace     = null;
+    var _model     = null;
 
     function configure(opts) {
         opts = opts || {};
@@ -57,8 +57,8 @@
         // Accept either ``workspace`` (canonical, Phase 10+) or
         // ``canvas`` (legacy alias kept for tests still passing the
         // old fake).  Both name the same object.
-        if (opts.workspace)     _workspace     = opts.workspace;
-        else if (opts.canvas)   _workspace     = opts.canvas;
+        if (opts.workspace)     _model     = opts.workspace;
+        else if (opts.canvas)   _model     = opts.canvas;
     }
 
     /**
@@ -75,10 +75,11 @@
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        // _workspace = molview.data, LOOKED UP live (molview-module.md §D.0); reading is
+        // _model = molview.data, LOOKED UP live (molview-module.md §D.0) -- renamed from
+        // the misleading pre-carve ``_workspace`` (the WORKSPACE has no data API); reading is
         // decoupled from loading.  A test injects a stub via configure({workspace}).
-        if (!_workspace && root.molbuilder.molview && root.molbuilder.molview.data)
-            _workspace = root.molbuilder.molview.data;
+        if (!_model && root.molbuilder.molview && root.molbuilder.molview.data)
+            _model = root.molbuilder.molview.data;
     }
 
     /**
@@ -89,10 +90,10 @@
      */
     function targetPath() {
         _lazyResolve();
-        if (!_workspace) return null;
-        var lastSaved = _workspace.getLastSavedTo();
+        if (!_model) return null;
+        var lastSaved = _model.getLastSavedTo();
         if (lastSaved) return lastSaved;
-        var src = _workspace.getSource();
+        var src = _model.getSource();
         if (src && src.kind === "file" && src.file) return src.file;
         return null;
     }
@@ -156,7 +157,7 @@
 
     function save() {
         _lazyResolve();
-        if (!_workspace) {
+        if (!_model) {
             return Promise.reject(new Error(
                 "save: workspace not configured"));
         }
@@ -169,11 +170,11 @@
             return Promise.reject(new Error(
                 "save: structurePage not configured"));
         }
-        if (_workspace.isEmpty()) {
+        if (_model.isEmpty()) {
             return Promise.resolve({
                 ok: false, error: "No structure to save." });
         }
-        var struct = _workspace.getStructure();
+        var struct = _model.getStructure();
         var dialog = root.molbuilder
                   && root.molbuilder.structureSaveDialog;
 
@@ -291,7 +292,7 @@
         function refreshState() {
             _lazyResolve();
             var path = targetPath();
-            var dirty = _workspace && _workspace.isDirty();
+            var dirty = _model && _model.isDirty();
             // 2026-06-09: Save-as for generator-sourced workspaces.
             // When ``path`` is null (no backing file), allow Save
             // iff the workspace has content AND the sidebar has a
@@ -299,7 +300,7 @@
             // surfaces a clear error if either is missing at click
             // time; this just keeps the button visibly enabled when
             // a Save-as is actually possible.
-            var hasContent = _workspace && !_workspace.isEmpty();
+            var hasContent = _model && !_model.isEmpty();
             var sidebarDir = (_projects
                               && typeof _projects.getCurrentDir
                                  === "function")
@@ -337,10 +338,10 @@
         // the old ``canvas.onChange`` had.  No additional initial-
         // paint call is needed (subscribe fires synchronously).
         refreshState();
-        if (_workspace && typeof _workspace.subscribe === "function") {
+        if (_model && typeof _model.subscribe === "function") {
             // Replace any prior subscription on re-wire.
             if (typeof _unsubCanvas === "function") _unsubCanvas();
-            _unsubCanvas = _workspace.subscribe(function () {
+            _unsubCanvas = _model.subscribe(function () {
                 refreshState();
             });
         }

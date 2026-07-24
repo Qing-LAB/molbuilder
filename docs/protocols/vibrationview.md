@@ -122,6 +122,11 @@ sequenceDiagram
 vibrationview.mount(hostEl, opts) -> handle
 ```
 
+**Uniform mount contract (matches `molview.mount`):** mount ALWAYS returns a handle carrying
+`dispose` — never a sentinel `null`. A failure (missing host / shared embed not loaded) returns
+`{ok:false, error, dispose(){}}` so a consumer branches on `handle.ok` and can call
+`handle.dispose()` unconditionally; a live handle carries `ok:true`.
+
 - **`hostEl`** — an empty element; VibrationView builds the animated **viewer** into it. It
   renders **no control widgets** — the host owns the play/amplitude/speed UI and wires it to
   the handle (§1) methods.

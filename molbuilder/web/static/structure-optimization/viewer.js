@@ -1257,6 +1257,9 @@ function _mvdata() {
     // Form fields render asynchronously (form-schema fetches the
     // schema from /api/build/schema/siesta then renders).  Retry the
     // installation a few times so we hit the post-render DOM.
+    // KNOWN GAP (audit 2026-07): polling is the anti-pattern -- form-schema
+    // exposes no render-complete callback today, so this is the documented
+    // interim.  If form-schema grows an onRendered seam, replace this loop.
     (function pollForField(tries) {
         if (tries <= 0) return;
         if ($("p-psml-lib")) {

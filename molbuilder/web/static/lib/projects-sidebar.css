@@ -86,7 +86,7 @@ body.has-projects-sidebar {
 }
 .ps-resize-handle:hover,
 body.is-projects-sidebar-resizing .ps-resize-handle {
-  background: var(--accent, #4f7ab8);
+  background: var(--accent, #6ba6ff);
 }
 body.is-projects-sidebar-resizing {
   cursor: ew-resize;
@@ -201,7 +201,10 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * desktop affordances so they don't double up. */
 @media (max-width: 640px) {
   .ps-edge-tab--collapse { display: none; }
-  .ps-edge-tab--reopen { display: none !important; }
+  /* Must outrank the (0,2,0) show rule ``body.is-projects-sidebar-collapsed
+   * .ps-edge-tab--reopen`` above -- match its specificity instead of !important. */
+  .ps-edge-tab--reopen,
+  body.is-projects-sidebar-collapsed .ps-edge-tab--reopen { display: none; }
 }
 
 /* ---- Foldable "+ New project" / "+ New subdir" sections -------- */
@@ -263,7 +266,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   transform: translateY(1px);
 }
 .ps-create-action:focus-visible {
-  outline: 1px solid var(--accent, #4f7ab8);
+  outline: 1px solid var(--accent, #6ba6ff);
   outline-offset: 1px;
 }
 .ps-create-action[disabled] {
@@ -292,11 +295,14 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 /* Inline error slot kept for the rare legacy form usage; reused
  * also by the dialog component above for inline validation. */
-.ps-mkdir-error {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--ps-danger-fg);
-  min-height: 1em;
+/* (.ps-mkdir-error removed 2026-07: the legacy inline mkdir form is gone;
+   dialogs use .molbuilder-projects-dialog-error.) */
+
+/* Inline error row shown in the entry list when a directory listing fails
+ * (lib/projects/list.js openDir error path). */
+.ps-list-error {
+    padding: 0.7rem;
+    color:   var(--ps-danger-fg, #e07a7a);
 }
 
 /* ---- Modal dialogs (2026-06-12) --------------------------------
@@ -308,7 +314,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  */
 .molbuilder-projects-dialog {
   background: var(--ps-bg-tile);
-  color: var(--ps-fg, #ddd);
+  color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 6px;
   padding: 1rem 1.1rem;
@@ -329,7 +335,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .molbuilder-projects-dialog-hint {
   margin: 0 0 0.6rem;
   font-size: 0.8rem;
-  color: var(--ps-fg-muted, #999);
+  color: var(--ps-fg-muted, #999999);
   line-height: 1.45;
 }
 .molbuilder-projects-dialog-field {
@@ -340,19 +346,19 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 .molbuilder-projects-dialog-field > span {
   font-size: 0.78rem;
-  color: var(--ps-fg-muted, #999);
+  color: var(--ps-fg-muted, #999999);
 }
 .molbuilder-projects-dialog-field input[type="text"],
 .molbuilder-projects-dialog-field input[type="file"] {
   font: inherit;
   padding: 0.35rem 0.55rem;
   background: var(--ps-bg-deep);
-  color: var(--ps-fg, #ddd);
+  color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 3px;
 }
 .molbuilder-projects-dialog-field input[type="text"]:focus {
-  outline: 1px solid var(--accent, #4f7ab8);
+  outline: 1px solid var(--accent, #6ba6ff);
   outline-offset: -1px;
 }
 .molbuilder-projects-dialog-error {
@@ -372,7 +378,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   font: inherit;
   padding: 0.35rem 0.85rem;
   background: var(--ps-hover, #2a2a2a);
-  color: var(--ps-fg, #ddd);
+  color: var(--ps-fg, #dddddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 3px;
   cursor: pointer;
@@ -439,7 +445,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   appearance: none;
   background: transparent;
   border: none;
-  color: var(--ps-fg-muted, #999);
+  color: var(--ps-fg-muted, #999999);
   cursor: pointer;
   font-size: 0.8rem;
   padding: 0;
@@ -453,7 +459,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .molbuilder-projects-dest-error {
   padding: 0.2rem 0.5rem 0.2rem 1.6rem;
   font-size: 0.78rem;
-  color: var(--ps-fg-muted, #999);
+  color: var(--ps-fg-muted, #999999);
   font-style: italic;
 }
 
@@ -490,7 +496,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   width: 100%;
   padding: 0.35rem 0.8rem;
   background: transparent;
-  color: var(--ps-fg, #ddd);
+  color: var(--ps-fg, #dddddd);
   border: none;
   text-align: left;
   font-size: 0.85rem;
@@ -583,20 +589,20 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-filter-bar {
   position: relative;
   padding: 0.3rem 0.7rem 0.2rem;
-  background: var(--ps-bg, #1a1a1a);
-  border-bottom: 1px solid var(--ps-border, #333);
+  background: var(--ps-bg, #181818);
+  border-bottom: 1px solid var(--ps-border, #2a2a2a);
 }
 .ps-filter-input {
   width: 100%;
   background: rgba(0, 0, 0, 0.25);
-  color: var(--ps-fg, #ccc);
-  border: 1px solid var(--ps-border, #333);
+  color: var(--ps-fg, #dddddd);
+  border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 3px;
   padding: 0.25rem 1.5rem 0.25rem 0.5rem;
   font: 0.85rem/1.4 ui-monospace, "SF Mono", Menlo, monospace;
 }
 .ps-filter-input:focus {
-  outline: 1px solid var(--accent, #6aa);
+  outline: 1px solid var(--accent, #6ba6ff);
   outline-offset: -1px;
 }
 .ps-filter-clear {
@@ -607,7 +613,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   appearance: none;
   background: transparent;
   border: none;
-  color: var(--ps-fg, #ccc);
+  color: var(--ps-fg, #dddddd);
   cursor: pointer;
   font-size: 0.95rem;
   padding: 0 0.25rem;
@@ -747,11 +753,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 /* Preview = neutral hover (same accent as a directory click). */
-.ps-entry-preview:hover {
-  background: var(--ps-selected);
-  color: var(--ps-selected-fg);
-  border-color: var(--ps-selected);
-}
+/* (.ps-entry-preview / .ps-entry-delete removed 2026-07: the inline view/x
+   buttons were replaced by the kebab menu; zero producers remained.) */
 
 /* Delete = destructive red hover (matches the warning intent). */
 .ps-entry-delete {
@@ -917,7 +920,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   bottom: 0;
   left: 0;
   height: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   line-height: 1.45;
   background: var(--ps-bg-deep);
@@ -938,7 +941,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  * (focused line) so the user can see which row their caret lives on. */
 .ps-preview-cmview .CodeMirror-cursor {
   border-left-width: 2px;
-  border-left-color: var(--ps-accent, #4a9eff);
+  border-left-color: var(--ps-accent, #4f7ab8);
 }
 .ps-preview-cmview .CodeMirror-focused .CodeMirror-cursor {
   /* Brighter when focused so the user can pick the caret out of
@@ -1006,7 +1009,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-preview-cmview.is-editing .CodeMirror {
   background: var(--ps-bg-deep);
-  box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
+  box-shadow: inset 0 0 0 1px var(--ps-accent, #4f7ab8);
 }
 
 /* View-only mode (file > 1 MB OR paginated).  Edit disabled (see
@@ -1027,7 +1030,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   background: var(--ps-bg-deep);
   color: var(--ps-fg);
   border-bottom: 1px solid var(--ps-border);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
 }
 .ps-preview-cmview .CodeMirror-dialog input {
@@ -1056,7 +1059,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   flex: 0 0 auto;
   margin: 0;
   padding: 0.3rem 0.8rem;
-  color: var(--ps-fg-muted, #aaa);
+  color: var(--ps-fg-muted, #999999);
   font-size: 0.82rem;
   font-style: italic;
 }
@@ -1405,7 +1408,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 
 .ps-checkpoint-init-btn,
 .ps-checkpoint-action {
-    background:        var(--ps-accent, #4a7aa7);
+    background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
     border:            none;
     padding:           0.25rem 0.6rem;
@@ -1468,7 +1471,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint-ref-chip {
     display:           inline-block;
     padding:           0.05rem 0.4rem;
-    background:        var(--ps-accent, #4a7aa7);
+    background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
     border-radius:     999px;
     font-size:         0.7rem;
@@ -1534,7 +1537,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 .ps-checkpoint-view-btn {
-    background:        var(--ps-bg, #1e1e1e);
+    background:        var(--ps-bg, #181818);
     color:             var(--ps-fg);
     border:            none;
     padding:           0.15rem 0.5rem;
@@ -1545,7 +1548,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 .ps-checkpoint-view-btn:last-child { border-right: none; }
 
 .ps-checkpoint-view-btn.is-active {
-    background:        var(--ps-accent, #4a7aa7);
+    background:        var(--ps-accent, #4f7ab8);
     color:             var(--ps-on-accent);
 }
 .ps-checkpoint-view-btn:hover:not(.is-active) {
@@ -1560,7 +1563,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     overflow:          auto;
     border:            1px solid var(--ps-border);
     border-radius:     3px;
-    background:        var(--ps-bg, #1e1e1e);
+    background:        var(--ps-bg, #181818);
     padding:           0.3rem;
 }
 

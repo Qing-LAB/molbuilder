@@ -539,8 +539,7 @@ function _mvdata() {
             li.appendChild(msg);
             if (issue.where) {
                 var where = document.createElement("code");
-                where.style.marginLeft = "0.6em";
-                where.style.fontSize   = "0.85em";
+                where.className = "issue-where";   // shared chip style (form-components.css)
                 where.textContent = "[" + issue.where + "]";
                 li.appendChild(where);
             }

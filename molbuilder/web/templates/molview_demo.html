@@ -47,14 +47,10 @@
   <div id="molview-demo-host"></div>
 
   {#- ---- The molview + workspace stack (NO modify-specific scripts) ---- -#}
-  <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
   <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
   <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
-  {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
-  <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-  <script type="module" src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
-  <script src="{{ url_for('static', filename='lib/warning-modal.js') }}"></script>
-  <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
+  {# The shared MolView + workspace stack -- ONE include, not a pasted copy. #}
+  {% include "_molview_scripts.html" %}
 
   {#- External file (not inline) so it satisfies the app CSP script-src 'self'. -#}
   <script type="module" src="{{ url_for('static', filename='molview/demo.js') }}"></script>

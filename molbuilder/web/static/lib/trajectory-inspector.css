@@ -12,10 +12,12 @@
  * the inspector-specific layering.
  *
  * Tokens come from lib/tokens.css; the page already links tokens.css
- * directly via <link>, so we don't @import it here.  Adds two tokens
- * below the page-shell baseline: --bg-card-elev (elevated tile bg)
- * and --shadow-soft (plot-tile drop shadow) + --viewer-extent (the
- * viewer's clamped 1:1 square edge length).
+ * directly via <link>, so we don't @import it here.  Adds ONE
+ * module-local token below the baseline: --shadow-soft (plot-tile
+ * drop shadow).  (--bg-card-elev was promoted to lib/tokens.css --
+ * molview's fused-layout consumes it too; the old global
+ * --viewer-extent here was dead post-MolView-migration and collided
+ * by name with fused-layout's private one -- both removed.)
  *
  * History: this file used to carry /watch-only sections (loader-bar
  * + workflow-card) when /watch was the primary trajectory surface.
@@ -25,16 +27,8 @@
 
 :root {
     /* ---- Inspector-only token additions ---- */
-    --bg-card-elev:   #232a35;
     --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
                       0 2px 6px rgba(0, 0, 0, 0.25);
-
-    /* Square-side length of the viewer panel.  The viewer is
-     * aspect-ratio 1:1 and both width + height resolve to this
-     * variable; the .controls aside picks up the same value as its
-     * fixed height so the two panels align top + bottom.  Updating
-     * this one variable rescales both columns in lockstep. */
-    --viewer-extent:  clamp(320px, 60vh, 560px);
 }
 
 /* ``.loader-bar`` + ``.loader`` + ``.loader button`` + ``.loader
@@ -120,7 +114,7 @@
     gap: var(--space-xs);
 }
 .trajectory-force-controls .readout {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-mono);
     min-width: 28px;
@@ -164,12 +158,12 @@
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .plots-toolbar-btn:hover {
-    background: var(--accent, #4a9eff);
-    border-color: var(--accent, #4a9eff);
+    background: var(--accent, #6ba6ff);
+    border-color: var(--accent, #6ba6ff);
     color: var(--text-on-accent);
 }
 .plots-toolbar-btn:focus-visible {
-    outline: 2px solid var(--accent, #4a9eff);
+    outline: 2px solid var(--accent, #6ba6ff);
     outline-offset: 1px;
 }
 
@@ -225,7 +219,7 @@
     column-gap:     var(--space-md);
     row-gap:        2px;
     margin:         0;
-    font-family:    ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family:    var(--font-mono);
     font-size:      var(--text-xs);
 }
 .convergence-summary-targets dt {
@@ -241,7 +235,7 @@
     margin-top:     var(--space-xs);
     padding-top:    var(--space-xs);
     border-top:     1px dashed var(--border-soft);
-    font-family:    ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family:    var(--font-mono);
     font-size:      var(--text-xs);
     font-variant-numeric: tabular-nums;
     color:          var(--text-primary);
@@ -321,7 +315,7 @@
 .scf-banner strong { color: var(--accent); font-weight: 600; }
 .scf-status {
     color: var(--text-secondary);
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.85rem;
 }
 
@@ -340,12 +334,9 @@
 
 /* ---- Responsive breakpoints ---- */
 
-@media (max-width: 640px) {
-    /* ``.loader input[type="text"]`` + ``.loader-bar`` rules dropped
-     * 2026-05-19 along with /watch's loader bar. */
-    main, header { padding-left: 12px; padding-right: 12px; }
-    :root { --viewer-extent: clamp(240px, 70vw, 380px); }
-}
+/* (The 640px media block styled page-shell's main/header -- a module sheet
+ * must not own page chrome -- and re-tuned the dead --viewer-extent; both
+ * removed 2026-07.  Narrow-viewport page padding is page-shell's concern.) */
 
 /* ---- Run-state info panel (redesigned 2026-05-30).
    Renamed in spirit from "badge" to "info panel": the prior design
@@ -508,7 +499,7 @@
 }
 .parse-warning-meta {
     grid-area: meta;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size:   0.75rem;
     color:       #8c6d20; /* exempt: warn-pastel theme */
     white-space: nowrap;
@@ -520,7 +511,7 @@
     padding: 0.25rem 0.4rem;
     background: #f5e8c2; /* exempt: warn-pastel theme */
     border-radius: 3px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size:   0.75rem;
     overflow-x:  auto;
     white-space: pre;

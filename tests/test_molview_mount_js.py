@@ -67,6 +67,10 @@ _HARNESS = """
     global.molbuilder.molview.data = {
         selection:    store,
         getStructure: () => { dataCalls.push('getStructure'); return structure; },
+        // The ONE selection read shape (rich snapshot, defensive copies) -- the handle's
+        // getSelection DELEGATES here (one name, one shape; unified 2026-07).
+        getSelection: () => ({ indices: store.getState().indices.slice(),
+                               pickOrder: [], mode: 'click', isolate: false }),
         subscribe:    (fn) => store.subscribe(fn),
         // §19.3 -- the model install-from-text primitive ({text, filename}); the handle passes
         // its input straight through.  (Project-file PATH doors live in projects.parser, not here.)
@@ -152,13 +156,15 @@ def test_all_handle_data_ops_route_to_molview_data_never_the_workspace():
 
 
 def test_handle_getSelection_returns_a_copy():
-    """§E rule 2: reads are copies -- mutating the returned array can't leak into the store."""
+    """§E rule 2: reads are copies -- mutating the returned snapshot can't leak into the
+    store.  getSelection delegates to data.getSelection (the ONE rich shape -- {indices,
+    pickOrder, mode, ...}; the old bare-number[] second shape was removed 2026-07)."""
     out = _run_node(_HARNESS + """
         mount(host, workspace, { mode: 'modify' }).then((h) => {
             const a = h.getSelection();
-            a.push(999);                    // mutate the returned array
-            const b = h.getSelection();     // must be a fresh copy
-            console.log(JSON.stringify({ a, b }));
+            a.indices.push(999);                    // mutate the returned snapshot
+            const b = h.getSelection();             // must be a fresh copy
+            console.log(JSON.stringify({ a: a.indices, b: b.indices }));
         });
     """)
     assert out["a"] == [1, 2, 999]

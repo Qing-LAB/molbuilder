@@ -1249,7 +1249,7 @@ exposed):
 |---|---|---|
 | `getElements()` | `string[]` | Element per atom, index order; `[]` when empty. |
 | `getCoordinates()` | `number[][]` | `[[x,y,z], …]` — all coordinates. The ONLY way to read geometry; never parse `structure.text`. |
-| `getUnitCell()` / `getLattice()` | `number[][] \| null` | The RAW explicit 3×3 cell (alias pair); `null` when unset. For DISPLAY / tiling use `getUnitCellInfo()`. |
+| `getUnitCell()` | `number[][] \| null` | The RAW explicit 3×3 cell; `null` when unset. For DISPLAY use `getUnitCellInfo()`. (The `getLattice`/`setLattice` aliases were removed 2026-07 — one name per fact.) |
 | `getAxisKind()` | `[string,string,string] \| null` | Per-axis `periodic\|isolated\|transport`. **NOT defaulted** — a scientific choice; `null` when unset. |
 | `getVacuum()` | `[number,number,number]` | Per-axis vacuum. **Default `[0,0,0]`.** |
 | `getUnitCellOrigin()` | `[number,number,number] \| null` | §3c anchor corner an off-origin cell wraps its atoms from; `null` = world origin. |
@@ -1318,7 +1318,7 @@ Save). Each mirrors its read accessor:
 
 | Method | Returns | Side effect |
 |---|---|---|
-| `setUnitCell(cell)` / `setLattice(cell)` | `void` | Set the 3×3 cell (rest of periodicity kept); marks dirty. |
+| `setUnitCell(cell)` | `void` | Set the 3×3 cell (rest of periodicity kept); marks dirty. |
 | `setCellOrigin(origin)` | `void` | Set the §3c anchor corner `[x,y,z]` (or `null` = world origin); marks dirty. |
 | `setAxisKind(kinds)` | `void` | Set per-axis `periodic\|isolated\|transport`; marks dirty. |
 | `setVacuum(vac)` | `void` | Set per-axis vacuum padding; marks dirty. |

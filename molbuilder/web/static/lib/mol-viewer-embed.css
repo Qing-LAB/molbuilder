@@ -41,14 +41,14 @@
     /* Header has a slim baseline so it doesn't bulk-up over the
        viewer canvas; padding inherited from .card. */
     padding-bottom: var(--space-xs, 0.4rem);
-    border-bottom:  1px solid var(--border-soft, rgba(0,0,0,0.08));
+    border-bottom:  1px solid var(--border-soft, #2c313a);
 }
 
 .mol-viewer-card-title {
     margin:         0;
     font-size:      var(--text-md, 1rem);
     font-weight:    600;
-    color:          var(--text-primary, #222);
+    color:          var(--text-primary, #e6e9ef);
     /* Long titles wrap to a second line rather than push the
        info-line off the right edge. */
     flex:           1 1 auto;
@@ -58,7 +58,7 @@
 .mol-viewer-info-line {
     flex:           0 0 auto;
     font-size:      var(--text-sm, 0.875rem);
-    color:          var(--text-muted, #666);
+    color:          var(--text-muted, #6c7280);
     font-variant-numeric: tabular-nums;
     /* The info-line is steady-state secondary text -- right-aligned
        so it doesn't compete with the title for primary attention. */
@@ -77,8 +77,8 @@
     flex:           1 1 auto;
     min-height:     0;
     background:     var(--bg-code, #fafafa);
-    border:         1px solid var(--border-soft, rgba(0,0,0,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     overflow:       hidden;
 }
 
@@ -103,9 +103,9 @@
 .mol-viewer-busy-msg {
     padding:        0.35rem 0.8rem;
     font:           var(--text-xs, 0.75rem)/1.3 system-ui, sans-serif;
-    color:          var(--text-primary, #e6e9ee);
+    color:          var(--text-primary, #e6e9ef);
     background:     var(--bg-card-hover, #232831);
-    border:         1px solid var(--border-strong, rgba(255,255,255,0.14));
+    border:         1px solid var(--border-strong, #3a3f48);
     border-radius:  var(--radius-md, 8px);
     box-shadow:     0 4px 16px rgba(0,0,0,0.4);
 }
@@ -126,7 +126,7 @@
     gap:            var(--space-xs, 0.4rem);
     padding:        var(--space-xs, 0.4rem) 0;
     font-size:      var(--text-sm, 0.875rem);
-    color:          var(--text-primary, #222);
+    color:          var(--text-primary, #e6e9ef);
 }
 
 .mol-viewer-frame-strip button {
@@ -134,9 +134,9 @@
     min-width:      2rem;
     padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
     background:     var(--bg-input, #fff);
-    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
+    border:         1px solid var(--border-strong, #3a3f48);
     border-radius:  var(--radius-sm, 4px);
-    color:          var(--text-primary, #222);
+    color:          var(--text-primary, #e6e9ef);
     cursor:         pointer;
     font-size:      var(--text-sm, 0.875rem);
     font-variant-numeric: tabular-nums;
@@ -152,7 +152,7 @@
     min-width:      4rem;
     text-align:     center;
     font-variant-numeric: tabular-nums;
-    color:          var(--text-muted, #666);
+    color:          var(--text-muted, #6c7280);
 }
 
 .mol-viewer-frame-strip .frame-slider {
@@ -179,13 +179,13 @@
     gap:            var(--space-sm, 0.5rem);
     padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
     background:     var(--bg-card, #1d2128);
-    border-bottom:  1px solid var(--border-soft, rgba(255,255,255,0.06));
+    border-bottom:  1px solid var(--border-soft, #2c313a);
     /* Compact base: the View/Export triggers + every menu item inherit this, so the viewer
        chrome sits at (or below) the scale of the surrounding controls (the ~12px toggles,
        11px panel buttons) instead of overpowering them.  --text-2xs (11px) matches the small
        buttons. */
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--text-primary, #e6e9ee);
+    color:          var(--text-primary, #e6e9ef);
 }
 
 /* Top-level menu trigger ------------------------------------- */
@@ -200,9 +200,9 @@
     gap:            0.35em;
     padding:        0.28rem 0.7rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
+    color:          var(--text-primary, #e6e9ef);
     border:         1px solid transparent;
-    border-radius:  var(--radius-sm, 6px);
+    border-radius:  var(--radius-sm, 4px);
     font-weight:    500;
     cursor:         pointer;
     user-select:    none;
@@ -220,13 +220,13 @@
 .mol-viewer-menu > summary:hover,
 .mol-viewer-menu > summary:focus-visible {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, rgba(255,255,255,0.12));
+    border-color:   var(--border-strong, #3a3f48);
     outline:        none;
 }
 .mol-viewer-menu[open] > summary {
-    background:     var(--accent, #5fb6ff);
+    background:     var(--accent, #6ba6ff);
     color:          var(--accent-on, #14171c);
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
 }
 
 /* Menu body (popover) --------------------------------------- */
@@ -252,8 +252,8 @@
     padding:        0.3rem 0.4rem;
     font-size:      var(--text-2xs, 0.6875rem);   /* compact menu: items inherit this */
     background:     var(--bg-card-hover, #232831);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-strong, rgba(255,255,255,0.12));
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-strong, #3a3f48);
     border-radius:  var(--radius-md, 8px);
     box-shadow:     0 8px 24px rgba(0,0,0,0.45);
 }
@@ -261,7 +261,7 @@
 /* Sections inside a menu body ------------------------------- */
 .mol-viewer-menu-section {
     padding:        0.28rem 0.15rem;
-    border-top:     1px solid var(--border-soft, rgba(255,255,255,0.06));
+    border-top:     1px solid var(--border-soft, #2c313a);
 }
 .mol-viewer-menu-section:first-child {
     border-top:     none;
@@ -274,7 +274,7 @@
     font-weight:    600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color:          var(--text-muted, #97a0ad);
+    color:          var(--text-muted, #6c7280);
 }
 
 /* Style rep button row --------------------------------------- */
@@ -292,21 +292,21 @@
     line-height:    1.3;                 /* tight box: match the 11px menu text, not a chunky UA button */
     padding:        0.12rem 0.45rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     cursor:         pointer;
     text-align:     center;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .mol-viewer-rep-btn:hover {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+    border-color:   var(--border-strong, #3a3f48);
 }
 .mol-viewer-rep-btn.is-active {
-    background:     var(--accent, #5fb6ff);
+    background:     var(--accent, #6ba6ff);
     color:          var(--accent-on, #14171c);
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
     font-weight:    500;
 }
 
@@ -323,17 +323,17 @@
 }
 .mol-viewer-radius-row > label {
     font-size:      var(--text-2xs, 0.6875rem);   /* match the 11px menu, not 0.8rem */
-    color:          var(--text-muted, #97a0ad);
+    color:          var(--text-muted, #6c7280);
     flex:           0 0 auto;
 }
 .mol-viewer-radius-row > input[type="range"] {
     flex:           1 1 auto;
     min-width:      0;
-    accent-color:   var(--accent, #5fb6ff);
+    accent-color:   var(--accent, #6ba6ff);
 }
 .mol-viewer-radius-row > output {
     font-size:      var(--text-2xs, 0.6875rem);
-    color:          var(--text-primary, #e6e9ee);
+    color:          var(--text-primary, #e6e9ef);
     font-variant-numeric: tabular-nums;
     min-width:      2.2rem;
     text-align:     right;
@@ -344,9 +344,9 @@
     width:          100%;
     padding:        0.4rem 0.6rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     text-align:     left;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
@@ -355,23 +355,23 @@
     content:        "○";
     display:        inline-block;
     margin-right:   0.5em;
-    color:          var(--text-muted, #97a0ad);
+    color:          var(--text-muted, #6c7280);
 }
 .mol-viewer-toggle[aria-pressed="true"]::before {
     content:        "●";
-    color:          var(--accent, #5fb6ff);
+    color:          var(--accent, #6ba6ff);
 }
 .mol-viewer-toggle:hover {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+    border-color:   var(--border-strong, #3a3f48);
 }
 .mol-viewer-toggle[aria-pressed="true"] {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
 }
 
 /* Select dropdown (Projection) ------------------------------ */
-/* Visually matches .mol-viewer-toggle / .mol-viewer-action so the
+/* Visually matches .mol-viewer-toggle so the
    View menu has consistent control sizing; the native <select>
    carries its own caret + system menu UI on click. */
 .mol-viewer-select {
@@ -379,9 +379,9 @@
     line-height:    1.3;
     padding:        0.15rem 0.45rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     font:           inherit;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
@@ -389,26 +389,13 @@
 .mol-viewer-select:hover,
 .mol-viewer-select:focus {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+    border-color:   var(--border-strong, #3a3f48);
     outline:        none;
 }
 
-/* Plain action button (Reset view) -------------------------- */
-.mol-viewer-action {
-    width:          100%;
-    padding:        0.4rem 0.6rem;
-    background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
-    text-align:     left;
-    cursor:         pointer;
-    transition:     background 120ms ease, border-color 120ms ease;
-}
-.mol-viewer-action:hover {
-    background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--border-strong, rgba(255,255,255,0.16));
-}
+/* (.mol-viewer-action removed 2026-07: no JS ever created it -- Reset lives on the
+   rail as a VIEW_TOGGLE (.mol-viewer-quick); the block was a dead byte-identical
+   copy of .mol-viewer-toggle.) */
 
 /* Background row (preset swatches + custom chip) ------------ */
 .mol-viewer-bg-row {
@@ -423,7 +410,7 @@
     width:          1.8rem;
     height:         1.8rem;
     padding:        0;
-    border:         1px solid var(--border-strong, rgba(255,255,255,0.18));
+    border:         1px solid var(--border-strong, #3a3f48);
     border-radius:  50%;
     cursor:         pointer;
     box-sizing:     border-box;
@@ -445,7 +432,7 @@
     text-align:     center;
 }
 .mol-viewer-bg-swatch.is-active {
-    outline:        2px solid var(--accent, #5fb6ff);
+    outline:        2px solid var(--accent, #6ba6ff);
     outline-offset: 2px;
 }
 /* Styled custom-colour chip wraps the native <input type="color"> so
@@ -486,16 +473,16 @@
     flex:           0 0 auto;
     padding:        0.3rem 0.65rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     font-variant-numeric: tabular-nums;
     cursor:         pointer;
     transition:     background 120ms ease, border-color 120ms ease;
 }
 .mol-viewer-export-btn:hover {
     background:     var(--bg-input-focus, #2c323b);
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
 }
 
 /* Export menu sections (Phase 6e) ---------------------------
@@ -510,13 +497,13 @@
 .mol-viewer-export-section + .mol-viewer-export-section {
     margin-top:     0.6rem;
     padding-top:    0.5rem;
-    border-top:     1px solid var(--border-soft, rgba(255,255,255,0.06));
+    border-top:     1px solid var(--border-soft, #2c313a);
 }
 .mol-viewer-export-section-label {
     font-size:      0.7rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color:          var(--text-muted, #98a3b0);
+    color:          var(--text-muted, #6c7280);
     opacity:        0.85;
 }
 
@@ -550,9 +537,9 @@
     max-width:      440px;
     padding:        1.1rem 1.3rem 1.0rem;
     background:     var(--bg-panel, #20242b);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-md, 10px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-md, 8px);
     box-shadow:     0 12px 32px rgba(0, 0, 0, 0.45);
     display:        flex;
     flex-direction: column;
@@ -565,7 +552,7 @@
 }
 .mol-viewer-export-modal-phase {
     font-size:      0.85rem;
-    color:          var(--text-muted, #98a3b0);
+    color:          var(--text-muted, #6c7280);
     font-variant-numeric: tabular-nums;
 }
 .mol-viewer-export-modal-bar {
@@ -578,7 +565,7 @@
 .mol-viewer-export-modal-bar-fill {
     height:         100%;
     width:          0%;
-    background:     var(--accent, #5fb6ff);
+    background:     var(--accent, #6ba6ff);
     transition:     width 120ms ease;
 }
 .mol-viewer-export-modal-actions {
@@ -589,13 +576,13 @@
 .mol-viewer-export-modal-cancel {
     padding:        0.35rem 0.85rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     cursor:         pointer;
 }
 .mol-viewer-export-modal-cancel:hover {
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
 }
 .mol-viewer-export-modal-cancel:disabled {
     opacity:        0.5;
@@ -623,14 +610,14 @@
 }
 .mol-viewer-export-params-label {
     font-size:      0.85rem;
-    color:          var(--text-muted, #98a3b0);
+    color:          var(--text-muted, #6c7280);
 }
 .mol-viewer-export-params-input {
     padding:        0.3rem 0.5rem;
     background:     var(--bg-input, #262b33);
-    color:          var(--text-primary, #e6e9ee);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
-    border-radius:  var(--radius-sm, 6px);
+    color:          var(--text-primary, #e6e9ef);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     font-variant-numeric: tabular-nums;
     font:           inherit;
     min-width:      0;
@@ -638,12 +625,12 @@
 }
 .mol-viewer-export-params-input:focus {
     outline:        none;
-    border-color:   var(--accent, #5fb6ff);
+    border-color:   var(--accent, #6ba6ff);
 }
 .mol-viewer-export-params-hint {
     grid-column:    2;
     font-size:      0.72rem;
-    color:          var(--text-muted, #98a3b0);
+    color:          var(--text-muted, #6c7280);
     opacity:        0.75;
     line-height:    1.3;
 }
@@ -658,10 +645,10 @@
 }
 .mol-viewer-export-modal-confirm {
     padding:        0.35rem 0.95rem;
-    background:     var(--accent, #5fb6ff);
+    background:     var(--accent, #6ba6ff);
     color:          var(--bg-panel, #20242b);
-    border:         1px solid var(--accent, #5fb6ff);
-    border-radius:  var(--radius-sm, 6px);
+    border:         1px solid var(--accent, #6ba6ff);
+    border-radius:  var(--radius-sm, 4px);
     cursor:         pointer;
     font-weight:    600;
 }
@@ -714,10 +701,10 @@
     font-size:      13px;
     line-height:    1;
     cursor:         pointer;
-    color:          var(--text-primary, #e6e9ee);
+    color:          var(--text-primary, #e6e9ef);
     background:     color-mix(in srgb, var(--bg-card, #1d2128) 72%, transparent);
-    border:         1px solid var(--border-soft, rgba(255,255,255,0.12));
-    border-radius:  var(--radius-sm, 5px);
+    border:         1px solid var(--border-soft, #2c313a);
+    border-radius:  var(--radius-sm, 4px);
     transition:     background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .mol-viewer-quick:hover {
@@ -725,11 +712,11 @@
     border-color:   var(--border-strong, #3a3f48);
 }
 .mol-viewer-quick[aria-pressed="true"] {
-    color:          var(--accent, #5fb6ff);
-    border-color:   var(--accent, #5fb6ff);
+    color:          var(--accent, #6ba6ff);
+    border-color:   var(--accent, #6ba6ff);
     background:     var(--accent-bg, rgba(95, 182, 255, 0.14));
 }
 .mol-viewer-quick:focus-visible {
-    outline:        2px solid var(--accent, #5fb6ff);
+    outline:        2px solid var(--accent, #6ba6ff);
     outline-offset: 1px;
 }

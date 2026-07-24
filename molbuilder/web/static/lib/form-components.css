@@ -46,7 +46,7 @@
     padding: 0 5px;
     border-radius: 3px;
     font-size: 0.86em;
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
 }
 
 /* ---- Primary action button (the .primary variant of page-shell's button) ---- */
@@ -187,7 +187,7 @@ button.primary:disabled {
 }
 .issues-panel .issue-where {
     flex: 0 0 auto;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     opacity: 0.65;
     margin-left: auto;
@@ -219,7 +219,7 @@ button.primary:disabled {
 }
 .viewer-info .sep { color: var(--border-strong); }
 .viewer-info code {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     color: var(--text-mono);
     background: var(--bg-input);
     padding: 1px 6px;
@@ -254,7 +254,7 @@ button.primary:disabled {
     padding: 12px 14px;
     background: var(--bg-code);
     color: var(--text-mono);
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.82rem;
     line-height: 1.45;
     border-radius: var(--radius-sm);

@@ -541,10 +541,7 @@
     gap: 0.3rem;
 }
 
-.selection-field-label {
-    color: var(--ps-fg-dim);
-    font: 13px system-ui, sans-serif;
-}
+/* (.selection-field-label removed 2026-07: zero producers.) */
 
 .selection-assign-select,
 .selection-new-label {
@@ -558,7 +555,7 @@
     min-width: 0;
 }
 .selection-new-label {
-    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
 }
 
 /* ====================================================================
@@ -627,7 +624,7 @@
     content: "▾ ";
 }
 .region-defs-key {
-    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     background: var(--ps-bg);
     padding: 1px 5px;
     border-radius: 3px;

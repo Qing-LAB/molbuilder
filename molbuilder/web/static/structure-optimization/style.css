@@ -18,7 +18,7 @@ header code {
     color: var(--accent-hover);
     padding: 1px 6px;
     border-radius: 3px;
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.85em;
 }
 
@@ -161,7 +161,7 @@ fieldset select:disabled {
     background: transparent;
 }
 .tab-btn code {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.86em;
     color: inherit;
     background: transparent;

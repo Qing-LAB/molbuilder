@@ -96,6 +96,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return { ok: false, error: msg, dispose: function () {} };
     }
 
+    // Run a teardown stack LIFO (reverse of registration) -- attachments detach before the
+    // embed disposes, and the card DOM (registered first) is removed last.  Every entry is
+    // isolated: one throwing cleanup can't strand the rest.
+    function _drain(cleanups) {
+        for (var i = cleanups.length - 1; i >= 0; i--) {
+            try { cleanups[i](); } catch (_) {}
+        }
+        cleanups.length = 0;
+    }
+
     async function mount(hostEl, workspace, opts) {
         opts = opts || {};
         const mode   = opts.mode || "modify";
@@ -145,6 +155,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             card = built.card; panelHost = built.panelHost;
             fcHost = built.fcHost; foldBtn = built.foldBtn;
             _deferredEmbed = built;
+            // molview BUILT this card, so dispose must REMOVE it (a pre-built template card is
+            // host-owned and stays).  Registered FIRST so the LIFO teardown removes the DOM
+            // LAST -- after the embed and every attachment let go of it.  Without this a
+            // mount/dispose cycle (the Results inspector re-mounts per file view) stacked a
+            // dead card per view.
+            cleanups.push(function () {
+                try { if (built.card.parentNode) built.card.parentNode.removeChild(built.card); }
+                catch (_) {}
+            });
         }
 
         // SIZING CONTRACT (embedded module, fused-layout.css --molview-min-width): the card needs at
@@ -179,7 +198,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             const viewer = _embedViewer;
             if (viewer && typeof viewer.embed === "function") {
                 // Wire the render loop once the viewer handle is ready; molview owns it.
-                viewer.embed(built.viewerHost, {
+                // The embed handle is returned SYNCHRONOUSLY (onReady fires on the next
+                // microtask); capture it so dispose can tear the embed down -- without this,
+                // every mount/dispose cycle leaked a WebGL context (browsers cap ~8-16, then
+                // force-lose the oldest -> black viewers after enough Results inspections).
+                const embedHandle = viewer.embed(built.viewerHost, {
                     // Host-driven view toggles: molview owns the view flags in the selection
                     // store, so the embed must NOT build its own stateful axes/labels/overlay/
                     // cell toggles (that second copy was the desync source).  molview injects
@@ -278,13 +301,26 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                         if (knobs) { knobs.appendChild(fcHost); }
                     },
                 });
+                // Tear the embed itself down on dispose (WebGL context + its DOM + listeners).
+                // Registered here -- AFTER the card-removal cleanup, BEFORE the onReady
+                // attachments -- so the LIFO teardown runs: attachments detach -> embed
+                // disposes -> card DOM is removed.
+                cleanups.push(function () {
+                    try { embedHandle && embedHandle.dispose && embedHandle.dispose(); }
+                    catch (_) {}
+                });
             }
         }
 
         // Panel (atom selection + the Cell page), bound to the workspace's store.
         const panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
-        if (!panelMount || !panelMount.panel)
+        if (!panelMount || !panelMount.panel) {
+            // The embed + attachments are already running -- drain the teardown stack so a
+            // failed mount can NEVER orphan a started WebGL embed (the same guarantee the
+            // width check gives the too-narrow path).
+            _drain(cleanups);
             return _failMount("selection panel failed to mount (see banner)");
+        }
         cleanups.push(function () { try { panelMount.dispose && panelMount.dispose(); } catch (_) {} });
 
         // §19.5 PERSISTENCE INDICATOR: reflect the suspend gate so the user SEES when saves are
@@ -470,8 +506,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     ? data.getStructure() : null;
             },
             getSelection: function () {
-                const s = store.getState();
-                return (s && Array.isArray(s.indices)) ? s.indices.slice() : [];
+                // ONE name, ONE shape: delegate to data.getSelection (the rich snapshot
+                // {indices, pickOrder, mode, filters, combinator, isolate, view-flags}).
+                // (Used to return a bare number[] built separately off the store -- the same
+                // name with a second shape; zero consumers relied on it, so unified 2026-07.)
+                return (typeof data.getSelection === "function") ? data.getSelection()
+                    : { indices: [] };
             },
             onChange: function (fn) {
                 if (typeof fn !== "function" || typeof data.subscribe !== "function") {
@@ -484,7 +524,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             dispose: function () {
                 _stopPlay();
                 _offs.forEach(function (off) { try { off(); } catch (_) {} });
-                cleanups.forEach(function (fn) { try { fn(); } catch (_) {} });
+                _drain(cleanups);   // LIFO: attachments -> embed -> card DOM
             },
         };
     }

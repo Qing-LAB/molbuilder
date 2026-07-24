@@ -118,8 +118,9 @@
                     // Cancelled — leave the workspace alone.
                     return { ok: false, cancelled: true };
                 }
-                // loadIntoCanvas now routes through molview.data.openMolecule,
-                // which parses + renders the structure itself.
+                // loadIntoCanvas routes through molview.data.installMolecule
+                // (the MODEL primitive for generated text; the FILE door is
+                // projects.parser.openMolecule -- not used here).
                 return { ok: true, n_atoms: body.n_atoms,
                          backend_used: body.backend_used };
             });

@@ -13,7 +13,7 @@
     height:            100%;
     min-height:        60vh;
     background:        var(--ps-bg, #181818);
-    color:             var(--ps-fg, #ddd);
+    color:             var(--ps-fg, #dddddd);
     font:              0.9rem system-ui, -apple-system, sans-serif;
 }
 
@@ -30,20 +30,20 @@
 .md-toolbar-title {
     font-weight:       600;
     font-size:         0.85rem;
-    color:             var(--ps-fg, #ddd);
+    color:             var(--ps-fg, #dddddd);
 }
 
 .md-toolbar-spacer { flex: 1; }
 
 .md-dirty-flag {
-    color:             #e0a868;
+    color:             var(--ps-ck-restore-fg, #e0a868);
     font-size:         0.8rem;
     font-style:        italic;
 }
 
 .md-save-btn {
     background:        var(--ps-accent, #4f7ab8);
-    color:             #fff;
+    color:             var(--ps-selected-fg, #fff);
     border:            none;
     padding:           0.3rem 0.75rem;
     border-radius:     3px;
@@ -52,7 +52,7 @@
 }
 .md-save-btn:disabled {
     background:        var(--ps-bg-tile, #2a2a2a);
-    color:             var(--ps-fg-muted, #999);
+    color:             var(--ps-fg-muted, #999999);
     cursor:            not-allowed;
 }
 .md-save-btn:not(:disabled):hover {
@@ -86,7 +86,7 @@
     font-size:         0.85rem;
     line-height:       1.4;
     background:        var(--ps-bg, #181818);
-    color:             var(--ps-fg, #ddd);
+    color:             var(--ps-fg, #dddddd);
 }
 
 /* Rendered Markdown styling — minimal, readable, matches the dark
@@ -102,7 +102,7 @@
 .md-render-pane h4 {
     margin-top:        1.4em;
     margin-bottom:     0.5em;
-    color:             var(--ps-fg, #fff);
+    color:             var(--ps-fg, #dddddd);
 }
 .md-render-pane h1 { font-size: 1.5rem; border-bottom: 1px solid var(--ps-border, #2a2a2a); padding-bottom: 0.3rem; }
 .md-render-pane h2 { font-size: 1.25rem; }
@@ -112,10 +112,10 @@
 
 .md-render-pane code {
     background:        var(--ps-bg-tile, #1c1c1c);
-    color:             #e0c898;
+    color:             var(--ps-ck-dirty-fg, #e0c898);
     padding:           0.1em 0.3em;
     border-radius:     3px;
-    font-family:       ui-monospace, "SF Mono", Menlo, monospace;
+    font-family:       var(--font-mono);
     font-size:         0.85em;
 }
 .md-render-pane pre {
@@ -128,7 +128,7 @@
 .md-render-pane pre code {
     background:        transparent;
     padding:           0;
-    color:             var(--ps-fg, #ddd);
+    color:             var(--ps-fg, #dddddd);
 }
 
 .md-render-pane table {
@@ -150,7 +150,7 @@
     border-left:       4px solid var(--ps-accent, #4f7ab8);
     margin:            0.8em 0;
     padding-left:      0.8em;
-    color:             var(--ps-fg-muted, #999);
+    color:             var(--ps-fg-muted, #999999);
 }
 
 .md-render-pane a {
@@ -174,7 +174,7 @@
     padding:           0.4rem 0.75rem;
     border-top:        1px solid var(--ps-border, #2a2a2a);
     background:        var(--ps-bg-tile, #1c1c1c);
-    color:             var(--ps-fg-muted, #999);
+    color:             var(--ps-fg-muted, #999999);
     font-size:         0.75rem;
     flex-shrink:       0;
 }

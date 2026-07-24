@@ -12,7 +12,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
-<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    design.md "Module init contract". #}
@@ -822,33 +821,10 @@
 <script type="module" src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 {# Cell op-tab: per-group periodicity editors (vacuum/pbc/cell). #}
 <script type="module" src="{{ url_for('static', filename='modify/periodicity.js') }}"></script>
-{# Selection store + canvas-state — internal implementation
-   modules behind the workspace dispatcher.  Loaded FIRST so the
-   dispatcher (loaded immediately after) has them to delegate to.
-   Per workspace-contract.md §8 these are deprecated public
-   surfaces; consumers go through ``window.molbuilder.workspace.*``
-   instead. #}
-{# The pure L1 helpers — atom index-base (data-vocabulary.md §3.1) + per-atom channel model
-   (atom-annotations.md §5) — now ship inside the MolView ES module (index.js).  A
-   ``type="module"`` script is deferred, so it executes AFTER the classic scripts here, before
-   DOMContentLoaded; safe because their globals (``atomIndexModel`` / ``atomChannelModel``) are
-   read only at render time.  ESM migration: the classic entries below fold into index.js over
-   time (frontend-module-architecture.md §3). #}
-<script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-{# Shared sessionStorage snapshot IO -- loads BEFORE canvas + dispatcher (both use it). #}
-<!-- workspace = a native ES module; dispatcher imports snapshot-io (no separate tag). -->
-{# Workspace dispatcher (workspace-contract.md §1) — mounts
-   ``window.molbuilder.workspace`` as the SINGLE public API surface
-   for workspace state.  Loaded AFTER its internal stores
-   (canvas-state, selection.store) and BEFORE every consumer
-   (page.js, save.js, selection-panel.js, viewer-adapter.js,
-   selection-bootstrap.js) so each consumer's IIFE can bind
-   against ws.* immediately. #}
-<script type="module" src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
-{# Warning modal — independent primitive used by page.js's gate. #}
-<script src="{{ url_for('static', filename='lib/warning-modal.js') }}"></script>
-{# Selection panel + helpers.  Bind ws.selection (Phase 10). #}
-<script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
+{# The shared MolView + workspace stack -- ONE include, not a pasted copy
+   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
+   warning-modal + region-label-definitions). #}
+{% include "_molview_scripts.html" %}
 {# Inline script for popover init lifted out to its own JS file
    so the CSP `script-src 'self'` contract holds.  Pre-fix the
    inline block was silently dropped in production and the

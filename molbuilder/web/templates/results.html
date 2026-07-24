@@ -23,24 +23,15 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
-{# Spectra inspector styles.  When the spectra-inspector lift lands
-   (#58 step 2.4), lib/inspectors/spectra.js fetches
-   _spectra_inspector.html and assigns it to #inspector-host.  That
-   partial uses .card-section / .modes-table / .spectrum-chart /
-   .phase-indicator / .mode-viewer-wrap / .es-bar-diagram etc., all
-   defined in static/spectra/style.css.  Linking spectra/style.css
-   here puts those rules in scope on /results -- WITHOUT this link,
-   the partial would render unstyled.
-
-   ~15 KB of which ~3 KB is unused on /results (.methods-modal,
-   .is-locked, .prior-row -- generate-side only).  Acceptable
-   overhead; the alternative is a CSS extraction (Top-5 review
-   item from the 2026-05-18 audit) that's tracked as a separate
-   cleanup task. -#}
-<link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
+{# Spectra inspector styles: the COMPONENT sheet only
+   (lib/inspectors/spectra.css -- .card-section / .modes-table /
+   .spectrum-chart / .phase-indicator / .mode-viewer / .es-* ...).
+   The spectra PAGE sheet is deliberately NOT linked here: its bare
+   `button` / `textarea` / `.card` rules would override page-shell's
+   canonical controls across /results (ui-design-contract §2.2). -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/spectra.css') }}">
 {# 3Dmol: structure + trajectory inspectors both mount a viewer.
    Plotly: trajectory inspector charts energy / force / SCF traces. #}
-<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
@@ -188,14 +179,11 @@
    The Results view is a session like any other consumer: its state (opened file, current
    frame, selection, camera) persists + restores on reload.  "Read-only" means no EDIT
    controls, NOT no persistence. #}
-{#- molview stores (back the singleton window.molbuilder.molview.data) -#}
-<script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-{#- snapshot-io loads BEFORE canvas-state (canvas-state reads it) -#}
-<!-- workspace = a native ES module; dispatcher imports snapshot-io (no separate tag). -->
-{#- selection panel + adapters now load via molview/index.js (ESM); region defs stay classic -#}
-<script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
-{#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}
-<script type="module" src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+{# The shared MolView + workspace stack -- ONE include, not a pasted copy
+   (_molview_scripts.html: vendor 3Dmol + molview/index.js + workspace/dispatcher.js +
+   warning-modal + region-label-definitions).  The old pasted copy here had DIVERGED --
+   it omitted warning-modal.js. #}
+{% include "_molview_scripts.html" %}
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>

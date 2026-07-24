@@ -64,13 +64,13 @@
     // getLastSavedTo / subscribe.  ``molbuilder.workspace`` is the
     // persistence layer only and is no longer bound here.  Public
     // methods are unchanged so existing consumers see no API drift.
-    var _workspace = null;   // TEST override (set by _bind); production looks up (below)
+    var _modelOverride = null;   // TEST override (set by _bind); production looks up molview.data (below)
     var _modal     = null;   // TEST override (set by _bind); production looks up (below)
 
     // molview.data + warningModal are LOOKED UP at call time (molview-module.md §D.0): read the
     // LIVE model through the door, never import/auto-bind it (the molview module is deferred, so it
     // is not published when this classic script loads).  A test injects stubs via _bind.
-    function _ws()  { return _workspace || (root.molbuilder && root.molbuilder.molview
+    function _model()  { return _modelOverride || (root.molbuilder && root.molbuilder.molview
                                             && root.molbuilder.molview.data) || null; }
     function _mod() { return _modal || (root.molbuilder && root.molbuilder.warningModal) || null; }
 
@@ -85,7 +85,7 @@
             throw new Error(
                 "structure-page: warning-modal API missing");
         }
-        _workspace = workspaceApi;
+        _modelOverride = workspaceApi;
         _modal     = modalApi;
     }
 
@@ -96,7 +96,7 @@
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
      */
     function loadIntoCanvas(structure, source) {
-        if (!_ws() || !_mod()) {
+        if (!_model() || !_mod()) {
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
@@ -110,7 +110,7 @@
         // can't re-derive) are forwarded so the model keeps them.
         var filename = (source && source.file) || null;
         function _apply() {
-            return _ws().installMolecule({
+            return _model().installMolecule({
                 text:        structure.text,
                 filename:    filename,
                 source:      source || null,
@@ -125,13 +125,13 @@
             }).then(function () { return { ok: true }; });
         }
         // Empty canvas — load directly; no warning.
-        if (_ws().isEmpty()) {
+        if (_model().isEmpty()) {
             return _apply();
         }
         // Clean canvas — load directly; no warning.  The user has
         // saved (or just loaded) the current canvas; overwriting it
         // does not lose modifications.
-        if (!_ws().isDirty()) {
+        if (!_model().isDirty()) {
             return _apply();
         }
         // Dirty canvas — ask before overwriting.
@@ -144,37 +144,37 @@
     }
 
     function markDirtyAfterModification() {
-        if (!_ws()) {
+        if (!_model()) {
             throw new Error("structure-page: not bound");
         }
-        _ws().markDirty();
+        _model().markDirty();
     }
 
     function markSavedTo(path) {
-        if (!_ws()) {
+        if (!_model()) {
             throw new Error("structure-page: not bound");
         }
-        _ws().markSaved(path);
+        _model().markSaved(path);
     }
 
     function getCanvasSnapshot() {
-        if (!_ws()) {
+        if (!_model()) {
             throw new Error("structure-page: not bound");
         }
         return {
-            isEmpty:      _ws().isEmpty(),
-            isDirty:      _ws().isDirty(),
-            structure:    _ws().getStructure(),
-            source:       _ws().getSource(),
-            lastSaveTo:   _ws().getLastSavedTo(),
+            isEmpty:      _model().isEmpty(),
+            isDirty:      _model().isDirty(),
+            structure:    _model().getStructure(),
+            source:       _model().getSource(),
+            lastSaveTo:   _model().getLastSavedTo(),
         };
     }
 
     function onCanvasChange(cb) {
-        if (!_ws()) {
+        if (!_model()) {
             throw new Error("structure-page: not bound");
         }
-        return _ws().subscribe(cb);
+        return _model().subscribe(cb);
     }
 
     var api = {

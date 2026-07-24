@@ -528,9 +528,10 @@ function _mvdata() {
     // MolView migration (task #34): the trajectory inspector no longer embeds
     // its own 3Dmol viewer.  It mounts the FULL concealed MolView module
     // read-only (molview-module.md §18) into the empty #viewer-host and becomes
-    // a DATA FEEDER — it hands MolView the parsed coordinate frames
-    // (molview.data.reloadFrames / addFrame) and force-arrow overlays
-    // (handle.setArrows).  MolView owns the ENTIRE view: playback + speed +
+    // a DATA FEEDER — it hands MolView the parsed coordinate frames + raw
+    // per-frame forces (molview.data.reloadFrames / addFrames / setForces; the
+    // ENGINE builds + styles the arrows, §14.5.1).  MolView owns the ENTIRE
+    // view: playback + speed +
     // loop (the frame bar), unit-cell display, atom-index labels, selection +
     // measurement + picking, and atom hiding (its render pipeline's
     // isolate/selection).  See docs/protocols/frontend-module-architecture.md §5.

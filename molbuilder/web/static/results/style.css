@@ -500,9 +500,9 @@
 }
 
 .result-list-bar[hidden] {
-    /* The bar is gated on >= 1 results in the dir; an explicit
-     * display:none guarantees no flex-layout reservation lingers. */
-    display: none !important;
+    /* The bar is gated on >= 1 results in the dir.  (0,2,0) class+[hidden]
+     * outranks the (0,1,0) display:flex base -- no !important needed. */
+    display: none;
 }
 
 .result-list-label {
@@ -634,6 +634,6 @@ body:has(#results-file-picker-bar:not([hidden])) .results-status {
     border: 1px solid var(--border-strong, #3a3f48);
     border-radius: var(--radius, 6px);
     box-shadow: var(--shadow-card, 0 2px 8px rgba(0,0,0,0.3));
-    color: var(--text-primary, #e6e9ee);
+    color: var(--text-primary, #e6e9ef);
     font-size: 0.92rem;
 }
