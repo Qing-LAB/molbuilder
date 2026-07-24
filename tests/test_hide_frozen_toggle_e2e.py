@@ -217,3 +217,112 @@ def test_hide_frozen_row_and_data_visible_after_real_mount(
         "}",
         timeout=8000,
     )
+
+
+# --------------------------------------------------------------------- #
+#  Multi-frame regression (2026-07)                                      #
+# --------------------------------------------------------------------- #
+
+def _siesta_out_two_moves():
+    """A SIESTA .out with TWO CG moves (two outcoor blocks + two force
+    blocks) -> the parser must surface TWO frames.  Regression fixture
+    for the one-frame bug below."""
+    def move(n):
+        coord_block = "\n".join(
+            f"   {i+1 + n}.00000000    {i+1}.00000000    {i+1}.00000000   "
+            f"{(i % 2) + 1}       {i+1}  {('C', 'H')[i % 2]}"
+            for i in range(4)
+        )
+        return dedent(f"""\
+
+                                 ====================================
+                                    Begin CG opt. move =      {n}
+                                 ====================================
+
+            outcoor: Atomic coordinates (Ang):
+            {coord_block}
+
+            outcell: Unit cell vectors (Ang):
+                   10.000000    0.000000    0.000000
+                    0.000000   10.000000    0.000000
+                    0.000000    0.000000   10.000000
+
+               scf:    1  -100.0  -100.0  -100.0  0.001 -1.0 0.5
+            SCF Convergence by DM+H criterion
+
+            siesta: E_KS(eV) =          -10{n}.1234
+
+            siesta: Atomic forces (eV/Ang):
+                 1    0.10    0.20    0.30
+                 2    0.40    0.50    0.60
+                 3    0.05    0.06    0.07
+                 4    0.08    0.09    0.10
+            ----------------------------------------
+               Tot    0.63    0.85    1.07
+            ----------------------------------------
+               Max    1.234567
+               Res    0.987654    sqrt( Sum f_i^2 / 3N )
+            ----------------------------------------
+               Max    1.234567    constrained
+            """)
+    return ("Executable      : siesta\n*  WELCOME TO SIESTA  *\n"
+            + move(0) + move(1))
+
+
+def test_multiframe_trajectory_loads_all_frames_with_frame_bar(
+        page, flask_server, tmp_path, monkeypatch):
+    """REGRESSION (2026-07): a multi-frame trajectory result must load EVERY
+    frame into MolView and show the frame bar.  The bug: rebuildModel called
+    ``molview.data.setViewFlag`` (the flag lives on the SELECTION surface,
+    ``data.selection.setViewFlag``) OUTSIDE its try block -- the TypeError
+    rejected the promise before ``reloadFrames`` ran, so a trajectory showed
+    ONE frame (the installMolecule frame 0) with no frame bar and NO error.
+
+    Asserts through molview.data (frameCount) + molview's own frame-controls
+    DOM -- never the 3Dmol render target.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    out_path = tmp_path / "RELAX_stage2-run0.out"
+    out_path.write_text(_siesta_out_two_moves())
+
+    page.goto(f"{flask_server}/results")
+    page.wait_for_function(
+        "() => window.molbuilder "
+        "      && window.molbuilder.inspectors "
+        "      && window.molbuilder.inspectors.list "
+        "      && window.molbuilder.inspectors.list().length >= 4"
+    )
+    page.wait_for_selector("#inspector-host", timeout=5000)
+    page.evaluate(
+        "(path) => {"
+        "  const reg = window.molbuilder.inspectors;"
+        "  const insp = reg.pick(path);"
+        "  if (!insp) throw new Error('no inspector for ' + path);"
+        "  const host = document.getElementById('inspector-host');"
+        "  insp.mount(host, path);"
+        "}",
+        str(out_path),
+    )
+    page.wait_for_selector("#hide-frozen", timeout=8000)
+
+    # THE regression assertion: every frame reached the model.
+    page.wait_for_function(
+        "() => {"
+        "  const d = window.molbuilder.molview && window.molbuilder.molview.data;"
+        "  return !!d && typeof d.frameCount === 'function' && d.frameCount() >= 2;"
+        "}",
+        timeout=8000,
+    )
+
+    # And MolView surfaced its trajectory UI: the frame-controls bar is
+    # un-hidden (mountFrameControls shows it iff frameCount > 1).
+    bar_shown = page.evaluate(
+        "() => {"
+        "  const fc = document.querySelector('.molview-frame-controls');"
+        "  return !!fc && !fc.hidden && getComputedStyle(fc).display !== 'none';"
+        "}"
+    )
+    assert bar_shown, (
+        "frameCount >= 2 but the molview frame-controls bar is hidden -- "
+        "the trajectory UI (slider/play) never surfaced."
+    )

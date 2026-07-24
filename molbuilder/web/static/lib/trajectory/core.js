@@ -923,11 +923,19 @@ function _mvdata() {
                 return [atom[1], atom[2], atom[3]];
             });
         });
-        // Force scale (Å per force unit) is a cheap store flag the engine reads; set it from
-        // the knob so the first arrow bake uses the right length.  Filter knobs (min /
-        // hide-frozen) ride the forces payload below.
-        _mvdata().setViewFlag("forceScale", parseFloat($("force-scale").value) || 1.0);
         try {
+            // Force scale (Å per force unit) is a cheap STORE flag the engine reads -- it
+            // lives on the SELECTION surface (data.selection.setViewFlag, the view-flag
+            // store; NOT top-level data).  Set it from the knob so the first arrow bake
+            // uses the right length.  Inside the try + feature-detected so a surface drift
+            // can never kill the frame load silently (2026-07 regression: a top-level
+            // setViewFlag call threw OUTSIDE the try -> reloadFrames never ran -> a
+            // trajectory showed ONE frame with no frame bar).
+            var _sel = _mvdata().selection;
+            var _fscaleEl = $("force-scale");
+            if (_sel && typeof _sel.setViewFlag === "function" && _fscaleEl) {
+                _sel.setViewFlag("forceScale", parseFloat(_fscaleEl.value) || 1.0);
+            }
             // Build all frames into MolView's native animation ONCE, handing the filtered raw
             // per-frame forces -- the ENGINE bakes + styles the arrows (process.js §2.4);
             // playback then swaps frames + arrows natively, no per-frame synthesis.
@@ -2718,10 +2726,11 @@ function _mvdata() {
     _on($("force-scale"), "input", (e) => {
         const v = parseFloat(e.target.value) || 1.0;
         $("force-scale-val").textContent = v.toFixed(1);
-        // Scale is a cheap store flag: the engine re-bakes arrow LENGTH in place (no forces
-        // rebuild), so dragging the slider is smooth.
+        // Scale is a cheap store flag on the SELECTION surface: the engine re-bakes arrow
+        // LENGTH in place (no forces rebuild), so dragging the slider is smooth.
         const d = _mvdata();
-        if (d && typeof d.setViewFlag === "function") d.setViewFlag("forceScale", v);
+        const sel = d && d.selection;
+        if (sel && typeof sel.setViewFlag === "function") sel.setViewFlag("forceScale", v);
     });
     // The FILTER knobs change WHICH forces show (min threshold / exclude frozen), so they
     // re-hand the filtered per-frame forces (drawForces -> setForces, in-place re-bake).
