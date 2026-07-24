@@ -49,10 +49,12 @@ Contract: [`projects-sidebar.md`](projects-sidebar.md), [`structure-load-save-co
 save/retract undo timeline**, which is MolView's submodule (§ 2.3 / § 3), not Workspace's.
 Holds NO data model. Contract: [`workspace-contract.md`](workspace-contract.md).
 **Public API (its own concern):** `readPersistedSnapshot()`, `mountRestoreTarget()`, `workspaceId()`, `useNamespace(owner)`, the session-mirror write, `onPersistError(fn)`.
-> **Structural note (pending split):** `dispatcher.js` today ALSO carries the on-disk
-> state-timeline transport (`persist`→disk, `readState`, `pruneStatesAbove` →
-> `/api/state-timeline/*`, `blueprints/state_timeline.py`). That belongs to MolView's
-> save/retract submodule — the workspace mixing it in is debt to unwind.
+> **Layering (deliberate, not debt):** `dispatcher.js` carries the on-disk state-timeline
+> **transport** (`persist`→disk, `readState`, `pruneStatesAbove` → `/api/state-timeline/*`,
+> `blueprints/state_timeline.py`). This is intentional per the contract (SSOT,
+> [`workspace-contract.md`](workspace-contract.md) § 4.7): **MolView owns the retract SEMANTICS;
+> the workspace owns the persistent-file MECHANISM** the timeline is built ON. The transport
+> staying here is correct layering — not a leak to unwind.
 
 ### 2.3 MolView — `molbuilder.molview` (concealed 3-D viewer + data model + **selection**)
 **Goal:** the embeddable structure viewer. Owns the in-memory data model, the render

@@ -208,6 +208,8 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 |---|---|---|
 | `ws.persist(sessionBytes, draftBlob, identity)` | `(object, object, object) → void` | The single write-in. Writes `sessionBytes` to the `sessionStorage` session mirror (§4.4, via `snapshot-io.js`) and POSTs `draftBlob` to the on-disk indexed state file (`/api/state-timeline/write`) keyed by `identity` `{workspace_id, state_index}`. **Format-blind** — the consumer already serialised; this just writes bytes. |
 | `ws.workspaceId()` | `() → string` | The stable id a **sourceless** workspace's draft is keyed under (§4.1.1); reused across a same-tab reload. |
+| `ws.readState(identity)` | `(object) → Promise<object\|null>` | Read the opaque snapshot bytes at `{workspace_id, state_index}` from **disk** (`POST /api/state-timeline/read`). Used by timeline navigation that lands on an index the session mirror doesn't hold (e.g. `load(-1)`); same-tab restore uses `readPersistedSnapshot` (fast, no disk). Format-blind. |
+| `ws.pruneStatesAbove(workspace_id, index)` | `(string, number) → Promise` | Tail-delete the on-disk state files **above** `index` (`POST /api/state-timeline/prune`) — the retract/anchor prune (`index = -1` clears the whole current timeline before a fresh anchor). |
 | `ws.readPersistedSnapshot()` | `() → object \| null` | The parsed session snapshot (or `null` — absent / corrupt / wrong version). The restore consumer decides whether to rehydrate from it or refetch disk (§4.4.3). |
 | `ws.mountRestoreTarget()` | `() → string \| null` | The source-**file** a mount-time restore will hydrate, or `null`. Order-independent — derived from the persisted snapshot. **`null` is ambiguous**: it means EITHER "no restorable snapshot" OR "a restorable snapshot with no source file" (a **generated** structure — SMILES / RNA / peptide / name build). Use it to compare by-file identity, NOT to decide whether a restore exists at all — for that use `hasRestorableSnapshot()`. |
 | `ws.hasRestorableSnapshot()` | `() → boolean` | **True iff the persisted snapshot carries a restorable structure** (`structure.text` present), whether or not it came from a file. This is the invariant a mount-time writer needs (§4.5): when true, the mount-time restore is the **sole authority** for the canvas and no other writer may load anything — **persistency wins over a stale sidebar selection; file load stays explicit**. A `!== mountRestoreTarget()` file comparison must NOT be used for this — it mis-reads a generated (file-less) structure as "no snapshot" and clobbers it (the RNA-wipe bug, fixed 2026-07-22). |
@@ -217,7 +219,7 @@ The workspace exposes **only** the persistence surface (`lib/workspace/dispatche
 
 **The seam (who does what).** The consumer (MolView) owns *when* and *what*: on a data change its
 data model debounces (100 ms) + serialises (`molview.data._serialise` for the session bytes,
-`getScratchBlob()` for the draft blob, `draftIdentity()` for the key — molview-module.md §19.4)
+`exportFile()` for the draft blob, `draftIdentity()` for the key — molview-module.md §19.4)
 and calls `ws.persist(sessionBytes, draftBlob, identity)`. The workspace owns *where*: it writes
 the two surfaces format-blind. **The debounce + suspend/resume live in the data model, not the
 workspace** — the workspace `persist()` is a synchronous write of the bytes it is handed.
@@ -231,7 +233,7 @@ workspace** — the workspace `persist()` is a synchronous write of the bytes it
 **The consumer's in-memory data is the single true state the user sees and edits** — for the
 structure app, that is MolView's in-memory model (`molview.data`, molview-module.md §19), NOT a
 workspace store. **Nothing reads disk for live data.** When the consumer needs to persist, it
-serialises its whole state (`molview.data.getScratchBlob()`, molview-module.md §19.4) and hands
+serialises its whole state (`molview.data.exportFile()`, molview-module.md §19.4) and hands
 the workspace those bytes via `ws.persist(...)`; every persisted form (§4.1) is that **complete
 serialization, written in one shot**. Nothing is persisted that the consumer didn't put in the
 blob, and no save writes only part of it. The workspace stores the bytes **format-blind** — it
@@ -264,20 +266,24 @@ on an explicit Save.
 
 | Surface | Role | Authoritative? | Written when | Where it lives |
 |---|---|---|---|---|
-| **Server draft** | crash-safe transient | **YES** — the transient of record | **every edit** (the working-copy `update`) | `<project>/.molbuilder_workspace/<stem>.<session>.wc.json` — or, **sourceless**, `projects_root()/.molbuilder_workspace/` (§4.1.1) |
-| **`sessionStorage`** | fast same-tab-reload cache | no — an optional layer on top | every `notify()` tick (debounced 100 ms) | `sessionStorage["molbuilder.workspace.v1"]` (§4.4) |
-| **Files** — `<stem>.xyz` + `<stem>.molstruct.json` | the durable copy | the durable save | **only** an explicit Save (`projects.parser.saveMolecule` → `/api/files/write`) | the project directory |
+| **Server draft (state timeline)** | crash-safe transient + undo/retract history | **YES** — the transient of record | on `persist()` — the model mirrors its state at commit points (an anchor / a data edit; **NOT** pure view changes like a frame swap or a view-flag toggle, §4.7) | `<projects_root>/.molbuilder_workspace/states/<workspace_id>.<state_index>.wc.json` (indexed; rolling window of the most-recent 30 per `workspace_id`) |
+| **`sessionStorage`** | fast same-tab-reload cache | no — an optional layer on top | on the mirror write (§4.4) | `sessionStorage["molbuilder.workspace.v1"]`, keyed by `workspace_id` (§4.4) |
+| **Files** — `<stem>.xyz` + `<stem>.molstruct.json` | the durable copy | the durable save | **only** an explicit Save (`projects.parser.saveMolecule` → `/api/structure/save`) | the project directory |
 
-- **Server draft = the authoritative crash-safe transient.** Mirrored to disk on
-  **every** edit (the working-copy `update`, §4.6). It is what survives a crash or a
-  server restart. It exists for **any** workspace that holds data.
+- **Server draft = the authoritative crash-safe transient.** Written by `persist()` — the
+  model mirrors its serialized state at commit points (§4.7); pure view ops do not persist.
+  Each write is ONE **indexed** snapshot (`<workspace_id>.<state_index>.wc.json`); together the
+  indices ARE the undo/retract timeline (MolView owns the retract semantics, §4.7). The server
+  keeps a rolling window of the most-recent **30** indices per `workspace_id`. It exists for
+  **any** workspace that holds data.
 - **`sessionStorage` = a fast same-tab-reload cache** layered on top. Optional, NOT
-  authoritative — it exists so a same-tab reload rehydrates instantly with no server
-  round-trip.
-- **Files = the durable copy**, written only on an explicit Save — one atomic call
-  that writes both files from the store's scratch blob. `.xyz` = geometry (atoms);
-  `.json` = everything else — `cell`, `axis_kind`, `vacuum`, `kgrid`, `regions`,
-  `frozen_atoms`, + a `structure_hash` tying the two.
+  authoritative — it exists so a same-tab reload (same `workspace_id`) rehydrates instantly
+  with no server round-trip.
+- **Files = the durable copy**, written only on an explicit Save — the SERVER writes both
+  files (`/api/structure/save` → `StructureCodec.write`) from the model's scratch blob.
+  `.xyz` = geometry (atoms); `.json` = everything else — `cell`, `cell_origin`, `axis_kind`,
+  `vacuum`, `regions`, `frozen_atoms`, + a `structure_hash` tying the two. (No `kgrid`: it is a
+  SIESTA/FDF sampling knob, not geometry.)
 
 `dirty` tracks whether the store has edits not yet written to the **files**; a Save
 writes everything and clears it. (The draft and the sessionStorage cache always
@@ -285,28 +291,19 @@ mirror memory regardless of `dirty`.)
 
 #### 4.1.1 The draft needs NO project directory
 
-The server draft exists for **any** workspace that holds data — **a project
-directory is NOT required**:
+The state timeline exists for **any** workspace that holds data — **a project directory is
+NOT required**. Every workspace (file-backed OR a brand-new unsaved molecule — a SMILES/name/
+DNA build, a blank canvas) drafts to the **top-level**
+`projects_root()/.molbuilder_workspace/states/`, keyed by a **stable client `workspace_id`**.
+Note: a file-backed workspace does **not** draft *next to its source file* — all drafts live
+under the projects root, keyed by `workspace_id`, never by `<stem>.<session>`.
 
-- A workspace **opened from a file** drafts **next to it**, in that file's
-  `<project>/.molbuilder_workspace/`.
-- A **brand-new unsaved molecule** (a SMILES/name/DNA build, a blank canvas — no
-  source file yet) drafts to the **top-level** `projects_root()/.molbuilder_workspace/`,
-  keyed by a **stable client workspace id** (so its draft is findable across a
-  reload/crash before it has ever been saved).
-
-Either way an edit is crash-safe from the first keystroke, before the user has
-chosen where (or whether) to save.
-
-### 4.2 The two recovery paths
-
-Unsaved edits are recovered by **exactly one** of two paths, depending on what was
-lost:
+### 4.2 Recovery — what survives what
 
 | What happened | Recovered from | How |
 |---|---|---|
-| **Same-tab reload** (the tab's JS heap is gone, the server is fine) | **`sessionStorage`** | instant, no server round-trip — the cache (§4.4) rehydrates the store on mount |
-| **Crash / server restart / new tab** (the sessionStorage cache is gone, or the session changed) | **the server draft** | `list_orphans` (server) can surface drafts whose session can no longer clean them, for the user to **recover** or **discard** (`/api/workingcopy/{orphans,recover,discard,clean}`). The core never auto-deletes unsaved work or auto-adopts stale work. **STATUS: the endpoints exist but are NOT yet wired to a UI** — crash-recovery is available at the API layer only; a recovery prompt is unbuilt (see molview-migration-plan Track b). |
+| **Same-tab reload** (the tab's JS heap is gone, the server is fine) | **`sessionStorage`** | instant, no server round-trip — the cache (§4.4), keyed by the tab's `workspace_id`, rehydrates the store on mount |
+| **Crash / new tab** (sessionStorage is gone, or a new tab minted a fresh `workspace_id`) | **nothing — by design** | Cross-session crash recovery is **OUT OF SCOPE**: a new tab mints a new `workspace_id`, so the previous tab's timeline is unreachable, and there is **no orphan-enumeration / recover UI** (the former `/api/workingcopy/{orphans,recover,discard,clean}` door was **removed**, §4.6). The old timeline's files are simply left on disk — harmless (a hidden dot-dir, never listed by the sidebar, globbed per-`workspace_id` so they never slow anything) and **never garbage-collected**; the server logs a one-time WARNING when they cross a threshold so an operator can clear the directory by hand (`blueprints/state_timeline.py`). |
 
 ### 4.3 Saving to disk — the rules
 
@@ -652,9 +649,9 @@ store for it. What the workspace provides (as the generic file primitive — not
   → `<projects_root>/.molbuilder_workspace/<workspace_id>.<state_index>.wc.json`. The dispatcher
   passes the identity through opaquely (no dispatcher change); the **server** (`/api/workingcopy/
   update`) keys the filename on `state_index`.
-- **Read-by-index (NEW).** A door to reload the bytes at a given `{workspace_id, state_index}` — this
+- **Read-by-index.** A door to reload the bytes at a given `{workspace_id, state_index}` — this
   is what `load(-1)` calls to fetch a *history* snapshot from disk. Today the workspace can only read
-  the *session mirror* (`readPersistedSnapshot`); this adds a `readState(identity)` path plus a server
+  the *session mirror* (`readPersistedSnapshot`); this is the `readState(identity)` path plus the server
   endpoint returning `<workspace_id>.<state_index>.wc.json`. The workspace stays format-blind — it
   returns bytes; the data model interprets them.
 - **Session mirror = current committed snapshot + index.** On each `save`/`load` the current
@@ -755,11 +752,11 @@ clauses.
 
 | Contract clause | Pinning test |
 |---|---|
-| §3.5 workspace surface is persistence-only (no data methods leaked) | `tests/test_workspace_dispatcher_js.py::TestWorkspacePersistenceContract::test_workspace_public_surface_is_persistence_only`, `::test_no_data_methods_leaked_onto_workspace` |
-| §3.5 `persist` is format-blind; a data change drives the persist inversion | `::TestWorkspacePersistenceContract::test_persist_is_format_blind`, `::test_data_change_drives_the_persist_inversion` |
-| §4.4 `sessionStorage` cache round-trip + key + shape | `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip` (`::test_storage_key_is_v1`, `::test_persist_writes_to_unified_sessionStorage_key`, `::test_readPersistedSnapshot_*`, `::test_pagehide_flushes_pending_debounce`) |
-| §4 / §18.3 a VIEW change (e.g. `setFrame`) persists nothing | `::TestWorkspacePersistenceContract::test_setFrame_is_a_view_op_and_does_not_persist` |
-| §4.5 mount-restore ownership (`mountRestoreTarget`) | `tests/test_workspace_dispatcher_js.py` (mount-restore cases) + the workspace-mount-restore e2e |
+| §3.5 workspace surface is persistence-only (no data methods leaked) | `tests/test_workspace_dispatcher_js.py::TestWorkspaceIsPersistenceOnly::test_workspace_public_surface_is_exactly_persistence`, `::test_no_data_accessors_leaked_onto_the_workspace` |
+| §3.5 `persist` is format-blind; a bare edit does NOT auto-persist (push-only) | `::TestWorkspaceIsPersistenceOnly::test_persist_is_format_blind`; `::TestNoAutoPersist::test_a_bare_edit_never_calls_persist` |
+| §4.4 `sessionStorage` cache round-trip + key + shape | `::TestWorkspaceIsPersistenceOnly::test_storage_key_is_the_unified_v1_key`; `::TestPersistRoundtrip::test_persisted_snapshot_carries_the_documented_state_fields`, `::test_readPersistedSnapshot_null_when_absent`, `::test_readPersistedSnapshot_null_on_schema_mismatch` |
+| §4 / §18.3 a VIEW change (e.g. `setFrame`) persists nothing | `::TestViewOpsMustNotPersist::test_setFrame_does_not_persist`, `::test_selection_change_does_not_persist` |
+| §4.5 mount-restore ownership (`mountRestoreTarget`) | `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip::test_mountRestoreTarget_is_the_persisted_source_file` + the workspace-mount-restore e2e |
 | §8 zero legacy-store consumers | `tests/test_no_legacy_store_consumers.py` ✅ shipped 2026-06-09 |
 
 A new test ID appears in this column iff a new **workspace** clause is added.  A clause without a

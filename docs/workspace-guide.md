@@ -1,17 +1,26 @@
 # The workspace state layer — a developer's guide
 
-**What this is.** A plain-language guide to the client-side **workspace store**:
-the one shared piece of state behind the Molbuilder / Modify tab (structure,
-atoms, selection, view, dirty-flag), the `ws.*` API you use to read and change
-it, how it persists across navigation, and — importantly — the **rules a
-caller must honor** so you don't reintroduce the class of bugs this layer is
-prone to.
+> **⚠️ SUPERSEDED — predates the 2026 data-model carve; the `ws.*` data API below no longer
+> exists.** The workspace is now **persistence + concealed file-access ONLY**. The in-memory
+> data model (structure, atoms, selection, view, dirty) and its API moved to **MolView**
+> (`molview.data`, tasks #41/#42). The `ws.getStructure` / `ws.getAtoms` / `ws.selection.*` /
+> `ws.installStructure` / `ws.adoptSession` calls this guide teaches are `molview.data.*` now —
+> they are NOT on the workspace. Any example that gates a restore on
+> `file !== ws.mountRestoreTarget()` is the RNA-wipe bug the contract **§4.5 explicitly BANS**
+> (gate on `hasRestorableSnapshot()` instead). **Until this guide is rewritten, trust the
+> authoritative docs, not the body below:**
+> - **Persistence + file access (the workspace's real job):** [`protocols/workspace-contract.md`](protocols/workspace-contract.md) — the SSOT.
+> - **The data model + its API:** [`protocols/molview-module.md`](protocols/molview-module.md) §19 (`molview.data`).
 
-**What this is NOT.** The authoritative contract. For exact return shapes,
-error semantics, and test-pinned clauses, `protocols/workspace-contract.md`
-is the sole source of truth; this guide teaches and points there.
-`protocols/workspace-contract.md` **molview-module.md** covers the MolView module (viewer +
-atom-selection + k-grid) in depth; `archive/2026-07-06-workspace-state.md` is the
+**What this is.** A plain-language guide to the client-side **workspace** — now scoped to two
+things: **session-state persistence** (tab-isolated crash draft + reload survival) and
+**concealed/unified file access**. It does NOT hold the in-memory data model (that is MolView's,
+above). It teaches the persistence + file-access rules a caller must honor.
+
+**What this is NOT.** The authoritative contract. For exact return shapes, error semantics,
+and test-pinned clauses, `protocols/workspace-contract.md` is the sole source of truth; this
+guide teaches and points there. `protocols/molview-module.md` covers the MolView module (viewer
++ atom-selection + the data model) in depth; `archive/2026-07-06-workspace-state.md` is the
 history behind the design.
 
 ---

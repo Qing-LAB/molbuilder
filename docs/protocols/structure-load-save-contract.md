@@ -2,11 +2,17 @@
 
 > **Authoritative contract for opening/saving a structure file.** The tab-facing doors are
 > `projects.parser.openMolecule(path)` / `saveMolecule(path)` (in the concealed sidebar
-> package); they move bytes through `projects.readFile`/`writeFile`, parse through the ONE
-> server seam, and install/serialise through the model's primitives
-> (`molview.data.installMolecule`/`exportFile`/`markSaved`). A tab calls a door and nothing
-> below it. Code that reaches around the doors (a second file stack, a raw
-> `/api/workingcopy` POST, poking the store) is wrong by definition.
+> package). Both are **FILE-ONLY** (structure-authority.md § 3.3): the door hands a `path`
+> (+ the model's `{xyz, sidecar}` blob on save) to the SERVER, which owns the file access,
+> the `.xyz`↔`.molstruct.json` pairing, AND the sidecar schema — **load** via
+> `POST /api/build/load` (`StructureCodec.read`), **save** via `POST /api/structure/save`
+> (`StructureCodec.write`, which stamps `schema_version` + a real `structure_hash`). The
+> browser reads no bytes, derives no sidecar path, and **never authors the sidecar schema**
+> (a browser-written sidecar had no `schema_version`, so the load door rejected the pair —
+> the save→reload breaker, task #75). The door installs/serialises through the model's
+> primitives (`molview.data.installMolecule`/`exportFile`/`markSaved`). A tab calls a door
+> and nothing below it. Code that reaches around the doors (a second file stack, a
+> browser-written sidecar, poking the store) is wrong by definition.
 >
 > **Aspect C** of the Projects Sidebar module — see the master
 > [`projects-sidebar.md`](projects-sidebar.md) (§ 0.2). **Companions:**
@@ -21,9 +27,10 @@
 | Concern | Home | Public name → `file:function` |
 |---|---|---|
 | **File bytes** (read/write ONE file, no parsing) | `molbuilder.projects` (`lib/projects/state.js`) | `readFile(path)` → `api.js:apiRead` → `/api/files/read` · `writeFile(path, text, {overwrite})` → `api.js:apiWrite` → `/api/files/write` |
-| **Molecule DOORS** — the ONE tab-facing surface | **`molbuilder.projects.parser`** (`lib/projects/parser.js`) | **`openMolecule(path, {confirmDiscard})`** — LOAD `:58` · **`saveMolecule(path, {overwrite})`** — SAVE `:111` |
-| **Model primitives** — called BY the doors | `molview.data` (`lib/molview/data-model.js`) | `installMolecule({text[,sidecar,source,…]})` — parse+install `:1182` · `exportFile()` → `{xyz, sidecar}` `:1652` · `markSaved(path)` `:876` |
-| **Parse seam** (xyz/pdb text [+ sidecar] → enriched Structure JSON) | `web/blueprints/build.py` | `POST /api/build/load` `:634` — parses, applies in-body `sidecar` via `molstruct.load_text`+`apply_to_structure`, returns enriched `atoms`+`periodicity`+`annotations` |
+| **Molecule DOORS** — the ONE tab-facing surface | **`molbuilder.projects.parser`** (`lib/projects/parser.js`) | **`openMolecule(path, {confirmDiscard})`** — LOAD (file-only: `installMolecule({path})`) · **`saveMolecule(path, {overwrite})`** — SAVE (file-only: `POST /api/structure/save`) |
+| **Model primitives** — called BY the doors | `molview.data` (`lib/molview/data-model.js`) | `installMolecule({path}` \| `{text[,sidecar,source,…]})` — load `POST /api/build/load` + install · `exportFile()` → `{xyz, sidecar}` (the save blob) · `markSaved(path)` |
+| **LOAD seam** (file-only: `path` → enriched Structure JSON) | `web/blueprints/build.py` | `POST /api/build/load` `{path}` — SERVER reads `.xyz` + paired `.molstruct.json` via `StructureCodec.read`; returns enriched `atoms`+`periodicity`+`annotations`. (A raw `{text[,sidecar]}` body is the import path for paste/upload/generators.) |
+| **SAVE seam** (file-only: `{path, blob}` → written pair) | `web/blueprints/build.py` | `POST /api/structure/save` `{path, blob:{xyz,sidecar}, overwrite}` — SERVER reconstructs the Structure (`StructureCodec.from_scratch`) + writes the pair (`StructureCodec.write`, stamps `schema_version` + hash). 409 `needsOverwrite` drives the overwrite dialog |
 | **Sidecar schema** (`.molstruct.json` ⇄ Structure) | `molbuilder/sidecars/molstruct.py` | `apply_to_structure(struct, dict)` `:467` · `load_text(text)` · `save(...)` `:412` · `sidecar_path_for(xyz)` `:90` |
 | **Load + mount** (open a picked file AND show the card) | `molview.mount` (`lib/molview/mount.js`) | the shared "open + show the card" (§6) |
 
@@ -84,13 +91,12 @@ the sidecar schema — happens only inside `openMolecule` (via the server seam).
 
 ### Load — `projects.parser.openMolecule(path, { confirmDiscard? })`
 
-A project-file **path** (the FILE door). (1) dirty-gate if `confirmDiscard` supplied
-(`false` → `{ok:false, cancelled:true}`); (2) `projects.readFile(path)` → the `.xyz` text;
-(3) `projects.readFile(sidecarPath)` → the `.molstruct.json` text (best-effort — a missing
-sidecar is fine, not an error); (4) `molview.data.installMolecule({ text, filename:path,
-sidecar })`, which `POST`s `/api/build/load {text, filename, sidecar}` (server parses +
-applies the sidecar) and installs the enriched model in ONE synchronous write (§4). Returns
-`{ok:true, payload}` | `{ok:false, cancelled|error}`.
+A project-file **path** (the FILE door), **FILE-ONLY**. (1) dirty-gate if `confirmDiscard`
+supplied (`false` → `{ok:false, cancelled:true}`); (2) `molview.data.installMolecule({ path })`,
+which `POST`s `/api/build/load {path}` where the **SERVER** reads the `.xyz` + paired
+`.molstruct.json` via `StructureCodec.read` (a missing sidecar is fine — a plain geometry loads
+label-less) and installs the enriched model in ONE synchronous write (§4). The browser reads no
+bytes and derives no sidecar path. Returns `{ok:true, payload}` | `{ok:false, cancelled|error}`.
 
 > **Generated text is NOT a door call.** Generators (smiles/dna/…) have text and no file, so
 > they call `molview.data.installMolecule({text})` directly — the model primitive, not the
@@ -98,12 +104,14 @@ applies the sidecar) and installs the enriched model in ONE synchronous write (�
 
 ### Save — `projects.parser.saveMolecule(path, { overwrite? })`
 
-(1) `molview.data.exportFile()` → `{xyz, sidecar}` (refuses a geometry↔labels desync →
-`{ok:false, error}`); (2) `projects.writeFile(path, xyz, {overwrite})`; (3)
-`projects.writeFile(sidecarPath, JSON.stringify(sidecar), {overwrite:true})` — the sidecar is
-a dependent member of the pair, always overwritten; (4) `molview.data.markSaved(path)` —
-clears dirty + re-anchors the store `sourceFile`. On an "exists" envelope from step (2) →
-`{ok:false, needsOverwrite:true}` so the tab confirms + retries both writes with
+**FILE-ONLY** (the symmetric inverse of Load). (1) `molview.data.exportFile()` → `{xyz, sidecar}`
+(refuses a geometry↔labels desync → `{ok:false, error}`); (2) `POST /api/structure/save
+{path, blob:{xyz,sidecar}, overwrite}` — the **SERVER** reconstructs the Structure
+(`StructureCodec.from_scratch`) and writes the `.xyz` + `.molstruct.json` pair via
+`StructureCodec.write`, which **stamps** `schema_version` + a real `structure_hash` (so the pair
+the load door reads back is VALID — the browser never authors the sidecar schema); (3)
+`molview.data.markSaved(path)` — clears dirty + re-anchors the store `sourceFile`. On a 409
+"exists" envelope → `{ok:false, needsOverwrite:true}` so the tab confirms + retries with
 `{overwrite:true}` (the dialog is UI policy).
 
 > **`path` must be `.xyz`.** `saveMolecule` writes the model's **canonical XYZ**
@@ -140,15 +148,12 @@ land after "ready" and clobber whatever a consumer already did on the settled st
 sequenceDiagram
     participant U as Sidebar
     participant D as projects.parser.openMolecule(path)
-    participant PR as projects.readFile
-    participant IM as molview.data.installMolecule
-    participant BL as /api/build/load
+    participant IM as molview.data.installMolecule({path})
+    participant BL as server /api/build/load
     U->>D: commit path (+confirmDiscard if dirty)
-    D->>PR: read .xyz  +  read .molstruct.json
-    PR-->>D: xyz text, sidecar text
-    D->>IM: {text, filename, sidecar}
-    IM->>BL: parse + apply sidecar
-    BL-->>IM: enriched atoms + periodicity + annotations
+    D->>IM: { path }
+    IM->>BL: POST { path }
+    BL-->>IM: StructureCodec.read (.xyz + paired .molstruct.json) → enriched atoms + periodicity + annotations
     Note over IM: ONE synchronous write — model SETTLED. getNAtoms() = ready gate.
     IM->>IM: await _anchorTimeline() (prune + persist)
     D-->>U: resolve — NO second store write

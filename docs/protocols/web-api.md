@@ -221,7 +221,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 72 routes
+## 2. Endpoint index — all 73 routes
 
 ```mermaid
 flowchart LR
@@ -298,6 +298,7 @@ flowchart LR
     subgraph "Misc"
         misc_anal["POST /api/structure/analyze"]
         misc_rcell["POST /api/structure/resolve-cell"]
+        misc_save["POST /api/structure/save"]
         misc_wrap["POST /api/run/install-wrapper"]
         misc_ips["POST /api/siesta/install-pseudos"]
         misc_back["GET /api/backends"]
@@ -511,7 +512,8 @@ Implementation: `molbuilder/web/blueprints/build.py`.
 | Route | Method | Body | Success |
 |---|---|---|---|
 | `/api/build/molecule` | POST | `{kind, input, ...}` | structure JSON |
-| `/api/build/load` | POST | JSON `{text, format?, filename?}` OR multipart `file=` | structure JSON + `source_format` |
+| `/api/build/load` | POST | JSON `{path}` (file-only: server reads `.xyz`+paired `.molstruct.json` via `StructureCodec.read`) OR `{text, format?, filename?}` OR multipart `file=` | structure JSON + `source_format` |
+| `/api/structure/save` | POST | JSON `{path, blob:{xyz,sidecar}, overwrite?}` — file-only save: server writes the `.xyz`+`.molstruct.json` pair via `StructureCodec.write` (stamps schema) | `{ok, path}` \| 409 `{needsOverwrite}` |
 | `/api/build/fdf` | POST | `{xyz, params, structure_path?}` | `{ok, fdf, system_label, issues}` |
 | `/api/build/pyscf` | POST | `{xyz, params, structure_path?}` | `{ok, script, job_name, issues}` |
 | `/api/build/preflight` | POST | `{xyz, engine, params}` | `{ok, issues}` |

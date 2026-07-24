@@ -222,17 +222,17 @@ Cell = {
 }
 ```
 
-> **Embed contract — the box GEOMETRY rides BOTH the movie and the overlay door.**
-> `cellBox = {lattice, origin}` reaches the embed two ways: `setStructure({cellBox})`
-> (structural regen) AND `setCell(cellBox)` (overlay refresh — what a `showCell`
-> toggle produces, since `showCell` defaults OFF so the box arrives via `setCell`).
-> BOTH must persist `state.current.cellBox`; the wireframe draw reads the anchor
-> `origin` from there. A 2026-07 bug had `setCell` write only `state.current.cell`
-> (visibility/style) and never `cellBox`, so the box silently drew from `[0,0,0]`
-> instead of `cell_origin` (the `(box && box.origin) || null` guard swallowed the
-> missing field — no error). **Tests must assert the DRAWN wireframe corner, not
-> just `getUnitCellOrigin()` (the data was correct throughout);** see
-> `test_setCell_overlay_anchors_box_at_origin_not_world`.
+> **Embed contract — the box GEOMETRY rides the LOAD; VISIBILITY rides the overlay.**
+> `cellBox = {lattice, origin}` is STRUCTURE data: it reaches the embed ONLY via
+> `setStructure({cellBox})` (the load / structural regen), handed **unconditionally** — even
+> while the cell is hidden — so `state.current.cellBox` (the anchor corner) is always current.
+> The overlay refresh carries a plain `cellVisible` boolean (`setCell(true|false)`), NOT
+> geometry; the wireframe draw reads the anchor `origin` from the loaded `cellBox`. (A 2026-07
+> bug gated the geometry behind the visibility toggle — geometry reached the embed only when the
+> cell was already shown — so turning the cell ON after a hidden load drew the box from `[0,0,0]`.
+> Fixed by decoupling: geometry always rides the load; `setCell` is visibility-only.) **Tests
+> must assert the DRAWN wireframe corner, not just `getUnitCellOrigin()` (the data was correct
+> throughout);** see `test_cell_box_anchors_at_origin_not_world`.
 
 - The atom **count, `elements`, and `annotations` are fixed at load from frame [0]** and are
   identical for every frame (the same-atoms invariant, §6). A frame carries **coordinates
@@ -373,9 +373,10 @@ Engine = {
                                              //   engine renders it as a NATIVE SWAP (§8). No
                                              //   separate draw path; no busy; does NOT fire
                                              //   the view store (so the panel is not redrawn).
-  play(opts?: { fps?: number }): void,       // timer that advances currentFrame (each tick = a
-                                             //   native swap via showFrame).
-  pause(): void,
+                                             // NB: playback (the play/pause TIMER) lives ONE
+                                             //   layer up, in mount.js — it just calls showFrame
+                                             //   on a tick. The engine owns no timer (single
+                                             //   playback owner), so it exposes showFrame only.
 
   // ── render (§5) ────────────────────────────────────────────
   render(): void,                            // regenerate from CURRENT data+flags; picks the
@@ -387,9 +388,10 @@ Engine = {
 
 **View flags come from the store; the frame index comes from the frame channel.** The engine
 holds **one** subscription to the view store — a flag write (by any panel/toggle) fires it and
-the engine `render()`s (picking the §8 tier). `currentFrame` is separate (§7.2): `showFrame`/
-`play`/`pause` move it and the engine renders it as a native swap, never re-rendering the
-panel. Either way the UI only **writes data/flags**; the engine is the single render place
+the engine `render()`s (picking the §8 tier). `currentFrame` is separate (§7.2): `showFrame`
+moves it (the play/pause timer lives one layer up in mount.js and just calls `showFrame` on a
+tick) and the engine renders it as a native swap, never re-rendering the panel. Either way the
+UI only **writes data/flags**; the engine is the single render place
 (§5) — `showFrame` is not a second draw path, it just sets the frame index.
 
 ### 9.1 The two internal layers (both under the subnamespace)
@@ -398,10 +400,11 @@ panel. Either way the UI only **writes data/flags**; the engine is the single re
 molbuilder.molview.engine.process   // PURE: (frame coords, identity, flags) -> ProcessedFrame.
                                      //   no 3Dmol, no DOM. node-unit-tested (§2, §7.3).
 molbuilder.molview.engine.embedIo   // the ONLY 3Dmol-touching primitives:
-                                     //   loadFrames(processed[], {cell})  — multi-frame load (§3)
+                                     //   loadFrames({frames, cellBox})     — multi-frame load (§3);
+                                     //     cellBox = {lattice, origin} rides the load unconditionally
                                      //   swapFrame(i)                      — native swap
                                      //   appendFrames(processed[])         — extend the movie (§6.2)
-                                     //   applyOverlays(overlay)            — labels/halos/arrows/cell/axis
+                                     //   applyOverlays(overlay)            — labels/halos/arrows/cellVisible/axis
                                      //   setFrameArrows(arrowsPerFrame)    — re-bake arrows in place (§8)
                                      //   setBusy(msg | null)               — the §4 scrim
 ```
@@ -470,7 +473,8 @@ engine.setData({
 
 ```js
 engine.showFrame(12);   // 3Dmol switches to the pre-loaded frame 12. No processing. No busy.
-engine.play({ fps: 10 });
+// Playback: mount.js runs the timer and calls engine.showFrame(i) on each tick — the engine
+// owns no play/pause (single playback owner, §7.2).
 ```
 
 **Toggle "show selection only" (a flag write; §8 → structural regen):**

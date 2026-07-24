@@ -323,19 +323,17 @@ component is the same. That is what "fully concealed and reusable" buys.
 ## §11 The MolView module — what it is + the boundary
 
 **MolView is ONE component: the 3-D viewer, the atom selection, the Cell/periodicity
-panel, measurement, and k-grid display — as one thing.** These are not bolted-on
-neighbours; they are parts of the same component. It renders the molecule, lets the user
-pick/filter atoms, reads off geometry, edits periodicity, and shows the periodic tiling —
-all behind the one API (§D).
+panel, and measurement — as one thing.** These are not bolted-on neighbours; they are parts
+of the same component. It renders the molecule, lets the user pick/filter atoms, reads off
+geometry, and edits periodicity — all behind the one API (§D). (k-grid is NOT a molview
+concern — it is an FDF/SIESTA sampling knob, §B.)
 
 Two rules define the whole component:
 
 1. **MolView owns its data in memory and reads/writes it through `molview.data` (§19); it
-   never does I/O or parsing itself.** The molecule (atoms + coordinates), the lattice `cell`,
-   and the k-grid `dims` live in MolView's own in-memory model (`molview.data`, §19.1). molview
+   never does I/O or parsing itself.** The molecule (atoms + coordinates), and the lattice `cell` live in MolView's own in-memory model (`molview.data`, §19.1). molview
    reads them through `molview.data.*` and draws them, and writes changes back the same way; on a
-   data change it serializes and calls `ws.persist(...)` (§18.3). Reading files, associating a
-   `.fdf`, and extracting a cell/k-grid happen **upstream** (the results tab / `molbuilder/parse/`)
+   data change it serializes and calls `ws.persist(...)` (§18.3). Reading files and extracting a cell happen **upstream** (the results tab / `molbuilder/parse/`)
    and are installed *into* MolView's model — never by molview parsing them itself, and **never
    handed to molview directly by the owner** (§A, the single door). See §14.
 2. **The selection store is the single source of truth for selection + view state.** The
@@ -349,9 +347,9 @@ Three parties, one door between each (§A):
 | MolView owns (inside the component) | Outside molview |
 |---|---|
 | 3-D rendering + the render pipeline (§14) + the viewer card chrome (style / labels / axes / reset / screenshot / background / export) | **Owner:** page layout, where the card sits, and wiring page buttons to molview's API |
-| The selection store + panel + viewer-adapter; measurement; k-grid tiling; overlays (halos, cell wireframe, labels, arrows, camera) | **Owner:** its own *non-molecule* data + page chrome |
+| The selection store + panel + viewer-adapter; measurement; overlays (halos, cell wireframe, labels, arrows, camera) | **Owner:** its own *non-molecule* data + page chrome |
 | The in-memory molecule model + its API (structure, periodicity, selection, frames — `molview.data`, §19) | **Persistence (workspace):** stores + returns the serialized bytes format-blind; the namespace it saves under (workspace-contract §4) |
-| Namespacing its persisted data by `owner` (§18.4) | **Upstream (parse / results):** fetching files, parsing formats, extracting cell/k-grid *into* molview's model |
+| Namespacing its persisted data by `owner` (§18.4) | **Upstream (parse / results):** fetching files, parsing formats, extracting the cell *into* molview's model |
 
 Crossing the boundary:
 - **Owner → molview:** the API only (§D) — `mount / load / getStructure / getSelection / save / undo / onChange / dispose`. The owner never calls the viewer handle or the store directly.
@@ -359,7 +357,7 @@ Crossing the boundary:
 - **Internal wiring** (maintainers, not the owner): molview drives the viewer via its handle
   (`setStructure/setStyle/setAxes/setOverlays/setPick`, readers `getAtomCount/getAtomCoords/
   getElements/getLattice/getCell/getPickedIndices/getCamera`) and the store (`set/toggle/
-  setIsolate/setKgrid/subscribe`); the viewer reports back via `opts.onReady/onError/
+  setIsolate/setViewFlag/subscribe`); the viewer reports back via `opts.onReady/onError/
   pick.onPick/export.onExport/animation.onFrame`. These live *inside* molview (§13) — the
   owner never sees them.
 
@@ -374,7 +372,7 @@ which the data model (`data-model.js`) builds around the `_createStore` factory
 (`lib/molview/_selection-store-impl.js`) — there is **no** public
 `molbuilder.selection.store` singleton (retired Phase 9, workspace-contract.md §8).
 `molbuilder.selection.createEphemeralStore()` mints an isolated instance for a
-readonly inspector. (The rest of `molbuilder.selection.*` holds the module's
+readonly inspector. (The rest of `molbuilder.molview.selection.*` holds the module's
 functions: `mountPanel`, `measurements`, `viewerAdapter`, `_createStore`,
 `_surfaceSnapshot`.)
 
@@ -394,7 +392,8 @@ functions: `mountPanel`, `measurements`, `viewerAdapter`, `_createStore`,
   mode:        "click" | "filter"
   isolate:     boolean            // "show selected only" — VIEW state (was the
                                   //  adapter's setIsolateMode; moved into the store)
-  kgrid:       { enabled: boolean, dims: [nx,ny,nz], source: "free" | "fixed" }
+  showIndex, showForces, showCell, showAxis: boolean   // view-flag toggles (setViewFlag, §13)
+  forceScale:  number | undefined // force-arrow length (Å per force unit); undefined = default
   filters:     Filter[]           // {kind: by_element|by_index|by_residue|by_label, value}
   combinator:  "or" | "and"
   loading:     boolean
@@ -403,7 +402,7 @@ functions: `mountPanel`, `measurements`, `viewerAdapter`, `_createStore`,
 ```
 
 `selection` is canonical; `pickOrder` is its click-order shadow (kept in lock-step
-by every mutator). **`isolate` and `kgrid` are VIEW state that lives in the store**
+by every mutator). **`isolate` and the view-flag toggles (`showIndex`/`showForces`/`showCell`/`showAxis`/`forceScale`) are VIEW state that lives in the store**
 — not on the adapter, not on a global handle. This is what makes the panel drive
 them through the store (§13), obeying the single-source rule. (These fields
 surface on the data-model read API as §19.2 `getSelection()` / `molview.data.selection.getState()`,
@@ -415,7 +414,7 @@ Consumers never touch the raw store; they use a renamed **surface**:
 
 - **`molview.data.selection`** — the singleton surface. Both `getState()` and the object
   passed to `subscribe(fn)` callbacks are reshaped by the one `_surfaceSnapshot` shaper, so
-  both deliver the SAME `{indices, …, isolate, kgrid, …}` shape (raw `selection` renamed
+  both deliver the SAME `{indices, …, isolate, showIndex, showForces, showCell, showAxis, forceScale, …}` shape (raw `selection` renamed
   `indices`) — a panel that reads via `subscribe` and a click handler that calls `getState()`
   never see different field names.
 - **`createEphemeralStore()`** — an isolated instance with the **same surface
@@ -440,7 +439,7 @@ Local mutators (no HTTP; each fires `notify()` exactly once):
 | `addFilter(f)` / `removeFilter(i)` / `updateFilter(i, patch)` | Per-filter edits used by the filter-row UI. |
 | `setCombinator(c)` | `"or"` or `"and"`. |
 | `setIsolate(on)` | Set the "show selected only" VIEW flag (§12.1). |
-| `setKgrid(patch)` | Patch the k-grid VIEW state `{enabled, dims, source}` — `source`-aware (below). |
+| `setViewFlag(name, value)` | Set a view-flag toggle — `showIndex` \| `showForces` \| `showCell` \| `showAxis` \| `forceScale`. The View-menu / rail buttons write these (store-backed toggles, §13); the engine reads them and renders. |
 | `writeLabel(target, indices)` | REPLACE-per-target label change **in memory** (no HTTP); `target` is `"frozen_atoms"` or a region name. Marks the model dirty so the edit survives reload; the sidecar is written only on explicit Save. |
 
 Server-backed op:
@@ -454,15 +453,11 @@ Reads + lifecycle:
 
 | Method | Meaning |
 |---|---|
-| `getState()` | Defensive `{indices, pickOrder, mode, filters, combinator, isolate, kgrid, …}` snapshot (raw `selection` renamed `indices`). |
+| `getState()` | Defensive `{indices, pickOrder, mode, filters, combinator, isolate, showIndex, showForces, showCell, showAxis, forceScale, …}` snapshot (raw `selection` renamed `indices`). |
 | `subscribe(fn)` | Store-scoped subscription; delivers the same contract shape as `getState()`. |
 | `getAtoms()` | Alias for `molview.data.getAtoms()` (§19.2). |
 | `adoptSession({sourceFile, atoms})` | Atomically install path + atoms + selection in one promise (file-commit bootstrap). |
 | `setSourceFile(path)` / `setLoader(loader)` | Set the sidecar source-of-truth path / the async atom-loader the store uses for `refreshAtoms`. |
-
-`setKgrid(patch)` is `source`-aware: in `"fixed"` a bare `dims` edit is ignored
-(the values are the run's, read-only); in `"free"` `dims` is clamped so
-`natoms · nx·ny·nz ≤ 20000`. `enabled` always applies.
 
 ## §13 The viewer + composition (panel + adapter, through the store)
 
@@ -481,10 +476,10 @@ getLattice  getCell  getCamera  setCamera
 playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
 ```
 
-- **`opts.lattice`** (3×3 row vectors) → `getLattice()` returns it and k-grid
-  tiling uses it (§14). The **cell wireframe** draws only when **`opts.cell`** is
-  also set (`_redrawCell` gates on `state.current.cell`). The viewer does **not**
-  parse a lattice from the file text; molview passes it in (having read it from storage, §14).
+- **`opts.lattice`** (3×3 row vectors) → `getLattice()` returns it (§14). The **cell
+  wireframe** draws only when **`opts.cell`** is also set (`_redrawCell` gates on
+  `state.current.cell`). The viewer does **not** parse a lattice from the file text; molview
+  passes it in (having read it from storage, §14).
 - **`setOverlays(spec)`** paints the selection **highlights** on the drawn atoms (selection /
   region / frozen halos). **`setStructure({xyz, lattice})`** replaces the displayed atom
   *list* — the plain unit cell, the isolate-**filtered** subset, or a k-grid supercell (§14).
@@ -500,36 +495,36 @@ everything draws onto.
 
 ```mermaid
 flowchart TB
-    ST["<b>molview.data.selection — THE STORE</b><br/>single source of truth<br/>state: indices · pickOrder · isolate · kgrid · atoms · filters · mode"]
+    ST["<b>molview.data.selection — THE STORE</b><br/>single source of truth<br/>state: indices · pickOrder · isolate · view-flags · atoms · filters · mode"]
     PANEL["selection-panel<br/>atom list / filters"]
-    VC["view-controls<br/>Show selected only · Show k-grid"]
+    VC["view toggles (rail/menu)<br/>Show selected only · axes/labels/overlay/cell"]
     ADAPT["viewer-adapter<br/>selection / region / frozen halos"]
     MEAS["measurement-overlay<br/>distance / angle readout"]
-    CTRL["mountKgridRender<br/>render controller"]
+    ENG["engine (engine.js)<br/>the ONE render loop"]
     VIEWER["viewer handle (3dmol)"]
 
-    PANEL -->|"WRITE: toggle/set/filter/setIsolate/setKgrid"| ST
-    VC -->|"WRITE: setIsolate / setKgrid(enabled)"| ST
+    PANEL -->|"WRITE: toggle/set/filter/setIsolate"| ST
+    VC -->|"WRITE: setIsolate / setViewFlag"| ST
     ST -->|subscribe| PANEL
     ST -->|subscribe| ADAPT
     ST -->|subscribe| MEAS
-    ST -->|subscribe| CTRL
+    ST -->|subscribe| ENG
     ADAPT -->|"setOverlays (halos)"| VIEWER
     MEAS -->|"reads coordsProvider()"| VIEWER
-    CTRL -->|"computeRender → setStructure (base / filtered / tiled)"| VIEWER
+    ENG -->|"minimal tier → draw (§8)"| VIEWER
     VIEWER -.->|"click → onPick"| ADAPT
-    ADAPT -.->|"store.toggle<br/>(disabled while isolate/k-grid on)"| ST
+    ADAPT -.->|"store.toggle<br/>(disabled while isolate on)"| ST
 ```
 
 - **`selection.mountPanel(host, {store, viewerHandle, mode})`** fetches the panel
   partial, mounts `selection-panel`, and attaches `viewer-adapter` to the handle
   — both bound to the given `store` (the singleton or an ephemeral one).
 - The **panel** renders from `store.getState()` and calls mutators on input
-  (toggle, filter, `setIsolate`, `setKgrid`). The **adapter** subscribes to the
+  (toggle, filter, `setIsolate`). The **adapter** subscribes to the
   store and paints selection / region / frozen **halos** via `setOverlays`, and forwards
-  viewer clicks to `store.toggle`. While isolate OR k-grid is on it **stands its overlays
+  viewer clicks to `store.toggle`. While isolate is on it **stands its overlays
   down and drops clicks** — the window is display-only then (§14.3); isolate itself is a
-  render-list filter in the controller (§14.2), not an overlay.
+  render-list filter in the engine (§14.1), not an overlay.
 - Panel and adapter never reference each other. `mode:"readonly"` hides the
   panel's write controls; clicks still feed the store.
 - `fused-layout.css` is how **molview's composition layer** places the panel as a foldable
@@ -582,162 +577,95 @@ clearing the selection store; clear the atom's region/frozen annotation instead.
 opacity 0.45}`. Selection is the largest + brightest so it reads as the "live" set above
 region tints.
 
-**Halos stand down under a derived view.** While isolate OR k-grid is on, the adapter drops
+**Halos stand down under a derived view.** While isolate is on, the adapter drops
 all three layers and stops forwarding clicks — the window is display-only (§14.3, §13.2).
 
-## §14 k-grid & the render pipeline
+## §14 The render pipeline — isolate & frames
 
 ### 14.0 The mental model — READ THIS FIRST
 
 **Rendering the structure is ONE pipeline of coordinate-computing steps that ends in a
 SINGLE 3dmol draw.** Every step before 3dmol does nothing but compute *which coordinates
-should be shown*. k-grid is the **last** such step. There is **no second render and
-nothing is layered "on top."**
+should be shown*. There is **no second render and nothing is layered "on top."** The
+pipeline is the **render engine** (`engine/engine.js`); this section is the mental model,
+**[`molview-render-streamline.md`](molview-render-streamline.md)** §8 is the mechanism.
+
+> **k-grid is NOT a step in this pipeline** (see §B): it is an FDF/SIESTA sampling knob, not
+> a molview render operation. molview never tiles the cell and stores no k-grid.
 
 **The whole pipeline is a READ-ONLY view derivation.** It *generates* the coordinate list
-3dmol draws **from** the stored atoms; it **never writes the data**. Selection, isolate, and
-k-grid shape the render list only — the stored dataset (`ws`) is untouched, so **export /
-save read the data and are unaffected by what the view shows** (only real edit ops mutate
-`ws`, through their own API). "isolate removes atoms" means removes them *from the render
-list*, not from the structure.
+3dmol draws **from** the stored atoms; it **never writes the data**. Selection and isolate
+shape the render list only — the stored dataset is untouched, so **export / save read the
+data and are unaffected by what the view shows** (only real edit ops mutate the model,
+through their own API). "isolate removes atoms" means removes them *from the render list*,
+not from the structure.
 
 ```
    source atom coords  (the current frame, from the data model — the CLEAN unit cell)
         │
+        ▼   step: frame-select           → which frame's coords (trajectories, §14.5)
+        │
         ▼   step: isolate                → selected-only: which atoms are drawn
         │                                  (off → all atoms; selection alone only highlights)
-        ▼   step: k-grid tiling          → repeat the visible atoms by the lattice
-        │                                  (the LAST coordinate step)
         ▼
    final list of coordinates   →   3dmol draws it, ONCE
 ```
 
-So "k-grid ON" only means the final coordinate list is the **repeated** unit cell instead
-of the bare unit cell — 3dmol still renders that one list, once. Two consequences that the
-rest of §14 depends on:
+- **Always recompute from the CLEAN unit cell.** The engine starts from the data model's
+  frame coords every time — never from a derived list read back off the viewer.
+- **A derived view (isolate) is display-only for selection (§14.3).** While isolate is on the
+  drawn atom index no longer equals the unit-cell index, so in-window click-select is
+  disabled and the halos pause; the **panel atom list** is the selection surface. The
+  measurement readout keeps working (re-keyed to global index). Turn isolate off → the plain
+  full-list draw returns and everything restores.
 
-- **Always recompute from the CLEAN unit cell.** The pipeline starts from the data model's
-  unit-cell coords every time — never from an already-tiled list (or you would tile a
-  tile). Whoever drives the render must hand it the unit cell, not read back whatever the
-  viewer currently shows.
-- **The steps are ordered:** selection/isolate first, then k-grid. So **isolate ON + k-grid
-  ON tiles only the selected atoms.**
-- **A derived view is display-only for selection (§14.3).** While isolate OR k-grid is on,
-  the drawn list is a *derived* list (filtered / tiled), so the drawn atom index no longer
-  equals the unit-cell index — a click in the 3-D window would be ambiguous. In-window
-  click-select is therefore **disabled** and the selection / region / frozen **halos pause**
-  (under isolate the drawn atoms already *are* the selection); the **panel atom list** is the
-  selection surface in these modes. The **measurement readout keeps working under isolate**
-  (re-keyed to global index) and pauses only under k-grid. Turn both off → the plain
-  full-list base draw returns and everything restores. (§14.3.)
-- **Two different things are both called "k-grid":** the **dims** `[nx,ny,nz]` — how many
-  repeats, which is the structure's DFT k-grid, stored in periodicity and written with
-  **`molview.data.setKgrid(dims)`**; and the **enable toggle** — a view preference (show the
-  tiling or not), held in the selection store and flipped with
-  **`molview.data.selection.setKgrid({enabled})`**. The pipeline tiles by the dims *only when the
-  toggle is on*. (Likewise `molview.data.getKgrid()` reads the dims; the `kgrid.enabled` in
-  `molview.data.selection.getState()` is the toggle.)
+### 14.1 The render loop is the ENGINE
 
-### 14.1 The code that runs the pipeline
+The one structure-view render loop is the **engine** (`engine/engine.js`) — it subscribes to
+the store, reads the view flags, picks the minimal render tier (structural regen / arrow
+re-bake / overlay refresh / native frame swap), and draws through the embed once. Isolate is
+a **structural** change (it changes the drawn atom set), so toggling it re-runs the movie
+under the filter. The tiers are specified in
+**[`molview-render-streamline.md`](molview-render-streamline.md)** §8. (The former
+hand-written per-host render controllers — the inline one in the Results inspector, and an
+earlier `mountKgridRender`/`computeRender` draft that never shipped — are gone; the engine is
+the ONE render place.)
 
-- **`molview.tileKgrid(coords, cell, [nx,ny,nz]) → {positions, sourceIndex, nimages}`**
-  — the tiling step (repeat the atoms by the lattice).
-- **`molview.computeRender(coords, view, cell) → {positions, sourceIndex}`** — runs the
-  whole pipeline above (selection/isolate → k-grid) and returns the final coordinates.
-  `sourceIndex[m]` maps each drawn position back to its unit-cell atom (element/label
-  lookup; k-grid copies share their unit-cell atom's identity).
+### 14.3 A derived view (isolate) is display-only; the panel still works
 
-### 14.2 The render controller lives in the module — `mountKgridRender`
-
-The one **view-render controller** — the live loop that subscribes to the store, runs
-`computeRender`, and draws its result — is in the module, not hand-written per host. It is
-what makes §14.0 literally true: ONE `computeRender` → ONE `setStructure` of the derived
-list, which **replaces** the base draw (never a second draw layered on it).
-
-- **`molview.mountKgridRender(handle, store, {getUnit, getCell, getKgridDims, drawBase}) → {refresh, dispose}`**
-  subscribes to the store and, on each change, picks which list to draw from the store's
-  `isolate` flag + `kgrid.enabled` toggle:
-  - **neither on →** the host's plain base draw, via the **`drawBase()`** callback (all
-    atoms, the host's own wireframe-cell rule + refit). The controller does **not** reinvent
-    the base draw — the host owns its nuances (e.g. Modify boxes only an *explicit* cell, not
-    a fresh molecule's bbox).
-  - **isolate on →** `computeRender` filters the list to the selected atoms and the
-    controller `setStructure`s that — a **real filter**: the non-selected atoms are **absent
-    from the drawn model**, not hidden in place.
-  - **k-grid on →** `computeRender` tiles the list; **both on →** the selected atoms, tiled.
-
-  It reads the **clean unit cell** from `getUnit()` (captured before any derivation, so it
-  never tiles an already-tiled list), the resolved lattice from `getCell()`, and the dims
-  from `getKgridDims()` (= `periodicity.kgrid`). A **signature guard** redraws only when the
-  derived list actually changes, so a selection click while *not* isolating never rebuilds
-  the structure. `refresh()` re-runs it after a structure / periodicity change; `dispose()`
-  unsubscribes. It is the **ONLY** structure-view render loop in the codebase (the former
-  inline controller in the Results structure inspector was deleted when this landed —
-  molview-migration-plan Steps 1–2).
-
-```mermaid
-flowchart TD
-    EV["store change (subscribe)"] --> RD["read: isolate flag · kgrid.enabled<br/>getUnit() · getCell() · getKgridDims()"]
-    RD --> SIG{"derived list changed?<br/>(signature guard)"}
-    SIG -->|no| SKIP["skip — no redraw<br/>(e.g. a click while not isolating)"]
-    SIG -->|yes| DEC{"isolate? &nbsp; k-grid?"}
-    DEC -->|neither| BASE["drawBase() — host's plain full-list draw + its cell wireframe"]
-    DEC -->|isolate only| FILT["computeRender: filter to selected atoms"]
-    DEC -->|k-grid only| TILE["computeRender: tile all atoms"]
-    DEC -->|both| BOTH["computeRender: filter → tile (selected, tiled)"]
-    FILT --> DRAW["handle.setStructure(derived list) — ONE draw, REPLACES the base"]
-    TILE --> DRAW
-    BOTH --> DRAW
-```
-
-### 14.3 A derived view (isolate OR k-grid) is display-only; the panel still works
-
-**When the window shows a DERIVED list, a mouse click inside it is ambiguous** — under
-k-grid, "which copy did you pick?" has no answer; under isolate, the drawn atom index no
-longer equals the unit-cell index the store speaks. So while **`isolate` OR `kgrid.enabled`**
-is on:
+**When the window shows a DERIVED list, a mouse click inside it is ambiguous** — the drawn
+atom index no longer equals the unit-cell index the store speaks. So while **`isolate`** is
+on:
 
 - **In-window picking is disabled** — clicking an atom in the 3-D molview does **not** toggle
   the selection. This same guard also drops the programmatic empty-pick that a resized
   `setStructure` fires, so re-deriving the view **never clobbers the store selection**.
-- **Halos stand down in the window** — the selection / region / frozen halos pause. Under
-  isolate the drawn atoms already ARE the selection, so there is nothing to distinguish;
-  under k-grid they can't map onto the copies.
-- **The measurement readout keeps working under isolate** — the selection is still curated
-  (via the panel), and the readout is derived from it. The drawn list is only the selected
-  atoms, so the overlay re-keys `coordsProvider()`'s filtered coords back to global atom
-  index (matching `computeRender`'s isolate order) before the geometry math. It pauses only
-  under **k-grid** (the tiled copies have no single unit-cell coordinate).
-- **The selection PANEL stays fully functional** — filter and click-select on the atom
-  *list* work normally, because the list is always the original unit-cell atoms (no
-  ambiguity). The selection is curated there, and the render re-derives on change.
-- **The selection is recorded internally** (never cleared) — so with **isolate ON + k-grid ON
-  the render tiles ONLY the selected atoms** (§14.0). Turning both off restores the plain
-  full-list base draw: in-window picking, halos, and measurement all return.
+- **Halos stand down in the window** — the selection / region / frozen halos pause; under
+  isolate the drawn atoms already ARE the selection, so there is nothing to distinguish.
+- **The measurement readout keeps working** — the selection is still curated (via the panel),
+  and the readout is derived from it; the drawn list is only the selected atoms, so the
+  overlay re-keys the filtered coords back to global atom index (matching the engine's
+  isolate order) before the geometry math.
+- **The selection PANEL stays fully functional** — filter and click-select on the atom *list*
+  work normally, because the list is always the original unit-cell atoms (no ambiguity). The
+  selection is curated there, and the render re-derives on change.
 
 So a derived view disables *pointing at the 3-D window*, not *selecting*: you keep curating
 the selection through the panel; you just can't click the derived geometry.
 
-### 14.4 Where the `cell` and `k-grid` come from — molview's model, never a parse in molview
+### 14.4 Where the `cell` comes from — molview's model, never a parse in molview
 
-molview **reads** the `cell` and the `k-grid` from its own in-memory model (`molview.data`,
-§19); it never reads files, associates a `.fdf`, or extracts a k-grid itself. Whoever put them
-*into* the model did the parsing — molview only draws what the model holds.
-
-- The **cell** comes from `molview.data.getUnitCellInfo()` (the resolved lattice). Upstream, a
-  computed result got its cell from `molbuilder/parse/` (`StructureResult.cell` / `JobResult`
-  geometry) installed into the model; on Modify it is the structure being designed. molview does
-  not know or care which — it reads the resolved cell.
-- The **k-grid dims** come from `molview.data.getKgrid()`. Upstream wrote them (`source:"fixed"`
-  from a result's `.fdf` k-grid diagonal that `parse/dirs/job.py` extracts, or `"free"` when the
-  user experiments on Modify). Again molview just reads.
-
-`molbuilder/parse/` is the sole parser (see `parse-module.md`) — **no parsing lives in
-molview**. How the `cell` + `k-grid` are *resolved* before they land in the model (the
-`resolve_cell` precedence, the `axis_kind` enum `{periodic, isolated, transport}`, and the
-axis_kind-gated k-grid rule — k-grid > 1 only on a `periodic` axis) is defined in
-**[`structure-periodicity.md`](structure-periodicity.md)**; molview reads the resolved
-result from its model.
+molview **reads** the `cell` from its own in-memory model (`molview.data`, §19); it never
+reads files, associates a `.fdf`, or extracts anything itself. Whoever put the cell *into*
+the model did the parsing — molview only draws what the model holds. The **cell** comes from
+`molview.data.getUnitCellInfo()` (the resolved lattice) + `getUnitCellOrigin()` (the anchor
+corner an off-origin cell wraps its atoms from). Upstream, a computed result got its cell
+from `molbuilder/parse/` (`StructureResult.cell` / `JobResult` geometry) installed into the
+model; on Modify it is the structure being designed — molview reads the resolved cell either
+way. `molbuilder/parse/` is the sole parser (see `parse-module.md`) — **no parsing lives in
+molview**. How the cell is *resolved* before it lands in the model (the `resolve_cell`
+precedence, the `axis_kind` enum `{periodic, isolated, transport}`) is defined in
+**[`structure-periodicity.md`](structure-periodicity.md)**; molview reads the resolved result.
 
 ### 14.5 The frame axis — step 0 of the render (trajectories)
 
@@ -767,7 +695,7 @@ the render buffer and the coordinate store; nothing else keeps a coords copy:
 > **Same-atoms invariant (the linchpin).** Every frame has the same atoms — same count, same
 > element order, same identity. `reloadFrames` / `addFrame` **reject** a frame that violates it
 > with a hard error (same class as the §19.1 atom-count guard) *before* handing anything to the
-> movie — never coerce. That one rule is why selection / measurement / k-grid **compose across
+> movie — never coerce. That one rule is why selection / measurement / overlays **compose across
 > frames for free** (they key off the atom *index*, which never changes) and why the native-frame
 > render is safe (§14.5.2).
 
@@ -818,17 +746,16 @@ cross-check guards every load; the workspace persists whatever bytes it is hande
 flowchart LR
     FR["STEP 0 — frame-select<br/>frames[currentFrame]<br/>(default 0; setFrame(i) picks another)"]
     ISO["isolate → selected-only"]
-    KG["k-grid tiling"]
     DRAW["3dmol draws — ONCE"]
-    FR --> ISO --> KG --> DRAW
+    FR --> ISO --> DRAW
 ```
 
 The atoms' IDENTITY (element, labels, frozen, index) is frame-independent, so **selection,
-isolate, k-grid, and measurement all keep working across frames for free** — they key off the
+isolate, overlays, and measurement all keep working across frames for free** — they key off the
 atom index (stable); only the coordinates they read come from the selected frame.
 
 **MolView renders a frame controls bar itself** — a slider + play/pause + counter in its
-controls area, exactly like it renders the isolate/k-grid view-toggles. It is **shown only when
+controls area, exactly like it renders the isolate/view-flag toggles. It is **shown only when
 a trajectory is loaded** (`frameCount > 1`); a single static structure has no bar. So a consumer
 that hands MolView a trajectory gets the navigation UI for free. The bar is *playback only* —
 overlays are NOT viewer toggles (see §14.5.1). The same operations are on the **handle API**:
@@ -836,53 +763,35 @@ overlays are NOT viewer toggles (see §14.5.1). The same operations are on the *
 | Call | Meaning |
 |---|---|
 | `setFrame(i)` / `frameCount()` / `getFrame(i)` | select / count / read a frame (from `molview.data`, §14.5). |
-| `play()` / `pause()` / `isPlaying()` | step through frames + state. |
-| `setFrameArrows(arrowsPerFrame)` / `setArrows(arrows)` / `setLabels(labels)` | hand MolView the overlay the CONSUMER supplies — a per-frame arrow set (baked into the movie) or a single-frame arrow/label set. MolView draws what it's handed; the consumer owns force→arrow generation (§14.5.1). |
+| `play()` / `pause()` / `isPlaying()` | step through frames + state (the timer lives in `mount.js`; the engine exposes only the per-frame door). |
+| _(force overlay)_ | NOT on this handle — the consumer hands raw per-frame FORCES through **`molview.data`** (`reloadFrames(frames, {forces})` / `setForces(forcesPerFrame)`) and the ENGINE builds + styles the arrows (§14.5.1). The old `setArrows`/`setFrameArrows`/`setLabels` consumer-overlay doors were removed (§D). |
 
-#### 14.5.1 Overlays — MolView draws what it's HANDED; ONE visibility switch
+#### 14.5.1 Force overlay — the ENGINE builds it from raw forces; ONE visibility switch
 
-**MolView is a viewer: it does NOT synthesize overlays.** The **consumer** decides what to draw
-(from its own force data + scaling) and hands it in; MolView draws it and owns only *whether* it
-is shown. Two facts keep this clean and fast:
+**MolView builds and styles the force arrows itself, from the raw per-atom forces** (task #44
+supersession). The **consumer hands FORCES, not pre-built arrows**; the render engine
+(`engine/process.js` §2.4) turns force × `forceScale` into the arrow geometry for the DRAWN atoms
+only (isolate-aware), styles them (the largest force gold-highlighted, the rest a magnitude
+colour/radius ramp), and bakes them into the native movie. Three facts keep this clean and fast:
 
-1. **Data is precomputed once, not per frame.** The consumer builds the arrow specs for **every
-   frame in one pass** whenever a force option changes (scale / threshold / exclude-frozen) and
-   hands the whole set via **`setFrameArrows(arrowsPerFrame)`** — `arrowsPerFrame[i]` is the
-   `{start, end, color, radius}[]` for frame `i`. There is **no per-frame synthesis**: MolView
-   bakes the set alongside the native movie, so a frame swap draws `arrowsPerFrame[frame]` with
-   zero recompute. Changing an option rebuilds the set once and re-hands it; MolView refreshes
-   the current frame in place. (A single-frame `setArrows(arrows)` also exists for static views.)
-2. **ONE visibility switch, MolView-owned.** Whether the arrows are drawn is the embed's single
-   `overlayOn` flag — the **"show overlay" view-toggle** (View menu + quickbar; the overlay *is*
-   the force vectors). Toggling it only adds/removes the arrow layer; the native movie is never
-   touched, so on/off is instant and never rebuilds frames. A consumer must **not** keep its own
-   show/hide control (that was the "two unsynced toggles" bug) — it owns the arrow *computation*
-   knobs (scale/threshold/frozen) only.
+1. **The consumer hands FORCES, once.** Per-frame forces ride in with the coordinates via
+   **`molview.data.reloadFrames(frames, {forces})`**; a force-*filter* change (threshold /
+   exclude-frozen) re-hands them via **`molview.data.setForces(forcesPerFrame)`** — an IN-PLACE
+   arrow re-bake, no movie reload. A consumer SUPPRESSES a force (a frozen atom, a sub-threshold
+   magnitude) by handing a **zero vector**: a zero-magnitude force draws no arrow. So the consumer
+   owns WHICH forces show; the engine owns HOW they look. Arrow LENGTH is the **`forceScale`** view
+   flag (`setViewFlag("forceScale", …)`) — a cheap arrow re-bake, no reload.
+2. **ONE visibility switch, store-owned.** Whether the arrows draw is the **`showForces`** view
+   flag — the **"Show overlay" toggle** (rail button / View menu, store-backed like the other view
+   flags, §13). The engine reads it and draws or doesn't; toggling never rebuilds the movie. A
+   consumer must **not** keep its own show/hide control (the "two unsynced toggles" bug) — it owns
+   the force *computation* knobs (scale / threshold / frozen) only.
+3. **Atom-index labels** are the **`showIndex`** view flag (index labels on the drawn atoms), also
+   engine-built and store-toggled — NOT a consumer-supplied label set. There is no `setLabels`
+   door (§D).
 
-Arrows for a frame are drawn as **ONE batched `GLShape`** (`viewer.addArrow` returns a shape, the
-rest append via `shape.addArrow`) — one scene object + one geometry, not N shapes (≈7× cheaper
-per frame). Per-arrow colour is preserved (e.g. a gold-highlighted max force).
-
-- **Atom-index labels** are likewise supplied via `setLabels` (e.g. `{atoms:"all", format:"index"}`);
-  a generic "show labels" is also available as a viewer **rail toggle** (which drives the *same*
-  embed `setLabels` door — see below).
-
-3. **The overlay controller re-applies INSIDE the render streamline — it has no store subscription
-   of its own.** A redraw (`setStructure`) clears the embed's overlays, so the render controller
-   calls the overlay controller's `refresh()` immediately after each redraw (`render.js`
-   `afterRedraw`). It must re-apply **only when a redraw actually happened** — NOT on every store
-   change. The overlay controller re-applies **only what the consumer handed it** (`_arrows`/
-   `_labels`); when the consumer set nothing it does **not** touch `setArrows`/`setLabels`, because
-   those embed doors are ALSO driven by the "Show overlay"/"Show labels" **rail toggles**. (An
-   earlier version subscribed to the store directly and force-cleared `setLabels(false)` on any
-   change — a mode switch / selection click wiped the user's "Show labels" toggle. Two owners of
-   one door: fixed by coupling re-apply to the render, and by never force-clearing a door the
-   consumer never set.)
-
-> **Requires the owned-viewer mount path.** Overlays draw only where molview owns the render —
-> the **empty-host** `mount(host, ws)` path (§18.2). On the legacy pre-built-card path molview
-> has no viewer handle, so `setArrows`/`setLabels` are no-ops there; that path is being retired
-> (task #28).
+Arrows for a frame are drawn as **ONE batched `GLShape`** — one scene object + one geometry, not N
+shapes (≈7× cheaper per frame). Per-arrow colour is preserved (the gold-highlighted max force).
 
 #### 14.5.2 Rendering — native setFrame + batched overlay (SHIPPED, task #33)
 
@@ -913,14 +822,12 @@ Measured (152-frame / 81-atom trajectory): `data.setFrame` **51 ms → ~4 ms** (
 flowchart TD
     CH["a change fires (frame / view / data)"] --> Q{"what changed?"}
     Q -->|"only currentFrame<br/>(pipeline shape stable)"| SF["viewer.setFrame(i)<br/>coordinate-buffer swap — NO rebuild<br/>+ redraw overlays for the frame"]
-    Q -->|"pipeline SHAPE<br/>(isolate / k-grid / selection /<br/>new or streamed frames)"| RL["recompute all frames under the view<br/>+ addModelsAsFrames (reload)"]
+    Q -->|"pipeline SHAPE<br/>(isolate / selection /<br/>new or streamed frames)"| RL["recompute all frames under the view<br/>+ addModelsAsFrames (reload)"]
 ```
 
 **Caveats:** native frames assume constant **topology** (correct for MD; bond-breaking is out
 of scope) and a fixed drawn atom set across the loaded frames (guaranteed by the same-atoms
-invariant, §14.5). Under k-grid the pre-tiled frame set is `frames × atoms × tiling`
-— gate it on a size cap (extend the existing k-grid `natoms · nx·ny·nz ≤ 20000` clamp by frame
-count) and fall back to per-frame recompute when too large.
+invariant, §14.5).
 
 #### 14.5.3 Example — the trajectory inspector uses it
 
@@ -931,7 +838,7 @@ const view = await molview.mount(host, ws, { mode: "readonly", owner: "results:t
 // The frame controls bar (slider + play/pause + counter) appears AUTOMATICALLY
 // when frameCount > 1 — the consumer renders no viewer controls itself.  The handle API is
 // still there for programmatic control / extra widgets, e.g.:
-view.setFrame(3); view.play(); view.setArrows(myArrowsForThisFrame);  // consumer builds the arrows
+view.setFrame(3); view.play();  // frames + playback via the handle (forces feed molview.data, §14.5.1)
 
 // The consumer only adds its OWN, non-viewer UI — the per-frame SCALARS (energy / step) are
 // the inspector's plot, NOT MolView's data:
@@ -962,8 +869,8 @@ energyPlot.render(results.energies);
   the store selection. Coords come from `coordsProvider()` (the current frame /
   the viewer handle) — the store never holds coordinates. **Under isolate** the drawn list is
   only the selected atoms, so the overlay re-keys those filtered coords back to global atom
-  index (matching `computeRender`'s isolate order) and the readout **keeps working**. It is
-  **hidden only while k-grid is on** (§14.3 — the tiled copies have no single unit-cell
+  index (matching the engine's isolate order) and the readout **keeps working** under isolate
+  (§14.3 — the drawn atoms re-key to global index
   coordinate).
 
 ## §16 Atom-index display rule
@@ -978,9 +885,9 @@ converted via `lib/molview/_atom-index.js` `toDisplay` at the edge. Never let a
 
 ### 17.1 Test affordances
 
-- Node-tested pure modules: `tileKgrid`, `computeRender`, `mountMeasurementOverlay` (incl.
-  the isolate re-key), `mountRender`
-  (`tests/test_{kgrid,render_pipeline,measurement_overlay,molview_render}_js.py`), the store
+- Node-tested pure modules: the render engine + its stages — `process`, `engine`, `embed-io`
+  (`tests/test_engine_{process,orchestrator,embed_io}_js.py`), `mountMeasurementOverlay` (incl.
+  the isolate re-key, `test_measurement_overlay_js.py`), the store
   (`test_selection_store_js.py`), the dispatcher (`test_workspace_dispatcher_js.py`),
   `molview.mount` (`test_molview_mount_js.py`).
 - Browser e2e:
@@ -988,9 +895,9 @@ converted via `lib/molview/_atom-index.js` `toDisplay` at the edge. Never let a
     the empty-host build path, viewer tracks the loaded structure, Selection/Cell tab switch).
   - **Modify** — `test_molbuilder_e2e.py`: **isolate genuinely FILTERS the render list**
     (`test_show_selected_only_filters_the_render_list`: 3 atoms → isolate ON draws 1 → OFF
-    restores 3), the isolate/k-grid toggles, k-grid tiling.
+    restores 3), the view-flag toggles (axes/labels/overlay/cell + isolate).
   - **Structure inspector** — `test_structure_inspector_measurement_e2e.py`: measurement
-    overlay (incl. under isolate), clicks→store, and (when a cell is in storage) k-grid tiling.
+    overlay (incl. under isolate), clicks→store.
 - The inspector exposes `viewerSlot.__molbuilder_test_handle` + `__molbuilder_test_store`; the
   demo exposes `.viewer.__molview_test_handle` (test-only) so e2e drives the viewer + store
   without canvas clicks.
@@ -1046,8 +953,9 @@ molview.mount(hostEl, workspace, opts) -> handle
 - **`handle`** — the **owner-facing API of §D**. The complete key set (the exact `Object.keys`
   `test_molview_mount_js.py::HANDLE_KEYS` pins, sorted):
   `{ ok, installMolecule, exportFile, undo, getStructure, getSelection, onChange, dispose,`
-  ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying, setArrows,`
-  ` setFrameArrows, setLabels }`.
+  ` setFrame, frameCount, currentFrame, getFrame, play, pause, isPlaying }`.
+  (No `setArrows`/`setFrameArrows`/`setLabels` — those consumer-overlay doors were removed, §D;
+  the force overlay is fed through `molview.data`, §14.5.1, not this handle.)
   `ok` is the mount-contract flag (§18.4); the core owner API (installMolecule / exportFile /
   undo / getStructure / getSelection / onChange / dispose) is §D; the rest are the **frame axis**
   (§14.5), present on every handle but inert for a static structure (`frameCount() === 1`). It
@@ -1147,7 +1055,7 @@ The rule that makes this a single correct path:
 - `selection.mountPanel(panelHost, {store: molview.data.selection, mode})`; injects the isolate
   rail toggle via `handle.addViewToggle` (§18.5); wires the fold; `mountRender` (base draw +
   unit cell / dims from the `molview.data.get*` accessors, §14.2); `mountMeasurementOverlay`.
-- `dispose()` tears it all down (panel, controls, overlays, k-grid, subscriptions).
+- `dispose()` tears it all down (panel, controls, overlays, subscriptions).
 
 **Sizing contract (embedded module, `fused-layout.css`).** The card declares `min-width` = its
 DERIVED absolute minimum (`max(--viewer-min, --panel-min)`, the *stacked* floor) and `width: 100%`
@@ -1178,7 +1086,7 @@ only ever hands the workspace serialized **bytes** to store.
 writes no storage keys itself. On a data change it serializes its model and calls the workspace's
 **`persist(...)`**; the workspace decides on its own how to store the bytes (server draft +
 `sessionStorage`, workspace-contract §4). The rule is simply: **a molview DATA CHANGE triggers a
-persist; a molview VIEW change does not.** View-only operations — isolate, k-grid, selection,
+persist; a molview VIEW change does not.** View-only operations — isolate, selection,
 style, background, and **frame-select (`setFrame`)** — change what is *drawn*, never the stored
 dataset, so they persist **nothing**.
 
@@ -1255,8 +1163,8 @@ code.
 > every boundary, no field-list duplication. All callers comply with that contract.
 
 The `_`-prefixed store files (`_canvas-state-impl.js` = text + source + periodicity + dirty;
-`_selection-store-impl.js` = atoms + selection + filters; `_frame-series.js` = the frame axis) are
-**molview-internal**; `data-model.js` reads them and serves the API. No consumer touches them.
+`_selection-store-impl.js` = atoms + selection + filters; the frame axis is the ENGINE's native
+movie, not a store file) are **molview-internal**; `data-model.js` reads them and serves the API. No consumer touches them.
 
 ### 19.1 In-memory state shape
 
@@ -1278,7 +1186,7 @@ type MolViewState = {
       cell:      number[][] | null,     //   save writes the whole structure (workspace §4.0)
       axis_kind: [string,string,string] | null,   // periodic | isolated | transport
       vacuum:    [number,number,number],
-      kgrid:     [number,number,number],
+      cell_origin: [number,number,number] | null, // §3c anchor corner (off-origin cells)
     } | null,                           // see structure-periodicity.md
     annotations:   object | null,       // opaque channel carry (atom-annotations.md)
   } | null,
@@ -1287,7 +1195,7 @@ type MolViewState = {
              file: string|null, generator_input: object|null },
   dirty:        boolean,
   last_save_to: string | null,
-  selection:    { … },   // §12.1 (indices, pickOrder, mode, filters, combinator, isolate, kgrid)
+  selection:    { … },   // §12.1 (indices, pickOrder, mode, filters, combinator, isolate, view-flags)
   view:         { camera?, style?, axes?, labels? } | null,
   loading:      boolean,   // transient — never persisted
 }
@@ -1313,7 +1221,7 @@ without touching a consumer. **The API is the contract; the layout is free.**
 | the canvas-state store / `structure.text` (the xyz/pdb string) | `molview.data.getCoordinates()` / `getStructure()` — **never parse the string** |
 | the selection store's raw `state.atoms` | `molview.data.getAtoms()` / `getCoordinates()` / `getElements()` |
 | a structure's raw `regions` map | `molview.data.getAtomsByLabel(label)` |
-| `periodicity.cell` / `.kgrid` off a raw object | `molview.data.getUnitCell()` / `getKgrid()` / … |
+| `periodicity.cell` / `.cell_origin` off a raw object | `molview.data.getUnitCellInfo()` / `getUnitCellOrigin()` / … |
 
 **If the API doesn't expose what you need, ADD an accessor — never reach past it.**
 
@@ -1329,7 +1237,7 @@ state is `null` or empty.
 | `getSource()` | `{kind, file, generator_input}` | Empty → `{kind:"blank", file:null, generator_input:null}`. |
 | `getSourceFile()` | `string \| null` | Convenience for `getSource().file`. |
 | `getLastSavedTo()` | `string \| null` | Disk path last saved to this session, or `null`. |
-| `getSelection()` | `{indices, pickOrder, mode, filters, combinator, isolate, kgrid}` | `indices` sorted-ascending, deduped; filters defensive-copied; `isolate`/`kgrid` are the view-state (§12.1). |
+| `getSelection()` | `{indices, pickOrder, mode, filters, combinator, isolate, showIndex, showForces, showCell, showAxis, forceScale}` | `indices` sorted-ascending, deduped; filters defensive-copied; `isolate` + the view-flag toggles are the view-state (§12.1). |
 | `getAtoms()` | `Atom[]` (slice) | Direct atom-array accessor for hot paths; `[]` when empty. |
 | `isDirty()` | `boolean` | True iff edited since last save. |
 | `isEmpty()` | `boolean` | True iff no structure loaded (`getStructure() === null`). |
@@ -1344,19 +1252,19 @@ exposed):
 | `getUnitCell()` / `getLattice()` | `number[][] \| null` | The RAW explicit 3×3 cell (alias pair); `null` when unset. For DISPLAY / tiling use `getUnitCellInfo()`. |
 | `getAxisKind()` | `[string,string,string] \| null` | Per-axis `periodic\|isolated\|transport`. **NOT defaulted** — a scientific choice; `null` when unset. |
 | `getVacuum()` | `[number,number,number]` | Per-axis vacuum. **Default `[0,0,0]`.** |
-| `getKgrid()` | `[number,number,number]` | k-point grid. **Default `[1,1,1]` (gamma).** |
+| `getUnitCellOrigin()` | `[number,number,number] \| null` | §3c anchor corner an off-origin cell wraps its atoms from; `null` = world origin. |
 | `getUnitCellInfo()` | `{value, isDefault}` | DISPLAY cell for the Cell page: explicit cell wins, else the server-resolved bbox (`resolved_cell`); `isDefault` = no explicit cell. |
-| `getVacuumInfo()` / `getKgridInfo()` / `getAxisKindInfo()` | `{value, isDefault}` | DISPLAY `{value,isDefault}` for the Cell page (default = `[0,0,0]` / `[1,1,1]` / every axis isolated). |
+| `getVacuumInfo()` / `getUnitCellOriginInfo()` / `getAxisKindInfo()` | `{value, isDefault}` | DISPLAY `{value,isDefault}` for the Cell page (default = `[0,0,0]` / world origin / every axis isolated). |
 | `getAtomsByLabel(label)` | `number[]` | Atom indices carrying `label` — a direct label→indices lookup. |
 | `getFrozen()` | `number[]` | Indices of frozen atoms. |
 | `getRegions()` | `{label→indices}` | The full label→indices map (the one place labels are gathered for save/draft). |
-| `atomFor3Dmol(i)` | `{elem,x,y,z} \| null` | One atom in 3Dmol's shape. |
-| `toAddAtoms()` | `[{elem,x,y,z}, …]` | Whole model in 3Dmol's shape, for `model.addAtoms(...)`. The render path uses THIS, never `addModel(string)`. |
-
 **Consequences (mandatory):** (1) the xyz/pdb string exists ONLY at the file boundary — load
-parses it in, save serializes it out; no consumer gets geometry from a string. (2) Rendering
-calls `toAddAtoms()` / `atomFor3Dmol()` — never `addModel(xyzString)`. (3) Filter / measure call
-the API — no disk read, no hand-crafted scan.
+parses it in, save serializes it out; no consumer gets geometry FROM a string. (2) Rendering
+reads the parsed model's element/coord arrays and, at the very last step, the engine encodes
+them into 3Dmol's XYZ wire form (`embed-io.js:_buildXyz`) for `viewer.addModel` /
+`addModelsAsFrames` — this is 3Dmol's socket shape (transport encoding at the boundary, not a
+data source): nothing reads that string back; every read still comes from `molview.data`. (3)
+Filter / measure call the API — no disk read, no hand-crafted scan.
 
 **Subscriptions.** `const unsub = molview.data.subscribe(fn)` — `fn` fires once immediately with
 the current `getState()`, then once per `notify()` tick; subscriber errors are caught;
@@ -1411,7 +1319,7 @@ Save). Each mirrors its read accessor:
 | Method | Returns | Side effect |
 |---|---|---|
 | `setUnitCell(cell)` / `setLattice(cell)` | `void` | Set the 3×3 cell (rest of periodicity kept); marks dirty. |
-| `setKgrid(dims)` | `void` | Set the k-point grid `[nx,ny,nz]`; marks dirty. |
+| `setCellOrigin(origin)` | `void` | Set the §3c anchor corner `[x,y,z]` (or `null` = world origin); marks dirty. |
 | `setAxisKind(kinds)` | `void` | Set per-axis `periodic\|isolated\|transport`; marks dirty. |
 | `setVacuum(vac)` | `void` | Set per-axis vacuum padding; marks dirty. |
 | `commitPeriodicity(patch)` | `Promise` | Cell-page "Update": apply the edit, then re-resolve the effective cell through the ONE server resolver (`/api/structure/resolve-cell`) and write back `resolved_cell`. An explicit `cell` wins (no re-resolve). |

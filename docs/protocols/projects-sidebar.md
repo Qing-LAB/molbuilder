@@ -92,12 +92,14 @@ sequenceDiagram
   participant SB as sidebar
   participant T as a tab
   participant P as projects.parser
+  participant Sv as server
   U->>SB: single-click a file
   SB-->>T: onChange (candidate) → enable Load button
   U->>SB: double-click the file
   SB-->>T: onCommit(path)  — cursor already updated
   T->>P: openMolecule(path)
-  P->>P: readFile .xyz + .molstruct.json → parse → install
+  P->>Sv: POST {path} (/api/build/load)
+  Sv-->>P: StructureCodec.read (.xyz + paired .molstruct.json) → enriched model
   P-->>T: model shows the structure (labels + cell ride along)
 ```
 
@@ -178,8 +180,8 @@ shapes are in § 5.4 (the C1–C8 tables); this is the at-a-glance map.
 | `onCommit(cb)` | subscribe to commits (double-click); does NOT fire on register |
 | `publishCommit(dir, file)` | publish a commit programmatically |
 | `setShared(dir, file)` | cursor-only mutator (no re-list); lock-guarded |
-| `navigateTo(absPath, opts)` | list a dir + move the cursor; lock-guarded |
-| `refresh(opts)` | re-list the current dir |
+| `navigateTo(absPath, opts)` | list a dir + move the cursor; lock-guarded. **Abort is last-call-wins** (a newer `navigateTo`/`refresh` aborts the in-flight list via the sidebar's own internal controller); a caller-supplied `opts.signal` is **not** threaded here (unlike the byte-I/O methods below). |
+| `refresh(opts)` | re-list the current dir (same last-call-wins abort as `navigateTo`; `opts.signal` not threaded). |
 | `onProjectsRootResolved(cb)` | one-shot fire when the root resolves |
 
 **File byte I/O** — aspect B, owned by § 5 here (wire: [`web-api.md`](web-api.md) § 3):
@@ -221,8 +223,8 @@ aspect C, owned by [`structure-load-save-contract.md`](structure-load-save-contr
 
 | Method | Role |
 |---|---|
-| `parser.openMolecule(path, { confirmDiscard? })` | THE load door: read `.xyz` + paired `.molstruct.json` bytes → install into the model |
-| `parser.saveMolecule(path, { overwrite? })` | THE save door: serialise the settled model → write geometry + sidecar |
+| `parser.openMolecule(path, { confirmDiscard? })` | THE load door (FILE-ONLY): POST `{path}`; the SERVER reads `.xyz` + paired `.molstruct.json` via `StructureCodec.read` → install into the model |
+| `parser.saveMolecule(path, { overwrite? })` | THE save door (FILE-ONLY): serialise the settled model → POST the `{xyz, sidecar}` blob; the SERVER writes the `.xyz` + `.molstruct.json` pair via `StructureCodec.write` (stamps the schema) |
 
 > **ONE ownership story.**  File **bytes** are owned by `projects`
 > (`readFile`/`writeFile` — format-blind, serve every tab).  Structure
@@ -422,7 +424,7 @@ unit; if it doesn't fit, the unit list is wrong, not the feature.
 | **Mutation bar** (`mutation-bar.js`) | Header action-bar wiring (New project / New folder / Upload buttons; renamed from `forms.js` after the v2 buttons-not-dropdown revision).  Subscribes to `onChange` to drive depth-aware button enablement.  Dialogs live in `dialogs.js`. | `initForms` for the bootstrap unit. |
 | **Dialogs** (`dialogs.js`) | Modal `<dialog>` factory: `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive`.  Single-instance + ESC-as-cancel.  No HTTP. | `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive` (exports). |
 | **Preview** (`preview.js`) | File-preview modal; ESC / backdrop close. | `initPreview`, `showPreview` for sidebar + List unit. |
-| **Parser** (`parser.js`) | The format-aware **structure doors** — `openMolecule` / `saveMolecule` (aspect C).  Reads/writes bytes via State's `readFile`/`writeFile`; installs into / serialises from `molview.data` (looked up at call time — no import cycle).  Interprets the `.xyz` ↔ `.molstruct.json` pairing; parses nothing itself (the server applies the sidecar). | `parser` (mounted as `window.molbuilder.projects.parser` by the Entry unit). |
+| **Parser** (`parser.js`) | The format-aware **structure doors** — `openMolecule` / `saveMolecule` (aspect C).  FILE-ONLY (structure-authority.md § 3.3): both doors POST to the server (`/api/build/load` `{path}` for load, `/api/structure/save` `{path, blob}` for save) — the SERVER owns file access, the `.xyz` ↔ `.molstruct.json` pairing, AND the sidecar schema. The browser reads no bytes and never authors the sidecar. Installs into / serialises from `molview.data` (looked up at call time — no import cycle). | `parser` (mounted as `window.molbuilder.projects.parser` by the Entry unit). |
 | **Checkpoint** (`checkpoint.js`) | The sidebar **run-history panel** (`#ps-checkpoint`) — a checkpoint-domain CONSUMER that subscribes to `onChange` and shows git-snapshot controls for a canonical run directory.  Spec: [`run-checkpoints.md`](run-checkpoints.md) § 6. | `initCheckpointPanel` for the bootstrap unit. |
 
 **Module-boundary rule**: the only way one unit reads state owned by
@@ -1563,7 +1565,7 @@ in the order things should land.
 |---|---|---|---|
 | M8 | DONE 2026-05-31 (96f18dd) | `setProjectsRoot` had no subscribers.  `onProjectsRootResolved` not on the public API. | Done: `onProjectsRootResolved(cb)` exposed; fire-once-on-resolution; late subscribers get fire-once-immediately with the resolved root. |
 | M9 | PENDING | `refreshHandler` is a 1-slot register; multiple consumers would need their own wrapping. | Convert to a `Set` if/when a second consumer arrives. |
-| M10 | PENDING | Preview modal Save button is permanently disabled. | Either implement edit-and-save via the shipped `/api/files/write` endpoint or remove the button. |
+| M10 | DONE (2026-06-09) | Preview modal edit + Save shipped via `/api/files/write` with the mtime-safe 409 overwrite contract (tasks #302/#310); see projects-sidebar-ui.md § 9.3. | — |
 | M11 | PENDING | Internal naming inconsistency: `publishSelectionChange` (no prefix) vs `_publishLockChange` (underscore prefix). | Pick one convention (recommend underscore-prefix for all internal-publish functions) and apply across the module. |
 
 ### Open design questions (decide before coding)

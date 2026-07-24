@@ -194,9 +194,24 @@ and when) is specified once in [`projects-sidebar.md`](projects-sidebar.md)
 § 5.4; this table only flags which items are sidecar-aware.
 
 Eligibility check `_isDeletableEntry` is the source of truth for "can
-the user mutate this": it refuses the `projects/` root itself and
-refuses canonical-topic dirs at depth 1 (would orphan the project
-layout).
+the user mutate this" in the table above: it refuses the `projects/`
+root itself and refuses canonical-topic dirs at depth 1 (would orphan
+the project layout).
+
+**Directory-only kebabs (two extra menu shapes).** Project dirs and
+canonical-topic dirs are excluded from the file kebab above, but each
+has its own **single-item** kebab for a whole-tree delete
+(`lib/projects/list.js`):
+
+| Entry | Menu | Result | API |
+|---|---|---|---|
+| **Project dir** (depth 0) | **Delete project…** | Recursively removes the whole project. **Type-the-name confirm** (`window.prompt` — the user must type the project name), then `force:true` delete + refresh. | `deleteEntry(path, {force:true})` |
+| **Canonical-topic dir** (depth 1, e.g. `structure/`, `results/`) | **Delete directory…** | Recursively removes the topic dir + its contents. Same type-the-name confirm + `force:true`. | `deleteEntry(path, {force:true})` |
+
+These deliberately bypass `_isDeletableEntry` (which forbids deleting a
+project/topic dir via the file kebab) because they are the *explicit*
+whole-tree delete path, gated by the stricter type-the-name confirm
+rather than the `dialogs.js` default-focus-Cancel modal.
 
 The kebab menu auto-dismisses on outside click + ESC + scroll.
 
@@ -206,10 +221,10 @@ Dialogs live in `lib/projects/dialogs.js` and follow the
 single-instance + ESC-as-Cancel pattern from
 `modify/structure/save-dialog.js`:
 
-* opening dialog A while A is already open returns the existing pending
-  promise (no stacking);
-* opening dialog A while a different dialog B is open silently cancels B
-  (resolves it to `null`) so the user's focus moves cleanly to A.
+* opening ANY dialog while one is already open cancels the open one
+  (resolves it to `null`) and opens the new one — one modal at a time, no
+  stacking (the impl always tears down the active dialog and mounts a fresh
+  one; there is no "return the existing promise" fast-path).
 
 Destructive flows (overwrite confirm, delete) default-focus on Cancel —
 the user has to deliberately travel to the destructive button.
@@ -385,7 +400,7 @@ Reads go through the file layer (`readFile` / `readRange`; wire:
 | ≤ 1 MB — `VIEW_ONLY_BYTES` | Editable: full edit + select + Ctrl-A path. |
 | > 1 MB | **View-only** — Edit button disabled, text selection gated (see below). |
 | Bulk single-shot read | Requested with `max_bytes` = the server's 16 MB `read` ceiling (`BULK_READ_MAX_BYTES`), so mid-sized result files load without a 413. |
-| Past `EDIT_MAX_BYTES` (32 MB) | Loaded in `256 KB` chunks (`PAGE_BYTES`) via `/api/files/read_range`; Edit disabled with a "use external editor" hint. |
+| Past `BULK_READ_MAX_BYTES` (16 MB — the server's single-shot `read` ceiling) | Loaded in `256 KB` chunks (`PAGE_BYTES`) via `/api/files/read_range`; view-only (Edit disabled) with a "use external editor" hint. Note: paginated view-only begins at the 16 MB bulk ceiling, *not* the 32 MB edit cap — a single-shot editable read is impossible above 16 MB. |
 | Non-UTF-8 (400 from `read`) | Edit disabled — the v1 contract is text-only. |
 
 **Why view-only above 1 MB**: keystroke-triggered CodeMirror operations
