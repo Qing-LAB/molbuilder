@@ -1,7 +1,8 @@
 /* Workspace sessionStorage snapshot IO — the sole owner of the session mirror read/write.
  *
  * MODULE: workspace persistence (lib/workspace/) — the low-level sessionStorage half.
- *   Mounts window.molbuilder.workspaceSnapshot = { setNamespace, read, write }.  This is the
+ *   A native ES module; exports { workspaceSnapshot } (dispatcher.js imports it) and mounts
+ *   window.molbuilder.workspaceSnapshot = { setNamespace, read, write }.  This is the
  *   ONLY place that touches sessionStorage for the workspace session mirror; everything else
  *   goes through here so there is one key + one format.  Sibling: dispatcher.js (the transport
  *   + public window.molbuilder.workspace surface).  Contract: workspace-contract.md §4.4.
@@ -21,9 +22,10 @@
  * Format: `{ v: 1, state: { structure, selection, view, ... } }` -- written by the data model's
  * serialise, version-gated on read.  Loads BEFORE canvas + dispatcher.
  */
-(function (root) {
-    "use strict";
-    root.molbuilder = root.molbuilder || {};
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
+root.molbuilder = root.molbuilder || {};
 
     // Active owner namespace (molview-module.md §18.4).  A single per-page value: each page
     // mounts exactly one active owner ("modify"; or one Results inspector at a time), so a
@@ -39,7 +41,10 @@
         return _ns ? base + "::" + _ns : base;
     }
 
-    root.molbuilder.workspaceSnapshot = {
+// The module export (dispatcher.js IMPORTS this) AND the classic/cross-package door
+// (window.molbuilder.workspaceSnapshot -- the mount-order-safe read _canvas-state-impl.js
+// uses by design; see the rationale above).
+export const workspaceSnapshot = {
         // Set the active owner namespace (or null to clear).  Called by the dispatcher's
         // useNamespace at mount, before any read/write for that owner.
         setNamespace: function (ns) { _ns = ns || null; },
@@ -70,5 +75,5 @@
                 return false;
             }
         },
-    };
-})(typeof window !== "undefined" ? window : this);
+};
+root.molbuilder.workspaceSnapshot = workspaceSnapshot;

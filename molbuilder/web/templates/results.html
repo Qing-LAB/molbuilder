@@ -180,7 +180,7 @@
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js. -#}
-<script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 {# The FULL MolView module (molview-module.md §18) -- the structure inspector mounts it
    READ-ONLY via molview.mount's empty-host build path (same script set + dependency order
@@ -191,14 +191,13 @@
 {#- molview stores (back the singleton window.molbuilder.molview.data) -#}
 <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
 {#- snapshot-io loads BEFORE canvas-state (canvas-state reads it) -#}
-<script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
+<!-- workspace = a native ES module; dispatcher imports snapshot-io (no separate tag). -->
 {#- selection panel + adapters now load via molview/index.js (ESM); region defs stay classic -#}
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
 {#- frames + the persistence dispatcher + the unified mount (loads LAST) -#}
-<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/vibrationview/mode-math.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/vibrationview/vibrationview.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>
 {# Partial-inspector factory: shared scaffold for any adapter that

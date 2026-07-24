@@ -1,27 +1,30 @@
-/* molbuilder shared XYZ I/O helpers.
+/* molbuilder shared XYZ I/O helpers — a native ES module.
  *
  * Single source of truth for the minimal XYZ-format parse/format
- * pair that several tabs need (currently Spectra; Build + Modify
- * will pick this up if they ever need to round-trip an XYZ string
- * client-side instead of through /api/build/load).
+ * pair that several tabs need (currently Spectra + VibrationView;
+ * Build + Modify will pick this up if they ever need to round-trip
+ * an XYZ string client-side instead of through /api/build/load).
  *
- * Used via ``window.molbuilder.xyz.parse(...)`` and ``.toText(...)``,
- * mirroring the lib/mol-format.js namespace convention.
+ * STATELESS — so per the ESM rule (molview-esm-finalization.md §1.2) module consumers
+ * ``import { parse, toText }`` directly.  The classic-script door
+ * ``window.molbuilder.xyz.parse/.toText`` stays published for not-yet-converted consumers
+ * (spectra/core.js), mirroring the lib/mol-format.js namespace convention.
  *
  * Format reminder (xyz v1):
  *   line 1 : <atom-count>
  *   line 2 : <title> (may be empty)
  *   lines  : <element> <x> <y> <z>      -- Å, 3 floats
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     /**
      * Parse an XYZ text block.  Tolerates extra whitespace and blank
      * trailing lines.  Returns ``{elements: string[], positions:
      * number[][]}`` (Å).  Throws Error on malformed input.
      */
-    function parse(text) {
+export function parse(text) {
         const lines = String(text || "").split(/\r?\n/);
         if (lines.length < 3) throw new Error("xyz too short");
         const n = parseInt(lines[0].trim(), 10);
@@ -47,7 +50,7 @@
      * shape fine.  Positions are written with 8-decimal precision
      * to round-trip the Å values without visible loss.
      */
-    function toText(elements, positions) {
+export function toText(elements, positions) {
         const lines = [String(elements.length), ""];
         for (let i = 0; i < elements.length; i++) {
             const p = positions[i];
@@ -61,8 +64,8 @@
         return lines.join("\n");
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.xyz = root.molbuilder.xyz || {};
-    root.molbuilder.xyz.parse  = parse;
-    root.molbuilder.xyz.toText = toText;
-})(typeof window !== "undefined" ? window : this);
+// Classic-script door (spectra/core.js reads window.molbuilder.xyz at call time).
+root.molbuilder = root.molbuilder || {};
+root.molbuilder.xyz = root.molbuilder.xyz || {};
+root.molbuilder.xyz.parse  = parse;
+root.molbuilder.xyz.toText = toText;

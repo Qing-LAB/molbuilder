@@ -2,7 +2,7 @@
  *
  * MODULE: workspace persistence  (lib/workspace/; contract: docs/protocols/workspace-contract.md).
  *   Two files make up the module:
- *     - dispatcher.js  (this file)  -> window.molbuilder.workspace       : persist/restore
+ *     - dispatcher.js  (this file; a native ES module)  -> window.molbuilder.workspace : persist/restore
  *         transport, session identity, owner namespace, non-blocking error surface.
  *     - snapshot-io.js              -> window.molbuilder.workspaceSnapshot: the SOLE sessionStorage
  *         read/write owner (namespaced); this file delegates every sessionStorage touch to it.
@@ -12,9 +12,9 @@
  * ROLE: session state + concealed file access ONLY.  Holds NO in-memory data model and never
  *   interprets what it stores.  The MolView data model (lib/molview/data-model.js) owns the
  *   structure/selection/periodicity/frames + their format, serialises itself, and hands the BYTES
- *   here to persist; this layer writes them format-blind.  The DEBOUNCE + suspend/resume + the
- *   "when the data changed" decision live in the data model — persist() here is a synchronous
- *   write of the bytes it is handed.
+ *   here to persist; this layer writes them format-blind.  The suspend/resume + the
+ *   "when the data changed" decision (PUSH-ONLY, no debounce) live in the data model —
+ *   persist() here is a synchronous write of the bytes it is handed.
  *
  * USED BY (callers of window.molbuilder.workspace):
  *   - lib/molview/data-model.js — the state save/retract TIMELINE: persist(), readState(),
@@ -43,12 +43,15 @@
  *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
  *   - STORAGE_KEY              -- the sessionStorage key (shared constant).
  */
-(function (root) {
-    "use strict";
+"use strict";
 
-    function _snapshotIO() {
-        return (root.molbuilder && root.molbuilder.workspaceSnapshot) || null;
-    }
+import { workspaceSnapshot } from "./snapshot-io.js";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
+
+    // The sessionStorage half is a package-internal sibling -- IMPORTED (its window global
+    // stays published by snapshot-io itself for the _canvas-state-impl cross-package read).
+    function _snapshotIO() { return workspaceSnapshot; }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime) ? root.molbuilder.runtime : null;
     }
@@ -312,7 +315,4 @@
         _runtime().register("workspace", api);
     }
 
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = api;
-    }
-})(typeof window !== "undefined" ? window : this);
+    export { api as workspace };

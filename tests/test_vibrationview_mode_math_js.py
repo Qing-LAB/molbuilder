@@ -4,27 +4,18 @@ Node unit test of the pure scatterDisplacements: a FREE-length eigenvector scatt
 atom order via freeAtomIdx (frozen atoms -> [0,0,0], so they never move); a GLOBAL-length
 vector passes through unchanged; out-of-range free indices are dropped.
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD = ROOT / "molbuilder/web/static/lib/vibrationview/mode-math.js"
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = "global.window = global;\n" + MOD.read_text() + "\n" + snippet
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    # mode-math is a native ES module; the shared harness imports it (its TEST-SEAM window
+    # publish makes globalThis.molbuilder.vibrationview.scatterDisplacements readable).
+    return run_node([MOD], snippet)
 
 
 def test_free_length_eigenvector_scatters_to_global_frozen_zero():

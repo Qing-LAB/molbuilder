@@ -5,31 +5,20 @@ Phase-1 wrap: showMode scatters the eigenvector + drives the embed's setAnimatio
 "vibration"}); a mode requested before the viewer is ready is deferred until the baseline is
 drawn; amplitude / speed are LIVE partial updates; play/pause/dispose delegate to the embed.
 """
-import json
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
+from _node_esm import run_node
 
 ROOT = Path(__file__).resolve().parents[1]
+# vibrationview is a native ES module: it IMPORTS mode-math + the shared xyz writer itself,
+# so the harness loads only the door module (imports resolve relatively on disk).
 MODULES = [
-    ROOT / "molbuilder/web/static/lib/vibrationview/mode-math.js",
     ROOT / "molbuilder/web/static/lib/vibrationview/vibrationview.js",
 ]
 
 
 def _run_node(snippet: str) -> object:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node not available")
-    full = ("global.window = global;\n"
-            + "\n".join(m.read_text() for m in MODULES) + "\n" + snippet)
-    proc = subprocess.run([node, "--input-type=commonjs", "-e", full],
-                          capture_output=True, text=True, timeout=15)
-    if proc.returncode != 0:
-        pytest.fail(f"node exited {proc.returncode}\nstderr:\n{proc.stderr}")
-    return json.loads(proc.stdout.strip().splitlines()[-1])
+    return run_node(MODULES, snippet)
 
 
 # A stubbed embed: captures onReady (so the test controls readiness) + records every call

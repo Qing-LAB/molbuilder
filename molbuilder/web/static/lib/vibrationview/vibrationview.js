@@ -24,22 +24,29 @@
  * setAnimation({kind:"vibration"}) loop under the hood -- reuse, no reinvented 3Dmol.  The
  * embed's loop computes pos_i(phi) = equilibrium_i + amplitude * cos(phi) * displacement_i;
  * amplitude / speedHz are live partial updates (no structure rebuild).
+ *
+ * A native ES module.  Internals are IMPORTED (mode-math -- package-private; the shared
+ * stateless xyz writer); the shared-embed borrow (root.molbuilder.viewer) stays a RUNTIME
+ * LOOKUP (live module owned elsewhere; replaced by the Phase-2 own seal, task #51).  The
+ * public door for classic consumers (spectra/core.js, results) is
+ * ``window.molbuilder.vibrationview.mount`` -- the ONE unified API.
  */
-(function (root) {
-    "use strict";
+"use strict";
+
+import { scatterDisplacements } from "./mode-math.js";
+import { toText } from "../xyz-io.js";
+
+const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _validGeom(g) {
         return !!(g && Array.isArray(g.elements) && Array.isArray(g.positions)
                   && g.positions.length > 0);
     }
 
+    // The shared XYZ writer (lib/xyz-io.js) -- the ONE source of truth for the minimal
+    // .xyz block; STATELESS, so imported directly (see header).
     function _buildXyz(elements, positions) {
-        var lines = [String(positions.length), "vibration"];
-        for (var i = 0; i < positions.length; i++) {
-            var p = positions[i];
-            lines.push((elements[i] || "X") + " " + p[0] + " " + p[1] + " " + p[2]);
-        }
-        return lines.join("\n");
+        return toText(elements, positions);
     }
 
     function _geomSig(geom, frozen) {
@@ -47,11 +54,10 @@
         return JSON.stringify({ e: geom.elements, p: geom.positions, f: frozen });
     }
 
-    function mount(host, opts) {
+    export function mount(host, opts) {
         opts = opts || {};
         var mb = root.molbuilder || {};
-        var viewer = mb.viewer;
-        var vv = mb.vibrationview || {};
+        var viewer = mb.viewer;   // shared-embed borrow: RUNTIME lookup (Phase 1, see header)
         if (!host || !viewer || typeof viewer.embed !== "function") return null;
 
         var geom          = _validGeom(opts.geometry) ? opts.geometry : null;
@@ -99,9 +105,8 @@
 
         function _applyMode(mode) {
             if (!handle || !geom || typeof handle.setAnimation !== "function") return;
-            var disp = (typeof vv.scatterDisplacements === "function")
-                ? vv.scatterDisplacements(mode.displacements, freeAtomIdx, geom.positions.length)
-                : mode.displacements;
+            var disp = scatterDisplacements(
+                mode.displacements, freeAtomIdx, geom.positions.length);
             // Hand the mode to the embed's vibration loop; it snaps to the equilibrium baseline
             // and oscillates.  A later mode swap re-sets this with the new displacements.
             handle.setAnimation({
@@ -172,7 +177,8 @@
         };
     }
 
-    root.molbuilder = root.molbuilder || {};
-    root.molbuilder.vibrationview = root.molbuilder.vibrationview || {};
-    root.molbuilder.vibrationview.mount = mount;
-})(typeof window !== "undefined" ? window : this);
+// The classic-script door -- the module's ONE public API for not-yet-converted consumers
+// (spectra/core.js + the results tab read window.molbuilder.vibrationview.mount at call time).
+root.molbuilder = root.molbuilder || {};
+root.molbuilder.vibrationview = root.molbuilder.vibrationview || {};
+root.molbuilder.vibrationview.mount = mount;

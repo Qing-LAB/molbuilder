@@ -21,7 +21,7 @@
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js -- no classic
     <script> stack.  Vendor 3Dmol above stays a classic global (read at embed() call time). -#}
 <script type="module" src="{{ url_for('static', filename='lib/molview/index.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/snapshot-io.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+<!-- workspace = a native ES module; dispatcher imports snapshot-io (no separate tag). -->
+<script type="module" src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/warning-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/region-label-definitions.js') }}"></script>
