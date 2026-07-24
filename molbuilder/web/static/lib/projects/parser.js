@@ -70,35 +70,15 @@ export async function openMolecule(path, opts) {
     const proceed = await opts.confirmDiscard();
     if (!proceed) return { ok: false, cancelled: true };
   }
-  // Geometry bytes (format-blind read).
-  const xyzEnv = await readFile(path);
-  if (!xyzEnv || xyzEnv.ok === false || typeof xyzEnv.text !== "string") {
-    return { ok: false, error: (xyzEnv && xyzEnv.error) || ("Could not read " + path) };
-  }
-  // Paired .molstruct.json -- OPTIONAL: a missing sidecar just means EMPTY metadata
-  // (a normal label-less load), NOT an error.  Read it with ``missingOk`` so an absent
-  // sidecar returns a 200 "no file" (``exists:false``) instead of a 404 -- otherwise the
-  // browser logs a spurious "Failed to load resource: 404" console error on every bare
-  // .xyz open (structure-load-save-contract §2; the "not an error" intent, now honoured
-  // at the transport, not just swallowed after the fetch already failed).
-  let sidecarText = null;
-  try {
-    const scEnv = await readFile(_sidecarPathFor(path), { missingOk: true });
-    if (scEnv && scEnv.ok !== false && scEnv.exists !== false
-        && typeof scEnv.text === "string") {
-      sidecarText = scEnv.text;
-    }
-  } catch (_) { /* defensive: any read failure -> empty-metadata label-less load */ }
-  // Install: the model parses the xyz + (server-applied) sidecar in ONE write.  The cell
-  // is DEDUCED from the actual data -- the .xyz's own lattice (extended-xyz) and the
-  // .molstruct.json sidecar -- and is NEVER overridden at load time.  A caller that needs
-  // a different cell edits it explicitly on the Cell page after loading; the loader has
-  // no cell parameter (hiding that logic in the load call was the wrong design).
+  // FILE-ONLY load (structure-authority.md): hand the PATH to the model; the SERVER
+  // reads the .xyz + paired .molstruct.json through StructureCodec.read -- Python owns
+  // the file access AND the .xyz<->.molstruct pairing.  The browser no longer reads the
+  // bytes or derives the sidecar path (that was the raw-text/second-file-stack seam the
+  // consolidation exists to abolish).  The cell is DEDUCED from the file data (the .xyz's
+  // own lattice + the sidecar) and is never overridden at load time.
   const payload = await model.installMolecule({
-    text:     xyzEnv.text,
-    filename: path,
-    sidecar:  sidecarText,
-    source:   { kind: "file", file: path, generator_input: null },
+    path:   path,
+    source: { kind: "file", file: path, generator_input: null },
   });
   return { ok: true, payload: payload };
 }

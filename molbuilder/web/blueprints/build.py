@@ -635,11 +635,46 @@ def api_resolve_cell():
 def api_build_load():
     """Accept either:
       * multipart/form-data with a single file field "file", or
+      * JSON {"path": "<project-relative structure file>"} -- the
+        FILE-ONLY load: the SERVER reads the .xyz(/.pdb) + its paired
+        .molstruct.json through StructureCodec.read (the ONE authority
+        owns the file access AND the pairing).  This is how a project
+        file is opened -- no raw text, no browser-side sidecar path.
       * JSON {"text": "...", "format": "xyz"|"pdb"|"auto",
-              "filename": "<optional>"}
+              "filename": "<optional>"} -- raw-geometry IMPORT (a paste /
+        upload with no persisted file yet); metadata-less.
     Returns the same JSON shape as /api/build/molecule so the front
     end can treat the result identically.
     """
+    # FILE-ONLY load through the ONE authority (structure-authority.md): a project
+    # ``path`` means the SERVER reads the .xyz + paired .molstruct.json via
+    # StructureCodec.read -- Python owns the file access + the .xyz<->.molstruct
+    # pairing, so there is NO raw-text hand-crafting and NO browser-side sidecar
+    # derivation.  ``to_wire`` (via ok_structure_response) emits the enriched atoms
+    # + periodicity + annotations in one response.
+    _pbody = request.get_json(silent=True) or {}
+    _path = _pbody.get("path")
+    if _path:
+        from molbuilder.web.blueprints.files import (
+            _resolve_within_roots, _PickerError)
+        from molbuilder.workingcopy_structure import StructureCodec
+        try:
+            _resolved = _resolve_within_roots(_path)
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
+        if not _resolved.exists():
+            return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
+        try:
+            struct = StructureCodec().read(_resolved)
+        except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
+            return jsonify(
+                {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
+        return ok_structure_response(struct, extra={
+            "source_format": ("pdb" if str(_resolved).lower().endswith(".pdb")
+                              else "xyz"),
+            "title": struct.title or _resolved.name,
+        })
+
     text: str = ""
     fmt: str = "auto"
     filename: str = ""

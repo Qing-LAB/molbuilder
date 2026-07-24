@@ -176,6 +176,18 @@ export function createInstall(deps) {
     // signal fires at the single write, so any second write lands AFTER a consumer may have acted
     // on the settled structure and silently clobbers it (the 2026-07 selection-wipe).
     function installMolecule(input) {
+        // FILE-ONLY project-file load (structure-authority.md): pass a ``path`` and
+        // the SERVER reads the .xyz + paired .molstruct.json via StructureCodec.read
+        // (Python owns the file access + pairing).  The response comes back enriched
+        // (atoms + periodicity + annotations), so no text/sidecar/periodicity ride here.
+        if (input && typeof input === "object"
+                && typeof input.path === "string" && input.path) {
+            return _loadText("", input.path, {
+                path:   input.path,
+                source: input.source || { kind: "file", file: input.path,
+                                          generator_input: null },
+            });
+        }
         if (input && typeof input === "object" && typeof input.text === "string") {
             return _loadText(input.text, input.filename, {
                 source:      input.source || null,
@@ -202,13 +214,23 @@ export function createInstall(deps) {
         // /api/build/load auto-detects "pdb" from the ``.pdb`` filename and parses the
         // XYZ text as PDB -> 400.  Omitted -> the server auto-detects (filename ext,
         // then content sniff), the raw-text/generator behaviour.
-        const _body = { text: text, filename: filename };
-        if (opts.format) _body.format = opts.format;
-        // The paired .molstruct.json CONTENT (raw JSON string) a project-file open read
-        // through the projects package.  The server applies it (regions/frozen/cell/
-        // axis_kind/vacuum/annotations) so the response's atoms + periodicity +
-        // annotations come back ENRICHED -- the sidecar schema stays server-side.
-        if (opts.sidecar) _body.sidecar = opts.sidecar;
+        // FILE-ONLY load (structure-authority.md): a project-file open passes a
+        // ``path`` and the SERVER reads the .xyz + paired .molstruct.json through
+        // StructureCodec.read -- Python owns the file access + the pairing, so the
+        // browser sends NO raw text and does NOT derive the sidecar path.  The
+        // text/sidecar body below is only for a raw-geometry IMPORT (paste/upload,
+        // no persisted file yet) + generators.
+        const _body = opts.path
+            ? { path: opts.path }
+            : { text: text, filename: filename };
+        if (!opts.path) {
+            if (opts.format) _body.format = opts.format;
+            // The paired .molstruct.json CONTENT (raw JSON string) a project-file open
+            // read through the projects package.  The server applies it (regions/frozen/
+            // cell/axis_kind/vacuum/annotations) so the response's atoms + periodicity +
+            // annotations come back ENRICHED -- the sidecar schema stays server-side.
+            if (opts.sidecar) _body.sidecar = opts.sidecar;
+        }
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
