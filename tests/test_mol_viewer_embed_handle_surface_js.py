@@ -78,7 +78,7 @@ EXPECTED_METHODS = sorted([
     # Declarative-state getters (round-trip with setX)
     "getStyle", "getAxes", "getCell", "getLabels",
     "getOverlays", "getPick", "getKnobs", "getArrows",
-    "getAnimation", "getBackground", "getLattice",
+    "getOverlay", "getAnimation", "getBackground", "getLattice",
     # Ordered batch runner
     "applyState",
     # Output / export
@@ -335,3 +335,46 @@ class TestOverlaysConsumerHanded:
             "state.current.arrows.")
         assert "_redrawArrows(state)" in body, (
             "setArrows must trigger _redrawArrows.")
+
+
+class TestArrowHandOffDrivesOverlayVisibility:
+    """REGRESSION PIN (2026-07, the order-dependent force-toggle bug):
+    handed arrows drive overlay visibility at EVERY arrow hand-off door,
+    not just the full movie load.  The render engine expresses the
+    store's showForces switch through the payload (it bakes no arrows
+    while the flag is off), and in a molview mount nothing else ever
+    writes ``overlayOn`` (the store-backed toggle replaced setOverlay).
+    When only ``_setAnimationImpl`` derived it, toggling "show forces"
+    after an isolate regen re-baked real arrows through the PARTIAL
+    setAnimation path, ``overlayOn`` stayed stale-false, and
+    ``_redrawArrows`` (gated on it) drew nothing until the next full
+    reload -- the "toggle isolate twice to see forces" bug.
+    """
+
+    def test_full_setAnimation_derives_overlayOn_from_payload(self):
+        body = _fn_source("_setAnimationImpl", "_playImpl")
+        assert re.search(
+            r"state\.current\.overlayOn\s*=\s*_arrowsPerFrameHasAny\(", body), (
+            "_setAnimationImpl must derive overlayOn from the handed "
+            "arrowsPerFrame payload.")
+
+    def test_partial_setAnimation_derives_overlayOn_from_payload(self):
+        body = _fn_source("setAnimation", "playAnimation")
+        assert re.search(
+            r"state\.current\.overlayOn\s*=\s*\n?\s*_arrowsPerFrameHasAny\(", body), (
+            "The PARTIAL setAnimation arrowsPerFrame path must derive "
+            "overlayOn from the payload (the stale-gate order bug).")
+
+    def test_appendFrameArrows_derives_overlayOn_from_payload(self):
+        body = _fn_source("appendFrameArrows", "getCamera")
+        assert re.search(
+            r"state\.current\.overlayOn\s*=\s*_arrowsPerFrameHasAny\(", body), (
+            "appendFrameArrows must derive overlayOn over the whole "
+            "accumulated arrowsPerFrame set.")
+
+    def test_setArrows_derives_overlayOn_from_payload(self):
+        body = _fn_source("setArrows", "setPick")
+        assert re.search(
+            r"state\.current\.overlayOn\s*=\s*next\.length\s*>\s*0", body), (
+            "setArrows (the static-frame door) must derive overlayOn "
+            "from the handed specs.")

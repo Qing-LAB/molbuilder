@@ -346,3 +346,100 @@ def test_multiframe_trajectory_loads_all_frames_with_frame_bar(
         "frameCount >= 2 but the molview frame-controls bar is hidden -- "
         "the trajectory UI (slider/play) never surfaced."
     )
+
+
+_FIND_HANDLE_JS = (
+    "  let h = null;"
+    "  document.querySelectorAll('*').forEach((e) => {"
+    "    if (e.__molview_test_handle) h = e.__molview_test_handle; });"
+)
+
+
+@pytest.mark.parametrize("isolate_first", [True, False],
+                         ids=["isolated", "all-atoms"])
+def test_force_toggle_draws_arrows_after_any_prior_regen(
+        page, flask_server, tmp_path, monkeypatch, isolate_first):
+    """REGRESSION (2026-07, the order-dependent force toggle): enabling
+    "show force vectors" AFTER the movie was (re)loaded with forces hidden
+    must draw the arrows immediately.  The bug: only the FULL movie load
+    derived the embed's ``overlayOn`` from the handed arrows; the PARTIAL
+    re-bake path (the engine's show-forces tier) left it stale-false and
+    ``_redrawArrows`` (gated on it) drew nothing -- so with "show selected
+    only" on, the force toggle looked dead until isolate was toggled
+    off+on (a full reload that re-derived the flag).
+
+    Drives the same store doors the quickbar buttons call
+    (selection.set / setIsolate / setViewFlag) and asserts through the
+    embed handle's declarative-state readers (getOverlay / getArrows) --
+    never the 3Dmol render target.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    out_path = tmp_path / "RELAX_stage2-run0.out"
+    out_path.write_text(_siesta_out_two_moves())   # two frames WITH forces
+
+    page.goto(f"{flask_server}/results")
+    page.wait_for_function(
+        "() => window.molbuilder "
+        "      && window.molbuilder.inspectors "
+        "      && window.molbuilder.inspectors.list "
+        "      && window.molbuilder.inspectors.list().length >= 4"
+    )
+    page.wait_for_selector("#inspector-host", timeout=5000)
+    page.evaluate(
+        "(path) => {"
+        "  const reg = window.molbuilder.inspectors;"
+        "  const insp = reg.pick(path);"
+        "  if (!insp) throw new Error('no inspector for ' + path);"
+        "  insp.mount(document.getElementById('inspector-host'), path);"
+        "}",
+        str(out_path),
+    )
+    page.wait_for_selector("#hide-frozen", timeout=8000)
+    page.wait_for_function(
+        "() => {"
+        "  const d = window.molbuilder.molview && window.molbuilder.molview.data;"
+        "  return !!d && typeof d.frameCount === 'function' && d.frameCount() >= 2;"
+        "}",
+        timeout=8000,
+    )
+
+    if isolate_first:
+        # User step 1: select two atoms + "show selected only".  The isolate
+        # regen is a paint-yielded movie reload; wait until the drawn model
+        # IS the 2-atom isolated set before touching the force toggle.
+        page.evaluate(
+            "() => { const sel = window.molbuilder.molview.data.selection;"
+            "  sel.set([0, 1]); sel.setIsolate(true); }")
+        page.wait_for_function(
+            "() => {" + _FIND_HANDLE_JS
+            + "  return !!h && h.getAtomCount() === 2; }",
+            timeout=8000,
+        )
+
+    # User step 2: enable the force-vector toggle -- the same store door the
+    # quickbar/View-menu button writes.
+    page.evaluate(
+        "() => window.molbuilder.molview.data.selection"
+        "        .setViewFlag('showForces', true)")
+
+    # THE regression assertion: the arrows are visible NOW -- overlay ON with
+    # non-empty arrow specs for the shown frame -- with no further structural
+    # regen (no isolate off/on dance).
+    page.wait_for_function(
+        "() => {" + _FIND_HANDLE_JS
+        + "  return !!h && h.getOverlay() === true"
+        + "         && h.getArrows().length > 0; }",
+        timeout=8000,
+    )
+
+    # And OFF again clears them -- the payload-derived rule in the other
+    # direction (empty hand -> overlay off), same tier, no reload.
+    page.evaluate(
+        "() => window.molbuilder.molview.data.selection"
+        "        .setViewFlag('showForces', false)")
+    page.wait_for_function(
+        "() => {" + _FIND_HANDLE_JS
+        + "  return !!h && h.getOverlay() === false"
+        + "         && h.getArrows().length === 0; }",
+        timeout=8000,
+    )

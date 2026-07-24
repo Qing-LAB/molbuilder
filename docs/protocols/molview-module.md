@@ -785,7 +785,13 @@ colour/radius ramp), and bakes them into the native movie. Three facts keep this
    flag — the **"Show overlay" toggle** (rail button / View menu, store-backed like the other view
    flags, §13). The engine reads it and draws or doesn't; toggling never rebuilds the movie. A
    consumer must **not** keep its own show/hide control (the "two unsynced toggles" bug) — it owns
-   the force *computation* knobs (scale / threshold / frozen) only.
+   the force *computation* knobs (scale / threshold / frozen) only. Down at the embed the flag
+   arrives **through the payload**: the engine bakes NO arrows while `showForces` is off, and
+   every arrow hand-off door (full movie load, in-place re-bake, tail append, static-frame hand)
+   derives the embed's internal visibility from what it was handed — non-empty draws, empty
+   clears. The embed holds no second live switch in a molview mount; when only the full-load door
+   derived it, a "show forces" click after an isolate reload hit a stale gate and drew nothing
+   (the order-dependent force-toggle bug).
 3. **Atom-index labels** are the **`showIndex`** view flag (index labels on the drawn atoms), also
    engine-built and store-toggled — NOT a consumer-supplied label set. There is no `setLabels`
    door (§D).

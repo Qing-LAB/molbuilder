@@ -4283,11 +4283,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _syncToggles(state);
         }
 
-        // The SINGLE visibility switch for the force-arrow overlay (§14.5.1).  The
-        // consumer always HANDS the arrows (setArrows / setFrameArrows) whenever it
-        // has force data; whether they're drawn is this one flag — the View-menu
-        // "overlay" toggle and its quickbar twin both route here so there's exactly
-        // one control (no consumer-side "show forces" checkbox to desync).
+        // MANUAL visibility override for the force-arrow overlay (standalone mounts:
+        // the embed's own View-menu/quickbar "overlay" toggle routes here).  The
+        // DEFAULT authority is the handed payload itself: every arrow hand-off door
+        // (setArrows, setAnimation arrowsPerFrame -- full AND partial -- and
+        // appendFrameArrows) derives overlayOn from what it was handed (non-empty ->
+        // ON, empty -> OFF), because a consumer handing arrows is expressing intent
+        // to draw them.  In a molview mount the store's show-forces flag is the user
+        // switch and the render engine expresses it through the payload (it bakes no
+        // arrows while the flag is off), so this door is never called there.
         function setOverlay(on) {
             if (state.disposed) return;
             const next = on === true;
@@ -4412,9 +4416,18 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 }
             }
             const next = Array.isArray(arr) ? arr.slice() : [];
-            // Idempotence: identity-stringify is fine at this scale.
+            // Idempotence: identity-stringify is fine at this scale.  (Also keeps a
+            // manual setOverlay(false) in force when the same set is re-handed.)
             if (JSON.stringify(state.current.arrows) === JSON.stringify(next)) return;
             state.current.arrows = next;
+            // Handed arrows drive overlay visibility -- the static-frame flavour of
+            // the payload-derived rule (see _arrowsPerFrameHasAny): a non-empty hand
+            // -> ON, an empty/null hand (the engine's show-forces-off render) -> OFF.
+            // Without this the single-frame overlay was dead in a molview mount:
+            // overlayOn started false and nothing ever wrote it (the store-backed
+            // toggle replaced the embed's setOverlay button there).
+            state.current.overlayOn = next.length > 0;
+            _syncToggles(state);
             _redrawArrows(state);
             _render(state);
         }
@@ -4700,6 +4713,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             for (const arrows of list) {
                 a.arrowsPerFrame.push(Array.isArray(arrows) ? arrows : []);
             }
+            // Handed arrows drive overlay visibility -- the same payload-derived rule
+            // as _setAnimationImpl and the partial setAnimation path, over the WHOLE
+            // accumulated set (a tail that brings the run's first forces turns the
+            // overlay on; an all-empty movie stays off).
+            state.current.overlayOn = _arrowsPerFrameHasAny(a.arrowsPerFrame);
+            _syncToggles(state);
             // Only redraw if the SHOWN frame is one we just added arrows for -- a user
             // parked mid-run (frame < startIdx) needs no repaint from a tail append.
             const idx = a.currentFrame;
@@ -4809,6 +4828,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
         function getArrows() {
             return state.disposed ? [] : _clone(state.current.arrows) || [];
+        }
+        // Round-trip getter for setOverlay (every other setX has a getX): the force-
+        // arrow overlay's CURRENT visibility, whether payload-derived or manually set.
+        // getArrows() alone can't tell "handed but hidden" from "drawn" -- this can.
+        function getOverlay() {
+            return state.disposed ? false : !!state.current.overlayOn;
         }
         function getAnimation() {
             // AnimationOpts.onFrame is a function; preserve like getPick.
@@ -6017,15 +6042,24 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                                 cur[f] = animation[f];
                             }
                         }
-                        // arrowsPerFrame changed (consumer re-computed the arrows after
-                        // a scale / threshold / exclude-frozen tweak) -> refresh the
-                        // CURRENT frame's arrow geometry in place.  Do NOT touch
-                        // overlayOn here: visibility is user-owned via setOverlay, so a
-                        // parameter change must never flip the overlay on or off.
-                        // _redrawArrows is gated on overlayOn, so this is a no-op paint
-                        // while the overlay is hidden and a live update while it's shown.
+                        // arrowsPerFrame changed -> refresh the CURRENT frame's arrow
+                        // geometry in place.  Handed arrows drive overlay visibility --
+                        // the SAME payload-derived rule as the full _setAnimationImpl
+                        // path (_arrowsPerFrameHasAny): any non-empty frame -> ON, an
+                        // all-empty set -> OFF.  The render engine expresses the store's
+                        // show-forces switch through this payload (it bakes NO arrows
+                        // while the flag is off), so the payload IS the visibility
+                        // intent; leaving overlayOn stale here was the order bug where
+                        // toggling "show forces" after an isolate regen drew nothing
+                        // until the next full movie reload re-derived the flag.  A
+                        // parameter tweak (scale / threshold / exclude-frozen) with
+                        // show-forces on re-hands a NON-empty set, so a parameter change
+                        // still never flips the overlay off.
                         if (Object.prototype.hasOwnProperty
                                 .call(animation, "arrowsPerFrame")) {
+                            state.current.overlayOn =
+                                _arrowsPerFrameHasAny(cur.arrowsPerFrame);
+                            _syncToggles(state);
                             const _idx = cur.currentFrame || 0;
                             const _fa = (cur.arrowsPerFrame
                                          && cur.arrowsPerFrame[_idx]) || [];
@@ -6240,6 +6274,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             getPick:            getPick,
             getKnobs:           getKnobs,
             getArrows:          getArrows,
+            getOverlay:         getOverlay,
             getAnimation:       getAnimation,
             getBackground:      getBackground,
             getLattice:         getLattice,

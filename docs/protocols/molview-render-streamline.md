@@ -334,13 +334,20 @@ frame's labels/halos; that is the only tier that reparses coordinates and raises
 
 **Lock during an update.** A structural regen runs behind a paint yield (so the busy scrim shows
 before the freeze, §4) and **locks the viewer** for the whole update: the scrim blocks the user
-and **every view-side call is refused** (`appendFrames` / `showFrame` / a flag change) until 3Dmol
-is fully ready, then the lock releases. **`setData` is the one exception — it SUPERSEDES the
-in-flight regen** rather than being refused: a full load is authoritative data (the latest data
-wins), so a two-step load (`installMolecule` then `reloadFrames`) both land instead of the second
-being dropped and the movie loading as a single frame. Superseding cancels the pending regen and
-starts the new one from the latest data/flags. Otherwise: one update at a time — no coalescing, no
-racing the half-built movie, no chasing sub-100 ms call windows. Simple and tight.
+and **every view-side call is refused** (`appendFrames` / `showFrame`) until 3Dmol is fully ready,
+then the lock releases. **A store flag change is never LOST to the lock**: the paint yield opens a
+real window (double-rAF; up to the 200 ms fallback in a backgrounded tab) in which a write can
+land, so (a) the regen callback **re-reads the store flags at run time** — not at schedule time —
+and captures the tier signatures from that same fresh read (latest flags win, the same supersede
+principle as `setData`), and (b) a `render()` that arrives while locked sets a queued-replay bit
+and is re-run once after the unlock (a no-op replay costs one signature diff). Without this, an
+isolate/selection/force-flag click landing right after a load was silently dropped: the pending
+regen baked the stale flags and nothing was left to notify again. **`setData` is the one exception
+— it SUPERSEDES the in-flight regen** rather than being refused: a full load is authoritative data
+(the latest data wins), so a two-step load (`installMolecule` then `reloadFrames`) both land
+instead of the second being dropped and the movie loading as a single frame. Superseding cancels
+the pending regen and starts the new one from the latest data/flags. Otherwise: one update at a
+time — no coalescing, no racing the half-built movie, no chasing sub-100 ms call windows.
 
 ```mermaid
 flowchart TD

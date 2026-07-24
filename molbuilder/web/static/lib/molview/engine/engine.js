@@ -54,6 +54,7 @@ function create(handle, opts) {
     var _regenRaf = null;        // pending structural-regen paint yield (rAF id).
     var _regenTimer = null;      // fallback timer (a backgrounded tab suspends rAF).
     var _locked = false;         // an update is in flight -> the viewer is busy; API is refused.
+    var _renderQueued = false;   // a render() arrived while locked -> replay it after unlock.
 
     function _blankFlags() {
         return { selection: [], isolate: false, showIndex: false, showForces: false,
@@ -169,9 +170,18 @@ function create(handle, opts) {
         _cancelPendingRegen();   // supersede any in-flight regen with this latest one.
         _locked = true;
         embedIo.setBusy("Updating view…");
-        _prevStructSig = _structSig();
-        _prevArrowSig = _arrowSig();
         _yieldPaint(function () {
+            // LATEST FLAGS WIN (§8 supersede): re-read the store HERE, inside the yielded
+            // callback -- not at schedule time.  The double-rAF yield opens a real window
+            // (a whole 200ms in a backgrounded/headless tab) during which a store write
+            // (isolate, selection, a view flag) arrives, render() refuses it (_locked),
+            // and a schedule-time flag snapshot would then bake the STALE state into the
+            // movie with nothing left to replay the dropped write -- the "isolate right
+            // after load draws all atoms" race.  The signatures are captured from the
+            // same fresh read so the next render() diffs against what was truly drawn.
+            _flags = _readFlags();
+            _prevStructSig = _structSig();
+            _prevArrowSig = _arrowSig();
             embedIo.beginBatch();   // §1/§5: process all frames + overlays, then 3Dmol paints ONCE
             try {
                 var processed = _processAll();
@@ -191,12 +201,18 @@ function create(handle, opts) {
                 embedIo.setBusy(null);
                 _locked = false;
             }
+            // Replay a render that was refused while this regen was in flight (belt to the
+            // fresh-read braces above -- covers a queued notify whose write raced the read).
+            // Outside the finally so a THROWN regen doesn't immediately re-enter; sig diffing
+            // makes a no-op replay cheap (one overlay refresh at worst).
+            if (_renderQueued) { _renderQueued = false; render(); }
         });
     }
 
     // THE render entry (§5): read the flags, pick the minimal tier by what changed (§8).
     function render() {
-        if (!_data || _locked) return;            // nothing loaded, or an update is in flight.
+        if (!_data) return;                       // nothing loaded.
+        if (_locked) { _renderQueued = true; return; }   // in flight -> replay after unlock.
         _flags = _readFlags();
         var sig = _structSig();
         if (sig !== _prevStructSig) { _structuralRegen(); return; }  // drawn set changed -> reload.
@@ -321,6 +337,7 @@ function create(handle, opts) {
 
     function dispose() {
         _locked = false;
+        _renderQueued = false;
         _cancelPendingRegen();
         try { embedIo.setBusy(null); } catch (_) {}
         try { _storeUnsub(); } catch (_) {}
