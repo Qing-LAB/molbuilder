@@ -223,17 +223,25 @@ def test_hide_frozen_row_and_data_visible_after_real_mount(
 #  Multi-frame regression (2026-07)                                      #
 # --------------------------------------------------------------------- #
 
-def _siesta_out_two_moves():
-    """A SIESTA .out with TWO CG moves (two outcoor blocks + two force
-    blocks) -> the parser must surface TWO frames.  Regression fixture
-    for the one-frame bug below."""
+def _siesta_out_two_moves(with_forces=True):
+    """A SIESTA .out with TWO CG moves (two outcoor blocks) -> the parser
+    must surface TWO frames.  Regression fixture for the one-frame bug
+    below.
+
+    ``with_forces=False`` drops the ``siesta: Atomic forces`` block (and
+    its Max/Res footer) from every move: the parser commits frames on the
+    outcoor block alone (forces are optional), and the inspector then
+    takes the OTHER load branch -- ``buildForcesPerFrame()`` returns null
+    and ``reloadFrames(coordFrames, {forces: null})`` runs with no arrow
+    bake.  Frame loading must work identically on both branches.
+    """
     def move(n):
         coord_block = "\n".join(
             f"   {i+1 + n}.00000000    {i+1}.00000000    {i+1}.00000000   "
             f"{(i % 2) + 1}       {i+1}  {('C', 'H')[i % 2]}"
             for i in range(4)
         )
-        return dedent(f"""\
+        text = dedent(f"""\
 
                                  ====================================
                                     Begin CG opt. move =      {n}
@@ -251,6 +259,9 @@ def _siesta_out_two_moves():
             SCF Convergence by DM+H criterion
 
             siesta: E_KS(eV) =          -10{n}.1234
+            """)
+        if with_forces:
+            text += dedent(f"""\
 
             siesta: Atomic forces (eV/Ang):
                  1    0.10    0.20    0.30
@@ -265,12 +276,15 @@ def _siesta_out_two_moves():
             ----------------------------------------
                Max    1.234567    constrained
             """)
+        return text
     return ("Executable      : siesta\n*  WELCOME TO SIESTA  *\n"
             + move(0) + move(1))
 
 
+@pytest.mark.parametrize("with_forces", [True, False],
+                         ids=["with-forces", "no-forces"])
 def test_multiframe_trajectory_loads_all_frames_with_frame_bar(
-        page, flask_server, tmp_path, monkeypatch):
+        page, flask_server, tmp_path, monkeypatch, with_forces):
     """REGRESSION (2026-07): a multi-frame trajectory result must load EVERY
     frame into MolView and show the frame bar.  The bug: rebuildModel called
     ``molview.data.setViewFlag`` (the flag lives on the SELECTION surface,
@@ -278,12 +292,18 @@ def test_multiframe_trajectory_loads_all_frames_with_frame_bar(
     rejected the promise before ``reloadFrames`` ran, so a trajectory showed
     ONE frame (the installMolecule frame 0) with no frame bar and NO error.
 
+    Parametrized over BOTH force branches: with per-atom force blocks the
+    load path sets the forceScale flag + hands forces for the arrow bake;
+    without them ``buildForcesPerFrame()`` returns null and reloadFrames
+    runs arrow-free.  Frame loading must survive either way -- a bug in
+    the force plumbing must never take the trajectory down with it.
+
     Asserts through molview.data (frameCount) + molview's own frame-controls
     DOM -- never the 3Dmol render target.
     """
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     out_path = tmp_path / "RELAX_stage2-run0.out"
-    out_path.write_text(_siesta_out_two_moves())
+    out_path.write_text(_siesta_out_two_moves(with_forces=with_forces))
 
     page.goto(f"{flask_server}/results")
     page.wait_for_function(
