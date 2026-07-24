@@ -924,6 +924,9 @@ class TestPartialSelectionPanelEndpoint:
         "panel-page-cell",
         "cell-axis-value",
         "cell-vacuum-value",
+        # §3c cell-origin editor (getUnitCellOrigin/setCellOrigin; the anchor corner an
+        # off-origin cell wraps its atoms from).
+        "cell-origin-value",
         "cell-matrix-value",
         "cell-matrix-tag",
     )

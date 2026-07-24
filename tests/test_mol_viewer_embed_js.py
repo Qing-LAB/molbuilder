@@ -56,8 +56,9 @@ EXPECTED_STATE_KEYS = sorted([
     "xyz", "pdb", "style", "axes", "cell", "labels",
     "arrows",       # consumer-handed force-arrow specs (§14.5.1)
     "overlayOn",    # the "Show overlay" toggle state — arrows on/off
-    "pick", "lattice",
-    "cellBox",      # unit-cell BOX channel: resolved cell + anchor origin (§3a, Issue #2)
+    "pick",
+    "cellBox",      # the ONE cell-geometry structure {lattice, origin}; a bare `lattice`
+                    # input normalises into it (no separate `lattice` state field)
     "overlays", "knobs", "projection",
 ])
 

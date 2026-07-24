@@ -266,7 +266,8 @@ def test_molview_demo_view_menu_layout(page, flask_server):
         "  return g && g.querySelectorAll('.mol-viewer-quick[data-quick=isolate]').length === 1; }",
         timeout=5000)
 
-    # 2. Rail order = built-in VIEW_TOGGLES (reset first) + the injected isolate last.
+    # 2. Rail order = the stateless built-in (reset) first, then the store-backed injected
+    #    toggles the molview layer adds: axes / labels / overlay / cell, then isolate last.
     actions = page.eval_on_selector_all(
         rail + " .mol-viewer-quick", "els => els.map(e => e.getAttribute('data-quick'))")
     assert actions == ["reset", "axes", "labels", "overlay", "cell", "isolate"]

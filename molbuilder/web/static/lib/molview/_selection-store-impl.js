@@ -1,15 +1,11 @@
-/* **Workspace-internal as of Phase 9 (2026-06-13)** — this module
- * no longer mounts a public singleton on
- * ``window.molbuilder.molview.selection.store``.  The workspace
- * dispatcher (lib/workspace/dispatcher.js) creates + holds the
- * one process-wide instance via the ``_createStore`` factory
- * exported below.  Every external consumer goes through
- * ``window.molbuilder.workspace.selection.*`` (=``ws.selection.*``).
+/* **MolView-internal (as of the 2026-07 carve)** — this module no longer mounts a public
+ * singleton, and it is NOT the workspace's. The MolView **data model** (lib/molview/data-model.js)
+ * creates + holds the one instance via the ``_createStore`` factory exported below, and exposes it
+ * as ``window.molbuilder.molview.data.selection``. Every external consumer goes through that door
+ * (``molview.data.selection.*``) — NOT ``ws.selection.*`` (the workspace is persistence-only).
  *
- * The factory stays mounted under ``window.molbuilder.molview.selection.
- * _createStore`` so per-test isolation (Node L2 tests + a future
- * Playwright `_test` hook) can spin up fresh stores without
- * driving the dispatcher.
+ * The factory stays mounted under ``window.molbuilder.molview.selection._createStore`` so
+ * per-test isolation (Node L2 tests + Playwright `_test` hooks) can spin up fresh stores.
  *
  * Atom-selection store -- factory + state shape + mutators.
  *
@@ -527,29 +523,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _notify(CHANGE.ATOMS);
         }
 
-        /**
-         * Swap the atoms' COORDINATES in place — the frame/time axis
-         * (workspace-contract.md §1.5): a new frame is the SAME atoms at new
-         * positions.  Keeps identity, labels, frozen, selection, filters, and
-         * mode intact — only x/y/z change.  Requires exactly one [x,y,z] per
-         * existing atom (the caller — the dispatcher's frame API — validates
-         * the count against the structure first).  Synchronous publication.
-         */
-        function setCoords(coords) {
-            if (!Array.isArray(coords) || coords.length !== state.atoms.length) {
-                throw new Error(
-                    "setCoords: one [x,y,z] per atom required (have "
-                    + state.atoms.length + " atoms, got "
-                    + (Array.isArray(coords) ? coords.length : typeof coords) + ")");
-            }
-            for (let i = 0; i < state.atoms.length; i++) {
-                const p = coords[i];
-                state.atoms[i].x = Number(p[0]);
-                state.atoms[i].y = Number(p[1]);
-                state.atoms[i].z = Number(p[2]);
-            }
-            _notify(CHANGE.COORDS);
-        }
 
         // ----------------------------------------------------------- //
         //  PUBLIC: UI mode  (just controls which editor is visible)   //
@@ -975,7 +948,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // source file
             noteSavedTo:        noteSavedTo,      // save-as source re-anchor (sync, no reload)
             adoptAtoms:         adoptAtoms,
-            setCoords:          setCoords,        // frame coord-swap (workspace §1.5)
             adoptSession:       adoptSession,
             // mode
             setMode:            setMode,

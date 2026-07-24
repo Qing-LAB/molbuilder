@@ -62,7 +62,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     const VALID_REPS = [
         "stick", "ball-and-stick", "sphere", "line",
     ];
-    const VALID_AXES_MODES   = ["auto", "cartesian", "cell"];
     const VALID_PICK_MODES   = ["none", "single", "pair", "triple", "multi"];
     const VALID_LABEL_FORMS  = ["index", "name", "element"];
 
@@ -198,8 +197,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // maps straight through without a separate overlay-toggle round-trip.
             overlayOn:  opts.overlayOn === true,
             pick:       _normalisePick(opts.pick),
-            lattice:    _normaliseLattice(opts.lattice),
-            cellBox:    _normaliseCellBox(opts.cellBox),
+            cellBox:    _cellBoxFrom(opts, null),   // ONE geometry structure (lattice|cellBox in)
             overlays:   _normaliseOverlays(opts.overlays),
             knobs:      _normaliseKnobs(opts.knobs),
             projection: _normaliseProjection(opts.projection),
@@ -237,25 +235,27 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     function _normaliseAxes(a) {
+        // "Show axes" is ALWAYS the Cartesian x/y/z compass (structure-periodicity.md Issue #3:
+        // the a/b/c cell vectors belong to "Show unit cell", not here).  So there is no `mode`
+        // (auto/cartesian/cell) and no `labels` -- those were a vestigial pre-decision knob that
+        // _redrawAxes never read (it hardcodes the Cartesian compass).  null = hidden; an object =
+        // shown, with optional length / origin / colors / radius overrides.
         if (a === false || a === undefined || a === null) return null;
-        if (a === true) return { mode: "auto" };
+        if (a === true) return {};
         return {
-            mode:    a.mode    || "auto",
             length:  typeof a.length === "number" ? a.length : undefined,
             origin:  a.origin,
-            labels:  a.labels,
             colors:  a.colors,
             radius:  typeof a.radius === "number" ? a.radius : undefined,
         };
     }
 
     function _normaliseCell(c) {
-        if (c === false || c === undefined || c === null) return null;
-        if (c === true) return { color: null, radius: 0.04 };
-        return {
-            color:  c.color || null,
-            radius: typeof c.radius === "number" ? c.radius : 0.04,
-        };
+        // VISIBILITY only: true (shown) | null (hidden).  The unit-cell wireframe has no
+        // per-instance style -- its colour/thickness are module-concealed CSS custom properties
+        // (.mol-viewer-card --mol-cell-wireframe-*) read at draw time.  (A {color,radius} arg
+        // used to be captured here but was never drawn or exposed in the view menu -- dead.)
+        return (c === false || c === undefined || c === null) ? null : true;
     }
 
     function _normaliseLabels(l) {
@@ -584,6 +584,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return { lattice: lat, origin: origin };
     }
 
+    // The cell geometry has ONE internal structure: state.current.cellBox = {lattice, origin}.
+    // Inputs may spell it two ways -- a full ``cellBox`` (lattice + anchor origin) OR a bare
+    // ``lattice`` (an explicit cell placed at the world origin, origin null) -- and BOTH normalise
+    // into that one structure here.  There is no separate ``state.current.lattice`` field.  When
+    // neither key is present the previous geometry is kept.
+    function _cellBoxFrom(opts, prev) {
+        if (opts.cellBox !== undefined) return _normaliseCellBox(opts.cellBox);
+        if (opts.lattice !== undefined) return _normaliseCellBox({ lattice: opts.lattice });
+        return prev;
+    }
+
     /**
      * Cheap structural equality for the small option sub-objects.
      * JSON.stringify is good enough at this UI scale; if perf
@@ -645,12 +656,24 @@ const root = (typeof window !== "undefined") ? window : globalThis;
               handle.setCell(state.current.cell ? false : true); } },
     ];
 
-    // The full working list = built-in toggles + any molview-injected ones
-    // (isolate).  Every render/wire/sync loop iterates THIS, so injected toggles
-    // are first-class: same button, same menu entry, same sync.
+    // The built-in view toggles to render/wire for this mount. A HOST-DRIVEN mount
+    // (molview, opts.storeToggles) keeps ONLY the stateless ones (reset) -- the four
+    // stateful toggles (axes/labels/overlay/cell) are injected by the host as store-backed
+    // specs (viewerAdapter.viewFlagToggles) so the selection store is the ONE authority for
+    // those flags. A STANDALONE mount keeps every built-in (embed-local state, no store).
+    function _builtinToggles(storeToggles) {
+        return storeToggles
+            ? VIEW_TOGGLES.filter(function (q) { return q.stateless; })
+            : VIEW_TOGGLES;
+    }
+
+    // The full working list = the built-ins for this mount + any host-injected ones
+    // (isolate + the store-backed axes/labels/overlay/cell when host-driven).  Every
+    // render/wire/sync loop iterates THIS, so injected toggles are first-class: same
+    // button, same sync.
     function _allToggles(state) {
         const extra = (state && state.extraToggles) || [];
-        return VIEW_TOGGLES.concat(extra);
+        return _builtinToggles(state && state.storeToggles).concat(extra);
     }
 
     // One DOM builder for a canvas quick-action (rail) button -- used by the scaffold
@@ -715,12 +738,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const stage = document.createElement("div");
         stage.className = "mol-viewer-stage";
 
-        // Left rail: one icon button per view toggle (reset / axes / labels / overlay /
-        // cell — see VIEW_TOGGLES; the molview layer injects the isolate button here too
-        // via addViewToggle).  Built once here; wired to the handle in _wireKnobBar.
+        // Left rail: one icon button per built-in view toggle for THIS mount.  Standalone =
+        // reset / axes / labels / overlay / cell (VIEW_TOGGLES).  Host-driven (opts.storeToggles,
+        // molview) = reset only; the host injects store-backed axes/labels/overlay/cell (+ the
+        // isolate button) via addViewToggle.  Built once here; wired to the handle in _wireKnobBar.
         const quickbar = document.createElement("div");
         quickbar.className = "mol-viewer-quickbar";
-        VIEW_TOGGLES.forEach(function (q) {
+        _builtinToggles(opts.storeToggles).forEach(function (q) {
             quickbar.appendChild(_buildQuickButton(q));
         });
         stage.appendChild(quickbar);
@@ -2006,18 +2030,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             });
         }
 
-        // Reset view.
-        const resetBtn = bar.querySelector(
-            '.mol-viewer-action[data-action="reset"]');
-        if (resetBtn) {
-            resetBtn.addEventListener("click", () => handle.refit());
-        }
+        // (Reset view is a rail VIEW_TOGGLE now — `run: handle.refit()`, wired in the loop
+        // below; there is no separate View-menu reset button. The "r" keyboard shortcut calls
+        // handle.refit() directly, see the keydown handler.)
 
-        // View toggles: ONE loop wires each toggle's rail button to run() (the view
-        // toggles are rail-only -- there is no menu entry).  Reset is wired here like
-        // any other; _syncToggles mirrors state back onto the buttons.
+        // View toggles: ONE loop wires each built-in toggle's rail button to run() (the view
+        // toggles are rail-only -- there is no menu entry).  Reset is wired here like any other;
+        // _syncToggles mirrors state back onto the buttons.  Host-injected toggles (isolate + the
+        // store-backed axes/labels/overlay/cell) are wired in addViewToggle, not here, so this
+        // iterates only the built-ins actually rendered for this mount.
         const quickbar = state.scaffold && state.scaffold.quickbar;
-        VIEW_TOGGLES.forEach(function (q) {
+        _builtinToggles(state.storeToggles).forEach(function (q) {
             const quickBtn = quickbar && quickbar.querySelector(
                 '[data-quick="' + q.action + '"]');
             if (quickBtn) quickBtn.addEventListener("click", function () {
@@ -2173,8 +2196,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 e.preventDefault();
                 return;
             }
-            if (key === "r" && resetBtn) {
-                resetBtn.click(); e.preventDefault();
+            if (key === "r") {
+                handle.refit(); e.preventDefault();
             } else if (key === "v" && viewDet) {
                 viewDet.open = !viewDet.open; e.preventDefault();
             } else if (key === "x" && exportDet) {
@@ -2301,7 +2324,18 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     /*  Cell wireframe                                               */
     /* ------------------------------------------------------------ */
 
-    function _drawCellWireframe(viewer, lattice, origin, opts) {
+    // Read a CSS custom property off ``el`` (the MolView card, where these are declared and
+    // CONCEALED to the module -- not on global :root), with a fallback for a no-DOM / unstyled
+    // context.  Used for 3D-scene constants WebGL can't style directly.
+    function _cssVar(el, name, fallback) {
+        if (!el || typeof getComputedStyle !== "function") return fallback;
+        try {
+            const v = getComputedStyle(el).getPropertyValue(name).trim();
+            return v || fallback;
+        } catch (_) { return fallback; }
+    }
+
+    function _drawCellWireframe(viewer, lattice, origin, hostEl) {
         if (!lattice) return [];
         const [a, b, c] = lattice;
         // ``origin`` is the world-space CORNER the box is anchored at (§3a): for a
@@ -2323,8 +2357,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             [[0,0,0],[0,0,1]], [[1,0,0],[1,0,1]],
             [[0,1,0],[0,1,1]], [[1,1,0],[1,1,1]],
         ];
-        const color  = opts.color  || "#888";
-        const radius = typeof opts.radius === "number" ? opts.radius : 0.04;
+        // Colour + thickness are 3D-scene constants that WebGL can't take from CSS directly,
+        // so they live as NAMED CSS custom properties (mol-viewer-embed.css) and we look them
+        // up here -- one discoverable place, no magic numbers.  Read each draw (cheap; cell
+        // redraws are infrequent) so a theme override applies live.  The fallbacks are a
+        // last-resort for a no-DOM context and mirror the CSS defaults.
+        const color  = _cssVar(hostEl, "--mol-cell-wireframe-color", "#888");
+        const radius = parseFloat(_cssVar(hostEl, "--mol-cell-wireframe-radius", "0.04")) || 0.04;
         const shapes = [];
         for (const [u, v] of edges) {
             const s = viewer.addCylinder({
@@ -2740,16 +2779,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             state.cellAxesHandle = null;
         }
         if (!state.current.cell) return;   // "Show unit cell" toggle off
-        // The BOX draws from the resolved cell + its anchor corner (``cellBox``, §3a)
-        // when the consumer feeds one -- so a bbox+vacuum molecule shows a box that
-        // WRAPS the atoms.  Fall back to the raw ``lattice`` (an explicit cell placed
-        // at the world origin) when no cellBox was given.
+        // The box draws from the ONE cell-geometry structure (state.current.cellBox = {lattice,
+        // origin}).  A bbox+vacuum cell carries an anchor origin so the box WRAPS the atoms; an
+        // explicit cell at the world origin has origin null -> _drawCellWireframe anchors at
+        // [0,0,0].
         const box = state.current.cellBox;
-        const lattice = (box && box.lattice) || state.current.lattice;
+        const lattice = box && box.lattice;
         const origin  = (box && box.origin) || null;
         if (!lattice) return;   // no cell -> no box + no a/b/c arrows
         state.cellShapes = _drawCellWireframe(
-            state.viewer, lattice, origin, {});
+            state.viewer, lattice, origin, state.cardEl);
         // "Show unit cell" IS the box AND its a/b/c axis arrows -- one thing: the
         // cell, with its edge vectors labelled a/b/c, drawn from the SAME anchor
         // corner as the box and scaled to the a/b/c lengths.  The Cartesian x/y/z
@@ -3866,6 +3905,10 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // through the SAME path as the built-in VIEW_TOGGLES; see
             // handle.addViewToggle.  Empty for a bare embed with no store.
             extraToggles:        [],
+            // Host-driven view toggles (molview): the four stateful toggles (axes/labels/
+            // overlay/cell) are NOT built-in here; the host injects store-backed specs so the
+            // store is the ONE authority.  Standalone (false) keeps the embed-local built-ins.
+            storeToggles:        !!opts.storeToggles,
 
             axesHandle:          null,
             cellShapes:          [],
@@ -4062,12 +4105,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             const next = Object.assign({}, state.current, {
                 xyz:     typeof opts.xyz === "string" ? opts.xyz : state.current.xyz,
                 pdb:     typeof opts.pdb === "string" ? opts.pdb : state.current.pdb,
-                lattice: opts.lattice !== undefined
-                            ? _normaliseLattice(opts.lattice)
-                            : state.current.lattice,
-                cellBox: opts.cellBox !== undefined
-                            ? _normaliseCellBox(opts.cellBox)
-                            : state.current.cellBox,
+                cellBox: _cellBoxFrom(opts, state.current.cellBox),   // ONE geometry structure
             });
             // Clear conflicting source: if caller passes xyz, drop pdb
             // (and vice versa) so a re-call with a different format
@@ -4210,35 +4248,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
         function setAxes(a) {
             if (state.disposed) return;
-            if (a && typeof a === "object" && a !== true
-                && a.mode !== undefined
-                && !VALID_AXES_MODES.includes(a.mode)) {
-                _dispatchInvalidInput(state,
-                    "setAxes: 'mode' must be one of " +
-                    VALID_AXES_MODES.join(", ") +
-                    "; got " + JSON.stringify(a.mode));
-            }
-            // Phase 5d: explicit ``mode: "cell"`` requires a lattice
-            // (§ 3.4 + § 5.3).  Without one, the renderer would
-            // silently fall back to Cartesian — the user asked for
-            // a cell-aligned triad and got x/y/z with no signal.
-            // Halt so the caller knows; use ``mode: "auto"`` for the
-            // graceful-fallback behavior.
-            if (a && typeof a === "object" && a !== true
-                && a.mode === "cell"
-                && !state.current.lattice) {
-                _dispatchInvalidInput(state,
-                    "setAxes: mode 'cell' requires a lattice; call "
-                  + "setStructure({xyz, lattice}) first OR use "
-                  + "mode 'auto' for graceful fallback");
-                return;
-            }
             // Partial-update contract (same fix as setStyle).
-            // ``setAxes({colors: […]})`` shouldn't reset mode / length
-            // / origin back to their _normaliseAxes defaults; merge the
-            // object onto the current state first.  ``true`` / ``false``
-            // / ``null`` are full-state signals, not patches, and pass
-            // through unchanged.
+            // ``setAxes({colors: […]})`` shouldn't reset length / origin
+            // back to their _normaliseAxes defaults; merge the object onto
+            // the current state first.  ``true`` / ``false`` / ``null`` are
+            // full-state signals, not patches, and pass through unchanged.
             let _input = a;
             if (a && typeof a === "object" && a !== true
                 && state.current.axes
@@ -4253,25 +4267,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _syncToggles(state);
         }
 
+        // setCell is VISIBILITY only: on/off.  The box GEOMETRY {lattice, origin} is STRUCTURE
+        // data -- it is set ONLY by setStructure / loadFrames and lives in state.current.cellBox;
+        // the box's colour/thickness are module-concealed CSS custom properties read at draw time
+        // (.mol-viewer-card --mol-cell-wireframe-*).  _redrawCell draws the box iff visible,
+        // reading that geometry.  Geometry is never passed through here (no boolean-vs-object
+        // overload, no stale second copy).
         function setCell(c) {
             if (state.disposed) return;
-            const next = _normaliseCell(c);            // visibility + style {color,radius}|null
-            // §3a: setCell ALSO carries the box GEOMETRY {lattice, origin} -- embed-io
-            // hands ``_cellBox()`` here on an overlay refresh (e.g. a showCell toggle).
-            // Store it in ``state.current.cellBox`` (the field the draw at _redrawCell
-            // reads for the anchor corner) -- WITHOUT this, only the full-regen
-            // setStructure path set cellBox, so toggling the cell ON after a load (the
-            // default, since showCell starts OFF) drew the box from the WORLD ORIGIN
-            // instead of the resolved cell_origin corner (silent: the `(box && box.
-            // origin)||null` guard swallowed the missing field -> [0,0,0]).  A bare
-            // true/false visibility toggle keeps the current geometry.
-            const nextBox = (c && typeof c === "object" && c.lattice !== undefined)
-                            ? _normaliseCellBox(c)
-                            : state.current.cellBox;
-            if (_equalNormalised(state.current.cell, next)
-                && _equalNormalised(state.current.cellBox, nextBox)) return;
+            const next = _normaliseCell(c);            // visible(+style) | null (hidden)
+            if (_equalNormalised(state.current.cell, next)) return;
             state.current.cell = next;
-            state.current.cellBox = nextBox;
             _redrawCell(state);
             _render(state);
             _syncToggles(state);
@@ -4859,13 +4865,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     && state.current.style.background) || null;
         }
         function getLattice() {
-            // Phase 5d: getLattice closes the gap in the applyState
-            // round-trip for cell-bearing structures.  Without this,
-            // ``applyState({structure: {xyz: getStructureText()}})``
-            // silently loses the cell + makes setAxes mode "cell"
-            // unreachable post-round-trip.
+            // The cell lattice basis, DERIVED from the one geometry structure (cellBox).  Closes
+            // the applyState round-trip gap for cell-bearing structures: without it,
+            // ``applyState({structure: {xyz: getStructureText(), lattice: getLattice()}})`` would
+            // lose the cell and make setAxes mode "cell" unreachable post-round-trip.
             if (state.disposed) return null;
-            return _clone(state.current.lattice);
+            return _clone(state.current.cellBox ? state.current.cellBox.lattice : null);
         }
 
         function getPickedIndices() {
@@ -5095,25 +5100,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
 
         /**
-         * Phase 6e: blocking progress modal for animation export.
-         *
-         * Why blocking?  GIF encode of a 5-second 30-fps clip at
-         * 600×400 takes ~10-30 s on a modest laptop.  Without a
-         * modal the user clicks Export, sees no feedback, and
-         * assumes "nothing happened" — then clicks other UI which
-         * either races with the in-flight encoder (changes the
-         * scene mid-frame) or is silently ignored.  Both modes
-         * confuse the user.
-         *
-         * The modal:
-         *   - covers the whole viewport (backdrop catches clicks)
-         *   - shows phase label + progress bar + Cancel button
-         *   - cancellation aborts the export Promise via the
-         *     AbortController plumbed into exportAnimation.
-         *
-         * Returns ``{ update(frac, label), setPhase(label),
-         * close(), root }``.  Caller MUST eventually call close()
-         * in both success and failure branches (the .finally rule).
+         * Fire the host's ``opts.export.onExport(info)`` callback (a save/download completed),
+         * guarded against a disposed handle: a slow upload can resolve AFTER dispose, and firing
+         * the callback then would touch DOM the host already cleaned up (Phase 6e LANDMINE-1).
          */
         function _fireOnExport(info) {
             // Phase 6e third-review LANDMINE-1: a slow upload can

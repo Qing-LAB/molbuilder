@@ -119,18 +119,37 @@ def test_halos_null_when_nothing_to_highlight():
     assert out["halos"] is None
 
 
-def test_forces_build_arrows_for_drawn_atoms_with_scale():
+def test_forces_build_styled_arrows_for_drawn_atoms_with_scale():
     out = _run_node("""
         const forces = [[0,0,0],[0,1,0],[0,0,0],[0,0,2]];
         const pf = processFrame({ coords: COORDS, forces: forces }, IDENTITY,
                                 { selection: [1, 3], isolate: true, showForces: true, forceScale: 2 });
         console.log(JSON.stringify({ arrows: pf.arrows }));
     """)
-    # drawn atoms 1 and 3; arrow end = pos + force*scale(2).
-    assert out["arrows"] == [
-        {"start": [1, 0, 0], "end": [1, 2, 0]},    # atom1 force (0,1,0)*2 -> +2 in y
-        {"start": [3, 0, 0], "end": [3, 0, 4]},    # atom3 force (0,0,2)*2 -> +4 in z
-    ]
+    arrows = out["arrows"]
+    # drawn atoms 1 and 3, both non-zero -> two arrows; end = pos + force*scale(2).
+    assert len(arrows) == 2
+    assert arrows[0]["start"] == [1, 0, 0] and arrows[0]["end"] == [1, 2, 0]  # (0,1,0)*2 -> +2y
+    assert arrows[1]["start"] == [3, 0, 0] and arrows[1]["end"] == [3, 0, 4]  # (0,0,2)*2 -> +4z
+    # Styling (§2.4): the LARGEST drawn force (atom3, |f|=2) is gold-highlighted; the rest ramp
+    # dim-red -> orange-red; radius grows with magnitude so the max force is the thickest arrow.
+    assert arrows[1]["color"] == "#ffc400"
+    assert arrows[0]["color"].startswith("rgb(")
+    assert arrows[1]["radius"] > arrows[0]["radius"]
+
+
+def test_forces_zero_vectors_are_suppressed_no_arrow():
+    # A consumer hides a force (a frozen atom, or a sub-threshold magnitude) by handing a
+    # ZERO vector; the engine draws NO arrow for it (process.js §2.4) -- so the consumer owns
+    # WHICH forces show, the engine owns HOW they look.
+    out = _run_node("""
+        const forces = [[0,0,3],[0,0,0],[0,0,1],[0,0,0]];
+        const pf = processFrame({ coords: COORDS, forces: forces }, IDENTITY,
+                                { showForces: true, forceScale: 1 });
+        console.log(JSON.stringify({ n: pf.arrows ? pf.arrows.length : null }));
+    """)
+    # atoms 0 and 2 carry a force; 1 and 3 are zeroed -> only two arrows drawn.
+    assert out["n"] == 2
 
 
 def test_arrows_null_without_forces_or_when_overlay_off():

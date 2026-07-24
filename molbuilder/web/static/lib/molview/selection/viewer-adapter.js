@@ -57,6 +57,46 @@ function isolateToggle(store) {
     };
 }
 
+// The plain view-flag toggles (axes / labels / overlay / cell). ONE authority: the flag lives in
+// the selection store; the BUTTON writes it (setViewFlag) and the render ENGINE reads it and
+// draws. This is the store-backed replacement for the embed's old built-in toggles, which kept a
+// SECOND copy in embed-local state and let the button and the engine both write it (the desync
+// that drew the cell box at the world origin). Same spec shape as isolateToggle; the embed renders
+// them through the same handle.addViewToggle path, so the rail UI is unchanged.
+function _viewFlagToggle(store, def) {
+    return {
+        action:    def.action,
+        glyph:     def.glyph,
+        label:     def.label,
+        title:     def.title,
+        read:      function () {
+            const s = (store && store.getState && store.getState()) || {};
+            return !!s[def.flag];
+        },
+        run:       function () {
+            const s = (store && store.getState && store.getState()) || {};
+            if (store && typeof store.setViewFlag === "function") {
+                store.setViewFlag(def.flag, !s[def.flag]);
+            }
+        },
+        subscribe: function (cb) {
+            return (store && typeof store.subscribe === "function")
+                ? store.subscribe(cb) : function () {};
+        },
+    };
+}
+
+// In rail order, with the glyphs/labels/titles the embed used for its now-removed built-ins so
+// the UI is byte-identical. flag = the store view-flag name (selection store VIEW_FLAG_NAMES).
+function viewFlagToggles(store) {
+    return [
+        _viewFlagToggle(store, { action: "axes",    flag: "showAxis",   glyph: "✚", label: "Show axes",      title: "Show / hide axes" }),
+        _viewFlagToggle(store, { action: "labels",  flag: "showIndex",  glyph: "#",      label: "Show labels",    title: "Show / hide atom labels" }),
+        _viewFlagToggle(store, { action: "overlay", flag: "showForces", glyph: "➤", label: "Show overlay",   title: "Show / hide force vectors" }),
+        _viewFlagToggle(store, { action: "cell",    flag: "showCell",   glyph: "▦", label: "Show unit cell", title: "Show / hide unit cell" }),
+    ];
+}
+
 function attach(handle, opts) {
     if (!handle || typeof handle.setOverlays !== "function") {
         throw new Error(
@@ -159,8 +199,9 @@ function attach(handle, opts) {
 }
 
 export const viewerAdapter = {
-    attach:         attach,
-    isolateToggle:  isolateToggle,   // spec for the embed's addViewToggle
+    attach:          attach,
+    isolateToggle:   isolateToggle,    // spec for the embed's addViewToggle
+    viewFlagToggles: viewFlagToggles,  // store-backed axes/labels/overlay/cell toggle specs
 };
 
 // ── Transitional global (removed once every consumer imports this module) ──

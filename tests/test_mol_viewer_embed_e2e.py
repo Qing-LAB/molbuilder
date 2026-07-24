@@ -925,8 +925,6 @@ class TestHandleSurface:
                     (h) => h.setStyle({rep: "bogus"}));
                 run("setStyle_NaN_radius",
                     (h) => h.setStyle({radiusScale: NaN}));
-                run("setAxes_bad_mode",
-                    (h) => h.setAxes({mode: "diagonal"}));
                 run("setLabels_bad_format",
                     (h) => h.setLabels({atoms: "all", format: "weird"}));
                 run("setLabels_negative_idx",
@@ -967,59 +965,19 @@ class TestHandleSurface:
                 f"errs={cur['errs']!r}, result={cur['result']!r}"
             )
 
-    def test_setAxes_accepts_documented_modes(
-            self, page, flask_server):
-        """Per § 3.4 + § 5.3: setAxes accepts mode ∈ {auto, cartesian,
-        cell}.  Regression test for B1 (#238) — VALID_AXES_MODES used
-        to be ["auto", "world"] which silently coerced the legal
-        cartesian / cell modes."""
-        page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#molview-host .mol-viewer-canvas",
-                               timeout=_BOOT_TIMEOUT_MS)
-        page.wait_for_timeout(200)
-        out = page.evaluate("""
-            () => {
-                const r = {};
-                // Phase 5d: mode "cell" requires a lattice (see
-                // test_setAxes_cell_without_lattice below for the
-                // halt path).  Supply a 10 Å cubic cell here so
-                // the accept-path covers all three modes.
-                for (const mode of ["auto", "cartesian", "cell"]) {
-                    const host = document.createElement("div");
-                    host.style.cssText =
-                        "width:300px;height:200px;position:fixed;top:-9999px;";
-                    document.body.appendChild(host);
-                    const errs = [];
-                    const h = window.molbuilder.viewer.embed(host, {
-                        xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
-                        lattice: [[10,0,0],[0,10,0],[0,0,10]],
-                        card: { showInfoLine: false, height: "100%" },
-                        onError: (e) => { errs.push(e.code); },
-                    });
-                    h.setAxes({mode});
-                    r[mode] = errs.slice();
-                    h.dispose();
-                    host.remove();
-                }
-                return r;
-            }
-        """)
-        for mode in ["auto", "cartesian", "cell"]:
-            assert "invalid_input" not in out[mode], (
-                f"setAxes({{mode: {mode!r}}}) fired invalid_input "
-                f"({out[mode]!r}); see B1 review finding"
-            )
 
-    def test_setCell_overlay_anchors_box_at_origin_not_world(
+    def test_cell_box_anchors_at_origin_not_world(
             self, page, flask_server):
         """REGRESSION (cell-origin render bug, 2026-07): the unit-cell box must be
-        drawn from the cell_origin CORNER, not the world origin.  The bug was in the
-        OVERLAY path -- setCell({lattice, origin}) after load (what embed-io hands on
-        a showCell toggle) wrote only ``state.current.cell`` (style) and NEVER
-        ``state.current.cellBox``, so the draw's ``(box && box.origin) || null``
-        SILENTLY defaulted the anchor to [0,0,0] (no thrown error -- the && guard
-        swallowed it).  Asserts the DRAWN wireframe corner, not the data model
-        (getUnitCellOrigin was correct the whole time; only the render dropped it)."""
+        drawn from the cell_origin CORNER, not the world origin.  New single-authority
+        contract: the box GEOMETRY {lattice, origin} is STRUCTURE data -- it rides
+        setStructure/loadFrames into ``state.current.cellBox`` and is ALWAYS current;
+        setCell is VISIBILITY only (on/off).  The old bug conflated the two -- geometry
+        was smuggled through the visibility toggle, so turning the cell ON after a
+        hidden load drew the box from [0,0,0].  This loads the geometry via
+        setStructure, then turns the cell on with a bare setCell(true), and asserts the
+        DRAWN wireframe corner (not the data model -- getUnitCellOrigin was correct the
+        whole time; only the render dropped it)."""
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -1030,15 +988,18 @@ class TestHandleSurface:
                 host.style.cssText =
                     "width:300px;height:200px;position:fixed;top:-9999px;";
                 document.body.appendChild(host);
-                // structure loaded WITHOUT a box; the OVERLAY path then hands the
-                // box geometry via setCell -- exactly the sequence a showCell toggle
-                // produces (default showCell is OFF, so the box arrives via setCell).
+                // structure loaded WITHOUT a box, cell hidden by default.  The box
+                // GEOMETRY is then handed as STRUCTURE data via setStructure (rides
+                // ``state.current.cellBox``), and the cell is turned ON with a bare
+                // setCell(true) -- exactly the single-authority sequence: geometry from
+                // the structure, visibility from the toggle.
                 const h = window.molbuilder.viewer.embed(host, {
                     xyz: "2\\nx\\nC 0 0 0\\nH 1 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                 });
-                h.setCell({ lattice: [[10,0,0],[0,10,0],[0,0,10]],
-                            origin: [-3, -4, -5] });
+                h.setStructure({ cellBox: { lattice: [[10,0,0],[0,10,0],[0,0,10]],
+                                            origin: [-3, -4, -5] } });
+                h.setCell(true);
                 const v = h._viewer3dmol();
                 const pts = [];
                 for (const s of (v.shapes || [])) {
@@ -1063,43 +1024,6 @@ class TestHandleSurface:
                 f"cell box drawn from {out['box_min']} -- must anchor at the "
                 f"cell_origin [-3,-4,-5], not the world origin")
 
-    def test_setAxes_cell_without_lattice_halts(
-            self, page, flask_server):
-        """Per § 5.3 Phase 5d: setAxes({mode: "cell"}) without a
-        lattice on the current structure dispatches invalid_input
-        + halts (so the user doesn't silently get Cartesian when
-        they asked for cell)."""
-        page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_selector("#molview-host .mol-viewer-canvas",
-                               timeout=_BOOT_TIMEOUT_MS)
-        page.wait_for_timeout(200)
-        out = page.evaluate("""
-            () => {
-                const host = document.createElement("div");
-                host.style.cssText =
-                    "width:300px;height:200px;position:fixed;top:-9999px;";
-                document.body.appendChild(host);
-                const errs = [];
-                const h = window.molbuilder.viewer.embed(host, {
-                    xyz: "1\\nh\\nH 0 0 0\\n",
-                    card: { showInfoLine: false, height: "100%" },
-                    onError: (e) => { errs.push(e.code); },
-                });
-                // No lattice configured — cell mode must halt.
-                h.setAxes({ mode: "cell" });
-                const afterAxes = h.getAxes();
-                h.dispose();
-                host.remove();
-                return { errs, afterAxes };
-            }
-        """)
-        assert "invalid_input" in out["errs"]
-        # Halt: axes state unchanged (still default null, not "cell").
-        assert (out["afterAxes"] is None
-                or out["afterAxes"].get("mode") != "cell"), (
-            f"setAxes({{mode: 'cell'}}) did not halt — axes state "
-            f"changed: {out['afterAxes']!r}"
-        )
 
     def test_getBackground_and_getLattice_round_trip(
             self, page, flask_server):
@@ -1146,8 +1070,7 @@ class TestHandleSurface:
         """Per § 4.2.2 Phase 5d: the round-trip example must work for
         cell-bearing structures — handle.applyState({structure: {xyz:
         getStructureText(), lattice: getLattice()}}) preserves the
-        cell, which means setAxes({mode: "cell"}) keeps working
-        post-restore."""
+        cell."""
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -1172,24 +1095,17 @@ class TestHandleSurface:
                 };
                 h.applyState(snap);
                 const lat = h.getLattice();
-                // After re-apply, cell-mode axes must work without
-                // dispatching invalid_input.
-                const errs = [];
-                window.molbuilder.viewer.embed; // ref
-                h.applyState({}); // no-op
-                // Hook into onError via a fresh setter call:
-                h.setAxes({ mode: "cell" });
-                const axes = h.getAxes();
+                h.applyState({}); // no-op must not disturb the restored lattice
+                const lat2 = h.getLattice();
                 h.dispose();
                 host.remove();
-                return { lat, axes };
+                return { lat, lat2 };
             }
         """)
         assert out["lat"] is not None, "lattice lost after applyState round-trip"
         assert out["lat"][0][0] == 7, out
-        assert out["axes"] and out["axes"]["mode"] == "cell", (
-            f"setAxes({{mode: 'cell'}}) failed after applyState "
-            f"round-trip: {out['axes']!r}"
+        assert out["lat2"] and out["lat2"][0][0] == 7, (
+            f"a no-op applyState disturbed the restored lattice: {out['lat2']!r}"
         )
 
     def test_pick_halo_true_renders_halos_with_defaults(

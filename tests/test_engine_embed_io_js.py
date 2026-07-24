@@ -60,7 +60,7 @@ def _run_node(snippet: str) -> object:
 def test_multiframe_load_is_setStructure_then_setAnimation():
     out = _run_node("""
         const h = makeHandle();
-        embedIo.create(h).loadFrames({ frames: F, cell: null, cellBox: null });
+        embedIo.create(h).loadFrames({ frames: F, cellBox: null });
         const anim = byName(h, "setAnimation")[0].args[0];
         console.log(JSON.stringify({
             order: names(h),

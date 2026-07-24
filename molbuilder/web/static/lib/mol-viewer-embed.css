@@ -6,6 +6,13 @@
  */
 
 .mol-viewer-card {
+    /* 3D-scene constants for the WebGL draw (mol-viewer-embed.js).  3Dmol shapes can't be
+     * styled by CSS directly, so the draw code LOOKS THESE UP via getComputedStyle on THIS
+     * element -- named, discoverable, and CONCEALED to the MolView module (scoped here, not on
+     * global :root, so they never leak into the page's token namespace). */
+    --mol-cell-wireframe-color:  #888;   /* exempt: per-module 3D-scene token (unit-cell box line colour, read by getComputedStyle for the WebGL draw); no UI palette token matches this mid-gray */
+    --mol-cell-wireframe-radius: 0.04;   /* box line thickness, in ANGSTROM (3D world units, NOT px) */
+
     /* Inherit base .card padding + radius from tokens.css; this
        file only adds the per-component overrides. */
     display:        flex;

@@ -24,9 +24,9 @@
  *   * Read requests with ``max_bytes`` = server cap (16 MB) so
  *     mid-sized result files load without a "file is N bytes;
  *     exceeds max_bytes" 413.
- *   * Files past EDIT_MAX_BYTES (32 MB) load in paginated chunks
- *     via /api/files/read_range and Edit is disabled with a clear
- *     "use external editor" hint.
+ *   * Files past BULK_READ_MAX_BYTES (16 MB -- the server's single-shot
+ *     read ceiling) load in paginated chunks via /api/files/read_range
+ *     and Edit is disabled with a clear "use external editor" hint.
  *   * Non-UTF-8 files (400 from /api/files/read) similarly
  *     disable Edit — the v1 contract is text-only.
  *
@@ -654,10 +654,10 @@ async function _loadBulk(path) {
 }
 
 /**
- * Paginated path for files past ``EDIT_MAX_BYTES``: fetch the
- * first ``PAGE_BYTES`` window via /api/files/read_range, append
+ * Paginated path for files past ``BULK_READ_MAX_BYTES`` (16 MB): fetch
+ * the first ``PAGE_BYTES`` window via /api/files/read_range, append
  * more chunks as the user scrolls near the bottom of the editor.
- * Edit is disabled (above-cap files are read-only).  Tips for
+ * Edit is disabled (paginated files are view-only).  Tips for
  * find / jump-to-line surface in the status line because the
  * default keybindings (Ctrl-F / Alt-G) are not discoverable.
  */
@@ -671,10 +671,12 @@ async function _loadPaginated(path, totalSize) {
     if (elCmView) elCmView.classList.add("is-view-only");
     _cm.setValue("");
     const sizeMB    = (totalSize / (1024 * 1024)).toFixed(1);
-    const capMB     = (EDIT_MAX_BYTES / (1024 * 1024)) | 0;
+    // View-only kicks in above the BULK read ceiling (the server refuses a single-shot
+    // read past it), NOT at the edit cap -- so quote the real threshold the file crossed.
+    const capMB     = (BULK_READ_MAX_BYTES / (1024 * 1024)) | 0;
     _setStatus(
-        `Large file (${sizeMB} MB > ${capMB} MB edit cap) — `
-        + "viewing only.  Use an external editor to modify.  "
+        `Large file (${sizeMB} MB > ${capMB} MB) — viewing only.  `
+        + "Use an external editor to modify.  "
         + "Tip: Ctrl-F to find, Alt-G to jump to a line.",
         null
     );

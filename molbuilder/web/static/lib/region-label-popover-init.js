@@ -1,8 +1,8 @@
 /* Region-label-definitions popover initialiser.
  *
  * Bridges the library at lib/region-label-definitions.js (which
- * exposes renderPopover / init via window.molbuilder) to the
- * workspace's current structure on DOMContentLoaded.
+ * exposes renderPopover / init via window.molbuilder) to MolView's
+ * current structure (molview.data) on DOMContentLoaded.
  *
  * Lives in its own file so the modify.html template stays free
  * of inline <script> blocks — those are silently blocked by the
@@ -27,17 +27,19 @@
         if (!defs || typeof defs.init !== "function") return;
         defs.init(function () {
             try {
-                var ws = ns && ns.workspace;
-                // Use the dedicated accessor: getStructure() carries no `regions` field
-                // (its `s.regions` was always undefined -> the popover always showed "no
-                // labels").  getRegions() is the single per-atom-label gatherer.
-                var regions = (ws && typeof ws.getRegions === "function")
-                    ? ws.getRegions() : {};
+                // The per-atom region-label map lives on MolView's data model
+                // (molview.data.getRegions), NOT the workspace -- the in-memory data
+                // model was carved out of the workspace (tasks #41/#42); the workspace
+                // is persistence-only and never had getRegions, so the old
+                // `ns.workspace.getRegions` was always undefined and the popover always
+                // showed "no labels".  getRegions() is the single per-atom-label gatherer.
+                var data = ns && ns.molview && ns.molview.data;
+                var regions = (data && typeof data.getRegions === "function")
+                    ? data.getRegions() : {};
                 return new Set(Object.keys(regions || {}));
             } catch (_err) {
-                // Workspace not yet up, or getStructure threw —
-                // popover degrades to "no labels present" which is
-                // strictly better than crashing.
+                // Data model not yet up (or in any unexpected state) — the popover
+                // degrades to "no labels present", strictly better than crashing.
                 return new Set();
             }
         });

@@ -1,21 +1,23 @@
 /* projects/parser.js -- the FORMAT-AWARE sub-namespace of the projects package.
  *
- * `projects.readFile` / `projects.writeFile` move format-BLIND bytes (they serve every
- * tab, know nothing about contents).  `projects.parser` owns the format-AWARE
- * structure-file doors -- `openMolecule` / `saveMolecule` -- that know the
- * `.xyz` <-> `.molstruct.json` pairing and drive the parse seam.  They:
+ * `projects.parser` owns the format-AWARE structure-file doors -- `openMolecule` /
+ * `saveMolecule` -- that know the `.xyz` <-> `.molstruct.json` pairing.  FILE-ONLY
+ * (structure-authority.md § 3.3): BOTH doors go through the SERVER so Python owns the
+ * file access, the pairing, AND the sidecar schema:
  *
- *   * move bytes through readFile / writeFile (THIS package -- format-blind), and
- *   * install into / serialise from the molview MODEL
- *     (window.molbuilder.molview.data -- installMolecule / exportFile / markSaved).
+ *   * openMolecule(path) -> model.installMolecule({path}) -> POST /api/build/load
+ *     (the server reads the .xyz + paired .molstruct.json via StructureCodec.read), and
+ *   * saveMolecule(path) -> POST /api/structure/save with the model's {xyz, sidecar}
+ *     blob (the server reconstructs the Structure + writes the pair via
+ *     StructureCodec.write, stamping schema_version + a real structure_hash).
  *
- * The layering this keeps clean: the byte layer stays format-blind, the model owns no
- * file endpoint, and the sidecar SCHEMA lives ONLY server-side (sidecars/molstruct.py,
- * reached through /api/build/load).  This module orchestrates; it interprets nothing.
+ * The browser therefore moves NO structure bytes and NEVER authors the sidecar schema
+ * (a browser-written sidecar had no schema_version, so the file-only load door rejected
+ * it -- a save->reload breaker).  This module orchestrates the model <-> server
+ * round-trip; it interprets nothing.
  *
  * Contract + map: docs/protocols/structure-load-save-contract.md.
  */
-import { readFile, writeFile } from "./state.js";
 
 // The molview MODEL primitives these doors call.  molview is a classic script mounted on
 // window; this is an ES module -- look the model up at CALL time (never a static import,
@@ -26,16 +28,9 @@ function _model() {
     && window.molbuilder.molview.data) || null;
 }
 
-// Canonical sidecar path -- MIRROR of sidecars/molstruct.py:sidecar_path_for: strip the
-// LAST extension, append ".molstruct.json" ("relaxed.xyz" -> "relaxed.molstruct.json";
-// "job.spectra.xyz" -> "job.spectra.molstruct.json"; "bridge" -> "bridge.molstruct.json").
-function _sidecarPathFor(path) {
-  return String(path).replace(/\.[^./]+$/, "") + ".molstruct.json";
-}
-
-// /api/files/write refuses an existing target (no overwrite) with a 409 whose envelope
-// is {ok:false, error:"file already exists: ..."}.  Detect it so the tab shows its
-// overwrite dialog (the needsOverwrite contract, §2) instead of a raw error banner.
+// The save door refuses an existing target (no overwrite) with a 409 whose envelope is
+// {ok:false, needsOverwrite:true, error:"file already exists: ..."}.  Detect it so the tab
+// shows its overwrite dialog (the needsOverwrite contract, §2) instead of a raw error banner.
 function _isExistsEnvelope(env) {
   if (!env) return false;
   if (env.needsOverwrite || env.exists) return true;
@@ -46,14 +41,15 @@ function _isExistsEnvelope(env) {
 /**
  * openMolecule(path, { confirmDiscard? }) -- THE load door (contract §2).
  *
- * Read the `.xyz` AND its `.molstruct.json` through the projects file package
- * (`readFile` -- bytes only, no parse), then hand their CONTENT to the model install
- * primitive (`molview.data.installMolecule`), which parses via `/api/build/load` (the
- * server applies the sidecar) and installs the whole model in ONE write.  A missing
- * sidecar is NOT an error -- a plain geometry loads label-less.  Format (.xyz vs .pdb)
- * is sniffed server-side from the filename; we hand RAW bytes, not a canonicalised copy.
- * `confirmDiscard` is the injected dirty-canvas gate (UI policy; this layer stays
- * DOM-free).  Returns `{ok:true, payload}` | `{ok:false, cancelled|error}`.
+ * FILE-ONLY load (structure-authority.md § 3.3): hand the PATH to the model install
+ * primitive (`molview.data.installMolecule({path})`), which POSTs it to `/api/build/load`
+ * where the SERVER reads the `.xyz` AND its paired `.molstruct.json` via
+ * `StructureCodec.read` and installs the whole model in ONE write.  The browser reads no
+ * bytes and derives no sidecar path -- Python owns the file access + the pairing.  A
+ * missing sidecar is NOT an error (a plain geometry loads label-less); format (.xyz vs
+ * .pdb) is dispatched server-side from the extension.  `confirmDiscard` is the injected
+ * dirty-canvas gate (UI policy; this layer stays DOM-free).  Returns `{ok:true, payload}`
+ * | `{ok:false, cancelled|error}`.
  */
 export async function openMolecule(path, opts) {
   opts = opts || {};
@@ -98,13 +94,17 @@ export async function openMolecule(path, opts) {
 /**
  * saveMolecule(path, { overwrite? }) -- THE save door (contract §2).
  *
- * Serialise the SETTLED model (`molview.data.exportFile` -> `{xyz, sidecar}`) and write
- * BOTH files through the projects file package (`writeFile`), then `markSaved` (clears
- * dirty + re-anchors the store sourceFile).  Geometry is written FIRST (the primary
- * artifact); a mid-failure leaves the dirty bit set for retry.  On an "exists" envelope
+ * FILE-ONLY save (structure-authority.md § 3.3): serialise the SETTLED model
+ * (`molview.data.exportFile` -> `{xyz, sidecar}`) and hand that blob to the SERVER
+ * (`POST /api/structure/save`), which reconstructs the Structure and writes the
+ * `.xyz` + paired `.molstruct.json` via `StructureCodec.write` -- Python owns the pairing,
+ * the write order/atomicity, AND the sidecar schema (schema_version + a real hash).  The
+ * browser no longer writes the sidecar itself (a browser-authored sidecar had no
+ * schema_version, so the file-only load door rejected the pair on the next open).  Then
+ * `markSaved` (clears dirty + re-anchors the store sourceFile).  On an "exists" envelope
  * (no overwrite) -> `{needsOverwrite:true}` so the tab confirms + retries with
  * `{overwrite:true}` (the dialog is UI policy).  Returns `{ok:true, path}` |
- * `{ok:false, needsOverwrite|error}`.
+ * `{ok:false, needsOverwrite|error}`.  Never throws.
  */
 export async function saveMolecule(path, opts) {
   opts = opts || {};
@@ -121,34 +121,25 @@ export async function saveMolecule(path, opts) {
       ? "save: workspace has no data"
       : "save: workspace state is inconsistent (atom-count desync); reload before saving." };
   }
-  const xyzText     = (typeof blob.xyz === "string") ? blob.xyz : "";
-  const sidecarJson = JSON.stringify(blob.sidecar || {}, null, 2);
-  const sidecarPath = _sidecarPathFor(path);
-  const writeOpts   = opts.overwrite ? { overwrite: true } : undefined;
-  // Geometry first (the primary artifact); its "exists" gate drives the dialog.
+  // Hand the whole {xyz, sidecar} blob to the server save door; the SERVER writes the pair
+  // through StructureCodec.write (schema owned server-side).  Its "exists" gate (409 ->
+  // needsOverwrite) drives the tab's overwrite dialog.
   let env;
   try {
-    env = await writeFile(path, xyzText, writeOpts);
+    const resp = await window.fetch("/api/structure/save", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ path: path, blob: blob, overwrite: !!opts.overwrite }),
+    });
+    env = await resp.json().catch(function () {
+      return { ok: false, error: "save: malformed server response" };
+    });
   } catch (err) {
     return { ok: false, error: "Save failed: " + (err && err.message ? err.message : String(err)) };
   }
   if (env && env.ok === false) {
     if (_isExistsEnvelope(env)) return { ok: false, needsOverwrite: true };
     return { ok: false, error: (env.error || "Save failed.") };
-  }
-  // Sidecar second: labels/regions/frozen + full periodicity.  Always overwrite -- a
-  // dependent member of the pair we just (re)wrote the geometry for; a stale one must
-  // never survive.
-  let scEnv;
-  try {
-    scEnv = await writeFile(sidecarPath, sidecarJson, { overwrite: true });
-  } catch (err) {
-    return { ok: false, error: "saved the geometry but the sidecar write threw: "
-      + (err && err.message ? err.message : String(err)) };
-  }
-  if (scEnv && scEnv.ok === false) {
-    return { ok: false, error: "saved the geometry but the sidecar write failed: "
-      + (scEnv.error || "unknown") + " -- labels/cell may be stale on disk." };
   }
   if (typeof model.markSaved === "function") model.markSaved(path);
   return { ok: true, path: path };

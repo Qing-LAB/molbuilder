@@ -26,7 +26,7 @@
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
  *     save, load, state_index, uncommitted,
  *     // Frames (molview-module.md §14.5) — coords owned by the embed movie (single owner)
- *     reloadFrames, setFrameArrows, addFrame, addFrames, setFrame, getFrame, currentFrame, frameCount,
+ *     reloadFrames, setForces, addFrame, addFrames, setFrame, getFrame, currentFrame, frameCount,
  *     // Serialisation (the format is MolView's): project-file export + draft key + persist bracket
  *     exportFile, draftIdentity, suspendPersist, resumePersist,
  *     // Sub-namespaces
@@ -52,14 +52,12 @@
  *     subscription notify.  It no longer calls any
  *     consumer hook -- consumers read the single source through the unified API and react to
  *     the subscription.  Every entry point (applyOp, loadFromText) routes through it.
- *   * Persistence: debounced write to
- *     ``sessionStorage["molbuilder.workspace.v1"]`` on every
- *     state change + final flush on pagehide.  Legacy mirrors
- *     (``molbuilder.structure_canvas`` from canvas-state and
- *     ``modify-state`` from the modify viewer IIFE) still
- *     write in parallel during the phase 8→9 transition window;
- *     they're documented in the workspace-state.md migration
- *     table as scheduled for retirement but technically active.
+ *   * Persistence: **PUSH-ONLY** (NOT on every edit) -- on an anchor / a data change the model
+ *     serialises its state and calls ``ws.persist(session, snapshot, identity)`` (workspace-
+ *     contract.md §4.4.2/§4.7): the session mirror to ``sessionStorage["molbuilder.workspace.v1"]``
+ *     and the indexed draft to the on-disk state timeline. There is **no** auto-write / debounce,
+ *     and the old parallel legacy mirrors (``molbuilder.structure_canvas`` / ``modify-state``)
+ *     were **removed** in the carve -- this model is the single writer.
  *
  * Underlying stores (module-internal; consumers never touch them directly):
  *
@@ -258,9 +256,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     /** Return the structure slice (or null when nothing's loaded). */
     // Serialise the CURRENT atoms (element + live x/y/z) to plain XYZ.  Used only when
-    // a frame is scrubbed (§14.5.4): the canvas text is frame 0, but setFrame moved the
-    // store atoms to frame i via setCoords, so ``getStructure().text`` / a save must
-    // reflect the VISIBLE frame, not frame 0 (was a text<->atoms divergence).
+    // a frame is scrubbed (§14.5.4): the canvas text is frame 0, but the SHOWN frame's coords
+    // come from the embed's native movie (read on demand via getFrame/_scrubbedFrameCoords),
+    // so ``getStructure().text`` / a save must reflect the VISIBLE frame, not frame 0.
     function _atomsToXyz(title) {
         var els = getElements();
         var co  = getCoordinates();
@@ -499,19 +497,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             }
         }
         return regions;
-    }
-    // 3Dmol's atom shape for ONE atom -- materialised at the render boundary so the
-    // viewer never touches a string (workspace-contract.md §1.2.1 rule 2/3).
-    function atomFor3Dmol(i) {
-        var a = _atomsInternal()[i];
-        if (!a) return null;
-        return { elem: a.element, x: a.x, y: a.y, z: a.z };
-    }
-    // The whole model in 3Dmol's shape, for ``model.addAtoms(...)``.
-    function toAddAtoms() {
-        return _atomsInternal().map(function (a) {
-            return { elem: a.element, x: a.x, y: a.y, z: a.z };
-        });
     }
 
     // --- WRITE accessors (§1.2.1) -- the ONLY way consumers mutate the model. --- //
@@ -1332,11 +1317,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         if (!_applying) _timeline.markUncommitted();   // frame DATA changed -> uncommitted (§19.5)
         return frameCount();
     }
-    // Force overlays are built by the engine from the raw forces (reloadFrames' opts.forces +
-    // the store forceScale flag), so these two hand-built-arrow doors are retired no-ops
-    // (kept so a not-yet-migrated consumer doesn't throw). They will be removed in cleanup.
-    function setFrameArrows() { /* retired: engine builds arrows from forces (§8) */ }
-    function appendFrameArrows() { /* retired: see setFrameArrows */ }
+    // Force overlays are built by the ENGINE from the raw forces (process.js §2.4) -- the
+    // consumer hands per-frame forces, never pre-built arrows. setForces swaps the force DATA
+    // and re-bakes the arrow overlay IN PLACE (no movie reload), so a force-filter change
+    // (threshold / hide-frozen) is cheap. forcesPerFrame is in ORIGINAL atom order; a zero
+    // vector suppresses that atom's arrow; null clears the overlay.
+    function setForces(forcesPerFrame) {
+        if (_engine) _engine.setForces(forcesPerFrame);
+    }
     function addFrame(coords) { return addFrames([coords]); }
     // Append one OR MANY new frames (a live poll can bring several at once). Validates the
     // same-atoms invariant, then hands the batch to the engine (§6.2 append -- extend, no reload).
@@ -1642,7 +1630,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // the public save/load/undo (mapped to `_timeline.*` on the api below).
 
 
-    // ─── Mount on window.molbuilder.workspace ───────────────────── //
+    // ─── Mount on window.molbuilder.molview.data ────────────────── //
 
     var api = {
         subscribe:             subscribe,
@@ -1671,8 +1659,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         getLabels:             getLabels,         // all label names (regions + "frozen")
         getFrozen:             getFrozen,
         getRegions:            getRegions,
-        atomFor3Dmol:          atomFor3Dmol,
-        toAddAtoms:            toAddAtoms,
         draftIdentity:         _timeline.draftIdentity,  // the draft key a Save must drop (b1)
         suspendPersist:        suspendPersist, // F4: bracket a multi-step data op (holds persists)
         resumePersist:         resumePersist,  //     -> flushes the coalesced final state on the outermost resume
@@ -1710,8 +1696,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         undo:                  _timeline.undo,
         // Frames — the coordinate time axis; coords owned by the embed movie (§14.5).
         reloadFrames:          reloadFrames,
-        setFrameArrows:        setFrameArrows,
-        appendFrameArrows:     appendFrameArrows,
+        setForces:             setForces,
         onFrameChange:         onFrameChange,
         addFrame:              addFrame,
         addFrames:             addFrames,
@@ -1755,8 +1740,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // setup.
     root.molbuilder = root.molbuilder || {};
     // MolView's in-memory DATA MODEL — mounted on ``molbuilder.molview.data``.  Merge (not
-    // replace) so a pre-existing molview namespace (e.g. ``_createFrameSeries`` mounted by
-    // _frame-series.js) survives.  The stores this reads (canvas-state, selection store) mount
+    // replace) so a pre-existing molview namespace survives.  The stores this reads
+    // (canvas-state, selection store) mount
     // themselves separately and are looked up lazily via _canvas()/_store().
     root.molbuilder.molview = root.molbuilder.molview || {};
     root.molbuilder.molview.data = Object.assign(

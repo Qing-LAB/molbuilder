@@ -106,15 +106,16 @@ class TestPartialIntegrity:
         "parse-warnings-count",
         "parse-warnings-list",
         # Force-vector PRODUCER PARAMETERS — the trajectory-specific
-        # controls (task #34).  Force arrows are ALWAYS built from the
-        # parsed per-frame forces (largest highlighted) and handed to
-        # MolView (handle.setFrameArrows; molview-module §14.5.1 —
-        # MolView draws what it's handed).  Whether they're DRAWN is
-        # MolView's "show overlay" view-toggle, so there is no
-        # show-forces / highlight-max / status-readout control here —
-        # only the arrow-computation knobs.  #hide-frozen is a PURE
-        # arrow filter (atom hiding in the viewer is MolView's
-        # selection/isolate job), so the row is always present.
+        # controls (task #34).  The inspector hands the ENGINE filtered
+        # raw per-frame forces + drives the forceScale flag; the engine
+        # builds + styles the arrows (gold max-highlight + magnitude
+        # ramp, process.js §2.4).  Whether they're DRAWN is MolView's
+        # "show overlay" view-toggle, so there is no show-forces /
+        # highlight-max / status-readout control here — only the
+        # scale + filter knobs.  #hide-frozen is a PURE force filter
+        # (atom hiding in the viewer is MolView's selection/isolate
+        # job); it zeroes frozen-atom forces so the engine draws no
+        # arrow for them.
         "force-scale", "force-scale-val", "force-min",
         "hide-frozen",
         # SCF banner + plots.

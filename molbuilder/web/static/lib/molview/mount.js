@@ -180,6 +180,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             if (viewer && typeof viewer.embed === "function") {
                 // Wire the render loop once the viewer handle is ready; molview owns it.
                 viewer.embed(built.viewerHost, {
+                    // Host-driven view toggles: molview owns the view flags in the selection
+                    // store, so the embed must NOT build its own stateful axes/labels/overlay/
+                    // cell toggles (that second copy was the desync source).  molview injects
+                    // store-backed specs below; the embed keeps only its stateless reset.
+                    storeToggles: true,
                     // The fused card sizes its viewer square itself (fused-layout.css
                     // --viewer-extent), so the embed must FILL that square, not fall back to
                     // its standalone default height (clamp(360px,52vh,500px)) which overflows a
@@ -227,17 +232,26 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                                 try { ah && ah.dispose && ah.dispose(); } catch (_) {}
                             });
                         }
-                        // isolate ("show selected only") toggle -- store-backed (writes
-                        // store.setIsolate; the ENGINE reads store.isolate and renders it as a
-                        // structural regen, so a trajectory SURVIVES isolate). The other view
-                        // toggles (axes/labels/cell/overlay) remain the embed's built-ins for now;
-                        // rerouting them to store flags is the follow-up (task #64).
+                        // View toggles -- ALL store-backed (ONE authority: the button writes a
+                        // store flag, the ENGINE reads it and draws; no embed-local copy).
+                        //   * axes/labels/overlay/cell -> setViewFlag (overlay-refresh render)
+                        //   * isolate -> setIsolate (structural regen, so a trajectory SURVIVES it)
+                        // The embed builds none of these itself (storeToggles above); it renders
+                        // each injected spec as a rail button through addViewToggle.
                         const adapterMod = selApi && selApi.viewerAdapter;
-                        if (adapterMod && typeof adapterMod.isolateToggle === "function"
-                            && typeof h.addViewToggle === "function") {
-                            const iso = h.addViewToggle(adapterMod.isolateToggle(store));
-                            cleanups.push(function () {
-                                try { iso && iso.dispose && iso.dispose(); } catch (_) {}
+                        if (adapterMod && typeof h.addViewToggle === "function") {
+                            const specs = [];
+                            if (typeof adapterMod.viewFlagToggles === "function") {
+                                specs.push.apply(specs, adapterMod.viewFlagToggles(store));
+                            }
+                            if (typeof adapterMod.isolateToggle === "function") {
+                                specs.push(adapterMod.isolateToggle(store));
+                            }
+                            specs.forEach(function (spec) {
+                                const t = h.addViewToggle(spec);
+                                cleanups.push(function () {
+                                    try { t && t.dispose && t.dispose(); } catch (_) {}
+                                });
                             });
                         }
                         // Measurement readout -- a SEPARATE interaction layer (§2.4), not the render

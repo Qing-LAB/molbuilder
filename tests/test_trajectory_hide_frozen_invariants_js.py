@@ -4,8 +4,10 @@ The trajectory inspector's "Exclude frozen atoms" checkbox gates the
 force-arrow computation.  The one surviving dependent computation must
 read the toggle, or the feature silently ignores its promise:
 
-  1. ``_buildArrowsForFrame`` — must skip frozen indices when on
-     so force arrows don't draw on frozen atoms.
+  1. ``_buildForcesForFrame`` — must ZERO frozen indices when on
+     so the engine draws no force arrow on frozen atoms (task #74:
+     the inspector hands the engine filtered raw forces; a zeroed
+     force renders no arrow, process.js §2.4).
 
 History: two other computations used to depend on this toggle.
 ``refreshForcesStatus`` (a "Showing N arrows / max |F|" readout) was
@@ -101,8 +103,10 @@ def _extract_fn_body(name: str) -> str:
 # A function "honours the hide-frozen toggle" when its body
 # references the toggle id, calls the _frozenSet helper, and
 # contains the canonical skip pattern that filters frozen indices.
-# The skip pattern is the small idiom this codebase uses everywhere
-# the toggle gates a loop: ``if (frozen && frozen.has(i)) continue``.
+# The idiom is ``frozen && frozen.has(i)`` gating the frozen atom —
+# either ``continue`` (a loop) or ``return [0,0,0]`` (the map-based
+# _buildForcesForFrame, which zeroes a frozen force so the engine
+# draws no arrow for it).
 _SKIP_PATTERN = re.compile(
     r"frozen\s*&&\s*frozen\.has\(",
 )
@@ -128,25 +132,25 @@ def _assert_honours_hide_frozen(fn_name: str, body: str) -> None:
     )
     assert _SKIP_PATTERN.search(body), (
         f"{fn_name}() does not contain the canonical "
-        f"``if (frozen && frozen.has(i)) continue`` skip "
-        f"idiom.  Other patterns may work but the test pins "
-        f"the shared idiom so refactors stay consistent."
+        f"``frozen && frozen.has(i)`` skip idiom.  Other patterns "
+        f"may work but the test pins the shared idiom so refactors "
+        f"stay consistent."
     )
 
 
-def test_buildArrowsForFrame_honours_hide_frozen():
-    """The arrow-rendering path skips frozen atoms when the toggle
-    is on so the viewer doesn't draw vectors on atoms the overlay
-    has hidden."""
-    body = _extract_fn_body("_buildArrowsForFrame")
-    _assert_honours_hide_frozen("_buildArrowsForFrame", body)
+def test_buildForcesForFrame_honours_hide_frozen():
+    """The force-building path zeroes frozen atoms when the toggle
+    is on so the engine draws no force arrow on atoms the user asked
+    to exclude (a zeroed force renders no arrow, process.js §2.4)."""
+    body = _extract_fn_body("_buildForcesForFrame")
+    _assert_honours_hide_frozen("_buildForcesForFrame", body)
 
 
 def test_hide_frozen_change_listener_rebuilds_arrows():
     """The change event on the hide-frozen checkbox must rebuild the
-    force arrows (drawForces), which re-derives the overlay for the
-    current frame with the frozen atoms filtered out via
-    _buildArrowsForFrame.  Post-task-#34 that is the toggle's ONLY
+    force arrows (drawForces -> data.setForces), which re-hands the
+    engine the per-frame forces with frozen atoms zeroed via
+    _buildForcesForFrame.  Post-task-#34 that is the toggle's ONLY
     effect — MolView owns atom hiding in the viewer, so there is no
     separate overlay handler to fire."""
     src = MODULE.read_text()

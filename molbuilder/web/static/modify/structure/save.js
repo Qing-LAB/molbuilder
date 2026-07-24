@@ -240,13 +240,13 @@
             }
             var finalPath = dir + "/" + base + ".xyz";
             // ONE save door: _saveDataset -> projects.parser.saveMolecule, which
-            // writes the whole dataset via projects.writeFile x2 (.xyz + then
-            // .molstruct.json).  Overwrite is ALWAYS confirmed inside _saveDataset
+            // writes the whole dataset via the file-only save door (POST /api/structure/save;
+            // the SERVER writes the .xyz + .molstruct.json pair).  Overwrite is ALWAYS confirmed inside _saveDataset
             // (needsOverwrite -> confirm -> retry with overwrite:true); no save-back skip.
             return _saveDataset(finalPath).then(function (res) {
                 // On a successful write, refresh the sidebar listing so the new
                 // <name>.xyz (+ its sidecar) appears without a manual reload --
-                // the door's writeFile calls do auto-refresh the current dir, but
+                // the save door does auto-refresh the current dir, but
                 // this is a belt-and-braces refresh for the save target.  Best-effort;
                 // a refresh failure never fails the save.
                 if (res && res.ok && _projects
@@ -267,7 +267,7 @@
     // subscriber re-runs ``refreshState`` mid-save, which would re-
     // enable the button on a successful write — letting the user
     // click Save AGAIN before the first save's saveMolecule
-    // (projects.writeFile x2) had finished and triggering a second
+    // (the file-only save door) had finished and triggering a second
     // dialog/write for the same workspace.  Track the in-flight state at module
     // scope and OR it into the disabled computation so the button
     // stays disabled until the click handler's .then() clears the

@@ -782,9 +782,12 @@ function _mvdata() {
         // sees "Loaded: X · unsaved changes" after they modify the
         // structure but before saving.  Read lazily so this code
         // works during early init when ws may not be wired yet.
-        const _wsDirty = () => {
-            const w = (window.molbuilder || {}).workspace;
-            try { return !!(w && w.getState && w.getState().dirty); }
+        // Dirty lives on the DATA MODEL (molview.data.isDirty), NOT the workspace -- the
+        // workspace is persistence-only and never had getState/dirty (the 2026-06 carve).
+        // Read lazily so this works during early init.
+        const _modelDirty = () => {
+            const d = _data();
+            try { return !!(d && d.isDirty && d.isDirty()); }
             catch (_e) { return false; }
         };
         function _refreshLoadButton() {
@@ -797,7 +800,7 @@ function _mvdata() {
                 const isLoaded = loadable
                     && _sidebarLastFile === _candidatePath;
                 if (isLoaded) {
-                    readout.textContent = _wsDirty()
+                    readout.textContent = _modelDirty()
                         ? `Loaded: ${_basename(_candidatePath)} · unsaved changes`
                         : `Loaded: ${_basename(_candidatePath)}`;
                 } else if (loadable) {
@@ -820,13 +823,13 @@ function _mvdata() {
                 _refreshLoadButton();
             });
         }
-        // Re-render the readout whenever workspace dirty state flips.
-        // Subscribe defensively — ws may not exist on pages that don't
-        // mount the canvas (e.g. spectra-only views).
-        (function _subscribeWsDirty() {
-            const w = (window.molbuilder || {}).workspace;
-            if (w && typeof w.subscribe === "function") {
-                w.subscribe(_refreshLoadButton);
+        // Re-render the readout whenever the model's dirty state flips.
+        // Subscribe defensively — molview.data may not be mounted on pages
+        // that don't mount the canvas (e.g. spectra-only views).
+        (function _subscribeModelDirty() {
+            const d = _data();
+            if (d && typeof d.subscribe === "function") {
+                d.subscribe(_refreshLoadButton);
             }
         })();
         const _loadBtn = $("load-from-sidebar-btn");

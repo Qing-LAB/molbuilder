@@ -296,8 +296,8 @@ def test_allow_list_files_exist():
 _WORKSPACE_DATA_METHODS = (
     "getStructure|getAtoms|getSelection|getCoordinates|getElements|getUnitCell|"
     "getUnitCellInfo|getLattice|getAxisKind|getAxisKindInfo|"
-    "getVacuum|getVacuumInfo|getFrozen|getRegions|getAtomsByLabel|atomFor3Dmol|"
-    "toAddAtoms|getSource|getSourceFile|getLastSavedTo|getState|isDirty|isEmpty|"
+    "getVacuum|getVacuumInfo|getFrozen|getRegions|getAtomsByLabel|"
+    "getSource|getSourceFile|getLastSavedTo|getState|isDirty|isEmpty|"
     "installStructure|applyOp|applyPayload|setUnitCell|setLattice|"
     "setAxisKind|setVacuum|setLabel|commitPeriodicity|loadFromFile|loadFromText|"
     "generate|discard|undo|save|setFrame|addFrame|addFrames|reloadFrames|getFrame|"

@@ -59,6 +59,18 @@ var HALO_SELECT = { color: "yellow", radius: 0.7,  opacity: 0.45 };
 // Neutral default force scale (Å per force unit): identity, so raw forces draw at magnitude.
 // The consumer overrides via flags.forceScale for a physically-meaningful length.
 var DEFAULT_FORCE_SCALE = 1.0;
+// Force-vector styling (§2.4): the largest drawn force is highlighted gold; the rest ramp from
+// dim-red to orange-red by RELATIVE magnitude, and the arrow radius grows with it -- so the
+// eye lands on the atom under the most force (the relaxation "hot spot"). A consumer suppresses
+// a force (frozen atom, sub-threshold) by handing a ZERO vector: magnitudes at/under FORCE_EPS
+// draw no arrow, so the consumer owns WHICH forces show; the engine owns HOW they look.
+var FORCE_MAX_COLOR    = "#ffc400";           // gold: the single largest drawn force
+var FORCE_RADIUS_MIN   = 0.05;                // Å: the thinnest (zero-relative-magnitude) arrow
+var FORCE_RADIUS_SPAN  = 0.04;                // Å: added at the largest force
+var FORCE_EPS          = 1e-9;                // |f| at/under this -> no arrow (a suppressed force)
+function _forceRampColor(t) {                 // t in [0,1]: dim-red -> orange-red
+    return "rgb(" + Math.floor(170 + 85 * t) + "," + Math.floor(40 + 60 * t) + ",32)";
+}
 
 function _fallbackColor(label) {
     var h = 0;
@@ -165,12 +177,28 @@ function processFrame(frame, identity, flags) {
     var arrows = null;
     if (flags.showForces && Array.isArray(frame.forces)) {
         var scale = (typeof flags.forceScale === "number") ? flags.forceScale : DEFAULT_FORCE_SCALE;
-        arrows = drawn.map(function (a, m) {
-            var p = positions[m];
-            var v = frame.forces[a] || [0, 0, 0];
-            return { start: [p[0], p[1], p[2]],
-                     end:   [p[0] + v[0] * scale, p[1] + v[1] * scale, p[2] + v[2] * scale] };
+        // The KEPT (non-suppressed) set: a zero force -- the consumer's way to hide a frozen or
+        // sub-threshold atom -- draws no arrow. maxMag over this set drives the gold highlight +
+        // the color/radius ramp, so "biggest force" is relative to what is actually shown.
+        var kept = [];
+        var maxMag = 0, maxKi = -1;
+        for (var ai = 0; ai < drawn.length; ai++) {
+            var v = frame.forces[drawn[ai]] || [0, 0, 0];
+            var mag = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (mag <= FORCE_EPS) continue;
+            if (mag > maxMag) { maxMag = mag; maxKi = kept.length; }
+            kept.push({ p: positions[ai], v: v, mag: mag });
+        }
+        arrows = kept.map(function (e, ki) {
+            var t = maxMag > 0 ? e.mag / maxMag : 0;
+            return {
+                start:  [e.p[0], e.p[1], e.p[2]],
+                end:    [e.p[0] + e.v[0] * scale, e.p[1] + e.v[1] * scale, e.p[2] + e.v[2] * scale],
+                color:  ki === maxKi ? FORCE_MAX_COLOR : _forceRampColor(t),
+                radius: FORCE_RADIUS_MIN + FORCE_RADIUS_SPAN * t,
+            };
         });
+        if (!arrows.length) arrows = null;   // nothing above the suppression floor -> no overlay
     }
 
     return {

@@ -60,9 +60,12 @@ let refreshHandler = null;
 // Recovery design (per the 2026-05-27 review):
 //   Layer A -- try/finally:  every callsite wraps lock() in try {}
 //              finally { unlock() } so a thrown promise still releases.
-//   Layer B -- per-fetch timeout:  every network call in the locked
-//              window has an AbortController + setTimeout(abort, T)
-//              so a hung server can't hold the lock indefinitely.
+//   Layer B -- signal threading:  a caller may pass an AbortSignal
+//              (opts.signal) that aborts the in-flight fetch; the lock
+//              releases via Layer A's finally.  NOTE: an automatic
+//              per-fetch setTimeout(abort, T) is NOT built today
+//              (projects-sidebar.md § 13 M15 "no explicit timeouts") --
+//              a hung server without a signal relies on Layer C.
 //   Layer C -- Cancel button:  if A and B both fail (genuine JS bug
 //              or backend deadlock), the lock banner renders a
 //              user-visible Cancel that runs the registered abort

@@ -569,11 +569,11 @@ function _mvdata() {
         // read-only trajectory view (the SELECTION + structure are read off the
         // molview.data singleton — MolView conceals its internals).
         host.__molview_results_handle = _mv;
-        // NOTE: force arrows are NOT re-derived per frame.  They are built for every
-        // frame ONCE (buildArrowsPerFrame) on an overlay-option change and baked into
-        // MolView's native animation (setFrameArrows), so playback draws arrows[frame]
-        // with zero per-frame synthesis.  A per-frame onChange handler here was the
-        // cause of the slow animation and is deliberately gone.
+        // NOTE: force arrows are NOT re-derived per frame.  The inspector hands the ENGINE
+        // the filtered per-frame forces ONCE (buildForcesPerFrame) on a filter-knob change;
+        // the engine bakes + styles the arrows into the native animation, so playback draws
+        // frame t's arrows with zero per-frame synthesis.  A per-frame onChange handler here
+        // was the cause of the slow animation and is deliberately gone.
         return _mv;
     })();
 
@@ -814,104 +814,60 @@ function _mvdata() {
             ? _mv.currentFrame() : 0;
     }
 
-    // Build the ArrowSpec array for ONE frame given the current
-    // force-knob settings.  Returns [] only when the parser didn't
-    // capture forces for this frame — arrows are ALWAYS built when
-    // force data exists (whether they're DRAWN is MolView's "show
-    // overlay" toggle, not a producer-side switch), with the largest
-    // force always highlighted.
-    function _buildArrowsForFrame(frameIdx) {
-        if (!state.data) return [];
-        const frame  = state.data.frames[frameIdx];
+    // Build the per-atom force vectors for ONE frame under the current FILTER knobs.
+    // Returns a per-atom array (ORIGINAL atom order) of [fx,fy,fz]; a SUPPRESSED atom is
+    // zeroed -- frozen atoms when "hide frozen" is on (their forces are constraint-balancing
+    // artefacts, not physical free-atom forces) and sub-threshold magnitudes -- which the
+    // engine renders as NO arrow (process.js §2.4).  This decides WHICH forces show; the
+    // ENGINE owns the styling (gold max-highlight, magnitude colour/radius ramp) and the
+    // scale (the forceScale flag).  null when the parser captured no forces for this frame.
+    function _buildForcesForFrame(frameIdx) {
+        if (!state.data) return null;
         const forces = state.data.forces && state.data.forces[frameIdx];
-        if (!frame || !forces || !forces.length) return [];
-
-        const fscale    = parseFloat($("force-scale").value) || 1.0;
-        const fmin      = parseFloat($("force-min").value)   || 0.0;
-        const highlight = true;   // largest force is always highlighted
-        // When the "Hide frozen atoms" toggle is on, skip force
-        // vectors on frozen atoms — their forces are constraint-
-        // balancing artefacts, not physical free-atom forces.
+        if (!forces || !forces.length) return null;
+        const fmin = parseFloat($("force-min").value) || 0.0;
         const hideFrozen = $("hide-frozen") && $("hide-frozen").checked;
         const frozen = hideFrozen ? _frozenSet() : null;
-
-        const mags = forces.map(function (f) {
-            return Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+        return forces.map(function (f, i) {
+            if (frozen && frozen.has(i)) return [0, 0, 0];
+            const mag = Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+            if (mag < fmin) return [0, 0, 0];
+            return [f[0], f[1], f[2]];
         });
-        // Recompute max excluding frozen atoms when the filter is on
-        // — otherwise the "highlight max" arrow would still gold the
-        // frozen-atom max and the user wouldn't see the gold marker
-        // move to the true free-atom max.
-        let maxMag = 0, maxIdx = -1;
-        for (let i = 0; i < mags.length; i++) {
-            if (frozen && frozen.has(i)) continue;
-            if (mags[i] > maxMag) { maxMag = mags[i]; maxIdx = i; }
-        }
-
-        const arrows = [];
-        for (let i = 0; i < frame.length && i < forces.length; i++) {
-            if (frozen && frozen.has(i)) continue;
-            const mag = mags[i];
-            if (mag < fmin) continue;
-            const a = frame[i], f = forces[i];
-            const sx = a[1], sy = a[2], sz = a[3];
-            const ex = sx + f[0] * fscale;
-            const ey = sy + f[1] * fscale;
-            const ez = sz + f[2] * fscale;
-
-            // Gold for the highlighted-max arrow; dim red ->
-            // bright orange-red ramp by magnitude for the rest.
-            let color;
-            if (highlight && i === maxIdx) {
-                color = "#ffc400";
-            } else {
-                const t = maxMag > 0 ? mag / maxMag : 0;
-                const r = Math.floor(170 + 85 * t);
-                const g = Math.floor( 40 + 60 * t);
-                color = "rgb(" + r + "," + g + ",32)";
-            }
-            arrows.push({
-                start:  [sx, sy, sz],
-                end:    [ex, ey, ez],
-                color:  color,
-                radius: 0.05 + 0.04 * (maxMag > 0 ? mag / maxMag : 0),
-            });
-        }
-        return arrows;
     }
 
     /* ------------------------------------------------------------------ */
     /*  Force-vector overlay                                               */
     /* ------------------------------------------------------------------ */
     //
-    // MolView draws the arrows it is HANDED (molview-module.md §14.5.1); the
-    // inspector owns the force→arrow mapping.  Arrows are built for EVERY frame
-    // ONCE (buildArrowsPerFrame) whenever a force PARAMETER changes (scale,
-    // threshold, exclude-frozen) and baked into MolView's native animation via
-    // handle.setFrameArrows -- so playback draws arrows[frame] with NO per-frame
-    // synthesis (the animation is slow otherwise).  Whether the arrows are DRAWN
-    // is MolView's "show overlay" view-toggle, not a producer-side switch here.
+    // The ENGINE builds + styles the force arrows from raw per-frame forces
+    // (process.js §2.4): the inspector hands FILTERED forces (below) + drives the
+    // forceScale flag, and MolView owns the gold max-highlight, the magnitude
+    // colour/radius ramp, and WHETHER they're drawn (its "show overlay" toggle).
 
-    // Build the FULL per-frame arrow set: arrowsPerFrame[t] = the arrows for
-    // frame t under the current knob settings.  O(frames × atoms), done ONCE per
-    // option change -- never per playback frame.
-    function buildArrowsPerFrame() {
-        if (!state.data || !Array.isArray(state.data.frames)) return [];
-        const apf = new Array(state.data.frames.length);
+    // The FULL per-frame force set: forcesPerFrame[t] = frame t's filtered per-atom
+    // vectors.  O(frames × atoms), rebuilt only when a FILTER knob changes (threshold /
+    // hide-frozen) -- scale is a cheap flag, never a rebuild.  null when no forces exist.
+    function buildForcesPerFrame() {
+        if (!state.data || !Array.isArray(state.data.frames)) return null;
+        const fpf = new Array(state.data.frames.length);
+        let any = false;
         for (let t = 0; t < state.data.frames.length; t++) {
-            apf[t] = _buildArrowsForFrame(t);
+            fpf[t] = _buildForcesForFrame(t);
+            if (fpf[t]) any = true;
         }
-        return apf;
+        return any ? fpf : null;
     }
 
-    // Re-derive the whole per-frame overlay set + hand it to MolView in one shot.
-    // Wired to the force knobs (parameter change) and called once at load -- NOT
-    // per frame.  MolView redraws the current frame in place (preserving the
-    // overlay's on/off visibility).  ``drawForces`` keeps its name so the knob
-    // wiring reads unchanged.
+    // Re-hand the filtered per-frame forces to MolView after a FILTER knob change
+    // (threshold / hide-frozen).  setForces re-bakes the arrow overlay IN PLACE -- no movie
+    // reload -- preserving the overlay's on/off visibility.  Scale is separate (the cheap
+    // forceScale flag), so it never routes here.  ``drawForces`` keeps its name so the
+    // append path + knob wiring read unchanged.
     function drawForces() {
-        if (_mv && typeof _mv.setFrameArrows === "function") {
-            _mv.setFrameArrows(buildArrowsPerFrame());
+        const d = _mvdata();
+        if (d && typeof d.setForces === "function") {
+            d.setForces(buildForcesPerFrame());
         }
     }
 
@@ -966,11 +922,15 @@ function _mvdata() {
                 return [atom[1], atom[2], atom[3]];
             });
         });
+        // Force scale (Å per force unit) is a cheap store flag the engine reads; set it from
+        // the knob so the first arrow bake uses the right length.  Filter knobs (min /
+        // hide-frozen) ride the forces payload below.
+        _mvdata().setViewFlag("forceScale", parseFloat($("force-scale").value) || 1.0);
         try {
-            // Build all frames into MolView's native animation ONCE, with the force
-            // arrows for every frame baked in (arrowsPerFrame) -- playback then swaps
-            // frames + arrows natively, no per-frame synthesis.
-            _mvdata().reloadFrames(coordFrames, { arrowsPerFrame: buildArrowsPerFrame() });
+            // Build all frames into MolView's native animation ONCE, handing the filtered raw
+            // per-frame forces -- the ENGINE bakes + styles the arrows (process.js §2.4);
+            // playback then swaps frames + arrows natively, no per-frame synthesis.
+            _mvdata().reloadFrames(coordFrames, { forces: buildForcesPerFrame() });
         } catch (e) {
             setStatus("Viewer failed to load frames: "
                 + (e && e.message ? e.message : String(e)), "error");
@@ -2432,20 +2392,12 @@ function _mvdata() {
             if (!appendedOk) {
                 rebuildModel(wasAtEnd ? n - 1 : Math.min(prevFrame, n - 1));
             } else {
-                // Arrows: append ONLY the NEW frames' arrows (the coords companion) so
-                // a poll doesn't rebuild the whole per-frame overlay set.  EXCEPTION:
-                // if the excluded FROZEN set changed (a sidecar landed), every frame's
-                // arrows change -> full rebuild.  Build BEFORE moving the playhead so
-                // the tail draws its arrows.
-                if (_frozenFingerprint(oldData) !== _frozenFingerprint(state.data)) {
-                    drawForces();   // excluded set changed -> re-derive ALL frames
-                } else {
-                    const newArrows = [];
-                    for (let i = oldLen; i < newLen; i++) {
-                        newArrows.push(_buildArrowsForFrame(i));
-                    }
-                    _mvdata().appendFrameArrows(newArrows);
-                }
+                // Re-hand the filtered per-frame forces (now including the appended tail).
+                // setForces re-bakes the arrow overlay IN PLACE (no movie reload), so ONE call
+                // covers both a plain append AND a frozen-set change (a sidecar landing).
+                // (Perf note: this re-bakes every frame's arrows per poll; an incremental
+                // force-append is a future optimisation if long live trajectories need it.)
+                drawForces();
                 // Follow the tail if the user was watching the end; otherwise leave
                 // the playhead where it is.
                 if (wasAtEnd) showFrame(n - 1);
@@ -2751,24 +2703,28 @@ function _mvdata() {
     // setAnimation partial updates per § 3.9.
 
     // Force-vector PRODUCER parameters — the trajectory-specific controls (task
-    // #34).  Force arrows are ALWAYS built when the file has force data (with the
-    // largest force highlighted) and handed to MolView; whether they're DRAWN is
-    // MolView's "show overlay" view-toggle, not a control here.  These knobs only
-    // shape HOW the arrows are computed; each re-derives the whole per-frame arrow
-    // set and re-hands it (drawForces → handle.setFrameArrows), and MolView redraws
-    // the current frame in place with the overlay's on/off visibility unchanged.
+    // #34).  The inspector hands the ENGINE filtered raw forces + drives the forceScale
+    // flag; the engine builds + styles the arrows (gold max-highlight + magnitude ramp,
+    // process.js §2.4).  Whether they're DRAWN is MolView's "show overlay" view-toggle.
+    // SCALE is a cheap flag (in-place length re-bake); the FILTER knobs (min / hide-frozen)
+    // re-hand the forces (drawForces → data.setForces, in-place re-bake), and MolView
+    // redraws the current frame with the overlay's on/off visibility unchanged.
     // Everything else the old aside owned (unit cell, atom-index labels, playback
     // speed / loop, the atom-list Inspect panel + Clear button, and the per-frame
     // Save-XYZ button) is MolView's: playback + speed + loop are its frame bar,
     // cell + labels are its knob bar, selection + measurement are its panel, and
     // per-frame structure export is its Export knob (current-frame-correct).
     _on($("force-scale"), "input", (e) => {
-        $("force-scale-val").textContent = parseFloat(e.target.value).toFixed(1);
-        drawForces();
+        const v = parseFloat(e.target.value) || 1.0;
+        $("force-scale-val").textContent = v.toFixed(1);
+        // Scale is a cheap store flag: the engine re-bakes arrow LENGTH in place (no forces
+        // rebuild), so dragging the slider is smooth.
+        const d = _mvdata();
+        if (d && typeof d.setViewFlag === "function") d.setViewFlag("forceScale", v);
     });
+    // The FILTER knobs change WHICH forces show (min threshold / exclude frozen), so they
+    // re-hand the filtered per-frame forces (drawForces -> setForces, in-place re-bake).
     _on($("force-min"),     "input",  drawForces);
-    // "Exclude frozen atoms" is a pure force-arrow filter (MolView owns atom
-    // hiding), so toggling it only re-derives the arrows.
     _on($("hide-frozen"),   "change", drawForces);
 
     /* ---- Export all plot data as CSV ---------------------------- */

@@ -186,7 +186,7 @@ def _resolve_within_roots(raw_path: str) -> Path:
 #
 # Structure files (.xyz / .pdb) may carry a paired ``.molstruct.json``
 # sidecar holding region labels + frozen-atom indices (see
-# ``molbuilder/parsers/molstruct_json.py``).  All file-tree operations
+# ``molbuilder/sidecars/molstruct.py``).  All file-tree operations
 # that touch a structure file -- rename / move / copy -- must keep the
 # sidecar in lockstep.  Without pairing, renaming ``water.xyz`` to
 # ``bridge.xyz`` orphans ``water.molstruct.json`` (sidecar's stem no
@@ -197,9 +197,9 @@ def _resolve_within_roots(raw_path: str) -> Path:
 # sidecars + what the sidecar's path looks like.  Code that handles
 # structure files in other contexts (the modify-tab Save flow, the
 # transport script generator, ...) reads the sidecar directly via
-# ``molstruct_json.sidecar_path_for``; this helper exists to give the
+# ``molstruct.sidecar_path_for``; this helper exists to give the
 # files blueprint a layered, file-tree-shaped view (the blueprint
-# doesn't import from parsers/molstruct_json directly to keep its
+# doesn't import from sidecars/molstruct directly to keep its
 # dependency graph narrow).
 
 _STRUCTURE_SUFFIXES = (".xyz", ".pdb")

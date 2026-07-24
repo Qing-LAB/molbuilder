@@ -216,7 +216,7 @@ _DATA_SURFACE = sorted([
     "getVacuumInfo",
     "getAxisKindInfo", "getAtomsByLabel", "getLabelAtoms", "getLabels",
     "getFrozen", "getRegions",
-    "atomFor3Dmol", "toAddAtoms", "draftIdentity", "suspendPersist",
+    "draftIdentity", "suspendPersist",
     "resumePersist", "isPersistSuspended", "onPersistStateChange",
     "commitPeriodicity", "setUnitCell", "setLattice", "setCellOrigin",
     "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
@@ -224,11 +224,14 @@ _DATA_SURFACE = sorted([
     "save", "load",
     "generate", "applyOp",
     "discard", "undo", "reloadFrames", "addFrame", "addFrames", "setFrame",
-    # setFrameArrows: per-frame force overlays baked into the native animation;
+    # setForces: swap the per-frame forces + re-bake the arrow overlay IN PLACE (the engine
+    # builds + styles the arrows from raw forces, process.js §2.4; the consumer suppresses an
+    # atom's arrow by handing a zero vector).  Replaced the retired setFrameArrows/
+    # appendFrameArrows pre-built-arrow doors (task #74).
     # onFrameChange: the frame-only notification channel the frame bar subscribes
     # to (separate from the selection store, so a frame swap doesn't re-render the
     # panel + steal input focus during playback).
-    "setFrameArrows", "appendFrameArrows", "onFrameChange",
+    "setForces", "onFrameChange",
     # getForces/currentForces removed with the frame-series (task #33): forces are
     # the CONSUMER's data now, and coords are owned by the embed movie -- getFrame
     # reads a frame through the handle, not a data-model coords copy.

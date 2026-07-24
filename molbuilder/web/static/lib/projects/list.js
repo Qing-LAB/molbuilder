@@ -1,12 +1,11 @@
-/* projects/list.js -- breadcrumb + directory listing + per-entry buttons.
+/* projects/list.js -- breadcrumb + directory listing + per-entry kebab menu.
  *
- * Owns the DOM under #ps-breadcrumb + #ps-list.  Two click paths:
+ * Owns the DOM under #ps-breadcrumb + #ps-list.  Click paths:
  *
- *   * Click an entry (directory) -> openDir(fullPath); breadcrumb
- *     redraws + list re-renders.
- *   * Click a per-entry "view" or "×" button -> direct call into
- *     preview.showPreview() / confirmAndDelete().  stopPropagation
- *     so the row click doesn't ALSO fire.
+ *   * Click a directory row -> openDir(fullPath); breadcrumb redraws + list re-renders.
+ *   * Single/double-click a file row -> setShared (preview) / publishCommit (commit).
+ *   * The per-row ``⋯`` kebab -> the contextual action menu (View / Download / Rename /
+ *     Move / Copy / Delete; plus Delete-project / Delete-directory on dir rows).
  *
  * Registers openDir as state.setRefreshHandler(handler) at init time
  * so state.refresh() / state.saveToWorkspace() can ask for a re-list
@@ -611,28 +610,6 @@ function _suggestCopyName(name) {
   const dot = name.lastIndexOf(".");
   if (dot <= 0) return name + " copy";
   return name.slice(0, dot) + " copy" + name.slice(dot);
-}
-
-async function _confirmAndDelete(fullPath, entry) {
-  const what = entry.kind === "directory" ? "directory" : "file";
-  if (!window.confirm(
-    "Delete " + what + " '" + entry.name + "'?\n\n"
-    + "This cannot be undone."
-  )) return;
-  const j = await apiDelete(fullPath, entry.kind === "directory");
-  // Phase 6e fifth-review LANDMINE-A: filter user-initiated
-  // Cancel before treating as failure.  No signal is wired in
-  // today's caller, so this is defensive — but the public
-  // ``projects.deleteEntry`` contract advertises ``opts.signal``,
-  // so the next caller that adopts a Cancel widget would hit
-  // ``window.alert("aborted")`` without this guard.
-  if (j && j.aborted) return;
-  if (!j.ok) {
-    window.alert(j.error || "Delete failed.");
-    return;
-  }
-  const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
-  if (dir) await openDir(dir);
 }
 
 function _renderList(entries, currentPath) {

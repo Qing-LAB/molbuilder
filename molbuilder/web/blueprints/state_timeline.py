@@ -25,6 +25,7 @@ here and renamed to match its real module; the door — and ``blueprints/working
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from flask import Blueprint, jsonify, request
@@ -33,6 +34,7 @@ from molbuilder import persist
 from molbuilder.projects import projects_root
 
 bp = Blueprint("state_timeline", __name__)
+_log = logging.getLogger(__name__)
 
 # Opaque session snapshots filed under ``<workspace_id>.<state_index>.wc.json``.
 # NEVER parsed as structure; the server just moves JSON bytes.  Validate the id
@@ -40,6 +42,17 @@ bp = Blueprint("state_timeline", __name__)
 _WS_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")   # no dots -> unambiguous index parse
 _STATE_SUFFIX = ".wc.json"
 _STATE_WINDOW = 30                            # rolling window kept on each write
+
+# Residue accounting (workspace-contract.md §4.2).  The rolling window bounds each
+# LIVE workspace to <= _STATE_WINDOW files, but a crashed / closed tab leaves its
+# whole timeline behind: a new tab mints a fresh workspace_id, so the old id's files
+# are never touched again.  Crash RECOVERY is deliberately out of scope, and the
+# files are harmless (hidden dot-dir, never listed by the sidebar, globs are per-id
+# so they never slow anything).  We do NOT garbage-collect them -- but we WARN once
+# per process when the pile crosses this many files so an operator can wipe
+# ``<projects_root>/.molbuilder_workspace/states/`` by hand if they care.
+_RESIDUE_WARN_FILES = 300                     # ~10 abandoned tabs' worth
+_residue_warned = False
 
 #: Top-level workspace home under the projects root (gitignore-able; created
 #: lazily).  Same on-disk name the module has always used, so existing state
@@ -122,7 +135,29 @@ def ws_write_state():
             _state_path(ws_id, old).unlink()
         except OSError:
             pass
+    _warn_if_residue_piling(d)
     return jsonify({"ok": True})
+
+
+def _warn_if_residue_piling(state_dir) -> None:
+    """WARN once per process if abandoned-workspace snapshots have piled up.  We do
+    not GC them (crash recovery is out of scope, and they're harmless), but a large
+    pile is worth surfacing so an operator can clear the dir by hand."""
+    global _residue_warned
+    if _residue_warned:
+        return
+    try:
+        total = sum(1 for _ in state_dir.glob(f"*{_STATE_SUFFIX}"))
+    except OSError:
+        return
+    if total >= _RESIDUE_WARN_FILES:
+        _residue_warned = True
+        _log.warning(
+            "workspace state-timeline residue: %d snapshot files under %s -- these "
+            "are leftovers from closed/crashed tabs (never garbage-collected; crash "
+            "recovery is out of scope). Harmless, but you may delete the directory to "
+            "reclaim space.", total, state_dir,
+        )
 
 
 @bp.route("/api/state-timeline/read", methods=["POST"])

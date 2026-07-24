@@ -4,8 +4,7 @@
  *   (data-model.js).  The factory mounts at ``window.molbuilder.molview._createStateTimeline``
  *   (browser global) AND exports ``createStateTimeline`` under CommonJS (node tests).  NOT a
  *   public surface — the data model owns the public ``save()`` / ``load()`` / ``undo()`` /
- *   ``state_index`` and delegates them here.  Sibling-module precedent: ``_frame-series.js``
- *   (``_createFrameSeries``).
+ *   ``state_index`` and delegates them here.
  *
  * ROLE: the push-only INDEXED history mechanics (workspace-contract §4.7 / molview-module §19.5)
  *   — owns the timeline position (``stateIndex``), the ``uncommitted`` flag, the ordered

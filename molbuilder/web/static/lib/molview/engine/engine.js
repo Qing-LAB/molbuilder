@@ -22,8 +22,8 @@
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
  * §4) that ALSO publishes the transitional browser global
  * (``window.molbuilder.molview.engine.create``, §3) so still-classic consumers (mount.js /
- * data-model.js) keep reading it until they convert. process/embedIo are read via the global
- * (published by their leaf modules) -- NOT imported.
+ * data-model.js) keep reading it until they convert. process/embedIo are IMPORTED directly from
+ * the sibling submodules (below); the globals those leaf modules publish are TEST SEAMS only.
  */
 "use strict";
 
@@ -88,13 +88,15 @@ function create(handle, opts) {
             return processFrame(_frameInput(f), _identity(), _flags);
         });
     }
-    // The scene-level cell box (§7.3): drawn only when showCell is on; wraps the atoms.
-    function _cellBox() {
-        if (!_flags.showCell || !_data.cell) return null;
+    // The cell GEOMETRY {lattice, origin}: a property of the loaded STRUCTURE, read from the one
+    // data model. It rides the load (_structuralRegen -> loadFrames) so the embed always holds
+    // the real anchor corner. VISIBILITY is a SEPARATE plain boolean (_flags.showCell): the embed
+    // draws the box iff showCell is on, using this geometry. Geometry is NEVER smuggled through
+    // the visibility toggle (the old bug: geometry gated behind visibility -> box at [0,0,0] when
+    // toggled on after a hidden load).
+    function _cellGeom() {
+        if (!_data || !_data.cell) return null;
         return { lattice: _data.cell.lattice, origin: _data.cell.origin };
-    }
-    function _sceneCell() {
-        return _data.cell ? _data.cell.lattice : null;   // explicit a/b/c basis (axes)
     }
     // Re-apply the CURRENT frame's index-keyed overlays (labels + halos) + the scene cell/
     // axis. Arrows are baked into the movie at load (structural), so a swap/overlay-refresh
@@ -102,10 +104,10 @@ function create(handle, opts) {
     function _applyCurrentOverlays() {
         var pf = processFrame(_frameInput(_frame), _identity(), _flags);
         var overlay = {
-            labels:  _flags.showIndex ? pf.labels : false,
-            halos:   pf.halos,
-            cellBox: _cellBox(),
-            axes:    !!_flags.showAxis,
+            labels:      _flags.showIndex ? pf.labels : false,
+            halos:       pf.halos,
+            cellVisible: !!_flags.showCell,   // plain on/off; the box GEOMETRY rode the load.
+            axes:        !!_flags.showAxis,
         };
         // Multi-frame: arrows are BAKED into the movie (a swap shows them free), so they are
         // NOT re-handed here -- that would double the layer. Single static frame: no movie,
@@ -173,7 +175,9 @@ function create(handle, opts) {
             embedIo.beginBatch();   // §1/§5: process all frames + overlays, then 3Dmol paints ONCE
             try {
                 var processed = _processAll();
-                embedIo.loadFrames({ frames: processed, cell: _sceneCell(), cellBox: _cellBox() });
+                // Geometry (_cellGeom) is handed unconditionally so the anchor corner survives a
+                // load with the cell hidden; VISIBILITY rides the _applyCurrentOverlays pass below.
+                embedIo.loadFrames({ frames: processed, cellBox: _cellGeom() });
                 // loadFrames resets to frame 0; restore the shown frame if the user was elsewhere.
                 if (_frame > 0 && _frame < processed.length) embedIo.swapFrame(_frame);
                 _applyCurrentOverlays();
@@ -262,6 +266,19 @@ function create(handle, opts) {
         _notifyFrame();
         return frameCount();
     }
+    // FORCE DATA update (§8): swap the per-frame forces and re-bake the arrow overlay IN PLACE --
+    // the coordinate movie is untouched, so a force-filter change (threshold / hide-frozen) is a
+    // cheap overlay refresh, not a reload flash. The consumer hands forcesPerFrame in ORIGINAL
+    // atom order (one per-atom vector list per frame); a zero vector suppresses that atom's arrow
+    // (process.js §2.4), and null clears the whole overlay. Multi-frame re-bakes every frame's
+    // arrows; a static frame's arrows ride the overlay refresh.
+    function setForces(forcesPerFrame) {
+        if (!_data || _locked) return;
+        _data.forcesPerFrame = Array.isArray(forcesPerFrame) ? forcesPerFrame : null;
+        _flags = _readFlags();
+        if (frameCount() > 1) _arrowRefresh();
+        else _applyCurrentOverlays();
+    }
     // NATIVE SWAP (§3): the frame channel. Set the shown frame + re-apply its overlays. No busy.
     function showFrame(i) {
         if (!_data || _locked) return;            // an update is in flight -> refuse until ready.
@@ -318,6 +335,7 @@ function create(handle, opts) {
     return {
         setData:       setData,
         appendFrames:  appendFrames,
+        setForces:     setForces,
         showFrame:     showFrame,
         render:        render,
         frameCount:    frameCount,

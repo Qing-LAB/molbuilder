@@ -631,6 +631,49 @@ def api_resolve_cell():
                     "resolved_cell_origin": resolved_origin})
 
 
+@bp.route("/api/structure/save", methods=["POST"])
+def api_structure_save():
+    """FILE-ONLY save through the ONE authority (structure-authority.md § 3.3), the
+    symmetric inverse of the file-only load below.  The browser hands the SETTLED model
+    as a scratch blob ``{xyz, sidecar}``; the SERVER reconstructs the Structure
+    (``StructureCodec.from_scratch``) and writes the ``<stem>.xyz`` + ``<stem>.molstruct.json``
+    pair via ``StructureCodec.write``.  Python owns the pairing, the write order/atomicity,
+    AND the sidecar schema -- ``write`` stamps ``schema_version`` + a real ``structure_hash``
+    (``molstruct.to_dict``), so the pair the load door reads back is VALID.  The browser
+    never authors the sidecar envelope (the drift that made a browser-written sidecar
+    unloadable).  Body: ``{"path": "<project-relative .xyz>", "blob": {xyz, sidecar},
+    "overwrite": bool}``.  Returns ``{ok:true, path}`` | ``{ok:false, needsOverwrite:true}``
+    (409, drives the tab's overwrite dialog) | ``{ok:false, error}``."""
+    from molbuilder.web.blueprints.files import _resolve_within_roots, _PickerError
+    from molbuilder.workingcopy_structure import StructureCodec
+    body = request.get_json(silent=True) or {}
+    path = body.get("path")
+    blob = body.get("blob")
+    overwrite = bool(body.get("overwrite"))
+    if not isinstance(path, str) or not path:
+        return jsonify({"ok": False, "error": "missing or invalid 'path'"}), 400
+    if not isinstance(blob, dict) or not blob.get("xyz"):
+        return jsonify({"ok": False, "error": "missing or invalid 'blob' (need {xyz, sidecar})"}), 400
+    try:
+        resolved = _resolve_within_roots(path)   # save-as target need not exist yet
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    # Overwrite gate: the GEOMETRY file's existence drives the tab's overwrite dialog
+    # (mirrors the /api/files/write 409 contract) -- refuse unless the caller confirmed.
+    if resolved.exists() and not overwrite:
+        return jsonify({"ok": False, "needsOverwrite": True,
+                        "error": f"file already exists: {path}"}), 409
+    try:
+        struct = StructureCodec().from_scratch(blob)
+    except Exception as exc:  # noqa: BLE001 -- malformed blob -> 400
+        return jsonify({"ok": False, "error": f"could not serialise structure: {exc}"}), 400
+    try:
+        StructureCodec().write(struct, resolved)
+    except Exception as exc:  # noqa: BLE001 -- disk / permission -> 500
+        return jsonify({"ok": False, "error": f"could not save {path}: {exc}"}), 500
+    return jsonify({"ok": True, "path": path})
+
+
 @bp.route("/api/build/load", methods=["POST"])
 def api_build_load():
     """Accept either:

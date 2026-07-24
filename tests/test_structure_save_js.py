@@ -44,8 +44,9 @@ def _run_node(snippet: str) -> object:
             // there that records each call (path + overwrite) and returns a configurable
             // envelope queue (default: success), so these tests pin save.js's COMPOSITION
             // (name normalisation, overwrite retry, refresh, result mapping).  The write
-            // itself (exportFile -> projects.writeFile x2) is tested elsewhere.  Recorded
-            // into the same ``calls`` array the tests read via ``c._saveCalls()``.
+            // itself (exportFile -> POST /api/structure/save, the server writing the pair
+            // via StructureCodec.write) is covered by test_structure_save_endpoint.py.
+            // Recorded into the same ``calls`` array the tests read via ``c._saveCalls()``.
             global.molbuilder = global.molbuilder || {{}};
             global.molbuilder.projects = global.molbuilder.projects || {{}};
             global.molbuilder.projects.parser = {{

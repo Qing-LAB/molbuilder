@@ -24,18 +24,18 @@
  * INPUT SHAPES (all plain data -- no 3Dmol objects, no DOM):
  *   Movie = {
  *     frames:  ProcessedFrame[],     // §7.3; frames[0] establishes atom identity + count.
- *     cell:    lattice|null,         // explicit a/b/c lattice (the setStructure `lattice`).
- *     cellBox: {lattice,origin}|null // the resolved box that WRAPS the atoms.
+ *     cellBox: {lattice,origin}|null // the ONE cell geometry: a/b/c basis + anchor origin.
  *   }
  *   ProcessedFrame = { positions:Vec3[], elements:string[],
  *                      arrows:Arrow[]|null, labels:LabelOpts|null, halos:HaloOverlay|null }
  *   FrameTail = { frames: ProcessedFrame[] }               // the NEW frames only (§6.2).
- *   Overlay   = { labels?, halos?, arrows?, cellBox?, axes? } // for the CURRENT frame; a field
+ *   Overlay   = { labels?, halos?, arrows?, cellVisible?, axes? } // for the CURRENT frame; a field
  *                                                             // that is `undefined` is not touched.
  *
- * The Arrow / LabelOpts / HaloOverlay / cellBox specs are exactly what the embed doors accept
- * (setArrows / setLabels / setOverlays / setCell) -- process.js builds them; embedIo forwards
- * them verbatim. embedIo never interprets their fields.
+ * cellVisible is a PLAIN on/off boolean -- the cell VISIBILITY. The box GEOMETRY {lattice,origin}
+ * is STRUCTURE data and rides the Movie.cellBox at load, NOT the overlay. The Arrow / LabelOpts /
+ * HaloOverlay specs are exactly what the embed doors accept (setArrows / setLabels / setOverlays);
+ * process.js builds them; embedIo forwards them verbatim. embedIo never interprets their fields.
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
  * §4).  engine.js IMPORTS it directly; the browser-global publish at the bottom is a TEST SEAM
@@ -63,7 +63,7 @@ function _applyOverlays(handle, o) {
     if (o.labels  !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
     if (o.halos   !== undefined && typeof handle.setOverlays === "function") handle.setOverlays(o.halos);
     if (o.arrows  !== undefined && typeof handle.setArrows   === "function") handle.setArrows(o.arrows);
-    if (o.cellBox !== undefined && typeof handle.setCell     === "function") handle.setCell(o.cellBox);
+    if (o.cellVisible !== undefined && typeof handle.setCell === "function") handle.setCell(!!o.cellVisible);
     if (o.axes    !== undefined && typeof handle.setAxes     === "function") handle.setAxes(o.axes);
 }
 
@@ -92,7 +92,6 @@ function createEmbedIo(handle) {
             var f0 = frames[0];
             handle.setStructure({
                 xyz:     _buildXyz(f0.elements, f0.positions),
-                lattice: movie.cell !== undefined ? movie.cell : null,
                 cellBox: movie.cellBox !== undefined ? movie.cellBox : null,
             });
             if (frames.length > 1 && typeof handle.setAnimation === "function") {
@@ -127,7 +126,7 @@ function createEmbedIo(handle) {
     }
 
     // OVERLAY REFRESH (§8): (re)apply overlays on the current frame without rebuilding
-    // the movie. `overlay` is { labels?, halos?, arrows?, cellBox?, axes? }.
+    // the movie. `overlay` is { labels?, halos?, arrows?, cellVisible?, axes? }.
     function applyOverlays(overlay) {
         beginBatch();                                  // labels + halos + cell + axis -> ONE render
         try { _applyOverlays(handle, overlay); } finally { endBatch(); }
