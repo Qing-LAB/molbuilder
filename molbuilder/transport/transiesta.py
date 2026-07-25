@@ -705,6 +705,36 @@ class TransiestaEngine:
         issues: List[Issue] = []
         regions = struct.regions or {}
 
+        # Device transport-axis k-points MUST be 1 (SCIENTIFIC-AUDIT FIX).
+        # The transport direction (A3 = index 2) is treated by NEGF as an OPEN
+        # boundary (semi-infinite leads); it is NOT part of the BZ sum.  kz > 1
+        # imposes a fake Bloch periodicity along the wire -> physically WRONG
+        # transmission with NO runtime error.  _emit_k_mesh writes
+        # cfg.k_mesh_transverse[2] straight into the device kgrid, and
+        # TransportConfig has no validator, so a bad preset (e.g. (4,4,2))
+        # silently shipped a Bloch-periodic 'transport' run.  The cross-run
+        # `transport preflight` CLI catches this (preflight.py C2), but the web
+        # Generate path dispatches to THIS engine preflight -- so the invariant
+        # must live here too (transiesta-workflow.md § 1 / § 4 / I8).
+        try:
+            kz = int(cfg.k_mesh_transverse[2])
+        except (TypeError, ValueError, IndexError):
+            kz = 1
+        if kz != 1:
+            issues.append(Issue(
+                severity="error",
+                message=(
+                    f"Device transport-axis k-points = {kz} (must be 1).  The "
+                    f"transport direction is handled by NEGF as an open "
+                    f"boundary and is NOT Brillouin-zone sampled; kz > 1 "
+                    f"imposes a fake Bloch periodicity along the wire and "
+                    f"gives physically wrong transmission.  Set "
+                    f"k_mesh_transverse = (Nx, Ny, 1) (only the two TRANSVERSE "
+                    f"directions are sampled)."
+                ),
+                where="config.k_mesh_transverse",
+            ))
+
         # No silent absorption (sidecar-contract.md § 6): TranSIESTA
         # consumes only the canonical 2-terminal region labels.  A
         # structure carrying any OTHER region label has it silently

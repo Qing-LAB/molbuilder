@@ -221,6 +221,28 @@ def test_preflight_clean_structure_no_errors(labeled_device, default_cfg):
     assert errs == []
 
 
+def test_preflight_errors_on_device_transport_kz_gt_1(labeled_device):
+    """SCIENTIFIC-AUDIT FIX (transport FN1): the device transport axis
+    (A3 = k_mesh_transverse[2]) MUST be 1 -- NEGF treats z as an open
+    boundary, so kz>1 imposes a fake Bloch periodicity and gives wrong
+    transmission with no runtime error.  The web Generate path gates on
+    THIS engine preflight, so the invariant must live here (not only in
+    the CLI-only cross-run `transport preflight`)."""
+    from molbuilder.config.transport import TransportConfig
+    bad = TransportConfig(k_mesh_transverse=(4, 4, 2))
+    issues = get_engine("transiesta").preflight(labeled_device, bad)
+    kz_errs = [i for i in issues
+               if i.where == "config.k_mesh_transverse"
+               and i.severity == "error"]
+    assert len(kz_errs) == 1, f"kz=2 must error; got {issues}"
+    # transverse-only sampling is fine:
+    ok = TransportConfig(k_mesh_transverse=(4, 4, 1))
+    ok_issues = get_engine("transiesta").preflight(labeled_device, ok)
+    assert not [i for i in ok_issues
+                if i.where == "config.k_mesh_transverse"
+                and i.severity == "error"]
+
+
 def test_preflight_warns_on_unknown_region_label(labeled_device, default_cfg):
     """No silent absorption (sidecar-contract.md § 6): a region label
     TranSIESTA does NOT consume (anything beyond L-electrode /

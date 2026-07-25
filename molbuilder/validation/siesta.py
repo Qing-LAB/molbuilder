@@ -500,8 +500,9 @@ def _validate_siesta(struct: Structure, cfg,
 
     # Net dipole > 1 D in vacuum (no dipole correction).  Image-image
     # dipole interactions in PBC shift molecular energies by an amount
-    # that scales with the dipole magnitude squared and inversely with
-    # the cell size.  We use a heuristic EN-based partial-charge
+    # that scales with the dipole magnitude squared and as 1/L^3 with
+    # the cell size (dipole-dipole ~ 1/r^3).  We use a heuristic EN-based
+    # partial-charge
     # estimate (see chemistry.estimate_dipole_moment_debye) -- not a
     # research-grade dipole, but enough to flag "polar molecule in a
     # finite vacuum cell" and recommend a larger cell or an explicit
@@ -524,11 +525,13 @@ def _validate_siesta(struct: Structure, cfg,
         if dipole > 1.0:
             issues.append(Issue(
                 "warn",
-                f"estimated net dipole = {dipole:.1f} D in a vacuum cell "
-                f"with no dipole correction -- image-image dipole "
-                f"interactions will shift energies; consider a larger "
-                f"vacuum on the structure or enable SIESTA's SlabDipoleCorrection "
-                f"(estimate from EN-based partial charges; rough +/- 50%)",
+                f"estimated net dipole = {dipole:.1f} D in a 3-D vacuum cell "
+                f"-- image-image dipole interactions shift energies (~1/L^3).  "
+                f"For an isolated molecule the fix is a LARGER vacuum box "
+                f"(dipole-dipole falls off fast).  (SIESTA's SlabDipoleCorrection "
+                f"is for a 2-D SLAB with vacuum on one axis, NOT a 3-D "
+                f"molecule.)  Estimate from EN-based partial charges; rough "
+                f"+/- 50%.",
                 "geometry.dipole",
             ))
 
