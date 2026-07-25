@@ -49,6 +49,7 @@
 | **HOST bundle producer** — `molbuilder fdf … --stage-strategy <s> --jobset`: render stage `.fdf`s + pseudos + `job-set.json` in one command (§ 5 step 2-3) | **built** (`cli.py::_emit_siesta_multi_stage`, opt-in `--jobset`) |
 | Per-stage resource CLI source (§ 6) — `fdf --jobset --stage-resources <json>` | **built** (`cli.py`, validated against stage names → `resources_for`) |
 | Bench migration onto the framework (§ 13 D4) | **partial** — bench is now a jobset producer (`bench/to_jobset.py::sweep_to_jobset`; shared `sweep_grid`; `prep-bench` emits `job-set.json`). Follow-up: retire the inline-bash `_mb_point` for `jobset submit` once Sol-validated |
+| **Web/tab integration** (produce a bundle from a Generate button; plan/status in the UI; uniform `--jobset` per generator) | **planned** — the framework is CLI-only today; the web Build stage-table is a wired front-end with no back-end. Contract + phasing in **§ 15** (D5 web=produce+plan+status, submit stays CLI; D6 uniform `--jobset`) |
 
 ---
 
@@ -737,3 +738,111 @@ more than one place:
 The discipline (feedback: framework-first): a new wheel earns its place
 only as shared infrastructure, with the existing callers named that should
 migrate onto it. Each item above names its adopters.
+
+---
+
+## § 15 Merging the framework with the tabs (CLI ↔ web)
+
+Everything above is **CLI-complete** (§ 1) but lives entirely in
+`molbuilder jobset …` + `molbuilder fdf --jobset`. The **web tabs never
+touch it**: each Generate button returns one script string, and the Build
+tab's multi-stage *stage-table* widget POSTs `params.stages` that
+`render_fdf` (single-deck) silently drops — a fully-wired front-end with no
+back-end. This section is the contract for closing that gap **without
+reinventing the framework**: the tabs become thin producers/viewers over
+the *same* engines the CLI calls.
+
+### § 15.1 Two design decisions (resolved 2026-07-25)
+
+- **D5 — the web goes PRODUCE + PLAN + STATUS; SUBMIT stays explicit.**
+  The web writes a bundle, previews its `STAGE-PLAN.md`, and shows
+  read-only per-stage status — then displays the exact
+  `molbuilder jobset prep/submit` commands to run in a terminal. It does
+  **not** run `submit` from a browser click. This is § 5 / § 10's "molbuilder
+  informs, the user decides; never auto-submit" applied to the UI:
+  launching jobs consumes a real allocation (irreversible, outward-facing),
+  so it stays a deliberate terminal action. It also keeps the web honest
+  when the serve host ≠ the compute host (the bundle still has to be shipped
+  — § 12 / C2 — which the framework does not automate).
+
+- **D6 — producing a bundle is a uniform `--jobset` opt-in per generator.**
+  `fdf --jobset` already ships (§ 1). The others gain the *same* flag:
+  `transport --jobset` (bias-scan → `JobSet(kind="sweep")`), `pyscf
+  --jobset`, `spectra --jobset` (L1→L3 chain). Each generator owns its own
+  producer (engine knowledge lives ONLY in producers, § 2); there is no
+  central verb that must know every engine config. Each tab's Generate
+  mirrors its CLI flag — one vocabulary, two front-ends.
+
+### § 15.2 One verb set, two front-ends
+
+**Produce → Prep → Plan → Submit → Status** reads identically in the CLI and
+the web, so a user moving between them relearns nothing:
+
+```mermaid
+flowchart LR
+  subgraph PROD["Produce (host)"]
+    CLIp["molbuilder &lt;gen&gt; --jobset"]
+    WEBp["tab Generate (bundle mode)"]
+  end
+  B[("bundle/ + job-set.json")]
+  subgraph READ["Plan / Status (read-only — CLI or web)"]
+    PL["plan → STAGE-PLAN.md"]
+    ST["status → per-stage state"]
+  end
+  subgraph RUN["Prep / Submit (terminal only — D5)"]
+    PR["jobset prep"]
+    SU["jobset submit --mode direct|submit"]
+  end
+  CLIp --> B
+  WEBp --> B
+  B --> PL
+  B --> ST
+  B -. "web shows the commands" .-> PR --> SU
+```
+
+### § 15.3 Anti-reinvention map (what each new seam CALLS)
+
+Every new endpoint/flag is a thin caller of an existing, tested function —
+nothing in `jobset/` or `siesta/` is duplicated:
+
+| New seam | Reuses (existing) | File:def |
+|---|---|---|
+| web Build "bundle" produce | `render_siesta_stage_fdfs` + `render_siesta_stages_runner` + `stages_to_jobset(...).write()` | `siesta/input.py:1706` / `:1744`, `siesta/stages.py:39`, `jobset/model.py:159` |
+| `transport --jobset` producer | *new* `transport_biasscan_to_jobset` (one `.fdf`/bias) → `JobSet(kind="sweep")` | `transport/` (planned, `transiesta.py` §"Planned") |
+| web `/api/jobset/plan` | `JobSet.load` + `render_plan` | `jobset/model.py:167`, `jobset/plan.py:37` |
+| web `/api/jobset/status` | `jobset_status` + `render_status` (already reuse `decode_run_dir`) | `jobset/runstatus.py:101` / `:126` |
+| "show the commands" (prep/submit) | *string only* — the literal `molbuilder jobset prep … / submit …` lines | — |
+
+The CLI producer the web Build path mirrors is `_emit_siesta_multi_stage`
+(`cli.py`, driven by `--stage-strategy`/`--jobset`/`--stage-resources`); the
+web endpoint runs the identical `render_siesta_stage_fdfs` +
+`render_siesta_stages_runner` + `stages_to_jobset().write()` sequence into a
+project dir (parallel to today's single-`.fdf` write).
+
+### § 15.4 The deployment contract surfaces in the UI
+
+The framework assumes "molbuilder is deployed correctly" as a **hard gate**:
+`prep` renders each wrapper via `runwrap`, and `require_activation`
+(`runtime_config.py`) *refuses* to emit a wrapper unless the TARGET's
+`molbuilder.json` declares `script_generation.activation` (+ `preamble`).
+So the web's "run these commands" panel must note: the bundle is portable,
+but `jobset prep` runs on the target and needs that target's `activation`
+configured, else prep hard-fails. (When serve is co-located with compute,
+"target" = this host's own `molbuilder.json`.)
+
+### § 15.5 Status & phasing
+
+| Piece | State |
+|---|---|
+| CLI framework (plan/prep/submit/status, both modes, routing, carry) | **built** (§ 1) |
+| SIESTA host producer `fdf --jobset` | **built** (§ 1) |
+| **Web Build bundle producer** (finish the stage-table bridge → `job-set.json`) | **Phase 1** |
+| **Web Plan + Status** (read-only; Status in the Results tab, reusing `decode_run_dir`) | **Phase 2** |
+| **`transport --jobset` producer + transport-tab bundle mode** (bias-scan) | **Phase 3** |
+| `pyscf --jobset` / `spectra --jobset` producers + tab mirrors | **Phase 4** |
+| Automated host→target ship (scp/rsync) | **out of scope** (manual, § 12) — revisit only if a real split-host deployment needs it |
+
+Phase 1 is the keystone: it makes the *existing* stage-table widget real
+(it currently POSTs a ladder that is dropped), turning "Generate" into
+"produce a runnable bundle" with the exact deploy commands shown. Phases
+2-4 are additive and independent.
