@@ -113,6 +113,11 @@ schema strings + the config↔exchange parameter vocabulary is
 
 - **`design.md`** — mission, the L1/L2/L3 Architecture in narrative form, the
   10 design principles, anti-patterns, and the decisions log.
+- **`protocols/backend-architecture.md`** — the backend through the **functional-
+  concern** lens (data management · structure construction · scientific validation
+  · workflow/execution): which modules own each concern, the cross-concern data
+  flow, and where concerns leak into each other. The concern-lens complement to
+  this file's layer/subsystem index.
 - **`protocols/web-module-map.md`** — the **front-end + web-API module index**
   (framework · special module · submodule · consumer; goals, APIs, data shapes).
   The JS/web complement to this file's § 2 Python subsystem index.

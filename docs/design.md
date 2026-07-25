@@ -114,6 +114,7 @@ subsystem-specific decisions land in the subsystem doc.
 
 | Doc | Owns |
 |---|---|
+| [`backend-architecture.md`](protocols/backend-architecture.md) | **The Python backend through the functional-concern lens** — data management · structure construction · scientific validation · workflow/execution: concern ownership, the cross-concern pipeline, and the coupling ledger (where concerns leak). The concern complement to [`architecture.md`](architecture.md)'s layer index. |
 | [`molview-module.md`](protocols/molview-module.md) | **The MolView module contract (L2 UI)** — the 3-D viewer + atom selection + panel/adapter + measurement + k-grid.  It *uses* the workspace data model (L1, [`workspace-contract.md`](protocols/workspace-contract.md)) via `ws.*`; different layer, different doc (split back out 2026-07-08 after a mistaken 2026-07-06 merge). |
 | [`atom-annotations.md`](protocols/atom-annotations.md) | The per-atom annotation *channels* model — schema-v4 `.molstruct.json` channels + JS mirror; the data model `structure.py` / `sidecars` / `parse` / `siesta` depend on |
 | [`web-api.md`](protocols/web-api.md) | HTTP `/api/*` endpoint reference (request/response shapes) |
