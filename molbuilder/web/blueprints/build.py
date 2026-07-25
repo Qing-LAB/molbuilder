@@ -727,6 +727,15 @@ def api_build_load():
     # cell / axis_kind / vacuum / annotations -- onto the parsed Structure.
     # None (or the multipart upload path) -> a plain geometry load, no sidecar.
     sidecar_text: str = ""
+    # The TRUSTED per-atom metadata block (regions / frozen / annotations)
+    # a results-side caller recovered from a run's input script's
+    # ATOM-METADATA block (parse.scripts.atom_metadata) -- NOT a standalone
+    # .molstruct.json file.  Distinct from ``sidecar`` because it is
+    # molbuilder's own emit and by design omits the sidecar-file envelope
+    # (structure_hash), so it is applied via ``apply_to_structure`` (lenient,
+    # atom-count-only), never validated through ``load_text``.  Carries only
+    # atom-scoped keys, so the parsed geometry / cell above stay intact.
+    atom_metadata_text: str = ""
     if "file" in request.files:
         f = request.files["file"]
         filename = f.filename or ""
@@ -737,6 +746,7 @@ def api_build_load():
         fmt = (body.get("format") or "auto").lower()
         filename = body.get("filename") or ""
         sidecar_text = body.get("sidecar") or ""
+        atom_metadata_text = body.get("atom_metadata") or ""
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
@@ -783,6 +793,26 @@ def api_build_load():
             # a 500 -- surface the schema module's precise message.
             return jsonify({"ok": False,
                             "error": f"sidecar: {exc}"}), 400
+
+    # Trusted per-atom metadata block (see ``atom_metadata_text`` above):
+    # apply the SAME regions / frozen / annotations fields onto the parsed
+    # Structure via the lenient seam.  ``apply_to_structure`` re-runs its
+    # own atom-count + index validation and raises MolstructJsonError on a
+    # mismatch (surfaced as a 400, same as the sidecar path).  The block is
+    # trusted JSON, so it is parsed directly -- NOT through ``load_text``,
+    # which would reject it for lacking the untrusted-file envelope.
+    if atom_metadata_text.strip():
+        import json as _json
+        from molbuilder.sidecars import molstruct as _molstruct
+        try:
+            _molstruct.apply_to_structure(
+                struct, _json.loads(atom_metadata_text))
+        except _json.JSONDecodeError as exc:
+            return jsonify({"ok": False,
+                            "error": f"atom_metadata: not valid JSON: {exc}"}), 400
+        except _molstruct.MolstructJsonError as exc:
+            return jsonify({"ok": False,
+                            "error": f"atom_metadata: {exc}"}), 400
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom

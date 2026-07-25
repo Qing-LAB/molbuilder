@@ -198,11 +198,17 @@ export function createInstall(deps) {
                 // The paired .molstruct.json CONTENT a project-file open read off disk;
                 // the server (/api/build/load) applies it.  Omitted for generators.
                 sidecar:     (typeof input.sidecar === "string") ? input.sidecar : null,
+                // A TRUSTED per-atom metadata block (JSON string) recovered from a run's
+                // input-script ATOM-METADATA block -- distinct from ``sidecar`` (that's an
+                // untrusted .molstruct.json FILE).  The Results-tab trajectory inspector
+                // hands this so region labels / frozen / annotations ride onto the loaded
+                // frame-0 geometry.  Applied server-side via apply_to_structure.
+                atomMetadata: (typeof input.atomMetadata === "string") ? input.atomMetadata : null,
             });
         }
         return Promise.reject(new TypeError(
             "molview.data.installMolecule(input): pass { text, filename"
-          + "[, sidecar, source, periodicity, annotations] }"));
+          + "[, sidecar, atomMetadata, source, periodicity, annotations] }"));
     }
 
     async function _loadText(text, filename, opts) {
@@ -230,6 +236,10 @@ export function createInstall(deps) {
             // cell/axis_kind/vacuum/annotations) so the response's atoms + periodicity +
             // annotations come back ENRICHED -- the sidecar schema stays server-side.
             if (opts.sidecar) _body.sidecar = opts.sidecar;
+            // Trusted per-atom metadata block (see installMolecule): a raw-geometry
+            // load (frame-0 XYZ from a trajectory) carries region/frozen/annotation
+            // labels the geometry text alone can't; the server applies them.
+            if (opts.atomMetadata) _body.atom_metadata = opts.atomMetadata;
         }
         const resp = await root.fetch("/api/build/load", {
             method:  "POST",

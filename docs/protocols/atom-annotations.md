@@ -122,6 +122,35 @@ same shape everywhere, so a saved structure round-trips its full metadata:
 This is **data**, not engine setup. It says nothing about how a simulation runs;
 it just records what the user labeled. See § 4 for the separate concern.
 
+### 3.1 Results-tab recovery bridge (block → results-side load)
+
+The block also closes the loop on the **output** side. The Results-tab
+trajectory inspector loads *coordinates* from a run's output logs
+(`.molwatch.log` / `.out` / `*_geom_optim.xyz`) — geometry only; the region
+labels / frozen tags / annotation channels are not in those files, they're in
+the input script's ATOM-METADATA block. So the block is recovered and
+re-applied to the loaded structure:
+
+- **Recover** — `parse/scripts/atom_metadata.atom_metadata_json_for_run_dir(run_dir, n_atoms)`
+  finds the run's input script (`.fdf` then `.py`), extracts the block, guards
+  it against the trajectory's atom count (mismatch → `None`, never breaks the
+  load), and returns it as a JSON string. `/api/watch/load` calls this and
+  surfaces it as `atom_metadata` in the load response.
+- **Apply** — the trajectory inspector hands it to
+  `molview.data.installMolecule({text, atomMetadata})`; `/api/build/load`
+  applies it via `sidecars.molstruct.apply_to_structure` — the **same** seam a
+  `.molstruct.json` sidecar uses — so the loaded viewer shows the same
+  regions/frozen the user set in Build.
+
+**Trusted fragment ≠ sidecar file.** The block is molbuilder's own emit and, by
+design, omits the sidecar-file envelope's integrity field (`structure_hash`).
+`/api/build/load` therefore exposes it as a **distinct** `atom_metadata` body
+field applied through `apply_to_structure` directly — NOT the `sidecar` field
+(which routes through `molstruct.load_text`, the strict validator for untrusted
+standalone `.molstruct.json` *files*, and would reject the envelope-less block).
+Keep the two inputs separate: `sidecar` = untrusted file content;
+`atom_metadata` = trusted embedded block. **(SHIPPED 2026-07-25.)**
+
 ---
 
 ## 4. Engine parameter setup (extraction into the engine's required input)

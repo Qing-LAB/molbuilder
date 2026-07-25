@@ -314,6 +314,27 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     return None, attempts
 
 
+def _atom_metadata_json(
+    search_dir: Optional[str], data: Optional[Dict[str, Any]]
+) -> Optional[str]:
+    """Recover the run's embedded per-atom metadata (region labels /
+    frozen tags / annotation channels) as a JSON string, so the Results-tab
+    MolView carries it despite loading *coordinates* from the output logs.
+
+    All the real work -- finding the input script, parsing the
+    ATOM-METADATA block, guarding the atom count -- lives in
+    :func:`molbuilder.parse.scripts.atom_metadata.atom_metadata_json_for_run_dir`
+    (the module that owns the block).  This is pure results-adapter glue:
+    it sources frame-0's atom count from the parsed trajectory and hands
+    it in as the guard.  ``None`` when the run carries no block."""
+    from molbuilder.parse.scripts.atom_metadata import (
+        atom_metadata_json_for_run_dir,
+    )
+    frames = (data or {}).get("frames")
+    n0 = len(frames[0]) if frames else None
+    return atom_metadata_json_for_run_dir(search_dir, n0)
+
+
 _ITER_WALLTIME_BUFFER_CAP = 16
 
 
@@ -861,6 +882,14 @@ def api_load():
             "data":             merged,
             "stages":           stages_meta,
             "uploaded":         False,
+            # Bridge the Build-tab per-atom metadata (region labels /
+            # frozen tags / annotations) embedded in the run's input
+            # script into the loaded MolView -- coordinates come from the
+            # output logs, metadata from the .fdf / .py.  JSON string of
+            # the trusted ATOM-METADATA block (applied downstream via
+            # apply_to_structure); None when the run carries no block.
+            "atom_metadata":
+                _atom_metadata_json(resolved_from_dir, merged),
         })
 
     with _lock:
@@ -878,6 +907,11 @@ def api_load():
     state, err = _refresh_if_changed()
     if err:
         return jsonify({"ok": False, "error": err}), 500
+    # Metadata search dir: the resolved run directory, else the parent of
+    # the file we loaded (Watch was pointed straight at a log inside a run
+    # dir).  Bridges the input script's ATOM-METADATA into MolView; see the
+    # multi-log branch above.
+    _md_dir = resolved_from_dir or os.path.dirname(path)
     return jsonify({
         "ok":               True,
         "path":             state["path"],
@@ -887,6 +921,8 @@ def api_load():
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         False,
+        "atom_metadata":
+            _atom_metadata_json(_md_dir, state["data"]),
     })
 
 

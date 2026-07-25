@@ -197,6 +197,16 @@ function _mvdata() {
             //   scf_history, wall_times, in_progress, run_state,
             //   error_message, runtime_info, parse_warnings, ...}
             data:   null,
+            // Per-atom metadata (region labels / frozen tags / annotation
+            // channels) the Build tab embedded in this run's input script,
+            // recovered by /api/watch/load as the trusted ATOM-METADATA
+            // block (a JSON STRING).  Coordinates come from the output logs;
+            // this carries the labels the logs don't.  Handed to MolView's
+            // installMolecule({atomMetadata}) so the loaded structure shows
+            // the same regions/frozen the user set in Build.  null = run had
+            // no ATOM-METADATA block.  Per-file (survives polls of the same
+            // file; cleared on a fresh load like path/label).
+            atomMetadata: null,
         },
 
         viewState: {
@@ -280,6 +290,7 @@ function _mvdata() {
         alias("format",       "fileState");
         alias("label",        "fileState");
         alias("data",         "fileState");
+        alias("atomMetadata", "fileState");
         alias("currentFrame", "viewState");
         alias("firstFit",     "viewState");
         alias("pollTimer",    "lifecycle");
@@ -333,6 +344,7 @@ function _mvdata() {
             state.fileState.format = null;
             state.fileState.label  = null;
             state.fileState.data   = null;
+            state.fileState.atomMetadata = null;
             // Reset viewState per matrix: playhead to 0, refit camera
             // on next render.
             state.viewState.currentFrame = 0;
@@ -371,6 +383,7 @@ function _mvdata() {
             state.fileState.format = null;
             state.fileState.label  = null;
             state.fileState.data   = null;
+            state.fileState.atomMetadata = null;
             state.viewState.currentFrame = 0;
             state.viewState.firstFit     = true;
             state.derived.scfPollHistory.length = 0;
@@ -445,6 +458,11 @@ function _mvdata() {
             if (payload.format !== undefined) state.fileState.format = payload.format;
             if (payload.label  !== undefined) state.fileState.label  = payload.label;
             if (payload.path   !== undefined) state.fileState.path   = payload.path;
+            // Per-file: only the LOAD carries it (undefined on watch ticks →
+            // keep existing, so live polls of the same file don't drop the
+            // metadata the initial load recovered).
+            if (payload.atomMetadata !== undefined)
+                state.fileState.atomMetadata = payload.atomMetadata;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
@@ -909,6 +927,15 @@ function _mvdata() {
                 text:        firstFrameXyz,
                 filename:    (state.label || "trajectory") + ".xyz",
                 periodicity: periodicity,
+                // Region labels / frozen tags / annotation channels the
+                // Build tab embedded in this run's input script, recovered
+                // by /api/watch/load.  MolView's load door applies it via
+                // sidecars.molstruct.apply_to_structure (it carries ONLY
+                // atom-scoped keys, so the frame-0 geometry + lattice above
+                // stay intact).  Distinct from a .molstruct.json ``sidecar``:
+                // this is a TRUSTED block, applied without the file envelope.
+                // null when the run had no ATOM-METADATA block.
+                atomMetadata: state.atomMetadata || null,
             });
         } catch (e) {
             setStatus("Viewer failed to load frame 0: "
@@ -2365,6 +2392,9 @@ function _mvdata() {
             format: resolvedFormat,
             label:  r.label || resolvedFormat,
             path:   r.path,  // undefined → keep existing per APPLY shape
+            // undefined on watch-data polls → keep existing (metadata is
+            // per-file and doesn't change mid-run); set on a fresh load.
+            atomMetadata: r.atomMetadata,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
@@ -2654,6 +2684,11 @@ function _mvdata() {
                 format: r.format,
                 label:  r.label,
                 path:   r.path,
+                // Per-atom metadata recovered from the run's input script
+                // (region labels / frozen / annotations); handed to MolView
+                // below.  Only the LOAD response carries it -- watch-data
+                // polls omit it and keep the value (APPLY keep-existing).
+                atomMetadata: r.atom_metadata || null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so
