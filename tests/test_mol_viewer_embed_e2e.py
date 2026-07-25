@@ -708,13 +708,14 @@ class TestHandleSurface:
     partial-update behaviour, vibration animation, lifecycle.
     """
 
-    def test_setAnimation_partial_update_keeps_vibration_running(
+    def test_setAnimation_partial_update_keeps_trajectory_running(
             self, page, flask_server):
         """Per § 3.2: setAnimation with a partial object (no kind)
-        merges into the active animation without stopping the loop.
-        Regression test for D1/N1: spectra amplitude/speed sliders
-        called setAnimation({amplitude: v}) on every tick, which
-        previously normalised to null and STOPPED the vibration."""
+        merges into the active animation without stopping the loop
+        (the D1/N1 normalise-to-null regression class).  Runs on a
+        TRAJECTORY -- kind:"vibration" left the embed with task #51
+        (VibrationView owns that loop; its slider knobs are plain
+        variable writes pinned in test_vibrationview_mount_js.py)."""
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -726,20 +727,19 @@ class TestHandleSurface:
                     "width:300px;height:200px;position:fixed;top:-9999px;";
                 document.body.appendChild(host);
                 const h = window.molbuilder.viewer.embed(host, {
-                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
-                        amplitude: 0.2, speedHz: 1.0, paused: false,
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[1,0,0]], [[2,0,0]]],
+                        fps: 30, paused: false,
                     },
                 });
                 await new Promise(r => requestAnimationFrame(r));
                 const beforeLoop = h._test.hasAnimationLoop();
-                // Drive 5 partial updates in tight succession (the
-                // pattern spectra's amplitude/speed sliders use).
-                for (const a of [0.3, 0.35, 0.4, 0.45, 0.5]) {
-                    h.setAnimation({ amplitude: a });
+                // Tight partial updates (the live-poll / knob pattern).
+                for (const l of [true, false, true, false, true]) {
+                    h.setAnimation({ loop: l });
                     await new Promise(r => requestAnimationFrame(r));
                 }
                 const afterLoop = h._test.hasAnimationLoop();
@@ -749,10 +749,10 @@ class TestHandleSurface:
             }
         """)
         assert out["beforeLoop"] is True, \
-            "vibration loop not running after initial setAnimation"
+            "trajectory loop not running after initial setAnimation"
         assert out["afterLoop"]  is True, (
-            "partial setAnimation({amplitude}) stopped the loop "
-            "(D1/N1 regression)"
+            "partial setAnimation({loop}) stopped the loop "
+            "(D1/N1 regression class)"
         )
 
     def test_setPickedIndices_drives_halo_state(
@@ -947,11 +947,13 @@ class TestHandleSurface:
                     (h) => h.setKnobs({backgroundPresets: "nope"}));
                 run("setAnimation_bad_kind",
                     (h) => h.setAnimation({kind: "rotation"}));
-                run("setAnimation_atom_mismatch",
+                run("setAnimation_vibration_kind_retired",
                     (h) => h.setAnimation({
-                        kind: "vibration",
-                        displacements: [[0,0,0.1],[0,0,0.1]],  // 2 not 3
+                        kind: "vibration",   // removed with task #51
+                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
                     }));
+                run("setAtomCoords_not_array",
+                    (h) => h.setAtomCoords("nope"));
                 run("setPickedIndices_bad",
                     (h) => h.setPickedIndices("nope"));
                 run("setCamera_not_object",
@@ -1406,15 +1408,14 @@ class TestHandleSurface:
             "setAnimationFrame(2) did not move the atom to x=2"
         )
 
-    def test_vibration_loop_actually_displaces_atoms(
+    def test_setAtomCoords_displaces_visible_atom(
             self, page, flask_server):
-        """Phase 6c regression catcher: same root cause as the
-        trajectory bug — vibration's per-rAF coord update never
-        triggered a 3Dmol mesh rebuild, so the molecule visibly
-        sat still even with the loop running.  Surfaced on /results
-        spectra (mode animation didn't show).  This test runs the
-        vibration for a couple of frames and asserts the atom's
-        x position moves away from baseline."""
+        """Phase 6c regression class, now on the EXTERNAL-ANIMATOR door
+        (task #51): setAtomCoords must trigger the 3Dmol mesh rebuild,
+        or the data model moves while the drawn molecule visibly sits
+        still (the bug class that shipped for ten phases of "animation
+        fixes").  VibrationView drives this door every tick, so a
+        silent no-rebuild here = the /spectra mode animation freezing."""
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -1428,42 +1429,20 @@ class TestHandleSurface:
                 const h = window.molbuilder.viewer.embed(host, {
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
-                    animation: {
-                        kind: "vibration",
-                        // Large amplitude + 100 Hz so a couple of
-                        // rAF ticks produce a visibly-non-zero
-                        // displacement, regardless of the test
-                        // host's rAF cadence.
-                        displacements: [[1.0, 0.0, 0.0]],
-                        amplitude: 2.0,
-                        speedHz: 100.0,
-                        paused: false,
-                    },
                 });
+                await new Promise(r => requestAnimationFrame(r));
+                h.setAtomCoords([[1.5, 0, 0]]);
                 const viewer = h._viewer3dmol();
-                const readX = () =>
-                    viewer.getModel().selectedAtoms({})[0].x;
-                // Spin a few rAFs to let the loop tick at least
-                // once or twice.
-                for (let i = 0; i < 8; i++) {
-                    await new Promise(r => requestAnimationFrame(r));
-                }
-                const x = readX();
-                h.pauseAnimation();
+                const x = viewer.getModel().selectedAtoms({})[0].x;
                 h.dispose();
                 host.remove();
                 return { x };
             }
         """)
-        # After several rAFs at 100 Hz, the atom should have
-        # displaced from x=0 in either direction by some
-        # non-negligible amount (cosine phase is between -2 and
-        # +2 with amplitude=2).
-        assert abs(out["x"]) > 0.05, (
-            f"vibration loop ran but atom.x = {out['x']!r}; the per-rAF "
-            "coord update is not actually moving the visible atom "
-            "(Phase 6c regression — _rebuildGeometryForCoordChange "
-            "missed a code path)"
+        assert abs(out["x"] - 1.5) < 1e-6, (
+            f"setAtomCoords([[1.5,0,0]]) but the drawn atom sits at "
+            f"x = {out['x']!r} -- the coordinate write did not reach "
+            "the visible model (mesh-rebuild regression class)"
         )
 
     def test_setStructure_loads_atoms_at_input_coords(

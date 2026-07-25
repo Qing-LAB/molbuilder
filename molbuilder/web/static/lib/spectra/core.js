@@ -2273,7 +2273,7 @@
     }
 
     // _buildFrameMovie removed by #231 Part B.  The embed's
-    // vibration animation (handle.setAnimation({kind: "vibration",
+    // vibration animation (the VibrationView-owned loop --
     // displacements})) replaces the bespoke ANIM_FRAMES_PER_CYCLE
     // pre-computed sine cycle.  The embed's loop computes
     // pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i

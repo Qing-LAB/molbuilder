@@ -66,8 +66,11 @@ EXPECTED_METHODS = sorted([
     "setKnobs", "addViewToggle",
     # Busy<->ready surface (the ONE loading/render scrim)
     "setBusy",
-    # Animation control
-    "setAnimation", "playAnimation", "pauseAnimation",
+    # Animation control (kind:"vibration" removed with task #51 --
+    # setAtomCoords + setAnimationProvider are the external-animator doors
+    # VibrationView drives)
+    "setAnimation", "setAtomCoords", "setAnimationProvider",
+    "playAnimation", "pauseAnimation",
     "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
     "appendFrameArrows",
     "getAnimationKind", "getFrameCount", "getFrameCoords",

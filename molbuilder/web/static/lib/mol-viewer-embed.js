@@ -14,7 +14,7 @@
  *
  * This file covers the STATIC-FEATURES contract (no animation):
  * structure load, style, axes, cell wireframe, labels, arrows,
- * atom-pick, card chrome, dispose.  Animation (vibration +
+ * atom-pick, card chrome, dispose.  Animation (trajectory +
  * trajectory) is a separate stage so the static feature surface
  * lands first + gets exercised by /modify / Build / structure-
  * inspector migrations before the animation loop is added.
@@ -1679,9 +1679,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 out.frameCount = nF;
                 out.startFrame = 0;
                 out.endFrame   = nF - 1;
-            } else if (a && a.kind === "vibration") {
+            } else if (state.current.animationProvider) {
+                const prov = state.current.animationProvider;
                 out.fps = 30;
-                out.duration = 1 / Math.max(0.01, a.speedHz || 1);
+                out.duration = (typeof prov.cycleSec === "number"
+                                && prov.cycleSec > 0) ? prov.cycleSec : 1;
             } else {
                 out.fps = 30; out.duration = 1;
             }
@@ -1950,7 +1952,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // sidebar).  This keeps the affordance stable across
         // loads while making the no-op state visible to the user.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
-        const hasAnim = !!state.current.animation;
+        // An external animator (provider) is exportable too (task #51).
+        const hasAnim = !!state.current.animation
+                     || !!state.current.animationProvider;
         const sect = state.scaffold.knobsEl.querySelector(
             '.mol-viewer-export-section[data-section="animation"]');
         if (!sect) return;
@@ -3061,14 +3065,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      *   totalFrames  — total output frames in the capture
      *   durationSec  — total capture duration in seconds
      *
-     * For vibration: maps frameIdx to a cosine phase scaled by
-     * speedHz so the capture covers ``durationSec`` worth of
-     * oscillation.  For trajectory: maps frameIdx → input frame
-     * index, wrapping if duration exceeds one loop.
+     * For an external animator (provider): asks provider.frameCoords
+     * for the frame's coordinates.  For trajectory: maps frameIdx →
+     * input frame index, wrapping if duration exceeds one loop.
      */
     // Normalised inclusive capture range [start, end] for a trajectory export --
     // from opts.startFrame/endFrame (the dialog), defaulting to the whole run.
-    // null for a non-trajectory (vibration has no frame range).
+    // null for a non-trajectory (a provider capture has no frame range).
     function _captureRange(state, opts) {
         const a = state.current && state.current.animation;
         if (!a || a.kind !== "trajectory") return null;
@@ -3084,32 +3087,22 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _driveAnimationFrame(state, frameIdx,
                                   totalFrames, durationSec, range) {
+        // EXTERNAL animator (task #51): the registered provider computes the
+        // frame's coordinates -- the embed drives the capture clock and draws
+        // what it is handed (VibrationView owns the normal-mode math).
+        const prov = state.current.animationProvider;
+        if (prov && typeof prov.frameCoords === "function") {
+            const out = prov.frameCoords(frameIdx, totalFrames, durationSec);
+            if (Array.isArray(out)) {
+                _applyCoords(state.viewer, out);
+                _rebuildGeometryForCoordChange(state);
+                _postFramePositionRedraw(state);
+            }
+            return;
+        }
         const a = state.current.animation;
         if (!a) return;
-        if (a.kind === "vibration") {
-            if (!state._anim.vibrationBaseline) {
-                state._anim.vibrationBaseline =
-                    _captureBaselineCoords(state.viewer);
-            }
-            const baseline = state._anim.vibrationBaseline;
-            const disp     = a.displacements;
-            // elapsed seconds at this frame.
-            const t = durationSec * (frameIdx / Math.max(1, totalFrames));
-            const phase = 2 * Math.PI * a.speedHz * t;
-            const factor = a.amplitude * Math.cos(phase);
-            const out = [];
-            for (let i = 0; i < baseline.length; i++) {
-                const d = (i < disp.length) ? disp[i] : [0, 0, 0];
-                out.push([
-                    baseline[i][0] + factor * d[0],
-                    baseline[i][1] + factor * d[1],
-                    baseline[i][2] + factor * d[2],
-                ]);
-            }
-            _applyCoords(state.viewer, out);
-            _rebuildGeometryForCoordChange(state);
-            _postFramePositionRedraw(state);
-        } else if (a.kind === "trajectory") {
+        if (a.kind === "trajectory") {
             const n = _trajFrameCount(state);
             // Spread the capture across the chosen INCLUSIVE range [start, end]
             // (default whole run) so duration scales the playback rate independently
@@ -3275,23 +3268,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     /* ------------------------------------------------------------ */
-    /*  Animation — vibration (rAF cosine) + trajectory (interval)  */
+    /*  Animation — trajectory (interval) + external-animator door  */
     /* ------------------------------------------------------------ */
 
     function _normaliseAnimation(a) {
         if (!a || typeof a !== "object") return null;
-        if (a.kind === "vibration") {
-            if (!Array.isArray(a.displacements)) return null;
-            return {
-                kind:         "vibration",
-                displacements: a.displacements,
-                amplitude:    typeof a.amplitude === "number"
-                                ? a.amplitude : 0.15,
-                speedHz:      typeof a.speedHz === "number"
-                                ? a.speedHz : 1.0,
-                paused:       a.paused === true,
-            };
-        }
+        // (kind:"vibration" removed 2026-07, task #51: VibrationView owns the
+        // normal-mode loop + math and drives setAtomCoords; export capture goes
+        // through the external-animator provider (setAnimationProvider).)
         if (a.kind === "trajectory") {
             if (!Array.isArray(a.frames) || a.frames.length === 0) return null;
             const nFrames = a.frames.length;
@@ -3337,18 +3321,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return null;
     }
 
-    function _captureBaselineCoords(viewer) {
-        try {
-            const model = viewer.getModel();
-            const atoms = model ? model.selectedAtoms({}) : [];
-            const out = [];
-            for (const a of atoms) {
-                out.push([a.x, a.y, a.z]);
-            }
-            return out;
-        } catch (_) { return []; }
-    }
-
     function _applyCoords(viewer, coords) {
         // CONTRACT — DO NOT CALL THIS ALONE.
         // This writes atom.x/y/z on the live model.  3Dmol caches
@@ -3361,10 +3333,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // Every caller MUST invoke ``_rebuildGeometryForCoordChange``
         // (or an equivalent setStyle rebuild) before
         // ``viewer.render()`` for the new positions to appear on
-        // screen.  Six call sites at last audit: _showTrajectoryFrame,
-        // _startVibrationLoop tick, _setAnimationImpl vibration-
-        // baseline restore, _driveAnimationFrame, and two
-        // screenshot-side vibration-baseline restores.
+        // screen.  Call sites: _showTrajectoryFrame, _driveAnimationFrame
+        // (provider capture), setAtomCoords (the external-animator door),
+        // and the two post-capture provider restCoords restores.
         try {
             const model = viewer.getModel();
             const atoms = model ? model.selectedAtoms({}) : [];
@@ -3388,9 +3359,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // cheapest mol-style.js-side regeneration: ``setStyle({},
         // spec)`` rebuilds with the new atom positions in one pass.
         // Cost is ~per-atom-mesh O(N); fine for the few-hundred-
-        // atoms scale molbuilder targets.  See trajectory + vibration
-        // tick loops — without this call, frames don't move on
-        // screen even though state.current.animation advances.
+        // atoms scale molbuilder targets.  See the trajectory tick loop +
+        // setAtomCoords — without this call, frames don't move on
+        // screen even though the coordinates advanced.
         const now = (typeof performance !== "undefined" && performance.now)
             ? () => performance.now() : () => Date.now();
         const t0 = now();
@@ -3436,43 +3407,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // runtime-state playing so getAnimation()/applyState round-trip
         // reflects current state, not mount-time intent.
         if (state.current.animation) state.current.animation.paused = true;
-        _refreshFrameStrip(state);
-    }
-
-    function _startVibrationLoop(state) {
-        if (!state._anim.vibrationBaseline) {
-            state._anim.vibrationBaseline = _captureBaselineCoords(state.viewer);
-        }
-        state._anim.startTimeMs = (typeof performance !== "undefined"
-                                    && performance.now)
-            ? performance.now() : Date.now();
-        state._anim.playing = true;
-        if (state.current.animation) state.current.animation.paused = false;
-        const tick = (tsMs) => {
-            if (state.disposed || !state._anim.playing) return;
-            const v = state.current.animation;
-            if (!v || v.kind !== "vibration") return;
-            const baseline = state._anim.vibrationBaseline;
-            const disp     = v.displacements;
-            const elapsedSec = (tsMs - state._anim.startTimeMs) / 1000;
-            const phase = 2 * Math.PI * v.speedHz * elapsedSec;
-            const factor = v.amplitude * Math.cos(phase);
-            const out = [];
-            for (let i = 0; i < baseline.length; i++) {
-                const d = (i < disp.length) ? disp[i] : [0, 0, 0];
-                out.push([
-                    baseline[i][0] + factor * d[0],
-                    baseline[i][1] + factor * d[1],
-                    baseline[i][2] + factor * d[2],
-                ]);
-            }
-            _applyCoords(state.viewer, out);
-            _rebuildGeometryForCoordChange(state);
-            _postFramePositionRedraw(state);
-            _render(state);
-            state._anim.rafId = requestAnimationFrame(tick);
-        };
-        state._anim.rafId = requestAnimationFrame(tick);
         _refreshFrameStrip(state);
     }
 
@@ -3755,17 +3689,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // so without this capture the autoplay check below would read
         // back ``true`` and skip _playImpl.
         const autoplay = !!(next && !next.paused);
-        // Stop any in-flight loop + reset to baseline (vibration).
+        // Stop any in-flight loop.
         _stopAnimationLoop(state);
-        if (state._anim.vibrationBaseline) {
-            // Snap back to baseline so the next setAnimation lands
-            // on a known clean state.
-            _applyCoords(state.viewer, state._anim.vibrationBaseline);
-            _rebuildGeometryForCoordChange(state);
-            _postFramePositionRedraw(state);
-            _render(state);
-        }
-        state._anim.vibrationBaseline = null;
         if (next && next.kind === "trajectory") {
             // Land on the desired frame.  ``currentFrame`` was already
             // resolved by _normaliseAnimation: a caller-supplied value
@@ -3799,10 +3724,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             else _buildFrameStrip(state);
             _showTrajectoryFrame(state, next.currentFrame);
             if (autoplay) _playImpl(state);
-        } else if (next && next.kind === "vibration") {
-            state.current.animation = next;
-            _removeFrameStrip(state);
-            if (autoplay) _playImpl(state);
         } else {
             state.current.animation = null;
             _removeFrameStrip(state);
@@ -3820,8 +3741,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const a = state.current.animation;
         if (!a) return;
         if (state._anim.playing) return;
-        if (a.kind === "vibration") _startVibrationLoop(state);
-        else if (a.kind === "trajectory") _startTrajectoryLoop(state);
+        if (a.kind === "trajectory") _startTrajectoryLoop(state);
     }
 
     function _pauseImpl(state) {
@@ -3940,15 +3860,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             hasFirstStructure:      !!(current.xyz || current.pdb),
             preserveCameraDefault:  opts.preserveCamera !== false,
 
-            // Animation runtime state.  vibrationBaseline is captured
-            // on first vibration play so we can restore on stop /
-            // setAnimation(null) without re-loading the structure.
+            // Animation runtime state (trajectory loop).
             _anim: {
                 playing:            false,
                 rafId:              null,
                 intervalId:         null,
                 startTimeMs:        null,
-                vibrationBaseline:  null,
             },
 
             // Frame-strip DOM (built lazily whenever
@@ -4126,13 +4043,12 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             const prevPicked   = state.pickedIndices.slice();
             state.current = next;
             // Setting a fresh structure invalidates the animation
-            // baseline (different atom count / different topology).
-            // Stop the loop + clear the baseline; the caller can
-            // re-call setAnimation with new displacements if they
-            // want animation against the new structure.
+            // (different atom count / different topology).  Stop the
+            // loop + clear the animation AND any external animator
+            // provider; the caller re-registers against the new atoms.
             _stopAnimationLoop(state);
-            state._anim.vibrationBaseline = null;
             state.current.animation = null;
+            state.current.animationProvider = null;
             _removeFrameStrip(state);
             _loadStructure(state.viewer, state.current);
             // Review fix U7: new atom set → clickable flags reset on
@@ -4435,6 +4351,46 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _render(state);
         }
 
+        // Generic in-place coordinate update -- the door an EXTERNAL animator
+        // drives per tick (task #51: VibrationView owns its normal-mode loop +
+        // math; the embed draws what it is handed and keeps no vibration
+        // semantics).  Overwrites the loaded atoms' positions, rebuilds the
+        // style meshes + position-aware overlays, renders once.
+        function setAtomCoords(coords) {
+            if (state.disposed) return;
+            if (!Array.isArray(coords)) {
+                _dispatchInvalidInput(state,
+                    "setAtomCoords: argument must be [[x,y,z], ...]");
+                return;
+            }
+            _applyCoords(state.viewer, coords);
+            _rebuildGeometryForCoordChange(state);
+            _postFramePositionRedraw(state);
+            _render(state);
+        }
+
+        // Register (or clear, with null) the EXTERNAL animator's capture
+        // provider so animation EXPORT (gif / webm) works without the embed
+        // knowing the animation's math:
+        //   p = { frameCoords(frameIdx, totalFrames, durationSec) -> coords,
+        //         restCoords() -> coords,        // post-capture restore
+        //         cycleSec?: number }            // one animation cycle (dialog default)
+        // The capture clock stays embed-owned (_driveAnimationFrame); the
+        // provider owns WHAT each captured frame looks like.
+        function setAnimationProvider(p) {
+            if (state.disposed) return;
+            if (p !== null && p !== undefined
+                && (typeof p !== "object"
+                    || typeof p.frameCoords !== "function")) {
+                _dispatchInvalidInput(state,
+                    "setAnimationProvider: pass {frameCoords(i,n,sec), "
+                  + "restCoords?, cycleSec?} or null");
+                return;
+            }
+            state.current.animationProvider = p || null;
+            _syncKnobBarToAnimation(state);   // export buttons follow the provider
+        }
+
         function setPick(p) {
             if (state.disposed) return;
             if (p && typeof p === "object") {
@@ -4653,7 +4609,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
         function appendFrames(frames) {
             // Trajectory live-poll path per § 3.2 + § 4.3:
-            //   - vibration or no animation: silent no-op
+            //   - no trajectory animation: silent no-op
             //   - trajectory: extend frames, preserve currentFrame
             //   - atom-count mismatch: invalid_input via onError
             if (state.disposed) return;
@@ -5227,12 +5183,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             return 30;
         }
         function _defaultDuration(a) {
-            if (a.kind === "trajectory") {
+            if (a && a.kind === "trajectory") {
                 // Full one-loop = frameCount / fps.
                 return _trajFrameCount(state) / Math.max(1, _defaultFps(a));
             }
-            // Vibration: one cosine cycle = 1 / speedHz.
-            return 1 / Math.max(0.01, a.speedHz);
+            // External animator (provider): one cycle as declared, else 1s.
+            const prov = state.current.animationProvider;
+            if (prov && typeof prov.cycleSec === "number" && prov.cycleSec > 0) {
+                return prov.cycleSec;
+            }
+            return 1;
         }
 
         function captureFrames(opts) {
@@ -5309,27 +5269,29 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 .then(() => blobs)
                 .finally(() => {
                     // Restore the pre-capture animation phase so the
-                    // viewer doesn't jump on the user.  Phase 5d C3:
-                    // also restore the vibration baseline coords —
-                    // captureFrames left them at the last-driven
-                    // cosine phase, so a one-shot capture from a
-                    // paused vibration would freeze the model mid-
-                    // displacement.
+                    // viewer doesn't jump on the user (trajectory), or the
+                    // external animator's rest coordinates (provider).
                     if (savedFrame !== null && state.current.animation
                         && state.current.animation.kind === "trajectory") {
                         try {
                             _showTrajectoryFrame(state, savedFrame);
                         } catch (_) {}
-                    } else if (state.current.animation
-                               && state.current.animation.kind === "vibration"
-                               && state._anim.vibrationBaseline
+                    } else if (state.current.animationProvider
+                               && typeof state.current.animationProvider
+                                        .restCoords === "function"
                                && !state.disposed) {
+                        // External animator: restore its declared rest
+                        // coordinates so a one-shot capture doesn't leave
+                        // the model frozen mid-displacement.
                         try {
-                            _applyCoords(state.viewer,
-                                state._anim.vibrationBaseline);
-                            _rebuildGeometryForCoordChange(state);
-                            _postFramePositionRedraw(state);
-                            _render(state);
+                            const rest = state.current
+                                .animationProvider.restCoords();
+                            if (Array.isArray(rest)) {
+                                _applyCoords(state.viewer, rest);
+                                _rebuildGeometryForCoordChange(state);
+                                _postFramePositionRedraw(state);
+                                _render(state);
+                            }
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -5746,24 +5708,29 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     return r;
                 })
                 .finally(() => {
-                    // Phase 5d C3: restore vibration baseline as
-                    // well as trajectory savedFrame (same rule as
-                    // captureFrames above).
+                    // Restore trajectory savedFrame / provider rest
+                    // coords (same rule as captureFrames above).
                     if (savedFrame !== null && state.current.animation
                         && state.current.animation.kind === "trajectory") {
                         try {
                             _showTrajectoryFrame(state, savedFrame);
                         } catch (_) {}
-                    } else if (state.current.animation
-                               && state.current.animation.kind === "vibration"
-                               && state._anim.vibrationBaseline
+                    } else if (state.current.animationProvider
+                               && typeof state.current.animationProvider
+                                        .restCoords === "function"
                                && !state.disposed) {
+                        // External animator: restore its declared rest
+                        // coordinates so a one-shot capture doesn't leave
+                        // the model frozen mid-displacement.
                         try {
-                            _applyCoords(state.viewer,
-                                state._anim.vibrationBaseline);
-                            _rebuildGeometryForCoordChange(state);
-                            _postFramePositionRedraw(state);
-                            _render(state);
+                            const rest = state.current
+                                .animationProvider.restCoords();
+                            if (Array.isArray(rest)) {
+                                _applyCoords(state.viewer, rest);
+                                _rebuildGeometryForCoordChange(state);
+                                _postFramePositionRedraw(state);
+                                _render(state);
+                            }
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -5990,38 +5957,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             }
             const cur = state.current.animation;
             const hasKind = animation && typeof animation === "object"
-                            && (animation.kind === "vibration"
-                                || animation.kind === "trajectory");
+                            && animation.kind === "trajectory";
             if (!hasKind && cur) {
                 // Partial update: mutate live-readable fields in
-                // place.  The vibration tick reads ``amplitude`` and
-                // ``speedHz`` every frame, so a direct assignment
-                // takes effect on the next rAF.  Trajectory's
-                // ``fps`` requires re-arming the setInterval; we
-                // handle that via _setAnimationImpl with the merged
-                // payload.
-                if (cur.kind === "vibration") {
-                    if (typeof animation.amplitude === "number"
-                        && Number.isFinite(animation.amplitude)) {
-                        cur.amplitude = animation.amplitude;
-                    }
-                    if (typeof animation.speedHz === "number"
-                        && animation.speedHz > 0) {
-                        cur.speedHz = animation.speedHz;
-                    }
-                    if (typeof animation.paused === "boolean") {
-                        if (animation.paused) _pauseImpl(state);
-                        else _playImpl(state);
-                    }
-                    return;
-                }
+                // place.  Trajectory's ``fps`` requires re-arming the
+                // setInterval; we handle that via _setAnimationImpl
+                // with the merged payload.
                 if (cur.kind === "trajectory") {
                     // Phase 5k B-1 fast path: fields the renderer
                     // reads live per frame (arrowsPerFrame, onFrame,
                     // loop) mutate in place without restarting the
-                    // setInterval — matches the vibration partial-
-                    // update model (amplitude / speedHz / paused
-                    // above).  This keeps the live-poll cadence
+                    // setInterval.  This keeps the live-poll cadence
                     // jitter-free.  Fields that require a timer
                     // re-arm (fps) or a structural restart (frames)
                     // fall through to the full _setAnimationImpl
@@ -6098,31 +6044,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // atom-count mismatch all fire invalid_input.
             if (animation && typeof animation === "object") {
                 if (animation.kind !== undefined
-                    && animation.kind !== "vibration"
                     && animation.kind !== "trajectory") {
                     _dispatchInvalidInput(state,
-                        "setAnimation: 'kind' must be 'vibration' or "
-                      + "'trajectory'; got "
-                      + JSON.stringify(animation.kind));
+                        "setAnimation: 'kind' must be 'trajectory'; got "
+                      + JSON.stringify(animation.kind)
+                      + " (kind:'vibration' removed 2026-07, task #51 -- "
+                      + "use vibrationview.mount, which drives "
+                      + "setAtomCoords + setAnimationProvider)");
                     return;
-                }
-                if (animation.kind === "vibration") {
-                    if (!Array.isArray(animation.displacements)) {
-                        _dispatchInvalidInput(state,
-                            "setAnimation: vibration requires "
-                          + "'displacements' as a number[][][3] array");
-                        return;
-                    }
-                    const nAtoms = _atomCount(state.viewer);
-                    if (nAtoms > 0
-                        && animation.displacements.length !== nAtoms) {
-                        _dispatchInvalidInput(state,
-                            "setAnimation: vibration atom-count "
-                          + "mismatch — structure has " + nAtoms
-                          + " atoms, displacements supplied for "
-                          + animation.displacements.length);
-                        return;
-                    }
                 }
                 if (animation.kind === "trajectory") {
                     if (!Array.isArray(animation.frames)
@@ -6246,6 +6175,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             setBusy:            setBusy,
 
             setAnimation:       setAnimation,
+            setAtomCoords:      setAtomCoords,
+            setAnimationProvider: setAnimationProvider,
             appendFrames:       appendFrames,
             appendFrameArrows:  appendFrameArrows,
             getAnimationKind:   getAnimationKind,

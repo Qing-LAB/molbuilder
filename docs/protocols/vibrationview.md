@@ -208,12 +208,29 @@ spectra inspector migrated onto the §1 API and stopped calling `setAnimation` i
 the API boundary right but left a **temporary shared code path** (VibrationView borrowing
 MolView's embed) — the one thing the target forbids.
 
-**Phase 2 — seal separately (removes the shared path; the actual finish).** Replace the borrowed
-embed with VibrationView's **own** concealed 3Dmol wrapper: it constructs and owns its 3Dmol
-viewer, draws + greys + frames, and owns the oscillation loop end-to-end. When this lands, the
-vibration `setAnimation` kind leaves `mol-viewer-embed.js` entirely, VibrationView imports no
-MolView code, and the two modules share nothing but the 3Dmol.js library. This is what makes
-VibrationView a true **drop-in module**, finalized as we walk the individual tabs that use it.
+**Phase 2 — the SEMANTICS seal (SHIPPED 2026-07-24, task #51).** VibrationView now OWNS the
+vibration end-to-end: the phase clock, play/pause state, amplitude/speed knobs, the per-tick
+math `pos_i(t) = eq_i + A·cos(2π·f·t)·disp_i`, AND what every exported (gif/webm) frame looks
+like.  The `kind:"vibration"` animation left `mol-viewer-embed.js` entirely (its normalisation,
+loop, baseline snapshot, and partial-update branches were deleted; `setAnimation` now rejects
+the kind with an `invalid_input` pointing here).  What VibrationView drives instead are two
+GENERIC embed doors that carry no vibration knowledge:
+
+- **`setAtomCoords(coords)`** — the per-tick draw: overwrite the loaded atoms' positions,
+  rebuild the style meshes + position-aware overlays, render once.
+- **`setAnimationProvider({frameCoords(i,n,sec), restCoords(), cycleSec})`** — the export
+  contract: the embed drives the CAPTURE CLOCK (gif/webm dialog, deterministic stepping,
+  post-capture restore); the provider owns WHAT each captured frame looks like.  Registered
+  per mode; cleared on dispose.
+
+**Deliberate deviation from the 2026-07-14 "no shared code path" wording:** VibrationView still
+DRAWS through the shared embed — as a generic drawing surface (card chrome, WebGL lifecycle,
+screenshot/export encoders), the same way both modules use the 3Dmol.js library.  Duplicating
+that machinery into a second wrapper would be reinvention, not separation: the embed now holds
+ZERO vibration concern (criterion (a) met), either module can change without touching the
+other's semantics (b), and the vibration loop is node-testable in isolation with a stubbed
+handle (c) — the three consequences the target was defined by.  If a true own-wrapper is ever
+still wanted, it is a mechanical swap behind the same two generic doors.
 
 > **Trajectory (MD frames) is NOT part of this.** VibrationView is *display-only motion* for one
 > vibrational mode. A trajectory viewer wants MolView's full inspection (select / measure /
@@ -224,9 +241,11 @@ VibrationView a true **drop-in module**, finalized as we walk the individual tab
 
 - Node-testable pure logic: the **eigenvector scatter** (free-atom rows → global, frozen →
   zero) and the **`pos_i(φ)` sample** for a given φ/amplitude — pure functions, no DOM/3Dmol.
-- Browser e2e (Phase 1): mount VibrationView, `showMode`, assert the free atoms displace and
-  the frozen atoms do not; `setAmplitude`/`setSpeed` change the motion without a rebuild;
-  `pause()` stops it.
+- Node (Phase 2): the OWNED loop with a stubbed embed handle + manual rAF pump
+  (`test_vibrationview_mount_js.py`): showMode registers the provider + ticks
+  `setAtomCoords`; slider knobs are pure variable writes that never stop the loop;
+  pause stops the ticks; dispose clears the provider.  Browser e2e covers the embed's
+  generic doors (`setAtomCoords` mesh-rebuild regression class).
 - The handle exposes a test-only hook to read the drawn coordinates (mirroring MolView's
   `__molview_test_handle`), so e2e checks displacement without frame-timing races.
 
@@ -239,3 +258,4 @@ VibrationView a true **drop-in module**, finalized as we walk the individual tab
 | 2026-07-09 | VibrationView carved out as a concealed package for normal-mode animation, a **sibling** of MolView (not part of it). Confirmed by code: no `lib/molview/` module references animation; the embed's `setAnimation` is used only by `spectra/core.js` (vibration) + `trajectory/core.js` (frames). Phase 1 wraps the shared embed's vibration loop + migrates the spectra inspector; Phase 2 later extracts the loop out of the shared viewer. |
 | 2026-07-09 | **Phase 1 shipped.** 1a: `lib/vibrationview/{mode-math,vibrationview}.js` + node tests. 1b: `spectra/core.js` migrated onto the API (`state.handle`→`state.vib`; `_scatterModeDisplacements` + `_applyModeViewerStyle` deleted); scripts registered on `results.html`/`spectra.html`; `test_spectra_scatter_js.py` retired (superseded by `test_vibrationview_mode_math_js.py`). Controls stayed in the inspector (wired to the API). Migration revealed geometry travels **per-mode** (not mount-only), so `showMode` takes `{geometry, freeAtomIdx, frozenAtomIdx}` and redraws the baseline only on change. **Phase 2 (own seal) not started** — Phase 1 still borrows the shared embed. |
 | 2026-07-14 | **Target clarified — SEPARATE SEAL.** The finished module wraps 3Dmol.js **itself** and shares **no code path** with MolView's `mol-viewer-embed` (realizing the opening principle). Phase-1's shared-embed wrap is an INTERIM that got the §1 API right but left a temporary shared path; Phase 2 = give VibrationView its own concealed 3Dmol wrapper (draw / grey / camera / cos(φ) loop) so the vibration `setAnimation` kind leaves `mol-viewer-embed.js` entirely and the two modules share only the 3Dmol.js library. §3/§4 + the §A diagram updated to describe the own-seal target. Trajectory explicitly excluded (it is a MolView frame-dimension expansion). Finalized as we walk the tabs that use it; spectra-side comments/tests already de-referenced the old raw-3Dmol language (2026-07-14). |
+| 2026-07-24 | **Phase 2 SHIPPED as the SEMANTICS seal (task #51).** `kind:"vibration"` deleted from `mol-viewer-embed.js`; VibrationView owns clock/play-pause/knobs/tick-math/export-frames and drives the embed's new GENERIC doors `setAtomCoords` + `setAnimationProvider` (capture clock stays embed-owned; frame content is provider-owned). Deliberate deviation from the 2026-07-14 "no shared code path" wording recorded in §4 — the embed remains the shared generic DRAWING surface; duplicating card/WebGL/export machinery into a second wrapper was judged reinvention. Tests migrated: vibrationview mount node tests pin the owned loop; the embed e2e vibration tests became generic-door tests (`setAtomCoords` displacement, retired-kind rejection, trajectory partial-update). |

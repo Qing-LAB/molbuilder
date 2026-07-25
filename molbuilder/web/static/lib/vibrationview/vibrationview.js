@@ -20,16 +20,19 @@
  * The equilibrium baseline is (re)drawn only when the geometry (or frozen set) actually
  * changes, so browsing modes of ONE structure never rebuilds it.
  *
- * Phase 1 (vibrationview.md §4): wraps the shared viewer embed and drives its
- * setAnimation({kind:"vibration"}) loop under the hood -- reuse, no reinvented 3Dmol.  The
- * embed's loop computes pos_i(phi) = equilibrium_i + amplitude * cos(phi) * displacement_i;
- * amplitude / speedHz are live partial updates (no structure rebuild).
+ * Phase 2 (task #51, SHIPPED 2026-07): VibrationView OWNS the animation -- the phase
+ * clock, play/pause state, amplitude/speed, and the per-tick math
+ * pos_i(t) = equilibrium_i + amplitude * cos(2*pi*speedHz*t) * displacement_i.  The embed
+ * is a dumb drawing surface: each tick hands the computed coordinates through its generic
+ * ``setAtomCoords`` door, and animation EXPORT (gif/webm) works through the external-
+ * animator provider (``setAnimationProvider({frameCoords, restCoords, cycleSec})``) -- the
+ * embed drives the capture clock, this module owns what every captured frame looks like.
+ * The embed's ``kind:"vibration"`` animation was deleted with this move.
  *
  * A native ES module.  Internals are IMPORTED (mode-math -- package-private; the shared
- * stateless xyz writer); the shared-embed borrow (root.molbuilder.viewer) stays a RUNTIME
- * LOOKUP (live module owned elsewhere; replaced by the Phase-2 own seal, task #51).  The
- * public door for classic consumers (spectra/core.js, results) is
- * ``window.molbuilder.vibrationview.mount`` -- the ONE unified API.
+ * stateless xyz writer); the embed borrow (root.molbuilder.viewer) stays a RUNTIME LOOKUP
+ * (live module owned elsewhere).  The public door for classic consumers (spectra/core.js,
+ * results) is ``window.molbuilder.vibrationview.mount`` -- the ONE unified API.
  */
 "use strict";
 
@@ -83,6 +86,67 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var handle      = null;
         var _drawnSig   = null;   // signature of the currently-drawn geometry (+ frozen)
 
+        // ---- The animation loop (OWNED here, task #51) ------------------------ //
+        // disp is in GLOBAL atom order (scattered); frozen rows are zero, so they
+        // never move.  The clock is phase-continuous across pause/play.
+        var _disp     = null;    // [[dx,dy,dz]...] for the CURRENT mode
+        var _rafId    = null;
+        var _playing  = false;
+        var _phase0   = 0;       // phase at the last play() (pause keeps it)
+        var _t0       = 0;       // wall-clock ms of the last play()
+
+        function _nowMs() {
+            return (typeof performance !== "undefined" && performance.now)
+                ? performance.now() : Date.now();
+        }
+        function _coordsAtPhase(phase) {
+            var factor = amplitude * Math.cos(phase);
+            var eq = geom.positions;
+            var out = new Array(eq.length);
+            for (var i = 0; i < eq.length; i++) {
+                var d = (_disp && i < _disp.length) ? _disp[i] : [0, 0, 0];
+                out[i] = [eq[i][0] + factor * d[0],
+                          eq[i][1] + factor * d[1],
+                          eq[i][2] + factor * d[2]];
+            }
+            return out;
+        }
+        function _tick() {
+            if (!_playing || !handle || !geom || !_disp) return;
+            var phase = _phase0 + 2 * Math.PI * speedHz * ((_nowMs() - _t0) / 1000);
+            try { handle.setAtomCoords(_coordsAtPhase(phase)); } catch (_) {}
+            _rafId = requestAnimationFrame(_tick);
+        }
+        function _play() {
+            if (_playing || !_disp || !geom) return;
+            _t0 = _nowMs();
+            _playing = true;
+            _rafId = requestAnimationFrame(_tick);
+        }
+        function _pause() {
+            if (!_playing) return;
+            _phase0 = _phase0 + 2 * Math.PI * speedHz * ((_nowMs() - _t0) / 1000);
+            _playing = false;
+            if (_rafId !== null) {
+                try { cancelAnimationFrame(_rafId); } catch (_) {}
+                _rafId = null;
+            }
+        }
+        // Export provider: the embed drives the capture clock; WE own what each
+        // captured frame looks like (and the post-capture rest restore).
+        function _provider() {
+            return {
+                frameCoords: function (frameIdx, totalFrames, durationSec) {
+                    var t = durationSec * (frameIdx / Math.max(1, totalFrames));
+                    return _coordsAtPhase(2 * Math.PI * speedHz * t);
+                },
+                restCoords: function () {
+                    return geom.positions.map(function (p) { return [p[0], p[1], p[2]]; });
+                },
+                cycleSec: 1 / Math.max(0.01, speedHz),
+            };
+        }
+
         function _greyFrozen() {
             if (!handle || typeof handle.setOverlays !== "function") return;
             // Frozen atoms are drawn greyed so the moving (free) atoms read clearly; they carry
@@ -115,19 +179,18 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
 
         function _applyMode(mode) {
-            if (!handle || !geom || typeof handle.setAnimation !== "function") return;
-            var disp = scatterDisplacements(
+            if (!handle || !geom || typeof handle.setAtomCoords !== "function") return;
+            _disp = scatterDisplacements(
                 mode.displacements, freeAtomIdx, geom.positions.length);
-            // Hand the mode to the embed's vibration loop; it snaps to the equilibrium baseline
-            // and oscillates.  A later mode swap re-sets this with the new displacements.
-            handle.setAnimation({
-                kind:          "vibration",
-                displacements: disp,
-                amplitude:     amplitude,
-                speedHz:       speedHz,
-                paused:        false,
-            });
+            // Fresh mode: restart the clock at the equilibrium-adjacent peak
+            // (phase 0) and register the export provider for THIS mode.
+            _pause();
+            _phase0 = 0;
+            if (typeof handle.setAnimationProvider === "function") {
+                handle.setAnimationProvider(_provider());
+            }
             currentMode = (mode.index != null) ? mode.index : null;
+            _play();
         }
 
         handle = viewer.embed(host, {
@@ -165,25 +228,32 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 _ensureBaseline();
                 _applyMode(mode);
             },
-            play:  function () { try { if (handle.playAnimation)  handle.playAnimation();  } catch (_) {} },
-            pause: function () { try { if (handle.pauseAnimation) handle.pauseAnimation(); } catch (_) {} },
-            isPlaying: function () {
-                return (typeof handle.isAnimationPlaying === "function")
-                    ? !!handle.isAnimationPlaying() : false;
-            },
+            play:  _play,
+            pause: _pause,
+            isPlaying: function () { return _playing; },
+            // Live knobs: the tick reads these every frame, so a slider drag
+            // takes effect on the next rAF -- no re-registration needed.  The
+            // speed change re-anchors the clock so the phase stays continuous
+            // (no visual jump), matching the pause() bookkeeping.
             setAmplitude: function (a) {
                 if (typeof a !== "number" || !isFinite(a)) return;
                 amplitude = a;
-                if (currentMode != null) { try { handle.setAnimation({ amplitude: a }); } catch (_) {} }
             },
             setSpeed: function (hz) {
                 if (typeof hz !== "number" || !isFinite(hz)) return;
+                if (_playing) {
+                    _phase0 = _phase0 + 2 * Math.PI * speedHz * ((_nowMs() - _t0) / 1000);
+                    _t0 = _nowMs();
+                }
                 speedHz = hz;
-                if (currentMode != null) { try { handle.setAnimation({ speedHz: hz }); } catch (_) {} }
             },
             getMode: function () { return currentMode; },
             dispose: function () {
-                try { if (handle.pauseAnimation) handle.pauseAnimation(); } catch (_) {}
+                _pause();
+                _disp = null;
+                try {
+                    if (handle.setAnimationProvider) handle.setAnimationProvider(null);
+                } catch (_) {}
                 try { if (handle.dispose) handle.dispose(); } catch (_) {}
             },
         };
