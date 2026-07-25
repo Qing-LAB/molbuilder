@@ -23,7 +23,8 @@ job-level config (mpi_np / omp), everything else resolved at submit time.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional
 
 from ..jobset.model import Carry, Job, JobSet, Resources
 
@@ -109,4 +110,98 @@ def stages_to_jobset(
     )
 
 
-__all__ = ["stages_to_jobset"]
+# --------------------------------------------------------------------- #
+#  Pure bundle producer (staged-execution.md § 15.3 Promotion A)         #
+# --------------------------------------------------------------------- #
+
+
+@dataclass
+class StageBundle:
+    """The contents of a multi-stage SIESTA bundle, as DATA — no filesystem.
+
+    Produced by :func:`build_siesta_stage_bundle`; the caller writes it
+    through its own file layer (the CLI via raw paths, the web via the
+    concealed file-access framework), so the ONE producer serves both
+    front-ends (staged-execution.md § 15.3).
+
+    * ``fdf_files`` — ``{filename: fdf_text}``, one entry per ENABLED stage
+      (``<label>_<name>.fdf``); all share ``cfg.system_label`` so SIESTA's
+      ``.XV`` auto-read warm-restarts each stage.
+    * ``runner_name`` / ``runner_text`` — the ``<label>.run.sh`` bash runner
+      (write executable, 0o755).
+    * ``pseudo_species`` — the species the caller must place pseudos for
+      (the bundle-root shared package).
+    * ``jobset`` — the ladder :class:`JobSet` (``None`` when
+      ``emit_jobset=False``); serialise with ``jobset.write(dir/'job-set.json')``.
+    """
+    fdf_files: Dict[str, str]
+    runner_name: str
+    runner_text: str
+    pseudo_species: List[str] = field(default_factory=list)
+    jobset: Optional[JobSet] = None
+
+
+def build_siesta_stage_bundle(
+    struct,
+    cfg,
+    *,
+    cell=None,
+    shared: Optional[List[str]] = None,
+    resources_for: Optional[Callable[[str], Resources]] = None,
+    emit_jobset: bool = True,
+) -> StageBundle:
+    """Produce a multi-stage SIESTA bundle's contents as :class:`StageBundle`.
+
+    PURE — no filesystem, no scheduler.  Reuses the existing tested
+    renderers (``render_siesta_stage_fdfs`` / ``render_siesta_stages_runner``)
+    + ``stages_to_jobset``; it only bundles them behind one seam so the CLI
+    (``cli._emit_siesta_multi_stage``) and the web Build endpoint don't each
+    re-glue the sequence (§ 15.3 Promotion A).
+
+    ``cfg.system_label`` MUST already be the on-disk stem — the caller aligns
+    it (the CLI to the ``.fdf`` filename, the web to the bundle basename), the
+    single point where the ``<stem>_<stage>.fdf`` convention meets the
+    SystemLabel that drives ``.XV``/``.DM`` warm-restart.
+
+    ``cell`` rides on ``struct`` by default (``struct.resolve_cell()`` — the
+    § 15.6 contract: the cell is carried by the structure, explicit in every
+    stage ``.fdf``); pass it only when read separately from a file (the CLI).
+
+    ``shared`` is the bundle-root static package symlinked into each stage
+    dir; when ``emit_jobset`` and ``shared is None`` it defaults to the
+    expected ``<species>.psml`` names (PSML-first, matching
+    ``/api/siesta/install-pseudos``).  ``resources_for`` is the per-stage
+    scheduler override seam (§ 6).
+
+    Raises ``ValueError`` (from ``render_siesta_stage_fdfs`` /
+    ``stages_to_jobset``) if no stage is enabled or the ladder is invalid.
+    """
+    from .input import (
+        render_siesta_stage_fdfs,
+        render_siesta_stages_runner,
+        _detect_species,
+    )
+
+    fdf_files = render_siesta_stage_fdfs(struct, cfg, cell=cell)
+    runner_name = f"{cfg.system_label}.run.sh"
+    runner_text = render_siesta_stages_runner(cfg, siesta_cmd="siesta")
+
+    species = (list(cfg.species_order) if getattr(cfg, "species_order", None)
+               else _detect_species(struct.elements))
+
+    jobset = None
+    if emit_jobset:
+        _shared = shared if shared is not None else [f"{s}.psml" for s in species]
+        jobset = stages_to_jobset(cfg, shared=_shared,
+                                  resources_for=resources_for)
+
+    return StageBundle(
+        fdf_files=fdf_files,
+        runner_name=runner_name,
+        runner_text=runner_text,
+        pseudo_species=species,
+        jobset=jobset,
+    )
+
+
+__all__ = ["stages_to_jobset", "StageBundle", "build_siesta_stage_bundle"]

@@ -754,10 +754,6 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         apply_siesta_stage_strategy,
         siesta_stages_from_dicts,
     )
-    from .siesta import (
-        render_siesta_stage_fdfs,
-        render_siesta_stages_runner,
-    )
     from .siesta.input import _struct_from_file
 
     # --stages-json: replace cfg.stages wholesale.
@@ -810,13 +806,17 @@ def _emit_siesta_multi_stage(*, cfg, input_path, fdf_path,
         struct, cell = _struct_from_file(resolved_input)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    fdfs = render_siesta_stage_fdfs(struct, cfg, cell=cell)
-
-    # Pick siesta_cmd here so the runner is self-contained even before
-    # runwrap composes the conda + MPI layers around it.  Defaults to
-    # the bare ``siesta`` binary; runwrap will substitute as needed.
-    runner = render_siesta_stages_runner(cfg, siesta_cmd="siesta")
-    runner_path = out_dir / f"{basename}.run.sh"
+    # Promotion A (staged-execution.md § 15.3): render the ladder's files via
+    # the shared pure producer so the CLI and the web Build endpoint don't each
+    # re-glue the sequence.  ``emit_jobset=False`` here -- the CLI builds its
+    # own JobSet below from the pseudos actually present on disk (glob-fidelity
+    # for legacy .psf/.vps), so the job-set.json stays byte-identical.
+    from .siesta.stages import build_siesta_stage_bundle
+    bundle = build_siesta_stage_bundle(struct, cfg, cell=cell,
+                                       emit_jobset=False)
+    fdfs = bundle.fdf_files
+    runner = bundle.runner_text
+    runner_path = out_dir / bundle.runner_name
 
     written: list = []
     for name, body in fdfs.items():
