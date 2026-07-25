@@ -54,14 +54,17 @@ class TestTransportSchemaEndpoint:
     def test_schema_carries_TransportConfig_sections(self, web):
         """Section order MUST come from
         ``TransportConfig._form_section_order`` so the workflow-
-        order (System → Geometry → Electrodes → Transmission →
-        NEGF → Runtime) is stable independent of field-declaration
-        order in the dataclass."""
+        order (System → Electrodes → Transmission → NEGF → Runtime)
+        is stable independent of field-declaration order in the
+        dataclass.  (The old ``Geometry`` section held only the dead
+        ``structure_xyz_path`` / ``molstruct_json_path`` path fields,
+        removed 2026-07-25 -- geometry now rides in from the viewer, so
+        the section no longer exists.)"""
         body = web.get("/api/transport/schema").get_json()
         sections = body["schema"]["sections"]
         names = [s["name"] for s in sections]
         assert names == [
-            "System", "Geometry", "Electrodes",
+            "System", "Electrodes",
             "Transmission", "NEGF", "Runtime",
         ]
 

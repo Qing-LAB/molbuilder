@@ -120,7 +120,6 @@ class TransportConfig:
     # Form-section render order.  Mirrors SpectraConfig's pattern.
     _form_section_order = (
         "System",
-        "Geometry",
         "Electrodes",
         "Transmission",
         "NEGF",
@@ -134,14 +133,6 @@ class TransportConfig:
             "PySCF-NEGF supports hybrid functionals on smaller "
             "molecules.  Both consume the same relaxed structure + "
             "region-labelled sidecar."
-        ),
-        "Geometry": (
-            "Input geometry + region labels.  The XYZ is the relaxed "
-            "structure from the Build/Modify workflow; the sidecar "
-            "JSON carries the L-electrode / R-electrode / bridge "
-            "labels assigned in /modify.  Both files must agree on "
-            "atom count and ordering -- the transport script verifies "
-            "this at script-generation time."
         ),
         "Electrodes": (
             "Bias voltage applied across the junction and the "
@@ -201,27 +192,13 @@ class TransportConfig:
     })
 
     # ----------------- Geometry -----------------
-
-    structure_xyz_path: str = field(default="", metadata={
-        "section": "Geometry",
-        "workflow_group": "profile",
-        "label":   "Relaxed structure (XYZ)",
-        "engine_key": '(molbuilder: input file path)',
-        "help":    "path to the relaxed-geometry XYZ from /modify.  "
-                   "Atom ordering must match the indices stored in "
-                   "the .molstruct.json sidecar (the transport "
-                   "preflight checks this via the structure_hash).",
-    })
-    molstruct_json_path: str = field(default="", metadata={
-        "section": "Geometry",
-        "workflow_group": "profile",
-        "label":   "Region-label sidecar (.molstruct.json)",
-        "engine_key": '(molbuilder: sidecar path)',
-        "help":    "path to the sidecar carrying L-electrode / "
-                   "R-electrode / bridge labels.  Generated in /modify "
-                   "when the user marks regions; carries a hash of "
-                   "the XYZ bytes to detect stale labels.",
-    })
+    #
+    # No geometry-PATH fields here: the structure + region-label sidecar
+    # ride in on the Generate POST body from the concealed MolView (the
+    # viewer is the single source of geometry + labels), not typed paths.
+    # The retired ``structure_xyz_path`` / ``molstruct_json_path`` form
+    # fields (dead residue of the old path-entry design) were removed
+    # 2026-07-25 -- nothing read them.
 
     # ----------------- Electrodes -----------------
 

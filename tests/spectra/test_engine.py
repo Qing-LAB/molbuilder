@@ -64,10 +64,14 @@ class TestEngineRegistry:
         _DummyEngine.name  = name
         _DummyEngine.label = f"dummy ({name})"
         # Stub methods just for Protocol satisfaction; tests don't
-        # exercise them.
+        # exercise them.  The framework Protocol surface is
+        # render_script / parse_output / render_checks / selector_checks /
+        # methods_fragment (the V1/V2 split replaced the old combined
+        # ``preflight`` -- see engine_base.py).
         _DummyEngine.render_script    = classmethod(lambda c, s, cfg: "")
         _DummyEngine.parse_output     = classmethod(lambda c, p: None)
-        _DummyEngine.preflight        = classmethod(
+        _DummyEngine.render_checks    = classmethod(lambda c, s, cfg: [])
+        _DummyEngine.selector_checks  = classmethod(
             lambda c, s, cfg, prior=None: []
         )
         _DummyEngine.methods_fragment = classmethod(lambda c, cfg, modes: "")

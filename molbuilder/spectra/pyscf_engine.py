@@ -130,7 +130,13 @@ class PySCFSpectraEngine:
         return parse_spectra_json(path)
 
     # ------------------------------------------------------------------ #
-    # preflight                                                          #
+    # validation: render gate (render_checks) + preflight-only UX        #
+    # (selector_checks), split V1/V2 (2026-07).  ``preflight`` is the    #
+    # combined convenience (selector + render) -- a concrete helper for  #
+    # tests / a full-preflight caller, NOT part of the framework         #
+    # SpectraEngine Protocol (production runs render_checks via          #
+    # validate() and adds selector_checks in the /spectra blueprint,     #
+    # never this combiner -- see engine_base.py).                        #
     # ------------------------------------------------------------------ #
 
     @classmethod
@@ -138,24 +144,17 @@ class PySCFSpectraEngine:
                   struct: Structure,
                   cfg: SpectraConfig,
                   prior: Optional[SpectraResults] = None) -> List[Issue]:
-        """Full interactive preflight = selector-availability UX +
-        render-gate science.  Used by the /spectra preflight endpoint.
+        """Combined preflight = selector-availability UX + render-gate
+        science, in one call.  Convenience for callers that want the full
+        set (the engine's own tests; a hypothetical full-preflight surface).
 
-        Two kinds of Issues, split 2026-07 (V1/V2) into two methods so
-        the render gate runs only the second kind:
-
-          1. :meth:`selector_checks` — selector / frequency-window
-             availability.  top_n / threshold rank modes by Raman
-             activity, which isn't known until L3 runs, so without prior
-             Raman data these are a workflow-ordering soft-dep.  This is
-             a PREFLIGHT-ONLY guardrail: a top_n script is perfectly
-             valid to EMIT (the selector resolves at runtime), so it must
-             NOT block render.
-          2. :meth:`render_checks` — PySCF SCIENTIFIC advisories (grid
-             level, displacement amplitude, spin/charge parity, method,
-             open-shell metal).  These DO gate render and are what
-             ``validate(struct, cfg)`` runs via the registered
-             SpectraConfig validator.
+        Production does NOT route through here: ``validate(struct, cfg)``
+        runs :meth:`render_checks` via the registered SpectraConfig
+        validator, and the /spectra blueprint adds :meth:`selector_checks`
+        on top -- the split keeps the render gate free of the preflight-only
+        selector soft-deps (a ``top_n`` script is valid to EMIT before Raman
+        data exists).  This method is therefore NOT on the framework
+        Protocol; it just composes the two public checks.
         """
         return (list(cls.selector_checks(struct, cfg, prior))
                 + list(cls.render_checks(struct, cfg)))
@@ -223,7 +222,7 @@ class PySCFSpectraEngine:
         # the probe inside the linear-response regime (ΔE_orbital
         # ∝ A), at the cost of needing a tight SCF tolerance to
         # resolve the smaller ΔE.  The script's default
-        # the default ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
+        # ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
         # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
         # mode).  Above 0.20 Å cubic anharmonicity in the
         # potential becomes significant (cf. Mills1972 §2.4).
@@ -236,8 +235,8 @@ class PySCFSpectraEngine:
                          f"(0.02-0.20 Å).  At this scale the "
                          f"finite-difference orbital-energy slope "
                          f"is at or below the noise floor of "
-                         f"the default scf_conv_tol=1e-9 SCF; either tighten scf_conv_tol "
-                         f"conv_tol further or raise the "
+                         f"the default scf_conv_tol=1e-9 SCF; either tighten "
+                         f"scf_conv_tol further or raise the "
                          f"displacement to at least 0.02 Å."),
                 where="config.displacement_amplitude_ang",
             ))
@@ -689,14 +688,27 @@ class PySCFSpectraEngine:
                 "Å⁴/amu [Komornicki1979]."
             )
 
-        # Density fitting note.
+        # Density fitting note.  The generated script applies DF to the SCF
+        # + Hessian path only; when Raman is computed the polarizability
+        # points are forced NON-DF (pyscf-properties 0.1.x has no DF
+        # polarizability -- pyscf_script.py Raman block), so the Methods text
+        # must not claim DF across the board.  The Raman caveat rides ONLY
+        # when compute_raman is on (mirrors the Raman prose above) so a
+        # non-Raman run's Methods never mentions Raman.
         if cfg.density_fit:
-            parts.append(
-                f"Density fitting (RIJK) was used for the Coulomb "
-                f"and exchange evaluation; the auxiliary basis was "
-                f"selected automatically by PySCF for the "
-                f"production {cfg.basis} basis."
+            df_note = (
+                f"Density fitting (RIJK) was used for the SCF and analytic "
+                f"Hessian; the auxiliary basis was selected automatically by "
+                f"PySCF for the production {cfg.basis} basis."
             )
+            if cfg.compute_raman:
+                df_note += (
+                    "  The polarizability evaluations that yield Raman "
+                    "activities are run without density fitting "
+                    "(pyscf-properties 0.1.x has no DF polarizability "
+                    "implementation)."
+                )
+            parts.append(df_note)
 
         # Grid level for DFT runs.
         if method.endswith("KS"):

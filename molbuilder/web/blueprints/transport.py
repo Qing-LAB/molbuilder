@@ -33,7 +33,6 @@ from ._shared import (
     config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
-    apply_sidecar_if_possible,
 )
 
 from molbuilder.config.transport import TransportConfig
@@ -198,9 +197,10 @@ def api_transport_render() -> Any:
     # SINGLE validation gate (V1/V2, 2026-07): validate() runs
     # validate_geometry + _validate_config_metadata + the registered
     # engine validator.  TransportConfig is now registered (its validator
-    # dispatches to the transport engine's preflight -- region / electrode
-    # ordering / charge-neutrality / bias checks), so there is no separate
-    # engine.preflight() pass to hand-concatenate and forget.
+    # dispatches to the transport engine's preflight -- region-label
+    # presence/unknown, device transport-axis kz=1, and cross-engine
+    # chemistry checks), so there is no separate engine.preflight() pass
+    # to hand-concatenate and forget.
     issues = list(_validate(struct, cfg))
     if sidecar_notice:
         from molbuilder.issues import Issue

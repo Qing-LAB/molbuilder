@@ -39,7 +39,7 @@ entry point:
       trade-off is that the absolute orbital-energy differences are
       small (~meV) and benefit from a tight SCF convergence.  See
       the ``displacement_amplitude_ang`` field below for the
-      contemporary-practice context (0.02-0.15 Å).
+      contemporary-practice context (0.02-0.20 Å).
     * Per-mode electronic structure off by default
       (``es_mode_selection = "skip"``) so a first-pass run is
       cheap; users opt in to ``top_n`` / ``explicit`` after they
@@ -392,7 +392,12 @@ class SpectraConfig:
         "workflow_group": "stage",
         "label":   "Displacement amplitude",
         "unit":    "Å",
-        "range":   (0.02, 0.30),
+        # Recommended range == the engine gate's validated window
+        # (pyscf_engine.py warns <0.02 and >0.20): above ~0.20 Å the
+        # linear-response assumption breaks (help text below).  Kept in
+        # lockstep so the form's out-of-range auto-warn and the science
+        # gate agree on the same boundary.
+        "range":   (0.02, 0.20),
         "tier":    "advanced",
         "engine_key": '(molbuilder: finite-difference step amplitude)',
         "help":    "how far atoms are pushed along each mode "

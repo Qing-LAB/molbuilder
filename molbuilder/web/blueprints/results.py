@@ -14,15 +14,18 @@ Routes:
                                             (consumed by /modify; later
                                             /spectra and any other tab that
                                             needs atom selection)
+    POST /api/results/bundle                write a finished run dir's final
+                                            geometry + metadata out as a
+                                            .xyz + .molstruct.json pair
+                                            (see ``api_results_bundle``)
 
-No ``/api/results/*`` endpoints in v1: the page reuses
-``/api/watch/*`` and ``/api/spectra/*`` for trajectory and spectra
-loading respectively, and ``/api/files/*`` for the source / structure
-previews.
-
-The blueprint is a clear seam for future ``/api/results/*`` endpoints
-(e.g., "summarise this file's metadata for the dispatch label") --
-they land here without touching the other tabs' blueprints.
+For trajectory / spectra / preview LOADING the page reuses the other
+tabs' endpoints -- ``/api/watch/*`` and ``/api/spectra/*`` for trajectory
+and spectra, ``/api/files/*`` for the source / structure previews -- so
+those are not re-exposed here.  ``/api/results/*`` is reserved for
+results-only operations (today: ``bundle``; a future "summarise this
+file's metadata for the dispatch label" would land here too), which stay
+in this blueprint without touching the other tabs' blueprints.
 
 Spec: ``docs/protocols/results-tab.md``.
 """

@@ -635,6 +635,7 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 | `POST /api/modify/orient` | `{xyz, anchors: [a0,a1], axis?, center?}` | `orient_along_axis` |
 | `POST /api/modify/rotate` | `{xyz, axis, angle}` | `rotate_around_axis` |
 | `POST /api/modify/translate` | `{xyz, recenter?: true} OR {xyz, dx?, dy?, dz?}` | If `recenter` is truthy, `Structure.centered()`; otherwise `Structure.translated((dx, dy, dz))`.  `recenter` wins if both are sent. |
+| `POST /api/modify/calibrate` | `{xyz}` | `_calibrate_to_cell` (structure-periodicity.md § 3c): translate every atom by `-resolve_cell_origin()` so atoms sit inside `[0, cell)` with the cell anchored at origin, and materialise the resolved cell as explicit (`cell_origin` cleared).  Rigid, count-preserving, idempotent -- lets the user SEE/SAVE the exact frame SIESTA will use (generation applies the same shift, so it's optional). |
 | `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], center_indices?, contact_distance, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` (single mode).  Slab centres on the centroid of `center_indices` (omit → origin).  Rejects `contact_distance <= 0`. |
 | `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], gap, center_indices?, orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes`.  Both slabs centre on the centroid of `center_indices` (1 → that atom, 2 → midpoint, N → centroid); omit → origin.  Rejects `gap <= 0`. |
 

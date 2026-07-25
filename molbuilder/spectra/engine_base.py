@@ -1,22 +1,32 @@
 """Engine Protocol + registry for the Spectra tab.
 
 L2 plug-in surface.  Each engine (PySCF in v1; SIESTA reserved)
-provides four methods:
+provides these methods:
 
 * :meth:`SpectraEngine.render_script` -- emit a self-contained
   script the user runs externally.
 * :meth:`SpectraEngine.parse_output` -- read a
   ``<job>.spectra.json`` produced by the script back into a
   typed :class:`SpectraResults`.
-* :meth:`SpectraEngine.preflight` -- pre-submission scientific +
-  consistency checks against the current ``SpectraConfig`` and
-  any prior results on disk.  Returns ``List[Issue]`` so warns
-  and errors share the rest of molbuilder's issues pipeline.
+* :meth:`SpectraEngine.render_checks` -- THE render gate: PySCF
+  scientific advisories that DO block generation.  This is what
+  ``validate(struct, cfg)`` runs via the registered SpectraConfig
+  validator (validation/__init__.py).
+* :meth:`SpectraEngine.selector_checks` -- preflight-only
+  selector / frequency-window availability UX (workflow-ordering
+  soft-deps that must NOT block render).  The /spectra preflight
+  endpoint adds these on top of ``render_checks``.
 * :meth:`SpectraEngine.methods_fragment` -- engine-specific
   paragraph for the Methods section (functional implementation,
   code version, citation keys for method papers).  Composed with
   the generic Methods template in
   ``molbuilder.spectra.methods``.
+
+The render-gate vs selector split (V1/V2, 2026-07): ``render_checks``
+gates generation; ``selector_checks`` is preflight-only.  They replaced
+a single combined ``preflight`` so the render gate runs only the science
+checks -- a ``top_n`` script is valid to EMIT even before Raman data
+exists, so its selector soft-dep must not block render.
 
 Engines self-register via the ``@register_engine`` decorator at
 import time; :func:`get_engine` dispatches by ``name``.
@@ -99,31 +109,35 @@ class SpectraEngine(Protocol):
         ...
 
     @classmethod
-    def preflight(cls, struct: Structure,
-                  cfg: SpectraConfig,
-                  prior: Optional[SpectraResults] = None) -> List[Issue]:
-        """Scientific + consistency checks before the script runs.
+    def render_checks(cls, struct: Structure,
+                      cfg: SpectraConfig) -> List[Issue]:
+        """THE render gate -- scientific advisories that block or warn on
+        generation.  This is what ``validate(struct, cfg)`` runs via the
+        registered SpectraConfig validator, so EVERY engine MUST implement
+        it (a missing method would make ``validate()`` raise ``AttributeError``).
 
-        Returns a list of :class:`Issue` -- the web layer's
-        validation panel renders these inline.  Severity matches
-        the rest of molbuilder's pipeline (`Issue.severity` is
-        constrained to ``"error"`` or ``"warn"``):
+        Returns :class:`Issue` list; ``Issue.severity`` is ``"error"``
+        (would fail / produce bad data -- blocks generation) or ``"warn"``
+        (scientifically dubious but valid, e.g. hybrid functional at grid
+        level < 4, or displacement amplitude outside [0.02, 0.20] Å).
+        """
+        ...
 
-          * ``error`` -- the script would fail / produce bad data;
-            blocks generation.  Examples: ``top_n`` selector with
-            no L3 data on disk; an out-of-range explicit mode
-            index; configuration incompatible with the engine
-            (e.g., a basis set the engine doesn't recognise).
-          * ``warn``  -- scientifically dubious but not broken.
-            Examples: hybrid functional with grid level < 4
-            (spec § 11.4); displacement amplitude outside
-            [0.04, 0.20] Å.
+    @classmethod
+    def selector_checks(cls, struct: Structure,
+                        cfg: SpectraConfig,
+                        prior: Optional[SpectraResults] = None) -> List[Issue]:
+        """Preflight-ONLY selector / frequency-window availability checks
+        (workflow-ordering soft-deps).  NOT part of the render gate: a
+        ``top_n`` / ``threshold`` script is valid to emit before any Raman
+        data exists (the selector resolves at run time), so these must not
+        block render.  The /spectra preflight endpoint adds them on top of
+        ``render_checks``.
 
-        ``prior`` is the on-disk :class:`SpectraResults` if this
-        run is a resume / re-run after an earlier run on the same
-        ``job_name``; ``None`` for a fresh run.  The engine uses
-        ``prior`` to decide which layers to skip (spec § 2.5.2 +
-        § 6.1).
+        ``prior`` is the on-disk :class:`SpectraResults` for a resume /
+        re-run on the same ``job_name`` (``None`` for a fresh run); the
+        engine uses it to range-check explicit indices and decide whether
+        rank-based selectors have the Raman data they need.
         """
         ...
 
@@ -193,7 +207,7 @@ def get_engine(name: str) -> Type[SpectraEngine]:
       .. code:: python
 
           engine = get_engine(cfg.engine)
-          issues = engine.preflight(struct, cfg)
+          issues = engine.render_checks(struct, cfg)   # the render gate
           script = engine.render_script(struct, cfg)
     """
     if name not in _ENGINES:

@@ -1358,6 +1358,12 @@ function _mvdata() {
             }).then(x => x.json());
             if (!r.ok) {
                 setStatus("fdf-status", r.error || "FDF render failed.", "error");
+                // Surface the validation issues the server returned on a
+                // hard-fail (build/fdf sends {ok:false, error, issues} with
+                // HTTP 200).  Without this the user saw only the one-line
+                // error and lost the actionable per-issue list -- the
+                // failing checks that explain WHY the generate was rejected.
+                renderIssues("fdf-issues", r.issues || [], "siesta-form-container");
                 state.fdf = null;
                 state.lastFdfSave = null;
                 // Clear the Save-in-flight flag too: if the user clicked

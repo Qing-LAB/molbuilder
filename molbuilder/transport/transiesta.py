@@ -121,12 +121,15 @@ if the target env isn't installed.
 So a user's full lifecycle is:
 
 1. Generate the device ``.fdf`` from the Transport tab (this
-   engine's :meth:`render_script`).
-2. Web blueprint also emits ``<jobname>.run.sh`` via
-   :func:`molbuilder.runwrap.write_run_wrapper`.
-3. User runs ``bash <jobname>.run.sh`` from the run directory.
-4. Wrapper activates ``molbuilder-siesta``, launches
-   ``mpirun -np <N> siesta <jobname>.fdf``, captures output.
+   engine's :meth:`render_script`) and save it to the run directory
+   (projects sidebar / ``/api/files/write``).
+2. User launches SIESTA/TranSIESTA under ``molbuilder-siesta`` --
+   e.g. ``mpirun -np <N> siesta <jobname>.fdf``.
+
+NOTE: unlike the Build tab, the Transport blueprint does NOT currently
+auto-emit a ``<jobname>.run.sh`` wrapper (``runwrap.write_run_wrapper``);
+the render endpoint returns only ``{script, filename}``.  Wiring the
+wrapper for transport is a deliberate follow-up, not a shipped feature.
 
 The conda env model is invisible to the engine's emitter; the
 runner ``.run.sh`` carries it.  Pinned in memory

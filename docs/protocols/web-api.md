@@ -751,6 +751,7 @@ function.
 | `/api/modify/orient` | POST | `{xyz, anchor_indices, axis, center, ...}` |
 | `/api/modify/rotate` | POST | `{xyz, axis, angle, center, ...}` |
 | `/api/modify/translate` | POST | `{xyz, dx, dy, dz, ...}` |
+| `/api/modify/calibrate` | POST | `{xyz, ...}` — shift atoms to `[0, cell)` + materialise the resolved cell (structure-periodicity.md § 3c) |
 | `/api/modify/electrode` | POST | `{xyz, element, plane, size, center_indices?, ...}` |
 | `/api/modify/symmetric_electrodes` | POST | `{xyz, element, plane, size, center_indices?, gap, ...}` |
 
