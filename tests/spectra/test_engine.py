@@ -692,7 +692,12 @@ class TestPySCFEnginePreflight:
 class TestPySCFEngineIsHybridFunctional:
     """The hybrid-detection heuristic.  We accept some false
     positives (the resulting warn is benign) but want no false
-    negatives for the canonical hybrid families."""
+    negatives for the canonical hybrid families.
+
+    The detector moved to the ONE shared home (V4):
+    ``molbuilder.validation.pyscf.is_hybrid_functional`` — the spectra
+    preflight and the Build-tab PySCF validator both call it, so the
+    hybrid gate can no longer drift between the two tabs."""
 
     @pytest.mark.parametrize("name", [
         "B3LYP", "b3lyp", "B3PW91",
@@ -705,15 +710,15 @@ class TestPySCFEngineIsHybridFunctional:
         "HSE06",
     ])
     def test_recognised_hybrids(self, name):
-        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        assert PySCFSpectraEngine._is_hybrid_functional(name) is True
+        from molbuilder.validation.pyscf import is_hybrid_functional
+        assert is_hybrid_functional(name) is True
 
     @pytest.mark.parametrize("name", [
         "PBE", "BLYP", "LDA", "BP86", "TPSS", "SCAN",
     ])
     def test_pure_functionals_not_flagged(self, name):
-        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        assert PySCFSpectraEngine._is_hybrid_functional(name) is False
+        from molbuilder.validation.pyscf import is_hybrid_functional
+        assert is_hybrid_functional(name) is False
 
 
 class TestPySCFEngineParseOutput:

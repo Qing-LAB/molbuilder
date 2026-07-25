@@ -171,3 +171,84 @@ def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):
     err = capsys.readouterr().err
     # No "config.method" warn for a properly-set UKS config.
     assert "method" not in err or "warn [config.method]" not in err
+
+
+# --------------------------------------------------------------------- #
+#  ONE validation gate per engine (V1/V2 -- backend-architecture.md)    #
+#                                                                       #
+#  Every engine registers a validator so validate(struct, cfg) is the   #
+#  single pass.  If a future edit drops Spectra/Transport from the      #
+#  registry, those tabs silently skip their science again (the cross-   #
+#  tab divergence this fixed) -- so pin the registration + the routing. #
+# --------------------------------------------------------------------- #
+
+
+def test_all_four_engine_configs_are_registered():
+    from molbuilder.validation import _ENGINE_VALIDATORS
+    from molbuilder.config.spectra import SpectraConfig
+    from molbuilder.config.transport import TransportConfig
+    registered = {c.__name__ for c in _ENGINE_VALIDATORS}
+    assert {"SiestaConfig", "PySCFConfig",
+            "SpectraConfig", "TransportConfig"} <= registered, (
+        f"an engine validator was dropped from the registry: {registered} "
+        "-- /spectra or /transport would silently skip its science")
+
+
+def test_validate_dispatches_spectra_render_science_but_not_selector(water_struct):
+    """validate(struct, spectra_cfg) runs the render-gate SCIENCE (the
+    hybrid grid_level advisory) through the registered SpectraConfig
+    validator, but NOT the selector-availability check -- a top_n script
+    is valid to emit, so the render gate must not block on it (V1/V2)."""
+    from molbuilder.config.spectra import SpectraConfig
+    cfg = SpectraConfig(functional="B3LYP", grid_level=3,
+                        es_mode_selection="top_n")
+    issues = validate(water_struct, cfg)
+    wheres = [i.where for i in issues]
+    # render-gate science reached it (hybrid + low grid):
+    assert any(w == "config.grid_level" for w in wheres), wheres
+    # selector-availability (top_n soft-dep) is NOT a render gate, so it
+    # must be absent here -- it lives in engine.selector_checks (preflight).
+    assert not any(i.severity == "error"
+                   and i.where == "config.es_mode_selection"
+                   for i in issues), (
+        "the top_n selector soft-dep leaked into the render gate")
+
+
+def test_validate_dispatches_transport_preflight(water_struct):
+    """validate(struct, transport_cfg) reaches the transport engine's
+    region/electrode checks through the registered validator (V1/V2)."""
+    from molbuilder.config.transport import TransportConfig
+    # A bare water struct has no transport regions -> the preflight emits
+    # its "missing electrode region" finding; the point is that SOME
+    # transport-specific issue surfaces through validate() at all.
+    cfg = TransportConfig()
+    issues = validate(water_struct, cfg)
+    assert any("transiesta" in (i.message or "").lower()
+               or "electrode" in (i.message or "").lower()
+               or "region" in (i.message or "").lower()
+               for i in issues), (
+        "no transport-preflight finding surfaced through validate() -- "
+        "TransportConfig may have lost its registered validator")
+
+
+# --------------------------------------------------------------------- #
+#  V3: the cross-run transport checklist bridges to Issue               #
+# --------------------------------------------------------------------- #
+
+
+def test_preflight_report_to_issues_bridge():
+    """Check/PreflightReport is a distinct CHECKLIST type (it reports
+    passing 'ok' gates Issue can't model), but it bridges to the shared
+    Issue list -- error/warn/info map through, 'ok' passes drop out."""
+    from molbuilder.transport.preflight import Check, PreflightReport
+    rep = PreflightReport(checks=[
+        Check("role.device", "ok", "looks right"),
+        Check("k.commensurate", "error", "device kz must be 1"),
+        Check("cutoff.match", "warn", "MeshCutoff differs"),
+        Check("basis.note", "info", "electrode uses a larger basis"),
+    ])
+    issues = rep.to_issues()
+    assert [i.severity for i in issues] == ["error", "warn", "info"]
+    assert issues[0].where == "k.commensurate"
+    # the 'ok' pass is not an Issue (Issue has no ok state):
+    assert all(i.where != "role.device" for i in issues)

@@ -41,7 +41,7 @@ that an audit must verify.
         └── add_hydrogens          → OpenBabel-first, RDKit-fallback
                                     │
                                     ▼
-   4. Analyzer + validator         → molbuilder/analyzer.py
+   4. Analyzer + validator         → molbuilder/chemistry.py
         ├── analyze_structure()    → suggested charge/spin + warnings
         └── check_*() functions    → § 2 of validation doc
                                     │
@@ -111,7 +111,7 @@ imposes hydrogen + charge invariants:
 - `suggested_treatment` — open-shell metal detection, spin
   recommendation, charge defaults.  Drives the UI detection
   chip + the form's auto-detect.
-- `metals: list[str]` and `analysis_notes: list[Issue]` — what
+- `metals: list[str]` and `warnings: list[str]` — what
   the user needs to know before running.
 
 Per-engine validators (`molbuilder/validation/{siesta,pyscf}.py`)
@@ -175,7 +175,7 @@ as a structural audit, walk these in order:
 
 - `analyze_structure` produces deterministic output for the
   same input (no I/O, no global state).  Test:
-  `tests/test_analyzer.py::TestPurity`.
+  `tests/test_chemistry_analyzer.py::test_analyze_structure_is_deterministic`.
 - The detection chip (UI) and the validator (form) read from
   the same `suggested_treatment` source — single-analyzer rule,
   see `web-ui-coherence.md` Rule 1.

@@ -195,23 +195,13 @@ def api_transport_render() -> Any:
     except UnknownEngineError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # 2026-06-14 G9 fix + I2 round-3: run the full validation
-    # pipeline (``validate(struct, cfg)``) -- runs validate_geometry
-    # + _validate_config_metadata + any registered engine validator.
-    # build.py:705 uses the same aggregator; without it transport
-    # silently skipped both:
-    #   * metadata-range warns on TransportConfig fields (G9),
-    #   * geometry checks like overlapping-atom errors (I2,
-    #     round-3 finding: a structure with two atoms 0.1 Å
-    #     apart used to preflight-pass on /transport but
-    #     error-block on /build, a confusing cross-tab divergence).
-    # No engine validator is registered for TransportConfig, so the
-    # engine.preflight() call below still owns the region / electrode
-    # ordering / charge-neutrality checks specific to TranSIESTA.
-    issues = (
-        list(_validate(struct, cfg))
-        + list(engine.preflight(struct, cfg))
-    )
+    # SINGLE validation gate (V1/V2, 2026-07): validate() runs
+    # validate_geometry + _validate_config_metadata + the registered
+    # engine validator.  TransportConfig is now registered (its validator
+    # dispatches to the transport engine's preflight -- region / electrode
+    # ordering / charge-neutrality / bias checks), so there is no separate
+    # engine.preflight() pass to hand-concatenate and forget.
+    issues = list(_validate(struct, cfg))
     if sidecar_notice:
         from molbuilder.issues import Issue
         # ``where="structure_path"`` matches Spectra's sidecar-load

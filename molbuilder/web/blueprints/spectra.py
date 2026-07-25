@@ -385,22 +385,15 @@ def api_spectra_render():
                         "where":   "config.engine"}],
         }), 400
 
-    # 2026-06-14 G9 fix + I2 round-3: run the full validation
-    # pipeline (``validate(struct, cfg)``) in addition to the
-    # engine preflight.  build.py:705 uses the same aggregator;
-    # without it spectra silently skipped both:
-    #   * metadata-range warns on SpectraConfig fields (G9),
-    #   * geometry checks like overlapping-atom errors (I2,
-    #     round-3 finding: a structure with two atoms 0.1 Å
-    #     apart used to preflight-pass on /spectra but
-    #     error-block on /build, a confusing cross-tab divergence).
-    # validate() runs validate_geometry + _validate_config_metadata
-    # + the registered engine validator (SiestaConfig / PySCFConfig
-    # only); SpectraConfig isn't registered, so engine-specific
-    # checks are still owned by engine.preflight() below.
+    # SINGLE science gate (V1/V2, 2026-07): validate() runs
+    # validate_geometry + _validate_config_metadata + the registered
+    # SpectraConfig validator (the render-gate SCIENCE, via the engine's
+    # render_checks).  The selector-availability check is preflight-only
+    # UX (a top_n script is valid to emit; it resolves at run time), so it
+    # is added HERE, not in the render gate.
     issues = (
-        list(_validate(struct, cfg))
-        + list(engine.preflight(struct, cfg, prior=prior))
+        list(_validate(struct, cfg, prior=prior))
+        + list(engine.selector_checks(struct, cfg, prior=prior))
     )
     if prior_warn is not None:
         issues.append(prior_warn)

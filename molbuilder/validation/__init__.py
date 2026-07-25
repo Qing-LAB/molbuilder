@@ -114,7 +114,8 @@ def _register_engine_validator(cfg_cls: Type):
 
 def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
-             dest_dir: "Optional[object]" = None) -> List[Issue]:
+             dest_dir: "Optional[object]" = None,
+             prior: "Optional[object]" = None) -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -137,10 +138,22 @@ def validate(struct: Structure, cfg, *,
         None, dest-relative paths fall back to projects/-anchored
         resolution; the file-existence check may then misfire and is
         downgraded to a WARN.
+    prior
+        Optional prior engine results (Spectra ``SpectraResults`` /
+        Transport ``TransportResults``) that the Spectra/Transport
+        engine validators use for selector / cross-run checks.  None
+        on a first run and on every SIESTA/PySCF Build call (their
+        validators ignore it).
 
     The returned list is in deterministic order: generic geometry
     checks first, generic config-field checks next, then engine-
     specific checks.  Callers can sort / filter as they please.
+
+    This is THE single per-engine validation gate: every engine
+    (SIESTA, PySCF, Spectra, Transport) registers ONE validator, so a
+    caller runs ``validate(struct, cfg)`` once instead of hand-
+    concatenating a separate engine ``preflight()`` (the cross-tab
+    silent-skip class the backend-architecture review flagged; V1/V2).
     """
     issues: List[Issue] = []
     issues += validate_geometry(struct, cell)
@@ -149,17 +162,17 @@ def validate(struct: Structure, cfg, *,
     # Engine-specific dispatch via the registry.  isinstance() picks
     # up subclasses too, so a future engine config that subclasses
     # an existing one inherits its validator unless it registers its
-    # own.
+    # own.  Extra kwargs (dest_dir / prior) are forwarded only when
+    # set; every registered validator accepts **_ and ignores the ones
+    # it doesn't use.
+    engine_kw = {}
+    if dest_dir is not None:
+        engine_kw["dest_dir"] = dest_dir
+    if prior is not None:
+        engine_kw["prior"] = prior
     for cfg_cls, fn in _ENGINE_VALIDATORS.items():
         if isinstance(cfg, cfg_cls):
-            # Engine validators may accept dest_dir via **kwargs; the
-            # PySCF validator ignores it.  Try the keyword call first
-            # so old validators that only take (struct, cfg, cell)
-            # still work.
-            try:
-                issues += fn(struct, cfg, cell, dest_dir=dest_dir)
-            except TypeError:
-                issues += fn(struct, cfg, cell)
+            issues += fn(struct, cfg, cell, **engine_kw)
             break
     return issues
 
@@ -196,12 +209,40 @@ def report(issues: List[Issue], *,
 # --------------------------------------------------------------------- #
 
 
+# --- Spectra / Transport validators ------------------------------------ #
+# These engines carry their scientific checks in the engine's own
+# ``preflight(struct, cfg, prior=None)`` classmethod (selected by
+# ``cfg.engine`` via the engine registry).  Registering thin wrappers here
+# makes ``validate(struct, cfg, prior=prior)`` the SINGLE per-engine gate,
+# so /spectra and /transport no longer hand-concatenate a second
+# ``engine.preflight()`` pass (the silent-skip risk; V1/V2).  The engine
+# import is LAZY (call-time) because the engine module imports
+# ``check_open_shell_metal`` from this package — a call-time import avoids
+# the register-time cycle.
+
+
+def _validate_spectra(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
+    # RENDER-gate science only (grid / amplitude / parity / method /
+    # open-shell).  The selector-availability check is preflight-only UX
+    # (a top_n script is valid to emit), so it is NOT in this gate -- the
+    # /spectra preflight endpoint adds engine.selector_checks() on top.
+    from ..spectra import get_engine
+    return list(get_engine(cfg.engine).render_checks(struct, cfg))
+
+
+def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
+    from ..transport import get_engine
+    return list(get_engine(cfg.engine).preflight(struct, cfg, prior=prior))
+
+
 def _register_default_engines() -> None:
-    """Late binding to avoid an import cycle: SiestaConfig /
-    PySCFConfig live in modules that themselves import from
-    validation.  Importing them here at module-import time would loop;
-    importing inside a function called from validate() is safe because
-    by then both modules are fully loaded."""
+    """Late binding to avoid an import cycle: the engine config classes
+    live in modules that themselves import from validation.  Importing
+    them here at module-import time would loop; importing inside a
+    function called from validate() is safe because by then both modules
+    are fully loaded.  Only the config CLASS is imported eagerly (as a
+    registry key); the validator BODY for spectra/transport imports its
+    engine lazily at call time (see the wrappers above)."""
     try:
         from ..siesta import SiestaConfig
         _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
@@ -210,6 +251,16 @@ def _register_default_engines() -> None:
     try:
         from ..pyscf import PySCFConfig
         _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
+    except ImportError:
+        pass
+    try:
+        from ..config.spectra import SpectraConfig
+        _ENGINE_VALIDATORS[SpectraConfig] = _validate_spectra
+    except ImportError:
+        pass
+    try:
+        from ..config.transport import TransportConfig
+        _ENGINE_VALIDATORS[TransportConfig] = _validate_transport
     except ImportError:
         pass
 

@@ -138,28 +138,41 @@ class PySCFSpectraEngine:
                   struct: Structure,
                   cfg: SpectraConfig,
                   prior: Optional[SpectraResults] = None) -> List[Issue]:
-        """Combined preflight pass.
+        """Full interactive preflight = selector-availability UX +
+        render-gate science.  Used by the /spectra preflight endpoint.
 
-        Two sources of Issues:
+        Two kinds of Issues, split 2026-07 (V1/V2) into two methods so
+        the render gate runs only the second kind:
 
-          1. The engine-agnostic selector / range validation from
-             :func:`selection.validate_selection`.  Modes for the
-             top_n / threshold selectors aren't available until L3
-             runs, so the validator needs prior Raman data to be
-             accurate; we report that as a soft-dep error.
-          2. PySCF-specific scientific advisories (this method):
-             grid level with a hybrid functional, displacement
-             amplitude outside the Mills1972-defensible window,
-             D4 selected without the pyscf-dispersion package
-             present, etc.
+          1. :meth:`selector_checks` — selector / frequency-window
+             availability.  top_n / threshold rank modes by Raman
+             activity, which isn't known until L3 runs, so without prior
+             Raman data these are a workflow-ordering soft-dep.  This is
+             a PREFLIGHT-ONLY guardrail: a top_n script is perfectly
+             valid to EMIT (the selector resolves at runtime), so it must
+             NOT block render.
+          2. :meth:`render_checks` — PySCF SCIENTIFIC advisories (grid
+             level, displacement amplitude, spin/charge parity, method,
+             open-shell metal).  These DO gate render and are what
+             ``validate(struct, cfg)`` runs via the registered
+             SpectraConfig validator.
+        """
+        return (list(cls.selector_checks(struct, cfg, prior))
+                + list(cls.render_checks(struct, cfg)))
 
-        Returns a single merged list (errors + warns interleaved
-        in the order they were checked).  The web blueprint
-        renders the list via the existing Issues panel.
+    @classmethod
+    def selector_checks(cls,
+                        struct: Structure,
+                        cfg: SpectraConfig,
+                        prior: Optional[SpectraResults] = None) -> List[Issue]:
+        """Selector / frequency-window availability validation.
+
+        PREFLIGHT-ONLY (workflow-ordering UX): NOT part of the render
+        gate, because the emitted script is valid regardless (the
+        selector resolves at run time).  The /spectra preflight endpoint
+        adds this on top of ``validate()``.
         """
         issues: List[Issue] = []
-
-        # -- (1) generic selector / range / window validation ----------
         # When prior results are present, the "L3 complete" flag is
         # what tells the selector validator that top_n / threshold
         # are safe to use.  We grab the modes list out of prior so
@@ -178,28 +191,30 @@ class PySCFSpectraEngine:
         issues.extend(validate_selection(
             modes_for_validation, cfg, l3_done=l3_done, prior=prior,
         ))
+        return issues
 
-        # -- (2) PySCF-specific scientific advisories ------------------
+    @classmethod
+    def render_checks(cls,
+                     struct: Structure,
+                     cfg: SpectraConfig) -> List[Issue]:
+        """PySCF SCIENTIFIC advisories — THE render gate (registered as
+        the SpectraConfig validator, so ``validate(struct, cfg)`` and the
+        script-render path both run exactly this).  No selector /
+        workflow-ordering checks; those are preflight-only
+        (:meth:`selector_checks`)."""
+        issues: List[Issue] = []
+
+        # -- PySCF-specific scientific advisories ------------------
 
         # Grid level with a hybrid functional (spec § 11.4).  PySCF's
         # default grid level is 3 ("screening"); level 4 is the
-        # production minimum for hybrids.  Below that the XC
-        # numerical integration noise dominates the Hessian and
-        # gives garbage frequencies (~5-20 cm⁻¹ wander).
-        if cls._is_hybrid_functional(cfg.functional) and cfg.grid_level < 4:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"Grid level {cfg.grid_level} is below the "
-                         f"recommended minimum of 4 for a hybrid "
-                         f"functional ({cfg.functional}).  Hybrid "
-                         f"functionals have a sharper exchange "
-                         f"contribution that needs a denser numerical "
-                         f"grid; below level 4 the grid-integration "
-                         f"noise typically dominates the frequency "
-                         f"error.  Raise the grid level for "
-                         f"publication-quality results."),
-                where="config.grid_level",
-            ))
+        # production minimum for hybrids.  Below that the XC numerical
+        # integration noise dominates the Hessian and gives garbage
+        # frequencies (~5-20 cm⁻¹ wander).  ONE shared gate/body with the
+        # Build-tab PySCF validator (was a duplicated rule; V4) -- the
+        # "spectra" context selects the frequency-error rationale.
+        from ..validation.pyscf import check_hybrid_grid_level
+        issues.extend(check_hybrid_grid_level(cfg, context="spectra"))
 
         # Displacement amplitude.  The [0.02, 0.20] Å acceptance
         # range is empirical -- not derived from a single source.
@@ -787,27 +802,9 @@ class PySCFSpectraEngine:
         # warning.
         return []
 
-    @staticmethod
-    def _is_hybrid_functional(name: str) -> bool:
-        """Approximate test: does the functional name name a hybrid
-        (i.e. has a fraction of HF exchange)?
-
-        We use a deny-list-by-prefix because functional name space
-        is sprawling -- B3*, PBE0, M06*, BHandH*, CAM-B3LYP, ωB97*,
-        TPSS0, MN15, etc.  The check exists only to gate one
-        scientific advisory (grid level recommendation), so a false
-        negative just means the user doesn't get the warn; a false
-        positive triggers a warn that's harmless.  Conservative:
-        when in doubt, treat as hybrid (the >=4 grid recommendation
-        is benign even for non-hybrids).
-        """
-        n = (name or "").lower()
-        # Common hybrid markers.  Order doesn't matter (any match
-        # wins).  PBE0, B3LYP, BHandH, M06, ωB97X-D, CAM-B3LYP, ...
-        return any(tag in n for tag in (
-            "b3", "pbe0", "bhandh", "m06", "mn15", "cam-", "wb97",
-            "ωb97", "tpss0", "x3lyp", "b97", "hse",
-        ))
+    # (_is_hybrid_functional removed 2026-07, V4: the hybrid detector +
+    #  grid-floor gate now live once in validation.pyscf.is_hybrid_functional
+    #  / check_hybrid_grid_level, called by preflight() above.)
 
 
 __all__ = ["PySCFSpectraEngine"]

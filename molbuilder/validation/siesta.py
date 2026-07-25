@@ -319,7 +319,7 @@ def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
 
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray],
-                     *, dest_dir=None) -> List[Issue]:
+                     *, dest_dir=None, **_) -> List[Issue]:
     """SIESTA-specific checks.
 
     Registered with the engine-validator dispatch at module bottom

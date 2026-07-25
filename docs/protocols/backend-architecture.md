@@ -146,7 +146,7 @@ contract ([`science.md`](../science.md), [`scientific-validation.md`](scientific
 **one shared chemistry analyzer**, and **one `validate()` pass per engine** that
 a surface calls once.
 
-### What is unified (good)
+### What is unified (was already good, still good)
 
 The chemistry `(charge, spin, treatment)` invariant — the place silent errors
 hide — is genuinely single-sourced. `chemistry.analyze_structure` (L2, engine-
@@ -155,26 +155,28 @@ agnostic) + the shared `check_open_shell_metal` helper are consumed by
 preflight. `pseudos.check_coverage` is the single pseudopotential owner (C1–C6).
 No engine reimplements the chemistry.
 
-### What is scattered (the finding — verified against code)
+### What was scattered — Tier 1 FIXED (2026-07)
 
-The broader **validation pass** is centralised only for the two Build engines.
-`validation/__init__.py::_register_default_engines` binds **only** `SiestaConfig`
-and `PySCFConfig` into `_ENGINE_VALIDATORS`; `SpectraConfig` and `TransportConfig`
-are **not registered**. Consequences:
+The Tier-1 gaps below were the review's "do we need more separation? **yes**"
+answer — not a new module, but *finishing the one that exists*. All fixed:
 
-| # | Finding | Evidence |
+| # | Finding (was) | Fix shipped |
 |---|---|---|
-| V1 | **No single pass for Spectra/Transport.** Each surface must run **two** passes and concatenate — `list(validate(...)) + list(engine.preflight(...))`. Forget the second and *all* engine-specific science is silently skipped. | `web/blueprints/spectra.py:401`, `transport.py:211` (both carry comments recording past cross-tab divergence of exactly this kind) |
-| V2 | **Transport science lives in the engine, not the registry.** Region-label / electrode-ordering / bias-voltage limit checks live in `transport/transiesta.py::preflight` and never run through `validate()`. | `transport/transiesta.py:695-884` |
-| V3 | **A third, parallel validator with its own type system.** The device↔electrode cross-run consistency validator uses `Check`/`PreflightReport` dataclasses instead of `Issue`, and is wired **only** to the CLI. | `transport/preflight.py:170,177`; CLI-only via `transport/_cli.py` |
-| V4 | **A rule is physically duplicated** with different thresholds/messages: hybrid-functional `grid_level < 4` is implemented in both the registered PySCF validator and the spectra engine. | `validation/pyscf.py:193` **and** `spectra/pyscf_engine.py:189` |
-| V5 | **Doc drift.** `chemistry-correctness.md` points the analyzer at `molbuilder/analyzer.py` with an `analysis_notes` field; the file does not exist (it is `chemistry.py::analyze_structure`, field `warnings`). | `chemistry-correctness.md:44,114` vs `chemistry.py` |
+| V1 | **No single pass for Spectra/Transport** — each surface ran `validate(...) + engine.preflight(...)`; forget the second and the science silently skipped. | `SpectraConfig` + `TransportConfig` are now registered in `_ENGINE_VALIDATORS`; the blueprints call `validate(struct, cfg, prior=prior)` **once**. `validate()` threads `prior` to the engine validator. Pinned by `test_all_four_engine_configs_are_registered`. |
+| V2 | **Transport science lived outside the registry** (`transport/transiesta.py::preflight`). | The registered `_validate_transport` dispatches to the engine's `preflight` via `get_engine(cfg.engine)` — region / electrode-ordering / bias checks now run through `validate()`. |
+| V3 | **A third type system** — the device↔electrode cross-run validator used `Check`/`PreflightReport`, not `Issue`. | Kept as a distinct **checklist** type (it reports passing "ok" gates `Issue` can't model — a legitimately different role) but **bridged**: `PreflightReport.to_issues()` / `Check.to_issue()` map the problem-severity checks onto `Issue`, so it is no longer a *disconnected* third system. |
+| V4 | **A duplicated rule** — hybrid `grid_level < 4` in both `validation/pyscf.py` and `spectra/pyscf_engine.py` with different detectors. | ONE body: `validation.pyscf.is_hybrid_functional` + `check_hybrid_grid_level(cfg, context=…)`, called by both sites; the message is context-selected (opt forces vs Hessian frequencies). |
+| V5 | **Doc drift** — `chemistry-correctness.md` pointed at a non-existent `molbuilder/analyzer.py` / `analysis_notes`. | Repointed to `chemistry.py::analyze_structure` / field `warnings` / the real deterministic-analyzer test. |
 
-This is where the answer to "do we need more logical separation?" is **yes** —
-not a new module, but *finishing the one that exists*: register Spectra/Transport
-in `_ENGINE_VALIDATORS` so there is a single `validate()` gate per engine, fold
-the duplicated grid-level rule into the shared body, and unify
-`transport/preflight`'s `Check` onto `Issue`. See § 6 for the ranked plan.
+**The render-gate vs preflight-UX split (V1/V2 subtlety).** Registering the
+spectra preflight surfaced that it mixed two concerns: render-gate **science**
+(grid / amplitude / parity / method / open-shell) and a preflight-only
+**selector-availability** check (`top_n`/`threshold` want prior Raman data). Only
+the science gates render — a `top_n` script is valid to *emit* (it resolves at
+run time). So the spectra engine split into `render_checks` (registered as the
+`SpectraConfig` validator; run by both the render path and `validate()`) and
+`selector_checks` (preflight-only UX the /spectra endpoint adds on top).
+`preflight()` composes both for back-compat.
 
 ---
 
@@ -252,16 +254,17 @@ distinct homes, enforced downward by the L1/L2/L3 rule and wired by the four cor
 types. Data management and structure construction are clean. What's needed is
 **completing** the separation in two concerns, not inventing a new one:
 
-**Tier 1 — the real separation gap (scientific validation).**
-1. Register `SpectraConfig` + `TransportConfig` in `_ENGINE_VALIDATORS` so
-   `validate(struct, cfg)` is the single per-engine gate (closes V1/V2). The
-   engine `preflight` bodies become the registered validators.
-2. Collapse the duplicated hybrid `grid_level < 4` rule into one shared body
-   (V4).
-3. Unify `transport/preflight`'s `Check`/`PreflightReport` onto `Issue`/the
-   validation pass so cross-run consistency isn't a third type system (V3).
-4. Fix the `analyzer.py`/`analysis_notes` doc drift in
-   `chemistry-correctness.md` (V5).
+**Tier 1 — the real separation gap (scientific validation). ✅ SHIPPED 2026-07.**
+See § 3's V1–V5 table for the as-built detail.
+1. ✅ `SpectraConfig` + `TransportConfig` registered in `_ENGINE_VALIDATORS`;
+   `validate(struct, cfg, prior=…)` is the single per-engine gate (V1/V2).
+2. ✅ The duplicated hybrid `grid_level < 4` rule is one shared body in
+   `validation.pyscf` (V4).
+3. ✅ `transport/preflight`'s checklist bridges to `Issue` via
+   `to_issues()`/`to_issue()` — kept as a distinct type (it reports passing
+   "ok" gates `Issue` can't model) but no longer disconnected (V3).
+4. ✅ The `analyzer.py`/`analysis_notes` doc drift in
+   `chemistry-correctness.md` is fixed (V5).
 
 **Tier 2 — execution↔engine decoupling (workflow).**
 5. Give the `.fdf`/memory reach-ins in `runwrap.py` an engine-interface seam so

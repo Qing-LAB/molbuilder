@@ -166,11 +166,31 @@ def parse_fdf_params(text: str) -> FdfParams:
 # --------------------------------------------------------------------- #
 
 
+# NOTE (backend-architecture.md V3): ``Check`` / ``PreflightReport`` are a
+# CHECKLIST type, deliberately distinct from the shared ``Issue`` / validation
+# pass — NOT accidental duplication.  This validator compares TWO run
+# directories (device vs electrode .fdf), which the (struct, cfg) engine-
+# validator registry can't express, and it reports PASSING gates too (the
+# "ok" severity) so ``format_report`` can print a full device<->electrode
+# checklist.  ``Issue`` has no "ok" state (an ok gate is simply the absence of
+# an Issue).  The two type systems are BRIDGED (``to_issues`` below) so a
+# future web transport-preflight surface can consume the problems uniformly,
+# without collapsing the checklist affordance the CLI needs.
 @dataclass
 class Check:
     id: str
     severity: str          # "error" | "warn" | "ok" | "info"
     message: str
+
+    def to_issue(self) -> "Optional[Issue]":
+        """The problem-severity view of this check as a shared ``Issue``
+        (``where`` = the check id), or None for an "ok" pass — which
+        ``Issue`` has no way to represent."""
+        from ..issues import Issue
+        if self.severity == "ok":
+            return None
+        return Issue(severity=self.severity, message=self.message,
+                     where=self.id)
 
 
 @dataclass
@@ -187,6 +207,14 @@ class PreflightReport:
 
     def ok(self) -> bool:
         return self.n_error == 0
+
+    def to_issues(self) -> "List[Issue]":
+        """The cross-run findings as shared ``Issue`` objects (the
+        error/warn/info checks; "ok" passes drop out).  The bridge that
+        lets this CLI-only checklist feed an Issue-based surface without
+        being a disconnected third type system (V3)."""
+        return [i for i in (c.to_issue() for c in self.checks)
+                if i is not None]
 
 
 def _vecs_close(a, b, tol) -> bool:

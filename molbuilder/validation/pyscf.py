@@ -25,6 +25,67 @@ from .sidecar import _check_frozen_atoms_consumed
 
 
 # --------------------------------------------------------------------- #
+#  Shared PySCF numerical-grid rule (the ONE body — was duplicated).    #
+#                                                                       #
+#  Hybrid functionals have a sharper HF-exchange contribution that      #
+#  needs a denser XC integration grid; below level 4 the grid noise     #
+#  dominates.  The SAME gate (hybrid AND grid_level < 4) matters at     #
+#  two call sites with different consequences: geometry-opt FORCES      #
+#  (this module, _validate_pyscf) and spectra HESSIAN frequencies       #
+#  (spectra/pyscf_engine.preflight).  Both used to carry their own      #
+#  copy with a slightly different hybrid detector — the drift the       #
+#  backend-architecture review (V4) flagged.  One detector + one gate   #
+#  now; the message is context-selected so each site keeps its own      #
+#  physically-correct rationale.                                        #
+# --------------------------------------------------------------------- #
+
+HYBRID_GRID_FLOOR = 4
+
+# Substring markers of a hybrid (fraction-of-HF-exchange) functional.
+# Deny-list-by-substring because the functional namespace is sprawling
+# (B3*, PBE0, M06*, ωB97*, CAM-B3LYP, TPSS0, MN15, HSE, …).  This gate
+# only drives a benign advisory, so a false positive is harmless and a
+# false negative just skips the hint; conservative = treat as hybrid.
+_HYBRID_MARKERS = ("b3", "pbe0", "bhandh", "m06", "mn15", "cam-",
+                   "wb97", "ωb97", "tpss0", "x3lyp", "b97", "hse")
+
+
+def is_hybrid_functional(name: str) -> bool:
+    """True if ``name`` names a hybrid functional (has HF exchange)."""
+    n = (name or "").lower()
+    return any(tag in n for tag in _HYBRID_MARKERS)
+
+
+def check_hybrid_grid_level(cfg, *, context: str) -> List[Issue]:
+    """Emit the hybrid-functional grid-density advisory (or nothing).
+
+    ``context`` selects the physically-correct rationale:
+      * ``"optimisation"`` — geometry-opt forces (Build tab).
+      * ``"spectra"``       — Hessian / harmonic frequencies (Spectra tab).
+    """
+    grid = getattr(cfg, "grid_level", None)
+    functional = getattr(cfg, "functional", "") or ""
+    if grid is None or grid >= HYBRID_GRID_FLOOR \
+            or not is_hybrid_functional(functional):
+        return []
+    if context == "spectra":
+        msg = (f"Grid level {grid} is below the recommended minimum of "
+               f"{HYBRID_GRID_FLOOR} for a hybrid functional ({functional}).  "
+               f"Hybrid functionals have a sharper exchange contribution that "
+               f"needs a denser numerical grid; below level "
+               f"{HYBRID_GRID_FLOOR} the grid-integration noise typically "
+               f"dominates the frequency error.  Raise the grid level for "
+               f"publication-quality results.")
+    else:
+        msg = (f"grid_level = {grid} with a hybrid functional "
+               f"({functional.upper()}): hybrid-DFT forces are noisy at this "
+               f"grid density (forces look ~1e-4 Ha/Bohr noise floor).  Bump "
+               f"to grid_level = {HYBRID_GRID_FLOOR} for production geometry "
+               f"optimisation; level 3 is fine for energies / screening only")
+    return [Issue("warn", msg, "config.grid_level")]
+
+
+# --------------------------------------------------------------------- #
 #  PySCF aggregator                                                     #
 #                                                                       #
 #  CALL ORDER IS LOAD-BEARING.  Tests that count issues by position    #
@@ -33,7 +94,7 @@ from .sidecar import _check_frozen_atoms_consumed
 
 
 def _validate_pyscf(struct: Structure, cfg,
-                    cell: Optional[np.ndarray] = None) -> List[Issue]:
+                    cell: Optional[np.ndarray] = None, **_) -> List[Issue]:
     """PySCF-specific checks.  ``cell`` is unused (PySCF jobs are gas-
     phase or PCM-solvent here); accepted for signature uniformity
     with the engine-validator registry."""
@@ -180,25 +241,10 @@ def _validate_pyscf(struct: Structure, cfg,
             "config.method",
         ))
 
-    # Hybrid functional (B3LYP, PBE0, M06-2X, wB97X) with grid_level < 4:
-    # forces become noisy at the ~1e-4 Ha/Bohr scale the optimizer
-    # cares about.  The molecule WILL relax, but the "converged" forces
-    # may have a noisy floor that prevents tight convergence.  Warn but
-    # allow -- the user may be doing screening at level 3 deliberately.
-    grid_level = getattr(cfg, "grid_level", None)
-    functional = (getattr(cfg, "functional", "") or "").upper()
-    is_hybrid = any(functional.startswith(p) for p in (
-        "B3", "PBE0", "M06", "WB97", "BHANDH", "X3LYP", "TPSS0", "MN15",
-    ))
-    if grid_level is not None and grid_level < 4 and is_hybrid:
-        issues.append(Issue(
-            "warn",
-            f"grid_level = {grid_level} with a hybrid functional "
-            f"({functional}): hybrid-DFT forces are noisy at this grid "
-            f"density (forces look ~1e-4 Ha/Bohr noise floor).  Bump to "
-            f"grid_level = 4 for production geometry optimisation; level "
-            f"3 is fine for energies / screening only",
-            "config.grid_level",
-        ))
+    # Hybrid functional with grid_level < 4: forces become noisy at the
+    # ~1e-4 Ha/Bohr scale the optimizer cares about.  Warn but allow --
+    # the user may be doing screening at level 3 deliberately.  ONE shared
+    # gate/body (was duplicated in spectra/pyscf_engine; V4).
+    issues += check_hybrid_grid_level(cfg, context="optimisation")
 
     return issues

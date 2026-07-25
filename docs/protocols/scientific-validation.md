@@ -748,8 +748,13 @@ LOAD-BEARING for every test that counts issues by position.
   `cli.py`, `web/blueprints/_shared.py`, every `tests/*.py`) were not
   modified.
 * **The engine-validator registry.**  `_register_default_engines()`
-  still runs at package import time and populates
-  `_ENGINE_VALIDATORS` with `SiestaConfig` / `PySCFConfig` mappings.
+  runs at package import time and populates `_ENGINE_VALIDATORS` with
+  all four engine configs: `SiestaConfig`, `PySCFConfig`, `SpectraConfig`,
+  `TransportConfig` (the last two added 2026-07, V1/V2 — their validators
+  dispatch to the engine's `render_checks` / `preflight` via
+  `get_engine(cfg.engine)`, so `validate(struct, cfg)` is the single
+  per-engine gate; the spectra selector-availability check stays
+  preflight-only, added by the /spectra endpoint).
 
 ### Naming policy
 
