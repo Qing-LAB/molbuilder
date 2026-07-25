@@ -267,6 +267,16 @@ class TestNoUnsafeInnerHTML:
             # worst, and DOMPurify defends even that.)
             ("lib/inspectors/markdown.js",
              "elRender.innerHTML = _renderToHTML"),
+            # Documents tab render pane: same guarantee as the markdown
+            # inspector above, through the SHARED render path.  The RHS is
+            # ``markdownRender.render(r.text)`` (lib/markdown-render.js) =
+            # marked.parse piped through DOMPurify.sanitize on every call, so
+            # only sanitised HTML reaches innerHTML.  Source is app-shipped
+            # docs/*.md served read-only by /api/docs/read.  The loading /
+            # error states use textContent (no innerHTML), so this is the ONE
+            # innerHTML in documents/page.js.
+            ("documents/page.js",
+             "renderEl.innerHTML = window.molbuilder.markdownRender.render"),
             # Shared partial-inspector factory (task #308 dedupe):
             # the ``host.innerHTML = partialHtml`` assignment moved
             # out of the trajectory + spectra wrappers and into the

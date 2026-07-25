@@ -221,7 +221,7 @@ entry would supersede this section if we ever do.
 
 ---
 
-## 2. Endpoint index — all 73 routes
+## 2. Endpoint index — all 76 routes
 
 ```mermaid
 flowchart LR
@@ -231,7 +231,12 @@ flowchart LR
         page_spec["GET /spectrum-calculation"]
         page_transp["GET /transport-calculation"]
         page_results["GET /results"]
+        page_docs["GET /documents (read-only docs/*.md reader)"]
         page_mvdemo["GET /molview-demo (test harness for the MolView module — not a user tab)"]
+    end
+    subgraph "Documents — read-only docs/*.md (docs blueprint)"
+        docs_list["GET /api/docs/list"]
+        docs_read["GET /api/docs/read"]
     end
     subgraph "Partials (template fragments injected via fetch)"
         part_traj["GET /partials/trajectory-inspector"]

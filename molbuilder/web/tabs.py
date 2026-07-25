@@ -53,6 +53,9 @@ TABS: Final[List[Tab]] = [
     {"key": "results",
      "path": "/results",
      "label": "Results"},
+    {"key": "documents",
+     "path": "/documents",
+     "label": "Documents"},
 ]
 
 

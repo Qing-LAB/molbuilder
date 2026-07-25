@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; Documents</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='documents/style.css') }}">
+{# molbuilder-runtime.js MUST load before any other molbuilder script. #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
+</head>
+<body>
+
+{% set active_tab = "documents" %}
+{% include "_app_header.html" %}
+
+<main class="docs-tab">
+  <aside class="docs-list" id="docs-list" aria-label="Documents list">
+    <div class="docs-list-status" id="docs-list-status">Loading documents&hellip;</div>
+  </aside>
+  <section class="docs-view">
+    <div class="docs-view-empty" id="docs-view-empty">
+      <h1>Documents</h1>
+      <p>Every design doc, protocol, and guide under <code>docs/</code>, in one
+         place. Pick a document on the left to read it here.</p>
+    </div>
+    <article class="docs-render" id="docs-render" hidden></article>
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='lib/markdown-render.js') }}"></script>
+<script src="{{ url_for('static', filename='documents/page.js') }}"></script>
+</body>
+</html>

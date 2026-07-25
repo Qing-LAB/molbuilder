@@ -49,31 +49,22 @@
             if (!window.CodeMirror.modes.markdown) {
                 await loadScript("/static/vendor/codemirror/markdown.min.js");
             }
-            if (!window.marked) {
-                await loadScript("/static/vendor/marked/marked.min.js");
+            // marked + DOMPurify (the render + sanitise policy) live in the
+            // shared lib/markdown-render.js so this inspector and the
+            // Documents tab can't drift on the allow-list.  Ensure it's
+            // loaded, then let it load its own render deps.
+            if (!window.molbuilder || !window.molbuilder.markdownRender) {
+                await loadScript("/static/lib/markdown-render.js");
             }
-            if (!window.DOMPurify) {
-                await loadScript("/static/vendor/dompurify/purify.min.js");
-            }
+            await window.molbuilder.markdownRender.loadRenderLibs();
         })();
         return _libsPromise;
     }
 
-    /** Render text -> sanitised HTML.  Single render path so a future
-     *  switch to a different sanitiser (or a custom marked extension)
-     *  has one site to update. */
+    /** Render text -> sanitised HTML via the shared render (the ONE
+     *  sanitise policy -- lib/markdown-render.js). */
     function _renderToHTML(text) {
-        const raw = window.marked.parse(text, {
-            breaks: false,
-            gfm:    true,
-        });
-        // DOMPurify defaults strip <script>, on* attributes, javascript:
-        // URLs, and iframes.  Configure to keep ``target=_blank`` for
-        // links (the GFM tables / lists / code blocks we use don't
-        // need anything beyond the default allow-list).
-        return window.DOMPurify.sanitize(raw, {
-            ADD_ATTR: ["target"],
-        });
+        return window.molbuilder.markdownRender.render(text);
     }
 
     const inspector = {

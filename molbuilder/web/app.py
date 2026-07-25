@@ -267,6 +267,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.state_timeline import bp as state_timeline_bp
     from .blueprints.system_load import bp as system_load_bp
     from .blueprints.checkpoint  import bp as checkpoint_bp
+    from .blueprints.docs        import bp as docs_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
@@ -278,6 +279,7 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(state_timeline_bp)
     app.register_blueprint(system_load_bp)
     app.register_blueprint(checkpoint_bp)
+    app.register_blueprint(docs_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
@@ -411,6 +413,13 @@ def create_app(*, config=None) -> Flask:
         # Transport-calculation tab: placeholder; form skeleton +
         # engine backends to follow.
         return render_template("transport_calculation.html")
+
+    @app.route("/documents")
+    def documents_page():
+        # Documents tab: read-only in-app reader for every docs/*.md
+        # (design docs + guides + READMEs), rendered through the shared
+        # markdown renderer.  Data comes from /api/docs/* (docs blueprint).
+        return render_template("documents.html")
 
     @app.route("/api/health")
     def api_health():
