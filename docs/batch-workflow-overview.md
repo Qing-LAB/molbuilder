@@ -262,30 +262,29 @@ and status/monitoring. These are built and tested.
 - *Plan + status in the browser.* Read-only views over the same functions the
   CLI uses — Phase 2.
 
-**Open questions to decide:**
-1. **Producer coverage.** SIESTA relaxation ladders are the first producer.
-   Transport **bias scans** (one run per bias voltage) and spectra's layered
-   chain are natural batches too, but aren't wired yet. Do we want them in the
-   first release, or ladder-only to start? (`staged-execution.md` § 15, D6 says
-   each generator gains the same `--jobset` option; order is open.)
-2. **Remote deployment.** Today the assumption is molbuilder runs *on* the
-   machine that runs the jobs (workstation or login node), so there's no
-   host-to-host copy. If a real "browser on laptop, compute on a separate
-   cluster" workflow matters, we'd need an automated ship step — deliberately
-   out of scope for now. Is that assumption right for how you actually work?
-3. **Branch from the browser.** The sidebar checkpoint panel exposes
-   init/checkpoint/tag/restore; **branch** is CLI-only today. If "explore an
-   alternative from a converged state" should be a one-click browser move,
-   we'd add a branch endpoint. Worth it, or is branching fine at the terminal?
-4. **Environment prerequisite.** The whole thing assumes each run machine has
-   its molbuilder environment configured once (the `activation` setting). If
-   it's not, `prep` fails with a clear message. Should the browser check this
-   up front and warn *before* you produce a bundle you can't yet run here?
-5. **Non-SIESTA checkpoints.** Checkpoints archive big binary result files by
-   content hash. That's tuned for SIESTA outputs; PySCF's outputs differ. Does
-   the same protection story hold for a PySCF batch, or does it need its own
-   pass?
+**Decisions (resolved 2026-07-25 — `staged-execution.md` § 15.1 D7–D10):**
+1. **Producer coverage → SIESTA ladder only, until the loop is proven.** We
+   ship and *validate* the relaxation-ladder loop (produce → run → monitor)
+   end-to-end on a real cluster **before** wiring the transport bias-scan or
+   spectra/pyscf producers. Prove the simplest batch first; expand after. (D7)
+2. **Remote deployment → co-located; no auto-ship.** molbuilder runs on the
+   machine that runs the jobs (workstation or login node); manual `scp` covers
+   the rare split-host case. An automated ship step stays out of scope. (D8)
+3. **Branch from the browser → yes.** A `branch` control joins the sidebar
+   checkpoint panel (a small `/api/checkpoint/branch` over the built
+   `Repo.branch`), so tag → branch → restore is fully in the browser — still
+   user-initiated, never automatic. (D9)
+4. **Environment prerequisite → warn up front.** When you're about to produce
+   a bundle, molbuilder checks the target's `activation` config and warns if
+   it's unset, so you aren't surprised at `prep` time. The bundle is still
+   produced (it's portable); the warning just says this host needs configuring
+   before it can run it. (D10)
+5. **Non-SIESTA checkpoints → already generic.** The checkpoint archiver keys
+   its big-binary list by engine (a per-repo table), so PySCF only needs its
+   output globs added (`*.chk`, `*.h5`) — a small additive entry, not a
+   redesign. Handled alongside the pyscf producer (Phase 4).
 
-If the shape above matches how you'd actually want to work, the remaining work
-is mostly *wiring* (browser buttons over built functions) rather than new
-machinery — which is the sign the design is in the right place.
+The takeaway: the remaining work is mostly *wiring* (browser controls over
+functions that already exist) rather than new machinery — the sign the design
+is in the right place. The one hard gate is **prove the ladder loop on a real
+cluster before broadening to other calculation types.**

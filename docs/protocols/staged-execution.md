@@ -773,6 +773,35 @@ the *same* engines the CLI calls.
   central verb that must know every engine config. Each tab's Generate
   mirrors its CLI flag — one vocabulary, two front-ends.
 
+Four more resolved 2026-07-25 (from the `batch-workflow-overview.md` § 9
+sense-check):
+
+- **D7 — SIESTA ladder ONLY until the loop is proven.** Do not build the
+  transport / spectra / pyscf producers (D6's other flags) until the SIESTA
+  relaxation-ladder loop — *produce → prep → submit → monitor* — is validated
+  end-to-end on a real cluster. Prove the simplest batch first; expand after.
+  (Re-sequences § 15.5: Phases 3-4 wait on the Phase 1-2 loop being proven.)
+
+- **D8 — co-located deployment; no automated ship.** `molbuilder serve` runs
+  ON the machine that runs the jobs (a workstation, or the cluster's login
+  node sharing the filesystem), so produce/prep/submit happen in place with no
+  host-to-host copy. Manual `scp`/`rsync` covers the rare split-host case; an
+  automated ship step is **out of scope** (§ 12). This confirms D5's honesty
+  clause is a fallback, not the common path.
+
+- **D9 — checkpoint `branch` gains a browser control.** The sidebar checkpoint
+  panel exposes init/checkpoint/tag/restore but not `branch` (§ 15.7). Add
+  `/api/checkpoint/branch` (thin over the built `checkpoint.Repo.branch`) + a
+  panel control, so "explore an alternative from a converged state" is a
+  one-click browser move — still user-initiated (P1/D5), never automatic.
+
+- **D10 — warn about deployment-readiness BEFORE producing.** The produce
+  flow checks the target's `script_generation.activation` (reuse
+  `require_activation` / `envs doctor`) and warns *up front* if it is unset,
+  rather than letting `jobset prep` fail later. The bundle is still produced
+  (it is portable); the warning just tells the user this host can't `prep`
+  until its `molbuilder.json` is configured (§ 15.4).
+
 ### § 15.2 One verb set, two front-ends
 
 **Produce → Prep → Plan → Submit → Status** reads identically in the CLI and
@@ -843,16 +872,20 @@ configured, else prep hard-fails. (When serve is co-located with compute,
 |---|---|
 | CLI framework (plan/prep/submit/status, both modes, routing, carry) | **built** (§ 1) |
 | SIESTA host producer `fdf --jobset` | **built** (§ 1) |
-| **Web Build bundle producer** (finish the stage-table bridge → `job-set.json`) | **Phase 1** |
+| Promotion A — pure `build_siesta_stage_bundle` (shared producer) | **built** (`siesta/stages.py`) |
+| **Web Build bundle producer** (finish the stage-table bridge → `job-set.json`; SIESTA ladder) + D10 activation warn | **Phase 1** |
 | **Web Plan + Status** (read-only; Status in the Results tab, reusing `decode_run_dir`) | **Phase 2** |
-| **`transport --jobset` producer + transport-tab bundle mode** (bias-scan) | **Phase 3** |
-| `pyscf --jobset` / `spectra --jobset` producers + tab mirrors | **Phase 4** |
-| Automated host→target ship (scp/rsync) | **out of scope** (manual, § 12) — revisit only if a real split-host deployment needs it |
+| **Checkpoint `branch` browser control** (`/api/checkpoint/branch` + sidebar, D9) | **Phase 2** |
+| **PROVE the ladder loop** (produce → prep → submit → monitor) end-to-end on a real cluster — D7 GATE | **before Phase 3** |
+| `transport --jobset` producer + transport-tab bundle mode (bias-scan) | **Phase 3** (gated on D7) |
+| `pyscf --jobset` / `spectra --jobset` producers + tab mirrors; PySCF checkpoint big-binary globs | **Phase 4** (gated on D7) |
+| Automated host→target ship (scp/rsync) | **out of scope** (D8 — co-located; manual scp covers split-host) |
 
 Phase 1 is the keystone: it makes the *existing* stage-table widget real
 (it currently POSTs a ladder that is dropped), turning "Generate" into
-"produce a runnable bundle" with the exact deploy commands shown. Phases
-2-4 are additive and independent.
+"produce a runnable bundle" with the exact deploy commands shown. Per D7,
+Phases 3-4 (other producers) do NOT start until the SIESTA ladder loop is
+proven on a real cluster — Phases 1-2 first, then validate, then expand.
 
 ### § 15.6 The cell rides on the structure — not a bundle input
 
