@@ -27,19 +27,19 @@ from .sidecar import _check_frozen_atoms_consumed
 # --------------------------------------------------------------------- #
 #  Shared PySCF numerical-grid rule (the ONE body — was duplicated).    #
 #                                                                       #
-#  Hybrid functionals have a sharper HF-exchange contribution that      #
-#  needs a denser XC integration grid; below level 4 the grid noise     #
-#  dominates.  The SAME gate (hybrid AND grid_level < 4) matters at     #
-#  two call sites with different consequences: geometry-opt FORCES      #
-#  (this module, _validate_pyscf) and spectra HESSIAN frequencies       #
-#  (spectra/pyscf_engine.preflight).  Both used to carry their own      #
-#  copy with a slightly different hybrid detector — the drift the       #
-#  backend-architecture review (V4) flagged.  One detector + one gate   #
-#  now; the message is context-selected so each site keeps its own      #
-#  physically-correct rationale.                                        #
+#  The grid-sensitive XC class is META-GGA (τ-dependent: SCAN/TPSS/     #
+#  M06-L/…), NOT "hybrids" -- a hybrid's HF exchange is analytic (off   #
+#  the DFT grid), so pure hybrid-GGAs are grid-robust.  Below grid      #
+#  level 4 a meta-GGA's oscillatory integrand picks up grid noise that  #
+#  dominates forces / frequencies.  The SAME gate matters at two call   #
+#  sites: geometry-opt FORCES (_validate_pyscf) and spectra HESSIAN     #
+#  frequencies (spectra/pyscf_engine.render_checks).  Both used to      #
+#  carry a duplicated copy keyed WRONGLY on "hybrid" (V4 dedup; the     #
+#  meta-GGA re-key + corrected rationale is the scientific-audit fix).  #
+#  One detector-pair + one gate now; message context-selected.          #
 # --------------------------------------------------------------------- #
 
-HYBRID_GRID_FLOOR = 4
+GRID_FLOOR = 4
 
 # Substring markers of a hybrid (fraction-of-HF-exchange) functional.
 # Deny-list-by-substring because the functional namespace is sprawling
@@ -56,32 +56,59 @@ def is_hybrid_functional(name: str) -> bool:
     return any(tag in n for tag in _HYBRID_MARKERS)
 
 
-def check_hybrid_grid_level(cfg, *, context: str) -> List[Issue]:
-    """Emit the hybrid-functional grid-density advisory (or nothing).
+# Meta-GGA (and hybrid-meta) functionals depend on the kinetic-energy density
+# τ (and sometimes ∇²ρ).  Their XC integrand is far more oscillatory than
+# LDA/GGA, so the numerical (Becke) integration grid must be dense or the
+# Hessian / forces pick up grid noise.  THIS is the grid-sensitive class --
+# NOT "hybrids": a hybrid's HF-exchange is evaluated analytically from the ERIs
+# (PySCF ``get_k``), never on the DFT grid, so pure hybrid-GGAs (B3LYP, PBE0)
+# are comparatively grid-robust.  SCAN / r²SCAN / TPSS / M06-L / B97M-V are the
+# functionals that genuinely need level ≥ 4 for smooth frequencies.
+# (Mardirossian & Head-Gordon, Mol. Phys. 115, 2315 (2017).)
+_META_GGA_MARKERS = ("scan", "tpss", "m06", "m08", "m11", "mn12", "mn15",
+                     "b97m", "revtpss")
 
-    ``context`` selects the physically-correct rationale:
+
+def is_meta_gga_functional(name: str) -> bool:
+    """True if ``name`` names a meta-GGA / hybrid-meta functional (τ-dependent
+    XC → grid-sensitive)."""
+    n = (name or "").lower()
+    return any(tag in n for tag in _META_GGA_MARKERS)
+
+
+def check_dft_grid_level(cfg, *, context: str) -> List[Issue]:
+    """Grid-density advisory for a DFT Hessian / geometry opt (or nothing).
+
+    Fires for the GRID-SENSITIVE functional classes -- meta-GGAs (τ-dependent:
+    SCAN/TPSS/M06-L/… -- the physically-correct target) and hybrids (kept as a
+    conservative superset; harmless since grid ≥ 4 is never wrong).  Pure
+    LDA/GGA (PBE, BLYP, BP86, revPBE, RPBE) is grid-robust and not flagged.
+
+    ``context`` selects the rationale:
       * ``"optimisation"`` — geometry-opt forces (Build tab).
       * ``"spectra"``       — Hessian / harmonic frequencies (Spectra tab).
     """
     grid = getattr(cfg, "grid_level", None)
     functional = getattr(cfg, "functional", "") or ""
-    if grid is None or grid >= HYBRID_GRID_FLOOR \
-            or not is_hybrid_functional(functional):
+    meta = is_meta_gga_functional(functional)
+    hybrid = is_hybrid_functional(functional)
+    if grid is None or grid >= GRID_FLOOR or not (meta or hybrid):
         return []
+    kind = ("meta-GGA (τ-dependent)" if meta
+            else "hybrid") + f" functional ({functional})"
     if context == "spectra":
         msg = (f"Grid level {grid} is below the recommended minimum of "
-               f"{HYBRID_GRID_FLOOR} for a hybrid functional ({functional}).  "
-               f"Hybrid functionals have a sharper exchange contribution that "
-               f"needs a denser numerical grid; below level "
-               f"{HYBRID_GRID_FLOOR} the grid-integration noise typically "
-               f"dominates the frequency error.  Raise the grid level for "
-               f"publication-quality results.")
+               f"{GRID_FLOOR} for a {kind}.  Semi-local meta-GGA XC "
+               f"(kinetic-energy-density dependent) is sensitive to the "
+               f"numerical integration grid; below level {GRID_FLOOR} the "
+               f"grid noise typically dominates the frequency error.  Raise "
+               f"the grid level for publication-quality results.")
     else:
-        msg = (f"grid_level = {grid} with a hybrid functional "
-               f"({functional.upper()}): hybrid-DFT forces are noisy at this "
-               f"grid density (forces look ~1e-4 Ha/Bohr noise floor).  Bump "
-               f"to grid_level = {HYBRID_GRID_FLOOR} for production geometry "
-               f"optimisation; level 3 is fine for energies / screening only")
+        msg = (f"grid_level = {grid} with a {kind}: the τ-dependent semi-local "
+               f"XC is grid-sensitive, so forces are noisy at this grid "
+               f"density (~1e-4 Ha/Bohr floor).  Bump to grid_level = "
+               f"{GRID_FLOOR} for production geometry optimisation; level 3 is "
+               f"fine for energies / screening only")
     return [Issue("warn", msg, "config.grid_level")]
 
 
@@ -241,10 +268,10 @@ def _validate_pyscf(struct: Structure, cfg,
             "config.method",
         ))
 
-    # Hybrid functional with grid_level < 4: forces become noisy at the
-    # ~1e-4 Ha/Bohr scale the optimizer cares about.  Warn but allow --
-    # the user may be doing screening at level 3 deliberately.  ONE shared
-    # gate/body (was duplicated in spectra/pyscf_engine; V4).
-    issues += check_hybrid_grid_level(cfg, context="optimisation")
+    # Meta-GGA / hybrid with grid_level < 4: the τ-dependent semi-local XC is
+    # grid-sensitive, so forces become noisy at the ~1e-4 Ha/Bohr scale the
+    # optimizer cares about.  Warn but allow -- the user may be screening at
+    # level 3 deliberately.  ONE shared gate/body (validation.pyscf).
+    issues += check_dft_grid_level(cfg, context="optimisation")
 
     return issues

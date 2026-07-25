@@ -405,7 +405,7 @@ class SpectraConfig:
                    "rather than a finite-difference-amplitude "
                    "artefact.  Trade-off: orbital-energy differences "
                    "shrink to ~meV at small amplitude and need a "
-                   "tight SCF tolerance (default ``conv_tol=1e-10`` "
+                   "tight SCF tolerance (default ``scf_conv_tol=1e-9`` "
                    "is sufficient).  Above ~0.10 Å anharmonic "
                    "mixing starts to contaminate the response (see "
                    "[Mills1972] §2.4); above ~0.20 Å the linear-"

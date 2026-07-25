@@ -213,8 +213,8 @@ class PySCFSpectraEngine:
         # frequencies (~5-20 cm⁻¹ wander).  ONE shared gate/body with the
         # Build-tab PySCF validator (was a duplicated rule; V4) -- the
         # "spectra" context selects the frequency-error rationale.
-        from ..validation.pyscf import check_hybrid_grid_level
-        issues.extend(check_hybrid_grid_level(cfg, context="spectra"))
+        from ..validation.pyscf import check_dft_grid_level
+        issues.extend(check_dft_grid_level(cfg, context="spectra"))
 
         # Displacement amplitude.  The [0.02, 0.20] Å acceptance
         # range is empirical -- not derived from a single source.
@@ -223,7 +223,7 @@ class PySCFSpectraEngine:
         # the probe inside the linear-response regime (ΔE_orbital
         # ∝ A), at the cost of needing a tight SCF tolerance to
         # resolve the smaller ΔE.  The script's default
-        # ``conv_tol = 1e-10`` is sufficient (FD noise on ΔE_HOMO
+        # the default ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
         # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
         # mode).  Above 0.20 Å cubic anharmonicity in the
         # potential becomes significant (cf. Mills1972 §2.4).
@@ -236,7 +236,7 @@ class PySCFSpectraEngine:
                          f"(0.02-0.20 Å).  At this scale the "
                          f"finite-difference orbital-energy slope "
                          f"is at or below the noise floor of "
-                         f"conv_tol=1e-10 SCF; either tighten "
+                         f"the default scf_conv_tol=1e-9 SCF; either tighten scf_conv_tol "
                          f"conv_tol further or raise the "
                          f"displacement to at least 0.02 Å."),
                 where="config.displacement_amplitude_ang",
@@ -483,14 +483,42 @@ class PySCFSpectraEngine:
                 where="config.compute_ir",
             ))
 
-        # Structure-side advisory: PySCF's analytic Hessian assumes
-        # a closed-shell or unrestricted SCF with spin set
-        # consistently.  We can't verify the converged SCF here,
-        # but we can check that the method/spin combination is at
-        # least nominally consistent.  Mirrors the same check in
-        # the relaxation script (pyscf/input.py).
-        # Spectra-tab cfg doesn't carry spin (yet -- see config
-        # roadmap); skip until that field lands.
+        # Method / spin consistency (ports the Build-tab guards from
+        # validation.pyscf; the old "cfg doesn't carry spin yet" note here
+        # was STALE -- SpectraConfig HAS a `spin` field, so RKS/RHF + spin>0
+        # and open-shell RKS on an odd-electron system used to pass the render
+        # gate unflagged).  A restricted method (RKS/RHF) forces nα=nβ ⇒ 2S=0,
+        # so a non-zero spin with it is a contradiction.
+        method_u = cfg.method.upper()
+        if cfg.spin > 0 and method_u in ("RKS", "RHF"):
+            issues.append(Issue(
+                severity="warn",
+                message=(f"spin = {cfg.spin} is set but method = {method_u} "
+                         f"is closed-shell (restricted); a restricted SCF "
+                         f"forces all electrons paired (2S=0).  Use UKS / UHF "
+                         f"for open-shell systems, or set spin = 0."),
+                where="config.method",
+            ))
+        if method_u in ("RKS", "RHF") and cfg.spin == 0:
+            # Odd electron count with a restricted closed-shell method + spin=0
+            # is a radical the user didn't recognise: an unpaired electron MUST
+            # exist, so RKS/RHF either fails SCF or returns the wrong state.
+            try:
+                parity_err2 = check_spin_charge_parity(struct, cfg.charge, 1)
+                odd = parity_err2 is None   # spin=1 fits ⇒ odd electron count
+            except Exception:
+                odd = False
+            if odd:
+                issues.append(Issue(
+                    severity="warn",
+                    message=(f"odd electron count with method = {method_u} and "
+                             f"spin = 0 -- the system is a radical and a "
+                             f"closed-shell SCF will fail to converge or "
+                             f"return the wrong electronic state.  Switch to "
+                             f"UKS / UHF and set spin = 1 (or set cfg.charge "
+                             f"if auto-detection miscounted)."),
+                    where="config.method",
+                ))
 
         # Frozen-atom sanity: every explicit index must be within
         # the structure's atom range.  Element / residue rules are
@@ -804,7 +832,7 @@ class PySCFSpectraEngine:
 
     # (_is_hybrid_functional removed 2026-07, V4: the hybrid detector +
     #  grid-floor gate now live once in validation.pyscf.is_hybrid_functional
-    #  / check_hybrid_grid_level, called by preflight() above.)
+    #  / check_dft_grid_level, called by preflight() above.)
 
 
 __all__ = ["PySCFSpectraEngine"]

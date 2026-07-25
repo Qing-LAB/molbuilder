@@ -271,12 +271,34 @@ class TestPySCFEnginePreflight:
                    and i.severity == "warn" for i in issues)
 
     def test_pure_functional_no_grid_warn(self):
-        """Pure PBE (not hybrid) shouldn't trip the grid-level warn
-        -- the recommendation is hybrid-specific."""
+        """Pure PBE (LDA/GGA, no τ-dependence) shouldn't trip the
+        grid-level warn -- only meta-GGAs and hybrids do."""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig(functional="PBE", grid_level=2)
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any(i.where == "config.grid_level" for i in issues)
+
+    def test_meta_gga_low_grid_warns(self):
+        """SCIENTIFIC-AUDIT FIX (FN-1): SCAN (meta-GGA) at grid < 4 must
+        warn on the render gate -- the grid-sensitive class is meta-GGA,
+        not just hybrids.  Pre-2026-07 SCAN passed silently."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(functional="SCAN", grid_level=3)
+        issues = PySCFSpectraEngine.render_checks(_struct_water(), cfg)
+        assert any(i.where == "config.grid_level" and i.severity == "warn"
+                   for i in issues)
+
+    def test_restricted_method_with_nonzero_spin_warns(self):
+        """SCIENTIFIC-AUDIT FIX (FN-3): a restricted method (RKS/RHF)
+        forces 2S=0, so spin>0 with it is a contradiction the render
+        gate must flag.  Pre-2026-07 the stale 'cfg has no spin' comment
+        meant this passed silently even though SpectraConfig HAS spin."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(method="RKS", spin=2)
+        issues = PySCFSpectraEngine.render_checks(_struct_water(), cfg)
+        assert any(i.where == "config.method" and i.severity == "warn"
+                   for i in issues), (
+            "RKS + spin=2 must warn (restricted method can't be open-shell)")
 
     def test_displacement_below_window_warns(self):
         """Window lower bound is 0.02 Å (lowered 2026-05-19 to match
