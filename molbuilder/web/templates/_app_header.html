@@ -34,8 +34,23 @@
    sidebar on /results auto-mounts the inspector.
 -#}
 <header>
-  <h1>molbuilder</h1>
-  <p class="tagline">Build 3-D molecules from sequence / SMILES / name; modify geometry; emit SIESTA / PySCF input for optimization, spectrum, and transport calculations; inspect the resulting trajectories and spectra.</p>
+  <div class="header-hero">
+    <h1>molbuilder</h1>
+    <p class="tagline">Build 3-D molecules from sequence / SMILES / name; modify geometry; emit SIESTA / PySCF input for optimization, spectrum, and transport calculations; inspect the resulting trajectories and spectra.</p>
+  </div>
+
+  {#- Account strip lives in the hero banner, at the right of the title
+      row -- the standard "user menu top-right" spot, moved out of the
+      tabs nav (2026-07-25) so the nav is purely navigation.  Rendered
+      only when an auth session is active (current_user injected by
+      molbuilder.web.auth._register_template_context); when auth is
+      disabled in molbuilder.json this is omitted entirely. -#}
+  {% if current_user %}
+  <span class="app-account" aria-label="account menu">
+    <span class="app-account__email">{{ current_user.email }}</span>
+    <a href="{{ url_for('auth_logout') }}" class="app-account__logout">Sign out</a>
+  </span>
+  {% endif %}
 </header>
 
 <nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
@@ -45,24 +60,6 @@
      role="tab"
      {% if active_tab == tab.key %}aria-current="page"{% endif %}>{{ tab.label }}</a>
   {% endfor -%}
-
-  {#- Account strip lives at the right end of the nav row, on the
-      same dark background as the tabs -- standard "user menu in
-      top-right" web UX, hard to overlook.  Rendered only when an
-      auth session is active (current_user injected by
-      molbuilder.web.auth._register_template_context); when auth is
-      disabled in molbuilder.json this is omitted entirely and the
-      nav looks unchanged.
-
-      Use literal Unicode separators (U+00B7 middle dot) NOT HTML
-      entities -- Jinja autoescape writes ``&middot;`` as visible
-      "&middot;" text. -#}
-  {% if current_user %}
-  <span class="app-account" aria-label="account menu">
-    <span class="app-account__email">{{ current_user.email }}</span>
-    <a href="{{ url_for('auth_logout') }}" class="app-account__logout">Sign out</a>
-  </span>
-  {% endif %}
 </nav>
 
 {#- App-wide system-notification bar (docs/protocols/notifications.md): ONE

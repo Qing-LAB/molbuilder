@@ -44,36 +44,7 @@
     font-weight: 700;
 }
 
-/* Account strip in the nav bar, right-aligned.  Rendered by
- * _app_header.html when auth is on (current_user is set).  Sits on
- * the dark .app-tabs background; styled like the tabs themselves so
- * it reads as part of the chrome -- but distinct enough that the
- * "Sign out" link is obviously a link.  ``margin-left: auto`` on a
- * flex container pushes it to the right edge of the row.
- */
-.app-account {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0 1.4rem;
-    color: var(--ps-fg-dim);
-    font: 14px/1.4 system-ui, sans-serif;
-}
-.app-account__email {
-    color: var(--ps-fg);
-    font-weight: 500;
-}
-.app-account__logout {
-    color: var(--accent);
-    text-decoration: none;
-    padding: 0.4rem 0.8rem;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    font-weight: 500;
-    transition: background 0.12s, color 0.12s;
-}
-.app-account__logout:hover {
-    background: var(--accent);
-    color: var(--ps-selected-fg);
-}
+/* NOTE: the account strip (.app-account) moved OUT of the tabs nav into
+ * the hero banner (2026-07-25); its styling now lives with its owner in
+ * page-shell.css (``header .app-account``).  Kept out of tabs.css so the
+ * nav sheet owns only navigation. */
