@@ -310,60 +310,72 @@ def test_dipole_with_kgrid_no_warn():
 # --------------------------------------------------------------------- #
 
 
-def _slab_struct(extent_x: float, n_atoms: int = 8):
-    """Synthetic slab: atoms spanning `extent_x` along x with tight
-    spacing on y/z.  Used to test the kgrid 'atoms span the axis'
-    detection without rebuilding a real periodic structure."""
-    xs = np.linspace(0.0, extent_x, n_atoms)
-    pos = np.column_stack([xs, np.zeros(n_atoms), np.zeros(n_atoms)])
-    return Structure(elements=["C"] * n_atoms, positions=pos)
+# The k-grid sanity check now trusts the AUTHORITATIVE per-axis periodicity
+# (``struct.axis_kind``) instead of a geometry span-ratio guess (which
+# mis-flagged real crystals whose atoms don't reach the cell edge).  These
+# tests carry the axis_kind their scenario implies, as a real structure would.
+
+def _axis_struct(kind, extent, cell_len, n_atoms=8):
+    """Atoms strung along z inside a cell, with an explicit per-axis
+    ``axis_kind``.  ``extent``/``cell_len`` set the z span vs the z cell so
+    a crystal whose atoms DON'T reach the edge can be represented."""
+    zs = np.linspace(0.0, extent, n_atoms)
+    pos = np.column_stack([np.zeros(n_atoms), np.zeros(n_atoms), zs])
+    cell = np.diag([cell_len, cell_len, cell_len])
+    return Structure(elements=["C"] * n_atoms, positions=pos,
+                     cell=cell, axis_kind=kind), cell
 
 
-def test_kgrid_along_vacuum_is_warn():
-    """kgrid > 1 on an axis where atoms span only a small fraction of
-    the cell (vacuum-padded axis) is wasted -- pre-fix the heuristic
-    used cell-extent only; post-fix it checks atom-extent / cell-extent."""
-    s = _slab_struct(extent_x=2.0)         # atoms confined to 2 Å
-    cell = np.diag([5.0, 30.0, 30.0])
-    cfg = SiestaConfig(kgrid=(4, 4, 1))    # k=4 on the 5 Å vacuum axis
-    issues = validate(s, cfg, cell=cell)
-    msgs = [i for i in issues if i.where == "config.kgrid"]
-    assert any("kgrid[0]" in i.message for i in msgs)
-
+def test_kgrid_on_isolated_axis_is_warn():
+    """k > 1 on an ISOLATED (vacuum) axis is wasted -- flagged off the
+    authoritative axis_kind, regardless of how far the atoms span."""
+    s, cell = _axis_struct(("isolated", "isolated", "isolated"),
+                           extent=2.0, cell_len=20.0)
+    cfg = SiestaConfig(kgrid=(4, 4, 1))
+    msgs = [i for i in validate(s, cfg, cell=cell)
+            if i.where == "config.kgrid"]
+    assert any("kgrid[0]" in i.message and "isolated" in i.message
+               for i in msgs)
 
 
 def test_kgrid_one_on_periodic_axis_is_warn():
-    """k == 1 along an axis that atoms ACTUALLY span (>=85%), when
-    another axis has k > 1, is the slab-with-forgotten-axis case."""
-    s = _slab_struct(extent_x=18.0)        # atoms span 18 of 20 Å (90%)
-    cell = np.diag([20.0, 4.0, 4.0])
-    cfg = SiestaConfig(kgrid=(1, 4, 1))
-    issues = validate(s, cfg, cell=cell)
-    msgs = [i for i in issues if i.where == "config.kgrid"]
+    """k == 1 on a PERIODIC axis while another axis is sampled is the
+    slab-with-forgotten-axis case -- flagged off axis_kind, NOT the atom
+    span (a crystal axis need not reach the cell edge)."""
+    s, cell = _axis_struct(("periodic", "isolated", "isolated"),
+                           extent=3.0, cell_len=6.0)   # atoms span 50%
+    cfg = SiestaConfig(kgrid=(1, 4, 1))   # k=1 on the periodic x; k=4 on y
+    msgs = [i for i in validate(s, cfg, cell=cell)
+            if i.where == "config.kgrid"]
     assert any("kgrid[0]" in i.message for i in msgs)
 
 
+def test_kgrid_periodic_crystal_partial_span_no_false_positive():
+    """SCIENTIFIC-AUDIT FIX: a real periodic crystal whose atoms span only
+    ~50% of the cell (rocksalt, metals, oxides) with a full k-mesh must NOT
+    be flagged 'k>1 wasted'.  The old span-ratio heuristic (periodic iff
+    atoms span >85%) mis-read such axes as vacuum -- the false positive that
+    told users to drop the k-points a crystal actually needs."""
+    s, cell = _axis_struct(("periodic", "periodic", "periodic"),
+                           extent=3.0, cell_len=6.0)   # atoms span 50%
+    cfg = SiestaConfig(kgrid=(4, 4, 4))
+    msgs = [i for i in validate(s, cfg, cell=cell)
+            if i.where == "config.kgrid"]
+    assert msgs == [], (
+        f"periodic crystal (50% span) with a full k-mesh must not warn; "
+        f"got {[i.message for i in msgs]}")
+
 
 def test_kgrid_long_vacuum_padded_axis_no_false_positive():
-    """The pre-fix bug: a long axis (> 10 Å) with k=1 used to trigger
-    the 'looks periodic' warning regardless of whether atoms actually
-    spanned the axis.  A 12-mer DNA in an 80 Å vacuum cell with kgrid
-    (4, 4, 1) along the molecule's long axis is correct vacuum, NOT
-    under-sampled.  Post-fix this case must NOT warn on axis 2."""
-    # Atoms span only 30 of 80 Å along z (~38% of the axis).
-    s = _slab_struct(extent_x=30.0)
-    pos = np.column_stack([np.zeros(8), np.zeros(8),
-                           np.linspace(0.0, 30.0, 8)])
-    s = Structure(elements=["C"] * 8, positions=pos)
-    cell = np.diag([10.0, 10.0, 80.0])     # 80 Å cell, 30 Å of atoms
-    cfg = SiestaConfig(kgrid=(4, 4, 1))    # k=1 on the long-but-vacuum axis
-    issues = validate(s, cfg, cell=cell)
-    msgs = [i for i in issues if i.where == "config.kgrid"]
-    # axes 0/1: atoms span 0 of 10 Å -> vacuum -> k=4 should WARN
-    # axis 2:   atoms span 30 of 80 Å -> 37% -> vacuum -> k=1 OK, no warn
-    assert not any("kgrid[2]" in i.message for i in msgs), (
-        f"axis 2 (38%-spanned) should not warn; got {[i.message for i in msgs]}"
-    )
+    """A 12-mer DNA in an 80 Å vacuum cell (isolated z) with k=1 on the
+    long molecular axis is correct vacuum, NOT under-sampled -- no warn on
+    the isolated long axis."""
+    s, cell = _axis_struct(("isolated", "isolated", "isolated"),
+                           extent=30.0, cell_len=80.0)
+    cfg = SiestaConfig(kgrid=(1, 1, 1))    # Gamma-only, correct for vacuum
+    msgs = [i for i in validate(s, cfg, cell=cell)
+            if i.where == "config.kgrid"]
+    assert not any("kgrid[2]" in i.message for i in msgs)
 
 
 

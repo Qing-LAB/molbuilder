@@ -465,7 +465,43 @@ def _validate_siesta(struct: Structure, cfg,
         atom_extent = struct.positions.max(axis=0) - struct.positions.min(axis=0)
     else:
         atom_extent = np.zeros(3)
+    # The AUTHORITATIVE per-axis periodicity is ``struct.axis_kind``
+    # (structure-periodicity.md) -- "periodic" / "isolated" / "transport".
+    # Trust it when present; the span-ratio geometry heuristic below is only
+    # the fallback for structures that carry no axis_kind.  (The heuristic
+    # alone mis-flagged real crystals whose atoms don't reach the cell edge:
+    # a rocksalt cell spans ~50%, so its periodic axes read as "vacuum" and
+    # got a spurious "k>1 wasted" warn, while a genuinely under-sampled
+    # periodic axis with atoms below the 85% span was MISSED.)
+    axis_kind = getattr(struct, "axis_kind", None)
     for axis, (k, length) in enumerate(zip(cfg.kgrid, diag_lengths)):
+        kind = axis_kind[axis] if (axis_kind and axis < len(axis_kind)) else None
+        if kind in ("isolated", "transport"):
+            # A vacuum (isolated) or NEGF-open (transport) axis must NOT be
+            # Brillouin-zone sampled; k>1 there is wasted (isolated) or wrong
+            # (transport imposes a fake Bloch periodicity along the lead).
+            if k != 1:
+                issues.append(Issue(
+                    "warn",
+                    f"kgrid[{axis}] = {k} on a {kind} axis; a {kind} axis is "
+                    f"not Brillouin-zone sampled (k must be 1) -- k>1 adds "
+                    f"cost" + ("" if kind == "isolated"
+                              else " and imposes a fake periodicity"),
+                    "config.kgrid",
+                ))
+            continue
+        if kind == "periodic":
+            if k == 1 and any(kk > 1 for kk in cfg.kgrid):
+                issues.append(Issue(
+                    "warn",
+                    f"kgrid[{axis}] = 1 on a periodic axis while another "
+                    f"axis uses k > 1; likely under-converged sampling on "
+                    f"this axis",
+                    "config.kgrid",
+                ))
+            continue
+
+        # --- fallback (axis_kind unknown): span-ratio geometry heuristic ---
         # Span ratio: how much of the cell axis the atoms cover.
         # Near 1.0 -> atoms reach edge -> periodic intent.
         # Near 0.0 -> atoms cluster, edges are vacuum -> vacuum intent.
