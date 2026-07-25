@@ -807,17 +807,24 @@ nothing in `jobset/` or `siesta/` is duplicated:
 
 | New seam | Reuses (existing) | File:def |
 |---|---|---|
-| web Build "bundle" produce | `render_siesta_stage_fdfs` + `render_siesta_stages_runner` + `stages_to_jobset(...).write()` | `siesta/input.py:1706` / `:1744`, `siesta/stages.py:39`, `jobset/model.py:159` |
+| **Promotion A** — pure bundle producer, shared by CLI + web | *promote* the `render_siesta_stage_fdfs` + `render_siesta_stages_runner` + `stages_to_jobset()` sequence out of `_emit_siesta_multi_stage` into `siesta/stages.py::build_siesta_stage_bundle(struct, cfg) → {files, jobset, pseudo_species}` (pure, no I/O) | `siesta/stages.py`, reuses `siesta/input.py:1706`/`:1744` + `siesta/stages.py:39` |
+| **Promotion B** — server-side write primitive, shared by the route + the bundle endpoint | *promote* the resolve+validate+conflict+write core out of the `/api/files/write` route into `files.py::write_text_within_roots(...)`; the route becomes a thin wrapper; `/api/build/wrapper` + `/api/siesta/install-pseudos` migrate onto it (they hand-roll writes today) | `web/blueprints/files.py` |
+| web Build "bundle" produce | `build_siesta_stage_bundle` (A) → `write_text_within_roots` (B) per file + `JobSet.write` | above + `jobset/model.py:159` |
 | `transport --jobset` producer | *new* `transport_biasscan_to_jobset` (one `.fdf`/bias) → `JobSet(kind="sweep")` | `transport/` (planned, `transiesta.py` §"Planned") |
 | web `/api/jobset/plan` | `JobSet.load` + `render_plan` | `jobset/model.py:167`, `jobset/plan.py:37` |
 | web `/api/jobset/status` | `jobset_status` + `render_status` (already reuse `decode_run_dir`) | `jobset/runstatus.py:101` / `:126` |
 | "show the commands" (prep/submit) | *string only* — the literal `molbuilder jobset prep … / submit …` lines | — |
 
-The CLI producer the web Build path mirrors is `_emit_siesta_multi_stage`
-(`cli.py`, driven by `--stage-strategy`/`--jobset`/`--stage-resources`); the
-web endpoint runs the identical `render_siesta_stage_fdfs` +
-`render_siesta_stages_runner` + `stages_to_jobset().write()` sequence into a
-project dir (parallel to today's single-`.fdf` write).
+**Two promotions, not two copies (2026-07-25).** The bundle sequence and the
+web write logic were each *trapped in a single caller* — the sequence inside
+`cli.py::_emit_siesta_multi_stage` (mixing pure production with CLI file I/O),
+the write inside the `/api/files/write` route (mixing HTTP with the
+resolve+validate+write core). Wiring the web by re-running either would be
+reinvention. Instead **promote** each into a shared module (A → `siesta/stages`,
+B → `files`); `_emit_siesta_multi_stage` and `/api/files/write` become the first
+callers of their own promoted core, and the two existing hand-rolled writers
+(`/api/build/wrapper`, `/api/siesta/install-pseudos`) migrate onto B — one write
+wheel, no drift. The web bundle endpoint is then just `A → B(per file)`.
 
 ### § 15.4 The deployment contract surfaces in the UI
 
@@ -846,3 +853,65 @@ Phase 1 is the keystone: it makes the *existing* stage-table widget real
 (it currently POSTs a ladder that is dropped), turning "Generate" into
 "produce a runnable bundle" with the exact deploy commands shown. Phases
 2-4 are additive and independent.
+
+### § 15.6 The cell rides on the structure — not a bundle input
+
+Every stage `.fdf` in a bundle carries the SAME explicit cell the single-`.fdf`
+Generate would, because the bundle producer shares the tab's struct-building
+preamble and never takes a separate cell argument. The contract (unchanged
+from the single deck):
+
+1. **Carried** — the cell is part of the structure's data model in MolView
+   (`periodicity`: `cell`/`cell_origin`/`axis_kind`/`vacuum`). The tab POSTs
+   it in `body["periodicity"]`; `apply_labels_to_struct` (`web/blueprints/_shared.py`)
+   applies it onto the parsed `Structure` via `apply_metadata_dict`.
+2. **Derived if absent** — `render_fdf`/`render_siesta_stage_fdfs` call
+   `struct.resolve_cell()`; an isolated structure with no explicit cell gets
+   the vacuum box (`bbox + 2·vacuum`). Either way the cell is **explicit in
+   the emitted `.fdf`**, never implicit.
+3. **Confirmed in the setup tab** — the tab's Cell page is where the user sees
+   and edits it before Generate; it is always exposed.
+
+So `build_siesta_stage_bundle(struct, cfg)` takes `cell=None` (rides on
+`struct`); the web endpoint builds `struct` with the same
+`_xyz_to_structure` + `apply_labels_to_struct` preamble as `/api/build/fdf`.
+The CLI keeps its `cell=` only because it reads `(struct, cell)` from a file.
+Result: a bundle's cell == what the tab shows == what a single Generate emits.
+
+### § 15.7 Checkpoints in batch execution (reuse the sidebar panel — no new UI)
+
+The checkpoint framework needs **no new machinery** to work on a batch, and —
+critically — **no new UI**: it is already surfaced end-to-end.
+
+- **Scope** (§ 11): each `point-<name>/` stage dir *is* the checkpoint design's
+  "single working directory," so every stage dir is its own checkpoint repo,
+  the shared bundle root sits outside them (git records the symlink), and
+  carry-forward symlinks are git-tracked so a branch forks from the carried
+  geometry.
+- **CLI** — the `molbuilder snapshot {init,checkpoint,tag,list,restore,branch}`
+  group (`checkpoint.py`), operating on whatever run dir the user `cd`s into.
+- **Web** — the projects sidebar **already has a checkpoint panel**:
+  `lib/projects/checkpoint.js` (the `#ps-checkpoint` run-history panel, spec
+  `run-checkpoints.md` § 6, backed by the `/api/checkpoint/*` blueprint —
+  state/list/diff/init/config/commit/tag/restore). It is a checkpoint-domain
+  CONSUMER that follows the sidebar's *current directory* (`onChange`), showing
+  git-snapshot controls for that run dir. **A `point-<name>/` stage dir is a run
+  dir**, so when the user navigates into a stage dir in the sidebar, the
+  existing panel already operates on it — init/checkpoint/tag/list/restore with
+  zero new code.
+
+So the **merge adds nothing to the checkpoint UI** — it reuses the sidebar
+panel as-is. The only Phase-1 touch is a pointer: the deploy-commands panel
+notes "each `point-*/` stage dir is checkpoint-enabled — use the sidebar's
+checkpoint panel (or `molbuilder snapshot …`) to tag a converged stage or
+branch an experiment before a risky parameter switch" (the § 5 recipe:
+`tag <stage>-converged` → `branch <stage>-<experiment>` → `restore` if worse).
+The sidebar panel exposes init/checkpoint/tag/list/restore/diff (the
+`/api/checkpoint/*` blueprint); `snapshot branch` is CLI-only today, so the
+"explore an alternative tail" fork is a terminal step until a
+`/api/checkpoint/branch` endpoint is added.
+
+The user still decides every irreversible move (tag / branch / restore /
+submit): the web organizes and informs, it does not run them unprompted —
+the same P1/§10/D5 stance across all three lineage axes (carry-forward, git
+checkpoints, resume).
