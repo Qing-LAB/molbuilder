@@ -487,6 +487,28 @@ def detect_open_shell_metals(struct: Structure) -> List[str]:
     return seen
 
 
+# The full d-block (+ f-block) metal set for basis-adequacy checks: d-orbital
+# coverage matters for CLOSED-shell metals (Zn/Cd/Hg d10, Pd/Pt) too, not only
+# open-shell ones -- the concern is orbital coverage, orthogonal to spin state.
+_ALL_TRANSITION_METALS = (OPEN_D_TRANSITION_METALS
+                          | CLOSED_D10_METALS | NOBLE_METALS_S1)
+
+
+def detect_transition_metals(struct: Structure) -> List[str]:
+    """Every transition / f-block metal present (open- AND closed-shell), in
+    first-appearance order.  For basis-adequacy: Zn/Cd/Hg/Pd/Pt need proper
+    d/polarisation coverage even though ``detect_open_shell_metals`` skips
+    them."""
+    seen: List[str] = []
+    seen_set: set = set()
+    for el in struct.elements:
+        key = el.capitalize()
+        if key in _ALL_TRANSITION_METALS and key not in seen_set:
+            seen.append(key)
+            seen_set.add(key)
+    return seen
+
+
 # --------------------------------------------------------------------- #
 #  L2 — engine-agnostic chemistry analyzer                              #
 #                                                                       #

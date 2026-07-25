@@ -117,10 +117,14 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     ):
         if entry.status == "ok":
             continue
-        severity = ("error" if entry.status in ("missing", "dead_projector")
-                    else "warn")    # xc_mismatch / relativistic_mismatch /
-                                    # generator_mismatch / parse_warning --
-                                    # all advisory
+        severity = ("error" if entry.status in (
+                        "missing", "dead_projector", "xc_family_mismatch")
+                    else "warn")    # xc_mismatch (same-family author diff) /
+                                    # relativistic_mismatch / generator_mismatch
+                                    # / parse_warning -- all advisory.  An
+                                    # XC-FAMILY mismatch (GGA pseudo in an LDA
+                                    # run, etc.) BLOCKS: it gives silently-wrong
+                                    # energies, never physically correct.
         out.append(Issue(severity, entry.message,
                           f"config.psml_lib.{entry.element}"))
     return out

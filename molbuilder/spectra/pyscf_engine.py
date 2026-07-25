@@ -254,6 +254,26 @@ class PySCFSpectraEngine:
                 where="config.displacement_amplitude_ang",
             ))
 
+        # ---- Amplitude x SCF-tolerance coupling (SCIENTIFIC-AUDIT, FN-4) ----
+        # The finite-difference orbital-energy SIGNAL scales with the
+        # displacement amplitude; it must sit well ABOVE the SCF noise floor
+        # (~scf_conv_tol).  A SMALL amplitude paired with a LOOSE conv_tol
+        # buries the signal -- the exact failure the amplitude window guards,
+        # but the window alone never looked at the actual tolerance.  Warn
+        # when both are near their risky ends (conservative; a soft advisory).
+        conv = getattr(cfg, "scf_conv_tol", None)
+        if (conv is not None and conv > 1e-7 and amp <= 0.05):
+            issues.append(Issue(
+                severity="warn",
+                message=(f"Small displacement ({amp:g} Å) with a loose "
+                         f"scf_conv_tol ({conv:g}): the finite-difference "
+                         f"orbital-energy slope (∝ amplitude) may be at or "
+                         f"below the SCF noise floor (~conv_tol), giving noisy "
+                         f"electronic-structure shifts.  Tighten scf_conv_tol "
+                         f"(≤1e-8) or raise the displacement amplitude."),
+                where="config.scf_conv_tol",
+            ))
+
         # ---- Electron-count parity (THE standard pre-SCF check) ----
         # PySCF's ``spin`` = 2S = n_unpaired = n_alpha - n_beta.  Its
         # parity must match the total electron count

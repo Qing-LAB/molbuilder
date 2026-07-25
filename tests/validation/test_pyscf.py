@@ -236,3 +236,20 @@ def test_pyscf_validator_silent_when_user_overrode_charge_to_make_even():
     issues = validate(_ch3_radical_struct(), cfg)
     odd_warns = [i for i in issues if "odd electron" in i.message]
     assert odd_warns == []
+
+
+def test_basis_adequacy_fires_for_closed_shell_metal():
+    """SCIENTIFIC-AUDIT FOLLOW-UP: d-orbital basis coverage matters for
+    CLOSED-shell d10 metals (Zn/Cd/Hg/Pd/Pt) too, not only open-shell ones
+    -- the concern is orbital coverage, orthogonal to spin state.  A minimal
+    basis on a Zn complex used to pass unflagged."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    zn = Structure(elements=["Zn", "O"],
+                   positions=np.array([[0., 0, 0], [0, 0, 1.7]]))
+    cfg = PySCFConfig(method="RKS", spin=0, basis="STO-3G")
+    issues = validate(zn, cfg)
+    assert any(i.where == "config.basis" and i.severity == "warn"
+               and "Zn" in i.message for i in issues), (
+        "STO-3G on a closed-shell Zn complex should warn on d-orbital "
+        "basis inadequacy")

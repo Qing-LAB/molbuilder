@@ -219,14 +219,17 @@ class TestCheckCoverage:
         assert "pseudo-dojo" in h_msg.lower()
 
     def test_xc_family_mismatch(self, tmp_path):
-        """LDA pseudo on a GGA calc -- silently-wrong bond lengths."""
+        """LDA pseudo on a GGA calc -- silently-wrong bond lengths.  A
+        FAMILY mismatch is a distinct status (xc_family_mismatch), which the
+        SIESTA validator maps to ERROR (blocks); it is never physically
+        correct.  (Same-family author diffs stay 'xc_mismatch' / WARN.)"""
         (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
         from molbuilder.pseudos import check_coverage
         entries = check_coverage(
             ("C",), tmp_path,
             expected_xc_family="GGA", expected_xc_authors="PBE",
         )
-        assert entries[0].status == "xc_mismatch"
+        assert entries[0].status == "xc_family_mismatch"
         assert "LDA" in entries[0].message
         assert "GGA" in entries[0].message
 

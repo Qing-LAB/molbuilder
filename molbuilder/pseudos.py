@@ -1,6 +1,6 @@
 """Pseudopotential file validation for SIESTA.
 
-SIESTA needs one ``.psml`` (or legacy ``.psf``) file per element in
+SIESTA needs one ``.psml`` file per element in
 the structure.  These files carry metadata in their header that MUST
 match the calculation config:
 
@@ -441,9 +441,11 @@ def check_coverage(elements: Iterable[str],
         expectations weren't supplied).
       * ``"missing"`` -- no .psml file for this element.  Hard fail
         for SIESTA: the run won't start.
-      * ``"xc_mismatch"`` -- pseudo's XC differs from the calc's;
-        WARN-severity.  The pseudo will load and SIESTA won't object,
-        but bond lengths / energies are silently wrong.
+      * ``"xc_family_mismatch"`` -- pseudo's XC FAMILY differs from the
+        calc's (e.g. an LDA pseudo in a GGA run).  ERROR-severity: never
+        physically correct, energies/forces silently wrong.
+      * ``"xc_mismatch"`` -- same family, different authors (PBE vs
+        PBEsol); WARN-severity, a minor ~1-2 kcal/mol difference.
       * ``"relativistic_mismatch"`` -- e.g. user picked an SR pseudo
         for a fully-relativistic run; WARN-severity.
       * ``"parse_warning"`` -- the .psml file is present but missing
@@ -491,14 +493,21 @@ def check_coverage(elements: Iterable[str],
         # Check XC family + authors when expectations were supplied.
         if expected_xc_family and info.xc_family != "unknown" \
                 and info.xc_family != expected_xc_family:
+            # FAMILY mismatch (e.g. an LDA pseudo in a GGA run): never
+            # physically correct -- the pseudo was generated with a
+            # different exchange-correlation than the calc uses, so the
+            # frozen core is inconsistent and energies/forces are silently
+            # wrong.  Distinct status so the caller can BLOCK (error), unlike
+            # the same-family author mismatch below (a minor warn).
             out.append(CoverageEntry(
-                element=key, status="xc_mismatch",
+                element=key, status="xc_family_mismatch",
                 message=(f"{key}.psml was generated for "
                          f"{info.xc_family} ({info.xc_authors}); calc "
                          f"requests {expected_xc_family} "
-                         f"({expected_xc_authors or '?'}) -- bond "
-                         f"lengths will be silently wrong unless the "
-                         f"pseudo matches the calc's XC family."),
+                         f"({expected_xc_authors or '?'}) -- XC-FAMILY "
+                         f"mismatch: bond lengths and energies will be "
+                         f"silently wrong.  Use a pseudo generated with "
+                         f"the calc's XC family."),
                 path=info.path,
             ))
             continue

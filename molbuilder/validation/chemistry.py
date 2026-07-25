@@ -79,8 +79,11 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     def2-TZVP is publication-quality.  Anything smaller for a
     transition-metal-containing structure -> WARN.
     """
-    from ..chemistry import detect_open_shell_metals
-    metals = detect_open_shell_metals(struct)
+    # ALL transition metals, not just open-shell: d-orbital basis coverage is
+    # equally needed for closed-shell d10 metals (Zn/Cd/Hg/Pd/Pt) -- the
+    # concern is orbital coverage, orthogonal to spin state.
+    from ..chemistry import detect_transition_metals
+    metals = detect_transition_metals(struct)
     if not metals:
         return []
     b = (basis or "").lower().strip()

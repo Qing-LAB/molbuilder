@@ -765,3 +765,17 @@ class TestPySCFEngineParseOutput:
             PySCFSpectraEngine.parse_output(str(bad))
 
 
+
+
+def test_small_amplitude_loose_conv_tol_warns():
+    """SCIENTIFIC-AUDIT FOLLOW-UP (FN-4): a small displacement amplitude
+    paired with a loose scf_conv_tol buries the finite-difference orbital-
+    energy signal under SCF noise.  The amplitude window alone never checked
+    the actual tolerance; the coupling advisory now does."""
+    from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+    from molbuilder.spectra import SpectraConfig
+    from tests.spectra._helpers import _struct_water
+    cfg = SpectraConfig(displacement_amplitude_ang=0.03, scf_conv_tol=1e-5)
+    issues = PySCFSpectraEngine.render_checks(_struct_water(), cfg)
+    assert any(i.where == "config.scf_conv_tol" and i.severity == "warn"
+               for i in issues)

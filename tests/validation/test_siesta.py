@@ -307,9 +307,11 @@ class TestSiestaPseudoCoverageInPreflight:
         assert h_issues[0].severity == "error"
         assert "no .psml file for H" in h_issues[0].message
 
-    def test_xc_mismatch_emits_warn(self, tmp_path):
-        """Pseudos are LDA but the calc requests PBE -> WARN per
-        element (silently wrong bond lengths otherwise)."""
+    def test_xc_family_mismatch_emits_error(self, tmp_path):
+        """Pseudos are LDA but the calc requests PBE -> an XC-FAMILY
+        mismatch, which is never physically correct (silently wrong bond
+        lengths).  ERROR per element (upgraded from WARN in the 2026-07
+        scientific-correctness audit) so it BLOCKS emission."""
         # libxc id 1 = XC_LDA_X
         for el in ("O", "H"):
             (tmp_path / f"{el}.psml").write_text(
@@ -321,10 +323,10 @@ class TestSiestaPseudoCoverageInPreflight:
                                           xc_authors="PBE"))
         mismatch_issues = [i for i in issues
                            if "psml" in i.where.lower()
-                           and i.severity == "warn"
+                           and i.severity == "error"
                            and "LDA" in i.message]
-        assert len(mismatch_issues) == 2   # O + H both flagged
-        assert all("bond lengths will be silently wrong" in i.message
+        assert len(mismatch_issues) == 2   # O + H both flagged, blocking
+        assert all("silently wrong" in i.message
                    for i in mismatch_issues)
 
 
