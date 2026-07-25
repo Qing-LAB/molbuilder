@@ -149,6 +149,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
         let _deferredEmbed = null;
         if (!panelHost) {
+            // A prior too-narrow attempt may have left its error card in this host
+            // (a consumer that never disposes a failed handle). Remove it before
+            // building, so remount-after-resize can never stack error cards.
+            const stale = hostEl.querySelectorAll
+                ? hostEl.querySelectorAll(".molview-card--unmountable") : [];
+            for (let i = 0; i < stale.length; i++) {
+                try { stale[i].parentNode.removeChild(stale[i]); } catch (_) {}
+            }
             // EMPTY host: BUILD the card now; DEFER the viewer embed until AFTER the width
             // contract check below, so a too-narrow host can never orphan a started WebGL embed.
             const built = _buildCard(hostEl);
@@ -186,8 +194,13 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     + " px of width to show the structure; this area is only "
                     + Math.round(_have) + " px. Widen the window or container.";
                 card.appendChild(emsg);
-                return _failMount("host too narrow (" + Math.round(_have)
+                const fh = _failMount("host too narrow (" + Math.round(_have)
                     + "px < " + Math.round(_need) + "px min)");
+                // The error card deliberately STAYS visible (it is the message), but
+                // the handle's dispose removes it -- honoring the "always call
+                // handle.dispose()" contract instead of the no-op disposer.
+                fh.dispose = function () { _drain(cleanups); };
+                return fh;
             }
         }
 
@@ -313,7 +326,17 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
 
         // Panel (atom selection + the Cell page), bound to the workspace's store.
-        const panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
+        // The await is guarded: a REJECTED mountPanel must drain exactly like the
+        // falsy-return failure below -- otherwise the already-running embed +
+        // attachments leak (WebGL context, engine subscription) on the throw path.
+        let panelMount = null;
+        try {
+            panelMount = await selApi.mountPanel(panelHost, { store: store, mode: mode });
+        } catch (e) {
+            _drain(cleanups);
+            return _failMount("selection panel mount threw: "
+                + ((e && e.message) || String(e)));
+        }
         if (!panelMount || !panelMount.panel) {
             // The embed + attachments are already running -- drain the teardown stack so a
             // failed mount can NEVER orphan a started WebGL embed (the same guarantee the

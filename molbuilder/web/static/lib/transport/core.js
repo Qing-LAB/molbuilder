@@ -527,23 +527,12 @@ function _mvdata() {
             return;
         }
         for (var i = 0; i < residual.length; i++) {
-            var issue = residual[i];
-            var li = document.createElement("li");
-            li.className = "issue-" + (issue.severity || "info");
-            var tag = document.createElement("strong");
-            tag.textContent = (issue.severity || "info").toUpperCase();
-            li.appendChild(tag);
-            li.appendChild(document.createTextNode(" — "));
-            var msg = document.createElement("span");
-            msg.textContent = issue.message || "";
-            li.appendChild(msg);
-            if (issue.where) {
-                var where = document.createElement("code");
-                where.className = "issue-where";   // shared chip style (form-components.css)
-                where.textContent = "[" + issue.where + "]";
-                li.appendChild(where);
-            }
-            list.appendChild(li);
+            // Same .issue-item shape as _appendCardIssue below -- the shared
+            // .issues-panel rules key on .issue-item + data-severity (the old
+            // "issue-<severity>" class names matched NOTHING in the shared sheet,
+            // so residual rows rendered unstyled and the where-chip never
+            // right-aligned).  Severity label/bullet comes from the CSS ::before.
+            _appendCardIssue(list, residual[i]);
         }
         panel.hidden = false;
     }

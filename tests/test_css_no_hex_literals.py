@@ -71,6 +71,7 @@ STRICT_FILES: set[str] = {
     # ("style.css" removed 2026-07: the file was deleted in the #58 split.)
     "results/style.css",
     "modify/style.css",
+    "transport/style.css",
     "structure-optimization/style.css",
     "spectra/style.css",
     "lib/page-shell.css",

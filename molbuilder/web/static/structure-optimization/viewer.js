@@ -92,6 +92,14 @@ function _mvdata() {
     // ----- Status helpers --------------------------------------------
     function setStatus(elId, msg, kind) {
         const el = $(elId);
+        // Null-guarded: a missing status slot must never turn the REPORT of a
+        // failure into a throw of its own (that made a MolView mount failure
+        // completely invisible -- the catch handler died on a phantom id).
+        if (!el) {
+            if (window.console) console.warn("[structure-opt] no #" + elId
+                + " status slot for: " + msg);
+            return;
+        }
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
     }
@@ -1122,8 +1130,12 @@ function _mvdata() {
                 { mode: "readonly", owner: "structure-opt" })
             .then(function (h) { _mvHandle = h; })
             .catch(function (e) {
-                try { setStatus("status", (e && e.message) || "render failed", "err"); }
-                catch (_) {}
+                // #load-status is the page's real load/viewer status slot (there is
+                // no #status element -- the old id was a phantom that made this
+                // handler throw into its own catch, hiding every mount failure).
+                setStatus("load-status",
+                    "Viewer failed to mount: " + ((e && e.message) || "render failed"),
+                    "err");
             });
     }
 

@@ -109,13 +109,6 @@ header code {
     min-height: 1.2em;
 }
 
-/* ---- Per-card issues panel (index workflow cards) ---- */
-.workflow-group .card-issues {
-    margin-top: 12px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border-soft);
-}
-
 /* The old ``#viewer { width/height:100% }`` mount rule was removed 2026-07-17: the page
  * hands MolView an empty ``#viewer-host`` and the module builds + sizes its own viewer
  * (``.viewer`` is a CLASS, inside the fused card).  Viewer sizing is owned end-to-end by
@@ -169,48 +162,10 @@ fieldset select:disabled {
 }
 .tab-panel[hidden] { display: none; }
 
-/* ---- Fieldsets in parameter forms — index only ---- */
-fieldset {
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px 10px;
-    margin: 0;
-    background: var(--bg-fieldset);
-    min-width: 0;
-}
-fieldset legend {
-    font-weight: 600;
-    padding: 0 6px;
-    font-size: 0.85rem;
-    color: var(--accent);
-    letter-spacing: 0.01em;
-}
-/* Stacked label: name above input (fixes long-label column overflow). */
-fieldset label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin: 6px 0;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    min-width: 0;
-}
-fieldset label > input,
-fieldset label > select {
-    width: 100%;
-    margin-top: 1px;
-    max-width: none;
-    min-width: 0;
-}
-fieldset label > input[type="checkbox"] {
-    width: auto;
-    align-self: flex-start;
-}
-fieldset label:has(> input[type="checkbox"]) {
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-}
+/* (Fieldset/legend/label form rules moved to lib/form-schema.css 2026-07 --
+ * the shared owner for every schema-driven form.  This sheet keeps only the
+ * page-specific overrides: #generate-card fieldset spacing + the disabled
+ * compatibility-locked inputs below.) */
 
 /* ---- Footer — index only ---- */
 footer {

@@ -265,3 +265,45 @@ button.primary:disabled {
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-width: thin;
 }
+
+/* ---- Full-width primary action button (shared: Modify + Transport) ----
+ * Moved 2026-07 from the modify page sheet: transport_calculation.html used
+ * the class cross-page with no owner, so its Generate button rendered as a
+ * bare default button.  ONE shared class per repeated pattern. */
+.full-btn {
+    width: 100%;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0;
+    font: 600 0.92rem/1 system-ui, sans-serif;
+    cursor: pointer;
+}
+.full-btn:disabled {
+    background: var(--border-soft);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* ---- Anchor styled as a button (downloads etc.) ----
+ * Mirrors page-shell's base button schema so a download <a> sits visually
+ * level with its sibling <button>s (transport's Download link was an
+ * ownerless class rendering as a bare underlined link). */
+a.btn-like {
+    display: inline-block;
+    font: inherit;
+    cursor: pointer;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    text-decoration: none;
+    transition: background 120ms, border-color 120ms, color 120ms;
+}
+a.btn-like:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-strong);
+    color: var(--text-primary);
+}

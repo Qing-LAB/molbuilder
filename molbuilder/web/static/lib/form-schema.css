@@ -26,11 +26,28 @@ fieldset {
     background: var(--bg-fieldset);
     min-width: 0;     /* allow grid items to shrink below content width */
 }
-/* fieldset legend lives in style.css — every template loads
- * form-schema.css BEFORE style.css, so any rule here would be
- * overridden anyway.  Keeping the canonical fieldset legend
- * styling in one place (style.css:561) avoids silent drift if a
- * future maintainer changes one but not the other. */
+/* Canonical legend + stacked-label rules live HERE (moved 2026-07 from the
+ * structure-opt page sheet): after the #58 split that page sheet loads on
+ * index ONLY, so "defer to style.css" left /spectra + /transport legends
+ * and labels unstyled.  ONE owner -- page sheets carry page-specific
+ * overrides only (e.g. #generate-card legend). */
+fieldset legend {
+    font-weight: 600;
+    padding: 0 6px;
+    font-size: 0.85rem;
+    color: var(--accent);
+    letter-spacing: 0.01em;
+}
+/* Stacked label: name above input (fixes long-label column overflow). */
+fieldset label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 6px 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 0;
+}
 
 /* Optional per-section description (`{"description": "..."}` on a
  * schema section).  Renders as a small paragraph between the
@@ -43,9 +60,6 @@ fieldset .schema-section-desc {
     color: var(--text-secondary);
 }
 
-/* fieldset label lives in style.css — same load-order
- * reasoning as the fieldset legend block above.  The canonical
- * "stack name above input" rule is at style.css:573. */
 fieldset label > input,
 fieldset label > select {
     width: 100%;
@@ -584,4 +598,14 @@ fieldset select:disabled {
     /* Permit the table to overflow if the panel is narrow; user
      * scrolls sideways rather than the table breaking layout. */
     overflow-x: auto;
+}
+
+/* ---- Per-card issues UL (form-schema.js emits .issues-panel.card-issues
+ * inside each workflow card on every schema-driven page; moved 2026-07 from
+ * the structure-opt page sheet -- same stranded-shared-rule class as the
+ * legend/label move above). ---- */
+.workflow-group .card-issues {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
 }

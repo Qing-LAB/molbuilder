@@ -493,21 +493,8 @@ header .tagline {
     padding: 0.25rem 0.45rem;
     font: inherit;
 }
-.full-btn {
-    width: 100%;
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0;
-    font: 600 0.92rem/1 system-ui, sans-serif;
-    cursor: pointer;
-}
-.full-btn:disabled {
-    background: var(--border-soft);
-    color: var(--text-muted);
-    cursor: not-allowed;
-}
+/* (.full-btn base moved to lib/form-components.css 2026-07 -- shared with
+ * Transport.  This sheet keeps only the header-row width override below.) */
 
 /* ---- Junction subtab: legibility ----
  *

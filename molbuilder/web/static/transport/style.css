@@ -1,0 +1,36 @@
+/* Transport tab (/transport) -- PAGE sheet, loaded ONLY by
+ * transport_calculation.html.  Page-specific layout for the generate row and
+ * the generated-script preview card.  Everything shared lives in the lib
+ * sheets (tokens / page-shell cards+buttons / form-schema fieldsets /
+ * form-components .full-btn + .btn-like + .issues-panel) -- created 2026-07
+ * when the template's inline styles + ownerless classes were pulled in here
+ * (ui-design-contract: no inline styles, page sheets page-only). */
+
+.generate-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+/* Generated-script preview: a <details> flavored with the shared .card
+ * schema (page-shell.css owns the card face); only the preview-specific
+ * innards live here. */
+.script-preview-card > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+.script-preview-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin: 0.6rem 0;
+}
+.script-preview-card pre {
+    max-height: 400px;
+    overflow: auto;
+    background: var(--bg-code);
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    border-radius: var(--radius-sm);
+}

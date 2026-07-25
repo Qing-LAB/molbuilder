@@ -2224,8 +2224,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // programmatic setProjection() calls (e.g. from applyState or
     // host code) keep the visible UI in sync with the rendered mode.
     function _syncKnobBarToProjection(state) {
-        if (!state || !state.knobBar) return;
-        const sel = state.knobBar.querySelector(
+        // The knob bar lives on the scaffold (same lookup as _syncKnobBarToAnimation).
+        // A phantom ``state.knobBar`` field here (never assigned) made this a silent
+        // no-op -- the select never mirrored a programmatic setProjection.
+        if (!state || !state.scaffold || !state.scaffold.knobsEl) return;
+        const sel = state.scaffold.knobsEl.querySelector(
             'select.mol-viewer-select[data-action="projection"]');
         if (!sel) return;
         const target = state.current.projection === "orthographic"

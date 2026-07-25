@@ -752,19 +752,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
   color: var(--ps-selected-fg);
 }
 
-/* Preview = neutral hover (same accent as a directory click). */
 /* (.ps-entry-preview / .ps-entry-delete removed 2026-07: the inline view/x
    buttons were replaced by the kebab menu; zero producers remained.) */
-
-/* Delete = destructive red hover (matches the warning intent). */
-.ps-entry-delete {
-  font-size: 0.9rem;       /* the × glyph reads better slightly larger */
-}
-.ps-entry-delete:hover {
-  background: var(--ps-danger);
-  color: var(--ps-selected-fg);
-  border-color: var(--ps-danger);
-}
 
 /* ---- File-preview modal -------------------------------------- */
 /* Floats centered over the whole page; hidden by default; opened

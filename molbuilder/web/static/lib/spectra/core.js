@@ -2211,6 +2211,16 @@
             _stopAnimation();
             return;
         }
+        // Geometry/mode AGREEMENT gate: the eigenvector is per-atom, so the geometry
+        // must have exactly that many atoms.  This matters for the getStructureText
+        // fallback on /results, where the shared model may hold an UNRELATED structure
+        // (whatever the last inspection installed) -- animating this mode on it would
+        // be silent nonsense.  Mismatch -> treat as "no usable geometry" and hide.
+        if (geom.elements.length !== mode.eigenvector_display.length) {
+            els.modeViewerWrap.hidden = true;
+            _stopAnimation();
+            return;
+        }
         els.modeViewerWrap.hidden = false;
 
         if (typeof window.$3Dmol === "undefined") {
