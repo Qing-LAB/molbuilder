@@ -1716,13 +1716,19 @@ class TestHandleSurface:
                 const h = window.molbuilder.viewer.embed(host, {
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
-                    animation: {
-                        kind: "vibration",
-                        displacements: [[1.0, 0.0, 0.0]],
-                        amplitude: 1.0,
-                        speedHz: 0.5,
-                        paused: true,
+                });
+                await new Promise(r => requestAnimationFrame(r));
+                // Register an EXTERNAL ANIMATOR provider (the door
+                // VibrationView drives post-#51): a 0.5-Hz cosine wobble
+                // on x, so different capture phases give different PNGs.
+                h.setAnimationProvider({
+                    frameCoords: (i, n, sec) => {
+                        const t = sec * (i / Math.max(1, n));
+                        const x = 1.0 * Math.cos(2 * Math.PI * 0.5 * t);
+                        return [[x, 0, 0]];
                     },
+                    restCoords: () => [[0, 0, 0]],
+                    cycleSec: 2.0,
                 });
                 // Capture 6 frames spread across 2 s — covers a
                 // significant portion of one 0.5-Hz cycle.
@@ -2770,11 +2776,13 @@ class TestHandleSurface:
         """)
         assert "invalid_input" in errs
 
-    def test_captureFrames_returns_blobs_for_vibration(
+    def test_captureFrames_returns_blobs_via_provider(
             self, page, flask_server):
         """Per § 3.2 + Phase 5b: captureFrames drives the animation
         deterministically + captures one PNG blob per frame.  For a
-        2-fps × 1-sec capture, expect 2 blobs."""
+        2-fps × 1-sec capture, expect 2 blobs.  Driven through the
+        external-animator provider (the door VibrationView uses,
+        task #51) instead of the retired kind:"vibration"."""
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -2788,13 +2796,16 @@ class TestHandleSurface:
                 const h = window.molbuilder.viewer.embed(host, {
                     xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
                     card: { showInfoLine: false, height: "100%" },
-                    animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
-                        amplitude: 0.2, speedHz: 1.0, paused: true,
-                    },
                 });
                 await new Promise(r => requestAnimationFrame(r));
+                h.setAnimationProvider({
+                    frameCoords: (i, n) => {
+                        const z = 0.2 * (i / Math.max(1, n));
+                        return [[0,0,z],[1,0,z],[0,1,z]];
+                    },
+                    restCoords: () => [[0,0,0],[1,0,0],[0,1,0]],
+                    cycleSec: 1.0,
+                });
                 const blobs = await h.captureFrames({
                     fps: 2, duration: 1,
                 });
@@ -2863,9 +2874,12 @@ class TestHandleSurface:
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // kind:"vibration" left the embed (task #51); a trajectory
+                        // is the first-class animation these export-machinery tests
+                        // need -- the animation TYPE is irrelevant here.
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[0.5,0,0]]],
+                        fps: 2, paused: true,
                     },
                     testInjection: { mediaRecorder: null },
                 });
@@ -2905,9 +2919,12 @@ class TestHandleSurface:
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // kind:"vibration" left the embed (task #51); a trajectory
+                        // is the first-class animation these export-machinery tests
+                        // need -- the animation TYPE is irrelevant here.
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[0.5,0,0]]],
+                        fps: 2, paused: true,
                     },
                     testInjection: { gifEncoder: null },
                 });
@@ -2950,9 +2967,13 @@ class TestHandleSurface:
                     xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.05],[0,0,0.05],[0,0,0.05]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // trajectory stand-in (kind:"vibration" left the embed, #51).
+                        kind: "trajectory",
+                        frames: [
+                            [[0,0,0],[1,0,0],[0,1,0]],
+                            [[0,0,0.1],[1,0,0.1],[0,1,0.1]],
+                        ],
+                        fps: 2, paused: true,
                     },
                     export: {
                         onExport: (info) => { lastInfo = info; },
@@ -3008,9 +3029,12 @@ class TestHandleSurface:
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // kind:"vibration" left the embed (task #51); a trajectory
+                        // is the first-class animation these export-machinery tests
+                        // need -- the animation TYPE is irrelevant here.
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[0.5,0,0]]],
+                        fps: 2, paused: true,
                     },
                 });
                 let code = null;
@@ -3069,9 +3093,12 @@ class TestHandleSurface:
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // kind:"vibration" left the embed (task #51); a trajectory
+                        // is the first-class animation these export-machinery tests
+                        // need -- the animation TYPE is irrelevant here.
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[0.5,0,0]]],
+                        fps: 2, paused: true,
                     },
                     testInjection: { mediaRecorder: FakeRecorder },
                 });
@@ -3129,9 +3156,12 @@ class TestHandleSurface:
                     xyz: "1\\nh\\nH 0 0 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1]],
-                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                        // kind:"vibration" left the embed (task #51); a trajectory
+                        // is the first-class animation these export-machinery tests
+                        // need -- the animation TYPE is irrelevant here.
+                        kind: "trajectory",
+                        frames: [[[0,0,0]], [[0.5,0,0]]],
+                        fps: 2, paused: true,
                     },
                     testInjection: {
                         mediaRecorder: FakeRecorder,
@@ -3174,18 +3204,22 @@ class TestHandleSurface:
                     xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
                     card: { showInfoLine: false, height: "100%" },
                     animation: {
-                        kind: "vibration",
-                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
-                        amplitude: 0.2, speedHz: 1.0, paused: false,
+                        kind: "trajectory",
+                        frames: [
+                            [[0,0,0],[1,0,0],[0,1,0]],
+                            [[0,0,0.1],[1,0,0.1],[0,1,0.1]],
+                        ],
+                        fps: 30, paused: false,
                     },
                     onError: (e) => { errs.push(e.code); },
                 });
                 await new Promise(r => requestAnimationFrame(r));
                 const before = h._test.hasAnimationLoop();
-                // Bad atom count -- must halt + preserve.
+                // Invalid full-update payload (the retired vibration kind) --
+                // must halt + preserve the running trajectory, not wipe it.
                 h.setAnimation({
                     kind: "vibration",
-                    displacements: [[1,0,0]],   // 1 not 3
+                    displacements: [[1,0,0],[0,1,0],[0,0,1]],
                 });
                 await new Promise(r => requestAnimationFrame(r));
                 const after = h._test.hasAnimationLoop();

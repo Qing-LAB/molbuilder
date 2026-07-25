@@ -5179,8 +5179,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         }
 
         function _defaultFps(a) {
-            if (a.kind === "trajectory" && a.fps > 0) return a.fps;
-            return 30;
+            if (a && a.kind === "trajectory" && a.fps > 0) return a.fps;
+            return 30;   // provider / default cadence
         }
         function _defaultDuration(a) {
             if (a && a.kind === "trajectory") {
@@ -5205,9 +5205,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     "captureFrames: viewer disposed"));
             }
             const a = state.current.animation;
-            if (!a) {
+            if (!a && !state.current.animationProvider) {
                 return Promise.reject(_makeError("static_structure",
-                    "captureFrames: opts.animation is null"));
+                    "captureFrames: no animation or external animator"));
             }
             if (_atomCount(state.viewer) === 0) {
                 return Promise.reject(_makeError("no_structure",
@@ -5234,7 +5234,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // Capture the original animation phase so we can
             // restore it post-capture (so a host's "Capture →
             // continue editing" flow doesn't lose its position).
-            const savedFrame = a.kind === "trajectory"
+            const savedFrame = (a && a.kind === "trajectory")
                                  ? a.currentFrame : null;
 
             const blobs = [];
@@ -5649,9 +5649,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                     "exportAnimation: viewer disposed"));
             }
             const a = state.current.animation;
-            if (!a) {
+            if (!a && !state.current.animationProvider) {
                 return Promise.reject(_makeError("static_structure",
-                    "exportAnimation: opts.animation is null"));
+                    "exportAnimation: no animation or external animator"));
             }
             if (_atomCount(state.viewer) === 0) {
                 return Promise.reject(_makeError("no_structure",
@@ -5678,7 +5678,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // Pause live playback so the encoder owns frame timing.
             const wasPlaying = state._anim.playing;
             if (wasPlaying) _stopAnimationLoop(state);
-            const savedFrame = a.kind === "trajectory"
+            const savedFrame = (a && a.kind === "trajectory")
                                  ? a.currentFrame : null;
 
             const ext = opts.format === "webm" ? "webm" : "gif";
@@ -5956,8 +5956,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 return;
             }
             const cur = state.current.animation;
+            // An explicit ``kind`` (ANY value) marks a FULL replace -> route to the
+            // validate-first full path below, which rejects a non-trajectory kind
+            // with invalid_input.  Narrowing this to =="trajectory" mis-routed a
+            // ``{kind:"vibration"}`` payload (the retired kind) into the partial-merge
+            // branch, where it silently no-op'd instead of being rejected + halting
+            // (the § 5.3 halt-preserves contract).
             const hasKind = animation && typeof animation === "object"
-                            && animation.kind === "trajectory";
+                            && typeof animation.kind === "string";
             if (!hasKind && cur) {
                 // Partial update: mutate live-readable fields in
                 // place.  Trajectory's ``fps`` requires re-arming the
