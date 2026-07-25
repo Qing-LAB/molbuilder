@@ -53,8 +53,12 @@ function create(handle, opts) {
     var _frameListeners = [];    // the frame-bar channel (NOT the view store; §7.2).
     var _regenRaf = null;        // pending structural-regen paint yield (rAF id).
     var _regenTimer = null;      // fallback timer (a backgrounded tab suspends rAF).
-    var _locked = false;         // an update is in flight -> the viewer is busy; API is refused.
+    var _locked = false;         // an update is in flight -> the viewer is busy; incoming ops queue.
     var _renderQueued = false;   // a render() arrived while locked -> replay it after unlock.
+    var _pendingTx = [];         // consumer-push ops (setForces/showFrame/appendFrames) that
+                                 // arrived while locked -> replayed in order after unlock.
+                                 // VOIDED by setData (a full load replaces the atom set, so a
+                                 // queued op references atoms that no longer exist) + dispose.
 
     function _blankFlags() {
         return { selection: [], isolate: false, showIndex: false, showForces: false,
@@ -163,9 +167,39 @@ function create(handle, opts) {
         _regenRaf = raf(function () { _regenRaf = raf(go); });
         if (typeof globalThis.setTimeout === "function") _regenTimer = globalThis.setTimeout(go, 200);
     }
+    // Consumer-push ops arriving while an update is in flight are STORED as pending
+    // transactions and replayed in ARRIVAL order after the unlock -- never silently refused
+    // (the busy window is a real 16-200ms gap; a live-poll append or a knob change landing in
+    // it must not be lost). Latest-wins per op for setForces/showFrame -- only the last force
+    // set / seek matters; appendFrames chunks ACCUMULATE (each is a distinct tail). Validation
+    // (frame range, same-atoms invariant) happens at REPLAY, by running the real op.
+    function _queueTx(op, args) {
+        if (op !== "appendFrames") {
+            for (var i = _pendingTx.length - 1; i >= 0; i--) {
+                if (_pendingTx[i].op === op) _pendingTx.splice(i, 1);
+            }
+        }
+        _pendingTx.push({ op: op, args: args });
+    }
+    function _drainTx() {
+        var tx = _pendingTx;
+        _pendingTx = [];
+        for (var i = 0; i < tx.length; i++) {
+            try {
+                if (tx[i].op === "setForces")         setForces(tx[i].args[0]);
+                else if (tx[i].op === "showFrame")    showFrame(tx[i].args[0]);
+                else if (tx[i].op === "appendFrames") appendFrames(tx[i].args[0], tx[i].args[1]);
+            } catch (e) {
+                // A replayed op has no synchronous caller left to throw to; report and keep
+                // draining -- one bad transaction must not void the rest.
+                try { globalThis.console.error("molview engine: queued " + tx[i].op + " replay failed:", e); } catch (_) {}
+            }
+        }
+    }
+
     // A structural regen LOCKS the viewer for the whole update: the busy scrim blocks the
-    // user and view-side API calls are refused until 3Dmol is ready. A NEW load supersedes a
-    // pending one (latest data/flags win) -- setData is authoritative, not a click to refuse.
+    // user and view-side API calls queue as transactions until 3Dmol is ready. A NEW load
+    // supersedes a pending one (latest data/flags win) -- setData is authoritative.
     function _structuralRegen() {
         _cancelPendingRegen();   // supersede any in-flight regen with this latest one.
         _locked = true;
@@ -201,10 +235,12 @@ function create(handle, opts) {
                 embedIo.setBusy(null);
                 _locked = false;
             }
-            // Replay a render that was refused while this regen was in flight (belt to the
-            // fresh-read braces above -- covers a queued notify whose write raced the read).
+            // Replay everything that arrived while this regen was in flight: first the queued
+            // consumer transactions (in arrival order -- their side effects on _data must land
+            // faithfully), then a render that was refused (belt to the fresh-read braces above).
             // Outside the finally so a THROWN regen doesn't immediately re-enter; sig diffing
-            // makes a no-op replay cheap (one overlay refresh at worst).
+            // makes a no-op render replay cheap (one overlay refresh at worst).
+            _drainTx();
             if (_renderQueued) { _renderQueued = false; render(); }
         });
     }
@@ -231,6 +267,9 @@ function create(handle, opts) {
         data = data || {};
         var frames = Array.isArray(data.frames) ? data.frames : [];
         if (!frames.length) throw new Error("engine.setData: needs at least one frame");
+        // VOID the pending transactions: a full load replaces the atom set, so a queued
+        // showFrame/setForces/appendFrames references atoms (or a movie) that no longer exist.
+        _pendingTx = [];
         _data = {
             frames:         frames,
             elements:       Array.isArray(data.elements) ? data.elements : [],
@@ -249,7 +288,14 @@ function create(handle, opts) {
     function appendFrames(coordsList, appendOpts) {
         appendOpts = appendOpts || {};
         if (!_data) throw new Error("engine.appendFrames: nothing loaded (no atom identity)");
-        if (_locked) return frameCount();         // an update is in flight -> refuse until ready.
+        if (_locked) {
+            // An update is in flight -> queue the tail as a transaction (replayed after the
+            // unlock; chunks accumulate). A live-poll tick landing in the busy window must not
+            // lose its frames. The returned count is the pre-replay count -- the caller sees
+            // the appended frames via frameCount() once the queue drains.
+            _queueTx("appendFrames", [coordsList, appendOpts]);
+            return frameCount();
+        }
         var list = Array.isArray(coordsList) ? coordsList : [];
         if (!list.length) return frameCount();
         var n = _data.frames[0].length;
@@ -289,7 +335,8 @@ function create(handle, opts) {
     // (process.js §2.4), and null clears the whole overlay. Multi-frame re-bakes every frame's
     // arrows; a static frame's arrows ride the overlay refresh.
     function setForces(forcesPerFrame) {
-        if (!_data || _locked) return;
+        if (!_data) return;
+        if (_locked) { _queueTx("setForces", [forcesPerFrame]); return; }   // latest-wins replay.
         _data.forcesPerFrame = Array.isArray(forcesPerFrame) ? forcesPerFrame : null;
         _flags = _readFlags();
         if (frameCount() > 1) _arrowRefresh();
@@ -297,8 +344,9 @@ function create(handle, opts) {
     }
     // NATIVE SWAP (§3): the frame channel. Set the shown frame + re-apply its overlays. No busy.
     function showFrame(i) {
-        if (!_data || _locked) return;            // an update is in flight -> refuse until ready.
-        var idx = Math.floor(Number(i));
+        if (!_data) return;
+        if (_locked) { _queueTx("showFrame", [i]); return; }   // latest seek wins; range-checked
+        var idx = Math.floor(Number(i));                       // at replay against the new movie.
         if (!(idx >= 0 && idx < frameCount())) return;
         _frame = idx;
         embedIo.beginBatch();             // swap + overlay re-apply -> ONE render (§1/§5)
@@ -338,6 +386,7 @@ function create(handle, opts) {
     function dispose() {
         _locked = false;
         _renderQueued = false;
+        _pendingTx = [];
         _cancelPendingRegen();
         try { embedIo.setBusy(null); } catch (_) {}
         try { _storeUnsub(); } catch (_) {}

@@ -253,29 +253,84 @@ def test_paint_yield_shows_busy_before_the_blocking_load():
     assert out["after"][-1] == "setBusy"       # last call clears busy (null)
 
 
-def test_locked_during_update_refuses_api_until_ready():
+def test_locked_during_update_queues_ops_and_replays_after_unlock():
+    """Ops landing in the busy window are TRANSACTIONS, not refusals: nothing
+    touches the embed while locked, then everything replays in arrival order
+    after the unlock -- the queued append grows the movie and the queued seek
+    lands on the (post-append) frame.  The store write landing in the same
+    window is honored too (the regen re-reads flags at run time)."""
     out = _run_node(_RAF + """
         const { io, store, e } = mk();
         e.setData(DATA);                    // starts an update -> LOCKED (scrim on, load deferred)
-        // Every API call is refused while locked -- no swap, no append, no re-render:
-        e.showFrame(1);
-        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]);
-        store._set({ indices: [1], isolate: true });
+        e.showFrame(1);                     // queued (latest seek wins)
+        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]);   // queued (tail chunk)
+        store._set({ showIndex: true });    // flag write -> re-read by the regen at run time
         const during = { names: io._names(), current: e.currentFrame(), count: e.frameCount() };
-        flushRaf();                         // update completes -> UNLOCKED
-        io._calls.length = 0;
-        e.showFrame(1);                     // now allowed
+        flushRaf();                         // update completes -> UNLOCKED -> queue drains
         console.log(JSON.stringify({
             during,
-            afterUnlockSwapped: io._names().includes("swapFrame"),
-            afterUnlockCurrent: e.currentFrame(),
+            afterNames: io._names(),
+            afterCount: e.frameCount(),
+            afterCurrent: e.currentFrame(),
         }));
     """)
-    # while locked: no swap/append/reload happened, and nothing mutated.
+    # while locked: nothing reached the embed and nothing mutated.
     assert "swapFrame" not in out["during"]["names"]
     assert "appendFrames" not in out["during"]["names"]
     assert out["during"]["current"] == 0
-    assert out["during"]["count"] == 2         # the refused append did not grow the data
-    # after the update completes the lock releases and the API works.
-    assert out["afterUnlockSwapped"] is True
-    assert out["afterUnlockCurrent"] == 1
+    assert out["during"]["count"] == 2         # the queued append hasn't landed yet
+    # after the unlock the queue drains: append extended the movie, seek landed.
+    assert "appendFrames" in out["afterNames"]
+    assert "swapFrame" in out["afterNames"]
+    assert out["afterCount"] == 3
+    assert out["afterCurrent"] == 1
+
+
+def test_queued_setForces_rebakes_arrows_after_unlock():
+    out = _run_node(_RAF + """
+        const { io, e } = mk();
+        e.setData(DATA);                    // LOCKED
+        e.setForces([ [[0,1,0],[0,0,0],[0,0,0]], [[0,2,0],[0,0,0],[0,0,0]] ]);  // queued
+        const duringNames = io._names();
+        flushRaf();                         // unlock -> replay
+        const sfa = io._calls.find(c => c.name === "setFrameArrows");
+        console.log(JSON.stringify({
+            duringHadArrows: duringNames.includes("setFrameArrows"),
+            replayed: !!sfa, perFrame: sfa ? sfa.args[0].length : -1 }));
+    """)
+    assert out["duringHadArrows"] is False     # nothing while locked
+    assert out["replayed"] is True             # forces landed after the unlock
+    assert out["perFrame"] == 2
+
+
+def test_queued_seeks_are_latest_wins():
+    out = _run_node(_RAF + """
+        const { e } = mk();
+        e.setData(DATA);                    // LOCKED
+        e.showFrame(1);
+        e.showFrame(0);                     // supersedes the first seek
+        flushRaf();
+        console.log(JSON.stringify({ current: e.currentFrame() }));
+    """)
+    assert out["current"] == 0                 # only the LAST queued seek replays
+
+
+def test_setData_voids_the_pending_transactions():
+    """A full load replaces the atom set, so ops queued against the OLD
+    structure must not replay into the new one (the void rule)."""
+    out = _run_node(_RAF + """
+        const { io, e } = mk();
+        e.setData(DATA);                    // LOCKED
+        e.showFrame(1);                     // queued against the OLD movie
+        e.appendFrames([ [[9,9,9],[8,8,8],[7,7,7]] ]);   // queued tail (3 atoms)
+        const DATA2 = { frames: [ [[0,0,0],[1,1,1]] ],   // NEW structure: 2 atoms, 1 frame
+            elements: ["N","N"], annotations: [{}, {}], cell: null, forcesPerFrame: null };
+        e.setData(DATA2);                   // supersedes + VOIDS the queue
+        flushRaf();
+        console.log(JSON.stringify({
+            count: e.frameCount(), current: e.currentFrame(),
+            appendedIntoNew: io._names().includes("appendFrames") }));
+    """)
+    assert out["count"] == 1                   # the queued 3-atom tail did NOT replay
+    assert out["current"] == 0                 # the queued seek did NOT replay
+    assert out["appendedIntoNew"] is False
