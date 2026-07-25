@@ -71,6 +71,12 @@
             a.setAttribute("target", "_blank");
             a.setAttribute("rel", "noopener noreferrer");
         });
+        // Render any ```mermaid diagrams into SVG in place (lazy-loads mermaid
+        // only when the doc actually has one).  Non-fatal: a diagram failure
+        // leaves the rest of the doc intact.
+        try {
+            await window.molbuilder.markdownRender.renderMermaidIn(renderEl);
+        } catch (_) { /* one bad diagram must not blank the doc */ }
         renderEl.scrollTop = 0;
         // Reflect the selection in the URL so a doc is shareable / reloadable.
         try {

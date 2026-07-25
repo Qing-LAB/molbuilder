@@ -150,6 +150,20 @@
 
 .docs-render img { max-width: 100%; height: auto; }
 
+/* Mermaid diagrams (rendered in place by markdown-render.js).  Centred, its
+ * own horizontal scroll so a wide diagram never widens the page. */
+.docs-render .mermaid-figure {
+    margin: var(--space-md) 0;
+    text-align: center;
+    overflow-x: auto;
+}
+.docs-render .mermaid-figure svg { max-width: 100%; height: auto; }
+.docs-render .mermaid-error {
+    color: var(--error);
+    font-size: var(--text-sm);
+    margin: var(--space-sm) 0;
+}
+
 /* Content-driven reflow: on a narrow viewport the list stacks above the
  * reader (no @media magic beyond the one breakpoint the two-pane layout
  * genuinely needs). */

@@ -277,6 +277,13 @@ class TestNoUnsafeInnerHTML:
             # innerHTML in documents/page.js.
             ("documents/page.js",
              "renderEl.innerHTML = window.molbuilder.markdownRender.render"),
+            # Mermaid diagram render (shared markdown-render.js): the RHS is
+            # ``out.svg`` from ``mermaid.render(...)`` run with
+            # securityLevel 'strict' (mermaid sandboxes label HTML), on
+            # app-shipped docs/*.md source.  The ONE innerHTML in the mermaid
+            # path; the code / error states use textContent + createElement.
+            ("lib/markdown-render.js",
+             "fig.innerHTML = out.svg"),
             # Shared partial-inspector factory (task #308 dedupe):
             # the ``host.innerHTML = partialHtml`` assignment moved
             # out of the trajectory + spectra wrappers and into the
