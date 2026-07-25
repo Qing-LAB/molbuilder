@@ -213,6 +213,24 @@ def check_spin_charge_parity(struct: Structure, charge: int, spin: int
         return (f"spin={spin} is negative; spin counts unpaired "
                 f"electrons (2S), must be 0 or positive")
     n_elec = total_electrons(struct, charge)
+    # Electron-count sanity: over-ionised past the nucleus is impossible.
+    if n_elec < 0:
+        return (
+            f"charge={charge} removes more electrons than exist "
+            f"(sum(Z) - charge = {n_elec} < 0) -- the system has no "
+            f"electrons left.  Reduce the positive charge."
+        )
+    # Spin upper bound (EXACT): 2S = n_alpha - n_beta with n_alpha + n_beta =
+    # n_elec, so n_beta = (n_elec - spin)/2 >= 0 requires spin <= n_elec.  You
+    # cannot have more unpaired electrons than electrons.  (Parity alone let
+    # e.g. spin=10 on H2 pass.)
+    if spin > n_elec:
+        return (
+            f"spin={spin} exceeds the electron count (sum(Z) - charge "
+            f"= {n_elec}): 2S = number of unpaired electrons cannot be "
+            f"larger than the total number of electrons.  Lower spin to "
+            f"at most {n_elec}."
+        )
     if (n_elec % 2) != (spin % 2):
         return (
             f"Electron-count parity mismatch: sum(Z) - charge "

@@ -460,3 +460,21 @@ def test_unknown_element_raises_keyerror():
     ``total_electrons`` — the endpoint catches it for a clean 400."""
     with pytest.raises(KeyError):
         analyze_structure(_mk(["Xx"]))
+
+
+def test_spin_upper_bound_and_electron_sanity():
+    """SCIENTIFIC-AUDIT FIX: check_spin_charge_parity validated PARITY only;
+    2S cannot exceed the electron count (n_beta = (n_e - spin)/2 >= 0), and an
+    over-ionised system (charge > sum Z) has no electrons.  Both are exact and
+    were previously unflagged (e.g. spin=10 on H2 passed)."""
+    import numpy as np
+    from molbuilder.chemistry import check_spin_charge_parity
+    from molbuilder.structure import Structure
+    h2 = Structure(elements=["H", "H"],
+                   positions=np.array([[0., 0, 0], [0, 0, 0.74]]))
+    # 2 electrons: spin (2S) up to 2 is allowed; above that is impossible.
+    assert check_spin_charge_parity(h2, 0, 2) is None          # 2 unpaired OK
+    assert check_spin_charge_parity(h2, 0, 10) is not None     # > n_elec: error
+    assert "exceeds" in check_spin_charge_parity(h2, 0, 10)
+    # Over-ionised past the nuclei: negative electron count.
+    assert check_spin_charge_parity(h2, 3, 0) is not None
