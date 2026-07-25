@@ -41,7 +41,7 @@ def spectra_core_src() -> str:
 
 @pytest.fixture(scope="module")
 def viewer_embed_src() -> str:
-    return (STATIC / "lib/mol-viewer-embed.js").read_text(
+    return (STATIC / "lib/viewer/mol-viewer-embed.js").read_text(
         encoding="utf-8"
     )
 
@@ -88,7 +88,7 @@ def test_animation_export_section_never_hidden(viewer_embed_src):
     """The Animation Export section MUST remain visible regardless
     of whether an animation is currently mounted.
 
-    Pre-2026-06-14 ``lib/mol-viewer-embed.js:1768`` did
+    Pre-2026-06-14 ``lib/viewer/mol-viewer-embed.js:1768`` did
     ``sect.hidden = !hasAnim``, vanishing the Save/Download
     buttons (and their label) on every static-structure load.
     A user who learned the section was on the Export tab didn't
@@ -105,7 +105,7 @@ def test_animation_export_section_never_hidden(viewer_embed_src):
     # file (knob buttons, etc.).  We narrow by requiring ``data-
     # section="animation"`` to appear in the same window.
     assert "sect.hidden = !hasAnim" not in viewer_embed_src, (
-        "lib/mol-viewer-embed.js must not write "
+        "lib/viewer/mol-viewer-embed.js must not write "
         "``sect.hidden = !hasAnim`` -- the Animation Export "
         "section is unconditionally visible per the 2026-06-14 "
         "UI-presence contract.  Disable the buttons inside when "

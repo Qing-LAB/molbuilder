@@ -13,7 +13,7 @@
 
 **Module(s)**: sidebar JS is split across small ES modules:
 
-  * `static/lib/projects-sidebar.js`     -- entry point (imports + bootstrap)
+  * `static/lib/projects/projects-sidebar.js`     -- entry point (imports + bootstrap)
   * `static/lib/projects/api.js`         -- HTTP wrappers (no DOM, no state)
   * `static/lib/projects/state.js`       -- sessionStorage + Inquire API + writeFile/saveToWorkspace
   * `static/lib/projects/list.js`        -- breadcrumb + entry list + per-entry ⋯ kebab menu + openDir

@@ -1105,7 +1105,7 @@ function _mvdata() {
     }
 
     // formula() is imported from MolView's door (mvFormula, top of file) — the Hill formatter in
-    // static/lib/mol-format.js.  Imported, so it is always the real function (no global-read, no
+    // static/lib/viewer/mol-format.js.  Imported, so it is always the real function (no global-read, no
     // load-order fallback, no "OHH" full-expansion bug).
     const formula = mvFormula;
 

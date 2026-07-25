@@ -2317,7 +2317,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             });
         } else {
             // Minimal fallback so the viewer renders something even
-            // if lib/mol-style.js failed to load (defensive: the
+            // if lib/viewer/mol-style.js failed to load (defensive: the
             // template ALWAYS loads it).
             spec = { stick: {} };
         }
@@ -3782,7 +3782,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         if (!viewerApi || typeof viewerApi.create !== "function") {
             throw _throwable(
                 "missing_dependency",
-                "viewer.embed: lib/mol-viewer.js must be loaded first"
+                "viewer.embed: lib/viewer/mol-viewer.js must be loaded first"
             );
         }
 

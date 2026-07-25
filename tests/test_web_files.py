@@ -656,7 +656,7 @@ class TestSidebarPartialAndShim:
         assert 'class="has-projects-sidebar"' in body, path
         # And the JS should NOT be adding it (avoid double-toggle).
         js = web.get(
-            "/static/lib/projects-sidebar.js",
+            "/static/lib/projects/projects-sidebar.js",
         ).get_data(as_text=True)
         assert 'classList.add("has-projects-sidebar")' not in js
 

@@ -1,4 +1,4 @@
-"""Runtime (Node) unit tests for ``lib/mol-viewer-embed.js`` — the
+"""Runtime (Node) unit tests for ``lib/viewer/mol-viewer-embed.js`` — the
 concealed 3Dmol drawing layer MolView draws through.
 
 These exercise the module's pure, exported helpers under Node with no
@@ -33,7 +33,7 @@ from _node_esm import run_node
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/mol-viewer-embed.js"
+MODULE = ROOT / "molbuilder/web/static/lib/viewer/mol-viewer-embed.js"
 
 
 def _run_node(snippet: str) -> object:

@@ -291,7 +291,7 @@ subsection.** Editing one? Read its subsection first.
 - **Reuse:** Modify and every Results structure card mount the SAME card; a card change
   is one edit here, not per consumer.
 
-### 8.2 Selection / Cell panel · `lib/selection-panel.css`
+### 8.2 Selection / Cell panel · `lib/molview/selection/selection-panel.css`
 
 - **Tokens:** the panel's own `--ps-*` scale (`--ps-fg`, `--ps-fg-dim`, `--ps-bg-deep`,
   `--ps-border`, `--ps-hover`, `--ps-selected-*`). Panel rules use these — never raw hex.

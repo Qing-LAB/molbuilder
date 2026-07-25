@@ -30,11 +30,11 @@
  * spectra, results).
  *
  * Naming: flat, dotted, lowercased.  Today's modules:
- *   "viewer"                    -- lib/mol-viewer.js
- *   "style"                     -- lib/mol-style.js
- *   "fmt"                       -- lib/mol-format.js
+ *   "viewer"                    -- lib/viewer/mol-viewer.js
+ *   "style"                     -- lib/viewer/mol-style.js
+ *   "fmt"                       -- lib/viewer/mol-format.js
  *   "formSchema"                -- lib/form-schema.js
- *   "projects"                  -- lib/projects-sidebar.js
+ *   "projects"                  -- lib/projects/projects-sidebar.js
  *   "workspace"                 -- lib/workspace/dispatcher.js  (Phase 10 — the public surface)
  *   "selection.panel"           -- lib/selection-panel.js
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js

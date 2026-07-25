@@ -3,7 +3,7 @@
    Included by every main tab template (index, modify, spectra,
    results) after _app_header.html.
 
-   Behaviour contract:  lib/projects-sidebar.js -- the "inquire model"
+   Behaviour contract:  lib/projects/projects-sidebar.js -- the "inquire model"
      * exposes window.molbuilder.projects.{getCurrentDir, getCurrentFile,
        onChange, readCurrentFile, relativeToProjects, refresh}
      * NO tab-specific buttons (no "Open in <Tab>"); the sidebar is a
@@ -18,8 +18,8 @@
     These two elements are CSS-hidden above the 640 px breakpoint;
     below it, the toggle button is fixed at top-left and the
     backdrop appears when the sidebar is open.  Behaviour wired in
-    ``lib/projects-sidebar.js``.  See the docstring on the drawer
-    CSS block in ``lib/projects-sidebar.css`` for the full design. -#}
+    ``lib/projects/projects-sidebar.js``.  See the docstring on the drawer
+    CSS block in ``lib/projects/projects-sidebar.css`` for the full design. -#}
 <button type="button" id="ps-mobile-toggle" class="ps-mobile-toggle"
         aria-label="Toggle projects sidebar"
         aria-controls="projects-sidebar"

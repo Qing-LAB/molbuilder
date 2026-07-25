@@ -31,8 +31,8 @@ hex literals are allowed ONLY in:
 Budget model.  Phase 2 cleanup of the small files (style.css,
 modify/style.css, results/style.css, lib/page-shell.css, etc.)
 ships with this commit.  The two big component files —
-``lib/selection-panel.css`` (97 raw hex) and
-``lib/projects-sidebar.css`` (66 raw hex) — need a deeper Phase 3
+``lib/molview/selection/selection-panel.css`` (97 raw hex) and
+``lib/projects/projects-sidebar.css`` (66 raw hex) — need a deeper Phase 3
 migration that introduces ``--sp-*`` / promotes ``--ps-*`` into
 tokens.css.  Until that lands, this test caps each allowlisted
 file at its current count: adding NEW raw hex makes the test fail.
@@ -77,15 +77,15 @@ STRICT_FILES: set[str] = {
     "lib/page-shell.css",
     "lib/form-schema.css",
     "lib/form-components.css",
-    "lib/projects-sidebar.css",
-    "lib/selection-panel.css",
+    "lib/projects/projects-sidebar.css",
+    "lib/molview/selection/selection-panel.css",
     "lib/tabs.css",
-    "lib/mol-viewer-embed.css",
+    "lib/viewer/mol-viewer-embed.css",
     "lib/molview/selection/measurement-chip.css",
     "lib/molview/fused-layout.css",
     "lib/inspectors/markdown.css",
     "lib/inspectors/spectra.css",
-    "lib/trajectory-inspector.css",
+    "lib/trajectory/trajectory-inspector.css",
     "lib/system-load-monitor.css",
     "lib/results/bundle-handoff.css",
     "lib/app-notifications.css",

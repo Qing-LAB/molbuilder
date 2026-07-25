@@ -43,7 +43,7 @@
 // whole module (import, not a global, so the dependency is legible).
 import { createViewerOverlay } from "./_viewer-overlay.js";
 // The 3Dmol viewer embed -- now an ES module in the graph (was the classic `mb.viewer` global).
-import { viewer as _embedViewer } from "../mol-viewer-embed.js";
+import { viewer as _embedViewer } from "../viewer/mol-viewer-embed.js";
 
 const root = (typeof window !== "undefined") ? window : globalThis;
 

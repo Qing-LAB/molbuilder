@@ -8,7 +8,7 @@
  * STATELESS — so per the ESM rule (molview-esm-finalization.md §1.2) module consumers
  * ``import { parse, toText }`` directly.  The classic-script door
  * ``window.molbuilder.xyz.parse/.toText`` stays published for not-yet-converted consumers
- * (spectra/core.js), mirroring the lib/mol-format.js namespace convention.
+ * (spectra/core.js), mirroring the lib/viewer/mol-format.js namespace convention.
  *
  * Format reminder (xyz v1):
  *   line 1 : <atom-count>

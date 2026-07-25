@@ -218,7 +218,7 @@ class TestNoUnsafeInnerHTML:
             ("lib/spectra/core.js", "modeViewer.innerHTML"),
             ("lib/spectra/core.js", "spectrumChart.innerHTML"),
             # Sidebar empty-state message (static literal).
-            ("lib/projects-sidebar.js", "list.innerHTML"),
+            ("lib/projects/projects-sidebar.js", "list.innerHTML"),
             # Region-label definitions popover (Phase 2a transport
             # UI shipped 2026-06-18): renderPopover() builds the
             # innerHTML from a curated CANONICAL_DEFINITIONS array
@@ -345,7 +345,7 @@ class TestRecentAdditionsArePure:
         # the most likely place for an XSS regression to land.
         "lib/trajectory/core.js",
         "lib/path-utils.js",
-        "lib/mol-viewer.js",
+        "lib/viewer/mol-viewer.js",
         "lib/xyz-io.js",
         "results/viewer.js",
     ]

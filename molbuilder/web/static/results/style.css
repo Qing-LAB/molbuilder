@@ -12,7 +12,7 @@
  *                              one-off surfaces
  *
  * Out of scope (handled by inspector-specific stylesheets):
- *   * lib/trajectory-inspector.css -- trajectory's viewer-card / ctab /
+ *   * lib/trajectory/trajectory-inspector.css -- trajectory's viewer-card / ctab /
  *     plots-row / frame-strip etc.  Those are LARGER concrete elements
  *     that wouldn't benefit from the generic .inspector-section frame.
  *   * static/spectra/style.css -- spectra inspector partial's
@@ -475,7 +475,7 @@
 
 /* ============================================================
  * Result-list bar (moved here 2026-06-09, task #303 — was in
- * lib/trajectory-inspector.css since 2026-05-30).  The dropdown
+ * lib/trajectory/trajectory-inspector.css since 2026-05-30).  The dropdown
  * is the /results page-level "Result file" picker; rules
  * co-located with results-specific styling so a future
  * trajectory CSS cleanup can't silently break the bar.

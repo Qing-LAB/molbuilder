@@ -34,7 +34,7 @@ Background
   3Dmol viewer when results are unchanged.  Same bug class as the
   trajectory one above.  Shipped 2026-06-12 as task #352 follow-up.
 
-* ``lib/mol-viewer-embed.js`` frame-slider input handler — must
+* ``lib/viewer/mol-viewer-embed.js`` frame-slider input handler — must
   snapshot ``parseInt(slider.value, 10)`` BEFORE calling
   ``_stopAnimationLoop(state)``.  That call routes through
   ``_refreshFrameStrip`` which rewrites ``slider.value`` from the
@@ -247,7 +247,7 @@ class TestFrameSliderHandlerSnapshotPattern:
 
     @pytest.fixture(scope="class")
     def embed_body(self):
-        return (_LIB / "mol-viewer-embed.js").read_text()
+        return (_LIB / "viewer" / "mol-viewer-embed.js").read_text()
 
     def test_slider_handler_snapshots_value_before_stopAnimationLoop(
             self, embed_body):
@@ -337,7 +337,7 @@ class TestInjectedToggleUnsubscribeCleanup:
 
     @pytest.fixture(scope="class")
     def embed_body(self):
-        return (_LIB / "mol-viewer-embed.js").read_text()
+        return (_LIB / "viewer" / "mol-viewer-embed.js").read_text()
 
     def test_injected_toggle_captures_unsubscribe_handle(self, embed_body):
         """addViewToggle assigns the return value of

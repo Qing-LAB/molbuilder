@@ -116,7 +116,7 @@
      * --sp-*, --mv-*) so semantic intent stays clear vs. the global
      * tokens above. */
 
-    /* --- Projects sidebar (lib/projects-sidebar.css) ---
+    /* --- Projects sidebar (lib/projects/projects-sidebar.css) ---
      * Self-contained sidebar palette — flat black/gray backgrounds
      * + the standard cool-blue accent + red/amber severity colors
      * for entry-action chrome.  Promoted from projects-sidebar.css's
@@ -226,9 +226,9 @@
     --group-budget-accent:  var(--success);
 
     /* --- Embeddable-overlay tier (CSS-migration step 3, 2026-07) ---
-     * The concealed embed modules (lib/mol-viewer-embed.css,
+     * The concealed embed modules (lib/viewer/mol-viewer-embed.css,
      * lib/results/bundle-handoff.css, lib/system-load-monitor.css,
-     * lib/trajectory-inspector.css, lib/form-schema.css) render inside
+     * lib/trajectory/trajectory-inspector.css, lib/form-schema.css) render inside
      * host pages, so they tint with TRANSLUCENT overlays that adapt to
      * whatever background sits beneath them — rather than assuming a
      * specific solid --bg-*.  These were previously undefined phantom

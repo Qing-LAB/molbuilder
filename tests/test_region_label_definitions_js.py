@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFS_JS = REPO_ROOT / "molbuilder" / "web" / "static" / "lib" / "region-label-definitions.js"
 SELECTION_HTML = REPO_ROOT / "molbuilder" / "web" / "templates" / "_selection_panel.html"
 MODIFY_HTML = REPO_ROOT / "molbuilder" / "web" / "templates" / "modify.html"
-SELECTION_CSS = REPO_ROOT / "molbuilder" / "web" / "static" / "lib" / "selection-panel.css"
+SELECTION_CSS = REPO_ROOT / "molbuilder" / "web" / "static" / "lib" / "molview" / "selection" / "selection-panel.css"
 
 
 def test_canonical_definitions_present():

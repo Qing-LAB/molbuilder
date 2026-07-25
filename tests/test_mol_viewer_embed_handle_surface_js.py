@@ -2,7 +2,7 @@
 
 These are the STATIC (no-browser, no-Node) pins for the concealed 3Dmol
 drawing layer that MolView draws through
-(``molbuilder/web/static/lib/mol-viewer-embed.js``).  They read the module
+(``molbuilder/web/static/lib/viewer/mol-viewer-embed.js``).  They read the module
 source and assert the shape of three contracts that are fixed at the
 source-code level:
 
@@ -40,7 +40,7 @@ import pytest
 pytestmark = pytest.mark.module   # L2 — source-text invariant
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/mol-viewer-embed.js"
+MODULE = ROOT / "molbuilder/web/static/lib/viewer/mol-viewer-embed.js"
 
 
 # --------------------------------------------------------------------- #

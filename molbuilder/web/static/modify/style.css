@@ -78,7 +78,7 @@ header .tagline {
  * legacy loader-bar so modify/viewer.js's setStatus() still works
  * without touching the JS.  Both .status and the severity
  * variants below match the conventions in Build (style.css) and
- * the trajectory inspector (lib/trajectory-inspector.css) so a
+ * the trajectory inspector (lib/trajectory/trajectory-inspector.css) so a
  * future "add a severity" change is a single CSS edit. */
 .status {
     color: var(--text-muted);

@@ -256,7 +256,7 @@ function _mvdata() {
         // applies.  Earlier this tab emitted ``status-ok`` (hyphen
         // form) which would break against a future shared stylesheet;
         // aligned now -- see web/static/style.css +
-        // web/static/lib/trajectory-inspector.css.
+        // web/static/lib/trajectory/trajectory-inspector.css.
         const el = $("status");
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
@@ -270,7 +270,7 @@ function _mvdata() {
     // the server's /api/build/load sniffs the format.)
 
     // Update the section header's #title-readout from the LIVE structure (unified API).
-    // The Hill formula() belongs to the molview module (static/lib/mol-format.js) -- we `import`
+    // The Hill formula() belongs to the molview module (static/lib/viewer/mol-format.js) -- we `import`
     // it (as mvFormula, top of file, from the molview door) rather than re-implement it.  It is a
     // pure stateless helper, so it is a direct ES import (no global lookup, no load-order dance).
     function _refreshTitleReadout() {

@@ -293,7 +293,7 @@ A closed modal (`hidden` attr → `display: none`) doesn't participate in
 stacking, so the desktop case (sidebar `z-index: 5`, modal `100`) is
 unaffected.
 
-JS wiring lives in `lib/projects-sidebar.js::initMobileDrawer`; the
+JS wiring lives in `lib/projects/projects-sidebar.js::initMobileDrawer`; the
 function is a no-op if the optional toggle / backdrop elements are
 absent (forward-compat with future templates that drop the
 scaffolding).
@@ -318,7 +318,7 @@ affordances:
 
 State persists in `sessionStorage` under
 `molbuilder.projects_sidebar_collapsed`.
-`lib/projects-sidebar.js::_restoreCollapsedState` reads it and applies
+`lib/projects/projects-sidebar.js::_restoreCollapsedState` reads it and applies
 the body class BEFORE the rest of init runs — so any layout-sensitive
 widget (Plotly chart, 3Dmol canvas, CSS-grid auto-fit) measures the
 correct geometry on its first paint.

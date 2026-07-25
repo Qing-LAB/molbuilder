@@ -10,19 +10,19 @@
    stylesheets layer their specifics on top. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
 {# Trajectory inspector styles -- the inspector's DOM (rendered from
    _trajectory_inspector.html into #inspector-host at mount time)
    uses the classes defined here.  Linked unconditionally because
    the cost is small + the alternative (lazy-loading the CSS on
    inspector mount) introduces a FOUC. -#}
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory-inspector.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory/trajectory-inspector.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/markdown.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/viewer/mol-viewer-embed.css') }}">
 {# Spectra inspector styles: the COMPONENT sheet only
    (lib/inspectors/spectra.css -- .card-section / .modes-table /
    .spectrum-chart / .phase-indicator / .mode-viewer / .es-* ...).
@@ -207,7 +207,7 @@
    .py / .fdf / .out / .txt / .md -- LAST so the specific inspectors
    above get first crack at compound extensions). #}
 <script src="{{ url_for('static', filename='lib/inspectors/source.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='results/viewer.js') }}"></script>
 </body>
 </html>

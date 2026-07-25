@@ -1643,7 +1643,7 @@ All tabs share these conventions:
 - Share `static/lib/tabs.css` (top-of-page nav) and
   `static/lib/tokens.css` (CSS custom properties for colours /
   radii / spacing).
-- Share `static/lib/mol-style.js` (3Dmol style-spec builder) and
+- Share `static/lib/viewer/mol-style.js` (3Dmol style-spec builder) and
   `mol-format.js` (chemical-formula renderer).  Selection halo
   geometry lives inside `mol-viewer-embed.js`
   (`_redrawPickHalos`); the standalone `mol-pick.js` was retired

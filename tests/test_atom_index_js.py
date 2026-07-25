@@ -12,7 +12,7 @@ from _node_esm import run_node
 
 _ROOT   = Path(__file__).resolve().parent.parent
 _MODULE = _ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
-_EMBED  = _ROOT / "molbuilder/web/static/lib/mol-viewer-embed.js"
+_EMBED  = _ROOT / "molbuilder/web/static/lib/viewer/mol-viewer-embed.js"
 
 _M = "globalThis.molbuilder.atomIndexModel"   # published by classic OR ESM form
 

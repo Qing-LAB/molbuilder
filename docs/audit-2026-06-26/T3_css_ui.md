@@ -43,8 +43,8 @@ These `var(--x, fallback)` calls reference tokens that **do not exist** in `toke
 | `lib/system-load-monitor.css:33` | `--space-md` fallback `12px` | YES (=14px) | inconsistent fallback |
 | `lib/system-load-monitor.css:43` | `--space-md` fallback `16px` | YES (=14px) | also inconsistent (different from the file's own line 33) |
 | `lib/system-load-monitor.css:127–129` | `--ok`, `--warn`, `--bad` | NO | `#4ad991`, `#f0c040`, `#ef5b5b`. Tokens `--success`, `--warning`, `--error` exist but are not aliased. |
-| `lib/mol-viewer-embed.css:184, 256` | `--accent-on` | NO | `#14171c`. `--text-on-accent` IS defined with the same intent and value. Rename mismatch. |
-| `lib/projects-sidebar.css:1511` | `--ps-bg-2` | NO | `#2a2a2a`. `--ps-bg-tile` (#1c1c1c) and `--ps-bg-deep` (#141414) are the actual sidebar bg-step tokens. |
+| `lib/viewer/mol-viewer-embed.css:184, 256` | `--accent-on` | NO | `#14171c`. `--text-on-accent` IS defined with the same intent and value. Rename mismatch. |
+| `lib/projects/projects-sidebar.css:1511` | `--ps-bg-2` | NO | `#2a2a2a`. `--ps-bg-tile` (#1c1c1c) and `--ps-bg-deep` (#141414) are the actual sidebar bg-step tokens. |
 
 **Verdict**: 7 undefined token references in production CSS. These are the highest-leverage cleanups — each is one line in tokens.css.
 
@@ -79,7 +79,7 @@ The new run-history UI introduces **11 hardcoded hex colors** for state badges, 
 | 177, 269, 329, 495, 802, 834, 1269, 1297, 1316 | various `rgba(0,0,0,0.25–0.6)` box-shadows / scrims | 10 distinct alphas; no `--shadow-*` for these |
 | 575, 582, 971, 979 | `rgba(74,158,255,…)` and `rgba(79,122,184,…)` | accent at low alpha — should derive from `--ps-accent` via `color-mix()` or `--accent-bg`-style tokens |
 
-#### lib/trajectory-inspector.css warn-pastel
+#### lib/trajectory/trajectory-inspector.css warn-pastel
 Lines 650–698 mark `#fff7e0` / `#6b4a00` / `#fffaef` / `#8c6d20` / `#f5e8c2` as `/* exempt: warn-pastel theme */`. Comment-as-policy is fine here (intentional pastel for a "soft warning" review surface), but **the exemption isn't enforced**: there's no convention saying "if you want pastel, use these tokens." Suggest promoting to `--warn-pastel-{bg,fg,border}` so the policy is mechanical, not honour-based.
 
 ---
@@ -119,7 +119,7 @@ Raw counts of distinct `px`/`rem` literals appearing across all CSS (excluding v
 
 | File:Line | Selector | Justified? | Notes |
 |---|---|---|---|
-| `lib/projects-sidebar.css:215` | `.ps-collapsed-handle { display: none !important; }` inside `@media (max-width: 640px)` | partial | Comment above (L210–212) explains: narrow-viewport drawer takes over below 640, so the desktop handle must lose. Reasonable. Could equally be solved with `:not(.is-narrow-viewport)` on the L207 rule. |
+| `lib/projects/projects-sidebar.css:215` | `.ps-collapsed-handle { display: none !important; }` inside `@media (max-width: 640px)` | partial | Comment above (L210–212) explains: narrow-viewport drawer takes over below 640, so the desktop handle must lose. Reasonable. Could equally be solved with `:not(.is-narrow-viewport)` on the L207 rule. |
 | `results/style.css:505` | `.result-list-bar[hidden] { display: none !important; }` | YES | Inline comment L502–504 documents the reason: gated on >= 1 results; the bar is a flex child and a non-important `display:none` was being overridden by an enclosing `display: flex` cascade. Clean defensive use. |
 
 **Verdict**: zero abuse. The codebase has discipline here.
@@ -130,20 +130,20 @@ Raw counts of distinct `px`/`rem` literals appearing across all CSS (excluding v
 
 | Value | File:Line | Selector | Stack-context purpose |
 |---|---|---|---|
-| 1 | `lib/selection-panel.css:311` | `.region-tag` | local elevation inside selection panel |
-| 1 | `lib/trajectory-inspector.css:479` | `.chip` | chip overlay on inspector |
+| 1 | `lib/molview/selection/selection-panel.css:311` | `.region-tag` | local elevation inside selection panel |
+| 1 | `lib/trajectory/trajectory-inspector.css:479` | `.chip` | chip overlay on inspector |
 | 1 | `spectra/style.css:375` | `.spectrum-tooltip` | tooltip over plot |
-| 5 | `lib/projects-sidebar.css:49` | `.projects-sidebar` | sidebar baseline |
+| 5 | `lib/projects/projects-sidebar.css:49` | `.projects-sidebar` | sidebar baseline |
 | 5 | `lib/selection/measurement-chip.css:35` | `.measurement-chip` | chip above viewer canvas |
-| 6 | `lib/projects-sidebar.css:167` | `.ps-collapsed-handle` | tab strip above sidebar |
-| 10 | `lib/projects-sidebar.css:76` | `.ps-resize-handle` | resize handle on top of sidebar contents |
-| 50 | `lib/projects-sidebar.css:490` | `.ps-entry-action-menu` | context menu inside sidebar |
-| 85 | `lib/projects-sidebar.css:1315` | drawer scrim (narrow viewport) | below drawer, above page |
-| 90 | `lib/projects-sidebar.css:1268` | drawer panel (narrow viewport) | the slide-in drawer |
-| 95 | `lib/projects-sidebar.css:1286` | drawer close button | above drawer |
-| 100 | `lib/projects-sidebar.css:784` | `.ps-file-preview-modal` | file preview modal (inline comment: "above sidebar (5) + everything else") |
-| 1000 | `lib/mol-viewer-embed.css:201` | viewer toolbar floating button | embed-internal stack |
-| 99999 | `lib/mol-viewer-embed.css:474` | `.mol-viewer-export-modal` | "top of everything, including host page" |
+| 6 | `lib/projects/projects-sidebar.css:167` | `.ps-collapsed-handle` | tab strip above sidebar |
+| 10 | `lib/projects/projects-sidebar.css:76` | `.ps-resize-handle` | resize handle on top of sidebar contents |
+| 50 | `lib/projects/projects-sidebar.css:490` | `.ps-entry-action-menu` | context menu inside sidebar |
+| 85 | `lib/projects/projects-sidebar.css:1315` | drawer scrim (narrow viewport) | below drawer, above page |
+| 90 | `lib/projects/projects-sidebar.css:1268` | drawer panel (narrow viewport) | the slide-in drawer |
+| 95 | `lib/projects/projects-sidebar.css:1286` | drawer close button | above drawer |
+| 100 | `lib/projects/projects-sidebar.css:784` | `.ps-file-preview-modal` | file preview modal (inline comment: "above sidebar (5) + everything else") |
+| 1000 | `lib/viewer/mol-viewer-embed.css:201` | viewer toolbar floating button | embed-internal stack |
+| 99999 | `lib/viewer/mol-viewer-embed.css:474` | `.mol-viewer-export-modal` | "top of everything, including host page" |
 
 **Observations**:
 1. The only **partially-documented** stacking plan is in `projects-sidebar.css` (commentary at L1209–1262); everything else is uncoordinated.
@@ -208,7 +208,7 @@ These are mostly the right pattern (single source of truth for colour in CSS, re
 
 - `lib/projects/list.js:772`: `li.style.cssText = "padding: 0.7rem; color: #e07a7a;";`
   - One-off error-row styling. Should be a class (`.ps-list-error` or `.ps-row.is-error`). Sneaks in both a magic spacing (`0.7rem`) and a magic color (`#e07a7a` happens to match `--ps-danger-fg` defined in tokens.css).
-- `lib/projects-sidebar.js:163`: `document.documentElement.style.setProperty(...)` — sets `--ps-w` from saved width. Principled.
+- `lib/projects/projects-sidebar.js:163`: `document.documentElement.style.setProperty(...)` — sets `--ps-w` from saved width. Principled.
 
 ### JS computing pixel sizes CSS could do
 

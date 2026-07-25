@@ -22,17 +22,17 @@
  * natively in every modern browser; no bundler.
  */
 
-import { apiRoots } from "./projects/api.js";
+import { apiRoots } from "./api.js";
 import {
   projects, setProjectsRoot, SS_DIR, setNavigateToImpl,
-} from "./projects/state.js";
+} from "./state.js";
 import {
   initList, initLockUI, openDir, restoreSelection,
-} from "./projects/list.js";
-import { initForms } from "./projects/mutation-bar.js";
-import { initPreview } from "./projects/preview.js";
-import { initCheckpointPanel } from "./projects/checkpoint.js";
-import { parser } from "./projects/parser.js";
+} from "./list.js";
+import { initForms } from "./mutation-bar.js";
+import { initPreview } from "./preview.js";
+import { initCheckpointPanel } from "./checkpoint.js";
+import { parser } from "./parser.js";
 
 window.molbuilder = window.molbuilder || {};
 // The format-aware sub-namespace: projects.parser.openMolecule / saveMolecule (the
@@ -56,7 +56,7 @@ if (window.molbuilder.runtime
  *
  * Wires the hamburger button + backdrop in
  * ``templates/_projects_sidebar.html`` to a ``has-mobile-sidebar-open``
- * class on ``<body>``.  The CSS in ``lib/projects-sidebar.css``
+ * class on ``<body>``.  The CSS in ``lib/projects/projects-sidebar.css``
  * keys off that class to slide the sidebar in.  At wider
  * viewports the toggle button + backdrop are display:none, so
  * this wiring is inert above 640 px.

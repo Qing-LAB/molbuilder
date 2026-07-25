@@ -7,12 +7,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/viewer/mol-viewer-embed.css') }}">
 {# MolView component styles — card 1 mounts the read-only fused card. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/selection-panel.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/selection/measurement-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/molview/fused-layout.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 {# Shared style.css — the Optimization tab's vertical-workflow rules
    (card layout + viewer chrome + form chrome) live here.  Task #296
    landed the Spectrum tab on the same surface so the bespoke
@@ -240,7 +240,7 @@
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 {# Shared inspector core -- exposes window.molbuilder.spectraInspector
    .mount, which spectra/viewer.js calls below for the /spectra page
    and lib/inspectors/spectra.js calls on /results.  Script-order

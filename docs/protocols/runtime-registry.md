@@ -72,7 +72,7 @@ The naming scheme is **flat, dotted, lowercased**.
 
 | Name | Source file | Producer side |
 |---|---|---|
-| `projects` | `lib/projects-sidebar.js` | type=module |
+| `projects` | `lib/projects/projects-sidebar.js` | type=module |
 | `selection.panel` | `lib/selection-panel.js` | classic IIFE |
 | `selection.viewerAdapter` | `lib/selection/viewer-adapter.js` | classic IIFE |
 | `modify.handle` | `modify/viewer.js` | classic IIFE (per-tab); embed handle, not raw 3Dmol viewer |
@@ -97,11 +97,11 @@ directly — the load-order guarantee is enforced by the `<script>`
 tag order in templates.
 
 **MolView embed helpers — no longer globals (ESM migration).**
-`lib/mol-style.js` (`style`) and `lib/mol-format.js` (`fmt`) used to
+`lib/viewer/mol-style.js` (`style`) and `lib/viewer/mol-format.js` (`fmt`) used to
 sit in the list above, but they are now pure ES modules in the
 MolView embed graph and publish **no** global — the embed `import`s
-`spec` / `formula` (and `axes` from `lib/mol-axes.js`) directly.
-`lib/mol-viewer.js` is also an ES module now (imported via
+`spec` / `formula` (and `axes` from `lib/viewer/mol-axes.js`) directly.
+`lib/viewer/mol-viewer.js` is also an ES module now (imported via
 `lib/molview/index.js`) but still publishes `window.molbuilder.viewer`
 on purpose: it is the shared-embed **seal** (`.create` / `.embed`),
 a live door other subsystems read, not migration scaffolding. See

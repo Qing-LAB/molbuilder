@@ -20,11 +20,11 @@
 // (pure stateless helpers -- no globals; the embed `import`s spec/formula/axes).  Loaded here so
 // the whole embed is in the module graph (no classic <script> stack); mount.js imports `viewer`
 // from mol-viewer-embed.
-import "../mol-style.js";         // spec() -- imported by the embed; no global (pure helper)
-import "../mol-format.js";        // formula() -- re-exported below; no global (pure helper, imported)
-import "../mol-axes.js";          // axes.draw() -- imported by the embed; no global (pure helper)
-import "../mol-viewer.js";        // publishes window.molbuilder.viewer (base: .create)
-import "../mol-viewer-embed.js";  // extends the viewer with .embed
+import "../viewer/mol-style.js";         // spec() -- imported by the embed; no global (pure helper)
+import "../viewer/mol-format.js";        // formula() -- re-exported below; no global (pure helper, imported)
+import "../viewer/mol-axes.js";          // axes.draw() -- imported by the embed; no global (pure helper)
+import "../viewer/mol-viewer.js";        // publishes window.molbuilder.viewer (base: .create)
+import "../viewer/mol-viewer-embed.js";  // extends the viewer with .embed
 import "./_atom-index.js";        // publishes window.molbuilder.atomIndexModel (transitional)
 import "./_atom-channels.js";     // publishes window.molbuilder.atomChannelModel (transitional)
 import "./engine/process.js";     // publishes window.molbuilder.molview.engine.process (transitional)
@@ -64,4 +64,4 @@ export * from "./data-model.js";
 export * from "./measurement-overlay.js";
 export * from "./frame-controls.js";
 export { mount } from "./mount.js";
-export { formula } from "../mol-format.js";   // Hill chemical-formula formatter (consumers import this)
+export { formula } from "../viewer/mol-format.js";   // Hill chemical-formula formatter (consumers import this)

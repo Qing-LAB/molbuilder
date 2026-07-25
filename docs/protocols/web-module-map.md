@@ -38,7 +38,7 @@ Paths are under `molbuilder/web/static/` (JS) or `molbuilder/web/blueprints/` (P
 
 ### 2.1 Projects sidebar — `molbuilder.projects` (file access)
 **Goal:** the ONE concealed file-access + sidebar module. Two layers: format-blind **byte
-I/O** and format-aware **structure doors**. Entry: `lib/projects-sidebar.js`.
+I/O** and format-aware **structure doors**. Entry: `lib/projects/projects-sidebar.js`.
 Contract: [`projects-sidebar.md`](projects-sidebar.md), [`structure-load-save-contract.md`](structure-load-save-contract.md).
 **Public API:** `projects.readFile/writeFile/readRange/listDir`, `projects.parser.openMolecule/saveMolecule`, `projects.onCommit/onChange`, `projects.getCurrentDir/getCurrentFile/refresh`.
 **Loading:** ES modules (`<script type="module">`).
@@ -84,17 +84,24 @@ Results tab. A FRAMEWORK (dispatch), not a content parser. Contract: results-tab
 **Public API:** `inspectors.register(handler)`, `inspectors.pick(file) → handler`, `createDefaultContext()` (injects `ctx.readFile/readRange/writeFile` → `projects.*`).
 **Handlers:** structure · source · markdown · trajectory · spectra inspectors.
 
-### 2.6 mol-viewer-embed — `molbuilder.viewer` (the 3Dmol seal)
-**Goal:** the standard embeddable 3-D viewer (3Dmol wrapper) that MolView composes over.
-`viewer.embed(host, opts) → handle`.
+### 2.6 Viewer — `molbuilder.viewer` (the shared 3Dmol drawing surface)
+**Goal:** the standard embeddable 3-D viewer (3Dmol wrapper) that BOTH MolView and
+VibrationView draw through. `viewer.embed(host, opts) → handle`. Files live together in
+`lib/viewer/`: `mol-viewer.js` (base `.create`), `mol-viewer-embed.js` (`.embed` + the
+handle), `mol-viewer-embed.css`, plus the pure stateless helpers it imports —
+`mol-style.js` (3Dmol style-spec builder), `mol-format.js` (Hill formula), `mol-axes.js`
+(xyz/cell axis drawer). It draws what it is handed and holds no module semantics: MolView
+owns data/selection, VibrationView owns the vibration loop (§ 2.7), and each drives the
+viewer through generic doors (`setStructure` / `setAtomCoords` / `setAnimationProvider` / …).
 
-### 2.7 VibrationView — `molbuilder.vibrationview` (**own complete concealed 3Dmol package**)
-**Goal:** a COMPLETE, self-contained concealed packaging of 3Dmol, purpose-built for
-**spectrum vibration animation**. A SIBLING of MolView — its own seal, NOT part of MolView
-and NOT a facet of the shared `viewer`. Files: `lib/vibrationview/{vibrationview.js,
-mode-math.js}`. Used by the spectra inspector.
-> **Residue (task #51):** it still wraps the shared `molbuilder.viewer` embed today; #51
-> gives it its own independent 3Dmol seal so the package is genuinely self-contained.
+### 2.7 VibrationView — `molbuilder.vibrationview` (**owns the vibration; draws via the shared viewer**)
+**Goal:** a self-contained concealed package for **spectrum vibration animation**. A SIBLING
+of MolView. Files: `lib/vibrationview/{vibrationview.js, mode-math.js}`. Used by the spectra
+inspector. Post-#51 it OWNS the vibration end-to-end (clock, play/pause, amplitude/speed, the
+`pos_i(t)` math, the exported frames) and DRAWS through the shared `lib/viewer/` surface (§ 2.6)
+via the generic `setAtomCoords` + `setAnimationProvider` doors — the embed holds zero vibration
+concern. The two sibling modules share the generic drawing surface (like the 3Dmol.js library),
+not each other's semantics.
 
 ---
 

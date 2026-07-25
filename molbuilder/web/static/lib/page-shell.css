@@ -30,7 +30,7 @@
  *   * any class specific to a tab (.viewer-card, .modes-table,
  *     .results-fallback, ...)
  *   * /watch's .loader-bar + .workflow-card -- those live in
- *     lib/trajectory-inspector.css for now (the file /watch already
+ *     lib/trajectory/trajectory-inspector.css for now (the file /watch already
  *     loads); they're tab-specific even though the file name says
  *     "trajectory-inspector".  Future cleanup may break those out.
  *
@@ -45,7 +45,7 @@
  *   3. lib/page-shell.css    (THIS FILE -- shared body / form defaults)
  *   4. ...page-specific stylesheets...
  *
- * Without this file (its previous home was lib/trajectory-inspector.css),
+ * Without this file (its previous home was lib/trajectory/trajectory-inspector.css),
  * /results used to get its body theme by side-effect from linking the
  * trajectory CSS -- a documented hidden dependency from the 2026-05-18
  * audit.  Splitting fixes that: every page links page-shell.css
