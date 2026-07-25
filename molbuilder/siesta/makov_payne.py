@@ -19,12 +19,19 @@ Convention: the **corrected** total energy is
 
 .. math::
 
-    E_\\text{tot,corr} = E_\\text{tot,raw} - \\Delta E_{MP}
+    E_\\text{tot,corr} = E_\\text{tot,raw} + \\Delta E_{MP}
 
-i.e. the correction is *subtracted* from the SIESTA total — this
-removes the spurious electrostatic self-image interaction that the
-uniform compensating background introduces.  See Makov & Payne,
-Phys. Rev. B 51, 4014 (1995).
+i.e. the correction is *added* to the SIESTA total.  Makov & Payne
+(Phys. Rev. B 51, 4014 (1995), Eq. 15) give
+:math:`E_\\text{supercell} = E_\\text{isolated} - q^2\\alpha/(2\\varepsilon L)`,
+so :math:`E_\\text{isolated} = E_\\text{supercell} + q^2\\alpha/(2\\varepsilon L)`.
+The charged periodic cell carries a compensating uniform background;
+the point-charge-in-jellium (Wigner-lattice) Madelung self-energy is
+NEGATIVE (stabilizing), so the raw periodic energy is spuriously *too
+low* and the correction must *raise* it.  [SIGN FIX 2026-07: this was
+previously subtracted, which moved the energy the wrong way by
+2·ΔE_MP — worse than no correction for the redox/pKa/EA/IP energy
+differences the feature targets.]
 
 This module gives molbuilder two related artefacts when the user
 emits a SIESTA input deck with ``NetCharge != 0``:
@@ -100,9 +107,11 @@ def compute_correction(
     Returns
     -------
     float
-        The correction :math:`\\Delta E_{MP}` in eV.  *Subtract*
-        this from the raw SIESTA total energy to get the
-        finite-size-corrected value.
+        The correction :math:`\\Delta E_{MP}` in eV (always positive
+        for q≠0).  *Add* this to the raw SIESTA total energy to get
+        the finite-size-corrected value (the raw charged-cell energy
+        is spuriously too low; see the module docstring / Makov-Payne
+        Eq. 15).
     """
     if L_angstrom <= 0:
         raise ValueError(
@@ -353,7 +362,10 @@ def main():
     L = V ** (1.0 / 3.0)
 
     dE = compute_correction(NET_CHARGE, L, args.epsilon, args.madelung)
-    E_corr = E_raw - dE
+    # ADD the (positive) correction: the raw charged-periodic energy is
+    # spuriously too low (Makov-Payne Eq. 15; compensating-background
+    # Madelung self-energy is stabilizing).  [SIGN FIX 2026-07.]
+    E_corr = E_raw + dE
 
     # Cell-shape sanity: warn if the cell is markedly non-cubic
     # (the cubic Madelung loses validity).  Heuristic: max/min of

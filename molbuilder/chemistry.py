@@ -240,10 +240,12 @@ _METAL_SPIN_HINTS: dict = {
     ("Fe", 2): "Fe(II), intermediate-spin (S=1, 2 unpaired) -- rare",
     ("Fe", 4): "Fe(II), high-spin (S=2, 4 unpaired) -- e.g. deoxy-heme, bis-thiolate",
     ("Fe", 1): "Fe(III), low-spin (S=1/2, 1 unpaired) -- e.g. bis-imidazole heme",
-    ("Fe", 3): "Fe(III), intermediate-spin (S=3/2, 3 unpaired) -- e.g. cyt P450 oxoferryl",
+    ("Fe", 3): "Fe(III), intermediate-spin (S=3/2, 3 unpaired) -- e.g. quantum-admixed S=3/2 5-coord Fe(III) porphyrins (oxoferryl is Fe(IV), not this)",
     ("Fe", 5): "Fe(III), high-spin (S=5/2, 5 unpaired) -- e.g. met-myoglobin",
     # Mn: d⁵ for Mn(II), d⁴ for Mn(III)
-    ("Mn", 0): "Mn(II), low-spin (rare for Mn²⁺)",
+    # (d⁵ is ODD -> minimum one unpaired electron; Mn(II) has NO 2S=0 state.
+    #  Low-spin Mn(II) is S=1/2 = 2S=1, not 0.)
+    ("Mn", 1): "Mn(II), low-spin (S=1/2, 1 unpaired) -- rare for Mn²⁺",
     ("Mn", 5): "Mn(II), high-spin (S=5/2, 5 unpaired) -- common for free Mn²⁺",
     ("Mn", 4): "Mn(III), high-spin (S=2, 4 unpaired)",
     # Co: d⁷ for Co(II), d⁶ for Co(III)
@@ -318,7 +320,8 @@ _SPIN_TOTAL_DEFAULTS: dict = {
     "Rh": 1.0,    # Rh(II) d⁷ S=1/2
     # ----- Third-row d-block -----
     "W":  2.0,    # W(IV) d² S=1
-    "Re": 3.0,    # Re(III) d⁴ S=2
+    "Re": 2.0,    # Re(III) d⁴ low-spin S=1 (5d ⇒ strong field ⇒ low-spin;
+                  # 2S must be EVEN for even-electron d⁴ — 3.0 was parity-impossible)
     "Os": 1.0,    # Os(III) d⁵ low-spin S=1/2
     "Ir": 1.0,    # Ir(IV) d⁵ low-spin S=1/2
     "Pt": 1.0,    # Pt(III) d⁷ S=1/2 (Pt(II) / Pt(IV) are closed-shell)
@@ -655,9 +658,14 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
     elements_sorted = sorted({el.capitalize() for el in struct.elements})
     metal_set = set(elements_sorted)
 
-    # Categorize present metals.
-    open_d  = [m for m in OPEN_D_TRANSITION_METALS if m in metal_set]
-    nobles  = [m for m in NOBLE_METALS_S1 if m in metal_set]
+    # Categorize present metals.  Iterate the SORTED element list, NOT the
+    # frozensets: a frozenset yields hash-order, which CPython randomizes per
+    # process (PYTHONHASHSEED), so `open_d[0]` (whose default spin + rationale
+    # get reported) would vary run-to-run for a multi-metal structure (e.g.
+    # Fe+Cr).  A validator must be deterministic; drive the pick off the
+    # structure's own sorted elements.
+    open_d  = [m for m in elements_sorted if m in OPEN_D_TRANSITION_METALS]
+    nobles  = [m for m in elements_sorted if m in NOBLE_METALS_S1]
 
     # Build metal_hints for the UI Auto-detect panel.  Includes both
     # categories — users still want to see hints for noble metals

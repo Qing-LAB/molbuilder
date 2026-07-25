@@ -140,13 +140,15 @@ class TestScriptGeneration:
             assert "E_total (raw, eV)" in out
             assert "E_total (corrected, eV)" in out
             # Spot-check the numeric correction: V = 15³ → L = 15.
-            # ΔE = 2.8373 / (2 × 15 / 0.529) × 27.211 → ≈ 1.362 eV.
-            # E_corrected = -123.4567 - 1.362 → ≈ -124.82.
+            # ΔE = 2.8373 / (2 × 15 / 0.529) × 27.211 → ≈ +1.362 eV.
+            # The correction is ADDED (Makov-Payne Eq. 15: the raw
+            # charged-periodic energy is spuriously too low):
+            # E_corrected = -123.4567 + 1.362 → ≈ -122.09.
             lines = [ln for ln in out.splitlines()
                      if "E_total (corrected" in ln]
             assert lines, "expected an E_total (corrected) line"
             corrected = float(lines[0].split("=")[-1].strip())
-            assert -125.0 < corrected < -124.5
+            assert -122.5 < corrected < -121.5
 
     def test_script_handles_missing_out(self):
         s = render_correction_script(system_label="job", q=1)

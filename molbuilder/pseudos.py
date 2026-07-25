@@ -151,13 +151,17 @@ _LIBXC_MAP = {
     133: ("GGA", "PBEsol"), # XC_GGA_C_PBE_SOL
     106: ("GGA", "BLYP"),   # XC_GGA_X_B88
     131: ("GGA", "BLYP"),   # XC_GGA_C_LYP
-    117: ("GGA", "revPBE"), # XC_GGA_X_REVPBE (some IDs)
-    # LDA
-    1:   ("LDA", "PW"),     # XC_LDA_X
-    9:   ("LDA", "CA"),     # XC_LDA_C_PW
-    12:  ("LDA", "CA"),     # XC_LDA_C_PZ
-    # vdW-DF
-    11:  ("VDW", "DRSLL"),  # XC_GGA_X_DRSLL (approximate; nonlocal kernel handled separately)
+    117: ("GGA", "RPBE"),   # XC_GGA_X_RPBE (Hammer 1999).  NOTE: 117 is RPBE,
+                            # NOT revPBE (revPBE = XC_GGA_X_PBE_R = 102) -- these
+                            # are physically distinct functionals.
+    # LDA (both 9 = Perdew-Zunger and 12 = Perdew-Wang parameterise the same
+    # Ceperley-Alder uniform-gas correlation data -> family author "CA").
+    1:   ("LDA", "CA"),     # XC_LDA_X (Slater/Dirac exchange)
+    9:   ("LDA", "CA"),     # XC_LDA_C_PZ (Perdew-Zunger)
+    12:  ("LDA", "CA"),     # XC_LDA_C_PW (Perdew-Wang)
+    11:  ("LDA", "CA"),     # XC_LDA_C_OB_PZ (Ortiz-Ballone form of PZ) -- an LDA
+                            # correlation, NOT a vdW-DF exchange (the pre-2026-07
+                            # ("VDW","DRSLL") label mis-classified its family).
 }
 
 
@@ -335,15 +339,30 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     # ----- nonlocal-projector value validation ---------------------
     # Each <proj l=".." ekb=".."> is a Kleinman-Bylander projector; the
     # KB energy ``ekb`` IS the projector's strength (V_nl = Σ ekb·|p><p|),
-    # so ekb=0 means the channel contributes NOTHING.  A whole l-channel
-    # with EVERY projector at ekb~=0 is a defective / incomplete pseudo
-    # for that angular momentum -- e.g. the BDT ``S.psml`` (ONCVPSP-4.0.1)
-    # carried a dead 'p' channel, which both gives wrong S bonding AND
-    # trips SIESTA's ``propor: ERROR: IMAX = 0`` at high np.  Flag any
-    # l whose entire set of projectors is null.  (A channel chosen as the
-    # LOCAL potential simply has no <proj> entries -- that is NOT flagged,
-    # because the channel is absent, not present-but-zero.)
+    # so ekb=0 means the KB projector contributes NOTHING for that l.
+    #
+    # BUT ekb=0 alone does NOT mean the channel is dead: ONCVPSP-4.0.1 /
+    # psml-4.0.1 pseudos write the pre-computed nonlocal <proj> block as
+    # zero PLACEHOLDERS for channels that are instead carried by the
+    # <semilocal-potentials> <slps l=".."> block, from which SIESTA
+    # rebuilds the KB projector at read time.  Standard, PseudoDojo-
+    # validated pseudos for I, Xe, Rb, Ba do exactly this for their p
+    # channel -- flagging them as "dead" (the pre-2026-07 behaviour) was
+    # a FALSE POSITIVE that ERROR-blocked those common elements.
+    #
+    # A channel is genuinely null ONLY if EVERY <proj> for that l is
+    # ~zero AND there is NO <slps l> semilocal potential for it (nothing
+    # for SIESTA to rebuild from).  (A channel chosen as the LOCAL
+    # potential has no <proj> at all -- absent, not present-but-zero --
+    # and is likewise not flagged.)
     _EKB_NULL = 1e-6
+    # l-letters that carry a semilocal potential (the authoritative
+    # representation when the nonlocal block is a zero placeholder).
+    semilocal_ls = {
+        (s.attrib.get("l") or "").strip().lower()
+        for s in _findall_local(root, "slps")
+        if (s.attrib.get("l") or "").strip()
+    }
     proj_by_l: Dict[str, List[float]] = {}
     for pr in _findall_local(root, "proj"):
         l_letter = (pr.attrib.get("l") or "").strip().lower()
@@ -357,6 +376,7 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     null_channels = sorted(
         l for l, eks in proj_by_l.items()
         if eks and all(e < _EKB_NULL for e in eks)
+        and l not in semilocal_ls          # semilocal block carries it
     )
 
     return PsmlInfo(
