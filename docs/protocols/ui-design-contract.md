@@ -174,42 +174,48 @@ Reuse these; don't reinvent them per tab.
 
 ### 4.1 The app shell — page frame + sidebar rail (the outermost layout)
 
-> **Status (2026-07-25):** this section is the *target* contract, pinned before
-> implementation. `lib/app-shell.css` / `lib/app-shell.js` are created by the
-> framework build that converts the current `position:fixed` projects sidebar
-> into a dock-panel instance and adds the checkpoint dock panel. Until then the
-> live layout is the older full-height fixed sidebar; build against THIS spec.
+> **Status (2026-07-25):** BUILT (`lib/app-shell.css`), live on all 5 tabs. The
+> pre-2026-07 full-height `position:fixed` sidebar (header to its right) is
+> retired. Checkpoint-as-a-second-dock-panel is the remaining piece (§4.2).
 
-Every tab is framed by ONE shell (`lib/app-shell.css` + `lib/app-shell.js`),
-**not** hand-crafted per tab. It is a vertical stack whose body row splits into
-a sidebar rail + the tab's content:
+Every tab is framed by ONE shell (`lib/app-shell.css`), **not** hand-crafted per
+tab. It is the **same pattern the Documents tab uses** — a full-height flex
+COLUMN whose body row is a `[sidebar-rail | content]` flex ROW. The `<body>`
+does **not** scroll (only the content pane does), so the header + tabs nav stay
+on top and the sidebar is in place on the FIRST paint — **no fixed positioning,
+no JS measuring the header height, so no flash on tab switch** (that flash was
+the failure of an earlier fixed-rail attempt that positioned the rail with a
+JS-measured `--app-header-h`).
 
 ```
  ┌──────────────────────────────────────────────┐
- │ header  (hero + account)        full width    │  ← .app-header
- │ nav.app-tabs                    full width    │  ← .app-tabs
+ │ header  (hero + account)        full width    │  ← flex:0 (stays)
+ │ nav.app-tabs                    full width    │  ← flex:0 (stays)
  ├──────────┬──────────┬─────────────────────────┤
- │ dock     │ dock     │                          │
- │ panel    │ panel    │   <main>  (the tab)       │  ← .app-body (row)
+ │ dock     │ dock     │  .app-content            │  ← .app-body (flex:1 row)
+ │ panel    │ panel    │  (the tab; OWNS scroll)  │
  │ projects │ checkpt  │                          │
  └──────────┴──────────┴─────────────────────────┘
       └──────── .sidebar-rail ───────┘
 ```
 
-- **Header + tabs nav span the FULL width, on top** — never pushed right by a
-  sidebar. (The pre-2026-07 `position:fixed` sidebar + `body{padding-left}` shim
-  is retired; that model put the header to the *right* of a full-height sidebar.)
-- **`.app-body`** is a horizontal row: `.sidebar-rail` then `<main>`. Plain grid/
-  flex — **no `position:fixed`, no per-tab padding math**.
+- **`body[data-sidebars]`** is `height:100vh; display:flex; flex-direction:column;
+  overflow:hidden` — the body never scrolls. header/nav/notifications are
+  `flex:0` rows on top; `.app-body` is `flex:1`.
+- **`.app-body`** is a horizontal flex row: `.sidebar-rail` then `.app-content`.
+  `.app-content` is `flex:1; overflow:auto` — it OWNS the scroll (so the header
+  stays). **No `position:fixed`, no measured offsets, no per-tab padding.**
 - **`.sidebar-rail`** is a horizontal flex container of **dock panels** side by
   side. Panels expand in the WIDTH direction; they are NEVER stacked vertically.
-  An empty rail (a tab with no sidebars) is zero-width — `<main>` takes the row.
+- **A tab opts in** with `<body data-sidebars="projects">` and wraps its content:
+  `{% include "_app_header" %}` then
+  `<div class="app-body">{% include "_projects_sidebar" %}<div class="app-content">…tab…</div></div>`.
 
 ### 4.2 Dock panel — the ONE foldable sidebar component
 
-A **dock panel** (`.dock-panel`, `app-shell.css` + `app-shell.js`) is the single
-reusable sidebar. The **projects sidebar** and the **checkpoint panel** are
-*instances* of it — not bespoke layouts. Every dock panel has:
+A **dock panel** (`.dock-panel`, `app-shell.css`) is the single reusable sidebar.
+The **projects sidebar** and the **checkpoint panel** are *instances* of it — not
+bespoke layouts. Every dock panel has:
 
 - a **header** (title + fold toggle);
 - **fold** to a thin edge rail with a reopen tab, persisted per panel;
@@ -327,8 +333,8 @@ read the cited doc (and this contract's cross-referenced §) before touching a p
 | Design tokens (colour/space/type) | `lib/tokens.css` | *this doc* + `tokens.css` | §1 |
 | CSS layer order / one-owner rule | all sheets | *this doc* | §2 |
 | Layout primitives (`.card`, `.card-row`, auto-fit grids) | `lib/page-shell.css` | *this doc* + [`mobile-layout.md`](mobile-layout.md) | §4 |
-| **App shell — page frame** (header/nav full-width, `.app-body` row) | `lib/app-shell.css` · `lib/app-shell.js` | *this doc* | §4.1 |
-| **Sidebar rail + dock panel** (foldable, resizable, parallel) | `lib/app-shell.css` · `lib/app-shell.js` | *this doc* | §4.2–4.3 |
+| **App shell — page frame** (header/nav full-width, `.app-body` row) | `lib/app-shell.css` | *this doc* | §4.1 |
+| **Sidebar rail + dock panel** (foldable, resizable, parallel) | `lib/app-shell.css` | *this doc* | §4.2–4.3 |
 | Header hero + account menu | `lib/page-shell.css` (`header`) | *this doc* | §4.1 |
 | Tabs nav (`.app-tabs`) | `lib/tabs.css` · `web/tabs.py` | [`../tabs/architecture.md`](../tabs/architecture.md) | — |
 | Projects sidebar *(dock-panel instance)* | `lib/projects/projects-sidebar.css` · `projects-sidebar.js` | [`projects-sidebar.md`](projects-sidebar.md) | §4.2 |
@@ -452,7 +458,7 @@ The §8.0 map is the index; these are the authoritative docs it cites, grouped.
 **Framework (this doc governs; owner files):**
 - `lib/tokens.css` — the token palette (§1).
 - `lib/page-shell.css` — `.card`, `.card-row`, the header hero + account menu (§4, §4.1).
-- `lib/app-shell.css` · `lib/app-shell.js` — the app shell, sidebar rail, dock panel (§4.1–4.3).
+- `lib/app-shell.css` — the app shell, sidebar rail, dock panel (§4.1–4.3).
 - `lib/tabs.css` · `web/tabs.py` — the tabs nav; order is single-sourced in `tabs.py`.
 - `lib/molview/fused-layout.css` — the fused-card `@container` reference (§8.1).
 - `lib/markdown-render.js` — the one markdown render + sanitise policy (§8.3).
