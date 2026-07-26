@@ -462,17 +462,32 @@ round-trip, bounded by the highlight count not the structure size. The only O(N-
 are the ones that genuinely change the atom set — isolate / hide-frozen / k-grid / load — which
 are the **structural regen** tier (§8): rare and inherently full.
 
-> **Rejected alternative — halos as atom styles (spike, 2026-07-25).** We evaluated rendering
-> halos as an additive atom style (`viewer.addStyle` sphere) so they would ride the native movie
-> for free and drop the per-frame re-placement above. The style *does* ride the movie (confirmed:
-> the styled atom follows a native `setFrame`), **but the look is wrong**: 3Dmol's atom style has
-> a single `sphere` key, so a halo-sphere **overwrites** a sphere-rendered atom rather than
-> surrounding it — the atom loses its element colour and solid core, and per-atom `opacity`
-> renders opaque (a lone sphere has nothing behind it to blend against). A halo needs **two
-> overlapping renderables** (solid atom + translucent surround), which only a free-standing
-> `addSphere` shape provides. So halos stay shapes; the win is Rule 2 (reconcile on a content
-> change), and the per-frame re-placement during *playback* is inherent to shapes and accepted
-> (bounded by highlight count; playback is not the stated latency pain — the click is).
+> **Rejected alternatives — why halos stay `addSphere` shapes reconciled by delta (spikes,
+> 2026-07-25).** Two ways to make halos ride the native movie "for free" were built and measured;
+> both lose to shape-reconcile for the **click-latency** goal.
+>
+> 1. **Halos as an additive atom style** (`viewer.addStyle` sphere). The style *does* ride the
+>    movie, but the look is wrong: 3Dmol's atom style has a single `sphere` key, so a halo-sphere
+>    **overwrites** a sphere-rendered atom instead of surrounding it (element colour + solid core
+>    lost; a lone translucent sphere renders opaque — nothing behind it to blend against). A halo
+>    needs two overlapping renderables.
+> 2. **Halos as a second movie model** — a duplicate of the trajectory loaded as a second 3Dmol
+>    model, `setStyle`-d as translucent spheres on the selection. This gives the **correct surround
+>    look AND rides the movie** (scaled check, 5000 atoms × 50 frames: **97 fps** on frame swaps;
+>    picks route to the main model when the halo model is `setClickable(false)`). But it fails the
+>    click goal at scale: a selection change is a `setStyle`, which **rebuilds the halo model's
+>    geometry — O(visible halos), not O(changed)** — measured **~325 ms** to (re)style a 500-atom
+>    selection, a laggy click for exactly the electrode-sized selections we care about. It also
+>    **doubles memory** (+158 MB over the 178 MB main model) and **doubles load** (+3.2 s halo
+>    build on top of 3.7 s). Free playback, bought with the very thing we set out to fix.
+>
+> **The decisive property:** only a **free-standing shape** can be added/removed **one at a time**
+> (`addSphere`/`removeShape` = O(changed)); *any* `setStyle`-based highlight (atom-style or
+> second-model) forces an **O(visible) geometry rebuild** per change. So halos stay shapes, and
+> Rule 2 (reconcile the shape list by delta) is what makes a click O(1). The price is the per-frame
+> re-placement during *playback* (O(highlighted)/frame) — accepted, because the stated latency pain
+> is the **click**, not playback. If smooth playback of large highlighted selections ever becomes
+> the priority, the second-model trick (or a GPU-instanced engine) is the lever — a different goal.
 
 **Staged delivery** (each step ships and is verifiable on its own):
 
