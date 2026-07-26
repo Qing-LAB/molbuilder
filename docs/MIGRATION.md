@@ -152,12 +152,12 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/scientific-validation.md` | science/ | pending | |
 | `protocols/script-contract.md` | execution/ | pending | |
 | `protocols/script-execution.md` | execution/ | pending | |
-| `protocols/selection.md` | model/ | pending | |
+| `protocols/selection.md` | web/ — **MERGE into `projects-sidebar`** (same module) | pending | Reclassified out of model/ 2026-07-26 (verified: it is the sidebar file-selection *cursor* — `current_dir`/`current_file`, Inquire API, sidebar mutation endpoints — backed by `files.py`/`projects/` JS, NOT the L1 data model). Merge into the projects-sidebar doc at Wave 6 (web/); it belongs to that module. |
 | `protocols/sidecar-contract.md` | model/ | pending | |
 | `protocols/slurm-integration.md` | execution/ | pending | |
 | `protocols/staged-execution.md` | execution/ | pending | §15.5 web-integration phasing (Phases 1-4 + D7 gate) absorbed into `roadmap.md` §1 2026-07-26; the framework contract itself migrates in Wave 2 (execution/). |
-| `protocols/structure-authority.md` | model/ | pending | |
-| `protocols/structure-load-save-contract.md` | model/ | pending | |
+| `protocols/structure-authority.md` | model/structure.md | merged-into model/structure.md | Wave 2 (2026-07-26): the codec + doors + metadata authority + round-trip invariant. Facts re-verified vs code — corrected the "`_shared.structure_to_dict` deleted" claim (it is a retained back-compat wrapper over `to_wire()`); §3.4 sidecar-envelope detail → `model/sidecars.md`; §6 open CLI step → roadmap. |
+| `protocols/structure-load-save-contract.md` | model/structure.md | merged-into model/structure.md | Wave 2 (2026-07-26): the JS doors + model primitives + SETTLE-BEFORE-READY + consumer map → the frontend surface of `model/structure.md`. Seam facts verified vs `build.py` (`/api/build/load`, `/api/structure/save`). |
 | `protocols/structure-periodicity.md` | model/ | pending | |
 | `protocols/test-strategy.md` | process/ | pending | |
 | `protocols/transiesta-workflow.md` | engines/ | pending | |
@@ -183,5 +183,5 @@ appears in `old_docs/` that is not in this ledger.
 | `transport-guide.md` | engines/ | pending | |
 | `types/chemistry.md` | model/ | pending | |
 | `types/parsers.md` | archive/ (RETIRED; superseded by model/parse-module.md) | pending | |
-| `types/structure.md` | model/ | pending | |
+| `types/structure.md` | model/structure.md | merged-into model/structure.md | Wave 2 (2026-07-26): the dataclass fields + invariants + geometry I/O (XYZ/PDB/PySCF/ASE) + TER handling + `molbuilder.load` → the L1 data-model + backend surface of `model/structure.md`. Method line-numbers verified vs `structure.py`. |
 | `workspace-guide.md` | web/ | pending | |

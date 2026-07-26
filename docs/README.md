@@ -89,6 +89,18 @@ edits afterwards. They are re-read at every migration gate.
   cite the method/literature, keep defensible defaults *with their
   justification*. A scientific claim without its foundation is drift
   waiting to happen.
+- **E5 — organize by the reader's surface, with worked examples.** When a
+  doc (especially a merge) serves both the **Python/CLI backend** and the
+  **JS/user frontend**, organize its body by those surfaces so each
+  developer lands directly in their part — a clearly-labelled backend
+  section (the dataclass/codec/CLI use) and a frontend section (the JS
+  module / UI use), rather than one undifferentiated contract. Give each
+  surface **runnable example code** (a Python snippet, a JS snippet, a CLI
+  line — real, not pseudocode) and a **diagram** (E2) of how the two sides
+  exchange data across the wire. The test of a good doc here is that a
+  backend dev and a frontend dev each find "how do I use this, with an
+  example" in under a minute. (Single-surface docs keep their natural
+  structure — this binds the two-surface ones.)
 
 ## Migration protocol (per doc)
 
@@ -105,7 +117,11 @@ The editorial rules above apply to every step in full:
 6. Add the provenance header (R2) and the index line here (R1) — same
    commit, always.
 7. Repoint inbound references — other docs, code comments, tests — to the
-   new path (grep-verified, per file; no blind rewrite).
+   new path (grep-verified, per file; no blind rewrite). **Under keep-and-mark
+   this is a closeout task, not per-doc:** the old file stays resolvable (just
+   `_migrated_`-prefixed) until `old_docs/` is deleted, and merges shift
+   section numbers, so bulk comment-repointing is done once at closeout
+   (Wave 10) rather than churning every code file on each doc move.
 8. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`), **and**
    mark the old file done by renaming it with the `_migrated_` prefix
    (keep-and-mark — the old tree is kept intact for the closeout
@@ -126,5 +142,6 @@ forward plan) leads and is done early.
 | Doc | Role | Owns |
 |---|---|---|
 | [`roadmap.md`](roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
+| [`model/structure.md`](model/structure.md) | contract | The `Structure` object: the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
 | [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
 | [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |

@@ -216,6 +216,12 @@ before they count as done. The design for each item lives in its contract
 - **Step 6** *(design-first)* — decide whether the store carries the
   computed effective cell so a cell-less structure still shows a box, done
   through the data model rather than a viewer hack.
+- **CLI through `StructureCodec`** — route the CLI's structure load/save
+  through the L2 `StructureCodec` so a CLI save emits the `.xyz` +
+  `.molstruct.json` pair like the web save does. Today `cli.py` writes
+  geometry only (`struct.to_xyz`), bypassing the sidecar (contract:
+  `model/structure.md` § 2; task #73). Pin: a CLI round-trip preserves
+  region/annotation metadata.
 
 **Finish the ES-module conversion.** The public API is exported from one
 import door and every consumer imports from it; the remaining transitional
