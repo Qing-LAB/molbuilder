@@ -118,7 +118,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/archive/2026-07-05-browser-data-contract.md` | archive/ | moved | archived-history pass 2026-07-26 |
 | `protocols/archive/2026-07-05-working-copy-persistence.md` | archive/ | moved | archived-history pass 2026-07-26 |
 | `protocols/archive/2026-07-06-molview-module.md` | archive/ | moved | archived-history pass 2026-07-26 |
-| `protocols/atom-annotations.md` | model/ | pending | |
+| `protocols/atom-annotations.md` | model/structure-annotations.md | merged-into model/structure-annotations.md | Wave 2 (2026-07-26), sub-doc of structure.md. The per-atom channel model. Verified vs code — corrected: sidecar is **schema v6** now (annotations added at v4); JS L1 moved `lib/workspace/` → `lib/molview/_atom-channels.js`. "IN PROGRESS phases" resolved: model + persistence + block-recovery + built-in translations SHIPPED; open (value-channel producer + `by_value`, generic fdf-strategy) → roadmap. Stale `§7` reference dropped. |
 | `protocols/backend-architecture.md` | (root, companion to architecture.md) or merge into it -- decide at reconcile | pending | |
 | `protocols/benchmark-workflow.md` | execution/ | pending | |
 | `protocols/bundle-contract.md` | execution/handoff-bundle.md (RENAME: kills bundle vocab collision) | pending | |
@@ -143,7 +143,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/projects-sidebar.md` | web/ | pending | |
 | `protocols/pseudopotential-validation.md` | science/ | pending | |
 | `protocols/rate-limit.md` | ops/ | pending | |
-| `protocols/region-labels.md` | model/ | pending | |
+| `protocols/region-labels.md` | **SPLIT** — vocab → model/structure-annotations.md; emitter/bias/refs → engines/transport.md | pending | Vocabulary (the `-electrode` convention, canonical `L`/`R`/`bridge`/`interface`, `is_electrode_label`) absorbed into `structure-annotations.md § 5` (2026-07-26). Stays **pending** until the transport half — `_find_electrode_regions`, chempot/`TS.Elec` emit, bias direction, the NEGF references (Brandbyge/Stokbro/Reed/Solomon) — lands in `engines/transport.md` (Wave 4); then mark merged + prefix. |
 | `protocols/results-state-contract.md` | web/ | pending | |
 | `protocols/results-tab.md` | web/ | pending | |
 | `protocols/run-checkpoints.md` | execution/ | pending | |

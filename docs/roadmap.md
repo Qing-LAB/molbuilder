@@ -223,6 +223,19 @@ before they count as done. The design for each item lives in its contract
   `model/structure.md` § 2; task #73). Pin: a CLI round-trip preserves
   region/annotation metadata.
 
+**Atom annotations (the `value` channel).**
+
+- **`value`-channel filtering end-to-end** — the `value` channel kind
+  (per-atom charge/spin/…) is modelled and persists, but is not yet
+  exercisable: the server must include `value` channels in
+  `/api/selection/atoms` and resolve a `by_value` rule, and no feature yet
+  *produces* a per-atom value channel. Contract: `model/structure-annotations.md`
+  § 7. Pin: filter atoms by a per-atom scalar range.
+- **Generic `fdf`-strategy registry** — wire the additive extension point that
+  translates a *new* annotation channel (e.g. `initspin`) into an engine block
+  via a registered `(channel, struct) → lines` strategy. Only the two built-ins
+  (`frozen` → `Geometry.Constraints`, region tags → transport) are wired today.
+
 **Finish the ES-module conversion.** The public API is exported from one
 import door and every consumer imports from it; the remaining transitional
 globals are the last scaffolding to remove:

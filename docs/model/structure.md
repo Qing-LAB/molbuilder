@@ -7,7 +7,8 @@ sub-documents sharing the `structure-` filename prefix (so the hierarchy is
 visible in the name itself):
 - [`structure-periodicity.md`](structure-periodicity.md) — cell · cell_origin ·
   axis_kind · derived pbc · vacuum (the per-axis box behaviour).
-- `structure-annotations.md` — per-atom channels + region labels *(pending)*.
+- [`structure-annotations.md`](structure-annotations.md) — per-atom channel
+  model (`tag`/`flag`/`value`) + the region-label vocabulary.
 - `structure-sidecars.md` — the `.molstruct.json` on-disk envelope *(pending)*.
 
 **Companions** (separate model modules): `model/parse.md` (the read stack that
