@@ -455,10 +455,24 @@ halo-drift bug was exactly a cross-path coupling — one layer's repaint depende
 mechanism firing. Layer independence removes that whole class of bug — this is the correctness
 guarantee, not just a performance win.)
 
-**Performance.** Every action is **O(what changed)**, not O(system size): a click touches one
-sphere, a toggle touches one layer, a frame swap re-places without recomputing. The only O(N)
-motions are the ones that genuinely change the atom set — isolate / hide-frozen / k-grid / load —
-which are the **structural regen** tier (§8): rare and inherently full.
+**Performance.** Every *content* change is **O(what changed)**, not O(system size): a click
+touches one sphere, a toggle touches one layer, with no engine recompute of the rest. A **frame
+swap** re-places the highlighted-atom shapes (labels/halos/markers) — O(highlighted), no engine
+round-trip, bounded by the highlight count not the structure size. The only O(N-atoms) motions
+are the ones that genuinely change the atom set — isolate / hide-frozen / k-grid / load — which
+are the **structural regen** tier (§8): rare and inherently full.
+
+> **Rejected alternative — halos as atom styles (spike, 2026-07-25).** We evaluated rendering
+> halos as an additive atom style (`viewer.addStyle` sphere) so they would ride the native movie
+> for free and drop the per-frame re-placement above. The style *does* ride the movie (confirmed:
+> the styled atom follows a native `setFrame`), **but the look is wrong**: 3Dmol's atom style has
+> a single `sphere` key, so a halo-sphere **overwrites** a sphere-rendered atom rather than
+> surrounding it — the atom loses its element colour and solid core, and per-atom `opacity`
+> renders opaque (a lone sphere has nothing behind it to blend against). A halo needs **two
+> overlapping renderables** (solid atom + translucent surround), which only a free-standing
+> `addSphere` shape provides. So halos stay shapes; the win is Rule 2 (reconcile on a content
+> change), and the per-frame re-placement during *playback* is inherent to shapes and accepted
+> (bounded by highlight count; playback is not the stated latency pain — the click is).
 
 **Staged delivery** (each step ships and is verifiable on its own):
 
