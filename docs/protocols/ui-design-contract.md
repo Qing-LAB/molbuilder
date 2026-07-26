@@ -176,7 +176,8 @@ Reuse these; don't reinvent them per tab.
 
 > **Status (2026-07-25):** BUILT (`lib/page-shell.css`), live on all 5 tabs. The
 > pre-2026-07 full-height `position:fixed` sidebar (header to its right) is
-> retired. Checkpoint-as-a-second-dock-panel is the remaining piece (§4.2).
+> retired. The rail now holds TWO dock panels — projects + checkpoint (run
+> history) — side by side (§4.2).
 
 Every tab is framed by ONE shell (`lib/page-shell.css`), **not** hand-crafted per
 tab. It is the **same pattern the Documents tab uses** — a full-height flex
@@ -211,30 +212,49 @@ JS-measured `--app-header-h`).
   `{% include "_app_header" %}` then
   `<div class="app-body">{% include "_projects_sidebar" %}<div class="app-content">…tab…</div></div>`.
 
-### 4.2 Dock panel — the ONE foldable sidebar component
+### 4.2 Dock panel — the shared rail-child geometry
 
-> **Status:** TARGET, not yet built. Today there is ONE sidebar (projects),
-> styled directly by `projects-sidebar.css` + the app-shell in-flow override
-> there. The shared `.dock-panel` base earns its place WHEN the checkpoint
-> panel lands (a second instance = a real pattern, §2.1) — building it before
-> then would be a one-consumer abstraction. Build it against THIS spec.
+> **Status (2026-07-25):** the shared `.dock-panel` GEOMETRY base is BUILT
+> (`page-shell.css`), with two instances — the **projects sidebar** and the
+> **checkpoint** (run-history) panel — living side by side in the rail. A second
+> instance made the shared pattern real (appears twice, §2.1), so the geometry
+> the two share now lives in ONE place instead of being hand-copied.
 
-A **dock panel** (`.dock-panel`, `page-shell.css`) will be the single reusable
-sidebar. The **projects sidebar** and the **checkpoint panel** are *instances*
-of it — not bespoke layouts. Every dock panel has:
+A **dock panel** (`.dock-panel`, `page-shell.css`) is a full-height flex COLUMN
+that docks IN-FLOW in the rail and scrolls internally. The base owns only the
+geometry the instances share; each instance sets its own **width** + palette:
 
-- a **header** (title + fold toggle);
-- **fold** to a thin edge rail with a reopen tab, persisted per panel;
-- **width resize** (drag handle, min/max, persisted);
-- **mobile**: below the breakpoint it becomes an overlay drawer.
+- `display:flex; flex-direction:column; overflow:hidden` at every viewport;
+- desktop (`≥641px`, scoped `body[data-sidebars] .dock-panel`, 0,2,0 so it
+  out-ranks a `position:fixed` base): `position:relative; height:100%;
+  flex:0 0 auto` — in-flow, natural width, anchors any absolute child;
+- `.dock-panel[hidden]` → `display:none`: a panel that starts `hidden`
+  (checkpoint, until a run dir with git history is selected) takes **zero
+  width**. Without this the class `display:flex` would beat the UA
+  `[hidden]{display:none}` and force it visible.
 
-The old projects-sidebar collapse / resize / drawer JS (`ps-*`) is GENERALIZED
-into this one component; `ps-*` classes become panel-*content* classes inside a
-`.dock-panel`, never layout. Adding a second sidebar = a second dock panel in
-the rail (parallel, width-expanding), NOT nesting one panel inside another and
-NOT a new `position:fixed` element.
+Per-instance: **projects** — `width: var(--ps-w)`, keeps its own fold / resize /
+mobile-drawer JS (`ps-*`) and palette in `projects-sidebar.css`; **checkpoint** —
+`width: var(--ck-w)`, right-edge divider, hidden below the drawer breakpoint,
+content chrome (`ps-checkpoint-*`) also in `projects-sidebar.css` and shown/hidden
+by `checkpoint.js`. Adding a sidebar = a new `.dock-panel` sibling in the rail
+(parallel, width-expanding), NOT nesting one panel inside another and NOT a new
+`position:fixed` element.
+
+> **Remaining generalization (TARGET):** fold-to-a-thin-edge-rail, a unified
+> resize handle, and the overlay-drawer behaviour are still projects-only JS.
+> Promoting those into ONE shared panel component (so checkpoint gets fold +
+> resize for free, and `data-sidebars` enumerates/mounts panels per §4.3 rather
+> than the template statically including them) is the next step — do it when a
+> THIRD panel or a concrete need makes the generalization pay, not before.
 
 ### 4.3 Declarative opt-in — a tab names its panels
+
+> **Status (2026-07-25):** partly built. Today `data-sidebars` is the boolean
+> shell opt-in (`body[data-sidebars]` → flex-column shell); the `_projects_sidebar`
+> include renders BOTH the projects and checkpoint dock panels into the rail, and
+> `checkpoint.js` shows/hides its panel. Enumerate-and-mount below is the TARGET
+> (see §4.2's remaining generalization).
 
 A tab declares which panels it wants; the shell mounts them — **no layout code
 per tab**:

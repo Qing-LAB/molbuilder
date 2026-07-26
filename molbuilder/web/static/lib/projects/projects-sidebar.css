@@ -43,24 +43,13 @@
   overflow: hidden;
 }
 
-/* App-shell mode (ui-design-contract.md §4.1-4.3): the sidebar is an IN-FLOW
- * flex child of the ``.sidebar-rail`` -- NOT position:fixed.  ``position:
- * relative`` (not static) so the absolute resize handle still anchors to it.
- * DESKTOP ONLY (min-width: 641px): below that the narrow-viewport drawer
- * (@media max-width: 640px, further down) reclaims ``position: fixed`` for the
- * slide-in overlay, so this override must not out-specificity it there. */
-@media (min-width: 641px) {
-  body[data-sidebars] .projects-sidebar {
-    position: relative;
-    top: auto;
-    left: auto;
-    bottom: auto;
-    width: var(--ps-w);
-    height: 100%;
-    z-index: auto;
-    flex: 0 0 auto;
-  }
-}
+/* App-shell mode (ui-design-contract.md §4.1-4.3): the desktop in-flow docking
+ * (position:relative, height:100%, flex:0 0 auto) is the SHARED ``.dock-panel``
+ * geometry in page-shell.css -- the aside carries the ``dock-panel`` class, so
+ * it needs no per-sidebar override here.  This sheet owns only what is
+ * projects-specific: the WIDTH is the base ``width: var(--ps-w)`` above (kept at
+ * every viewport), the palette, and the narrow-viewport DRAWER (position:fixed,
+ * @media max-width: 640px, further down). */
 
 /* ---- Width-resize handle (2026-06-12) ------------------------------
  *
@@ -1321,16 +1310,29 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /*  run-checkpoints.md § 6 for the design.                          */
 /* ---------------------------------------------------------------- */
 
+/* Standalone dock panel (2026-07-25): the checkpoint UI used to be a section
+ * pinned to the bottom of the projects sidebar (border-top, max-height:40vh).
+ * It is now a sibling ``.dock-panel`` in the rail -- full rail height, its own
+ * width + right-edge divider, scrolls internally.  The flex-column + in-flow
+ * desktop geometry come from ``.dock-panel`` (page-shell.css); this owns only
+ * the checkpoint-specific chrome.  Starts ``hidden`` (zero width) until
+ * checkpoint.js unhides it for a run dir with git history. */
 .ps-checkpoint {
-    margin-top:        0.5rem;
+    width:             var(--ck-w);
     padding:           0.5rem 0.75rem;
-    border-top:        1px solid var(--ps-border);
+    border-right:      1px solid var(--ps-border);
     background:        var(--ps-bg);
     font-size:         0.85rem;
     color:             var(--ps-fg);
-    max-height:        40vh;
-    overflow-y:        auto;
-    flex-shrink:       0;
+    overflow-y:        auto;       /* scrolls within its full height (overrides dock-panel) */
+}
+
+/* Narrow viewports keep a single drawer (projects); the checkpoint dock panel
+ * is a desktop affordance, hidden below the drawer breakpoint. */
+@media (max-width: 640px) {
+    .ps-checkpoint {
+        display: none;
+    }
 }
 
 .ps-checkpoint-header {

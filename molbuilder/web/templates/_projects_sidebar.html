@@ -46,7 +46,7 @@
     (``body[data-sidebars]``) the rail is a flex child of the .app-body row
     (page-shell.css).  Every tab is in the shell today. -#}
 <div class="sidebar-rail">
-<aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
+<aside class="projects-sidebar dock-panel" id="projects-sidebar" aria-label="Projects file explorer">
   {#- Width-resize handle (2026-06-12).  Thin strip on the right edge;
       drag to resize the sidebar.  Width persists to localStorage so
       it survives reloads.  CSS-hidden when the sidebar is collapsed
@@ -153,6 +153,9 @@
     <p class="ps-selection">No file selected.</p>
   </section>
 
+
+</aside>
+
   {#- Run-history panel (PR-B Phase 2, 2026-06-25).  Surfaces the
       checkpoint repo state + commit history for the currently-
       selected directory.  Hidden when no dir is selected OR when
@@ -163,7 +166,7 @@
         * "Checkpoint now" / "Restore" / "Tag" action buttons
       See lib/projects/checkpoint.js for the wiring and
       docs/protocols/run-checkpoints.md § 6 for the design contract. -#}
-  <section class="ps-checkpoint" id="ps-checkpoint"
+  <section class="ps-checkpoint dock-panel" id="ps-checkpoint"
            aria-label="Run history" hidden>
     <header class="ps-checkpoint-header">
       <h3 class="ps-checkpoint-title">Run history</h3>
@@ -245,7 +248,6 @@
          hidden role="status" aria-live="polite">
     </div>
   </section>
-</aside>
 </div>{#- /.sidebar-rail -#}
 
 <!-- File-preview modal (lives outside the sidebar so it can float

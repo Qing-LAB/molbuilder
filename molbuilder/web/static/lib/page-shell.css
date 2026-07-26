@@ -194,10 +194,41 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
     display: none;
 }
 
-/* NOTE: the reusable ``.dock-panel`` base (§4.2) lands WITH the checkpoint
- * panel -- when a SECOND sidebar makes the shared dock geometry a real pattern
- * (appears twice, §2.1).  Today the one sidebar (projects) is styled by its own
- * sheet + the in-flow app-shell override there. */
+/* ---- Dock panel — the shared rail-child geometry (§4.2) --------------------
+ * The rail now holds TWO panels (projects + checkpoint), so the dock geometry
+ * they share is a real pattern (appears twice, §2.1) and lives here once
+ * instead of being hand-copied per sidebar.  A ``.dock-panel`` is a
+ * full-height flex COLUMN that scrolls internally; each instance sets only its
+ * own WIDTH + palette (projects: var(--ps-w); checkpoint: var(--ck-w)).
+ *
+ * Desktop (>=641px) is where panels dock IN-FLOW side by side; the geometry is
+ * scoped there so the narrow-viewport projects DRAWER (position:fixed, its own
+ * sheet) is untouched.  ``body[data-sidebars] .dock-panel`` (0,2,0) out-ranks
+ * the ``.projects-sidebar`` fixed base (0,1,0) so the aside flips to in-flow on
+ * desktop without a per-sidebar override. */
+.dock-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;            /* the panel's own content scrolls, not the rail */
+}
+/* A hidden panel (checkpoint starts ``hidden``, JS unhides it when a run dir
+ * with git history is selected) must take ZERO width.  The class ``display:flex``
+ * would otherwise beat the UA ``[hidden]{display:none}`` and force it visible. */
+.dock-panel[hidden] {
+    display: none;
+}
+@media (min-width: 641px) {
+    body[data-sidebars] .dock-panel {
+        position: relative;      /* in-flow; anchors any absolute child (resize handle) */
+        top: auto;
+        left: auto;
+        bottom: auto;
+        height: 100%;
+        z-index: auto;
+        flex: 0 0 auto;          /* natural width, no grow/shrink */
+    }
+}
 
 /* ---- Generic card surface --------------------------------------- */
 
