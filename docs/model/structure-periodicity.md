@@ -2,11 +2,11 @@
 
 **Role:** contract
 **Domain:** model
-**Sub-document of:** [`../structure.md`](../structure.md) (its master — these
-are `Structure` fields). **Companions:** `../structure/sidecars.md` (how they
-persist in `.molstruct.json`), `engines/siesta.md` (the **k-grid** DFT
-sampling parameter, which is a `SiestaConfig` knob — **not** a periodicity
-field; see the note below).
+**Sub-document of:** [`structure.md`](structure.md) (its master — these are
+`Structure` fields). **Companions:** `structure-sidecars.md` (how they persist
+in `.molstruct.json`), `engines/siesta.md` (the **k-grid** DFT sampling
+parameter, which is a `SiestaConfig` knob — **not** a periodicity field; see
+the note below).
 
 Periodicity describes **how the box around a structure behaves per axis** —
 the lattice `cell`, where that cell sits (`cell_origin`), whether each axis is
@@ -44,7 +44,7 @@ file.
 
 `cell` and `axis_kind`, `vacuum`, `cell_origin` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec
-(`metadata_to_dict`/`apply_metadata_dict`, see `../structure.md § 2.2`). The
+(`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`). The
 boolean `pbc` is a **derived property** of `axis_kind`, so ASE interop
 (`normalise_cell_pbc`) is unchanged.
 
@@ -268,7 +268,7 @@ tabs expose the same groups against the same accessors.
 
 `cell`, `cell_origin`, `axis_kind`, and `vacuum` persist in the
 `.molstruct.json` sidecar (`pbc` stays derived; the envelope + schema are in
-`../structure/sidecars.md`). **Schema v5 dropped the `kgrid` key** — periodicity
+`structure-sidecars.md`). **Schema v5 dropped the `kgrid` key** — periodicity
 carries no sampling parameter. Periodicity flows one way, read at each stage:
 
 ```mermaid

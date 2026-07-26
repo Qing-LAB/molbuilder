@@ -3,11 +3,12 @@
 **Role:** contract
 **Domain:** model
 **This is the master doc for the Structure aspect.** Its large facets live as
-sub-documents under the `structure/` namespace:
-- [`structure/periodicity.md`](structure/periodicity.md) — cell · cell_origin ·
+sub-documents sharing the `structure-` filename prefix (so the hierarchy is
+visible in the name itself):
+- [`structure-periodicity.md`](structure-periodicity.md) — cell · cell_origin ·
   axis_kind · derived pbc · vacuum (the per-axis box behaviour).
-- `structure/annotations.md` — per-atom channels + region labels *(pending)*.
-- `structure/sidecars.md` — the `.molstruct.json` on-disk envelope *(pending)*.
+- `structure-annotations.md` — per-atom channels + region labels *(pending)*.
+- `structure-sidecars.md` — the `.molstruct.json` on-disk envelope *(pending)*.
 
 **Companions** (separate model modules): `model/parse.md` (the read stack that
 produces a Structure from engine output), `model/data-vocabulary.md` (the model
@@ -62,10 +63,10 @@ class Structure:
     chain_ids:     Optional[List[str]] = None # single char; default = all "A"
     title:         str = ""                   # XYZ comment / PDB TITLE
     # ── metadata (each detailed in a sub-doc; serialized as one block) ──
-    # cell, cell_origin, pbc, axis_kind, vacuum → structure/periodicity.md
+    # cell, cell_origin, pbc, axis_kind, vacuum → structure-periodicity.md
     #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
     #      sampling knob; see engines/siesta.md)
-    # regions, frozen_atoms, annotations        → structure/annotations.md
+    # regions, frozen_atoms, annotations        → structure-annotations.md
 ```
 
 **Invariants enforced by `__post_init__`** (the single validation site):
