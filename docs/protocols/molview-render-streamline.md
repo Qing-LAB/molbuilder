@@ -282,6 +282,14 @@ HaloEntry   = { indices: int[],                   // DRAWN indices (0..nDrawn-1)
                 halo: { color: string, radius: number, opacity: number } }
 ```
 
+> **Target shape (§8.1 step 3):** content specs are **frame-independent, keyed by atom index** —
+> the engine says *what* to draw, the embed resolves *where* per frame. `HaloEntry` already is
+> (indices, no coordinate). `Label` becomes `{ index, text }` — today it carries a baked
+> `position` the engine recomputes every frame; the embed will resolve position instead, exactly
+> as it already does for halos. `Arrow` keeps per-frame vectors, because the **force** itself
+> differs per frame (not just the position). This split is what lets a frame swap re-place shapes
+> with no spec recompute and a selection change reconcile a single atom.
+
 Scene-level, computed once (same every frame unless the cell changes): `cellBox`, `axes`.
 `process.js` builds all of the above as plain data and **never touches 3Dmol**; `embedIo` (§9.1)
 is what hands them to the viewer.
@@ -308,7 +316,7 @@ never by system size (**no atom-count threshold, no magic number** — finding C
 | What changed | Tier | Work | Busy? |
 |---|---|---|---|
 | `currentFrame` only (scrub / play — frame channel) | **native swap** | ask 3Dmol to switch to the pre-loaded frame (§3) | no |
-| overlay-only change on the **same** drawn atom set (`selection` halo while **not** isolating, `showIndex`, `showForces` + scale, `showCell`, `showAxis`, **a cell edit** → cell box + axis) | **overlay refresh** | re-derive + re-apply the overlays on the existing frames; the coordinate movie is **not** rebuilt | no |
+| overlay-only change on the **same** drawn atom set (`selection` halo while **not** isolating, `showIndex`, `showForces` + scale, `showCell`, `showAxis`, **a cell edit** → cell box + axis) | **overlay refresh** | re-derive + re-apply the overlays on the existing frames; the coordinate movie is **not** rebuilt. Refined **per layer** — a change touches only its own layer, reconciled by delta (§8.1) | no |
 | **streamed** new frame(s) arrive (§6.2) | **append** | process the new frame(s) only + **extend** the movie; `currentFrame` unchanged | no |
 | the **drawn atom set** of the current frames changed (`isolate` toggled; `selection` changed **while** isolating), or a **full new load** (`setData`) | **structural regen** | re-process the frames + **reload** the multi-frame movie (§3) | **yes** (§4) |
 
@@ -331,10 +339,12 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
   and pick halos — light (one frame's worth), not a movie rebuild. The engine also re-hands the
   shown frame's overlay spec after each swap, but that spec is **unchanged** while the selection
   holds, so `setOverlays`' idempotence bail (`_equalNormalised → return`) correctly skips a
-  redundant re-derive; the embed's per-frame repaint is what actually re-places the shapes. (Bug
-  fixed 2026-07-25: overlay halos/markers were missing from `_postFramePositionRedraw`, so with the
-  spec-diff also bailing they stayed frozen at frame 0 — halos drifting off atoms in a played
-  trajectory, seen in the Results tab. Regression: `tests/test_overlay_frame_tracking_e2e.py`.)
+  redundant re-derive; the embed's per-frame repaint is what actually re-places the shapes.
+  §8.1 states this as the general rule (content spec stable across a swap; the embed re-places
+  from the movie). (Bug fixed 2026-07-25: overlay halos/markers were missing from
+  `_postFramePositionRedraw`, so with the spec-diff also bailing they stayed frozen at frame 0 —
+  halos drifting off atoms in a played trajectory, seen in the Results tab. Regression:
+  `tests/test_overlay_frame_tracking_e2e.py`.)
 
 A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
 frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
@@ -371,6 +381,86 @@ flowchart TD
     Q -->|"streamed new frame(s) (§6.2)"| APP["APPEND<br/>process new frame(s) → extend movie<br/>currentFrame unchanged · no busy"]
     Q -->|"drawn atom set changed<br/>(isolate / selection-while-isolating)<br/>or full new load (setData)"| REGEN["STRUCTURAL REGEN<br/>process all frames → reload movie<br/>BUSY on → … → BUSY off"]
 ```
+
+### 8.1 Overlay layers — fine-grained invalidation + reconciliation
+
+> **Status (2026-07-25):** TARGET, staged below. Today the **overlay-refresh** tier is
+> *coarse*: any overlay change re-runs the whole per-frame processor and each layer
+> clears-and-rebuilds wholesale, so a **one-atom selection click rebuilds every halo** —
+> O(system size) work for an O(1) change, felt as click-to-select lag on large selections.
+> This section is the model that tier is being refined toward. It does **not** change the
+> four tiers above; it makes the *overlay-refresh* tier do the least work, and it is what
+> guarantees correctness when many view options are combined.
+
+The overlay-refresh tier is not one blob. The scene is a fixed stack of **independent
+layers**, each a **pure function of a declared subset of inputs**:
+
+| Layer (draw order) | Content inputs (frame-independent) | Per-frame data | Dirtied by |
+|---|---|---|---|
+| atom style | style flags · drawn set | position | style toggle |
+| index labels | `showIndex` · drawn set | position | `showIndex`, isolate |
+| force arrows | `showForces` · `forceScale` · drawn set | position · **force** | forces toggle / scale |
+| region halos | `annotations.region` · drawn set | position | annotation edit, isolate |
+| frozen halos | `annotations.frozen` · drawn set | position | frozen edit, isolate |
+| selection halos | `selection` · drawn set | position | **click** (select / deselect) |
+| cell box | cell geometry · `showCell` | — | cell toggle / edit |
+| axes | `showAxis` · origin | — | axis toggle |
+| pick halo | picked set | position | in-window pick |
+
+**Two inputs, two owners — the spec / position split:**
+
+- **Content** decides *what* a layer draws. Frame-independent, owned by the **engine**, and
+  keyed by **original atom index — never a coordinate**: labels `{index → text}`, halos
+  `{index → layer style}`, styles `{index → style}`.
+- **Position** decides *where*. Per frame, owned by the **embed** (it holds the loaded movie);
+  it resolves index → the current frame's coordinate at draw time. Force is the one extra
+  per-frame datum (the arrow vectors differ per frame), so arrows carry per-frame content,
+  baked into the movie as `arrowsPerFrame` (§8).
+
+**Rule 1 — fine-grained invalidation.** A change dirties **only the layers that declare it as an
+input**. A selection click dirties **selection halos only**; `showIndex` dirties **labels only**;
+a frame swap dirties **no content layer** (positions only). The engine recomputes only the dirty
+layers' specs — not the whole `ProcessedFrame`.
+
+**Rule 2 — reconcile, don't rebuild.** A dirty layer **diffs** its new spec against what is drawn
+(keyed by atom + layer) and applies **only the delta**: add the elements that appeared, remove the
+ones that left, leave the rest untouched. A one-atom select/deselect is **one `addSphere` / one
+`removeShape`**, independent of how many atoms are already highlighted.
+
+**Frame swap** is a third, orthogonal motion: positions change, content specs do not, so the embed
+**re-places the index-keyed content layers' shapes** — labels, halos, markers, pick — from the movie
+(`_postFramePositionRedraw`), with no spec recompute and no engine round-trip. Force arrows are the
+exception: their content is per-frame, so they are baked per frame (`arrowsPerFrame`) and the native
+swap shows frame *i*'s arrows for free (§8). This is the 2026-07-25 halo fix generalized: every
+index-keyed content layer re-places on a swap; every content change reconciles on its own layer.
+
+**Correctness under any combination of view options.** Each layer's output is a function of its own
+inputs and **nothing else** — never another layer's state. Layers compose in the fixed draw order
+above, so *any* mix of toggles yields the correct scene and no toggle can corrupt another. (The
+halo-drift bug was exactly a cross-path coupling — one layer's repaint depended on a *different*
+mechanism firing. Layer independence removes that whole class of bug — this is the correctness
+guarantee, not just a performance win.)
+
+**Performance.** Every action is **O(what changed)**, not O(system size): a click touches one
+sphere, a toggle touches one layer, a frame swap re-places without recomputing. The only O(N)
+motions are the ones that genuinely change the atom set — isolate / hide-frozen / k-grid / load —
+which are the **structural regen** tier (§8): rare and inherently full.
+
+**Staged delivery** (each step ships and is verifiable on its own):
+
+1. **Reconcile the halo layer** — diff by atom + layer in `_redrawOverlayHalosAndMarkers` instead
+   of clear-and-rebuild. The click-latency win; self-contained in the embed. *Invariant:* with N
+   atoms haloed, deselecting one issues exactly one `removeShape`, the other N−1 untouched.
+2. **Fine-grained invalidation in the engine** — split `processFrame` so a content change recomputes
+   only its layer's spec, not the whole frame. *Invariant:* a selection change does not recompute
+   labels / arrows / positions.
+3. **Spec / position split** — labels become `{index → text}` (drop the baked position; the embed
+   resolves it per frame, exactly as halos already are index-keyed). Every content spec is then
+   frame-independent and index-keyed; §7.3 is reconciled to this shape.
+4. **Extend reconcile** to labels / arrows / style layers.
+5. **Invariant tests** pinning both rules: (a) each toggle touches only its own layer (spy the
+   per-layer redraws); (b) any *combination* of toggles composes to the same scene as applying them
+   one at a time.
 
 ## 9. The engine API — subnamespace `molbuilder.molview.engine`
 
@@ -514,6 +604,9 @@ store.setIsolate(true);   // the UI only writes the flag …
 // the click lands on drawn atom m; the interaction layer maps it to the original atom:
 const original = processedFrame.sourceIndex[m];
 store.toggleSelected(original);   // writes the selection flag → engine re-renders (§8).
+// Isolating (here): the drawn set changes → structural regen. NOT isolating (the common
+// click): overlay refresh reconciling ONLY the selection-halo layer — one sphere added/
+// removed, everything else untouched (§8.1).
 ```
 
 **Stream a new frame from a running job (append, §6.2):**
