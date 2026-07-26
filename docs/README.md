@@ -1,46 +1,78 @@
-# molbuilder — documentation index
+# molbuilder — documentation
 
-The canonical index lives in **[`design.md`](design.md) § 0**.
-Read that first.
+**This is the ONE index.** Every document under `docs/` is listed here, one
+line each. If a doc is not listed here it does not exist (test-enforced:
+`tests/test_docs_structure.py`).
 
-**Before building anything**, consult **[`architecture.md`](architecture.md)**
-— the design-foundation index of the major infrastructure/modules/APIs
-(what already exists + which tool to reuse), the antidote to
-reinventing/patching blind.
+> **Migration in progress (started 2026-07-26).** The previous docs tree is
+> frozen at [`../old_docs/`](../old_docs/) and is being migrated here piece
+> by piece, each doc reconciled against the code at its move. The ledger —
+> what lives where, what is pending — is [`MIGRATION.md`](MIGRATION.md).
+> Until a doc migrates, its old_docs copy remains the source of truth.
 
-## The doc rule
+## Structure — domains, not document kinds
 
-> Tests must be derivable from the spec without reading the
-> implementation. Code reviews must verify code matches spec, not
-> code matches reviewer's expectations.
+Documents are grouped by **domain** (the subsystem a reader works on), not
+by kind of contract. Kind is expressed in the filename suffix and the
+header, inside the domain.
 
-A bug shipped early in the project because a code review checked
-the implementation against itself — tests asserted "the string
-`mol = gto.M(...)` appears in the generated script" rather than
-"the generated script must not truncate `<job>.log` between stages".
-When the implementation was wrong, the test was wrong in lock-step.
-The specs in this directory decouple the two.
-
-## Categories at a glance
-
-| Folder | What lives here |
+| Folder | Domain |
 |---|---|
-| `protocols/` | How parts of the system talk to each other (HTTP API, CLI surface, JS module contracts, on-disk file layout, test patterns) |
-| `tabs/` | Per-UI-tab specs + cross-tab `architecture.md` (`molbuilder`, `structure-optimization`, `spectra/`, `results`; transport-calculation tracked under `engines/transport.md`) |
-| `engines/` | Per-engine emitter specs (SIESTA / PySCF) + build-backend contract |
-| `types/` | L1 data-type contracts (Structure, parsers, chemistry helpers) |
-| `archive/` | Superseded docs — NOT a source of truth |
+| *(root)* | The spine: this index, `design.md` (mission · principles · decisions), `architecture.md` (the reuse map: task → tool), `roadmap.md` (THE one plan) |
+| `model/` | The data model (L1): Structure, periodicity, annotations, codecs & load/save, sidecars, region labels, selection grammar, chemistry, the parse stack, the data vocabulary |
+| `science/` | Scientific correctness: validation machinery, chemistry correctness, pseudopotential standards, parameter tuning |
+| `engines/` | Per-engine emitter specs: SIESTA, PySCF, transport/TranSIESTA, builders, GPU build recipe |
+| `execution/` | Running jobs: script generation & wrappers, deployment config, SLURM, the JobSet framework (bundles/ladders/sweeps), benchmarks, run layout & decoding, checkpoints, workflow handoff |
+| `web/` | The whole front end: tabs, MolView, workspace, projects sidebar, results/inspectors, forms, UI/CSS contract, web API |
+| `ops/` | Installing and serving the app: install model, deployment, auth/rate-limit |
+| `process/` | How we work: code conventions, test strategy, audit playbook, CLI conventions, package layout |
+| `archive/` | History, date-prefixed. **Not a source of truth.** |
 
-## Versioning
+## The rules
 
-This is a 1.x project. Spec changes that remove or rename
-promised output files require a minor version bump (1.x → 1.x+1)
-AND a deprecation note in design.md's decisions log. Adding new
-optional fields or files is a patch-level change.
+- **R1 — one index.** Every non-archive doc has exactly one line here, added
+  in the same commit that adds the doc. The structure test fails on
+  unindexed or dangling entries.
+- **R2 — provenance header.** Every doc starts with a header block naming
+  its **Role** (`contract` | `guide` | `overview` | `plan` | `process`), its
+  **Domain** (folder), and its **Companions** (linked related docs). A
+  contract is the sole source of truth for its surface; a guide explains it
+  in plain language and never contradicts it.
+- **R3 — contracts don't hold plans.** Durable decisions stay in contracts.
+  Phasing, status and open work live in `roadmap.md` (one pointer allowed in
+  the contract).
+- **R4 — one archive.** Superseded content moves to `archive/` with a
+  `YYYY-MM-DD-` prefix; the archive README says what superseded it.
+- **R5 — names carry the vocabulary.** File names use the system's canonical
+  terms (see `model/data-vocabulary.md` once migrated) and must not collide
+  across meanings — e.g. the run→next-calculation handoff is
+  `execution/handoff-bundle.md`, never plain "bundle", which the JobSet
+  framework owns.
+- **R6 — born here.** New documents are created in this structure only; the
+  old tree is frozen (test-enforced against the ledger).
 
-## Bibliographies
+### The doc rule (carried over — still the point of all of this)
 
-Bibliographies live alongside the spec they cite, in the same
-subfolder. Adding a future tab with citations means a new folder
-with both files together — exactly one place to look when reading
-either.
+> Tests must be derivable from the spec without reading the implementation.
+> Code reviews must verify code matches spec, not code matches reviewer's
+> expectations.
+
+## Migration protocol (per doc)
+
+Moving a doc from `old_docs/` is a **review gate**, not a file move:
+
+1. Read it against the current code — fix drift or archive it.
+2. Merge overlaps with sibling docs instead of carrying duplicates.
+3. Extract any plan/status content into `roadmap.md` (R3).
+4. Add the provenance header (R2) and the index line here (R1).
+5. Repoint inbound references — other docs, code comments, tests — to the
+   new path (grep-verified, per file; no blind rewrite).
+6. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`).
+
+## Index
+
+*(grows as documents migrate; the spine files land first)*
+
+| Doc | Role | Owns |
+|---|---|---|
+| [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |

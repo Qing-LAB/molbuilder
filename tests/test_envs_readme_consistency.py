@@ -35,7 +35,9 @@ from molbuilder.envs.recipes import BUILTIN_RECIPES
 
 
 REPO = Path(__file__).resolve().parents[1]
-README = REPO / "docs" / "README_install.md"
+# docs migration (docs/MIGRATION.md): README_install.md lives in the frozen
+# old_docs/ tree until its reconcile-move to docs/ops/ -- repoint then.
+README = REPO / "old_docs" / "README_install.md"
 
 
 @pytest.fixture(scope="module")

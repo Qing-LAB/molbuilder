@@ -205,10 +205,13 @@ def test_scheduler_not_object_rejected(sandbox):
 
 
 def test_committed_asu_sol_example_parses(sandbox):
-    """docs/examples/molbuilder.asu-sol.json must stay valid against the
-    live reader (it carries _comment_* keys -- they must pass through)."""
+    """The committed molbuilder.asu-sol.json example must stay valid against
+    the live reader (it carries _comment_* keys -- they must pass through).
+
+    docs migration (docs/MIGRATION.md): the example lives in the frozen
+    old_docs/ tree until its reconcile-move to docs/ops/examples/."""
     repo_root = Path(__file__).resolve().parent.parent
-    example = repo_root / "docs" / "examples" / "molbuilder.asu-sol.json"
+    example = repo_root / "old_docs" / "examples" / "molbuilder.asu-sol.json"
     raw = json.loads(example.read_text())
     _write_server(sandbox, raw)
     sched = get_scheduler()
