@@ -413,7 +413,8 @@ layers**, each a **pure function of a declared subset of inputs**:
 The **pick halo** is the embed's built-in click highlight for a **bare** embed with no selection
 engine; in the full MolView flow the engine's **selection halos** do this instead (the adapter
 runs with `paintHalos:false`, §10). Both are the same *kind* of layer — an atom-keyed highlight —
-so they follow the same two rules below.
+but they render differently (Rule 2): the engine's selection halos become the **second model**; the
+bare-embed pick stays a **shape** (a bare embed has no engine-driven movie to duplicate).
 
 **Two inputs, two owners — the spec / position split:**
 
@@ -428,25 +429,47 @@ so they follow the same two rules below.
   current frame's coordinate at draw time from the **loaded coordinate movie** (`model.frames` —
   the very frames the engine handed at load, held by 3Dmol for fast native swaps; the same
   coordinates as the engine's clean `_data.frames`, NOT a read-back of 3Dmol's rendered state,
-  §7.1). Force is the one extra per-frame datum (the arrow vectors differ per frame), so arrows
-  carry per-frame content, baked into the movie as `arrowsPerFrame` (§8).
+  §7.1). *How* each layer realises that position is Rule 2's per-layer renderer — **halo layers ride
+  the movie as a second model** (3Dmol moves them for free), **shape layers** (labels / markers /
+  pick) are re-placed by the embed from `model.frames` on each swap. Force is the one extra per-frame
+  datum (the arrow vectors differ per frame), so arrows carry per-frame content, baked into the movie
+  as `arrowsPerFrame` (§8).
 
 **Rule 1 — fine-grained invalidation.** A change dirties **only the layers that declare it as an
 input**. A selection click dirties **selection halos only**; `showIndex` dirties **labels only**;
 a frame swap dirties **no content layer** (positions only). The engine recomputes only the dirty
 layers' specs — not the whole `ProcessedFrame`.
 
-**Rule 2 — reconcile, don't rebuild.** A dirty layer **diffs** its new spec against what is drawn
-(keyed by atom + layer) and applies **only the delta**: add the elements that appeared, remove the
-ones that left, leave the rest untouched. A one-atom select/deselect is **one `addSphere` / one
-`removeShape`**, independent of how many atoms are already highlighted.
+**Rule 2 — apply the delta, in the cheapest mechanism for the layer.** A dirty layer applies only the
+**change** against what is drawn — never a full rebuild — but *how* differs by renderer. A 2026-07-25
+head-to-head (5000 atoms × 50 frames, 500-atom selection) fixed which renderer each halo layer uses:
 
-**Frame swap** is a third, orthogonal motion: positions change, content specs do not, so the embed
-**re-places the index-keyed content layers' shapes** — labels, halos, markers, pick — from the movie
-(`_postFramePositionRedraw`), with no spec recompute and no engine round-trip. Force arrows are the
-exception: their content is per-frame, so they are baked per frame (`arrowsPerFrame`) and the native
-swap shows frame *i*'s arrows for free (§8). This is the 2026-07-25 halo fix generalized: every
-index-keyed content layer re-places on a swap; every content change reconciles on its own layer.
+| Halo mechanism | Single-atom click | Playback / frame |
+|---|---|---|
+| shapes, full rebuild (today) | 221 ms | 416 ms (~2 fps) |
+| shapes, reconcile by delta | 66 ms | 416 ms (~2 fps) |
+| **second movie model (`setStyle`)** | **35 ms** | **11 ms (~88 fps)** |
+
+The result is decisive: **3Dmol batches model geometry but renders free-standing shapes one-by-one.**
+So 500 translucent `addSphere` halos cost ~66 ms just to re-render and **~416 ms to re-place every
+frame** — a 500-atom selection plays at ~2 fps no matter how cleverly the shape list is reconciled.
+The *same* halos as a **second model** render ~6× faster and **ride the native movie for free** (both
+models `setFrame` together): 35 ms click, 88 fps playback. Hence the per-layer renderers:
+
+- **Halo layers (region / frozen / selection) → a SECOND movie model.** A duplicate of the trajectory,
+  `setStyle`-d with translucent spheres on the highlighted atoms (element colour kept, soft surround;
+  picks route to the main model because the halo model is `setClickable(false)`). A selection click is
+  a `setStyle` on the **delta** atoms (~35 ms); a frame swap moves the halos for free (both models
+  `setFrame`). Cost: ~2× coordinate memory + a one-time build (~3 s at 5000 × 50), so the halo model is
+  **built lazily** (only once a selection exists) and, above a size threshold, **falls back to
+  reconciled shapes** — accept ~2 fps halo-playback rather than exhaust memory (that ceiling is the
+  GPU-instanced-engine case, a separate decision).
+- **Shape layers (index labels, glyph markers, bare-embed pick) → reconciled free-standing shapes.**
+  3Dmol has no "atom-label" model rep, so these stay `addLabel`/`addSphere`: they apply by **delta** on
+  a content change (touch only the changed atom) and **re-place per frame** from the movie
+  (`_postFramePositionRedraw`, the 2026-07-25 halo-drift fix). Few and on-demand, so bounded.
+- **Force arrows** are baked per frame (`arrowsPerFrame`); the native swap shows frame *i*'s for free
+  (§8). **Cell / axes** are static geometry.
 
 **Correctness under any combination of view options.** Each layer's output is a function of its own
 inputs and **nothing else** — never another layer's state. Layers compose in the fixed draw order
@@ -455,55 +478,42 @@ halo-drift bug was exactly a cross-path coupling — one layer's repaint depende
 mechanism firing. Layer independence removes that whole class of bug — this is the correctness
 guarantee, not just a performance win.)
 
-**Performance.** Every *content* change is **O(what changed)**, not O(system size): a click
-touches one sphere, a toggle touches one layer, with no engine recompute of the rest. A **frame
-swap** re-places the highlighted-atom shapes (labels/halos/markers) — O(highlighted), no engine
-round-trip, bounded by the highlight count not the structure size. The only O(N-atoms) motions
-are the ones that genuinely change the atom set — isolate / hide-frozen / k-grid / load — which
-are the **structural regen** tier (§8): rare and inherently full.
+**Performance elsewhere.** A non-halo content change is O(what changed): a label toggle touches one
+layer, a style change one `setStyle`. The only O(N-atoms) motions are drawn-set changes (isolate /
+hide-frozen / k-grid / load) — the **structural regen** tier (§8), rare and inherently full.
 
-> **Rejected alternatives — why halos stay `addSphere` shapes reconciled by delta (spikes,
-> 2026-07-25).** Two ways to make halos ride the native movie "for free" were built and measured;
-> both lose to shape-reconcile for the **click-latency** goal.
+> **Rejected — halos as an additive atom style** (`viewer.addStyle` sphere; spike 2026-07-25). A
+> style would ride the movie, but 3Dmol's atom style has a single `sphere` key, so a halo-sphere
+> **overwrites** a sphere-rendered atom instead of surrounding it (element colour lost; a lone
+> translucent sphere renders opaque — nothing behind it to blend against). A halo needs two
+> overlapping renderables, so it is a second *model*, not a style on the atom itself.
 >
-> 1. **Halos as an additive atom style** (`viewer.addStyle` sphere). The style *does* ride the
->    movie, but the look is wrong: 3Dmol's atom style has a single `sphere` key, so a halo-sphere
->    **overwrites** a sphere-rendered atom instead of surrounding it (element colour + solid core
->    lost; a lone translucent sphere renders opaque — nothing behind it to blend against). A halo
->    needs two overlapping renderables.
-> 2. **Halos as a second movie model** — a duplicate of the trajectory loaded as a second 3Dmol
->    model, `setStyle`-d as translucent spheres on the selection. This gives the **correct surround
->    look AND rides the movie** (scaled check, 5000 atoms × 50 frames: **97 fps** on frame swaps;
->    picks route to the main model when the halo model is `setClickable(false)`). But it fails the
->    click goal at scale: a selection change is a `setStyle`, which **rebuilds the halo model's
->    geometry — O(visible halos), not O(changed)** — measured **~325 ms** to (re)style a 500-atom
->    selection, a laggy click for exactly the electrode-sized selections we care about. It also
->    **doubles memory** (+158 MB over the 178 MB main model) and **doubles load** (+3.2 s halo
->    build on top of 3.7 s). Free playback, bought with the very thing we set out to fix.
->
-> **The decisive property:** only a **free-standing shape** can be added/removed **one at a time**
-> (`addSphere`/`removeShape` = O(changed)); *any* `setStyle`-based highlight (atom-style or
-> second-model) forces an **O(visible) geometry rebuild** per change. So halos stay shapes, and
-> Rule 2 (reconcile the shape list by delta) is what makes a click O(1). The price is the per-frame
-> re-placement during *playback* (O(highlighted)/frame) — accepted, because the stated latency pain
-> is the **click**, not playback. If smooth playback of large highlighted selections ever becomes
-> the priority, the second-model trick (or a GPU-instanced engine) is the lever — a different goal.
+> **Method note (why the earlier "reject the second model" call was wrong).** A first pass measured
+> `setStyle`-ing a *fresh 500-atom group* (~325 ms) and mistook it for the click cost, concluding
+> shapes-reconcile won. The head-to-head above measured the actual operation — a **single-atom
+> toggle** (`setStyle` on the delta) — at **35 ms**, cheaper than reconcile's 66 ms, and reconcile
+> can't fix the ~2 fps playback. Measure the real operation, not a proxy.
 
 **Staged delivery** (each step ships and is verifiable on its own):
 
-1. **Reconcile the halo layer** — diff by atom + layer in `_redrawOverlayHalosAndMarkers` instead
-   of clear-and-rebuild. The click-latency win; self-contained in the embed. *Invariant:* with N
-   atoms haloed, deselecting one issues exactly one `removeShape`, the other N−1 untouched.
+1. **Second-model halo layer** — build a duplicate movie model lazily on first selection; `setStyle`
+   the translucent surround on the highlighted atoms; `setClickable(false)` so picks hit the main
+   model; `setFrame` it alongside the main model; keep it in sync on `appendFrames`. Above a size
+   threshold, fall back to reconciled shapes. The click-latency **and** playback win. *Invariants:* a
+   haloed atom's glow tracks the atom across a frame swap with **no re-apply**; a pick returns the
+   **main-model** atom; a single-atom toggle is one `setStyle` on the delta.
 2. **Fine-grained invalidation in the engine** — split `processFrame` so a content change recomputes
    only its layer's spec, not the whole frame. *Invariant:* a selection change does not recompute
    labels / arrows / positions.
-3. **Spec / position split** — labels become `{index → text}` (drop the baked position; the embed
-   resolves it per frame, exactly as halos already are index-keyed). Every content spec is then
-   frame-independent and index-keyed; §7.3 is reconciled to this shape.
-4. **Extend reconcile** to labels / arrows / style layers.
-5. **Invariant tests** pinning both rules: (a) each toggle touches only its own layer (spy the
-   per-layer redraws); (b) any *combination* of toggles composes to the same scene as applying them
-   one at a time.
+3. **Reconcile the shape layers** — index labels / glyph markers / bare-embed pick apply by delta
+   (`addLabel`/`removeLabel`/`addSphere` for the changed atom only) instead of clear-and-rebuild, and
+   re-place per frame from the movie. *Invariant:* toggling one label issues one `addLabel`, the rest
+   untouched.
+4. **Spec / position split** — labels become `{index → text}` (drop the baked position); every content
+   spec is then frame-independent and index-keyed; §7.3 is reconciled to this shape.
+5. **Invariant tests** pinning: (a) each toggle touches only its own layer (spy the per-layer redraws);
+   (b) any *combination* of toggles composes to the same scene as applying them one at a time; (c) the
+   halo second-model rides the movie and picks route to the main model.
 
 ## 9. The engine API — subnamespace `molbuilder.molview.engine`
 
