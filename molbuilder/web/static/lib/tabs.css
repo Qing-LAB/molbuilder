@@ -16,30 +16,47 @@
  * ``tests/test_tab_routes.py::test_nav_bar_lists_all_five_tabs_in_order``.
  */
 
+/* The nav is a distinct, slightly-RAISED bar, not text floating on the page:
+ *  - --ps-bg-tile lifts the whole strip off the near-black page + the darker content
+ *    below it (the nav bg used to equal the page bg, so the banner blended in);
+ *  - a top highlight + a strong bottom border draw the bar's two edges, so it reads
+ *    as its own toolbar region -- "here are your sections".
+ * The lift comes from a token (--ps-border-strong) via box-shadow, not a raw literal. */
 .app-tabs {
     display: flex;
     flex-wrap: wrap;
     align-items: stretch;
-    background: var(--ps-bg-deep);
-    border-bottom: 1px solid var(--ps-border);
+    background: var(--ps-bg-tile);
+    border-top: 1px solid var(--ps-border);
+    border-bottom: 1px solid var(--ps-border-strong);
+    box-shadow: 0 2px 6px -2px var(--ps-bg-deep);
     font: 15px/1.4 system-ui, sans-serif;
 }
 
+/* Each tab reads as a CLICKABLE option: a legible (not dimmed-to-disabled) label, a
+ * divider from its neighbour so the set looks like separate choices, and a clear
+ * hover lift. --ps-fg-muted replaces the near-invisible --ps-fg-dim. */
 .app-tab {
-    padding: 0.75rem 1.6rem;
-    color: var(--ps-fg-dim);
+    padding: 0.7rem 1.6rem;
+    color: var(--ps-fg-muted);
     font-weight: 500;
     text-decoration: none;
     border-bottom: 4px solid transparent;
     transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
+.app-tab + .app-tab {
+    border-left: 1px solid var(--ps-border);   /* divider BETWEEN tabs (never leading/trailing) */
+}
 .app-tab:hover {
     color: var(--ps-fg);
-    background: var(--ps-bg-tile);
+    background: var(--ps-border);               /* a clear lift on the bar signals "clickable" */
 }
+/* The ACTIVE tab "lights up" in the brand accent instead of a near-invisible grey box:
+ * accent-tinted fill + accent-blue bold label + the accent underline, all from the
+ * existing accent token family. "Which tab am I on" reads at a glance. */
 .app-tab.is-active {
-    color: var(--ps-selected-fg);
-    background: var(--ps-border);
+    color: var(--accent-hover);
+    background: var(--accent-bg);
     border-bottom-color: var(--accent);
     font-weight: 700;
 }
