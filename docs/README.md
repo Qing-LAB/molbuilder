@@ -76,3 +76,4 @@ Moving a doc from `old_docs/` is a **review gate**, not a file move:
 | Doc | Role | Owns |
 |---|---|---|
 | [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
+| [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |
