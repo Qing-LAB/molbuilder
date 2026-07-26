@@ -172,6 +172,71 @@ Reuse these; don't reinvent them per tab.
   primary square viewer + a foldable side panel; switches side-by-side ↔ stacked
   by its own `@container` width. The reference implementation of §3 + §5.
 
+### 4.1 The app shell — page frame + sidebar rail (the outermost layout)
+
+> **Status (2026-07-25):** this section is the *target* contract, pinned before
+> implementation. `lib/app-shell.css` / `lib/app-shell.js` are created by the
+> framework build that converts the current `position:fixed` projects sidebar
+> into a dock-panel instance and adds the checkpoint dock panel. Until then the
+> live layout is the older full-height fixed sidebar; build against THIS spec.
+
+Every tab is framed by ONE shell (`lib/app-shell.css` + `lib/app-shell.js`),
+**not** hand-crafted per tab. It is a vertical stack whose body row splits into
+a sidebar rail + the tab's content:
+
+```
+ ┌──────────────────────────────────────────────┐
+ │ header  (hero + account)        full width    │  ← .app-header
+ │ nav.app-tabs                    full width    │  ← .app-tabs
+ ├──────────┬──────────┬─────────────────────────┤
+ │ dock     │ dock     │                          │
+ │ panel    │ panel    │   <main>  (the tab)       │  ← .app-body (row)
+ │ projects │ checkpt  │                          │
+ └──────────┴──────────┴─────────────────────────┘
+      └──────── .sidebar-rail ───────┘
+```
+
+- **Header + tabs nav span the FULL width, on top** — never pushed right by a
+  sidebar. (The pre-2026-07 `position:fixed` sidebar + `body{padding-left}` shim
+  is retired; that model put the header to the *right* of a full-height sidebar.)
+- **`.app-body`** is a horizontal row: `.sidebar-rail` then `<main>`. Plain grid/
+  flex — **no `position:fixed`, no per-tab padding math**.
+- **`.sidebar-rail`** is a horizontal flex container of **dock panels** side by
+  side. Panels expand in the WIDTH direction; they are NEVER stacked vertically.
+  An empty rail (a tab with no sidebars) is zero-width — `<main>` takes the row.
+
+### 4.2 Dock panel — the ONE foldable sidebar component
+
+A **dock panel** (`.dock-panel`, `app-shell.css` + `app-shell.js`) is the single
+reusable sidebar. The **projects sidebar** and the **checkpoint panel** are
+*instances* of it — not bespoke layouts. Every dock panel has:
+
+- a **header** (title + fold toggle);
+- **fold** to a thin edge rail with a reopen tab, persisted per panel;
+- **width resize** (drag handle, min/max, persisted);
+- **mobile**: below the breakpoint it becomes an overlay drawer.
+
+The old projects-sidebar collapse / resize / drawer JS (`ps-*`) is GENERALIZED
+into this one component; `ps-*` classes become panel-*content* classes inside a
+`.dock-panel`, never layout. Adding a second sidebar = a second dock panel in
+the rail (parallel, width-expanding), NOT nesting one panel inside another and
+NOT a new `position:fixed` element.
+
+### 4.3 Declarative opt-in — a tab names its panels
+
+A tab declares which panels it wants; the shell mounts them — **no layout code
+per tab**:
+
+```html
+<body data-sidebars="projects checkpoint">
+```
+
+The shell reads `data-sidebars`, mounts each named panel into the rail in order,
+and wires fold/resize/drawer. Adding a sidebar to a tab = one attribute value;
+a NEW KIND of sidebar = one panel module + register it. Never a new
+`body.has-projects-sidebar` class + `padding-left` rule. Panel widths are named
+vars (`--dock-w-projects`, `--dock-w-checkpoint`) per §5.
+
 ## 5. Sizing rules that avoid the traps we've hit
 
 - **A component tunes itself through named CSS vars, not literals baked into the
@@ -251,6 +316,36 @@ file, tokens, layout mechanism, and shared classes — so a change stays *inside
 system instead of inventing a parallel one. **Adding a module with a panel? Add a
 subsection.** Editing one? Read its subsection first.
 
+### 8.0 The UI framework map — every part → its owner + design doc
+
+The whole front-end framework, one row per part: what it is, the file that owns
+it, and the **authoritative document** describing its design. Start here; then
+read the cited doc (and this contract's cross-referenced §) before touching a part.
+
+| UI part | Owner (CSS / JS) | Authoritative design doc | Contract § |
+|---|---|---|---|
+| Design tokens (colour/space/type) | `lib/tokens.css` | *this doc* + `tokens.css` | §1 |
+| CSS layer order / one-owner rule | all sheets | *this doc* | §2 |
+| Layout primitives (`.card`, `.card-row`, auto-fit grids) | `lib/page-shell.css` | *this doc* + [`mobile-layout.md`](mobile-layout.md) | §4 |
+| **App shell — page frame** (header/nav full-width, `.app-body` row) | `lib/app-shell.css` · `lib/app-shell.js` | *this doc* | §4.1 |
+| **Sidebar rail + dock panel** (foldable, resizable, parallel) | `lib/app-shell.css` · `lib/app-shell.js` | *this doc* | §4.2–4.3 |
+| Header hero + account menu | `lib/page-shell.css` (`header`) | *this doc* | §4.1 |
+| Tabs nav (`.app-tabs`) | `lib/tabs.css` · `web/tabs.py` | [`../tabs/architecture.md`](../tabs/architecture.md) | — |
+| Projects sidebar *(dock-panel instance)* | `lib/projects/projects-sidebar.css` · `projects-sidebar.js` | [`projects-sidebar.md`](projects-sidebar.md) | §4.2 |
+| Checkpoint panel *(dock-panel instance)* | `lib/projects/checkpoint.js` | [`run-checkpoints.md`](run-checkpoints.md) §6 | §4.2 |
+| MolView — fused card | `lib/molview/fused-layout.css` | [`molview-module.md`](molview-module.md) | §8.1 |
+| Selection / Cell panel | `lib/molview/selection/selection-panel.css` | [`selection.md`](selection.md), [`structure-periodicity.md`](structure-periodicity.md) §3b | §8.2 |
+| Config forms (schema-driven) | `lib/form-schema.css` · `form-components.css` | [`../form-schema-guide.md`](../form-schema-guide.md) | — |
+| Markdown render + Documents tab | `lib/markdown-render.js` · `documents/` | *this doc* | §8.3 |
+| System-notifications bar | `lib/app-notifications.css` | [`notifications.md`](notifications.md) | — |
+| System-load monitor | `lib/system-load-monitor.css` | [`results-tab.md`](results-tab.md) | — |
+| Responsive / mobile behaviour | (per component) | [`mobile-layout.md`](mobile-layout.md) | §3 |
+| Data/logic coherence (companion contract) | — | [`web-ui-coherence.md`](web-ui-coherence.md) | §10 |
+
+A part with an owner file but no dedicated protocol doc (tabs nav, forms,
+notifications, monitor) is governed by *this* contract plus its cited guide;
+add a §8 subsection if it grows its own layout system.
+
 ### 8.1 MolView — the fused card · `lib/molview/fused-layout.css`
 
 - **Layout:** `.molview-card` is `container-type: inline-size`, with ONE source of truth
@@ -304,6 +399,23 @@ subsection.** Editing one? Read its subsection first.
 - **Display-only:** the panel never edits periodicity, and the view TOGGLES are NOT here
   — they live in the viewer bar (§8.1). Editing periodicity is the Modify Cell op-tab.
 
+### 8.3 Markdown render + Documents tab · `lib/markdown-render.js`
+
+- **One render + sanitise policy.** `lib/markdown-render.js` is the SINGLE
+  markdown→HTML path — `marked` (GFM) piped through `DOMPurify.sanitize` — so the
+  read-only Documents tab (`documents/`) and the editable Results markdown
+  *inspector* (`lib/inspectors/markdown.js`) can't drift on the HTML allow-list.
+  A change to what HTML is allowed happens **here**, once.
+- **Diagrams:** `renderMermaidIn(el)` renders ```` ```mermaid ```` blocks to SVG in
+  place, lazy-loading `vendor/mermaid` only when a doc has a diagram
+  (`securityLevel: 'strict'`). A failed diagram is left as code + a note.
+- **Editor vs renderer are different layers** (§8.0): CodeMirror (`vendor/codemirror`)
+  is the *editor* the inspector + preview modal use; the Documents tab is read-only
+  and loads NO editor — only `marked` + `DOMPurify` (+ mermaid). Don't conflate them.
+- **The Documents tab reads app content, not user data.** `/api/docs/*` is a
+  read-only endpoint over `docs/` (a different domain from the projects picker
+  roots); see `web/blueprints/docs.py`.
+
 ## 9. Checklist — adding or changing a UI surface
 
 1. **Tokens** — colours/spacing come from `var(--token)`; no literals.
@@ -335,13 +447,29 @@ subsection.** Editing one? Read its subsection first.
 
 ## References
 
-- `lib/tokens.css` — the token palette.
-- `lib/page-shell.css` — `.card`, `.card-row`.
-- `lib/molview/fused-layout.css` — the fused-card `@container` reference.
-- [`mobile-layout.md`](mobile-layout.md) — auto-fit grids + `.card-row`.
-- [`web-ui-coherence.md`](web-ui-coherence.md) — the data-coherence companion.
-- [`structure-periodicity.md`](structure-periodicity.md) § 3b — display-vs-edit.
+The §8.0 map is the index; these are the authoritative docs it cites, grouped.
+
+**Framework (this doc governs; owner files):**
+- `lib/tokens.css` — the token palette (§1).
+- `lib/page-shell.css` — `.card`, `.card-row`, the header hero + account menu (§4, §4.1).
+- `lib/app-shell.css` · `lib/app-shell.js` — the app shell, sidebar rail, dock panel (§4.1–4.3).
+- `lib/tabs.css` · `web/tabs.py` — the tabs nav; order is single-sourced in `tabs.py`.
+- `lib/molview/fused-layout.css` — the fused-card `@container` reference (§8.1).
+- `lib/markdown-render.js` — the one markdown render + sanitise policy (§8.3).
+
+**Per-part design docs (cited from §8.0):**
+- [`../tabs/architecture.md`](../tabs/architecture.md) — tabs, routes, page composition.
+- [`projects-sidebar.md`](projects-sidebar.md) — the projects sidebar dock-panel (+ Principle 6: `api.js` is the sole fetch caller).
+- [`run-checkpoints.md`](run-checkpoints.md) § 6 — the checkpoint dock-panel (run-history).
+- [`molview-module.md`](molview-module.md) — `molview.data` owns the in-memory model + accessor API + the fused card.
+- [`selection.md`](selection.md) — the selection / cell panel.
+- [`structure-periodicity.md`](structure-periodicity.md) § 3b — display-vs-edit; the cell readout.
+- [`../form-schema-guide.md`](../form-schema-guide.md) — the schema-driven config forms.
+- [`notifications.md`](notifications.md) — the system-notifications bar.
+- [`results-tab.md`](results-tab.md) — the Results tab + the system-load monitor.
+
+**Companions (out of scope here — §10):**
+- [`mobile-layout.md`](mobile-layout.md) — auto-fit grids + `.card-row` + responsive behaviour.
+- [`web-ui-coherence.md`](web-ui-coherence.md) — the data/logic-coherence contract.
 - [`workspace-contract.md`](workspace-contract.md) § 1.2.1 — accessor / defensive-copy contract; push-only persistence.
-- [`molview-module.md`](molview-module.md) — `molview.data` owns the in-memory model + accessor API.
-- [`projects-sidebar.md`](projects-sidebar.md) Principle 6 — `api.js` is the sole fetch caller.
 - [`../architecture.md`](../architecture.md) — module roles/layers; web UI as a thin wrapper over the Python API.
