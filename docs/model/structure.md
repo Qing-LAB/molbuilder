@@ -2,12 +2,17 @@
 
 **Role:** contract
 **Domain:** model
-**Companions:** `model/periodicity.md` (the cell / axis_kind / vacuum / k-grid
-fields), `model/annotations.md` (the per-atom channels), `model/sidecars.md`
-(the `.molstruct.json` envelope), `model/parse.md` (the read stack that
-produces a Structure from engine output), `model/data-vocabulary.md` (the
-model master — shared JSON names). Frontend companions (migrating to `web/`):
-the projects-sidebar module (the Load/Save UI over the doors) and the MolView
+**This is the master doc for the Structure aspect.** Its large facets live as
+sub-documents under the `structure/` namespace:
+- [`structure/periodicity.md`](structure/periodicity.md) — cell · cell_origin ·
+  axis_kind · derived pbc · vacuum (the per-axis box behaviour).
+- `structure/annotations.md` — per-atom channels + region labels *(pending)*.
+- `structure/sidecars.md` — the `.molstruct.json` on-disk envelope *(pending)*.
+
+**Companions** (separate model modules): `model/parse.md` (the read stack that
+produces a Structure from engine output), `model/data-vocabulary.md` (the model
+overview — shared JSON names). **Frontend** (migrating to `web/`): the
+projects-sidebar module (the Load/Save UI over the doors) and the MolView
 module (`molview.data`, the JS model primitives).
 
 `Structure` is molbuilder's **lingua franca**: the one dataclass every builder
@@ -56,10 +61,11 @@ class Structure:
     residue_names: Optional[List[str]] = None # 3-letter; default = all "MOL"
     chain_ids:     Optional[List[str]] = None # single char; default = all "A"
     title:         str = ""                   # XYZ comment / PDB TITLE
-    # ── metadata (each detailed in its own doc; serialized as one block) ──
-    # cell, cell_origin, pbc, axis_kind, vacuum → model/periodicity.md
-    # regions, frozen_atoms                     → model/annotations.md
-    # annotations (per-atom channels)           → model/annotations.md
+    # ── metadata (each detailed in a sub-doc; serialized as one block) ──
+    # cell, cell_origin, pbc, axis_kind, vacuum → structure/periodicity.md
+    #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
+    #      sampling knob; see engines/siesta.md)
+    # regions, frozen_atoms, annotations        → structure/annotations.md
 ```
 
 **Invariants enforced by `__post_init__`** (the single validation site):

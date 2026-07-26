@@ -142,6 +142,7 @@ forward plan) leads and is done early.
 | Doc | Role | Owns |
 |---|---|---|
 | [`roadmap.md`](roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
-| [`model/structure.md`](model/structure.md) | contract | The `Structure` object: the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
+| [`model/structure.md`](model/structure.md) | contract | The `Structure` object (master): the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
+| [`model/structure/periodicity.md`](model/structure/periodicity.md) | contract | *(sub of structure)* Per-axis box behaviour: `cell` · `cell_origin` · `axis_kind` · derived `pbc` · `vacuum` (k-grid is a `SiestaConfig` knob, not here) |
 | [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
 | [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |
