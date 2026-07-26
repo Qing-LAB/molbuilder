@@ -181,7 +181,7 @@ appears in `old_docs/` that is not in this ledger.
 | `tabs/structure-optimization.md` | web/ | pending | |
 | `templates/github-workflows-test.yml` | process/ | pending | |
 | `transport-guide.md` | engines/ | pending | |
-| `types/chemistry.md` | model/ | pending | |
+| `types/chemistry.md` | model/chemistry.md | merged-into model/chemistry.md | Wave 2 (2026-07-26). The source's scope (phosphate charge + protonation) fully migrated + verified vs `chemistry.py` (cutoffs 1.30/1.95, O–H 0.96 Å / 109.47°, idempotent `is`-return). Also mapped the rest of the module: charge helpers / `add_hydrogens` (OpenBabel→RDKit) / clash / dipole here; the **correctness** half (spin-charge parity, open-shell metals, ECP, `analyze_structure` + adapters) pointed to `science/` (documented there in `chemistry-correctness.md` / `scientific-validation.md`, science wave). |
 | `types/parsers.md` | archive/ (RETIRED; superseded by model/parse-module.md) | pending | |
 | `types/structure.md` | model/structure.md | merged-into model/structure.md | Wave 2 (2026-07-26): the dataclass fields + invariants + geometry I/O (XYZ/PDB/PySCF/ASE) + TER handling + `molbuilder.load` → the L1 data-model + backend surface of `model/structure.md`. Method line-numbers verified vs `structure.py`. |
 | `workspace-guide.md` | web/ | pending | |

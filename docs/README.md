@@ -149,5 +149,6 @@ forward plan) leads and is done early.
 | [`model/structure-periodicity.md`](model/structure-periodicity.md) | contract | *(sub of structure)* Per-axis box behaviour: `cell` · `cell_origin` · `axis_kind` · derived `pbc` · `vacuum` (k-grid is a `SiestaConfig` knob, not here) |
 | [`model/structure-annotations.md`](model/structure-annotations.md) | contract | *(sub of structure)* The per-atom channel model (`tag`/`flag`/`value`; `regions`/`frozen` built-ins), persistence, engine translation, and the region-label vocabulary |
 | [`model/structure-molstruct.md`](model/structure-molstruct.md) | contract | *(sub of structure)* The `.molstruct.json` save file: envelope (`schema_version`/`structure_hash`/…), schema versioning (v3–v6), the codec, and the `.xyz`↔sidecar pairing rule |
+| [`model/chemistry.md`](model/chemistry.md) | contract | The chemistry helpers on a `Structure`: net-charge resolution (phosphate heuristic + override), protonation, `add_hydrogens`, clash relief, dipole (correctness machinery → `science/`) |
 | [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
 | [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |
