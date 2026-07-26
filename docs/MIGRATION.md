@@ -14,20 +14,20 @@ appears in `old_docs/` that is not in this ledger.
 | `README.md` | README.md (merge: index absorbed) | pending | |
 | `README_install.md` | ops/ | pending | |
 | `architecture.md` | architecture.md | pending | |
-| `archive/2026-06-02-REVIEW_FINDINGS.md` | archive/ | pending | |
-| `archive/2026-06-02-tabs-watch.md` | archive/ | pending | |
-| `archive/2026-06-02-watch-api.md` | archive/ | pending | |
-| `archive/2026-07-03-atom-selection.md` | archive/ | pending | |
-| `archive/2026-07-03-embedded-viewer.md` | archive/ | pending | |
-| `archive/2026-07-06-workspace-state.md` | archive/ | pending | |
-| `archive/README.md` | archive/ | pending | |
+| `archive/2026-06-02-REVIEW_FINDINGS.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/2026-06-02-tabs-watch.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/2026-06-02-watch-api.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/2026-07-03-atom-selection.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/2026-07-03-embedded-viewer.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/2026-07-06-workspace-state.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `archive/README.md` | archive/ | merged-into archive/README.md | supersession table carried over |
 | `atom-selection-guide.md` | web/ | pending | |
-| `audit-2026-06-26/README.md` | archive/audits/ | pending | |
-| `audit-2026-06-26/SYNTHESIS.md` | archive/audits/ | pending | |
-| `audit-2026-06-26/T1_top_findings.md` | archive/audits/ | pending | |
-| `audit-2026-06-26/T3_css_ui.md` | archive/audits/ | pending | |
-| `audit-2026-06-26/T4_test_depth.md` | archive/audits/ | pending | |
-| `audit-2026-06-27/README.md` | archive/audits/ | pending | |
+| `audit-2026-06-26/README.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
+| `audit-2026-06-26/SYNTHESIS.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
+| `audit-2026-06-26/T1_top_findings.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
+| `audit-2026-06-26/T3_css_ui.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
+| `audit-2026-06-26/T4_test_depth.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
+| `audit-2026-06-27/README.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
 | `batch-workflow-overview.md` | execution/ | pending | |
 | `checkpoints-guide.md` | execution/ | pending | |
 | `config.md` | execution/ | pending | |
@@ -53,15 +53,15 @@ appears in `old_docs/` that is not in this ledger.
 | `img/structure-optimization-form.png` | (distribute with owning docs) | pending | |
 | `img/tab-bar.png` | (distribute with owning docs) | pending | |
 | `img/transport-form.png` | (distribute with owning docs) | pending | |
-| `job-case-analysis/ANALYSIS-G1K1C4.md` | archive/audits/ | pending | |
+| `job-case-analysis/ANALYSIS-G1K1C4.md` | archive/audits/ | moved | archived-history pass 2026-07-26 |
 | `job-execution.md` | execution/ | pending | |
 | `jobset-infrastructure.md` | execution/ | pending | |
 | `molbuilder.json.example` | ops/examples/ | pending | |
 | `molviewer-guide.md` | web/ | pending | |
 | `package-layout.md` | process/ | pending | |
-| `protocols/archive/2026-07-05-browser-data-contract.md` | archive/ | pending | |
-| `protocols/archive/2026-07-05-working-copy-persistence.md` | archive/ | pending | |
-| `protocols/archive/2026-07-06-molview-module.md` | archive/ | pending | |
+| `protocols/archive/2026-07-05-browser-data-contract.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `protocols/archive/2026-07-05-working-copy-persistence.md` | archive/ | moved | archived-history pass 2026-07-26 |
+| `protocols/archive/2026-07-06-molview-module.md` | archive/ | moved | archived-history pass 2026-07-26 |
 | `protocols/atom-annotations.md` | model/ | pending | |
 | `protocols/backend-architecture.md` | (root, companion to architecture.md) or merge into it -- decide at reconcile | pending | |
 | `protocols/benchmark-workflow.md` | execution/ | pending | |

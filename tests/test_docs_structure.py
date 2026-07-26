@@ -134,6 +134,13 @@ _LINK = re.compile(r"\]\(([^)#\s]+\.md)(#[^)]*)?\)")
 def test_no_dangling_md_links_in_new_tree():
     dangling = []
     for p in DOCS.rglob("*.md"):
+        # archive/ is verbatim history: its docs' internal links point at
+        # the tree layout of THEIR day and may dangle by design (the
+        # archive README carries the note).  Only the archive's own index
+        # stays link-checked.
+        rel_parts = p.relative_to(DOCS).parts
+        if "archive" in rel_parts and p.name != "README.md":
+            continue
         for m in _LINK.finditer(p.read_text(encoding="utf-8")):
             target = m.group(1)
             if target.startswith(("http://", "https://")):
