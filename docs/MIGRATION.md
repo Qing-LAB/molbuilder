@@ -16,7 +16,7 @@ every move.
 |---|---|---|
 | 0 | Freeze + skeleton + ledger + rules + tests | **done** (2162e44, 6efb0ca) |
 | H | ALL historical archives → `archive/` (+ `audits/`) | **done** (a3f9b82) |
-| 1 | The spine: `roadmap.md` (THE plan, absorbs all scattered phasing), `design.md` (slimmed), `architecture.md` (+ `backend-architecture.md` decision) | next |
+| 1 | The spine: `roadmap.md` (THE plan, absorbs all scattered phasing), `design.md` (slimmed), `architecture.md` (+ `backend-architecture.md` decision) | **in progress** — `roadmap.md` done (2026-07-26): all scattered phasing distilled into the one plan; `design.md` + `architecture.md` next |
 | 2 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
 | 3 | `web/` (~31): MolView family, workspace, sidebar, results, UI contract, web-api; `tabs/` folds in | pending |
 | 4 | `model/` (~12): structure family, annotations, sidecars, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | pending |
@@ -62,7 +62,7 @@ appears in `old_docs/` that is not in this ledger.
 | `checkpoints-guide.md` | execution/ | pending | |
 | `config.md` | execution/ | pending | |
 | `deployment.md` | ops/ | pending | |
-| `design.md` | design.md (slim: index+arch dups out) | pending | |
+| `design.md` | design.md (slim: index+arch dups out) | pending | §6 "Next steps" (tab-reorg Phase 7 = SHIPPED; transport B.3) absorbed into `roadmap.md` 2026-07-26; migrate the rest (mission/principles/anti-patterns/decisions/process) in this Wave-1 pass. |
 | `engines/builders.md` | engines/ | pending | |
 | `engines/optimization-tuning.md` | engines/ | pending | |
 | `engines/pyscf-publication-guide.md` | engines/ | pending | |
@@ -106,8 +106,8 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/job-decoder.md` | execution/ | pending | |
 | `protocols/job-layout.md` | execution/ | pending | |
 | `protocols/mobile-layout.md` | web/ | pending | |
-| `protocols/molview-esm-finalization.md` | web/ (plan parts -> roadmap.md) | pending | |
-| `protocols/molview-migration-plan.md` | roadmap.md (merge; archive rest) | pending | |
+| `protocols/molview-esm-finalization.md` | web/ (plan parts -> roadmap.md) | pending | Plan tail (Phase B-internal / C / D) absorbed into `roadmap.md` §3 2026-07-26; migrate the target-architecture + consumer-inventory design content in Wave 3 (web/). |
+| `protocols/molview-migration-plan.md` | roadmap.md (merge; archive rest) | pending | Open-work tail (D3-tail / D4 / A3 / A4 / Step 6) absorbed into `roadmap.md` §3 2026-07-26; the shipped-orientation + anti-drift scaffolding archives when this row closes (Wave 3). |
 | `protocols/molview-module.md` | web/ | pending | |
 | `protocols/molview-render-streamline.md` | web/ | pending | |
 | `protocols/notifications.md` | web/ | pending | |
@@ -129,7 +129,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/selection.md` | model/ | pending | |
 | `protocols/sidecar-contract.md` | model/ | pending | |
 | `protocols/slurm-integration.md` | execution/ | pending | |
-| `protocols/staged-execution.md` | execution/ | pending | |
+| `protocols/staged-execution.md` | execution/ | pending | §15.5 web-integration phasing (Phases 1-4 + D7 gate) absorbed into `roadmap.md` §1 2026-07-26; the framework contract itself migrates in Wave 2 (execution/). |
 | `protocols/structure-authority.md` | model/ | pending | |
 | `protocols/structure-load-save-contract.md` | model/ | pending | |
 | `protocols/structure-periodicity.md` | model/ | pending | |
@@ -142,12 +142,12 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/web-ui-coherence.md` | web/ | pending | |
 | `protocols/workspace-contract.md` | web/ | pending | |
 | `results-tab-guide.md` | web/ | pending | |
-| `roadmap.md` | roadmap.md (THE plan; absorbs scattered phasing) | pending | |
+| `roadmap.md` | roadmap.md (THE plan; absorbs scattered phasing) | pending | PLAN distilled into `docs/roadmap.md` (Wave 1, 2026-07-26) — that is now the plan authority. File retained ONLY for its shipped 3DNA detection/error/install + transport reference; relocates to `engines/` at Wave 6, then this row closes. |
 | `runtime-registry-guide.md` | web/ | pending | |
 | `science.md` | science/ | pending | |
 | `staged-relaxation-guide.md` | execution/ | pending | |
 | `structure-guide.md` | web/ | pending | |
-| `tabs/architecture.md` | web/tabs.md (rename: avoid 3rd architecture.md) | pending | |
+| `tabs/architecture.md` | web/tabs.md (rename: avoid 3rd architecture.md) | pending | §9 phasing (Phases A-D) reconciled against code = ALL SHIPPED (6 tabs live); recorded closed in `roadmap.md` 2026-07-26. The cross-tab design content migrates in Wave 3 (web/). |
 | `tabs/molbuilder.md` | web/ | pending | |
 | `tabs/results.md` | web/ | pending | |
 | `tabs/spectra/references.bib` | web/ | pending | |

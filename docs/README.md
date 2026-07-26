@@ -117,5 +117,6 @@ The wave plan (order of domains + status) lives at the top of
 
 | Doc | Role | Owns |
 |---|---|---|
+| [`roadmap.md`](roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
 | [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
 | [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |
