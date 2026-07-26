@@ -44,7 +44,11 @@
 
 {% set active_tab = "results" %}
 {% include "_app_header.html" %}
+{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+    flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
+<div class="app-body">
 {% include "_projects_sidebar.html" %}
+<div class="app-content">
 
 <main class="results-main">
 
@@ -155,6 +159,8 @@
   {% include "_system_load_monitor.html" %}
 
 </main>
+</div>{#- /.app-content -#}
+</div>{#- /.app-body -#}
 
 {# Script order matters: the registry must be present BEFORE any
    inspector module loads (each inspector self-registers at script

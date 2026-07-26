@@ -1,67 +1,67 @@
 /* App shell — the page frame + sidebar rail.
  * Spec: docs/protocols/ui-design-contract.md §4.1-4.3.
  *
- * Header + tabs nav span the FULL width on top; a fixed sidebar RAIL sits
- * BELOW the nav on the left, holding foldable "dock panel" sidebars side by
- * side; all tab content is pushed right of the rail.
+ * The SAME pattern the Documents tab uses (and why it "just works"): the page
+ * is a full-height flex COLUMN whose body row is a [sidebar-rail | content]
+ * flex ROW.  The <body> itself does NOT scroll -- only the content pane does --
+ * so the header + tabs nav STAY on top while you scroll, and the sidebar is a
+ * normal flex column that is in the right place on the FIRST paint (no fixed
+ * positioning, no JS measuring the header height, so no flash on tab switch).
  *
- * A tab opts in with ``<body data-sidebars="projects checkpoint">``.
- *
- * Why body-padding (not a body grid): a tab's content is not always a single
- * <main> -- e.g. Molbuilder has <main> + a stray <section> + <footer> as body
- * children.  Pushing all content right via ``padding-left`` on <body> is
- * robust to any content shape; the header/nav are pulled back out of that
- * padding so they still span the full width.  Every rule is scoped to
- * ``body[data-sidebars]`` so a not-yet-migrated tab is untouched. */
+ * A tab opts in with ``<body data-sidebars="projects">`` and wraps its sidebar
+ * + content in ``<div class="app-body"> <sidebar> <div class="app-content">
+ * …tab content… </div> </div>``. */
 
 body[data-sidebars] {
-  padding-left: var(--rail-w, var(--ps-w, 18rem));
-  box-sizing: border-box;
-  min-height: 100vh;
+  height: 100vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;             /* body never scrolls; the content pane does */
 }
 
-/* Header + tabs nav + notifications span the FULL viewport width: pull them
- * back out of the body's left padding. */
+/* header + tabs nav (+ the notifications bar) are natural-height rows that stay
+ * on top -- they don't scroll because the body doesn't. */
 body[data-sidebars] > header,
 body[data-sidebars] > nav.app-tabs,
 body[data-sidebars] > #app-notifications {
-  margin-left: calc(-1 * var(--rail-w, var(--ps-w, 18rem)));
-  width: calc(100% + var(--rail-w, var(--ps-w, 18rem)));
-  box-sizing: border-box;
+  flex: 0 0 auto;
 }
 
-/* The sidebar rail: fixed, starts BELOW the header+nav (--app-header-h set by
- * app-shell.js), spans to the bottom, holds dock panels side by side. */
-body[data-sidebars] .sidebar-rail {
-  position: fixed;
-  top: var(--app-header-h, 0px);
-  left: 0;
-  bottom: 0;
+/* The body row: fills the remaining viewport height, a [rail | content] row. */
+body[data-sidebars] > .app-body {
+  flex: 1 1 auto;
   display: flex;
   align-items: stretch;
-  z-index: 5;
+  min-height: 0;                /* so the row can shrink + its children scroll */
+  overflow: hidden;
+}
+
+/* The sidebar rail: natural width, full height of the body row, holds dock
+ * panels side by side.  Its panels scroll internally, not the rail. */
+body[data-sidebars] .sidebar-rail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The content pane: takes the rest of the width and OWNS the scroll. */
+body[data-sidebars] .app-body > .app-content {
+  flex: 1 1 auto;
+  min-width: 0;                 /* a wide child shrinks instead of overflowing */
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Collapsed: the projects-sidebar JS sets this on <body>; the rail hides and
- * the content reclaims the full width. */
-body.is-projects-sidebar-collapsed[data-sidebars] {
-  padding-left: 0;
-}
-body.is-projects-sidebar-collapsed[data-sidebars] > header,
-body.is-projects-sidebar-collapsed[data-sidebars] > nav.app-tabs,
-body.is-projects-sidebar-collapsed[data-sidebars] > #app-notifications {
-  margin-left: 0;
-  width: 100%;
-}
+ * the content pane reclaims the full width. */
 body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
   display: none;
 }
 
 /* ---- dock panel base (the ONE foldable sidebar; §4.2) ------------- */
-/* The projects sidebar + checkpoint panel are instances.  Each panel's own
- * content styling stays in its own sheet (projects-sidebar.css etc.); this
- * base owns only the dock geometry. */
-
 body[data-sidebars] .dock-panel {
   position: relative;
   display: flex;

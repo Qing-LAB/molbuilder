@@ -42,7 +42,11 @@
 
 {% set active_tab = "structure-optimization" %}
 {% include "_app_header.html" %}
+{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+    flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
+<div class="app-body">
 {% include "_projects_sidebar.html" %}
+<div class="app-content">
 
 <!-- ============================================================ -->
 <!--  Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10): -->
@@ -318,6 +322,8 @@
 <footer>
   <p>molbuilder &middot; <a href="/api/health">/api/health</a></p>
 </footer>
+</div>{#- /.app-content -#}
+</div>{#- /.app-body -#}
 
 {# FULL MolView component stack (viewer + selection/cell panel + warning-modal +
    the selection stack) — the Inspect-structure card mounts the read-only fused

@@ -17,8 +17,9 @@
 
     Consumers: index.html, spectra.html, transport_calculation.html, modify.html,
     results.html, molview_demo.html -- every molview page adds the stack via THIS include.
-    (2026-07 fix: a stray ``-#}`` used to split this comment after the paragraph above,
-    LEAKING this tail as rendered page text on every consumer.  Keep it ONE block.) -#}
+    (Keep this as ONE comment block and NEVER write the literal Jinja comment-close
+    sequence in the prose -- doing so ends the comment early and leaks the tail as
+    rendered page text on every consumer.  That regressed once; do not reintroduce it.) -#}
 <script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
 {#- The 3Dmol embed (mol-*.js) is now an ES module imported by molview/index.js -- no classic
     <script> stack.  Vendor 3Dmol above stays a classic global (read at embed() call time). -#}

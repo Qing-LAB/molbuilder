@@ -33,7 +33,11 @@
 
 {% set active_tab = "spectrum-calculation" %}
 {% include "_app_header.html" %}
+{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+    flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
+<div class="app-body">
 {% include "_projects_sidebar.html" %}
+<div class="app-content">
 
 <!-- ============================================================
      Spectrum-calculation tab — three-card vertical workflow:
@@ -219,6 +223,8 @@
         auto-dispatches to the spectra inspector. -#}
   </section>
 </main>
+</div>{#- /.app-content -#}
+</div>{#- /.app-body -#}
 
 <!-- ================================================================
      Methods-preview modal (spec § 9.4)

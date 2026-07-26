@@ -27,7 +27,11 @@
 
 {% set active_tab = "transport-calculation" %}
 {% include "_app_header.html" %}
+{#- app shell (ui-design-contract.md §4.1-4.3): sidebar rail + content in one
+    flex row -- the Documents-tab pattern; no fixed positioning, no flash. -#}
+<div class="app-body">
 {% include "_projects_sidebar.html" %}
+<div class="app-content">
 
 <!-- ============================================================ -->
 <!--  Vertical workflow (2026-06-10 post-review refactor):           -->
@@ -201,6 +205,8 @@
     </details>
   </section>
 </main>
+</div>{#- /.app-content -#}
+</div>{#- /.app-body -#}
 
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
