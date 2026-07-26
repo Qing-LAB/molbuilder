@@ -10,6 +10,7 @@
    stylesheets layer their specifics on top. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/app-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
 {# Trajectory inspector styles -- the inspector's DOM (rendered from
@@ -39,7 +40,7 @@
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 </head>
-<body class="has-projects-sidebar">
+<body data-sidebars="projects">
 
 {% set active_tab = "results" %}
 {% include "_app_header.html" %}

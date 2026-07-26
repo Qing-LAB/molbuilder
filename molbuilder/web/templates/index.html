@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/app-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 {# lib/form-schema.css styles the .param-grid / .param-section /
    .schema-int-triple classes that form-schema.js produces when it
@@ -31,7 +32,7 @@
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 </head>
-<body class="has-projects-sidebar"><!--
+<body data-sidebars="projects"><!--
  has-projects-sidebar applies the body padding-left for the fixed
  sidebar.  Set server-side so the first paint already has the
  correct layout -- if we waited for the type=module sidebar JS to

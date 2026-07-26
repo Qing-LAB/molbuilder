@@ -73,6 +73,11 @@
      aria-label="System notifications" hidden></div>
 <script src="{{ url_for('static', filename='lib/app-notifications.js') }}" defer></script>
 
+{#- App-shell runtime: sets --app-header-h / --rail-w for tabs that opt into
+    the sidebar-rail shell (body[data-sidebars]).  No-op on other tabs.
+    ui-design-contract.md §4.1-4.3. -#}
+<script src="{{ url_for('static', filename='lib/app-shell.js') }}" defer></script>
+
 {#- System-load monitor is mounted explicitly by the Results template
     (results.html) -- it lives in ``_system_load_monitor.html`` as a
     small partial so a future template can opt in by including that

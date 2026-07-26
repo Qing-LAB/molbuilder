@@ -41,6 +41,12 @@
         title="Show projects sidebar"
         aria-expanded="false"><span class="ps-edge-tab-chevron" aria-hidden="true">▶</span></button>
 
+{#- Sidebar rail (app-shell §4.1): holds the sidebar dock panel(s) side-by-side
+    below the nav.  On a tab that opts into the shell (``body[data-sidebars]``)
+    the rail is a grid area + flex row (app-shell.css); on a not-yet-migrated
+    tab it is an inert zero-height wrapper (the aside is still position:fixed and
+    out of flow), so wrapping here is safe for both. -#}
+<div class="sidebar-rail">
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   {#- Width-resize handle (2026-06-12).  Thin strip on the right edge;
       drag to resize the sidebar.  Width persists to localStorage so
@@ -241,6 +247,7 @@
     </div>
   </section>
 </aside>
+</div>{#- /.sidebar-rail -#}
 
 <!-- File-preview modal (lives outside the sidebar so it can float
      centered over the whole page).  Hidden by default; opened by the

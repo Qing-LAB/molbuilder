@@ -50,6 +50,22 @@ body.has-projects-sidebar {
   overflow: hidden;
 }
 
+/* App-shell mode (ui-design-contract.md §4.1-4.3): the sidebar is an IN-FLOW
+ * dock panel inside the ``.sidebar-rail`` grid area -- NOT position:fixed.
+ * ``position: relative`` (not static) so the absolute resize handle still
+ * anchors to it.  Active only on a tab that opts in via body[data-sidebars];
+ * a not-yet-migrated tab keeps the fixed rule above. */
+body[data-sidebars] .projects-sidebar {
+  position: relative;
+  top: auto;
+  left: auto;
+  bottom: auto;
+  width: var(--ps-w);
+  height: 100%;
+  z-index: auto;
+  flex: 0 0 auto;
+}
+
 /* ---- Width-resize handle (2026-06-12) ------------------------------
  *
  * Thin draggable strip on the right edge.  4px hit area widened to
