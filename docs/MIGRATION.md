@@ -1,5 +1,35 @@
 # Migration ledger — old_docs/ → docs/
 
+## Wave plan
+
+**Sequencing decision (user, 2026-07-26): the documentation migration
+completes IN FULL before any system/feature work resumes** (including the
+jobset web-merge Phase 1). Docs first, then the system.
+
+Every wave, every doc: the [README migration protocol + editorial rules
+E1–E4](README.md) apply in full — structure-first merging, Mermaid where a
+picture explains, plain language with full rigor, scientific foundations
+preserved and enriched, and the master index updated in the same commit as
+every move.
+
+| Wave | Scope (~docs) | Status |
+|---|---|---|
+| 0 | Freeze + skeleton + ledger + rules + tests | **done** (2162e44, 6efb0ca) |
+| H | ALL historical archives → `archive/` (+ `audits/`) | **done** (a3f9b82) |
+| 1 | The spine: `roadmap.md` (THE plan, absorbs all scattered phasing), `design.md` (slimmed), `architecture.md` (+ `backend-architecture.md` decision) | next |
+| 2 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
+| 3 | `web/` (~31): MolView family, workspace, sidebar, results, UI contract, web-api; `tabs/` folds in | pending |
+| 4 | `model/` (~12): structure family, annotations, sidecars, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | pending |
+| 5 | `science/` (~4) | pending |
+| 6 | `engines/` (~8): + `transiesta-workflow`, `transport-guide` move in | pending |
+| 7 | `ops/` (~5): install / deployment / rate-limit + config examples | pending |
+| 8 | `process/` (~7): conventions, test strategy, audit playbook, CLI, package layout | pending |
+| 9 | Closeout: `old_docs/` deleted, freeze rule retired, ledger archived, memory pointers updated | pending |
+
+`img/` assets distribute with their owning docs along the way.
+
+## Ledger
+
 One row per file in the frozen `old_docs/` tree. **Targets are
 proposals** — the per-doc reconcile gate (README § Migration protocol)
 confirms or changes them; record the outcome in Status + Notes.

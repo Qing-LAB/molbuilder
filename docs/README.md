@@ -30,9 +30,12 @@ header, inside the domain.
 
 ## The rules
 
-- **R1 — one index.** Every non-archive doc has exactly one line here, added
-  in the same commit that adds the doc. The structure test fails on
-  unindexed or dangling entries.
+- **R1 — one index, never lagging.** Every non-archive doc has exactly one
+  line here, added **in the same commit** that adds, moves, merges, or
+  archives the doc. The master index is updated at EVERY step — it is never
+  allowed to drift from the tree (the structure test fails on unindexed or
+  dangling entries; the old design.md §0 index rotted to ⅔ coverage because
+  updating it was a separate chore).
 - **R2 — provenance header.** Every doc starts with a header block naming
   its **Role** (`contract` | `guide` | `overview` | `plan` | `process`), its
   **Domain** (folder), and its **Companions** (linked related docs). A
@@ -57,17 +60,56 @@ header, inside the domain.
 > Code reviews must verify code matches spec, not code matches reviewer's
 > expectations.
 
+## Editorial rules — how documents are written and merged
+
+These bind every write to this tree — migration reconciles AND ordinary
+edits afterwards. They are re-read at every migration gate.
+
+- **E1 — structure first, never just append.** Before merging or updating
+  a document, map the overall structure — its topics, its table of
+  contents, and its siblings' — and reorganize so the information sits
+  logically. Adding a new section onto old scaffolding because it is easy
+  is exactly how the previous tree rotted. A merge is a re-architecting of
+  the combined content, not a concatenation.
+- **E2 — Mermaid diagrams wherever they explain.** Data structures
+  (`classDiagram`), dependencies and workflows (`flowchart`), API designs,
+  protocol sequences (`sequenceDiagram`) — if a picture explains it, the
+  picture is required, and it is Mermaid (renders in the Documents tab).
+  ASCII diagrams are converted when a doc is touched.
+- **E3 — plain language, full rigor.** Translate jargon into simple
+  language with concrete scenarios ("when you click X, Y happens") — but
+  lose NOTHING: every constraint, number, edge case, and decision
+  rationale survives the translation. Simplify the words, never the
+  content. A coined shorthand may only be used after the sentence that
+  defines it.
+- **E4 — scientific content is evidence-based, and enriched.** Where a doc
+  makes a scientific argument (defaults, validation thresholds, method
+  choices), the physical/chemical foundation and the reference trail are
+  respected — preserved on merge, and ENRICHED where thin: state the basis,
+  cite the method/literature, keep defensible defaults *with their
+  justification*. A scientific claim without its foundation is drift
+  waiting to happen.
+
 ## Migration protocol (per doc)
 
-Moving a doc from `old_docs/` is a **review gate**, not a file move:
+Moving a doc from `old_docs/` is a **review gate**, not a file move.
+The editorial rules above apply to every step in full:
 
 1. Read it against the current code — fix drift or archive it.
-2. Merge overlaps with sibling docs instead of carrying duplicates.
-3. Extract any plan/status content into `roadmap.md` (R3).
-4. Add the provenance header (R2) and the index line here (R1).
-5. Repoint inbound references — other docs, code comments, tests — to the
+2. Map the structure first (E1): this doc's TOC + its target-domain
+   siblings'; decide the merged/reorganized shape before writing.
+3. Merge overlaps with sibling docs instead of carrying duplicates.
+4. Extract any plan/status content into `roadmap.md` (R3).
+5. Rewrite where needed: plain language (E3), Mermaid diagrams where they
+   explain (E2), scientific foundations preserved + enriched (E4).
+6. Add the provenance header (R2) and the index line here (R1) — same
+   commit, always.
+7. Repoint inbound references — other docs, code comments, tests — to the
    new path (grep-verified, per file; no blind rewrite).
-6. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`).
+8. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`).
+
+The wave plan (order of domains + status) lives at the top of
+[`MIGRATION.md`](MIGRATION.md).
 
 ## Index
 
