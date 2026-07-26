@@ -3383,12 +3383,21 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     function _postFramePositionRedraw(state) {
-        // Position-aware overlays must recompute every frame so they
-        // track the moving atoms.  Cell wireframe is lattice-only
-        // (static); axes are origin-anchored (static); arrows are
-        // caller-supplied (static unless caller updates via
-        // setArrows during animation).
+        // Position-aware overlays must recompute every frame so they track the moving
+        // atoms.  Cell wireframe is lattice-only (static); axes are origin-anchored
+        // (static); arrows are per-frame baked (arrowsPerFrame, redrawn in
+        // _showTrajectoryFrame).
+        //
+        // Overlay HALOS / MARKERS belong here too (bug fixed 2026-07-25, seen as halos
+        // drifting off atoms in a played trajectory -- the Results tab): they are drawn
+        // as shapes at the atom's CURRENT position, so a frame swap must re-place them.
+        // The engine re-hands the shown frame's overlay spec via setOverlays every frame,
+        // but that spec is UNCHANGED while the selection holds, so setOverlays'
+        // idempotence bail (``_equalNormalised -> return``) skips the redraw -- the halos
+        // stay frozen at frame 0.  A frame change is a POSITION change the spec doesn't
+        // encode, so we repaint here, unconditionally, on every swap.
         _redrawLabels(state);
+        _redrawOverlayHalosAndMarkers(state);
         _redrawPickHalos(state);
     }
 

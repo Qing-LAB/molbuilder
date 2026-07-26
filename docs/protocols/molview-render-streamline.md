@@ -324,10 +324,17 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
   `forceScale` change therefore re-derives the arrows for **every** frame and **re-bakes them in
   place** (`setFrameArrows` → a partial animation update) — the coordinates are **not** reparsed.
   That is why it is an **overlay refresh**, not a structural regen.
-- **Labels + halos are RE-APPLIED for the shown frame** on each swap. They sit at atom
-  coordinates, and a native frame swap moves the atoms but not free-standing label/halo objects —
-  so the engine re-applies the current frame's labels/halos after every `swapFrame` (and on an
-  overlay refresh). This is light (one frame's worth), not a movie rebuild.
+- **Labels + halos + markers are RE-PLACED for the shown frame** on each swap. They are
+  free-standing 3Dmol shapes/labels at atom coordinates; a native frame swap moves the atoms but
+  not those objects, so each swap must repaint them at the new positions. The **embed** owns this:
+  `_postFramePositionRedraw` (fired on every native swap) repaints labels, overlay halos/markers,
+  and pick halos — light (one frame's worth), not a movie rebuild. The engine also re-hands the
+  shown frame's overlay spec after each swap, but that spec is **unchanged** while the selection
+  holds, so `setOverlays`' idempotence bail (`_equalNormalised → return`) correctly skips a
+  redundant re-derive; the embed's per-frame repaint is what actually re-places the shapes. (Bug
+  fixed 2026-07-25: overlay halos/markers were missing from `_postFramePositionRedraw`, so with the
+  spec-diff also bailing they stayed frozen at frame 0 — halos drifting off atoms in a played
+  trajectory, seen in the Results tab. Regression: `tests/test_overlay_frame_tracking_e2e.py`.)
 
 A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
 frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
