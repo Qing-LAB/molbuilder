@@ -12,19 +12,45 @@ picture explains, plain language with full rigor, scientific foundations
 preserved and enriched, and the master index updated in the same commit as
 every move.
 
+### Order: components first, the summary map last (user, 2026-07-26)
+
+The two summary docs — `design.md` (the concise outline that *points at* the
+detailed docs) and `architecture.md` (the reuse map over the subsystems) —
+**aggregate every component**, so they are composed **LAST**, once the
+component docs they summarize have settled. Writing them first would mean
+drawing the map before walking the territory: the summary would go stale the
+moment the first component moved. So the order is **bottom-up** — the L1 data
+model, then the layers that build on it, then the surfaces — and the spine
+summary is the final pass over the finished tree. `roadmap.md` (the forward
+*plan*, which leads rather than summarizes) is the one spine doc done early.
+
+### Keep-and-mark: old_docs survives until the final cross-check (user, 2026-07-26)
+
+Migrated old docs are **NOT deleted** during the migration. Each worked-on
+file is **kept in `old_docs/` and renamed with the `_migrated_` prefix**
+(e.g. `protocols/web-api.md` → `protocols/_migrated_web-api.md`). The frozen
+tree therefore stays complete until closeout, when the new tree is
+cross-checked against it to prove nothing was dropped in a reconcile/merge —
+*then* `old_docs/` is deleted. The ledger records the outcome; the prefix is
+the at-a-glance filesystem mirror. Enforced by `tests/test_docs_structure.py`
+(prefix ⇔ non-`pending` status). *(Grandfathered exception: the Wave-H
+archives were relocated verbatim before this policy, so their old files are
+already gone — identity-cross-checkable in `docs/archive/`.)*
+
 | Wave | Scope (~docs) | Status |
 |---|---|---|
 | 0 | Freeze + skeleton + ledger + rules + tests | **done** (2162e44, 6efb0ca) |
 | H | ALL historical archives → `archive/` (+ `audits/`) | **done** (a3f9b82) |
-| 1 | The spine: `roadmap.md` (THE plan, absorbs all scattered phasing), `design.md` (slimmed), `architecture.md` (+ `backend-architecture.md` decision) | **in progress** — `roadmap.md` done (2026-07-26): all scattered phasing distilled into the one plan; `design.md` + `architecture.md` next |
-| 2 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
-| 3 | `web/` (~31): MolView family, workspace, sidebar, results, UI contract, web-api; `tabs/` folds in | pending |
-| 4 | `model/` (~12): structure family, annotations, sidecars, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | pending |
-| 5 | `science/` (~4) | pending |
-| 6 | `engines/` (~8): + `transiesta-workflow`, `transport-guide` move in | pending |
+| 1 | `roadmap.md` — THE plan (absorbs all scattered phasing); the forward north-star | **done** (8143bcf) |
+| 2 | `model/` (~11): structure family, periodicity, annotations, sidecars, selection, region labels, chemistry, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | **next** |
+| 3 | `science/` (~4): validation machinery, chemistry correctness, pseudopotential standards, tuning | pending |
+| 4 | `engines/` (~8): SIESTA, PySCF, transport/TranSIESTA, builders, GPU recipe; `transiesta-workflow` + `transport-guide` move in | pending |
+| 5 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
+| 6 | `web/` (~31): MolView family, workspace, sidebar, results, UI contract, web-api; `tabs/` folds in | pending |
 | 7 | `ops/` (~5): install / deployment / rate-limit + config examples | pending |
 | 8 | `process/` (~7): conventions, test strategy, audit playbook, CLI, package layout | pending |
-| 9 | Closeout: `old_docs/` deleted, freeze rule retired, ledger archived, memory pointers updated | pending |
+| 9 | **The spine summary, composed last:** `design.md` (concise outline over the settled tree) + `architecture.md` (reuse map) + the `backend-architecture.md` companion decision | pending |
+| 10 | Closeout: **cross-check `old_docs/` (all `_migrated_`) against the new tree**, then delete `old_docs/`, retire the freeze rule, archive the ledger, sweep memory pointers | pending |
 
 `img/` assets distribute with their owning docs along the way.
 
@@ -43,7 +69,7 @@ appears in `old_docs/` that is not in this ledger.
 |---|---|---|---|
 | `README.md` | README.md (merge: index absorbed) | pending | |
 | `README_install.md` | ops/ | pending | |
-| `architecture.md` | architecture.md | pending | |
+| `architecture.md` | architecture.md | pending | **Composed LAST (Wave 9)** with `design.md` — the reuse map is a summary over the subsystems, so it settles after they migrate. `backend-architecture.md` kept SEPARATE (concern-lens companion), not merged. |
 | `archive/2026-06-02-REVIEW_FINDINGS.md` | archive/ | moved | archived-history pass 2026-07-26 |
 | `archive/2026-06-02-tabs-watch.md` | archive/ | moved | archived-history pass 2026-07-26 |
 | `archive/2026-06-02-watch-api.md` | archive/ | moved | archived-history pass 2026-07-26 |
@@ -62,7 +88,7 @@ appears in `old_docs/` that is not in this ledger.
 | `checkpoints-guide.md` | execution/ | pending | |
 | `config.md` | execution/ | pending | |
 | `deployment.md` | ops/ | pending | |
-| `design.md` | design.md (slim: index+arch dups out) | pending | §6 "Next steps" (tab-reorg Phase 7 = SHIPPED; transport B.3) absorbed into `roadmap.md` 2026-07-26; migrate the rest (mission/principles/anti-patterns/decisions/process) in this Wave-1 pass. |
+| `design.md` | design.md (concise outline; §0 index → README, plans → roadmap) | pending | **Composed LAST (Wave 9)** as the concise map over the settled tree. §6 "Next steps" (tab-reorg = SHIPPED; transport B.3) already absorbed into `roadmap.md` 2026-07-26. The §0 index is retired (README.md owns it); design.md becomes a short outline that points at the detailed domain docs. |
 | `engines/builders.md` | engines/ | pending | |
 | `engines/optimization-tuning.md` | engines/ | pending | |
 | `engines/pyscf-publication-guide.md` | engines/ | pending | |

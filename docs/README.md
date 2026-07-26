@@ -106,14 +106,22 @@ The editorial rules above apply to every step in full:
    commit, always.
 7. Repoint inbound references — other docs, code comments, tests — to the
    new path (grep-verified, per file; no blind rewrite).
-8. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`).
+8. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`), **and**
+   mark the old file done by renaming it with the `_migrated_` prefix
+   (keep-and-mark — the old tree is kept intact for the closeout
+   cross-check, never deleted mid-migration). Same commit as the move.
 
-The wave plan (order of domains + status) lives at the top of
-[`MIGRATION.md`](MIGRATION.md).
+**Order (see [`MIGRATION.md`](MIGRATION.md) for the wave plan):** components
+first, bottom-up (the data model, then what builds on it, then the surfaces);
+the summary docs — `design.md` (a concise outline that points at the detailed
+docs) and `architecture.md` (the reuse map) — are composed **last**, over the
+settled tree, so they never summarize a moving target. `roadmap.md` (the
+forward plan) leads and is done early.
 
 ## Index
 
-*(grows as documents migrate; the spine files land first)*
+*(grows as documents migrate, bottom-up by domain; the summary spine —
+`design.md`, `architecture.md` — lands last)*
 
 | Doc | Role | Owns |
 |---|---|---|

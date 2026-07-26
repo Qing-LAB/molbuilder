@@ -3,13 +3,25 @@
 The docs tree was reorganized 2026-07-26 (docs/README.md § Structure): the
 legacy tree is FROZEN at ``old_docs/`` and every doc migrates to the new
 domain-structured ``docs/`` through a per-doc reconcile gate, tracked in
-``docs/MIGRATION.md`` (the ledger).  This file makes the rules mechanical:
+``docs/MIGRATION.md`` (the ledger).
 
-  1. FREEZE      — every file under old_docs/ has a ``pending`` ledger row
-                   (nothing new may be born in the old tree), and every
-                   ``pending`` row still points at a real old_docs file
-                   (a moved doc must flip its row's status in the same
-                   commit).
+**Keep-and-mark policy (user, 2026-07-26).** Migrated old docs are NOT
+deleted during the migration — they are kept in ``old_docs/`` and *marked
+done* by prefixing the filename with ``_migrated_`` (e.g.
+``protocols/web-api.md`` → ``protocols/_migrated_web-api.md``). The whole
+frozen tree therefore survives until closeout, when the new tree is
+cross-checked against it to prove nothing was missed; only then is
+``old_docs/`` deleted. The ledger row still records the outcome
+(moved / merged-into / archived); the prefix is the filesystem mirror of
+"this one is done".
+
+This file makes the rules mechanical:
+
+  1. FREEZE      — every file under old_docs/ (prefix stripped) has a ledger
+                   row (nothing new may be born in the old tree), and the
+                   filesystem mark agrees with the ledger status: a
+                   ``_migrated_``-prefixed file has a non-``pending`` status,
+                   an un-prefixed file is still ``pending``.
   2. R1 (index)  — every .md under docs/ (outside archive/) is linked from
                    docs/README.md, the ONE index.
   3. R2 (header) — every .md under docs/ (outside archive/, minus the two
@@ -17,8 +29,13 @@ domain-structured ``docs/`` through a per-doc reconcile gate, tracked in
                    (**Role:** ... / **Domain:** ...).
   4. Links       — every relative ``.md`` link inside the new tree resolves.
 
-When the last ledger row closes and old_docs/ is deleted, drop rule 1 and
-keep 2-4 (they are the permanent structure rules).
+Grandfathered exception: the Wave-H archives were relocated verbatim
+(``git mv`` into docs/archive/) BEFORE this policy, so their old_docs files
+are gone. A non-``pending`` row whose file is simply absent is allowed
+(rule 1) — the keep-and-mark rule binds only files that still exist.
+
+When old_docs/ is deleted at closeout, drop rule 1 and keep 2-4 (they are
+the permanent structure rules).
 """
 from __future__ import annotations
 
@@ -30,6 +47,9 @@ DOCS = REPO / "docs"
 OLD = REPO / "old_docs"
 LEDGER = DOCS / "MIGRATION.md"
 
+# Filename prefix marking an old_docs file as "migrated / worked on".
+DONE_PREFIX = "_migrated_"
+
 # Index files: exempt from the provenance header (they ARE the index).
 INDEX_FILES = {"README.md", "MIGRATION.md"}
 
@@ -37,7 +57,7 @@ _ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|[^|]*\|\s*([^|]+?)\s*\|")
 
 
 def _ledger_rows() -> dict:
-    """{old_docs-relative path: status} parsed from the ledger table."""
+    """{old_docs-relative logical path: status} parsed from the ledger table."""
     rows = {}
     for line in LEDGER.read_text(encoding="utf-8").splitlines():
         m = _ROW.match(line)
@@ -46,9 +66,27 @@ def _ledger_rows() -> dict:
     return rows
 
 
-def _old_files() -> set:
-    return {p.relative_to(OLD).as_posix()
-            for p in OLD.rglob("*") if p.is_file()}
+def _logical(rel: str) -> tuple[str, bool]:
+    """Map an old_docs path to (logical original path, is_marked_done).
+
+    Strips the DONE_PREFIX from the basename so the ledger key (the original
+    name) is recovered.
+    """
+    parent, _, name = rel.rpartition("/")
+    marked = name.startswith(DONE_PREFIX)
+    if marked:
+        name = name[len(DONE_PREFIX):]
+    return (f"{parent}/{name}" if parent else name), marked
+
+
+def _old_files() -> dict:
+    """{logical old_docs path: is_marked_done} for every file under old_docs/."""
+    out = {}
+    for p in OLD.rglob("*"):
+        if p.is_file():
+            logical, marked = _logical(p.relative_to(OLD).as_posix())
+            out[logical] = marked
+    return out
 
 
 def _new_tree_mds() -> list:
@@ -58,22 +96,40 @@ def _new_tree_mds() -> list:
 
 
 # --------------------------------------------------------------------- #
-#  1. Freeze — old tree ↔ ledger                                        #
+#  1. Freeze + keep-and-mark — old tree ↔ ledger                        #
 # --------------------------------------------------------------------- #
 
 
-def test_every_old_docs_file_is_a_pending_ledger_row():
+def test_every_old_docs_file_is_a_ledger_row():
     if not OLD.is_dir():
         return  # migration complete; freeze rule retired
     rows = _ledger_rows()
-    unlisted = sorted(_old_files() - set(rows))
+    unlisted = sorted(f for f in _old_files() if f not in rows)
     assert not unlisted, (
         "files in the FROZEN old_docs/ tree with no ledger row (new docs "
         f"must be born under docs/ — README.md R6): {unlisted}")
-    stale = sorted(f for f in _old_files() if rows.get(f, "pending") != "pending")
-    assert not stale, (
-        "ledger rows marked moved/merged/archived but the file still "
-        f"exists in old_docs/: {stale}")
+
+
+def test_mark_agrees_with_ledger_status():
+    """A _migrated_-prefixed file must be non-pending; an un-prefixed file
+    must be pending. This keeps the filesystem mark and the ledger honest."""
+    if not OLD.is_dir():
+        return
+    rows = _ledger_rows()
+    prefixed_but_pending, unprefixed_but_done = [], []
+    for logical, marked in _old_files().items():
+        status = rows.get(logical, "pending")
+        if marked and status == "pending":
+            prefixed_but_pending.append(logical)
+        if not marked and status != "pending":
+            unprefixed_but_done.append(logical)
+    assert not prefixed_but_pending, (
+        "old_docs files prefixed `_migrated_` but still `pending` in the "
+        f"ledger — set the ledger status in the same commit: {sorted(prefixed_but_pending)}")
+    assert not unprefixed_but_done, (
+        "ledger says migrated (moved/merged/archived) but the old_docs file "
+        "is NOT prefixed `_migrated_` — rename it to mark it done (keep-and-"
+        f"mark policy): {sorted(unprefixed_but_done)}")
 
 
 def test_every_pending_ledger_row_still_exists():
@@ -83,8 +139,9 @@ def test_every_pending_ledger_row_still_exists():
     gone = sorted(f for f, status in _ledger_rows().items()
                   if status == "pending" and f not in have)
     assert not gone, (
-        "ledger rows still 'pending' but the old_docs/ file is gone — "
-        f"flip the row's status in the same commit as the move: {gone}")
+        "ledger rows still 'pending' but the old_docs/ file is gone — a "
+        "migrated file must be KEPT and prefixed `_migrated_`, and its row "
+        f"status set, in the same commit: {gone}")
 
 
 # --------------------------------------------------------------------- #
