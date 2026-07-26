@@ -496,12 +496,14 @@ hide-frozen / k-grid / load) — the **structural regen** tier (§8), rare and i
 
 **Staged delivery** (each step ships and is verifiable on its own):
 
-1. **Second-model halo layer** — build a duplicate movie model lazily on first selection; `setStyle`
-   the translucent surround on the highlighted atoms; `setClickable(false)` so picks hit the main
-   model; `setFrame` it alongside the main model; keep it in sync on `appendFrames`. Above a size
-   threshold, fall back to reconciled shapes. The click-latency **and** playback win. *Invariants:* a
-   haloed atom's glow tracks the atom across a frame swap with **no re-apply**; a pick returns the
-   **main-model** atom; a single-atom toggle is one `setStyle` on the delta.
+1. **Second-model halo layer** — ✅ **shipped 2026-07-25 (`612284e`)**. Duplicate movie model built
+   lazily on first selection; `setStyle` the translucent surround on the highlighted atoms;
+   `setClickable(false)` so picks hit the main model; rides the native `setFrame`; kept frame-aligned
+   on `appendFrames`; falls back to reconciled shapes above the size cap (`_HALO_MODEL_MAX_ATOMFRAMES`)
+   / for a single structure. Prereq `9ac0eaa` pinned the main structure to model 0. Regression:
+   `tests/test_overlay_frame_tracking_e2e.py` (mechanism spy: second model built, no halo shapes,
+   non-clickable, no rebuild/reshape on a swap). *Invariants held:* the glow tracks the atom across a
+   swap with **no re-apply**; a pick returns the **main-model** atom; a toggle is one `setStyle` delta.
 2. **Fine-grained invalidation in the engine** — split `processFrame` so a content change recomputes
    only its layer's spec, not the whole frame. *Invariant:* a selection change does not recompute
    labels / arrows / positions.
