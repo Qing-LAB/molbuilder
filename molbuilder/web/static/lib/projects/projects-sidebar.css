@@ -122,8 +122,9 @@ body.has-mobile-sidebar-open .ps-resize-handle {
 /* ---- Desktop collapse toggle + reopen handle (B.5.4) ----------
  *
  * The sidebar hides via ``body.is-projects-sidebar-collapsed``:
- * the body padding-left collapses to 0 and the .projects-sidebar
- * goes off-screen.  The reopen handle (.ps-edge-tab--reopen) then
+ * page-shell.css sets ``display:none`` on the .sidebar-rail, so the
+ * app-shell flex row hands its width to the content pane.  The
+ * reopen handle (.ps-edge-tab--reopen) then
  * appears at the left edge -- the symmetric twin of the collapse
  * tab (.ps-edge-tab--collapse) at the same mid-height.
  *
@@ -1174,16 +1175,17 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /* ============================================================
  *  Narrow-viewport drawer pattern  (2026-06-02, task #182)
  *
- *  At desktop widths the sidebar is fixed-position 18 rem wide and
- *  the body has padding-left:18rem so the page content sits to its
- *  right.  At < 640 px the body would have to be 360 px viewport +
- *  288 px sidebar room = at least 648 px wide, which produces a
- *  horizontal scrollbar (test_modify_layout_phone_width_no_horizontal_overflow
- *  caught this).
+ *  At desktop widths the sidebar is an in-flow flex child of the
+ *  ``.app-body`` row (app-shell layout, page-shell.css) 18 rem wide, so
+ *  the content pane sits to its right and the row is exactly the viewport
+ *  width.  At < 640 px an in-flow 288 px sidebar + a usable content pane
+ *  would force the row past the viewport = a horizontal scrollbar
+ *  (test_modify_layout_phone_width_no_horizontal_overflow caught this).
  *
- *  Drawer pattern: at <= 640 px the sidebar slides off-canvas via
- *  ``transform: translateX(-100%)`` and the body's padding-left is
- *  removed.  A small fixed hamburger button at the top-left
+ *  Drawer pattern: at <= 640 px the sidebar leaves the flow -- the
+ *  ``.projects-sidebar`` fixed base takes over and it slides off-canvas
+ *  via ``transform: translateX(-100%)``.  A small fixed hamburger button
+ *  at the top-left
  *  toggles a body class (``has-mobile-sidebar-open``) that brings
  *  the sidebar back as an OVERLAY on top of the page content.  A
  *  semi-transparent backdrop on the rest of the page tells the
@@ -1202,7 +1204,7 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
  *                              hidden behind the drawer)
  *
  *  Above 640 px the drawer plumbing is inert (display:none on the
- *  toggle + the backdrop, padding-left restored on the body).
+ *  toggle + the backdrop; the sidebar is back in the app-shell flex flow).
  *  Desktop behaviour is exactly as before this rule block lands.
  *
  *  Markup in ``_projects_sidebar.html``:
@@ -1227,13 +1229,6 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 }
 
 @media (max-width: 640px) {
-  /* Reclaim the 18 rem padding the body normally reserves for the
-   * fixed sidebar -- below the breakpoint the sidebar is an overlay,
-   * not a part of normal flow. */
-  body.has-projects-sidebar {
-    padding-left: 0;
-  }
-
   /* Slide the sidebar off-canvas by default.  Animated so the user
    * sees it slide in/out rather than abruptly appear.
    *

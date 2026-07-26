@@ -641,24 +641,29 @@ class TestSidebarPartialAndShim:
         "/molbuilder", "/structure-optimization",
         "/spectrum-calculation", "/transport-calculation",
         "/results"])
-    def test_body_class_server_side_for_layout(
+    def test_sidebar_layout_opt_in_is_server_side(
         self, web, picker_root, path,
     ):
-        # `class="has-projects-sidebar"` must be on <body> at server
-        # render -- if we waited for the type=module sidebar JS to
-        # add the class, the first paint would happen with the
-        # WIDER pre-sidebar geometry (no padding-left for the
-        # sidebar's 18rem width), and Plotly + CSS-grid-auto-fit
-        # layouts would init at the wrong size and look broken
-        # until a browser resize fixed them.  This bit users at
-        # least once -- pin it.
+        # The app-shell layout opt-in -- ``<body data-sidebars="projects">``
+        # -- must be in the SERVER-rendered markup, not added later by the
+        # type=module sidebar JS.  page-shell.css keys the whole flex-column
+        # shell (nav + [sidebar-rail | content] row) off
+        # ``body[data-sidebars]``; if the attribute arrived via JS the first
+        # paint would use the pre-shell geometry and layout-sensitive widgets
+        # (Plotly, 3Dmol) would init at the wrong size and look broken until a
+        # browser resize fixed them.  This bit users at least once under the
+        # since-retired ``has-projects-sidebar`` + padding-left shim -- pin the
+        # server-side opt-in so the regression can't come back.
         body = web.get(path).get_data(as_text=True)
-        assert 'class="has-projects-sidebar"' in body, path
-        # And the JS should NOT be adding it (avoid double-toggle).
+        assert 'data-sidebars="projects"' in body, path
+        # The JS must NOT set the attribute (that would race the first paint);
+        # it only toggles the collapsed / mobile-drawer *body classes*.
         js = web.get(
             "/static/lib/projects/projects-sidebar.js",
         ).get_data(as_text=True)
-        assert 'classList.add("has-projects-sidebar")' not in js
+        assert 'setAttribute("data-sidebars"' not in js
+        assert "setAttribute('data-sidebars'" not in js
+        assert "dataset.sidebars" not in js
 
     @pytest.mark.parametrize("path", ["/molbuilder"])
     def test_subscriber_tabs_use_inquire_api(
