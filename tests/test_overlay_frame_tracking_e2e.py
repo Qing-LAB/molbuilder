@@ -1,25 +1,17 @@
-"""Overlay halos/markers must be FRAME-AWARE on a trajectory (regression).
+"""Trajectory halos render as a SECOND movie model that rides the native swap (§8.1 step 1).
 
-The bug (reported 2026-07-25, visible in the Results tab where trajectories play):
-selection/region/frozen HALOS + glyph MARKERS are drawn as 3Dmol SHAPES at the
-atom's current position, so a frame swap must RE-PLACE them.  Two paths that should
-have repainted them on a frame change both skipped it:
+History: halos used to be free-standing addSphere shapes re-placed every frame, which drifted
+off the atoms during playback (bug fixed 2026-07-25) and — even reconciled — capped a large
+selection at ~2 fps.  §8.1 step 1 renders trajectory halos as a DUPLICATE movie model
+(setStyle translucent spheres on the highlighted atoms, setClickable(false)) that 3Dmol's
+setFrame swaps ALONGSIDE the main model, so the halos ride the native swap for free and a
+click is one setStyle on the delta (head-to-head: 35 ms click / 88 fps playback vs ~2 fps for
+shapes — molview-render-streamline.md §8.1).
 
-  * the engine re-hands the shown frame's overlay spec via ``setOverlays`` every
-    frame, but that spec is UNCHANGED while the selection holds, so setOverlays'
-    idempotence bail (``_equalNormalised -> return``) drops the redraw; and
-  * ``_postFramePositionRedraw`` (the per-frame hook for the native movie) redrew
-    labels + pick halos but OMITTED the overlay halos/markers.
-
-So the halos were drawn once at frame 0 and never moved, drifting off the atoms as
-the trajectory played.  (3Dmol's setFrame DOES advance the model atoms' x/y/z to the
-shown frame, so the coordinate source was never the issue -- the redraw was.)
-The fix repaints overlay halos/markers in ``_postFramePositionRedraw`` on every swap.
-
-This pins it with REAL 3Dmol: it spies the ``center`` the embed hands to
-``addSphere`` (an INPUT capture -- not a 3Dmol data read, so no paint race) while a
-two-frame trajectory whose atom 0 moves (0,0,0) -> (5,0,0) is scrubbed.  Before the
-fix the frame-1 halo is never repainted (stays at frame 0); after, it lands at x≈5.
+This pins the MECHANISM (guard-clean — it spies the 3Dmol calls the embed makes, never reads
+render state): applying a halo to a trajectory builds a second model, draws NO halo spheres,
+marks that model non-clickable (so picks hit the real atom), and a frame swap neither rebuilds
+the model nor adds a shape — it just rides the movie.
 """
 from __future__ import annotations
 
@@ -51,24 +43,27 @@ def flask_server():
         thread.join(timeout=5)
 
 
-# The embed handle drives a native 3Dmol movie; we spy addSphere's center arg via a
-# createViewer wrapper installed BEFORE embed() so every halo redraw is captured.
+# Spy the 3Dmol calls the embed makes (via the molbuilder.viewer.create factory, wrapped BEFORE
+# embed()).  No selectedAtoms / _viewer3dmol render reads — just call bookkeeping.
 _PROBE = r"""
 () => {
-    // The embed builds its 3Dmol viewer via molbuilder.viewer.create(canvas); wrap that
-    // factory (BEFORE embed()) so every viewer's addSphere records the center it is handed.
     const vapi = window.molbuilder.viewer;
     const origCreate = vapi.create;
+    const spy = { addModelsAsFrames: 0, addSphere: 0, setClickableFalse: 0 };
+    window.__spy = spy;
     vapi.create = function () {
         const v = origCreate.apply(this, arguments);
-        const origSphere = v.addSphere.bind(v);
-        v.addSphere = function (spec) {
-            try { window.__halo.push(spec && spec.center); } catch (_) {}
-            return origSphere(spec);
+        const wrap = (name, hit) => {
+            if (typeof v[name] !== "function") return;
+            const orig = v[name].bind(v);
+            v[name] = function () { try { hit(arguments); } catch (_) {} return orig.apply(v, arguments); };
         };
+        wrap("addModelsAsFrames", () => spy.addModelsAsFrames++);
+        wrap("addSphere",         () => spy.addSphere++);
+        wrap("setClickable", (a) => { if (a[1] === false) spy.setClickableFalse++; });
         return v;
     };
-    window.__halo = [];
+
     const host = document.createElement("div");
     host.style.width = "400px"; host.style.height = "300px";
     document.body.appendChild(host);
@@ -76,55 +71,46 @@ _PROBE = r"""
         xyz: "2\n\nO 0 0 0\nH 5 0 0\n",
         card: { bare: true, showInfoLine: false },
     });
-    // Two-frame movie: atom 0 moves 0->5 along x; atom 1 stays at 5.
-    h.setAnimation({
-        kind: "trajectory",
-        frames: [[[0, 0, 0], [5, 0, 0]], [[5, 0, 0], [5, 0, 0]]],
-    });
-    // A selection halo on atom 0 -- setOverlays draws it at the shown frame (0).
-    window.__halo = [];
+    // Two-frame native movie: atom 0 moves 0 -> 5.
+    h.setAnimation({ kind: "trajectory", frames: [[[0,0,0],[5,0,0]], [[5,0,0],[5,0,0]]] });
+    // A selection halo on atom 0 -> should build + style the SECOND (halo) model.
     h.setOverlays({ atoms: [{ indices: [0], halo: { color: "yellow", radius: 0.7 } }] });
-    const f0 = window.__halo.slice();
+    const afterSelect = { addModelsAsFrames: spy.addModelsAsFrames,
+                          addSphere: spy.addSphere,
+                          setClickableFalse: spy.setClickableFalse };
 
-    // The frame swap must RE-PLACE the halo at frame 1 (atom 0 -> x=5).  The bug left it
-    // frozen at frame 0: setOverlays idempotence-bails on the unchanged spec, and (pre-fix)
-    // _postFramePositionRedraw omitted the overlay-halo redraw -> the halo never repainted.
-    window.__halo = [];
+    // Frame swap: the halo model must ride the movie — no rebuild, no shape re-placement.
+    const beforeSwap = { addModelsAsFrames: spy.addModelsAsFrames, addSphere: spy.addSphere };
     h.setAnimationFrame(1);
-    const f1 = window.__halo.slice();
+    const afterSwap = { addModelsAsFrames: spy.addModelsAsFrames, addSphere: spy.addSphere };
 
-    h.dispose(); host.remove();
     vapi.create = origCreate;
-    return { f0, f1 };
+    h.dispose(); host.remove();
+    return { afterSelect, beforeSwap, afterSwap };
 }
 """
 
 
-def _max_x(centers):
-    xs = [c["x"] for c in centers if c and "x" in c]
-    return max(xs) if xs else None
-
-
-class TestOverlayHaloTracksFrame:
-    def test_selection_halo_follows_the_shown_frame(self, page, flask_server):
+class TestTrajectoryHaloSecondModel:
+    def test_halo_is_a_second_model_that_rides_the_movie(self, page, flask_server):
         page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#molview-host .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(200)
         out = page.evaluate(_PROBE)
 
-        # setOverlays drew the halo at frame 0 -- proves the harness/spy works.
-        assert out["f0"], "no halo drawn by setOverlays at frame 0 (harness broken)"
-        x0 = _max_x(out["f0"])
-        assert x0 is not None and abs(x0) < 0.5, (
-            f"frame-0 halo center x should be ≈0; got {x0}")
+        sel = out["afterSelect"]
+        # A halo on a trajectory builds a SECOND native movie (main movie + halo model = 2 calls).
+        assert sel["addModelsAsFrames"] >= 2, (
+            f"expected a second (halo) model built; addModelsAsFrames={sel['addModelsAsFrames']}")
+        # Halos are NOT free-standing shapes any more — they live on the model's style.
+        assert sel["addSphere"] == 0, (
+            f"trajectory halos must not be addSphere shapes; got {sel['addSphere']}")
+        # The halo model is non-clickable so a pick lands on the real atom, not the surround.
+        assert sel["setClickableFalse"] >= 1, "halo model must be setClickable(false)"
 
-        # The discriminator: a frame swap must REPAINT the halo at the new position.
-        # The bug skipped that repaint entirely, so f1 is empty (halo frozen at frame 0).
-        assert out["f1"], (
-            "frame-1 halo was never repainted -- it stayed frozen at frame 0 "
-            "(setOverlays idempotence-bail + missing _postFramePositionRedraw redraw)")
-        x1 = _max_x(out["f1"])
-        # Atom 0 moved to x=5, so the repainted halo must land at x≈5.
-        assert x1 is not None and abs(x1 - 5.0) < 0.5, (
-            f"frame-1 halo center x should track the atom to ≈5; got {x1}")
+        # The decisive property: a frame swap RIDES the movie — no rebuild, no shape re-placement.
+        assert out["afterSwap"]["addModelsAsFrames"] == out["beforeSwap"]["addModelsAsFrames"], (
+            "a frame swap must NOT rebuild the halo model (it rides the native swap)")
+        assert out["afterSwap"]["addSphere"] == 0, (
+            "a frame swap must NOT add halo shapes (the halo model rides the movie)")

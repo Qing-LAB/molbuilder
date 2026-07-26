@@ -2992,16 +2992,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * Halos + markers draw as removable 3Dmol shapes / labels so
      * they can be cleared cleanly on next redraw or dispose.
      */
-    function _redrawOverlayHalosAndMarkers(state) {
-        // Clear previous overlay halo / marker shapes.
-        for (const s of state.overlayHaloShapes) {
-            try { state.viewer.removeShape(s); } catch (_) {}
-        }
-        for (const l of state.overlayMarkerLabels) {
-            try { state.viewer.removeLabel(l); } catch (_) {}
-        }
-        state.overlayHaloShapes   = [];
-        state.overlayMarkerLabels = [];
+    // The ONE walk of the current overlay atoms: for each entry that passes `wants(entry)`, resolve
+    // its selector against the MAIN model's atoms and call cb(entry, atom, drawnIndex).  Markers,
+    // fallback halo shapes, and the halo-model apply all share this instead of repeating the
+    // selectedAtoms + selector-iteration loop three ways.
+    function _eachOverlayAtom(state, wants, cb) {
         if (!state.current.overlays) return;
         let atoms = [];
         try {
@@ -3009,37 +3004,69 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             atoms = model ? model.selectedAtoms({}) : [];
         } catch (_) {}
         if (atoms.length === 0) return;
-
         for (const entry of state.current.overlays.atoms) {
-            if (!entry.halo && !entry.marker) continue;
+            if (!wants(entry)) continue;
             const sel = _resolveOverlaySelector(entry, atoms);
-            for (const idx of sel.indices) {
-                const a = atoms[idx];
-                if (entry.halo) {
-                    try {
-                        const halo = state.viewer.addSphere({
-                            center:  { x: a.x, y: a.y, z: a.z },
-                            radius:  entry.halo.radius,
-                            color:   entry.halo.color,
-                            opacity: entry.halo.opacity,
-                        });
-                        state.overlayHaloShapes.push(halo);
-                    } catch (_) {}
-                }
-                if (entry.marker) {
-                    try {
-                        const glyph = _markerGlyph(entry.marker.kind);
-                        const lbl = state.viewer.addLabel(glyph, {
-                            position:          { x: a.x, y: a.y, z: a.z },
-                            fontSize:          14,
-                            fontColor:         entry.marker.color,
-                            backgroundOpacity: 0,
-                            inFront:           true,
-                        });
-                        state.overlayMarkerLabels.push(lbl);
-                    } catch (_) {}
-                }
+            for (const idx of sel.indices) cb(entry, atoms[idx], idx);
+        }
+    }
+
+    // Overlay MARKERS (glyph labels) are free-standing labels at atom coordinates — re-placed
+    // per frame (_postFramePositionRedraw) and on a content change.
+    function _redrawOverlayMarkers(state) {
+        for (const l of state.overlayMarkerLabels) {
+            try { state.viewer.removeLabel(l); } catch (_) {}
+        }
+        state.overlayMarkerLabels = [];
+        _eachOverlayAtom(state, (e) => e.marker, (entry, a) => {
+            try {
+                state.overlayMarkerLabels.push(state.viewer.addLabel(
+                    _markerGlyph(entry.marker.kind), {
+                        position:          { x: a.x, y: a.y, z: a.z },
+                        fontSize:          14,
+                        fontColor:         entry.marker.color,
+                        backgroundOpacity: 0,
+                        inFront:           true,
+                    }));
+            } catch (_) {}
+        });
+    }
+
+    // Overlay HALOS as free-standing addSphere shapes — the FALLBACK path (single static
+    // structure, or a trajectory above the halo-model size cap).  Re-placed per frame + on change.
+    function _redrawOverlayHaloShapes(state) {
+        for (const s of state.overlayHaloShapes) {
+            try { state.viewer.removeShape(s); } catch (_) {}
+        }
+        state.overlayHaloShapes = [];
+        _eachOverlayAtom(state, (e) => e.halo, (entry, a) => {
+            try {
+                state.overlayHaloShapes.push(state.viewer.addSphere({
+                    center:  { x: a.x, y: a.y, z: a.z },
+                    radius:  entry.halo.radius,
+                    color:   entry.halo.color,
+                    opacity: entry.halo.opacity,
+                }));
+            } catch (_) {}
+        });
+    }
+
+    // Content-change entry (setOverlays / structural regen): markers are always shapes; halos go
+    // to the second MODEL when it applies (rides the movie), else to addSphere shapes (§8.1 Rule 2).
+    function _redrawOverlayHalosAndMarkers(state) {
+        _redrawOverlayMarkers(state);
+        if (_useHaloModel(state)) {
+            // drop any stale fallback shapes, then style the halo model.
+            if (state.overlayHaloShapes.length) {
+                for (const s of state.overlayHaloShapes) { try { state.viewer.removeShape(s); } catch (_) {} }
+                state.overlayHaloShapes = [];
             }
+            _applyHaloModel(state);
+        } else {
+            // Fell back to shapes (no longer a trajectory, or grew past the size cap mid-stream):
+            // remove the halo model so it doesn't linger holding ~2x memory, then draw shapes.
+            if (state.haloModel) _disposeHaloModel(state);
+            _redrawOverlayHaloShapes(state);
         }
     }
 
@@ -3397,21 +3424,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     function _postFramePositionRedraw(state) {
-        // Position-aware overlays must recompute every frame so they track the moving
-        // atoms.  Cell wireframe is lattice-only (static); axes are origin-anchored
-        // (static); arrows are per-frame baked (arrowsPerFrame, redrawn in
-        // _showTrajectoryFrame).
-        //
-        // Overlay HALOS / MARKERS belong here too (bug fixed 2026-07-25, seen as halos
-        // drifting off atoms in a played trajectory -- the Results tab): they are drawn
-        // as shapes at the atom's CURRENT position, so a frame swap must re-place them.
-        // The engine re-hands the shown frame's overlay spec via setOverlays every frame,
-        // but that spec is UNCHANGED while the selection holds, so setOverlays'
-        // idempotence bail (``_equalNormalised -> return``) skips the redraw -- the halos
-        // stay frozen at frame 0.  A frame change is a POSITION change the spec doesn't
-        // encode, so we repaint here, unconditionally, on every swap.
+        // Position-aware SHAPE overlays are free-standing 3Dmol shapes at atom coordinates, so a
+        // frame swap must re-place them (cell wireframe is lattice-only static; axes origin-
+        // anchored; arrows are per-frame baked, redrawn in _showTrajectoryFrame).  §8.1 Rule 2:
+        //   - halos on the SECOND MODEL ride the native swap FOR FREE -- do NOT re-apply here
+        //     (that would setStyle the whole halo model every frame, the ~416ms cost we removed);
+        //   - only the shape-rendered layers re-place: labels, glyph markers, the fallback halo
+        //     shapes (when no halo model), and the bare-embed pick halos.
         _redrawLabels(state);
-        _redrawOverlayHalosAndMarkers(state);
+        _redrawOverlayMarkers(state);
+        if (!_useHaloModel(state)) _redrawOverlayHaloShapes(state);
         _redrawPickHalos(state);
     }
 
@@ -3459,6 +3481,20 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return parts.join("\n");
     }
 
+    // Push ONE new native frame onto a model: clone the frame-0 atoms template (keeps element +
+    // bond topology) and stamp the new coords.  Shared by appendFrames for BOTH the main model and
+    // the §8.1 halo second-model so they stay frame-aligned without a rebuild.
+    function _stampFrame(model, template, coords) {
+        const atoms = template.map(function (at, i) {
+            const c = coords[i] || [0, 0, 0];
+            const na = Object.assign({}, at);
+            na.x = c[0]; na.y = c[1]; na.z = c[2];
+            return na;
+        });
+        if (typeof model.addFrame === "function") model.addFrame(atoms);
+        else model.frames.push(atoms);
+    }
+
     // Replace the current single model with a native multi-frame movie.  Returns
     // true on success.  The element identity comes from the CURRENT model (the
     // trajectory's frame 0 was already loaded via setStructure); the coords come
@@ -3471,6 +3507,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const xyz = _multiFrameXyz(elements, frames);
         try {
             viewer.removeAllModels();
+            state.haloModel = null;   // wiped with the old models; rebuilds lazily on next halo
             viewer.addModelsAsFrames(xyz, "xyz");
         } catch (e) {
             _dispatchInvalidInput(state,
@@ -3510,6 +3547,96 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             if (!atoms) return null;
             return atoms.map((a) => [a.x, a.y, a.z]);
         } catch (_) { return null; }
+    }
+
+    // ----- §8.1 halo second-model -------------------------------------------------------
+    //
+    // For a NATIVE trajectory (multi-frame) under the size cap, selection/region/frozen halos
+    // render as a DUPLICATE movie model: the same per-frame coords as the main model, styled
+    // with translucent spheres on the highlighted atoms and setClickable(false).  3Dmol's
+    // setFrame swaps ALL models together, so the halos ride the native swap FOR FREE (~11ms/
+    // frame, ~88fps) and a selection click is one setStyle on the delta (~35ms) -- vs re-placing
+    // addSphere shapes every frame (~416ms/frame, ~2fps).  Head-to-head + rationale:
+    // molview-render-streamline.md §8.1.  Cost: ~2x coordinate memory, so above the cap (or for a
+    // single static structure) halos fall back to the addSphere-shape path (_redrawOverlayHaloShapes).
+    var _HALO_MODEL_MAX_ATOMFRAMES = 400000;
+
+    function _useHaloModel(state) {
+        const a = state.current && state.current.animation;
+        if (!a || a.kind !== "trajectory" || !a.native) return false;
+        const nf = _trajFrameCount(state);
+        if (nf <= 1) return false;
+        const na = _atomCount(state.viewer);
+        return na > 0 && (na * nf) <= _HALO_MODEL_MAX_ATOMFRAMES;
+    }
+
+    function _disposeHaloModel(state) {
+        if (state.haloModel) {
+            try { state.viewer.removeModel(state.haloModel); } catch (_) {}
+        }
+        state.haloModel = null;
+    }
+
+    // Build the duplicate movie model once (lazy).  Reads the frames back from the MAIN model so
+    // there is no second JS coords copy kept around; 3Dmol owns the halo model's native frames.
+    function _ensureHaloModel(state) {
+        if (state.haloModel) return state.haloModel;
+        if (!_useHaloModel(state)) return null;
+        const viewer = state.viewer;
+        const elements = _elements(viewer);
+        const nf = _trajFrameCount(state);
+        if (!elements.length || nf < 1) return null;
+        const frames = [];
+        for (let f = 0; f < nf; f++) {
+            const c = _trajFrameCoords(state, f);
+            if (!c) return null;
+            frames.push(c);
+        }
+        try {
+            const added = viewer.addModelsAsFrames(_multiFrameXyz(elements, frames), "xyz");
+            const m = Array.isArray(added) ? added[added.length - 1] : added;
+            state.haloModel = m || null;
+            if (state.haloModel) {
+                viewer.setStyle({ model: state.haloModel }, {});            // hidden until styled
+                viewer.setClickable({ model: state.haloModel }, false);
+                // sync the new model to the shown frame (addModelsAsFrames starts at frame 0).
+                const cur = (state.current.animation && state.current.animation.currentFrame) || 0;
+                try { viewer.setFrame(cur); } catch (_) {}
+            }
+        } catch (_) { state.haloModel = null; }
+        return state.haloModel;
+    }
+
+    // Apply the current overlay halos to the halo model: one translucent sphere per haloed atom,
+    // coloured by the TOP-priority layer (overlays.atoms are in draw order region->frozen->selection,
+    // so a later entry wins).  hide-all + one setStyle per colour group = the delta; a frame swap
+    // then moves them for free.  No-ops (and does not build the model) when there are no halos and
+    // no model to clear.
+    function _applyHaloModel(state) {
+        const viewer = state.viewer;
+        const perAtom = {};        // drawn index -> halo style (top priority)
+        const order = [];
+        _eachOverlayAtom(state, (e) => e.halo, (entry, _a, idx) => {
+            if (!(idx in perAtom)) order.push(idx);
+            perAtom[idx] = entry.halo;              // later entry overrides (selection on top)
+        });
+        if (!order.length && !state.haloModel) return;  // nothing to show, no model to clear
+        const m = _ensureHaloModel(state);
+        if (!m) return;
+        try { viewer.setStyle({ model: m }, {}); } catch (_) {}   // clear every halo sphere
+        const groups = {};
+        for (const idx of order) {
+            const h = perAtom[idx];
+            const key = h.color + "|" + h.radius + "|" + h.opacity;
+            (groups[key] = groups[key] || { style: h, idx: [] }).idx.push(idx);
+        }
+        for (const key of Object.keys(groups)) {
+            const g = groups[key];
+            try {
+                viewer.setStyle({ model: m, index: g.idx },
+                    { sphere: { radius: g.style.radius, color: g.style.color, opacity: g.style.opacity } });
+            } catch (_) {}
+        }
     }
 
     function _startTrajectoryLoop(state) {
@@ -3873,6 +4000,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // halos and markers are removable shapes / labels.
             overlayHaloShapes:   [],
             overlayMarkerLabels: [],
+            // §8.1 halo second-model: for a native trajectory under the size cap, halos render
+            // as a duplicate movie model (translucent spheres, setClickable false) that rides the
+            // native frame swap for free.  null when absent / below the trajectory threshold
+            // (then halos fall back to overlayHaloShapes above).
+            haloModel:           null,
 
             // Camera persistence per § 4.2.  hasFirstStructure flips
             // true after the first non-empty structure mounts; before
@@ -4074,6 +4206,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             state.current.animationProvider = null;
             _removeFrameStrip(state);
             _loadStructure(state.viewer, state.current);
+            state.haloModel = null;   // removeAllModels wiped it; rebuilds lazily on next halo
             // Review fix U7: new atom set → clickable flags reset on
             // 3Dmol's side; force _wirePick to re-register on the new
             // atoms.
@@ -4662,16 +4795,14 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // then push as a new native frame -- 3Dmol owns the coords.
                 const m = _mainModel(state.viewer);
                 const template = m && m.frames && m.frames[0];
+                // Keep the §8.1 halo second-model frame-aligned: append the SAME new frames to it
+                // so a later setFrame doesn't run off its end (else it silently desyncs).
+                const hm = state.haloModel;
+                const htemplate = hm && hm.frames && hm.frames[0];
                 if (m && template) {
                     for (const f of frames) {
-                        const atoms = template.map(function (at, i) {
-                            const c = f[i] || [0, 0, 0];
-                            const na = Object.assign({}, at);
-                            na.x = c[0]; na.y = c[1]; na.z = c[2];
-                            return na;
-                        });
-                        if (typeof m.addFrame === "function") m.addFrame(atoms);
-                        else m.frames.push(atoms);
+                        _stampFrame(m, template, f);
+                        if (hm && htemplate) _stampFrame(hm, htemplate, f);
                     }
                     a.frameCount = _trajFrameCount(state);
                 }
@@ -5915,6 +6046,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 for (const l of state.pickLabels) state.viewer.removeLabel(l);
                 for (const s of state.overlayHaloShapes) state.viewer.removeShape(s);
                 for (const l of state.overlayMarkerLabels) state.viewer.removeLabel(l);
+                state.haloModel = null;   // §8.1 halo model — goes with viewer.clear() below
                 state.viewer.clear();
             } catch (_) {}
             // Stop tracking container size changes (4a-2 setup).
