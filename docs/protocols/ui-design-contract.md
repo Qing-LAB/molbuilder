@@ -213,9 +213,15 @@ JS-measured `--app-header-h`).
 
 ### 4.2 Dock panel — the ONE foldable sidebar component
 
-A **dock panel** (`.dock-panel`, `app-shell.css`) is the single reusable sidebar.
-The **projects sidebar** and the **checkpoint panel** are *instances* of it — not
-bespoke layouts. Every dock panel has:
+> **Status:** TARGET, not yet built. Today there is ONE sidebar (projects),
+> styled directly by `projects-sidebar.css` + the app-shell in-flow override
+> there. The shared `.dock-panel` base earns its place WHEN the checkpoint
+> panel lands (a second instance = a real pattern, §2.1) — building it before
+> then would be a one-consumer abstraction. Build it against THIS spec.
+
+A **dock panel** (`.dock-panel`, `app-shell.css`) will be the single reusable
+sidebar. The **projects sidebar** and the **checkpoint panel** are *instances*
+of it — not bespoke layouts. Every dock panel has:
 
 - a **header** (title + fold toggle);
 - **fold** to a thin edge rail with a reopen tab, persisted per panel;

@@ -61,12 +61,8 @@ body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
   display: none;
 }
 
-/* ---- dock panel base (the ONE foldable sidebar; §4.2) ------------- */
-body[data-sidebars] .dock-panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
+/* NOTE: the reusable ``.dock-panel`` base (§4.2) lands WITH the checkpoint
+ * panel -- when there is a SECOND sidebar the shared dock geometry becomes a
+ * real pattern (appears twice).  Today the one sidebar (projects) is styled by
+ * its own sheet + the in-flow override there; don't add a one-consumer
+ * abstraction before it earns its place (ui-design-contract §2.1). */

@@ -302,13 +302,12 @@ async function init() {
   // and lock() becomes a silent no-op visually.
   initLockUI();
 
-  // NOTE: `class="has-projects-sidebar"` is set on <body> in each
-  // template that includes the sidebar partial -- NOT here.  Adding
-  // it via JS races with the initial paint: any layout-sensitive
-  // widget that init'd before the type=module script ran (Plotly
-  // plots in Watch / Spectra; 3Dmol viewer; CSS-grid auto-fit
-  // dependent layouts) would have measured the WIDER pre-sidebar
-  // geometry and look broken until the next browser resize.
+  // NOTE: `data-sidebars="projects"` is set on <body> in each template
+  // (server-side) -- NOT here.  The app-shell layout (lib/app-shell.css) is
+  // pure CSS off that attribute, so the FIRST paint already has the correct
+  // sidebar-beside-content geometry; adding it via JS would race the initial
+  // paint and make layout-sensitive widgets (Plotly, 3Dmol) measure a wrong
+  // geometry until the next resize.
   // Resolve projects/ root from the backend's single-root contract.
   // 2026-05-30: apiRoots now returns the uniform envelope
   // ``{ok, roots, error?}`` -- failure cases (network drop, server

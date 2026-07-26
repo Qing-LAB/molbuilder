@@ -24,15 +24,12 @@
  * referenced via fallbacks AND --ps-danger / --ps-warn-* for the
  * red/amber severity surfaces. */
 
-/* Shift the page content right to make room for the sidebar.
- * The sidebar fills the FULL viewport height (top: 0 -> bottom: 0),
- * so the page header + app-tabs nav naturally live to its right
- * (body's padding-left is the only shift; no negative-margin
- * pull-back needed).  This avoids the awkward "sidebar starts
- * half-way down the page" look when the user scrolls. */
-body.has-projects-sidebar {
-  padding-left: var(--ps-w);
-}
+/* Desktop layout is owned by the app shell (lib/app-shell.css): the sidebar is
+ * an in-flow flex child of the .sidebar-rail (see the app-shell override
+ * below).  The ``position: fixed`` base here is the MOBILE-DRAWER base -- on a
+ * narrow viewport (@media max-width: 640px) the sidebar slides in as a fixed
+ * overlay.  (The old ``body.has-projects-sidebar { padding-left }`` shim was
+ * retired when every tab moved to the app-shell flex layout.) */
 
 .projects-sidebar {
   position: fixed;
@@ -51,19 +48,22 @@ body.has-projects-sidebar {
 }
 
 /* App-shell mode (ui-design-contract.md §4.1-4.3): the sidebar is an IN-FLOW
- * dock panel inside the ``.sidebar-rail`` grid area -- NOT position:fixed.
- * ``position: relative`` (not static) so the absolute resize handle still
- * anchors to it.  Active only on a tab that opts in via body[data-sidebars];
- * a not-yet-migrated tab keeps the fixed rule above. */
-body[data-sidebars] .projects-sidebar {
-  position: relative;
-  top: auto;
-  left: auto;
-  bottom: auto;
-  width: var(--ps-w);
-  height: 100%;
-  z-index: auto;
-  flex: 0 0 auto;
+ * flex child of the ``.sidebar-rail`` -- NOT position:fixed.  ``position:
+ * relative`` (not static) so the absolute resize handle still anchors to it.
+ * DESKTOP ONLY (min-width: 641px): below that the narrow-viewport drawer
+ * (@media max-width: 640px, further down) reclaims ``position: fixed`` for the
+ * slide-in overlay, so this override must not out-specificity it there. */
+@media (min-width: 641px) {
+  body[data-sidebars] .projects-sidebar {
+    position: relative;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    width: var(--ps-w);
+    height: 100%;
+    z-index: auto;
+    flex: 0 0 auto;
+  }
 }
 
 /* ---- Width-resize handle (2026-06-12) ------------------------------
@@ -202,9 +202,10 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   display: none;
 }
 
-body.is-projects-sidebar-collapsed {
-  padding-left: 0;
-}
+/* Desktop collapse: the app shell hides the whole rail
+ * (body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail { display:none },
+ * lib/app-shell.css), so no body-padding reset is needed here.  The transform
+ * below is the MOBILE-DRAWER slide-out (the aside is position:fixed there). */
 body.is-projects-sidebar-collapsed .projects-sidebar {
   transform: translateX(-100%);
   visibility: hidden;

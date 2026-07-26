@@ -33,12 +33,11 @@
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 </head>
 <body data-sidebars="projects"><!--
- has-projects-sidebar applies the body padding-left for the fixed
- sidebar.  Set server-side so the first paint already has the
- correct layout -- if we waited for the type=module sidebar JS to
- add the class, Plotly + other layout-sensitive widgets would
- initialise with the wider pre-sidebar geometry and look broken
- until the next window-resize event triggered their re-layout. -->
+ data-sidebars="projects" opts this tab into the app-shell flex layout
+ (lib/app-shell.css): the sidebar rail + content share a flex row below the
+ nav.  Set server-side so the FIRST paint already has the correct layout --
+ pure CSS, no JS measurement -- so Plotly + other layout-sensitive widgets
+ never initialise against a wrong geometry. -->
 
 {% set active_tab = "structure-optimization" %}
 {% include "_app_header.html" %}
