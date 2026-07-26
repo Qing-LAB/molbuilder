@@ -97,7 +97,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
 |---|---|---|
 | `to_dict()` → `dict` (`:574`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
 | `from_dict(d)` → `Structure` (`:593`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
-| `to_wire()` → `dict` (`:615`) | The read-only shape an endpoint returns to the browser: `to_dict()` **plus** server-resolved derivations the client must not recompute (`resolve_cell` / `resolve_cell_origin`), the flat `atoms` render list, and legacy aliases. | No — a superset view |
+| `to_wire()` → `dict` (`:615`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`cell_origin`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`resolved_cell_origin` the client must not recompute) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
 
 ```python
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
@@ -110,17 +110,23 @@ Three methods on `Structure` (`structure.py`), all shipped:
 ```
 
 **Why two methods, not one flag.** `to_dict()` is the loss-free round-trip
-unit (persistence, sidecar, CLI). `to_wire()` is a browser-only superset
-(derived fields + render list + back-compat aliases) that `from_dict` never
-has to invert. The resolved cell/origin is computed **once**, inside
-`to_wire()`, so it can never drift or drop.
+unit (persistence, sidecar, CLI); `from_dict` inverts it. `to_wire()` is a
+**separate** read-only view for the browser — identity columns + the
+flattened, server-resolved periodicity + annotations — that `from_dict` never
+has to invert. It is **not** a superset of `to_dict` (it drops `positions` and
+the nested `metadata` shape); the flat `atoms` render list and the legacy
+top-level aliases are added on top by the web layer (below). The resolved
+cell/origin is computed **once**, inside `to_wire()`, so it can never drift or
+drop.
 
 > **Verified against code (2026-07-26):** `_shared.structure_to_dict`
 > (`web/blueprints/_shared.py:346`) was **not** deleted (as an earlier draft
-> of this contract claimed) — it is retained as a thin back-compat wrapper
-> that calls `struct.to_wire()` and re-exposes a few top-level legacy keys.
-> `ok_structure_response` (`:423`) wraps it. New code calls `to_wire()`
-> directly.
+> of this contract claimed). It is the web layer's **composer**: it combines
+> `workspace_payload(struct)` (the render `atoms` list, `text`/`xyz`, `issues`,
+> `extra`) with `struct.to_wire()` (identity columns + periodicity +
+> annotations) and adds the legacy top-level aliases existing consumers read.
+> `ok_structure_response` (`:423`) wraps it. Code that needs only the metadata
+> view calls `to_wire()` directly.
 
 ### 2.2 The metadata authority — `metadata_to_dict` / `apply_metadata_dict`
 
@@ -319,14 +325,17 @@ sequenceDiagram
 
 | Consumer | `file:function` | Call |
 |---|---|---|
-| Modify — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `openMolecule(path, {confirmDiscard})` |
-| Modify — Save panel | `modify/structure/save.js:_saveDataset` | `saveMolecule(path, {overwrite})` + dialog |
+| Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `openMolecule(path, {confirmDiscard})` |
+| Molbuilder tab — Save panel | `modify/structure/save.js:_saveDataset` | `saveMolecule(path, {overwrite})` + dialog |
 | Transport commit | `lib/transport/core.js:_showInMolview` | `openMolecule(path)` + `molview.mount` |
 | Spectra commit | `spectra/viewer.js:_commitStructure` | `openMolecule(path)` + `molview.mount` |
 | Results structure inspector | `lib/inspectors/structure.js` | `openMolecule(path)` + `molview.mount` |
 | Structure-optimization | `structure-optimization/viewer.js:_commitStructure` | `openMolecule(path)`; reads state off the model |
 | Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js` | `molview.data.installMolecule({text})` (not a door) |
 | Trajectory inspector | `lib/trajectory/core.js` | `installMolecule({text})` + `reloadFrames(...)` |
+
+> The Molbuilder tab's static files live under `modify/` — the `/modify`
+> route was renamed to `/molbuilder`, but the directory name is historical.
 
 "Load + mount is ONE shared path": Transport, Spectra, and the Results
 inspector each open the picked file via `openMolecule(path)`, then
@@ -372,8 +381,8 @@ flowchart TB
 | tab / UI | wiring buttons; UI policy (dirty/overwrite — injected) | reaches past a door |
 
 **Where the sidecar schema lives** (server, one home):
-`sidecars/molstruct.py` — `apply_to_structure(struct, dict)` (`:467`),
-`load_text(text)`, `save(...)` (`:412`), `sidecar_path_for(xyz)` (`:90`). The
+`sidecars/molstruct.py` — `apply_to_structure(struct, dict)` (`:370`),
+`load_text(text)`, `save(...)` (`:315`), `sidecar_path_for(xyz)` (`:89`). The
 byte layer knows the pair only as "which bytes travel together"; interpreting
 it (parse + apply the schema) happens only inside the server seam. Clicking a
 `.molstruct.json` in the sidebar shows its JSON via the `source` inspector —
@@ -426,8 +435,8 @@ language.
 (`/api/build/load`, `/api/structure/save`); the JS doors (`parser.js`) with
 every consumer above repointed; the JS periodicity field-whitelist replaced by
 verbatim deep-clone; the old `molview.data` file stack + `/api/workingcopy/*`
-door path removed. `_shared.structure_to_dict` retained as a thin back-compat
-wrapper over `to_wire()`.
+door path removed. `_shared.structure_to_dict` retained as the web composer
+(`workspace_payload` + `to_wire` + legacy aliases), not deleted.
 
 **Open work** (tracked in `roadmap.md`): route the **CLI** load/save through
 `StructureCodec` so a CLI save emits the `.xyz` + `.molstruct.json` pair like

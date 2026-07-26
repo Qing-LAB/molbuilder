@@ -148,24 +148,23 @@ The transport engine abstraction (a registry of engines behind one
 `TransportConfig` + `Structure` pair) shipped as Phase B.2. Phase B.3
 fills in the concrete engines and the results path.
 
-**TranSIESTA** — the zero-bias device `.fdf` is shipped. Still open:
+**TranSIESTA** — the zero-bias device `.fdf` and the **electrode `.fdf`
+wizard** are shipped (`transport/wizard.py`; `molbuilder transport electrode`
+extracts a labelled `*-electrode` region's atoms from the device and emits the
+matching bulk-lead `.fdf`, plus a `transport preflight` device↔electrode
+contract check). Still open:
 
-1. **Electrode `.fdf` wizard.** TranSIESTA needs a separate Hamiltonian
-   file per electrode. Today users build the lead geometry and emit its
-   SIESTA input by hand; planned is a wizard that extracts the labelled
-   `L-electrode` / `R-electrode` regions from the device structure and
-   emits the matching SIESTA input automatically.
-2. **Bias scan.** `bias_voltages_v` is a list, but the engine emits only
+1. **Bias scan.** `bias_voltages_v` is a list, but the engine emits only
    the first value (with a preflight warning when more are given).
    Planned: one input per bias point plus a driver — **delivered through
    the batch framework's Phase 3**, not as separate code.
-3. **Output parsing + schema.** `parse_output` is not yet implemented for
-   transport; it needs a `<job>.transport.json` schema designed first
-   (mirroring the spectra sidecar).
-4. **Results inspector.** No in-app way to view transmission data yet;
+2. **Output parsing + schema.** `parse_output` is not yet implemented for
+   transport (raises `NotImplementedError`); it needs a `<job>.transport.json`
+   schema designed first (mirroring the spectra sidecar).
+3. **Results inspector.** No in-app way to view transmission data yet;
    planned is a transport inspector on `/results` (a transmission-vs-energy
    chart, and an I–V chart once multi-bias data exists).
-5. **Methods-paragraph generator.** Today a placeholder; the full version
+4. **Methods-paragraph generator.** Today a placeholder; the full version
    lands with output parsing so it can interpolate real run parameters.
 
 **PySCF-NEGF** — planned. A Gaussian-basis NEGF engine for smaller device
@@ -282,8 +281,8 @@ Shipped items, newest first. Each landed with a decisions-log entry in
 `git log`. Durable *reference* for a shipped feature lives in its
 domain doc, not here.
 
-- **Six-tab UI** — Molbuilder · Structure-optimization · Spectrum-calculation
-  · Transport-calculation · Results, plus a Documents tab. The former
+- **Six-tab UI** — Molbuilder · Structure optimization · Spectrum calculation
+  · Transport calculation · Results, plus a Documents tab. The former
   four-tab layout's reorganization (Phases A–D) is complete.
 - **JobSet CLI framework** — `plan` / `prep` / `submit` / `status` over a
   bundle's `job-set.json`; both execution modes (local `bash`, SLURM
