@@ -340,8 +340,8 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
   shown frame's overlay spec after each swap, but that spec is **unchanged** while the selection
   holds, so `setOverlays`' idempotence bail (`_equalNormalised → return`) correctly skips a
   redundant re-derive; the embed's per-frame repaint is what actually re-places the shapes.
-  §8.1 states this as the general rule (content spec stable across a swap; the embed re-places
-  from the movie). (Bug fixed 2026-07-25: overlay halos/markers were missing from
+  **§8.1 makes this the rule and drops the redundant per-swap re-hand** — the engine hands overlay
+  specs only on a *content* change (not on a frame swap), and the embed re-places on the swap. (Bug fixed 2026-07-25: overlay halos/markers were missing from
   `_postFramePositionRedraw`, so with the spec-diff also bailing they stayed frozen at frame 0 —
   halos drifting off atoms in a played trajectory, seen in the Results tab. Regression:
   `tests/test_overlay_frame_tracking_e2e.py`.)
@@ -385,9 +385,12 @@ flowchart TD
 ### 8.1 Overlay layers — fine-grained invalidation + reconciliation
 
 > **Status (2026-07-25):** TARGET, staged below. Today the **overlay-refresh** tier is
-> *coarse*: any overlay change re-runs the whole per-frame processor and each layer
-> clears-and-rebuilds wholesale, so a **one-atom selection click rebuilds every halo** —
-> O(system size) work for an O(1) change, felt as click-to-select lag on large selections.
+> *coarse* in two ways: (a) it re-runs the **whole** per-frame processor (recomputes every
+> layer's spec) even for a one-layer change, and (b) the **touched** layer clears-and-rebuilds
+> **all** its shapes — so a one-atom selection click recomputes the entire frame *and* rebuilds
+> **every** halo (region + frozen + selection), not just the clicked atom. (The other layers'
+> setters idempotence-bail when unchanged, so they don't redraw — but the two costs above are
+> O(system size) for an O(1) change, felt as click-to-select lag on large selections.)
 > This section is the model that tier is being refined toward. It does **not** change the
 > four tiers above; it makes the *overlay-refresh* tier do the least work, and it is what
 > guarantees correctness when many view options are combined.
@@ -407,15 +410,26 @@ layers**, each a **pure function of a declared subset of inputs**:
 | axes | `showAxis` · origin | — | axis toggle |
 | pick halo | picked set | position | in-window pick |
 
+The **pick halo** is the embed's built-in click highlight for a **bare** embed with no selection
+engine; in the full MolView flow the engine's **selection halos** do this instead (the adapter
+runs with `paintHalos:false`, §10). Both are the same *kind* of layer — an atom-keyed highlight —
+so they follow the same two rules below.
+
 **Two inputs, two owners — the spec / position split:**
 
 - **Content** decides *what* a layer draws. Frame-independent, owned by the **engine**, and
-  keyed by **original atom index — never a coordinate**: labels `{index → text}`, halos
-  `{index → layer style}`, styles `{index → style}`.
-- **Position** decides *where*. Per frame, owned by the **embed** (it holds the loaded movie);
-  it resolves index → the current frame's coordinate at draw time. Force is the one extra
-  per-frame datum (the arrow vectors differ per frame), so arrows carry per-frame content,
-  baked into the movie as `arrowsPerFrame` (§8).
+  keyed by **atom index — its identity in the drawn model, never a coordinate** (the drawn
+  index; = the original index when not isolating, and the label *text* still shows the original
+  index via `sourceIndex`, §2.4 / §7.3): labels `{index → text}`, halos `{index → layer style}`,
+  styles `{index → style}`. (Reconciliation only runs when the drawn set is stable — a selection
+  change *while isolating* changes the drawn set and is a structural regen, §8 — so the drawn
+  index is a stable key across every reconcile.)
+- **Position** decides *where*. Per frame, owned by the **embed**: it resolves index → the
+  current frame's coordinate at draw time from the **loaded coordinate movie** (`model.frames` —
+  the very frames the engine handed at load, held by 3Dmol for fast native swaps; the same
+  coordinates as the engine's clean `_data.frames`, NOT a read-back of 3Dmol's rendered state,
+  §7.1). Force is the one extra per-frame datum (the arrow vectors differ per frame), so arrows
+  carry per-frame content, baked into the movie as `arrowsPerFrame` (§8).
 
 **Rule 1 — fine-grained invalidation.** A change dirties **only the layers that declare it as an
 input**. A selection click dirties **selection halos only**; `showIndex` dirties **labels only**;
