@@ -4,7 +4,7 @@
 **Domain:** model
 **Sub-document of:** [`structure.md`](structure.md) (its master — `annotations`,
 `regions`, `frozen_atoms` are `Structure` fields). **Companions:**
-`structure-sidecars.md` (the `.molstruct.json` envelope these persist in),
+`structure-molstruct.md` (the `.molstruct.json` envelope these persist in),
 `engines/siesta.md` + `engines/transport.md` (the engine input the channels
 are *translated* into — see § 4; the transport electrode-partition physics +
 references live in `engines/transport.md`).
@@ -133,7 +133,7 @@ The channels persist **identically wherever a structure is saved**:
 - **`.molstruct.json` sidecar.** `annotations` rides alongside
   `regions`/`frozen_atoms`/`cell`/… The annotations field was **added at schema
   v4**; the **current schema is v6** (`sidecars/molstruct.py:72`). Envelope +
-  version details are in `structure-sidecars.md`.
+  version details are in `structure-molstruct.md`.
 - **The `.fdf` / `.py` ATOM-METADATA reserved comment block.** The *same* data
   embedded in the generated script's comment area — the script's
   engine-agnostic copy of the data model (a PySCF script carries the identical

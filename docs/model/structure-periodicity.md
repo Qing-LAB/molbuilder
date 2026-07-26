@@ -3,7 +3,7 @@
 **Role:** contract
 **Domain:** model
 **Sub-document of:** [`structure.md`](structure.md) (its master — these are
-`Structure` fields). **Companions:** `structure-sidecars.md` (how they persist
+`Structure` fields). **Companions:** `structure-molstruct.md` (how they persist
 in `.molstruct.json`), `engines/siesta.md` (the **k-grid** DFT sampling
 parameter, which is a `SiestaConfig` knob — **not** a periodicity field; see
 the note below).
@@ -268,7 +268,7 @@ tabs expose the same groups against the same accessors.
 
 `cell`, `cell_origin`, `axis_kind`, and `vacuum` persist in the
 `.molstruct.json` sidecar (`pbc` stays derived; the envelope + schema are in
-`structure-sidecars.md`). **Schema v5 dropped the `kgrid` key** — periodicity
+`structure-molstruct.md`). **Schema v5 dropped the `kgrid` key** — periodicity
 carries no sampling parameter. Periodicity flows one way, read at each stage:
 
 ```mermaid

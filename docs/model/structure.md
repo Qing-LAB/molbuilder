@@ -9,7 +9,8 @@ visible in the name itself):
   axis_kind · derived pbc · vacuum (the per-axis box behaviour).
 - [`structure-annotations.md`](structure-annotations.md) — per-atom channel
   model (`tag`/`flag`/`value`) + the region-label vocabulary.
-- `structure-sidecars.md` — the `.molstruct.json` on-disk envelope *(pending)*.
+- [`structure-molstruct.md`](structure-molstruct.md) — the `.molstruct.json`
+  save file: envelope · schema versioning · codec · file pairing.
 
 **Companions** (separate model modules): `model/parse.md` (the read stack that
 produces a Structure from engine output), `model/data-vocabulary.md` (the model
@@ -149,13 +150,13 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 - **NOT in scope** (they sit *around* the contract): `selection_rules` (a
   sidecar-only pass-through) and the sidecar **envelope** (`schema_version` /
   `n_atoms_total` / `structure_hash` / `created_by` / `created_at`) — see
-  `structure-sidecars.md`.
+  `structure-molstruct.md`.
 
 **To add a metadata key:** (1) add the field to the dataclass with its
 `__post_init__` validation; (2) add it to `metadata_to_dict()` +
 `apply_metadata_dict()` — nowhere else; (3) if it must survive the sidecar,
 bump `SCHEMA_VERSION` and register the new version in the read module (see
-`structure-sidecars.md`); (4) if MolView must show/edit it, surface it in the web
+`structure-molstruct.md`); (4) if MolView must show/edit it, surface it in the web
 `to_wire` periodicity block and read it in `molview.data`; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 `to_dict`, or `apply_to_structure` — they read the field set from the two
