@@ -303,7 +303,7 @@ async function init() {
   initLockUI();
 
   // NOTE: `data-sidebars="projects"` is set on <body> in each template
-  // (server-side) -- NOT here.  The app-shell layout (lib/app-shell.css) is
+  // (server-side) -- NOT here.  The app-shell layout (lib/page-shell.css) is
   // pure CSS off that attribute, so the FIRST paint already has the correct
   // sidebar-beside-content geometry; adding it via JS would race the initial
   // paint and make layout-sensitive widgets (Plotly, 3Dmol) measure a wrong

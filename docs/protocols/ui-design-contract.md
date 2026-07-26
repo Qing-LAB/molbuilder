@@ -174,11 +174,11 @@ Reuse these; don't reinvent them per tab.
 
 ### 4.1 The app shell — page frame + sidebar rail (the outermost layout)
 
-> **Status (2026-07-25):** BUILT (`lib/app-shell.css`), live on all 5 tabs. The
+> **Status (2026-07-25):** BUILT (`lib/page-shell.css`), live on all 5 tabs. The
 > pre-2026-07 full-height `position:fixed` sidebar (header to its right) is
 > retired. Checkpoint-as-a-second-dock-panel is the remaining piece (§4.2).
 
-Every tab is framed by ONE shell (`lib/app-shell.css`), **not** hand-crafted per
+Every tab is framed by ONE shell (`lib/page-shell.css`), **not** hand-crafted per
 tab. It is the **same pattern the Documents tab uses** — a full-height flex
 COLUMN whose body row is a `[sidebar-rail | content]` flex ROW. The `<body>`
 does **not** scroll (only the content pane does), so the header + tabs nav stay
@@ -219,7 +219,7 @@ JS-measured `--app-header-h`).
 > panel lands (a second instance = a real pattern, §2.1) — building it before
 > then would be a one-consumer abstraction. Build it against THIS spec.
 
-A **dock panel** (`.dock-panel`, `app-shell.css`) will be the single reusable
+A **dock panel** (`.dock-panel`, `page-shell.css`) will be the single reusable
 sidebar. The **projects sidebar** and the **checkpoint panel** are *instances*
 of it — not bespoke layouts. Every dock panel has:
 
@@ -339,8 +339,8 @@ read the cited doc (and this contract's cross-referenced §) before touching a p
 | Design tokens (colour/space/type) | `lib/tokens.css` | *this doc* + `tokens.css` | §1 |
 | CSS layer order / one-owner rule | all sheets | *this doc* | §2 |
 | Layout primitives (`.card`, `.card-row`, auto-fit grids) | `lib/page-shell.css` | *this doc* + [`mobile-layout.md`](mobile-layout.md) | §4 |
-| **App shell — page frame** (header/nav full-width, `.app-body` row) | `lib/app-shell.css` | *this doc* | §4.1 |
-| **Sidebar rail + dock panel** (foldable, resizable, parallel) | `lib/app-shell.css` | *this doc* | §4.2–4.3 |
+| **App shell — page frame** (header/nav full-width, `.app-body` row) | `lib/page-shell.css` | *this doc* | §4.1 |
+| **Sidebar rail + dock panel** (foldable, resizable, parallel) | `lib/page-shell.css` | *this doc* | §4.2–4.3 |
 | Header hero + account menu | `lib/page-shell.css` (`header`) | *this doc* | §4.1 |
 | Tabs nav (`.app-tabs`) | `lib/tabs.css` · `web/tabs.py` | [`../tabs/architecture.md`](../tabs/architecture.md) | — |
 | Projects sidebar *(dock-panel instance)* | `lib/projects/projects-sidebar.css` · `projects-sidebar.js` | [`projects-sidebar.md`](projects-sidebar.md) | §4.2 |
@@ -464,7 +464,7 @@ The §8.0 map is the index; these are the authoritative docs it cites, grouped.
 **Framework (this doc governs; owner files):**
 - `lib/tokens.css` — the token palette (§1).
 - `lib/page-shell.css` — `.card`, `.card-row`, the header hero + account menu (§4, §4.1).
-- `lib/app-shell.css` — the app shell, sidebar rail, dock panel (§4.1–4.3).
+- `lib/page-shell.css` — the app shell, sidebar rail, dock panel (§4.1–4.3).
 - `lib/tabs.css` · `web/tabs.py` — the tabs nav; order is single-sourced in `tabs.py`.
 - `lib/molview/fused-layout.css` — the fused-card `@container` reference (§8.1).
 - `lib/markdown-render.js` — the one markdown render + sanitise policy (§8.3).

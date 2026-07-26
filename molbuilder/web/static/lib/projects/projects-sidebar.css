@@ -1,20 +1,16 @@
 /* Persistent Projects sidebar -- always-visible left panel.
  *
- * Layout: fixed-position aside on the left, under the page header
- * + app-tabs nav.  The `top:` value is set dynamically by
- * projects-sidebar.js (measures both elements + listens for resize)
- * so a variable-height tagline doesn't end up overlapping the sidebar.
- *
- * Every page hard-codes ``<body class="has-projects-sidebar">``
- * server-side (in each template's body tag); the JS NEVER adds this
- * class.  Server-side is load-bearing: the body must have the
- * padding-left from first paint so layout-sensitive widgets
- * (Plotly, 3Dmol) initialise with the post-sidebar geometry instead
- * of re-laying-out after the sidebar JS finishes -- see the
- * extended explanation in lib/projects-sidebar.js's IIFE header.
+ * Layout is owned by the APP SHELL (lib/page-shell.css, "App shell" section;
+ * ui-design-contract.md §4.1-4.3): every tab sets ``<body data-sidebars=
+ * "projects">`` server-side, and the sidebar is an in-flow flex child of the
+ * ``.app-body`` row, BELOW the nav -- pure CSS, correct on the first paint (no
+ * fixed positioning, no JS-measured offset, so no flash).  This sheet owns the
+ * projects-sidebar's OWN styling (palette, header, list, resize handle, edge
+ * tabs) + the narrow-viewport DRAWER (@media max-width: 640px, where the aside
+ * becomes a position:fixed slide-in overlay) + the desktop in-flow override.
  *
  * Markup contract:  templates/_projects_sidebar.html
- * Behaviour:        static/lib/projects-sidebar.js
+ * Behaviour:        static/lib/projects/projects-sidebar.js
  */
 
 /* The --ps-* palette moved into lib/tokens.css (Phase 3, 2026-06-13)
@@ -24,7 +20,7 @@
  * referenced via fallbacks AND --ps-danger / --ps-warn-* for the
  * red/amber severity surfaces. */
 
-/* Desktop layout is owned by the app shell (lib/app-shell.css): the sidebar is
+/* Desktop layout is owned by the app shell (lib/page-shell.css): the sidebar is
  * an in-flow flex child of the .sidebar-rail (see the app-shell override
  * below).  The ``position: fixed`` base here is the MOBILE-DRAWER base -- on a
  * narrow viewport (@media max-width: 640px) the sidebar slides in as a fixed
@@ -204,7 +200,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
 
 /* Desktop collapse: the app shell hides the whole rail
  * (body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail { display:none },
- * lib/app-shell.css), so no body-padding reset is needed here.  The transform
+ * lib/page-shell.css), so no body-padding reset is needed here.  The transform
  * below is the MOBILE-DRAWER slide-out (the aside is position:fixed there). */
 body.is-projects-sidebar-collapsed .projects-sidebar {
   transform: translateX(-100%);

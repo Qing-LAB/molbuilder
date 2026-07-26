@@ -131,6 +131,74 @@ main {
     gap: var(--gap);
 }
 
+/* ---- App shell — page frame + sidebar rail ---------------------------------
+ * Spec: docs/protocols/ui-design-contract.md §4.1-4.3.
+ *
+ * The SAME pattern the Documents tab uses (and why it "just works"): a tab that
+ * opts in with ``<body data-sidebars="projects">`` becomes a full-height flex
+ * COLUMN whose body row is a [sidebar-rail | content] flex ROW.  The <body>
+ * itself does NOT scroll -- only the content pane does -- so the header + tabs
+ * nav STAY on top while you scroll, and the sidebar is a normal flex column,
+ * in the right place on the FIRST paint (no fixed positioning, no JS measuring
+ * the header height, so no flash on tab switch).  The tab wraps its sidebar +
+ * content: ``<div class="app-body"> {sidebar} <div class="app-content">
+ * …tab… </div> </div>``.
+ * -------------------------------------------------------------------------- */
+
+body[data-sidebars] {
+    height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;            /* body never scrolls; the content pane does */
+}
+
+/* header + tabs nav (+ the notifications bar): natural-height rows that stay on
+ * top -- they don't scroll because the body doesn't. */
+body[data-sidebars] > header,
+body[data-sidebars] > nav.app-tabs,
+body[data-sidebars] > #app-notifications {
+    flex: 0 0 auto;
+}
+
+/* The body row: fills the remaining viewport height, a [rail | content] row. */
+body[data-sidebars] > .app-body {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: stretch;
+    min-height: 0;               /* so the row can shrink + its children scroll */
+    overflow: hidden;
+}
+
+/* The sidebar rail: natural width, full height of the body row, holds dock
+ * panels side by side.  Its panels scroll internally, not the rail. */
+body[data-sidebars] .sidebar-rail {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* The content pane: takes the rest of the width and OWNS the scroll. */
+body[data-sidebars] .app-body > .app-content {
+    flex: 1 1 auto;
+    min-width: 0;                /* a wide child shrinks instead of overflowing */
+    min-height: 0;
+    overflow: auto;
+}
+
+/* Collapsed: the projects-sidebar JS sets this on <body>; the rail hides and
+ * the content pane reclaims the full width. */
+body.is-projects-sidebar-collapsed[data-sidebars] .sidebar-rail {
+    display: none;
+}
+
+/* NOTE: the reusable ``.dock-panel`` base (§4.2) lands WITH the checkpoint
+ * panel -- when a SECOND sidebar makes the shared dock geometry a real pattern
+ * (appears twice, §2.1).  Today the one sidebar (projects) is styled by its own
+ * sheet + the in-flow app-shell override there. */
+
 /* ---- Generic card surface --------------------------------------- */
 
 .card {
