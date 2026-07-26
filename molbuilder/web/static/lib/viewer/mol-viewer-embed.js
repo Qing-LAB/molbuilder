@@ -2258,9 +2258,19 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return model;
     }
 
+    // The MAIN structure model is ALWAYS model 0 — setStructure / the native-movie build
+    // (removeAllModels + addModel/addModelsAsFrames) add it first.  The §8.1 halo layer adds a
+    // SECOND model (the translucent-surround movie) AFTER, as model 1, so a no-arg getModel()
+    // returns the HALO model.  Every read of the structure must go through here so it stays
+    // pinned to model 0 regardless of whether a halo model exists.  Equivalent to getModel()
+    // when there is one model (getModel(0) === getModel() then).
+    function _mainModel(viewer) {
+        return (viewer && typeof viewer.getModel === "function") ? viewer.getModel(0) : null;
+    }
+
     function _atomCount(viewer) {
         try {
-            const models = viewer.getModel();
+            const models = _mainModel(viewer);
             const atoms = models ? models.selectedAtoms({}) : [];
             return atoms ? atoms.length : 0;
         } catch (_) { return 0; }
@@ -2268,7 +2278,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _elements(viewer) {
         try {
-            const models = viewer.getModel();
+            const models = _mainModel(viewer);
             const atoms = models ? models.selectedAtoms({}) : [];
             return atoms ? atoms.map((a) => a.elem || a.element) : [];
         } catch (_) { return []; }
@@ -2276,7 +2286,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _atomCoords(viewer) {
         try {
-            const models = viewer.getModel();
+            const models = _mainModel(viewer);
             const atoms = models ? models.selectedAtoms({}) : [];
             return atoms ? atoms.map(
                 (a) => [Number(a.x) || 0, Number(a.y) || 0, Number(a.z) || 0]
@@ -2321,7 +2331,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // template ALWAYS loads it).
             spec = { stick: {} };
         }
-        try { viewer.setStyle({}, spec); }
+        // {model:0} not {} — the §8.1 halo second-model (model 1) keeps its own translucent
+        // style; a bare {} would restyle it too and wipe the halos on any rep change.
+        try { viewer.setStyle({ model: 0 }, spec); }
         catch (_) {}
         try { viewer.setBackgroundColor(style.background); }
         catch (_) {}
@@ -2396,7 +2408,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const handles = [];
         const fmt = opts.format || "index";
         try {
-            const model = viewer.getModel();
+            const model = _mainModel(viewer);
             const atoms = model ? model.selectedAtoms({}) : [];
             // Build the "draw this atom?" predicate from opts.atoms.
             let shouldDraw;
@@ -2633,7 +2645,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // 3Dmol and invalidates the per-atom clickable flags).
         if (state.pickWired) return;
         try {
-            viewer.setClickable({}, true, function (atom, _viewer, _evt) {
+            // {model:0} — only the main structure is clickable; the §8.1 halo second-model is
+            // setClickable(false) so a pick lands on the real atom, not the translucent surround.
+            viewer.setClickable({ model: 0 }, true, function (atom, _viewer, _evt) {
                 if (state.disposed) return;
                 if (!state.current.pick) return;
                 const idx = atom && (atom.index != null ? atom.index : atom.serial);
@@ -2704,7 +2718,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             return;
         }
         try {
-            const model = state.viewer.getModel();
+            const model = _mainModel(state.viewer);
             const atoms = model ? model.selectedAtoms({}) : [];
             for (const idx of state.pickedIndices) {
                 if (idx < 0 || idx >= atoms.length) continue;
@@ -2928,7 +2942,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const styleApi = { spec: buildStyleSpec };
         let atoms = [];
         try {
-            const model = state.viewer.getModel();
+            const model = _mainModel(state.viewer);
             atoms = model ? model.selectedAtoms({}) : [];
         } catch (_) {}
         if (atoms.length === 0) return;
@@ -2945,7 +2959,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // leaves the bond geometry behind, which manifests as
             // ghost lines in isolate-mode renders.
             if (entry.style.hidden) {
-                try { state.viewer.setStyle(sel.spec, {}); }
+                try { state.viewer.setStyle({ ...sel.spec, model: 0 }, {}); }
                 catch (_) {}
                 continue;
             }
@@ -2969,7 +2983,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 if (entry.style.opacity !== undefined) sub.opacity = entry.style.opacity;
             }
 
-            try { state.viewer.setStyle(sel.spec, baseSpec); }
+            try { state.viewer.setStyle({ ...sel.spec, model: 0 }, baseSpec); }
             catch (_) {}
         }
     }
@@ -2991,7 +3005,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         if (!state.current.overlays) return;
         let atoms = [];
         try {
-            const model = state.viewer.getModel();
+            const model = _mainModel(state.viewer);
             atoms = model ? model.selectedAtoms({}) : [];
         } catch (_) {}
         if (atoms.length === 0) return;
@@ -3337,7 +3351,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // (provider capture), setAtomCoords (the external-animator door),
         // and the two post-capture provider restCoords restores.
         try {
-            const model = viewer.getModel();
+            const model = _mainModel(viewer);
             const atoms = model ? model.selectedAtoms({}) : [];
             const n = Math.min(atoms.length, coords.length);
             for (let i = 0; i < n; i++) {
@@ -3478,7 +3492,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const a = state.current.animation;
         if (!a || a.kind !== "trajectory") return 0;
         try {
-            const m = state.viewer.getModel();
+            const m = _mainModel(state.viewer);
             if (m && typeof m.getNumFrames === "function") return m.getNumFrames();
         } catch (_) {}
         return a.frameCount || 0;
@@ -3490,7 +3504,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // jump the view (task #33 single-owner: coords live here, not in a copy).
     function _trajFrameCoords(state, i) {
         try {
-            const m = state.viewer.getModel();
+            const m = _mainModel(state.viewer);
             const frames = m && m.frames;
             const atoms = frames && frames[i];
             if (!atoms) return null;
@@ -4646,7 +4660,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // Append to the native movie (task #33): clone the frame-0 atoms
                 // template (keeps element/bond topology) and stamp the new coords,
                 // then push as a new native frame -- 3Dmol owns the coords.
-                const m = state.viewer.getModel();
+                const m = _mainModel(state.viewer);
                 const template = m && m.frames && m.frames[0];
                 if (m && template) {
                     for (const f of frames) {
