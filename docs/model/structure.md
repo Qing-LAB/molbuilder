@@ -76,7 +76,7 @@ class Structure:
 - Every optional list, if provided, has length N; `None` gets the per-field
   default above.
 - The metadata fields are validated/reconciled here too (see
-  `model/periodicity.md` for the cell/axis_kind reconciliation). Because
+  `structure-periodicity.md` for the cell/axis_kind reconciliation). Because
   `apply_metadata_dict` re-runs `__post_init__`, **all field validation lives
   in one place** — there is no second validator to drift from.
 
@@ -136,20 +136,20 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   `cell`, `cell_origin`, `pbc`, `axis_kind`, `vacuum`, `annotations`.
 - **Strict JSON** — the dict is lists/dicts/bools/floats. `annotations` are
   JSON channel dicts (via `annotations_to_json`), **never** live `AtomChannel`
-  objects (those live only in-memory; see `model/annotations.md`).
+  objects (those live only in-memory; see `structure-annotations.md`).
 - `apply_metadata_dict` is **full-replace**: an absent key resets that field
   to its default (absent `cell` → non-periodic; absent `regions` → none). It
   re-runs `__post_init__`, so validation is single-sourced.
 - **NOT in scope** (they sit *around* the contract): `selection_rules` (a
   sidecar-only pass-through) and the sidecar **envelope** (`schema_version` /
   `n_atoms_total` / `structure_hash` / `created_by` / `created_at`) — see
-  `model/sidecars.md`.
+  `structure-sidecars.md`.
 
 **To add a metadata key:** (1) add the field to the dataclass with its
 `__post_init__` validation; (2) add it to `metadata_to_dict()` +
 `apply_metadata_dict()` — nowhere else; (3) if it must survive the sidecar,
 bump `SCHEMA_VERSION` and register the new version in the read module (see
-`model/sidecars.md`); (4) if MolView must show/edit it, surface it in the web
+`structure-sidecars.md`); (4) if MolView must show/edit it, surface it in the web
 `to_wire` periodicity block and read it in `molview.data`; (5) add a
 save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 `to_dict`, or `apply_to_structure` — they read the field set from the two
@@ -393,10 +393,12 @@ def _fully_populated_structure():
     s = Structure(elements=["C", "O"], positions=[[1.,2.,3.], [4.,5.,6.]])
     s.apply_metadata_dict({
         "cell": [[10,0,0],[0,10,0],[0,0,10]], "cell_origin": [1.5,2.5,3.5],
-        "pbc": [True,True,False], "axis_kind": ["a","b","vacuum"],
+        "pbc": [True,True,False], "axis_kind": ["periodic","periodic","isolated"],
         "vacuum": [0.,0.,12.], "regions": {"electrode":[0], "channel":[1]},
         "frozen_atoms": [0],
-        "annotations": {"charge": {"kind":"float","values":[0.1,-0.1]}},
+        # a value channel: kind ∈ {tag,flag,value}; value data is a sparse
+        # (string-keyed) idx→value map — see structure-annotations.md § 2
+        "annotations": {"charge": {"kind":"value", "data":{"0":0.1, "1":-0.1}}},
     })
     return s
 

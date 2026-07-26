@@ -6,7 +6,9 @@
 `architecture.md` (the reuse map: task → tool),
 [`README.md`](README.md) (the index + the rules).
 *(`design.md` and `architecture.md` are named, not linked, until they land
-in this tree — the next spine step; the links go in when they arrive.)*
+in this tree. They are composed **last** — as concise summaries over the
+settled component docs — so the links go in when they arrive; see the wave
+plan in `MIGRATION.md`.)*
 
 This is the **single source of truth for open work**. Every feature or
 backend item that is planned, in progress, or blocked lives here — nowhere
@@ -33,7 +35,7 @@ priority; the others proceed around it.
 flowchart TD
     W1["1 · Batch execution reaches the web<br/>(the JobSet framework's UI)"]:::active
     W2["2 · Transport calculation backends<br/>(TranSIESTA follow-ups + PySCF-NEGF)"]
-    W3["3 · Front-end MolView finalization<br/>(conceal the model · ES-module cleanup)"]
+    W3["3 · Data-model & front-end finalization<br/>(conceal the model · codec · ES-modules)"]
     W4["4 · Test-suite & housekeeping"]
 
     W1 -. "Phase 3 builds the<br/>transport bundle mode" .-> W2
@@ -184,14 +186,16 @@ not a bare 500.
 
 ---
 
-## 3. Front-end MolView finalization
+## 3. Data-model & front-end finalization
 
 The 3-D viewer, atom selection, and structure editing were consolidated
-into one concealed **MolView** module that every tab mounts. Most consumer
-migration has shipped; what remains is sealing the module's internals and
-finishing the ES-module conversion. All steps here are **browser-verified**
-before they count as done. The design for each item lives in its contract
-(migrating to `web/`); this is the plan tail.
+into one concealed **MolView** module that every tab mounts, and the
+`Structure` object gained a single serialization codec. Most of this
+shipped; what remains is the tail — sealing the module's internals,
+finishing the ES-module conversion (both **browser-verified** before they
+count as done), routing the CLI through the shared codec, and exercising the
+last annotation channel kind. The design for each item lives in its contract;
+this is the plan tail.
 
 **Conceal the data model.**
 
