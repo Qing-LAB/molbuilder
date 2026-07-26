@@ -26,16 +26,17 @@
  *     frames:  ProcessedFrame[],     // §7.3; frames[0] establishes atom identity + count.
  *     cellBox: {lattice,origin}|null // the ONE cell geometry: a/b/c basis + anchor origin.
  *   }
- *   ProcessedFrame = { positions:Vec3[], elements:string[],
- *                      arrows:Arrow[]|null, labels:LabelOpts|null, halos:HaloOverlay|null }
+ *   ProcessedFrame = { positions:Vec3[], sourceIndex:int[], elements:string[],
+ *                      arrows:Arrow[]|null, labels:LabelOpts|null, selection:int[]|null }
  *   FrameTail = { frames: ProcessedFrame[] }               // the NEW frames only (§6.2).
- *   Overlay   = { labels?, halos?, arrows?, cellVisible?, axes? } // for the CURRENT frame; a field
+ *   Overlay   = { labels?, selection?, arrows?, cellVisible?, axes? } // for the CURRENT frame; a field
  *                                                             // that is `undefined` is not touched.
  *
  * cellVisible is a PLAIN on/off boolean -- the cell VISIBILITY. The box GEOMETRY {lattice,origin}
- * is STRUCTURE data and rides the Movie.cellBox at load, NOT the overlay. The Arrow / LabelOpts /
- * HaloOverlay specs are exactly what the embed doors accept (setArrows / setLabels / setOverlays);
- * process.js builds them; embedIo forwards them verbatim. embedIo never interprets their fields.
+ * is STRUCTURE data and rides the Movie.cellBox at load, NOT the overlay. The Arrow / LabelOpts
+ * specs are exactly what the embed doors accept (setArrows / setLabels); `selection` is the list of
+ * drawn atom indices to highlight (setSelectionHalo -- the embed owns the glow style). process.js
+ * builds them; embedIo forwards them verbatim. embedIo never interprets their fields.
  *
  * A native ES module (private submodule of the MolView module, frontend-module-architecture.md
  * §4).  engine.js IMPORTS it directly; the browser-global publish at the bottom is a TEST SEAM
@@ -57,12 +58,12 @@ function _buildXyz(elements, positions) {
 
 // Apply the CURRENT-frame overlays the engine hands us. Each field is forwarded to its
 // embed door ONLY when present (an absent field leaves that door untouched -- so an
-// overlay refresh that changes only labels doesn't clear halos, and vice versa).
+// overlay refresh that changes only labels doesn't clear the selection glow, and vice versa).
 function _applyOverlays(handle, o) {
     o = o || {};
-    if (o.labels  !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
-    if (o.halos   !== undefined && typeof handle.setOverlays === "function") handle.setOverlays(o.halos);
-    if (o.arrows  !== undefined && typeof handle.setArrows   === "function") handle.setArrows(o.arrows);
+    if (o.labels    !== undefined && typeof handle.setAtomLabels === "function") handle.setAtomLabels(o.labels);
+    if (o.selection !== undefined && typeof handle.setSelectionHalo === "function") handle.setSelectionHalo(o.selection);
+    if (o.arrows    !== undefined && typeof handle.setArrows === "function") handle.setArrows(o.arrows);
     if (o.cellVisible !== undefined && typeof handle.setCell === "function") handle.setCell(!!o.cellVisible);
     if (o.axes    !== undefined && typeof handle.setAxes     === "function") handle.setAxes(o.axes);
 }

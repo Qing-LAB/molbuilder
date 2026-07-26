@@ -2258,12 +2258,10 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         return model;
     }
 
-    // The MAIN structure model is ALWAYS model 0 — setStructure / the native-movie build
-    // (removeAllModels + addModel/addModelsAsFrames) add it first.  The §8.1 halo layer adds a
-    // SECOND model (the translucent-surround movie) AFTER, as model 1, so a no-arg getModel()
-    // returns the HALO model.  Every read of the structure must go through here so it stays
-    // pinned to model 0 regardless of whether a halo model exists.  Equivalent to getModel()
-    // when there is one model (getModel(0) === getModel() then).
+    // The structure model is ALWAYS model 0 — setStructure / the native-movie build
+    // (removeAllModels + addModel/addModelsAsFrames) add it first.  The embed keeps exactly ONE
+    // model (the selection glow is a separate SHAPE, not a second model), so this is equivalent to
+    // a no-arg getModel(); reads go through here to name the intent explicitly.
     function _mainModel(viewer) {
         return (viewer && typeof viewer.getModel === "function") ? viewer.getModel(0) : null;
     }
@@ -2331,8 +2329,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // template ALWAYS loads it).
             spec = { stick: {} };
         }
-        // {model:0} not {} — the §8.1 halo second-model (model 1) keeps its own translucent
-        // style; a bare {} would restyle it too and wipe the halos on any rep change.
+        // {model:0} — the ONE structure model (there is no second model). Explicit so the intent
+        // reads clearly and to match every other structure-scoped call in the embed.
         try { viewer.setStyle({ model: 0 }, spec); }
         catch (_) {}
         try { viewer.setBackgroundColor(style.background); }
@@ -2645,8 +2643,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         // 3Dmol and invalidates the per-atom clickable flags).
         if (state.pickWired) return;
         try {
-            // {model:0} — only the main structure is clickable; the §8.1 halo second-model is
-            // setClickable(false) so a pick lands on the real atom, not the translucent surround.
+            // {model:0} — the one structure model is clickable. The selection glow is a shape
+            // (addSphere), not a model, so it is never in the pick path.
             viewer.setClickable({ model: 0 }, true, function (atom, _viewer, _evt) {
                 if (state.disposed) return;
                 if (!state.current.pick) return;
@@ -2854,14 +2852,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         _redrawAxes(state);
         _redrawCell(state);
         // Per § 3.12 layering: per-atom style overlays apply BEFORE
-        // labels/arrows/markers/halos (which sit on top), and pick
-        // halos draw above overlay halos.  Order:
+        // labels/arrows/markers/halos (which sit on top).  Order:
         //   axes / cell -> per-atom-style overlays -> labels ->
-        //   arrows -> overlay halos -> overlay markers -> pick halos.
+        //   arrows -> overlay halos -> overlay markers ->
+        //   selection glow -> pick halos.
         _redrawOverlayStyles(state);
         _redrawLabels(state);
         _redrawArrows(state);
         _redrawOverlayHalosAndMarkers(state);
+        _redrawSelectionHalo(state);
         _redrawPickHalos(state);
     }
 
@@ -2993,9 +2992,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
      * they can be cleared cleanly on next redraw or dispose.
      */
     // The ONE walk of the current overlay atoms: for each entry that passes `wants(entry)`, resolve
-    // its selector against the MAIN model's atoms and call cb(entry, atom, drawnIndex).  Markers,
-    // fallback halo shapes, and the halo-model apply all share this instead of repeating the
-    // selectedAtoms + selector-iteration loop three ways.
+    // its selector against the model's atoms and call cb(entry, atom, drawnIndex).  The generic
+    // setOverlays door's markers and halo shapes share this instead of repeating the selectedAtoms
+    // + selector-iteration loop.
     function _eachOverlayAtom(state, wants, cb) {
         if (!state.current.overlays) return;
         let atoms = [];
@@ -3032,8 +3031,9 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         });
     }
 
-    // Overlay HALOS as free-standing addSphere shapes — the FALLBACK path (single static
-    // structure, or a trajectory above the halo-model size cap).  Re-placed per frame + on change.
+    // Overlay HALOS (the generic setOverlays door's `halo` treatment) as free-standing addSphere
+    // shapes at atom coordinates.  Re-placed per frame (_postFramePositionRedraw) + on a content
+    // change so they stay aligned during trajectory playback.
     function _redrawOverlayHaloShapes(state) {
         for (const s of state.overlayHaloShapes) {
             try { state.viewer.removeShape(s); } catch (_) {}
@@ -3051,22 +3051,43 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         });
     }
 
-    // Content-change entry (setOverlays / structural regen): markers are always shapes; halos go
-    // to the second MODEL when it applies (rides the movie), else to addSphere shapes (§8.1 Rule 2).
+    // Content-change entry for the GENERIC setOverlays door (markers + halo shapes). Both are
+    // free-standing shapes re-placed at their atoms' coordinates; on a trajectory the per-frame
+    // redraw (_postFramePositionRedraw) keeps them aligned.
     function _redrawOverlayHalosAndMarkers(state) {
         _redrawOverlayMarkers(state);
-        if (_useHaloModel(state)) {
-            // drop any stale fallback shapes, then style the halo model.
-            if (state.overlayHaloShapes.length) {
-                for (const s of state.overlayHaloShapes) { try { state.viewer.removeShape(s); } catch (_) {} }
-                state.overlayHaloShapes = [];
-            }
-            _applyHaloModel(state);
-        } else {
-            // Fell back to shapes (no longer a trajectory, or grew past the size cap mid-stream):
-            // remove the halo model so it doesn't linger holding ~2x memory, then draw shapes.
-            if (state.haloModel) _disposeHaloModel(state);
-            _redrawOverlayHaloShapes(state);
+        _redrawOverlayHaloShapes(state);
+    }
+
+    // §8.1 SELECTION HIGHLIGHT -- the engine's live-pick glow. The engine hands us WHICH drawn
+    // atoms are selected (setSelectionHalo); the embed owns HOW the glow looks -- ONE constant
+    // style, here, not baked into the per-frame data. A translucent addSphere per selected atom:
+    // it is a SHAPE (not a model restyle), so a selection change adds/removes only the changed
+    // spheres -- it never rebuilds the molecule's geometry -- and the atom's own colour shows
+    // through the glow (3Dmol renders shape spheres translucently). Re-placed per frame
+    // (_postFramePositionRedraw) so the glow tracks moving atoms on a trajectory.
+    var _SELECTION_GLOW = { color: "#ffd54a", radius: 0.7, opacity: 0.5 };
+    function _redrawSelectionHalo(state) {
+        for (const s of state.selectionHaloShapes) {
+            try { state.viewer.removeShape(s); } catch (_) {}
+        }
+        state.selectionHaloShapes = [];
+        const idx = state.current.selectionHalo;
+        if (!idx || !idx.length) return;
+        let atoms = [];
+        try { const m = _mainModel(state.viewer); atoms = m ? m.selectedAtoms({}) : []; } catch (_) {}
+        if (!atoms.length) return;
+        for (const i of idx) {
+            const a = atoms[i];
+            if (!a) continue;
+            try {
+                state.selectionHaloShapes.push(state.viewer.addSphere({
+                    center:  { x: a.x, y: a.y, z: a.z },
+                    radius:  _SELECTION_GLOW.radius,
+                    color:   _SELECTION_GLOW.color,
+                    opacity: _SELECTION_GLOW.opacity,
+                }));
+            } catch (_) {}
         }
     }
 
@@ -3425,15 +3446,15 @@ const root = (typeof window !== "undefined") ? window : globalThis;
 
     function _postFramePositionRedraw(state) {
         // Position-aware SHAPE overlays are free-standing 3Dmol shapes at atom coordinates, so a
-        // frame swap must re-place them (cell wireframe is lattice-only static; axes origin-
-        // anchored; arrows are per-frame baked, redrawn in _showTrajectoryFrame).  §8.1 Rule 2:
-        //   - halos on the SECOND MODEL ride the native swap FOR FREE -- do NOT re-apply here
-        //     (that would setStyle the whole halo model every frame, the ~416ms cost we removed);
-        //   - only the shape-rendered layers re-place: labels, glyph markers, the fallback halo
-        //     shapes (when no halo model), and the bare-embed pick halos.
+        // frame swap must re-place them at the shown frame's positions (cell wireframe is lattice-
+        // only static; axes origin-anchored; arrows are per-frame baked, redrawn in
+        // _showTrajectoryFrame). The re-placed layers: index labels, glyph markers, overlay halo
+        // shapes, the SELECTION GLOW, and the bare-embed pick halos. Each is a few shapes, so this
+        // is cheap (one frame's worth) -- NOT a movie rebuild.
         _redrawLabels(state);
         _redrawOverlayMarkers(state);
-        if (!_useHaloModel(state)) _redrawOverlayHaloShapes(state);
+        _redrawOverlayHaloShapes(state);
+        _redrawSelectionHalo(state);
         _redrawPickHalos(state);
     }
 
@@ -3482,8 +3503,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     // Push ONE new native frame onto a model: clone the frame-0 atoms template (keeps element +
-    // bond topology) and stamp the new coords.  Shared by appendFrames for BOTH the main model and
-    // the §8.1 halo second-model so they stay frame-aligned without a rebuild.
+    // bond topology) and stamp the new coords.  Used by appendFrames to extend the native movie
+    // without a full rebuild.
     function _stampFrame(model, template, coords) {
         const atoms = template.map(function (at, i) {
             const c = coords[i] || [0, 0, 0];
@@ -3507,7 +3528,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         const xyz = _multiFrameXyz(elements, frames);
         try {
             viewer.removeAllModels();
-            state.haloModel = null;   // wiped with the old models; rebuilds lazily on next halo
             viewer.addModelsAsFrames(xyz, "xyz");
         } catch (e) {
             _dispatchInvalidInput(state,
@@ -3547,96 +3567,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             if (!atoms) return null;
             return atoms.map((a) => [a.x, a.y, a.z]);
         } catch (_) { return null; }
-    }
-
-    // ----- §8.1 halo second-model -------------------------------------------------------
-    //
-    // For a NATIVE trajectory (multi-frame) under the size cap, selection/region/frozen halos
-    // render as a DUPLICATE movie model: the same per-frame coords as the main model, styled
-    // with translucent spheres on the highlighted atoms and setClickable(false).  3Dmol's
-    // setFrame swaps ALL models together, so the halos ride the native swap FOR FREE (~11ms/
-    // frame, ~88fps) and a selection click is one setStyle on the delta (~35ms) -- vs re-placing
-    // addSphere shapes every frame (~416ms/frame, ~2fps).  Head-to-head + rationale:
-    // molview-render-streamline.md §8.1.  Cost: ~2x coordinate memory, so above the cap (or for a
-    // single static structure) halos fall back to the addSphere-shape path (_redrawOverlayHaloShapes).
-    var _HALO_MODEL_MAX_ATOMFRAMES = 400000;
-
-    function _useHaloModel(state) {
-        const a = state.current && state.current.animation;
-        if (!a || a.kind !== "trajectory" || !a.native) return false;
-        const nf = _trajFrameCount(state);
-        if (nf <= 1) return false;
-        const na = _atomCount(state.viewer);
-        return na > 0 && (na * nf) <= _HALO_MODEL_MAX_ATOMFRAMES;
-    }
-
-    function _disposeHaloModel(state) {
-        if (state.haloModel) {
-            try { state.viewer.removeModel(state.haloModel); } catch (_) {}
-        }
-        state.haloModel = null;
-    }
-
-    // Build the duplicate movie model once (lazy).  Reads the frames back from the MAIN model so
-    // there is no second JS coords copy kept around; 3Dmol owns the halo model's native frames.
-    function _ensureHaloModel(state) {
-        if (state.haloModel) return state.haloModel;
-        if (!_useHaloModel(state)) return null;
-        const viewer = state.viewer;
-        const elements = _elements(viewer);
-        const nf = _trajFrameCount(state);
-        if (!elements.length || nf < 1) return null;
-        const frames = [];
-        for (let f = 0; f < nf; f++) {
-            const c = _trajFrameCoords(state, f);
-            if (!c) return null;
-            frames.push(c);
-        }
-        try {
-            const added = viewer.addModelsAsFrames(_multiFrameXyz(elements, frames), "xyz");
-            const m = Array.isArray(added) ? added[added.length - 1] : added;
-            state.haloModel = m || null;
-            if (state.haloModel) {
-                viewer.setStyle({ model: state.haloModel }, {});            // hidden until styled
-                viewer.setClickable({ model: state.haloModel }, false);
-                // sync the new model to the shown frame (addModelsAsFrames starts at frame 0).
-                const cur = (state.current.animation && state.current.animation.currentFrame) || 0;
-                try { viewer.setFrame(cur); } catch (_) {}
-            }
-        } catch (_) { state.haloModel = null; }
-        return state.haloModel;
-    }
-
-    // Apply the current overlay halos to the halo model: one translucent sphere per haloed atom,
-    // coloured by the TOP-priority layer (overlays.atoms are in draw order region->frozen->selection,
-    // so a later entry wins).  hide-all + one setStyle per colour group = the delta; a frame swap
-    // then moves them for free.  No-ops (and does not build the model) when there are no halos and
-    // no model to clear.
-    function _applyHaloModel(state) {
-        const viewer = state.viewer;
-        const perAtom = {};        // drawn index -> halo style (top priority)
-        const order = [];
-        _eachOverlayAtom(state, (e) => e.halo, (entry, _a, idx) => {
-            if (!(idx in perAtom)) order.push(idx);
-            perAtom[idx] = entry.halo;              // later entry overrides (selection on top)
-        });
-        if (!order.length && !state.haloModel) return;  // nothing to show, no model to clear
-        const m = _ensureHaloModel(state);
-        if (!m) return;
-        try { viewer.setStyle({ model: m }, {}); } catch (_) {}   // clear every halo sphere
-        const groups = {};
-        for (const idx of order) {
-            const h = perAtom[idx];
-            const key = h.color + "|" + h.radius + "|" + h.opacity;
-            (groups[key] = groups[key] || { style: h, idx: [] }).idx.push(idx);
-        }
-        for (const key of Object.keys(groups)) {
-            const g = groups[key];
-            try {
-                viewer.setStyle({ model: m, index: g.idx },
-                    { sphere: { radius: g.style.radius, color: g.style.color, opacity: g.style.opacity } });
-            } catch (_) {}
-        }
     }
 
     function _startTrajectoryLoop(state) {
@@ -4000,11 +3930,10 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // halos and markers are removable shapes / labels.
             overlayHaloShapes:   [],
             overlayMarkerLabels: [],
-            // §8.1 halo second-model: for a native trajectory under the size cap, halos render
-            // as a duplicate movie model (translucent spheres, setClickable false) that rides the
-            // native frame swap for free.  null when absent / below the trajectory threshold
-            // (then halos fall back to overlayHaloShapes above).
-            haloModel:           null,
+            // §8.1 SELECTION GLOW shapes -- the engine's live-pick highlight (setSelectionHalo).
+            // Translucent addSphere per selected atom; re-placed per frame so it tracks a
+            // trajectory.  Separate from overlayHaloShapes (the generic setOverlays door).
+            selectionHaloShapes: [],
 
             // Camera persistence per § 4.2.  hasFirstStructure flips
             // true after the first non-empty structure mounts; before
@@ -4206,7 +4135,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             state.current.animationProvider = null;
             _removeFrameStrip(state);
             _loadStructure(state.viewer, state.current);
-            state.haloModel = null;   // removeAllModels wiped it; rebuilds lazily on next halo
             // Review fix U7: new atom set → clickable flags reset on
             // 3Dmol's side; force _wirePick to re-register on the new
             // atoms.
@@ -4725,6 +4653,19 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _render(state);
         }
 
+        // §8.1 SELECTION HIGHLIGHT door: the engine hands the DRAWN indices of the selected atoms;
+        // the embed glows each one (a translucent addSphere -- a SHAPE, so it never rebuilds the
+        // molecule's geometry and the atom's colour shows through). null / [] clears the glow. The
+        // glow style is the embed's constant (_SELECTION_GLOW), not part of the handed-in data.
+        function setSelectionHalo(indices) {
+            if (state.disposed) return;
+            const next = Array.isArray(indices)
+                ? indices.filter((i) => Number.isInteger(i) && i >= 0) : null;
+            state.current.selectionHalo = (next && next.length) ? next : null;
+            _redrawSelectionHalo(state);
+            _render(state);
+        }
+
         function setAtomStyle(selector, style) {
             // Sugar for the common "give these atoms this style"
             // call.  Upserts a single overlays.atoms[] entry keyed
@@ -4795,15 +4736,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 // then push as a new native frame -- 3Dmol owns the coords.
                 const m = _mainModel(state.viewer);
                 const template = m && m.frames && m.frames[0];
-                // Keep the §8.1 halo second-model frame-aligned: append the SAME new frames to it
-                // so a later setFrame doesn't run off its end (else it silently desyncs).
-                const hm = state.haloModel;
-                const htemplate = hm && hm.frames && hm.frames[0];
                 if (m && template) {
-                    for (const f of frames) {
-                        _stampFrame(m, template, f);
-                        if (hm && htemplate) _stampFrame(hm, htemplate, f);
-                    }
+                    for (const f of frames) _stampFrame(m, template, f);
                     a.frameCount = _trajFrameCount(state);
                 }
             } else {
@@ -6046,7 +5980,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
                 for (const l of state.pickLabels) state.viewer.removeLabel(l);
                 for (const s of state.overlayHaloShapes) state.viewer.removeShape(s);
                 for (const l of state.overlayMarkerLabels) state.viewer.removeLabel(l);
-                state.haloModel = null;   // §8.1 halo model — goes with viewer.clear() below
+                for (const s of state.selectionHaloShapes) state.viewer.removeShape(s);
                 state.viewer.clear();
             } catch (_) {}
             // Stop tracking container size changes (4a-2 setup).
@@ -6328,6 +6262,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             setPick:            setPick,
             setBackground:      setBackground,
             setOverlays:        setOverlays,
+            setSelectionHalo:   setSelectionHalo,
             setAtomStyle:       setAtomStyle,
             setProjection:      setProjection,
 
@@ -6412,10 +6347,11 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             },
             getOverlayShapeCount() {
                 // Sum of every removable shape array (overlay halos,
-                // pick halos, cell wireframe, arrow shafts).  Used
-                // by tests asserting "setOverlays added N atoms-worth
-                // of halos".
+                // the selection glow, pick halos, cell wireframe, arrow
+                // shafts).  Used by tests asserting "setOverlays /
+                // setSelectionHalo added N atoms-worth of shapes".
                 return state.overlayHaloShapes.length
+                     + state.selectionHaloShapes.length
                      + state.pickShapes.length
                      + state.cellShapes.length
                      + state.arrowShapes.length;

@@ -28,7 +28,7 @@ _BOOT = """
                     appendFrameArrows: rec("appendFrameArrows"),
                     setLabels:         rec("setLabels"),
                     setAtomLabels:     rec("setAtomLabels"),
-                    setOverlays:       rec("setOverlays"),
+                    setSelectionHalo:  rec("setSelectionHalo"),
                     setArrows:         rec("setArrows"),
                     setCell:           rec("setCell"),
                     setAxes:           rec("setAxes"),
@@ -42,9 +42,9 @@ _BOOT = """
             // Two processed frames: 2 atoms each. (positions differ per frame.)
             const F = [
                 { positions: [[0,0,0],[1,0,0]], elements: ["C","H"],
-                  arrows: [{start:[0,0,0],end:[1,0,0]}], labels: {atoms:"all"}, halos: {atoms:[0]} },
+                  arrows: [{start:[0,0,0],end:[1,0,0]}], labels: {atoms:"all"}, selection: [0] },
                 { positions: [[0,0,1],[1,0,1]], elements: ["C","H"],
-                  arrows: [{start:[0,0,1],end:[1,0,1]}], labels: {atoms:"all"}, halos: {atoms:[0]} },
+                  arrows: [{start:[0,0,1],end:[1,0,1]}], labels: {atoms:"all"}, selection: [0] },
             ];
             const names = (h) => h._calls.map(c => c.name);
             const byName = (h, n) => h._calls.filter(c => c.name === n);
@@ -79,10 +79,10 @@ def test_multiframe_load_is_setStructure_then_setAnimation():
     assert out["animFrames"] == [[[0, 0, 0], [1, 0, 0]], [[0, 0, 1], [1, 0, 1]]]
     assert out["arrowsPerFrame"] == 2                # one arrow set per frame, baked in
     assert out["frameStrip"] is False               # MolView owns the frame bar, not the embed
-    # loadFrames is COORDINATES ONLY -- overlays (labels/halos/arrows) are the engine's job,
+    # loadFrames is COORDINATES ONLY -- overlays (labels/selection/arrows) are the engine's job,
     # applied right after. loadFrames must not touch those doors.
     assert "setLabels" not in out["order"]
-    assert "setOverlays" not in out["order"]
+    assert "setSelectionHalo" not in out["order"]
     assert "setArrows" not in out["order"]
 
 
@@ -139,12 +139,13 @@ def test_apply_overlays_forwards_only_present_fields():
     out = _run_node("""
         const h = makeHandle();
         const io = embedIo.create(h);
-        io.applyOverlays({ labels: [{position:[0,0,0],text:"1"}], halos: null });  // arrows/cell/axes absent
+        io.applyOverlays({ labels: [{position:[0,0,0],text:"1"}], selection: null });  // arrows/cell/axes absent
         console.log(JSON.stringify({ names: names(h) }));
     """)
     # only the two provided doors are touched; an absent field never clears another overlay.
-    assert "setAtomLabels" in out["names"]     # labels -> the explicit-text door
-    assert "setOverlays" in out["names"]
+    # `selection: null` is PRESENT (not undefined) -> forwarded, so a cleared selection un-glows.
+    assert "setAtomLabels" in out["names"]       # labels -> the explicit-text door
+    assert "setSelectionHalo" in out["names"]    # selection -> the glow door
     assert "setArrows" not in out["names"]
     assert "setCell" not in out["names"]
     assert "setAxes" not in out["names"]

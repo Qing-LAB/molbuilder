@@ -155,10 +155,10 @@ def test_selection_change_while_not_isolating_is_overlay_only():
         const { io, store, e } = mk();
         e.setData(DATA);
         io._calls.length = 0;
-        store._set({ indices: [2] });          // isolate OFF -> only the selection halo changes
+        store._set({ indices: [2] });          // isolate OFF -> only the selection highlight changes
         console.log(JSON.stringify({ names: io._names() }));
     """)
-    assert "loadFrames" not in out["names"]    # no reload -- just a halo change
+    assert "loadFrames" not in out["names"]    # no reload -- just an overlay refresh
     assert out["names"] == ["applyOverlays"]
 
 

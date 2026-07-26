@@ -37,13 +37,10 @@ const FILTER_KINDS = [
 // dropdown (so the user can always grab the canonical
 // transport-region names).  Plus any other labels currently
 // on the structure get added dynamically by renderAssignTarget.
-//
-// Must stay in sync with the canonical region colors in
-// ``lib/molview/engine/process.js`` (the REGION_COLORS
-// map): any label the viewer paints a first-class color for
-// should be assignable from this dropdown without typing
-// ``__new__``.  ``interface`` was previously paintable but not
-// assignable here; surfacing it removes that drift.
+// These are the canonical transport-region vocabulary (region-labels.md);
+// the region-label reference popover (region-label-definitions.js) documents
+// what each means.  (The viewer no longer tints regions -- selection is shown
+// by a glow, §8.1 -- so there is no per-region colour to stay in sync with.)
 const BUILTIN_TARGETS = [
     { value: "L-electrode", label: "L-electrode" },
     { value: "R-electrode", label: "R-electrode" },

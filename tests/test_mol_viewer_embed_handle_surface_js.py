@@ -59,7 +59,7 @@ EXPECTED_METHODS = sorted([
     # Style + overlays + projection
     "setStyle", "setAxes", "setCell", "setLabels", "setAtomLabels",
     "setArrows", "setOverlay", "setPick", "setBackground",
-    "setOverlays", "setAtomStyle", "setProjection",
+    "setOverlays", "setSelectionHalo", "setAtomStyle", "setProjection",
     # Camera
     "getCamera", "setCamera",
     # Knob bar + injected view toggles (molview adds isolate via this)

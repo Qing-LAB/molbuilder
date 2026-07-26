@@ -68,7 +68,7 @@ layered on top** — one `process` pass → one `setStructure`.
 flowchart LR
     SRC["source atom coords<br/>clean, from the in-memory model"]
     ISO["step: isolate (display-only)<br/>selected-only → which atoms are drawn"]
-    OVL["step: overlays<br/>labels · halos · force arrows · cell box · axes"]
+    OVL["step: overlays<br/>labels · selection glow · force arrows · cell box · axes"]
     DRAW["3dmol draws — ONCE"]
     SRC --> ISO --> OVL --> DRAW
 ```
@@ -207,7 +207,7 @@ identity (e.g. `"modify"`, `"results:<id>"`) for namespaced persistence.
 consumer hands frames + per-atom forces to `data.reloadFrames(frames, { forces })` (or
 `addFrames`), and the render engine builds the arrows itself (force → arrow is owned by
 `engine/process.js`, §14). The owner only toggles *visibility* through the view flags
-(`data.selection.setViewFlag("showForces", true)`); index labels and halos work the same way.
+(`data.selection.setViewFlag("showForces", true)`); index labels and the selection glow work the same way.
 
 The **frame-axis** rows are the full handle surface for trajectories (§14.5); on a single static
 structure they are still present but no-ops (`frameCount() === 1`, and the frame bar stays
@@ -347,7 +347,7 @@ Three parties, one door between each (§A):
 | MolView owns (inside the component) | Outside molview |
 |---|---|
 | 3-D rendering + the render pipeline (§14) + the viewer card chrome (style / labels / axes / reset / screenshot / background / export) | **Owner:** page layout, where the card sits, and wiring page buttons to molview's API |
-| The selection store + panel + viewer-adapter; measurement; overlays (halos, cell wireframe, labels, arrows, camera) | **Owner:** its own *non-molecule* data + page chrome |
+| The selection store + panel + viewer-adapter; measurement; overlays (selection glow, cell wireframe, labels, arrows, camera) | **Owner:** its own *non-molecule* data + page chrome |
 | The in-memory molecule model + its API (structure, periodicity, selection, frames — `molview.data`, §19) | **Persistence (workspace):** stores + returns the serialized bytes format-blind; the namespace it saves under (workspace-contract §4) |
 | Namespacing its persisted data by `owner` (§18.4) | **Upstream (parse / results):** fetching files, parsing formats, extracting the cell *into* molview's model |
 
@@ -480,10 +480,13 @@ playAnimation  setAnimationFrame  refit  screenshot  exportData  dispose
   wireframe** draws only when **`opts.cell`** is also set (`_redrawCell` gates on
   `state.current.cell`). The viewer does **not** parse a lattice from the file text; molview
   passes it in (having read it from storage, §14).
-- **`setOverlays(spec)`** paints the selection **highlights** on the drawn atoms (selection /
-  region / frozen halos). **`setStructure({xyz, lattice})`** replaces the displayed atom
-  *list* — the plain unit cell, the isolate-**filtered** subset, or a k-grid supercell (§14).
-  Isolate is a render-list filter done through `setStructure`, **not** an overlay.
+- **`setSelectionHalo(indices)`** glows the current **selection** — one translucent `addSphere`
+  per selected atom (a shape; the atom's colour shows through, §13.3). **`setStructure({xyz,
+  lattice})`** replaces the displayed atom *list* — the plain unit cell, the isolate-**filtered**
+  subset, or a k-grid supercell (§14). Isolate is a render-list filter done through `setStructure`,
+  **not** an overlay. (`setOverlays(spec)` is a separate general overlay door — style/marker/halo
+  shapes on chosen atoms — used by bare embedders like VibrationView; the MolView selection no
+  longer uses it.)
 - Hard deps (`embed()` throws if absent): `$3Dmol`, `molbuilder.viewer.create`,
   `molbuilder.fmt`. Soft deps degrade silently: `molbuilder.axes`, `molbuilder.style`.
 
@@ -498,7 +501,7 @@ flowchart TB
     ST["<b>molview.data.selection — THE STORE</b><br/>single source of truth<br/>state: indices · pickOrder · isolate · view-flags · atoms · filters · mode"]
     PANEL["selection-panel<br/>atom list / filters"]
     VC["view toggles (rail/menu)<br/>Show selected only · axes/labels/overlay/cell"]
-    ADAPT["viewer-adapter<br/>selection / region / frozen halos"]
+    ADAPT["viewer-adapter<br/>click wiring + isolate/view-flag toggle specs"]
     MEAS["measurement-overlay<br/>distance / angle readout"]
     ENG["engine (engine.js)<br/>the ONE render loop"]
     VIEWER["viewer handle (3dmol)"]
@@ -506,12 +509,10 @@ flowchart TB
     PANEL -->|"WRITE: toggle/set/filter/setIsolate"| ST
     VC -->|"WRITE: setIsolate / setViewFlag"| ST
     ST -->|subscribe| PANEL
-    ST -->|subscribe| ADAPT
     ST -->|subscribe| MEAS
     ST -->|subscribe| ENG
-    ADAPT -->|"setOverlays (halos)"| VIEWER
     MEAS -->|"reads coordsProvider()"| VIEWER
-    ENG -->|"minimal tier → draw (§8)"| VIEWER
+    ENG -->|"minimal tier → draw + selection glow (§8)"| VIEWER
     VIEWER -.->|"click → onPick"| ADAPT
     ADAPT -.->|"store.toggle<br/>(disabled while isolate on)"| ST
 ```
@@ -520,65 +521,46 @@ flowchart TB
   partial, mounts `selection-panel`, and attaches `viewer-adapter` to the handle
   — both bound to the given `store` (the singleton or an ephemeral one).
 - The **panel** renders from `store.getState()` and calls mutators on input
-  (toggle, filter, `setIsolate`). The **adapter** subscribes to the
-  store and paints selection / region / frozen **halos** via `setOverlays`, and forwards
-  viewer clicks to `store.toggle`. While isolate is on it **stands its overlays
-  down and drops clicks** — the window is display-only then (§14.3); isolate itself is a
-  render-list filter in the engine (§14.1), not an overlay.
+  (toggle, filter, `setIsolate`). The **adapter** forwards viewer clicks to `store.toggle`
+  (and provides the isolate / view-flag toggle specs); it does **not** paint — the **engine**
+  subscribes to the store and glows the selection (§13.3). While isolate is on the adapter
+  **drops clicks** and the engine sends no glow — the window is display-only then (§14.3);
+  isolate itself is a render-list filter in the engine (§14.1), not an overlay.
 - Panel and adapter never reference each other. `mode:"readonly"` hides the
   panel's write controls; clicks still feed the store.
 - `fused-layout.css` is how **molview's composition layer** places the panel as a foldable
   side/bottom region of the viewer card (molview owns this layout + the fold, §18.2; the
   viewer itself offers no layout API).
 
-### 13.3 Halo overlays — the three layers + the color contract
+### 13.3 Selection glow — a shape, not a model restyle
 
-Each `render(state)` in `viewer-adapter.js` builds ONE `setOverlays({atoms})` call
-composed of **three independent halo layers**, painted in this order (later layers draw
-on top):
+The render engine (`engine/process.js` + the embed) shows the current selection as a
+**translucent glow** — but only when the full structure is drawn (isolate **off**). The engine
+emits the selected atoms' drawn indices (`selection`), and the embed draws one `addSphere` per
+selected atom via `setSelectionHalo` in a constant glow style it owns
+(`_SELECTION_GLOW` ≈ `{color #ffd54a, radius 0.7, opacity 0.5}`). See
+[`molview-render-streamline.md`](molview-render-streamline.md) §2.4 / §8.1 for the mechanism and
+the design journey.
 
-| # | Layer | Which atoms | Driven by | Reads selection? |
-|---|---|---|---|---|
-| 1 | **Region halo** | every atom carrying a region **label** | `atom.labels` (per-atom region membership — see [`region-labels.md`](region-labels.md) / [`atom-annotations.md`](atom-annotations.md)) | **NO** |
-| 2 | **Frozen marker** | every atom with `isFrozen` | `atom.isFrozen` (the frozen flag channel) | **NO** |
-| 3 | **Selection halo** | the current pick set | `state.indices` — drawn **only** `if (indices.length)` | YES |
+Why a **shape** and not an atom style / second model:
 
-**Load-bearing invariant — layers 1 & 2 are selection-independent.** A region halo (or a
-frozen marker) is present whenever the atom carries that annotation, **whether or not
-anything is selected**. So an atom can show a halo with an empty selection — that is the
-region/frozen indicator, NOT a stale selection. Only layer 3 (yellow) reflects the pick set,
-and it vanishes the instant the selection is empty. Do not "fix" a persistent halo by
-clearing the selection store; clear the atom's region/frozen annotation instead.
+- **Cheap on a click.** A shape (`addSphere`) is a free-standing object — it never touches the
+  molecule's geometry. So a selection change adds/removes only the few changed spheres (~2–8 ms,
+  flat), whereas *any* `setStyle` on the model rebuilds the whole model's geometry (3Dmol has no
+  partial model update — styling 1 atom costs the same as all N).
+- **The atom shows through.** 3Dmol renders shape spheres translucently, so the element colour is
+  visible inside the glow (a model sphere would render as an opaque ball that hides the atom).
+- **Tracks the trajectory.** The glow spheres are re-placed at the shown frame's positions on each
+  native swap (`_postFramePositionRedraw`) — a few shapes, never a model rebuild.
+- **No fixed-colour clash / no region–frozen tints.** Region colour tints and frozen markers were
+  removed (they duplicated the selection panel's region tags + frozen flags, which is where that
+  information lives now); the viewer no longer paints per-region colours, so there is no
+  `REGION_COLORS` table.
 
-**Color contract** (`_colorFor(label)`):
-
-- **Named regions get fixed, semantic colors** (`REGION_COLORS`) — the transport/junction
-  vocabulary:
-
-  | label | color |
-  |---|---|
-  | `L-electrode` | `#7fc97f` (green) |
-  | `R-electrode` | `#beaed4` (purple) |
-  | `bridge` | `#fdc086` (orange) |
-  | `interface` | `#ffff99` (yellow) |
-
-- **Any other (free-form) label** → `_fallbackColor(label)`: a stable name-hash into an
-  8-entry palette. Deterministic (same name → same color across reloads) but **NOT
-  collision-free** — with 8 slots, two distinct names can share a color. `hasOwnProperty`
-  guards the `REGION_COLORS` lookup so a label like `"__proto__"` cannot pierce the prototype.
-
-- **One color per atom:** the adapter keys each atom's region halo on `labels[0]` — its
-  **first** label only. An atom in several regions shows just the first region's color; the
-  others do not stack. (Region *membership* is multi-valued in the data model; the rendered
-  *color* is single-valued per atom.)
-
-**Halo geometry** (Å, fixed constants): region `{radius 0.5, opacity 0.35}`; frozen
-`{color #ff5050, radius 0.25, opacity 0.85}`; selection `{color yellow, radius 0.7,
-opacity 0.45}`. Selection is the largest + brightest so it reads as the "live" set above
-region tints.
-
-**Halos stand down under a derived view.** While isolate is on, the adapter drops
-all three layers and stops forwarding clicks — the window is display-only (§14.3, §13.2).
+**The glow stands down under a derived view.** While isolate is on, the drawn set *is* the
+selection, so there is nothing to differentiate — the engine sends no glow and the window is
+display-only (in-window picking off, §14.3, §13.2). Index labels still show each atom's **original**
+1-based index (via `sourceIndex`), so an isolate-filtered view stays readable.
 
 ## §14 The render pipeline — isolate & frames
 
@@ -615,7 +597,7 @@ not from the structure.
   frame coords every time — never from a derived list read back off the viewer.
 - **A derived view (isolate) is display-only for selection (§14.3).** While isolate is on the
   drawn atom index no longer equals the unit-cell index, so in-window click-select is
-  disabled and the halos pause; the **panel atom list** is the selection surface. The
+  disabled and the selection glow pauses; the **panel atom list** is the selection surface. The
   measurement readout keeps working (re-keyed to global index). Turn isolate off → the plain
   full-list draw returns and everything restores.
 
@@ -640,8 +622,8 @@ on:
 - **In-window picking is disabled** — clicking an atom in the 3-D molview does **not** toggle
   the selection. This same guard also drops the programmatic empty-pick that a resized
   `setStructure` fires, so re-deriving the view **never clobbers the store selection**.
-- **Halos stand down in the window** — the selection / region / frozen halos pause; under
-  isolate the drawn atoms already ARE the selection, so there is nothing to distinguish.
+- **The selection glow stands down** — under isolate the drawn atoms already ARE the selection,
+  so there is nothing to distinguish; the engine sends no glow.
 - **The measurement readout keeps working** — the selection is still curated (via the panel),
   and the readout is derived from it; the drawn list is only the selected atoms, so the
   overlay re-keys the filtered coords back to global atom index (matching the engine's
@@ -810,8 +792,8 @@ once and swapped natively:
   atoms. 3dmol now owns the coordinates (§14.5); the embed drops any coords copy.
 - **Swap natively.** `setFrame(i)` → **`viewer.setFrame(i)`** — a swap to the pre-parsed frame
   with **no `setStyle` rebuild**. The overlay (force arrows) is a separate batched shape redrawn
-  for the frame (§14.5.1); labels/halos track by index. Frame swap fires the frame-change
-  channel so the bar's slider + counter follow the shown frame in the same step.
+  for the frame (§14.5.1); index labels and the selection glow re-place by index. Frame swap fires
+  the frame-change channel so the bar's slider + counter follow the shown frame in the same step.
 - **Stream.** `addFrame` clones the frame-0 atoms template + stamps the new coords into a new
   native frame (live-poll tail append), so a running job extends the movie without a full reload.
 

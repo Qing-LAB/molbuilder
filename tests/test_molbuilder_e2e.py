@@ -2117,11 +2117,10 @@ def test_add_atom_clears_selection(page, flask_server, water_xyz_file):
 # made the embed a SECOND selection store (a second source of truth), contrary to
 # molview-module.md §13.2 (the store is the single source of truth; clicks
 # forward to store.toggle, and the embed's pick buffer is vestigial
-# click-tracking).  The store->3D *wiring* is pinned statically instead by
-# tests/test_viewer_adapter_halo_contract_js.py (the selection layer reads
-# s.indices and paints HALO_SELECT via setOverlays); the store-is-truth click
-# contract is covered by test_viewer_clicks_are_wired_to_the_store (inspector
-# e2e) and the delete/add-clear tests below (_molview_picked == []).
+# click-tracking).  The store->3D *wiring* is pinned end-to-end by
+# test_selected_atom_adds_halo_marker_shape (selecting an atom glows it, §13.3) and the
+# store-is-truth click contract by test_viewer_clicks_are_wired_to_the_store (inspector
+# e2e) plus the delete/add-clear tests below (_molview_picked == []).
 
 
 def test_modify_view_controls_bar(page, flask_server, tmp_path, monkeypatch):
@@ -3741,11 +3740,12 @@ def test_axes_have_fixed_length_at_origin(
 
 def test_selected_atom_adds_halo_marker_shape(
         page, flask_server, water_xyz_file):
-    """Selecting an atom adds a halo overlay shape (added via the
-    viewer-adapter's _addSphereOverlay path); clearing the selection
-    removes it.  Behavioural contract -- counts the viewer's shape
-    array before and after.  We drive selection via the store
-    (toggleAtom / clearSelection) since the row-click UI is gone."""
+    """Selecting an atom adds a glow shape (the engine's selection highlight,
+    setSelectionHalo -> one translucent addSphere per selected atom, §13.3);
+    clearing the selection removes it.  Behavioural contract -- counts the
+    viewer's shape array before and after.  We drive selection via the store
+    (set / clear) here; the REAL-click path is covered by
+    test_in_window_click_selects_and_deselects_atoms."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     n_before = page.evaluate(
@@ -3769,6 +3769,53 @@ def test_selected_atom_adds_halo_marker_shape(
         f"() => window.__molbuilder_modify_test.getViewer().shapes.length"
         f" === {n_before}"
     )
+
+
+def test_in_window_click_selects_and_deselects_atoms(page, flask_server):
+    """A REAL mouse click on an atom in the 3-D window toggles the store selection
+    (in-window pick -> viewer-adapter onPick -> store.toggle, molview-module.md §13.2).
+
+    Distinct from ``test_selected_atom_adds_halo_marker_shape`` (which drives the STORE
+    directly): this drives the actual canvas, so it guards the whole pick chain -- and in
+    particular guards against a highlight that RESTYLES the model (which rebuilds the
+    geometry and drops each atom's ``clickable`` flag, silently killing further clicks).
+    The selection glow is a separate SHAPE, so ``clickable`` survives (§13.3)."""
+    _open_modify(page, flask_server)
+    # spread the atoms out so a projected-centre click lands cleanly on one
+    page.evaluate(
+        "() => window.molbuilder.loadStructureText("
+        "'3\\n\\nO 0 0 0\\nH 4 0 0\\nH -4 0 0\\n', 'water.xyz')"
+    )
+    page.wait_for_function(
+        "() => window.molbuilder.molview.data.selection.getState().atoms.length === 3",
+        timeout=8000,
+    )
+    page.wait_for_timeout(300)
+
+    def click_atom(i):
+        # 3dmol-ok: project atom i to screen coords so we can aim a REAL mouse click at it
+        # (a render-FACT read -- the atom's on-screen position -- not a data value).
+        scr = page.evaluate(
+            "(i) => { const v = window.__molbuilder_modify_test.getViewer();"
+            "  const a = v.getModel().selectedAtoms({})[i];"
+            "  return v.modelToScreen({x:a.x, y:a.y, z:a.z}); }",
+            i,
+        )
+        page.mouse.click(scr["x"], scr["y"])
+        page.wait_for_timeout(150)
+
+    def sel():
+        return page.evaluate(
+            "() => (window.molbuilder.molview.data.selection.getState().indices||[]).slice()"
+        )
+
+    assert sel() == []
+    click_atom(0)                       # click the O
+    assert sel() == [0], f"click did not select atom 0: {sel()}"
+    click_atom(0)                       # click it again (glow present) -> deselect
+    assert sel() == [], f"clicking a glowing atom did not deselect it: {sel()}"
+    click_atom(1)                       # click an H -> selects a different atom
+    assert sel() == [1], f"click did not select atom 1: {sel()}"
 
 
 def test_reset_view_recentres_camera(

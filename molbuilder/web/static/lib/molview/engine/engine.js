@@ -82,7 +82,11 @@ function create(handle, opts) {
 
     // ---- derive the per-frame render data (§2) ---------------------------------------- //
     function _identity() {
-        return { elements: _data.elements, annotations: _data.annotations };
+        // Only the per-frame processor consumes this, and it needs only elements (to colour drawn
+        // atoms). Annotations are NOT read here -- region/frozen halos were removed (§8.1); the
+        // selection panel reads annotations straight from molview.data. Selection highlighting
+        // rides flags.selection, not identity.
+        return { elements: _data.elements };
     }
     function _frameInput(f) {
         return { coords: _data.frames[f],
@@ -103,14 +107,14 @@ function create(handle, opts) {
         if (!_data || !_data.cell) return null;
         return { lattice: _data.cell.lattice, origin: _data.cell.origin };
     }
-    // Re-apply the CURRENT frame's index-keyed overlays (labels + halos) + the scene cell/
-    // axis. Arrows are baked into the movie at load (structural), so a swap/overlay-refresh
-    // does not re-hand them here.
+    // Re-apply the CURRENT frame's index-keyed overlays (labels + selection highlight) + the
+    // scene cell/axis. Arrows are baked into the movie at load (structural), so a swap/overlay-
+    // refresh does not re-hand them here.
     function _applyCurrentOverlays() {
         var pf = processFrame(_frameInput(_frame), _identity(), _flags);
         var overlay = {
             labels:      _flags.showIndex ? pf.labels : false,
-            halos:       pf.halos,
+            selection:   pf.selection,        // §8.1: WHICH atoms to glow (isolate off) -- embed owns HOW
             cellVisible: !!_flags.showCell,   // plain on/off; the box GEOMETRY rode the load.
             axes:        !!_flags.showAxis,
         };

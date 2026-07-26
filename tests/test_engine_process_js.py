@@ -2,7 +2,8 @@
 
 Node unit test: processFrame is a pure function. We assert §2 end to end -- the selection
 filter, the drawn->original sourceIndex map, original-index labels under isolation, the
-region/frozen/selection halo layering in drawn-index space, and force→arrow derivation.
+selection-highlight index list (§8.1: WHICH atoms to glow, isolate off only), and force→arrow
+derivation. The output carries semantic content, never rendering style (§7.3).
 """
 from pathlib import Path
 
@@ -16,12 +17,10 @@ INDEX_HELPER = ROOT / "molbuilder/web/static/lib/molview/_atom-index.js"
 
 _BOOT = """
     const processFrame = globalThis.molbuilder.molview.engine.process.processFrame;
-    // 4 atoms on the x-axis. atom 1 = region "bridge"; atom 3 = frozen.
+    // 4 atoms on the x-axis. identity is elements only -- process no longer reads annotations
+    // (region/frozen halos removed, §8.1); the panel reads annotations straight from molview.data.
     const COORDS = [[0,0,0],[1,0,0],[2,0,0],[3,0,0]];
-    const IDENTITY = {
-        elements:    ["C","N","O","H"],
-        annotations: [{}, { label: "bridge" }, {}, { frozen: true }],
-    };
+    const IDENTITY = { elements: ["C","N","O","H"] };
 """
 
 
@@ -80,43 +79,38 @@ def test_labels_null_when_showindex_off():
     assert out["labels"] is None
 
 
-def test_halos_region_frozen_selection_layered_in_drawn_space():
+def test_selection_highlight_is_drawn_indices_when_isolate_off():
     out = _run_node("""
         const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
-                                { selection: [1], isolate: false });
-        console.log(JSON.stringify(pf.halos));
+                                { selection: [1, 3], isolate: false });
+        console.log(JSON.stringify({ selection: pf.selection }));
     """)
-    # all 4 drawn (isolate off), drawn index == original index. Order: region, frozen, selection.
-    atoms = out["atoms"]
-    assert atoms[0]["indices"] == [1]                 # region "bridge" on atom 1
-    assert atoms[0]["halo"]["color"] == "#fdc086"     # bridge palette colour
-    assert atoms[1]["indices"] == [3]                 # frozen marker on atom 3
-    assert atoms[1]["halo"]["color"] == "#ff5050"
-    assert atoms[2]["indices"] == [1]                 # selection halo on atom 1, drawn LAST (on top)
-    assert atoms[2]["halo"]["color"] == "yellow"
+    # §8.1: isolate off draws every atom in original order, so the highlight list is just the
+    # selected atoms' DRAWN indices (== original index here). The embed glows these -- no style
+    # is baked into the data, and there is no region/frozen halo.
+    assert out["selection"] == [1, 3]
 
 
-def test_halos_indices_translate_to_drawn_space_under_isolate():
+def test_selection_highlight_null_under_isolate():
     out = _run_node("""
         const pf = processFrame({ coords: COORDS, forces: null }, IDENTITY,
                                 { selection: [1, 3], isolate: true });
-        console.log(JSON.stringify(pf.halos));
+        console.log(JSON.stringify({ selection: pf.selection }));
     """)
-    # drawn = [atom1, atom3] -> drawn indices 0,1. region "bridge" (atom1) -> drawn 0;
-    # frozen (atom3) -> drawn 1; selection {1,3} -> drawn [0,1].
-    atoms = out["atoms"]
-    assert atoms[0]["indices"] == [0]      # bridge region on drawn 0 (orig atom 1)
-    assert atoms[1]["indices"] == [1]      # frozen on drawn 1 (orig atom 3)
-    assert atoms[2]["indices"] == [0, 1]   # selection halo -> both drawn atoms
+    # Under isolate the selection IS the entire drawn set -- an in-view highlight would add
+    # nothing, so the engine sends null.
+    assert out["selection"] is None
 
 
-def test_halos_null_when_nothing_to_highlight():
+def test_selection_highlight_null_when_nothing_selected():
     out = _run_node("""
-        const pf = processFrame({ coords: [[0,0,0]] }, { elements: ["C"], annotations: [{}] },
-                                { selection: [], isolate: false });
-        console.log(JSON.stringify({ halos: pf.halos }));
+        const empty = processFrame({ coords: [[0,0,0]] }, { elements: ["C"] },
+                                   { selection: [], isolate: false });
+        const none  = processFrame({ coords: [[0,0,0]] }, { elements: ["C"] }, {});
+        console.log(JSON.stringify({ empty: empty.selection, none: none.selection }));
     """)
-    assert out["halos"] is None
+    assert out["empty"] is None
+    assert out["none"] is None
 
 
 def test_forces_build_styled_arrows_for_drawn_atoms_with_scale():
@@ -167,7 +161,7 @@ def test_single_frame_is_just_processed_once():
     # §2.1 single frame = frame[0]; the processor runs the same on a one-frame set.
     out = _run_node("""
         const pf = processFrame({ coords: [[5,5,5]], forces: null },
-                                { elements: ["Fe"], annotations: [{}] }, {});
+                                { elements: ["Fe"] }, {});
         console.log(JSON.stringify({ positions: pf.positions, sourceIndex: pf.sourceIndex }));
     """)
     assert out["positions"] == [[5, 5, 5]]

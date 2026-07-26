@@ -271,9 +271,9 @@ def test_viewer_clicks_are_wired_to_the_store(
         page, flask_server, tmp_path, monkeypatch):
     """CONTRACT (molview-module.md §13.2 + §15, "decision A"): a viewer click
     forwards to ``store.toggle`` — the selection STORE is the single source of
-    truth.  The adapter runs the embed in "single" pick mode with halos/labels
-    OFF (it paints halos via setOverlays), so the embed's pick buffer is NOT a
-    second selection; it only reports which atom the click toggled.  A
+    truth.  The adapter runs the embed in "single" pick mode with pick halos/labels
+    OFF (the render engine glows the selection instead, §13.3), so the embed's pick
+    buffer is NOT a second selection; it only reports which atom the click toggled.  A
     multi-atom selection is built by TOGGLING atoms into the store (there is no
     separate triple-pick chip), and the measurement overlay (§15) derives its
     1/2/3-atom readout from that store selection.
@@ -324,6 +324,57 @@ def test_viewer_clicks_are_wired_to_the_store(
         f"() => {_SEL}.getState().indices.length") == 0, (
         "same-atom-twice deselect did not clear the store — the prevClicked "
         "shim (single-mode empty-report path) is broken."
+    )
+
+
+def test_real_click_selects_in_readonly_inspector(
+        page, flask_server, tmp_path, monkeypatch):
+    """A REAL mouse click on an atom in the READ-ONLY Results structure inspector selects it,
+    and the engine draws the selection glow.  Read-only gates EDIT controls, NOT selection /
+    visualization (mount.js attaches the click-to-select adapter regardless of mode; §13.2).
+
+    Distinct from test_viewer_clicks_are_wired_to_the_store, which fires ``onPick`` directly:
+    this drives the actual canvas (projecting the atom to screen coords), so it guards the whole
+    real-pick chain in a read-only mount -- and that the glow renders in read-only.  It also
+    guards against a highlight that RESTYLES the model (which rebuilds geometry and drops each
+    atom's ``clickable`` flag, silently killing clicks); the glow is a separate SHAPE (§13.3)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz = tmp_path / "spread.xyz"
+    # atoms far apart so a projected-centre click lands cleanly on exactly one
+    xyz.write_text("4\n\nC 0 0 0\nN 4 0 0\nO 8 0 0\nS 12 0 0\n")
+    _open_results(page, flask_server)
+    _mount_structure(page, str(xyz))
+    page.wait_for_function(
+        "() => { const v = document.querySelector('.structure-viewer-slot .viewer');"
+        "  const h = v && v.__molview_test_handle;"
+        "  const p = h && h.getPick && h.getPick(); return p && p.mode === 'single'; }",
+        timeout=8000,
+    )
+    page.evaluate(f"() => {_SEL}.clear()")
+
+    def click_atom(i):
+        # 3dmol-ok: project atom i to screen coords to aim a REAL mouse click at it
+        # (a render-FACT read -- the atom's on-screen position -- not a data value).
+        scr = page.evaluate(
+            "(i) => { const raw = " + _VH + "._viewer3dmol();"
+            "  const a = raw.getModel().selectedAtoms({})[i];"
+            "  return raw.modelToScreen({x:a.x, y:a.y, z:a.z}); }",
+            i,
+        )
+        page.mouse.click(scr["x"], scr["y"])
+        page.wait_for_timeout(150)
+
+    click_atom(1)                       # a REAL click selects, even read-only
+    assert page.evaluate(f"() => JSON.stringify({_SEL}.getState().indices)") == "[1]", (
+        "a REAL click did not select in read-only mode -- read-only must gate EDIT controls, "
+        "not selection (mount.js attaches the adapter regardless of mode)."
+    )
+    # 3dmol-ok: count the glow shape the engine drew for the selection (a render-FACT read).
+    n_shapes = page.evaluate(f"() => {_VH}._viewer3dmol().shapes.length")
+    assert n_shapes >= 1, "the selection glow did not render in read-only mode"
+    click_atom(1)                       # click the glowing atom again -> deselect
+    assert page.evaluate(f"() => {_SEL}.getState().indices.length") == 0, (
+        "clicking the glowing atom again did not deselect it in read-only mode"
     )
 
 

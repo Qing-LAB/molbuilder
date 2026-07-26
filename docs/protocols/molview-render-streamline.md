@@ -72,13 +72,16 @@ are:
   convention; `data-vocabulary.md` §3.1) — internal indices (`sourceIndex`, `selection`) stay
   **0-based**; only the label text is converted, through the shared L1 helper
   `molbuilder.atomIndexModel.toDisplay` (reused, never re-derived as a bare `+1`).
-- **Selection halos (three highlight layers).** The highlights that show what is selected:
-  (a) **region color tints** (each region label its own color), (b) **frozen-atom markers**,
-  and (c) the **selection halo** on the current pick set. Region tints and frozen markers come
-  from the **atom annotations** (persistent, §7.1); the selection halo comes from the
-  **transient pick set** (a flag, §7.2). Like the atom-index labels, all three are keyed by
-  atom **index**, so when selection/isolation has filtered the list the same **original
-  index** translation applies — the highlight lands on the correct atom.
+- **Selection highlight (a glow on the selected atoms).** The highlight that shows what is
+  selected — but **only when *not* isolating**. Isolate ("show selected only") already draws
+  *just* the selected atoms, so an in-view highlight would add nothing. When every atom is drawn,
+  the selected ones get a **translucent glow** (a soft sphere around each). The engine's job here
+  is only to say **which** atoms are selected — it emits their drawn indices (`selection`); *how*
+  the glow looks (colour, size, opacity) is the **embed's** business, a rendering constant, **not**
+  baked into the per-frame data (§7.3 / §8.1). The indices are keyed to the drawn atoms; with
+  isolate off, drawn index == original index, so no translation is needed here. (**Region colour
+  tints and frozen-atom markers were removed** — they duplicated the selection panel's region tags
+  and frozen flags, which is where that information lives now.)
 - **Force vectors.** Provided by the incoming data supply. If such an overlay is supplied,
   it is added — and it is extracted from the **correct frame** of that data (frame `i`'s
   vectors go on frame `i`).
@@ -98,7 +101,7 @@ flowchart TD
     subgraph PERFRAME["per frame f  (run for every frame)"]
         C0["clean coords: frames[f]<br/>+ identity (elements, annotations)"]
         SEL["§2.3 selection filter<br/>isolate ON + selection set → keep only selected atoms<br/>→ positions[], sourceIndex[] (drawn → original index)"]
-        OV["§2.4 overlays (keyed by sourceIndex)<br/>index labels · halos (region/frozen/selection) · force vectors[f] · cell box · axis"]
+        OV["§2.4 overlays (keyed by sourceIndex)<br/>index labels · selection glow (isolate off) · force vectors[f] · cell box · axis"]
         PF["ProcessedFrame f"]
         C0 --> SEL --> OV --> PF
     end
@@ -212,8 +215,8 @@ FrameForces  = Vec3[]                 // length = nAtoms.
 Vec3         = [number, number, number]
 
 AtomAnno = {
-  label?:  string,                    // region label (grouping) — drives region color tint.
-  frozen?: boolean,                   // frozen flag — drives the frozen marker.
+  label?:  string,                    // region label (grouping) — shown as a panel region tag.
+  frozen?: boolean,                   // frozen flag — shown as a panel flag / consumed by the backend.
 }
 
 Cell = {
@@ -254,9 +257,10 @@ ViewFlags = {                // the view store — LOW frequency (user toggles/c
 }
 ```
 
-Region tints and frozen markers are **not** flags — they come from `annotations` (§7.1) and
-always draw. `selection` + `isolate` are the only flags that change the **drawn atom set**;
-the rest only change **overlays**.
+`annotations` (region label + frozen flag, §7.1) are model **data**, not view flags — they are
+read by the selection **panel** (region tags + frozen flags), not by the render engine (the viewer
+no longer tints regions or marks frozen atoms). `selection` + `isolate` are the only flags that
+change the **drawn atom set**; the rest only change **overlays**.
 
 **`currentFrame` is NOT in the view store.** It lives on a **separate frame channel** because
 playback changes it at ~10 fps: firing the view store every frame would re-render the atom
@@ -271,30 +275,25 @@ ProcessedFrame = {
   sourceIndex: int[],       // sourceIndex[m] = ORIGINAL atom index of drawn atom m.
   elements:    string[],    // element per drawn atom (elements[sourceIndex[m]]).
   labels:      Label[] | null,          // index labels (showIndex), or null.
-  halos:       OverlaySpec | null,      // selection/region/frozen highlights, or null.
+  selection:   int[] | null,            // drawn indices to GLOW (isolate off only), or null.
   arrows:      Arrow[] | null,          // force vectors for THIS frame (showForces), or null.
 }
 
 Label       = { position: Vec3, text: string }   // text = 1-based ORIGINAL index (§2.4).
 Arrow       = { start: Vec3, end: Vec3 }          // start = atom pos; end = pos + force·scale.
-OverlaySpec = { atoms: HaloEntry[] }              // drawn in array order (region → frozen → select).
-HaloEntry   = { indices: int[],                   // DRAWN indices (0..nDrawn-1), not original.
-                halo: { color: string, radius: number, opacity: number } }
 ```
 
-> **Target shape (§8.1 step 3):** content specs are **frame-independent, keyed by atom index** —
-> the engine says *what* to draw, the embed resolves *where* per frame. `HaloEntry` already is
-> (indices, no coordinate). `Label` becomes `{ index, text }` — today it carries a baked
-> `position` the engine recomputes every frame; the embed will resolve position instead, exactly
-> as it already does for halos. `Arrow` keeps per-frame vectors, because the **force** itself
-> differs per frame (not just the position). This split is what lets a frame swap re-place shapes
-> with no spec recompute and a selection change reconcile a single atom.
+`selection` is **semantic content, not rendering style**: the list of drawn atom indices to
+highlight. HOW the glow looks (colour / size / opacity) is a constant owned by the **embed**, never
+baked into the per-frame data — so the data structure stays honest and the same for every frame.
+`selection` is `null` under isolate (the drawn set *is* the selection) and `null` when nothing is
+selected. With isolate off, drawn index == original index, so it is just the selected indices.
 
 Scene-level, computed once (same every frame unless the cell changes): `cellBox`, `axes`.
 `process.js` builds all of the above as plain data and **never touches 3Dmol**; `embedIo` (§9.1)
 is what hands them to the viewer.
 
-`sourceIndex` is the **drawn → original** index map. It is why labels/halos show the original
+`sourceIndex` is the **drawn → original** index map. It is why labels show the original
 index under isolation (§2.4). It is **not** needed for picking under isolation, because:
 
 **Interaction under isolation.** While isolate is on, the 3-D window is **display-only** —
@@ -316,7 +315,7 @@ never by system size (**no atom-count threshold, no magic number** — finding C
 | What changed | Tier | Work | Busy? |
 |---|---|---|---|
 | `currentFrame` only (scrub / play — frame channel) | **native swap** | ask 3Dmol to switch to the pre-loaded frame (§3) | no |
-| overlay-only change on the **same** drawn atom set (`selection` halo while **not** isolating, `showIndex`, `showForces` + scale, `showCell`, `showAxis`, **a cell edit** → cell box + axis) | **overlay refresh** | re-derive + re-apply the overlays on the existing frames; the coordinate movie is **not** rebuilt. Refined **per layer** — a change touches only its own layer, reconciled by delta (§8.1) | no |
+| overlay-only change on the **same** drawn atom set (`selection` glow while **not** isolating, `showIndex`, `showForces` + scale, `showCell`, `showAxis`, **a cell edit** → cell box + axis) | **overlay refresh** | re-derive + re-apply the overlays on the existing frames; the coordinate movie is **not** rebuilt. Refined **per layer** — a change touches only its own layer, reconciled by delta (§8.1) | no |
 | **streamed** new frame(s) arrive (§6.2) | **append** | process the new frame(s) only + **extend** the movie; `currentFrame` unchanged | no |
 | the **drawn atom set** of the current frames changed (`isolate` toggled; `selection` changed **while** isolating), or a **full new load** (`setData`) | **structural regen** | re-process the frames + **reload** the multi-frame movie (§3) | **yes** (§4) |
 
@@ -332,22 +331,19 @@ axis change. A streamed append **extends** the movie (§6.2) — it is *not* a r
   `forceScale` change therefore re-derives the arrows for **every** frame and **re-bakes them in
   place** (`setFrameArrows` → a partial animation update) — the coordinates are **not** reparsed.
   That is why it is an **overlay refresh**, not a structural regen.
-- **Labels + halos + markers are RE-PLACED for the shown frame** on each swap. They are
-  free-standing 3Dmol shapes/labels at atom coordinates; a native frame swap moves the atoms but
-  not those objects, so each swap must repaint them at the new positions. The **embed** owns this:
-  `_postFramePositionRedraw` (fired on every native swap) repaints labels, overlay halos/markers,
-  and pick halos — light (one frame's worth), not a movie rebuild. The engine also re-hands the
-  shown frame's overlay spec after each swap, but that spec is **unchanged** while the selection
-  holds, so `setOverlays`' idempotence bail (`_equalNormalised → return`) correctly skips a
-  redundant re-derive; the embed's per-frame repaint is what actually re-places the shapes.
-  **§8.1 makes this the rule and drops the redundant per-swap re-hand** — the engine hands overlay
-  specs only on a *content* change (not on a frame swap), and the embed re-places on the swap. (Bug fixed 2026-07-25: overlay halos/markers were missing from
-  `_postFramePositionRedraw`, so with the spec-diff also bailing they stayed frozen at frame 0 —
-  halos drifting off atoms in a played trajectory, seen in the Results tab. Regression:
+- **Labels + the selection glow + markers are RE-PLACED for the shown frame** on each swap. They
+  are free-standing 3Dmol shapes/labels at atom coordinates; a native frame swap moves the atoms
+  but not those objects, so each swap must repaint them at the new positions. The **embed** owns
+  this: `_postFramePositionRedraw` (fired on every native swap) re-places labels, the selection
+  glow spheres, overlay halo/marker shapes, and pick halos — a few shapes (one frame's worth), not
+  a movie rebuild, and crucially **it never restyles the molecule's geometry** (a `setStyle` on the
+  model would rebuild all atoms; a shape re-place does not). (Bug fixed 2026-07-25: overlay
+  shapes were missing from `_postFramePositionRedraw`, so they stayed frozen at frame 0 — drifting
+  off atoms in a played trajectory, seen in the Results tab. Regression:
   `tests/test_overlay_frame_tracking_e2e.py`.)
 
 A **structural regen** rebuilds the coordinate movie *and* re-bakes arrows + re-applies the shown
-frame's labels/halos; that is the only tier that reparses coordinates and raises busy.
+frame's labels + selection glow; that is the only tier that reparses coordinates and raises busy.
 
 **Lock during an update — nothing is lost to the busy window.** A structural regen runs behind a
 paint yield (so the busy scrim shows before the freeze, §4) and **locks the viewer** for the whole
@@ -377,145 +373,121 @@ Otherwise: one update at a time — no coalescing, no racing the half-built movi
 flowchart TD
     CH["a data/flag change → engine.update(delta)"] --> Q{"what changed?"}
     Q -->|"currentFrame only<br/>(frame channel)"| SWAP["NATIVE SWAP<br/>embedIo.swapFrame(i) · no busy"]
-    Q -->|"overlay flags or cell edit,<br/>same atom set"| OVR["OVERLAY REFRESH<br/>re-apply labels/halos/arrows/cell/axis<br/>movie NOT rebuilt · no busy"]
+    Q -->|"overlay flags or cell edit,<br/>same atom set"| OVR["OVERLAY REFRESH<br/>re-apply labels/selection/arrows/cell/axis<br/>movie NOT rebuilt · no busy"]
     Q -->|"streamed new frame(s) (§6.2)"| APP["APPEND<br/>process new frame(s) → extend movie<br/>currentFrame unchanged · no busy"]
     Q -->|"drawn atom set changed<br/>(isolate / selection-while-isolating)<br/>or full new load (setData)"| REGEN["STRUCTURAL REGEN<br/>process all frames → reload movie<br/>BUSY on → … → BUSY off"]
 ```
 
 ### 8.1 Overlay layers — fine-grained invalidation + reconciliation
 
-> **Status (2026-07-25):** TARGET, staged below. Today the **overlay-refresh** tier is
-> *coarse* in two ways: (a) it re-runs the **whole** per-frame processor (recomputes every
-> layer's spec) even for a one-layer change, and (b) the **touched** layer clears-and-rebuilds
-> **all** its shapes — so a one-atom selection click recomputes the entire frame *and* rebuilds
-> **every** halo (region + frozen + selection), not just the clicked atom. (The other layers'
-> setters idempotence-bail when unchanged, so they don't redraw — but the two costs above are
-> O(system size) for an O(1) change, felt as click-to-select lag on large selections.)
-> This section is the model that tier is being refined toward. It does **not** change the
-> four tiers above; it makes the *overlay-refresh* tier do the least work, and it is what
-> guarantees correctness when many view options are combined.
+> **Status (2026-07-26):** the **selection glow** layer below is SHIPPED; the shape-layer
+> refinements (steps 2–4) are TARGET. The scene is a fixed stack of **independent layers**, each a
+> pure function of a declared subset of inputs. This does **not** change the four tiers above; it
+> makes the *overlay-refresh* tier do the least work, and it is what guarantees correctness when
+> many view options are combined.
 
-The overlay-refresh tier is not one blob. The scene is a fixed stack of **independent
-layers**, each a **pure function of a declared subset of inputs**:
-
-| Layer (draw order) | Content inputs (frame-independent) | Per-frame data | Dirtied by |
+| Layer (draw order) | Content inputs (frame-independent) | Renderer | Dirtied by |
 |---|---|---|---|
-| atom style | style flags · drawn set | position | style toggle |
-| index labels | `showIndex` · drawn set | position | `showIndex`, isolate |
-| force arrows | `showForces` · `forceScale` · drawn set | position · **force** | forces toggle / scale |
-| region halos | `annotations.region` · drawn set | position | annotation edit, isolate |
-| frozen halos | `annotations.frozen` · drawn set | position | frozen edit, isolate |
-| selection halos | `selection` · drawn set | position | **click** (select / deselect) |
-| cell box | cell geometry · `showCell` | — | cell toggle / edit |
-| axes | `showAxis` · origin | — | axis toggle |
-| pick halo | picked set | position | in-window pick |
+| atom style | style flags · drawn set | model `setStyle` | style toggle |
+| index labels | `showIndex` · drawn set | `addLabel` shapes | `showIndex`, isolate |
+| force arrows | `showForces` · `forceScale` · drawn set | baked `arrowsPerFrame` | forces toggle / scale |
+| **selection glow** | `selection` · drawn set (isolate off) | **`addSphere` shapes** | **click** (select / deselect) |
+| cell box | cell geometry · `showCell` | wireframe shapes | cell toggle / edit |
+| axes | `showAxis` · origin | axis shapes | axis toggle |
+| pick halo (bare embed only) | picked set | `addSphere` shapes | in-window pick |
 
-The **pick halo** is the embed's built-in click highlight for a **bare** embed with no selection
-engine; in the full MolView flow the engine's **selection halos** do this instead (the adapter
-runs with `paintHalos:false`, §10). Both are the same *kind* of layer — an atom-keyed highlight —
-but they render differently (Rule 2): the engine's selection halos become the **second model**; the
-bare-embed pick stays a **shape** (a bare embed has no engine-driven movie to duplicate).
+**The selection glow is a SHAPE, not a model restyle.** The engine hands the embed *which* drawn
+atoms are selected (`selection` → `setSelectionHalo`); the embed draws one translucent `addSphere`
+per selected atom, in a constant glow style it owns. A shape is a free-standing object — it **never
+touches the molecule's geometry** — so a selection change adds/removes only the few changed spheres,
+and 3Dmol renders the shape sphere *translucently*, so the atom's own element colour shows through
+the glow. The glow **tracks a trajectory by re-placement**: `_postFramePositionRedraw` removes and
+re-adds the spheres at the shown frame's positions on each native swap (a few shapes, cheap). Region
+colour tints and frozen markers are **gone** (they duplicated the panel's tags + flags). The **pick
+halo** remains only for a *bare* embed with no engine (a plain `viewer.embed()` in pick mode); in the
+full MolView flow the engine drives the glow instead (the adapter runs pick halos off, §10).
 
-**Two inputs, two owners — the spec / position split:**
+**Why a shape — and why every "cleverer" alternative was worse (the design journey).** Selecting an
+atom must (a) show the atom clearly, (b) be cheap on a click, and (c) track a played trajectory. Two
+measured facts decided it (2026-07-26 spikes):
 
-- **Content** decides *what* a layer draws. Frame-independent, owned by the **engine**, and
-  keyed by **atom index — its identity in the drawn model, never a coordinate** (the drawn
-  index; = the original index when not isolating, and the label *text* still shows the original
-  index via `sourceIndex`, §2.4 / §7.3): labels `{index → text}`, halos `{index → layer style}`,
-  styles `{index → style}`. (Reconciliation only runs when the drawn set is stable — a selection
-  change *while isolating* changes the drawn set and is a structural regen, §8 — so the drawn
-  index is a stable key across every reconcile.)
-- **Position** decides *where*. Per frame, owned by the **embed**: it resolves index → the
-  current frame's coordinate at draw time from the **loaded coordinate movie** (`model.frames` —
-  the very frames the engine handed at load, held by 3Dmol for fast native swaps; the same
-  coordinates as the engine's clean `_data.frames`, NOT a read-back of 3Dmol's rendered state,
-  §7.1). *How* each layer realises that position is Rule 2's per-layer renderer — **halo layers ride
-  the movie as a second model** (3Dmol moves them for free), **shape layers** (labels / markers /
-  pick) are re-placed by the embed from `model.frames` on each swap. Force is the one extra per-frame
-  datum (the arrow vectors differ per frame), so arrows carry per-frame content, baked into the movie
-  as `arrowsPerFrame` (§8).
+| Selection mechanism | Single-atom click | Playback | Verdict |
+|---|---|---|---|
+| `addSphere` **shape**, re-placed per frame | add ~2–8 ms, flat | re-place a few shapes / frame | **shipped** — cheap, atom shows through, no model touch |
+| halo **second movie model** (`setStyle`) | ~35 ms | rides `setFrame` | occludes the atom (opaque imposter); the non-occluding fix (`depthWrite=false`) **resets on every frame swap** → a per-frame material patch, so it does *not* ride free once the glow is correct |
+| **dim-all / pop** atom styles | ~24–109 ms | rides `setFrame` | washes out the whole scene; and **any** `setStyle` rebuilds the *whole* model — measured: styling **1 atom is no cheaper than all** (both tens–hundreds of ms) because 3Dmol has no partial model update |
+
+The two hard facts:
+
+1. **3Dmol has no partial model update.** `setStyle` on one atom rebuilds the entire model's
+   geometry — a 2000-atom model rebuilt whether you restyle 1 atom or 2000. So *any* highlight that
+   lives in the atom styles (dim/pop, or a second model's `setStyle`) pays an O(N-atoms) rebuild on
+   every selection change. A **shape** (`addSphere`) touches nothing in the model, so adding/removing
+   a few glow spheres is ~2–8 ms and flat — this is the click-latency win the whole streamline
+   targeted.
+2. **3Dmol renders shapes translucently but rebuilds their material on every frame.** So the shape
+   glow needs re-placing each frame (cheap, a few shapes) — but it renders correctly (atom shows
+   through) with no depth hack, unlike the second-model sphere.
+
+So the shape glow is the only mechanism that respects "**pay only for what changed**": a click is a
+few shapes, a frame swap re-places a few shapes, and the molecule's geometry is never rebuilt for a
+selection. Its one weak spot: a **huge** selection (hundreds of atoms) on a *playing* trajectory
+re-places many spheres per frame and drops fps — rare, and if it ever bites a workflow we handle
+that case then, not by taxing every click.
+
+**Two inputs, two owners — the spec / position split** (for the shape layers):
+
+- **Content** decides *what* a layer draws. Frame-independent, owned by the **engine**, keyed by
+  **atom index** (the drawn index; = the original index when not isolating; the label *text* still
+  shows the original index via `sourceIndex`, §2.4 / §7.3): labels `{index → text}`, the glow's
+  `selection` `{drawn indices}`, styles `{index → style}`. The engine emits **content, never style** —
+  the glow's colour/size/opacity is the embed's constant, not per-frame data.
+- **Position** decides *where*. Per frame, owned by the **embed**: it resolves index → the current
+  frame's coordinate from the **loaded coordinate movie** (`model.frames` — the frames the engine
+  handed at load, held by 3Dmol for native swaps; NOT a read-back of 3Dmol's rendered state, §7.1).
+  Shape layers (labels, glow, pick) are re-placed from `model.frames` on each swap; force is the one
+  extra per-frame datum, baked into the movie as `arrowsPerFrame` (§8).
 
 **Rule 1 — fine-grained invalidation.** A change dirties **only the layers that declare it as an
-input**. A selection click dirties **selection halos only**; `showIndex` dirties **labels only**;
+input**. A selection click dirties **the selection glow only**; `showIndex` dirties **labels only**;
 a frame swap dirties **no content layer** (positions only). The engine recomputes only the dirty
 layers' specs — not the whole `ProcessedFrame`.
 
-**Rule 2 — apply the delta, in the cheapest mechanism for the layer.** A dirty layer applies only the
-**change** against what is drawn — never a full rebuild — but *how* differs by renderer. A 2026-07-25
-head-to-head (5000 atoms × 50 frames, 500-atom selection) fixed which renderer each halo layer uses:
-
-| Halo mechanism | Single-atom click | Playback / frame |
-|---|---|---|
-| shapes, full rebuild (today) | 221 ms | 416 ms (~2 fps) |
-| shapes, reconcile by delta | 66 ms | 416 ms (~2 fps) |
-| **second movie model (`setStyle`)** | **35 ms** | **11 ms (~88 fps)** |
-
-The result is decisive: **3Dmol batches model geometry but renders free-standing shapes one-by-one.**
-So 500 translucent `addSphere` halos cost ~66 ms just to re-render and **~416 ms to re-place every
-frame** — a 500-atom selection plays at ~2 fps no matter how cleverly the shape list is reconciled.
-The *same* halos as a **second model** render ~6× faster and **ride the native movie for free** (both
-models `setFrame` together): 35 ms click, 88 fps playback. Hence the per-layer renderers:
-
-- **Halo layers (region / frozen / selection) → a SECOND movie model.** A duplicate of the trajectory,
-  `setStyle`-d with translucent spheres on the highlighted atoms (element colour kept, soft surround;
-  picks route to the main model because the halo model is `setClickable(false)`). A selection click is
-  a `setStyle` on the **delta** atoms (~35 ms); a frame swap moves the halos for free (both models
-  `setFrame`). Cost: ~2× coordinate memory + a one-time build (~3 s at 5000 × 50), so the halo model is
-  **built lazily** (only once a selection exists) and, above a size threshold, **falls back to
-  reconciled shapes** — accept ~2 fps halo-playback rather than exhaust memory (that ceiling is the
-  GPU-instanced-engine case, a separate decision).
-- **Shape layers (index labels, glyph markers, bare-embed pick) → reconciled free-standing shapes.**
-  3Dmol has no "atom-label" model rep, so these stay `addLabel`/`addSphere`: they apply by **delta** on
-  a content change (touch only the changed atom) and **re-place per frame** from the movie
-  (`_postFramePositionRedraw`, the 2026-07-25 halo-drift fix). Few and on-demand, so bounded.
-- **Force arrows** are baked per frame (`arrowsPerFrame`); the native swap shows frame *i*'s for free
-  (§8). **Cell / axes** are static geometry.
+**Rule 2 — apply the delta in the cheapest correct mechanism.** A dirty layer applies only the
+**change** — never a full rebuild. The selection glow adds/removes the changed spheres; a frame swap
+re-places them; the molecule is never restyled. Labels apply by delta and re-place per frame. Force
+arrows are baked per frame (`arrowsPerFrame`); cell / axes are static geometry.
 
 **Correctness under any combination of view options.** Each layer's output is a function of its own
 inputs and **nothing else** — never another layer's state. Layers compose in the fixed draw order
 above, so *any* mix of toggles yields the correct scene and no toggle can corrupt another. (The
-halo-drift bug was exactly a cross-path coupling — one layer's repaint depended on a *different*
-mechanism firing. Layer independence removes that whole class of bug — this is the correctness
-guarantee, not just a performance win.)
+original halo-drift bug was exactly a cross-path coupling — one layer's repaint depended on a
+*different* mechanism firing. Layer independence removes that whole class of bug.)
 
-**Performance elsewhere.** A non-halo content change is O(what changed): a label toggle touches one
+**Performance.** Selecting/deselecting is a few `addSphere`/`removeShape` calls, independent of atom
+count — the click-latency win. Other content changes are O(what changed): a label toggle touches one
 layer, a style change one `setStyle`. The only O(N-atoms) motions are drawn-set changes (isolate /
 hide-frozen / k-grid / load) — the **structural regen** tier (§8), rare and inherently full.
 
-> **Rejected — halos as an additive atom style** (`viewer.addStyle` sphere; spike 2026-07-25). A
-> style would ride the movie, but 3Dmol's atom style has a single `sphere` key, so a halo-sphere
-> **overwrites** a sphere-rendered atom instead of surrounding it (element colour lost; a lone
-> translucent sphere renders opaque — nothing behind it to blend against). A halo needs two
-> overlapping renderables, so it is a second *model*, not a style on the atom itself.
->
-> **Method note (why the earlier "reject the second model" call was wrong).** A first pass measured
-> `setStyle`-ing a *fresh 500-atom group* (~325 ms) and mistook it for the click cost, concluding
-> shapes-reconcile won. The head-to-head above measured the actual operation — a **single-atom
-> toggle** (`setStyle` on the delta) — at **35 ms**, cheaper than reconcile's 66 ms, and reconcile
-> can't fix the ~2 fps playback. Measure the real operation, not a proxy.
-
 **Staged delivery** (each step ships and is verifiable on its own):
 
-1. **Second-model halo layer** — ✅ **shipped 2026-07-25 (`612284e`)**. Duplicate movie model built
-   lazily on first selection; `setStyle` the translucent surround on the highlighted atoms;
-   `setClickable(false)` so picks hit the main model; rides the native `setFrame`; kept frame-aligned
-   on `appendFrames`; falls back to reconciled shapes above the size cap (`_HALO_MODEL_MAX_ATOMFRAMES`)
-   / for a single structure. Prereq `9ac0eaa` pinned the main structure to model 0. Regression:
-   `tests/test_overlay_frame_tracking_e2e.py` (mechanism spy: second model built, no halo shapes,
-   non-clickable, no rebuild/reshape on a swap). *Invariants held:* the glow tracks the atom across a
-   swap with **no re-apply**; a pick returns the **main-model** atom; a toggle is one `setStyle` delta.
-2. **Fine-grained invalidation in the engine** — split `processFrame` so a content change recomputes
-   only its layer's spec, not the whole frame. *Invariant:* a selection change does not recompute
-   labels / arrows / positions.
-3. **Reconcile the shape layers** — index labels / glyph markers / bare-embed pick apply by delta
-   (`addLabel`/`removeLabel`/`addSphere` for the changed atom only) instead of clear-and-rebuild, and
-   re-place per frame from the movie. *Invariant:* toggling one label issues one `addLabel`, the rest
-   untouched.
-4. **Spec / position split** — labels become `{index → text}` (drop the baked position); every content
-   spec is then frame-independent and index-keyed; §7.3 is reconciled to this shape.
-5. **Invariant tests** pinning: (a) each toggle touches only its own layer (spy the per-layer redraws);
-   (b) any *combination* of toggles composes to the same scene as applying them one at a time; (c) the
-   halo second-model rides the movie and picks route to the main model.
+1. **Selection glow as a shape (halos removed)** — ✅ **shipped 2026-07-26**. Region / frozen /
+   selection halos deleted; the engine emits a `selection` index list (isolate off only); the embed
+   glows each selected atom with one translucent `addSphere` (constant style, embed-owned),
+   re-placed per frame. No second model, no atom-style dim/pop, no depth hacks. Regressions:
+   `tests/test_overlay_frame_tracking_e2e.py` (mechanism spy: one model, glow is a shape, a click
+   adds one sphere with **no** model `setStyle`, a frame swap re-places the shape),
+   `test_engine_process_js.py` (the `selection` index list),
+   `test_molbuilder_e2e.py::test_selected_atom_adds_halo_marker_shape` (full-app: selection adds a
+   glow shape).
+2. **Fine-grained invalidation in the engine** — TARGET. Split `processFrame` so a content change
+   recomputes only its layer's spec, not the whole frame. *Invariant:* a selection change does not
+   recompute labels / arrows / positions.
+3. **Reconcile the shape layers** — TARGET. Index labels / glow / bare-embed pick apply by delta
+   (touch only the changed atom) instead of clear-and-rebuild. *Invariant:* toggling one label issues
+   one `addLabel`, the rest untouched.
+4. **Spec / position split** — TARGET. Labels become `{index → text}` (drop the baked position);
+   every content spec is then frame-independent and index-keyed; §7.3 reconciled to this shape.
 
 ## 9. The engine API — subnamespace `molbuilder.molview.engine`
 
@@ -570,7 +542,7 @@ molbuilder.molview.engine.embedIo   // the ONLY 3Dmol-touching primitives:
                                      //     cellBox = {lattice, origin} rides the load unconditionally
                                      //   swapFrame(i)                      — native swap
                                      //   appendFrames(processed[])         — extend the movie (§6.2)
-                                     //   applyOverlays(overlay)            — labels/halos/arrows/cellVisible/axis
+                                     //   applyOverlays(overlay)            — labels/selection/arrows/cellVisible/axis
                                      //   setFrameArrows(arrowsPerFrame)    — re-bake arrows in place (§8)
                                      //   setBusy(msg | null)               — the §4 scrim
 ```
@@ -683,7 +655,7 @@ engine.appendFrames([newCoords], { forces: [newForces] });
    - **selection**: if a selection is set and isolation is on, keep only the selected
      atoms; (§2.3)
    - **overlays**: atom-index labels (index translated back to the original index when the
-     list was filtered), selection halos (region tints + frozen markers + selection halo),
+     list was filtered), the selection glow (which selected atoms to highlight, isolate off),
      force vectors (from that frame's supplied data), unit cell box, axis. Measurement is
      **not** part of the render machine (separate interaction layer). (§2.4)
 3. Every processed frame is **loaded into 3Dmol once** via the optimal multi-frame API;
