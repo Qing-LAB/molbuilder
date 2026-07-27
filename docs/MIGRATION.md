@@ -43,7 +43,7 @@ already gone — identity-cross-checkable in `docs/archive/`.)*
 | H | ALL historical archives → `archive/` (+ `audits/`) | **done** (a3f9b82) |
 | 1 | `roadmap.md` — THE plan (absorbs all scattered phasing); the forward north-star | **done** (8143bcf) |
 | 2 | `model/` (~11): structure family, periodicity, annotations, sidecars, selection, region labels, chemistry, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | **done** (2026-07-26) — `overview` + `structure` (+`-periodicity`/`-annotations`/`-molstruct`) + `chemistry` + `parse`; each migrated **and** fresh-eyes audited. `parsers.md` archived. Split sources still **pending** their non-model halves (claimed later): `region-labels` + `sidecar-contract` → engines; `data-vocabulary` → execution. `selection.md` → web (projects-sidebar). |
-| 3 | `science/` (~4): validation machinery, chemistry correctness, pseudopotential standards, tuning | pending |
+| 3 | `science/` (~4): validation machinery, chemistry correctness, pseudopotential standards, tuning | **in progress** (2026-07-26) — `validation.md` done (from `scientific-validation.md`; §7.5 GPU split → engines Wave 4). Next: `chemistry-correctness.md` (from `chemistry-correctness.md` + `science.md §2`), `pseudopotentials.md` (from `pseudopotential-validation.md`), `overview.md` (composed last, from `science.md` high-level). |
 | 4 | `engines/` (~8): SIESTA, PySCF, transport/TranSIESTA, builders, GPU recipe; `transiesta-workflow` + `transport-guide` move in | pending |
 | 5 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
 | 6 | `web/` (~31): MolView family, workspace, sidebar, results, UI contract, web-api; `tabs/` folds in | pending |
@@ -149,7 +149,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/run-checkpoints.md` | execution/ | pending | |
 | `protocols/runtime-registry.md` | web/ | pending | |
 | `protocols/save-flow.md` | web/ | pending | |
-| `protocols/scientific-validation.md` | science/ | pending | |
+| `protocols/scientific-validation.md` | science/validation.md | merged-into science/validation.md | Wave 3 (2026-07-26). The runtime validation machinery: the L1→L4 layering, `analyze_structure`→`ChemistryAnalysis`, the 3 noble-metal categories (with the TranSIESTA/NEGF literature preserved, E4), the adapter registry, the consumers (`check_open_shell_metal` + `/api/structure/analyze`), Pattern-B notice, adding-an-engine, the `validation/` package layout, test invariants. Line numbers re-verified vs `chemistry.py`/`validation/`/`auto_defaults.py`. **SPLIT:** §7.5 GPU eigensolver (ELPA-CUDA / NVIDIA-MPS / `molbuilder-siesta-gpu` env) is an engines/ops concern → deferred to `engines/siesta-gpu.md` (Wave 4); a pointer note stands in its place. |
 | `protocols/script-contract.md` | execution/ | pending | |
 | `protocols/script-execution.md` | execution/ | pending | |
 | `protocols/selection.md` | web/ — **MERGE into `projects-sidebar`** (same module) | pending | Reclassified out of model/ 2026-07-26 (verified: it is the sidebar file-selection *cursor* — `current_dir`/`current_file`, Inquire API, sidebar mutation endpoints — backed by `files.py`/`projects/` JS, NOT the L1 data model). Merge into the projects-sidebar doc at Wave 6 (web/); it belongs to that module. |
