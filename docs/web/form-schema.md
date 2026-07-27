@@ -59,9 +59,9 @@ register with the runtime):
 | Call | What it does |
 |---|---|
 | `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>`). |
-| `renderForm(schema, host, …)` | Draw the form from that shape into a host element. |
-| `collectForm(host)` | Read the filled-in controls back into a plain values object. |
-| `setValues(host, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
+| `renderForm(host, schema)` | Draw the form from that shape into a host element. |
+| `collectForm(host, schema)` | Read the filled-in controls back into a plain values object (the schema tells it how to read each kind). |
+| `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
 
 ## 4. What each field type becomes
 
