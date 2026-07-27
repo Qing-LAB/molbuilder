@@ -141,7 +141,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/playwright-tests.md` | process/ | pending | |
 | `protocols/projects-sidebar-ui.md` | web/ | pending | |
 | `protocols/projects-sidebar.md` | web/ | pending | |
-| `protocols/pseudopotential-validation.md` | science/ | pending | |
+| `protocols/pseudopotential-validation.md` | science/pseudopotentials.md | merged-into science/pseudopotentials.md | Wave 3 (2026-07-26). The full `.psml` check contract (C1–C6, severity model, "what is NOT checked", process, conformance map, KB/ONCVPSP/PseudoDojo refs) migrated + reconciled vs `pseudos.py`/`validation/siesta.py`/`cli.py`. **Reconciled a real drift:** the source's single-WARN `xc_mismatch` (with a "should family mismatch be ERROR?" reviewer note) is now the implemented split — `xc_family_mismatch`→ERROR (GGA/LDA), `xc_mismatch`→WARN (author). Line numbers verified; ASCII → Mermaid entry-point diagram added. |
 | `protocols/rate-limit.md` | ops/ | pending | |
 | `protocols/region-labels.md` | **SPLIT** — vocab → model/structure-annotations.md; emitter/bias/refs → engines/transport.md | pending | Vocabulary (the `-electrode` convention, canonical `L`/`R`/`bridge`/`interface`, `is_electrode_label`) absorbed into `structure-annotations.md § 5` (2026-07-26). Stays **pending** until the transport half — `_find_electrode_regions`, chempot/`TS.Elec` emit, bias direction, the NEGF references (Brandbyge/Stokbro/Reed/Solomon) — lands in `engines/transport.md` (Wave 4); then mark merged + prefix. |
 | `protocols/results-state-contract.md` | web/ | pending | |
