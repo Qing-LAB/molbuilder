@@ -88,8 +88,8 @@ Set on every response by an `after_request` hook (`app.py`):
 
 - **Content-Security-Policy** — `default-src 'self'; script-src 'self';
   style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';
-  object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action
-  'self'`. There is **no `script-src 'unsafe-inline'`** — no inline JavaScript
+  font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';
+  form-action 'self'`. There is **no `script-src 'unsafe-inline'`** — no inline JavaScript
   anywhere (a hard rule the whole frontend obeys). Inline `style=` is allowed
   (3Dmol and some inspectors need it); `img-src data:` is for Plotly.
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
@@ -101,7 +101,8 @@ Set on every response by an `after_request` hook (`app.py`):
   single-user localhost default runs auth-free.
 - **Rate limiting is always on** (`rate_limit.py`, a per-IP `before_request`
   check). By default it blocks on a **404 storm** (≥ 20 4xx in 30 s → a 1-hour
-  cooldown) and on **scanner signatures** (`/wp-admin`, `.env`, `.php`, …); the
+  cooldown) and on **attack-string signatures** — XSS / SQLi / path-traversal
+  fingerprints in the URL, like `<script`, `union select`, or `/etc/passwd`; the
   total-request cap is **off by default** (`threshold_total = 0`) unless an
   operator sets it. `127.0.0.1`/`::1` are allowlisted; a blocked IP gets an
   empty **429**. The threat model and the two `/api/admin/rate_limit/*` routes
@@ -110,8 +111,8 @@ Set on every response by an `after_request` hook (`app.py`):
 
 ## 3. The route catalogue
 
-Every route, grouped by the file that owns it. Routes with a module-doc home
-link to it; the rest are documented in full in § 4.
+Every route, grouped by domain. Routes with a module-doc home link to it; the
+rest are documented in full in § 4.
 
 **Structure + edits** — return the canonical structure envelope (§ 1);
 owned by [`molview.md`](?doc=web/molview.md):
@@ -120,7 +121,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 |---|---|
 | POST `/api/build/load` | Load a structure (path / upload / raw text) |
 | POST `/api/build/molecule` | Build a molecule from a backend |
-| POST `/api/modify/meta` · GET | Element/tool metadata for the Modify UI |
+| GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,electrode,symmetric_electrodes}` | The eight structure edits |
 | POST `/api/selection/atoms` | Per-atom payload for a structure |
 | POST `/api/selection/eval` | Evaluate a selection expression |
