@@ -180,9 +180,10 @@ The publishable column is geomeTRIC's `GAU` preset; the very-tight column is
 `GAU_TIGHT` — ≈ 30× tighter on every gradient and displacement criterion (the energy
 step is unchanged). All five per-stage values
 flow end-to-end: they reach the rendered script's `STAGES = [...]` literal (geomeTRIC
-consumes them via `optimize(...)`) **and** the `.molwatch.log` header's
-`_CONVERGENCE_TARGETS` dict, which the Results-tab trajectory inspector reads to draw
-per-stage threshold lines — nothing the user sets is dropped before the plots.
+consumes them via `optimize(...)`) **and** a per-stage `_CONVERGENCE_TARGETS` map the
+script writes into the `.molwatch.log` (unit-converted to eV / eV·Å⁻¹), which the
+Results-tab trajectory inspector reads to draw per-stage threshold lines — nothing the
+user sets is dropped before the plots.
 [Wang & Song 2016]
 
 ### 2.5 SCF tolerance
@@ -261,10 +262,10 @@ many functions describe each valence orbital.
 **Density fitting (resolution-of-identity).** `cfg.density_fit` is **on by default**, so
 molbuilder emits `mf = mf.density_fit()` — approximating the electron-repulsion
 integrals via a small auxiliary basis for a large SCF speedup at negligible error on
-hybrid DFT. `cfg.auxbasis` is `None` by default, so PySCF auto-picks the auxiliary set
-— `def2-universal-jkfit` for a def2 orbital basis (the **JK** set, because the default
-B3LYP is a hybrid and needs both Coulomb *and* exchange fitting); set `cfg.auxbasis` to
-override. [Weigend 2005 (orbital basis); Weigend 2008 (JK-fit auxiliary)] SIESTA's
+hybrid DFT. `cfg.auxbasis` is `None` by default, so PySCF auto-picks the matching
+JK-fit set — `def2-tzvp-jkfit` for a def2-TZVP orbital basis (the **JK** set, because
+the default B3LYP is a hybrid and needs both Coulomb *and* exchange fitting); set
+`cfg.auxbasis` to override. [Weigend 2005 (orbital basis); Weigend 2008 (JK-fit auxiliary)] SIESTA's
 numeric atomic-orbital basis (`PAO.Basis`) is a separate contract — see
 [`siesta.md`](?doc=engines/siesta.md).
 
@@ -374,7 +375,7 @@ Global knobs (not per-stage) carry their own shipped defaults: SIESTA
 | Scenario | SIESTA | PySCF |
 |---|---|---|
 | Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | re-run — the emitted `<JOB>.chk` chkfile-init shim reloads |
-| Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile |
+| Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or pass `runwrap`'s `--cold` / `--from-scratch` (resets the engine state too) |
 | Switch optimizer at a stage boundary | use the new algorithm's `MD.Use*Save*`; the old history file is now stale | only `geometric` is supported in stages |
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis

@@ -63,7 +63,7 @@ called by both `siesta/input.py` and `pyscf/input.py`:
 | **bench-marks** | a machine-readable metadata header (a `BenchField` set) for regression harnesses | SIESTA only (`emit_bench_marks`) |
 | **ATOM-METADATA** block | the structure's `regions` + `frozen_atoms` as an in-body, round-trippable comment block (so the labels travel *with* the script) | both (`emit_atom_metadata`) |
 | **user-custom** placeholder | a marked, empty region a user can edit; on re-generate, molbuilder **preserves** whatever the user put there (`merge_user_custom_from_target`) | both (`emit_user_custom_placeholder`) |
-| post-processing hook | an always-emitted footer where downstream steps attach | both |
+| post-processing hook | a commented-template section (in the engine body, emitted inline by each emitter — not a `_sc` block) where downstream steps attach | both (inline) |
 
 Because it is one module, a change to the wrapper contract lands in every engine at
 once. `siesta.md` § 3 and `pyscf.md` describe how their body sits *inside* this
@@ -88,8 +88,10 @@ issue**, never as silent absorption.
 (the PySCF vibrational path — frozen-atom masking), so every code path cited below is a
 `spectra/…` site. It is the **template** the other engines adopt stage by stage: they
 already deliver boundary conditions verbatim (Stage 2) and round-trip the labels in the
-script's ATOM-METADATA block (§ 2), but the Stage-3 unrecognized-label notice is
-spectra-specific so far. ("spectra" = the vibrational / IR-spectrum engine that rides
+script's ATOM-METADATA block (§ 2). The Stage-3 divergence check (A) is spectra-specific
+so far, but the unrecognized-label notice (B) is not — transport's engine preflight
+already warns on region labels it doesn't recognise (`transiesta.py:748`). ("spectra" =
+the vibrational / IR-spectrum engine that rides
 on PySCF; it lives in its own `spectrum-calculation` domain, not among the five docs
 above, but it's the reference for this contract.)
 
@@ -121,14 +123,14 @@ flowchart LR
   the form showed is what lands in the script. (The SIESTA emitter obeys the same
   Stage-2 rule for its `Geometry.Constraints` freeze block.)
 - **Stage 3 — preflight (warn on what it can't use).** Two checks live in the engine's
-  `preflight()` (`spectra/pyscf_engine.py:576,604` — A + B); the third runs at the
-  render endpoint (`web/blueprints/spectra.py:408` — C), where the sidecar is applied
-  to the `Structure` before preflight sees it:
+  render-time checks (`spectra/pyscf_engine.py::render_checks` — A at :576, B at :604);
+  the third runs at the render endpoint (`web/blueprints/spectra.py:408` — C), where the
+  sidecar is applied to the `Structure` before the checks see it:
 
 | Check | Fires when | Severity |
 |---|---|---|
 | **A. Divergence** | the sidecar's `frozen_atoms` isn't a subset of the config's — the script is about to omit atoms the sidecar marked (stale pre-fill, or the sidecar changed in another tab) | `warn` (`where=config.frozen_indices`) |
-| **B. Unrecognized label** | the structure carries labels this engine doesn't consume (e.g. transport `regions` seen by a spectra run) — named explicitly, "these stay in the sidecar for the engine that uses them" | `info` / `warn` |
+| **B. Unrecognized label** | the structure carries labels this engine doesn't consume (e.g. transport `regions` seen by a spectra run) — named explicitly, "these stay in the sidecar for the engine that uses them" | `warn` |
 | **C. Sidecar failed to apply** | a sidecar exists but couldn't be applied — "the form's freeze rules are the sole boundary condition for this run" | `warn` (`where=structure_path`) |
 
 Each surfaces as a structured `Issue` in the form's panel — e.g. a Check-A divergence:

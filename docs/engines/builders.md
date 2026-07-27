@@ -108,18 +108,26 @@ atoms to add, in the parent's local frame):
 | `M3L` | N,N,N-trimethyl-lysine | LYS |
 | `ALY` | N6-acetyl-lysine | LYS |
 
-**5′/3′ directionality** on nucleic-acid input (`residues.py::_strip_directionality:219`):
-bare letters follow the biology convention (5′ on the left). Explicit labels are
-accepted, and a reverse-direction label is normalised by reversing the residue list —
-every backend builds 5′→3′ internally, so the result matches your stated direction:
+**5′/3′ directionality.** Bare letters follow the biology convention (5′ on the left).
+Explicit end-labels are accepted, and a reverse-direction label is normalised by
+reversing the residue list — every backend builds 5′→3′ internally. **The two nucleic
+paths differ here, though** — a real asymmetry worth knowing:
 
-| Input | Interpretation | Result |
+- **`build_rna`** parses the raw string through `residues.py::parse_rna_sequence` →
+  `_strip_directionality:219`, which is **strict**: a one-sided (`5'-AUGC`) or
+  self-contradictory (`5'-AUGC-5'`) label raises `ValueError`.
+- **`build_dna`** strips direction earlier, in `nucleic.py::_strip_direction:26`,
+  which is **lenient**: it reverses only when a full `5'-…-3'` pattern matches and
+  otherwise keeps the letters silently. So `5'-ATGC` is accepted as-is and
+  `3'-ATGC-3'` **silently reverses** to `CGTA`. (This DNA leniency is a code
+  inconsistency worth a follow-up — like the `build_peptide` docstring above.)
+
+| Input | `build_rna` | `build_dna` |
 |---|---|---|
-| `ATGC` | 5′→3′ (implicit) | as written |
-| `5'-ATGC-3'` | 5′→3′ (explicit) | same as bare |
-| `3'-CGTA-5'` | reverse-direction | residue list reversed → a 5′→3′ polymer matching intent |
-| `5'-ATGC` / `ATGC-3'` | one-sided label | `ValueError` |
-| `5'-ATGC-5'` / `3'-ATGC-3'` | self-contradictory | `ValueError` |
+| `ATGC` / `5'-ATGC-3'` | 5′→3′ as written | 5′→3′ as written |
+| `3'-CGTA-5'` | reversed → 5′→3′ | reversed → 5′→3′ |
+| `5'-ATGC` / `ATGC-3'` (one-sided) | `ValueError` | **accepted silently** |
+| `5'-ATGC-5'` / `3'-ATGC-3'` (self-contradictory) | `ValueError` | **accepted / silently reversed** |
 
 A validation check guards this from the other side: `_check_polymer_orientation`
 (`validation/geometry.py:198`, surfaced as a `polymer.orientation` issue — see
@@ -179,7 +187,8 @@ RuntimeWarning: This duplex has a steric CLASH at A4:N1<->B1:N1 (0.62 A) -- a
 non-Watson-Crick (mismatched) base pair at the standard frame.  These atoms are
 NEAR-COINCIDENT -- relaxing as-is risks an explosive first SCF step.  Rebuild with
 relax_clashes=True (a short force-field minimization that removes the
-near-coincidence; SIESTA relaxes the rest) or minimize externally first.
+near-coincidence; SIESTA relaxes the rest) or minimize externally before a
+geometry optimization.
 ```
 
 `_CLASH_WARN_A = 1.3 Å` (a real steric overlap — below the tightest legitimate
@@ -238,8 +247,8 @@ contract is uniform across backends. What each produces raw:
 | Backend | H atoms | terminal phosphate | residue names |
 |---|---|---|---|
 | `threedna` | **none** (heavy-only) | **always 5′-P** (ignores request) | DA / DT / DG / DC |
-| `amber` | included | honors request | DA5 / DT / DG / DC3 (5′/3′ suffixes) |
-| `rdkit` | included (`Chem.AddHs`) | none | molecule-level (no per-residue) |
+| `amber` | included | **OH only** (5P/3P/PP warned + dropped) | DA5 / DT / DG / DC3 (5′/3′ suffixes) |
+| `rdkit` | included (`Chem.AddHs`) | none | per-residue DA/DT/DG/DC (rdkit-added H → `MOL`) |
 
 The X3DNA path needs the most repair (`builders/backends/_threedna.py`):
 
@@ -400,7 +409,8 @@ don't relax the thresholds.
   **55**, 2562, 2015); the **v3** variant adds small-ring / macrocycle torsion terms
   (Wang, Witek, Landrum & Riniker, 2020).
 - **Force fields** used for the geometry cleanup — MMFF94 (Halgren, *J. Comput. Chem.*
-  **17**, 490, 1996); UFF (Rappé et al., *J. Am. Chem. Soc.* **114**, 10024, 1992).
+  **17**, 490, 1996) and the **MMFF94s** static variant actually used (Halgren, *J.
+  Comput. Chem.* **20**, 720, 1999); UFF (Rappé et al., *J. Am. Chem. Soc.* **114**, 10024, 1992).
 - **OpenBabel** (`make3D`, MMFF94/UFF cleanup; the SMILES + H-placement fallback) —
   O'Boyle et al., *J. Cheminform.* **3**, 33 (2011).
 - **PeptideBuilder** (extended-chain polypeptides) — Tien et al., *PeerJ* **1**, e80 (2013).

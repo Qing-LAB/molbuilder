@@ -107,7 +107,10 @@ loop must warm-start via `mf.reset(mol_eq)`); (2) `mol.build()` without
 **Optimizer.** `optimizer="geometric"` (default) needs the `geometric` package,
 `"berny"` needs `pyberny`; both are imported inside a `try/except ImportError` that
 raises `SystemExit` with an actionable `pip install …` message, not a traceback.
-`optimize=False` → a single-point `mf.kernel()`, no trajectory files.
+`optimize=False` → a single-point `mf.kernel()`, no trajectory files. **`berny` works
+only for single-stage runs** — it doesn't accept the per-stage `convergence_drms` /
+`convergence_dmax` kwargs the staged-opt loop (§ 5) emits, so use `geometric` for any
+multi-stage ladder.
 
 **Per-stage non-convergence policy.** Each `StageSpec` carries an
 `on_nonconvergence` policy ∈ {`proceed`, `continue`, `halt`} (default `halt`) that
@@ -271,8 +274,9 @@ simple organic molecule (10–60 atoms), the one change that matters is the basi
 ```python
 mol = gto.M(..., basis="def2-TZVP")                # was def2-SVP — THE key upgrade
 mf  = scf.RKS(mol).density_fit()                   # what molbuilder emits (auxbasis auto-picked);
-                                                   # PySCF selects def2-universal-jkfit for the hybrid
-                                                   # (fits BOTH Coulomb + exact exchange) — 5–10× faster
+                                                   # PySCF selects the basis-matched JK set
+                                                   # (def2-tzvp-jkfit for def2-TZVP) — fits BOTH
+                                                   # Coulomb + exact exchange, 5–10× faster
 mf.xc   = "b3lyp"
 mf.disp = "d3bj"          # Grimme-D3(BJ). Use the SPLIT form (mf.xc + mf.disp):
                           # PySCF 2.13's parse_dft() rejects the merged "b3lyp-d3(bj)"
@@ -293,8 +297,8 @@ what reviewers expect. The **tier framework** (shared with SIESTA — see `tunin
 *(`dmax`/`drms` are in **Å**, gradients in Ha/Bohr — verified vs `geometric/params.py`.
 Tier names match `tuning.md` § 2.4: the **shipped stage-3 default is the crystal-safe
 Tight** (`gmax 2e-4`, ≈ VASP `EDIFFG=-0.01`); **very-tight** is geomeTRIC's `GAU_TIGHT`,
-opt-in for molecule vib/IR/NEB. For reaction kinetics you can escalate below
-`GAU_TIGHT`, but geomeTRIC has no preset there — set the criteria by hand.)*
+opt-in for molecule vib/IR/NEB. For reaction kinetics, geomeTRIC's even-tighter
+`GAU_VERYTIGHT` preset (`gmax 2e-6`) is available via `convergence_set='GAU_VERYTIGHT'`.)*
 
 **Basis / functional** (the exact strings PySCF accepts — in a paper you write the
 conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
@@ -315,8 +319,8 @@ conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
 > theory using PySCF [1] with the geomeTRIC optimizer [2]. Gaussian's default
 > convergence criteria were applied (gmax = 4.5 × 10⁻⁴ Ha/Bohr, grms = 3.0 × 10⁻⁴
 > Ha/Bohr, ΔE = 1 × 10⁻⁶ Ha). The SCF threshold was 1 × 10⁻⁹ Ha.
-> Resolution-of-the-identity fitting [3] with the def2-universal-jkfit auxiliary basis
-> was applied to the Coulomb and exact-exchange builds.
+> Resolution-of-the-identity fitting [3] with the matching def2-*-jkfit auxiliary basis
+> (def2-tzvp-jkfit for def2-TZVP) was applied to the Coulomb and exact-exchange builds.
 
 Citations to include: **[1]** Sun et al., *JCP* **153**, 024109 (2020); **[2]** Wang
 & Song, *JCP* **144**, 214108 (2016); **[3]** Weigend, *J. Comput. Chem.* **29**, 167 (2008);

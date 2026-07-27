@@ -283,12 +283,14 @@ The practical guidance:
   (mesh integration, density-matrix mix, H rebuild) stays on the host. For small
   systems the GPU launch overhead isn't worth it — stay on ScaLAPACK or CPU-ELPA.
 - **Sharing the GPU across ranks (MPS).** On GPU, molbuilder uses NVIDIA **MPS**
-  (Multi-Process Service) so several MPI ranks share one GPU concurrently (Hyper-Q) —
-  needed because the ELPA build doesn't link NCCL, so without MPS the ranks serialise
-  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted
-  *and* `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver,
-  not conda). The default rank count follows MPS: **4 with MPS, 2 without** (override
-  with `MOLBUILDER_MPI_NP` / `-np`).
+  (Multi-Process Service) so several MPI ranks share one GPU concurrently — via the
+  GPU's **Hyper-Q** hardware queues — needed because the ELPA build doesn't link
+  **NCCL** (NVIDIA's multi-GPU collective library), so without MPS the ranks serialise
+  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
+  `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
+  conda), *and* the run will use ≥ 2 ranks (single-rank MPS is pure overhead). The
+  default rank count follows MPS: typically **4 with MPS** (capped by core count),
+  **2 without** (override with `MOLBUILDER_MPI_NP` / `-np`).
 - **Numerical equivalence.** ELPA-GPU and ELPA-CPU on the same `Diag.Algorithm` give
   the same eigenvalues to ~1e-6 eV and the same converged total energy to ~1e-5 eV
   across the build matrix — so develop and test on CPU-ELPA and run production on GPU
@@ -336,7 +338,9 @@ A single CLI call can emit one `.fdf` per relaxation **stage** plus a
   both are **mutually exclusive** with the single-stage `--stage {1,2,3}` overlay.
   The `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
   warm-restart files carry forward. The runner rewrites the final stage's policy to
-  `halt` (never overshoot) and respects `MB_NP`/`SLURM_NTASKS`/`PBS_NP`.
+  `halt` (never overshoot). It runs each stage as a bare serial `siesta` invocation —
+  MPI-rank control (`MB_NP` / `SLURM_NTASKS` / `PBS_NP`) is a job-set / `runwrap`
+  concern, handled by `execution/`, not this direct-mode runner.
 - **Form widget.** `SiestaConfig.stages: List[SiestaStageSpec]` → the type-driven
   schema helper emits a `{kind: "stage-table"}` automatically (no SIESTA-specific
   form code).
@@ -400,6 +404,6 @@ alias), `test_cli_siesta_stages.py` + `test_siesta_form_schema_stage_table.py`
 - **Pulay** DM mixing (SCF section) — Pulay, *Chem. Phys. Lett.* **73**, 393 (1980).
 - **ELPA** eigensolver (§ 7) — Marek et al., *J. Phys.: Condens. Matter* **26**,
   213201 (2014). **FIRE** relaxation (§ 8) — Bitzek et al., *PRL* **97**, 170201 (2006).
-- Dispersion (DFT-D3, the §7-XC template) — Grimme et al., *J. Chem. Phys.* **132**,
-  154104 (2010). Kleinman-Bylander pseudopotential form — see
+- Dispersion (**DFT-D2**, the §7-XC `MM.Potentials` template) — Grimme, *J. Comput.
+  Chem.* **27**, 1787 (2006). Kleinman-Bylander pseudopotential form — see
   [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md).

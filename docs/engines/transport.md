@@ -109,8 +109,8 @@ Three consequences drive **every** parameter choice:
 
 ## 3. How to run it (the CLI)
 
-The real path today is the `molbuilder transport` CLI (`transport/_cli.py`); the
-web tab is a config skeleton (§ 8).
+The CLI (`transport/_cli.py`) is the path for the full 3-run **bundle**; the web tab
+Generates only the single device `.fdf` (§ 8).
 
 ```bash
 # 1. derive relax + both electrodes + device + driver from ONE labeled device.
@@ -134,7 +134,8 @@ molbuilder transport preflight --device run/junc.fdf \
 
 **Gotchas:** don't hand-assemble electrodes (use `electrode`/`bundle` so the
 geometric clone + contract hold); always `preflight` before submitting and after
-any manual `.fdf` edit; the web tab doesn't Generate yet — use the CLI.
+any manual `.fdf` edit; the web tab Generates only the device `.fdf` — use the CLI
+for the full relax + electrode + driver bundle.
 
 ---
 
@@ -189,11 +190,14 @@ expansion in the shipped 2-terminal scope.)
 
 > **Atom-ordering is load-bearing.** TranSIESTA identifies electrode atoms by their
 > **position** in the coordinates block (first N atoms = first electrode), *not* by
-> region label. The **device-fdf preflight** (`transiesta.py`, run when the device
-> `.fdf` is emitted) cross-checks that L + bridge + R are contiguous in emission
+> region label. The **engine preflight** (`TransiestaEngine.preflight`,
+> `transiesta.py:830`) cross-checks that L + bridge + R are contiguous in emission
 > order — an out-of-order structure produces silently wrong physics with no run-time
-> error. (This is the engine's own gate, distinct from the cross-run
-> `transport preflight` of § 5, which compares the device against an electrode.)
+> error. It fires on the **web Generate** path (via `validate()`), but **not** on the
+> CLI `bundle` path (`build_transport_bundle` never calls it), so re-run
+> `transport preflight` after any manual reorder. (This ordering gate is distinct from
+> the cross-run `transport preflight` of § 5, which compares device vs electrode and
+> does *not* check atom order.)
 
 > **Bias direction.** Bias is `V_left − V_right`. **Positive** bias raises μ_L above
 > μ_R; electrons flow high→low chemical potential (L→R for positive V), so
@@ -304,16 +308,16 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
 | Transverse k | converge 2×2 → 4×4 → 6×6 | commensurate device ⇄ electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
-| Electrode `kz` | converge (default **40**) | dense bulk z-sampling (I9) |
+| Electrode `kz` | converge (default **40**; the preflight suggests starting ~80) | dense bulk z-sampling (I9) |
 | Electrode thickness | **~6 Au(111) layers** | the *electronic* principal layer, not the 3-layer geometric repeat |
 | z-vacuum | **0** | slab-junction model; nonzero ⇒ cluster model |
 
-> **Which of these are knobs today.** Only `MeshCutoff` and the electronic
-> temperature are form/CLI-driven. The emitter currently **hardcodes**
-> `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`, and `XC GGA-PBE`
-> (`transiesta.py::_emit_basis_and_xc:442`) — so "converge the basis / EnergyShift /
-> XC" means editing the emitted `.fdf` until those become form fields (a planned
-> follow-up, flagged in the code).
+> **Which of these are knobs today.** The transverse k (`--kx`/`--ky`), electrode kz
+> (`--electrode-kz`), `MeshCutoff`, and electronic temperature are form/CLI-driven, but
+> the **basis / XC block is hardcoded** — `_emit_basis_and_xc:442` writes
+> `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`, and `XC GGA-PBE` with no cfg hook. So
+> "converge the basis / EnergyShift / XC" means editing the emitted `.fdf` until those
+> become form fields (a planned follow-up, flagged in the code).
 
 Three corrections that catch real mistakes:
 
@@ -351,18 +355,19 @@ Three corrections that catch real mistakes:
 - **Shipped (zero-bias scope):** the `transport bundle`/`electrode`/`preflight`
   CLI, the electrode wizard, the 3-run orchestration + driver, the zero-bias
   TranSIESTA engine, and the region-label-driven derivation.
-- **Web tab:** a **form skeleton** (`lib/transport/core.js` + `/api/transport/schema`)
-  that renders the `TransportConfig` form and persists it, but **Generate is
-  intentionally disabled** until the engine wires into the web path
-  ("configure now, generate later").
+- **Web tab:** the `TransportConfig` form + a **live Generate** button
+  (`lib/transport/core.js` → `POST /api/transport/render` →
+  `web/blueprints/transport.py::api_transport_render:95`) that validates (the transiesta
+  preflight runs here) and returns the **single device `.fdf`** + issues. It does *not*
+  yet emit the full relax + electrode + driver bundle — that's CLI-only.
 - **Follow-up** (see `roadmap.md`): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **bias scan** (`bias_voltages_v` is a `List[float]`; today only the
   first is emitted, with a preflight WARN if `len > 1` — the planned path emits one
   `.fdf` per bias + a loop driver that stitches `*.TBT.AVTRANS_*` into an **I–V**
   curve); a **PySCF-NEGF** backend (the `TransportEngine` registry already accepts
-  it); surfacing basis/EnergyShift/XC as form fields; and wiring the web-tab
-  Generate.
+  it); extending the web Generate from the single device `.fdf` to the full bundle;
+  and surfacing basis/EnergyShift/XC as form fields.
 
 ---
 
@@ -388,7 +393,7 @@ Three corrections that catch real mistakes:
 - **Au–BDT ≈ 0.011 G₀** (the DFT-NEGF overestimation benchmark, § 2 caveat) — Xiao,
   Xu, Tao, *Nano Lett.* **4**, 267 (2004).
   doi:[10.1021/nl035000m](https://doi.org/10.1021/nl035000m)
-- **Au-BDT-Au geometry + 350 Ry Au convention** — Stokbro et al., *Comp. Mat. Sci.*
+- **Au-BDT-Au geometry + the Au-electrode mesh requirement (≥ 250–300 Ry)** — Stokbro et al., *Comp. Mat. Sci.*
   **27**, 151 (2003). **Asymmetric / STM junctions** (the `interface` sub-label) —
   Reed et al., *JACS* **128**, 14328 (2006); Solomon et al., *J. Chem. Phys.* **129**,
   054701 (2008).
