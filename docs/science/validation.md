@@ -10,8 +10,16 @@ advisory-while-editing / enforcing-at-generation rule); `chemistry-correctness.m
 This is **how** molbuilder realises scientific correctness at runtime: one
 engine-agnostic chemistry **analyzer**, a per-engine **adapter registry**, and
 the surfaces that read each conclusion. Every boundary passes a **frozen
-dataclass** (never an untyped dict); JSON appears only at the HTTP wire, via
-`dataclasses.asdict()`.
+dataclass** (an immutable typed record — never an untyped dict); JSON appears
+only at the HTTP wire (the network boundary), via `dataclasses.asdict()`.
+
+The core idea is **open-shell vs closed-shell**: *closed-shell* = every electron
+paired (non-magnetic, most organics); *open-shell* = some electrons unpaired
+(magnetic, most transition metals). Picking the wrong one gives a physically
+wrong answer that often still "converges" silently — which is exactly what this
+machinery prevents. (Cross-cutting terms — *SCF*, *DFT*, *2S*, *parity*, *KB
+projector* — are in the [`overview.md` glossary](?doc=science/overview.md);
+narrower ones are glossed inline below.)
 
 ---
 
@@ -93,15 +101,28 @@ physically-grounded sets (`chemistry.py:134-157`; the flat alias follows at
 | `NOBLE_METALS_S1` | Cu, Ag, Au | atomic nd¹⁰(n+1)s¹, but in any extended metallic context (cluster ≥ 4, surface, junction, bulk) the s-band delocalises | **closed-shell singlet** for even electron count |
 | `CLOSED_D10_METALS` | Zn, Cd, Hg, **Pd** (4d¹⁰5s⁰), **Pt** (5d⁹6s¹ atom; metallic Pt closed-shell in surface DFT) | filled/effectively-filled d | closed-shell |
 
-**Decision tree** (`analyze_structure`):
+*(Plain-language keys: a **d-shell** is the set of d orbitals; **d¹⁰** = full (10
+electrons, non-magnetic), an **incomplete** d-shell is the magnetic case. The
+**Stoner criterion** is the textbook condition for a metal's delocalised
+electrons to turn magnetic — it fails for Cu/Ag/Au, so they stay non-magnetic.
+**NEGF** / **TranSIESTA**, in the references below, is the electron-transport
+method these gold-junction papers used.)*
 
-| Condition | Treatment / spin |
-|---|---|
-| any `OPEN_D_TRANSITION_METALS` present | `open`, spin from the per-element default (open-d wins even with noble metals present) |
-| noble metal only, **≥ 4 atoms** of it, even electron count | `closed`, spin 0 (the cluster-context override) |
-| single noble-metal atom, odd electron count | `open`, spin 1 (respect the atomic ground state) |
-| other noble cases (2–3-atom cluster) | electron-count parity (the ambiguous regime) |
-| no transition metals | parity — closed singlet (even) / doublet (odd) |
+**Decision tree** (`analyze_structure`) — read top-down; the first matching
+branch wins, so **open-d is checked before the noble-metal rules**:
+
+```mermaid
+flowchart TD
+    S["Structure"] --> Q1{"any OPEN_D<br/>transition metal?"}
+    Q1 -->|yes| OD["→ OPEN · spin = per-element default<br/>(open-d wins, even with nobles present)"]
+    Q1 -->|no| Q2{"a noble metal is the<br/>only metal present?"}
+    Q2 -->|"no metal at all"| P0["→ PARITY: closed singlet if even e⁻,<br/>doublet if odd"]
+    Q2 -->|yes| Q3{"≥ 4 noble atoms<br/>AND even e⁻ count?"}
+    Q3 -->|yes| C0["→ CLOSED · spin 0<br/>(cluster-context override)"]
+    Q3 -->|no| Q4{"single noble atom<br/>AND odd e⁻ count?"}
+    Q4 -->|yes| O1["→ OPEN · spin 1<br/>(atomic ground state)"]
+    Q4 -->|"no · 2–3-atom cluster"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
+```
 
 The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py:666`) is
 the conservative choice — overwhelmingly what published Au transport / surface
@@ -109,6 +130,26 @@ DFT does. When the noble closed-shell default is wrong (sub-4-atom Au cluster,
 single adatom on an insulator, magnetic 3d co-adsorbate, explicit Kondo /
 spin-orbit physics), the `rationale` string lists those override scenarios so
 the user knows the boundary.
+
+**Worked example — why the split matters.** Take an **Au-BDT-Au** junction (gold–
+benzenedithiol–gold: two gold electrodes bridging a benzene-1,4-dithiol molecule,
+many Au atoms, even electron count):
+
+```python
+>>> from molbuilder.chemistry import analyze_structure
+>>> a = analyze_structure(au_bdt_au)
+>>> a.metals, a.suggested_treatment, a.suggested_spin
+(['Au'], 'closed', 0)                 # ≥4 Au, even e⁻ → cluster-context override
+>>> a.rationale
+'Noble metal Au in an extended junction … → closed-shell singlet (RKS).'  # illustrative
+
+# The retired flat OPEN_SHELL_METALS alias would have returned 'open' here —
+# WRONG: published Au-junction transport DFT is closed-shell (RKS) by convention.
+
+>>> from molbuilder.siesta.auto_defaults import SiestaAdapter
+>>> SiestaAdapter.to_params(a)
+SiestaSuggestedParams(net_charge=0, spin_polarized=False, spin_total=0.0, rationale='…')
+```
 
 **References** (the noble-metal-is-closed-shell basis): Taylor, Brandbyge,
 Stokbro, *PRB* **63**, 245407 (2001) — the original TranSIESTA Au-BDT-Au paper;

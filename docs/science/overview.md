@@ -15,6 +15,11 @@ cross-cutting rules every science-aware surface obeys: **when a finding blocks**
 checks** (the catalog). The engine-specific machinery and the chemistry facts
 live in the sibling docs below.
 
+> **New to the vocabulary?** Terms like *SCF*, *open-shell*, *k-points*, *KB
+> projector*, *frozen dataclass* are all defined in plain words in the
+> [**Glossary** (§ 8)](#8-glossary--plain-language) at the end — skim it first if
+> any acronym here is unfamiliar.
+
 ---
 
 ## 1. The map — start here
@@ -169,9 +174,25 @@ basis suitability) lives in **one shared helper** called from **both**
 `_validate_siesta` and `_validate_pyscf` (and the engine preflights + the UI
 auto-detect) — same physical facts, same warning. This is structural, not
 aspirational: every science-aware surface consumes the same `ChemistryAnalysis`
-instance and cannot disagree. The realisation (the analyzer, the adapter
-registry, the "adapters must not re-do detection" rule) is in
-[`validation.md`](?doc=science/validation.md); the chemistry motivation is in
+instance and cannot disagree.
+
+```mermaid
+flowchart TD
+    S["struct"] --> AN["analyze_structure()"]
+    AN --> CA["ChemistryAnalysis<br/>(one shared instance)"]
+    CA --> VS["_validate_siesta"]
+    CA --> VP["_validate_pyscf"]
+    CA --> EP["engine preflights<br/>(spectra / transport)"]
+    CA --> UI["UI auto-detect<br/>/api/structure/analyze → chip"]
+    VS --> R["same conclusion —<br/>no surface can disagree"]
+    VP --> R
+    EP --> R
+    UI --> R
+```
+
+The realisation (the analyzer, the adapter registry, the "adapters must not re-do
+detection" rule) is in [`validation.md`](?doc=science/validation.md); the
+chemistry motivation is in
 [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2.4.
 
 ---
@@ -206,3 +227,74 @@ is part of correctness:
   (no subprocess) in
   `tests/test_pyscf.py:90::test_geometric_optparams_accepts_pyscf_optimize_kwargs`,
   so a regression surfaces at unit-test time rather than user runtime.
+
+---
+
+## 8. Glossary — plain language
+
+The vocabulary these science docs share, in plain words. (Each sibling doc
+glosses its own specialised terms inline; this is the common core.)
+
+**Quantum-chemistry method**
+
+- **DFT** (density functional theory) / **HF** (Hartree-Fock) — the two families
+  of method that compute a molecule's electrons. molbuilder emits inputs for both
+  (SIESTA does DFT; PySCF does DFT or HF).
+- **SCF** (self-consistent field) — the iterative loop at the heart of DFT/HF that
+  solves for the electrons; it *converges* when the answer stops changing between
+  iterations. A wrong setup can converge to the *wrong* answer with no error.
+- **XC functional** (exchange-correlation) — the specific DFT approximation for
+  electron–electron energy (e.g. PBE, PBEsol). A pseudopotential is built *for* one
+  XC functional and must match the run.
+- **SIESTA** — a periodic-DFT code (emits an `.fdf` input). **PySCF** — a molecular
+  quantum-chemistry library (emits a `.py` script). The two "engines" molbuilder
+  targets.
+
+**Electrons & spin**
+
+- **open-shell / closed-shell** — closed-shell = every electron paired
+  (non-magnetic); open-shell = some electrons unpaired (magnetic). Transition
+  metals (Fe, Mn, Co, …) are the common open-shell case; most organics are
+  closed-shell.
+- **spin (2S)** — molbuilder and PySCF count spin as **2S = the number of unpaired
+  electrons**: 0 = singlet, 1 = doublet, 2 = triplet, … This is *not* the
+  "multiplicity" (2S+1) that ORCA/Gaussian report.
+- **μB (Bohr magneton)** — the unit SIESTA's `Spin.Total` uses for the net spin
+  moment (≈ one μB per unpaired electron).
+- **parity** — the even/odd match: an even electron count needs an even 2S, odd
+  needs odd. A mismatch is physically impossible.
+- **DM (density matrix)** — the electron distribution SIESTA seeds the SCF loop
+  with; built by a routine called `propor`.
+
+**Periodic (crystal) calculations**
+
+- **PBC / periodic images** — the simulation cell repeats infinitely; every atom
+  has "image" copies in the neighbouring cells. A molecule in a too-small box
+  interacts spuriously with its own images.
+- **k-points / Γ-only** — periodic calculations sample reciprocal space at
+  k-points; `kgrid` sets how many per axis. **Γ-only** (all `kgrid == 1`) = a single
+  k-point — right for an isolated molecule, too coarse for a real crystal.
+- **Makov-Payne** — the estimated spurious energy of a *charged* cell interacting
+  with its own periodic images.
+
+**Pseudopotentials** (heavy-atom core stand-ins)
+
+- **pseudopotential** — a stand-in for an atom's chemically-inert core electrons,
+  so only the outer **valence** electrons are computed explicitly.
+- **KB projector** (Kleinman-Bylander) — the mathematical form SIESTA stores a
+  pseudopotential in; each valence orbital channel has a strength `ekb`, and
+  `ekb = 0` means a *dead* (contributes-nothing) channel.
+- **PAO** (pseudo-atomic orbital) — SIESTA's numerical basis set. **ECP** (effective
+  core potential) — PySCF's equivalent of a pseudopotential. **Ry** (Rydberg) — the
+  energy unit for SIESTA's real-space **mesh cutoff** (how fine the integration
+  grid is).
+
+**Software terms**
+
+- **dataclass (frozen)** — a plain typed record; *frozen* = immutable once created.
+  **the wire** — the network boundary where these records become JSON.
+- **adapter / registry** — an *adapter* is a small per-engine translator; the
+  *registry* is the lookup table each adapter registers itself into, so adding an
+  engine needs no change to the callers.
+- **preflight** — the validation pass run just before an input script is written.
+  **the gate** — the single point (`report()`) that can stop generation.

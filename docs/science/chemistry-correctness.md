@@ -58,11 +58,15 @@ installed; `auto_backend_name()` (`:91`) reports what `auto` would pick (or
 
 ## 2. Spin + charge — the most error-prone pair of inputs
 
-For **any** DFT/HF calculation, `(charge, spin)` together define the electronic
-state. Wrong values give the wrong electronic structure, which shows up as huge
-forces, non-convergence, or — worst — **silent convergence to a fictitious state
-that looks reasonable but is the wrong minimum**. The 2026-05-22 hemeC-dithiol
-incident (§ 2.3) was exactly this.
+For **any** DFT/HF calculation (density-functional theory / Hartree-Fock — the two
+quantum-chemistry methods molbuilder emits inputs for), `(charge, spin)` together
+define the *electronic state* — how many electrons there are and how their spins
+are arranged. Wrong values give the wrong electronic structure, which shows up as
+huge forces, non-convergence, or — worst — **the SCF (the iterative solve at the
+heart of DFT/HF) silently converging to a fictitious state that looks reasonable
+but is the wrong minimum**. The 2026-05-22 hemeC-dithiol incident (§ 2.3) was
+exactly this. *(Cross-cutting terms — SCF, open/closed-shell, 2S, parity — are in
+the [`overview.md` glossary](?doc=science/overview.md).)*
 
 ### 2.1 Why it's easy to get wrong
 
@@ -77,15 +81,34 @@ incident (§ 2.3) was exactly this.
   | **SIESTA** | `SpinPolarized` (bool) + `Spin.Total` in μ_B |
   | ORCA / Gaussian | multiplicity = 2S+1 |
 
+  For a **triplet** (2 unpaired electrons, 2S = 2) the two engines molbuilder
+  emits look like this — same physics, different spelling:
+
+  ```python
+  # PySCF (.py):     mol = gto.M(..., charge=0, spin=2)   # spin is 2S
+  # SIESTA (.fdf):   SpinPolarized  .true.
+  #                  Spin.Fix       .true.
+  #                  Spin.Total     2.0                    # in μ_B
+  ```
+
 - **Wrong `(charge, spin)` often *does* converge SCF** — just to a different
   electronic state with different energy / forces / HOMO-LUMO ordering, and no
   obvious error message.
 - **The "right" spin depends on coordination chemistry, not just element
-  identity.** 4-coordinate Fe(II)-porphyrin is S=1 (intermediate); 5-coordinate
-  with one weak axial ligand is S=2 (high); 6-coordinate with two strong-field
-  axial ligands is S=0 (low). There is no general formula — it depends on the
-  experimental data, which is why molbuilder *suggests* and asks the user to
-  verify rather than deciding silently.
+  identity.** *Coordination* = how many atoms bond directly to the metal; *axial
+  ligands* sit above/below the flat ring; a *strong-field* ligand splits the
+  metal's d-orbitals more, which favours pairing electrons up (low spin). For the
+  same Fe(II) ion the ground-state spin swings across the whole range:
+
+  | Coordination | Axial ligand field | Spin state | Unpaired e⁻ | Example |
+  |---|---|---|---|---|
+  | 4-coordinate | none | intermediate, **S = 1** | 2 | Fe(II)-porphyrin |
+  | 5-coordinate | one weak | high, **S = 2** | 4 | deoxy-heme |
+  | 6-coordinate | two strong-field | low, **S = 0** | 0 | oxy- / CO-heme |
+
+  There is no general formula — it depends on the experimental data, which is why
+  molbuilder *suggests* a spin and asks the user to verify rather than deciding
+  silently. (In molbuilder's `2S` convention these are `spin = 2`, `4`, `0`.)
 
 ### 2.2 The chemistry primitives molbuilder provides (backend surface)
 
@@ -114,13 +137,42 @@ print(explain_metal_spin("Fe", 2))               # "Fe(II) intermediate-spin, S=
 ```
 
 The analyzer (`analyze_structure`) composes these into one `ChemistryAnalysis`
-recommendation — see [`validation.md`](?doc=science/validation.md) for how that
-result then drives every engine.
+recommendation — the single object every science-aware surface then consumes:
+
+```python
+>>> from molbuilder.chemistry import analyze_structure
+>>> a = analyze_structure(hemeC_dithiol)      # an Fe-porphyrin with two thiol arms
+>>> a.metals, a.suggested_treatment, a.suggested_spin
+(['Fe'], 'open', 2)          # Fe is open-d → open-shell; analyzer default 2S = 2
+>>> a.suggested_charge
+0
+>>> a.rationale              # human-readable, shown next to the Auto-detect button
+'Detected open-shell metal Fe → open-shell DFT, 2S = 2 (Fe(II) intermediate-spin,
+ 4-coordinate porphyrin). Verify against your experimental data — the right spin
+ depends on axial coordination, not just element identity.'          # illustrative
+```
+
+The same `a` drives both the pre-fill (forward) and the Generate-time check
+(reverse) — see [`validation.md`](?doc=science/validation.md) for how that one
+result reaches every engine. *(The `2` here is the **analyzer's** default; the
+SIESTA spin-sweep starts higher, at `suggest_spin_total(["Fe"]) → 4.0`
+high-spin — two intentionally different starting bets.)*
 
 ### 2.3 Post-mortem: hemeC-dithiol (2026-05-22)
 
 The bug surfaced when the user ran hemeC-dithiol (an Fe-porphyrin with two thiol
-side chains) through PySCF spectra.
+side chains) through PySCF spectra. It was a chain of small gaps that lined up —
+each link is now broken (§ 2.5):
+
+```mermaid
+flowchart TD
+    A["SpectraConfig has no charge/spin field"] --> B["gto.M(...) falls through to<br/>PySCF's (0, 0) default"]
+    B --> C["forces the molecule to closed-shell S = 0<br/>— but Fe(II) 4-coord porphyrin is S = 1"]
+    C --> D["SCF converges to a fictitious low-spin state<br/>(unphysical orbital occupancies)"]
+    D --> E["~10 eV/Å forces on a structure<br/>already at equilibrium"]
+    A -.->|"no open-shell-metal check<br/>in the spectra preflight"| D
+    A -.->|"no spin field on the form<br/>→ no advisory shown"| E
+```
 
 - **Symptom** — forces ~10 eV/Å on a structure already near experimental
   equilibrium.

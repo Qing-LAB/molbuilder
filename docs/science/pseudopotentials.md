@@ -8,22 +8,30 @@ preflight that *runs* these checks); `engines/siesta.md` (the FDF emitter + the
 (the science contract — composed last).
 
 This is the **sole source of truth** for what molbuilder checks in a `.psml`
-pseudopotential set, **why**, and **how**. The implementation
+pseudopotential set, **why**, and **how**. A **pseudopotential** is a stand-in for
+an atom's chemically-inert core electrons, so only the outer (valence) electrons
+are computed; `.psml` is the file format that carries one. The implementation
 (`molbuilder/pseudos.py` + `molbuilder/validation/siesta.py` + `molbuilder pseudo
 check`) must conform to this document; the tests (`tests/test_pseudos.py`) pin
 each check to it. If a check here and the code disagree, that's a bug in one of
-them — fix it, don't let them drift.
+them — fix it, don't let them drift. *(Cross-cutting terms — pseudopotential, KB
+projector, XC functional, valence, Ry — are in the
+[`overview.md` glossary](?doc=science/overview.md); this doc glosses its own
+specialised ones inline.)*
 
 ## Why this guard exists
 
 A **defective `S.psml` shipped silently** into a real run (2026-06-26): an
-`ONCVPSP-4.0.1` sulfur pseudo with a **dead p-channel** (`ekb=0`) sat among
-otherwise-`ONCVPSP-3.3.0` H/C/Au pseudos. It produced wrong sulfur bonding **and**
-crashed SIESTA at `propor: ERROR: IMAX=0` — but only at high MPI rank counts, so a
-low-np GPU run would have *silently* used it and reported plausible, wrong
-numbers. None of the pre-existing checks caught it. The checks below catch that
-class of defect **at preparation time**, before any compute is spent and before
-any wrong number is trusted.
+`ONCVPSP-4.0.1` sulfur pseudo — **ONCVPSP** is a widely-used pseudopotential
+*generator program*, and `-4.0.1` its release — with a **dead p-channel**
+(`ekb = 0`: the projector strength for the p valence orbitals was zero, so those
+orbitals contribute nothing) sat among otherwise-`ONCVPSP-3.3.0` H/C/Au pseudos.
+It produced wrong sulfur bonding **and** crashed SIESTA at `propor: ERROR: IMAX=0`
+(a crash from a degenerate projector table) — but only at high MPI rank counts (=
+many parallel processes), so a low-process GPU run would have *silently* used it
+and reported plausible, wrong numbers. None of the pre-existing checks caught it.
+The checks below catch that class of defect **at preparation time**, before any
+compute is spent and before any wrong number is trusted.
 
 Each check states its scientific basis, its false-positive risk, and its
 severity — several thresholds are heuristic and are called out as such.
@@ -103,23 +111,26 @@ looks physical.
   Minor (~1–2 kcal/mol).
 
 **How:** `PsmlInfo.xc_family` / `xc_authors` are decoded from the `<libxc-info>`
-functional ids via `_LIBXC_MAP` (`pseudos.py:146`) and compared to the family
-derived from `cfg.xc_authors`. An unrecognised libxc id stays `"unknown"` and
+functional ids (**libxc** = the standard open-source library that assigns each XC
+functional a numeric id) via `_LIBXC_MAP` (`pseudos.py:146`) and compared to the
+family derived from `cfg.xc_authors`. An unrecognised libxc id stays `"unknown"` and
 does **not** warn — we don't flag what we can't classify. **False positives:**
 low, bounded by the libxc id table.
 
 ### C3 — Relativistic treatment · WARN · `relativistic_mismatch`
 **What:** scalar-relativistic (SR) vs fully-relativistic / spin-orbit (FR)
-matches the calculation's intent. **Why:** FR pseudos are needed only when
-spin-orbit coupling matters (heavy elements + SOC-sensitive properties); using FR
-when you meant SR (or vice versa) changes the physics. SR is correct for the
+matches the calculation's intent (SR ignores the coupling between an electron's
+spin and its orbital motion; FR includes it). **Why:** FR pseudos are needed only
+when spin-orbit coupling matters (heavy elements + SOC-sensitive properties);
+using FR when you meant SR (or vice versa) changes the physics. SR is correct for the
 large majority of work. **How:** `PsmlInfo.relativistic` (from the header
 `relativity` attribute) compared to `expected_relativistic` (default `"scalar"`).
 **False positives:** low; `unknown` does not warn.
 
 ### C4 — Generator / version consistency · WARN · `generator_mismatch`
 **What:** the whole set comes from ONE generator release (e.g. all PseudoDojo
-`ONCVPSP-3.3.0`), not a mix. **Why:** a single stranger version is the *smell*
+`ONCVPSP-3.3.0`), not a mix. (**PseudoDojo** = a curated, benchmark-validated open
+pseudopotential library — molbuilder's recommended source.) **Why:** a single stranger version is the *smell*
 that a pseudo was hand-swapped from a different source — exactly how the bad S
 entered. Mixed releases also mean the set was never validated together for
 transferability. **How:** `_generator_key(generator)` (`pseudos.py:597`) reduces
@@ -161,6 +172,40 @@ ERROR-blocked those common elements**; the `l not in semilocal_ls` guard fixes i
 **Threshold:** `1e-6` is heuristic — well below any physical `ekb` (real ones are
 O(0.1–20)) and just above exact-zero/round-off. **False positives:** believed none
 for standard ONCVPSP / PseudoDojo sets after the semilocal exemption.
+
+The three cases side by side, in the actual PSML header (`<proj l=… ekb=…>` — one
+`<proj>` per projector, grouped by angular momentum `l`; `s`, `p`, `d`, … are the
+channel names):
+
+```xml
+<!-- (a) HEALTHY p-channel — real ekb, contributes to bonding → ok -->
+<proj l="p" seq="1" ekb="4.213" eref="0" type="oncv"/>
+
+<!-- (b) DEAD sulfur p-channel — every projector zero AND no <slps l="p"> → dead_projector (ERROR) -->
+<proj l="p" seq="1" ekb="0.0" eref="0" type="oncv"/>
+<proj l="p" seq="2" ekb="0.0" eref="0" type="oncv"/>
+<!-- (no <slps l="p"> in <semilocal-potentials>) -->
+
+<!-- (c) EXEMPT iodine p-channel — projectors zero BUT a semilocal potential carries it → ok -->
+<proj l="p" seq="1" ekb="0.0" eref="0" type="oncv"/>
+<semilocal-potentials>
+  <slps l="p" seq="1"> … </slps>   <!-- SIESTA rebuilds the KB projector from this -->
+</semilocal-potentials>
+```
+
+The predicate that decides this is exactly the three-way AND above (simplified
+from `pseudos.py:376`; `l` values are the channel letters `s`/`p`/`d`):
+
+```python
+_EKB_NULL = 1e-6
+semilocal_ls = { slps["l"] for slps in header.iter("slps") }   # l's carried by <slps>
+
+null_channels = [
+    l for l, projectors in proj_by_l.items()               # channels that HAVE <proj>
+    if all(abs(ekb) < _EKB_NULL for ekb in projectors)     # ...all ~zero
+    and l not in semilocal_ls                              # ...and NOT rebuilt from <slps>
+]
+```
 
 ### C6 — Parse integrity · WARN · `parse_warning`
 **What:** the file parsed and carried the expected header fields. **Why:** a
