@@ -38,7 +38,8 @@ animates vibrational modes on the Spectra and Results views.
 > *Store* = the in-memory selection/view state. *Isolate* = "show selected atoms
 > only". *Glow* = the translucent amber sphere drawn on a selected atom. *Frame*
 > = one geometry in a trajectory movie. Atom indices are **0-based internally**
-> and **1-based on screen** (see § 6).
+> and **1-based on screen**, translated by one shared API — never a hand-rolled
+> `+1` (see § 20).
 
 ---
 
@@ -123,9 +124,11 @@ Measurements come straight from what you have selected, in pick order:
 - **3 atoms** → the angle, with the **middle-picked** atom as the vertex, e.g.
   `∠H #5 – O #1 – H #6 = 104.5°`.
 
-The `#N` in a readout is the **1-based** on-screen atom number. (Internally
-MolView counts atoms from 0; it adds 1 only for display, so the first atom reads
-as `#1` on screen even though code sees index `0`.)
+The `#N` in a readout is the **1-based** on-screen atom number. MolView does not
+hand-roll that `+1`: the readout, the atom labels, and the filter panel all get
+it from the one shared index-base API (`atomIndexModel.toDisplay`), so the first
+atom reads as `#1` everywhere even though code sees index `0`. That single home
+is described in § 20.
 
 ## 7. Region labels and freezing
 
@@ -487,8 +490,23 @@ over it.
 Beyond the panel readout (§ 6), a viewer-window measurement overlay
 (`mount.js` → `mountMeasurementOverlay`) repaints on selection **or** frame
 change. All measurement math is derived from pick order; the vertex of a
-3-atom angle is the middle-picked atom. Atom indices are **0-based internally,
-1-based on screen** — the `#N` a user reads is `index + 1`.
+3-atom angle is the middle-picked atom.
+
+**The atom-index rule — one translation, one home.** Atom indices are
+**0-based internally** and **1-based on screen**, and MolView never applies a
+bare `+1` of its own. The translation is owned by a single shared API,
+`atomIndexModel` (`lib/molview/_atom-index.js`): `toDisplay(i) = i + 1` for the
+number a user reads, and `fromDisplay` / `shiftExpression` for turning 1-based
+input — the "by atom index" filter (§ 5), e.g. `1-4, 6` — back into the 0-based
+indices the server expects. **Every** display surface (measurements, the
+atom-list column, the viewer's labels, the filter panel) routes through it, so
+they can never drift apart; even the standalone embed's inline label is
+drift-guarded against `toDisplay` by `tests/test_atom_index_js.py`. This is the
+web-UI end of a cross-cutting convention whose **single home** — including the
+engine-side translation (`engine_atom_index.py`) and the invariant that
+`toDisplay(i)` equals the atom number in the generated `.fdf` — is
+[`model/overview.md`](?doc=model/overview.md) § 2. MolView defers to it rather
+than re-deriving the rule.
 
 ## 21. The wire contract
 
