@@ -4,8 +4,11 @@
 **Domain:** engines
 **Companions:** [`engines/siesta.md`](?doc=engines/siesta.md) +
 [`engines/pyscf.md`](?doc=engines/pyscf.md) (what each emitter *writes* — this doc
-says what *values* to write and why); [`science/validation.md`](?doc=science/validation.md)
-(the preflight that gates a job before you spend cluster time).
+says what *values* to write and why); [`engines/transport.md`](?doc=engines/transport.md)
+(the device k-grid / mesh contract for TranSIESTA — where transport overrides this
+doc's general k-grid + mesh guidance); [`science/validation.md`](?doc=science/validation.md)
+(the preflight that gates a job before you spend cluster time); `overview.md` (the
+engines map — composed last, named not linked yet).
 
 This is the canonical answer to **"what value should this knob carry, for what
 purpose, and why?"** — the reference the SIESTA/PySCF form-field `help` strings and
@@ -214,14 +217,16 @@ grid; `MeshCutoff` sets the spacing via a plane-wave-equivalent kinetic cutoff.
 |---|---|---|
 | screening | 150 | sanity check only |
 | loose preopt | 200–250 | forces to ~1% |
-| publishable | **350** | forces converged below 0.01 eV/Å on organic + Au systems |
+| publishable | **350** | forces below 0.01 eV/Å on organic systems (semicore metals want 400+ — see below) |
 | tight (vib/phonons) | 500 (600 for first-row elements) | mesh egg-box noise below 0.001 eV/Å |
 
 **Shipped default:** `SiestaConfig.mesh_cutoff` is **300 Ry** — one notch below the
-350 publishable recommendation, so bump it for production organic/metal work. The
-converged value depends on the basis (DZP numeric atomic orbitals — SIESTA's basis,
-§ 2.8 — converge faster than long-tail ones) —
-test by varying ±50 Ry; the relative geometry should be stable within your tolerance.
+350 publishable recommendation, so bump it for production organic/metal work.
+**Semicore metals go higher:** a transport junction on Au (5s5p5d valence) wants
+**400 Ry** (converge 300→500) — see [`transport.md`](?doc=engines/transport.md) § 7.
+The converged value depends on the basis (DZP numeric atomic orbitals — SIESTA's
+basis, § 2.8 — converge faster than long-tail ones) — test by varying ±50 Ry; the
+relative geometry should be stable within your tolerance.
 [Soler 2002]
 
 ### 2.7 k-grid (SIESTA periodic systems)

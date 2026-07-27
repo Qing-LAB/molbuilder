@@ -269,8 +269,10 @@ B3LYP-D3(BJ)/def2-SVP. That's fine for a first pass; for a defensible paper on a
 simple organic molecule (10–60 atoms), the one change that matters is the basis:
 
 ```python
-mol = gto.M(..., basis="def2-TZVP")                              # was def2-SVP — THE key upgrade
-mf  = scf.RKS(mol).density_fit(auxbasis="def2-universal-jfit")   # RI-J: 5–10× faster, <0.1 kcal/mol error
+mol = gto.M(..., basis="def2-TZVP")                # was def2-SVP — THE key upgrade
+mf  = scf.RKS(mol).density_fit()                   # what molbuilder emits (auxbasis auto-picked);
+                                                   # PySCF selects def2-universal-jkfit for the hybrid
+                                                   # (fits BOTH Coulomb + exact exchange) — 5–10× faster
 mf.xc   = "b3lyp"
 mf.disp = "d3bj"          # Grimme-D3(BJ). Use the SPLIT form (mf.xc + mf.disp):
                           # PySCF 2.13's parse_dft() rejects the merged "b3lyp-d3(bj)"
@@ -280,17 +282,19 @@ mf.disp = "d3bj"          # Grimme-D3(BJ). Use the SPLIT form (mf.xc + mf.disp):
 Convergence thresholds in the shipped script are already Gaussian-OPT defaults —
 what reviewers expect. The **tier framework** (shared with SIESTA — see `tuning.md`):
 
-| Knob | Publishable (Gaussian OPT) | TIGHT (vib/IR/NEB) | VERY-TIGHT (kinetics) |
+| Knob | Publishable (`GAU`) | Tight — shipped stage-3 | Very-tight — `GAU_TIGHT` |
 |---|---|---|---|
-| `convergence_gmax` (Ha/Bohr) | **4.5e-4** (≈ 0.023 eV/Å) | 1.5e-5 | 2e-6 |
-| `convergence_grms` (Ha/Bohr) | 3.0e-4 | 1.0e-5 | 1e-6 |
-| `convergence_dmax` / `drms` (**Å**) | 1.8e-3 / 1.2e-3 | 6.0e-5 / 4.0e-5 | 6e-6 / 4e-6 |
-| `convergence_energy` (Ha) | 1e-6 | 1e-6 | 1e-8 |
-| `mf.conv_tol` (Ha) | 1e-9 | 1e-10 | 1e-11 |
+| `convergence_gmax` (Ha/Bohr) | **4.5e-4** (≈ 0.023 eV/Å) | 2.0e-4 (≈ 0.01 eV/Å) | 1.5e-5 |
+| `convergence_grms` (Ha/Bohr) | 3.0e-4 | 1.0e-4 | 1.0e-5 |
+| `convergence_dmax` / `drms` (**Å**) | 1.8e-3 / 1.2e-3 | 1.0e-3 / 5.0e-4 | 6.0e-5 / 4.0e-5 |
+| `convergence_energy` (Ha) | 1e-6 | 1e-6 | 1e-6 |
+| `mf.conv_tol` (Ha) | 1e-9 | 1e-10 | 1e-10 |
 
-*(Unit note, verified vs `geometric/params.py`: `dmax`/`drms` are in **Å**, gradients
-in Ha/Bohr. The shipped stage-3 default is `gmax=2.0e-4` — a moderate tighten, not
-the full TIGHT `1.5e-5`; escalate manually for vibrational work.)*
+*(`dmax`/`drms` are in **Å**, gradients in Ha/Bohr — verified vs `geometric/params.py`.
+Tier names match `tuning.md` § 2.4: the **shipped stage-3 default is the crystal-safe
+Tight** (`gmax 2e-4`, ≈ VASP `EDIFFG=-0.01`); **very-tight** is geomeTRIC's `GAU_TIGHT`,
+opt-in for molecule vib/IR/NEB. For reaction kinetics you can escalate below
+`GAU_TIGHT`, but geomeTRIC has no preset there — set the criteria by hand.)*
 
 **Basis / functional** (the exact strings PySCF accepts — in a paper you write the
 conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
@@ -311,11 +315,11 @@ conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
 > theory using PySCF [1] with the geomeTRIC optimizer [2]. Gaussian's default
 > convergence criteria were applied (gmax = 4.5 × 10⁻⁴ Ha/Bohr, grms = 3.0 × 10⁻⁴
 > Ha/Bohr, ΔE = 1 × 10⁻⁶ Ha). The SCF threshold was 1 × 10⁻⁹ Ha.
-> Resolution-of-the-identity Coulomb fitting (RI-J) [3] with the def2-universal-jfit
-> auxiliary basis was applied.
+> Resolution-of-the-identity fitting [3] with the def2-universal-jkfit auxiliary basis
+> was applied to the Coulomb and exact-exchange builds.
 
 Citations to include: **[1]** Sun et al., *JCP* **153**, 024109 (2020); **[2]** Wang
-& Song, *JCP* **144**, 214108 (2016); **[3]** Weigend, *PCCP* **8**, 1057 (2006);
+& Song, *JCP* **144**, 214108 (2016); **[3]** Weigend, *J. Comput. Chem.* **29**, 167 (2008);
 B3LYP — Becke, *JCP* **98**, 5648 (1993) + Lee-Yang-Parr, *PRB* **37**, 785 (1988);
 D3(BJ) — Grimme et al., *J. Comp. Chem.* **32**, 1456 (2011); def2-TZVP — Weigend &
 Ahlrichs, *PCCP* **7**, 3297 (2005); ωB97X-V (if used) — Mardirossian &

@@ -8,8 +8,9 @@ contract — composed last, named not linked yet); `ops/` (how the
 ops wave); [`science/validation.md`](?doc=science/validation.md)
 (the preflight that gates emission); [`model/structure.md`](?doc=model/structure.md)
 + [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) (the
-`Structure` + cell it consumes); `execution/` (running a stage ladder on a
-scheduler — named, execution wave).
+`Structure` + cell it consumes); [`engines/tuning.md`](?doc=engines/tuning.md) (the
+value owner — what numbers the convergence/quality knobs should carry);
+`execution/` (running a stage ladder on a scheduler — named, execution wave).
 
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
 **SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`
@@ -317,7 +318,9 @@ A single CLI call can emit one `.fdf` per relaxation **stage** plus a
   `relax_max_displ` (→ `MD.MaxCGDispl`), `on_nonconvergence` ∈
   {proceed, continue, halt}, `continue_retries`. `SiestaConfig.stages` is the
   source of truth; `_default_siesta_stages()` (`:1315`) is the 3-stage ladder
-  (CG warm-up 0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å).
+  (CG warm-up 0.05 → Broyden publishable 0.04 → Broyden crystal-tight 0.01 eV/Å —
+  the authoritative per-tier value table lives in
+  [`tuning.md`](?doc=engines/tuning.md) § 4).
 - **Presets** `SIESTA_STAGE_STRATEGY_PRESETS` (`:1414`): `publishable` (1+2),
   `loose-only` (1), `vib-quality` (1+2+3). The same names + masks live in the PySCF
   config and `form-schema.js`, kept in lock-step by
