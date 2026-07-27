@@ -353,7 +353,10 @@ sub-namespace (§ 15), and the `view` sub-namespace (§ 18).
 
 **The encapsulation rule:** consumers go through accessors; they never parse
 structure text and never reach past the API into the store or the embed. This
-is what lets the data model stay the single source of truth.
+is what lets the data model stay the single source of truth. Internally,
+`data-model.js` is the **composer** of the module's concealed injected-factory
+submodules (install/serialise/timeline/operations/store) — that architecture is
+§ 23.
 
 ## 15. Structure-mutation — `applyOp`
 
@@ -539,19 +542,84 @@ the selection store run without a browser) and by end-to-end pages — chiefly
 The transitional `window.molbuilder.molview.*` publishes double as the
 node/e2e entry points and readiness sentinels (§ 12).
 
-## 23. The developer's map
+## 23. Internal architecture — the data model and its concealed submodules
 
-| File | Owns |
+MolView is one module with a **concealed internal architecture**: `molview.data`
+(`data-model.js`) is the **composer**, and the real work is split into
+single-purpose **injected-factory submodules** that nothing outside the module
+can reach. The only surfaces that leave the module are the door's `mount` +
+`formula` (§ 12) and the `molview.data` object; every file below is internal.
+
+**The injected-factory pattern.** Each internal submodule is a factory —
+`createStore()`, `createStateTimeline(deps)`, `createOperations(deps)`,
+`createSerialiser(deps)`, `createInstall(deps)` — and `data-model.js` is its
+**sole caller**: it creates the submodule **once** and injects the exact seams it
+needs (read accessors, the serialise/apply codec, the workspace transport, the
+store, `notify`, `trace`). A submodule never reaches for a global; it only calls
+what was injected. That is what keeps each one **decoupled and format-blind** —
+the timeline doesn't know the snapshot format (the model injects `serialise` /
+`applySnapshot`); the operations submodule doesn't know how to apply a server
+result (the model injects `applyWorkspacePayload`); the serialiser reads only
+through injected accessors, never the store directly — and independently
+**node-testable** with stub deps.
+
+```mermaid
+flowchart TB
+    DM["data-model.js<br/>molview.data — the composer"]
+    subgraph subs["Concealed injected-factory submodules"]
+      IN["_install<br/>bytes → model"]
+      SE["_serialise<br/>model → bytes"]
+      ST["_state-timeline-impl<br/>Save-state / Retract"]
+      OP["_operations<br/>applyOp"]
+      SS["_selection-store-impl<br/>selection + view flags"]
+      CS["_canvas-state-impl<br/>cell / canvas state"]
+    end
+    DM -->|"getStore/getCanvas, persist gate, notify, anchor"| IN
+    DM -->|"read accessors, view, stateIndex, workspaceId"| SE
+    DM -->|"serialise, applySnapshot, getWorkspace, persist"| ST
+    DM -->|"read accessors, applyWorkspacePayload, getStore"| OP
+    DM -->|"creates"| SS
+    DM -->|"creates"| CS
+```
+
+**The submodules and the contract `data-model` injects into each:**
+
+| Submodule (file) | Factory | Owns | Key injected seams |
+|---|---|---|---|
+| selection store (`_selection-store-impl.js`) | `createStore()` | selection + view flags (§ 19) | *(optional seeded snapshot)* |
+| canvas state (`_canvas-state-impl.js`) | `canvasState` | the cell / canvas working state | *(singleton)* |
+| state timeline (`_state-timeline-impl.js`) | `createStateTimeline` | Save-state / Retract (§ 17) | `serialise`, `applySnapshot`, `getWorkspace`, `persist`, `trace` |
+| operations (`_operations.js`) | `createOperations` | `applyOp` (§ 15) | `getStructure`/`getCoordinates`/`getElements`, `applyWorkspacePayload`, `getStore` |
+| serialiser (`_serialise.js`) | `createSerialiser` | model → snapshot bytes (`exportFile`, timeline snapshots) | the read accessors + `viewGetState`, `getStateIndex`, `getWorkspaceId` |
+| install (`_install.js`) | `createInstall` | bytes → model (`installMolecule` / `generate`, § 14) | `getStore`, `getCanvas`, the persist gate, `notify`, `pushToEngine`, timeline `anchor` |
+
+Two more internal families sit alongside the data model, composed the same
+concealed way:
+
+- **the render engine** (`engine/`) — `engine.create(handle, { store })` composes
+  `engine.js` (the orchestrator) + `process.js` (the PURE per-frame processor,
+  no 3Dmol) + `embed-io.js` (the one seal over the 3Dmol embed handle); § 16.
+- **the selection UI** (`selection/`) — `panel.js` (DOM) + `viewer-adapter.js`
+  (click-to-select) + `measurements.js` (pure), mounted through `mount-panel.js`;
+  all read the injected store, never the embed; § 19.
+
+### The file map
+
+| File / dir | Owns |
 |---|---|
-| `lib/molview/index.js` | the one door (`mount`, `formula`, data re-export) |
-| `lib/molview/mount.js` | `mount()`, the handle, the playback timer |
-| `lib/molview/data-model.js` | the in-memory structure (`molview.data`) |
-| `lib/molview/_operations.js` | the `applyOp` registry |
-| `lib/molview/_selection-store-impl.js` | the selection store |
-| `lib/molview/selection/` | panel, viewer-adapter, measurements, mount-panel |
-| `lib/molview/engine/` | render engine — `engine.js`, `process.js` (pure), `embed-io.js` |
-| `lib/molview/frame-controls.js` | the trajectory playback bar |
-| `lib/molview/measurement-overlay.js` | the in-viewer measurement overlay |
+| `lib/molview/index.js` | the one door (`mount`, `formula`, data + submodule re-exports) |
+| `lib/molview/mount.js` | `mount()`, the handle, the playback timer (§ 13) |
+| `lib/molview/data-model.js` | the composer — `molview.data` + the public API (§ 14) |
+| `lib/molview/_install.js` · `_serialise.js` | bytes ↔ model codec (install / export) |
+| `lib/molview/_state-timeline-impl.js` | Save-state / Retract timeline (§ 17) |
+| `lib/molview/_operations.js` | the `applyOp` registry + orchestration (§ 15) |
+| `lib/molview/_selection-store-impl.js` · `_atom-channels.js` | the selection store + per-atom channels (§ 19) |
+| `lib/molview/_canvas-state-impl.js` | cell / canvas working state |
+| `lib/molview/_atom-index.js` | the display index API (`toDisplay`/`fromDisplay`, § 20) |
+| `lib/molview/_viewer-overlay.js` | the concealed corner-overlay framework |
+| `lib/molview/engine/` | render engine — `engine.js`, `process.js` (pure), `embed-io.js` (§ 16) |
+| `lib/molview/selection/` | panel, viewer-adapter, measurements, mount-panel (§ 19) |
+| `lib/molview/frame-controls.js` · `measurement-overlay.js` | the trajectory bar + measurement overlay |
 | `lib/viewer/` | the concealed 3Dmol embed family |
 | `lib/vibrationview/` | VibrationView (§ 24) |
 | `molview/demo.js` | the `/molview-demo` page |
