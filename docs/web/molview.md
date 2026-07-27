@@ -542,66 +542,90 @@ the selection store run without a browser) and by end-to-end pages — chiefly
 The transitional `window.molbuilder.molview.*` publishes double as the
 node/e2e entry points and readiness sentinels (§ 12).
 
-## 23. Internal architecture — the data model and its concealed submodules
+## 23. Internal architecture — how the module is built inside
 
-MolView is one module with a **concealed internal architecture**: `molview.data`
-(`data-model.js`) is the **composer**, and the real work is split into
-single-purpose **injected-factory submodules** that nothing outside the module
-can reach. The only surfaces that leave the module are the door's `mount` +
-`formula` (§ 12) and the `molview.data` object; every file below is internal.
+From outside, MolView shows only its door (`mount`, `formula`) and the
+`molview.data` object (§ 12); everything below is hidden inside the module. But
+the module is not one big file. **One central file holds the structure, and it
+hands each real job to a small helper file that does only that one job.** This
+section is for when you open the code.
 
-**The injected-factory pattern.** Each internal submodule is a factory —
-`createStore()`, `createStateTimeline(deps)`, `createOperations(deps)`,
-`createSerialiser(deps)`, `createInstall(deps)` — and `data-model.js` is its
-**sole caller**: it creates the submodule **once** and injects the exact seams it
-needs (read accessors, the serialise/apply codec, the workspace transport, the
-store, `notify`, `trace`). A submodule never reaches for a global; it only calls
-what was injected. That is what keeps each one **decoupled and format-blind** —
-the timeline doesn't know the snapshot format (the model injects `serialise` /
-`applySnapshot`); the operations submodule doesn't know how to apply a server
-result (the model injects `applyWorkspacePayload`); the serialiser reads only
-through injected accessors, never the store directly — and independently
-**node-testable** with stub deps.
+`data-model.js` is the central file: it holds the current structure and answers
+every question about it (`getAtoms`, `getSelection`, …). It does none of the
+heavy jobs itself — it hands each to a helper:
+
+- one helper **loads a file** into the structure (`_install.js`),
+- one **writes the structure back to text** (`_serialise.js`),
+- one keeps the **undo / redo history** (`_state-timeline-impl.js`),
+- one runs the **edits** — move, rotate, delete, add atoms (`_operations.js`),
+- one holds **what is selected** + the view switches (`_selection-store-impl.js`),
+- one holds the **cell / working state** (`_canvas-state-impl.js`).
+
+**When the central file builds a helper, it hands the helper exactly the
+functions that helper is allowed to call** — the helper never reaches out on its
+own. The undo helper is the clearest example: it has to save and restore the
+structure, but it does **not** need to know the file format — the central file
+just hands it a "make a snapshot" function and a "put a snapshot back" function.
+That keeps each helper small (it only knows its own job), easy to test by itself
+(you hand it stand-in functions), and replaceable without disturbing the others.
 
 ```mermaid
 flowchart TB
-    DM["data-model.js<br/>molview.data — the composer"]
-    subgraph subs["Concealed injected-factory submodules"]
-      IN["_install<br/>bytes → model"]
-      SE["_serialise<br/>model → bytes"]
-      ST["_state-timeline-impl<br/>Save-state / Retract"]
-      OP["_operations<br/>applyOp"]
-      SS["_selection-store-impl<br/>selection + view flags"]
-      CS["_canvas-state-impl<br/>cell / canvas state"]
+    DM["data-model.js<br/>the central file — holds the structure"]
+    subgraph subs["Helper files, all hidden inside the module"]
+      IN["_install<br/>load a file into the structure"]
+      SE["_serialise<br/>write the structure back to text"]
+      ST["_state-timeline<br/>undo / redo history"]
+      OP["_operations<br/>move · rotate · delete · add"]
+      SS["_selection-store<br/>what is selected + view switches"]
+      CS["_canvas-state<br/>the cell / working state"]
     end
-    DM -->|"getStore/getCanvas, persist gate, notify, anchor"| IN
-    DM -->|"read accessors, view, stateIndex, workspaceId"| SE
-    DM -->|"serialise, applySnapshot, getWorkspace, persist"| ST
-    DM -->|"read accessors, applyWorkspacePayload, getStore"| OP
-    DM -->|"creates"| SS
-    DM -->|"creates"| CS
+    DM -->|"hands it: make a snapshot, put a snapshot back"| ST
+    DM -->|"hands it: read the atoms, apply the server's result"| OP
+    DM -->|"hands it: read everything needed to write out"| SE
+    DM -->|"hands it: where to put a loaded structure"| IN
+    DM -->|"builds it"| SS
+    DM -->|"builds it"| CS
 ```
 
-**The submodules and the contract `data-model` injects into each:**
+**A worked example — delete two atoms, then undo.** When a user selects two
+atoms and clicks Delete:
 
-| Submodule (file) | Factory | Owns | Key injected seams |
-|---|---|---|---|
-| selection store (`_selection-store-impl.js`) | `createStore()` | selection + view flags (§ 19) | *(optional seeded snapshot)* |
-| canvas state (`_canvas-state-impl.js`) | `canvasState` | the cell / canvas working state | *(singleton)* |
-| state timeline (`_state-timeline-impl.js`) | `createStateTimeline` | Save-state / Retract (§ 17) | `serialise`, `applySnapshot`, `getWorkspace`, `persist`, `trace` |
-| operations (`_operations.js`) | `createOperations` | `applyOp` (§ 15) | `getStructure`/`getCoordinates`/`getElements`, `applyWorkspacePayload`, `getStore` |
-| serialiser (`_serialise.js`) | `createSerialiser` | model → snapshot bytes (`exportFile`, timeline snapshots) | the read accessors + `viewGetState`, `getStateIndex`, `getWorkspaceId` |
-| install (`_install.js`) | `createInstall` | bytes → model (`installMolecule` / `generate`, § 14) | `getStore`, `getCanvas`, the persist gate, `notify`, `pushToEngine`, timeline `anchor` |
+1. the tab calls `molview.data.applyOp("delete")`;
+2. the central file passes it to the **edits helper**, which sends the selected
+   atoms to the server (`POST /api/modify/delete`) and applies the smaller
+   structure that comes back;
+3. because the structure changed, the central file tells the **undo helper** to
+   record the new state;
+4. the user clicks Undo → `molview.data.undo()` → the central file asks the undo
+   helper to step back one state, and it hands the previous snapshot to the
+   **load helper** to put back in place.
 
-Two more internal families sit alongside the data model, composed the same
-concealed way:
+Every step crosses exactly one helper, and each helper only ever calls the
+functions the central file gave it. That is why the whole module stays sealed:
+the outside sees `molview.data`, never any of these helpers.
 
-- **the render engine** (`engine/`) — `engine.create(handle, { store })` composes
-  `engine.js` (the orchestrator) + `process.js` (the PURE per-frame processor,
-  no 3Dmol) + `embed-io.js` (the one seal over the 3Dmol embed handle); § 16.
-- **the selection UI** (`selection/`) — `panel.js` (DOM) + `viewer-adapter.js`
-  (click-to-select) + `measurements.js` (pure), mounted through `mount-panel.js`;
-  all read the injected store, never the embed; § 19.
+**What the central file hands each helper** (for reading the code):
+
+| Helper (file) | Its job | What the central file hands it |
+|---|---|---|
+| `_install.js` | load a file into the structure (`installMolecule` / `generate`, § 14) | where to put the loaded structure; how to signal a change; a way to record the first state |
+| `_serialise.js` | write the structure out (`exportFile`, undo snapshots) | read-only access to the atoms, cell, selection, view, and history position |
+| `_state-timeline-impl.js` | undo / redo history (§ 17) | "make a snapshot" + "put a snapshot back"; where the saved bytes go |
+| `_operations.js` | the edits — `applyOp` (§ 15) | read the atoms; apply the structure the server sends back |
+| `_selection-store-impl.js` | what is selected + the view switches (§ 19) | *(an optional starting selection)* |
+| `_canvas-state-impl.js` | the cell / working state | *(nothing — it stands alone)* |
+
+Two more groups of helpers sit beside the structure, built the same sealed way:
+
+- the **drawing helpers** (`engine/`) turn the structure into what you see on
+  screen: `engine.js` decides what to redraw, `process.js` does the pure
+  geometry math (no 3D library), and `embed-io.js` is the one file that talks to
+  the 3D viewer (§ 16);
+- the **selection-panel helpers** (`selection/`) are the panel you click in
+  (`panel.js`), the click-to-select wiring (`viewer-adapter.js`), and the
+  distance/angle math (`measurements.js`); they read what is selected, never the
+  3D viewer directly (§ 19).
 
 ### The file map
 
