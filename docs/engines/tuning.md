@@ -146,7 +146,7 @@ Full per-tier values:
 | loose preopt | 0.05 eV/Å (SIESTA `MD.MaxForceTol` stage-1 default) |
 | publishable | **0.04 eV/Å (SIESTA) / 4.5×10⁻⁴ Ha/Bohr ≈ 0.023 eV/Å (PySCF)** |
 | tight — crystal/surface | **0.01 eV/Å / ≈ 2×10⁻⁴ Ha/Bohr** (VASP `EDIFFG=-0.01`; safe for 100s of atoms) |
-| tight — molecule vib/IR | 0.001 eV/Å / 1.5×10⁻⁵ Ha/Bohr (`GAU_TIGHT`; **never** on a 100+ atom metal — it chases SCF noise forever) |
+| tight — molecule vib/IR | ≈ 0.001 eV/Å (SIESTA) / 1.5×10⁻⁵ Ha/Bohr (geomeTRIC `GAU_TIGHT`; **never** on a 100+ atom metal — it chases SCF noise forever) |
 
 **The shipped stage-3 defaults use the crystal/surface number** (0.01 eV/Å ≈
 `gmax 2×10⁻⁴ Ha/Bohr`), *not* `GAU_TIGHT`, precisely because the tight default has to
@@ -174,7 +174,8 @@ The `gmax` companion criteria. These are `StageSpec` fields
 | `etol` | 1.0×10⁻⁵ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | 1.0×10⁻⁶ | Hartree |
 
 The publishable column is geomeTRIC's `GAU` preset; the very-tight column is
-`GAU_TIGHT` (gradients ×10 tighter, displacements ×20). All five per-stage values
+`GAU_TIGHT` — ≈ 30× tighter on every gradient and displacement criterion (the energy
+step is unchanged). All five per-stage values
 flow end-to-end: they reach the rendered script's `STAGES = [...]` literal (geomeTRIC
 consumes them via `optimize(...)`) **and** the `.molwatch.log` header's
 `_CONVERGENCE_TARGETS` dict, which the Results-tab trajectory inspector reads to draw
@@ -385,11 +386,11 @@ Walking the 2026-06-23 case through the framework:
 
 | Question | Answer | Leads to |
 |---|---|---|
-| Target use? | Transport (NEGF on a relaxed geometry) | **publishable** tier for the relax (the NEGF is its own quality axis) |
+| Target use? | Transport (NEGF — the electron-transport method — on a relaxed geometry) | **publishable** tier for the relax (the NEGF is its own quality axis) |
 | Material class? | organic-on-metal interface, vdW | **Broyden**, not CG (§ 2.1) |
 | Cell? | 4×4×1 surface supercell | 6×6×1 k-grid (§ 2.7) |
 | Current state? | CG oscillating 0.09–0.5 eV/Å for 20+ moves | the *optimizer + step cap* are wrong, not the threshold |
-| Stage-2 `.fdf` | `MD.TypeOfRun Broyden`, `MD.MaxCGDispl 0.02`, `MD.MaxForceTol 0.04`, `DM.Tolerance 1e-4`, `MeshCutoff 350 Ry` | all from the publishable column |
+| Stage-2 `.fdf` | `MD.TypeOfRun Broyden`, `MD.MaxCGDispl 0.02`, `MD.MaxForceTol 0.04`, `DM.Tolerance 1e-4`, `MeshCutoff 350 Ry` | publishable tier, **but the step cap is tightened to 0.02 Å** (the § 2.1 fix that kills the CG oscillation — the rest is the publishable column) |
 
 ---
 

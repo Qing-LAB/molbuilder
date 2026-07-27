@@ -1157,8 +1157,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "#   0.01     very-tight (molecule vib/IR only)",
                 "# Symptom of too-large cap: max-force oscillates instead of",
                 "# descending (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...).",
-                "# Halve the cap and continue.  See docs/engines/optimization-",
-                "# tuning.md sect. 2.2 + sect. 2.3 design considerations.",
+                "# Halve the cap and continue.  See docs/engines/tuning.md",
+                "# sect. 2.2 + sect. 2.3 design considerations.",
             ]
             out.append(f"{displ_kw} {cfg.relax_max_displ} Ang")
         else:
