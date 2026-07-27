@@ -419,10 +419,25 @@ class CoverageEntry:
     """One row of a coverage report: per-element pass / warn / fail."""
     element:  str
     status:   str       # "ok" | "missing" | "dead_projector" |
-                        # "xc_mismatch" | "relativistic_mismatch" |
-                        # "generator_mismatch" | "parse_warning"
+                        # "xc_family_mismatch" | "xc_mismatch" |
+                        # "relativistic_mismatch" | "generator_mismatch" |
+                        # "parse_warning"
     message:  str
     path:     Optional[Path] = None
+
+
+#: The `CoverageEntry.status` values that BLOCK — a run with any of these
+#: cannot be correct: a pseudo is absent (SIESTA won't start), a valence
+#: channel is physically missing (wrong Hamiltonian), or the XC *family* is
+#: wrong (silently-wrong energies).  This is the SINGLE source of truth for
+#: "which statuses are ERROR"; the SIESTA preflight
+#: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
+#: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
+#: drift (they did until 2026-07-26: the CLI omitted ``xc_family_mismatch``).
+#: Everything else — ``xc_mismatch`` (same-family author diff),
+#: ``relativistic_mismatch``, ``generator_mismatch``, ``parse_warning`` — is
+#: advisory (WARN); ``ok`` is a silent pass.
+ERROR_STATUSES = frozenset({"missing", "dead_projector", "xc_family_mismatch"})
 
 
 def check_coverage(elements: Iterable[str],

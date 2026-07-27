@@ -355,11 +355,13 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
     match, dead Kleinman-Bylander projectors (ekb=0, a defective
     pseudo), and generator-version consistency across the set.
 
-    Exits non-zero if any ERROR-severity issue (missing or
-    dead-projector) is found, so it can gate a workflow.
+    Exits non-zero on any ERROR-severity issue -- missing pseudo,
+    dead projector, or XC-family mismatch (the same ``ERROR_STATUSES``
+    the SIESTA preflight blocks on) -- so it can gate a workflow.
     """
     from pathlib import Path as _P
-    from molbuilder.pseudos import (scan_psml_directory, check_coverage)
+    from molbuilder.pseudos import (scan_psml_directory, check_coverage,
+                                    ERROR_STATUSES)
 
     d = _P(directory)
     if elements:
@@ -377,12 +379,11 @@ def cmd_pseudo_check(directory, elements, xc_authors, relativistic):
     entries = check_coverage(els, d, expected_xc_family=fam,
                              expected_xc_authors=xc_authors or None,
                              expected_relativistic=relativistic)
-    ERR = {"missing", "dead_projector"}
     n_err = n_warn = 0
     for e in entries:
         if e.status == "ok":
             tag = "OK   "
-        elif e.status in ERR:
+        elif e.status in ERROR_STATUSES:
             tag = "ERROR"; n_err += 1
         else:
             tag = "WARN "; n_warn += 1

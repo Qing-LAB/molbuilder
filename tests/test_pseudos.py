@@ -829,3 +829,52 @@ class TestGeneratorVersionC4:
             "ONCVPSP-4.0.1+psml-4.0.1-76 (scalar-relativistic)") == "ONCVPSP-4"
         assert _generator_key(
             "ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)") == "ONCVPSP-3"
+
+
+class TestErrorStatusesSharedBySurfaces:
+    """The CLI (``molbuilder pseudo check``) and the SIESTA preflight must
+    block on the SAME statuses.  They drifted until 2026-07-26: the CLI's
+    exit set omitted ``xc_family_mismatch``, so an XC-family mismatch that
+    the preflight blocked slipped past ``pseudo check`` with exit 0.  Both
+    now consume ``pseudos.ERROR_STATUSES`` so the surfaces can't disagree."""
+
+    def test_error_statuses_is_the_blocking_set(self):
+        from molbuilder.pseudos import ERROR_STATUSES
+        assert ERROR_STATUSES == frozenset(
+            {"missing", "dead_projector", "xc_family_mismatch"})
+
+    def test_cli_exits_nonzero_on_xc_family_mismatch(self, tmp_path):
+        # LDA pseudo on a PBE (GGA) calc -> xc_family_mismatch -> ERROR.
+        from click.testing import CliRunner
+        from molbuilder.cli import pseudo_group
+        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+        res = CliRunner().invoke(
+            pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
+        assert res.exit_code == 1, res.output
+        assert "ERROR" in res.output and "C" in res.output
+
+    def test_cli_exits_zero_on_matching_set(self, tmp_path):
+        # PBE (GGA) pseudo on a PBE calc -> ok -> exit 0.
+        from click.testing import CliRunner
+        from molbuilder.cli import pseudo_group
+        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=101))  # PBE
+        res = CliRunner().invoke(
+            pseudo_group, ["check", str(tmp_path), "--xc", "PBE"])
+        assert res.exit_code == 0, res.output
+
+    def test_preflight_maps_xc_family_mismatch_to_error(self, tmp_path):
+        # The SAME fixture the CLI now blocks on must also be error-severity
+        # in the preflight -- proves the two surfaces agree.
+        from molbuilder.validation.siesta import _check_siesta_pseudo_coverage
+        (tmp_path / "C.psml").write_text(_make_psml("C", libxc_id=1))  # LDA
+
+        class _Cfg:
+            psml_lib = str(tmp_path)
+            xc_authors = "PBE"
+
+        class _Struct:
+            elements = ["C"]
+        issues = _check_siesta_pseudo_coverage(_Struct(), _Cfg(),
+                                               dest_dir=tmp_path)
+        assert any(i.severity == "error" for i in issues), \
+            [(i.severity, i.message) for i in issues]

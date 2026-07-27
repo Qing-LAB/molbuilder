@@ -48,37 +48,31 @@ flowchart TB
     C["CLI — molbuilder pseudo check &lt;dir&gt; — cli.py:342<br/>(manual audit)"]
     CC["pseudos.check_coverage(elements, dir, …) — pseudos.py:428<br/>→ List[CoverageEntry(element, status, message, path)]"]
     ST["8 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch · parse_warning"]
-    PS["preflight severity — validation/siesta.py:120<br/>ERROR (blocks generation): missing · dead_projector · xc_family_mismatch<br/>WARN: the rest · ok: silent"]
-    CS["CLI exit code — cli.py:380<br/>non-zero ONLY on: missing · dead_projector<br/>all else (incl. xc_family_mismatch) → WARN, exit 0"]
+    SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR (blocks): missing · dead_projector · xc_family_mismatch<br/>WARN: the rest · ok: silent"]
     P --> CC
     C --> CC
-    CC --> ST
-    ST --> PS
-    ST --> CS
+    CC --> ST --> SEV
 ```
 
 Both surfaces call the **same** `pseudos.check_coverage`, which parses each PSML
 header once (`parse_psml_header` → `PsmlInfo`, `pseudos.py:168`) and returns
 `CoverageEntry(element, status, message, path)` (`pseudos.py:418`) — the same
-eight statuses. **The two surfaces then map status → severity differently**, so
-mind which one you're reading.
-
-The **preflight** (`validation/siesta.py:120`) — the gate that blocks script
-generation — maps:
+eight statuses. Both then map status → severity through the **one shared
+constant** `pseudos.ERROR_STATUSES` (`pseudos.py`), so the preflight (which
+blocks script generation, `validation/siesta.py:120`) and the CLI (which exits
+non-zero, `cli.py:380`) **cannot disagree about what blocks**:
 
 | Severity | Statuses | Meaning |
 |---|---|---|
-| **ERROR** (blocks generation) | `missing`, `dead_projector`, **`xc_family_mismatch`** | the run **cannot be correct** — a file is absent (SIESTA won't start), a valence channel is physically missing (wrong Hamiltonian), or the XC *family* is wrong (silently-wrong energies) |
+| **ERROR** (blocks generation / non-zero CLI exit) | `missing`, `dead_projector`, **`xc_family_mismatch`** | the run **cannot be correct** — a file is absent (SIESTA won't start), a valence channel is physically missing (wrong Hamiltonian), or the XC *family* is wrong (silently-wrong energies) |
 | **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
-> **Asymmetry — the CLI is more lenient.** `molbuilder pseudo check` has its **own,
-> narrower** exit-code ERROR set — `{"missing", "dead_projector"}` (`cli.py:380`) —
-> so an `xc_family_mismatch` prints as `WARN` and the command still exits **0**. The
-> XC-family-blocks decision so far lives only in the *preflight*, not the CLI gate.
-> (Flagged during this migration as a likely oversight: the CLI's exit set wasn't
-> widened when the preflight gained `xc_family_mismatch`-as-ERROR. Documented as-is;
-> aligning the two is a code change, out of scope for the doc move.)
+> **History.** Until 2026-07-26 the CLI kept its own narrower exit set
+> (`{"missing", "dead_projector"}`) and let an `xc_family_mismatch` slip past with
+> exit 0 while the preflight blocked it. The two are now unified on the single
+> `ERROR_STATUSES` constant, pinned by
+> `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces`.
 
 > **Evolution note.** The earlier version of this doc treated *all* XC mismatch
 > as a single WARN and flagged for reviewer decision whether family mismatch
@@ -251,8 +245,8 @@ ERRORs block, WARNs print in the issues panel. To screen a directory yourself
 `cli.py:342`):
 
 ```bash
-# screen a whole directory (CI gate; exits non-zero on a missing or dead-projector
-# pseudo -- note the CLI's exit set does NOT include xc_family_mismatch, see § 1):
+# screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:
+# missing / dead-projector / xc_family_mismatch -- the same set the preflight blocks):
 python -m molbuilder pseudo check projects/pseudopotential --xc PBE
 
 # require specific elements + a relativistic level:
@@ -289,8 +283,7 @@ check until clean.
 | C4 version | WARN | `check_coverage` + `_generator_key` | `test_pseudos.py` |
 | C5 dead projector | ERROR | `parse_psml_header` → `null_channels` | `test_pseudos.py` |
 | C6 parse | WARN | `parse_psml_header` → `parse_warnings` | `test_pseudos.py` |
-| severity map (preflight) | — | `validation/siesta.py:120` | `tests/test_pseudos.py` |
-| exit-code set (CLI) | — | `cli.py:380` (narrower — see § 1 asymmetry) | `tests/test_pseudos.py` |
+| severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation/siesta.py:120` (preflight) + `cli.py:380` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
 
 Any change to a check here REQUIRES the matching code + test change in the same
 commit (the "design doc is the source of truth, update it with the code" rule).

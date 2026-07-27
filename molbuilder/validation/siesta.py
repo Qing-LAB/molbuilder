@@ -108,7 +108,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                        else "LDA" if a in LDA
                        else "VDW" if a in VDW
                        else None)
-    from ..pseudos import check_coverage
+    from ..pseudos import check_coverage, ERROR_STATUSES
     out: List[Issue] = []
     for entry in check_coverage(
         struct.elements, psml_dir,
@@ -117,14 +117,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     ):
         if entry.status == "ok":
             continue
-        severity = ("error" if entry.status in (
-                        "missing", "dead_projector", "xc_family_mismatch")
-                    else "warn")    # xc_mismatch (same-family author diff) /
-                                    # relativistic_mismatch / generator_mismatch
-                                    # / parse_warning -- all advisory.  An
-                                    # XC-FAMILY mismatch (GGA pseudo in an LDA
-                                    # run, etc.) BLOCKS: it gives silently-wrong
-                                    # energies, never physically correct.
+        # ERROR_STATUSES (missing / dead_projector / xc_family_mismatch) BLOCK:
+        # the run cannot be correct.  The rest -- xc_mismatch (same-family author
+        # diff) / relativistic_mismatch / generator_mismatch / parse_warning --
+        # are advisory (warn).  The set is shared with the CLI (pseudos.py) so
+        # the two surfaces can't drift.
+        severity = "error" if entry.status in ERROR_STATUSES else "warn"
         out.append(Issue(severity, entry.message,
                           f"config.psml_lib.{entry.element}"))
     return out
