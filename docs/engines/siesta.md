@@ -3,8 +3,9 @@
 **Role:** contract
 **Domain:** engines
 **Companions:** `overview.md` (the shared engine-emit + boundary-condition
-contract — composed last, named not linked yet); `siesta-gpu.md` (the ELPA/CUDA
-build the GPU path needs); [`science/validation.md`](?doc=science/validation.md)
+contract — composed last, named not linked yet); `ops/` (how the
+`molbuilder-siesta-gpu` env is *built* from CUDA/ELPA source — a deployment concern,
+ops wave); [`science/validation.md`](?doc=science/validation.md)
 (the preflight that gates emission); [`model/structure.md`](?doc=model/structure.md)
 + [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) (the
 `Structure` + cell it consumes); `execution/` (running a stage ladder on a
@@ -263,12 +264,44 @@ ELPA `Diag.Algorithm`) is silently ignored — both keywords are required.
 
 **Env routing keys on "needs ELPA", not on GPU.** ScaLAPACK → `molbuilder-siesta`
 (precompiled, no ELPA); ELPA (CPU *or* GPU) → `molbuilder-siesta-gpu`, the only
-ELPA-linked build (**that build recipe is `siesta-gpu.md`**). The `runwrap` router
-bumps `siesta → siesta-gpu` when it sees an ELPA algorithm or `Diag.ELPA.GPU true`;
-`molbuilder.json` `envs.*` overrides the concrete env name. The `enable_gpu` toggle
-is a *script-input* contract — it never queries env presence; `runwrap` gates
-env presence at generation time with a clear install hint. ELPA-CPU vs ELPA-GPU
-agree to ~1e-6 eV (the numerical-equivalence claim is documented in `siesta-gpu.md`).
+ELPA-linked build. The `runwrap` router bumps `siesta → siesta-gpu` when it sees an
+ELPA algorithm or `Diag.ELPA.GPU true`; `molbuilder.json` `envs.*` overrides the
+concrete env name. The `enable_gpu` toggle is a *script-input* contract — it never
+queries env presence; `runwrap` gates env presence at generation time with a clear
+install hint. (How that `molbuilder-siesta-gpu` env is *built* — the CUDA/ELPA
+source build, CMake flags, toolchain pinning — is a deployment concern documented
+under `ops/`, not here.)
+
+### 7.1 GPU is just a different setting — best performance & what to look for
+
+Turning on the GPU changes *where the eigensolve runs*, nothing about the chemistry.
+The practical guidance:
+
+- **When it pays off.** GPU-ELPA wins when the **diagonalization dominates** — a
+  large, dense Hamiltonian — because ELPA is *one* call per SCF iteration; the rest
+  (mesh integration, density-matrix mix, H rebuild) stays on the host. For small
+  systems the GPU launch overhead isn't worth it — stay on ScaLAPACK or CPU-ELPA.
+- **Sharing the GPU across ranks (MPS).** On GPU, molbuilder uses NVIDIA **MPS**
+  (Multi-Process Service) so several MPI ranks share one GPU concurrently (Hyper-Q) —
+  needed because the ELPA build doesn't link NCCL, so without MPS the ranks serialise
+  on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted
+  *and* `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver,
+  not conda). The default rank count follows MPS: **4 with MPS, 2 without** (override
+  with `MOLBUILDER_MPI_NP` / `-np`).
+- **Numerical equivalence.** ELPA-GPU and ELPA-CPU on the same `Diag.Algorithm` give
+  the same eigenvalues to ~1e-6 eV and the same converged total energy to ~1e-5 eV
+  across the build matrix — so develop and test on CPU-ELPA and run production on GPU
+  with confidence the physics is unchanged [ELPA GPU eigensolver, arXiv 2002.10991].
+
+**What to look for.** The dangerous failure is a **silent CPU fallback**: ELPA can
+quietly run every SCF step on the CPU while `nvidia-smi` still shows a clean, busy
+GPU. The canary is `molbuilder envs validate molbuilder-siesta-gpu`'s
+`elpa gpu codepath` probe — it runs a small ELPA solve and greps stderr for ELPA's
+own "GPU requested but kernel is non-GPU" warning; no other probe catches this.
+Also: the `cudaGetLastError: unknown error` crash on a CPU-ELPA job means the
+load-bearing `Diag.ELPA.GPU .false.` above was dropped; and old ELPA releases had a
+multi-rank GPU-finalize deadlock (jobs hang after SCF iter 1), so if you rebuild the
+env, keep ELPA recent.
 
 ---
 
