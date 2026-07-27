@@ -56,10 +56,14 @@ def build_peptide(
     Parameters
     ----------
     sequence
-        Free-form sequence in 1-letter ("ARNDC"), 3-letter
-        ("Ala-Arg-Asn-Asp-Cys"), or mixed notation; modified residues
-        in parentheses, e.g. ``"AR(SEP)C"`` for Ala-Arg-phosphoSer-Cys.
-        See :mod:`molbuilder.residues` for the supported modified codes.
+        Sequence in **1-letter codes** (``"ARNDC"``, case-insensitive;
+        whitespace ignored), with **``[XXX]`` brackets** for a modified or
+        non-standard 3/4-letter residue, e.g. ``"AR[SEP]C"`` for
+        Ala-Arg-phosphoSer-Cys.  Dashes and parentheses are rejected --
+        the bracket grammar (``residues._parse``) keeps parsing
+        unambiguous.  See :mod:`molbuilder.residues` for the modified codes.
+        (This docstring previously advertised ``(SEP)`` parens and dashed
+        3-letter notation the parser does not accept -- corrected 2026-07-27.)
     title
         Optional title written into the XYZ comment / PDB TITLE line.
     add_hydrogens

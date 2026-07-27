@@ -9,7 +9,11 @@ the configured values themselves.
 Defaults are tuned for "build a small/medium molecule and relax it":
 
     * B3LYP+D3BJ/def2-SVP  (modern hybrid, dispersion-corrected)
-    * Density fitting on (def2-universal-jkfit auto-selected)
+    * Density fitting on -- bare ``mf.density_fit()``, so PySCF auto-picks
+      the *basis-matched* JK-fit set (``def2-svp-jkfit`` for this def2-SVP
+      default, ``def2-tzvp-jkfit`` for def2-TZVP, ...).  NOT the single
+      "def2-universal-jkfit" this docstring used to claim -- verified via
+      ``mf.with_df.auxbasis`` on a real def2 hybrid.
     * geomeTRIC optimizer with maxsteps=200, grms=3e-4 Ha/Bohr
     * Closed-shell RKS (spin=0); change to UKS for radicals
     * NetCharge auto-detected from phosphate protonation state

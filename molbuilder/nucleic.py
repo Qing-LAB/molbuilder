@@ -12,26 +12,40 @@ for backend capabilities and install requirements.
 
 from __future__ import annotations
 
-import re
 from typing import Optional
 
 from .backends import dispatch
 # ``auto_backend_name`` resolves "auto" -> the chosen backend; used to gate
 # double-strand, which requires X3DNA.
 from .builders.backends import auto_backend_name
-from .residues import parse_dna_sequence, parse_rna_sequence
+from .residues import parse_dna_sequence, parse_rna_sequence, _strip_directionality
 from .structure import Structure
 
 
 def _strip_direction(s: str) -> str:
-    """Return the sequence in internal 5'->3', stripping any direction markers.
-    Accepts ``5'-ATGC-3'`` (default) and ``3'-ATGC-5'`` (reversed to 5'->3')."""
-    s = s.strip()
-    m = re.match(r"^\s*([53])'\s*-\s*(.*?)\s*-\s*([53])'\s*$", s)
-    if m:
-        core = "".join(c for c in m.group(2) if c.isalpha()).upper()
-        return core[::-1] if m.group(1) == "3" else core
-    return "".join(c for c in s if c.isalpha()).upper()
+    """Return ONE DNA strand as a bare internal-5'->3' letter string.
+
+    Delegates to :func:`residues._strip_directionality` -- the SAME strict
+    5'/3' parser ``build_rna`` reaches through ``parse_rna_sequence`` -- so
+    DNA and RNA treat end-labels identically:
+
+      * ``5'-ATGC-3'`` -> ``ATGC`` (bare == explicit);
+      * ``3'-ATGC-5'`` -> reversed to ``CGTA`` (internal 5'->3');
+      * a one-sided (``5'-ATGC``) or self-contradictory (``3'-ATGC-3'``)
+        label RAISES ``ValueError``.
+
+    Before 2026-07-27 this used a permissive local regex that required BOTH
+    ends labelled and never checked they differed, so it silently kept a
+    one-sided label and silently reversed ``3'-ATGC-3'`` -- a real trap: a
+    duplex strand quietly built in the wrong 5'->3' order pairs the wrong
+    bases with no error.  ``build_rna``/``parse_dna_sequence`` already
+    rejected these; ``build_dna`` now matches (its earlier ``_strip_direction``
+    pass had stripped the markers before ``parse_dna_sequence``'s strict
+    check could see them).
+    """
+    body, direction = _strip_directionality(s.strip())
+    core = "".join(c for c in body if c.isalpha()).upper()
+    return core[::-1] if direction == "3to5" else core
 
 
 def _parse_dna_notation(text: str):

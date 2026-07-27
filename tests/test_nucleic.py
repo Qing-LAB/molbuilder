@@ -387,3 +387,27 @@ def test_threedna_strips_5prime_phosphate_for_terminal_oh():
         f"5'-terminal residue should retain O5' as a free hydroxyl; "
         f"atoms: {sorted(first_res_atom_names)}"
     )
+
+
+# --- build_dna 5'/3' directionality now matches parse_dna_sequence -------
+# Regression (2026-07-27): build_dna's _parse_dna_notation used a permissive
+# local `_strip_direction` that silently kept one-sided labels and silently
+# reversed "3'-ATGC-3'", so a duplex strand could be built in the wrong 5'->3'
+# order with no error -- while parse_dna_sequence / build_rna already rejected
+# the same inputs.  _strip_direction now delegates to the strict
+# residues._strip_directionality, so DNA and RNA behave identically.
+
+@pytest.mark.parametrize("bad", ["5'-ATGC", "ATGC-3'", "5'-ATGC-5'", "3'-ATGC-3'"])
+def test_build_dna_notation_rejects_bad_directionality(bad):
+    from molbuilder.nucleic import _parse_dna_notation
+    with pytest.raises(ValueError):
+        _parse_dna_notation(bad)
+
+
+def test_build_dna_notation_normalises_reverse_direction():
+    from molbuilder.nucleic import _parse_dna_notation
+    # 3'-CGTA-5' is the same chemical strand as 5'-ATGC-3', normalised 5'->3'.
+    assert _parse_dna_notation("3'-CGTA-5'") == ("ss", "ATGC", None)
+    assert _parse_dna_notation("ATGC") == ("ss", "ATGC", None)
+    # per-strand labels in a two-strand duplex are handled too
+    assert _parse_dna_notation("ATGC,3'-CGTA-5'") == ("ds", "ATGC", "ATGC")

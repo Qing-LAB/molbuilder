@@ -89,12 +89,6 @@ Peptide and nucleic-acid sequences share one tiny grammar (`residues.py::_parse:
 - Anything else — dashes, parentheses, `+` — **raises `ValueError`** with the
   position, so the syntax stays unambiguous.
 
-> **Note (code follow-up, not a doc gap):** `build_peptide`'s *docstring* currently
-> advertises `(SEP)` parentheses and dashed 3-letter notation (`Ala-Arg-…`). The
-> parser it actually calls (`parse_peptide_sequence` → `_parse`) accepts **neither** —
-> use `[SEP]` brackets and single letters. The docstring is stale; the bracket
-> grammar above is what runs.
-
 **Modified amino-acid residues** (`residues.py::MODIFIED_RESIDUES:56`) currently
 cover six codes — each defined as a patch on a standard parent (atoms to remove +
 atoms to add, in the parent's local frame):
@@ -109,25 +103,20 @@ atoms to add, in the parent's local frame):
 | `ALY` | N6-acetyl-lysine | LYS |
 
 **5′/3′ directionality.** Bare letters follow the biology convention (5′ on the left).
-Explicit end-labels are accepted, and a reverse-direction label is normalised by
-reversing the residue list — every backend builds 5′→3′ internally. **The two nucleic
-paths differ here, though** — a real asymmetry worth knowing:
+Explicit end-labels are accepted, and `build_dna` and `build_rna` apply the **same
+strict parser** (`residues._strip_directionality`; `build_dna` reaches it via
+`nucleic._strip_direction`):
 
-- **`build_rna`** parses the raw string through `residues.py::parse_rna_sequence` →
-  `_strip_directionality:219`, which is **strict**: a one-sided (`5'-AUGC`) or
-  self-contradictory (`5'-AUGC-5'`) label raises `ValueError`.
-- **`build_dna`** strips direction earlier, in `nucleic.py::_strip_direction:26`,
-  which is **lenient**: it reverses only when a full `5'-…-3'` pattern matches and
-  otherwise keeps the letters silently. So `5'-ATGC` is accepted as-is and
-  `3'-ATGC-3'` **silently reverses** to `CGTA`. (This DNA leniency is a code
-  inconsistency worth a follow-up — like the `build_peptide` docstring above.)
-
-| Input | `build_rna` | `build_dna` |
+| Input | Interpretation | Result |
 |---|---|---|
-| `ATGC` / `5'-ATGC-3'` | 5′→3′ as written | 5′→3′ as written |
-| `3'-CGTA-5'` | reversed → 5′→3′ | reversed → 5′→3′ |
-| `5'-ATGC` / `ATGC-3'` (one-sided) | `ValueError` | **accepted silently** |
-| `5'-ATGC-5'` / `3'-ATGC-3'` (self-contradictory) | `ValueError` | **accepted / silently reversed** |
+| `ATGC` / `5'-ATGC-3'` | 5′→3′ (implicit / explicit) | as written |
+| `3'-CGTA-5'` | reverse-direction | reversed → 5′→3′ (== `ATGC`) |
+| `5'-ATGC` / `ATGC-3'` | one-sided label | `ValueError` |
+| `5'-ATGC-5'` / `3'-ATGC-3'` | self-contradictory | `ValueError` |
+
+(Before 2026-07-27 the DNA path was lenient — it silently kept one-sided labels and
+silently reversed `3'-ATGC-3'`; `_strip_direction` now delegates to the strict parser
+so DNA and RNA behave identically.)
 
 A validation check guards this from the other side: `_check_polymer_orientation`
 (`validation/geometry.py:198`, surfaced as a `polymer.orientation` issue — see

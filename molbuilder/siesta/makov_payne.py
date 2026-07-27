@@ -43,9 +43,11 @@ emits a SIESTA input deck with ``NetCharge != 0``:
    script the wrapper writes next to the FDF.  Once SIESTA has run
    the script reads the ``.out``, extracts the converged total
    energy, computes :math:`\\Delta E_{MP}` for the *actual* cell
-   that SIESTA used (which may differ from what the user typed
-   when ``cell_padding`` auto-bumps), and prints the corrected
-   value.
+   that SIESTA used (read back from the ``.out`` so the correction
+   is robust to any manual cell edit -- molbuilder itself no longer
+   mutates the box: the emitter warns on thin vacuum but never
+   auto-pads, so the emitted LatticeVectors == structure bbox +
+   2*vacuum), and prints the corrected value.
 
 Why a post-process script rather than an in-FDF tweak?  SIESTA has
 no native Makov-Payne keyword.  The correction is a single-number
@@ -200,8 +202,8 @@ APPLICABILITY: vacuum supercell of an isolated charged molecule
 
 This correction is the right physics for a *charged molecule in
 a finite vacuum supercell* — the standard molbuilder build path
-(auto-pad / cell_padding).  Two NON-vacuum cases the script will
-silently compute the WRONG number for:
+(box = structure bounding-box + 2*vacuum).  Two NON-vacuum cases
+the script will silently compute the WRONG number for:
 
   1. A charged periodic crystal (the unit cell carries net
      charge and the lattice is the physical periodic
