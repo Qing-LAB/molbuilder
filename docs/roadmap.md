@@ -256,6 +256,35 @@ globals are the last scaffolding to remove:
 read in the migrated paths; the full front-end suite is green and every tab
 renders.
 
+**Convert the remaining front-end modules to ESM (and rename the file-viewer
+module).** MolView / workspace / projects are ES-modules; several other modules
+are still classic `window.molbuilder.*` IIFEs and are the next conversion
+targets (each: classic → import/export, `<script>` tags → module imports,
+file-by-file with a **real browser** check per tab — never a blind namespace
+sed, which leaves stubbed unit tests green while the UI breaks):
+
+- **The file-viewer registry** (`lib/inspectors/` — `registry`, `source`,
+  `markdown`, the `spectra`/`trajectory` adapters + the partial-inspector
+  factory; `structure.js` is already ESM) **plus its heavy cores**
+  (`lib/spectra/core.js`, `lib/trajectory/core.js`). Convert to ESM **and, in
+  the same pass, rename the module off the overloaded "inspector" term to
+  `presenters`** (the `window.molbuilder.inspectors` namespace + the
+  `lib/inspectors/` dir + the `*Inspector` unit names → `*Presenter`). "Inspector"
+  currently collides with `mountInspector` (the core body) and the viewers' own
+  inspect panels; "presenter" (a per-file-type content presenter picked by the
+  registry) is unambiguous. Surface: the 8 module files + ~9 consumers
+  (`molbuilder-runtime`, `markdown-render`, `path-utils`, `workspace/dispatcher`,
+  `projects/preview`, `results/viewer`, `spectra/viewer`, the two cores) + 3
+  templates (`results.html`, `spectra.html`, `modify.html`) + ~10 tests.
+- **The results module** (`lib/results/` — `bundle-handoff`, `file-picker`).
+- **The runtime registry** (`lib/molbuilder-runtime.js`).
+- **The shared primitives** (`lib/*.js` — `form-schema`, `app-notifications`,
+  `warning-modal`, `detection-chip`, `markdown-render`, `path-utils`,
+  `constants`, `region-label-*`, `system-load-monitor`; `xyz-io.js` already ESM).
+
+Each converted module's `web/` doc drops its "current → target" ESM note when its
+row here closes.
+
 ---
 
 ## 4. Test-suite & housekeeping
