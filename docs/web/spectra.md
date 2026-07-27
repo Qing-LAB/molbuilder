@@ -62,12 +62,12 @@ Two special cases are worth knowing:
 ## 3. The mode table and the excited-state panel
 
 Below the chart is a **table of every vibrational mode** — its number,
-frequency, Raman activity, and whether it's imaginary — that you can **sort and
-filter**, export to CSV, and click a row to select a mode. When the run also
-computed **excited states**, four more columns appear (HOMO, LUMO, gap, and the
-gap's shift), and a small bar panel draws the molecular-orbital levels. Those
-columns are always present in the layout; they simply stay empty until there's
-excited-state data to fill them.
+frequency, Raman activity, whether it's imaginary, and whether it carries
+excited-state data — that you can **sort and filter**, export to CSV, and click a
+row to select a mode. When the run also computed **excited states**, four more
+columns appear (HOMO, LUMO, gap, and the gap's shift), and a small bar panel
+draws the molecular-orbital levels. Those columns are always present in the
+header; their cells simply fill in once there's excited-state data.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -116,7 +116,7 @@ The engine talks to exactly two spectra routes (full shapes in
 | Route | Does | Returns |
 |---|---|---|
 | `POST /api/spectra/render` | turns *structure + parameters* into a run script (does **not** execute it) | `{ok, script, methods_md, bibliography_keys, job_name, issues}` |
-| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` (or a typed error — missing/malformed/wrong-version/bad-field, each mapped to its own HTTP status) |
+| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 
 Both follow the app's `{ok: …}` envelope convention. A third route,
 `GET /api/build/schema/spectra`, returns the form schema (and can **pre-fill the
