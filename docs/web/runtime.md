@@ -68,8 +68,8 @@ own microtask); still, attach your own `.catch()`.
   half-built one.
 - **Consume with `whenReady`**, not `get` or polling.
 - **One name, one owner.**
-- The registry file (`lib/molbuilder-runtime.js`) must load **first**, right
-  after the 3D vendor script — every page template does this.
+- The registry file (`lib/molbuilder-runtime.js`) must load **before any other
+  molbuilder script** — every page template loads it first, in the page head.
 
 ### In practice
 
@@ -77,7 +77,7 @@ own microtask); still, attach your own `.catch()`.
 // PRODUCER — lib/projects/projects-sidebar.js (registers last, once the api is built)
 window.molbuilder.runtime.register("projects", projects);
 
-// CONSUMER — the Build tab, a classic script that may run before projects loaded
+// CONSUMER — the Build tab, which may run before the projects module registered
 window.molbuilder.runtime.whenReady("projects").then((proj) => {
   // safe: proj is the fully-built projects API, whatever the load order
 });
@@ -97,10 +97,10 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 
 | Building block | Reach it as | What it is |
 |---|---|---|
-| Notification bar | `molbuilder.notify` | The app-wide stack of dismissible messages — deduplicated by id, and errors stay until dismissed while info/warnings can auto-clear. Today it's driven by page events (it shows itself when a background save fails) and is ready for more callers. |
+| Notification bar | `molbuilder.notify` | The app-wide stack of dismissible messages — deduplicated by id, and every message stays until you dismiss it (× / Esc / Clear-all). Today it's driven by page events (it shows itself when a background save fails) and is ready for more callers. |
 | Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise. |
 | Detection chip | `molbuilder.detectionChip` | The one-line chemistry-summary chip shown on workflow cards. |
-| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (sanitized, with lazy diagram support). The Documents tab, the file preview, and the markdown viewer all go through it. |
+| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (sanitized, with lazy diagram support). The Documents tab and the Results markdown viewer both go through it. |
 | Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem. |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys and custom-event names the modules agree on. |
 | System-load strip | *(self-mounting)* | The 1 Hz strip at the bottom of every page — CPU/RAM/GPU sparklines from the server; pauses when the tab is hidden. |
