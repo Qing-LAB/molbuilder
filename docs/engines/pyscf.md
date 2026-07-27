@@ -22,6 +22,12 @@ entry point is `render_script(struct, config) -> str` (`pyscf/input.py:131`).
 > `mf.xc`, `mf.conv_tol`, `mf.kernel()`, …); **`conv_tol`** is the SCF energy
 > self-consistency threshold (Ha); **`d3bj`** is the Grimme-D3(BJ) dispersion
 > correction; **RI-J** is resolution-of-the-identity Coulomb fitting (a speedup).
+> A few more: **basis set** = the functions used to represent each atom's electrons
+> (bigger = more accurate, slower — e.g. `def2-SVP` < `def2-TZVP`); **functional**
+> = the DFT recipe for exchange-correlation energy (e.g. B3LYP); **Ha** = Hartree
+> (atomic energy unit, 1 Ha ≈ 27.2 eV) and **Bohr** the atomic length unit;
+> **Hessian** = the matrix of energy 2nd-derivatives (source of vibrational
+> frequencies); **single-point** = one energy at a fixed geometry (no optimization).
 
 ---
 
@@ -48,7 +54,14 @@ flowchart LR
 - **Backend.** `render_script` returns the `.py` text; `convert(input_path,
   py_path, config)` (`:1291`) reads an `.xyz`/`.pdb` and writes the script,
   returning `{"py", "n_atoms", "charge", "label"}`. Verbose comments are on by
-  default so the script reads as documentation of its own choices.
+  default so the script reads as documentation of its own choices. The CLI
+  (`cmd_pyscf`, `cli.py:933`) writes the script from a structure file:
+
+  ```bash
+  # config fields (--basis, --functional, …) + --ecp / --stages-json / --stage-strategy
+  molbuilder pyscf input.xyz job.py --basis def2-TZVP --stage-strategy publishable
+  ```
+
 - **Frontend.** The Spectrum and Structure-optimization tabs post to
   `/api/build/pyscf` (validation preflight → `render_script`); `PySCFConfig`'s
   field metadata drives the form.
@@ -112,10 +125,24 @@ silently ship a non-converged answer. `assert_convergence` is therefore *derived
 from the policy (`input.py:905-944`), not set directly — this supersedes the older
 "False except last" model.
 
-**Spin / method.** `render_script` raises `ValueError` at generation time
+```mermaid
+flowchart TD
+    ST["a stage exhausts max_steps<br/>without converging"] --> F{"is this the<br/>last enabled stage?"}
+    F -->|yes| H["HALT — hard-fail (RuntimeError)<br/>final geometry must be converged"]
+    F -->|no| P{"on_nonconvergence?"}
+    P -->|proceed| PR["take the partial geometry,<br/>go to the next stage"]
+    P -->|halt| H
+    P -->|continue| C["retry (same targets) up to<br/>continue_retries more batches,<br/>then halt"]
+```
+
+*Budget example:* a `continue` stage with `max_steps=200` and `continue_retries=2`
+runs up to `200 × (1 + 2) = 600` steps before it finally halts.
+
+**Spin / method.** (`cfg.spin` here is 2S = the number of unpaired electrons, *not*
+the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time
 (`input.py:142,151`) if `cfg.method` is unknown, or if it's a **restricted** method
-(`RKS`/`RHF`, which assume `mol.spin == 0`) with `cfg.spin != 0` — the message
-points at `UKS`/`UHF`. This is the PySCF-specific guard SIESTA lacks (SIESTA accepts
+(`RKS`/`RHF`, which assume `mol.spin == 0`, i.e. closed-shell) with `cfg.spin != 0`
+— the message points at `UKS`/`UHF`. This is the PySCF-specific guard SIESTA lacks (SIESTA accepts
 `SpinPolarized` with any method). The shared open-shell-metal check
 ([`science/validation.md`](?doc=science/validation.md)) runs on top of it
 (`validation/pyscf.py:132`); a negative spin is a separate error (`:169`).
@@ -188,8 +215,10 @@ PySCF's edge over SIESTA: molbuilder generates the script, so a multi-stage ladd
 runs *inside* it — no manual "run stage 1, edit, run stage 2".
 
 - **Data model** `StageSpec` (`config/pyscf.py:59`): `name`, `enabled`, `conv_tol`
-  (→ `mf.conv_tol`), the five geomeTRIC knobs `gmax`/`grms`/`dmax`/`drms`/`etol`,
-  `max_steps`, plus the non-convergence policy `on_nonconvergence`
+  (→ `mf.conv_tol`), the five geomeTRIC knobs `gmax`/`grms`/`dmax`/`drms`/`etol`
+  (**g** = gradient/force, **d** = displacement/step; **max**/**rms** = per-atom
+  peak vs root-mean-square; **etol** = energy), `max_steps`, plus the
+  non-convergence policy `on_nonconvergence`
   (proceed/continue/halt) and `continue_retries` (§ 3). `PySCFConfig.stages` is the
   sole source of truth (the legacy `preopt_*` / flat `geom_conv_*` fields are gone).
 - **Default ladder** `_default_stages()` (`config/pyscf.py:173`) — values verified
@@ -273,7 +302,8 @@ conventional form, e.g. "B3LYP-D3(BJ)", "ωB97M-V"):
   charge-transfer / π-stacked systems (**not** `wb97x-d` — PySCF 2.13 blacklists it,
   raising `NotImplementedError`; `wb97m-v`/`wb97x-v` ship dispersion internally, no
   separate `mf.disp`); `pbe0`, `m06-2x`, `r²scan`+`d3bj` are alternatives. Plain
-  `b3lyp` with no dispersion is no longer publishable above ~10 atoms.
+  `b3lyp` with no dispersion is no longer publishable above ~10 atoms (the
+  dispersion-importance basis is the Grimme D3(BJ) work cited below).
 
 **Methods-section template** (paste-and-edit for a paper):
 

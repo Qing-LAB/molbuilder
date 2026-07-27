@@ -11,15 +11,22 @@ build the GPU path needs); [`science/validation.md`](?doc=science/validation.md)
 scheduler — named, execution wave).
 
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
-**SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code; a `.fdf` ("Flexible
-Data Format") is its plain-text input file. The one entry point is
+**SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`
+("Flexible Data Format") is its plain-text input file. The one entry point is
 `render_fdf(struct, config) -> str` (`siesta/input.py:329`).
 
 > **Vocabulary.** Cross-cutting terms (DFT, SCF, open/closed-shell, k-points,
 > pseudopotential, ELPA, PAO) are in the
 > [`science/overview.md` glossary](?doc=science/overview.md); SIESTA keyword names
 > (`SystemLabel`, `MeshCutoff`, `Diag.Algorithm`, …) are glossed inline where they
-> first appear.
+> first appear. A few recurring ones up front: **XC** = the exchange-correlation
+> functional (the DFT approximation that sets accuracy); **DM** = the density
+> matrix (the electron distribution the SCF loop iterates on); **`.psml`** =
+> SIESTA's XML pseudopotential file format; **MD** = molecular dynamics; **Ry** =
+> Rydberg (an energy unit, 1 Ry ≈ 13.6 eV); the **diagonalizer / eigensolver** is
+> the routine that solves for orbital energies each SCF step (ScaLAPACK and ELPA
+> are two such libraries); **molwatch** = molbuilder's engine-agnostic run-progress
+> log; **runwrap** = the wrapper that picks the conda env before launching SIESTA.
 
 ---
 
@@ -158,7 +165,7 @@ A non-zero result emits `NetCharge ±N` (with a verbose comment naming the sourc
 (`_warn_insufficient_vacuum`, `:307`, "WARN never mutate") and leaves the cell
 untouched — it does **not** silently resize. ≥ 25 Å is what SIESTA's
 compensating-background-charge correction needs for image–image Coulomb to drop
-below ~1 meV; a neutral molecule doesn't need it.
+below ~1 meV (Makov-Payne scaling — see References); a neutral molecule doesn't need it.
 
 *(When the resolved charge ≠ 0, `convert()` additionally writes a
 `makov_payne_correction.py` post-process script — `siesta/makov_payne.py:80,153` —
@@ -216,6 +223,16 @@ knob, **not** a `Structure` field.
 
 ## 7. The eigensolver — `Diag.Algorithm` + the optional GPU accelerator
 
+```mermaid
+flowchart TD
+    A{"Diag.Algorithm?"}
+    A -->|ScaLAPACK| S["emit NOTHING<br/>(SIESTA's built-in default)<br/>env → molbuilder-siesta"]
+    A -->|"ELPA-1STAGE / ELPA-2STAGE"| G{"enable_gpu?"}
+    G -->|"true"| GPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .true.<br/>env → molbuilder-siesta-gpu"]
+    G -->|"false"| CPU["Diag.Algorithm ELPA-…<br/>Diag.ELPA.GPU .false.<br/>env → molbuilder-siesta-gpu (ELPA build)"]
+    A -.->|"ScaLAPACK + enable_gpu"| ERR["render_fdf raises ValueError<br/>(input.py:1038)"]
+```
+
 Two **orthogonal** decisions (contract rewritten 2026-06-29):
 
 1. **`Diag.Algorithm` — the eigensolver, independent of hardware.** `ScaLAPACK`
@@ -232,7 +249,12 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
 **Emission:**
 - `ScaLAPACK` → emit **nothing** (SIESTA's built-in default).
 - `ELPA-*` → **always** emit `Diag.Algorithm <choice>` **and** an explicit
-  `Diag.ELPA.GPU .true.`/`.false.`.
+  `Diag.ELPA.GPU .true.`/`.false.`. E.g. CPU-ELPA:
+
+  ```fdf
+  Diag.Algorithm   ELPA-2STAGE
+  Diag.ELPA.GPU    .false.
+  ```
 
 **The explicit `.false.` is load-bearing.** The source-built ELPA defaults to the
 GPU codepath, so an *omitted* flag makes a CPU-ELPA job initialise CUDA and crash
@@ -329,3 +351,19 @@ variant tested must `convert()` end-to-end without raising.
 `cell_padding` was removed 2026-07 — and the `Config`
 alias), `test_cli_siesta_stages.py` + `test_siesta_form_schema_stage_table.py`
 (staged-opt CLI + form widget), `test_molwatch_preview.py` (the sibling log).
+
+---
+
+## References
+
+- **SIESTA method** — Soler, Artacho, Gale, García, Junquera, Ordejón,
+  Sánchez-Portal, *J. Phys.: Condens. Matter* **14**, 2745 (2002).
+- **Makov-Payne** charged-cell image-charge correction (§ 4) — Makov & Payne,
+  *Phys. Rev. B* **51**, 4014 (1995).
+- **Monkhorst-Pack** k-mesh (§ 6) — Monkhorst & Pack, *Phys. Rev. B* **13**, 5188 (1976).
+- **Pulay** DM mixing (SCF section) — Pulay, *Chem. Phys. Lett.* **73**, 393 (1980).
+- **ELPA** eigensolver (§ 7) — Marek et al., *J. Phys.: Condens. Matter* **26**,
+  213201 (2014). **FIRE** relaxation (§ 8) — Bitzek et al., *PRL* **97**, 170201 (2006).
+- Dispersion (DFT-D3, the §7-XC template) — Grimme et al., *J. Chem. Phys.* **132**,
+  154104 (2010). Kleinman-Bylander pseudopotential form — see
+  [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md).
