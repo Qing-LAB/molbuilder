@@ -4,7 +4,7 @@
 **Domain:** *(root — the spine)*
 **Companions:** `design.md` (mission · principles · decisions),
 `architecture.md` (the reuse map: task → tool),
-[`README.md`](README.md) (the index + the rules).
+[`README.md`](?doc=README.md) (the index + the rules).
 *(`design.md` and `architecture.md` are named, not linked, until they land
 in this tree. They are composed **last** — as concise summaries over the
 settled component docs — so the links go in when they arrive; see the wave

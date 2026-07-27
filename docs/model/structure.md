@@ -5,11 +5,11 @@
 **This is the master doc for the Structure aspect.** Its large facets live as
 sub-documents sharing the `structure-` filename prefix (so the hierarchy is
 visible in the name itself):
-- [`structure-periodicity.md`](structure-periodicity.md) — cell · cell_origin ·
+- [`structure-periodicity.md`](?doc=model/structure-periodicity.md) — cell · cell_origin ·
   axis_kind · derived pbc · vacuum (the per-axis box behaviour).
-- [`structure-annotations.md`](structure-annotations.md) — per-atom channel
+- [`structure-annotations.md`](?doc=model/structure-annotations.md) — per-atom channel
   model (`tag`/`flag`/`value`) + the region-label vocabulary.
-- [`structure-molstruct.md`](structure-molstruct.md) — the `.molstruct.json`
+- [`structure-molstruct.md`](?doc=model/structure-molstruct.md) — the `.molstruct.json`
   save file: envelope · schema versioning · codec · file pairing.
 
 **Companions** (separate model modules): `model/parse.md` (the read stack that

@@ -156,7 +156,10 @@ def test_every_new_tree_doc_is_indexed_in_readme():
         rel = p.relative_to(DOCS).as_posix()
         if rel in INDEX_FILES:
             continue
-        if f"({rel})" not in readme:
+        # Index links use the document-module convention: ?doc=<docs-rel-path>
+        # (the Documents tab serves docs via /documents?doc=..., never the raw
+        # .md path — see docs/README.md § the link convention).
+        if f"(?doc={rel})" not in readme:
             missing.append(rel)
     assert not missing, (
         f"docs not linked from docs/README.md (rule R1): {sorted(missing)}")
@@ -182,26 +185,38 @@ def test_every_new_tree_doc_has_a_provenance_header():
 
 
 # --------------------------------------------------------------------- #
-#  4. No dangling relative .md links in the new tree                    #
+#  4. Internal doc links use the document-module convention + resolve    #
 # --------------------------------------------------------------------- #
+#
+# The Documents tab serves docs through the module (/documents?doc=<rel>),
+# never as raw .md paths (a raw relative .md href 404s in the rendered view).
+# So every internal doc link must be ``?doc=<docs-root-relative-path>`` and
+# that path must resolve to a real file under docs/.
 
-_LINK = re.compile(r"\]\(([^)#\s]+\.md)(#[^)]*)?\)")
+_LINK = re.compile(r"\]\(([^)\s]+)\)")   # any link target
 
 
-def test_no_dangling_md_links_in_new_tree():
-    dangling = []
+def test_internal_doc_links_use_doc_module_convention():
+    dangling = []       # ?doc= links whose target file is missing
+    raw = []            # raw relative .md links that ignore the convention
     for p in DOCS.rglob("*.md"):
         # archive/ is verbatim history: its docs' internal links point at
-        # the tree layout of THEIR day and may dangle by design (the
-        # archive README carries the note).  Only the archive's own index
-        # stays link-checked.
+        # the tree layout of THEIR day and may dangle by design.  Only the
+        # archive's own index stays link-checked.
         rel_parts = p.relative_to(DOCS).parts
         if "archive" in rel_parts and p.name != "README.md":
             continue
         for m in _LINK.finditer(p.read_text(encoding="utf-8")):
             target = m.group(1)
-            if target.startswith(("http://", "https://")):
+            if target.startswith(("http://", "https://", "#")):
                 continue
-            if not (p.parent / target).resolve().is_file():
-                dangling.append(f"{p.relative_to(REPO)} -> {target}")
-    assert not dangling, f"dangling .md links: {dangling}"
+            if target.startswith("?doc="):
+                doc_path = target[len("?doc="):].split("#", 1)[0]
+                if not (DOCS / doc_path).resolve().is_file():
+                    dangling.append(f"{p.relative_to(REPO)} -> {target}")
+            elif target.split("#", 1)[0].endswith(".md"):
+                raw.append(f"{p.relative_to(REPO)} -> {target}")
+    assert not dangling, f"dangling ?doc= links (target missing): {dangling}"
+    assert not raw, (
+        "raw relative .md links must use the document-module convention "
+        f"`?doc=<docs-root-path>` (the Documents tab serves via ?doc=): {raw}")

@@ -7,7 +7,7 @@ line each. If a doc is not listed here it does not exist (test-enforced:
 > **Migration in progress (started 2026-07-26).** The previous docs tree is
 > frozen at [`../old_docs/`](../old_docs/) and is being migrated here piece
 > by piece, each doc reconciled against the code at its move. The ledger —
-> what lives where, what is pending — is [`MIGRATION.md`](MIGRATION.md).
+> what lives where, what is pending — is [`MIGRATION.md`](?doc=MIGRATION.md).
 > Until a doc migrates, its old_docs copy remains the source of truth.
 
 ## Structure — domains, not document kinds
@@ -56,6 +56,14 @@ header, inside the domain.
   not a subdirectory — the name alone shows the parent).
 - **R6 — born here.** New documents are created in this structure only; the
   old tree is frozen (test-enforced against the ledger).
+- **R7 — internal links use the document-module convention.** The Documents
+  tab serves docs through the module (`/documents?doc=<path>`), **never** as a
+  raw `.md` path — a raw relative `.md` href 404s in the rendered view. So a
+  link between docs points its target at `?doc=` followed by the
+  docs-root-relative path — e.g. [`model/structure.md`](?doc=model/structure.md).
+  Index links follow the same form.
+  Enforced by `tests/test_docs_structure.py`. (A doc that has not migrated yet
+  is named in inline code, not linked — no target exists to point at.)
 
 ### The doc rule (carried over — still the point of all of this)
 
@@ -130,7 +138,7 @@ The editorial rules above apply to every step in full:
    (keep-and-mark — the old tree is kept intact for the closeout
    cross-check, never deleted mid-migration). Same commit as the move.
 
-**Order (see [`MIGRATION.md`](MIGRATION.md) for the wave plan):** components
+**Order (see [`MIGRATION.md`](?doc=MIGRATION.md) for the wave plan):** components
 first, bottom-up (the data model, then what builds on it, then the surfaces);
 the summary docs — `design.md` (a concise outline that points at the detailed
 docs) and `architecture.md` (the reuse map) — are composed **last**, over the
@@ -144,11 +152,12 @@ forward plan) leads and is done early.
 
 | Doc | Role | Owns |
 |---|---|---|
-| [`roadmap.md`](roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
-| [`model/structure.md`](model/structure.md) | contract | The `Structure` object (master): the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
-| [`model/structure-periodicity.md`](model/structure-periodicity.md) | contract | *(sub of structure)* Per-axis box behaviour: `cell` · `cell_origin` · `axis_kind` · derived `pbc` · `vacuum` (k-grid is a `SiestaConfig` knob, not here) |
-| [`model/structure-annotations.md`](model/structure-annotations.md) | contract | *(sub of structure)* The per-atom channel model (`tag`/`flag`/`value`; `regions`/`frozen` built-ins), persistence, engine translation, and the region-label vocabulary |
-| [`model/structure-molstruct.md`](model/structure-molstruct.md) | contract | *(sub of structure)* The `.molstruct.json` save file: envelope (`schema_version`/`structure_hash`/…), schema versioning (v3–v6), the codec, and the `.xyz`↔sidecar pairing rule |
-| [`model/chemistry.md`](model/chemistry.md) | contract | The chemistry helpers on a `Structure`: net-charge resolution (phosphate heuristic + override), protonation, `add_hydrogens`, clash relief, dipole (correctness machinery → `science/`) |
-| [`MIGRATION.md`](MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
-| [`archive/README.md`](archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |
+| [`roadmap.md`](?doc=roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
+| [`model/structure.md`](?doc=model/structure.md) | contract | The `Structure` object (master): the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
+| [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) | contract | *(sub of structure)* Per-axis box behaviour: `cell` · `cell_origin` · `axis_kind` · derived `pbc` · `vacuum` (k-grid is a `SiestaConfig` knob, not here) |
+| [`model/structure-annotations.md`](?doc=model/structure-annotations.md) | contract | *(sub of structure)* The per-atom channel model (`tag`/`flag`/`value`; `regions`/`frozen` built-ins), persistence, engine translation, and the region-label vocabulary |
+| [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) | contract | *(sub of structure)* The `.molstruct.json` save file: envelope (`schema_version`/`structure_hash`/…), schema versioning (v3–v6), the codec, and the `.xyz`↔sidecar pairing rule |
+| [`model/chemistry.md`](?doc=model/chemistry.md) | contract | The chemistry helpers on a `Structure`: net-charge resolution (phosphate heuristic + override), protonation, `add_hydrogens`, clash relief, dipole (correctness machinery → `science/`) |
+| [`model/parse.md`](?doc=model/parse.md) | contract | The unified read stack: three ABCs (File/Text/Dir parsers), the frozen `ParseResult` hierarchy, the registry (`detect`/`parse`/`parse_dir`/`parse_text`), package layout, plugin + composer contracts |
+| [`MIGRATION.md`](?doc=MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
+| [`archive/README.md`](?doc=archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |

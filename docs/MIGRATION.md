@@ -7,7 +7,7 @@ completes IN FULL before any system/feature work resumes** (including the
 jobset web-merge Phase 1). Docs first, then the system.
 
 Every wave, every doc: the [README migration protocol + editorial rules
-E1–E4](README.md) apply in full — structure-first merging, Mermaid where a
+E1–E4](?doc=README.md) apply in full — structure-first merging, Mermaid where a
 picture explains, plain language with full rigor, scientific foundations
 preserved and enriched, and the master index updated in the same commit as
 every move.
@@ -137,7 +137,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/molview-module.md` | web/ | pending | |
 | `protocols/molview-render-streamline.md` | web/ | pending | |
 | `protocols/notifications.md` | web/ | pending | |
-| `protocols/parse-module.md` | model/ | pending | |
+| `protocols/parse-module.md` | model/parse.md | merged-into model/parse.md | Wave 2 (2026-07-26). The shipped parse-stack contract (3 ABCs, ParseResult hierarchy, registry, layout, plugin/composer/forbidden-pattern rules). Verified vs `parse/` — corrected the stale §5 layout: the "PENDING" coords parsers (`siesta_fdf.py`, `xyz.py`) were never added; added the real helper modules. The huge §8 migration plan (Phases A–H, all shipped 2026-06-21) → one History note (R3). |
 | `protocols/playwright-tests.md` | process/ | pending | |
 | `protocols/projects-sidebar-ui.md` | web/ | pending | |
 | `protocols/projects-sidebar.md` | web/ | pending | |
@@ -182,6 +182,6 @@ appears in `old_docs/` that is not in this ledger.
 | `templates/github-workflows-test.yml` | process/ | pending | |
 | `transport-guide.md` | engines/ | pending | |
 | `types/chemistry.md` | model/chemistry.md | merged-into model/chemistry.md | Wave 2 (2026-07-26). The source's scope (phosphate charge + protonation) fully migrated + verified vs `chemistry.py` (cutoffs 1.30/1.95, O–H 0.96 Å / 109.47°, idempotent `is`-return). Also mapped the rest of the module: charge helpers / `add_hydrogens` (OpenBabel→RDKit) / clash / dipole here; the **correctness** half (spin-charge parity, open-shell metals, ECP, `analyze_structure` + adapters) pointed to `science/` (documented there in `chemistry-correctness.md` / `scientific-validation.md`, science wave). |
-| `types/parsers.md` | archive/ (RETIRED; superseded by model/parse-module.md) | pending | |
+| `types/parsers.md` | (retired — superseded by model/parse.md) | archived | Wave 2 (2026-07-26). The old file-level parser contract; its substance (the FileParser ABC + result types) is now in `model/parse.md` §§ 1–3. Retired stub, kept `_migrated_` for the closeout cross-check. |
 | `types/structure.md` | model/structure.md | merged-into model/structure.md | Wave 2 (2026-07-26): the dataclass fields + invariants + geometry I/O (XYZ/PDB/PySCF/ASE) + TER handling + `molbuilder.load` → the L1 data-model + backend surface of `model/structure.md`. Method line-numbers verified vs `structure.py`. |
 | `workspace-guide.md` | web/ | pending | |

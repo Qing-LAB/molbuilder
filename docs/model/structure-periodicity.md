@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** model
-**Sub-document of:** [`structure.md`](structure.md) (its master — these are
+**Sub-document of:** [`structure.md`](?doc=model/structure.md) (its master — these are
 `Structure` fields). **Companions:** `structure-molstruct.md` (how they persist
 in `.molstruct.json`), `engines/siesta.md` (the **k-grid** DFT sampling
 parameter, which is a `SiestaConfig` knob — **not** a periodicity field; see

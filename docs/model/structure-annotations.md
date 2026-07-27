@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** model
-**Sub-document of:** [`structure.md`](structure.md) (its master — `annotations`,
+**Sub-document of:** [`structure.md`](?doc=model/structure.md) (its master — `annotations`,
 `regions`, `frozen_atoms` are `Structure` fields). **Companions:**
 `structure-molstruct.md` (the `.molstruct.json` envelope these persist in),
 `engines/siesta.md` + `engines/transport.md` (the engine input the channels

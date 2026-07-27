@@ -2,7 +2,7 @@
 
 **Role:** contract
 **Domain:** model
-**Sub-document of:** [`structure.md`](structure.md) (its master). **Companions:**
+**Sub-document of:** [`structure.md`](?doc=model/structure.md) (its master). **Companions:**
 `structure-annotations.md` + `structure-periodicity.md` (the metadata this file
 carries), `engines/` (the **boundary-condition contract** — how the `frozen`/
 `regions` this file stores are delivered to an engine's input script, migrating
