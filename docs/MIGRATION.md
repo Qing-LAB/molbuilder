@@ -126,7 +126,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/cli.md` | process/ | pending | |
 | `protocols/code-audit.md` | process/ | pending | |
 | `protocols/code-conventions.md` | process/ | pending | |
-| `protocols/data-vocabulary.md` | model/ | pending | |
+| `protocols/data-vocabulary.md` | **SPLIT** — atom-index → model/overview.md; the rest → execution/ | pending | Reclassified 2026-07-26: mostly an **execution** concern (config↔SLURM parameter vocabulary §2, run identifiers/paths §3, the persisted-artifacts registry §1). Only §3.1/§3.2 (the atom-index convention) is model → absorbed into `model/overview.md` (`_atom-index.js` path corrected to `lib/molview/`); §5 structure-metadata already in `structure.md § 2.2`. Stays **pending** until the parameter-vocabulary + identifiers + artifacts registry land in `execution/` (that wave); then mark merged + prefix. |
 | `protocols/frontend-module-architecture.md` | web/ | pending | |
 | `protocols/inspector-registry.md` | web/ | pending | |
 | `protocols/job-decoder.md` | execution/ | pending | |

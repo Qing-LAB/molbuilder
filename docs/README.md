@@ -153,6 +153,7 @@ forward plan) leads and is done early.
 | Doc | Role | Owns |
 |---|---|---|
 | [`roadmap.md`](?doc=roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
+| [`model/overview.md`](?doc=model/overview.md) | overview | The model domain's **start-here** map (every model doc + when to open it) + the atom-index convention (0-based internal / 1-based user-facing / per-engine) |
 | [`model/structure.md`](?doc=model/structure.md) | contract | The `Structure` object (master): the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
 | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) | contract | *(sub of structure)* Per-axis box behaviour: `cell` · `cell_origin` · `axis_kind` · derived `pbc` · `vacuum` (k-grid is a `SiestaConfig` knob, not here) |
 | [`model/structure-annotations.md`](?doc=model/structure-annotations.md) | contract | *(sub of structure)* The per-atom channel model (`tag`/`flag`/`value`; `regions`/`frozen` built-ins), persistence, engine translation, and the region-label vocabulary |
