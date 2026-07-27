@@ -441,14 +441,25 @@ Two rules the code enforces:
 
 ## 17. Session-state timeline
 
-`save`, `load`, and `undo` on the data model delegate to an internal timeline.
-The model is deliberately small: **`save`** snapshots the current state,
-**`load(delta)`** moves along the history (`load(-1)` = undo), and
-**`undo`** is exactly `load(-1)`. MolView owns the *mechanism* (the history of
-states); **policy** — when to auto-save, how much history to keep, where the
-bytes live — is the workspace's (see `workspace.md`). The timeline snapshot
-includes the view state (§ 18) but **not** trajectory frames: multi-frame
-persistence is planned, not shipped (see [`roadmap.md`](?doc=roadmap.md)).
+`save`, `load`, and `undo` on the data model are the tab's **undo/redo history**,
+and the mechanism is a concealed MolView submodule —
+`lib/molview/_state-timeline-impl.js`, used only by `data-model.js`. It owns
+`state_index` (position in the edit sequence; 0 = the opened anchor), the
+`uncommitted` flag, and the serialized save/load push-pop chain: **`save`**
+snapshots the current state, **`load(delta)`** moves along the history
+(`load(-1)` = undo / **retract**), and **`undo`** is exactly `load(-1)`. There is
+**no auto-write** — only `installMolecule` (the one anchor write), `save`, and
+`load` touch disk, and each advances or retreats the index only after its
+round-trip resolves. The submodule is format-blind: the data model injects
+`serialise` / `applySnapshot`.
+
+MolView owns this whole mechanism **and** the orchestration — *when* to persist
+or prune, *how far* to retract. The **workspace** module owns only the
+persistence **transport** underneath it: `POST /api/state-timeline/{write,read,prune}`,
+reached through an injected accessor — i.e. *where the bytes live*, not the
+timeline logic (see `workspace.md`). The timeline snapshot includes the view
+state (§ 18) but **not** trajectory frames: multi-frame persistence is planned,
+not shipped (see [`roadmap.md`](?doc=roadmap.md)).
 
 ## 18. The view sub-namespace and the persistence seam
 
