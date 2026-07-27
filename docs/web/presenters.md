@@ -67,12 +67,13 @@ whose `match` is true), `pickResult` (same but only presenters marked
 throws is logged and skipped, so one broken presenter can't jam the switchboard;
 a `mount` that throws falls back to a clean error card in the panel.
 
-**Every presenter reads files through one shared reader.** `mount` is handed a
-`ctx` with exactly four helpers — `showError`, `readFile`, `readRange` (a byte
-window, for large files), and `writeFile` (timestamp-safe, so a concurrent edit
-on disk is caught) — all of which go through the projects file layer
-([`projects.md`](?doc=web/projects.md)). Presenters never hand-roll their own
-`/api/files/*` calls; the reader is the one door.
+**Every presenter reads and writes files through one shared reader.** `mount` is
+handed a `ctx` with four helpers. Three touch files and all go through the
+projects file layer ([`projects.md`](?doc=web/projects.md)) — `readFile`,
+`readRange` (a byte window, for large files), and `writeFile` (timestamp-safe,
+so a concurrent edit on disk is caught); the fourth, `showError`, just renders an
+error card in the panel. Presenters never hand-roll their own `/api/files/*`
+calls; that shared reader is the one file door.
 
 ## 3. How the switchboard runs
 
