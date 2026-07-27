@@ -4,10 +4,11 @@
 >
 > **Companions:** [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 > — the on-disk formats this guide operates (the run directory, the wrapper
-> files, warm/cold restart, the config vocabulary); `execution/job-system.md`
-> — the JobSet framework that runs **batches** of jobs on top of this same
-> wrapper (named in code until it lands); `execution/overview.md` — the map and
-> the current → target status picture.
+> files, warm/cold restart, the config vocabulary);
+> [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet
+> framework that runs **batches** of jobs on top of this same wrapper;
+> [`execution/overview.md`](?doc=execution/overview.md) — the map and the
+> current → target status picture.
 
 **This is the path that works today.** The web UI generates and installs a
 run wrapper for **one** task at a time; the CLI does the same with
@@ -201,7 +202,7 @@ launch (all in `molbuilder/runwrap.py`):
 | `--force` / `-f` | both | reset the run index to `-run0` (overwrite it); does **not** touch warm-start files |
 | `--cold` / `--from-scratch` | both | move warm-start files aside before running (§ `job-contracts § 4`) |
 | `-np` / `--np N` | SIESTA | override MPI ranks |
-| `-omp` / `-t` / `--threads N` | SIESTA | override OMP threads |
+| `-omp` / `--omp` / `-t` / `--threads N` | SIESTA | override OMP threads |
 | `--mps` / `--no-mps` | SIESTA (GPU) | force MPS on / off |
 | `--dry-run` | both | print the resolved launch command + rank→GPU/NUMA map, then exit 0 |
 | `-h` / `--help` | both | usage |

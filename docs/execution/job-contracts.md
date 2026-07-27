@@ -2,12 +2,14 @@
 
 > **Role:** contract · **Domain:** `execution/`
 >
-> **Companions (this wave, named in code until they land):**
-> `execution/running-a-job.md` — how you actually run and watch **one** job
-> today (the run wrapper, `molbuilder.json`, checkpoints, the decoded-run
-> view); `execution/job-system.md` — the JobSet batch / staged / HPC
-> framework; `execution/overview.md` — the map plus the current → target
-> status picture.
+> **Companions:**
+> [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how you
+> actually run and watch **one** job today (the run wrapper, `molbuilder.json`,
+> checkpoints, the decoded-run view);
+> [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet batch /
+> staged / HPC framework;
+> [`execution/overview.md`](?doc=execution/overview.md) — the map plus the
+> current → target status picture.
 >
 > **Settled contracts this doc leans on:**
 > [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) (the
@@ -125,33 +127,42 @@ SCF cycle.
 
 ### 2.3 Multi-stage runs
 
-A staged relaxation (coarse → medium → tight) keeps all stages in one
-directory. The basename stays constant; only the **input filenames** grow a
-`-stageN` suffix:
+A staged relaxation (coarse → tight) keeps its stages together, and the
+`SystemLabel` / `JOB` basename stays **unsuffixed** — so SIESTA's `.XV` / `.DM`
+/ `.CG` restart files transfer cleanly between stages (`MD.UseSaveXV`,
+`DM.UseSaveDM`, `MD.UseSaveCG`). Only per-stage *derived* files carry a suffix,
+and the codebase uses **two distinct suffix conventions** for two different
+paths — do not conflate them:
 
-```
-my-job/
-├── my-job-stage1.fdf          ├── my-job-stage1.molwatch.log
-├── my-job-stage2.fdf          ├── my-job-stage2.molwatch.log
-├── my-job-stage3.fdf          ├── my-job-stage3.molwatch.log
-├── my-job.XV / .DM / .CG      ├── my-job.STRUCT_OUT   (final, after stage 3)
-└── my-job-stageN-runM.out     (engine stdout, per stage + run index)
-```
+- **The staged ladder** — the `cfg.stages` ladder rendered by
+  `siesta/input.py::render_siesta_stage_fdfs` plus its `.run.sh` stage runner,
+  and the `stages_to_jobset` JobSet producer — names each stage's input `.fdf`
+  and stdout `.out` **`<label>_<stagename>`**: an **underscore** plus the
+  stage's *name* (the default names are `stage1` / `stage2` / `stage3`):
 
-Because the `SystemLabel` / `JOB` itself stays **unsuffixed**, SIESTA's
-`.XV` / `.DM` / `.CG` restart files transfer cleanly between stages
-(`MD.UseSaveXV`, `DM.UseSaveDM`, `MD.UseSaveCG`). Only the *log* filename
-grows the suffix. The suffix is produced by a single helper,
-`molbuilder/trajectory_log/format.py::molwatch_log_basename(system_label,
-stage)`.
+  ```
+  bundle-or-dir/
+  ├── my-job_stage1.fdf   my-job_stage1.out
+  ├── my-job_stage2.fdf   my-job_stage2.out
+  ├── my-job.XV / .DM / .CG          ← unsuffixed, carried between stages
+  └── my-job.STRUCT_OUT              ← final geometry, after the last stage
+  ```
 
-**Two multi-stage shapes exist, deliberately:**
+- **The single-stage overlay** (`molbuilder fdf --stage N`, which emits *one*
+  stage's `.fdf` on its own) and the **molwatch log** basename use
+  **`<label>-stage<N>`**: a **hyphen** plus the stage *number*. The log name is
+  produced by `trajectory_log/format.py::molwatch_log_basename(system_label,
+  stage)` → `<label>-stage<N>.molwatch.log`. The run decoder's stage regex
+  (`parse/dirs/job.py::_STAGE_RE`) keys on this hyphen `-stage<N>` form.
 
-- **SIESTA (and the PySCF `cfg.stage` marker path)** — each stage is a
-  separate process invocation writing its own `<basename>-stageN.molwatch.log`.
-  A directory with **more than one** `.molwatch.log` is merged by the viewer:
-  all logs are parsed in mtime order (oldest first) into one trajectory with a
-  dashed boundary line per stage; live polling pins to the newest log.
+**Two multi-stage execution shapes exist, deliberately:**
+
+- **Per-stage processes (SIESTA run stage-by-stage, and the PySCF `cfg.stage`
+  marker path)** — each stage is a separate process invocation writing its own
+  `.molwatch.log`. A directory with **more than one** `.molwatch.log` is merged
+  by the viewer: all logs are parsed in mtime order (oldest first) into one
+  trajectory with a dashed boundary line per stage; live polling pins to the
+  newest log.
 - **PySCF in-script ladder (`cfg.stages`)** — all stages run inside **one**
   Python process (`for stage in STAGES:`), which writes a **single, unified**
   `<basename>.molwatch.log`. There is no per-stage suffix in this mode.
@@ -165,8 +176,12 @@ specific file, it resolves the trajectory with this chain — first hit wins
 1. `*.molwatch.log` — if several, the most recently modified.
 2. `*.fdf` — parse `SystemLabel`; try `<label>.molwatch.log`, then
    `<label>.out`.
-3. `*.py` — parse the `JOB` literal (`job_name`); try `<job>.molwatch.log`,
-   then `<job>.log`, then `<job>_geom_optim.xyz`.
+3. `*.py` — grep for a `job_name = "…"` assignment; try `<job>.molwatch.log`,
+   then `<job>.log`, then `<job>_geom_optim.xyz`. *(Current generated PySCF
+   scripts emit the label as `JOB = "…"`, not `job_name = "…"`, so this step
+   matches none of them today — such a directory still resolves via step 1's
+   `*.molwatch.log` or step 4's content-sniff. The regex/emit mismatch is a
+   code follow-up.)*
 4. `run.out` / `siesta.log` / `*.out` / `*_geom_optim.xyz` — content-sniff via
    the trajectory-parser registry.
 
@@ -586,7 +601,7 @@ index to `-run0`; `--cold` / `--from-scratch`.)
 
 ## 5. The workflow handoff bundle
 
-> **Vocabulary (R5):** the object that carries a **finished run into the next
+> **Vocabulary:** the object that carries a **finished run into the next
 > calculation** is the *handoff bundle*. Plain "bundle" belongs to the JobSet
 > framework (a bundled batch of jobs, `execution/job-system.md`) — do not use
 > the bare word for this object.

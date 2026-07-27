@@ -6,8 +6,9 @@
 > — the single-job wrapper this framework runs many of;
 > [`execution/job-contracts.md`](?doc=execution/job-contracts.md) — the run-dir
 > layout, the wrapper files, and the `job-set.json` / parameter vocabulary this
-> framework produces; `execution/overview.md` — the execution-domain map and the
-> current → target status picture (named in code until it lands);
+> framework produces;
+> [`execution/overview.md`](?doc=execution/overview.md) — the execution-domain
+> map and the current → target status picture;
 > [`engines/tuning.md`](?doc=engines/tuning.md) — the scientific *values* behind
 > the staged ladders (this page covers only how they are *scheduled*).
 
@@ -266,8 +267,9 @@ encodes a design decision:
 
 - **The dependency edge comes from each stage's non-convergence policy.** A stage
   declares what to do if it hits its step cap without converging:
-  `proceed` (go on anyway), `halt` (stop the chain), or `continue` (retry). These
-  become the scheduler edge: `proceed → afterany` (next stage runs regardless),
+  `proceed` (go on anyway), `halt` (stop the chain), or `continue` (intended:
+  retry the stage up to `continue_retries` times before giving up). These become
+  the scheduler edge: `proceed → afterany` (next stage runs regardless),
   `halt`/`continue → afterok` (next stage runs only on success). So the
   scientific policy and the scheduler behaviour are the *same* setting — you
   never configure them twice. (This is the shared staged-optimization contract in
@@ -294,9 +296,12 @@ scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
 
 The three **strategy presets** flip only the enable flags:
 `loose-only` = (✅, —, —), `publishable` = (✅, ✅, —),
-`vib-quality` = (✅, ✅, ✅). A stage whose policy is `continue` retries **inside
-its own `.run.sh`** rather than as an extra scheduled job — the retry is a loop
-in the wrapper, so it doesn't clutter the dependency chain.
+`vib-quality` = (✅, ✅, ✅). The `continue` policy's per-stage retry budget
+(`continue_retries`, 1–5) is honored by the **PySCF** in-script ladder (the
+`not a JobSet` note under § 4), which loops inside the generated Python; the
+**SIESTA** staged runner does
+**not** yet implement it — a `continue` stage there takes the same `afterok`
+edge as `halt` and runs once (a code follow-up).
 
 There is also a pure, side-effect-free **`build_siesta_stage_bundle(struct,
 cfg)`** that returns a ready-to-write stage bundle by reusing the stage `.fdf`
@@ -511,7 +516,10 @@ resource grid.
 
 Its guiding idea (**target isolation**, design decision #3): you generate a
 benchmark *bundle* on your laptop; everything machine-specific is discovered on
-the target. Five steps, all under `molbuilder bench`:
+the target. Five steps: `generate` on the host (`molbuilder bench generate`),
+then the bundle's own baked **`prep-bench`** and **`run-bench`** executables on
+the target (they self-bootstrap molbuilder and shim to the CLI), then
+`summarize` and `prep-run` back under `molbuilder bench`:
 
 ```mermaid
 flowchart LR

@@ -81,7 +81,7 @@ flowchart TB
 | Staged relaxation ladder | ✅ | ⏳ | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
-| SLURM deployment (dependency chains, routing domains) | ✅ | ⏳ | `job-system.md § 5` |
+| SLURM deployment (dependency chains, routing domains) | ✅ | ⏳ | `job-system.md § 6` |
 | Checkpoint **branch** (explore a what-if tail) | ✅ | ⏳ | `job-system.md § 8` |
 
 `✅` shipped · `⏳` planned (see [`roadmap.md`](?doc=roadmap.md) workstream 1) ·
