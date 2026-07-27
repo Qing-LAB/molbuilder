@@ -229,7 +229,7 @@ def _default_stages() -> List[StageSpec]:
         #   etol 1e-6 Ha       (unchanged; SCF noise floor)
         # For molecule-scale vib/IR/TS work the user can override via
         # the form's stage-table or --stages-json -- the tier doc
-        # (docs/engines/optimization-tuning.md § 2.3) carries the
+        # (docs/engines/tuning.md § 2.3) carries the
         # very-tight (0.001 eV/Å) values for that regime explicitly.
         StageSpec(name="stage3", enabled=False,
                   conv_tol=1.0e-10,
@@ -504,7 +504,7 @@ class PySCFConfig:
             "(modern standard for organic chemistry; ECPs bundled to Rn)\n"
             "  • tight (vib/IR/energy):    def2-TZVPP or def2-QZVP\n"
             "Reference: Weigend & Ahlrichs PCCP 2005.  See "
-            "docs/engines/optimization-tuning.md § 2.8."
+            "docs/engines/tuning.md § 2.8."
         ),
     })
     # auxbasis: Python-API knob; rarely set from the form (auto-pick
@@ -664,7 +664,7 @@ class PySCFConfig:
             "DOES NOT work with the staged-opt loop (incompatible "
             "kwarg set).  Use only for single-stage runs.\n"
             "Both are quasi-Newton; both converge tightly near a "
-            "minimum.  See docs/engines/optimization-tuning.md § 2.1."
+            "minimum.  See docs/engines/tuning.md § 2.1."
         ),
     })
     # 3-stage in-script optimization (task #534).  Per-stage SCF +
@@ -710,7 +710,7 @@ class PySCFConfig:
                 "guide tier table (Stage 1 loose preopt, Stage 2 "
                 "publishable, Stage 3 TIGHT vib/IR opt-in).\n"
                 "Full per-tier values + scientific rationale + "
-                "citations in docs/engines/optimization-tuning.md "
+                "citations in docs/engines/tuning.md "
                 "§ 2 (per-parameter) + § 4 (preset summary table)."),
         },
     )

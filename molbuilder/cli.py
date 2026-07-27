@@ -540,7 +540,7 @@ def _make_pyscf_options_decorator():
                    "Broyden publishable (0.04 eV/A, 0.05 A); Stage 3: "
                    "Broyden crystal-tight (0.01 eV/A, 0.02 A -- VASP "
                    "EDIFFG=-0.01 standard).  Anchored in docs/engines/"
-                   "optimization-tuning.md sect. 2.3.1.  Mutually "
+                   "tuning.md sect. 2.3.1.  Mutually "
                    "exclusive with --stages-json / --stage-strategy "
                    "(those drive the multi-stage pipeline; --stage is "
                    "for a single-stage one-shot fdf).")
@@ -614,7 +614,7 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, stage,
     ``--stage 1`` for an initial loose preopt, ``--stage 2`` for the
     publishable refine, ``--stage 3`` for a crystal-practical tight
     final stage.  Anchors the system-type-aware tier framework
-    documented in ``docs/engines/optimization-tuning.md`` sect. 2.3.1.
+    documented in ``docs/engines/tuning.md`` sect. 2.3.1.
     """
     from .siesta import SiestaConfig, convert
     from .config.siesta import apply_siesta_stage

@@ -271,7 +271,7 @@ class SiestaConfig:
             "on organic / biomolecule systems; the validator warns "
             "below that floor.  Egg-box noise sets the floor for "
             "vibrational work — test by varying ±50 Ry.  See "
-            "docs/engines/optimization-tuning.md § 2.6."
+            "docs/engines/tuning.md § 2.6."
         ),
     })
 
@@ -371,7 +371,7 @@ class SiestaConfig:
             "1e-4, publishable 1e-4, tight (vib/IR) 1e-5.\n"
             "Rule of thumb: keep SCF tol ~10x tighter than the "
             "force-precision target you want at convergence.  See "
-            "docs/engines/optimization-tuning.md § 2.5."
+            "docs/engines/tuning.md § 2.5."
         ),
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
@@ -485,7 +485,7 @@ class SiestaConfig:
             "  • Verlet/Nose — NOT geometry relax; finite-T MD only.\n"
             "  • none     — single-point (skip MD block entirely).\n"
             "Recommended workflow: stage 1 CG (warm-up) → stage 2 "
-            "Broyden (refine).  See docs/engines/optimization-tuning.md "
+            "Broyden (refine).  See docs/engines/tuning.md "
             "§ 2.1 for full algorithm comparison + citations."
         ),
     })
@@ -510,7 +510,7 @@ class SiestaConfig:
             "Per-tier: loose warm-up ~50, publishable ~200, tight "
             "(vib/IR) ~100 (small displacement cap = slow but few "
             "steps from a publishable-converged starting geometry).  "
-            "See docs/engines/optimization-tuning.md § 2.10."
+            "See docs/engines/tuning.md § 2.10."
         ),
     })
     relax_force_tol: float = field(default=0.02, metadata={
@@ -529,7 +529,7 @@ class SiestaConfig:
             "publishable 0.04 (Gaussian-OPT default), tight (vib/IR) "
             "0.01, very-tight (NEB barrier) 0.001.\n"
             "SIESTA only checks max force.  See docs/engines/"
-            "optimization-tuning.md § 2.3 for the 5-criteria "
+            "tuning.md § 2.3 for the 5-criteria "
             "geomeTRIC/Gaussian convention + citations."
         ),
     })
@@ -550,7 +550,7 @@ class SiestaConfig:
             "publishable 0.05, tight (vib/IR) 0.02.\n"
             "Symptom of too-large cap: max-force oscillates rather "
             "than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  "
-            "Halve the cap.  See docs/engines/optimization-tuning.md "
+            "Halve the cap.  See docs/engines/tuning.md "
             "§ 2.2 + the BDT/Au worked example in § 6."
         ),
     })
@@ -1101,7 +1101,7 @@ Config = SiestaConfig
 #  Anchors the 3-stage workflow ("stage1 CG warm-up -> stage2 Broyden   #
 #  publishable -> stage3 Broyden tight crystal-practical") into a       #
 #  single overlay applied via ``--stage {1,2,3}`` on the CLI.  Tier     #
-#  values match docs/engines/optimization-tuning.md sect. 2.3.1's      #
+#  values match docs/engines/tuning.md sect. 2.3.1's      #
 #  system-type-aware framework.                                         #
 #                                                                       #
 #  This is the precursor to #542 SIESTA staged-opt (full staged ladder #
@@ -1116,7 +1116,7 @@ Config = SiestaConfig
 # field overrides; the overlay leaves other fields (basis, mesh_cutoff,
 # psml_lib, etc.) untouched so the user's other choices ride through.
 #
-# Stage rationale (per optimization-tuning.md sect. 2.3.1):
+# Stage rationale (per tuning.md sect. 2.3.1):
 #   stage1 = loose preopt:    CG, ~0.05 eV/A, 0.2 A displacement cap
 #   stage2 = publishable:     Broyden, ~0.04 eV/A (Gaussian-OPT default),
 #                                      0.05 A displacement cap
@@ -1127,7 +1127,7 @@ Config = SiestaConfig
 #                                      fewer outer iters)
 #
 # All three preset CG/Broyden choices align with SIESTA's recommended
-# workflow per the optimization-tuning.md sect. 2.1 algorithm comparison
+# workflow per the tuning.md sect. 2.1 algorithm comparison
 # table: CG only for stage 1 (no memory / robust far from minimum),
 # Broyden for any production-tier work (quasi-Newton + best near minimum).
 #

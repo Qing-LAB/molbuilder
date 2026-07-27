@@ -671,7 +671,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "#           eV/Ang; 600 for first-row elements)",
         "# Below 150 Ry the forces / energies are noticeably wrong on",
         "# organic + biomolecule systems.  Test by varying +-50 Ry.",
-        "# See docs/engines/optimization-tuning.md sect. 2.6.",
+        "# See docs/engines/tuning.md sect. 2.6.",
     ]
     out.append(f"MeshCutoff {cfg.mesh_cutoff} Ry")
     if v: out += [
@@ -773,7 +773,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "#   1e-6    very-tight (band structure, phonons)",
         "# Rule of thumb: keep SCF tol ~10x tighter than the force-",
         "# precision target you want at convergence.  See",
-        "# docs/engines/optimization-tuning.md sect. 2.5.",
+        "# docs/engines/tuning.md sect. 2.5.",
     ]
     out.append(f"DM.Tolerance      {cfg.dm_tolerance:.0e}")
 
@@ -1110,7 +1110,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   Verlet   NVE molecular dynamics (NOT relax).",
             "#   Nose     Nose-Hoover NVT molecular dynamics (NOT relax).",
             "# Recipe: stage 1 CG -> stage 2 Broyden (refine).  See",
-            "# docs/engines/optimization-tuning.md sect. 2.1 for full",
+            "# docs/engines/tuning.md sect. 2.1 for full",
             "# algorithm comparison + citations.",
         ]
         out.append(f"MD.TypeOfRun {cfg.relax_type}")
@@ -1141,7 +1141,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "#            Gaussian GAU_TIGHT; DO NOT use on 100+ atom",
                 "#            metal systems, chases SCF noise + never converges)",
                 "# SIESTA only checks max force; geomeTRIC / Gaussian check 5",
-                "# criteria.  See docs/engines/optimization-tuning.md sect. 2.3",
+                "# criteria.  See docs/engines/tuning.md sect. 2.3",
                 "# for the cross-engine + system-type-aware tier framework.",
             ]
             out.append(f"MD.MaxForceTol {cfg.relax_force_tol} eV/Ang")

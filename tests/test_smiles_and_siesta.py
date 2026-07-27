@@ -949,7 +949,7 @@ def test_savehs_keyword_emitted_always():
 class TestSiestaStageOverlay:
     """Stage overlay: --stage {1,2,3} populates relax_type +
     relax_steps + relax_force_tol + relax_max_displ to tier-aligned
-    values per docs/engines/optimization-tuning.md sect. 2.3.1.
+    values per docs/engines/tuning.md sect. 2.3.1.
     """
 
     def test_stage_1_is_cg_warmup(self):
@@ -964,7 +964,7 @@ class TestSiestaStageOverlay:
         from molbuilder.config.siesta import SiestaConfig, apply_siesta_stage
         out = apply_siesta_stage(SiestaConfig(), 2)
         # Broyden -- not CG -- is the load-bearing choice for stage 2+
-        # (per docs/engines/optimization-tuning.md sect. 2.1 "stage 2
+        # (per docs/engines/tuning.md sect. 2.1 "stage 2
         # Broyden refine").  Pre-2026-06-23 the SIESTA generator
         # defaulted to CG and the user had to hand-edit stage2.fdf.
         assert out.relax_type == "Broyden"
@@ -1017,7 +1017,7 @@ class TestSiestaStageOverlay:
 
           (1) ``SIESTA_STAGE_PRESETS`` in molbuilder/config/siesta.py
           (2) The numeric assertions in the per-stage tests above
-          (3) The doc table in docs/engines/optimization-tuning.md
+          (3) The doc table in docs/engines/tuning.md
               sect. 2.3 ("Per-tier" rows for MD.MaxForceTol + the
               displacement-cap subsection)
 
@@ -1027,7 +1027,7 @@ class TestSiestaStageOverlay:
         the numeric claims in the doc (3).
 
         The reference values come straight from
-        ``docs/engines/optimization-tuning.md`` sect. 2.3.1 (system-
+        ``docs/engines/tuning.md`` sect. 2.3.1 (system-
         type-aware tier framework):
 
           - publishable: 0.04 eV/A force, 0.05 A displacement

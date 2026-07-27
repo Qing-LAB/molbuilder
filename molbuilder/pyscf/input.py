@@ -611,7 +611,7 @@ def render_script(struct: Structure,
             out.append("#   tight        gmax 1.5e-5 Ha/Bohr  conv_tol 1e-10 max_steps 100")
             out.append("#                (vib / IR / NEB barriers)")
             out.append("# The cfg.stages ladder ships these as default rows.  See")
-            out.append("# docs/engines/optimization-tuning.md sect. 4 for the full preset")
+            out.append("# docs/engines/tuning.md sect. 4 for the full preset")
             out.append("# table + SIESTA <-> PySCF crosswalk + citations.")
         # Frozen-atom constraints (three-stage contract carrier).  When
         # Structure.frozen_atoms is non-empty AND we're using the

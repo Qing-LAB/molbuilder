@@ -82,7 +82,7 @@ def test_default_stages_stage3_tight_disabled_by_default():
     by default) since most users tick 1+2 only.
 
     Per the 2026-06-23 realignment (see design.md decision-log +
-    docs/engines/optimization-tuning.md sect. 2.3.1), stage 3 carries
+    docs/engines/tuning.md sect. 2.3.1), stage 3 carries
     crystal/surface production thresholds (gmax 2e-4 Ha/Bohr ~= 0.01
     eV/A; matches VASP EDIFFG=-0.01).  Pre-realignment this was
     geomeTRIC GAU_TIGHT (1.5e-5 Ha/Bohr) which chases SCF noise on
