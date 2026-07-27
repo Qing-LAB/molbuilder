@@ -119,9 +119,9 @@ The selection **panel** beside the viewer controls how you select:
 Measurements come straight from what you have selected, in pick order:
 
 - **1 atom** → its coordinates, e.g. `Au #3 — (0.000, 0.000, 0.000) Å`.
-- **2 atoms** → the distance, e.g. `|H #5 – O #0| = 0.957 Å`.
+- **2 atoms** → the distance, e.g. `|H #5 – O #1| = 0.957 Å`.
 - **3 atoms** → the angle, with the **middle-picked** atom as the vertex, e.g.
-  `∠H #5 – O #0 – H #6 = 104.5°`.
+  `∠H #5 – O #1 – H #6 = 104.5°`.
 
 The `#N` in a readout is the **1-based** on-screen atom number. (Internally
 MolView counts atoms from 0; it adds 1 only for display, so the first atom reads
@@ -227,10 +227,12 @@ MolView has a single ES-module entry point:
 import { mount, formula } from "/static/lib/molview/index.js";
 ```
 
-`index.js` (`lib/molview/index.js:66-67`) exports exactly **`mount`** (the
-viewer factory) and **`formula`** (a Hill-formula helper). It also re-exports
-the data model, but production consumers must **not** import-and-hold the data
-object — they look it up live at read time:
+`index.js` (`lib/molview/index.js`) exports **`mount`** (the viewer factory) and
+**`formula`** (a Hill-formula helper), and re-exports the data model and the
+internal submodules (engine, selection, timeline, …) so the module graph is
+reachable from the door. Production consumers use only `mount` and `formula`,
+and must **not** import-and-hold the data object — they look it up live at read
+time:
 
 ```js
 // read the CURRENT structure/selection — always look it up, never cache it:
@@ -357,21 +359,24 @@ Geometry edits are **ops as data**. `applyOp(name)` posts to
 (`lib/molview/_operations.js`) declares each op's shape rather than hand-coding
 each one:
 
-| Op | Role | Empty selection | Shape |
-|---|---|---|---|
-| `translate` | subject | — | transform |
-| `rotate` | subject | — | transform |
-| `orient` | subject | — | transform |
-| `add_atom` | subject | — | grow |
-| `electrode` | anchor | canonical (centre on origin) | grow |
-| `symmetric_electrodes` | anchor | canonical | grow |
-| `delete` | subject | reject | shrink |
-| `calibrate` | subject | all atoms | transform (whole-structure only) |
+| Op | Role | Empty selection | Arity | Shape |
+|---|---|---|:--:|---|
+| `translate` | subject | all atoms | — | transform |
+| `rotate` | subject | all atoms | — | transform |
+| `orient` | anchor | reject | 2 | transform |
+| `add_atom` | anchor | reject | 1 | grow |
+| `electrode` | anchor | canonical (centre on origin) | — | grow |
+| `symmetric_electrodes` | anchor | canonical | — | grow |
+| `delete` | subject | reject | — | shrink |
+| `calibrate` | subject | all atoms | — | transform (whole-structure only) |
 
 Each entry's fields drive one generic orchestrator: `role` (whether the
-selection is the thing acted on or an anchor), `empty` (what an empty selection
-means), `groupField` (how selected indices are passed to the server), and
-`shape` (grow / shrink / transform — how atom count changes). `calibrate` is
+selection is the thing acted on, or an anchor the op is defined relative to),
+`empty` (what an empty selection means — act on `all` atoms, `reject` the op,
+or fall back to a `canonical` centre), `arity` (an exact selected-atom count the
+op requires, checked before the fetch — `orient` needs 2, `add_atom` needs 1),
+`groupField` (how selected indices are passed to the server), and `shape` (grow
+/ shrink / transform — how atom count changes). `calibrate` is
 `wholeOnly`: it rigidly maps all atoms into `[0, cell)` and clears the cell
 origin, so it always takes the whole-structure path even with a partial
 selection.
@@ -389,8 +394,9 @@ await data.applyOp("symmetric_electrodes");   // add electrodes anchored on the 
 ## 16. The render engine and trajectories
 
 The render engine (`lib/molview/engine/`) is the **one place** that draws.
-`engine.create(handle, { store })` returns `{ setData, appendFrames, showFrame,
-render, dispose }`. It splits into a **pure** layer (`engine/process.js`, no
+`engine.create(handle, { store })` returns an engine with `setData`,
+`appendFrames`, `showFrame`, `setForces`, `render`, and `dispose` (among the
+frame accessors). It splits into a **pure** layer (`engine/process.js`, no
 3Dmol, node-tested — it computes what to draw) and an **I/O** layer
 (`engine/embed-io.js`, the only 3Dmol-touching primitives).
 
