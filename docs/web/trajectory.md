@@ -49,11 +49,17 @@ forces that don't matter). With no frozen atoms it collapses to a single line.
 
 ## 3. Convergence targets
 
-If you keep the run's input (`.fdf`/`.py`) next to it, the viewer reads the
-**targets the run was chasing** and draws them as green threshold lines — so you
-can see how far the max force or the SCF residual still is from the goal. A
-summary band above the plots names the targets and the current distance. When a
-value starts far above its target, the plot switches to a **log y-axis** so the
+The viewer reads the **targets the run was chasing** and draws them as green
+threshold lines — so you can see how far the max force or the SCF residual still
+is from the goal. You don't have to keep the input file around: the targets come
+from the run's own **output**. A SIESTA run echoes them into its `.out` (the
+`redata:` preamble), and a PySCF/geomeTRIC run — whose bare `*_optim.xyz` carries
+no targets — gets them from the sibling `*.molwatch.log` the builder writes next
+to it. A small label under the plot even says which of these it read them from
+("from SIESTA input echo", "from molwatch log header", "from geomeTRIC log").
+
+A summary band above the plots names the targets and the current distance. When a
+value sits far above its target, the plot switches to a **log y-axis** so the
 early approach is readable; as it converges the curve heads toward the line.
 
 ## 4. Is it done, and how fast?
@@ -62,8 +68,8 @@ The **run badge** reads *Running*, *Finished*, or *Stopped*. And the SCF line
 gives a live per-iteration wall-time — "~16 s/iter" — with its source spelled
 out, because it comes from whichever estimate is most trustworthy at the moment:
 
-1. best: the **server's own refresh-delta** (how much the file grew between
-   flushes), which survives a page reload;
+1. best: the **server's own refresh-delta** (the wall-clock time between two file
+   flushes, divided by the iterations added), which survives a page reload;
 2. early on, before the server has two timestamps to compare, a **client-side
    estimate** from the last couple of polls;
 3. as a fallback, the engine's own **once-per-run timer** snapshot.
