@@ -64,6 +64,10 @@ header, inside the domain.
   Index links follow the same form.
   Enforced by `tests/test_docs_structure.py`. (A doc that has not migrated yet
   is named in inline code, not linked — no target exists to point at.)
+  **No `#` heading-anchor links** (browser-verified 2026-07-26): the renderer
+  forces `target="_blank"` on every in-doc link *and* does not honor `#` anchors,
+  so an anchor link opens a stray blank tab and never scrolls. For a same-doc
+  section pointer use plain text ("see § 8"), not `[…](#…)`.
 
 ### The doc rule (carried over — still the point of all of this)
 
