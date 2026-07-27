@@ -42,7 +42,7 @@ already gone — identity-cross-checkable in `docs/archive/`.)*
 | 0 | Freeze + skeleton + ledger + rules + tests | **done** (2162e44, 6efb0ca) |
 | H | ALL historical archives → `archive/` (+ `audits/`) | **done** (a3f9b82) |
 | 1 | `roadmap.md` — THE plan (absorbs all scattered phasing); the forward north-star | **done** (8143bcf) |
-| 2 | `model/` (~11): structure family, periodicity, annotations, sidecars, selection, region labels, chemistry, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | **next** |
+| 2 | `model/` (~11): structure family, periodicity, annotations, sidecars, selection, region labels, chemistry, parse stack, data vocabulary; `types/` folds in (`parsers.md` → archive) | **done** (2026-07-26) — `overview` + `structure` (+`-periodicity`/`-annotations`/`-molstruct`) + `chemistry` + `parse`; each migrated **and** fresh-eyes audited. `parsers.md` archived. Split sources still **pending** their non-model halves (claimed later): `region-labels` + `sidecar-contract` → engines; `data-vocabulary` → execution. `selection.md` → web (projects-sidebar). |
 | 3 | `science/` (~4): validation machinery, chemistry correctness, pseudopotential standards, tuning | pending |
 | 4 | `engines/` (~8): SIESTA, PySCF, transport/TranSIESTA, builders, GPU recipe; `transiesta-workflow` + `transport-guide` move in | pending |
 | 5 | `execution/` (~16): staged-execution first; job-execution master; config; script contracts; SLURM; guides deduped; `bundle-contract` → `handoff-bundle` rename | pending |
