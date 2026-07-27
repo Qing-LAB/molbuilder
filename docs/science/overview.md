@@ -17,8 +17,7 @@ live in the sibling docs below.
 
 > **New to the vocabulary?** Terms like *SCF*, *open-shell*, *k-points*, *KB
 > projector*, *frozen dataclass* are all defined in plain words in the
-> [**Glossary** (§ 8)](#8-glossary--plain-language) at the end — skim it first if
-> any acronym here is unfamiliar.
+> **Glossary at the end (§ 8)** — skim it first if any acronym here is unfamiliar.
 
 ---
 
