@@ -80,20 +80,34 @@ are valid only against the structure they were computed on — **pinned by
 flowchart LR
     INT["internal<br/>0-based index into Structure"]
     DISP["display<br/>1-based (list, labels, filters)"]
-    ENG["engine input<br/>SIESTA/geomeTRIC 1-based · PySCF 0-based"]
+    ENG["engine (in and out)<br/>SIESTA/geomeTRIC 1-based · PySCF 0-based"]
     INT -- "toDisplay(i) = i+1" --> DISP
     DISP -- "fromDisplay(i) = i−1" --> INT
-    INT -- "engine_atom_index.py (per engine)" --> ENG
+    INT -- "to_engine_index(i, engine)" --> ENG
+    ENG -- "from_engine_index(n, engine)" --> INT
 ```
+
+The engine edge is **two-way**: `to_engine_index` writes the atom number into
+the input file, and `from_engine_index` reads it back when engine *output*
+references an atom by number (the return leg of the round-trip). When output is
+order-preserved — SIESTA/PySCF emit coordinate and force blocks in `Structure`
+order — the internal index is simply the row position and no number
+translation is needed.
 
 | Boundary | Direction | The single API |
 |---|---|---|
 | internal → display | 0 → 1-based | `toDisplay` (`lib/molview/_atom-index.js`) |
 | user input → internal | 1 → 0-based | `fromDisplay` / `shiftExpression` (same module) |
-| internal → engine | 0-based → engine convention | `engine_atom_index.py` — `siesta_atom_index` (1-based), `geometric_atom_index` (1-based), `pyscf_atom_index` (0-based) |
+| internal → engine input | 0-based → engine convention | `engine_atom_index.py` — `to_engine_index(i, engine)` (dispatch), or the FACT functions `siesta_atom_index`/`geometric_atom_index` (1-based) / `pyscf_atom_index` (0-based) |
+| engine output → internal | engine convention → 0-based | `engine_atom_index.py` — `from_engine_index(n, engine)` (the inverse; return leg of the round-trip) |
 
 `engine_atom_index.py` is the **sole** place a 0-based identity becomes an
-engine atom number — **no other code applies a bare `i + 1`**. The JS
+engine atom number and back — **no other code applies a bare `i + 1` or
+`n − 1`** (both directions route here; bound by `tests/test_engine_atom_index.py`,
+including the round-trip identity `from_engine_index(to_engine_index(i, e), e) == i`).
+It exposes the per-engine FACT functions **and** the engine-parametrized
+`to_engine_index` / `from_engine_index` dispatch, backed by one base-offset
+registry so a new engine defines both directions in a single line. The JS
 `_atom-index.js` (`toDisplay`/`fromDisplay`/`shiftExpression`) is the single
 web-UI implementation; the standalone viewer embed inlines `+1` at the label,
 drift-guarded against `toDisplay`.

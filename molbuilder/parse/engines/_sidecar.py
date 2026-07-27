@@ -172,7 +172,11 @@ def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
     finally:
         fh.close()
 
-    return {n - 1 for n in one_based}
+    # SIESTA echoes constraints 1-based; translate back to the 0-based
+    # Structure identity through the engine index API (never a bare n - 1,
+    # which would be wrong for a 0-based engine).
+    from ...engine_atom_index import from_engine_index
+    return {from_engine_index(n, "siesta") for n in one_based}
 
 
 def _siesta_fdf_path_for(traj_path: str) -> str | None:

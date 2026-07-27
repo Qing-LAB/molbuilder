@@ -20,7 +20,7 @@
  *
  * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
  */
-import { formula as mvFormula } from "/static/lib/molview/index.js";
+import { formula as mvFormula, toDisplay } from "/static/lib/molview/index.js";
 // molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
 // §D.0), never import it. Returns whatever MolView currently has (null = nothing loaded).
 function _mvdata() {
@@ -162,7 +162,7 @@ function _mvdata() {
                 const a = sel[0];
                 addBtn.disabled = locked;
                 anchorReadout.textContent =
-                    `Anchor: #${a + 1} ${els[a]}`;
+                    `Anchor: #${toDisplay(a)} ${els[a]}`;
             } else {
                 addBtn.disabled = true;
                 anchorReadout.textContent =
@@ -180,8 +180,8 @@ function _mvdata() {
                 const [a, b] = sel;
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
-                    `Anchors: #${a + 1} ${els[a]} → ` +
-                    `#${b + 1} ${els[b]}`;
+                    `Anchors: #${toDisplay(a)} ${els[a]} → ` +
+                    `#${toDisplay(b)} ${els[b]}`;
             } else {
                 orientBtn.disabled = true;
                 orientReadout.textContent =
