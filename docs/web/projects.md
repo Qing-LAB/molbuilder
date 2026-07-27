@@ -93,9 +93,11 @@ Deleting a project or a topic folder needs a type-the-name confirmation.
 ## 3. Opening and saving a molecule — the one door
 
 Loading a structure into the viewer and saving one back are the job of the
-**`projects.parser`** door. It is deliberately **file-only** — it hands the
-server a *path*, never structure bytes — and it never throws; it always returns
-`{ ok, … }`.
+**`projects.parser`** door. It works in terms of file *paths* and never throws —
+it always returns `{ ok, … }`. Opening hands the server only a **path** (the
+server reads the bytes); saving hands over the serialized structure, but the
+**server** writes the `.xyz` + `.molstruct.json` pair — the browser never
+authors the sidecar itself.
 
 **Opening — `projects.parser.openMolecule(path)`:**
 
@@ -120,9 +122,9 @@ cancelled:true }` if you decline.
    real content hash).
 3. On success MolView is marked saved.
 
-Why file-only, and why the server writes the sidecar: a browser-written sidecar
-had no schema stamp, so the *load* door rejected it — a save-then-reload trap.
-Letting the server own the write closes that. If the file already exists, the
+Why the server writes the sidecar: a browser-written sidecar had no schema
+stamp, so the *load* door rejected it — a save-then-reload trap. Letting the
+server own the write closes that. If the file already exists, the
 server answers with a "needs overwrite" signal and the door returns
 `{ ok:false, needsOverwrite:true }`, so the tab can show its overwrite dialog and
 retry with `{ overwrite:true }`.
@@ -271,7 +273,9 @@ into the Documents tab). These are tracked as known gaps.
 ## 7. Test map
 
 - `test_projects_state_lock_guard_js.py` — the selection state + the lock guard.
-- `test_projects_sidebar_*` / `test_files_api_*` — the sidebar wiring and the
-  `/api/files/*` routes.
+- `test_projects_public_surface_js.py` — the public API surface stays complete.
+- `test_projects_render_sidebar_js.py` — the sidebar render + wiring.
+- `test_projects_api_envelope_js.py` — the uniform `{ ok, … }` result shape.
+- `test_web_files.py` — the `/api/files/*` server routes.
 - The parser doors are covered by the structure load/save tests
   (`/api/build/load` + `/api/structure/save`).
