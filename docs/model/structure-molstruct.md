@@ -114,8 +114,10 @@ Two independent guards, deliberately kept separate:
 metadata codec. It is a sidecar-only map, keyed by region label, that records
 *how* a region was selected (a rule, e.g. "all atoms within 3 Å of …") so the
 selection can be re-evaluated. It is validated by `normalise_selection_rules`
-(each target must name a real region) and carried verbatim; it rides in the
-envelope, alongside the metadata, not inside it.
+(each target must name a real region **or the literal `frozen_atoms`**) and
+**normalised** — each rule is re-parsed and re-serialised, so the stored form is
+canonical, not byte-for-byte. It rides in the envelope, alongside the metadata,
+not inside it.
 
 ---
 

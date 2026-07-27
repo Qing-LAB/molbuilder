@@ -39,7 +39,7 @@ file.
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
 | `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = `(0,0,0)`; **dropped unless `cell` is explicit** |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
-| `pbc` | 3 bools — **DERIVED, not stored** | ASE-interop view: `periodic\|transport → True`, `isolated → False` | from `axis_kind` |
+| `pbc` | 3 bools — **stored, kept in lockstep with `axis_kind`** | ASE-interop view: `periodic\|transport → True`, `isolated → False`; `__post_init__` reconciles the two so they never diverge | derived from `axis_kind` (the richer field: a boolean can't tell `transport` from `periodic`) |
 | `vacuum` | 3 floats (Å) | isolation padding — **nonzero only on an `isolated` axis** | `(0, 0, 0)` |
 
 `cell` and `axis_kind`, `vacuum`, `cell_origin` all live on `Structure`
@@ -156,9 +156,9 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | The fields + invariants | `structure.py` `__post_init__` | validate/reconcile `cell`/`axis_kind`/`vacuum`/`cell_origin`; derive `pbc` |
 | `resolve_cell()` | `structure.py:427` | § 4 — explicit wins, else per-axis |
 | `resolve_cell_origin()` | `structure.py:467` | § 6 — the box's low corner |
-| **Capture at construction** | `modify.py` `add_electrode_slab:723` / `add_symmetric_electrodes:986` | sets `Structure.cell` (in-plane lattice + captured z device length) **and** `axis_kind=(periodic,periodic,transport)` (`:950,969,1097`) — no more electrode discard |
+| **Capture at construction** | `modify.py` `add_electrode_slab:723` (`add_symmetric_electrodes:986` inherits it by calling `add_electrode_slab` twice) | sets `Structure.cell` (in-plane lattice + captured z device length) **and** `axis_kind=(periodic,periodic,transport)` (defined `:950`, passed to the constructor `:969`) — no more electrode discard |
 | Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
-| Transport | `transport/_cli.py:_load_device` | reads `struct.cell`; `--cell-fdf` is a **legacy fallback** (`:38-44`) used only when the structure carries no cell |
+| Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
 The electrode builder records which lattice constant it used
 (`fcc_lattice.json` carries `a_experimental` / `a_pbe` / `a_pbe_siesta_psml`),
@@ -189,9 +189,11 @@ convention. The box would sit at the origin with half the atoms outside it (the
 2. **`resolve_cell_origin()` returns `cell_origin` for an explicit cell**, so
    the viewer draws the box at its true corner, wrapping the structure.
 3. **SIESTA correctness is applied at generation, not while editing.**
-   `render_fdf` translates atoms by `−resolve_cell_origin()` for **every** cell,
-   so SIESTA always receives atoms inside `[0,cell)` with the cell at
-   `(0,0,0)`. **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
+   `render_fdf`'s default path (`cell=None`, the one the web build uses)
+   translates atoms by `−resolve_cell_origin()`, so SIESTA always receives
+   atoms inside `[0,cell)` with the cell at `(0,0,0)`. (An explicit `cell=`
+   override argument instead fractional-wraps atoms into that cell — same end
+   state, different mechanism.) **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
    `cell_origin`, atoms where they are) and SIESTA's cell (at `(0,0,0)`, atoms
    translated by `−cell_origin`) are the SAME relative geometry.
 4. **`calibrate_to_cell` — the optional unified last step** (`modify.py:1068`,
@@ -276,7 +278,7 @@ flowchart TB
     DS[".xyz + .molstruct.json<br/>(cell / cell_origin / axis_kind / vacuum)"]
     MV["MolView: cell wireframe + box at resolved origin"]
     FDF["fdf generator: LatticeVectors (from resolved cell),<br/>atoms translated by −resolve_cell_origin()"]
-    TR["transport: reads Structure.cell + axis_kind (no cell_fdf)"]
+    TR["transport: reads Structure.cell + axis_kind<br/>(--cell-fdf overrides if given)"]
     OUT[".fdf → run → SIESTA .out/.XV (cell)"]
     PARSE["parse/ → StructureResult.cell → back into a dataset"]
     DS --> MV
@@ -299,11 +301,11 @@ electrode builder's capture-at-construction (`cell` + `axis_kind`); `render_fdf`
 origin translation; `calibrate_to_cell` (op + `/api/modify/calibrate`); the
 MolView Cell-page display + the Modify per-group editors; sidecar persistence
 of `cell`/`cell_origin`/`axis_kind`/`vacuum` (schema v5, `kgrid` dropped);
-transport reading `struct.cell` (`--cell-fdf` legacy fallback).
+transport reading `struct.cell` (a `--cell-fdf` argument overrides it).
 
 **Not a periodicity concern (relocated):** the **k-grid** DFT sampling
 parameter and its `axis_kind`-gated clamp (dims = 1 unless the axis is
 `periodic`) live with `SiestaConfig` — see `engines/siesta.md` (migrating in
 the engines wave). The full k-grid physics (reciprocal MP grid, the
 Born–von Kármán supercell view) is preserved in the kept source
-`old_docs/_migrated_structure-periodicity.md` until that wave claims it.
+`old_docs/protocols/_migrated_structure-periodicity.md` until that wave claims it.

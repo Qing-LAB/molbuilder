@@ -48,9 +48,11 @@ flowchart LR
   1. Find non-bridging oxygen neighbours (an O whose only heavy neighbour is
      this P). Adjacency is distance-based: `_HX_CUT = 1.30 Å` (X–H),
      `_XX_CUT = 1.95 Å` (heavy–heavy).
-  2. The alphabetically-first **bare** one (no H) is the implicit `P=O` and
-     contributes **0**.
-  3. Each remaining bare non-bridging O contributes **−1**.
+  2. Count them (`n_nb`) and how many already carry an H (`n_h`). One
+     non-bridging O is the implicit `P=O` (contributes **0**); each remaining
+     bare O without an H contributes **−1**. So per phosphorus the
+     contribution is **`−max(0, n_nb − 1 − n_h)`** — pure arithmetic, no
+     atom-name sorting (*which* O is left bare is a protonation choice, § 2).
 
   It does **not** count carboxylates (Asp/Glu), protonated amines (Lys/Arg),
   histidine pKa, sulfonates/sulfates/nitrates, or metal coordination — those
@@ -62,8 +64,10 @@ Two related counters:
 - **`total_electrons(struct, charge=0)` → int** — sum of atomic numbers minus
   the charge (electron count, used by spin-parity checks).
 - **`expected_pH7_peptide_charge(struct)` → int | None** — estimates a
-  peptide's net charge at physiological pH (Asp/Glu −1, Lys/Arg +1, His +
-  termini); returns `None` when the structure doesn't look like a peptide.
+  peptide's net charge at physiological pH: **only** Asp/Glu −1 and Lys/Arg +1.
+  His, Cys, Tyr and the free N-/C-termini contribute **0** (His is ambiguous at
+  pH 7; the termini cancel for a free peptide). Returns `None` when the
+  structure doesn't look like a peptide.
 
 ---
 
@@ -93,9 +97,9 @@ Two related counters:
 
 | Function | Purpose |
 |---|---|
-| `min_nonbonded_contact(struct, search_radius=2.5)` | the smallest non-bonded interatomic distance — clash detection |
+| `min_nonbonded_contact(struct, search_radius=2.5)` | closest approach between atoms in **different** residues — a steric-clash probe; returns `(distance, i, j)`, or `(None, None, None)` when there are no residue labels (intra-residue contacts are bonds, not clashes) |
 | `relieve_clashes(struct, steps=1000)` → Structure | nudge atoms apart to remove steric clashes |
-| `estimate_partial_charges(struct, bond_cutoff=1.95, hx_cutoff=1.30)` | per-atom partial charges (same connectivity cutoffs as § 1) |
+| `estimate_partial_charges(struct, total_charge=0.0, *, bond_cutoff=1.95, hx_cutoff=1.30)` | heuristic per-atom partial charges from electronegativity gaps (the cutoffs are keyword-only; same values as § 1) |
 | `estimate_dipole_moment_debye(struct, …)` | the molecular dipole moment, in Debye |
 
 ---

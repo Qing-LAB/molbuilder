@@ -76,9 +76,10 @@ classDiagram
 Channels are **keyed by atom index**, so any structure mutation (add/delete
 atom) MUST remap every channel or metadata silently corrupts. Every
 atom-count-changing modify op carries the remap in lockstep: the built-ins via
-`modify.py::remap_frozen_and_regions(old_to_new)`, and the extensible channels
-via `remap_annotations` (`structure.py:204`) — drop indices that vanished,
-translate the rest through `old_to_new`; `value` channels remap their key set.
+`modify.py::_reindex_transport_metadata(struct, keep)` (`:74`, which remaps
+`frozen_atoms` + `regions` inline against the survivor-index list), and the
+extensible channels via `remap_annotations` (`structure.py:204`) — drop indices
+that vanished, translate the rest; `value` channels remap their key set.
 This is a correctness requirement, not an add-on.
 
 ---
@@ -183,8 +184,8 @@ just isn't a simulation parameter. No emitter rewrite, no risk to the proven
 ## 5. Region-label vocabulary (which tags mean electrodes)
 
 Region labels are `tag` channels; a subset of the vocabulary drives the
-transport emitter. Users assign labels in the Modify tab (charset
-`^[A-Za-z][A-Za-z0-9_\-]*$`).
+transport emitter. Users assign labels in the Modify tab (the data model only requires a
+non-empty string — `Structure._validate_regions`).
 
 > **The convention, in one line:** any region whose label ends with
 > `-electrode`, `_electrode`, or bare `electrode` (case-insensitive) is a
@@ -209,7 +210,8 @@ The canonical labels the Modify tab ships and the emitter interprets:
 contiguity requirement, the bias-direction convention, and the NEGF literature
 references (Brandbyge PRB 65 165401, Stokbro, Reed, Solomon) — belongs with the
 transport engine: **`engines/transport.md`** (migrating in the engines wave;
-preserved meanwhile in the kept `old_docs/_migrated_region-labels.md`).
+preserved meanwhile in the kept `old_docs/protocols/region-labels.md` —
+unprefixed and still pending, since its transport half awaits the engines wave).
 
 ---
 
@@ -222,7 +224,7 @@ channel-model layer sits below the store, panel, and viewer-adapter.
 |---|---|---|
 | **L1** low-level presentation API | `lib/molview/_atom-channels.js` + `_atom-index.js` | `atomChannels`/`channelKinds` (channel taxonomy + order) and `toDisplay`/`fromDisplay`/`shiftExpression` (index base) — pure, no DOM/store/HTTP |
 | **L2** store | `_selection-store-impl.js` | atoms + filter drafts; `knownChannels()` (via L1); `_filterToRule` (draft → server rule) |
-| **L3** UI | `selection-panel.js` (+ viewer-adapter) | renders the filter over `knownChannels()`; overlays colour by channel |
+| **L3** UI | `selection/panel.js` (+ viewer-adapter) | renders the filter over `knownChannels()`; overlays colour by channel |
 | server | `/api/selection/*` | supplies per-atom channels + evaluates rules |
 
 > L1 moved from `lib/workspace/` to `lib/molview/` with the data-model
@@ -245,8 +247,9 @@ channelKinds(atoms) -> [{name,kind}]   // every filterable channel present
 membership, `category` → equals, `value` → a range predicate. `knownChannels()`
 enumerates every filterable channel, so the UI no longer special-cases
 regions-vs-frozen. Translation to server rules stays in `_filterToRule`
-(`tag`/`flag` → `by_region`; the existing `by_element`/`by_index`/`by_label`
-drafts still work, mapped onto the generalized model).
+(`_selection-store-impl.js`): `by_element` → `by_element`, `by_index` →
+`by_index_range` (with the 1-based→0-based shift), `by_residue` →
+`by_residue_name`, and `by_label` → `by_region`.
 
 ---
 
