@@ -52,11 +52,13 @@ Two details that matter:
   (It used to react to sidebar clicks directly; that was retired because a stray
   single-click could hijack a viewer mid-load. Now only the dropdown drives what
   is mounted.)
-- **Refresh re-scans, and tells a live viewer to re-fetch *now*** — without
-  remounting, so a playing movie keeps its camera and position. The picker stays
-  visible even when a folder has zero results, so Refresh is always reachable, and
-  it re-scans automatically when you return to the tab (so a file written while
-  you were away shows up).
+- **Refresh re-scans the folder, and tells a live viewer to re-fetch its data
+  *now*** rather than waiting for the next poll. The panel isn't torn down and
+  rebuilt — the mounted viewer reloads in place — but that reload is a *clean*
+  one (§ 4), so a trajectory jumps back to its first frame. The picker stays
+  visible even when a folder has zero results, so Refresh is always reachable,
+  and it re-scans automatically when you return to the tab (so a file written
+  while you were away shows up).
 
 ## 3. Showing the file
 
