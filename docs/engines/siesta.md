@@ -61,23 +61,29 @@ flowchart LR
 class SiestaConfig: ...          # config/siesta.py:114
 Config = SiestaConfig            # back-compat alias (:1095)
 
-render_fdf(struct, config=None, *, cell=None) -> str          # siesta/input.py:329
-convert(input_path, fdf_path, config=None) -> dict            # :1486
-copy_pseudopotentials(species, lib, dest_dir) -> list[str]    # :275 → the elements whose .psml was MISSING
+render_fdf(struct, config=None, *, cell=None) -> str                    # siesta/input.py:329
+convert(input_path, fdf_path, config=None, vacuum=None) -> dict         # :1486
+copy_pseudopotentials(species, lib, dest_dir) -> list[str]              # :275 → the elements whose .psml was MISSING
 ```
 
-`convert` returns `{"fdf", "n_atoms", "species"}` plus conditional keys:
-`"missing_psml"` (when it copied pseudos), `"makov_payne_script"` (when charge ≠ 0),
-and `"molwatch_log"` (when `write_molwatch_log`).
+`convert` returns `{"fdf", "n_atoms", "species", "missing_psml"}` (`missing_psml`
+is `[]` unless pseudos were copied and some were absent) plus two conditional keys:
+`"makov_payne_script"` (when charge ≠ 0) and `"molwatch_log"` (when
+`write_molwatch_log`). `vacuum=` sets `struct.vacuum` when no cell is imported.
 
 ```python
 >>> from molbuilder.siesta.input import render_fdf
 >>> from molbuilder.config.siesta import SiestaConfig
->>> cfg = SiestaConfig(system_label="hemeC", verbose_comments=False)  # verbose is ON by default
->>> print("\n".join(render_fdf(struct, cfg).splitlines()[:5]))
-SystemName        hemeC
-SystemLabel       hemeC        # always == system_label; system_name was removed 2026-05-27
+>>> fdf = render_fdf(struct, SiestaConfig(system_label="hemeC"))   # → the full .fdf text
+```
 
+The text **opens with a provenance + bench-marks wrapper** (§ 3), then the engine
+header — so it does *not* start with `SystemName`. The header block itself reads:
+
+```fdf
+SystemName        hemeC
+SystemLabel       hemeC          # SystemName is ALWAYS == SystemLabel == system_label
+                                 # (the separate system_name was removed 2026-05-27)
 NumberOfAtoms     42
 NumberOfSpecies   3
 ```
@@ -91,7 +97,11 @@ CLI exits with code 2.
 
 ## 3. What the `.fdf` contains (sections, in emission order)
 
-`render_fdf` emits these blocks in order. `SystemLabel` is the basename SIESTA
+`render_fdf` emits these blocks in order — but the whole body is **wrapped** by the
+shared script-contract blocks: a `provenance` + `bench-marks` header (and an
+optional `atom-metadata` block) on top, and a `user-custom` placeholder + an
+always-emitted post-processing-hook footer at the bottom (`input.py:1387`). So the
+file does **not** begin at row 1 below. `SystemLabel` is the basename SIESTA
 prefixes every output file with; `MeshCutoff` sets the real-space integration grid
 fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 
@@ -130,7 +140,7 @@ dropped `WriteHS`.
 ## 4. The charge contract
 
 Resolved charge is computed **once** per `render_fdf`, via
-`resolve_net_charge(struct, cfg.net_charge)` (`input.py:356` → `chemistry.py:1049`):
+`resolve_net_charge(struct, cfg.net_charge)` (`input.py:356` → `chemistry.py:1029`):
 
 - `cfg.net_charge is not None` → use it verbatim (including `0`, which disables
   auto-detection);
@@ -181,15 +191,15 @@ the analyzer/preflight warns ([`science/validation.md`](?doc=science/validation.
 
   Set with `spin_polarized=False`, `spin_total` is ignored (meaningless without
   polarisation). Unlike PySCF there is no method-vs-spin validation — SIESTA
-  accepts `Spin polarized` with any basis; the only rule is *the user must set it
-  for any open-shell system*.
+  accepts `SpinPolarized .true.` with any basis; the only rule is *the user must
+  set it for any open-shell system*.
 
 ---
 
 ## 6. Lattice & k-grid
 
 **Lattice (§2).** Either the caller passes `cell=` (a 3×3 Å matrix), or the emitter
-auto-generates an orthorhombic **vacuum box** of `extent + 2·cell_padding` per axis
+auto-generates the box via `struct.resolve_cell()` (isolated axes = bbox + 2·vacuum)
 with the molecule centred. The per-axis / periodicity behaviour (which axes are
 periodic vs vacuum, `axis_kind`, `resolve_cell`) is the model's contract —
 [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md).
@@ -216,7 +226,7 @@ Two **orthogonal** decisions (contract rewritten 2026-06-29):
    solve runs on the GPU (`Diag.ELPA.GPU .true.`), GPU-only with no silent CPU
    fallback. Off with an ELPA algorithm → CPU-ELPA (`Diag.ELPA.GPU .false.`).
    Meaningful only with an ELPA algorithm — GPU + ScaLAPACK is rejected by the
-   **emitter itself** (`render_fdf` raises `ValueError`, `input.py:1037`), not just
+   **emitter itself** (`render_fdf` raises `ValueError`, `input.py:1038`), not just
    the UI.
 
 **Emission:**
@@ -315,6 +325,7 @@ coordinates block); (3) emit invalid SIESTA syntax for any standard config — e
 variant tested must `convert()` end-to-end without raising.
 
 **Tests:** `test_smiles_and_siesta.py` (render + convert round-trip),
-`test_review_fixes.py` (net-charge override, cell-padding auto-bump, `Config`
+`test_review_fixes.py` (net-charge override, the thin-vacuum **warn** — D3, since
+`cell_padding` was removed 2026-07 — and the `Config`
 alias), `test_cli_siesta_stages.py` + `test_siesta_form_schema_stage_table.py`
 (staged-opt CLI + form widget), `test_molwatch_preview.py` (the sibling log).
