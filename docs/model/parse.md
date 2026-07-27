@@ -3,7 +3,7 @@
 **Role:** contract
 **Domain:** model
 **Module:** `molbuilder/parse/` · **Tests:** `tests/parse/` (~106 tests).
-**Companions:** `structure.md` (a `StructureResult` carries a `Structure`);
+**Companions:** [`structure.md`](?doc=model/structure.md) (a `StructureResult` carries a `Structure`);
 `engines/siesta.md` + `engines/pyscf.md` (the `.out`/`.log`/geometry formats the
 leaf parsers read, migrating); `execution/job-decoder.md` +
 `execution/handoff-bundle.md` (the directory-level `JobResult`/`BundleResult`
@@ -37,9 +37,9 @@ from here and queries the registry rather than knowing which parser to call.
 | **`DirParser`** (`:98`) | one directory → one `ParseResult`, **composed** from per-file parsers plus directory-level invariants | `can_parse(run_dir)` |
 
 Each declares `name` / `label` / `output` (the concrete `ParseResult` subclass
-it returns); file/dir parsers add a `hint` (what to point at when `can_parse`
-is `False`). **`TextParser` has no detection** — a text body has no path to
-inspect, so the caller names the parser: `parse_text(text, parser=…)`.
+it returns); **`FileParser`s** also declare a `hint` (what to point at when
+`can_parse` is `False`). **`TextParser` has no detection** — a text body has no
+path to inspect, so the caller names the parser: `parse_text(text, parser=…)`.
 
 ---
 
@@ -59,11 +59,12 @@ classDiagram
         result_kind : str
     }
     class TrajectoryResult {
-        frames · lattice · run_state · runtime_info
+        frames · lattice · run_state ·
+        runtime_info · parse_warnings
         result_kind = "trajectory"
     }
     class StructureResult {
-        structure : Structure · cell
+        structure : Structure · cell · parse_warnings
         result_kind = "structure"
     }
     class SidecarResult {
@@ -76,8 +77,8 @@ classDiagram
         result_kind = "script"
     }
     class JobResult {
-        job_type · status · progress ·
-        geometry · plots · source_files
+        job_type · status · progress · geometry ·
+        plots · source_files · parse_warnings
         result_kind = "job"
     }
     class BundleResult {
@@ -126,7 +127,7 @@ flowchart TD
 
 | Function (`registry.py`) | Does |
 |---|---|
-| `detect(path)` (`:60`) | return the first parser whose `can_parse(path)` is `True` (dir parsers first if `path` is a directory, then file parsers); `UnknownFormatError` if none, with every registered parser + the standard foot-gun hints |
+| `detect(path)` (`:60`) | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` (`:135`) | `detect` + `parse` in one call |
 | `parse_text(text, parser)` (`:158`) | parse a known text body — **no detection**, caller names the `TextParser` |
 | `parse_dir(path)` (`:144`) | detect among **DirParsers only** — for callers whose contract is "this is a run directory" (JobMonitor, Results, bundle handoff) |
@@ -134,6 +135,57 @@ flowchart TD
 
 **Errors** (`errors.py`): `UnknownFormatError` (`:13`) and
 `AmbiguousFormatError` (`:23`), both on a `ParseError` base (`:9`).
+
+### Using it — worked examples
+
+**Parse a file** — detect + read, narrowing on `result_kind`:
+
+```python
+from pathlib import Path
+from molbuilder.parse import parse
+
+r = parse(Path("projects/BDT/optimization/BDT.out"))
+if r.result_kind == "trajectory":            # a SIESTA / PySCF / molwatch .out
+    last = r.frames[-1]
+    print(last.energy, last.max_force)        # eV, eV/Å (either may be None)
+    print(r.run_state)                        # "running" | "finished" | "failed"
+elif r.result_kind == "structure":           # a .XV / *_optimized.xyz
+    print(len(r.structure.elements), r.cell)  # atom count, 3×3 cell or None
+```
+
+**Read a sidecar:**
+
+```python
+r = parse(Path("water.molstruct.json"))       # -> SidecarResult
+print(r.schema, r.payload)                     # e.g. "molstruct/v6", {...}
+```
+
+**Decode a whole run directory** (what the Results tab consumes):
+
+```python
+from molbuilder.parse import parse_dir
+
+job = parse_dir(Path("projects/BDT/optimization"))   # -> JobResult
+job.status       # decoded status dict (converged / running / failed …)
+job.progress     # per-stage CG-step progress
+job.plots        # per-source plot buckets for the Results tab
+```
+
+**Extract the reserved blocks from a `.fdf` / `.py` body** (a `TextParser` — no
+detection, you name it):
+
+```python
+from molbuilder.parse import parse_text
+from molbuilder.parse.scripts.source import ScriptSourceTextParser
+
+s = parse_text(fdf_text, parser=ScriptSourceTextParser)   # -> ScriptResult
+s.atom_metadata      # the ATOM-METADATA block dict, or None if absent
+s.provenance         # the PROVENANCE block, or None
+```
+
+**Skip detection when you already know the type** — call the parser class's
+`parse()` directly. This is what most consumers do, e.g.
+`BundleDirParser.parse(run_dir)` (`web/blueprints/results.py`).
 
 ---
 
@@ -175,7 +227,7 @@ molbuilder/parse/
 ```
 
 > **Two geometry formats have no leaf FileParser (by design).** Plain `.xyz`
-> reading uses `Structure.from_xyz` directly (`structure.md`), and `.fdf`
+> reading uses `Structure.from_xyz` directly (see [`structure.md`](?doc=model/structure.md)), and `.fdf`
 > initial-coordinates reading lives in `dirs/_assembler_helpers.py` (used by the
 > DirParsers), rather than as registered `coords/` parsers. Adding them as
 > FileParsers was scoped but not needed.
@@ -205,20 +257,55 @@ what a registered FileParser can produce — add the missing FileParser instead.
 
 ---
 
-## 6. Adding a parser (plugin contracts)
+## 6. Adding a parser
 
-- **Engine FileParser** → `parse/engines/<engine>.py`: a `FileParser` with
-  `output = TrajectoryResult`; `can_parse` checks content markers in the first
-  ~1000 bytes; `register(...)` in `engines/__init__.py`; L2 test.
-- **Sidecar FileParser** → `parse/sidecars/<kind>.py`: returns
-  `SidecarResult(payload=…, schema="<kind>/vN")`; `can_parse` matches
-  `.<kind>.json`.
-- **Block TextParser** → `parse/scripts/<block>.py`: returns `ScriptResult`;
-  uses `MARKER_RE` from `scripts/markers.py`; the caller invokes it via
-  `parse_text(text, parser=<Block>Parser)`.
-- **DirParser composer** → `parse/dirs/<purpose>.py`: **must compose existing
-  FileParsers + TextParsers** (forbidden pattern #1 below), not parse files
-  inline.
+The shape every parser follows — a real minimal `FileParser` (mirrors
+`parse/sidecars/spectra.py`): read a file, return a typed result via the
+sub-package's envelope helper.
+
+```python
+# molbuilder/parse/sidecars/mykind.py
+import json
+from pathlib import Path
+from molbuilder.parse.base import FileParser
+from molbuilder.parse.types import SidecarResult
+from ._helpers import build_sidecar_result   # fills the envelope: schema_version,
+                                             # parsed_at, parser_name, source
+
+class MyKindSidecarFileParser(FileParser):
+    name   = "mykind-json"
+    label  = "molbuilder .mykind.json sidecar"
+    hint   = "files ending in .mykind.json"
+    output = SidecarResult
+
+    @classmethod
+    def can_parse(cls, path: Path) -> bool:
+        return path.name.endswith(".mykind.json") and path.is_file()
+
+    @classmethod
+    def parse(cls, path: Path) -> SidecarResult:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        return build_sidecar_result(
+            payload=payload, schema=f"mykind/v{payload.get('schema_version', 0)}",
+            parser_name=cls.name, source=path,
+        )
+```
+
+Then **register it at import** in the sub-package's `__init__.py`
+(`from .mykind import MyKindSidecarFileParser` → `register(MyKindSidecarFileParser)`)
+and add an L2 test under `tests/parse/`.
+
+Per parser kind, the specifics:
+- **Engine FileParser** (`parse/engines/`): `output = TrajectoryResult`;
+  `can_parse` sniffs content markers in the **first few hundred lines** (SIESTA
+  scans 300; molwatch keys off the first 5) — not a fixed byte window.
+- **Sidecar FileParser** (`parse/sidecars/`): `can_parse` matches the
+  `.<kind>.json` suffix; the result's `schema` is `"<kind>/v<N>"`.
+- **Block TextParser** (`parse/scripts/`): returns `ScriptResult`; uses
+  `MARKER_RE` from `scripts/markers.py`; the caller invokes it via
+  `parse_text(text, parser=<Block>Parser)` (no auto-detection).
+- **DirParser composer** (`parse/dirs/`): **must compose existing FileParsers +
+  TextParsers** (forbidden pattern #1 below), never parse files inline.
 
 ---
 
@@ -227,7 +314,8 @@ what a registered FileParser can produce — add the missing FileParser instead.
 These stop the next round of parallel parse paths:
 
 1. **DirParsers compose registered parsers — no inline file-level parsing.**
-   Need a new file read? Add a FileParser first. (Lint: `test_dir_parser_uses_registry`.)
+   Need a new file read? Add a FileParser first. (A convention today, not yet
+   lint-enforced.)
 2. **TextParsers do NO I/O.** A path-taking caller reads the file and passes the
    body.
 3. **FileParsers do not spawn subprocesses, network calls, or threads** —
