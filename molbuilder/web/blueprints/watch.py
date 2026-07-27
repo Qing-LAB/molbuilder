@@ -323,11 +323,11 @@ def _atom_metadata_json(
 
     All the real work -- finding the input script, parsing the
     ATOM-METADATA block, guarding the atom count -- lives in
-    :func:`molbuilder.parse.scripts.atom_metadata.atom_metadata_json_for_run_dir`
-    (the module that owns the block).  This is pure results-adapter glue:
-    it sources frame-0's atom count from the parsed trajectory and hands
-    it in as the guard.  ``None`` when the run carries no block."""
-    from molbuilder.parse.scripts.atom_metadata import (
+    :func:`molbuilder.parse.dirs.atom_metadata.atom_metadata_json_for_run_dir`
+    (the directory-scoped recovery helper).  This is pure results-adapter
+    glue: it sources frame-0's atom count from the parsed trajectory and
+    hands it in as the guard.  ``None`` when the run carries no block."""
+    from molbuilder.parse.dirs.atom_metadata import (
         atom_metadata_json_for_run_dir,
     )
     frames = (data or {}).get("frames")

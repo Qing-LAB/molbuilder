@@ -11,6 +11,7 @@ directly.
 """
 
 from molbuilder.parse.registry import register
+from .atom_metadata import atom_metadata_json_for_run_dir   # noqa: F401  -- re-export
 from .bundle import BundleDirParser   # noqa: F401  -- re-export
 from .job import JobDirParser, decode_run_dir   # noqa: F401  -- re-export
 
@@ -18,4 +19,9 @@ from .job import JobDirParser, decode_run_dir   # noqa: F401  -- re-export
 # dispatch (see its module docstring for the rationale).
 register(JobDirParser)
 
-__all__ = ["BundleDirParser", "JobDirParser", "decode_run_dir"]
+__all__ = [
+    "BundleDirParser",
+    "JobDirParser",
+    "atom_metadata_json_for_run_dir",
+    "decode_run_dir",
+]

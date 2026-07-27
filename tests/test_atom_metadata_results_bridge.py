@@ -12,8 +12,10 @@ frozen the user set in Build.
 
 Three seams, each tested for its END RESULT (not just API presence):
 
-  1. parse layer -- ``atom_metadata_json_for_run_dir`` recovers the block
-     from a run dir, guards the atom count, returns None on mismatch.
+  1. parse layer -- ``atom_metadata_json_for_run_dir`` (``parse/dirs``,
+     the directory-scoped layer; the TextParser itself stays memory-only)
+     recovers the block from a run dir, guards the atom count, returns
+     None on mismatch.
   2. molview door -- ``/api/build/load`` applies a TRUSTED ``atom_metadata``
      block (distinct from an untrusted ``.molstruct.json`` ``sidecar``):
      the response's per-atom payload carries regions + is_frozen.
@@ -27,10 +29,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.parse.scripts.atom_metadata import (
-    _extract_atom_metadata_dict,
-    atom_metadata_json_for_run_dir,
-)
+from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
+from molbuilder.parse.scripts.atom_metadata import _extract_atom_metadata_dict
 from molbuilder.script_emit import emit_atom_metadata
 
 

@@ -146,8 +146,9 @@ about how a simulation runs.
 
 **Results-tab recovery bridge.** The trajectory inspector loads *coordinates*
 from a run's output logs (geometry only — the labels aren't there, they're in
-the input script's block). So `parse/scripts/atom_metadata.py::atom_metadata_json_for_run_dir(run_dir, n_atoms)`
-(`:93`) finds the run's input script, extracts the block, guards it against the
+the input script's block). So `parse/dirs/atom_metadata.py::atom_metadata_json_for_run_dir(run_dir, n_atoms)`
+(the directory-scoped layer — the TextParser itself stays memory-only) finds
+the run's input script, extracts the block, guards it against the
 trajectory's atom count (mismatch → `None`, never breaks the load), and
 `/api/watch/load` surfaces it as `atom_metadata`. The inspector hands it to
 `molview.data.installMolecule({text, atomMetadata})`; `/api/build/load` applies
