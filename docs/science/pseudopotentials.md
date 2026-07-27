@@ -46,7 +46,7 @@ Two entry points, one engine:
 flowchart TB
     P["SIESTA preflight — validation/siesta.py:25<br/>(every render_fdf / Build / molbuilder run)"]
     C["CLI — molbuilder pseudo check &lt;dir&gt; — cli.py:342<br/>(manual audit)"]
-    CC["pseudos.check_coverage(elements, dir, …) — pseudos.py:428<br/>→ List[CoverageEntry(element, status, message, path)]"]
+    CC["pseudos.check_coverage(elements, dir, …) — pseudos.py:443<br/>→ List[CoverageEntry(element, status, message, path)]"]
     ST["8 statuses: ok · missing · dead_projector · xc_family_mismatch ·<br/>xc_mismatch · relativistic_mismatch · generator_mismatch · parse_warning"]
     SEV["severity — the ONE shared set pseudos.ERROR_STATUSES<br/>ERROR (blocks): missing · dead_projector · xc_family_mismatch<br/>WARN: the rest · ok: silent"]
     P --> CC
@@ -58,9 +58,9 @@ Both surfaces call the **same** `pseudos.check_coverage`, which parses each PSML
 header once (`parse_psml_header` → `PsmlInfo`, `pseudos.py:168`) and returns
 `CoverageEntry(element, status, message, path)` (`pseudos.py:418`) — the same
 eight statuses. Both then map status → severity through the **one shared
-constant** `pseudos.ERROR_STATUSES` (`pseudos.py`), so the preflight (which
-blocks script generation, `validation/siesta.py:120`) and the CLI (which exits
-non-zero, `cli.py:380`) **cannot disagree about what blocks**:
+constant** `pseudos.ERROR_STATUSES` (`pseudos.py:440`), so the preflight (which
+blocks script generation, `validation/siesta.py:125`) and the CLI (which exits
+non-zero, `cli.py:386`) **cannot disagree about what blocks**:
 
 | Severity | Statuses | Meaning |
 |---|---|---|
@@ -68,18 +68,14 @@ non-zero, `cli.py:380`) **cannot disagree about what blocks**:
 | **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
-> **History.** Until 2026-07-26 the CLI kept its own narrower exit set
-> (`{"missing", "dead_projector"}`) and let an `xc_family_mismatch` slip past with
-> exit 0 while the preflight blocked it. The two are now unified on the single
-> `ERROR_STATUSES` constant, pinned by
+> **History (2026-07).** Two changes produced the unified set above: (a) XC-*family*
+> mismatch was split off as `xc_family_mismatch` → **ERROR** (an earlier version
+> treated all XC mismatch as one WARN and left family-vs-author blocking "for
+> reviewer decision"); (b) the CLI's exit set — once narrower
+> (`{"missing", "dead_projector"}`, so an `xc_family_mismatch` slipped past with
+> exit 0 while the preflight blocked it) — was unified onto the shared
+> `ERROR_STATUSES`. Both pinned by
 > `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces`.
-
-> **Evolution note.** The earlier version of this doc treated *all* XC mismatch
-> as a single WARN and flagged for reviewer decision whether family mismatch
-> should block. **That decision is now implemented:** XC-*family* mismatch (GGA
-> pseudo in an LDA run, or vice versa) is `xc_family_mismatch` → **ERROR** (never
-> physically correct), while same-family *author* mismatch (PBE vs PBEsol) stays
-> `xc_mismatch` → WARN (a small, sometimes-intended difference).
 
 ---
 
@@ -127,17 +123,20 @@ large majority of work. **How:** `PsmlInfo.relativistic` (from the header
 pseudopotential library — molbuilder's recommended source.) **Why:** a single stranger version is the *smell*
 that a pseudo was hand-swapped from a different source — exactly how the bad S
 entered. Mixed releases also mean the set was never validated together for
-transferability. **How:** `_generator_key(generator)` (`pseudos.py:597`) reduces
+**transferability** (whether a pseudo stays accurate across different chemical
+environments). **How:** `_generator_key(generator)` (`pseudos.py:612`) reduces
 each `creator` string to `name-MAJOR` (e.g. `"ONCVPSP-3"`); a patch difference
 (3.3.0 vs 3.3.1) does **not** warn, a major mix (3.x vs 4.x) does. The minority
-version(s) are named as the likely stranger(s). **False positives:** moderate —
+version(s) are named as the likely stranger(s); only pseudos actually present are
+compared. **False positives:** moderate —
 mixing *can* be intentional (a curated set drawing the best pseudo per element
 from different releases). Hence WARN, not ERROR; the message says "confirm the
 odd-one-out is intended."
 
 ### C5 — Dead Kleinman-Bylander projector · ERROR · `dead_projector`
-**What:** no valence angular-momentum channel has its **entire** set of KB
-projectors at `ekb ≈ 0`. **Why (scientific basis):** SIESTA represents the
+**What:** no valence angular-momentum channel (the s / p / d / … orbital-momentum
+component of the valence) has its **entire** set of KB projectors at `ekb ≈ 0`.
+**Why (scientific basis):** SIESTA represents the
 nonlocal pseudopotential in separable Kleinman-Bylander form [Kleinman & Bylander,
 *PRL* **48**, 1425 (1982)]: `V_NL = Σ_l |χ_l⟩ E_KB,l ⟨χ_l|`. The KB energy `E_KB`
 (the PSML `ekb` attribute) **is** the projector's strength — `ekb=0` means that
@@ -163,8 +162,9 @@ the KB projector at read time. Standard, PseudoDojo-validated pseudos for **I, X
 Rb, Ba** do exactly this for their p channel — so an `ekb=0` there is *not* a dead
 projector. Flagging them (the pre-2026-07 behaviour) was a **false positive that
 ERROR-blocked those common elements**; the `l not in semilocal_ls` guard fixes it.
-**Threshold:** `1e-6` is heuristic — well below any physical `ekb` (real ones are
-O(0.1–20)) and just above exact-zero/round-off. **False positives:** believed none
+**Threshold:** `1e-6` (in the hartree-ish KB units of `ekb`) is heuristic — well
+below any physical `ekb` (real ones are O(0.1–20)) and just above
+exact-zero/round-off. **False positives:** believed none
 for standard ONCVPSP / PseudoDojo sets after the semilocal exemption.
 
 The three cases side by side, in the actual PSML header (`<proj l=… ekb=…>` — one
@@ -215,20 +215,21 @@ So the guard isn't trusted beyond its reach. molbuilder does **not** currently
 verify:
 
 - **Valence-charge correctness** — e.g. whether Au uses an 11- or 19-electron
-  valence appropriate to the chemistry (`z-pseudo` is parsed for sanity, not
-  correctness).
+  valence appropriate to the chemistry (`z-pseudo`, the count of valence electrons
+  the pseudo treats explicitly, is parsed for sanity, not correctness).
 - **Ghost states** — spurious bound states below the valence; needs
   generation-level analysis, not header inspection.
 - **Transferability / hardness** — whether the pseudo reproduces all-electron
   results across environments. That's the job of the *source* (PseudoDojo's
-  δ-factor benchmarks); molbuilder trusts a vetted source and checks only
-  consistency + integrity.
+  **δ-factor** benchmarks — a scalar scoring how closely the pseudo's
+  equation-of-state matches all-electron); molbuilder trusts a vetted source and
+  checks only consistency + integrity.
 - **Mesh-cutoff adequacy from the pseudo** — `PsmlInfo.suggested_mesh_ry` is
   parsed (a PseudoDojo extension) but not yet compared to `cfg.mesh_cutoff`.
   *(SIESTA's mesh-cutoff floor is checked separately in `validation/siesta.py`,
   independent of the pseudo's suggestion.)*
-- **Basis ↔ pseudo consistency** — that the PAO basis l-channels match the
-  pseudo's. Deferred.
+- **Basis ↔ pseudo consistency** — that the **PAO** (pseudo-atomic-orbital, SIESTA's
+  numerical basis set) l-channels match the pseudo's. Deferred.
 
 The guard catches **missing, mis-functionaled, mis-relativistic, version-strange,
 structurally-broken, or unparseable** pseudos. It does **not** certify that a
@@ -241,8 +242,8 @@ consistently.
 
 The SIESTA preflight runs these checks automatically before every `render_fdf` —
 ERRORs block, WARNs print in the issues panel. To screen a directory yourself
-(the CLI entry point is a click group `pseudo` with a `check` subcommand,
-`cli.py:342`):
+(the CLI entry point is the `pseudo check` subcommand — the `pseudo` group is at
+`cli.py:338`, the `check` command at `:342`):
 
 ```bash
 # screen a whole directory (CI gate; exits non-zero on any ERROR-status pseudo:
@@ -251,6 +252,17 @@ python -m molbuilder pseudo check projects/pseudopotential --xc PBE
 
 # require specific elements + a relativistic level:
 python -m molbuilder pseudo check <dir> --elements Au,C,H,S --xc PBE --relativistic scalar
+```
+
+It prints one line per element (`[ERROR]` / `[WARN ]` / `[OK   ]`) then a summary,
+and exits non-zero when any line is an ERROR — the shape a CI job greps / gates on:
+
+```text
+  [ERROR] S        p-channel projectors all ekb=0 — dead Kleinman-Bylander projector
+  [WARN ] Au       generator ONCVPSP-4 differs from the set's ONCVPSP-3 — confirm intended
+  [OK   ] C
+
+3 checks: 1 error(s), 1 warning(s).          # process exits 1 (an ERROR was found)
 ```
 
 The same check is one Python call:
@@ -281,9 +293,9 @@ check until clean.
 | C2 XC author | WARN | `check_coverage` → `xc_mismatch` | `test_pseudos.py` |
 | C3 relativistic | WARN | `check_coverage` → `relativistic_mismatch` | `test_pseudos.py` |
 | C4 version | WARN | `check_coverage` + `_generator_key` | `test_pseudos.py` |
-| C5 dead projector | ERROR | `parse_psml_header` → `null_channels` | `test_pseudos.py` |
+| C5 dead projector | ERROR | `parse_psml_header` → `null_channels`, emitted by `check_coverage` | `test_pseudos.py` |
 | C6 parse | WARN | `parse_psml_header` → `parse_warnings` | `test_pseudos.py` |
-| severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation/siesta.py:120` (preflight) + `cli.py:380` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
+| severity set (shared) | — | `pseudos.ERROR_STATUSES` → `validation/siesta.py:125` (preflight) + `cli.py:386` (CLI exit) | `tests/test_pseudos.py::TestErrorStatusesSharedBySurfaces` |
 
 Any change to a check here REQUIRES the matching code + test change in the same
 commit (the "design doc is the source of truth, update it with the code" rule).

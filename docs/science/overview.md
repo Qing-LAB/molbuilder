@@ -89,7 +89,8 @@ flowchart LR
   stderr and **raises `ValidationError`** (`issues.py:72`) if any Issue is
   error-severity, stopping emission. **`report()` is the only gate.**
 
-Everything travels as the L1 `Issue` dataclass (`issues.py:26`):
+Everything travels as the **L1** `Issue` dataclass (`issues.py:26`) — *L1* = the
+lowest layer: pure data types with no I/O or engine logic:
 
 ```python
 @dataclass(frozen=True)
@@ -101,8 +102,8 @@ class Issue:
                                           # so the web UI routes the issue to the right card
 ```
 
-The CLI mirrors this: `molbuilder validate <input> --engine siesta` (`cli.py:1057`)
-emits the same `List[Issue]` for shell-driven pre-flight checks.
+The CLI mirrors this: `molbuilder validate <input> --engine siesta` (`cli.py:1058`)
+emits the same `List[Issue]` as **JSON to stdout** for shell-driven pre-flight checks.
 
 **What may carry `error` severity** is deliberately narrow — only "physically
 impossible or wrong" (atoms overlapping, a degenerate cell, a missing
@@ -133,9 +134,10 @@ states the *why* so the thresholds don't drift silently.
 |---|---|---|
 | cell determinant ≤ 0 | **error** | left-handed or degenerate cell |
 | cell volume / atom-bounding-volume < 3 | warn | cell suspiciously tight |
-| atom-to-nearest-image distance too small | warn | image–image interaction; suggest larger padding |
+| atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
-| net dipole > 1 D, Γ-only vacuum (all `kgrid == 1`) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
+| net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (all `kgrid == 1`) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
+| atom outside `[0, 1)` fractional coords with `wrap_into_cell=False` | warn | atom sits in a neighbour cell; visualisations look broken (`siesta.py:576`) |
 
 ### k-point sampling (`siesta.py`, `cfg.kgrid`)
 | Check | Severity | Why |
@@ -146,7 +148,7 @@ states the *why* so the thresholds don't drift silently.
 ### Spin & charge (`siesta.py` + the shared chemistry helpers)
 | Check | Severity | Why |
 |---|---|---|
-| `spin_polarized=True` but `spin_total` unset, open-shell metal present | **error** | SIESTA's initial-DM constructor (`propor`) can't find a zero-net-spin split for a semicore-rich metal pseudo and aborts with `propor: ERROR: IMAX = 0` **before the SCF loop starts**; the fix (preferred + alternatives) comes from `chemistry.suggest_spin_total` |
+| `spin_polarized=True` but `spin_total` unset, open-shell metal present | **error** | SIESTA's initial-density-matrix constructor (`propor`) can't find a zero-net-spin split for a semicore-rich metal pseudo (inner shells kept explicit alongside the valence) and aborts with `propor: ERROR: IMAX = 0` **before the SCF loop starts**; the fix (preferred + alternatives) comes from `chemistry.suggest_spin_total` |
 | `spin_total` set but `spin_polarized=False` | warn | SIESTA silently ignores the pin |
 | open-shell metal paired with a *closed*-shell SCF | warn | closed-shell SCF on a true open-shell complex converges to a fictitious state — a strong warning, not a block → [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) (`check_open_shell_metal`) |
 | `(charge, spin)` parity mismatch | (engine) | caught pre-emission for a clearer message than PySCF's runtime error |
@@ -154,8 +156,16 @@ states the *why* so the thresholds don't drift silently.
 ### Config field ranges (`validation/metadata.py`)
 Every dataclass `Config` field carries `range` / `validate=` metadata; the generic
 metadata pass validates each field against it (e.g. `mesh_cutoff` below the
-150 Ry production floor → warn, `siesta.py:133`). Adding a field with metadata
-auto-adds its check.
+150 Ry production floor → warn, `siesta.py:133`). **Adding a field with metadata
+auto-adds its check** — no separate validator code:
+
+```python
+# a SiestaConfig field (config/siesta.py:242) — the range metadata IS the check
+mesh_cutoff: float = field(default=300.0, metadata={
+    "range": (100.0, 1000.0), "tier": "basic",  # + label / help / …
+})
+# validation/metadata.py reads .range and emits a warn Issue if the value is out of range
+```
 
 ### Pseudopotentials & chemistry
 The `.psml` checks (C1–C6) are in
@@ -215,8 +225,8 @@ is part of correctness:
 
 ## 7. History (closed — not a plan)
 
-- **Ten science gaps** identified in the 2026-05-01 design review (SIESTA
-  `SpinTotal`/`SpinPolarized` forms, dispersion emission, `mf.stability_analysis`
+- **Ten science gaps** identified in the 2026-05-01 design review (the SIESTA
+  `SpinTotal` keyword form + the `SpinPolarized` form — two of the ten — dispersion emission, `mf.stability_analysis`
   for open-shell, `PAO.EnergyShift` default, post-processing templates, version
   pinning, ECP auto-emit, post-relax re-evaluation, `diis_space`/`damp` exposure)
   are **all closed** and pinned by `tests/test_science_gaps.py` (0 xfails).

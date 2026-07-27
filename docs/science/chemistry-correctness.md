@@ -92,8 +92,9 @@ the [`overview.md` glossary](?doc=science/overview.md).)*
   ```
 
 - **Wrong `(charge, spin)` often *does* converge SCF** — just to a different
-  electronic state with different energy / forces / HOMO-LUMO ordering, and no
-  obvious error message.
+  electronic state with different energy / forces / HOMO-LUMO ordering (the
+  highest-occupied / lowest-unoccupied molecular-orbital gap), and no obvious
+  error message.
 - **The "right" spin depends on coordination chemistry, not just element
   identity.** *Coordination* = how many atoms bond directly to the metal; *axial
   ligands* sit above/below the flat ring; a *strong-field* ligand splits the
@@ -121,8 +122,8 @@ engine-agnostic and side-effect-free:
 | `check_spin_charge_parity(struct, charge, spin)` | `:186` | spin=0 needs even electron count, spin=1 odd, … — PySCF raises this at *run* time; we catch it pre-emission for a clearer message |
 | `detect_open_shell_metals(struct)` | `:470` | the open-shell transition metals present (empty for pure organics) |
 | `explain_metal_spin(element, spin)` | `:282` | one-line meaning of e.g. `(Fe, spin=4)` → "Fe(II) high-spin, S=2, 4 unpaired (deoxy-heme)" |
-| `suggest_spin_total(metals)` | `:371` | `(preferred, alternatives)` — ranked (spin, rationale) choices per metal; feeds the SIESTA validator's spin-sweep (`validation/siesta.py:291`). *(The analyzer builds its own `metal_hints` from `_metal_hint`, `chemistry.py:714`.)* |
-| `check_open_shell_metal(struct, *, is_closed_shell, engine_label)` | `validation/chemistry.py:113` | the cross-engine guard: warns when an open-shell-recommended structure is paired with a closed-shell SCF |
+| `suggest_spin_total(metals)` | `:371` | `(preferred, alternatives)` — ranked (spin, rationale) choices per metal; feeds the SIESTA validator's suggestion (`validation/siesta.py:289`; the literal spin-*sweep* template is emitted in `siesta/input.py`). *(The analyzer builds its own `metal_hints` from `_metal_hint`, `chemistry.py:714`.)* |
+| `check_open_shell_metal(struct, *, is_closed_shell, engine_label)` | `validation/chemistry.py:113` | the cross-engine guard: warns when an open-shell-recommended structure is paired with a closed-shell SCF (PySCF `RKS`/`RHF` + `spin=0`; SIESTA `spin_polarized=False`) — the **same** warning regardless of engine |
 
 ```python
 from molbuilder.chemistry import (
@@ -160,9 +161,10 @@ high-spin — two intentionally different starting bets.)*
 
 ### 2.3 Post-mortem: hemeC-dithiol (2026-05-22)
 
-The bug surfaced when the user ran hemeC-dithiol (an Fe-porphyrin with two thiol
-side chains) through PySCF spectra. It was a chain of small gaps that lined up —
-each link is now broken (§ 2.5):
+The bug surfaced when the user ran hemeC-dithiol (an Fe-**porphyrin** — the flat
+macrocyclic ring that cages the iron in heme — with two **thiol** (–SH) side
+chains) through PySCF spectra. It was a chain of small gaps that lined up — each
+link is now broken (§ 2.5):
 
 ```mermaid
 flowchart TD
@@ -177,7 +179,9 @@ flowchart TD
 - **Symptom** — forces ~10 eV/Å on a structure already near experimental
   equilibrium.
 - **Root cause** — `SpectraConfig` had no `charge` / `spin` fields, so the
-  spectra script's `gto.M(...)` silently used PySCF's `(0, 0)` default. Fe(II) in
+  spectra script's `gto.M(...)` (PySCF's molecule constructor, emitted by
+  `_emit_build_mol`, `spectra/pyscf_script.py:532`) silently used PySCF's `(0, 0)`
+  default. Fe(II) in
   a 4-coordinate porphyrin (no axial ligands within bonding distance in the
   user's geometry) is intermediate-spin S=1 (`spin=2`), not closed-shell S=0. The
   SCF converged to a fictitious low-spin state with unphysical orbital
@@ -189,7 +193,7 @@ flowchart TD
   default + no input surface + no surfaced advisory = the worst combination.
 - **Fixes that landed** — `charge` + `spin` added to `SpectraConfig`
   (`config/spectra.py:190`, `:204`) with help text that enumerates the common
-  Fe(II) / Fe(III) spin combinations (`:210-217`) so the user has a starting
+  Fe(II) / Fe(III) spin combinations (`:210-218`) so the user has a starting
   point without reading the literature; emitted in the script's `gto.M(...)`; the
   open-shell-metal check added to **both** `_validate_pyscf` and `_validate_siesta`
   (via the shared `check_open_shell_metal`) **and** the spectra preflight — triple
@@ -262,8 +266,8 @@ polymer from the one-letter sequence (`MolFromSequence`), adds Hs with plain
 lacks parameters for nucleic acids (`builders/backends/_rdkit.py:86-106`).
 
 **3.3 At the chemistry primitives** — `add_hydrogens` runs **once** per structure
-(never twice, never skipped): the backend gate `maybe_add_hydrogens` skips it when
-the structure is already protonated
+(never twice, never skipped): the nucleic-acid builder gate `_maybe_add_hydrogens`
+(`nucleic.py:312`) skips it when the structure is already protonated
 (`tests/test_nucleic.py::test_maybe_add_hydrogens_auto_skips_already_protonated`)
 and forces it when it isn't. (`add_hydrogens` normalises protonation via
 OpenBabel→RDKit, rebuilding the structure through a PDB round-trip; only the

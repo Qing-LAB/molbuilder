@@ -116,39 +116,65 @@ flowchart TD
     S["Structure"] --> Q1{"any OPEN_D<br/>transition metal?"}
     Q1 -->|yes| OD["→ OPEN · spin = per-element default<br/>(open-d wins, even with nobles present)"]
     Q1 -->|no| Q2{"a noble metal is the<br/>only metal present?"}
-    Q2 -->|"no metal at all"| P0["→ PARITY: closed singlet if even e⁻,<br/>doublet if odd"]
+    Q2 -->|"no open-d / noble metal<br/>(incl. closed-d¹⁰: Zn·Cd·Hg·Pd·Pt)"| P0["→ PARITY: closed singlet if even e⁻,<br/>doublet if odd"]
     Q2 -->|yes| Q3{"≥ 4 noble atoms<br/>AND even e⁻ count?"}
     Q3 -->|yes| C0["→ CLOSED · spin 0<br/>(cluster-context override)"]
     Q3 -->|no| Q4{"single noble atom<br/>AND odd e⁻ count?"}
     Q4 -->|yes| O1["→ OPEN · spin 1<br/>(atomic ground state)"]
-    Q4 -->|"no · 2–3-atom cluster"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
+    Q4 -->|"otherwise (2–3-atom cluster,<br/>or ≥4 atoms with odd e⁻)"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
 ```
 
 The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py:666`) is
 the conservative choice — overwhelmingly what published Au transport / surface
 DFT does. When the noble closed-shell default is wrong (sub-4-atom Au cluster,
-single adatom on an insulator, magnetic 3d co-adsorbate, explicit Kondo /
-spin-orbit physics), the `rationale` string lists those override scenarios so
-the user knows the boundary.
+single adatom (one atom on a surface) on an insulator, magnetic 3d co-adsorbate
+(a second magnetic species nearby), explicit Kondo / spin-orbit physics), the
+`rationale` string lists those override scenarios so the user knows the boundary.
 
-**Worked example — why the split matters.** Take an **Au-BDT-Au** junction (gold–
-benzenedithiol–gold: two gold electrodes bridging a benzene-1,4-dithiol molecule,
-many Au atoms, even electron count):
+**Two spin defaults, intentionally distinct.** The `spin = per-element default`
+the analyzer emits for an open-d metal comes from `_ANALYZER_DEFAULT_SPIN`
+(`chemistry.py:578`) — the *most-likely-correct* chemistry guess (Fe → 2S = 2,
+the intermediate-spin 4-coordinate-porphyrin case). SIESTA's spin-*sweep* starting
+value is a **different** table, `_SPIN_TOTAL_DEFAULTS` (`:304`, Fe → 4.0 high-spin,
+ramp down from there). Where they disagree (Fe 2 vs 4, Co 1 vs 3) both are correct
+for their own purpose; the code's rule is *don't unify — document*
+(`chemistry.py:550-573`).
+
+**Worked example — the two verdicts, end to end.** The same call decides both
+directions; here is the closed one (an **Au-BDT-Au** junction — gold /
+benzene-1,4-dithiol / gold, ≥4 Au atoms, even electron count) and the open one
+(an Fe centre):
 
 ```python
 >>> from molbuilder.chemistry import analyze_structure
+>>> from molbuilder.siesta.auto_defaults import SiestaAdapter
+>>> from molbuilder.pyscf.auto_defaults  import PyscfAdapter
+
+# --- CLOSED: the Au junction ---
 >>> a = analyze_structure(au_bdt_au)
 >>> a.metals, a.suggested_treatment, a.suggested_spin
-(['Au'], 'closed', 0)                 # ≥4 Au, even e⁻ → cluster-context override
+(['Au'], 'closed', 0)                        # cluster-context override
 >>> a.rationale
-'Noble metal Au in an extended junction … → closed-shell singlet (RKS).'  # illustrative
-
-# The retired flat OPEN_SHELL_METALS alias would have returned 'open' here —
-# WRONG: published Au-junction transport DFT is closed-shell (RKS) by convention.
-
->>> from molbuilder.siesta.auto_defaults import SiestaAdapter
+'Detected metallic Au system (N atoms, even electron count). Noble-metal clusters /
+ surfaces / junctions are conventionally treated as closed-shell singlet …'  # real head, abridged
 >>> SiestaAdapter.to_params(a)
 SiestaSuggestedParams(net_charge=0, spin_polarized=False, spin_total=0.0, rationale='…')
+# The retired flat OPEN_SHELL_METALS alias would have returned 'open' here — WRONG.
+
+# --- OPEN: an Fe centre (open-d 3d metal) ---
+>>> b = analyze_structure(fe_porphyrin)
+>>> b.metals, b.suggested_treatment, b.suggested_spin
+(['Fe'], 'open', 2)                          # open-d → open-shell; analyzer default 2S = 2
+>>> PyscfAdapter.to_params(b)                 # PySCF: open-shell → UKS
+PyscfSuggestedParams(charge=0, spin=2, method='UKS', rationale='…')
+>>> SiestaAdapter.to_params(b)               # SIESTA: spin-polarized, Spin.Total in μB
+SiestaSuggestedParams(net_charge=0, spin_polarized=True, spin_total=2.0, rationale='…')
+
+# REVERSE gate — the user forces a closed-shell SCF on the open-shell Fe system:
+>>> from molbuilder.validation.chemistry import check_open_shell_metal
+>>> check_open_shell_metal(fe_porphyrin, is_closed_shell=True, engine_label='PySCF (RKS)')
+[Issue(severity='warn', message='Analyzer recommends OPEN-SHELL DFT … but PySCF (RKS)
+       requests a closed-shell SCF … converges to a fictitious state …', where='config.spin')]
 ```
 
 **References** (the noble-metal-is-closed-shell basis): Taylor, Brandbyge,
@@ -173,6 +199,11 @@ def register_adapter(name): ...          # :883 — decorator
 def registered_adapters() -> dict: ...   # :906 — {name: AdapterClass}
 ```
 
+Every adapter satisfies the `EngineParameterAdapter` **Protocol** (the formal
+interface, `chemistry.py:849`): a `name: str` plus a
+`to_params(cls, analysis) -> <Engine>SuggestedParams` classmethod — that is the
+*entire* contract a new engine implements.
+
 Each engine ships an `auto_defaults.py` that defines a frozen `*SuggestedParams`
 (field names matching the engine's web form) and an adapter that
 `@register_adapter`s itself:
@@ -186,6 +217,10 @@ class SiestaAdapter:                     class PyscfAdapter:
         spin_total, rationale)               method="UKS"|"RKS", rationale)
 ```
 
+(*UKS* = unrestricted / open-shell Kohn-Sham; *RKS* = restricted / closed-shell —
+PySCF's open- vs closed-shell DFT solve; SIESTA's `spin_polarized` bool is the
+equivalent switch.)
+
 **Adapter rules:** a pure translator — **must not** re-do chemistry detection or
 parity (if you're importing `chemistry.py` inside an adapter, the logic belongs
 in the analyzer); returns a frozen dataclass, not a dict; `rationale` always
@@ -198,8 +233,9 @@ present (may append one engine-specific sentence). Spectra reuses `PyscfAdapter`
 
 **`/api/structure/analyze`** (`build.py:415`) — the UI auto-detect. Returns the
 analysis plus `suggested.<engine> = asdict(adapter.to_params(analysis))` for
-**every** registered adapter, so a new engine appears the moment its adapter
-module is imported — endpoint code unchanged.
+**every** registered adapter (`asdict` turns a dataclass into a plain JSON-able
+dict — the single serialisation point), so a new engine appears the moment its
+adapter module is imported — endpoint code unchanged.
 
 **`check_open_shell_metal(struct, *, is_closed_shell, engine_label)`**
 (`validation/chemistry.py:113`) — the pre-emission validator. It calls the
@@ -208,8 +244,9 @@ module is imported — endpoint code unchanged.
 category split), returning a `warn` `Issue` carrying the analyzer's rationale
 when the user requests a closed-shell SCF against an open-shell recommendation.
 
-Four engine surfaces route through this reverse check — SIESTA + PySCF Build
-preflight (`validation/siesta.py:362`, `validation/pyscf.py:132`), Spectra
+Four engine surfaces route through this reverse check (a *preflight* = the checks
+run at Generate-time, before engine input is written) — SIESTA + PySCF Build
+preflight (`validation/siesta.py:360`, `validation/pyscf.py:132`), Spectra
 preflight (`spectra/pyscf_engine.py:319`), and Transport preflight
 (`transport/transiesta.py:911`). The UI chip (`lib/detection-chip.js`) reads the
 **forward** side instead — `suggested_treatment` straight off the
@@ -291,16 +328,49 @@ cross-engine consistency claim.
 
 ## 9. Test invariants
 
-- **Cross-engine agreement** — all registered adapters reach the same
-  `treatment`-equivalent decision for a given structure (`test_chemistry_adapters.py`).
+- **Cross-engine agreement** — all registered adapters reach the same open-vs-closed
+  decision (SIESTA `spin_polarized` iff PySCF `UKS`) and the same 2S for a given
+  structure: `test_chemistry_adapters.py::test_all_adapters_agree_on_treatment`
+  (parametrised over CH₄ / Fe / Cu / Mn).
 - **Validator ↔ analyzer** — `check_open_shell_metal` reads its conclusion from
-  `analyze_structure` (proved by monkeypatching the analyzer) and echoes its
-  rationale.
+  `analyze_structure` and echoes its rationale, proved by *monkeypatching* the
+  analyzer (a test temporarily swaps it for a stub):
+  `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer`.
 - **Endpoint shape** — `/api/structure/analyze` carries every documented key and
-  each `suggested.<engine>` matches its dataclass fields.
+  each `suggested.<engine>` matches its dataclass fields
+  (`test_structure_analyze_endpoint.py::test_response_shape_carries_every_documented_key`).
 - **New-engine on-ramp** — a freshly-registered synthetic adapter appears in the
-  endpoint response (catches a hardcoded engine list).
-- **Adapter purity** — an AST check that no adapter imports the analyzer/primitives.
+  endpoint response (`…::test_freshly_registered_adapter_appears_in_endpoint_response`),
+  catching a hardcoded engine list.
+- **Adapter purity** — an *AST check* (a static parse of the source — imports are
+  read without running the module) that no adapter imports the analyzer/primitives:
+  `test_chemistry_adapters.py::test_adapter_modules_do_not_import_analyzer`.
+
+---
+
+## 10. Design history — why the machinery is shaped this way
+
+Three decisions produced this structure (fuller provenance in git history):
+
+- **The analyzer was hoisted out of the endpoint (2026-06-10).**
+  `/api/structure/analyze` first shipped (2026-05-23) with both engine
+  translations hardcoded inline in `web/blueprints/build.py` — duplication waiting
+  to drift, and no on-ramp for a new engine. Extracting `analyze_structure` + the
+  adapter registry realised the cross-engine consistency rule at the UI surface
+  too, not just the validators.
+- **`validation.py` became a package (2026-06-13).** The flat 1326-line module
+  became the 7-file `validation/` package (§ 7) so "where does a new check go?"
+  has a one-step answer. The split was mechanical — every function body,
+  signature, and per-engine call order moved *verbatim*, because the call order is
+  the load-bearing contract. The Spectra-preflight drift that motivated it came
+  from external engines rolling their own chemistry check for lack of a convenient
+  import.
+- **`OPEN_SHELL_METALS` split into three sets (2026-06-13).** So the analyzer
+  recommends closed-shell singlet for Au junctions (§ 2.1) and
+  `check_open_shell_metal` gates on `suggested_treatment` instead of the flat
+  `metals` list — killing the Au-BDT-Au chip-vs-validator contradiction the user
+  reported (the "closed-shell singlet" chip vs a "switch to open-shell" warning on
+  the same form).
 
 ---
 
