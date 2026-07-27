@@ -122,7 +122,7 @@ appears in `old_docs/` that is not in this ledger.
 | `protocols/backend-architecture.md` | (root, companion to architecture.md) or merge into it -- decide at reconcile | pending | |
 | `protocols/benchmark-workflow.md` | execution/ | pending | |
 | `protocols/bundle-contract.md` | execution/handoff-bundle.md (RENAME: kills bundle vocab collision) | pending | |
-| `protocols/chemistry-correctness.md` | science/ | pending | |
+| `protocols/chemistry-correctness.md` | science/chemistry-correctness.md | merged-into science/chemistry-correctness.md | Wave 3 (2026-07-26). The control-surface map (5 points) + audit checklist migrated in full, ASCII flow → Mermaid; the `(charge, spin)` science from `science.md §2` merged in (conventions, coordination-dependent spin, primitives catalog, hemeC-dithiol post-mortem, cross-engine rule, auto-detect guard). Line numbers/test names re-verified vs code — corrected the source's stale ones: `_fix_methylene_hydrogens` :160→:174; `TestAddHydrogensIdempotent` (gone) → real `maybe_add_hydrogens` tests in `test_nucleic.py`; `test_build_fdf_runs_preflight_before_render` (gone) → `test_preflight_returns_issues_for_{siesta,pyscf}` (`test_web.py:435,459`). |
 | `protocols/cli.md` | process/ | pending | |
 | `protocols/code-audit.md` | process/ | pending | |
 | `protocols/code-conventions.md` | process/ | pending | |
@@ -170,7 +170,7 @@ appears in `old_docs/` that is not in this ledger.
 | `results-tab-guide.md` | web/ | pending | |
 | `roadmap.md` | roadmap.md (THE plan; absorbs scattered phasing) | pending | PLAN distilled into `docs/roadmap.md` (Wave 1, 2026-07-26) — that is now the plan authority. File retained ONLY for its shipped 3DNA detection/error/install + transport reference; relocates to `engines/` at Wave 6, then this row closes. |
 | `runtime-registry-guide.md` | web/ | pending | |
-| `science.md` | science/ | pending | |
+| `science.md` | **SPLIT** — §2 → science/chemistry-correctness.md; §1/§3–6 → science/overview.md | pending | Wave 3 (2026-07-26): §2 (spin+charge science, hemeC post-mortem, cross-engine rule, auto-detect guard) absorbed into `chemistry-correctness.md`. Stays **pending** until the rest lands in `overview.md` (composed last): §1 goal/principles, §3 the validation-pass check catalog + the advisory-while-editing/enforcing-at-generation contract, §4 known-gaps (historical), §5 pinned false-positive, §6 generated-output style. Then mark merged + prefix. |
 | `staged-relaxation-guide.md` | execution/ | pending | |
 | `structure-guide.md` | web/ | pending | |
 | `tabs/architecture.md` | web/tabs.md (rename: avoid 3rd architecture.md) | pending | §9 phasing (Phases A-D) reconciled against code = ALL SHIPPED (6 tabs live); recorded closed in `roadmap.md` 2026-07-26. The cross-tab design content migrates in Wave 3 (web/). |
