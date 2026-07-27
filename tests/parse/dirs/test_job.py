@@ -240,6 +240,35 @@ def test_status_shape():
         assert fld in s
 
 
+def test_status_failed_state_from_error_run(tmp_path):
+    """A run whose active .out carries a SIESTA fatal marker decodes
+    to status.state == "failed".
+
+    Regression (2026-07-27): _build_status branched on run_state ==
+    "failed", a value NO engine parser emits (their vocabulary is
+    ongoing|finished|error|unknown), so the failed state was
+    unreachable and a crashed run reported "stale"/"running"
+    forever.  The parser "error" state must map to the envelope
+    "failed" state."""
+    (tmp_path / "crash.fdf").write_text(
+        "SystemLabel crash\n"
+        "MD.TypeOfRun CG\n"
+        "MD.NumCGsteps 100\n"
+    )
+    # Minimal but REAL SIESTA .out: the banner is a strong sniff
+    # marker (SiestaOutFileParser.can_parse), the last line is one
+    # of the registered fatal markers (engines/siesta.py) that sets
+    # run_state="error".
+    (tmp_path / "crash.out").write_text(
+        "                           Welcome to SIESTA\n"
+        "reinit: System Label: crash\n"
+        "siesta: ERROR: out of memory in dense solver\n"
+    )
+    decoded = decode_run_dir(tmp_path)
+    assert decoded.status["state"] == "failed"
+    assert decoded.status["active_source"] == "crash.out"
+
+
 def test_progress_carries_cg_step_count():
     decoded = decode_run_dir(_need_dir(BDT_DIR))
     prog = decoded.progress

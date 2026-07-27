@@ -62,19 +62,11 @@ ENGINE_BODY_KEYS: Tuple[str, ...] = (
 )
 
 
-# End-of-run markers (§ 5 of the doc).
-END_MARKERS: Tuple[str, ...] = (
-    "Job completed",
-    "End of run:",
-)
-
-# Failure markers (§ 5).
-FAILURE_MARKERS: Tuple[str, ...] = (
-    "siesta: ERROR",
-    "propor: ERROR",
-    "MPI_ABORT",
-    "ERROR: SCF not converged",
-)
+# Run-state detection is fully delegated to the engine trajectory
+# parsers (detect().parse() -> traj.run_state); the end-of-run and
+# failure markers live in engines/siesta.py + engines/pyscf.py, NOT
+# here — the decoder never greps .out content itself (enforced by
+# test_no_direct_out_grep_in_decoder).
 
 # Default CG-step threshold for cg_step_milestone events.
 CG_STEP_MILESTONE_DEFAULT = 50
@@ -400,7 +392,9 @@ def _consolidate_plots(out_paths: List[Path]
 
     Returns:
         plots:           {plot_name: {out_filename: [[step, value], ...]}}
-        out_run_states:  {out_filename: "finished"|"failed"|"in_progress"|"unknown"}
+        out_run_states:  {out_filename: "finished"|"error"|"ongoing"|"unknown"}
+                         (the engine parsers' run_state vocabulary,
+                         passed through verbatim)
         parse_warnings:  flattened list of {source, line_no, snippet, error, category}
     """
     from molbuilder.parse import detect, UnknownFormatError
@@ -653,10 +647,14 @@ def _build_status(out_paths: List[Path],
     state = "running"
     detail = "running"
     age_s = max(0.0, _wall_now() - active.stat().st_mtime)
+    # Two vocabularies meet here: the engine parsers emit run_state
+    # "ongoing"|"finished"|"error"|"unknown"; the status envelope
+    # (consumed by jobset/runstatus.py) speaks "running"|"stale"|
+    # "failed"|"finished".  Map parser "error" -> envelope "failed".
     if active_state == "finished":
         state, detail = "finished", "job_completed"
-    elif active_state == "failed":
-        state, detail = "failed", "failure marker present in active .out"
+    elif active_state == "error":
+        state, detail = "failed", "engine error in active .out"
     elif age_s > 60.0:
         state, detail = "stale", f"no file growth in {int(age_s)}s"
 
