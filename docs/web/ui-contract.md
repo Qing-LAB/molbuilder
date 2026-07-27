@@ -45,8 +45,8 @@ place, and other sheets don't redeclare them.
 
 `lib/tokens.css` names every color, spacing, size, and type value once, in a
 `:root` block that every page loads first. Components reference them with
-`var(--token)` and **never write a raw `#hex`**. Change a value there and it
-shifts everywhere at once.
+`var(--token)` and **never write a raw palette color**. Change a value there and
+it shifts everywhere at once.
 
 Two naming tiers:
 
@@ -62,8 +62,11 @@ Two naming tiers:
 **The embed-safety pattern.** A component that can be dropped into a foreign host
 (the 3D embed, an inspector) writes `var(--token, #fallback)` — the token if the
 palette is loaded, a literal that *mirrors the token's real value* if it isn't.
-That is the **only** place a literal color appears; a grep for a hex outside a
-`var(…)` fallback across the component sheets comes back empty.
+That is the main place a literal color appears. The only others are a small,
+tagged set of `/* exempt: */` colors that aren't UI palette at all — a WebGL
+scene color (the viewer's wireframe, its canvas clear color), a decorative
+gradient, and a couple of lightened text tints on dark severity rows. Outside
+those documented exceptions, a component never writes a raw palette color.
 
 ## 3. Responsive — content decides, not the viewport
 
@@ -144,8 +147,9 @@ The security policy (owned by the server — see
 ## 8. Checklist for changing the UI
 
 - A new **color / size / spacing** value → add it to `tokens.css`; reference it
-  with `var(--…)`. Never a raw `#hex` (except a `var(--token, #fallback)` in an
-  embeddable).
+  with `var(--…)`. No raw palette `#hex` (a `var(--token, #fallback)` in an
+  embeddable, or a tagged `/* exempt: */` scene/decorative color, are the only
+  literals).
 - A widget used on **more than one page** → a shared sheet (page-shell or
   form-components), not a page sheet. One owner.
 - A page's own sheet → **arrangement only** (max-width, per-instance values).
