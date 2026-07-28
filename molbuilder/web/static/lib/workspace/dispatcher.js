@@ -39,6 +39,8 @@
  *   - readPersistedSnapshot()  -- the persisted session snapshot (or null).
  *   - mountRestoreTarget()     -- the source-file a mount-time restore owns (single-authority
  *                                 rule, workspace-contract §4.5), or null.
+ *   - hasRestorableSnapshot()  -- true when a persisted snapshot exists for the current owner
+ *                                 (gate for the §4.5 mount-restore rule).
  *   - useNamespace(owner)      -- switch the active owner namespace (mirror key + workspace_id).
  *   - onPersistError(fn)       -- subscribe to non-blocking disk-write failures.
  *   - STORAGE_KEY              -- the sessionStorage key (shared constant).

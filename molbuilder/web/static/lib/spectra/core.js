@@ -957,12 +957,15 @@
                 if (wr.ok) {
                     const verb = wr.overwritten ? "overwrote" : "wrote";
                     wrapperMsg = " · " + verb + " " + wr.wrapper_name;
+                } else {
+                    wrapperMsg = " · .run.sh failed: " + (wr.error || "unknown");
                 }
             } catch (e) {
                 if (proj.isCancelError(e)) {
                     wrapperCancelled = true;
+                } else {
+                    wrapperMsg = " · .run.sh network error: " + (e && e.message || String(e));
                 }
-                /* other failures stay non-fatal */
             }
             if (wrapperCancelled) {
                 setStatus(els.saveStatus,

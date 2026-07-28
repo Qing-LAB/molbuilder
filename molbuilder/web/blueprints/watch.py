@@ -158,11 +158,11 @@ _FDF_SYSTEM_LABEL_RE = re.compile(
     r"^\s*SystemLabel(?:\s|\.)\s*([A-Za-z0-9_\-]+)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
-# molbuilder-generated PySCF scripts set ``job_name = "..."`` near the
-# top.  The regex anchors on the LHS to avoid catching incidental
-# strings further down.
+# molbuilder-generated PySCF scripts set ``JOB = "..."`` near the top
+# (see pyscf/input.py:329).  The regex anchors on the LHS to avoid
+# catching incidental strings further down.
 _PY_JOB_NAME_RE = re.compile(
-    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
+    r"^\s*JOB\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
     re.MULTILINE,
 )
 

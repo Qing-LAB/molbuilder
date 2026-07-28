@@ -200,14 +200,16 @@ def api_run_install_wrapper():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    mpi_np        = body.get("mpi_np")
-    omp_threads   = body.get("omp_threads")
-    max_memory_mb = body.get("max_memory_mb")
-    env_override  = body.get("env")
+    mpi_np           = body.get("mpi_np")
+    omp_threads      = body.get("omp_threads")
+    max_memory_mb    = body.get("max_memory_mb")
+    env_override     = body.get("env")
+    continue_retries = body.get("continue_retries")
     # Coerce to None on falsy / zero so the helper's defaults kick in.
-    mpi_np        = int(mpi_np) if mpi_np else None
-    omp_threads   = int(omp_threads) if omp_threads else None
-    max_memory_mb = int(max_memory_mb) if max_memory_mb else None
+    mpi_np           = int(mpi_np) if mpi_np else None
+    omp_threads      = int(omp_threads) if omp_threads else None
+    max_memory_mb    = int(max_memory_mb) if max_memory_mb else None
+    continue_retries = int(continue_retries) if continue_retries else None
 
     # Track whether we OVERWROTE an existing wrapper so the UI can
     # surface that (the user may have hand-edited the .run.sh with
@@ -226,6 +228,7 @@ def api_run_install_wrapper():
             mpi_np=mpi_np,
             omp_threads=omp_threads,
             max_memory_mb=max_memory_mb,
+            continue_retries=continue_retries,
         )
     except WrapperError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400

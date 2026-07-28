@@ -984,12 +984,16 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{CONFIG_FILENAME}: 'scheduler.gpu.exclusive' must be a "
             f"boolean; got {type(gpu['exclusive']).__name__}."
         )
-    # NOTE: there is deliberately NO 'scheduler.gpu.mem'.  Memory is a
-    # job-specific quantity estimated per-job from the .fdf (the SAME
-    # estimator for CPU and GPU -- it scales with rank count), so a flat
-    # GPU memory default does not belong in a site config.  Use
-    # 'defaults.mem' for a job-agnostic override, or '--mem' per job.
-    # (Removed 2026-06-29; clean break, no shim.)
+    # gpu.mem: GPU-specific memory default (string or null).  GPU nodes
+    # typically have less RAM per rank than CPU nodes (e.g. 24 GB/GPU vs
+    # 2 TB/node), so a single defaults.mem can't cover both.  GPU jobs
+    # use gpu.mem when set; CPU jobs use defaults.mem.
+    if "mem" in gpu and gpu["mem"] is not None \
+            and not isinstance(gpu["mem"], str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'scheduler.gpu.mem' must be a string "
+            f"(e.g. \"24G\") or null; got {type(gpu['mem']).__name__}."
+        )
 
     # defaults: time str|None, cpus_per_task int|None, mem str|None.
     if "time" in defaults and defaults["time"] is not None \

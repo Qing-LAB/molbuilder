@@ -35,8 +35,10 @@
  *                 (with null option if optional)
  *   tri-select  : <select> auto / true / false        (Optional[bool])
  *   int-triple  : three <input type=number step=1>    (Tuple[int,int,int], e.g. kgrid)
- *   stage-table : per-stage rows table + preset dropdown
- *                 (List[<dataclass>], e.g. PySCFConfig.stages)
+ *   stage-table  : per-stage rows table + preset dropdown
+ *                  (List[<dataclass>], e.g. PySCFConfig.stages)
+ *   comma-floats : comma-separated list of floats
+ *                  (List[float], e.g. bias voltages)
  *
  * The renderer never invents a kind; if the server adds a new
  * one we fall through to a plain text input and log a warning so

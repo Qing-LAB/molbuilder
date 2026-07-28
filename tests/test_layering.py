@@ -57,9 +57,6 @@ _L1_MODULES = {
                          # domain deps; siesta + pyscf + spectra + runwrap all use it)
     "pseudos",           # PSML pseudopotential header parser + coverage check
                          # (pure XML parsing + dataclass; no domain deps)
-    "script_contract",   # generated-script format I/O (emit + extract); pure
-                         # functions, no domain deps -- siesta/pyscf/runwrap/
-                         # bench all use it.  Same layering reason as runtime_info.
     "checkpoint",        # run-dir checkpoint/restart helpers; L1 because the
                          # L1 ``config`` dataclasses (siesta/pyscf) import it,
                          # so it must sit at or below L1 (no domain deps).
@@ -87,12 +84,10 @@ _L2_MODULES = {
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers
     "transport",         # transport engines + results (Phase B.2)
-    "parsers",           # trajectory parsers (legacy; being migrated to parse/)
     "parse",             # unified parse module (Phase A+B+C+D shipped 2026-06-19;
                          # composes engine/sidecar FileParsers + JobDirParser into
-                         # typed ParseResult outputs.  L2 because it composes the
-                         # legacy parsers + script_contract; will absorb them at
-                         # Phase H per docs/protocols/parse-module.md § 8.)
+                         # typed ParseResult outputs.  L2 because it composes
+                         # per-engine parsers + ScriptSourceTextParser.)
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader
     "diagnostics",       # capabilities snapshot
@@ -104,13 +99,9 @@ _L2_MODULES = {
                          # imported only by runtime_config (L2) + cli (L3),
                          # imports no molbuilder domain modules
     "data",              # bundled JSON tables
-    "script_bundle",     # workflow-handoff RunBundle: consumes script_contract +
-                         # Structure to fuse run-dir artifacts into a portable
-                         # .xyz + .molstruct.json pair.  L2 because it knows
+    "bundle_writer",     # write-side bundle materializer: composes BundleResult
+                         # + Structure + dirs/parse.  L2 because it knows
                          # engine-specific final-coords sources (.XV, .opt.xyz).
-    "bundle_writer",     # write-side bundle materializer rehomed from
-                         # script_bundle in H2.bundle_writer; composes
-                         # BundleResult + Structure (same layering reason).
     "script_emit",       # write-side emit_* helpers rehomed from script_contract
                          # in H2.emit.  L2 because emitter helpers consume
                          # parse.types (TrajectoryResult / ParseResult).

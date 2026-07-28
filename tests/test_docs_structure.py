@@ -1,13 +1,11 @@
-"""Docs-structure contract — the migration ledger + the new-tree rules.
+"""Docs-structure contract — the permanent new-tree rules (R1–R4).
 
-The docs tree was reorganized 2026-07-26 (docs/README.md § Structure): the
-legacy tree is FROZEN at ``old_docs/`` and every doc migrates to the new
-domain-structured ``docs/`` through a per-doc reconcile gate, tracked in
-``docs/MIGRATION.md`` (the ledger).
+The docs tree was reorganized 2026-07-26.  The legacy ``old_docs/`` tree was
+archived to ``docs/archive/old_docs/`` on 2026-07-28 (Wave 10 closeout).
+The freeze + keep-and-mark rules (former rule 1) are retired — ``old_docs/``
+no longer exists at the project root.
 
-**Keep-and-mark policy (user, 2026-07-26).** Migrated old docs are NOT
-deleted during the migration — they are kept in ``old_docs/`` and *marked
-done* by prefixing the filename with ``_migrated_`` (e.g.
+The remaining permanent rules (test-enforced):
 ``protocols/web-api.md`` → ``protocols/_migrated_web-api.md``). The whole
 frozen tree therefore survives until closeout, when the new tree is
 cross-checked against it to prove nothing was missed; only then is
@@ -96,7 +94,9 @@ def _new_tree_mds() -> list:
 
 
 # --------------------------------------------------------------------- #
-#  1. Freeze + keep-and-mark — old tree ↔ ledger                        #
+#  1. (RETIRED) Freeze + keep-and-mark — old tree ↔ ledger              #
+#     old_docs/ was archived to docs/archive/old_docs/; these tests      #
+#     early-return because ``OLD.is_dir()`` is False.                    #
 # --------------------------------------------------------------------- #
 
 
@@ -205,6 +205,10 @@ def test_internal_doc_links_use_doc_module_convention():
         # archive's own index stays link-checked.
         rel_parts = p.relative_to(DOCS).parts
         if "archive" in rel_parts and p.name != "README.md":
+            continue
+        # old_docs/ under archive/ is a verbatim frozen snapshot;
+        # its internal links point at the old tree layout.
+        if "old_docs" in rel_parts:
             continue
         for m in _LINK.finditer(p.read_text(encoding="utf-8")):
             target = m.group(1)

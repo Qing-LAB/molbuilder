@@ -146,10 +146,16 @@ empty; otherwise the session email must be listed).
 
 ## 5. Configuration — `molbuilder.json`
 
-All server config lives in **`molbuilder.json` in the directory you launch from**
-(and *only* there — a copy under `~/.config/molbuilder/` is **not** read by the
-running server; that's an easy trap, recorded as a follow-up). A malformed file
-refuses to start rather than silently misconfiguring.
+The server looks for **`molbuilder.json`** in two places, in this order:
+
+```mermaid
+flowchart LR
+  CWD["1. &lt;cwd&gt;/molbuilder.json"] -->|"found"| LOAD["use it"]
+  CWD -->|"not found"| XDG["2. ~/.config/molbuilder/molbuilder.json"]
+```
+
+It reads **one file, not both** — the first one it finds wins. A malformed
+file refuses to start rather than silently misconfiguring.
 
 | Key | Controls |
 |---|---|

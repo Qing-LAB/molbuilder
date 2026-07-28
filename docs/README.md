@@ -4,11 +4,12 @@
 line each. If a doc is not listed here it does not exist (test-enforced:
 `tests/test_docs_structure.py`).
 
-> **Migration in progress (started 2026-07-26).** The previous docs tree is
-> frozen at [`../old_docs/`](../old_docs/) and is being migrated here piece
-> by piece, each doc reconciled against the code at its move. The ledger —
-> what lives where, what is pending — is [`MIGRATION.md`](?doc=MIGRATION.md).
-> Until a doc migrates, its old_docs copy remains the source of truth.
+> **Migration complete (2026-07-28).** The previous docs tree was migrated to
+> this domain-structured tree across Waves 0–9, each doc reconciled against
+> the code at its move.  The old tree is archived under
+> `archive/old_docs/` (see [`archive/README.md`](?doc=archive/README.md)).  The migration ledger —
+> every source file → target home — is
+> [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md).
 
 ## Structure — domains, not document kinds
 
@@ -142,7 +143,7 @@ The editorial rules above apply to every step in full:
    (keep-and-mark — the old tree is kept intact for the closeout
    cross-check, never deleted mid-migration). Same commit as the move.
 
-**Order (see [`MIGRATION.md`](?doc=MIGRATION.md) for the wave plan):** components
+**Order (see [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md) for the wave plan):** components
 first, bottom-up (the data model, then what builds on it, then the surfaces);
 the summary docs — `design.md` (a concise outline that points at the detailed
 docs) and `architecture.md` (the reuse map) — are composed **last**, over the
@@ -203,5 +204,5 @@ forward plan) leads and is done early.
 | [`process/testing.md`](?doc=process/testing.md) | reference | **How the project tests itself** — the **pyramid** (unit/module/interface/integration + smoke/e2e/slow markers), the **layering** structural invariant, **design-tests-around-the-envs**, testing the front-end **JS in Node without a browser** (the `_node_esm.py` harness that survives the ESM migration), the durable **Playwright** patterns (locate-what-the-user-clicks, state-based waits, viewport, `force=True` pitfalls, diagnostics), the source-text-invariant + state-composition patterns, and the pre-commit gate |
 | [`process/code-audit.md`](?doc=process/code-audit.md) | reference | **The code-audit playbook** — how to run a systematic review: the audit **principles** (trust-but-verify, structural-audits-miss-behavioural-bugs, count-honestly, propagate-to-siblings, graduate-invariants-into-tests), the **dimensions**, the **five known traps** (`[hidden]`-precedence · per-feature option traversal · cross-source-of-truth gap · orphaned listener · same-shape-different-name endpoints) each with a DevTools smoking-gun diagnostic, and the per-dimension checklists — several invariants now enforced by source-text tests |
 | [`process/screenshots.md`](?doc=process/screenshots.md) | process | **The README screenshot manifest** — the capture guide for the 10 PNGs in `img/`: the one-project demo convention (`projects/BDT/`, so the README reads as one continuous Au–BDT–Au story), the pre-capture setup (window size, theme, no DevTools), a per-image table (URL · what to load · zoom region · what it must communicate), and the re-capture cadence. Carries the known-stale flag on the two nav shots (five tabs captured; six ship) |
-| [`MIGRATION.md`](?doc=MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status |
+| [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md) | index | The migration ledger: every old_docs file → target home + status (closed — migration complete 2026-07-28) |
 | [`archive/README.md`](?doc=archive/README.md) | index | The archive's own index: what was archived when, and what superseded it |

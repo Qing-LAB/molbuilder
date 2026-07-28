@@ -23,11 +23,11 @@
  * ``window.molbuilder.<foo> = api`` assignments so unmigrated
  * consumers continue to work.  Migrate at your own pace.
  *
- * THIS FILE MUST BE LOADED FIRST -- before any other molbuilder
- * script -- so register() / whenReady() are defined when other
- * modules start their IIFEs.  Convention: include it right after
- * the 3Dmol vendor script in every template (build, modify,
- * spectra, results).
+ * THIS FILE MUST BE LOADED FIRST — before any other molbuilder
+ * script — so register() / whenReady() are defined when other
+ * modules start their IIFEs.  Include it in the page <head>
+ * before any other molbuilder script; every template (build,
+ * modify, spectra, results) follows this rule.
  *
  * Naming: flat, dotted, lowercased.  Today's modules:
  *   "viewer"                    -- lib/viewer/mol-viewer.js

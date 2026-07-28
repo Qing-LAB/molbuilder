@@ -31,13 +31,13 @@
  *     indices: [i, j],
  *     labels:  [labelOf(i), labelOf(j)],
  *     valueAng: 0.957,
- *     display:  "|H #5 – O #0| = 0.957 Å" }
+ *     display:  "|H #5 – O #1| = 0.957 Å" }
  *
  *   { kind: "angle",
  *     indices: [i, j, k],
  *     labels:  [labelOf(i), labelOf(j), labelOf(k)],
  *     valueDeg: 104.5,
- *     display:  "∠H #5 – O #0 – H #6 = 104.5°" }
+ *     display:  "∠H #5 – O #1 – H #6 = 104.5°" }
  *
  * Indices in the envelope preserve the input order; the second
  * atom in an angle is the vertex (the 1-2 and 2-3 bonds meet at

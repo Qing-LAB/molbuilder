@@ -149,7 +149,7 @@ current → target status matrix.
 ### Core types (L1) & surfaces (L3)
 
 - **L1 core types**: `structure`, `frame`, `issues`, `selection`,
-  `runtime_info`, `trajectory_log`, `script_contract` — the data model.
+  `runtime_info`, `trajectory_log` — the data model.
   See [`model/overview.md`](?doc=model/overview.md) and
   [`model/structure.md`](?doc=model/structure.md).
 - **L3 surfaces**: `cli` (`molbuilder …`; the thin-shell-over-the-web-API

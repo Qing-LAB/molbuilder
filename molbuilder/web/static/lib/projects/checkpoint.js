@@ -21,7 +21,7 @@
  * such a run dir, and (b) the manual Refresh control.  There is no
  * setInterval and no visibility-driven timer.
  *
- * No graph viewer in Phase 2 -- that's PR-B Phase 3 with @gitgraph/js.
+ * Graph viewer: lazy-loaded @gitgraph/js (see _ensureGitgraph() below).
  *
  * Spec: docs/protocols/run-checkpoints.md § 6 (sidebar UI).
  * HTTP contract: web/blueprints/checkpoint.py + § 8 of run-checkpoints.md.

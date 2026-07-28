@@ -1593,22 +1593,26 @@ function _mvdata() {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        script_path:   written.path,
-                        mpi_np:        _n("mpi_np"),
-                        omp_threads:   _n("omp_threads"),
-                        max_memory_mb: _n("max_memory_mb"),
+                        script_path:      written.path,
+                        mpi_np:           _n("mpi_np"),
+                        omp_threads:      _n("omp_threads"),
+                        max_memory_mb:    _n("max_memory_mb"),
+                        continue_retries: _n("continue_retries"),
                     }),
                     signal: abortSignal,
                 }).then(x => x.json());
                 if (wr.ok) {
                     const verb = wr.overwritten ? "overwrote" : "wrote";
                     wrapperMsg = `${verb} ${wr.wrapper_name}`;
+                } else {
+                    wrapperMsg = ".run.sh failed: " + (wr.error || "unknown");
                 }
             } catch (e) {
                 if (proj.isCancelError(e)) {
                     wrapperCancelled = true;
+                } else {
+                    wrapperMsg = ".run.sh network error: " + (e && e.message || String(e));
                 }
-                /* other failures stay non-fatal */
             }
         }
         if (wrapperCancelled) {
@@ -1702,6 +1706,15 @@ function _mvdata() {
             $("siesta-form-container"), formSchemas.siesta
         );
         params.stage = stageNumberFromPreset();
+        // Lift the selected stage's convergence policy to top-level
+        // so the Save pipeline can pass continue_retries to the
+        // .run.sh wrapper generation.
+        const stageIdx = (params.stage || 1) - 1;
+        const selStage = ((params.stages || [])[stageIdx]) || {};
+        if (selStage.on_nonconvergence === "continue"
+            && selStage.continue_retries > 0) {
+            params.continue_retries = selStage.continue_retries;
+        }
         return params;
     }
 

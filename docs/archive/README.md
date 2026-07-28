@@ -43,6 +43,7 @@ date-prefixed file, you are reading history, not policy.
 | `audits/audit-2026-06-27/` | Closed — follow-up audit snapshot | findings acted on in code/tests |
 | `audits/job-case-analysis/` | Closed — ANALYSIS-G1K1C4 job-case study (bench/job-execution milestone 2026-06-29) | conclusions folded into the bench/staged-execution contracts |
 | `2026-07-28-decisions-log.md` | Closed — the verbatim 113-entry decisions log from the pre-migration `design.md` (Wave 9); kept for the *why* behind each decision | design.md § Decisions (indexes the load-bearing entries → each domain doc) |
+| `old_docs/` | **Frozen legacy tree** — the pre-migration docs (86 files, snapshot 2026-07-26) migrated to the domain-structured `docs/` tree across Waves 0–9 (2026-07-26 to 2026-07-28) | `docs/README.md` (live index); `docs/archive/MIGRATION.md` (per-file map) |
 
 > Note (2026-07-26): the archived docs above predate the docs-tree
 > reorganization, so *internal* relative links inside them point at the old

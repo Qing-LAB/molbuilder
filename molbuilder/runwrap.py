@@ -1524,7 +1524,8 @@ def render_run_wrapper(script_path: Path, *,
                         max_memory_mb: Optional[int] = None,
                         n_atoms: Optional[int] = None,
                         mem_audit: Optional[Mapping[str, Any]] = None,
-                        carry_in: Optional[List[str]] = None) -> str:
+                        carry_in: Optional[List[str]] = None,
+                        continue_retries: Optional[int] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -2263,6 +2264,10 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  SIESTA version: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
+            + (f'echo "  Retry policy  : up to {continue_retries} '
+               f'retry(s) on non-convergence (--continue warm-resume)"\n'
+               if continue_retries and continue_retries > 0 else
+               f'echo "  Retry policy  : none (halt on non-convergence)"\n')
             f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
             f'OPENBLAS=1, MKL=1"\n'
             # GPU mode: print a brief monitoring hint so the user has
@@ -2564,7 +2569,10 @@ def render_run_wrapper(script_path: Path, *,
             f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
             f'nice + mb_monitor.py beside the job)"\n'
             f'fi\n'
-            f"_t_start=$(date +%s.%N)\n"
+            + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
+               f'_siesta_retry_max={continue_retries}\n'
+               if continue_retries and continue_retries > 0 else "")
+            + f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
             f'$_launch_cmd {script_name} | _mb_scf_tee "$_out_file" '
             f'"$_scf_timing_log"\n'
@@ -2643,9 +2651,41 @@ def render_run_wrapper(script_path: Path, *,
             f"    fi\n"
             f'    exit "$_siesta_exit"\n'
             f"fi\n"
-            f"\n"
-            f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
-            f'$_out_file"\n'
+            + (f"\n"
+               f"# --- Convergence check + warm-retry "
+               f"(up to {continue_retries} retries) ---\n"
+               f'if grep -qE "SCF_NOT_CONV|SCF did NOT converge" '
+               f'"$_out_file" 2>/dev/null; then\n'
+               f'    _converged=0\n'
+               f'    _why="SCF did not converge"\n'
+               f'elif grep -q "Geometry step did NOT converge" '
+               f'"$_out_file" 2>/dev/null; then\n'
+               f'    _converged=0\n'
+               f'    _why="geometry step did not converge"\n'
+               f'else\n'
+               f'    _converged=1\n'
+               f'fi\n'
+               f'if [ "$_converged" -eq 0 ]; then\n'
+               f'    _next_n=$((_siesta_retry + 1))\n'
+               f'    if [ "$_next_n" -le "$_siesta_retry_max" ]; then\n'
+               f'        echo "" >&2\n'
+               f'        echo "=== $_why; warm-restarting '
+               f'(retry $_next_n/$_siesta_retry_max) '
+               f'with --continue ===" >&2\n'
+               f'        echo "" >&2\n'
+               f'        export MB_RETRY_N=$_next_n\n'
+               f'        exec "$0" --continue\n'
+               f'    else\n'
+               f'        echo "" >&2\n'
+               f'        echo "=== $_why; retries exhausted '
+               f'($_siesta_retry_max max) === " >&2\n'
+               f'        exit 1\n'
+               f'    fi\n'
+               f'fi\n'
+               f'\n'
+               if continue_retries and continue_retries > 0 else "")
+            + f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
+            + f'$_out_file"\n'
         )
     else:
         launch_block = (
@@ -2864,7 +2904,8 @@ def write_run_wrapper(script_path: Path, *,
                        cpus_per_task: Optional[int] = None,
                        exclusive: Optional[bool] = None,
                        carry_in: Optional[List[str]] = None,
-                       emit_sbatch: bool = True) -> Path:
+                       emit_sbatch: bool = True,
+                       continue_retries: Optional[int] = None) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
@@ -2900,6 +2941,7 @@ def write_run_wrapper(script_path: Path, *,
         n_atoms=n_atoms,
         mem_audit=_build_mem_audit(script_path, gres=gres, env=env),
         carry_in=carry_in,
+        continue_retries=continue_retries,
     )
     # Defense-in-depth: every rendered wrapper goes through ``bash -n``
     # (parse-only, no execution) before we hand it back.  Catches the
@@ -3126,29 +3168,18 @@ def render_sbatch(script_path: Path,
     cpus = cpus_per_task if cpus_per_task is not None \
         else defaults.get("cpus_per_task")
     walltime = time if time is not None else defaults.get("time")
-    # mem: caller arg wins; else for GPU jobs prefer ``gpu.mem`` (Sol's GPU
-    # default is a tight 24 GB/GPU), else ``defaults.mem``.  CPU jobs use
-    # ``defaults.mem`` (null => the generous partition default -- do NOT cap
-    # a 64-rank CPU job at a small total).
-    # Memory is JOB-SPECIFIC and the SAME for CPU and GPU -- it's the same
-    # system, same physics.  ONE path, no GPU special-case: estimate per-job
-    # from the .fdf problem size (× rank count -- the estimator already
-    # accounts for ranks, so a low-rank GPU job naturally estimates lower).
-    # Config carries only the estimator's coefficients (scheduler.mem_model,
-    # genuinely site-wide) and an OPTIONAL job-agnostic override
-    # (defaults.mem / CLI --mem); it does NOT carry the per-job value.
-    #   1. explicit caller arg (CLI --mem) -- a hard override;
-    #   2. defaults.mem IF set -- a site override for ALL jobs;
-    #   3. else estimate from the .fdf (the job-specific default).
-    # Best-effort: estimation NEVER blocks emission; on any failure we fall
-    # back to the partition default.  See slurm-integration.md (mem model)
-    # and molbuilder/siesta/memory.py.  (Exclusive jobs ignore all of this
-    # and take the whole node -- § 4.3.1, handled at emission below.)
+    # mem: caller arg wins, else GPU/CPU-specific site default,
+    # else the .fdf estimator.  Best-effort: estimation NEVER blocks
+    # emission; on any failure we fall back to the partition default.
+    # (Exclusive jobs ignore all of this and take the whole node.)
     mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
     else:
-        memory = defaults.get("mem")
+        if gpu:
+            memory = gpu_cfg.get("mem")       # GPU-specific default
+        if memory is None:
+            memory = defaults.get("mem")       # site-wide fallback
         if memory is None and Path(script_path).suffix.lower() == ".fdf":
             try:
                 from .siesta.memory import (estimate_siesta_memory,

@@ -85,14 +85,8 @@ async function _fetchEnvelope(url, fetchInit) {
 
 
 export async function apiRoots() {
-  // The /api/files/roots endpoint responds with
-  //   ``{roots: [{path, label, ...}]}``
-  // (no top-level ``ok`` in the success case; the presence of
-  // ``roots`` IS the success signal).  We normalise here so the
-  // caller always sees the uniform envelope:
-  //   ``{ok: true,  roots: [...]}``           (success)
-  //   ``{ok: false, error: "...", roots: []}`` (failure; roots stub
-  //   present so callers that destructure ``{roots}`` don't NPE).
+  // /api/files/roots returns ``{ok, roots: [...]}`` — we normalise
+  // here so a missing ``roots`` key never trips callers:
   const body = await _fetchEnvelope("/api/files/roots");
   if (body.ok === false) {
     return { ok: false, error: body.error, roots: [] };
