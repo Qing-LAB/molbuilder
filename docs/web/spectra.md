@@ -74,9 +74,10 @@ header; their cells simply fill in once there's excited-state data.
 Click a stick in the chart or a row in the table and that **normal mode animates
 in 3D**: the atoms oscillate along the mode's displacement vectors so you can see
 which bonds stretch or bend. This 3D box is **not** MolView — it's the concealed
-**VibrationView** module, a self-contained 3Dmol viewer built for exactly this
-one job (it owns the oscillation loop and greys out frozen atoms). Two sliders,
-**amplitude** and **speed**, update the running animation live.
+**VibrationView** module ([`vibrationview.md`](?doc=web/vibrationview.md)), a
+self-contained viewer built for exactly this one job (it owns the oscillation loop
+and greys out frozen atoms). Two sliders, **amplitude** and **speed**, update the
+running animation live.
 
 > Two different 3D viewers live on the Spectra tab and it's easy to conflate
 > them: the **inspect card at the top** is a read-only *MolView* showing the

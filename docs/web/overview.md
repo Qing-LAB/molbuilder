@@ -48,7 +48,7 @@ flowchart TD
     T["Molbuilder · Structure-opt · Spectrum · Transport · Results · Documents"]
   end
   subgraph MODS["Reusable front-end modules"]
-    MV["MolView + VibrationView — the 3D viewers"]
+    MV["MolView · VibrationView — the sibling 3D viewers"]
     PROJ["Projects sidebar — browse / open / save files"]
     FS["form-schema — engine-option forms"]
     WS["workspace — session persistence + Undo"]
@@ -93,7 +93,7 @@ entry file for `import`/`export`.)
 | Module | What it does | Doc | ESM |
 |---|---|---|---|
 | **MolView** | the embeddable 3D structure viewer + its data model | [molview.md](?doc=web/molview.md) | ✅ full |
-| **VibrationView** | the concealed normal-mode animator (spectra) | [molview.md § 24](?doc=web/molview.md) | ✅ full |
+| **VibrationView** | the concealed normal-mode animator (a *sibling* of MolView, mounted by the spectra viewer) | [vibrationview.md](?doc=web/vibrationview.md) | ✅ full³ |
 | **workspace** | session persistence + the Undo state timeline | [workspace.md](?doc=web/workspace.md) | ✅ full |
 | **projects** | the sidebar file browser + the load/save doors | [projects.md](?doc=web/projects.md) | ✅ full |
 | **xyz-io** | the shared XYZ parse/format primitive | [runtime.md](?doc=web/runtime.md) | ✅ full |
@@ -110,6 +110,13 @@ its own body is still a classic IIFE — it either publishes a `window.molbuilde
 global (trajectory) or self-mounts on page load (transport), rather than being a
 clean `export`.
 ² **classic** = a plain global-registered script, not yet an ES module.
+³ **MolView and VibrationView are sibling modules, not one** — each a full ES
+module. They are not yet *fully* independent, though: both currently draw through
+one **shared 3Dmol embed surface** (`lib/viewer/`, borrowed by VibrationView via a
+transitional `window.molbuilder.viewer` global). Making them fully separate — the
+embed becomes MolView-private, VibrationView grows its own concealed seal — is
+**task #104** (see [`vibrationview.md § 5`](?doc=web/vibrationview.md)). `lib/viewer/`
+is that shared engine, not a module tabs mount, so it takes no registry row of its own.
 
 Two cross-cutting contracts round out the domain (not mountable modules, but the
 rules every tab obeys): [`web-api.md`](?doc=web/web-api.md) (the server routes) and

@@ -652,56 +652,20 @@ Two more groups of helpers sit beside the structure, built the same sealed way:
 
 ## 24. VibrationView — the animation sibling
 
-VibrationView (`lib/vibrationview/`) is a **separate** viewer that animates a
-vibrational mode. It is a *sibling* of MolView, not a part of it: same design
-idea (a concealed 3D viewer exposed through a tiny handle), applied to
-animation. It is what the user drives in § 10.
+VibrationView (`lib/vibrationview/`) is a **separate, self-contained module** — a
+*sibling* of MolView, not a part of it: MolView never animates, VibrationView never
+selects or edits. It animates a vibrational normal mode (the view driven in § 10)
+and is mounted only by the Spectra viewer. It has **its own doc**:
+[`vibrationview.md`](?doc=web/vibrationview.md) (the mount door + handle, the
+`pos = eq + amp·cos(φ)·disp` animation model, the semantic seal, the eigenvector
+scatter, the spectra wiring).
 
-**The handle.** `mount(host, opts) → handle` (`lib/vibrationview/
-vibrationview.js:69`) follows the same uniform contract as MolView: it **always**
-returns a handle carrying `dispose`; failure is `{ ok: false, error, dispose }`,
-success is `{ ok: true, … }`. The handle:
-
-```
-showMode(mode)   play()   pause()   isPlaying()
-setAmplitude(å)  setSpeed(hz)  getMode()  dispose()
-```
-
-Like MolView's handle, it exposes no internals. Defaults: amplitude **0.15 Å**,
-speed **1.0 Hz**.
-
-**The animation model** is owned here (`vibrationview.js`):
-
-```
-pos_i(φ) = equilibrium_i + amplitude · cos(φ) · displacement_i
-```
-
-The phase `φ` is continuous across pause/play (resuming does not jump), and
-amplitude/speed are **live** — a change takes effect on the next animation frame
-with no rebuild. The baseline is redrawn only when the geometry or the frozen
-set changes, so browsing from mode to mode of one structure keeps the camera
-still. **Frozen atoms** are greyed (`#555`) and never move (zero displacement).
-The one science-shaped piece VibrationView owns is scattering the eigenvector
-into a per-atom displacement array (free rows → the global vector; frozen rows →
-`[0, 0, 0]`), in `lib/vibrationview/mode-math.js`.
-
-**The seal.** VibrationView owns the animation clock, the knobs, and the tick
-math, and drives its drawing surface through **generic** doors —
-`handle.setAtomCoords(coords)` per tick and
-`handle.setAnimationProvider({ frameCoords, restCoords, cycleSec })` for export
-capture. It still *draws* through the shared embed as a plain drawing surface
-(picking off, axes off): the seal is **semantic** — the embed holds zero
-vibration-specific concern — not a second, separate 3Dmol wrapper. The embed's
-old built-in `kind:"vibration"` animation was deleted.
-
-**Spectra-tab wiring** (`lib/spectra/core.js`). The spectra inspector mounts
-VibrationView once, then on each mode pick calls
-`vib.showMode({ index, displacements, geometry, freeAtomIdx, frozenAtomIdx })`;
-the amplitude/speed sliders call `vib.setAmplitude` / `vib.setSpeed`; the
-play/pause button calls `vib.play` / `vib.pause`; a geometry change or unmount
-calls `vib.dispose()`. **The inspector owns the control widgets, the Plotly
-chart, and the mode list; VibrationView renders no control UI** — it just
-animates. It runs identically on `/results` and `/spectra`.
+One coupling worth naming from here: **VibrationView currently *borrows* MolView's
+3Dmol drawing surface** — the embed in `lib/viewer/` — via the transitional
+`window.molbuilder.viewer` global, rather than owning its own. Making the two
+**fully independent** (a MolView-private embed + VibrationView's own concealed
+seal) is tracked as **task #104**; see
+[`vibrationview.md § 5`](?doc=web/vibrationview.md).
 
 ---
 
