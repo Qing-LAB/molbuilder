@@ -163,10 +163,12 @@ reusable ES module**. Spectra is **partway there**:
 
 So the engine and its Results-tab presenter still load as plain scripts and
 publish themselves on `window.molbuilder`, relying on the runtime registry to
-sequence them. Converting both to ES modules is a tracked follow-up: the engine
-is part of the "remaining classic modules" workstream, and the presenter converts
-together with the **`inspectors` → `presenters` rename** (one pass — see
-[`presenters.md`](?doc=web/presenters.md) and `roadmap.md § 3`).
+sequence them. Converting both to ES modules is a tracked follow-up: they convert
+together with the **`inspectors` → `presenters` rename** — one pass (task #102)
+that does the file-viewer registry *and* the heavy engine cores it mounts (this
+`lib/spectra/core.js` among them), since converting them rewrites those files
+anyway. See [`presenters.md`](?doc=web/presenters.md) and
+[`roadmap.md § 3`](?doc=roadmap.md).
 
 ## 10. Test map
 

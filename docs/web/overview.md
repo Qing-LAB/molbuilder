@@ -106,7 +106,9 @@ entry file for `import`/`export`.)
 | **runtime + primitives** | the load-order registry + notify/markdown/chip helpers | [runtime.md](?doc=web/runtime.md) | ○ classic² |
 
 ¹ **hybrid** = the module already `import`s its dependencies as an ES module, but
-its own body is still a classic IIFE that publishes a `window.molbuilder.*` global.
+its own body is still a classic IIFE — it either publishes a `window.molbuilder.*`
+global (trajectory) or self-mounts on page load (transport), rather than being a
+clean `export`.
 ² **classic** = a plain global-registered script, not yet an ES module.
 
 Two cross-cutting contracts round out the domain (not mountable modules, but the
@@ -121,9 +123,9 @@ The **data + viewer modules are there** (MolView, VibrationView, workspace,
 projects, xyz-io — fully ES modules). What remains classic is the **Results-side
 stack and some shared plumbing**:
 
-- **Hybrid** (one foot in ESM — they `import`, but still publish a global):
-  `trajectory`, `transport`, the one converted presenter (`inspectors/structure`),
-  and all four tab controllers.
+- **Hybrid** (one foot in ESM — they `import` their deps as a module, but their
+  own body is still a classic IIFE): `trajectory`, `transport`, the one converted
+  presenter (`inspectors/structure`), and all four tab controllers.
 - **Still classic** (global scripts): the `spectra` engine, the `presenters`
   registry (+ its other viewers), the `results` shell, `form-schema`, the runtime
   registry itself, and the loose primitives (`markdown-render`, `detection-chip`,
@@ -131,11 +133,13 @@ stack and some shared plumbing**:
 
 Finishing the conversion is tracked in two workstreams (`roadmap.md § 3`):
 
-- **#102** — convert the file-viewer module to ESM **and rename `inspectors` →
-  `presenters`** in one pass (the doc already uses the target name; the code catches
-  up). "Inspector" collided with the viewers' own inspect panels, hence the rename.
-- **#103** — convert the remaining classic modules: `results`, the runtime
-  registry, the spectra engine, `form-schema`, and the shared primitives.
+- **#102** — convert the file-viewer registry to ESM **and rename `inspectors` →
+  `presenters`** in one pass. The same pass also converts the two **heavy engine
+  cores the registry mounts** — `lib/spectra/core.js` and `lib/trajectory/core.js`
+  — since converting them rewrites those files anyway. "Inspector" collided with
+  `mountInspector` and the viewers' own inspect panels, hence the rename.
+- **#103** — convert the remaining classic modules: the `results` module, the
+  runtime registry itself, `form-schema`, and the shared primitives.
 
 Until then, the runtime registry (§ 3) is what lets fully-ESM and classic modules
 coexist on the same page without a load-order race.
