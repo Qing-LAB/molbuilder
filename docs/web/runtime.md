@@ -98,7 +98,7 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | Building block | Reach it as | What it is |
 |---|---|---|
 | Notification bar | `molbuilder.notify` | The app-wide message framework — dismissible messages (dedup by id, × / Esc / Clear-all), any tab. A **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
-| Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" / overwrite confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise. The most-used shared UI block (≈9 consumers across modify / spectra / transport / molview). |
+| Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise (its only method). The most-used shared UI block — **6 consumers**: modify (×3), structure-opt, spectra, transport. (The *overwrite*-confirm is a separate Modify save-dialog, `save-dialog.js`, not this.) |
 | Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify, lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
 | Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem, no DOM. |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
