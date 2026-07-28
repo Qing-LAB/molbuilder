@@ -33,9 +33,10 @@ These are gated — a violation fails `pytest` (and therefore the pre-commit hoo
   run" (undefined names, unused imports). Plus a `node -c` syntax check on any
   changed `*.js`.
 - **The full test suite gates every commit.** The pre-commit config runs `pytest -m
-  "not slow"` — and it deliberately does **not** exclude `e2e`. (The comment in the
-  config says so outright: gate on the tests that catch production bugs.) The
-  migration's own doc rules ride the same gate via `tests/test_docs_structure.py`.
+  "not slow"` — and it deliberately does **not** exclude `e2e` as a class (the
+  comment in the config says so outright: gate on the tests that catch production
+  bugs); it only `--ignore`s one chromium-heavy file. The migration's own doc rules
+  ride the same gate via `tests/test_docs_structure.py`.
 - **HTTP negative-body assertions must be status-guarded** — an AST meta-lint over
   the whole test suite (`tests/test_negative_body_assert_lint.py`) so a test can't
   assert "the body doesn't contain X" without first pinning the status code.
