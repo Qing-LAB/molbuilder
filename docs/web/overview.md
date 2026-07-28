@@ -34,7 +34,7 @@ Structure-optimization, Spectra, and Results, and **editable** on Molbuilder and
 Transport. Five tabs, one module, zero copy-paste. The projects sidebar and the
 form builder are reused the same way. When a module *isn't* fully converted yet
 (some are still classic global scripts), its own doc carries a **current → target
-ESM note**, and § 5 below is the scorecard.
+ESM note**, and § 6 below is the scorecard.
 
 Why the discipline pays off: a bug fixed in `lib/spectra/core.js` fixes both the
 standalone Spectra tab *and* the Results-tab spectrum viewer, because they are two
@@ -125,7 +125,35 @@ rules every tab obeys): [`web-api.md`](?doc=web/web-api.md) (the server routes) 
 [`tabs.md`](?doc=web/tabs.md) consumer doc shows how the six pages wire it all
 together.
 
-## 5. ESM status — how far the doctrine is realized
+## 5. The seam contract — the doors deliberately differ
+
+Every module hides behind one small door, but the doors were **built at different
+times and speak different error models on purpose**. There is no single "how a
+molbuilder door reports failure" rule — so when you move from calling one module to
+another, read the target module's doc rather than assuming the last one's habits. The
+contrast, at a glance (each door's full contract is in its own doc):
+
+| Door | On failure | "Nothing there" | Cancellation |
+|---|---|---|---|
+| **`mount()`** — [molview](?doc=web/molview.md), [vibrationview](?doc=web/vibrationview.md) | returns `{ ok:false, error, dispose(){} }` — **never a null sentinel**; success is `{ ok:true, … }`. Branch on `.ok`; call `.dispose()` unconditionally | — | — |
+| **`molview.data`** | `Promise.reject(Error)` for the write verbs (installMolecule / applyOp / generate / save / load); **validate-and-throw** on bad frame ops | reads return `null` / empty defaults | — |
+| **[workspace](?doc=web/workspace.md)** | **never rejects** — `readState` resolves `null` on *any* failure (a miss, a network drop, and malformed data are indistinguishable **by design**: the caller treats every miss as "re-anchor"); `persist` is fire-and-forget | `null` | — |
+| **[projects](?doc=web/projects.md)** (files) | a uniform `{ ok:false, error }` envelope — **never throws** | `null` = a deliberate third state ("no file selected") | **yes** — every file op threads `opts.signal`; an abort maps to `{ ok:false, error:"aborted", aborted:true }` |
+
+Three conventions cut across the table:
+
+- **Cancellation has one recognizer.** Four cancel shapes exist (fetch's `AbortError`,
+  a user-cancelled dialog's `{ cancelled:true }`, the envelope's `aborted:true`, the
+  embed's `ViewerError code:"aborted"`) — don't string-match them; use
+  `projects/state.js`'s `isCancelError(err)`, the one recognizer.
+- **Two lifecycle philosophies, on purpose.** `mount()` returns a **disposable**
+  component (`dispose()` unwinds attachments → embed → card DOM, LIFO); `workspace` and
+  `projects` are **page-lifetime singletons** whose only lifecycle surface is each
+  subscription's unsubscribe function.
+- **Every subscribe-like door returns an unsubscribe function** — the *one* universal
+  convention across all the doors.
+
+## 6. ESM status — how far the doctrine is realized
 
 The **data + viewer modules are there** (MolView, VibrationView, workspace,
 projects, xyz-io — fully ES modules). What remains classic is the **Results-side
@@ -152,7 +180,23 @@ Finishing the conversion is tracked in two workstreams (`roadmap.md § 3`):
 Until then, the runtime registry (§ 3) is what lets fully-ESM and classic modules
 coexist on the same page without a load-order race.
 
-## 6. Where to start reading
+**Why finish the conversion at all?** An ES module makes the concealment *real*: a
+top-level `const` or helper is invisible outside the file unless it's `export`ed, so
+"don't reach inside" stops being a rule to remember and becomes enforced by the
+language — the seal the doctrine (§ 1) asks for, for free.
+
+**How the conversion stays safe — never big-bang.** The instant a module becomes
+pure-ES it leaves `window` and runs *deferred* (after the classic scripts), which would
+break every classic consumer still calling `window.molbuilder.<name>.*`. So a module is
+converted **together with its consumers**, one at a time, with a thin transitional
+`window.molbuilder.<name>` **shim** (its public API re-exposed on the global) kept until
+the *last* classic consumer migrates — then the shim is deleted. `xyz-io` is the live
+example: already an ES module, but keeping a classic access door for its not-yet-converted
+callers. The Node tests come along for free — a converted module publishes the *same*
+global **and** exposes exports, so a test reading through `window.molbuilder.X` passes
+before and after conversion ([`testing.md § 4`](?doc=process/testing.md)).
+
+## 7. Where to start reading
 
 | If you want to… | Start with |
 |---|---|
