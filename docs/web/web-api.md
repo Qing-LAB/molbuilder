@@ -105,8 +105,8 @@ Set on every response by an `after_request` hook (`app.py`):
   fingerprints in the URL, like `<script`, `union select`, or `/etc/passwd`; the
   total-request cap is **off by default** (`threshold_total = 0`) unless an
   operator sets it. `127.0.0.1`/`::1` are allowlisted; a blocked IP gets an
-  empty **429**. The threat model and the two `/api/admin/rate_limit/*` routes
-  live in the ops-wave rate-limit doc.
+  empty **429**. The full threat model and the two `/api/admin/rate_limit/*` routes
+  live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
 ## 3. The route catalogue
