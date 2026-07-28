@@ -949,7 +949,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"allocate.\n"
                 f"\n"
                 f"Fix: add to molbuilder.json (see the asu-sol preset in "
-                f"docs/examples/molbuilder.asu-sol.json):\n"
+                f"docs/ops/examples/molbuilder.asu-sol.json):\n"
                 f'    {{\n'
                 f'      "scheduler": {{\n'
                 f'        "kind": "slurm",\n'

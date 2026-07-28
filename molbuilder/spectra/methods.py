@@ -23,7 +23,7 @@ SIESTA engine plugs in without changing this file.
 
 Citation keys appear inline as ``[KeyName]`` markers (e.g.
 ``[Sun2020]``).  Every key cited here must resolve against
-``docs/tabs/spectra/references.bib``; :func:`extract_citation_keys`
+``docs/science/references.bib``; :func:`extract_citation_keys`
 gives the caller the list of keys actually used so it can render a
 trailing bibliography and the ``bibliography_keys`` field of
 :class:`SpectraResults` stays in sync.

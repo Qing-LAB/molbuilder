@@ -646,7 +646,7 @@ class PySCFSpectraEngine:
 
         Names PySCF + the specific Hessian / polarizability-
         derivative APIs used, with citation keys that resolve
-        against ``docs/tabs/spectra/references.bib`` and bubble
+        against ``docs/science/references.bib`` and bubble
         up into the trailing bibliography of the full Methods
         text.
         """

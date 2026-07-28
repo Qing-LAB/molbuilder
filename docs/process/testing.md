@@ -135,6 +135,11 @@ There is **no CI** — enforcement is the **pre-commit hook**
 deliberately keeps `e2e` in), pyflakes, and a `node -c` syntax check on changed
 `*.js`. So the suite you run locally *is* the gate.
 
+A ready-to-use GitHub Actions workflow sits beside this doc at
+`process/github-workflows-test.yml`. It is a **template, not a live workflow** —
+copy it to `.github/workflows/test.yml` yourself if you want CI; it is
+deliberately not installed there.
+
 ## 8. Test map (the meta-tests)
 
 - `test_layering.py` — the import-direction + full-classification invariant (§2).

@@ -35,7 +35,7 @@ Adding a new engine (SIESTA, OpenMX with vib analysis, ...) is
 mechanical: drop in ``<engine>_engine.py`` next to this file
 with a registered class, add the engine name to
 ``SpectraConfig.engine``'s ``choices`` metadata tuple, and add
-its citations to ``docs/tabs/spectra/references.bib``.  Nothing
+its citations to ``docs/science/references.bib``.  Nothing
 else changes -- the web blueprint, the JSON parser, the
 Methods generator, and the form-schema endpoint all dispatch
 through this registry.
@@ -154,7 +154,7 @@ class SpectraEngine(Protocol):
           * the specific implementation used ("analytic Hessian
             via ``pyscf.hessian.rks``");
           * the method papers cited via ``[CitationKey]`` markers
-            that resolve against ``docs/tabs/spectra/references.bib``.
+            that resolve against ``docs/science/references.bib``.
 
         Plain English, manuscript-ready prose.  The Methods
         generator interpolates the citation keys + the actual

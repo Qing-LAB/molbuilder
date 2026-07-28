@@ -1,9 +1,22 @@
 # README screenshot manifest
 
+**Role:** process
+**Domain:** process
+**Companions:** [`testing.md`](?doc=process/testing.md) ·
+[`web/tabs.md`](?doc=web/tabs.md) (what each tab actually shows)
+
 The README references 10 screenshots under `docs/img/`.  This doc is
 the capture guide: for each filename, the URL to open, the state to
 set, the zoom region, and what the image must communicate.  Update
 this file whenever the README's image references change.
+
+> **⚠ Known stale capture (2026-07-28).**  `tab-bar.png` — and the nav
+> strip inside `hero-molbuilder.png` — show **five** tabs.  The shipped
+> app has **six**: the **Documents** tab landed after these were taken
+> ([`web/tabs.md § 1`](?doc=web/tabs.md)).  The README's alt text for
+> `tab-bar.png` also still says "Five-tab nav strip".  Both need a
+> re-capture + an alt-text fix (the re-capture rule below already
+> mandates it: a new tab is exactly the trigger).
 
 > **Demo data convention.**  Every screenshot uses the project at
 > `projects/BDT/` so the README reads as one continuous Au–BDT–Au
@@ -49,9 +62,9 @@ this file whenever the README's image references change.
 | # | Filename | Used in README § | URL | What to load / set | Zoom region | Communicates |
 |---|---|---|---|---|---|---|
 | 1 | `hero-molbuilder.png` | top of README | `/molbuilder` | Load `projects/BDT/structure/BDT-AuJunction_siestaStage1_optimized.xyz`; Junction panel open; default camera | Full content area (sidebar + main + the right-side commands stack) — exclude browser chrome | "This is molbuilder" — sidebar + tabs + viewer + commands in one frame |
-| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (5 tabs).  ~1200 × 60 px | Names + order of every tab |
+| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (**six** tabs — the order comes from the one `TABS` list in `tabs.py`).  ~1200 × 60 px | Names + order of every tab |
 | 3 | `sidebar-projects.png` | § Workflow + § Documentation | `/molbuilder` | Expand `BDT/` → `structure/`; cursor on `BDT-AuJunction_siestaStage1_optimized.xyz` so the paired `.molstruct.json` shows as a sidecar | Zoom: just the projects sidebar column.  ~360 × 700 px | Tree shape + the structure↔sidecar pairing |
-| 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the orange halo + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
+| 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the amber **shape glow** (the only selection highlight — halos were removed, see [`web/molview.md`](?doc=web/molview.md)) + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
 | 5 | `structure-optimization-form.png` | § 2 Structure optimization | `/structure-optimization` | Pick `BDT-AuJunction_siestaStage1_optimized.xyz` from the sidebar; engine = SIESTA; default profile.  Issues panel will show INFO notices about Au-thiol detection | Zoom: the `/structure-optimization` content area (form on left, viewer on right, issues panel docked below).  ~1100 × 760 px | Schema-driven form + workflow-group cards + inline detection chip + issues |
 | 6 | `spectrum-form.png` | § 3 Spectrum calculation | `/spectrum-calculation` | Pick `projects/BDT/spectrum/BDT-only/spectra.spectra.py` *if* present — else use any small molecule. Default form values | Zoom: the form panel only.  ~520 × 700 px | The vertical workflow-group layout (Profile / Stage / Budget) |
 | 7 | `transport-form.png` | § 4 Transport calculation | `/transport-calculation` | Pick the same BDT junction `.xyz`.  Default form (electrode-Au, 0 V) | Zoom: the form + a small slice of the viewer showing the region-labelled atoms.  ~1080 × 760 px | Electrode region labels flowing in from the sidecar |
@@ -62,11 +75,9 @@ this file whenever the README's image references change.
 ## Naming + path convention
 
 - All PNGs land at `docs/img/<exact-filename>.png` as listed above.
-- Keep the existing `modify-tab.png` / `build-tab.png` /
-  `watch-tab.png` files until the new ones land — the README has
-  already been updated to point at the new names, so the old files
-  are unreferenced after this commit lands.  Delete them in the
-  same commit that adds the replacements (cleaner blame).
+- The manifest is the whole of `docs/img/`: exactly these 10 files,
+  each referenced by the README.  A PNG nobody references doesn't
+  belong there.
 
 ## Sizing rules
 

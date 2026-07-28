@@ -398,7 +398,7 @@ def _emit_constants(struct: Structure,
     out.append(f"BOHR_TO_ANG                = {_BOHR_TO_ANG!r}")
     out.append("")
     out.append("# Bibliography keys used in the Methods text + inline comments.")
-    out.append("# Verified entries live in docs/tabs/spectra/references.bib.")
+    out.append("# Verified entries live in docs/science/references.bib.")
     out.append(f"BIBLIOGRAPHY_KEYS          = {list(bibliography_keys)!r}")
     out.append("")
     out.append("# A snapshot of the SpectraConfig that produced this script,")

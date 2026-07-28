@@ -539,7 +539,7 @@ Raman activities (and, optionally, IR intensities).
 
 Spec + bibliography:
 [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) +
-[`docs/tabs/spectra/references.bib`](docs/tabs/spectra/references.bib).
+[`docs/science/references.bib`](docs/science/references.bib).
 
 ### 4. Transport calculation — TranSIESTA scripts
 
@@ -1259,7 +1259,7 @@ there the deploy is two steps:
 bash scripts/install-env.sh bootstrap --yes
 
 # 2. Edit the deployment config + start the server.
-cp docs/molbuilder.json.example molbuilder.json
+cp docs/ops/examples/molbuilder.json.example molbuilder.json
 $EDITOR molbuilder.json         # delete sections you don't need
 conda activate molbuilder
 python -m molbuilder serve --host 0.0.0.0 --port 443
@@ -1524,7 +1524,7 @@ For everything else (multi-provider tuning, TLS, reverse-proxy
 auth), copy the template and hand-edit:
 
 ```bash
-cp docs/molbuilder.json.example molbuilder.json
+cp docs/ops/examples/molbuilder.json.example molbuilder.json
 $EDITOR molbuilder.json         # delete sections you don't need
 conda activate molbuilder
 python -m molbuilder serve --host 0.0.0.0 --port 443
@@ -1640,7 +1640,7 @@ points, grouped by topic:
 |---|---|
 | [`docs/README_install.md`](docs/README_install.md) | Install recipes for the host env and the five backend envs; `molbuilder envs` CLI. |
 | [`docs/deployment.md`](docs/deployment.md) | Localhost, LAN, and internet deployment; built-in auth vs reverse-proxy auth; TLS; config reference; security headers. |
-| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | Config template with inline `_comment_*` annotations for every supported section. |
+| [`docs/ops/examples/molbuilder.json.example`](docs/ops/examples/molbuilder.json.example) | Config template with inline `_comment_*` annotations for every supported section. |
 
 **Per-tab specs**
 
