@@ -122,7 +122,18 @@ If no presenter is registered at all, the tab shows a clear configuration warnin
 rather than a blank panel. If the folder simply has no results yet, the picker
 shows a placeholder and stays put — Refresh remains one click away.
 
-## 8. Test map
+## 8. Where the module stands (current → target ESM)
+
+The Results shell is still **classic**: `results/viewer.js` plus
+`lib/results/file-picker.js` and `bundle-handoff.js` are global-registered scripts
+(`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
+load in order. Converting them is task #103 (the "remaining classic modules" pass,
+alongside the runtime registry and the shared primitives —
+[`roadmap.md § 3`](?doc=roadmap.md)). The heavy viewers this shell *mounts* are on
+a different track — the trajectory and spectra engines convert in the #102
+file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
+
+## 9. Test map
 
 - `test_results_blueprint.py` — the page + the registered presenter set + script
   order.

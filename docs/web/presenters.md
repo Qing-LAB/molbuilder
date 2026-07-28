@@ -19,9 +19,11 @@ rule that picks the matching one and mounts it.
 
 > **Current → target.** In the code today this module is still
 > `window.molbuilder.inspectors` (in `lib/inspectors/`), and most of its files
-> are classic scripts — only two are ES modules so far (`structure.js` and the
-> trajectory engine `lib/trajectory/core.js`). It is being **renamed to
-> `presenters`** and converted to ES modules in one pass (task #102,
+> are classic scripts. Two are further along — `structure.js` and the trajectory
+> engine `lib/trajectory/core.js` already `import` as modules, but both still
+> register through the global, so they are **hybrids**, not clean ES modules yet.
+> The module is being **renamed to `presenters`** and fully converted in one pass
+> (task #102,
 > [`roadmap.md § 3`](?doc=roadmap.md)) — the old term "inspector" collided with
 > `mountInspector` inside the engines and with the viewers' own inspect panels.
 > This doc uses the target name **presenter**; where it points at code it uses
@@ -153,13 +155,14 @@ This module is the file-viewer registry that is being renamed and modernized
 
 | File | Today | After the task-#102 pass |
 |---|---|---|
-| `structure.js` | already an ES module | renamed to `presenters` |
-| `lib/trajectory/core.js` (engine) | already an ES module | renamed |
+| `structure.js` | hybrid — imports, but registers via the global | clean ES module, renamed to `presenters` |
+| `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global | clean ES module, renamed |
 | `registry.js`, `_partial_inspector_factory.js`, `trajectory.js`, `spectra.js`, `source.js`, `markdown.js` | classic scripts | converted to ES modules + renamed |
 | `lib/spectra/core.js` (engine) | classic script | converted |
 
-So two of the module's nine files are ES modules today; the rest, and the
-`molbuilder.inspectors` → `presenters` rename, are the pending pass. See
+So two of the module's nine files already import as modules (still global-registered
+= hybrid), and the rest are classic; converting them all — plus the
+`molbuilder.inspectors` → `presenters` rename — is the pending pass. See
 [`roadmap.md § 3`](?doc=roadmap.md).
 
 ## 8. Test map

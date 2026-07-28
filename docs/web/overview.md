@@ -34,7 +34,7 @@ Structure-optimization, Spectra, and Results, and **editable** on Molbuilder and
 Transport. Five tabs, one module, zero copy-paste. The projects sidebar and the
 form builder are reused the same way. When a module *isn't* fully converted yet
 (some are still classic global scripts), its own doc carries a **current → target
-ESM note**, and § 6 below is the scorecard.
+ESM note**, and § 5 below is the scorecard.
 
 Why the discipline pays off: a bug fixed in `lib/spectra/core.js` fixes both the
 standalone Spectra tab *and* the Results-tab spectrum viewer, because they are two

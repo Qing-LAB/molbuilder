@@ -128,6 +128,13 @@ header. The header's source-path line has the username redacted.
   error). All the "which state resets what" rules — why a file-switch clears the
   view but keeps your preferences, why Refresh is a full reload — live in that
   machine; `results.md § 4` has the plain-language summary.
+- **Where the module stands (current → target ESM).** The engine
+  `lib/trajectory/core.js` already `import`s MolView as an ES module, but its own
+  body is still a classic script that publishes `window.molbuilder.trajectoryInspector`
+  — a **hybrid**, not yet a clean module. It converts to a full ES module in the
+  file-viewer registry + `inspectors` → `presenters` pass (task #102,
+  [`roadmap.md § 3`](?doc=roadmap.md)), the same pass that converts the sibling
+  spectra engine. See [`presenters.md`](?doc=web/presenters.md).
 
 ## 8. Test map
 

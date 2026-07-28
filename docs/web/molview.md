@@ -650,7 +650,7 @@ Two more groups of helpers sit beside the structure, built the same sealed way:
 
 ---
 
-# 24. VibrationView — the animation sibling
+## 24. VibrationView — the animation sibling
 
 VibrationView (`lib/vibrationview/`) is a **separate** viewer that animates a
 vibrational mode. It is a *sibling* of MolView, not a part of it: same design
