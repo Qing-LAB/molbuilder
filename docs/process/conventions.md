@@ -1,0 +1,126 @@
+# Conventions — how you write and invoke the code
+
+**Role:** reference
+**Domain:** process
+**Companions:** [`package-layout.md`](?doc=process/package-layout.md) — where the
+code lives; [`testing.md`](?doc=process/testing.md) — the guard tests named here;
+[`execution/overview.md`](?doc=execution/overview.md), [`ops/installation.md`](?doc=ops/installation.md),
+[`web/tabs.md`](?doc=web/tabs.md) — where each CLI command's *behaviour* is documented.
+
+Two things live here: the **conventions the codebase enforces** (lead with those —
+each is backed by a test that fails the build), and the **CLI surface** (the shape
+of the `molbuilder` command and the design principle behind it). Advisory,
+nice-to-have style rules are called out as such so you know which lines are load-
+bearing.
+
+## 1. The conventions that are actually enforced
+
+These are gated — a violation fails `pytest` (and therefore the pre-commit hook):
+
+- **Layering — imports only point *down*.** The code is layered, and the two
+  **surfaces** (`cli.py` and `web/`) are the top layer: nothing lower may import
+  them, and no module may import from a layer above it.
+  `tests/test_layering.py` walks every `molbuilder/*.py` and asserts both the
+  import direction *and* that every top-level name is classified into a layer (so a
+  new module can't silently escape the check).
+- **The parse layer stays pure.** The memory-only text parsers do **no I/O**
+  (`tests/parse/test_scripts.py::test_text_parsers_do_no_io`), the file parsers do
+  **no subprocess / network / threads**, and the parse core carries **no
+  engine-specific names** (`tests/parse/test_audit_gaps.py`). These keep the
+  parse module reusable and testable without a filesystem.
+- **`pyflakes` on every commit.** A pre-commit hook runs pyflakes
+  (`.pre-commit-config.yaml`) — it doesn't lint style, only "would this actually
+  run" (undefined names, unused imports). Plus a `node -c` syntax check on any
+  changed `*.js`.
+- **The full test suite gates every commit.** The pre-commit config runs `pytest -m
+  "not slow"` — and it deliberately does **not** exclude `e2e`. (The comment in the
+  config says so outright: gate on the tests that catch production bugs.) The
+  migration's own doc rules ride the same gate via `tests/test_docs_structure.py`.
+- **HTTP negative-body assertions must be status-guarded** — an AST meta-lint over
+  the whole test suite (`tests/test_negative_body_assert_lint.py`) so a test can't
+  assert "the body doesn't contain X" without first pinning the status code.
+
+Two things worth internalising from the list: there is **no CI** — all of this is
+enforced by the **local pre-commit hook** (there is no `.github/workflows/`); and
+the code runs from the tree (`pythonpath=["."]`, **no `pip install -e`**).
+
+## 2. The module-provenance header (advisory)
+
+The house style is that a file opens with a short **`MODULE · ROLE · USED-BY`**
+header so a reader knows what it is and who depends on it — the reference
+implementations are `lib/workspace/dispatcher.js` and `snapshot-io.js`.
+
+**Be honest about its status: this one is *advisory / review-only*.** No test pins
+it, and adoption is partial (only a fraction of the front-end modules actually
+carry the header today). It's a good habit and the review standard, but it is not
+a build gate — don't mistake it for one. (Fixing that — either an AST/text guard
+like `test_layering.py`, or softening the "mandatory" wording — is a recorded
+follow-up.) Note this is *not* the same as the **docs** provenance header
+(`**Role:**`/`**Domain:**`), which *is* enforced, by `test_docs_structure.py`.
+
+## 3. The CLI surface
+
+### The design: a thin shell over the same API the web UI uses
+
+`molbuilder = molbuilder.cli:main` (plus a back-compat `molwatch` that now maps to
+`molbuilder serve`). The CLI is a **top-layer surface** — like the web server — and
+it calls the **same lower-layer functions the blueprints call**, never a private
+copy. For example: the `peptide`/`dna`/`smiles`/`name` commands and the Build
+blueprint both dispatch to `build_peptide` / `build_dna` / `build_from_smiles` /
+`build_from_name`; `modify` and the Modify blueprint both call
+`molbuilder.modify`; `run` and the Build blueprint both call
+`runwrap.write_run_wrapper`. The layering test guarantees this — `cli` and `web`
+are the only two top-layer modules, both sitting above one shared API.
+
+### The command catalogue (an index — behaviour lives in the domain docs)
+
+**15 top-level commands:**
+
+| | | |
+|---|---|---|
+| `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
+| `fdf` `pyscf` | XYZ/PDB → a SIESTA/PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
+| `run` | emit the `.run.sh` wrapper that executes it | ([`execution/running-a-job.md`](?doc=execution/running-a-job.md)) |
+| `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
+| `modify` | one structure-edit op per call | |
+| `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→xyz · dump a runtime-info sidecar · watch a job | |
+| `auth-setup` `serve` | generate the auth config · run the web UI | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
+
+**7 sub-groups:** `envs` (conda-env management → [`ops/installation.md`](?doc=ops/installation.md)),
+`bench` (the CPU-vs-GPU benchmark), `jobset` (staged execution →
+[`execution/job-system.md`](?doc=execution/job-system.md)), `transport`
+(TranSIESTA helpers), `pseudo` (`.psml` screening →
+[`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `snapshot`
+(git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
+
+### The CLI-wide conventions
+
+- **Exit codes:** `--help` → 0; a usage / unknown-command / bad-argument error → 2;
+  a domain error → 1. A few commands deliberately use 2 for a *domain* problem the
+  user must fix before anything runs (e.g. `fdf` with a missing pseudopotential,
+  `validate --exit-on-error`) — the number tells a script "stop, this won't work."
+- **stdout vs stderr:** structure/data output goes to **stdout**, the human summary
+  to **stderr**, and `-` means stdin/stdout — so `molbuilder … | molbuilder …`
+  pipes cleanly.
+- **`--help` is generated from the config dataclasses.** The `fdf`/`pyscf` flags are
+  derived from `SiestaConfig`/`PySCFConfig` field metadata, so a `choices=` field
+  becomes a `click.Choice` that fails at parse time (exit 2) — the CLI and the web
+  form expose the *same* options from one source.
+
+## 4. Where the guards live (test map)
+
+- `test_layering.py` — the import-direction + full-classification gate.
+- `parse/test_scripts.py`, `parse/test_audit_gaps.py` — the parse-layer purity gates.
+- `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
+- `test_docs_structure.py` — the docs migration/structure rules.
+- `test_cli.py` (+ `test_cli_run.py`, `test_cli_runtime_info.py`,
+  `test_cli_siesta_stages.py`, `test_cli_tls.py`) — every subcommand's `--help`,
+  routing, and the dataclass→flag bridge.
+
+> **Migration note.** The legacy `cli.md` was stale in several places, corrected
+> here against code: `validate` uses `--engine` (not `--config`), defaults to
+> geometry-only, emits a JSON *object*, and exits non-zero only with
+> `--exit-on-error`; the CLI *does* have dedicated tests (five files, not "none");
+> and enforcement is pre-commit, not CI. The full command families
+> (`run`/`envs`/`bench`/`jobset`/`transport`/`snapshot`/…) that the legacy table
+> omitted are included above.
