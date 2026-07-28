@@ -40,9 +40,19 @@ counters.
 
 **The bind guard.** molbuilder refuses to bind a **non-loopback** host without
 TLS — because doing so serves the whole `projects/` tree (read/write/delete) to
-the network. You must either add `--cert/--key`, put it behind a TLS-terminating
-proxy (and bind loopback), or knowingly pass `--allow-insecure-binding`. The error
-message spells out those three options.
+the network. You satisfy it by adding `--cert/--key`, putting it behind a
+TLS-terminating proxy (and binding loopback), or knowingly passing
+`--allow-insecure-binding`.
+
+> **⚠ TLS is not authentication.** The bind guard checks only *host + TLS* — it
+> **never checks whether auth is on**. And auth is **opt-in** (§3): with no `auth`
+> section in `molbuilder.json`, the server runs with **no authentication at all**.
+> So `molbuilder serve --host 0.0.0.0 --cert … --key …` passes the guard yet
+> exposes a **public, unauthenticated, fully read/write/delete `projects/` tree** —
+> TLS only encrypts the wire. (The guard's own message says so: *"still no
+> auth!"*.) A real public deployment must **turn auth on** (§3) **or** sit behind a
+> proxy that authenticates (§2); `--cert/--key` alone is defense-in-depth, not
+> access control.
 
 ## 2. The production shape
 
@@ -94,9 +104,11 @@ override):
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: same-origin`, and **HSTS only when served over HTTPS**.
 - a **50 MB request cap** — over it, a JSON `413`, not Flask's HTML default.
-- **no CSRF token layer**: cross-origin writes are blocked by `connect-src 'self'`
-  in the CSP plus `SameSite=Lax` cookies; no CORS headers are emitted (same-origin
-  only).
+- **no CSRF token layer**: cross-site request forgery is defended by
+  **`SameSite=Lax` cookies** (a third-party page can't ride your session on a
+  state-changing request) plus `form-action 'self'`; no CORS headers are emitted
+  (same-origin only). (`connect-src 'self'` limits where *molbuilder's own* pages
+  may connect out — it isn't the CSRF defense.)
 
 ### The rate limiter (the threat model `web-api.md` defers here)
 
@@ -108,7 +120,7 @@ an IP for a **cooldown (default 1 hour)** on any of **three signals**:
    patterns for XSS (`<script`, `<meta http-equiv`, `document.cookie`), SQLi
    (`union select`, `; drop table`), and path traversal (`/etc/passwd`,
    `../../../`). This signal is on even when the count-based ones are off.
-2. **404-storm** — more than `threshold_404` (default **20**) 4xx responses within
+2. **404-storm** — `threshold_404` (default **20**) *or more* 4xx responses within
    `window_404_s` (default **30 s**): a scanner walking for files.
 3. **Total-burst** — `threshold_total` requests in `window_total_s`. **Disabled by
    default** (`threshold_total = 0`) — a 60/60 s cap once throttled the app's own
