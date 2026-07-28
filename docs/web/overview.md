@@ -44,7 +44,7 @@ mounts of one module — not two copies.
 
 ```mermaid
 flowchart TD
-  subgraph TABS["The six tab pages — thin consumers (tabs.md)"]
+  subgraph TABS["The six tab pages — thin consumers, see tabs.md"]
     T["Molbuilder · Structure-opt · Spectrum · Transport · Results · Documents"]
   end
   subgraph MODS["Reusable front-end modules"]
@@ -57,11 +57,11 @@ flowchart TD
     RT["runtime registry + shared primitives"]
   end
   subgraph SHELL["Cross-cutting"]
-    API["web-api — the /api/* routes + {ok} envelope"]
+    API["web-api — the /api/* routes + the ok/error envelope"]
     CSS["ui-contract — tokens, layers, responsive"]
   end
-  T -->|"mount()"| MV & PROJ & FS & PRES & ENG
-  MV & PROJ & FS & WS & ENG -->|"fetch {ok,…}"| API
+  T -->|"mount the module"| MV & PROJ & FS & PRES & ENG
+  MV & PROJ & FS & WS & ENG -->|"fetch, ok/error reply"| API
   RT -.->|"register / whenReady sequences everything"| MODS
   CSS -.->|"one palette, one owner per element"| TABS
 ```
