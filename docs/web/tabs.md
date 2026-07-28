@@ -68,10 +68,10 @@ below. The controller code is deliberately thin glue:
 ### Creating a structure — the in-gate
 
 The "Init structure" bar is how a molecule *first appears* on the canvas. Every
-source, no matter how different, funnels through **one gate**:
+source in that bar, no matter how different, funnels through **one gate**:
 `structurePage.loadIntoCanvas(structure, source)` → `molview.data.installMolecule`.
 That single funnel runs the dirty-canvas check ("you have unsaved edits —
-replace them?") so no source can bypass it.
+replace them?") so no Init source can bypass it.
 
 The sources, and what each produces (all POST `/api/build/molecule` with
 `{kind, input}` unless noted):
@@ -85,8 +85,11 @@ The sources, and what each produces (all POST `/api/build/molecule` with
 | **RNA** | `rna` | A-form canonical | |
 | **Peptide** | `peptide` | AmberTools `tleap` | extended chain from a sequence |
 
-Loading a project file from the sidebar is just another way in — it reads the
-`.xyz` plus its `.molstruct.json` sidecar through the same gate.
+Loading a project file from the sidebar is a *separate* loader
+(`projects.parser.openMolecule` reads the `.xyz` + its `.molstruct.json` sidecar,
+with its own discard-unsaved check), but it lands the molecule on the canvas
+through the very same `installMolecule` step — that call, not `loadIntoCanvas`, is
+the one door every path shares.
 
 ## 3. Structure optimization — generate a relaxation script
 
@@ -106,12 +109,17 @@ for SIESTA, `POST /api/build/pyscf` for PySCF — nothing is written to disk yet
 have their own render routes. Live validation runs against `/api/build/preflight`
 as you edit.
 
-Saving a SIESTA run is a **four-step pipeline**, because a SIESTA job is more than
-one file: save the geometry (`.xyz`) → install the pseudopotentials (`.psml`, via
-`/api/siesta/install-pseudos`) → drop the run wrapper (`.run.sh`, via
-`/api/run/install-wrapper`) → rewrite the pseudo paths in the `.fdf`. PySCF is
-simpler: save the `.py`, install the wrapper. Both save through the projects
-module's save door (§6), never a hand-rolled write.
+Saving a SIESTA run is a **four-step pipeline**, because a SIESTA job needs more
+than the script alone: write the `.fdf` script (the geometry is *inline* in the
+`.fdf` — this tab writes no separate `.xyz`) → install the pseudopotentials
+(`.psml`, via `/api/siesta/install-pseudos`) → drop the run wrapper (`.run.sh`,
+via `/api/run/install-wrapper`) → rewrite the **`psml_lib` form field** to a
+path relative to the save folder (so a later re-edit stays portable — this
+touches the form, not the already-written `.fdf`). PySCF is simpler: save the
+`.py`, install the wrapper. These files are written through the projects module's
+`safeSave` file-writer — note that's a *different* door from the structure-save in
+§6 (`saveMolecule` → `/api/structure/save`, which writes a molecule + sidecar
+pair); a script isn't a molecule, so it takes the plain file-write door.
 
 ## 4. Transport — generate a TranSIESTA device script
 
@@ -218,16 +226,16 @@ are largely there; the **tab controllers that consume them** are half-migrated:
 
 | Controller | ESM today |
 |---|---|
-| `modify/selection-bootstrap.js` | **yes** — a real ES module |
-| `modify/viewer.js`, `structure-optimization/viewer.js`, `transport/core.js` | **hybrid** — a top-level `import` of MolView, but a classic IIFE body that still publishes globals; loaded as `type="module"` |
+| `modify/selection-bootstrap.js`, `modify/viewer.js`, `structure-optimization/viewer.js`, `transport/core.js` | **hybrid** — a top-level `import` of MolView, but a classic IIFE body that still publishes a global (e.g. `window.molbuilder.molbuilderTab`); loaded as `type="module"` |
 | `modify/structure/*.js` (the generators), `documents/page.js` | **no** — classic global scripts |
 | `modify/periodicity.js` | classic body, but served with a `type="module"` tag (a harmless mismatch) |
 
-So the three MolView-consuming controllers have one foot in ESM (they `import`
-the viewer) while their own bodies are still legacy globals, and the
-structure-generation set plus the Documents controller are fully classic.
-Finishing these off is part of the "remaining classic modules" ESM workstream
-(`roadmap.md § 3`).
+So **none of the tab controllers is a pure ES module yet**: the MolView-consuming
+ones (`selection-bootstrap` and the three viewers) have one foot in ESM — they
+`import` the viewer — while their own bodies are still legacy IIFEs that publish
+globals; the structure-generation set plus the Documents controller are fully
+classic. Finishing these off is part of the "remaining classic modules" ESM
+workstream (`roadmap.md § 3`).
 
 ## 9. Test map
 
