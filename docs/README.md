@@ -157,6 +157,7 @@ forward plan) leads and is done early.
 | Doc | Role | Owns |
 |---|---|---|
 | [`architecture.md`](?doc=architecture.md) | reference | The reuse map — **task → tool** + the subsystem index by layer (L1/L2/L3), every row routing to its authoritative domain doc; read before building anything |
+| [`backend-architecture.md`](?doc=backend-architecture.md) | reference | The **same backend by functional concern** (data · construction · validation · execution) — which concern owns each module, the cross-concern pipeline, and where the concerns still leak into each other; the paired lens to `architecture.md` |
 | [`roadmap.md`](?doc=roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |
 | [`model/overview.md`](?doc=model/overview.md) | overview | The model domain's **start-here** map (every model doc + when to open it) + the atom-index convention (0-based internal / 1-based user-facing / per-engine) |
 | [`model/structure.md`](?doc=model/structure.md) | contract | The `Structure` object (master): the L1 codec (`to_dict`/`from_dict`/`to_wire`), geometry I/O, the L2 paired-file door, and the JS load/save doors |
