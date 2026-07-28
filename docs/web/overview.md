@@ -104,7 +104,7 @@ entry file for `import`/`export`.)
 | **results** | the Results-tab dispatch shell + file picker | [results.md](?doc=web/results.md) | ○ classic² |
 | **form-schema** | builds engine-option forms from the config dataclass | [form-schema.md](?doc=web/form-schema.md) | ○ classic² |
 | **notify** | the app-wide notification framework (any tab, any caller) | [notifications.md](?doc=web/notifications.md) | ○ classic² → #105 |
-| **runtime + primitives** | the load-order registry + the shared helpers (markdownRender, the CodeMirror code-viewer, detection-chip, path/constants, system-load) | [runtime.md](?doc=web/runtime.md) | ○ classic² |
+| **runtime + primitives** | the load-order registry + the genuinely-shared helpers (warningModal, markdownRender, the CodeMirror code-viewer, path/constants) | [runtime.md](?doc=web/runtime.md) | ○ classic² |
 
 ¹ **hybrid** = the module already `import`s its dependencies as an ES module, but
 its own body is still a classic IIFE — it either publishes a `window.molbuilder.*`

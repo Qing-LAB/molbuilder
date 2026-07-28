@@ -97,26 +97,28 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 
 | Building block | Reach it as | What it is |
 |---|---|---|
-| Notification bar | `molbuilder.notify` | The app-wide message framework — a stack of dismissible messages (dedup by id, × / Esc / Clear-all), any tab. It's a **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
-| Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise. |
-| Detection chip | `molbuilder.detectionChip` | The one-line chemistry-summary chip shown on workflow cards. |
-| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (sanitized, with lazy diagram support). The Documents tab and the Results markdown viewer both go through it. |
-| Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem. |
-| Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys and custom-event names the modules agree on. |
-| System-load strip | *(self-mounting)* | The 1 Hz strip of CPU/RAM/GPU sparklines from the server; pauses when the tab is hidden. It is included on the **Results tab only** (`results.html`), not on every page. |
+| Notification bar | `molbuilder.notify` | The app-wide message framework — dismissible messages (dedup by id, × / Esc / Clear-all), any tab. A **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
+| Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" / overwrite confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise. The most-used shared UI block (≈9 consumers across modify / spectra / transport / molview). |
+| Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (marked → DOMPurify, lazy mermaid). The Documents tab and the Results markdown viewer both go through it. |
+| Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem, no DOM. |
+| Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
 
-Three more loose helpers are named here because they share this folder, but
-their substance lives with their real subject:
+**These are *not* runtime primitives** — they were catalogued here only because
+they share the `lib/` folder, but their substance lives with their real subject:
 
-- **`form-schema.js`** — the schema-driven engine-config form builder (fetch a
-  form's shape from the server, render it, collect the values, restore them).
-  It's a whole subsystem, not a small block — see **`form-schema.md`**.
-- **`region-label-definitions.js`** (+ its popover) — the transport
-  region-label vocabulary (L/R-electrode, bridge, interface, with citations).
-  Its substance belongs with the transport region-labels doc.
-- **`xyz-io.js`** — a small XYZ parse/format helper (data, not UI). It's the one
-  building block here that is *already* an ES module (see below); its details
-  belong with [`model/structure.md`](?doc=model/structure.md).
+- **`detection-chip.js`** — *not a neutral UI widget.* It classifies open- vs
+  closed-shell and **hardcodes compute-budget heuristics** (atom-count × metal
+  thresholds → relax/SCF advice) in the frontend. That's chemistry + science, not
+  a primitive — its home is the chemistry-analysis / validation domain, and a
+  clean-up / merge / re-validate review is **task #108**.
+- **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
+  the **Results tab only**, not a shared block; documented with the Results tab.
+- **`region-label-definitions.js`** (+ its popover) — the transport **device-role
+  label vocabulary** (L/R-electrode, bridge, interface, with citations); belongs
+  with the transport / region-labels domain.
+- **`form-schema.js`** — a whole subsystem, its own doc **`form-schema.md`**.
+- **`xyz-io.js`** — a small XYZ parse/format helper (data, not UI); *already* an
+  ES module; details with [`model/structure.md`](?doc=model/structure.md).
 
 ## 4. Current → target: ES modules
 
@@ -136,8 +138,10 @@ Converting the registry and these primitives to ES modules is a planned pass
   preview and the markdown presenter) → one concealed ESM module + de-dup —
   **task #107**.
 - the **registry itself**, the `results` module, and the pure helpers
-  (`path`/`constants`) → **task #103** (the pure helpers stay small standalone
-  ESM, not folded into the registry; and the registry's load-order role shrinks
-  once everything is a module).
+  (`path`/`constants`) → **task #103**. The pure helpers stay small standalone
+  ESM (not folded into the registry). In particular `constants` becomes the **one
+  ESM source** — `projects/state.js` imports `SS_FILE`/`SS_DIR` from it instead of
+  re-declaring them, and the lock-step consistency test is then dropped. The
+  registry's own load-order role shrinks once everything is a module.
 
 As each one is converted, its "current → target" note here is dropped.
