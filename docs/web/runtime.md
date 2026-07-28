@@ -97,13 +97,13 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 
 | Building block | Reach it as | What it is |
 |---|---|---|
-| Notification bar | `molbuilder.notify` | The app-wide stack of dismissible messages — deduplicated by id, and every message stays until you dismiss it (× / Esc / Clear-all). Today it's driven by page events (it shows itself when a background save fails) and is ready for more callers. |
+| Notification bar | `molbuilder.notify` | The app-wide message framework — a stack of dismissible messages (dedup by id, × / Esc / Clear-all), any tab. It's a **first-class module with its own doc**: [`notifications.md`](?doc=web/notifications.md). |
 | Discard-unsaved modal | `molbuilder.warningModal` | The "you have unsaved changes — discard them?" confirm dialog; `confirmDiscardUnsaved()` returns a yes/no promise. |
 | Detection chip | `molbuilder.detectionChip` | The one-line chemistry-summary chip shown on workflow cards. |
 | Markdown renderer | `molbuilder.markdownRender` | The **one** place markdown becomes safe HTML (sanitized, with lazy diagram support). The Documents tab and the Results markdown viewer both go through it. |
 | Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem. |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys and custom-event names the modules agree on. |
-| System-load strip | *(self-mounting)* | The 1 Hz strip at the bottom of every page — CPU/RAM/GPU sparklines from the server; pauses when the tab is hidden. |
+| System-load strip | *(self-mounting)* | The 1 Hz strip of CPU/RAM/GPU sparklines from the server; pauses when the tab is hidden. It is included on the **Results tab only** (`results.html`), not on every page. |
 
 Three more loose helpers are named here because they share this folder, but
 their substance lives with their real subject:
@@ -126,5 +126,18 @@ is still a **classic `window.molbuilder.*` script** today. The one exception is
 its not-yet-converted callers).
 
 Converting the registry and these primitives to ES modules is a planned pass
-([`roadmap.md § 3`](?doc=roadmap.md)). As each one is converted, its
-"current → target" note here is dropped.
+([`roadmap.md § 3`](?doc=roadmap.md)) — grouped **by kind**, not lumped into one
+"runtime" bag (a `path.basename` caller shouldn't drag in a notification bar):
+
+- **`notify`** → its own ESM framework + auto-dismiss — **task #105**
+  ([`notifications.md`](?doc=web/notifications.md)).
+- **`markdownRender`** → ESM — **task #106**.
+- the **CodeMirror code-viewer/editor** (today set up twice — in the sidebar
+  preview and the markdown presenter) → one concealed ESM module + de-dup —
+  **task #107**.
+- the **registry itself**, the `results` module, and the pure helpers
+  (`path`/`constants`) → **task #103** (the pure helpers stay small standalone
+  ESM, not folded into the registry; and the registry's load-order role shrinks
+  once everything is a module).
+
+As each one is converted, its "current → target" note here is dropped.
