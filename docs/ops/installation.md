@@ -139,7 +139,74 @@ activate hook sets `OMPI_MCA_orte_tmpdir_base` to a local tmp (only if you haven
 set it yourself), and the deactivate hook unsets only what it set — so a
 scheduler-provided value is never trampled.
 
-## 7. Notes for locked-down clusters
+## 7. Appendix — installing X3DNA (3DNA), the helix builder
+
+X3DNA is the only true-helix nucleic-acid backend
+([`engines/builders.md`](?doc=engines/builders.md)). It is **licence-gated**
+(non-commercial, registration at x3dna.org), so molbuilder never downloads it —
+you unpack it, and molbuilder finds it.
+
+**How molbuilder finds it — three steps, in order** (`builders/backends/_threedna.py`):
+
+1. an `x3dna*/` directory at the **repo root** (a version-agnostic glob),
+2. the **`$X3DNA`** environment variable, if it points at a complete install,
+3. **`fiber` on `PATH`**, deriving the root from its parent directory.
+
+Pick whichever install shape matches how you work — you never need more than one.
+
+**Option A — in-tree** (simplest for a dev checkout). Unpack at the repo root and
+step 1 finds it: no shell config, no environment variable.
+
+```bash
+cd /path/to/molbuilder            # the repo root, alongside pyproject.toml
+tar -xzf x3dna-v2.4-<platform>.tar.gz
+ls x3dna-v2.4/bin/fiber           # smoke check
+python -c "from molbuilder.builders.backends import available_backends; print(available_backends())"
+# expect: {'threedna': True, ...}
+```
+
+`x3dna*/` and `x3dna-*.tar.gz` are **gitignored** — hygiene, and it makes it
+structurally hard to commit a licence-restricted archive into a public repo.
+
+**Option B — system install with `$X3DNA`** (what 3DNA's own docs describe):
+
+```bash
+tar -xzf x3dna-v2.4-<platform>.tar.gz -C ~/opt
+export X3DNA=$HOME/opt/x3dna-v2.4
+export PATH=$X3DNA/bin:$PATH
+fiber -seq=ATCG /tmp/probe.pdb && head /tmp/probe.pdb
+```
+
+3DNA's helper scripts *require* `$X3DNA`; molbuilder injects it into the
+subprocess environment itself when it shells out, so you only need it exported in
+your own shell to run 3DNA tools directly.
+
+### Windows — use WSL2
+
+3DNA ships **no native-Windows build**; the Linux tarball runs only under WSL or
+Cygwin. WSL2 (Ubuntu) is the recommended path. From a WSL shell — Windows drives
+appear under `/mnt/<letter>/`:
+
+```bash
+mkdir -p ~/opt
+tar -xzf /mnt/c/path/to/molbuilder/x3dna-v2.4-linux-64bit.tar.gz -C ~/opt
+echo 'export X3DNA=$HOME/opt/x3dna-v2.4' >> ~/.bashrc
+echo 'export PATH=$X3DNA/bin:$PATH'      >> ~/.bashrc
+source ~/.bashrc
+fiber -seq=ATCGATCG /tmp/probe.pdb && head -5 /tmp/probe.pdb
+```
+
+Then **run molbuilder from inside WSL** — only the WSL Python sees `fiber` and
+`$X3DNA`. Windows Python is fine for everything that doesn't need 3DNA
+(`smiles`, `peptide`, `fdf`, …); asking it for `--backend threedna` just fails
+the availability check with a clear `BackendUnavailable`. Files cross freely
+either way (Windows reaches WSL files at `\\wsl$\Ubuntu\home\<user>\…`), so a
+`.fdf` generated in WSL is editable from Windows tools.
+
+*Cygwin / MSYS2 also work* — same tarball, the same two exports in the Cygwin
+`~/.bashrc`, path translation handled for you. Less common than WSL2 now.
+
+## 8. Notes for locked-down clusters
 
 The Python layer (`molbuilder envs …`) works with **conda, mamba, or micromamba**.
 The one exception is the initial `scripts/install-env.sh bootstrap` shim, which
@@ -148,7 +215,7 @@ creates the host env before any Python is available and currently probes only
 follow-up). Workaround: create the host env by hand with micromamba, then use
 `python -m molbuilder envs …` for the rest.
 
-## 8. Test map
+## 9. Test map
 
 - `test_envs_recipes.py` — the recipe registry shape (≥5 recipes, required fields,
   the category↔env-name mapping, CUDA-wheel-tag derivation).

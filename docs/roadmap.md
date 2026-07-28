@@ -172,12 +172,19 @@ regions with higher-level exchange-correlation. Mechanical to add given the
 proven registry: a new module mirroring the TranSIESTA engine's shape,
 self-registering via the engine decorator; endpoint code is unchanged.
 
-**Region consumption from the handoff bundle** (#487). Once a project
-carries a labelled structure + sidecar pair from a finished run, the
-transport `.fdf` emitter should read the region labels for
-electrode/buffer assignment instead of asking the user to retype them.
-Depends on the run-bundle handoff (shipped); independent of the rest of
-B.3.
+**Inelastica / IETS** — planned, further out. A third engine for
+electron-phonon-resolved transmission (inelastic tunnelling spectroscopy).
+Distinctive because it consumes **both** a `TransportConfig` *and* the
+`.spectra.json` the Spectrum tab produces — the one place the transport and
+vibrational halves of the app would meet. Already named as the intended third
+engine in `transport/engine_base.py`, `config/transport.py`, and the transport
+blueprint.
+
+**Region consumption from the handoff bundle** (#487) — **half shipped.** The
+`%block TS.Elecs` emitter already reads `struct.regions` for **electrode**
+assignment (`transport/transiesta.py`), so a labelled structure no longer has to
+be retyped. The **buffer** half is what remains: `TS.Atoms.Buffer` is emitted
+nowhere in `molbuilder/transport/`. Independent of the rest of B.3.
 
 **Test-pin shape.** A-form vs B-form / bias-0 vs bias-N inputs differ in
 the expected keywords; an unavailable engine raises the documented error,
@@ -209,16 +216,19 @@ this is the plan tail.
 
 **Persistence.**
 
-- **A3** *(decision-gated)* — decide whether the crash-surviving draft
-  moves from browser `sessionStorage` to the server-side staging endpoints,
-  or the two coexist; wire it if adopted. May legitimately stay
-  `sessionStorage`.
+- **A3** *(decision-gated)* — decide whether the crash-surviving draft stays
+  in browser `sessionStorage` or moves server-side. Note the alternative the
+  original decision named is **gone**: the `/api/workingcopy/*` endpoints were
+  removed, and only `/api/state-timeline/*` survives. So the real choice today
+  is "keep `sessionStorage`" vs "build something new" — not "switch to the
+  staging endpoints".
 - **A4** — remove the obsolete disk-based selection/atom endpoints from the
   Modify tab once no live caller remains (the Results tab legitimately
   reads disk — verify before deleting); migrate or retire their tests.
-- **Step 6** *(design-first)* — decide whether the store carries the
-  computed effective cell so a cell-less structure still shows a box, done
-  through the data model rather than a viewer hack.
+- **A5a** *(verification residual)* — confirm in a **real browser** that the
+  `.molbuilder_workspace/` draft appears and updates both for a file loaded
+  from the sidebar and for a freshly generated molecule. The mechanism ships
+  (`web/blueprints/state_timeline.py`); only this check was never done.
 - **CLI through `StructureCodec`** — route the CLI's structure load/save
   through the L2 `StructureCodec` so a CLI save emits the `.xyz` +
   `.molstruct.json` pair like the web save does. Today `cli.py` writes
@@ -285,6 +295,13 @@ sed, which leaves stubbed unit tests green while the UI breaks):
 Each converted module's `web/` doc drops its "current → target" ESM note when its
 row here closes.
 
+**A dedicated `pyscf-log` presenter.** A PySCF run's `.pyscf.log` (the wrapper's
+stdout) currently falls through to the plain text viewer. The trajectory
+presenter deliberately does *not* claim it — it is a log, not a trajectory
+format — and its code comment defers to "a dedicated `pyscf-log` inspector on
+the roadmap", so here it is: a presenter that reads the log's structure (SCF
+cycles, timings, warnings) instead of showing raw text.
+
 ---
 
 ## 4. Test-suite & housekeeping
@@ -313,6 +330,12 @@ domain doc, not here.
 - **Six-tab UI** — Molbuilder · Structure optimization · Spectrum calculation
   · Transport calculation · Results, plus a Documents tab. The former
   four-tab layout's reorganization (Phases A–D) is complete.
+- **Effective cell in the store** (was "Step 6", design-first) — a cell-less
+  structure shows a box without a viewer hack. Resolved **server-side**:
+  `Structure.to_wire()` computes `resolved_cell` / `resolved_cell_origin`, every
+  structure response carries them, and the data model surfaces them through
+  `getUnitCellInfo()`; a Cell-page edit re-resolves via
+  `/api/structure/resolve-cell`.
 - **JobSet CLI framework** — `plan` / `prep` / `submit` / `status` over a
   bundle's `job-set.json`; both execution modes (local `bash`, SLURM
   submit with dependency threading); carry-forward between stages; the

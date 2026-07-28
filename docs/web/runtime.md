@@ -103,6 +103,28 @@ a `window.molbuilder.*` global (a couple also register with the runtime).
 | Path helpers | `molbuilder.path` | Small POSIX path-string helpers (basename, relative-from-dir) — no filesystem, no DOM. |
 | Shared constants | `molbuilder.constants` | The single source of truth for the `sessionStorage` keys + custom-event names the modules agree on — a frozen object. (Today it's *partly* duplicated: `projects/state.js` re-declares `SS_FILE`/`SS_DIR` as ES exports, held in lock-step by a test; the ESM pass makes this the one source and drops the copy — see § 4.) |
 
+### The discard-unsaved modal's wording is a contract
+
+The modal's four strings are **fixed copy**, not incidental text — every tab that
+can overwrite an edited canvas shows the identical dialog, so the warning reads
+the same everywhere:
+
+| Slot | Exact text |
+|---|---|
+| Title | **Unsaved modifications** |
+| Body | **You have unsaved changes to the current canvas. Continuing will discard them.** |
+| Confirm | **Discard and continue** |
+| Cancel | **Cancel** — takes default focus, so Enter is the safe answer |
+
+It fires when an action would overwrite the canvas *and* the canvas is dirty —
+clicking **Load** on the load-from-project panel, or **Generate** on any
+generator panel. The modal blocks the triggering action; only *Discard and
+continue* proceeds. `tests/test_structure_warning_modal_js.py` pins all four
+strings against this table, so a wording change has to update both together.
+
+*(A browser-level `beforeunload` guard was part of the original design and was
+never shipped — closing the tab does not warn you.)*
+
 **These are *not* runtime primitives** — they were catalogued here only because
 they share the `lib/` folder, but their substance lives with their real subject:
 

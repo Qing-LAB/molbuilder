@@ -125,6 +125,16 @@ SCF cycle.
 > `my-job-runN.out` (SIESTA) and `my-job-runN.pyscf.log` (PySCF); the `.log`
 > family is geomeTRIC's own logging (§ 2.6).
 
+**Why PySCF's stdout is `.pyscf.log` and not `.out`.** It used to be `.out`, and
+that collided with SIESTA's `.out` — which is not stdout at all, but a structured
+text format SIESTA's Fortran writes. The Results tab picks a viewer by suffix, so
+a PySCF log got handed to the SIESTA trajectory reader, which rendered garbage.
+The rename fixes it three ways: `.log` is honest (the file *is* a capture of
+stdout + stderr, not a calculation output), the `.pyscf.` infix pins which engine
+produced it for anyone scanning a directory, and the distinct suffix lets the
+viewer dispatch correctly. Worth knowing before anyone "tidies" the extension
+back.
+
 ### 2.3 Multi-stage runs
 
 A staged relaxation (coarse → tight) keeps its stages together, and the

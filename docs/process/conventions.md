@@ -59,6 +59,23 @@ like `test_layering.py`, or softening the "mandatory" wording — is a recorded
 follow-up.) Note this is *not* the same as the **docs** provenance header
 (`**Role:**`/`**Domain:**`), which *is* enforced, by `test_docs_structure.py`.
 
+### Versioning — what counts as a breaking change
+
+molbuilder is a **1.x project** (`1.1.0` today, pinned in `pyproject.toml` and
+`molbuilder/__init__.py`). The version tracks the *promises the code makes about
+files it writes*, not the size of the diff:
+
+- **Removing or renaming a promised output file** — an emitted script, a sidecar,
+  a bundle member — is a **minor bump** (1.x → 1.x+1) and needs a note in the
+  owning domain doc saying what moved and what reads the old name.
+- **Adding an optional field or a new file** is a **patch**. Existing readers keep
+  working, so nothing breaks.
+
+The rule exists because downstream things — a user's run directory, a parser, a
+sidecar reader — key off those names. `.out` → `.pyscf.log`
+([`execution/job-contracts.md § 2.2`](?doc=execution/job-contracts.md)) is the
+worked example: a one-line rename that silently broke a viewer's dispatch.
+
 ## 3. The CLI surface
 
 ### The design: a thin shell over the same API the web UI uses

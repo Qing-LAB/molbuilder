@@ -41,6 +41,40 @@ Every build/edit tab also mounts the **projects sidebar**
 ([`projects.md`](?doc=web/projects.md)) down the left — the file browser you pick
 a structure from. The one exception is Documents, which needs no files of yours.
 
+**Each route spells out its tab's visible label** — `/structure-optimization`,
+not `/optimize`. The URL is then self-describing in browser history and a shared
+link carries its own intent. It is also a maintenance discipline: renaming a tab
+without renaming its route quietly recreates the "*Build* — what does that do?"
+problem the long names were introduced to solve.
+
+### Why the tabs don't hand each other data
+
+Two rules shape everything below:
+
+1. **Molbuilder is the only interactive workspace.** It holds a live in-memory
+   canvas. Every other tab reads from disk.
+2. **The task tabs are file-driven.** Structure optimization, Spectrum and
+   Transport take their input structure from a file you picked in the sidebar.
+   They never read Molbuilder's in-memory canvas.
+
+So the way to move a structure between tabs is to **save it** — there is no
+in-memory "send to" hand-off (`modify.html`: *"all cross-tab transfer now goes
+THROUGH a saved project file"*). One extra click, deliberately.
+
+That click buys four things. If a task tab generated its script from "whatever
+is in the Molbuilder tab right now", then:
+
+- the script would depend on hidden state you can't see in the project
+  directory;
+- re-running the same task tab *after* an edit would silently produce a
+  different script;
+- two people working from the same project would get different scripts;
+- exporting or re-importing the project directory would lose information.
+
+Reading from disk removes all four at once: **the same project directory always
+produces the same script**, no matter which tab you came from. That is the whole
+reason the save step exists, and why no "send to tab" button will be added.
+
 ## 2. Molbuilder — build, edit, assemble
 
 This is the workbench. Its page is a **"Init structure" source bar** across the

@@ -40,6 +40,17 @@ Why the discipline pays off: a bug fixed in `lib/spectra/core.js` fixes both the
 standalone Spectra tab *and* the Results-tab spectrum viewer, because they are two
 mounts of one module — not two copies.
 
+**The rule that keeps it true: a missing capability is a task against the module,
+never a workaround in the tab.** When a tab needs something the module doesn't
+expose, you do *not* implement it tab-side and you do *not* reach around the
+module — no raw-3Dmol access, no bespoke overlay, no "temporary" tab-side copy of
+the module's state. You file the work against the module, naming the exact API,
+handle method, or data field it must add; the tab consumes it once the module
+ships it. This is the rule the MolView extraction was run under, and it is why
+the seal held. Every shortcut taken mid-migration becomes permanent, and one tab
+reaching past the door is how a reusable module quietly turns back into five
+copies.
+
 ## 2. The layers
 
 ```mermaid
