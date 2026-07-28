@@ -3,11 +3,11 @@
 **Role:** plan
 **Domain:** *(root — the spine)*
 **Companions:** `design.md` (mission · principles · decisions),
-`architecture.md` (the reuse map: task → tool),
+[`architecture.md`](?doc=architecture.md) (the reuse map: task → tool),
 [`README.md`](?doc=README.md) (the index + the rules).
-*(`design.md` and `architecture.md` are named, not linked, until they land
-in this tree. They are composed **last** — as concise summaries over the
-settled component docs — so the links go in when they arrive; see the wave
+*(`design.md` is named, not linked, until it lands in this tree — the last
+spine doc still pending. `architecture.md` landed in Wave 9. Both are composed
+**last** as concise summaries over the settled component docs; see the wave
 plan in `MIGRATION.md`.)*
 
 This is the **single source of truth for open work**. Every feature or
