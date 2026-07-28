@@ -6,8 +6,8 @@
 machinery), [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
 (the chemistry control surface + `(charge, spin)` science),
 [`pseudopotentials.md`](?doc=science/pseudopotentials.md) (the `.psml` checks).
-`design.md` (the spine — where this domain's promise is summarised, composed
-later; named not linked yet).
+[`design.md`](?doc=design.md) (the spine — where this domain's promise is
+summarised).
 
 This is the **start-here** for the science domain and the home of the two
 cross-cutting rules every science-aware surface obeys: **when a finding blocks**

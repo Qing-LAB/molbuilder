@@ -2,19 +2,19 @@
 
 **Role:** plan
 **Domain:** *(root — the spine)*
-**Companions:** `design.md` (mission · principles · decisions),
+**Companions:** [`design.md`](?doc=design.md) (mission · principles · decisions),
 [`architecture.md`](?doc=architecture.md) (the reuse map: task → tool),
-[`README.md`](?doc=README.md) (the index + the rules).
-*(`design.md` is named, not linked, until it lands in this tree — the last
-spine doc still pending. `architecture.md` landed in Wave 9. Both are composed
-**last** as concise summaries over the settled component docs; see the wave
-plan in `MIGRATION.md`.)*
+[`backend-architecture.md`](?doc=backend-architecture.md) (the backend by
+concern), [`README.md`](?doc=README.md) (the index + the rules).
+*(The spine docs `design.md` / `architecture.md` / `backend-architecture.md`
+landed in Wave 9 — composed **last** as concise summaries over the settled
+component docs.)*
 
 This is the **single source of truth for open work**. Every feature or
 backend item that is planned, in progress, or blocked lives here — nowhere
 else. When an item ships, it moves to the *Closed work* log at the bottom
-(one line) and its durable decision is recorded in `design.md`'s decisions
-log. A contract doc may carry **one pointer** back to a roadmap item, but it
+(one line) and its durable decision is recorded in [`design.md`](?doc=design.md)'s
+decisions index. A contract doc may carry **one pointer** back to a roadmap item, but it
 never holds the plan itself (rule R3).
 
 > **Why one file.** Plans used to be scattered across six documents — the
@@ -306,8 +306,8 @@ row here closes.
 ## Closed work
 
 Shipped items, newest first. Each landed with a decisions-log entry in
-`design.md` (cross-cutting) or its subsystem doc; reconstruct detail from
-`git log`. Durable *reference* for a shipped feature lives in its
+[`design.md`](?doc=design.md) (cross-cutting) or its subsystem doc; reconstruct
+detail from `git log`. Durable *reference* for a shipped feature lives in its
 domain doc, not here.
 
 - **Six-tab UI** — Molbuilder · Structure optimization · Spectrum calculation
@@ -345,5 +345,5 @@ incomplete). Do not list code-review polish or stylistic cleanup — that
 lives in commit messages and PRs.
 
 **Closing an item:** move it to *Closed work* with a one-line summary; add
-a decisions-log entry to `design.md` (cross-cutting) or the subsystem doc;
-update or remove any test pins and `xfail` markers.
+a decisions-log entry to [`design.md`](?doc=design.md) (cross-cutting) or the
+subsystem doc; update or remove any test pins and `xfail` markers.

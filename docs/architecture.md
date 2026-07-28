@@ -4,9 +4,9 @@
 **Domain:** *(root — the spine)*
 **Companions:** [`backend-architecture.md`](?doc=backend-architecture.md) (the
 same backend by *functional concern*, the paired lens to this layer index);
-`design.md` (mission · principles · decisions — the narrative sibling, *named
-until it lands* in this tree); [`README.md`](?doc=README.md) (the doc index +
-the rules); [`roadmap.md`](?doc=roadmap.md) (open work);
+[`design.md`](?doc=design.md) (mission · principles · decisions — the narrative
+sibling); [`README.md`](?doc=README.md) (the doc index + the rules);
+[`roadmap.md`](?doc=roadmap.md) (open work);
 [`process/package-layout.md`](?doc=process/package-layout.md) (where each file
 lives); [`process/conventions.md`](?doc=process/conventions.md) (the L1/L2/L3
 layering rule + the provenance header this map rests on).
@@ -27,7 +27,7 @@ persistence format, **find the capability in § 2 (task → tool) or § 3
 (subsystem index) and reuse it.** If nothing fits, build the new thing as
 **shared infrastructure** — a named module with its own doc and named
 adopters — not a local patch. (This is the standing "don't reinvent wheels"
-principle; the narrative rationale lives in `design.md`.)
+principle; the narrative rationale lives in [`design.md`](?doc=design.md).)
 
 Two habits make the reuse rule work:
 
@@ -176,9 +176,8 @@ schema versions v3–v6) is [`model/structure-molstruct.md`](?doc=model/structur
 This index is deliberately thin — it routes you to the authoritative doc.
 
 - **The narrative design** — mission, the L1/L2/L3 architecture, the design
-  principles, the anti-patterns we refuse, and the decisions log — is
-  `design.md` (the Wave 9 spine sibling; *named here until it lands*, then
-  linked).
+  principles, the anti-patterns we refuse, and the decisions index — is
+  [`design.md`](?doc=design.md), the narrative spine sibling.
 - **The concern lens** — the same backend by *functional concern* (data ·
   construction · validation · execution), which concern owns each module, and
   where the concerns leak into each other — is
@@ -195,7 +194,7 @@ This index is deliberately thin — it routes you to the authoritative doc.
   package layout).
 - **The forward plan** — every open feature/backend workstream, including the
   execution↔engine decoupling items and the front-end ESM conversions — is
-  [`roadmap.md`](?doc=roadmap.md). Closed decisions live in `design.md`.
+  [`roadmap.md`](?doc=roadmap.md). Closed decisions live in [`design.md`](?doc=design.md).
 
 Keep this map in sync when a **major** subsystem or public entry point is
 added; per-detail changes belong in the linked docs, not here.

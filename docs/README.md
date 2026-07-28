@@ -151,11 +151,12 @@ forward plan) leads and is done early.
 
 ## Index
 
-*(grows as documents migrate, bottom-up by domain; the summary spine —
-`design.md`, `architecture.md` — lands last)*
+*(bottom-up by domain; the summary spine — `design.md`, `architecture.md`,
+`backend-architecture.md` — landed last, in Wave 9)*
 
 | Doc | Role | Owns |
 |---|---|---|
+| [`design.md`](?doc=design.md) | overview | The design north-star — mission, the assistant-not-nanny stance, the architecture in brief, the 8 load-bearing principles, the anti-patterns we refuse, and the decisions index (full log archived) |
 | [`architecture.md`](?doc=architecture.md) | reference | The reuse map — **task → tool** + the subsystem index by layer (L1/L2/L3), every row routing to its authoritative domain doc; read before building anything |
 | [`backend-architecture.md`](?doc=backend-architecture.md) | reference | The **same backend by functional concern** (data · construction · validation · execution) — which concern owns each module, the cross-concern pipeline, and where the concerns still leak into each other; the paired lens to `architecture.md` |
 | [`roadmap.md`](?doc=roadmap.md) | plan | The ONE plan: every open feature/backend workstream + the closed-work log |

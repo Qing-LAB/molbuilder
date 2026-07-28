@@ -3,10 +3,9 @@
 **Role:** reference
 **Domain:** *(root — the spine)*
 **Companions:** [`architecture.md`](?doc=architecture.md) — the **same backend
-by *layer*** (L1/L2/L3), a task → tool index; `design.md` — mission ·
-principles · decisions (its Architecture section gives the concise intro and
-cites this doc; *named until it lands*); [`README.md`](?doc=README.md) — the
-doc index.
+by *layer*** (L1/L2/L3), a task → tool index; [`design.md`](?doc=design.md) —
+mission · principles · decisions (its Architecture section gives the concise
+intro and cites this doc); [`README.md`](?doc=README.md) — the doc index.
 
 > **What this is.** A map of the Python backend organised by **functional
 > concern** — how the code separates *managing data*, *constructing
