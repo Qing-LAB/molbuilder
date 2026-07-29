@@ -297,11 +297,16 @@ scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
 The three **strategy presets** flip only the enable flags:
 `loose-only` = (✅, —, —), `publishable` = (✅, ✅, —),
 `vib-quality` = (✅, ✅, ✅). The `continue` policy's per-stage retry budget
-(`continue_retries`, 1–5) is honored by the **PySCF** in-script ladder (the
-`not a JobSet` note under § 4), which loops inside the generated Python; the
-**SIESTA** staged runner does
-**not** yet implement it — a `continue` stage there takes the same `afterok`
-edge as `halt` and runs once (a code follow-up).
+(`continue_retries`, 1–5) is honored in two places today: the **PySCF**
+in-script ladder (the `not a JobSet` note under § 4) loops inside the
+generated Python, and a **single SIESTA run** whose wrapper was installed
+with a retry budget auto-retries itself with `--continue` on SCF-abort or
+geometry-step-cap (see `?doc=execution/running-a-job.md` § 3.5; today only
+the web install-wrapper door passes the budget). The **SIESTA staged
+runner/JobSet edge** still does *not* implement it — a `continue` stage
+takes the same `afterok` edge as `halt` and each stage is submitted once
+(a code follow-up: the ladder would need the budget threaded through
+`stages_to_jobset` → `jobset/prep`).
 
 There is also a pure, side-effect-free **`build_siesta_stage_bundle(struct,
 cfg)`** that returns a ready-to-write stage bundle by reusing the stage `.fdf`

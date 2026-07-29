@@ -185,7 +185,7 @@ auth routes.
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
 | POST `/api/structure/resolve-cell` | `{ structure, … }` → the resolved periodic cell |
-| POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir |
+| POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
 | POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
 
 **Checkpoint** — the run-history panel (its behavior is the run-checkpoints

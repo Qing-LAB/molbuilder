@@ -180,6 +180,16 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
         f"#                          when the prior run was bad and\n"
         f"#                          its restart files would corrupt\n"
         f"#                          the next run.\n"
+        f"# Self-identity for the warm-retry re-exec: an ABSOLUTE path to\n"
+        f"# this wrapper.  Under ``bash x.run.sh`` $0 is a bare relative\n"
+        f"# name -- bash's ``exec`` PATH-searches slash-less words (never\n"
+        f"# the cwd), so ``exec \"$0\"`` would die with 127.  readlink -f\n"
+        f"# (GNU, cluster-standard) resolves it without cd'ing (the\n"
+        f"# wrapper never changes cwd -- that is a tested contract).\n"
+        f"# Captured with the ORIGINAL argv so a retry re-runs with the\n"
+        f"# same -np/--omp.\n"
+        f'_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"\n'
+        f'_mb_orig_args=(${{@:+"$@"}})\n'
         f"_continue=0\n"
         f"_force=0\n"
         f"_cold=0\n"
@@ -2571,6 +2581,35 @@ def render_run_wrapper(script_path: Path, *,
             f'fi\n'
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={continue_retries}\n'
+               f'# Warm-retry: re-exec this wrapper with --continue (advance\n'
+               f'# the run-index; SIESTA warm-starts from the banked\n'
+               f'# .DM/.CG/.XV).  Original args are preserved MINUS the\n'
+               f'# continuation flags: --force would reset the run-index\n'
+               f'# sequence and --cold would move aside the very warm-start\n'
+               f'# files the retry needs.  MB_RETRY_N is exported so it\n'
+               f'# survives the exec -> bounded recursion.  The monitor is\n'
+               f'# killed first (exec skips the EXIT trap; the retried run\n'
+               f'# starts its own).\n'
+               f'_mb_warm_retry() {{\n'
+               f'    _mb_next=$((_siesta_retry + 1))\n'
+               f'    echo "" >&2\n'
+               f'    echo "=== $1; warm-restarting '
+               f'(retry $_mb_next/$_siesta_retry_max) with --continue ===" >&2\n'
+               f'    echo "" >&2\n'
+               f'    if [ -n "$_monitor_pid" ]; then\n'
+               f'        kill "$_monitor_pid" 2>/dev/null || true\n'
+               f'    fi\n'
+               f'    export MB_RETRY_N=$_mb_next\n'
+               f'    _mb_retry_args=()\n'
+               f'    for _mb_a in ${{_mb_orig_args[@]+"${{_mb_orig_args[@]}}"}}; do\n'
+               f'        case "$_mb_a" in\n'
+               f'            --continue|-c|--force|-f|--cold|--from-scratch) ;;\n'
+               f'            *) _mb_retry_args+=("$_mb_a") ;;\n'
+               f'        esac\n'
+               f'    done\n'
+               f'    exec bash "$_mb_self" --continue '
+               f'${{_mb_retry_args[@]+"${{_mb_retry_args[@]}}"}}\n'
+               f'}}\n'
                if continue_retries and continue_retries > 0 else "")
             + f"_t_start=$(date +%s.%N)\n"
             f"set +e\n"
@@ -2649,38 +2688,55 @@ def render_run_wrapper(script_path: Path, *,
             f'        echo "Other SIESTA error detected; check '
             f'$_out_file / $_runwrap_log for details." >&2\n'
             f"    fi\n"
-            f'    exit "$_siesta_exit"\n'
+            + (f'    # SCF_NOT_CONV abort: with SCF.MustConverge (SIESTA\n'
+               f'    # default true) an unconverged SCF stops the run\n'
+               f'    # NON-zero after banking the density matrix -- so this\n'
+               f'    # is where the retriable case lands (verified against\n'
+               f'    # the frozen hemeC scf_not_conv fixtures: SCF_NOT_CONV\n'
+               f'    # -> ABNORMAL_TERMINATION -> MPI abort).  A warm\n'
+               f'    # --continue restart resumes SCF from that .DM with a\n'
+               f'    # fresh iteration budget.  Crash classes above (propor\n'
+               f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
+               f'    # cannot fix a defective pseudo or a bad rank count.\n'
+               f'    if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
+               f'       && grep -aq "SCF_NOT_CONV" "$_out_file" '
+               f'2>/dev/null; then\n'
+               f'        _mb_warm_retry "SCF did not converge '
+               f'(SIESTA aborted under SCF.MustConverge)"\n'
+               f'    elif [ "$_siesta_retry" -gt 0 ] \\\n'
+               f'       && grep -aq "SCF_NOT_CONV" "$_out_file" '
+               f'2>/dev/null; then\n'
+               f'        echo "SCF still unconverged after '
+               f'$_siesta_retry_max warm retry(s); re-run with --continue '
+               f'to extend, or revisit mixing/smearing." >&2\n'
+               f'    fi\n'
+               if continue_retries and continue_retries > 0 else "")
+            + f'    exit "$_siesta_exit"\n'
             f"fi\n"
             + (f"\n"
-               f"# --- Convergence check + warm-retry "
+               f"# --- Geometry-cap check + warm-retry "
                f"(up to {continue_retries} retries) ---\n"
-               f'if grep -qE "SCF_NOT_CONV|SCF did NOT converge" '
-               f'"$_out_file" 2>/dev/null; then\n'
-               f'    _converged=0\n'
-               f'    _why="SCF did not converge"\n'
-               f'elif grep -q "Geometry step did NOT converge" '
-               f'"$_out_file" 2>/dev/null; then\n'
-               f'    _converged=0\n'
-               f'    _why="geometry step did not converge"\n'
-               f'else\n'
-               f'    _converged=1\n'
-               f'fi\n'
-               f'if [ "$_converged" -eq 0 ]; then\n'
-               f'    _next_n=$((_siesta_retry + 1))\n'
-               f'    if [ "$_next_n" -le "$_siesta_retry_max" ]; then\n'
-               f'        echo "" >&2\n'
-               f'        echo "=== $_why; warm-restarting '
-               f'(retry $_next_n/$_siesta_retry_max) '
-               f'with --continue ===" >&2\n'
-               f'        echo "" >&2\n'
-               f'        export MB_RETRY_N=$_next_n\n'
-               f'        exec "$0" --continue\n'
-               f'    else\n'
-               f'        echo "" >&2\n'
-               f'        echo "=== $_why; retries exhausted '
-               f'($_siesta_retry_max max) === " >&2\n'
-               f'        exit 1\n'
-               f'    fi\n'
+               f"# A relaxation that exhausts its MD step budget UNCONVERGED\n"
+               f"# still exits 0 and prints the final-geometry block header\n"
+               f'# "outcoor: Final (unrelaxed) atomic coordinates" (a\n'
+               f'# converged relax prints "Relaxed atomic coordinates";\n'
+               f"# verified against the frozen hemeC-stage2 42-frame\n"
+               f"# fixture).  Warm --continue resumes from the banked\n"
+               f"# .XV/.DM/.CG with a fresh step budget.  Single-point runs\n"
+               f"# never print the marker, so they cannot false-trigger.\n"
+               f'if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
+               f'   && grep -aq "outcoor: Final (unrelaxed) atomic '
+               f'coordinates" "$_out_file" 2>/dev/null; then\n'
+               f'    _mb_warm_retry "geometry relaxation hit its step cap '
+               f'unconverged"\n'
+               f'elif grep -aq "outcoor: Final (unrelaxed) atomic '
+               f'coordinates" "$_out_file" 2>/dev/null; then\n'
+               f'    echo "WARNING: geometry still unconverged after '
+               f'$_siesta_retry_max warm retry(s); re-run with --continue '
+               f'to extend the relaxation." >&2\n'
+               f'elif [ "$_siesta_retry" -gt 0 ]; then\n'
+               f'    echo "SIESTA converged after $_siesta_retry warm '
+               f'retry(s)."\n'
                f'fi\n'
                f'\n'
                if continue_retries and continue_retries > 0 else "")

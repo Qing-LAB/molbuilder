@@ -169,7 +169,12 @@ def api_run_install_wrapper():
         "mpi_np":          4,           # optional, SIESTA-only
         "omp_threads":     null,        # null=auto: physical_cores // mpi_np
         "max_memory_mb":   4000,        # optional, emits ulimit -v
-        "env":             null         # null=auto from extension
+        "env":             null,        # null=auto from extension
+        "continue_retries": null        # optional, SIESTA-only, 1..5:
+                                        # bake the warm-retry budget
+                                        # (auto --continue on SCF-abort /
+                                        # geometry step-cap; see
+                                        # running-a-job.md § 3.5)
       }
 
     Returns::
@@ -206,10 +211,22 @@ def api_run_install_wrapper():
     env_override     = body.get("env")
     continue_retries = body.get("continue_retries")
     # Coerce to None on falsy / zero so the helper's defaults kick in.
-    mpi_np           = int(mpi_np) if mpi_np else None
-    omp_threads      = int(omp_threads) if omp_threads else None
-    max_memory_mb    = int(max_memory_mb) if max_memory_mb else None
-    continue_retries = int(continue_retries) if continue_retries else None
+    # A non-numeric value is the CALLER's error -> 400, not a 500.
+    try:
+        mpi_np           = int(mpi_np) if mpi_np else None
+        omp_threads      = int(omp_threads) if omp_threads else None
+        max_memory_mb    = int(max_memory_mb) if max_memory_mb else None
+        continue_retries = int(continue_retries) if continue_retries else None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error":
+                        "mpi_np / omp_threads / max_memory_mb / "
+                        "continue_retries must be integers"}), 400
+    # Mirror the config-side validator (config/siesta.py stages
+    # continue_retries: 1..5) -- the wrapper bakes this number into a
+    # retry loop, so an uncapped request would render an unbounded one.
+    if continue_retries is not None and not (1 <= continue_retries <= 5):
+        return jsonify({"ok": False, "error":
+                        "continue_retries must be between 1 and 5"}), 400
 
     # Track whether we OVERWROTE an existing wrapper so the UI can
     # surface that (the user may have hand-edited the .run.sh with

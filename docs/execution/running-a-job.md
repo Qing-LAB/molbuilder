@@ -211,6 +211,32 @@ Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
 above are accepted, for either engine. The `.sbatch` outer file forwards
 `"$@"`, so `sbatch my-job.sbatch --cold` still reaches the inner wrapper.
 
+### 3.5 SIESTA auto-retry on non-convergence (opt-in)
+
+A SIESTA wrapper installed **with a retry budget** (the Structure-optimization
+tab's *retries* field → `/api/run/install-wrapper` `continue_retries`, capped
+1–5) re-runs itself with `--continue` — the same warm restart you would type
+by hand — when the run failed in one of the two *retriable* ways:
+
+- **SCF didn't converge.** With `SCF.MustConverge` (SIESTA's default; the
+  generated `.fdf` doesn't override it) SIESTA *aborts with a non-zero exit*
+  after printing `SCF_NOT_CONV:` — but it has already banked the density
+  matrix, so a warm `--continue` resumes SCF from that `.DM` with a fresh
+  iteration budget.
+- **The relaxation hit its step cap.** That run *exits 0* and prints
+  `outcoor: Final (unrelaxed) atomic coordinates` (a converged relax prints
+  `Relaxed…`); the retry resumes from the banked `.XV`/`.DM`/`.CG` with a
+  fresh step budget.
+
+Each retry advances the run index (`-run1`, `-run2`, …) exactly like a manual
+`--continue`, re-runs with the **same** `-np`/`--omp` you launched with, and
+is counted via the exported `MB_RETRY_N` so the budget is a hard bound. Crash
+classes (propor `IMAX = 0`, generic aborts) are **never** retried — re-running
+cannot fix a defective pseudopotential or a bad rank count. When the budget is
+exhausted and the run is still unconverged, the wrapper says so on stderr and
+(SCF case) keeps SIESTA's non-zero exit. Without a retry budget the wrapper
+behaves exactly as before — `--continue` stays the manual path.
+
 ---
 
 ## 4. Watching a run
