@@ -2430,6 +2430,25 @@ def render_run_wrapper(script_path: Path, *,
     _sg = _rc.get_script_generation(project_dir=_project_dir)
     _preamble_chunks = _sg["preamble_chunks"]
     _activation_form = _rc.require_activation(project_dir=_project_dir)
+    # ``conda activate`` is a shell FUNCTION defined by conda's hook; the
+    # wrapper runs in a NON-interactive bash that never reads rc files, so
+    # without a preamble that loads the hook (``source .../conda.sh`` or a
+    # ``module load``) every run dies with "CondaError: Run 'conda init'
+    # before 'conda activate'" (live-hit 2026-07-29).  Warn at GENERATE
+    # time, where it is fixable, not at run time on the cluster.
+    if _activation_form == "conda activate":
+        _pre_text = " ".join(t for _s, t in (_preamble_chunks or []))
+        if "conda.sh" not in _pre_text and "module" not in _pre_text:
+            import warnings as _warnings
+            _warnings.warn(
+                "script_generation.activation is 'conda activate' but the "
+                "preamble does not source conda's hook (conda.sh) or load "
+                "a module -- the generated .run.sh will fail with "
+                "\"CondaError: Run 'conda init' before 'conda activate'\" "
+                "in any non-interactive shell.  Add e.g. "
+                "\"source ~/miniconda3/etc/profile.d/conda.sh\" to "
+                "script_generation.preamble (running-a-job.md § 5).",
+                stacklevel=2)
 
     # Render preamble with per-scope sentinel comments so a user
     # reading the wrapper sees which scope contributed which lines.

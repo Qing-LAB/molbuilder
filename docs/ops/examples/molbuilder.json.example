@@ -122,7 +122,7 @@
     "preamble": "module load mamba\nexport OMPI_MCA_orte_tmpdir_base=\"${TMPDIR:-/tmp}\"",
 
     "_comment_activation":
-      "How the wrapper activates the conda env.  Two legal values:\n\n  * 'source activate'   -- legacy form; works whenever the 'activate' script is on PATH.  Typical after 'module load mamba' on HPC clusters.\n\n  * 'conda activate'    -- modern shell-function form; requires the conda hook ('conda.sh') to have been sourced.  Typical for local dev installs where 'conda init' was run in the user's shell rc.\n\nNo default -- the operator MUST set this in at least one scope, or the generator refuses to emit a wrapper.  For Sol use 'source activate'.",
+      "How the wrapper activates the conda env.  Two legal values:\n\n  * 'source activate'   -- legacy form; works whenever the 'activate' script is on PATH.  Typical after 'module load mamba' on HPC clusters.\n\n  * 'conda activate'    -- modern shell-function form; requires the conda hook ('conda.sh') to have been sourced IN THE WRAPPER ITSELF.  The .run.sh runs in a NON-interactive bash that never reads ~/.bashrc, so 'conda init' in your rc does NOT help -- you MUST pair this form with a preamble line that loads the hook, e.g. \"source ~/miniconda3/etc/profile.d/conda.sh\" (workstations) or 'module load mamba' (HPC).  Without it every run dies with: CondaError: Run 'conda init' before 'conda activate'.\n\nNo default -- the operator MUST set this in at least one scope, or the generator refuses to emit a wrapper.  For Sol use 'source activate'.",
     "activation": "source activate"
   }
 }
