@@ -11,7 +11,7 @@ Dispatch policy in :func:`run_tool`: when a tool has a routing entry
 exists, dispatch into that env even if the tool is also on host PATH.
 This prevents a stray system install (e.g. system-wide AmberTools in
 ``/usr/local/bin``) from silently shadowing the curated env the user
-prepared per ``docs/README_install.md``.  Falling back to host PATH
+prepared per ``docs/ops/installation.md``.  Falling back to host PATH
 happens only when no routing applies, or the routed env doesn't exist.
 
 Testing hook: tests inject synthetic Capabilities via
@@ -104,7 +104,7 @@ def run_tool(tool: str,
             f"`{tool}`: not reachable.  Its routed env `{routed_name}` "
             f"does not exist on this machine, and `{tool}` is not on "
             f"host PATH.  Either create the env (see "
-            f"docs/README_install.md) or install `{tool}` on the host."
+            f"docs/ops/installation.md) or install `{tool}` on the host."
         )
     raise FileNotFoundError(
         f"`{tool}`: not on host PATH, and no conda env routing is "

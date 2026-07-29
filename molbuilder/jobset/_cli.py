@@ -1,5 +1,5 @@
 """``molbuilder jobset ...`` — operate on a bundle's ``job-set.json``
-(docs/protocols/staged-execution.md § 5).
+(docs/execution/job-system.md).
 
 The thin CLI/bundle wrapper the framework needed: the engine-agnostic
 target-side verbs over a persisted JobSet, mirroring ``molbuilder bench``.

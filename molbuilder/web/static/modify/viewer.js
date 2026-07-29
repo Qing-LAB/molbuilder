@@ -18,7 +18,7 @@
  * The viewer, click-select, halos, measurement, toggles, and persistence are all the
  * module's (mounted by modify/selection-bootstrap.js into the empty #molview-host).
  *
- * Spec: docs/tabs/molbuilder.md; docs/protocols/molview-module.md; molview-migration-plan.md.
+ * Spec: docs/web/tabs.md; docs/web/molview.md; molview-migration-plan.md.
  */
 import { formula as mvFormula, toDisplay } from "/static/lib/molview/index.js";
 // molview.data is MolView's live internal state -> LOOK IT UP at read time (molview-module.md
@@ -984,7 +984,7 @@ function _mvdata() {
         populateElectrodeMeta().then(refreshElcReadouts);
         // (Non-blocking persist failures surface in the app-wide notification bar
         // -- lib/app-notifications.js listens for molbuilder:persist-error, so the
-        // Modify tab wires nothing here; see docs/protocols/notifications.md.)
+        // Modify tab wires nothing here; see docs/web/notifications.md.)
 
         // Sub-tabs: click an op-tab button to swap which panel is
         // visible.  Pure DOM toggle (no state in the IIFE; the

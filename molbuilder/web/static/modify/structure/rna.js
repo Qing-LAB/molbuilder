@@ -15,7 +15,7 @@
  * semantics) is identical to dna.js / smiles.js / name.js /
  * peptide.js.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 4: 3DNA
+ * Design ref: docs/web/tabs.md (panel 4: 3DNA
  * helix builder — RNA variant).
  */
 

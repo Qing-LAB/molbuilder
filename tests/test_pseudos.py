@@ -703,7 +703,7 @@ class TestMetalAwareScriptTemplates:
 
 
 # ===================================================================== #
-#  Conformance tests for docs/protocols/pseudopotential-validation.md   #
+#  Conformance tests for docs/science/pseudopotentials.md   #
 #  C4 (generator/version) + C5 (dead KB projector).  Each test pins a   #
 #  clause of the standard to the implementation.                        #
 # ===================================================================== #

@@ -1,6 +1,6 @@
 """L1 result types for the Spectra tab.
 
-Pinned by docs/tabs/spectra/spec.md § 5.  Three dataclasses:
+Pinned by docs/web/spectra.md  Three dataclasses:
 
   * :class:`ModeElectronicStructure` -- the per-mode displaced-SCF
     block: equilibrium / ±A·Q_i MO energies + SCF energies.  Populated

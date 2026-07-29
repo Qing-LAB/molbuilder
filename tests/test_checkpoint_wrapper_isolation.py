@@ -3,7 +3,7 @@ module.  The wrapper is git-agnostic.  This is load-bearing for SLURM
 compatibility — compute nodes execute the generated ``.run.sh`` with
 no git access required.
 
-See docs/protocols/run-checkpoints.md § 2 P4.
+See docs/execution/running-a-job.md § 6 P4.
 """
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ def test_runwrap_does_not_import_checkpoint():
     for needle in forbidden:
         assert needle not in src, (
             f"P4 violation: runwrap.py contains {needle!r}.  The "
-            f"wrapper must be git-agnostic per docs/protocols/"
-            f"run-checkpoints.md § 2 P4.  SLURM compute nodes must "
+            f"wrapper must be git-agnostic per docs/execution/"
+            f"running-a-job.md § 6 (P4).  SLURM compute nodes must "
             f"be able to run the generated .run.sh without git."
         )
 

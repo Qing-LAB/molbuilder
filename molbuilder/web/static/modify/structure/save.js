@@ -33,7 +33,7 @@
  *     #save-readout / #save-status + the canvas-state change
  *     subscription that keeps the readout + button state live.
  *
- * Design ref: docs/tabs/architecture.md § 5.6 (Save options).
+ * Design ref: docs/web/tabs.md (Save options).
  */
 
 (function (root) {

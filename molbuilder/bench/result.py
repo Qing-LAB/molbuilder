@@ -1,7 +1,7 @@
 """Benchmark results -> a portable ``bench-result`` record.
 
 The decoupling point between the *bench* stage and the *run* stage
-(docs/protocols/benchmark-workflow.md § 5.3): summarize reads each
+(docs/execution/job-system.md): summarize reads each
 measured point's artifacts (timing log, utilization, peak memory) and
 writes ``bench-result@1`` -- the only input prep-run needs.  Its ``choice``
 block is the **portable** decision (engine + ranks-per-GPU K); the

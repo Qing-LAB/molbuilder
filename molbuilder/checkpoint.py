@@ -1,6 +1,6 @@
 """Run-checkpoints — git-based working-dir state management.
 
-See docs/protocols/run-checkpoints.md for the full design contract.
+See docs/execution/running-a-job.md § 6 for the full design contract.
 This module is the L1 + L2 implementation (data model + ``Repo``
 orchestration).  CLI lives in :mod:`molbuilder.cli`.
 
@@ -36,14 +36,14 @@ from typing import Dict, List, Optional, Tuple
 
 
 # Big binary patterns (gitignored, archived by SHA on each checkpoint).
-# Mirrors the .gitignore policy in docs/protocols/run-checkpoints.md § 9.1.
+# Mirrors the .gitignore policy in docs/execution/running-a-job.md § 6
 # Glob patterns; matched non-recursively against the working dir top level.
 # Big-binary classification is ENGINE-SPECIFIC and PERSISTED per repo
 # (``.mbcheckpoint.json``, git-tracked), so restore uses the SAME
 # classification the checkpoint used and the user can edit it.  These are the
 # built-in defaults seeded at ``init`` from the EXPLICIT engine (the web/CLI
 # caller already knows it -- a UI<->API contract); the persisted config is the
-# source of truth thereafter.  See docs/protocols/run-checkpoints.md § 9.
+# source of truth thereafter.  See docs/execution/running-a-job.md § 6
 _ENGINE_BIG_BINARY_GLOBS = {
     "siesta": ("*.DM", "*.HSX", "*.TSHS",
                "*.TBT.AVTRANS_*", "*.TBT.CC", "*.TBT.DOS"),
@@ -91,7 +91,7 @@ def _render_gitignore(archive_globs) -> str:
             "git.\n"
             "# Large binary state files are archived separately in "
             ".binsnapshots/<sha>/.\n"
-            "# See docs/protocols/run-checkpoints.md § 9 for rationale.\n\n"
+            "# See docs/execution/running-a-job.md § 6 for rationale.\n\n"
             "# Big binary state (archived by SHA, not committed) -- "
             "engine-specific, editable\n")
     return head + "\n".join(archive_globs) + "\n\n" + _GITIGNORE_FIXED_TAIL
@@ -279,7 +279,7 @@ def _archive_dir(path: Path, sha: str) -> Path:
 
 # --------------------------------------------------------------------- #
 #  MANIFEST format -- canonical lockdown per § 10 of                    #
-#  docs/protocols/run-checkpoints.md.                                   #
+#  docs/execution/running-a-job.md § 6.                                   #
 #                                                                       #
 #  Exactly one format.  Strict parser raises on any deviation -- no     #
 #  silent skip, no fallback, no field-count tolerance.  Legacy 2-col    #

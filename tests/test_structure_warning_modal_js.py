@@ -191,7 +191,7 @@ class TestSurfacePresence:
             assert out[k] == "string"
 
     def test_documented_copy_matches_architecture_doc(self):
-        """The strings come from docs/tabs/architecture.md § 5.4.
+        """The strings come from docs/web/tabs.md
         Pin them so a future translation / wording change has to
         update the test alongside the spec."""
         out = _run_node('''

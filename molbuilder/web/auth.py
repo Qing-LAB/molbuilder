@@ -10,7 +10,7 @@ then checks that identity against the provider's per-entry
 ``allowed_users`` list.
 
 Default: no auth (the localhost-only single-user shape that the
-``molbuilder serve`` command bootstraps).  See ``docs/deployment.md``
+``molbuilder serve`` command bootstraps).  See ``docs/ops/deployment.md``
 for when to turn auth on + the recommended deployment shapes.
 
 User-visible flow:
@@ -427,7 +427,7 @@ def _setup_session_security(app, auth_cfg: Mapping) -> None:
     OAuth providers reject the spoofed redirect_uri (it's not in their
     allowlist), but CAS has no such allowlist.  Default off is correct
     for the direct-TLS deployment shape documented in
-    ``docs/deployment.md`` § 1.
+    ``docs/ops/deployment.md`` § 1.
     """
     # Direct assignment, NOT setdefault: Flask pre-populates
     # ``SESSION_COOKIE_SECURE = False`` (and SAMESITE = None) in its

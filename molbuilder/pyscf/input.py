@@ -750,7 +750,7 @@ def render_script(struct: Structure,
         out += _emit_troubleshooting_block(cfg)
 
     # ----- Wrap engine body with script-contract blocks -----
-    # See docs/protocols/script-contract.md.  PROVENANCE always
+    # See docs/execution/job-contracts.md.  PROVENANCE always
     # emitted.  BENCH-MARKS deferred until PySCF bench lands (the
     # contract allows it; we just don't have a static field list
     # yet).  ATOM-METADATA emitted only when regions/frozen_atoms

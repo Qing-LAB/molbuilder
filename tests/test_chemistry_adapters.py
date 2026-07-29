@@ -1,6 +1,6 @@
 """Tests for the engine-parameter adapter Protocol + registry (L3
 of the scientific-validation machinery; see
-``docs/protocols/scientific-validation.md`` § 4).
+``docs/science/validation.md`` § 4).
 
 Pins the contract:
 
@@ -360,5 +360,5 @@ def test_adapter_modules_do_not_import_analyzer():
             f"{module_name} (engine {engine_name!r}) imports forbidden "
             f"chemistry primitives {sorted(bad)} — chemistry logic must "
             f"live in the analyzer, not the adapter (see "
-            f"docs/protocols/scientific-validation.md § 4.4)"
+            f"docs/science/validation.md)"
         )

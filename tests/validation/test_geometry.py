@@ -1,6 +1,6 @@
 """Tests for molbuilder.validation.geometry.
 
-Per docs/protocols/test-strategy.md § 3 (test layout mirrors source
+Per docs/process/testing.md (test layout mirrors source
 layout).  Split from the pre-2026-06-13 flat tests/test_validation.py
 on 2026-06-13; no test body was modified.  Shared fixtures
 (``water_struct``, ``_vacuum_cell``) live in tests/validation/conftest.py.

@@ -12,7 +12,7 @@ A source-text grep over ``lib/**/*.js`` catches the same drift —
 if a module is renamed, the matching call disappears from the
 source.  No browser, no script load, no async wait.
 
-Per docs/protocols/test-strategy.md § 5 (source-text invariants):
+Per docs/process/testing.md (source-text invariants):
 this is the canonical use case.  The module-init contract is
 expressed in code as ``runtime.register(NAME, ...)``; verifying
 its presence by reading the source is the right level of

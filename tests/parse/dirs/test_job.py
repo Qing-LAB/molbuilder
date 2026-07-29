@@ -1,7 +1,7 @@
 """L3 tests for molbuilder.parse.dirs.job.JobDirParser.
 
-Pins docs/protocols/job-decoder.md § 2-7 + docs/protocols/parse-
-module.md § 7 against real project fixtures:
+Pins docs/execution/running-a-job.md § 4 + docs/model/parse.md
+against real project fixtures:
 
 * TJ-BDT-Au111 — single-stage, script-contract block present
   (post-2026-06-16 .fdf).  Exercises the authoritative job_type

@@ -132,7 +132,7 @@ main {
 }
 
 /* ---- App shell — page frame + sidebar rail ---------------------------------
- * Spec: docs/protocols/ui-design-contract.md §4.1-4.3.
+ * Spec: docs/web/ui-contract.md
  *
  * The SAME pattern the Documents tab uses (and why it "just works"): a tab that
  * opts in with ``<body data-sidebars="projects">`` becomes a full-height flex

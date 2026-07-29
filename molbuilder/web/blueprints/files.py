@@ -17,8 +17,8 @@ Routes:
                                         canonical-topic protection)
     DELETE /api/files/delete            remove file or directory (recursive optional)
 
-Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``  +
-                docs/protocols/projects-sidebar.md  §  12
+Full contract:  docs/web/web-api.md  §  ``/api/files/*``  +
+                docs/web/projects.md
 
 Path validation
 ---------------
@@ -1346,7 +1346,7 @@ def api_files_write():
     # custom block.  The merge helper is safe in every degenerate
     # case (no target file, no markers on either side, unreadable
     # target) -- it returns the incoming text unchanged.  See
-    # docs/protocols/script-contract.md.
+    # docs/execution/job-contracts.md.
     if expected_mtime is None:
         from molbuilder.script_emit import (
             merge_user_custom_from_target as _mb_merge_user_custom

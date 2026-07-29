@@ -2,7 +2,7 @@
 
 Task #146 — Phase B.1.15.  The selection store is the canonical
 state holder for the /modify selection panel (see
-``docs/protocols/molview-module.md §12`` for the full spec).  Until
+``docs/web/molview.md`` for the full spec).  Until
 this commit it was covered ONLY by the Playwright e2e tests in
 ``test_molbuilder_e2e.py``, which exercise the store via the panel
 DOM -- expensive (~5-10 s per test) and they can't isolate the
@@ -16,7 +16,7 @@ intentionally NOT covered here -- the server-roundtrip behaviour
 needs a real Flask app and is owned by the Playwright tests
 already in place.
 
-Test layering per ``docs/protocols/playwright-tests.md`` § 1:
+Test layering per ``docs/process/testing.md`` § 1:
 this file is the lowest layer (node JS unit) for the
 ``selection.store`` module.
 """

@@ -21,7 +21,7 @@ The UI has five tabs served by one process:
                                 (web/blueprints/results.py)
 
 The full route table + the cross-tab workflow model lives in
-``docs/tabs/architecture.md``.  Pre-1.0 cleanup: there are NO
+``docs/web/tabs.md``.  Pre-1.0 cleanup: there are NO
 legacy-path redirects; renames break the old URL by design.
 
 Plus the file-picker + project mutations under
@@ -76,7 +76,7 @@ def _install_rate_limit(app, cfg) -> None:
     """Always-on IP rate-limit + scanner detection.
 
     Unlike auth, this is on by default — see
-    ``docs/protocols/rate-limit.md`` for the threat model.  The
+    ``docs/ops/deployment.md`` for the threat model.  The
     ``rate_limit`` config block tunes thresholds + allowlist; an
     empty block uses defaults (20 4xx/30s, 60 req/60s, 1 h
     cooldown, signature match → immediate block, allowlist=[],
@@ -242,14 +242,14 @@ def create_app(*, config=None) -> Flask:
 
     # Optional auth.  When the cfg has no ``auth`` section the call is
     # a no-op (the localhost-only default).  See molbuilder/web/auth.py
-    # + docs/deployment.md for the auth-enabled shape.
+    # + docs/ops/deployment.md for the auth-enabled shape.
     _maybe_install_auth(app, config)
 
     # IP rate-limit + scanner detection (always on, configurable).
     # MUST land BEFORE blueprints so the before_request hook runs
     # first in the chain; a signature match drops the connection
     # before any handler spends a render cycle.  See
-    # docs/protocols/rate-limit.md for the threat model + defaults.
+    # docs/ops/deployment.md for the threat model + defaults.
     _install_rate_limit(app, config)
 
     # Build + Watch route groups live on Blueprints so each half is
@@ -300,7 +300,7 @@ def create_app(*, config=None) -> Flask:
     # --- Security headers ----------------------------------------- #
     #
     # Defense-in-depth headers for the internet-deployment use case
-    # (see docs/deployment.md).  Each header below has a specific
+    # (see docs/ops/deployment.md).  Each header below has a specific
     # threat it mitigates; we set the most restrictive value that
     # still lets the app work.
     #
@@ -358,7 +358,7 @@ def create_app(*, config=None) -> Flask:
             "Referrer-Policy", "same-origin",
         )
         # Browsers respect HSTS only when delivered over HTTPS; the
-        # serve-time TLS guard (docs/deployment.md) refuses non-loop-
+        # serve-time TLS guard (docs/ops/deployment.md) refuses non-loop-
         # back binds without --cert/--key, so this header lands the
         # moment the operator actually exposes molbuilder.  1-year
         # max-age is the standard "this is permanent" signal.
@@ -371,7 +371,7 @@ def create_app(*, config=None) -> Flask:
 
     # Canonical tab routes.  Each name matches the visible tab
     # label; route table is documented in
-    # docs/tabs/architecture.md § 3.
+    # docs/web/tabs.md
 
     # Tab order + labels are the single source of truth in
     # ``molbuilder.web.tabs``; inject into every template so the

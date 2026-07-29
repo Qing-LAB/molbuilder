@@ -1,5 +1,5 @@
 /* Reusable selection-panel mount -- the fused molview+selection composition
- * (Phase 5, docs/protocols/atom-annotations.md § 6).
+ * (Phase 5, docs/model/structure-annotations.md).
  *
  * Every molview tab puts a selection panel next to a viewer the same way:
  *   1. fetch the panel partial + insert it into `host`

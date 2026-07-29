@@ -1,7 +1,7 @@
 """Unit tests for the uniform-envelope contract in ``lib/projects/
 api.js`` (sidebar gap M3, #173).
 
-The contract (per docs/protocols/projects-sidebar.md Principle 6):
+The contract (per docs/web/projects.md Principle 6):
 
   Every async function in api.js returns ``{ok: bool, ...}`` and
   NEVER throws.  Network failures, DNS errors, non-JSON responses,

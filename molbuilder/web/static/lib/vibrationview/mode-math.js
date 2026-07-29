@@ -4,7 +4,7 @@
  * no global.)
  *
  * scatterDisplacements: a mode's eigenvector is indexed by FREE-atom ROW (the spectra
- * invariant, docs/tabs/spectra/spec.md §5.1) -- scatter it to GLOBAL atom order so the viewer
+ * invariant, docs/web/spectra.md) -- scatter it to GLOBAL atom order so the viewer
  * moves the right atoms and frozen atoms (absent from the free set) stay at zero.  This is the
  * one bit of science-shaped logic VibrationView owns; everything else is the animated view.
  *

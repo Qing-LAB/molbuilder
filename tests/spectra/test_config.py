@@ -1,6 +1,6 @@
 """SpectraConfig surface tests: defaults, field metadata, form-schema shape.
 
-Pins the dataclass shape documented in ``docs/tabs/spectra/spec.md``
+Pins the dataclass shape documented in ``docs/web/spectra.md``
 § 4 + § 8.1.  These tests are runtime-cheap (no PySCF) and live here
 because the data they protect is the form/script handoff contract:
 
@@ -100,7 +100,7 @@ class TestSpectraConfigFieldMetadata:
     def test_basename_validator_attached(self):
         """job_name carries the shared _validate_basename callable
         in its metadata so the validation pass refuses paths-with-
-        dots / slashes / whitespace (per docs/protocols/job-layout.md)."""
+        dots / slashes / whitespace (per docs/execution/job-contracts.md)."""
         jn = next(f for f in dataclasses.fields(SpectraConfig)
                   if f.name == "job_name")
         assert callable(jn.metadata.get("validate"))

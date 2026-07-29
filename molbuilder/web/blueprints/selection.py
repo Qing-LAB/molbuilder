@@ -22,7 +22,7 @@ The selection system is layered:
     the L3 store via ``ws.selection.*`` and call its mutators on
     user action.
 
-See ``docs/protocols/molview-module.md`` for the full module
+See ``docs/web/molview.md`` for the full module
 contract, including the public API surface of the store.
 
 Endpoints

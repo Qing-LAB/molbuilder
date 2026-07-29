@@ -131,8 +131,8 @@ class TestSurfacePresence:
 
 
 class TestOnCommit:
-    """The universal commit-event subscription per docs/tabs/
-    architecture.md § 5.2.  Sidebar single-click = preview
+    """The universal commit-event subscription per docs/web/
+    tabs.md.  Sidebar single-click = preview
     (fires onChange).  Double-click = commit (fires onCommit
     only).  This keeps subscribers from mistaking a casual
     browse-click for a tab-level action."""

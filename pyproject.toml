@@ -74,7 +74,7 @@ web = ["flask>=3.0"]
 #
 # Installing both is cheap (~6 MB total) and the imports are lazy,
 # so the unused library is a no-op at runtime.  See
-# ``docs/deployment.md`` for the per-backend setup walkthroughs.
+# ``docs/ops/deployment.md`` for the per-backend setup walkthroughs.
 auth = ["authlib>=1.3", "python-cas>=1.6"]
 
 # Test runner + static-analysis tools.  Install with:
@@ -149,7 +149,7 @@ testpaths    = ["tests"]
 pythonpath   = ["."]
 addopts      = "-ra"
 markers      = [
-    # ---- Pyramid layers (docs/protocols/test-strategy.md § 2) ---- #
+    # ---- Pyramid layers (docs/process/testing.md) ---- #
     # Markers are orthogonal to directory structure: a test in
     # tests/validation/test_chemistry.py is L2 by directory but might
     # be marked @pytest.mark.integration if it exercises the full

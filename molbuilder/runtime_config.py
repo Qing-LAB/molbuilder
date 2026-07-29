@@ -52,7 +52,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
 CONFIG_FILENAME = "molbuilder.json"
-# Per-project config sidecar.  Per docs/config.md § 2: hidden file in
+# Per-project config sidecar.  Per docs/execution/running-a-job.md § 5: hidden file in
 # the project directory, same schema as the server-wide molbuilder.json.
 PROJECT_CONFIG_FILENAME = ".molbuilder.json"
 # XDG fallback for the server-wide config when one isn't present in cwd.
@@ -402,7 +402,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     # contained and avoids precedence-rule surprises.
     #
     # Supported kinds and the shape contract for each are documented
-    # in ``_validate_provider`` below.  See ``docs/deployment.md``
+    # in ``_validate_provider`` below.  See ``docs/ops/deployment.md``
     # for the operator walkthrough per backend.
     # Explicit-presence check (rather than ``if auth:``): writing
     # ``"auth": {}`` is almost certainly a mistake and we want to
@@ -464,7 +464,7 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         out["secret_key_file"] = secret_key_file
 
-    # --- script_generation section (docs/config.md § 3.6) ----------- #
+    # --- script_generation section (docs/execution/running-a-job.md § 5) ----------- #
     if "script_generation" in raw:
         out["script_generation"] = _validate_script_generation(
             raw["script_generation"])
@@ -550,18 +550,18 @@ def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:
 
     The ``rate_limit`` block tunes the IP-based scanner-detection +
     blocklist installed by :mod:`molbuilder.web.rate_limit`.  See
-    :file:`docs/protocols/rate-limit.md` for the full schema.
+    :file:`docs/ops/deployment.md` for the full schema.
     Trivial accessor -- defaults are applied inside ``RateLimiter``.
     """
     return dict(cfg.get("rate_limit", {}))
 
 
 # --------------------------------------------------------------------- #
-#  script_generation section (docs/config.md § 3.6)                     #
+#  script_generation section (docs/execution/running-a-job.md § 5)                     #
 # --------------------------------------------------------------------- #
 
 
-# Two and only two keys -- see docs/config.md § 4.
+# Two and only two keys -- see docs/execution/running-a-job.md § 5
 #
 # ``preamble``:   verbatim multi-line bash, default empty.
 # ``activation``: how to activate the env.  NO DEFAULT -- the operator
@@ -574,7 +574,7 @@ _SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
 }
 
 # Keys silently dropped at read time (formerly load-bearing; now no-ops
-# per the v2 rewrite of docs/config.md).  A one-time WARNING is logged
+# per the v2 rewrite of docs/execution/running-a-job.md § 5).  A one-time WARNING is logged
 # when seen so the operator knows to clean up their config.
 _DROPPED_KEYS = ("preactivate_format", "autodetect_conda")
 # Keys aliased to the new schema for one release (warning emitted).
@@ -610,7 +610,7 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
         if legacy in raw:
             _warnings.warn(
                 f"{CONFIG_FILENAME}: 'script_generation.{legacy}' is "
-                f"renamed to '{current}' (docs/config.md § 7).  "
+                f"renamed to '{current}' (docs/execution/running-a-job.md § 5).  "
                 f"Treating as '{current}' for backward compatibility; "
                 f"please update your config.",
                 DeprecationWarning,
@@ -631,7 +631,7 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
             _warnings.warn(
                 f"{CONFIG_FILENAME}: 'script_generation.{dropped}' is "
                 f"no longer used and will be ignored "
-                f"(docs/config.md § 6/§ 7).  Please remove it.",
+                f"(docs/execution/running-a-job.md § 5).  Please remove it.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -652,7 +652,7 @@ def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------- #
-#  Multi-scope read/write API (docs/config.md § 4)                      #
+#  Multi-scope read/write API (docs/execution/running-a-job.md § 5)                      #
 # --------------------------------------------------------------------- #
 
 
@@ -702,7 +702,7 @@ def _read_project(project_dir: Path) -> Dict[str, Any]:
 
 def _deep_merge(base: Dict[str, Any],
                  overlay: Dict[str, Any]) -> Dict[str, Any]:
-    """Per docs/config.md § 2:
+    """Per docs/execution/running-a-job.md § 5:
        * scalars: overlay replaces base
        * objects: recurse
        * arrays:  overlay replaces base (no element-wise merge)
@@ -748,7 +748,7 @@ def get_script_generation(
 ) -> Dict[str, Any]:
     """Return the effective ``script_generation`` section.
 
-    Per docs/config.md § 3 + § 4:
+    Per docs/execution/running-a-job.md § 5 + § 4:
       * ``preamble``: server-wide + project concatenated (server
         first), joined by ``"\\n"``.
       * ``activation``: project wins if set; else server-wide if set;
@@ -805,7 +805,7 @@ def get_script_generation(
 def require_activation(project_dir: Optional[Path] = None) -> str:
     """Return the effective ``activation`` value, or raise.
 
-    Per docs/config.md § 2 (refuse-to-emit rule): the generator must
+    Per docs/execution/running-a-job.md § 5 (refuse-to-emit rule): the generator must
     refuse to emit a wrapper if ``script_generation.activation`` isn't
     set in either scope.  Use this helper at every wrapper-render
     entry point so the error message + doc reference are consistent.
@@ -831,7 +831,7 @@ def require_activation(project_dir: Optional[Path] = None) -> str:
             "Use ``conda activate`` if your conda hook is sourced "
             "(typical for local dev installs).  Use ``source "
             "activate`` for HPC clusters where ``module load mamba`` "
-            "is the toolchain.  See docs/config.md § 4."
+            "is the toolchain.  See docs/execution/running-a-job.md § 5"
         )
     return sg["activation"]
 
@@ -879,7 +879,7 @@ def detect_conda_activation() -> Optional[Dict[str, str]]:
 
 
 # --------------------------------------------------------------------- #
-#  scheduler section (docs/protocols/slurm-integration.md § 4)          #
+#  scheduler section (docs/execution/job-system.md)          #
 # --------------------------------------------------------------------- #
 
 
@@ -960,7 +960,7 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"\n"
                 f"On ASU Sol use partition/qos \"public\" (the \"general\" "
                 f"partition went private in May 2026).  See "
-                f"docs/protocols/slurm-integration.md § 4, § 7.0, § 10."
+                f"docs/execution/job-system.md, § 7.0, § 10."
             )
 
     # String-typed directives must actually be strings (catch e.g. a

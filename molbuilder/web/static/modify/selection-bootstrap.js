@@ -14,7 +14,7 @@
  *   4. Wire the "Load picked file" button + its readout.
  *
  * All HTTP wiring, rule translation, save dispatch and label bookkeeping live
- * in the module/store.  See docs/protocols/molview-module.md for the full
+ * in the module/store.  See docs/web/molview.md for the full
  * architecture.
  */
 import { mount } from "/static/lib/molview/index.js";
@@ -82,7 +82,7 @@ function _mvdata() {
         // browse action ("show me what's in this file"); committing
         // it as the workspace structure is a separate intent and
         // would discard any unsaved modifications.  See
-        // docs/tabs/architecture.md § 5.2.
+        // docs/web/tabs.md
         //
         // Page-mount seeding: if the bare host was visited with an
         // existing sidebar selection in sessionStorage (cross-tab

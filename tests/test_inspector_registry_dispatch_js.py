@@ -20,7 +20,7 @@ defs → 5 parametrized + 3 one-offs.  Wall-clock: ~35 * 200ms = ~7s
 → ~5 * 200ms = ~1s.  Per-case failure messages stay specific via
 pytest.param ids.
 
-Per docs/protocols/test-strategy.md § 2 + § 7 (L5 → L2 demotion
+Per docs/process/testing.md + § 7 (L5 → L2 demotion
 when the test's only payload is "call this pure JS function and
 check its return") and § 8 (parametrize when N tests assert the
 same contract over different inputs).

@@ -1,6 +1,6 @@
 /* Workspace — the session-persistence layer.
  *
- * MODULE: workspace persistence  (lib/workspace/; contract: docs/protocols/workspace-contract.md).
+ * MODULE: workspace persistence  (lib/workspace/; contract: docs/web/workspace.md).
  *   Two files make up the module:
  *     - dispatcher.js  (this file; a native ES module)  -> window.molbuilder.workspace : persist/restore
  *         transport, session identity, owner namespace, non-blocking error surface.

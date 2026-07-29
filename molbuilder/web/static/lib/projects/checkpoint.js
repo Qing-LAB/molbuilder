@@ -23,7 +23,7 @@
  *
  * Graph viewer: lazy-loaded @gitgraph/js (see _ensureGitgraph() below).
  *
- * Spec: docs/protocols/run-checkpoints.md § 6 (sidebar UI).
+ * Spec: docs/execution/running-a-job.md § 6 (sidebar UI).
  * HTTP contract: web/blueprints/checkpoint.py + § 8 of run-checkpoints.md.
  */
 

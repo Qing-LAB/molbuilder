@@ -1,7 +1,7 @@
 """L1 tests for molbuilder.parsers.pyscf_struct.
 
 Pins the ``<JOB>_optimized.xyz`` reader and the ``.py`` initial-coords
-parser.  See ``docs/protocols/bundle-contract.md § 4.1`` for source
+parser.  See ``docs/execution/job-contracts.md`` for source
 priority + § 5 for the API surface.
 """
 from __future__ import annotations

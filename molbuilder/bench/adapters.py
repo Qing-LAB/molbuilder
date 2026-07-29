@@ -2,7 +2,7 @@
 one scheduler family.
 
 The second half of the benchmark workflow's pluggable seam
-(docs/protocols/benchmark-workflow.md § 4.3, § 4.5).  An adapter is the
+(docs/execution/job-system.md, § 4.5).  An adapter is the
 *only* thing that differs between a workstation and a supercomputer; the
 engine, monitor, estimator, timing, and data formats are shared.  One
 adapter serves BOTH the benchmark scripts and the production run (reuse).

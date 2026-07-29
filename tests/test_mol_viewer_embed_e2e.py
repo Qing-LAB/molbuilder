@@ -23,7 +23,7 @@ This file closes that loophole.  Every test here asserts on
 DIMENSIONS or VISIBILITY of the rendered viewer canvas -- not on
 program state.  The pattern is the canonical regression-test
 recipe for visual-rendering bugs (per
-docs/protocols/playwright-tests.md § 3 "Assertions").
+docs/process/testing.md "Assertions").
 
 Tests
 =====
@@ -686,7 +686,7 @@ class TestScreenshot:
 # --------------------------------------------------------------------- #
 #
 # These are the structural safety net per the 2026-06-03 code review:
-# every method documented in ``docs/protocols/embedded-viewer.md`` § 3.2
+# every method documented in ``docs/web/molview.md`` § 3.2
 # ViewerHandle MUST exist on the returned handle as a function (or for
 # ``_test`` an object).  Any drift between doc and code surfaces here
 # rather than waiting for a consumer site to discover it during
@@ -699,7 +699,7 @@ class TestHandleSurface:
 
     The pure SHAPE check (which methods the handle exports) was
     demoted to ``tests/test_mol_viewer_embed_handle_surface_js.py``
-    (L2 source-text) per docs/protocols/test-strategy.md § 7:
+    (L2 source-text) per docs/process/testing.md:
     enumerating ``Object.keys(handle)`` doesn't need a browser, it
     needs to read the embed module's return block.  ~60 ms instead
     of ~5 s; same contract enforced.

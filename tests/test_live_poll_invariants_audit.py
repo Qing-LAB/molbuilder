@@ -13,7 +13,7 @@ The invariants pinned here all came from one diagnostic root cause:
 **a live-poll loop that runs every N seconds must not touch user-
 controlled UI state on no-op ticks, and an event handler must not
 re-read input values after calling helpers that side-effect those
-inputs.**  See ``docs/protocols/playwright-tests.md`` § "Handler
+inputs.**  See ``docs/process/testing.md`` § "Handler
 input snapshot" for the rule.
 
 Each test is a tight regex over the source body: if a future edit
@@ -100,7 +100,7 @@ class TestTrajectoryNoNewContentGuard:
         ), ("trajectory/core.js::applyNewData no longer composes "
             "noNewContent from the three required subterms; the "
             "live-watch camera-reset bug class will return.  See "
-            "docs/protocols/playwright-tests.md § Handler input "
+            "docs/process/testing.md § Handler input "
             "snapshot for the design rule.")
 
     def test_applyNewData_early_returns_on_noNewContent(self, core_body):
@@ -293,7 +293,7 @@ class TestFrameSliderHandlerSnapshotPattern:
             "sees the old value and the seek is a no-op.  Snapshot "
             "the parsed value into a const BEFORE calling "
             "_stopAnimationLoop.  See "
-            "docs/protocols/playwright-tests.md § Handler input "
+            "docs/process/testing.md § Handler input "
             "snapshot for the rule.")
 
         # Required shape — a const captures parseInt(slider.value, ...)
@@ -306,7 +306,7 @@ class TestFrameSliderHandlerSnapshotPattern:
             "entry.  Without this snapshot, side-effecting helpers "
             "(_stopAnimationLoop -> _refreshFrameStrip) reset "
             "slider.value before the seek runs.  See "
-            "docs/protocols/playwright-tests.md § Handler input "
+            "docs/process/testing.md § Handler input "
             "snapshot.")
 
 

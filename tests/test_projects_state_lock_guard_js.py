@@ -1,7 +1,7 @@
 """Unit tests for the setShared lock-guard contract (sidebar gap
 #177, defense-in-depth).
 
-Per docs/protocols/projects-sidebar.md § 8.5, programmatic state
+Per docs/web/projects.md, programmatic state
 mutators (setShared, future navigateTo) MUST early-return
 ``{ok:false, error:"sidebar is locked"}`` while the lock is held.
 The CSS ``pointer-events:none`` rule blocks user clicks but

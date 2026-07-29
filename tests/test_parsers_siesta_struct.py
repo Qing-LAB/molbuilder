@@ -1,7 +1,7 @@
 """L1 tests for molbuilder.parsers.siesta_struct.
 
 Pins the .XV and .fdf-initial-coords readers' contracts.  See
-``docs/protocols/bundle-contract.md § 4.1`` for source priority.
+``docs/execution/job-contracts.md`` for source priority.
 """
 from __future__ import annotations
 

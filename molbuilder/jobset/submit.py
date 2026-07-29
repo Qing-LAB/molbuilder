@@ -1,5 +1,5 @@
 """Submit engine — launch a *prepped* :class:`JobSet`
-(docs/protocols/staged-execution.md § 2.1, § 7-9).
+(docs/execution/job-system.md, § 7-9).
 
 This is the keystone both producers feed: the SIESTA stage ladder and
 (once it migrates) the benchmark sweep render to a JobSet, ``prep_jobset``

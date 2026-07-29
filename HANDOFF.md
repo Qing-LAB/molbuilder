@@ -51,15 +51,15 @@ Past sessions failed by acting while clueless. Do NOT. In order:
 2. **`docs/design.md`** — the Stance ("assistant, not nanny": easy but explicit,
    never push-button; don't twist the env/recipe) + the numbered Design
    Principles + Anti-patterns (no custom frameworks/registries).
-3. **`docs/job-execution.md`** — THE SOLE SOURCE OF TRUTH for this work. Read it
+3. **`docs/execution/running-a-job.md`** — THE SOLE SOURCE OF TRUTH for this work. Read it
    *in full*: §1 big picture, §2 workflow, **§3 the detection/standalone
    contract**, §4 cookbook, §5 the sub-doc map, §6 roadmap.
 4. **The sub-doc that owns your task's detail** (from §5 map):
-   - config schema + wrapper contract → `docs/config.md` §§1–8
-   - self-running wrapper, warm/cold restart per engine → `docs/protocols/script-execution.md`
-   - SLURM/sbatch/Sol facts, CUDA floor, GPU gate → `docs/protocols/slurm-integration.md`
-   - benchmark workflow stages, probes/adapters, data formats → `docs/protocols/benchmark-workflow.md`
-   - on-disk naming → `docs/protocols/job-layout.md`
+   - config schema + wrapper contract → `docs/execution/running-a-job.md § 5` §§1–8
+   - self-running wrapper, warm/cold restart per engine → `docs/execution/job-contracts.md`
+   - SLURM/sbatch/Sol facts, CUDA floor, GPU gate → `docs/execution/job-system.md`
+   - benchmark workflow stages, probes/adapters, data formats → `docs/execution/job-system.md`
+   - on-disk naming → `docs/execution/job-contracts.md`
 5. **The actual code for your task** — grep + read it; run the relevant
    `molbuilder <group> --help`. Never claim a fact you have not just verified.
 
@@ -126,7 +126,7 @@ workstation.
   end-to-end static-review + validation of prep→bench→run.
 
 **Done this session:** consolidated all job-execution docs into the single
-master `docs/job-execution.md` (moved config.md §9 → §3; folded+deleted the old
+master `docs/execution/running-a-job.md` (moved config.md §9 → §3; folded+deleted the old
 cookbook; reconciled the activation layering note), then **removed a
 transport↔job-execution conflation** I had introduced (transport is a separate
 science module, not job execution). See `git log` for the doc series. Task list

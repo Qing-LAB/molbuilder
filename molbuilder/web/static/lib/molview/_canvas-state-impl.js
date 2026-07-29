@@ -63,7 +63,7 @@
  * Build's structure-generation paths.  Before the merge, generated
  * structures had to be saved + reloaded to be editable; the canvas
  * state collapses that round-trip.  See
- * ``docs/tabs/architecture.md`` § 5 for the full design.
+ * ``docs/web/tabs.md`` § 5 for the full design.
  */
 "use strict";
 

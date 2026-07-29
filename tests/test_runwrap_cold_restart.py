@@ -44,7 +44,7 @@ from molbuilder.runwrap import write_run_wrapper
 def _autosetup_minimal_config(tmp_path, monkeypatch):
     """Every wrapper render needs a ``script_generation.activation`` or
     the v2 wrapper-independence contract's refuse-to-emit guard
-    (docs/config.md § 2, landed 2026-06-25) rejects it.  Mirror
+    (docs/execution/running-a-job.md § 5, landed 2026-06-25) rejects it.  Mirror
     test_runwrap.py's fixture: a cwd molbuilder.json with the canonical
     Sol defaults so write_run_wrapper can emit.  Without this the whole
     file fails with RuntimeConfigError ("activation is not set")."""

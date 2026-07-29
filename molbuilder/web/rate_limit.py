@@ -135,7 +135,7 @@ DEFAULTS: Dict[str, Any] = {
     # Empty list = ANY logged-in session is admin (the implicit
     # default that ships).  Non-empty list = the session's
     # ``user.email`` must be in this list.  See § 5 of
-    # docs/protocols/rate-limit.md for the threat model.
+    # docs/ops/deployment.md for the threat model.
     "admin_emails":    [],
 }
 
@@ -374,7 +374,7 @@ class RateLimiter:
         * No session / no user / no email → not admin.
         * ``admin_emails`` empty → any logged-in user is admin
           (the implicit single-tenant default; documented in § 5
-          of docs/protocols/rate-limit.md).
+          of docs/ops/deployment.md).
         * ``admin_emails`` non-empty → the session's email must
           be in the set.
 

@@ -136,7 +136,7 @@ def render_methods_md(
     body = "\n\n".join(parts)
     bib_keys = extract_citation_keys(body)
     if bib_keys:
-        bib_lines = ["**Bibliography** (verified in `docs/tabs/spectra/"
+        bib_lines = ["**Bibliography** (verified in `docs/science/"
                      "references.bib`):"]
         for k in bib_keys:
             bib_lines.append(f"- `{k}`")

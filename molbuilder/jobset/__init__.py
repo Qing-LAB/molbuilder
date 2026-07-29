@@ -1,6 +1,6 @@
 """The ``jobset`` framework — a declarative model of a set of related
 jobs that share a package, with engine-agnostic materialize / submit /
-plan engines (docs/protocols/staged-execution.md § 2.1).
+plan engines (docs/execution/job-system.md).
 
 Producers (bench sweep, SIESTA stage ladder) build a :class:`JobSet`;
 the engines consume it.  Import-light by design (model is pure stdlib)

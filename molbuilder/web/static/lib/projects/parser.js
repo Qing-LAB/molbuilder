@@ -16,7 +16,7 @@
  * it -- a save->reload breaker).  This module orchestrates the model <-> server
  * round-trip; it interprets nothing.
  *
- * Contract + map: docs/protocols/structure-load-save-contract.md.
+ * Contract + map: docs/model/structure.md.
  */
 
 // The molview MODEL primitives these doors call.  molview is a classic script mounted on

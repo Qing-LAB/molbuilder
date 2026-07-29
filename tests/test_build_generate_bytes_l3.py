@@ -8,7 +8,7 @@ Pre-J6 this file's predecessor was named
 browser to call ``fetch('/api/build/fdf')`` from JS.  Every
 assertion is on the SERVER RESPONSE body (``r.json()``); the
 browser was used only to dispatch the POST.  Per the round-3 test-
-pyramid audit + ``docs/protocols/test-strategy.md`` § 4, that's L5
+pyramid audit + ``docs/process/testing.md`` § 4, that's L5
 when an L3 (Flask test client) would pin the exact same contract
 at ~10x the speed.
 

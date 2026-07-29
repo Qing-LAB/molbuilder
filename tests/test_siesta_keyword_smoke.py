@@ -28,7 +28,7 @@ molbuilder-siesta env is not installed on this machine.
 
 Subprocess dispatch via the molbuilder-siesta env's siesta binary
 (no host PATH siesta is permitted; the env's binary is the
-authoritative one per docs/protocols/script-execution.md).
+authoritative one per docs/execution/job-contracts.md).
 """
 
 from __future__ import annotations

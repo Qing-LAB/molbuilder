@@ -23,7 +23,7 @@ is smaller — the declared minimum OR the container's actual width.
 When the container is wider, behaviour is identical; when narrower,
 the track shrinks with it.
 
-See ``docs/protocols/mobile-layout.md`` for the rule + rationale.
+See ``docs/web/ui-contract.md`` for the rule + rationale.
 
 What this test pins
 ===================
@@ -111,7 +111,7 @@ def test_every_auto_fit_grid_uses_min_floor():
             "Found CSS grid declarations using a bare numeric floor "
             "in ``repeat(auto-fit, minmax(...))``.  Replace with "
             "``minmax(min(<N>px, 100%), 1fr)``.  See "
-            "``docs/protocols/mobile-layout.md`` for the pattern.\n"
+            "``docs/web/ui-contract.md`` for the pattern.\n"
             + msg
         )
 

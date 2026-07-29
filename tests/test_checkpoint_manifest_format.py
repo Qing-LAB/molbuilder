@@ -1,5 +1,5 @@
 """Tests gating the canonical MANIFEST lockdown (§ 10 of
-docs/protocols/run-checkpoints.md).
+docs/execution/running-a-job.md § 6).
 
 Real filesystem (pytest tmp_path), real git via subprocess.  No mocks
 -- the bug class that prompted the lockdown (writer format diverging

@@ -1,14 +1,13 @@
 """Chemistry-rule validators (engine-agnostic, callable from any engine).
 
 The home for every validator that asks a question the chemistry
-analyzer can answer.  Per docs/protocols/scientific-validation.md
-§ 5.3 + Rule 1 of web-ui-coherence.md: every UI / preflight surface
+analyzer can answer.  Per docs/science/validation.md + Rule 1 of web-ui-coherence.md: every UI / preflight surface
 that gates on "open-shell or closed?", "metal basis adequate?",
 "protonation matches charge?" calls into THIS module — not its own
 parallel logic.
 
 Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/protocols/scientific-validation.md § 10.  Function bodies +
+docs/science/validation.md  Function bodies +
 signatures are identical to the pre-split versions; only the home
 moved.
 """
@@ -137,7 +136,7 @@ def check_open_shell_metal(struct: Structure, *,
     disagree about the chemistry now; whatever the user sees on the
     Auto-detect chip at load time is the same conclusion that gates
     this warning at Generate time.  See
-    ``docs/protocols/scientific-validation.md`` § 5.3 and § 3.4
+    ``docs/science/validation.md`` § 5.3 and § 3.4
     (noble-metal cluster-context rule).
     """
     from ..chemistry import analyze_structure

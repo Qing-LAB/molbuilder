@@ -1,13 +1,13 @@
 """Sidecar-aware validators (frozen-atoms / region labels).
 
-Per docs/protocols/sidecar-contract.md the user attaches metadata to
+Per docs/model/structure-molstruct.md the user attaches metadata to
 a structure via a ``.molstruct.json`` sidecar: regions, frozen-atom
 indices, generator-input echo.  Engines that don't consume one of
 these labels MUST surface an INFO Issue so the user can see the
 absorption was noticed but not silently dropped.
 
 Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/protocols/scientific-validation.md § 10.  Function body +
+docs/science/validation.md  Function body +
 signature are identical to the pre-split version.
 """
 

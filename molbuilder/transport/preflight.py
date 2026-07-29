@@ -5,7 +5,7 @@ electrode ``.TSHS`` -> NEGF device) whose CORRECTNESS hinges on the device
 and electrode runs sharing one numerical contract + a geometric clone +
 commensurate k, with the electrode a dense-``kz`` bulk and the device
 ``kz=1``.  Humans break exactly these couplings; this module turns the
-prose "Golden Rule" (docs/protocols/transiesta-workflow.md § 6.3) into
+prose "Golden Rule" (docs/engines/transport.md) into
 hard gates over the two ``.fdf`` files that will actually run.
 
 It parses BOTH fdfs and reports OK / WARN / ERROR per check.  It validates

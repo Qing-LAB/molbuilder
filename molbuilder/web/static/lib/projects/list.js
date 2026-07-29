@@ -11,7 +11,7 @@
  * so state.refresh() / state.saveToWorkspace() can ask for a re-list
  * without importing list.js (avoids a circular dep).
  *
- * Spec: docs/protocols/selection.md § Sidebar interaction rules.
+ * Spec: docs/web/projects.md § Sidebar interaction rules.
  */
 
 import { apiList, apiDelete } from "./api.js";
@@ -712,7 +712,7 @@ function _renderList(entries, currentPath) {
  * the listing, redraws breadcrumb + entry list, and updates state.
  * Tolerant of API failures (shows an inline error in the list area).
  *
- * Returns the envelope shape from docs/protocols/projects-sidebar.md
+ * Returns the envelope shape from docs/web/projects.md
  * § C7:
  *   ``{ok: true, path, entries}`` on success
  *   ``{ok: false, error}`` on failure

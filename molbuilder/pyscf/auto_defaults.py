@@ -4,7 +4,7 @@ Translates a ``ChemistryAnalysis`` (engine-agnostic conclusions)
 into a typed ``PyscfSuggestedParams`` dataclass whose fields
 match the PySCF web-form / ``PySCFConfig`` field names.
 
-See ``docs/protocols/scientific-validation.md`` § 4 for the
+See ``docs/science/validation.md`` § 4 for the
 adapter contract.  The adapter is registered at import time via
 ``@register_adapter``; the canonical import site is
 ``molbuilder/web/blueprints/__init__.py`` so the registry is

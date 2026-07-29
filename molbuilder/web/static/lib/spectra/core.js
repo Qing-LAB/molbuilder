@@ -14,7 +14,7 @@
  * Both consumers call ``window.molbuilder.spectraInspector.mount()``,
  * so a bug fix here lands in both consumers automatically -- no
  * fork.  Same lift pattern as ``lib/trajectory/core.js`` (see
- * docs/protocols/results-tab.md).
+ * docs/web/results.md).
  *
  * Wires the schema-driven SpectraConfig form (via the shared
  * ``molbuilder.formSchema`` helpers) to the three Spectra API
@@ -130,7 +130,7 @@
     };
 
     // Last successful render payload + interactive state.
-    // Bucketed state shape per docs/protocols/results-state-contract.md
+    // Bucketed state shape per docs/web/results.md
     // PR 3 mirrors the trajectory inspector's shape (PR 2 + PR 2.1 +
     // PR 2.2 + PR 2.3) for cross-inspector consistency.  Five disjoint
     // buckets + a state-machine field; backward-compat aliases keep

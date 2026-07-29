@@ -1,7 +1,7 @@
 """Background job monitor + notifier hooks (proof-of-concept).
 
 The front end of the job-monitor/watcher + notifier surface
-(docs/protocols/slurm-integration.md § 11.0b, item F).  A lightweight,
+(docs/execution/job-system.md, item F).  A lightweight,
 periodically-waking process that **parses** a running job's artifacts
 (the SIESTA ``.out`` + per-run ``.scf-timing.log``), appends a structured
 status line to ``<basename>.monitor.log``, and invokes any registered

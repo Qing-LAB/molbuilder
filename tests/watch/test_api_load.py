@@ -256,9 +256,9 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
     """``/api/watch/data`` MUST carry ``data.runtime_info.convergence_targets``
     when the SIESTA parser extracted it from the input echo.
 
-    Documented contract: docs/protocols/web-api.md § 8.4
+    Documented contract: docs/web/web-api.md
     ("runtime_info: per-stage CPU/MPI/GPU report — see types/parsers.md")
-    + docs/protocols/results-tab.md § 4.6 (the convergence_targets
+    + docs/web/results.md (the convergence_targets
     sub-shape with per-key units and parser sources).
 
     Frontend consumer: lib/trajectory/core.js::_renderConvergenceSummary
@@ -307,7 +307,7 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
 # --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
-#  Per docs/protocols/job-layout.md the loader resolves a directory path     #
+#  Per docs/execution/job-contracts.md the loader resolves a directory path     #
 #  to a single file via a documented discovery chain.  These tests pin  #
 #  each rung of the chain so a regression at the protocol boundary      #
 #  fails loudly here rather than as user-visible "load failed" errors. #

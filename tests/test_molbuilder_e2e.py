@@ -147,8 +147,7 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     ``wait_for_function`` on the atom count times out.
 
     Originally inlined in ``water_xyz_file``; extracted so non-water
-    tests can call it too.  See docs/protocols/playwright-tests.md
-    § 5 "Test independence".
+    tests can call it too.  See docs/process/testing.md "Test independence".
     """
     from molbuilder import diagnostics
     _orig = diagnostics.get_capabilities()
@@ -297,7 +296,7 @@ def _set_checkbox(page, selector, value):
 
     Setting ``checked`` + dispatching ``change`` mirrors what a real
     click would do, minus the Playwright actionability check.  See
-    docs/protocols/playwright-tests.md § A1.
+    docs/process/testing.md § A1.
     """
     page.evaluate("""(args) => {
         const el = document.querySelector(args.sel);
@@ -323,7 +322,7 @@ def _set_selection_mode(page, mode):
     ``radio.checked = true`` and dispatch the ``change`` event the
     panel's JS listens to -- which is exactly what a click would
     end up doing, minus the Playwright click constraints.  See
-    docs/protocols/playwright-tests.md § A1.
+    docs/process/testing.md § A1.
     """
     assert mode in ("click", "filter"), f"unknown mode {mode!r}"
     page.evaluate("""(mode) => {
@@ -378,7 +377,7 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     page.wait_for_timeout(200)
     assert errors == [], f"JS errors during /molbuilder boot: {errors}"
     # Active-tab marker matches the tab label owned by /molbuilder
-    # (see docs/tabs/architecture.md § 2.1 for the tab inventory).
+    # (see docs/web/tabs.md for the tab inventory).
     assert page.locator("a.app-tab.is-active").inner_text() == "Molbuilder"
 
 
@@ -433,7 +432,7 @@ def test_load_water_populates_structure(page, flask_server, water_xyz_file):
 
 def test_sidebar_pick_is_candidate_only_not_auto_load(
         page, flask_server, water_xyz_file):
-    """Per docs/tabs/architecture.md § 5.2: sidebar selection sets a
+    """Per docs/web/tabs.md: sidebar selection sets a
     CANDIDATE; only an explicit Load button click commits the
     viewer load.  Pinning the candidate-only contract: after a
     sidebar pick the viewer must STILL be empty until the user
@@ -3584,7 +3583,7 @@ def test_apply_add_atom_appends_h_at_offset(
     asserting on it was a stale carry-over from the PDB-flow
     prototype (~2026-04).  The element + atom-count assertions
     cover the user-observable invariant.  Per
-    docs/protocols/playwright-tests.md § A4: assert on user-visible
+    docs/process/testing.md § A4: assert on user-visible
     state, not implementation details that don't reach the user.
     """
     errors = _open_modify(page, flask_server)
@@ -5459,7 +5458,7 @@ def _load_watch_log(page, base_url, log_path):
     instead -- racing the test.  Routing through ``setShared``
     instead means the test's file IS what the sidebar publishes,
     so the picker and viewer agree.  See
-    docs/protocols/playwright-tests.md § 9.4.
+    docs/process/testing.md
 
     Replaces the legacy "go to /watch, type into #path-input, click
     Load" flow (2026-05-19 /watch removal).
@@ -5985,7 +5984,7 @@ def test_build_form_tri_select_optional_bool(page, flask_server):
 # --------------------------------------------------------------------- #
 #  Second-visit + external-change pattern (#195, audit follow-up to    #
 #  the 2026-06-02 /results stale-dropdown bug).  Per                   #
-#  docs/protocols/playwright-tests.md § 9.6, every tab whose UI       #
+#  docs/process/testing.md, every tab whose UI       #
 #  is driven by a subscriber-on-state-change needs at least one       #
 #  test exercising the "user navigated away, external state          #
 #  changed, returned" workflow.                                       #

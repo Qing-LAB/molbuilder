@@ -1,6 +1,6 @@
 """Validator-issue-to-card attachment contract (task #373).
 
-Per docs/protocols/web-ui-coherence.md Rule 2, validator findings
+Per docs/web/ui-contract.md Rule 2, validator findings
 should attach to the workflow-group card whose fields they concern.
 The attachment is computed from the Issue's ``where`` field (e.g.
 ``"config.mesh_cutoff"``) by looking up the corresponding dataclass

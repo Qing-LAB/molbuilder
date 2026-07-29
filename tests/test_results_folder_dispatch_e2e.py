@@ -166,7 +166,7 @@ class TestRegistryDispatchPerFile:
     per filename pattern.  Each took ~1.8 s of Chromium startup to
     call ``window.molbuilder.inspectors.pick(path)`` — a pure JS
     function call that doesn't need a browser at all.  Per
-    docs/protocols/test-strategy.md § 7 the dispatch logic was
+    docs/process/testing.md the dispatch logic was
     demoted to the L2 module tier in
     ``tests/test_inspector_registry_dispatch_js.py`` (Node-level,
     ~50 ms total instead of ~10 s).

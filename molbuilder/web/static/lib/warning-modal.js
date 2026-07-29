@@ -19,7 +19,7 @@
  * "Discard and continue", false on Cancel (and on ESC, which the
  * native <dialog> element treats as a cancel).
  *
- * Modal content per docs/tabs/architecture.md § 5.4:
+ * Modal content per docs/web/tabs.md:
  *
  *   Title:   "Unsaved modifications"
  *   Body:    "You have unsaved changes to the current canvas.
@@ -34,7 +34,7 @@
  * History: introduced when the Structure tab merged Build's
  * structure-generation paths so generated structures could be
  * edited in place rather than save → reload.  See
- * ``docs/tabs/architecture.md`` § 5.4 for the full design.
+ * ``docs/web/tabs.md`` § 5.4 for the full design.
  */
 (function (root) {
     "use strict";

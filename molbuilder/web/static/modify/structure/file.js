@@ -30,7 +30,7 @@
  * fetch + structurePage + viewer-loader so the Node-only
  * unit tests can drive the state machine without a real DOM.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: file
+ * Design ref: docs/web/tabs.md (panel 5: file
  * upload, part of the "others" generator group).
  */
 

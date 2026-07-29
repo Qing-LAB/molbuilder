@@ -324,7 +324,7 @@ cli.add_command(bench_group)
 
 # `molbuilder jobset ...`  (engine-agnostic staged execution: plan / prep /
 # submit a bundle's job-set.json -- the SIESTA stage ladder, and later the
-# bench sweep).  See molbuilder/jobset/ + docs/protocols/staged-execution.md.
+# bench sweep).  See molbuilder/jobset/ + docs/execution/job-system.md.
 from .jobset._cli import jobset_group
 cli.add_command(jobset_group)
 
@@ -1425,7 +1425,7 @@ def cmd_modify(input_path, output_path,
         molbuilder modify step1.xyz junction.xyz \\
             --electrode Cu:111:3x3x2@contact=2.0:-z=0
 
-    See docs/tabs/molbuilder.md for the full per-(plane, orthogonal)
+    See docs/web/tabs.md for the full per-(plane, orthogonal)
     constraint table; ASE's own error message bubbles up if the
     requested (m, n) doesn't satisfy the chosen cell shape.
     """
@@ -1687,7 +1687,7 @@ def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
                 watch_pid: int, nice_level: int) -> int:
     """Periodically parse the running job's artifacts, append a status
     line, and fire notifier hooks -- the front end of the job-monitor /
-    notifier surface (docs/protocols/slurm-integration.md § 11.0b).
+    notifier surface (docs/execution/job-system.md).
 
     Lightweight by design: sleeps between wakes, does only tail-reads, and
     self-lowers its OS priority (``--nice``) so it yields to the compute
@@ -1740,7 +1740,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
     machine) can pass ``--allow-insecure-binding`` to bypass; we
     still print a loud warning so the choice is visible in logs.
 
-    See ``docs/deployment.md`` for the recommended deployment
+    See ``docs/ops/deployment.md`` for the recommended deployment
     shapes (reverse proxy + auth gateway).
     """
     if _is_loopback_host(host):
@@ -1752,7 +1752,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
             f"WARNING: --host={host} binds a non-loopback interface "
             f"WITHOUT TLS.  --allow-insecure-binding bypasses the "
             f"safety check.  Make sure your reverse proxy terminates "
-            f"TLS and gates auth.  See docs/deployment.md.",
+            f"TLS and gates auth.  See docs/ops/deployment.md.",
             err=True,
         )
         return
@@ -1765,7 +1765,7 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
         f"  1. Pass --cert / --key to enable TLS (defense in depth; "
         f"still no auth!).\n"
         f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
-        f"auth (recommended -- see docs/deployment.md).\n"
+        f"auth (recommended -- see docs/ops/deployment.md).\n"
         f"  3. Pass --allow-insecure-binding to override this check "
         f"(only sensible when something OUTSIDE molbuilder gates "
         f"access -- a same-host proxy, a VPN tunnel, etc.).\n"
@@ -1882,7 +1882,7 @@ def _check_tls_readable(cert, key) -> None:
     install where ``/etc/letsencrypt/live/<domain>/privkey.pem`` is
     root-owned + mode 0600 while molbuilder runs as an unprivileged
     user; the error message points at the standard fix (reverse
-    proxy from docs/deployment.md) so the operator doesn't reach
+    proxy from docs/ops/deployment.md) so the operator doesn't reach
     for ``chmod 0644 privkey.pem`` instead.
     """
     if not cert or not key:
@@ -1914,7 +1914,7 @@ def _check_tls_readable(cert, key) -> None:
           "  * Don't read those paths directly from molbuilder.  Put "
           "molbuilder behind a reverse proxy (nginx / Caddy) that "
           "owns TLS termination and forwards plain HTTP to molbuilder "
-          "on 127.0.0.1.  See docs/deployment.md for the recommended "
+          "on 127.0.0.1.  See docs/ops/deployment.md for the recommended "
           "shape.\n"
           "  * Or: copy cert + key into a directory the molbuilder "
           "user can read (mode 0600 on the key) and point "
@@ -2243,7 +2243,7 @@ def cmd_runtime_info(input_path, out_path, pretty):
 @click.option("--allow-insecure-binding", is_flag=True,
               help="Bypass the loopback-or-TLS guard.  Only sensible "
                    "when something outside molbuilder (proxy / VPN) "
-                   "gates access -- see docs/deployment.md.")
+                   "gates access -- see docs/ops/deployment.md.")
 @click.option("--no-auth", is_flag=True,
               help="Run with NO authentication (ignores molbuilder.json's "
                    "auth/TLS).  Allowed ONLY on a loopback --host "
@@ -2309,7 +2309,7 @@ def cmd_snapshot():
         molbuilder snapshot list
         molbuilder snapshot restore stage3-converged  # rewinds everything
 
-    See docs/protocols/run-checkpoints.md for the full design.
+    See docs/execution/running-a-job.md § 6 for the full design.
     """
 
 

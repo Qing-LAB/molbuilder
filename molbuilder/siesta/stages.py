@@ -1,5 +1,5 @@
 """SIESTA stage-ladder → :class:`JobSet` producer
-(docs/protocols/staged-execution.md § 2.1).
+(docs/execution/job-system.md).
 
 This is the ONLY place SIESTA stage knowledge meets the engine-agnostic
 ``jobset`` framework.  It turns ``cfg.stages`` (the validated

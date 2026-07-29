@@ -37,7 +37,7 @@ from molbuilder import runwrap as _runwrap
 @pytest.fixture(autouse=True)
 def _autosetup_minimal_config(tmp_path, monkeypatch):
     """Wrapper rendering requires ``script_generation.activation``
-    (docs/config.md § 2 refuse-to-emit rule).  Drop a minimal cwd
+    (docs/execution/running-a-job.md § 5 refuse-to-emit rule).  Drop a minimal cwd
     ``molbuilder.json`` so every test in this file satisfies the
     guard without coupling to deployment-specific defaults."""
     monkeypatch.chdir(tmp_path)

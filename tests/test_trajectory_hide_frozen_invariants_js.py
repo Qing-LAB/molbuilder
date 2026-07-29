@@ -30,7 +30,7 @@ Why source-text, not a runtime test:
   the toggle id (``hide-frozen``) AND the frozen-set helper
   (``_frozenSet``) AND the skip pattern (``frozen.has(i)``).
 
-Per docs/protocols/test-strategy.md § 5 (source-text invariants):
+Per docs/process/testing.md (source-text invariants):
 canonical use case.  The contract is "every code path that depends
 on this state actually reads this state"; verifying it by grep
 over the function bodies is the right level of abstraction.

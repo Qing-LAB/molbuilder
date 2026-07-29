@@ -147,7 +147,7 @@ def test_read_returns_root_readme_and_license(client):
 @pytest.mark.parametrize("bad", [
     "../molbuilder/cli.py",           # escape docs/ upward
     "../../etc/passwd",               # deeper escape
-    "../old_docs/protocols/web-api.md",  # the frozen legacy tree is NOT served
+    "../molbuilder.json",          # upward escape to a secret-bearing file
     "nope.md",                        # missing file
     "README",                         # no .md suffix
     "",                               # empty

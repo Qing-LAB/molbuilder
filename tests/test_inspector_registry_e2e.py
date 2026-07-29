@@ -72,7 +72,7 @@ def _open_results(page, base_url):
 #  Each one called ``window.molbuilder.inspectors.pick(path)`` /        #
 #  ``.pickResult(path)`` / ``.list()`` and checked the return — pure   #
 #  JS function dispatch with no DOM dependency.  Per                   #
-#  docs/protocols/test-strategy.md § 7, that's the canonical L5 → L2  #
+#  docs/process/testing.md, that's the canonical L5 → L2  #
 #  shape: chromium adds ~1.8 s per test for a function call that runs #
 #  in 30 ms under Node.                                                 #
 #                                                                       #

@@ -3,7 +3,7 @@
  * Polled + drawn by lib/system-load-monitor.js.  Sits at the bottom
  * of .results-main as a self-contained card; collapsible via the
  * ``≡`` toggle (collapse stops polling).  See
- * docs/protocols/results-state-contract.md § 9 for the layout
+ * docs/web/results.md for the layout
  * contract.
  *
  * Visual model (PR 5.1, 2026-06-17):

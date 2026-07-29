@@ -68,7 +68,7 @@ function _mvdata() {
     };
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
-    // docs/protocols/molview-module.md).  Site migration #202
+    // docs/web/molview.md).  Site migration #202
     // landed 2026-06-03 — Build now uses the standard knob bar
     // (Style / Labels / Axes / Reset / PNG / Background / Export)
     // owned by the embed.  The bespoke <details> Style block in
@@ -129,7 +129,7 @@ function _mvdata() {
         ul.appendChild(li);
     }
 
-    // Per docs/protocols/web-ui-coherence.md Rule 2, issues that
+    // Per docs/web/ui-contract.md Rule 2, issues that
     // carry a ``workflow_group`` tag (profile / stage / budget)
     // render INSIDE the relevant workflow-group card; un-tagged
     // issues (geometry / cell / polymer / legacy untagged config
@@ -859,7 +859,7 @@ function _mvdata() {
 
         // -------- Auto-detect button (Phase 2 of the chemistry
         // middle-layer work; see
-        // docs/protocols/scientific-validation.md § 2.5).
+        // docs/science/validation.md).
         //
         // Posts the currently-loaded structure to
         // /api/structure/analyze, then applies the engine-agnostic
@@ -1094,7 +1094,7 @@ function _mvdata() {
         // …) reads from one implementation.  Pre-2026-06-13 these
         // helpers were closure-private here, which silently denied
         // Transport (Au-junction users!) any chip surface.  See
-        // docs/protocols/web-ui-coherence.md Rule 1.
+        // docs/web/ui-contract.md Rule 1.
         const _detectionChip = (window.molbuilder
                                 && window.molbuilder.detectionChip)
             || { buildText: () => ({ profile: "", budget: "" }),

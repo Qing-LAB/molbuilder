@@ -23,7 +23,7 @@
  * structurePage + viewer-loader so the Node-only unit tests can
  * drive the state machine without a real DOM or HTTP roundtrip.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 2: SMILES
+ * Design ref: docs/web/tabs.md (panel 2: SMILES
  * generator) + § 5.4 (warning-modal gates Load + Generate).
  */
 

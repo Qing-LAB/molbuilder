@@ -1,6 +1,6 @@
 """CSS ``[hidden]``-attribute precedence audit — source-text invariant.
 
-Pins the rule documented in ``docs/protocols/code-audit.md § 3.1``:
+Pins the rule documented in ``docs/process/code-audit.md``:
 when a class/id selector sets ``display: <not none>``, the rule ties
 on specificity with the UA stylesheet's ``[hidden] { display: none }``
 and **wins by source order**.  A JS ``element.hidden = true`` then
@@ -286,7 +286,7 @@ def test_every_dynamically_hidden_id_has_a_guard(
     a non-``none`` display MUST have a matching ``[hidden]`` guard
     on the same selector.
 
-    Per ``docs/protocols/code-audit.md § 3.1`` — failure mode is
+    Per ``docs/process/code-audit.md`` — failure mode is
     the "ghost toggle" pattern the 2026-06-14 trajectory-inspector
     incident caught.  Fix by adding ``selector[hidden] {display:none;}``
     next to the offending rule in the same file.

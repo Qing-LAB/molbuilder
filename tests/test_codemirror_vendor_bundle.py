@@ -15,7 +15,7 @@ tests that spun up Chromium just to call
 ``typeof window.CodeMirror.commands.find === 'function'`` after
 loading the bundle — pure existence checks of vendored code.
 
-Per docs/protocols/test-strategy.md § 5 (source-text invariants):
+Per docs/process/testing.md (source-text invariants):
 verifying that a vendored file is present + carries the symbol
 the host code depends on is the canonical L2 shape.  No browser,
 no JS runtime — just file existence + grep over the minified

@@ -73,7 +73,7 @@ REGION_RIGHT_ELECTRODE = "R-electrode"
 REGION_BRIDGE          = "bridge"
 
 # The defaults that ship with the modify tab.  See
-# docs/protocols/region-labels.md for the convention + scientific
+# docs/engines/transport.md for the convention + scientific
 # meaning of each label.
 EXPECTED_REGIONS_2T = (
     REGION_LEFT_ELECTRODE,
@@ -87,7 +87,7 @@ EXPECTED_REGIONS_2T = (
 # ``L-electrode``, ``R-electrode`` (the defaults) fit naturally;
 # users can add e.g. ``tip-electrode`` for STM-style asymmetric leads
 # or ``gate-electrode`` for 3-terminal devices without changing the
-# emitter.  See docs/protocols/region-labels.md.
+# emitter.  See docs/engines/transport.md.
 ELECTRODE_LABEL_SUFFIX = "electrode"
 
 
@@ -187,7 +187,7 @@ class TransportConfig:
         "help":      "filesystem-safe basename for emitted files "
                      "(transport.py + transport.json + transmission.dat).  "
                      "Same rule as SIESTA SystemLabel / PySCF job_name "
-                     "-- see docs/protocols/job-layout.md.",
+                     "-- see docs/execution/job-contracts.md.",
         "validate":  _validate_basename("job_name"),
     })
 

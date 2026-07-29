@@ -1,5 +1,5 @@
 """Materialize engine — turn a :class:`JobSet` into on-disk per-job
-directories (docs/protocols/staged-execution.md § 2.1).
+directories (docs/execution/job-system.md).
 
 Filesystem ONLY: it knows nothing about schedulers or engines.  For each
 job it creates ``point-<name>/`` and lays relative symlinks for

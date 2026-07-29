@@ -1,5 +1,5 @@
 """Run-status reader — the "inform" layer
-(docs/protocols/staged-execution.md § 10, § 14).
+(docs/execution/job-system.md, § 14).
 
 The resume contract is: **the modeling software resumes; molbuilder informs
 and the user decides** (never auto-recovers — redoing a long run unknowingly

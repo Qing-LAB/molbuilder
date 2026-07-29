@@ -48,7 +48,7 @@ class Issue:
         or "budget" -- so the web UI can attach the finding to the
         card whose fields it concerns rather than dumping every
         issue into one panel below the Generate button (per
-        docs/protocols/web-ui-coherence.md Rule 2).  Defaults to
+        docs/web/ui-contract.md Rule 2).  Defaults to
         None; usually set by ``_shared.resolve_workflow_group(where,
         cfg)`` at serialization time so individual ``_check_*``
         functions don't need to think about UI structure.  Findings

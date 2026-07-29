@@ -281,7 +281,7 @@ Read it; it's the source of truth for what will run.
 
 `./prep-bench` accepts `--gpu-ks` / `--cores-per-socket` / `--gpus-per-node` /
 `--gpu-type` / `--scheduler` overrides when detection can't see the compute
-node.  See `docs/job-execution.md § 8`.
+node.  See `docs/execution/running-a-job.md`.
 
 Everything except the handful of flipped directives is **byte-for-byte
 your input fdf**.
@@ -529,7 +529,7 @@ def bake_target_wrappers(out_dir, env, *, submit: Optional[bool] = None,
             raise _rc.RuntimeConfigError(
                 "no conda/mamba found on PATH on this workstation.\n"
                 "Activate your conda, or ship an explicit script_generation "
-                "in .molbuilder.json (see docs/job-execution.md § 4.4.1).")
+                "in .molbuilder.json (see docs/execution/running-a-job.md).")
         _write_activation_config(out_dir, det["activation"], det["preamble"])
         if echo is not None:
             echo(f'activation: autodetected "{det["activation"]}" '
@@ -540,7 +540,7 @@ def bake_target_wrappers(out_dir, env, *, submit: Optional[bool] = None,
             raise _rc.RuntimeConfigError(
                 "HPC target: no activation configured.  Ship a "
                 ".molbuilder.json with script_generation (preamble + "
-                "activation) in the bundle -- see docs/job-execution.md "
+                "activation) in the bundle -- see docs/execution/running-a-job.md "
                 "§ 4.4.2.  The job runs in a clean shell, so the toolchain "
                 "cannot be autodetected (§ 3.3 row M).")
         if echo is not None:

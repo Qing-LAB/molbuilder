@@ -20,7 +20,7 @@ This backend is registered as ``"amber"`` for backwards compatibility
 with code/UI that already says ``backend="amber"``.
 
 Install:
-    See ``docs/README_install.md`` § ``molbuilder-MDtools`` -- the
+    See ``docs/ops/installation.md`` § ``molbuilder-MDtools`` -- the
     canonical place for ``tleap`` in the four-env model.  A
     single-env developer setup that puts ``tleap`` on the host PATH
     also works; this backend's :func:`is_available` checks both.
@@ -71,7 +71,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             "AmberTools `tleap` not found.  Either:\n"
             "  - install `tleap` on the host env's PATH, or\n"
             "  - create the molbuilder-MDtools conda env (see "
-            "docs/README_install.md § molbuilder-MDtools)."
+            "docs/ops/installation.md § molbuilder-MDtools)."
         )
     if kind not in ("dna", "rna"):
         raise ValueError(f"AmberTools backend supports kind in 'dna'|'rna'; got {kind!r}")

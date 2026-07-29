@@ -348,7 +348,7 @@ at it explicitly:
 
 If conda/mamba is not installed at all, install Miniforge,
 Miniconda, or your site's conda distribution by hand first, then
-re-run.  See docs/README_install.md for links.
+re-run.  See docs/ops/installation.md for links.
 EOF
         exit 2
     fi
@@ -405,7 +405,7 @@ HOST_CONDA_PACKAGES=(
     pytest pyflakes
     "psutil>=5.9"
     numactl
-    # run-checkpoints subsystem (docs/protocols/run-checkpoints.md § 3.3):
+    # run-checkpoints subsystem (docs/execution/running-a-job.md § 6):
     # git provided by every molbuilder env so the wrapper bootstrap
     # prologue + `molbuilder snapshot ...` operate from a known git
     # version, not the system's.

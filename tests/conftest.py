@@ -108,7 +108,7 @@ def web_client():
 # --------------------------------------------------------------------- #
 #  Marker auto-application by file pattern (2026-06-24)                 #
 #  Implements the marker discipline documented in                       #
-#  docs/protocols/test-strategy.md § 2.  Tests can override at the     #
+#  docs/process/testing.md  Tests can override at the     #
 #  function level by carrying an explicit @pytest.mark.<X>.            #
 # --------------------------------------------------------------------- #
 

@@ -561,7 +561,7 @@
 /* ====================================================================
  * Region-label definitions popover (2026-06-18).
  * Triggered by the ⓘ button next to Target:.  See
- * lib/region-label-definitions.js + docs/protocols/region-labels.md.
+ * lib/region-label-definitions.js + docs/model/structure-annotations.md.
  * ==================================================================== */
 .selection-target-info-btn {
     background: transparent;

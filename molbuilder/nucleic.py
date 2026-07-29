@@ -49,7 +49,7 @@ def _strip_direction(s: str) -> str:
 
 
 def _parse_dna_notation(text: str):
-    """Parse the DNA-panel input notation (docs/tabs/molbuilder.md).
+    """Parse the DNA-panel input notation (docs/web/tabs.md).
 
     Returns ``(mode, strand1, strand2)``:
 

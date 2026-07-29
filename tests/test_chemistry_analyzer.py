@@ -1,6 +1,6 @@
 """Tests for the engine-agnostic chemistry analyzer (L2 of the
 scientific-validation machinery; see
-``docs/protocols/scientific-validation.md`` § 3).
+``docs/science/validation.md`` § 3).
 
 Pins the contract:
 

@@ -2,7 +2,7 @@
 
 The check list lives in ``docs/design.md`` § "Validation pass
 (pre-emission)" and the machinery in
-``docs/protocols/scientific-validation.md``.  Generators
+``docs/science/validation.md``.  Generators
 (siesta.input.render_fdf, pyscf.input.render_script, spectra
 preflight, transport.transiesta.validate) call :func:`validate`
 before writing output; errors block emission, warnings print to
@@ -25,7 +25,7 @@ The output is a ``List[Issue]``.  Callers decide what to do with it;
 helper that ``render_fdf`` / ``render_script`` use.
 
 Package layout (split 2026-06-13; see
-``docs/protocols/scientific-validation.md`` § 10):
+``docs/science/validation.md`` § 10):
 
 * :mod:`molbuilder.validation.geometry`  — engine-agnostic geometry
 * :mod:`molbuilder.validation.metadata`  — dataclass-field driven

@@ -1,6 +1,6 @@
 """Tests for the IP rate-limit + scanner-detection module.
 
-Surfaces under test (docs/protocols/rate-limit.md):
+Surfaces under test (docs/ops/deployment.md):
 
 * Signature match → immediate block + connection-close 429.
 * 404-storm → block on the Nth 4xx within window.

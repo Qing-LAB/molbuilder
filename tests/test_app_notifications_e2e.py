@@ -1,4 +1,4 @@
-"""App-wide system-notification bar (docs/protocols/notifications.md).
+"""App-wide system-notification bar (docs/web/notifications.md).
 
 Pins the contract: a STACK the user clears INDIVIDUALLY, dedup by id, and the
 ``molbuilder:persist-error`` -> error-row wiring (the workspace-contract §4.7

@@ -20,7 +20,7 @@
  * submission).  Anything else gets an actionable inline error
  * before the network call.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 3: 3DNA
+ * Design ref: docs/web/tabs.md (panel 3: 3DNA
  * helix builder).
  */
 

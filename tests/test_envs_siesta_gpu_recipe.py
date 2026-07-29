@@ -6,8 +6,8 @@ installed via conda.  This file pins the exact recipe shape so a
 casual edit to recipes.py can't silently desync from:
 
     * docs/design.md 2026-06-14 Decisions log entry (locked decisions)
-    * docs/engines/siesta-gpu.md (engineering reference)
-    * docs/README_install.md (user-facing instructions)
+    * docs/ops/installation.md § 6 (engineering reference)
+    * docs/ops/installation.md (user-facing instructions)
 """
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ def test_pins_gcc_14(recipe):
     """gcc 14 is the default toolchain (locked decision #6).  The
     CUDA-gcc compat preflight refuses to start if CUDA is too old for
     gcc 14; that's the user's signal to override.  See
-    docs/engines/siesta-gpu.md § 6."""
+    docs/ops/installation.md § 6"""
     pkgs = " ".join(recipe.conda_packages)
     assert "gcc_linux-64=14" in pkgs
     assert "gxx_linux-64=14" in pkgs
@@ -114,7 +114,7 @@ def test_pins_cmake_geq_3_30(recipe):
 def test_uses_openblas_not_mkl(recipe):
     """Locked decision: stays single-OpenMP-runtime (libgomp).  MKL
     brings libiomp5 which collides at runtime.  See
-    docs/engines/siesta-gpu.md § 8."""
+    docs/ops/installation.md § 6"""
     pkgs_lower = [p.lower() for p in recipe.conda_packages]
     assert any("openblas" in p for p in pkgs_lower)
     assert not any("mkl" in p for p in pkgs_lower), (

@@ -6,7 +6,7 @@ Two layers, two docs, pinned here:
 * **MolView data model** — ``window.molbuilder.molview.data``
   (``lib/molview/data-model.js``).  Owns the structure / selection /
   periodicity / frames in memory and serialises itself.  Contract:
-  ``docs/protocols/molview-module.md`` §19 (§19.2 reads, §19.3 writes,
+  ``docs/web/molview.md`` §19 (§19.2 reads, §19.3 writes,
   §19.3.1 the LOAD/SAVE atomic + coherence invariant, §19.4
   serialisation).  The authoritative public surface is the ``api``
   object at the end of ``data-model.js``.
@@ -14,7 +14,7 @@ Two layers, two docs, pinned here:
 * **Workspace** — ``window.molbuilder.workspace``
   (``lib/workspace/dispatcher.js``).  PERSISTENCE ONLY (session mirror
   + on-disk draft), format-blind.  Contract:
-  ``docs/protocols/workspace-contract.md`` §3.5 / §4.
+  ``docs/web/workspace.md`` §3.5 / §4.
 
 The model install / serialise primitives are
 ``molview.data.installMolecule({text, filename[, sidecar, ...]})`` (parses

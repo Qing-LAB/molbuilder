@@ -52,7 +52,7 @@ _SAFE_REGION_LABEL_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
 def resolve_workflow_group(where: str, cfg) -> Optional[str]:
     """Return the workflow-group binding for an Issue ``where`` field.
 
-    Per docs/protocols/web-ui-coherence.md Rule 2, validator findings
+    Per docs/web/ui-contract.md Rule 2, validator findings
     should attach to the workflow-group card whose fields they
     concern: a ``config.mesh_cutoff`` finding belongs in the Stage
     card; ``config.spin_polarized`` belongs in the Run profile card;
@@ -651,7 +651,7 @@ def _field_to_schema(f: dataclasses.Field,
     # in form-schema.js + STAGE_PRESETS' restricted write surface
     # in viewer.js.  Fields without this tag render bare (outside
     # any workflow-group wrapper) and STAGE_PRESETS never touches
-    # them.  See docs/protocols/results-tab.md § 4.6 + the
+    # them.  See docs/web/results.md + the
     # .workflow-group framework in lib/form-schema.css.
     if "workflow_group" in md:
         out["workflow_group"] = md["workflow_group"]
@@ -1322,7 +1322,7 @@ def apply_sidecar_if_possible(struct, structure_path):
 def apply_companion_labels_if_present(struct, structure_path):
     """Same-stem ``.fdf`` / ``.py`` companion next to a ``.xyz`` /
     ``.pdb`` wins over a ``.molstruct.json`` sidecar as the label
-    source.  See ``docs/protocols/bundle-contract.md § 4.2`` and § 5.3.
+    source.  See ``docs/execution/job-contracts.md`` and § 5.3.
 
     Why companion-wins: the script was the actual basis of a
     molbuilder-generated run.  Its in-body ATOM-METADATA block is

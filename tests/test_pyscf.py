@@ -509,7 +509,7 @@ def test_geometry_warm_restart_block_emitted(h2o):
     must auto-resume from ``<JOB>_optimized.xyz`` when present
     (analog to SIESTA's automatic ``.XV`` read).  This is the
     geometry side of the warm-restart contract documented in
-    docs/protocols/script-execution.md § "Generator-side warm-
+    docs/execution/job-contracts.md § "Generator-side warm-
     restart contract" item 2.
 
     Without this hook, a ``bash job.run.sh --continue`` after a

@@ -1,6 +1,6 @@
 """Tab routing contract — canonical paths + nav bar.
 
-Pins the routing contract from `docs/tabs/architecture.md` § 3:
+Pins the routing contract from `docs/web/tabs.md` § 3:
 
   * `/molbuilder`, `/structure-optimization`,
     `/spectrum-calculation`, `/transport-calculation`, `/results`

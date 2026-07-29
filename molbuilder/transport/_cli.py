@@ -85,7 +85,7 @@ def transport_group() -> None:
     correctness hinges on the device and electrode sharing ONE numerical
     contract + a geometric clone + commensurate k.  These commands enforce
     that consistency (the actual failure mode).  Scientific basis:
-    docs/protocols/transiesta-workflow.md.
+    docs/engines/transport.md.
 
     Run `molbuilder transport COMMAND -h` for a worked example of each.
     """
@@ -117,7 +117,7 @@ def transport_group() -> None:
 def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
                   electrode_kz_warn: int) -> None:
     """Validate the cross-run consistency contract between a device and an
-    electrode `.fdf` (docs/protocols/transiesta-workflow.md § 6.3).
+    electrode `.fdf` (docs/engines/transport.md).
 
     Checks: commensurate transverse k, device ``kz=1`` + dense electrode
     ``kz``, identical XC / MeshCutoff / EnergyShift / basis, matching
@@ -181,7 +181,7 @@ def cmd_preflight(device: str, electrode: str, min_electrode_thickness: float,
 def cmd_electrode(device_xyz, sidecar_path, which, job_name, mesh_cutoff,
                   kx, ky, electrode_kz, z_period, cell_fdf, out_dir):
     """Derive the bulk-electrode `.fdf`(s) from a region-labeled device
-    (docs/protocols/transiesta-workflow.md § 6.2).
+    (docs/engines/transport.md).
 
     Clones the `*-electrode` region's exact atoms + the device lateral
     cell + the device numerical contract, so the device<->electrode

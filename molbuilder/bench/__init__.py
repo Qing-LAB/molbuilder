@@ -1,6 +1,6 @@
 """molbuilder bench -- in-tree benchmark harness.
 
-Reads the BENCH-MARKS block (per docs/protocols/script-contract.md)
+Reads the BENCH-MARKS block (per docs/execution/job-contracts.md)
 from a generated .fdf, sweeps over a small set of (np, omp,
 BlockSize) test points, runs SIESTA on each variant, parses the
 .out for the effective values and per-iter wall time, prints a

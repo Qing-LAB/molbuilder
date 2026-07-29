@@ -1,5 +1,5 @@
 """Round-trip invariant for the consolidated Structure authority
-(docs/protocols/structure-authority.md § 5).
+(docs/model/structure.md).
 
 The one test that would have caught the recurring ``cell_origin -> 0`` bug at
 the source: build a Structure with EVERY metadata field set to a NON-default

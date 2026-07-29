@@ -115,7 +115,7 @@ _L2_MODULES = {
                          # runstatus + the jobset CLI group).  L2: prep ->
                          # runwrap, submit -> runtime_config, runstatus ->
                          # parse -- all L2; the model is pure stdlib.  See
-                         # docs/protocols/staged-execution.md.
+                         # docs/execution/job-system.md.
 }
 
 _L3_MODULES = {

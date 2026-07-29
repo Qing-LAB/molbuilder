@@ -113,7 +113,7 @@ def test_unknown_format_generic_hint_points_at_docs(tmp_path):
         msg = str(exc)
     else:
         raise AssertionError("expected UnknownFormatError")
-    assert "README" in msg or "docs/types/parsers.md" in msg
+    assert "README" in msg or "docs/model/parse.md" in msg
 
 
 def test_registry_lists_all_parsers():

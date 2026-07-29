@@ -1,6 +1,6 @@
 /* MolView render engine -- embedIo: the ONE seal over the 3Dmol embed handle.
  *
- * Contract: docs/protocols/molview-render-streamline.md §9.1 (and §3, §4, §8).
+ * Contract: docs/web/molview.md (and §3, §4, §8).
  * Module:   molbuilder.molview.engine.embedIo   (lib/molview/engine/embed-io.js)
  * Used by:  engine.js -- the orchestrator (§9), the ONLY caller. Nothing else in MolView
  *           may touch the 3Dmol handle: every setStructure / setAnimation / setArrows /

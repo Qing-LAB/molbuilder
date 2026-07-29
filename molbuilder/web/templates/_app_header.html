@@ -22,7 +22,7 @@
    the app's context processor, so reordering or renaming a tab is a
    one-place change.
 
-   Tab labels and routes are documented in docs/tabs/architecture.md.
+   Tab labels and routes are documented in docs/web/tabs.md.
    The bare ``/`` 302-redirects to whichever tab is first in TABS so
    the host root always lands on the canonical landing tab without
    hard-coding the path here.
@@ -62,7 +62,7 @@
   {% endfor -%}
 </nav>
 
-{#- App-wide system-notification bar (docs/protocols/notifications.md): ONE
+{#- App-wide system-notification bar (docs/web/notifications.md): ONE
     consistent surface for system-level messages that span tabs -- debuting with
     the non-blocking/error-explicit workspace persist failures (workspace-contract
     §4.7).  A STACK the user clears individually.  Present on every page because

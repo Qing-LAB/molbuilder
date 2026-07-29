@@ -1,4 +1,4 @@
-"""Tests for the wrapper-independence rewrite (docs/config.md v2).
+"""Tests for the wrapper-independence rewrite (docs/execution/running-a-job.md § 5 v2).
 
 The wrapper:
   * does not change cwd
@@ -62,7 +62,7 @@ def sandbox(tmp_path, monkeypatch):
 
 
 def test_render_refuses_when_no_activation_configured(tmp_path, monkeypatch):
-    """Per docs/config.md § 2: missing ``activation`` -> generator
+    """Per docs/execution/running-a-job.md § 5: missing ``activation`` -> generator
     refuses to emit a wrapper that can't activate its env."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -213,7 +213,7 @@ def test_no_six_path_detection_block(sandbox):
 
 def test_no_molbuilder_preactivate_cmds_hook(sandbox):
     text = render_run_wrapper(Path("/x/JOB.fdf"), mpi_np=4)
-    # The runtime env-var hook is gone per docs/config.md § 6.
+    # The runtime env-var hook is gone per docs/execution/running-a-job.md § 5
     assert "MOLBUILDER_PREACTIVATE_CMDS" not in text
 
 

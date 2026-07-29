@@ -24,7 +24,7 @@ from molbuilder.runwrap import (WrapperError, render_run_wrapper,
 def _autosetup_minimal_config(tmp_path, monkeypatch):
     """Every render in this file needs at least a minimal
     ``script_generation.activation`` so the generator's refuse-to-emit
-    guard (docs/config.md § 2) is satisfied.  Give each test a cwd
+    guard (docs/execution/running-a-job.md § 5) is satisfied.  Give each test a cwd
     molbuilder.json with the canonical Sol defaults; tests that want
     different config can rewrite the file."""
     monkeypatch.chdir(tmp_path)
@@ -231,8 +231,8 @@ def test_render_siesta_emits_build_probe_block():
 
 
 def test_render_siesta_redirects_stdout_per_job_layout_v1():
-    """Stdout -> ``<basename>-runN.out`` matches docs/protocols/
-    job-layout.md (post-2026-05-30: ``-runN`` series for
+    """Stdout -> ``<basename>-runN.out`` matches docs/execution/
+    job-contracts.md (post-2026-05-30: ``-runN`` series for
     ``--continue`` support).  First run is -run0."""
     _bind()
     text = render_run_wrapper(Path("/x/system-label.fdf"))
@@ -964,7 +964,7 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
 # --------------------------------------------------------------------- #
 #  Task #539: PySCF --cold glob covers the full warm-restart inventory  #
 #                                                                       #
-#  Per docs/protocols/script-execution.md "Required tests" table, every #
+#  Per docs/execution/job-contracts.md "Required tests" table, every #
 #  engine must have a test that pins ``--cold`` aside-glob coverage     #
 #  against the warm-restart inventory.  SIESTA's equivalent shipped     #
 #  2026-06-14 (task #438).  This file pairs with the generator-side    #
@@ -972,7 +972,7 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-# Authoritative inventory: docs/protocols/script-execution.md § PySCF
+# Authoritative inventory: docs/execution/job-contracts.md § PySCF
 # warm-restart file table.  Update BOTH the doc + this tuple in the
 # same commit when a new warm-restart hook lands -- the parity is the
 # whole point of pinning it here.

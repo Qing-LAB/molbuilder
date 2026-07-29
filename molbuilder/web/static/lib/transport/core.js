@@ -17,7 +17,7 @@
  * ``molbuilder.transport_form`` so refreshes don't wipe a
  * half-typed configuration.
  *
- * Design ref: docs/tabs/architecture.md § 8 (Transport tab —
+ * Design ref: docs/web/tabs.md (Transport tab —
  * Phase D form skeleton).
  */
 import { mount } from "/static/lib/molview/index.js";

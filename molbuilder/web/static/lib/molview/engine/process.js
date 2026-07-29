@@ -1,6 +1,6 @@
 /* MolView render engine -- process: the PURE per-frame processor.
  *
- * Contract: docs/protocols/molview-render-streamline.md §2, §7.3.
+ * Contract: docs/web/molview.md, §7.3.
  * Module:   molbuilder.molview.engine.process   (lib/molview/engine/process.js)
  * Used by:  engine.js (§9) -- runs this once per frame to build the frame's finished render
  *           data, then hands the result to embedIo.

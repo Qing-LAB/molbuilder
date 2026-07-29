@@ -7,9 +7,9 @@
  * ``{ok: false, error: "..."}`` so callers don't need a try/catch
  * around every call.
  *
- * The backend contract is in ``docs/protocols/selection.md`` § and
- * ``docs/protocols/web-api.md`` § ``/api/files/*``.  The uniform-
- * envelope contract is in ``docs/protocols/projects-sidebar.md``
+ * The backend contract is in ``docs/web/projects.md`` § and
+ * ``docs/web/web-api.md`` § ``/api/files/*``.  The uniform-
+ * envelope contract is in ``docs/web/projects.md``
  * Principle 6 ("every public method returns {ok, ...} or {ok:false,
  * error}; NEVER throws").
  */
@@ -179,7 +179,7 @@ export async function apiCreateProject(name, opts) {
  * would unlock the UI but leave the request running.  Read
  * endpoints (list / stat / read) added signal support 2026-05-31
  * to close the design § C3 + § C5 contract (#175 follow-up).
- * (See docs/protocols/projects-sidebar.md Layer B + #174.) */
+ * (See docs/web/projects.md Layer B + #174.) */
 
 export async function apiUpload(targetDir, file, opts) {
   opts = opts || {};

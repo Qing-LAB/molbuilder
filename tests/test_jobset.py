@@ -1,5 +1,5 @@
 """The ``jobset`` framework: model + persistence + validate + materialize
-+ plan (docs/protocols/staged-execution.md § 2.1), and the SIESTA
++ plan (docs/execution/job-system.md), and the SIESTA
 stage-ladder producer."""
 
 from __future__ import annotations

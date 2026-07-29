@@ -47,7 +47,7 @@ def readme_text() -> str:
 def test_readme_exists():
     """Sanity check: the doc is where we think it is."""
     assert README.exists(), (
-        f"docs/installation.md not found at {README}; the "
+        f"docs/ops/installation.md not found at {README}; the "
         f"consistency tests are based on that path"
     )
 

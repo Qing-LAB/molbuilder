@@ -64,7 +64,7 @@ class TestPartialIntegrity:
     # (style.rep, style.radiusScale, style.colorScheme,
     # style.background — formerly the ``rep``, ``radius``,
     # ``colorscheme``, ``bg`` IDs).  The embed's knob bar (see
-    # docs/protocols/embedded-viewer.md § 6) now owns those, and
+    # docs/web/molview.md) now owns those, and
     # they're tested separately via test_mol_viewer_embed_e2e.py's
     # knob-bar contract.
     #
@@ -186,7 +186,7 @@ class TestPartialIntegrity:
         assert not leaked, (
             f"partial re-declares embed-owned chrome IDs: "
             f"{sorted(leaked)}.  These moved to the embed's knob "
-            f"bar in #205 (see docs/protocols/embedded-viewer.md "
+            f"bar in #205 (see docs/web/molview.md "
             f"§ 6).  If the partial needs a custom chrome control, "
             f"configure opts.knobs at mount instead."
         )
@@ -276,7 +276,7 @@ class TestRenderedPartial:
 
 
 class TestViewerJsRootScoping:
-    """Post-lift (task #76 / docs/protocols/results-tab.md § 4): the
+    """Post-lift (task #76 / docs/web/results.md): the
     inspector body lives in ``static/lib/trajectory/core.js`` (the
     shared core that both /watch and /results call into).  Every
     DOM lookup inside the inspector body must be either (a) scoped

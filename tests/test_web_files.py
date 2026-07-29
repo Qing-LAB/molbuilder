@@ -10,7 +10,7 @@ Covers:
                                     every tab and the supporting JS / CSS
                                     is served
 
-Backend contract:  docs/protocols/web-api.md  §  /api/files/*
+Backend contract:  docs/web/web-api.md  §  /api/files/*
 """
 from __future__ import annotations
 

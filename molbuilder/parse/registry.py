@@ -1,6 +1,6 @@
 """Parser registry + dispatch.
 
-Per ``docs/protocols/parse-module.md`` § 4.  Three flat lists:
+Per ``docs/model/parse.md`` § 4.  Three flat lists:
 one for FileParsers, one for TextParsers (not auto-detected;
 callers pick explicitly), one for DirParsers.
 
@@ -126,7 +126,7 @@ def _detect_one(path: Path,
             lines.append(f"\nHint: {n}")
     else:
         lines.append(
-            "\nHint: see README / docs/types/parsers.md for the "
+            "\nHint: see README / docs/model/parse.md for the "
             "list of recognised file types."
         )
     raise UnknownFormatError("\n".join(lines))

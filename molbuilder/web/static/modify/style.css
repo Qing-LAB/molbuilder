@@ -122,7 +122,7 @@ header .tagline {
  * `.card-row` primitive (page-shell.css) -- NO page-specific media breakpoint.  This rule
  * only adds the page's own max-width/centring; each card declares its width policy via the
  * three --card-* vars, so the row wraps the modify card below the instant both min-widths
- * stop fitting (never crushing one card into the other).  See docs/protocols/mobile-layout.md. */
+ * stop fitting (never crushing one card into the other).  See docs/web/ui-contract.md. */
 .workspace-grid {
     max-width: 1680px;
     margin-inline: auto;

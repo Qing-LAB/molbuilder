@@ -32,7 +32,7 @@ Fields:
     (manuscript-ready prose with citation markers).
   * :attr:`bibliography_keys` — list of citation keys referenced
     in ``methods_text`` for resolution against
-    ``docs/tabs/transport/references.bib``.
+    ``docs/science/references.bib``.
   * :attr:`complete` — False during a live-watched in-progress
     run, True once the engine has written the final phase.
 

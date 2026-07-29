@@ -1,6 +1,6 @@
 """Unit tests for ``molbuilder.modify``.
 
-Spec source of truth: ``docs/tabs/molbuilder.md``.
+Spec source of truth: ``docs/web/tabs.md``.
 
 Covers M1: the four pure-function ops (delete_atoms, add_atom,
 orient_along_axis, add_electrode_slab) plus the symmetric-electrode

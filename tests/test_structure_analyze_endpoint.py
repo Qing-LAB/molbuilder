@@ -8,7 +8,7 @@ translation in each ``molbuilder.<engine>.auto_defaults`` module.
 These tests pin:
 
 * The response shape documented in
-  ``docs/protocols/web-api.md`` § 10 (every top-level key + each
+  ``docs/web/web-api.md`` § 10 (every top-level key + each
   ``suggested.<engine>`` sub-shape).
 * The new-engine on-ramp — a freshly-registered adapter appears
   in ``suggested`` without any endpoint code change.

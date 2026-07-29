@@ -1,7 +1,7 @@
 """Directory-level job DirParser.
 
 Implements :class:`JobDirParser` + :func:`decode_run_dir` per
-``docs/protocols/job-decoder.md`` + ``docs/protocols/parse-module.md``
+``docs/execution/running-a-job.md § 4`` + ``docs/model/parse.md``
 § 7 composer pattern.  Pure composer over the existing
 infrastructure:
 
@@ -734,7 +734,7 @@ def _build_progress(plots: Dict[str, Dict[str, List[List[float]]]],
 def decode_run_dir(run_dir: Path) -> JobResult:
     """Decode a project directory into a :class:`JobResult`.
 
-    See ``docs/protocols/job-decoder.md`` § 2 for the field
+    See ``docs/execution/running-a-job.md § 4`` § 2 for the field
     semantics.  This is the module-level convenience; equivalent
     to ``JobDirParser.parse(run_dir)``.
     """

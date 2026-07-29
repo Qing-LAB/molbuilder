@@ -5,7 +5,7 @@ subprocess.  Mirrors the no-mocks discipline of
 test_checkpoint_lifecycle.py and test_checkpoint_manifest_format.py.
 
 Envelope contract: web-api.md § 1.6 four-bucket rule.
-Behaviour contract: docs/protocols/run-checkpoints.md § 8.
+Behaviour contract: docs/execution/running-a-job.md § 6
 """
 from __future__ import annotations
 

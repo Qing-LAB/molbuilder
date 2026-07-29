@@ -1,7 +1,7 @@
 """Tests for the ``scheduler`` config reader
 (``runtime_config.get_scheduler``).
 
-Authoritative design: docs/protocols/slurm-integration.md § 4 (schema),
+Authoritative design: docs/execution/job-system.md (schema),
 § 6 (value sourcing), § 10 (refuse-to-emit).
 
 Pinned contracts:

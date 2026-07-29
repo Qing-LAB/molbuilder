@@ -127,7 +127,7 @@ def _tee_console_to(log_path: Path):
 def envs_group() -> None:
     """Inspect and install the conda envs molbuilder dispatches into.
 
-    See docs/README_install.md for the prose recipes and the rationale
+    See docs/ops/installation.md for the prose recipes and the rationale
     for the four-env layout.
     """
 
@@ -262,7 +262,7 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
     click.echo("")
     if any_failed:
         click.echo("doctor: one or more envs failed verify or package "
-                   "audit.  See above + docs/README_install.md.", err=True)
+                   "audit.  See above + docs/ops/installation.md.", err=True)
         return 1
     return 0
 
@@ -314,7 +314,7 @@ def cmd_repair(name: str, include_optional: bool,
     if caps.conda_binary is None:
         raise click.UsageError(
             "conda/mamba not found; cannot run repair.  See "
-            "docs/README_install.md."
+            "docs/ops/installation.md."
         )
     effective = _doctor._effective_name(recipe, caps)
     if not caps.env_available(effective):

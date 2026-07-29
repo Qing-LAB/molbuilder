@@ -1,6 +1,6 @@
 /* MolView render engine -- engine: the orchestrator (the single render place).
  *
- * Contract: docs/protocols/molview-render-streamline.md §5, §8, §9.
+ * Contract: docs/web/molview.md, §8, §9.
  * Module:   molbuilder.molview.engine.create   (lib/molview/engine/engine.js)
  * Used by:  mount.js (Phase 3) -- the ONE thing that turns data + flags into what 3Dmol shows.
  *

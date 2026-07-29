@@ -38,7 +38,7 @@ window.molbuilder = window.molbuilder || {};
 // The format-aware sub-namespace: projects.parser.openMolecule / saveMolecule (the
 // structure-file DOORS).  Attached alongside the format-blind readFile/writeFile so the
 // whole file-handling surface lives under ONE `projects` namespace
-// (docs/protocols/structure-load-save-contract.md §0).
+// (docs/model/structure.md).
 projects.parser = parser;
 window.molbuilder.projects = projects;
 // Module-init contract (design.md "Module init contract"): also

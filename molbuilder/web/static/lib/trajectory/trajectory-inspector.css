@@ -57,7 +57,7 @@
  * fills with the fused card (viewer + selection/Cell panel + view
  * toggles + frame bar); MolView owns its own sizing (fused-layout.css).
  * Below it sits the ONE trajectory-specific control: the force-vector
- * producer.  See docs/protocols/frontend-module-architecture.md §5. */
+ * producer.  See docs/web/overview.md */
 .trajectory-viewer-slot {
     /* MolView's fused card owns its own dimensions + chrome; the slot
      * just gives the force-control strip below a little breathing room. */
@@ -256,7 +256,7 @@
     /* ``min(280px, 100%)`` floor lets a plot cell shrink below
      * 280 px when the container is narrower (a narrow inspector
      * panel rendered inside a phone viewport).  See
-     * docs/protocols/mobile-layout.md for the responsive-grid
+     * docs/web/ui-contract.md for the responsive-grid
      * pattern. */
     grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
     gap: var(--gap);
@@ -329,7 +329,7 @@
 /* ``.workflow-*`` rules (staged-relaxation guide on /watch) were
  * removed 2026-05-19 along with /watch.  The guide was a /watch.html-
  * only <details>/<summary> card; /results doesn't host it and the
- * accompanying documentation lives in docs/protocols/job-layout.md
+ * accompanying documentation lives in docs/execution/job-contracts.md
  * instead. */
 
 /* ---- Responsive breakpoints ---- */

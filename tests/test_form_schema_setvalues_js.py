@@ -2,7 +2,7 @@
 public helper added in Phase 2 of the chemistry middle-layer
 work that backs the Auto-detect button's "apply suggestion"
 path.  See ``molbuilder/web/static/lib/form-schema.js`` for the
-helper; see ``docs/protocols/scientific-validation.md`` § 5.1
+helper; see ``docs/science/validation.md`` § 5.1
 for the contract.
 
 These run as Playwright tests against a minimal HTML page that

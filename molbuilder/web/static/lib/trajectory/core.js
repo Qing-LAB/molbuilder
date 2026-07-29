@@ -160,7 +160,7 @@ function _mvdata() {
     /*  State                                                              */
     /* ------------------------------------------------------------------ */
 
-    // Bucketed state shape per docs/protocols/results-state-contract.md.
+    // Bucketed state shape per docs/web/results.md.
     // The contract partitions inspector state into five disjoint
     // buckets with explicit reset semantics:
     //
@@ -516,7 +516,7 @@ function _mvdata() {
     // contract from being "aspirational in code, claimed in tests".
     // If Invariant 3 becomes load-bearing later, the snapshot
     // pattern lives at:
-    //   docs/protocols/results-state-contract.md § 4 Invariant 3
+    //   docs/web/results.md Invariant 3
     // -- bring it back when the conversion is committed.)
 
     // Per-frame in-progress filter (contract § 4 Invariant 2).
@@ -552,7 +552,7 @@ function _mvdata() {
     // view: playback + speed +
     // loop (the frame bar), unit-cell display, atom-index labels, selection +
     // measurement + picking, and atom hiding (its render pipeline's
-    // isolate/selection).  See docs/protocols/frontend-module-architecture.md §5.
+    // isolate/selection).  See docs/web/overview.md
     //
     // mv.mount is async, but the partial-factory calls THIS mount synchronously
     // (it returns {dispose, load}); so we kick the assembly off here and hold
@@ -997,7 +997,7 @@ function _mvdata() {
     // (the red "all atoms" force trace, the orange SCF-gnorm trace)
     // stay literal because they encode scientific-plot conventions
     // that should be stable across themes — see _trajectory_inspector
-    // documentation in docs/protocols/results-tab.md.
+    // documentation in docs/web/results.md.
     function _themeColors() {
         const cs = getComputedStyle(document.documentElement);
         const get = (name, fb) =>
@@ -1073,7 +1073,7 @@ function _mvdata() {
     }
 
     // Render the convergence-summary section above the plots row.
-    // Shape + intent documented in docs/protocols/results-tab.md
+    // Shape + intent documented in docs/web/results.md
     // and templates/_trajectory_inspector.html.  Uses textContent /
     // createElement everywhere — no innerHTML interpolation, per
     // the XSS audit's no-unsafe-innerHTML rule.

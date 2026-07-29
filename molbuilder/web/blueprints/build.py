@@ -445,7 +445,7 @@ def api_structure_analyze():
 
     Returns the ``ChemistryAnalysis`` dataclass serialised plus a
     ``suggested.<engine>`` block built by iterating every registered
-    parameter adapter.  See ``docs/protocols/scientific-validation.md``
+    parameter adapter.  See ``docs/science/validation.md``
     § 5.1 for the response-shape contract and § 4 for the adapter
     Protocol.
 

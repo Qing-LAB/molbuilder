@@ -692,7 +692,7 @@
             // Per-card issues panel — appended at the bottom of the
             // card so validator findings tagged with this workflow-
             // group land WITH the fields they concern.  Per
-            // docs/protocols/web-ui-coherence.md Rule 2.  Hidden
+            // docs/web/ui-contract.md Rule 2.  Hidden
             // until ``renderIssues`` populates it; tagged with the
             // role so the JS render path can find it via
             // ``[data-workflow-group="<role>"]``.
@@ -940,7 +940,7 @@
      * Used by the Auto-detect button (Optimization tab) to populate
      * (charge, spin, method, ...) from
      * ``/api/structure/analyze``'s ``suggested.<engine>`` block in
-     * one call.  See docs/protocols/scientific-validation.md § 5.1.
+     * one call.  See docs/science/validation.md
      */
     function setValues(container, schema, values) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

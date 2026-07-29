@@ -146,7 +146,7 @@
     list-style: none;
     display: grid;
     /* Two-column on wide; auto-collapse to one on narrow.  See
-     * docs/protocols/mobile-layout.md — the ``min(280px, 100%)``
+     * docs/web/ui-contract.md — the ``min(280px, 100%)``
      * floor lets the list shrink below 280 px when the container
      * is narrower than that. */
     grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));

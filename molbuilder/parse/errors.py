@@ -1,6 +1,6 @@
 """Exceptions raised by the parse module.
 
-Per ``docs/protocols/parse-module.md`` § 4.
+Per ``docs/model/parse.md`` § 4.
 """
 
 from __future__ import annotations

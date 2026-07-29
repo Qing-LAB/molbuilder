@@ -33,7 +33,7 @@
      *   atoms — what atoms belong in this region
      *   practice — common-practice notes from the literature
      *   citation — short cite tag (full ref in
-     *              docs/protocols/region-labels.md)
+     *              docs/engines/transport.md)
      *
      * The popover renders ALL canonical entries plus a synthetic
      * entry for any non-canonical *-electrode label present in
@@ -128,7 +128,7 @@
             "the topology.  The label stem (before ``-electrode``) is " +
             "the SIESTA block name; pick something short and ASCII."
         ),
-        citation: "molbuilder convention; see docs/protocols/region-labels.md"
+        citation: "molbuilder convention; see docs/model/structure-annotations.md"
     };
 
     /**
@@ -188,7 +188,7 @@
             // makes the path copy-pasteable instead.
             "<p class=\"region-defs-doc\">" +
             "Full convention + references: " +
-            "<code>docs/protocols/region-labels.md</code>" +
+            "<code>docs/engines/transport.md</code>" +
             "</p>";
         panel.innerHTML = html;
     }

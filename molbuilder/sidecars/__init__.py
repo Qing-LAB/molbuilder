@@ -1,6 +1,6 @@
 """Sidecar JSON write-side helpers.
 
-Per ``docs/protocols/parse-module.md § 8`` H2: this package hosts
+Per ``docs/model/parse.md`` H2: this package hosts
 the write-side of the ``.molstruct.json`` / ``.spectra.json`` /
 ``.transport.json`` sidecars.  The read-side lives in
 ``molbuilder.parse.sidecars``.

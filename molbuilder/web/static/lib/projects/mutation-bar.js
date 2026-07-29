@@ -11,7 +11,7 @@
  *   * New folder     -- disabled at projects/ root (no useful parent)
  *   * Upload file    -- disabled at projects/ root
  *
- * Spec: docs/protocols/projects-sidebar.md § Mutation UX.
+ * Spec: docs/web/projects.md § Mutation UX.
  *
  * 2026-06-12: renamed from ``forms.js`` after the v2 buttons-not-
  * inline-forms refactor (commit c929a28).  The historical name no

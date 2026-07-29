@@ -38,7 +38,7 @@ allowlist requires a TODO link to the fix plan.
 Adding to or growing the allowlist without a plan is a code smell;
 shrink it instead.
 
-Phase 1 reference: docs/protocols/playwright-tests.md § A10 + the
+Phase 1 reference: docs/process/testing.md § A10 + the
 2026-06-12 audit follow-up entry in design.md.
 """
 from __future__ import annotations

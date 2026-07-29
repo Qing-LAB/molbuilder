@@ -22,7 +22,7 @@
  * Test seam: ``configure(opts)`` lets tests inject a fake
  * fetch + structurePage + viewer-loader.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 4: peptide
+ * Design ref: docs/web/tabs.md (panel 4: peptide
  * builder).
  */
 

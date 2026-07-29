@@ -8,7 +8,7 @@ shape here so a future refactor that touches one endpoint can't
 silently drift the schema.
 
 Workspace-state protocol:
-``docs/protocols/workspace-state.md`` § 4.4 + § 5.
+``docs/web/workspace.md`` § 4.4 + § 5.
 
 Migration phase tracking: this file is gated against Phase 1 of
 the workspace-state migration plan (§ 6).  Phase 2 will pin the
@@ -85,7 +85,7 @@ class TestWorkspacePayloadCanonicalKeys:
             f"workspace_payload key set drifted from canonical;\n"
             f"  expected: {sorted(canonical)}\n"
             f"  got:      {sorted(payload.keys())}\n"
-            f"Update docs/protocols/workspace-state.md § 4.4 "
+            f"Update docs/web/workspace.md "
             f"before extending."
         )
 

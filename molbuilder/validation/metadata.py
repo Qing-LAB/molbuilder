@@ -6,7 +6,7 @@ bearing: field metadata IS the source of truth; CLI / web /
 validators all read from the same place.
 
 Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/protocols/scientific-validation.md § 10.  Function body +
+docs/science/validation.md  Function body +
 public signature are identical to the pre-split version.
 """
 

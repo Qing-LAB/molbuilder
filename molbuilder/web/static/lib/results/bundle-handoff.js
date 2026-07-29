@@ -18,7 +18,7 @@
  *     Most errors carry actionable text (which field is missing,
  *     why the run dir can't be bundled, etc.).
  *
- * Contract: ``docs/protocols/bundle-contract.md`` §§ 5.2 + 7.
+ * Contract: ``docs/execution/job-contracts.md`` §§ 5.2 + 7.
  */
 (function () {
     'use strict';

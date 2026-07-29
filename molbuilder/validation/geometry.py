@@ -1,7 +1,7 @@
 """Generic, engine-agnostic geometry validators.
 
 Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/protocols/scientific-validation.md § 10.  The function bodies
+docs/science/validation.md  The function bodies
 + public signatures are identical to the pre-split versions; this
 file is an organizational move, not a behaviour change.
 """

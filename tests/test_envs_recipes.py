@@ -26,7 +26,7 @@ from molbuilder.envs.recipes import (
 def test_registry_is_non_empty():
     assert len(BUILTIN_RECIPES) >= 5, (
         "Registry should hold at least the five envs documented in "
-        "README_install.md (host + 4 backends)."
+        "docs/ops/installation.md (host + 4 backends)."
     )
 
 

@@ -42,7 +42,7 @@ def test_default_env_names_covers_the_routed_categories():
 
 
 def test_default_env_names_match_readme_install():
-    """The names are what docs/README_install.md tells users to create."""
+    """The names are what docs/ops/installation.md tells users to create."""
     assert DEFAULT_ENV_NAMES["siesta"]     == "molbuilder-siesta"
     assert DEFAULT_ENV_NAMES["siesta-gpu"] == "molbuilder-siesta-gpu"
     assert DEFAULT_ENV_NAMES["pyscf"]      == "molbuilder-pySCF"

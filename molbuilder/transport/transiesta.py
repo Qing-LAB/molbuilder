@@ -556,7 +556,7 @@ def _emit_transiesta_block(struct: Structure,
         "# input structure whose label ends with ``-electrode``; the",
         "# emitter discovers them from ``struct.regions`` and emits one",
         "# %block TS.Elec.<name> per side.  See "
-        "docs/protocols/region-labels.md.",
+        "docs/engines/transport.md.",
         "%block TS.Elecs",
     ]
     for _label, block_name, _idxs in electrodes:

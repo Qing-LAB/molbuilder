@@ -1,7 +1,7 @@
 """Tests for the ``/results`` blueprint -- the post-merge unified
 inspector page.
 
-Architecture (see ``docs/protocols/results-tab.md`` § 4 + the
+Architecture (see ``docs/web/results.md`` § 4 + the
 Inspector Registry pattern in
 ``molbuilder/web/static/lib/inspectors/registry.js``):
 
@@ -810,7 +810,7 @@ class TestPartialSpectraInspectorEndpoint:
         check existed; new template additions could drift in without
         the test set being updated, defeating the "explicit contract"
         invariant the trajectory-partial test pins.  Per
-        ``docs/protocols/test-strategy.md`` § 8.8 the partial-pin tests
+        ``docs/process/testing.md`` § 8.8 the partial-pin tests
         should mirror ``TestPartialIntegrity::test_partial_declares_*``
         in both directions."""
         import re
@@ -865,7 +865,7 @@ class TestPartialSpectraInspectorEndpoint:
                 f"partial response contains {needle!r} which is a "
                 f"generate-side id -- it belongs in spectra.html, "
                 f"not in the inspector partial.  See § 2.3 of "
-                f"docs/protocols/results-tab.md for the split."
+                f"docs/web/results.md for the split."
             )
 
 
@@ -992,7 +992,7 @@ class TestSpectraIssuesPanelSeverityCoverage:
         assert 'i.severity === "info"' in text, (
             "spectra/core.js renderIssues must filter info-severity "
             "issues into the rendered list; pre-#304 it dropped them "
-            "silently.  See docs/protocols/three-stage-contract.md."
+            "silently.  See docs/execution/job-system.md."
         )
         # ...and must concatenate info into the rendered list (the
         # iteration step, not just the filter expression).  Catches a

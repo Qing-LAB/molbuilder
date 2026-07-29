@@ -1,6 +1,6 @@
 """ParseResult hierarchy — frozen dataclasses returned by every parser.
 
-Per ``docs/protocols/parse-module.md`` § 3.  Every concrete
+Per ``docs/model/parse.md`` § 3.  Every concrete
 result subclass sets a fixed ``result_kind`` discriminator that
 consumers use to type-narrow.  Adding a new subclass requires a
 new discriminator value + a doc update.
@@ -138,7 +138,7 @@ class JobResult(ParseResult):
     """Directory-level decoded job — what JobMonitor + Results
     tab consume.
 
-    Schema pinned by ``docs/protocols/job-decoder.md``.  Field
+    Schema pinned by ``docs/execution/running-a-job.md § 4``.  Field
     semantics match the dict shape ``decode_run_dir`` returned
     pre-migration so consumer code converts via ``asdict(result)``
     when needed.

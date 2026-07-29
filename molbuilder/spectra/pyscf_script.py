@@ -234,7 +234,7 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"    python {cfg.job_name}.spectra.py")
     out.append("")
     out.append("Recommended layout (one job per directory, see")
-    out.append("docs/protocols/job-layout.md):")
+    out.append("docs/execution/job-contracts.md):")
     out.append(f"    projects/<project>/spectrum/<structure>/{cfg.job_name}.spectra.py")
     out.append("Canonical topics: optimization, frequency, spectrum,")
     out.append("                  transport, single-point, scan.")
@@ -250,7 +250,7 @@ def _emit_header_docstring(struct: Structure,
         out.append("    Gaussian/ORCA 42.2561 km/mol per (D/Å)²/amu prefactor.")
         out.append("    The math is textbook, but absolute magnitudes have NOT")
         out.append("    been cross-checked against an external code the way")
-        out.append("    Raman was (see docs/tabs/spectra/spec.md § 12.1 for")
+        out.append("    Raman was (see docs/web/spectra.md for")
         out.append("    the Raman validation; § 13.1 for IR validation status).")
         out.append("    Use for relative IR intensities + qualitative work;")
         out.append("    quote absolute values only with the caveat.")
@@ -1140,7 +1140,7 @@ def _emit_ir_projection() -> List[str]:
     external code (Gaussian / ORCA / Turbomole).  The projection
     math + Gaussian/ORCA km/mol prefactor are textbook, but the
     absolute magnitudes have not been cross-checked the way the
-    Raman path was (see ``docs/tabs/spectra/spec.md § 12.1``).
+    Raman path was (see ``docs/web/spectra.md``).
     Use for relative IR intensities and qualitative analysis;
     quote absolute values only with the caveat.
     """
@@ -1162,7 +1162,7 @@ def _emit_ir_projection() -> List[str]:
     out.append("# ORCA manual, and the psi4 source.")
     out.append("#")
     out.append("# NOTE: not yet cross-validated against Gaussian/ORCA numerically;")
-    out.append("# see docs/tabs/spectra/spec.md § 13.1 for validation status.")
+    out.append("# see docs/web/spectra.md for validation status.")
     out.append("#")
     out.append("# Charged-molecule caveat: PySCF's mf.dip_moment() picks an origin")
     out.append("# (geometric center of atoms by default).  The dipole is origin-")

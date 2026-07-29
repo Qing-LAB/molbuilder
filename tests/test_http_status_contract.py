@@ -1,6 +1,6 @@
 """Static-analysis test: every ``return jsonify({"ok": False, ...})``
 site in the blueprints carries an explicit HTTP status code in the
-documented set per ``docs/protocols/web-api.md`` § 1.6.
+documented set per ``docs/web/web-api.md`` § 1.6.
 
 Why this exists
 ===============
@@ -29,7 +29,7 @@ fault); it asserts:
   silent Flask default.
 * That status is in the documented set.
 * The "47 routes" / "59 routes" header in
-  ``docs/protocols/web-api.md`` § 2 matches what Flask's URL map
+  ``docs/web/web-api.md`` § 2 matches what Flask's URL map
   actually has, so the doc never goes stale.
 
 The companion test
@@ -329,12 +329,12 @@ class TestRouteCountDocMatchesReality:
         )
         assert m is not None, (
             "could not locate '## 2. Endpoint index — all NN routes' header "
-            "in docs/protocols/web-api.md.  Did the heading rename?  Update "
+            "in docs/web/web-api.md.  Did the heading rename?  Update "
             "this test's regex to match."
         )
         doc_count = int(m.group(1))
         assert doc_count == actual, (
-            f"docs/protocols/web-api.md § 2 says {doc_count} routes; "
+            f"docs/web/web-api.md says {doc_count} routes; "
             f"Flask's URL map has {actual}.  Update the heading to "
             f"'## 2. Endpoint index — all {actual} routes' and verify "
             f"any new routes are documented in the section bodies."

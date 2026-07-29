@@ -1,5 +1,5 @@
 """TextParsers for the 6 fdf reserved blocks defined in
-``docs/protocols/script-contract.md``.
+``docs/execution/job-contracts.md``.
 
 Unlike FileParsers + DirParsers, TextParsers are NOT registered
 in the registry — they're picked explicitly by callers because

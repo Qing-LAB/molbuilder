@@ -4,7 +4,7 @@ Covers the user-facing lifecycle: init -> checkpoint -> tag -> change
 files -> checkpoint again -> restore to tag.  Both text files and big
 binaries (.DM-like) round-trip correctly.
 
-See docs/protocols/run-checkpoints.md for the full design contract.
+See docs/execution/running-a-job.md § 6 for the full design contract.
 """
 from __future__ import annotations
 

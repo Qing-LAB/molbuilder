@@ -10,7 +10,7 @@ Routes (registered with no url_prefix; each carries its own full path):
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
                                 ``path`` may be either a single file or
                                 a run directory (job-layout v1; see
-                                ``docs/protocols/job-layout.md``).
+                                ``docs/execution/job-contracts.md``).
     GET  /api/watch/data       poll for changes (mtime-based)
 
 Flow on /results: the user picks a trajectory file in the Projects
@@ -18,7 +18,7 @@ sidebar; the registry mounts the trajectory inspector; the inspector
 core POSTs to /api/watch/load with the absolute path, then polls
 /api/watch/data every ~15 s while the mtime advances.  The directory
 branch of /api/watch/load follows the discovery chain in
-``docs/protocols/job-layout.md``: ``*.molwatch.log`` first, then
+``docs/execution/job-contracts.md``: ``*.molwatch.log`` first, then
 ``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for job_name,
 then a generic ``*.out`` / ``*_geom_optim.xyz`` fallback.
 
@@ -137,7 +137,7 @@ def _remove_temp_quietly(path: str) -> None:
 # --------------------------------------------------------------------- #
 #  Directory-aware path resolution (job-layout v1)                      #
 #                                                                       #
-#  See ``docs/protocols/job-layout.md`` for the full contract.  When the     #
+#  See ``docs/execution/job-contracts.md`` for the full contract.  When the     #
 #  user gives Watch a directory instead of a file, scan it for the      #
 #  canonical artefacts in the protocol's preferred order; first hit     #
 #  wins.  The fallbacks parse the molbuilder-generated input files      #
@@ -245,7 +245,7 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     "tried X" strings used to build the error message when nothing
     matches.
 
-    Discovery chain follows ``docs/protocols/job-layout.md`` § "How Watch
+    Discovery chain follows ``docs/execution/job-contracts.md`` § "How Watch
     resolves a directory":
 
       1. Any ``*.molwatch.log`` (newest wins for staged runs).
@@ -546,7 +546,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 # poll that picks up new frames in the newest stage doesn't re-parse
 # the 2 or 3 prior (static) stage logs.  Single-process, single-user
 # scope -- bounded by the number of stages in flight (≤ a handful).
-# Multi-stage parse cache.  Per docs/protocols/results-state-contract.md
+# Multi-stage parse cache.  Per docs/web/results.md
 # § 6 (PR 4):
 #
 #   * Keyed by absolute path.
@@ -799,7 +799,7 @@ def api_load():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Directory-aware resolution per docs/protocols/job-layout.md.  If the
+    # Directory-aware resolution per docs/execution/job-contracts.md.  If the
     # user passed a directory, scan it for the canonical artefacts
     # and load the best match; if a regular file, behave like before.
     resolved_from_dir: Optional[str] = None
@@ -824,7 +824,7 @@ def api_load():
                     "error": (
                         f"No molbuilder-job artefacts found in directory:\n"
                         f"  {raw_path}\n"
-                        f"Discovery chain (per docs/protocols/job-layout.md):\n"
+                        f"Discovery chain (per docs/execution/job-contracts.md):\n"
                         f"  {tried}\n"
                         f"Generate an FDF or PySCF script with the Build "
                         f"tab into this directory, or point Watch at the "
@@ -1040,5 +1040,5 @@ def api_data():
 # refuses a non-loopback bind without TLS or
 # ``--allow-insecure-binding``.  The arbitrary-file-read concern
 # documented here applies to /api/watch/* regardless of which CLI
-# command started the server -- see docs/deployment.md for the
+# command started the server -- see docs/ops/deployment.md for the
 # recommended reverse-proxy + auth shape.

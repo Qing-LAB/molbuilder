@@ -1,6 +1,6 @@
 """Tests for the Auto-detect button on the Optimization tab
 (``/structure-optimization``).  Phase 2 of the chemistry middle-
-layer work; see ``docs/protocols/scientific-validation.md`` § 2.5
+layer work; see ``docs/science/validation.md`` § 2.5
 for the scientific-guard role.
 
 The Markup test runs as a plain Flask test_client request; the

@@ -3,7 +3,7 @@
 The hierarchy organises work scientifically; the innermost
 ``structure`` directory is a **job-layout-v1** directory (one job per
 directory, all files at the same level — see
-``docs/protocols/job-layout.md``).  No subdirectories inside it; tools
+``docs/execution/job-contracts.md``).  No subdirectories inside it; tools
 like SIESTA write their output files at the cwd level and reference
 them by basename.
 
@@ -101,7 +101,7 @@ def validate_name(name: str, *, kind: str = "name") -> str:
         raise InvalidName(
             f"{kind} {name!r} contains characters outside [A-Za-z0-9_-]; "
             f"these would clash with SIESTA's basename-based file "
-            f"discovery (see docs/protocols/job-layout.md)."
+            f"discovery (see docs/execution/job-contracts.md)."
         )
     return name
 
@@ -163,7 +163,7 @@ class ProjectExists(InvalidName):
 # project as `<project>/<topic>/README.md` so a user navigating the
 # tree (or a colleague handed a project tarball) sees what each subdir
 # is for without reading docs.  Kept short -- ~5 lines max; deep dives
-# live in docs/protocols/job-layout.md.
+# live in docs/execution/job-contracts.md.
 _TOPIC_READMES: Mapping[str, str] = {
     "structure": (
         "# structure/\n\n"
@@ -199,7 +199,7 @@ _TOPIC_READMES: Mapping[str, str] = {
         "# spectrum/\n\n"
         "Vibrational spectroscopy runs (Raman, IR).  Each subdirectory\n"
         "is one job-layout-v1 flat run dir, with `<job>.spectra.json`\n"
-        "carrying the typed SpectraResults (see `docs/tabs/spectra/spec.md`).\n"
+        "carrying the typed SpectraResults (see `docs/web/spectra.md`).\n"
     ),
     "transport": (
         "# transport/\n\n"
@@ -247,7 +247,7 @@ def _project_root_readme(project: str) -> str:
         f"This project follows the molbuilder canonical hierarchy.  Each\n"
         f"subdirectory has a brief `README.md` explaining its purpose:\n\n"
         f"```\n{canonical_lines}\n```\n\n"
-        f"See `docs/protocols/job-layout.md` for the full job-layout v1\n"
+        f"See `docs/execution/job-contracts.md` for the full job-layout v1\n"
         f"convention that the run-topic subdirectories follow.\n"
     )
 

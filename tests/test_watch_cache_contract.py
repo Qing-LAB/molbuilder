@@ -1,5 +1,5 @@
 """Pin the parse-cache + parser contract from
-docs/protocols/results-state-contract.md § 6 (PR 4).
+docs/web/results.md (PR 4).
 
 Two surfaces covered:
 

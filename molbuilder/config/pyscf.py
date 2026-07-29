@@ -35,7 +35,7 @@ from .siesta import _validate_basename     # shared with SiestaConfig
 #  Staged optimization (task #534)                                      #
 # --------------------------------------------------------------------- #
 #
-# Per ``docs/engines/pyscf-publication-guide.md`` § "In-script staged
+# Per ``docs/engines/pyscf.md`` § "In-script staged
 # optimization", every PySCF script runs up to N stages internally
 # (default 3).  Each stage carries its own SCF tolerance + 5 geomeTRIC
 # convergence knobs + max-step cap; the generated script's main loop

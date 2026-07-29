@@ -1,6 +1,5 @@
 """``job-set@1`` data model — the declarative description of a set of
-related jobs that share a package (docs/protocols/staged-execution.md
-§ 2.1).
+related jobs that share a package (docs/execution/job-system.md).
 
 Pure dataclasses + JSON (de)serialization + structural validation.  NO
 filesystem, NO scheduler, NO engine knowledge — those live in the
@@ -69,7 +68,7 @@ class Carry:
     filename, e.g. ``"job.XV"``) taken from job ``from_job``'s directory and
     symlinked into the consuming job's directory.  Concrete, not a glob: the
     symlink is laid at materialize time (before the producer runs) and
-    resolves once the file appears (docs/protocols/staged-execution.md § 13 D1)."""
+    resolves once the file appears (docs/execution/job-system.md D1)."""
     pattern:  str
     from_job: str
 

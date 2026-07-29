@@ -70,7 +70,7 @@ _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
     ("elpa", "verify"):    ("check that libelpa.so exists",
                             "instant"),
     # ELSI is built as a SIESTA submodule per the 2026-06-15 architecture
-    # decision (see docs/engines/siesta-gpu.md § 3.1).  No standalone
+    # decision (see docs/ops/installation.md § 6).  No standalone
     # ELSI phases here.
     ("siesta", "clone"):   ("git clone the SIESTA source",
                             "~60s, ~200 MB"),

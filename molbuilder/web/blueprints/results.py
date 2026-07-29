@@ -27,7 +27,7 @@ results-only operations (today: ``bundle``; a future "summarise this
 file's metadata for the dispatch label" would land here too), which stay
 in this blueprint without touching the other tabs' blueprints.
 
-Spec: ``docs/protocols/results-tab.md``.
+Spec: ``docs/web/results.md``.
 """
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ def partial_selection_panel():
 # .xyz load path (which honors apply_sidecar_if_possible) picks the
 # pair up unchanged.
 #
-# Contract: ``docs/protocols/bundle-contract.md`` § 5.2 + § 7
+# Contract: ``docs/execution/job-contracts.md`` § 5.2 + § 7
 # (Storage and projects-sidebar integration).  This endpoint is
 # the picker-roots security boundary called out in § 7.1.
 

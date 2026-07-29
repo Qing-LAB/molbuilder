@@ -281,7 +281,7 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         # these aside on ``--cold`` so a fresh run can't silently
         # warm-restart from a partial prior state.
         #
-        # Inventory (synced with docs/protocols/script-execution.md
+        # Inventory (synced with docs/execution/job-contracts.md
         # § "Warm-restart file inventory" -> PySCF table):
         #
         #   .chk              -- SCF density matrix.  Auto-loaded by
@@ -1871,7 +1871,7 @@ def render_run_wrapper(script_path: Path, *,
             f"#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"
             f"#   4. ``PBS_NP`` (scheduler-allocated under qsub)\n"
             f"#   5. generation-time default ($_mpi_np_default)\n"
-            f"# Per docs/config.md § 1.5: reading scheduler env vars for\n"
+            f"# Per docs/execution/running-a-job.md § 5: reading scheduler env vars for\n"
             f"# launch tuning is part of the wrapper contract -- the user\n"
             f"# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
             f'_mpi_np="${{MB_NP:-${{SLURM_NTASKS:-${{PBS_NP:-$_mpi_np_default}}}}}}"\n'
@@ -2384,7 +2384,7 @@ def render_run_wrapper(script_path: Path, *,
             # PySCF uses ``.pyscf.log`` instead of ``.out`` so the
             # Results-tab inspector dispatcher can tell PySCF output
             # apart from SIESTA's (which keeps ``.out``).  Per
-            # docs/tabs/architecture.md § 7 (Phase C, 2026-06-07).
+            # docs/web/tabs.md (Phase C, 2026-06-07).
             + _run_index_resolver(basename, ext=".pyscf.log")
             + _cold_restart_aside_block(basename, engine="pyscf")
             + _runtime_status_block(basename, engine="pyscf",
@@ -2412,7 +2412,7 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
         )
 
-    # Per docs/config.md (v2 rewrite, 2026-06-24): the wrapper is a
+    # Per docs/execution/running-a-job.md § 5 (v2 rewrite, 2026-06-24): the wrapper is a
     # self-contained shell script.  At generate time the generator reads
     # ``script_generation.preamble`` and ``script_generation.activation``
     # from molbuilder.json (server-wide) + .molbuilder.json (project,
@@ -2457,7 +2457,7 @@ def render_run_wrapper(script_path: Path, *,
         )
 
     env_activation = (
-        f"# --- Per-run log file (current directory; see docs/config.md § 1) -\n"
+        f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
         f'_runwrap_log="{basename}.runwrap-$(date +%Y%m%d-%H%M%S).log"\n'
         f'exec > >(tee -a "$_runwrap_log") 2> >(tee -a "$_runwrap_log" >&2)\n'
         f"\n"
@@ -2493,7 +2493,7 @@ def render_run_wrapper(script_path: Path, *,
         f'_log INFO "log file:   $_runwrap_log"\n'
         f"# Scheduler context -- only emit if the var is set.  These are\n"
         f"# read for diagnostic logging + launch tuning (see § 1.5 of\n"
-        f"# docs/config.md); they do NOT alter activation or preamble.\n"
+        f"# docs/execution/running-a-job.md § 5); they do NOT alter activation or preamble.\n"
         f'for _v in SLURM_JOB_ID SLURM_NTASKS SLURM_CPUS_PER_TASK \\\n'
         f"          SLURM_JOB_NODELIST SLURM_GPUS SLURM_JOB_GPUS \\\n"
         f"          PBS_JOBID PBS_NP PBS_NODEFILE; do\n"
@@ -2765,7 +2765,7 @@ def render_run_wrapper(script_path: Path, *,
     # wrong filename after the first run.  BOMB-6 fix.
     _ext = ".pyscf.log" if suffix == ".py" else ".out"
     # ----- Script-contract PROVENANCE block -----
-    # See docs/protocols/script-contract.md.  PROVENANCE only for the
+    # See docs/execution/job-contracts.md.  PROVENANCE only for the
     # wrapper -- no BENCH-MARKS (wrapper-side parameters are overridden
     # via existing env vars per the contract) and no ATOM-METADATA
     # (lives in the engine input file, not the wrapper).
@@ -2853,7 +2853,7 @@ def render_run_wrapper(script_path: Path, *,
         f"#    \"chkfile\"`` when the .chk file exists.\n"
         f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
-        f"# docs/config.md § 1).  Output artefacts (the runwrap log,\n"
+        f"# docs/execution/running-a-job.md § 5).  Output artefacts (the runwrap log,\n"
         f"# -runN.out, .chk, trajectory XYZ, .molwatch.log,\n"
         f"# .spectra.json, ...) land in the CALLER'S current working\n"
         f"# directory.  Under sbatch this is ``SLURM_SUBMIT_DIR`` (the\n"
@@ -2871,7 +2871,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# chdir to elsewhere.\n"
         f"#\n"
         f"set -euo pipefail\n"
-        f"# Per docs/config.md § 1: the wrapper does NOT change cwd.\n"
+        f"# Per docs/execution/running-a-job.md § 5: the wrapper does NOT change cwd.\n"
         f"# SLURM lands the job in SLURM_SUBMIT_DIR by default; direct\n"
         f"# callers ``cd`` to the project dir before invoking.  The\n"
         f"# caller's cwd is the contract -- outputs (log, -runN.out)\n"
@@ -3109,7 +3109,7 @@ def _maybe_write_sbatch(script_path: Path,
 
 
 # --------------------------------------------------------------------- #
-#  SLURM .sbatch submission layer (docs/protocols/slurm-integration.md)  #
+#  SLURM .sbatch submission layer (docs/execution/job-system.md)  #
 # --------------------------------------------------------------------- #
 
 
@@ -3333,7 +3333,7 @@ def render_sbatch(script_path: Path,
         "#!/bin/bash",
         f"# === molbuilder sbatch header (scheduler: slurm; site: {site}) ===",
         "# Generated by `molbuilder run` from the `scheduler` config block.",
-        "# Authoritative design: docs/protocols/slurm-integration.md.",
+        "# Authoritative design: docs/execution/job-system.md.",
         "# Submit with:  cd <projdir>; sbatch "
         f"{basename}.sbatch   (NOT bash -- § 7.8)",
         "#",

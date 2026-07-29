@@ -503,7 +503,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # protocol's "job name"; every output / restart file shares it.
     # Suggest the canonical ``mpirun`` invocation so the user redirects
     # stdout to ``<basename>.out`` (the Watch tab's discovery chain
-    # also looks for that filename).  See docs/protocols/job-layout.md.
+    # also looks for that filename).  See docs/execution/job-contracts.md.
     #
     # Stage-aware filenames: when ``cfg.stage`` is set (1/2/3), the
     # FDF + stdout-redirect filenames pick up the ``-stage<N>`` suffix
@@ -1333,7 +1333,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# SaveElectrostaticPotential  .true.",
     ]
     # ----- Wrap engine body with script-contract blocks -----
-    # See docs/protocols/script-contract.md.  Per-emission rules:
+    # See docs/execution/job-contracts.md.  Per-emission rules:
     #   - PROVENANCE: always emitted (cheap, always meaningful).
     #   - BENCH-MARKS: always emitted for .fdf.  The MD.NumCGsteps
     #     anchor is UNIVERSAL across CG / Broyden / FIRE (post
@@ -1562,7 +1562,7 @@ def convert(
     # plus the optional stage suffix -- NOT from the FDF's stem.  This
     # way a user who names the FDF "anything.fdf" still gets the
     # canonical preview-log name that the Watch tab discovery chain
-    # recognises.  See docs/protocols/job-layout.md.
+    # recognises.  See docs/execution/job-contracts.md.
     if cfg.write_molwatch_log:
         from ..trajectory_log import molwatch_log_basename, write_initial_preview
         mw_path = fdf_p.parent / molwatch_log_basename(

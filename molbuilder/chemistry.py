@@ -512,7 +512,7 @@ def detect_transition_metals(struct: Structure) -> List[str]:
 # --------------------------------------------------------------------- #
 #  L2 — engine-agnostic chemistry analyzer                              #
 #                                                                       #
-#  See docs/protocols/scientific-validation.md § 3 for the full         #
+#  See docs/science/validation.md for the full         #
 #  contract.  The analyzer wraps the L1 primitives above into a typed   #
 #  ChemistryAnalysis the validators + the /api/structure/analyze        #
 #  endpoint both consume — single source of truth for the chemistry-    #
@@ -574,7 +574,7 @@ class MetalHint:
 #
 # Conservative choices — favour the most common coordination
 # chemistry; the user MUST verify against experimental data.  See
-# docs/protocols/scientific-validation.md § 3.2.
+# docs/science/validation.md
 _ANALYZER_DEFAULT_SPIN: Dict[str, int] = {
     "Fe": 2,    # Fe(II), intermediate-spin (S=1, 4-coord porphyrin —
                 # the molbuilder hemeC use case).  HS Fe(II) is 4;
@@ -836,7 +836,7 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
 # --------------------------------------------------------------------- #
 #  L3 — engine parameter adapter Protocol + registry                    #
 #                                                                       #
-#  See docs/protocols/scientific-validation.md § 4 for the full         #
+#  See docs/science/validation.md for the full         #
 #  contract.  Each engine module under molbuilder/<engine>/ exports an  #
 #  adapter class that translates a ChemistryAnalysis into a typed,      #
 #  engine-specific frozen dataclass.  Adapters register themselves on   #

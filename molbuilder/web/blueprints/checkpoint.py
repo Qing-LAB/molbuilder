@@ -1,7 +1,7 @@
 """Run-checkpoints HTTP routes -- powers the Projects Sidebar
 "Run history" panel (sensor badge + list view + graph viewer).
 
-See docs/protocols/run-checkpoints.md § 8 for the full contract.
+See docs/execution/running-a-job.md § 6 for the full contract.
 
 Envelope per web-api.md § 1.6 (four-bucket rule):
   * success                            -> HTTP 2xx + ok:true + data

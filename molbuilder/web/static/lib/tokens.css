@@ -190,7 +190,7 @@
      * selection-bootstrap-error banner.  Promoted from raw rgba
      * literals 2026-06-13 — Phase 3 had registered --sp-danger-fg
      * but left the surrounding hover/banner literals raw in
-     * selection-panel.css.  Per docs/protocols/web-ui-coherence.md
+     * selection-panel.css.  Per docs/web/ui-contract.md
      * Rule 4, all selection-panel palette values live here. */
     --sp-danger-bg-hover:     rgba(255, 80, 80, 0.22);
     --sp-danger-border-hover: rgba(255, 120, 120, 0.45);

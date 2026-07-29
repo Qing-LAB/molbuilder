@@ -1301,8 +1301,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
 /*  Mounts inside the projects sidebar BELOW the file tree.         */
 /*  Hidden via [hidden] until checkpoint.js detects a selected      */
 /*  directory; populated from the /api/checkpoint/* routes.         */
-/*  See lib/projects/checkpoint.js + docs/protocols/                */
-/*  run-checkpoints.md § 6 for the design.                          */
+/*  See lib/projects/checkpoint.js + docs/execution/               */
+/*  running-a-job.md § 6 for the design.                            */
 /* ---------------------------------------------------------------- */
 
 /* Standalone dock panel (2026-07-25): the checkpoint UI used to be a section
@@ -1355,8 +1355,8 @@ body.is-projects-sidebar-collapsed .ps-edge-tab--reopen {
     border:            1px solid transparent;
 }
 
-/* Sensor state colours.  Matches docs/protocols/                   */
-/* run-checkpoints.md § 6.2 -- green=clean, yellow=dirty,           */
+/* Sensor state colours.  Matches docs/execution/                   */
+/* running-a-job.md § 6 -- green=clean, yellow=dirty,               */
 /* blue=running, gray=uninit, red=error.                            */
 .ps-checkpoint-sensor[data-state="clean"] {
     background:        var(--ps-ck-clean-bg);

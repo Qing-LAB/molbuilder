@@ -1853,7 +1853,7 @@ def test_modify_fdf_rejects_slash_in_system_label(web_client):
     """The Build /api/build/fdf endpoint validates ``system_label``
     against the basename charset before any file write.  Slashes,
     spaces, dots, and leading-dot are all rejected per
-    docs/protocols/job-layout.md."""
+    docs/execution/job-contracts.md."""
     for bad in ("a/b", "with spaces", "has.dot", ".leading"):
         r = web_client.post("/api/build/fdf", json={
             "xyz": _LINEAR_XYZ,

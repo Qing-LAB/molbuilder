@@ -307,7 +307,7 @@ class PySCFSpectraEngine:
         # detection chip all read from the same source of truth
         # (``ChemistryAnalysis.suggested_treatment``).  The pre-2026-06-13
         # Au-BDT-Au incident was caused by a parallel ``metals``-only
-        # check in this very block — see docs/protocols/web-ui-coherence.md
+        # check in this very block — see docs/web/ui-contract.md
         # Rule 1.  ``metals`` (the flat detection list) is still computed
         # so the supplemental ``explain_metal_spin`` info-line below
         # can echo (element, spin) → (likely oxidation state) for

@@ -8,7 +8,7 @@ inspector's "Hide frozen atoms" toggle stays hidden because no
 indices are exposed to the JS even when the parser detected
 constrained atoms via the SIESTA output.
 
-Per docs/protocols/code-audit.md § 3.3 (cross-source-of-truth gap):
+Per docs/process/code-audit.md (cross-source-of-truth gap):
 when a UI feature requires data X, trace every code path that
 could provide X; verify each is honored.  This file pins that the
 fdf path IS honored when the sidecar path comes back empty.

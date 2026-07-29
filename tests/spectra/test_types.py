@@ -1,7 +1,7 @@
 """L1 result-type tests: ModeElectronicStructure / ModeData / SpectraResults.
 
 Pins the JSON wire shape + the engine-agnostic dataclass surface
-documented in ``docs/tabs/spectra/spec.md`` § 5 - § 6.  Runtime-cheap
+documented in ``docs/web/spectra.md`` § 5 - § 6.  Runtime-cheap
 (no PySCF / SCF anywhere); protects:
 
   * round-trip fidelity (typed -> dict -> JSON -> dict -> typed

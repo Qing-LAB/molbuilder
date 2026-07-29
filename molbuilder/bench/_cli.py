@@ -79,7 +79,7 @@ def bench_group() -> None:
                    '(default pin = GPU socket).  Default: 18-point sweep '
                    '(9 shapes × ELPA-1/2STAGE) covering all-cores '
                    'cross-socket + np10 big-block + ELPA 4-rank anchor '
-                   '+ host-bound stress.  See docs/protocols/script-contract.md.')
+                   '+ host-bound stress.  See docs/execution/job-contracts.md.')
 @click.option("--iters", "iters", type=int, default=5, show_default=True,
               help="MaxSCFIterations cap per test point.")
 @click.option("--cold", "cold", is_flag=True,
@@ -253,7 +253,7 @@ CONFIG FILE -- .molbuilder.json (explicit; the flags above just write it):
                              "activation": "source activate" }
     }
 \b
-  Full reference: docs/config.md sections 3-4 (config lookup + schema).
+  Full reference: docs/execution/running-a-job.md § 5 sections 3-4 (config lookup + schema).
 \b
 K is GPU processes/GPU (np = K*G); --gpu-ks may exceed cores/socket
 (oversubscription is allowed + flagged) to find where np stops scaling.
@@ -473,7 +473,7 @@ def cmd_prep(out: str, scheduler: Optional[str], cores_per_socket,
              gpus_per_node, gpu_type, gpu_ks, gpu_cs, exclusive) -> None:
     """Detect this machine (scheduler + topology) and format the benchmark
     scripts for it -- step 1 of the on-target workflow
-    (docs/protocols/benchmark-workflow.md § 7.2).
+    (docs/execution/job-system.md).
 
     Writes ``environment.json`` + the topology-sized ``job-gpu-sweep.sh``.
     Run it in the bundle directory on the target; no hand-editing needed.
@@ -699,7 +699,7 @@ def cmd_summarize(bundle: str, out: Optional[str]) -> None:
     """Read the benchmark sweep's per-point outputs and write
     ``bench-result.json`` -- the portable verdict + ``choice`` that
     ``molbuilder bench prep-run`` consumes
-    (docs/protocols/benchmark-workflow.md § 7.4).
+    (docs/execution/job-system.md).
     """
     from .prep import utc_now_iso
     from .summarize import run_summarize, summary_text
@@ -729,7 +729,7 @@ def cmd_prep_run(bench_result: str, script_base: str, out: Optional[str],
                  scheduler: Optional[str], cores_per_socket, gpus_per_node,
                  gpu_type) -> None:
     """Format the production run from the benchmark verdict, re-resolved
-    for THIS machine (docs/protocols/benchmark-workflow.md § 7.5).
+    for THIS machine (docs/execution/job-system.md).
 
     Reads ``bench-result.json``, applies the winning mechanism to your
     production scripts (``--script-base``), and writes ``run-production.sh``.

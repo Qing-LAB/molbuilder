@@ -24,7 +24,7 @@ Adding a new engine (transiesta, pyscf-negf, inelastica, ...) is
 mechanical: drop in ``<engine>_engine.py`` next to this file with
 a registered class, add the engine name to the
 ``TransportConfig.engine`` ``choices`` metadata tuple, and add its
-citations to ``docs/tabs/transport/references.bib``.  Nothing else
+citations to ``docs/science/references.bib``.  Nothing else
 changes — the web blueprint, the JSON parser, the Methods
 generator, and the form-schema endpoint all dispatch through this
 registry.
@@ -141,7 +141,7 @@ class TransportEngine(Protocol):
           * the basis / pseudopotential sources;
           * the citation keys via ``[CitationKey]`` markers that
             resolve against
-            ``docs/tabs/transport/references.bib``.
+            ``docs/science/references.bib``.
 
         Plain English, manuscript-ready prose.  The Methods
         generator interpolates citation keys + actual parameter

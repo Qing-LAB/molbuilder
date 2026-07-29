@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# Job-layout v1 protocol (docs/protocols/job-layout.md): the basename
+# Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
 # filename, including SIESTA's restart files (.XV / .DM / .CG).  It
 # must be safe to embed in a filesystem path without quoting AND
@@ -102,7 +102,7 @@ def _validate_basename(label: str):
                     f"{label}={value!r} is not a valid job basename. "
                     "Must match [A-Za-z0-9_-]+ (letters, digits, hyphens, "
                     "underscores).  No dots / slashes / spaces.  See "
-                    "docs/protocols/job-layout.md."
+                    "docs/execution/job-contracts.md."
                 ),
                 where=f"config.{label}",
             )
@@ -243,8 +243,8 @@ class SiestaConfig:
         "section": "Basis & grid",
         # Workflow-group tag (2026-06-13): "stage" means switching the
         # relaxation-stage preset MAY rewrite this field.  Three
-        # tag values exist (system / stage / budget) — see docs/protocols/
-        # results-tab.md § 4.6 and viewer.js STAGE_PRESETS for the
+        # tag values exist (system / stage / budget) — see docs/web/
+        # results.md and viewer.js STAGE_PRESETS for the
         # design rationale.  Untagged fields render bare (outside any
         # workflow-group card) and STAGE_PRESETS never touches them.
         "workflow_group": "stage",

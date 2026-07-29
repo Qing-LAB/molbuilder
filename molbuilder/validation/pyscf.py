@@ -6,7 +6,7 @@ the public contract (every test that counts issues by position
 depends on it).  This module preserves that order verbatim from the
 pre-2026-06-13 flat ``molbuilder/validation.py``.
 
-Split per docs/protocols/scientific-validation.md § 10.  No logic
+Split per docs/science/validation.md  No logic
 changes; relocation only.
 """
 

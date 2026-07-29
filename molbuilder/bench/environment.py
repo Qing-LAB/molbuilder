@@ -1,7 +1,7 @@
 """Target-machine detection -> a portable ``Environment`` record.
 
 The first half of the benchmark workflow's pluggable seam
-(docs/protocols/benchmark-workflow.md § 4, § 5): **probes** that learn the
+(docs/execution/job-system.md, § 5): **probes** that learn the
 target's scheduler + hardware topology + site facts, and the versioned
 JSON record they produce (``environment@1``, § 5.2) that every later stage
 and any external tool reads.

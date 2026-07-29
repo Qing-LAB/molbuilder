@@ -37,7 +37,7 @@
  * new content" prompt instead of silently clobbering someone
  * else's edits.
  *
- * Spec: docs/protocols/selection.md § Preview modal.
+ * Spec: docs/web/projects.md § Preview modal.
  */
 
 import { projects } from "./state.js";

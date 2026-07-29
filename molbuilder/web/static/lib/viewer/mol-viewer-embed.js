@@ -1,6 +1,6 @@
 /* mol-viewer-embed.js — the standard embeddable 3D viewer.
  *
- * Contract: docs/protocols/molview-module.md.  The contract is
+ * Contract: docs/web/molview.md.  The contract is
  * the SOLE source of truth; this file implements it.  When the
  * contract changes, this file changes in the same commit.
  *
@@ -4229,7 +4229,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             // "sphere" silently reverted the rep back to stick.  Merge
             // the patch onto the current style BEFORE normalisation so
             // undefined fields stay at their current values.  See
-            // docs/protocols/molview-module.md § 3.3 + the
+            // docs/web/molview.md + the
             // "partial-update" property test in
             // tests/test_mol_viewer_embed_js.py.
             const merged = Object.assign({}, state.current.style, s || {});

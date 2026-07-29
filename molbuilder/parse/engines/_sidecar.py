@@ -17,7 +17,7 @@ order and uses the first non-empty result:
   2. ``read_frozen_atoms(traj_path)`` — read from the
      ``.molstruct.json`` sidecar next to the trajectory.  Convention
      used by all engines.  Sidecar contract lives in
-     ``docs/protocols/sidecar-contract.md``.
+     ``docs/model/structure-molstruct.md``.
   3. ``read_frozen_atoms_from_siesta_fdf(traj_path)`` — read from a
      sibling SIESTA ``.fdf`` input file's ``%block Geometry
      .Constraints`` block.  Last-resort fallback when the .out lacks

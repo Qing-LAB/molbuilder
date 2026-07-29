@@ -1,7 +1,7 @@
 """Post-relaxation harmonic vibrational analysis + per-mode electronic
 structure for the Spectra tab.
 
-See ``docs/tabs/spectra/spec.md`` for the full design contract.
+See ``docs/web/spectra.md`` for the full design contract.
 
 Public surface (engine-agnostic L1):
 

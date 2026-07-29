@@ -1,4 +1,4 @@
-"""Tests for the unified-data-model API (docs/config.md § 4):
+"""Tests for the unified-data-model API (docs/execution/running-a-job.md § 5):
 ``read_effective_config``, ``write_config_scope``, ``get_script_generation``.
 
 Pinned contracts:
@@ -79,7 +79,7 @@ def test_xdg_fallback_is_read_when_cwd_absent(sandbox, monkeypatch):
 
 def test_cwd_wins_over_xdg_fallback(sandbox, monkeypatch):
     """When both exist, cwd is the server-wide layer; XDG is ignored.
-    Per docs/config.md § 2's lookup order."""
+    Per docs/execution/running-a-job.md § 5's lookup order."""
     xdg_dir = sandbox / "home" / ".config" / "molbuilder"
     xdg_dir.mkdir(parents=True)
     (xdg_dir / "molbuilder.json").write_text(json.dumps({
@@ -171,7 +171,7 @@ def test_get_script_generation_defaults_when_all_empty(sandbox):
 
 
 def test_preamble_concatenates_across_scopes(sandbox):
-    """Per docs/config.md § 3 / § 4: preamble concatenates server-then-
+    """Per docs/execution/running-a-job.md § 5: preamble concatenates server-then-
     project (server first, project after), joined by ``\\n``."""
     (sandbox / "molbuilder.json").write_text(json.dumps({
         "script_generation": {
@@ -221,7 +221,7 @@ def test_activation_falls_back_to_server_when_project_silent(sandbox):
 
 
 def test_activation_default_is_none(sandbox):
-    """Per docs/config.md § 4: activation has NO default; the generator
+    """Per docs/execution/running-a-job.md § 5: activation has NO default; the generator
     refuses to emit a wrapper when it isn't set in either scope."""
     sg = get_script_generation()
     assert sg["activation"] is None
@@ -249,7 +249,7 @@ def test_invalid_activation_value_rejected(sandbox):
 
 
 def test_legacy_preactivate_key_warns_and_aliases_to_preamble(sandbox):
-    """Per docs/config.md § 7: the legacy key ``preactivate`` is
+    """Per docs/execution/running-a-job.md § 5: the legacy key ``preactivate`` is
     treated as ``preamble`` for one release with a deprecation
     warning."""
     import warnings
@@ -269,7 +269,7 @@ def test_legacy_preactivate_key_warns_and_aliases_to_preamble(sandbox):
 
 
 def test_dropped_keys_warn_but_dont_fail(sandbox):
-    """Per docs/config.md § 7: ``autodetect_conda`` /
+    """Per docs/execution/running-a-job.md § 5: ``autodetect_conda`` /
     ``preactivate_format`` are silently ignored (with a warning)."""
     import warnings
     (sandbox / "molbuilder.json").write_text(json.dumps({
@@ -297,7 +297,7 @@ def test_dropped_keys_warn_but_dont_fail(sandbox):
 
 def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
     """When the cwd molbuilder.json exists, a server-wide write lands
-    there (per docs/config.md § 4.2: writes to the highest-precedence
+    there (per docs/execution/running-a-job.md § 5: writes to the highest-precedence
     EXISTING location)."""
     (sandbox / "molbuilder.json").write_text("{}\n")
     target = write_config_scope(project_dir=None, patch={
@@ -311,7 +311,7 @@ def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
 
 def test_write_server_wide_creates_xdg_when_cwd_absent(sandbox):
     """When NO server-wide file exists, the write lands at the XDG
-    path (per docs/config.md § 4.2 last sentence)."""
+    path (per docs/execution/running-a-job.md § 5 last sentence)."""
     target = write_config_scope(project_dir=None, patch={
         "script_generation": {"preamble": "module load mamba"},
     })

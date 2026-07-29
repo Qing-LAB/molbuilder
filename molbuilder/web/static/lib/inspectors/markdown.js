@@ -15,7 +15,7 @@
  *   become no-ops.
  *
  * Spec: task #32 (2026-06-26).  Save-flow contract:
- *   docs/protocols/save-flow.md § 1.2 (edit-save uses expected_mtime).
+ *   docs/web/tabs.md (edit-save uses expected_mtime).
  */
 (function (root) {
     "use strict";

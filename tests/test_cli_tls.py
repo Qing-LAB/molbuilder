@@ -124,7 +124,7 @@ def test_resolve_ignores_unknown_keys(monkeypatch, tmp_path):
 # ``PermissionError: [Errno 13] Permission denied`` -- no indication
 # of which file failed.  ``_check_tls_readable`` runs before
 # ``app.run`` and surfaces a click.UsageError naming the bad path +
-# pointing at the reverse-proxy approach in docs/deployment.md.
+# pointing at the reverse-proxy approach in docs/ops/deployment.md.
 
 
 def test_check_tls_readable_noop_on_falsy_inputs():
@@ -225,14 +225,14 @@ def test_check_tls_readable_error_mentions_deployment_doc(tmp_path):
     """The error body must point at the recommended deploy shape so
     the operator doesn't reach for ``chmod 0644 privkey.pem`` (which
     weakens security to make the error go away).  Pins that the
-    docs/deployment.md mention + the reverse-proxy suggestion both
+    docs/ops/deployment.md mention + the reverse-proxy suggestion both
     show up in the failure message."""
     with pytest.raises(click.UsageError) as excinfo:
         _check_tls_readable(str(tmp_path / "no.pem"),
                             str(tmp_path / "no.key"))
     msg = str(excinfo.value)
     assert "reverse proxy" in msg
-    assert "docs/deployment.md" in msg
+    assert "docs/ops/deployment.md" in msg
 
 
 # --------------------------------------------------------------------- #

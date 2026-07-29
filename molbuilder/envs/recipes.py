@@ -6,7 +6,7 @@ in :data:`molbuilder.diagnostics.DEFAULT_ENV_NAMES`.
 
 The registry is the single source of truth for env shape consumed by
 the ``molbuilder envs`` CLI (doctor / install / list).  The matching
-prose in ``docs/README_install.md`` stays the human-readable doc; a
+prose in ``docs/ops/installation.md`` stays the human-readable doc; a
 test (``tests/test_envs_readme_consistency.py``) asserts the two
 mention the same env names so they cannot drift silently.
 
@@ -519,7 +519,7 @@ class Recipe:
 # --------------------------------------------------------------------- #
 #  The built-in recipes                                                  #
 #                                                                       #
-#  Order matches docs/README_install.md § "Setup recipes":              #
+#  Order matches docs/ops/installation.md § "Setup recipes":              #
 #  host, pyscf, siesta, mdtools, tests, siesta-gpu.  Each Recipe's      #
 #  fields must match the README block; the consistency test surfaces   #
 #  drift on either side as a failure.                                  #
@@ -556,7 +556,7 @@ _HOST = Recipe(
         # actually do at runtime.
         "numactl",
         # Git is required by the run-checkpoints subsystem
-        # (docs/protocols/run-checkpoints.md § 3.3).  Declared in
+        # (docs/execution/running-a-job.md § 6).  Declared in
         # EVERY env so the wrapper bootstrap prologue ("if no .git,
         # git init + commit initial state") works regardless of which
         # env activates the script.  HPC sites have inconsistent
@@ -627,7 +627,7 @@ _SIESTA = Recipe(
     channels=("conda-forge",),
     # Build string `=mpi_openmpi_*` is load-bearing -- pins real-MPI
     # variant (the `nompi_*` variant silently runs serial under
-    # mpirun).  See README_install.md § "molbuilder-siesta".
+    # mpirun).  See docs/ops/installation.md (molbuilder-siesta).
     #
     # ``numactl`` ships in this env so the run-wrapper's NUMA-pin
     # branch (``--cpunodebind=$_gpu_numa`` on dual-socket boxes)
@@ -684,14 +684,14 @@ _MDTOOLS = Recipe(
 # (``molbuilder``); its extra tooling comes from the pyproject ``[e2e]``
 # extra (``pip install ".[e2e]" && python -m playwright install
 # chromium``), NOT from a conda recipe, so fresh installs stay lean and
-# never force a Chromium download.  See docs/protocols/test-strategy.md
-# § 4a and docs/protocols/playwright-tests.md § 9.8.
+# never force a Chromium download.  See docs/process/testing.md
+# § 4a and docs/process/testing.md
 
 
 # --------------------------------------------------------------------- #
 #  molbuilder-siesta-gpu: SIESTA built from source w/ CUDA-enabled ELPA  #
 #                                                                       #
-#  Companion engineering doc: docs/engines/siesta-gpu.md.  Seven        #
+#  Companion engineering doc: docs/ops/installation.md § 6.  Seven        #
 #  design decisions live in docs/design.md 2026-06-14 entry.           #
 # --------------------------------------------------------------------- #
 
@@ -936,7 +936,7 @@ _ELPA = BuildComponent(
         # Why ``--enable-nvidia-gpu`` (not ``--enable-gpu``): the modern
         # Nvidia-specific naming was introduced in ELPA 2021.x; the
         # default tag (2021.11.001) and every later tag use it.  See
-        # docs/engines/siesta-gpu.md for the flag history table.
+        # docs/ops/installation.md § 6 for the flag history table.
         "sh", "-c",
         # Pass CFLAGS/CXXFLAGS/FCFLAGS so configure's AVX feature
         # tests can actually compile.  Without these, conda's gcc 14
@@ -1290,7 +1290,7 @@ _SIESTA_GPU = Recipe(
         # The AWS C SDK code paths only activate when NetCDF is asked
         # to open an ``s3://`` URL, which never happens on a local
         # workstation; ~10 MB of dormant disk is the only cost.  See
-        # docs/engines/siesta-gpu.md for the documented trade.
+        # docs/ops/installation.md § 6 for the documented trade.
         "fftw=*=mpi_openmpi_*",
         "hdf5=*=mpi_openmpi_*",
         "netcdf-fortran=*=mpi_openmpi_*",

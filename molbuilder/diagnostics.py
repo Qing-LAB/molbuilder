@@ -17,7 +17,7 @@ Routing tables
 The four-env model's routing data lives at module scope as three small
 dicts, hand-written for clarity.  Renames go in ``molbuilder.json``;
 new categories require a code change here AND a documentation change
-in ``docs/README_install.md`` and ``docs/protocols/job-layout.md``, so
+in ``docs/ops/installation.md`` and ``docs/execution/job-contracts.md``, so
 they're rare.
 
 The split with :mod:`molbuilder.envs`: envs is *dispatch only*

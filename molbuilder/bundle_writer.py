@@ -8,7 +8,7 @@ read-side bundle assembler lives in
 sole supported way to write that bundle back out as a handoff pair
 the next workflow stage can pick up.
 
-Output layout (per ``docs/protocols/bundle-contract.md § 5.2``)::
+Output layout (per ``docs/execution/job-contracts.md``)::
 
     <target_dir>/<stem>.xyz             # geometry + element + free-text comment
     <target_dir>/<stem>.molstruct.json  # regions + frozen_atoms + structure_hash

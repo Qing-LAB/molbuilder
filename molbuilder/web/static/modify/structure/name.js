@@ -21,7 +21,7 @@
  * structurePage + viewer-loader so the Node-only unit tests can
  * drive the state machine without a real DOM or HTTP roundtrip.
  *
- * Design ref: docs/tabs/architecture.md § 5.1 (panel 5: name
+ * Design ref: docs/web/tabs.md (panel 5: name
  * lookup, part of the "others" generator group).
  */
 

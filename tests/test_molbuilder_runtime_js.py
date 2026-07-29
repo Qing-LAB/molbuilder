@@ -15,7 +15,7 @@ self-registering, which means:
     snapshot stability) were entirely untested.
 
 This file is the lowest test layer for the registry per
-``docs/protocols/playwright-tests.md`` § 1: pure JS unit tests in
+``docs/process/testing.md`` § 1: pure JS unit tests in
 node, no DOM.  The IIFE is loaded via ``-e`` with a stubbed
 ``window`` so each test starts from a clean slate.
 """

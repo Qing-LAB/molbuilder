@@ -2,8 +2,7 @@
 (``runwrap.render_sbatch`` / ``write_sbatch`` + the ``write_run_wrapper``
 wiring).
 
-Authoritative design: docs/protocols/slurm-integration.md
-  § 3  two-layer model (header delegates to the unchanged .run.sh)
+Authoritative design: docs/execution/job-system.md  two-layer model (header delegates to the unchanged .run.sh)
   § 5  block-by-block header
   § 6  value-source matrix
   § 7.4/7.5.1/8  GPU gating + 1-rank-per-GPU + enforce-binding

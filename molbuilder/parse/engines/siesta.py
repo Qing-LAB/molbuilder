@@ -684,7 +684,7 @@ class SiestaParser:
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
-        # docs/types/parsers.md.  SIESTA's column set differs from
+        # docs/model/parse.md.  SIESTA's column set differs from
         # PySCF (dHmax / dDmax instead of |g| / |ddm|); the UI picks
         # the right residual to plot based on which keys are present.
         # Flushed onto Frame.scf_history at commit() time, then reset.
@@ -1820,7 +1820,7 @@ class SiestaParser:
         #      was showing the constrained trace correctly while
         #      the "Hide frozen atoms" toggle stayed hidden because
         #      step 1 was empty for these runs (see
-        #      docs/protocols/code-audit.md § 3.3, cross-source-of-
+        #      docs/process/code-audit.md, cross-source-of-
         #      truth gap).
         #
         # Both helpers return empty on any failure — frozen-atom

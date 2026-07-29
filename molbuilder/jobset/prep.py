@@ -1,5 +1,5 @@
 """Prep engine — render the per-job launchers and lay out the tree
-(docs/protocols/staged-execution.md § 5, step 5).
+(docs/execution/job-system.md, step 5).
 
 This is the step BETWEEN the pure ``materialize`` (data symlinks) and the
 ``submit`` launch.  It mirrors what the benchmark already does in

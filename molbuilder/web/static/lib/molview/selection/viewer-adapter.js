@@ -5,7 +5,7 @@
  * Picking + the isolate view-toggle spec only.  The render engine
  * (engine/process.js) owns ALL halo/overlay derivation (region tints
  * / frozen markers / selection halo) per
- * docs/protocols/molview-render-streamline.md § 2.4/§ 7.3 -- the
+ * docs/web/molview.md -- the
  * adapter no longer paints.
  *
  * Click handling: routes through the embed's PickOpts.onPick so
@@ -21,7 +21,7 @@
  * a raw viewer now error at attach time so script-order bugs
  * surface immediately rather than silently degrading.
  *
- * Full spec: docs/protocols/molview-module.md
+ * Full spec: docs/web/molview.md
  */
 "use strict";
 

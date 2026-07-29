@@ -535,7 +535,7 @@ class TestSidebarPickLoad:
 # --------------------------------------------------------------------- #
 #  Second-visit + external-change pattern (#195, audit follow-up to    #
 #  the 2026-06-02 /results stale-dropdown bug).  Per                   #
-#  docs/protocols/playwright-tests.md § 9.6, every tab whose UI       #
+#  docs/process/testing.md, every tab whose UI       #
 #  is driven by a subscriber-on-state-change needs at least one       #
 #  test exercising the "user navigated away, external state          #
 #  changed, returned" workflow.                                       #

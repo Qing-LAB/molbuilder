@@ -1,6 +1,6 @@
 """Parse module — unified file/text/directory → ParseResult.
 
-See ``docs/protocols/parse-module.md`` for the architectural
+See ``docs/model/parse.md`` for the architectural
 contract this package implements.
 
 Public surface:

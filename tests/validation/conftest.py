@@ -1,5 +1,5 @@
 """Shared fixtures for tests/validation/ — the per-submodule
-validator test files.  Per docs/protocols/test-strategy.md § 3, the
+validator test files.  Per docs/process/testing.md, the
 tests/validation/ tree mirrors molbuilder/validation/.  The
 water_struct fixture + _vacuum_cell helper are used by tests across
 geometry, metadata, chemistry, sidecar, siesta, and pyscf modules.

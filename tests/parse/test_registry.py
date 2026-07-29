@@ -1,6 +1,6 @@
 """L2 tests for molbuilder.parse — the unified parse module.
 
-Pins docs/protocols/parse-module.md § 4 (registry + dispatch) and
+Pins docs/model/parse.md (registry + dispatch) and
 § 3 (ParseResult discriminators) on real fixtures.
 """
 

@@ -23,7 +23,7 @@ source-code level:
     ``state.current.overlayOn``; it never reads force data and never
     synthesises force arrows (molview-module.md §14.5.1).
 
-Per docs/protocols/test-strategy.md §5 (source-text invariants): the
+Per docs/process/testing.md (source-text invariants): the
 handle's shape and the menu's structure are code-level contracts, so
 grepping the source is the right level of abstraction.  The runtime
 (Node) half of the normalisation contract lives in

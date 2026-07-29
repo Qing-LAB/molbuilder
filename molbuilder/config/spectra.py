@@ -12,7 +12,7 @@ L1 dataclass.  Field metadata (``label`` / ``unit`` / ``range`` /
   * the Methods-text generator (which reads ``label`` + ``unit``
     + ``help`` to compose the manuscript-ready Methods paragraph).
 
-The full design contract is in ``docs/tabs/spectra/spec.md`` § 4.
+The full design contract is in ``docs/web/spectra.md`` § 4.
 
 This is the **engine-agnostic** config -- field names describe
 WHAT the user is asking for, not HOW the engine computes it.
@@ -164,7 +164,7 @@ class SpectraConfig:
         "help":     "filesystem-safe basename for emitted files "
                     "(spectra.py + spectra.json + thermo.txt).  "
                     "Same rule as SIESTA SystemLabel / PySCF job_name "
-                    "-- see docs/protocols/job-layout.md.",
+                    "-- see docs/execution/job-contracts.md.",
         "validate": _validate_basename("job_name"),
     })
 
@@ -384,8 +384,8 @@ class SpectraConfig:
                    "absolute km/mol values have NOT been validated "
                    "against an external code (Gaussian/ORCA).  Use "
                    "for relative intensities and qualitative analysis "
-                   "until the validation is complete; see docs/tabs/"
-                   "spectra/spec.md §13.1 for status.",
+                   "until the validation is complete; see docs/web/"
+                   "spectra.md for status.",
     })
     displacement_amplitude_ang: float = field(default=0.02, metadata={
         "section": "Spectrum",

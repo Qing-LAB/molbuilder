@@ -1,5 +1,5 @@
 """Pin the load-bearing invariants from
-docs/protocols/results-state-contract.md for the trajectory inspector
+docs/web/results.md for the trajectory inspector
 (PR 2 of the migration).
 
 What this file covers

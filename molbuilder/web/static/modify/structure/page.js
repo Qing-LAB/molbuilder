@@ -52,7 +52,7 @@
  *   - The Save-to-project handler.
  *   - Existing modify-tab modifier ops (after migration; see B.3).
  *
- * Design ref: docs/tabs/architecture.md § 5.2 (no auto-load on
+ * Design ref: docs/web/tabs.md (no auto-load on
  * sidebar selection) + § 5.4 (warning-modal contract).
  */
 (function (root) {

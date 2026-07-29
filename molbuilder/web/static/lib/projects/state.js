@@ -12,7 +12,7 @@
  *   * directory listing (that's list.js -- which subscribes via
  *     setRefreshHandler + responds when state asks for a re-list)
  *
- * Spec: docs/protocols/selection.md.
+ * Spec: docs/web/projects.md.
  */
 
 import {
@@ -37,7 +37,7 @@ let projectsRoot = null;
 const selectionSubscribers = new Set();
 // Commit subscribers — the universal "the user double-clicked
 // (or otherwise committed) this file" signal.  Per
-// docs/tabs/architecture.md § 5.2 sidebar selection alone is a
+// docs/web/tabs.md sidebar selection alone is a
 // preview/candidate, NOT a tab-level action; ``publishCommit``
 // fires only when the sidebar (or another deliberate publisher)
 // says "this is the file the user actually wants to use."  The
@@ -76,7 +76,7 @@ let lockState = null;        // { reason: string, cancelers: Function[] }
 
 // ----- shared subscriber helpers --------------------------------- //
 //
-// Two contracts driven by docs/protocols/projects-sidebar.md (per
+// Two contracts driven by docs/web/projects.md (per
 // the 2026-05-31 design decisions A1/A1b/A2):
 //
 //   * Registration is idempotent intent.  Re-registering the same
@@ -146,7 +146,7 @@ function publishSelectionChange(payload) {
 // Single-click on a file still goes through ``setShared`` ->
 // ``publishSelectionChange`` (preview/candidate); commit is a
 // distinct event that requires deliberate user intent.  See
-// docs/tabs/architecture.md § 5.2 and the design memo at
+// docs/web/tabs.md and the design memo at
 // memory/project_sidebar_interaction_model.md.
 //
 // Also updates the global pick (``setShared``) so cross-tab
@@ -205,7 +205,7 @@ export function setShared(dir, file) {
   // Returns {ok, error?} so callers can branch -- the previous
   // void-return contract is preserved for the success path
   // (most callers don't check the return value).  See
-  // docs/protocols/projects-sidebar.md § 8.5.
+  // docs/web/projects.md
   if (lockState !== null) {
     return {
       ok:    false,
@@ -460,7 +460,7 @@ async function saveToWorkspace(text, filename, opts) {
 }
 
 /**
- * Cancel-aware save helper.  See docs/protocols/projects-sidebar.md
+ * Cancel-aware save helper.  See docs/web/projects.md
  * § 6.3 for the contract, the canonical caller pattern, and the
  * four-way return shape (null / cancelled / ok / error).  Live
  * examples: viewer.js _runSaveFdfPipeline + _runSavePyscfPipeline,
@@ -478,7 +478,7 @@ async function safeSave(text, filename, opts) {
  * (AbortError thrown by fetch, raw envelope ``aborted``, safeSave
  * envelope ``cancelled``, embed ViewerError ``code:"aborted"``).
  * Does NOT match ``code:"disposed"`` (host-teardown is not user
- * cancellation).  See docs/protocols/projects-sidebar.md § 6.3.
+ * cancellation).  See docs/web/projects.md
  */
 function isCancelError(err) {
   if (!err) return false;
@@ -516,8 +516,8 @@ function isCancelError(err) {
 /** Read a file's contents (returns ``{ok, text, mtime, ...}`` or
  *  ``{ok:false, error}``).  Companion to ``readCurrentFile()``
  *  which is the no-argument form keyed on the sidebar's current
- *  selection.  ``opts.signal`` honoured (per docs/protocols/
- *  projects-sidebar.md § C3). */
+ *  selection.  ``opts.signal`` honoured (per docs/web/
+ *  projects.md). */
 /** List a directory's entries for a CONSUMER (e.g. the Results file-picker) that needs to
  *  enumerate a dir independently of the sidebar's own view -- so no tab hand-rolls an
  *  ``/api/files/list`` fetch.  Format-blind; returns the ``/api/files/list`` envelope
@@ -673,7 +673,7 @@ async function upload(targetDir, file, opts) {
 
 /** Programmatic navigation -- the public-API form of openDir.
  *
- *  Per docs/protocols/projects-sidebar.md § C7: takes an absolute
+ *  Per docs/web/projects.md § C7: takes an absolute
  *  path + optional opts, lists the directory, updates the cursor
  *  + sidebar DOM, and returns:
  *     ``{ok: true, path, entries}``   on success
