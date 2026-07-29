@@ -123,9 +123,11 @@ class TestApplyEditV3:
         s.cell = np.eye(3) * 10.0
         s.__post_init__()
         out, notes = apply_edit(
-            s, "axis_kind", ["isolated", "isolated", "transport"])
+            s, "axis_kind", ["isolated", "isolated", "isolated"])
         assert out.cell is None and out.cell_origin is None
         assert any("DERIVED regime" in n["message"] for n in notes)
+        # A transport axis with zero structure extent would be a
+        # degenerate derived box -> refused (its own pin below).
 
     def test_axis_to_periodic_keeps_the_explicit_cell(self):
         s = _mol(off=(1.0, 1.0, 1.0))
@@ -310,3 +312,60 @@ class TestLoaderGate:
                                [7.5, 7.5, 7.5])
         finally:
             set_capabilities(None)
+
+
+# ------------------------------------------------------------------ #
+#  Per-axis-kind containment (review findings, 2026-07-29)            #
+# ------------------------------------------------------------------ #
+
+
+class TestPeriodicAxesAreNeverContained:
+    """Along a periodic axis, atoms outside [0, cell) are periodic
+    images — legal.  Requiring containment there made real crystal and
+    junction files unopenable."""
+
+    def test_periodic_crystal_with_outside_atoms_is_legal(self):
+        s = _mol(off=(-3.0, 25.0, 1.0), vacuum=(0.0, 0.0, 0.0))
+        s.cell = np.eye(3) * 10.0
+        s.axis_kind = ("periodic", "periodic", "periodic")
+        s.__post_init__()
+        healed, notes = validate_and_heal(s)
+        assert healed.cell_origin is None and not notes
+
+    def test_junction_periodic_periodic_transport_is_legal(self):
+        """The BDT/Au junction shape: periodic x/y, transport z; atoms
+        wrapped to negative fractionals along x/y must not trip the
+        gate; the transport axis still heals via the corner."""
+        s = _mol(off=(-3.0, -2.0, 10.0), vacuum=(0.0, 0.0, 0.0))
+        s.cell = np.diag([10.0, 10.0, 2.0])
+        s.axis_kind = ("periodic", "periodic", "transport")
+        s.__post_init__()
+        healed, notes = validate_and_heal(s)
+        # x/y ignored (periodic); z extent 0 fits; origin healed to
+        # bbox_min on the transport axis only where needed.
+        assert contains_atoms(healed, healed.cell_origin)
+
+    def test_stored_manual_origin_is_warned_never_healed(self):
+        """Row 5 stored half: a manual origin round-trips verbatim (the
+        silent flip on reload is the review finding)."""
+        s = _mol()
+        s.cell = np.eye(3) * 7.0
+        s.cell_origin = np.array([100.0, 100.0, 100.0])
+        s.__post_init__()
+        healed, notes = validate_and_heal(s)          # NOT live_edit
+        assert np.allclose(healed.cell_origin, [100.0, 100.0, 100.0])
+        assert notes and notes[0]["level"] == "warn"
+
+    def test_unfittable_cell_edit_is_refused_not_stored(self):
+        """A cell the structure cannot fit is refused at the edit — a
+        stored-but-invalid cell locked every later door."""
+        s = _mol()                                    # extent 2 Å
+        with pytest.raises(ValueError, match="cannot contain"):
+            apply_edit(s, "cell", (np.eye(3) * 1.0).tolist())
+
+    def test_reset_to_derived_refuses_a_degenerate_axis(self):
+        s = _mol(vacuum=(2.5, 2.5, 0.0))              # extent 0 on y,z
+        s.cell = np.eye(3) * 10.0
+        s.__post_init__()
+        with pytest.raises(ValueError, match="degenerate"):
+            apply_edit(s, "vacuum", [3.0, 3.0, 0.0])

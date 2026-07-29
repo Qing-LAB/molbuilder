@@ -260,15 +260,19 @@ to these or is a bug:
    by the one sanctioned rewrite, *calibrate* (§ 6, user-invoked only).
 4. **The heal table** (right-handed cells enforced, `det(cell) > 0`;
    per-axis `expected_corner = bbox_min − vacuum` on isolated, `bbox_min` on
-   transport, `0` on periodic):
+   transport, `0` on periodic). **Containment is required only along
+   NON-PERIODIC axes** — along a periodic axis, atoms outside `[0, cell)`
+   are legitimate periodic images (the engine wraps them), so the gate
+   never constrains or heals that direction (corrected 2026-07-29 after
+   the first cut made real crystals/junctions unopenable):
 
-   | Stored state | Atoms contained? | Gate action |
+   | Stored state | Atoms contained (non-periodic axes)? | Gate action |
    |---|---|---|
    | no `cell`, no `cell_origin` | — | fully derived (§ 4); **vacuum authoritative**; nothing to heal |
-   | explicit `cell`, no origin | in `[0, cell)` | legal (imported-crystal); vacuum **reference-only**; no heal |
-   | explicit `cell`, no origin | NO | **heal**: `cell_origin = expected_corner` + user notice (far-side slack noted); cell smaller than bbox → hard error |
-   | explicit `cell` + origin | in `[origin, origin+cell)` | legal, user-owned; **never healed**; vacuum reference-only |
-   | explicit `cell` + origin | NO | stored pair at load → heal + notice; **live manual edit → accept as typed + immediate warning** (actual per-side clearances reported), never auto-fixed |
+   | explicit `cell`, no origin | yes | legal (imported-crystal); vacuum **reference-only**; no heal |
+   | explicit `cell`, no origin | NO | **heal**: `cell_origin = expected_corner` (centred where the per-side vacuum does not fit) + user notice; a cell the structure cannot fit for ANY origin (fractional extent > 1 on a non-periodic axis) → hard error at the edit, so an unfittable cell is never stored |
+   | explicit `cell` + origin | yes | legal, user-owned; **never healed**; vacuum reference-only |
+   | explicit `cell` + origin | NO | **user-owned in both halves**: warned (actual per-side clearances reported), **never auto-fixed** — at the live edit *and* on load (a stored manual origin must round-trip verbatim; silently flipping it on reload was the corrected defect) |
 
 5. **Engine frames are one-way with provenance.** Emission translates the
    truth into the engine's frame (SIESTA: cell at `(0,0,0)`, atoms shifted by

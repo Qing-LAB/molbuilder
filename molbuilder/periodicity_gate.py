@@ -87,15 +87,42 @@ def _fractional(struct: Structure, origin: np.ndarray) -> np.ndarray:
 
 def contains_atoms(struct: Structure,
                    origin: Optional[np.ndarray] = None) -> bool:
-    """True when every atom sits inside ``[origin, origin + cell)`` (with
-    tolerance).  ``origin=None`` means the world origin (imported-crystal
-    semantics)."""
+    """True when every atom sits inside ``[origin, origin + cell)`` along
+    every NON-PERIODIC axis (with tolerance).  Along a periodic axis atoms
+    outside the cell are legitimate periodic images (SIESTA wraps them), so
+    containment is NEVER required there — requiring it made real crystals
+    and junction files unopenable (review finding, 2026-07-29).
+    ``origin=None`` means the world origin (imported-crystal semantics)."""
     if struct.cell is None or struct.n_atoms == 0:
         return True
     o = (np.zeros(3) if origin is None
          else np.asarray(origin, dtype=float).reshape(3))
     frac = _fractional(struct, o)
-    return bool(np.all(frac >= -_EPS) and np.all(frac <= 1.0 + _EPS))
+    kinds = struct.axis_kind or ("isolated",) * 3
+    for i in range(3):
+        if kinds[i] == "periodic":
+            continue
+        if not (np.all(frac[:, i] >= -_EPS)
+                and np.all(frac[:, i] <= 1.0 + _EPS)):
+            return False
+    return True
+
+
+def _too_small_axes(struct: Structure) -> List[int]:
+    """Non-periodic axes whose FRACTIONAL extent exceeds 1 — the structure
+    cannot fit along them for ANY origin choice.  Measured along the cell
+    axes (triclinic-safe), never bbox-vs-row-norm."""
+    if struct.cell is None or struct.n_atoms == 0:
+        return []
+    frac = _fractional(struct, np.zeros(3))
+    kinds = struct.axis_kind or ("isolated",) * 3
+    out = []
+    for i in range(3):
+        if kinds[i] == "periodic":
+            continue
+        if float(frac[:, i].max() - frac[:, i].min()) > 1.0 + 2 * _EPS:
+            out.append(i)
+    return out
 
 
 def clearances(struct: Structure, origin: Optional[np.ndarray]) -> List[
@@ -143,36 +170,51 @@ def validate_and_heal(struct: Structure, *,
     origin = struct.cell_origin
     if contains_atoms(struct, origin):
         return struct, notices                      # legal rows 2 / 4
-    if live_edit and origin is not None:
-        # Row 5, live half: accept as typed + immediate clearance warning.
+    if origin is not None:
+        # Row 5 (both halves): an EXPLICIT origin is user-owned — warn,
+        # never overwrite.  (Healing a stored manual origin silently
+        # flipped what the user typed on the next round-trip — review
+        # finding, 2026-07-29.)
         notices.append(_notice(
             "warn",
-            "cell_origin accepted as typed, but the box does NOT contain "
-            "the structure — per-axis (near, far) clearances in Å: "
+            "the box does NOT contain the structure along a non-periodic "
+            "axis — per-axis (near, far) clearances in Å: "
             + _clearance_text(struct, origin)
-            + ". Vacuum values are not respected under a manual origin; "
-            "only the unit-cell parameters are."))
+            + ". The manual origin is kept as typed (user-owned); vacuum "
+            "values are not respected under a manual origin."))
         return struct, notices
-    # Rows 3 / 5-stored: heal the origin to the expected corner.
+    # Row 3: no origin stored — heal to the expected corner, if it can fit.
+    bad = _too_small_axes(struct)
+    if bad:
+        raise ValueError(
+            "explicit cell cannot contain the structure along "
+            f"non-periodic axis(es) {bad} for ANY origin (fractional "
+            "extent > 1); enlarge the cell along those axes or clear it "
+            "to return to the derived box.")
     corner = expected_corner(struct)
     healed = struct.copy()
     healed.cell_origin = corner.copy()
     healed.__post_init__()
     if not contains_atoms(healed, corner):
-        ext = struct.positions.max(axis=0) - struct.positions.min(axis=0)
-        raise ValueError(
-            "explicit cell cannot contain the structure even from the "
-            f"expected corner (structure extent {np.round(ext, 3).tolist()} Å"
-            f" vs cell axis lengths "
-            f"{np.round(np.linalg.norm(cell, axis=1), 3).tolist()} Å); "
-            "enlarge the cell or clear it to return to the derived box.")
+        # The requested vacuum pushes atoms past the far face (cell fits
+        # the structure but not structure + vacuum): centre instead.
+        frac = _fractional(struct, np.zeros(3))
+        lens = np.linalg.norm(cell, axis=1)
+        lo = struct.positions.min(axis=0)
+        kinds = struct.axis_kind or ("isolated",) * 3
+        for i in range(3):
+            if kinds[i] == "periodic":
+                continue
+            ext = float(frac[:, i].max() - frac[:, i].min()) * lens[i]
+            corner[i] = lo[i] - max(0.0, (lens[i] - ext)) / 2.0
+        healed.cell_origin = corner.copy()
+        healed.__post_init__()
     notices.append(_notice(
         "warn",
         "healed: the explicit cell did not contain the structure, so "
-        "cell_origin was set to the expected corner "
+        "cell_origin was set to the wrapping corner "
         f"{np.round(corner, 4).tolist()} (bbox_min − vacuum per isolated "
-        "axis; § 6.1). Slack beyond the per-side vacuum lands on the far "
-        "faces."))
+        "axis, centred where the per-side vacuum does not fit; § 6.1)."))
     return healed, notices
 
 
@@ -180,7 +222,23 @@ def _reset_to_derived(s: Structure, what: str,
                       notices: List[dict]) -> None:
     """Shared § 6.2 v3 upstream-edit semantics: editing {vacuum,
     axis_kind} moves the box back to the DERIVED regime — explicit cell +
-    origin cleared, boundary recomputed from the structure + vacuum."""
+    origin cleared, boundary recomputed from the structure + vacuum.
+
+    Refuses when the derived box would be DEGENERATE (a zero-extent axis
+    with zero vacuum — e.g. a planar structure, or a transport axis whose
+    captured device length the derived bbox cannot reproduce): resetting
+    would ship a zero-volume lattice (review finding, 2026-07-29)."""
+    if s.n_atoms:
+        ext = s.positions.max(axis=0) - s.positions.min(axis=0)
+        kinds = s.axis_kind or ("isolated",) * 3
+        for i, kind in enumerate(kinds):
+            pad = 2.0 * float(s.vacuum[i]) if kind == "isolated" else 0.0
+            if float(ext[i]) + pad < 1e-6:
+                raise ValueError(
+                    f"cannot reset to the derived box: axis {i} would be "
+                    f"degenerate (structure extent ~0 and no vacuum). Set "
+                    f"a non-zero vacuum on that axis first, or keep an "
+                    f"explicit cell.")
     had_manual = s.cell is not None or s.cell_origin is not None
     s.cell = None
     s.cell_origin = None
@@ -281,21 +339,21 @@ def apply_edit(struct: Structure, op: str,
                     + _clearance_text(s, s.cell_origin) + "."))
             return s, notices
         # ... then respect the VACUUM: anchor at the expected corner.
-        corner = expected_corner(s)
-        s.cell_origin = corner.copy()
-        s.__post_init__()
+        # A cell the structure cannot fit for ANY origin is REFUSED, not
+        # stored — a stored-but-invalid cell locked every later door
+        # (review finding, 2026-07-29).
+        bad = _too_small_axes(s)
+        if bad:
+            raise ValueError(
+                "the new cell cannot contain the structure along "
+                f"non-periodic axis(es) {bad} (fractional extent > 1); "
+                "enlarge the cell along those axes.")
+        s, heal_notes = validate_and_heal(s)     # anchors via the heal path
+        notices.extend(heal_notes)
         notices.append(_notice(
             "info",
-            "explicit cell set; no origin was set, so it was anchored at "
-            f"the vacuum-respecting corner {np.round(corner, 4).tolist()} "
-            "(origin first, then vacuum — § 6.2). Vacuum values are "
-            "reference-only from now on."))
-        if not contains_atoms(s, s.cell_origin):
-            notices.append(_notice(
-                "warn",
-                "the new cell is too small to contain the structure with "
-                "the requested vacuum — per-axis (near, far) clearances "
-                "in Å: " + _clearance_text(s, s.cell_origin) + "."))
+            "explicit cell set (origin first, then vacuum — § 6.2). "
+            "Vacuum values are reference-only from now on."))
         return s, notices
 
     # op == "cell_origin"

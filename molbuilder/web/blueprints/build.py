@@ -681,6 +681,13 @@ def api_periodicity():
     if op not in OPS:
         return jsonify({"ok": False,
                         "error": f"'op' must be one of {list(OPS)}"}), 400
+    if op in ("cell", "cell_origin") and "payload" not in body:
+        # For these ops a null payload is a DESTRUCTIVE action (clear /
+        # reset) -- a dropped key must not be indistinguishable from an
+        # explicit clear.
+        return jsonify({"ok": False,
+                        "error": f"op '{op}' requires an explicit "
+                                 f"'payload' (use null to clear/reset)"}), 400
     try:
         codec = StructureCodec()
         notices: list = []
