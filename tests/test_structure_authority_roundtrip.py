@@ -27,10 +27,14 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 _META = {
     "cell":         [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
-    "cell_origin":  [1.5, 2.5, 3.5],          # <- NON-zero: the field that dropped
+    "cell_origin":  [0.5, 1.5, 2.5],          # <- NON-zero (and CONTAINING: the
+                                           #    read gate heals a pair whose box
+                                           #    does not wrap the atoms, so the
+                                           #    verbatim round-trip invariant only
+                                           #    holds for legal rows 2/4 - 6.1)
     "pbc":          [True, True, False],
     "axis_kind":    ["periodic", "periodic", "isolated"],
-    "vacuum":       [0.0, 0.0, 12.0],
+    "vacuum":       [0.0, 0.0, 2.0],
     "regions":      {"electrode": [0], "channel": [1]},
     "frozen_atoms": [0],
     "annotations":  {"charge": {"kind": "value",
@@ -145,12 +149,12 @@ def test_to_wire_carries_raw_and_resolved_cell_origin():
     s = _fully_populated_structure()
     per = s.to_wire()["periodicity"]
     # Raw stored corner survives (§ 3c).
-    assert per["cell_origin"] == [1.5, 2.5, 3.5]
+    assert per["cell_origin"] == [0.5, 1.5, 2.5]
     # Explicit cell + cell_origin (junction) -> resolved origin IS the corner.
-    assert per["resolved_cell_origin"] == [1.5, 2.5, 3.5]
+    assert per["resolved_cell_origin"] == [0.5, 1.5, 2.5]
     assert per["resolved_cell"] == _META["cell"]
     assert per["axis_kind"] == ["periodic", "periodic", "isolated"]
-    assert per["vacuum"] == [0.0, 0.0, 12.0]
+    assert per["vacuum"] == [0.0, 0.0, 2.0]
 
 
 def test_to_wire_resolved_origin_none_for_world_origin_crystal():
@@ -169,3 +173,23 @@ def test_to_wire_resolved_origin_none_for_world_origin_crystal():
 def test_from_dict_rejects_none():
     with pytest.raises(ValueError):
         Structure.from_dict(None)
+
+
+def test_illegal_stored_pair_comes_back_healed_not_verbatim(tmp_path):
+    """The frame contract's read gate (structure-periodicity.md 6.1): a
+    stored pair whose explicit cell does NOT wrap its atoms is healed on
+    read (origin -> the vacuum-respecting corner), never served verbatim."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[10.0, 10.0, 10.0],
+                                      [12.0, 10.0, 10.0]]),
+                  vacuum=(2.5, 2.5, 2.5))
+    s.cell = np.eye(3) * 7.0            # atoms far outside [0, cell)
+    s.__post_init__()
+    codec = StructureCodec()
+    codec.write(s, tmp_path / "bad.xyz")
+    back = codec.read(tmp_path / "bad.xyz")
+    assert back.cell_origin is not None
+    assert np.allclose(back.cell_origin, [7.5, 7.5, 7.5])   # bbox_min - vacuum

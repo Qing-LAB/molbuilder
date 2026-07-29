@@ -235,6 +235,20 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         if (!atoms.length) return;
         var frame = atoms.map(function (a) { return [a.x, a.y, a.z]; });
         _engine.setData(_structureDataFor([frame], null));
+        _lastCellSig = JSON.stringify(_cellForEngine());   // geometry baseline
+    }
+    // The periodicity tier's change detector (§6.2 v3): the canvas onChange
+    // (the ONE channel) diffs the engine-facing cell geometry and hands a
+    // change to engine.setCell — a box move without an atom reload.  The
+    // baseline is (re)set by every full push above.
+    var _lastCellSig = null;
+    function _syncEngineCell() {
+        if (!_engine || typeof _engine.setCell !== "function") return;
+        var geom = _cellForEngine();
+        var sig = JSON.stringify(geom);
+        if (sig === _lastCellSig) return;
+        _lastCellSig = sig;
+        _engine.setCell(geom);
     }
     function _runtime() {
         return (root.molbuilder && root.molbuilder.runtime)
@@ -793,6 +807,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         var cs = _canvas();
         if (cs && typeof cs.onChange === "function") {
             cs.onChange(function () {
+                _syncEngineCell();     // periodicity tier: box geometry follows the store
                 _notify();
                 if (!_applying) _timeline.markUncommitted();
             });

@@ -162,6 +162,13 @@ function createEmbedIo(handle) {
 
     return {
         loadFrames:    loadFrames,
+        // Cell GEOMETRY only ({lattice, origin} | null) -- the periodicity
+        // tier (engine.setCell).  Visibility stays on the overlay pass.
+        setCellGeometry: function (box) {
+            if (typeof handle.setCellBox === "function") {
+                handle.setCellBox(box || null);
+            }
+        },
         swapFrame:     swapFrame,
         appendFrames:  appendFrames,
         applyOverlays: applyOverlays,

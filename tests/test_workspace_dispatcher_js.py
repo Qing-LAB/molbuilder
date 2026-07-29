@@ -218,7 +218,7 @@ _DATA_SURFACE = sorted([
     "getFrozen", "getRegions",
     "draftIdentity", "suspendPersist",
     "resumePersist", "isPersistSuspended", "onPersistStateChange",
-    "commitPeriodicity", "setUnitCell", "setCellOrigin",
+    "commitPeriodicity", "commitPeriodicityOp", "setUnitCell", "setCellOrigin",
     "setAxisKind", "setVacuum", "setLabel", "isDirty", "isEmpty",
     "markDirty", "markSaved", "installMolecule", "exportFile",
     "save", "load",

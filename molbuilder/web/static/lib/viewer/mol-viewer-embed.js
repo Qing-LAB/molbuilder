@@ -4286,6 +4286,20 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             _syncToggles(state);
         }
 
+        // GEOMETRY-only update on the ONE cell structure (state.current.cellBox
+        // = {lattice, origin}).  A periodicity edit (vacuum reset, origin change,
+        // heal) moves the BOX; the atoms, animation, selection, and styles are
+        // untouched -- setStructure would clear the animation and re-load, the
+        // wrong tool for a box move.  Visibility stays setCell's job.
+        function setCellBox(box) {
+            if (state.disposed) return;
+            state.current.cellBox = box
+                ? _cellBoxFrom({ cellBox: box }, null)   // replace
+                : null;                                   // clear (no cell)
+            _redrawCell(state);
+            _render(state);
+        }
+
         // MANUAL visibility override for the force-arrow overlay (standalone mounts:
         // the embed's own View-menu/quickbar "overlay" toggle routes here).  The
         // DEFAULT authority is the handed payload itself: every arrow hand-off door
@@ -6254,6 +6268,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
             setStyle:           setStyle,
             setAxes:            setAxes,
             setCell:            setCell,
+            setCellBox:         setCellBox,
             setLabels:          setLabels,
             // setAtomLabels: engine-driven explicit {position,text} labels (see the fn above)
             setAtomLabels:      setAtomLabels,

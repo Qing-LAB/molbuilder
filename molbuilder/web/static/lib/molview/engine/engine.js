@@ -192,6 +192,7 @@ function create(handle, opts) {
             try {
                 if (tx[i].op === "setForces")         setForces(tx[i].args[0]);
                 else if (tx[i].op === "showFrame")    showFrame(tx[i].args[0]);
+                else if (tx[i].op === "setCell")      setCell(tx[i].args[0]);
                 else if (tx[i].op === "appendFrames") appendFrames(tx[i].args[0], tx[i].args[1]);
             } catch (e) {
                 // A replayed op has no synchronous caller left to throw to; report and keep
@@ -287,6 +288,23 @@ function create(handle, opts) {
         _structuralRegen();
         _notifyFrame();
     }
+    // PERIODICITY tier: the cell GEOMETRY changed without an atom change (a
+    // Cell-page edit adopting the door's blob, or a heal arriving with a
+    // load).  Update the engine's snapshot and hand the embed the new box —
+    // atoms, movie, selection, and styles untouched (setStructure would
+    // clear the animation; the wrong tool for a box move).  Rides the ONE
+    // change channel: canvas change → data-model's single subscription →
+    // this op (no consumer ever pushes geometry itself).
+    function setCell(geom) {
+        var next = (geom && geom.lattice)
+            ? { lattice: geom.lattice, origin: geom.origin || null }
+            : null;
+        if (!_data) return;                       // nothing loaded yet
+        if (_locked) { _queueTx("setCell", [next]); return; }
+        _data.cell = next;
+        embedIo.setCellGeometry(_cellGeom());
+    }
+
     // STREAM APPEND (§6.2): validate same atom count (hard error, never coerce), extend the
     // movie with the processed new frames, DON'T move the shown frame.
     function appendFrames(coordsList, appendOpts) {
@@ -404,6 +422,7 @@ function create(handle, opts) {
 
     return {
         setData:       setData,
+        setCell:       setCell,
         appendFrames:  appendFrames,
         setForces:     setForces,
         showFrame:     showFrame,
