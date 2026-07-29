@@ -226,7 +226,8 @@ function _mvdata() {
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ xyz: state.xyz, engine, params }),
+                body: JSON.stringify({ xyz: state.xyz, engine, params,
+                    periodicity: _modelPeriodicity() }),
             }).then(x => x.json());
             if (r.ok) renderIssues(panelId, r.issues, formContainerId);
         } catch (e) {
@@ -235,6 +236,19 @@ function _mvdata() {
             // (which gets the same issues from the render endpoint)
             // is the canonical source of truth.
         }
+    }
+    
+    // The tab-emit contract (structure-periodicity.md §7): every render/
+    // preflight body carries the MODEL's periodicity truth, read fresh off
+    // the MolView data model at emit — never a second source (the
+    // 2026-06-14 severed-wire class).  Truth keys only; resolved_* are views.
+    function _modelPeriodicity() {
+        const d = _data();
+        const per = (d && typeof d.getStructure === "function")
+            ? ((d.getStructure() || {}).periodicity || null) : null;
+        if (!per) return null;
+        return { cell: per.cell || null, cell_origin: per.cell_origin || null,
+                 axis_kind: per.axis_kind || null, vacuum: per.vacuum || null };
     }
     const refreshPreflightDebounced = {
         siesta: debounce(() => refreshPreflight("siesta"), 250),
@@ -1352,6 +1366,7 @@ function _mvdata() {
                     // never a state.* mirror that could desync from
                     // the live labels (matches the spectra tab).
                     frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
+                    periodicity: _modelPeriodicity(),
                     regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
                 }),
                 signal: _signal,
@@ -1777,6 +1792,7 @@ function _mvdata() {
                     // FRESH off the model at emit (unified API) -- not a
                     // state.* mirror.  Server prefers these over sidecar.
                     frozen_atoms: (_data() && _data().getFrozen) ? _data().getFrozen() : [],
+                    periodicity: _modelPeriodicity(),
                     regions:      (_data() && _data().getRegions) ? _data().getRegions() : {},
                 }),
                 signal: _signalPy,

@@ -494,6 +494,17 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             k: list(v)
             for k, v in (getattr(struct, "regions", {}) or {}).items()
         },
+        # Periodicity metadata rides into validation too -- without it a
+        # genuine crystal validated as isolated³/vacuum-0 and produced
+        # spurious "kgrid on an isolated axis" + image-distance warnings
+        # (review finding, 2026-07-29).
+        cell          = (struct.cell.copy()
+                         if struct.cell is not None else None),
+        cell_origin   = (struct.cell_origin.copy()
+                         if struct.cell_origin is not None else None),
+        axis_kind     = struct.axis_kind,
+        vacuum        = struct.vacuum,
+        pbc           = struct.pbc,
     )
     report(validate(validation_struct, cfg, cell=cell))
 

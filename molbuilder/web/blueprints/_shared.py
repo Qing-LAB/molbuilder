@@ -1098,6 +1098,38 @@ def config_from_params(cls, params: Dict[str, Any],
     return cls(**kwargs)
 
 
+def apply_periodicity_from_body(struct, body):
+    """The tab-emit contract (structure-periodicity.md § 7, decided
+    2026-07-29): the client sends the MODEL's periodicity truth
+    (``body["periodicity"]`` = {cell, cell_origin, axis_kind, vacuum})
+    read fresh off the MolView data model at emit — **never a second
+    source**.  The server applies it verbatim and runs the frame-contract
+    gate; an absent block means the Structure's own defaults (isolated,
+    vacuum 0).  There is deliberately NO disk-sidecar fallback here: a
+    render request reflects the model the user is looking at, and
+    inferring state from what happens to be in the request is the exact
+    failure that severed this wire on 2026-06-14 (the label-presence
+    branch silently skipping the sidecar's cell).
+
+    Returns the (possibly healed) structure — callers rebind.
+    """
+    per = body.get("periodicity")
+    if isinstance(per, dict):
+        if per.get("cell") is not None:
+            struct.cell = per["cell"]
+        if per.get("cell_origin") is not None:
+            struct.cell_origin = per["cell_origin"]
+        if per.get("axis_kind") is not None:
+            struct.axis_kind = tuple(per["axis_kind"])
+        if per.get("vacuum") is not None:
+            struct.vacuum = tuple(per["vacuum"])
+        # (resolved_* keys are VIEWS -- ignored by design, clause 1.)
+        struct.__post_init__()
+    from molbuilder.periodicity_gate import validate_and_heal
+    healed, _notices = validate_and_heal(struct)
+    return healed
+
+
 def apply_labels_to_struct(struct, body):
     """Apply ``frozen_atoms`` + ``regions`` from the request body,
     falling back to disk sidecar lookup only when neither key is

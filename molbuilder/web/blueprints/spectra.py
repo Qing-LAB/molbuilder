@@ -350,6 +350,8 @@ def api_spectra_render():
     # flow).  See _shared.apply_labels_to_struct docstring.
     from ._shared import apply_labels_to_struct
     sidecar_notice: Optional[str] = apply_labels_to_struct(struct, body)
+    from ._shared import apply_periodicity_from_body
+    struct = apply_periodicity_from_body(struct, body)
 
     # Build SpectraConfig from form params.  Coercion failures
     # surface as an error-severity Issue rather than HTTP 400 so

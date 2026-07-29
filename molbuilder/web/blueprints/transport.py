@@ -176,6 +176,8 @@ def api_transport_render() -> Any:
     # name scope here; the helper reads it via body.get for the
     # fallback path.
     sidecar_notice = apply_labels_to_struct(struct, body)
+    from ._shared import apply_periodicity_from_body
+    struct = apply_periodicity_from_body(struct, body)
 
     # Build the config.  Unknown-field protection + dataclass
     # validation surfaces a clean 400 for bad params instead of a

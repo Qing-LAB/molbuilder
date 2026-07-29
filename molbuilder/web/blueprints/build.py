@@ -935,8 +935,11 @@ def api_build_fdf():
     # viewer-is-truth contract); fall back to disk sidecar lookup
     # against ``structure_path`` only when neither in-body key was
     # sent.  See _shared.apply_labels_to_struct docstring.
-    from ._shared import apply_labels_to_struct
+    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
     sidecar_notice = apply_labels_to_struct(struct, body)
+    # The tab-emit contract: the body carries the MODEL's periodicity
+    # truth (never a second source); apply + gate (structure-periodicity.md 7).
+    struct = apply_periodicity_from_body(struct, body)
 
     try:
         cfg = _siesta_config_from_params(params)
@@ -1030,8 +1033,11 @@ def api_build_pyscf():
     # the structure before render_script sees it.  2026-06-14 update:
     # prefer in-body labels (the viewer-is-truth contract) and only
     # fall back to disk sidecar when neither key is sent.
-    from ._shared import apply_labels_to_struct
+    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
     sidecar_notice = apply_labels_to_struct(struct, body)
+    # The tab-emit contract: the body carries the MODEL's periodicity
+    # truth (never a second source); apply + gate (structure-periodicity.md 7).
+    struct = apply_periodicity_from_body(struct, body)
 
     try:
         cfg = _pyscf_config_from_params(params)
@@ -1148,6 +1154,11 @@ def api_build_preflight():
     except (ValueError, IndexError) as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
+    # Preflight must see exactly what Generate sees (labels + the
+    # model's periodicity truth) -- it validated a phantom before.
+    from ._shared import apply_labels_to_struct, apply_periodicity_from_body
+    apply_labels_to_struct(struct, body)
+    struct = apply_periodicity_from_body(struct, body)
 
     try:
         if engine == "siesta":

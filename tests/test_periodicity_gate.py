@@ -369,3 +369,102 @@ class TestPeriodicAxesAreNeverContained:
         s.__post_init__()
         with pytest.raises(ValueError, match="degenerate"):
             apply_edit(s, "vacuum", [3.0, 3.0, 0.0])
+
+
+# ------------------------------------------------------------------ #
+#  THE INVARIANT (user, 2026-07-29): the model's metadata reaches     #
+#  the engine — a render body's periodicity governs the emitted frame #
+# ------------------------------------------------------------------ #
+
+
+class TestTabEmitContract:
+    """structure-periodicity.md § 7: the tab sends the MODEL's
+    periodicity truth in the render body (never a second source), and
+    the emitted deck reflects it.  This wire was severed 2026-06-14 by
+    the label-presence branch; these pins make it un-severable."""
+
+    @pytest.fixture
+    def client(self):
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        return create_app(config={}).test_client()
+
+    _XYZ = ("2\nvacuum-pin\n"
+            "H 10.0 10.0 10.0\n"
+            "H 12.0 10.0 10.0\n")
+
+    def _lattice_and_coords(self, fdf: str):
+        lines = fdf.splitlines()
+        a = next(i for i, l in enumerate(lines)
+                 if "%block LatticeVectors" in l)
+        lat = [[float(x) for x in lines[a + r + 1].split()[:3]]
+               for r in range(3)]
+        b = next(i for i, l in enumerate(lines)
+                 if "%block AtomicCoordinatesAndAtomicSpecies" in l)
+        coords = []
+        for l in lines[b + 1:]:
+            if "%endblock" in l:
+                break
+            coords.append([float(x) for x in l.split()[:3]])
+        return np.array(lat), np.array(coords)
+
+    def test_body_vacuum_governs_the_emitted_fdf(self, client):
+        r = client.post("/api/build/fdf", json={
+            "xyz": self._XYZ,
+            "params": {"system_label": "pin", "verbose_comments": False},
+            "frozen_atoms": [], "regions": {},          # labels present!
+            "periodicity": {"cell": None, "cell_origin": None,
+                            "axis_kind": ["isolated"] * 3,
+                            "vacuum": [2.5, 2.5, 2.5]},
+        })
+        assert r.status_code == 200, r.get_json()
+        lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
+        # bbox (2,0,0) + 2*2.5 vacuum -> 7 x 5 x 5 box...
+        assert np.allclose(np.diag(lat), [7.0, 5.0, 5.0])
+        # ...with the molecule centred: min corner at exactly vacuum.
+        assert np.allclose(coords.min(axis=0), [2.5, 2.5, 2.5])
+
+    def test_body_explicit_cell_and_origin_shift_the_frame(self, client):
+        r = client.post("/api/build/fdf", json={
+            "xyz": self._XYZ,
+            "params": {"system_label": "pin", "verbose_comments": False},
+            "frozen_atoms": [], "regions": {},
+            "periodicity": {"cell": (np.eye(3) * 10.0).tolist(),
+                            "cell_origin": [9.0, 9.0, 9.0],
+                            "axis_kind": ["isolated"] * 3,
+                            "vacuum": [0.0, 0.0, 0.0]},
+        })
+        assert r.status_code == 200, r.get_json()
+        lat, coords = self._lattice_and_coords(r.get_json()["fdf"])
+        assert np.allclose(np.diag(lat), [10.0, 10.0, 10.0])
+        assert np.allclose(coords[0], [1.0, 1.0, 1.0])   # 10 - 9: shifted
+
+    def test_preflight_sees_what_generate_sees(self, client):
+        """A planar molecule with vacuum: preflight must NOT judge the
+        vacuum-0 phantom (it used to error/advise on a degenerate box)."""
+        r = client.post("/api/build/preflight", json={
+            "xyz": self._XYZ, "engine": "siesta",
+            "params": {"system_label": "pin"},
+            "periodicity": {"cell": None, "cell_origin": None,
+                            "axis_kind": ["isolated"] * 3,
+                            "vacuum": [4.0, 4.0, 4.0]},
+        })
+        assert r.status_code == 200, r.get_json()
+        texts = " ".join(i.get("message", "") for i in
+                         (r.get_json().get("issues") or []))
+        assert "Thin vacuum" not in texts or "4.0" not in texts
+
+    def test_tabs_send_the_model_periodicity(self):
+        """Source pin: every calculation tab's render body includes the
+        model's periodicity block (the client half of the contract)."""
+        base = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
+        for rel, needle in [
+            ("structure-optimization/viewer.js", "periodicity: _modelPeriodicity()"),
+            ("lib/spectra/core.js", "periodicity:"),
+            ("lib/transport/core.js", "_genBody.periodicity"),
+        ]:
+            text = (base / rel).read_text(encoding="utf-8")
+            assert needle in text, f"{rel} lost the tab-emit contract"
+
+
+from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)

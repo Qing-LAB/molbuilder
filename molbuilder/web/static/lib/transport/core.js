@@ -641,6 +641,7 @@ function _mvdata() {
                     && typeof _mvData.isEmpty === "function"
                     && !_mvData.isEmpty()) {
                 _genBody.frozen_atoms = _mvData.getFrozen() || [];
+                _genBody.periodicity = ((_mvData.getStructure() || {}).periodicity) || null;  // tab-emit contract (§7)
                 _genBody.regions      = _mvData.getRegions() || {};
             }
             root.fetch("/api/transport/render", {

@@ -759,6 +759,8 @@
             // viewer-is-truth: ship the model's labels directly.  Server applies them
             // verbatim; only when ABSENT does it fall back to disk sidecar discovery
             // against ``structure_path`` (_shared.apply_labels_to_struct).
+            periodicity:    (_md && typeof _md.getStructure === "function")
+                ? (((_md.getStructure() || {}).periodicity) || null) : null,  // tab-emit contract (§7)
             frozen_atoms:   (_md && typeof _md.getFrozen === "function")
                                 ? _md.getFrozen() : [],
             regions:        (_md && typeof _md.getRegions === "function")
