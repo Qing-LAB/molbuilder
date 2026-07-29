@@ -261,6 +261,9 @@ def apply_edit(struct: Structure, op: str,
     touched here (calibrate is a Modify op, not a periodicity edit)."""
     if op not in OPS:
         raise ValueError(f"unknown periodicity op {op!r}; one of {OPS}")
+    if struct.n_atoms == 0:
+        raise ValueError(
+            "no atoms loaded — load a structure before editing its box")
     s = struct.copy()
     notices: List[dict] = []
     kinds = s.axis_kind or ("isolated",) * 3
@@ -321,7 +324,11 @@ def apply_edit(struct: Structure, op: str,
                 "(structure size + 2·vacuum, molecule centred) and vacuum "
                 "is authoritative."))
             return s, notices
-        cell = np.asarray(payload, dtype=float).reshape(3, 3)
+        try:
+            cell = np.asarray(payload, dtype=float).reshape(3, 3)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "cell must be a 3×3 matrix of numbers (Å)") from None
         _require_right_handed(cell)
         s.cell = cell
         if s.cell_origin is not None:

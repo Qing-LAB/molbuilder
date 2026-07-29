@@ -510,3 +510,70 @@ class TestLoadHealIsVisible:
         text = (base / "lib/molview/_install.js").read_text(encoding="utf-8")
         assert "load-heal-" in text
         assert 'kind === "heal"' in text and "markDirty" in text
+
+
+class TestDoorHygieneAndRemainingOps:
+    """Door error hygiene (approved batch item 2) + the door-op endpoint
+    pins the coverage audit called for."""
+
+    @pytest.fixture
+    def client(self):
+        pytest.importorskip("flask")
+        from molbuilder.web.app import create_app
+        return create_app(config={}).test_client()
+
+    def _blob(self, struct):
+        from molbuilder.workingcopy_structure import StructureCodec
+        return StructureCodec().scratch_blob(struct)
+
+    def test_malformed_blob_is_a_clean_400(self, client):
+        for bad in (5, {"xyz": 3}, {"xyz": "x"}, {"sidecar": {}}):
+            r = client.post("/api/structure/periodicity",
+                            json={"data": bad, "op": "vacuum",
+                                  "payload": [1, 1, 1]})
+            assert r.status_code == 400
+            assert "malformed 'data' blob" in r.get_json()["error"]
+
+    def test_bad_cell_shape_is_a_clean_400(self, client):
+        r = client.post("/api/structure/periodicity", json={
+            "data": self._blob(_mol()), "op": "cell", "payload": [1, 2, 3]})
+        assert r.status_code == 400
+        assert "3×3 matrix" in r.get_json()["error"]
+
+    def test_refused_edit_maps_to_a_clean_400(self, client):
+        s = _mol()
+        s.cell = np.diag([10.0, 10.0, 4.0])
+        s.axis_kind = ("isolated", "isolated", "periodic")
+        s.__post_init__()
+        r = client.post("/api/structure/periodicity", json={
+            "data": self._blob(s), "op": "vacuum", "payload": [3, 3, 3]})
+        assert r.status_code == 400
+        assert "periodic" in r.get_json()["error"]
+
+    def test_cell_op_anchors_origin_through_the_door(self, client):
+        r = client.post("/api/structure/periodicity", json={
+            "data": self._blob(_mol()), "op": "cell",
+            "payload": (np.eye(3) * 8.0).tolist()})
+        assert r.status_code == 200
+        sc = r.get_json()["blob"]["sidecar"]
+        assert np.allclose(sc["cell_origin"], [7.5, 7.5, 7.5])
+
+    def test_axis_kind_op_resets_to_derived_through_the_door(self, client):
+        s = _mol(off=(1.0, 1.0, 1.0))
+        s.cell = np.eye(3) * 10.0
+        s.__post_init__()
+        r = client.post("/api/structure/periodicity", json={
+            "data": self._blob(s), "op": "axis_kind",
+            "payload": ["isolated"] * 3})
+        assert r.status_code == 200
+        assert r.get_json()["blob"]["sidecar"]["cell"] is None
+
+    def test_origin_reset_null_payload_through_the_door(self, client):
+        s = _mol(off=(1.0, 1.0, 1.0))
+        s.cell = np.eye(3) * 10.0
+        s.cell_origin = np.array([0.5, 0.5, 0.5])
+        s.__post_init__()
+        r = client.post("/api/structure/periodicity", json={
+            "data": self._blob(s), "op": "cell_origin", "payload": None})
+        assert r.status_code == 200
+        assert r.get_json()["blob"]["sidecar"]["cell_origin"] is None

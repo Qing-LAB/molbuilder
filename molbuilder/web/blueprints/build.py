@@ -657,6 +657,14 @@ def api_periodicity():
     if op not in OPS:
         return jsonify({"ok": False,
                         "error": f"'op' must be one of {list(OPS)}"}), 400
+    if (not isinstance(blob, dict)
+            or not isinstance(blob.get("xyz"), str)
+            or not isinstance(blob.get("sidecar"), dict)):
+        # A malformed blob is the CALLER's error -- answer with the shape,
+        # never a raw KeyError/AttributeError repr (review finding).
+        return jsonify({"ok": False,
+                        "error": "malformed 'data' blob: expected "
+                                 "{xyz: <string>, sidecar: <object>}"}), 400
     if op in ("cell", "cell_origin") and "payload" not in body:
         # For these ops a null payload is a DESTRUCTIVE action (clear /
         # reset) -- a dropped key must not be indistinguishable from an
@@ -670,9 +678,12 @@ def api_periodicity():
         struct = codec.from_scratch(blob, notices_out=notices)
         new_struct, edit_notices = apply_edit(struct, op, body.get("payload"))
         notices.extend(edit_notices)
-        rc = new_struct.resolve_cell()
-        ro = new_struct.resolve_cell_origin()
         out_blob = codec.scratch_blob(new_struct)
+        try:
+            rc = new_struct.resolve_cell()
+            ro = new_struct.resolve_cell_origin()
+        except ValueError:
+            rc = ro = None          # degrade the VIEW like to_wire does
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 -- malformed blob -> 400
