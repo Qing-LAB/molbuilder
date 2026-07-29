@@ -19,7 +19,7 @@
   },
 
   "_comment_auth":
-    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.",
+    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.  The referenced secret FILES (~/.molbuilder/secret.key, ~/.molbuilder/<provider>_client_secret) are created once per host -- see docs/ops/deployment.md § 5.1 for the mkdir/chmod/generation recipe; molbuilder.json itself carries paths only, never secret bytes.",
   "auth": {
 
     "_comment_trust_proxy":

@@ -73,9 +73,11 @@ claude-memory.tgz
 # name overrides).  NEVER commit the live file -- it likely
 # points at credential files on disk (Let's Encrypt key, Google
 # OAuth client_secret).  The committed template is
-# ``docs/molbuilder.json.example`` (the ``.example`` suffix
-# keeps it from matching the pattern below).
+# ``docs/ops/examples/molbuilder.json.example`` (the ``.example``
+# suffix keeps it from matching the pattern below).  Backups of the
+# live config (molbuilder.json.bak*) must never be committed either.
 molbuilder.json
+molbuilder.json.bak*
 
 projects/*
 *.parse.log

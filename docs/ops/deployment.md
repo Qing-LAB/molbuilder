@@ -180,6 +180,42 @@ Two ready-made files ship beside this doc, in `ops/examples/`:
 cp docs/ops/examples/molbuilder.json.example molbuilder.json
 ```
 
+### 5.1 The `~/.molbuilder/` directory — secrets live outside the repo
+
+The design rule: **`molbuilder.json` carries *paths only*, never secret
+bytes.** The config file gets copied, backed up, and diffed as you tune a
+deployment — secrets must not travel with it. Everything secret lives in
+`~/.molbuilder/`, and the config references it by path.
+
+Initial setup (once per deployment host):
+
+```bash
+mkdir -p -m 700 ~/.molbuilder
+
+# The Flask session-signing key (referenced by "secret_key_file"):
+python -c "import secrets; print(secrets.token_hex(32))" \
+    > ~/.molbuilder/secret.key
+chmod 600 ~/.molbuilder/secret.key
+
+# One file per OAuth provider (referenced by each provider's
+# "client_secret_file").  Content = exactly the client-secret string
+# from that provider's developer console, nothing else:
+printf '%s' 'GOCSPX-…' > ~/.molbuilder/google_client_secret
+chmod 600 ~/.molbuilder/google_client_secret
+```
+
+Notes:
+
+- **TLS is the exception** — `tls.cert` / `tls.key` usually point at the
+  certificate store that owns them (e.g.
+  `/etc/letsencrypt/live/<host>/`), not at `~/.molbuilder/`; renewal
+  tooling rotates them in place.
+- A CAS provider (e.g. ASURITE) has no client secret — nothing to create.
+- `~/.config/molbuilder/molbuilder.json` (the XDG fallback for the
+  *config*) is a different directory with a different job: it holds the
+  same paths-only config when you don't want one per launch directory —
+  it is **not** a secrets store.
+
 ## 6. What's on disk at runtime
 
 A running server keeps your work under **`<launch-cwd>/projects/`** (the whole
