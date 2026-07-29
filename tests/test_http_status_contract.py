@@ -46,14 +46,12 @@ from typing import Iterator, List, Optional, Tuple
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BLUEPRINT_DIR = REPO_ROOT / "molbuilder" / "web" / "blueprints"
 RATE_LIMIT_PY = REPO_ROOT / "molbuilder" / "web" / "rate_limit.py"
 SHARED_PY     = REPO_ROOT / "molbuilder" / "web" / "blueprints" / "_shared.py"
-# docs migration (docs/MIGRATION.md): web-api.md lives in the frozen
-# old_docs/ tree until its reconcile-move to docs/web/ -- repoint then.
-WEB_API_MD    = REPO_ROOT / "old_docs" / "protocols" / "web-api.md"
+# The migrated web API contract is the authoritative route-count document.
+WEB_API_MD    = REPO_ROOT / "docs" / "web" / "web-api.md"
 
 
 # Allowed HTTP status codes for {ok: false} responses, per § 1.6

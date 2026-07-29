@@ -1,4 +1,4 @@
-"""Drift guard: ``docs/README_install.md`` ↔ ``Recipe`` registry.
+"""Drift guard: ``docs/ops/installation.md`` ↔ ``Recipe`` registry.
 
 The README is the human-readable source of truth; the registry is
 the machine-readable one.  These tests assert the two mention the
@@ -8,7 +8,7 @@ one side can't silently desync from the other.
 
 What we DO check:
 
-  * Every Recipe.name appears as a section heading in README_install.md.
+  * Every Recipe.name appears as a section heading in installation.md.
   * Every load-bearing token (e.g. ``siesta=5.4.2=mpi_openmpi_*``,
     ``dacase::ambertools-dac=26``, ``cupy-cuda13x[ctk]``) referenced by
     a recipe appears in the README -- if the registry pins it, the doc
@@ -35,9 +35,8 @@ from molbuilder.envs.recipes import BUILTIN_RECIPES
 
 
 REPO = Path(__file__).resolve().parents[1]
-# docs migration (docs/MIGRATION.md): README_install.md lives in the frozen
-# old_docs/ tree until its reconcile-move to docs/ops/ -- repoint then.
-README = REPO / "old_docs" / "README_install.md"
+# The migrated installation guide is the human-readable source of truth.
+README = REPO / "docs" / "ops" / "installation.md"
 
 
 @pytest.fixture(scope="module")
@@ -48,7 +47,7 @@ def readme_text() -> str:
 def test_readme_exists():
     """Sanity check: the doc is where we think it is."""
     assert README.exists(), (
-        f"docs/README_install.md not found at {README}; the "
+        f"docs/installation.md not found at {README}; the "
         f"consistency tests are based on that path"
     )
 
@@ -61,7 +60,7 @@ def test_every_recipe_name_appears_in_readme(readme_text):
         if r.name not in readme_text:
             missing.append(r.name)
     assert not missing, (
-        f"Recipe names not mentioned in README_install.md: {missing}. "
+        f"Recipe names not mentioned in installation.md: {missing}. "
         f"Either add the recipe's section to the README or remove "
         f"the recipe from BUILTIN_RECIPES."
     )
@@ -102,7 +101,7 @@ def test_verify_substrings_appear_in_readme(readme_text):
         assert r.verify_expect_contains in readme_text, (
             f"Recipe `{r.name}` checks for substring "
             f"`{r.verify_expect_contains}` in verify output but "
-            f"README_install.md never mentions it.  Either fix the "
+            f"installation.md never mentions it.  Either fix the "
             f"README's verify block or the recipe's expected substring."
         )
 

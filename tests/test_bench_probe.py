@@ -83,7 +83,7 @@ def test_derive_matches_hand_built_sol_table():
     assert doms["general"]["max_time"] == "14-00:00:00"
     # directives default = cheapest GPU partition + an allowed QoS (public).
     assert block["directives"] == {"partition": "htc", "qos": "public"}
-    # no gpu.mem written (policy, not probed -- § 4.3.1)
+    # gpu.mem is a site policy, so probing does not invent a value
     assert "mem" not in block["gpu"]
 
 

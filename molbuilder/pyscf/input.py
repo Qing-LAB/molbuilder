@@ -226,22 +226,13 @@ def render_script(struct: Structure,
         out.append(f"                                  P = {cfg.pressure_atm} atm).")
     out.append("")
     out.append("Dependencies:")
-    out.append("    pip install pyscf")
-    if cfg.optimize and cfg.optimizer == "geometric":
-        out.append("    pip install geometric           # optimizer")
+    out.append("    Use the generated molbuilder run wrapper.")
+    out.append("    Bootstrap managed environments once:")
+    out.append("        bash scripts/install-env.sh bootstrap --yes")
     if cfg.optimize and cfg.optimizer == "berny":
-        out.append("    pip install pyberny             # optimizer")
-    # PySCF 2.x ships D3/D3BJ natively (just set ``mf.disp = "d3bj"``).
-    # Only D4 still requires the separate pyscf-dispersion package, so
-    # we only advertise that install line when D4 is actually requested
-    # (production or pre-opt stage) -- otherwise the hint is misleading.
-    needs_dispersion_pkg = (cfg.dispersion or "").lower() == "d4"
-    if needs_dispersion_pkg:
-        out.append("    pip install pyscf-dispersion    # required for D4")
-    out.append("")
-    out.append("Or in one shot (full molbuilder runtime stack):")
-    out.append("    pip install -r requirements-runtime.txt")
-    out.append("    # or:  pip install 'molbuilder[runtime]'")
+        out.append("    Berny is optional and installed separately in molbuilder-pySCF:")
+        out.append("        conda run -n molbuilder-pySCF pip install pyberny")
+    out.append("\n")
     out.append('"""')
     out.append("")
 
@@ -318,8 +309,12 @@ def render_script(struct: Structure,
         out.append("    raise SystemExit(")
         out.append(f'        "molbuilder PySCF script needs the {opt_pkg} '
                    'optimizer package.\\n"')
-        out.append(f'        "Install with:  pip install {opt_pkg}\\n"')
-        out.append('        "Or:  pip install -r requirements-runtime.txt\\n"')
+        if opt_pkg == "pyberny":
+            out.append('        "Install the optional Berny optimizer in molbuilder-pySCF:\\n"')
+            out.append('        "conda run -n molbuilder-pySCF pip install pyberny\\n"')
+        else:
+            out.append('        "Bootstrap or repair the managed backend:\\n"')
+            out.append('        "bash scripts/install-env.sh bootstrap --yes\\n"')
         out.append('        f"(import error: {_exc})"')
         out.append("    )")
     if cfg.solvent:

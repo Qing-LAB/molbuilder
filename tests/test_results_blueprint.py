@@ -43,7 +43,7 @@ class TestResultsRoute:
         """The sidebar is the dispatch mechanism: without it the
         user has no way to pick a file."""
         body = web.get("/results").get_data(as_text=True)
-        assert 'class="has-projects-sidebar"' in body
+        assert 'class="projects-sidebar dock-panel"' in body
         assert 'id="projects-sidebar"' in body
 
     def test_page_has_single_inspector_host(self, web):

@@ -2268,7 +2268,7 @@ def render_run_wrapper(script_path: Path, *,
                f'retry(s) on non-convergence (--continue warm-resume)"\n'
                if continue_retries and continue_retries > 0 else
                f'echo "  Retry policy  : none (halt on non-convergence)"\n')
-            f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
+            + f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
             f'OPENBLAS=1, MKL=1"\n'
             # GPU mode: print a brief monitoring hint so the user has
             # nvidia-smi commands at hand when they start the run.
@@ -2316,7 +2316,7 @@ def render_run_wrapper(script_path: Path, *,
             + f'echo "  Constraints   : $_constraints"\n'
             + f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
             + f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
-            f'echo "========================================="\n'
+            + f'echo "========================================="\n'
             f"\n"
         )
     else:                                          # pyscf
@@ -3176,8 +3176,7 @@ def render_sbatch(script_path: Path,
     if mem is not None:
         memory = mem
     else:
-        if gpu:
-            memory = gpu_cfg.get("mem")       # GPU-specific default
+        memory = gpu_cfg.get("mem") if gpu else None  # GPU-specific default
         if memory is None:
             memory = defaults.get("mem")       # site-wide fallback
         if memory is None and Path(script_path).suffix.lower() == ".fdf":

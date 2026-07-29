@@ -330,7 +330,7 @@ dropped with a warning.)
     "kind": "slurm",
     "directives": { "partition": "public", "qos": "public",
                     "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
-    "gpu":      { "partition": "public", "default_type": "a100", "exclusive": true },
+    "gpu":      { "partition": "public", "default_type": "a100", "exclusive": true, "mem": null },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
     "mem_model": { "node_mem_gb": 500, "safety": 1.3, "extra_gb": 0 },
     "routing":  [ { "name": "short", "max_time": "0-04:00:00",
@@ -345,9 +345,10 @@ dropped with a warning.)
   `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
   filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
   (the emitter warns when it sees a `%`).
-- **`gpu`** — `{partition, default_type, exclusive}`. A GPU job routes its
-  `-p` to `gpu.partition` and takes `--gres=gpu:<default_type>:<count>`. There is
-  **no `scheduler.gpu.mem`**: memory is one unified per-job path (§ 5.3.1).
+- **`gpu`** - `{partition, default_type, exclusive, mem}`. A GPU job routes its
+  `-p` to `gpu.partition`, takes `--gres=gpu:<default_type>:<count>`, and uses
+  `gpu.mem` when set. An explicit `--mem` wins; otherwise a null `gpu.mem`
+  falls back to `defaults.mem` and then the estimator (section 5.3.1).
 - **`defaults`** — job-agnostic `{time, cpus_per_task, mem}` fallbacks.
 - **`mem_model`** — numeric coefficients for the per-job memory estimator
   (`molbuilder/siesta/memory.py`).

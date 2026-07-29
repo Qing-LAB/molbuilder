@@ -263,9 +263,9 @@ def derive_scheduler_block(
         "<name>` (AllowQos) and drop any domain you cannot actually submit "
         "to (e.g. a privately-owned partition).")
     notes.append(
-        "exclusivity + memory are POLICY, not probed (§ 4.3.1): gpu.exclusive "
-        "is left to you / the --exclusive prep flag, and gpu.mem is never "
-        "written (memory is estimated per-job).")
+        "exclusivity + memory are POLICY, not probed (section 4.3.1): gpu.exclusive "
+        "is left to you / the --exclusive prep flag, and gpu.mem must be "
+        "configured as a site policy (it cannot be probed).")
     return block, notes
 
 

@@ -267,30 +267,20 @@ def test_gap_6_pyscf_emits_post_processing_hook(h2):
 
 
 # --------------------------------------------------------------------- #
-#  Gap 7: no SIESTA minimum version pinned                              #
-#                                                                        #
-#  SIESTA isn't pip-installable (it's a Fortran binary), so the "pin"  #
-#  is a documentation / requirements artifact rather than a runtime    #
-#  check.  We test that requirements-runtime.txt mentions a SIESTA     #
-#  version range (any spelling).                                       #
+#  Gap 7: installation guide pins the supported SIESTA release           #
 # --------------------------------------------------------------------- #
 
 
-def test_gap_7_requirements_documents_siesta_version_range():
-    """requirements-runtime.txt should mention the SIESTA version
-    range targeted by the FDF emission -- emitted keywords like
-    DM.Energy.Tolerance may be silently ignored on older builds."""
+def test_gap_7_installation_documents_siesta_version():
+    """The installation guide names the SIESTA release used by the recipe."""
     from pathlib import Path
+
     repo_root = Path(__file__).parent.parent
-    req = (repo_root / "requirements-runtime.txt").read_text().lower()
-    assert "siesta" in req, (
-        "requirements-runtime.txt should mention the SIESTA "
-        "version range targeted by the generator."
-    )
-    # Must mention an actual version number (4.x or 5.x):
-    assert re.search(r"siesta.*(4\.\d|5\.\d)", req) or re.search(
-        r"(4\.\d|5\.\d).*siesta", req
-    ), "Version range required (e.g. 'SIESTA >= 4.1' or 'SIESTA 5.x')."
+    installation = (repo_root / "docs" / "ops" / "installation.md").read_text().lower()
+    assert "siesta" in installation
+    assert re.search(r"siesta.*5\.4\.2", installation) or re.search(
+        r"5\.4\.2.*siesta", installation
+    ), "The installation guide must name the recipe SIESTA 5.4.2 release."
 
 
 # --------------------------------------------------------------------- #

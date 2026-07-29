@@ -153,10 +153,8 @@ def test_mem_emitted_when_set(tmp_path):
     assert "#SBATCH --mem=120G" in txt
 
 
-def test_mem_is_unified_no_gpu_special_case(tmp_path):
-    """Memory is the SAME for CPU and GPU -- it's the same job (2026-06-29).
-    There is NO scheduler.gpu.mem; a job-agnostic defaults.mem applies to
-    BOTH engines identically.  (Removed the GPU-only flat default.)"""
+def test_gpu_memory_falls_back_to_shared_default(tmp_path):
+    """A GPU job uses defaults.mem only when scheduler.gpu.mem is absent."""
     sched = dict(_SCHED)
     sched["defaults"] = dict(_SCHED["defaults"], mem="200G")
     gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
@@ -164,21 +162,20 @@ def test_mem_is_unified_no_gpu_special_case(tmp_path):
                          exclusive=False)
     cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
     ctxt = render_sbatch(cfdf, sched, ntasks=64)
-    # Same defaults.mem honored by both engines -- no GPU divergence.
+    # With no gpu.mem configured, both job types fall back to defaults.mem.
     assert "#SBATCH --mem=200G" in gtxt
     assert "#SBATCH --mem=200G" in ctxt
 
 
-def test_gpu_mem_config_key_is_gone(tmp_path):
-    """A stray scheduler.gpu.mem is IGNORED, not honored (clean removal):
-    the GPU job estimates/falls back like any job, never reads gpu.mem."""
+def test_gpu_mem_config_key_is_used(tmp_path):
+    """A GPU job uses scheduler.gpu.mem before defaults.mem or estimation."""
     sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")          # stray legacy key
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
     sched["defaults"] = dict(_SCHED["defaults"], mem=None)
     gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
     gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
                          exclusive=False)
-    assert "64G" not in gtxt                               # NOT read
+    assert "#SBATCH --mem=64G" in gtxt
 
 
 def test_explicit_mem_overrides_default(tmp_path):
@@ -446,7 +443,7 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
 
 def test_wrapper_gpu_has_no_mem_audit(project):
     # The runtime mem-audit block is not emitted in this path (independent of
-    # the header mem; GPU and CPU share the same per-job estimator now).
+    # the header mem; GPU jobs use gpu.mem rather than the CPU estimator).
     fdf = project / "job.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
     runwrap.write_run_wrapper(fdf, mpi_np=4, gres="gpu:a100:1",

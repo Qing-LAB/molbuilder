@@ -131,6 +131,46 @@ def _build_toc_tree(root: Path) -> List[Dict]:
     if not toc_path.is_file():
         return []   # fallback: empty tree
     toc = _json.loads(toc_path.read_text(encoding="utf-8"))
+    toc_before = _json.dumps(toc, sort_keys=True)
+
+    # ``toc.json`` is updated while the server is running.  Keep the first
+    # occurrence of a valid document path so a manual duplicate or stale file
+    # reference cannot create a sidebar entry.  The normalized tree is written below with any
+    # auto-discovered paths and refreshed Archive entries.
+    seen_paths: set[str] = set()
+    root_resolved = root.resolve()
+
+    def _is_document_path(path: object) -> bool:
+        if not isinstance(path, str) or not path.endswith(".md"):
+            return False
+        try:
+            resolved = (root_resolved / path).resolve()
+            return resolved.is_file() and os.path.commonpath(
+                [resolved, root_resolved]
+            ) == str(root_resolved)
+        except OSError:
+            return False
+
+    def _dedupe(nodes: list[dict]) -> list[dict]:
+        unique: list[dict] = []
+        for original in nodes:
+            if not isinstance(original, dict):
+                continue
+            node = dict(original)
+            path = node.get("path")
+            if path:
+                if not _is_document_path(path) or path in seen_paths:
+                    continue
+                seen_paths.add(path)
+            if "children" in node:
+                children = node["children"]
+                node["children"] = _dedupe(
+                    children if isinstance(children, list) else []
+                )
+            unique.append(node)
+        return unique
+
+    toc["tree"] = _dedupe(toc.get("tree", []))
 
     # Collect all paths referenced in the toc tree (for auto-discovery).
     _toc_paths: set = set()
@@ -274,9 +314,8 @@ def _build_toc_tree(root: Path) -> List[Dict]:
             node["children"] = archive_children
         tree.append(_populate(node))
 
-    # Persist newly-discovered paths back to toc.json.
+    # Persist the repaired, scanned tree back to toc.json.
     if _new_paths:
-        _dirty = False
         for tn in toc.get("tree", []):
             label = tn.get("label", "")
             if label in _new_paths:
@@ -294,12 +333,11 @@ def _build_toc_tree(root: Path) -> List[Dict]:
                             existing.append({"path": entry["path"]})
                     else:
                         existing.append({"path": entry["path"]})
-                _dirty = True
-        if _dirty:
-            tmp = toc_path.with_suffix(".tmp")
-            tmp.write_text(_json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
-            os.replace(str(tmp), str(toc_path))
+    if _json.dumps(toc, sort_keys=True) != toc_before:
+        tmp = toc_path.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
+                       encoding="utf-8")
+        os.replace(str(tmp), str(toc_path))
 
     return tree
 

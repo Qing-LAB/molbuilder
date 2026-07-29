@@ -196,11 +196,11 @@ def test_optimizer_import_wrapped_in_try_except(small_struct):
     SystemExit with an actionable message, not a 6-frame traceback'."""
     text = render_script(small_struct, PySCFConfig())
     # The geomopt import must be inside a try/except, with the except
-    # raising SystemExit and instructing pip install.
+    # raising SystemExit and directing the user to the managed backend.
     assert "from pyscf.geomopt.geometric_solver import optimize" in text
     assert "except ImportError" in text
     assert "raise SystemExit(" in text
-    assert "pip install geometric" in text
+    assert "bash scripts/install-env.sh bootstrap --yes" in text
 
 
 # --------------------------------------------------------------------- #

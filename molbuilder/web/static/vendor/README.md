@@ -1,88 +1,37 @@
-# Vendored third-party JavaScript
+# Third-party browser assets and notices
 
-Files in this directory are unmodified copies of upstream releases,
-served locally by molbuilder so the web UI works offline + over
-strict CSP (no `script-src` exemption for third-party CDNs).
+This directory contains browser code served by molbuilder. The project itself is
+BSD 3-Clause; that license does not replace the licenses below. Every bundled
+asset keeps its upstream notice, and the wheel package-data rules include this
+directory and its subdirectories.
 
-When you upgrade a vendored file, also update its entry here.
+## Inventory
 
----
+| Component | Files | Version | License and notice |
+|---|---|---|---|
+| 3Dmol.js | `3Dmol-min.js` | 2.5.2 | BSD-3-Clause. [`LICENSE-3Dmol.txt`](LICENSE-3Dmol.txt) includes its GLmol, Three.js, and jQuery attributions; `3Dmol-min.js.LICENSE.txt` is the bundle sidecar. |
+| gif.js | `gif.min.js`, `gif.worker.min.js` | 0.2.0 | MIT. [`gif.min.js.LICENSE.txt`](gif.min.js.LICENSE.txt) contains the complete notice for both files. |
+| CodeMirror | `codemirror/*` | 5.65.16 | MIT. [`codemirror/LICENSE`](codemirror/LICENSE). |
+| DOMPurify | `dompurify/purify.min.js` | 3.0.6 | Apache-2.0 OR MPL-2.0. The complete dual-license text is in [`dompurify/LICENSE`](dompurify/LICENSE). |
+| GitGraph | `gitgraph/gitgraph.umd.js` | unrecorded UMD build | MIT. [`gitgraph/LICENSE`](gitgraph/LICENSE). Record the upstream release when this bundle is next replaced. |
+| Marked | `marked/marked.min.js` | 4.3.0 | MIT. [`marked/LICENSE`](marked/LICENSE). |
+| Mermaid | `mermaid/mermaid.min.js` | 10.9.6 | MIT. [`mermaid/LICENSE`](mermaid/LICENSE). |
+| Plotly.js | served by `/vendor/plotly.min.js` | plotly.js 3.7.0 in plotly Python 6.9.0 | MIT. The route serves the installed Python package resource; [`LICENSE-plotly.txt`](LICENSE-plotly.txt) preserves the current bundle notice. |
 
-## 3Dmol.js
+3Dmol.js citation requested by upstream:
 
-| Field | Value |
-|---|---|
-| File | `3Dmol-min.js` (485 223 bytes) |
-| Version | 2.5.2 |
-| Upstream | https://github.com/3dmol/3Dmol.js |
-| Distribution | https://3dmol.csb.pitt.edu/build/3Dmol-min.js |
-| License | BSD-3-Clause — see `LICENSE-3Dmol.txt` (includes attributions for GLmol, Three.js, and jQuery code incorporated into the bundle) |
-| Bundle banner sidecar | `3Dmol-min.js.LICENSE.txt` (the file the bundle's leading comment refers to) |
-
-Citation (per upstream's request):
-
-> Rego, N. & Koes, D. (2015). 3Dmol.js: molecular visualization with
-> WebGL. *Bioinformatics*, **31**(8), 1322–1324.
+> Rego, N. & Koes, D. (2015). 3Dmol.js: molecular visualization with WebGL.
+> *Bioinformatics*, **31**(8), 1322-1324.
 > https://doi.org/10.1093/bioinformatics/btu829
 
-### Upgrade procedure
+## Updating a browser dependency
 
-```bash
-curl -fsSL https://3dmol.csb.pitt.edu/build/3Dmol-min.js \
-     -o molbuilder/web/static/vendor/3Dmol-min.js
-curl -fsSL https://raw.githubusercontent.com/3dmol/3Dmol.js/master/LICENSE \
-     -o molbuilder/web/static/vendor/LICENSE-3Dmol.txt
-```
+1. Download the upstream release and its complete license or notice text.
+2. Replace the asset and notice together; preserve upstream copyright lines.
+3. Update the inventory version and source information above. For a bundled
+   dependency, record its release rather than relying only on a minified file.
+4. Run the vendor-notice test and build a wheel to confirm the files ship.
 
-Then update the version + size in this README and re-run the
-spectra / modify / watch tabs to confirm the molecular viewer still
-renders.
-
----
-
-## gif.js
-
-| Field | Value |
-|---|---|
-| Files | `gif.min.js` (13 451 bytes), `gif.worker.min.js` (16 636 bytes) |
-| Version | 0.2.0 |
-| Upstream | https://github.com/jnordberg/gif.js |
-| Distribution | https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/ |
-| License | MIT — see banner in `gif.min.js.LICENSE.txt` |
-
-Powers the GIF format of the embedded viewer's `handle.exportAnimation`
-(see `docs/protocols/molview-module.md` § 3.2). Loaded lazily on first
-use via `/static/vendor/gif.min.js`; the main library spawns a Web
-Worker that loads `/static/vendor/gif.worker.min.js` to do the LZW
-encoding off the main thread. Both files must be present together
-or the lazy-load surfaces `no_gif_encoder` per § 5.2.
-
-### Upgrade procedure
-
-```bash
-cd molbuilder/web/static/vendor
-curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js \
-     -o gif.min.js
-curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js \
-     -o gif.worker.min.js
-```
-
-The cdnjs distribution names mirror the upstream `dist/` directory
-exactly; the `.min` suffix is our local convention indicating that
-these are production-ready bundles (gif.js v0.2.0 is already
-minified by upstream).
-
----
-
-## plotly.min.js
-
-Plotly is **not** vendored as a file in this directory. The route
-`/vendor/plotly.min.js` (defined in `molbuilder/web/app.py`) serves
-the bundle directly from the installed `plotly` Python package's
-`package_data/plotly.min.js` resource. The license travels with the
-Python package (MIT for plotly.js itself; the Python package adds
-the plotly Python wrapper under MIT as well).
-
-This indirection means an upgrade of the `plotly` Python package
-automatically picks up the new JS bundle — no manual file copy step
-in this directory.
+The project deliberately serves these assets locally for offline use and a
+strict Content Security Policy. Do not replace them with CDN references without
+reviewing the security and notice implications.

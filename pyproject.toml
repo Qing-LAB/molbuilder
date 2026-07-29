@@ -9,7 +9,7 @@ description = "Build 3-D molecules from sequences / SMILES / names; emit SIESTA 
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Quan Qing", email = "qqing@asu.edu" }]
-license = { text = "MIT" }
+license = { text = "BSD-3-Clause" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -101,22 +101,6 @@ e2e = [
     "pytest-playwright>=0.4",
 ]
 
-# Tools needed to *execute* the SIESTA / PySCF input files molbuilder
-# generates -- as opposed to building structures with molbuilder itself.
-# Mirrors requirements-runtime.txt so either workflow works:
-#     pip install ".[runtime]"
-#     pip install -r requirements-runtime.txt
-# Note: SIESTA (Fortran), AmberTools (tleap), and 3DNA are NOT
-# pip-installable -- see requirements-runtime.txt header for conda /
-# manual install instructions.
-runtime = [
-    "pyscf>=2.4",
-    "geometric>=1.0",
-    "pyberny>=0.6",
-    "pyscf-dispersion>=1.0",
-    "sisl>=0.14",
-]
-
 # Everything molbuilder itself can use (build-time deps only).
 all = [
     "rdkit>=2023.9",
@@ -124,20 +108,6 @@ all = [
     "flask>=3.0",
     "authlib>=1.3",
     "python-cas>=1.6",
-]
-
-# Build-time + runtime in one go.
-full = [
-    "rdkit>=2023.9",
-    "pubchempy>=1.0",
-    "flask>=3.0",
-    "authlib>=1.3",
-    "python-cas>=1.6",
-    "pyscf>=2.4",
-    "geometric>=1.0",
-    "pyberny>=0.6",
-    "pyscf-dispersion>=1.0",
-    "sisl>=0.14",
 ]
 
 [project.scripts]
@@ -158,7 +128,9 @@ molbuilder = [
     "web/static/lib/projects/*.js",
     "web/static/lib/inspectors/*.js",
     "web/static/lib/trajectory/*.js",
-    "web/static/vendor/*.js",
+    # Browser dependencies, their notices, and all nested vendor assets.
+    # Keep this broad: license texts must ship with every built wheel.
+    "web/static/vendor/*", "web/static/vendor/*/*",
     "web/static/watch/*.js",
     "web/static/modify/*.css",  "web/static/modify/*.js",
     "web/static/spectra/*.css", "web/static/spectra/*.js",

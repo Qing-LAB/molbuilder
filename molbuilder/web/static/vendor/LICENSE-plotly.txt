@@ -1,22 +1,6 @@
-/*!
- * gif.js v0.2.0
- * JavaScript GIF encoder running in a Web Worker
- * Author: Johan Nordberg (https://github.com/jnordberg/gif.js)
- * License: MIT
- *
- * Used by molbuilder's embedded viewer (lib/mol-viewer-embed.js)
- * for the GIF path of handle.exportAnimation per embedded-viewer.md
- * § 3.2. Loaded lazily on first use; gif.worker.min.js is the
- * Web Worker counterpart that does the LZW encoding.
- *
- * Vendored from cdnjs/0.2.0 (2026-06-04, #244).
- */
+MIT License
 
-Full license text:
-
-The MIT License (MIT)
-
-Copyright (c) 2013-2018 Johan Nordberg
+Copyright (c) 2016-2024 Plotly Technologies Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -12,6 +12,8 @@ the migration ledger, docs/README.md); update the names as the tree grows.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 
@@ -39,6 +41,48 @@ def test_documents_tab_registered_in_tab_order():
     assert "documents" in keys
     doc_tab = next(t for t in TABS if t["key"] == "documents")
     assert doc_tab["path"] == "/documents"
+
+
+def test_toc_returns_each_document_once(client):
+    """A live-edited toc.json must not make duplicate sidebar entries."""
+    tree = client.get("/api/docs/toc").get_json()["tree"]
+    paths = []
+
+    def collect(nodes):
+        for node in nodes:
+            if "path" in node:
+                paths.append(node["path"])
+            collect(node.get("children", []))
+
+    collect(tree)
+    assert len(paths) == len(set(paths))
+
+
+def test_toc_live_update_deduplicates_and_persists(tmp_path):
+    """Duplicate and missing entries are removed from a live TOC and file."""
+    from molbuilder.web.blueprints.docs import _build_toc_tree
+
+    (tmp_path / "process").mkdir()
+    (tmp_path / "process" / "code-audit.md").write_text(
+        "# Code audit\n", encoding="utf-8")
+    toc_path = tmp_path / "toc.json"
+    toc_path.write_text(json.dumps({"tree": [{
+        "label": "Process",
+        "children": [
+            {"path": "process/code-audit.md"},
+            {"path": "process/code-audit.md"},
+            {"path": "process/missing.md"},
+        ],
+    }]}), encoding="utf-8")
+
+    tree = _build_toc_tree(tmp_path)
+    assert [node["path"] for node in tree[0]["children"]] == [
+        "process/code-audit.md"
+    ]
+    persisted = json.loads(toc_path.read_text(encoding="utf-8"))
+    assert persisted["tree"][0]["children"] == [
+        {"path": "process/code-audit.md"}
+    ]
 
 
 # --------------------------------------------------------------------- #
@@ -97,7 +141,7 @@ def test_read_returns_root_readme_and_license(client):
     assert license_doc["ok"] is True
     assert license_doc["path"] == "../LICENSE"
     assert license_doc["title"] == "molbuilder license"
-    assert "MIT License" in license_doc["text"]
+    assert "BSD 3-Clause License" in license_doc["text"]
 
 
 @pytest.mark.parametrize("bad", [

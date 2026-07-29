@@ -109,6 +109,12 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
+## 2. Endpoint index — all 78 routes
+
+The application currently has 78 non-static Flask routes. Section 3 groups the
+full catalogue by owner and purpose; update this count whenever a route is added
+or removed.
+
 ## 3. The route catalogue
 
 Every route, grouped by domain. Routes with a module-doc home link to it; the
