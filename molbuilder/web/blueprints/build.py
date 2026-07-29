@@ -659,6 +659,50 @@ def api_resolve_cell():
                     "resolved_cell_origin": resolved_origin})
 
 
+@bp.route("/api/structure/periodicity", methods=["POST"])
+def api_periodicity():
+    """The unified periodicity door (structure-periodicity.md § 6.2): ONE
+    entry point for the five Cell-page edits — vacuum / axis_kind / cell /
+    cell_origin / calibrate — through the frame-contract gate.
+
+    Body: ``{"data": <scratch blob>, "op": <one of §6.2>, "payload": ...}``.
+    Response: ``{ok, blob, resolved_cell, resolved_cell_origin, notices}``
+    — ``blob`` is the corrected TRUTH pair (the client adopts it verbatim;
+    it never computes truth itself), the resolved values are the § 3 views,
+    and ``notices`` carry the gate's heal/reference-only warnings for the
+    Cell page + the app notify bar."""
+    from molbuilder.workingcopy_structure import StructureCodec
+    from molbuilder.periodicity_gate import apply_edit, OPS
+    body = request.get_json(silent=True) or {}
+    blob = body.get("data")
+    op = body.get("op")
+    if blob is None:
+        return jsonify({"ok": False, "error": "missing 'data'"}), 400
+    if op not in OPS:
+        return jsonify({"ok": False,
+                        "error": f"'op' must be one of {list(OPS)}"}), 400
+    try:
+        codec = StructureCodec()
+        notices: list = []
+        struct = codec.from_scratch(blob, notices_out=notices)
+        new_struct, edit_notices = apply_edit(struct, op, body.get("payload"))
+        notices.extend(edit_notices)
+        rc = new_struct.resolve_cell()
+        ro = new_struct.resolve_cell_origin()
+        out_blob = codec.scratch_blob(new_struct)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 -- malformed blob -> 400
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({
+        "ok": True,
+        "blob": out_blob,
+        "resolved_cell": rc.tolist() if rc is not None else None,
+        "resolved_cell_origin": ro.tolist() if ro is not None else None,
+        "notices": notices,
+    })
+
+
 @bp.route("/api/structure/save", methods=["POST"])
 def api_structure_save():
     """FILE-ONLY save through the ONE authority (structure-authority.md § 3.3), the

@@ -143,9 +143,19 @@ class StructureCodec:
         return {"xyz": xyz_text,
                 "sidecar": self._sidecar_dict(struct, xyz_text.encode("utf-8"))}
 
-    def from_scratch(self, blob: Any) -> Structure:
+    def from_scratch(self, blob: Any, *,
+                     notices_out: "list | None" = None) -> Structure:
         struct = Structure.from_xyz(blob["xyz"])
         molstruct.apply_to_structure(struct, blob["sidecar"])
+        # The frame-contract gate (structure-periodicity.md § 6.1): ALL
+        # heal/validation of periodicity state happens at this seam.  A
+        # stored explicit cell that does not contain its atoms (the 2026-07
+        # hemeC corruption) is healed here -- origin to the expected corner
+        # -- and the notice surfaces when the caller passes notices_out.
+        from .periodicity_gate import validate_and_heal
+        struct, notices = validate_and_heal(struct)
+        if notices_out is not None:
+            notices_out.extend(notices)
         return struct
 
     # ---- internal ---------------------------------------------------- #

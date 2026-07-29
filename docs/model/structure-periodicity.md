@@ -283,22 +283,43 @@ to these or is a bug:
 6. **UI reads views, edits truth** — the § 7 split, plus: every gate notice
    surfaces in the editing page *and* through `molbuilder.notify`.
 
-## 6.2 The unified periodicity door (the five edits)
+## 6.2 The unified periodicity door (v3 — the regime model)
 
-One endpoint — `POST /api/structure/periodicity`, body `{data, op, payload}` —
-serves every Cell-page button; one module (`periodicity gate`) owns
+**Python owns every metadata change; the JS only calls.** One endpoint —
+`POST /api/structure/periodicity`, body `{data, op, payload}` — serves every
+Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
 `apply_edit(struct, op, payload) → (struct′, notices)` and the
 `validate_and_heal` core shared with `StructureCodec`. Uniform response:
-`{ok, truth_patch, resolved_cell, resolved_cell_origin, notices[]}` — the
-client renders, it never computes.
+`{ok, blob, resolved_cell, resolved_cell_origin, notices[]}` — the client
+adopts the returned truth blob and renders the views; it never computes.
 
-| op | Truth touched | Contract behaviour |
-|---|---|---|
-| `vacuum` | `vacuum` | derived cell only; under an explicit cell → notice "reference-only", no silent no-op |
-| `axis_kind` | `axis_kind` | `→ periodic` without an explicit cell = error (§ 4); `periodic → isolated` keeps the explicit cell + reference-only notice |
-| `cell` | `cell` | `null` = back to derived (error on a periodic axis); explicit = `det > 0` + containment → heal origin to `expected_corner` + notice when needed |
-| `cell_origin` | `cell_origin` | explicit-cell only; accepted as typed + immediate clearance warning; `null` = imported-crystal semantics, containment-checked |
-| `calibrate` | coordinates + `cell` (+ clears origin) | the one sanctioned rewrite: bake `−resolved_cell_origin` into atoms, materialise the cell at zero — the same math the SIESTA emit leg uses, so calibrated-then-emit ≡ emit |
+**Two regimes, explicit transitions.** In the **derived** regime,
+`{structure size, vacuum, axis_kind} ⇒ {cell, origin}` are computed views.
+An explicit cell enters the **manual** regime: vacuum demotes to
+reference-only, and an explicit origin overrides the vacuum-derived corner
+(*origin first, then vacuum*). Editing an **upstream** parameter never
+silently contradicts downstream state — it resets it, loudly:
+
+| op | Contract behaviour (v3) |
+|---|---|
+| `vacuum` | **Resets to derived** (explicit cell + origin cleared; the boundary moves — the UI warns *before* committing). Refused while an axis is periodic (a bbox is not a lattice — make the axis isolated first or edit the cell). |
+| `axis_kind` | Same reset-to-derived when the new kinds are non-periodic. Switching **to** periodic keeps an existing explicit cell (respected) or is refused when there is none. |
+| `cell` | Explicit (`det > 0`): **respects an existing origin first** (kept; containment-warned), else **respects vacuum** — origin anchored at the expected corner, with notice. `null` = back to derived (refused on a periodic axis). |
+| `cell_origin` | Accepted **as typed** + warning: *vacuum is not respected under a manual origin — only the unit-cell parameters are* (+ actual per-side clearances). `null` = the **Reset-origin-to-default** button: origin cleared, other parameters regain their freedom (world-origin view until a vacuum/periodicity edit re-derives). |
+
+**There is no calibrate button.** Coordinate rewrites are not a periodicity
+edit: emission translates to the engine frame implicitly (and stamps the
+shift as provenance), so nothing on the Cell page ever moves atoms. The
+rewrite exists only as the Modify op (`/api/modify/calibrate`,
+`molbuilder.modify.calibrate_to_cell`) for the explicit save-in-engine-frame
+workflow, and the equivalence is test-pinned: *calibrated-then-emit ≡ emit*.
+
+**Frame ownership by tab.** Only the **Molbuilder/Modify** tab operates on
+the authoring truth (the pair, world frame). Every **calculation page**
+(structure-optimization, spectra, transport) shows the **engine-calibrated
+view** in its MolView mount — computed server-side from the pair, labeled,
+never saved back — and the **Results** tab is engine-frame by construction
+(parser-fed from run artifacts, § 6.1 clause 5).
 
 ## 7. Frontend surface (JS / user) — display vs edit
 
