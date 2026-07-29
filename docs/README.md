@@ -19,7 +19,7 @@ header, inside the domain.
 
 | Folder | Domain |
 |---|---|
-| *(root)* | The spine: this index, `design.md` (mission · principles · decisions), `architecture.md` (the reuse map: task → tool), `roadmap.md` (THE one plan) |
+| *(root)* | The spine: this index, `design.md` (mission · principles · decisions), `architecture.md` (the reuse map: task → tool), `roadmap.md` (THE one plan), [`audit-2026-07-28-document-migration.md`](?doc=audit-2026-07-28-document-migration.md) (migration closeout audit) |
 | `model/` | The data model (L1): Structure, periodicity, annotations, codecs & load/save, sidecars, region labels, selection grammar, chemistry, the parse stack, the data vocabulary |
 | `science/` | Scientific correctness: validation machinery, chemistry correctness, pseudopotential standards, parameter tuning |
 | `engines/` | Per-engine emitter specs: SIESTA, PySCF, transport/TranSIESTA, builders, GPU build recipe |

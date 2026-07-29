@@ -9,7 +9,8 @@
         { "path": "design.md" },
         { "path": "architecture.md" },
         { "path": "backend-architecture.md" },
-        { "path": "roadmap.md" }
+        { "path": "roadmap.md" },
+        { "path": "audit-2026-07-28-document-migration.md", "label": "Document Migration Audit" }
       ]
     },
     {
