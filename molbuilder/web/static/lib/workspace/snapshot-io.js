@@ -33,7 +33,14 @@ root.molbuilder = root.molbuilder || {};
     // ``useNamespace(owner)`` sets this via ``setNamespace`` so the mirror key and the on-disk
     // ``workspace_id`` stay isolated per owner -- a Results session never overwrites Modify's,
     // and two inspectors on one page don't clobber each other's saved timeline.
-    var _ns = null;
+    // Initialise from the page's own declaration (<body
+    // data-workspace-owner="...">) so even a module-load-time read --
+    // canvas-state's direct restore runs before any mount -- is already
+    // namespaced.  The dispatcher's useNamespace (from the mount's owner)
+    // remains the authority; this is the belt for the pre-mount window.
+    var _ns = (root.document && root.document.body
+               && root.document.body.dataset
+               && root.document.body.dataset.workspaceOwner) || null;
 
     function key() {
         var base = ((root.molbuilder.constants || {}).SS_WORKSPACE)

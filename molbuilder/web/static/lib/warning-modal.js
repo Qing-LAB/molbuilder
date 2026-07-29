@@ -46,7 +46,10 @@
     var DISCARD = "Discard and continue";
 
     // Single-instance state.  Reset to null when the dialog closes.
-    var _active = null;   // { dialog, resolve, promise }
+    // Per-SLOT in-flight guard: the discard dialog and the generic
+    // confirm are independent conversations -- re-entering one must
+    // not inherit the other's answer.
+    var _active = {};   // { dialog, resolve, promise }
 
     /**
      * Show the discard-unsaved confirmation modal.
@@ -68,20 +71,21 @@
               + "module must run in a browser-like environment"));
         }
 
-        // Re-entrancy: return the in-flight Promise instead of
-        // stacking a second modal.
-        if (_active) return _active.promise;
+        // Re-entrancy (per slot): return the in-flight Promise instead
+        // of stacking a second modal of the SAME kind.
+        var _slot = opts.confirmLabel ? "confirm" : "discard";
+        if (_active[_slot]) return _active[_slot].promise;
 
         var dialog = _buildDialog(doc, opts);
         doc.body.appendChild(dialog);
 
         var resolve;
         var promise = new Promise(function (res) { resolve = res; });
-        _active = { dialog: dialog, resolve: resolve, promise: promise };
+        _active[_slot] = { dialog: dialog, resolve: resolve, promise: promise };
 
         function _settle(value) {
-            if (!_active || _active.dialog !== dialog) return;
-            _active = null;
+            if (!_active[_slot] || _active[_slot].dialog !== dialog) return;
+            _active[_slot] = null;
             try { dialog.close(); } catch (_) {}
             // Remove from DOM so multiple invocations don't leak
             // detached <dialog>s and so a future open lands on a

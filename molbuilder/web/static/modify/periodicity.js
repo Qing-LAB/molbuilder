@@ -172,6 +172,17 @@ function _mvdata() {
     function _surfaceNotices(notices) {
         var notify = (window.molbuilder || {}).notify;
         if (!notify || !notify.show) return;
+        // Clear the PREVIOUS edit's notices first: a 2-notice edit followed
+        // by a 1-notice edit must not leave a stale second banner up.
+        if (typeof notify.list === "function"
+                && typeof notify.clear === "function") {
+            notify.list().forEach(function (n) {
+                if (n && n.id
+                        && String(n.id).indexOf("periodicity-") === 0) {
+                    notify.clear(n.id);
+                }
+            });
+        }
         (notices || []).forEach(function (n, i) {
             notify.show({
                 id:      "periodicity-" + i,
