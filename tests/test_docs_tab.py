@@ -5,7 +5,8 @@ docs/*.md; /api/docs/read returns one doc's text + H1 title; and the
 path-safety gate rejects traversal / non-.md / outside-docs paths (the same
 defence-in-depth class as the files blueprint, on a different, read-only root).
 
-The blueprint serves whatever is under ``docs/`` — nothing else.  The
+The blueprint serves the ``docs/`` tree plus the explicitly whitelisted root
+README and LICENSE; all other paths outside ``docs/`` are rejected.  The
 specific docs pinned below are the current tree's spine (the index +
 the migration ledger, docs/README.md); update the names as the tree grows.
 """
@@ -59,13 +60,15 @@ def test_list_groups_every_md(client):
             assert doc["title"]
 
 
-def test_list_finds_the_index_and_the_ledger(client):
-    """The tree's spine — the ONE index + the migration ledger — is
-    discoverable."""
+def test_list_finds_the_index_and_migration_audit(client):
+    """The documentation index and dated migration audit are discoverable."""
     d = client.get("/api/docs/list").get_json()
     all_paths = {doc["path"] for g in d["groups"] for doc in g["docs"]}
     assert "README.md" in all_paths
-    assert "MIGRATION.md" in all_paths
+    assert any(
+        path.startswith("audit-") and path.endswith("-document-migration.md")
+        for path in all_paths
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -80,6 +83,21 @@ def test_read_returns_text_and_h1_title(client):
     # title comes from the first Markdown H1
     assert r["title"] == "molbuilder — documentation"
     assert "## The rules" in r["text"]
+
+
+def test_read_returns_root_readme_and_license(client):
+    """The two whitelisted root-document entries are readable in the tab."""
+    readme = client.get("/api/docs/read?path=../README.md").get_json()
+    assert readme["ok"] is True
+    assert readme["path"] == "../README.md"
+    assert readme["title"] == "molbuilder — Project README"
+    assert "## Quick start" in readme["text"]
+
+    license_doc = client.get("/api/docs/read?path=../LICENSE").get_json()
+    assert license_doc["ok"] is True
+    assert license_doc["path"] == "../LICENSE"
+    assert license_doc["title"] == "molbuilder license"
+    assert "MIT License" in license_doc["text"]
 
 
 @pytest.mark.parametrize("bad", [

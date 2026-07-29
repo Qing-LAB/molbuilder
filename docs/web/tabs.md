@@ -281,16 +281,28 @@ crash during refresh never leaves a half-written TOC.
 > nests under its parent.  `toc.json` is updated automatically — no
 > manual editing needed.
 
-### 5.4 `?doc=` — why the links work
+### 5.4 Portable links and the root README
 
-Every internal link in the migration docs is written
-`?doc=<path-relative-to-docs>`. Opening a doc writes `?doc=…` back into
-the URL; loading a URL with `?doc=…` opens that doc and expands every
-folder along the path so you can see where it lives in the tree.
+Docs stored under `docs/` use internal links in the form
+`?doc=<path-relative-to-docs>`. The root `README.md` intentionally uses normal
+GitHub-relative links such as `docs/ops/installation.md`, because those links
+must work when the README is viewed directly in the repository.
 
-A raw `.md` href would 404 — the document is served *through this tab*,
-via `?doc=`, never as a static file.  That is the link convention (R7)
-the migration depends on.
+The Documents tab supports both forms. After rendering Markdown, it rewrites
+the root README's relative `docs/<path>.md` links to
+`?doc=<path-relative-to-docs>` and its `LICENSE` link to `?doc=../LICENSE`,
+then opens the result in the reader. External links are left external. This
+mirrors the existing image rewrite: source Markdown stays portable, while the
+rendered in-app view receives the API route it needs.
+
+The root README and repository `LICENSE` are the only intentional path
+exceptions. The sidebar obtains the README from `/api/docs/toc` as
+`../README.md`; `/api/docs/read` accepts that value and `../LICENSE` exactly.
+All other paths containing `..` are rejected, and every regular document must
+resolve to a real Markdown file inside `docs/`. Opening a doc
+writes `?doc=...` back into the URL; loading a URL with `?doc=...` opens that
+doc and expands every folder along the path so you can see where it lives in
+the tree.
 
 ## 6. Save flow — the out-gate
 

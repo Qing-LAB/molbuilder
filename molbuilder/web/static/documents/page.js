@@ -104,6 +104,16 @@
             _showMessage("docs-error", "Render failed: " + (e && e.message || ""));
             return;
         }
+        // Keep root-README links portable: GitHub resolves docs/<path>.md and
+        // LICENSE directly. This reader rewrites only those root-README links
+        // to their documented internal ?doc= paths.
+        function wireDocLink(a, docPath) {
+            a.setAttribute("href", "?doc=" + encodeURIComponent(docPath));
+            a.addEventListener("click", function (ev) {
+                ev.preventDefault();
+                openDoc(docPath, a);
+            });
+        }
         // Wire links + images.
         renderEl.querySelectorAll("a[href]").forEach(function (a) {
             var h = a.getAttribute("href") || "";
@@ -111,10 +121,11 @@
                 a.setAttribute("target", "_blank");
                 a.setAttribute("rel", "noopener noreferrer");
             } else if (h.startsWith("?doc=")) {
-                a.addEventListener("click", function (ev) {
-                    ev.preventDefault();
-                    openDoc(h.slice(5), a);
-                });
+                wireDocLink(a, h.slice(5));
+            } else if (path === "../README.md" && h === "LICENSE") {
+                wireDocLink(a, "../LICENSE");
+            } else if (path === "../README.md" && /^docs\/.+\.md(?:#.*)?$/.test(h)) {
+                wireDocLink(a, h.slice(5).split("#", 1)[0]);
             }
         });
         renderEl.querySelectorAll("img[src]").forEach(function (img) {

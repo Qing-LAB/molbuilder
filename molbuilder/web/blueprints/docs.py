@@ -1,7 +1,8 @@
 """Documents blueprint -- read-only access to the project's ``docs/*.md``.
 
 Powers the **Documents** tab (``/documents``): a convenient in-app reader for
-every design doc + guide + README under the repo's ``docs/`` directory,
+every design doc + guide under the repo's ``docs/`` directory, plus the
+project root README and LICENSE through explicitly whitelisted paths,
 rendered through the same ``marked`` + ``DOMPurify`` pipeline the Results-tab
 markdown inspector uses (``lib/markdown-render.js``).
 
@@ -413,8 +414,8 @@ def api_docs_read():
     """One doc's raw Markdown text (rendered client-side).
 
     Query: ``path`` -- relative to ``docs/`` (from ``/api/docs/list``).
-    Special: ``path=../README.md`` reads the project root README
-    (outside ``docs/``; validated separately).
+    Special: ``path=../README.md`` and ``path=../LICENSE`` read the project
+    root README and license. They are the only paths allowed outside ``docs/``.
     Response: ``{ok, path, title, text}`` or ``{ok:false, error}`` (400/404).
     """
     root = _docs_root()
@@ -422,19 +423,25 @@ def api_docs_read():
         return jsonify({"ok": False, "error": "docs/ not available"}), 404
     raw_path = (request.args.get("path") or "").strip()
 
-    # Root README: lives outside docs/, validated separately.
-    if raw_path == "../README.md":
-        repo_readme = root.parent / "README.md"
-        if not repo_readme.is_file():
-            return jsonify({"ok": False, "error": "README not found"}), 404
+    # Only these root files may bypass the docs/ path gate.
+    root_documents = {
+        "../README.md": ("README.md", "molbuilder — Project README"),
+        "../LICENSE": ("LICENSE", "molbuilder license"),
+    }
+    root_document = root_documents.get(raw_path)
+    if root_document:
+        filename, title = root_document
+        resolved = root.parent / filename
+        if not resolved.is_file():
+            return jsonify({"ok": False, "error": f"{filename} not found"}), 404
         try:
-            text = repo_readme.read_text(encoding="utf-8", errors="replace")
+            text = resolved.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             return jsonify({"ok": False, "error": f"read failed: {exc}"}), 404
         return jsonify({
             "ok":    True,
             "path":  raw_path,
-            "title": "molbuilder — Project README",
+            "title": title,
             "text":  text,
         })
 
