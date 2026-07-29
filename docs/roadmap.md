@@ -302,6 +302,37 @@ format — and its code comment defers to "a dedicated `pyscf-log` inspector on
 the roadmap", so here it is: a presenter that reads the log's structure (SCF
 cycles, timings, warnings) instead of showing raw text.
 
+**VibrationView independence (task #104, decided 2026-07-27).** Complete the
+MolView/VibrationView separation: `lib/viewer/` (the shared 3Dmol embed)
+becomes MolView-private (moves under `lib/molview/`), the transitional
+`molbuilder.viewer` global is dropped, and VibrationView gets its **own
+minimal concealed 3Dmol seal** — just the six doors it actually uses
+(`setStructure`/`setAtomCoords`/`setOverlays`/`refit`/`setAnimationProvider`/
+`dispose`), none of MolView's heavier embed. Real-browser verification
+required. Contract + current state: `web/vibrationview.md § 5`.
+
+**Small front-end gaps with a doc-recorded home** *(each doc's note is
+dropped in the same commit that closes its item)*:
+
+- **Trajectory stop-check state mismatch** — the live-poll stop check tests
+  `rs === "errored"` (`lib/trajectory/core.js:480`) but the decoder envelope's
+  terminal error state is `failed` (since the `_build_status` fix), so a
+  crashed run keeps polling. Fix the string (or map both), pin with a test,
+  and drop `web/trajectory.md`'s "known gap" callout.
+- **Spectrum UI preferences persistence** — wire the sessionStorage
+  round-trip the code already stubs (`lib/spectra/core.js:185-188` TODO);
+  update `web/spectra.md`'s in-memory-prefs note.
+- **Documents-tab polish** — browser back/forward (`page.js` uses only
+  `replaceState`, no `popstate` handler), a fetch-race guard on rapid doc
+  clicks, Mermaid dark-mode theming (`markdown-render.js:81` hardcodes
+  `neutral`), sidebar-selection sync for in-content `?doc=` links, and
+  toc auto-discovery for **root-level** docs (today only domain dirs are
+  scanned, so e.g. a new dated audit needs a manual `toc.json` row).
+- **`detection-chip` domain review** — the chip hardcodes chemistry
+  classification + compute-budget heuristics inside a UI primitive; review
+  and re-home the science (chemistry/validation domain) before its ESM
+  conversion freezes the current shape.
+
 ---
 
 ## 4. Test-suite & housekeeping
@@ -317,6 +348,38 @@ cycles, timings, warnings) instead of showing raw text.
 - **Multi-frame trajectory persistence.** Persist multi-frame trajectories
   as extended-XYZ (via ASE) with a sidecar manifest — the one open item
   from the frame-series work.
+- **SIESTA retry: finish the wiring.** `continue_retries` reaches the
+  wrapper only through the web install-wrapper door; the validated config
+  field is decorative on the CLI and JobSet-ladder paths (thread it through
+  `stages_to_jobset` → `jobset/prep.py` + a CLI flag —
+  `execution/job-system.md § 5` records the gap). Also add the exit-code
+  belt: check the `.out` for `SCF_NOT_CONV`/`ABNORMAL_TERMINATION` on a
+  *zero* exit too, so the retry (and honest failure reporting) survives an
+  MPI stack that doesn't propagate abort statuses.
+- **Watch discovery: make the `JOB` resolver test real.**
+  `test_load_directory_falls_back_to_py_job_name` still writes the retired
+  `job_name = "…"` form and passes via an earlier discovery step — it never
+  exercises the resolver it names. Rewrite it against the emitted
+  `JOB = "…"` form, and widen the capture class to allow dots
+  (`_SAFE_WRAPPER_NAME_RE` permits `bdt.opt`; the regex's
+  `[A-Za-z0-9_\-]+` silently truncates at the first dot).
+- **Security follow-ups** (from the ops reconcile): add tests for the
+  actual security-header *values* (only the inline-script source-text test
+  exists); verify `/api/admin/rate_limit/*` is genuinely unreachable when
+  no `auth` section is configured; make `install-env.sh` bootstrap work on
+  micromamba-only hosts (its manager probe loops over `mamba conda` only).
+- **Transport bibliography keys.** The transport methods paragraphs cite
+  Reed 2006 / Stokbro 2003, but `science/references.bib` doesn't carry
+  those entries yet — add them (the engine emits the citations today).
+- **TranSIESTA docstring pointers.** `transport/transiesta.py:59,136,925`
+  cite external `project_*.md` plan files that were never committed —
+  repoint to `engines/transport.md` + this roadmap.
+- **README screenshot re-capture.** `hero-molbuilder.png` / `tab-bar.png`
+  show five tabs; six ship (`process/screenshots.md` carries the flag and
+  the capture recipe).
+- **`test_vendor_licenses` Python floor.** The test imports `tomllib`
+  (3.11+) while `pyproject.toml` claims `requires-python >= 3.9` — guard
+  the import or raise the floor.
 
 ---
 
