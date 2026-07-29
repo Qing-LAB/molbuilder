@@ -356,7 +356,8 @@ dropped with a warning.)
     "kind": "slurm",
     "directives": { "partition": "public", "qos": "public",
                     "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
-    "gpu":      { "partition": "public", "default_type": "a100", "exclusive": true, "mem": null },
+    "gpu":      { "partition": "public", "default_type": "a100", "exclusive": false,
+                  "mem": "64G", "mem_cap_per_gpu": "128G" },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
     "mem_model": { "node_mem_gb": 500, "safety": 1.3, "extra_gb": 0 },
     "routing":  [ { "name": "short", "max_time": "0-04:00:00",
@@ -371,10 +372,14 @@ dropped with a warning.)
   `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
   filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
   (the emitter warns when it sees a `%`).
-- **`gpu`** - `{partition, default_type, exclusive, mem}`. A GPU job routes its
-  `-p` to `gpu.partition`, takes `--gres=gpu:<default_type>:<count>`, and uses
-  `gpu.mem` when set. An explicit `--mem` wins; otherwise a null `gpu.mem`
-  falls back to `defaults.mem` and then the estimator (section 5.3.1).
+- **`gpu`** — `{partition, default_type, exclusive, mem, mem_cap_per_gpu}`. A
+  GPU job routes its `-p` to `gpu.partition` and takes
+  `--gres=gpu:<default_type>:<count>`. `mem` and `mem_cap_per_gpu` are the
+  GPU memory **band** — a floor and a per-GPU ceiling on the job's `--mem`
+  (§ 5.3.1). `exclusive: false` is the recommended HPC default: GPU nodes are
+  shared multi-GPU boxes, and a job kept inside its proportional share
+  backfills far sooner (and burns far less fairshare) than one reserving a
+  whole node — reserve `exclusive: true` for benchmark-grade timings.
 - **`defaults`** — job-agnostic `{time, cpus_per_task, mem}` fallbacks.
 - **`mem_model`** — numeric coefficients for the per-job memory estimator
   (`molbuilder/siesta/memory.py`).
@@ -392,19 +397,35 @@ memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"`
 because the inner wrapper owns activation and launch. Emission is gated on a
 `scheduler` block being present; with none, only the `.run.sh` is written.
 
-#### 5.3.1 Memory resolution (one path, CPU and GPU)
+#### 5.3.1 Memory resolution (one sizing path + a GPU band)
 
-Memory is job-specific and identical for CPU and GPU — same system, same
-physics — so there is no GPU special case. Precedence:
+The *amount* a job needs is job-specific and identical physics on CPU and
+GPU, so there is **one sizing path** for both:
 
-1. an explicit `--mem` (a hard override), else
+1. an explicit `--mem` (a hard override — never floored, never capped), else
 2. `defaults.mem` if set (a site-wide override for all jobs), else
 3. a per-job estimate from the `.fdf` problem size (scaled by rank count, via
    `mem_model`), emitted with a `# --mem auto-estimated …` comment.
 
-Estimation is best-effort and never blocks emission; on any failure it falls
-back to the partition default. An **exclusive** job ignores all of this and
-takes the whole node (`--mem=0`).
+What *differs* on GPU nodes is the **hardware context**, so a non-exclusive
+GPU job then clamps the sized value into the `gpu` band:
+
+- **Floor = `gpu.mem`** (e.g. `"64G"`). HPC sites grant a tight per-GPU
+  host-RAM default when `--mem` is absent (Sol: 24 GiB/GPU) — too small for
+  a dense SIESTA diagonalization's host-side matrices.
+- **Ceiling = `gpu.mem_cap_per_gpu` × GPUs requested** (e.g. `"128G"` ×
+  n). GPU nodes are shared multi-GPU boxes (Sol A100 nodes: 48 cores /
+  512 GiB / 4 GPUs → 128 GiB is one GPU's proportional share). A job inside
+  its share backfills beside other GPU jobs; a job that grabs most of the
+  node's RAM blockades the remaining GPUs — queue wait *and* fairshare
+  charge (Sol bills 1 CHE per 4 GiB-hour) both scale with the request.
+  When the cap bites, the emitted header says so and names the options:
+  request more GPUs (the cap scales), run `--exclusive`, or take the CPU
+  route.
+
+Estimation is best-effort and never blocks emission; on any failure a GPU
+job falls back to the floor and a CPU job to the partition default. An
+**exclusive** job ignores all of this and takes the whole node (`--mem=0`).
 
 ### 5.4 `execution` and `envs`
 

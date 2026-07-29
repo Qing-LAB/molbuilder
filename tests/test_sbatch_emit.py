@@ -168,7 +168,9 @@ def test_gpu_memory_falls_back_to_shared_default(tmp_path):
 
 
 def test_gpu_mem_config_key_is_used(tmp_path):
-    """A GPU job uses scheduler.gpu.mem before defaults.mem or estimation."""
+    """With nothing to size from (no defaults.mem, no parseable system),
+    a GPU job requests the scheduler.gpu.mem FLOOR — not the site's
+    tight per-GPU default."""
     sched = dict(_SCHED)
     sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
     sched["defaults"] = dict(_SCHED["defaults"], mem=None)
@@ -176,6 +178,67 @@ def test_gpu_mem_config_key_is_used(tmp_path):
     gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
                          exclusive=False)
     assert "#SBATCH --mem=64G" in gtxt
+
+
+def test_cpu_job_ignores_gpu_mem_floor(tmp_path):
+    """gpu.mem / mem_cap_per_gpu are GPU-band knobs; a CPU job with no
+    defaults.mem and no parseable system emits NO --mem at all (the
+    partition default), not the GPU floor."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
+    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
+    ctxt = render_sbatch(cfdf, sched, ntasks=64)
+    assert "--mem=64G" not in ctxt
+    assert "#SBATCH --mem=" not in ctxt
+
+
+def test_explicit_mem_beats_the_gpu_band(tmp_path):
+    """An explicit --mem is the operator's judgment: never floored,
+    never capped."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                         mem="470G", exclusive=False)
+    assert "#SBATCH --mem=470G" in gtxt
+    assert "CAPPED" not in gtxt
+
+
+def test_gpu_mem_below_floor_is_raised(tmp_path):
+    """A sized value under the floor is raised to it (and says so)."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem="8G")
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                         exclusive=False)
+    assert "#SBATCH --mem=64G" in gtxt
+    assert "raised from 8G" in gtxt
+
+
+def test_gpu_mem_above_cap_is_capped(tmp_path):
+    """A sized value over the per-GPU cap is capped to cap x n_gpus —
+    the node's proportional host-RAM share (backfill + CHE)."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem="470G")
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
+                         exclusive=False)
+    assert "#SBATCH --mem=128G" in gtxt
+    assert "CAPPED" in gtxt and "470G" in gtxt
+
+
+def test_gpu_mem_cap_scales_with_gpu_count(tmp_path):
+    """Two GPUs = two proportional shares: the cap doubles."""
+    sched = dict(_SCHED)
+    sched["gpu"] = dict(_SCHED["gpu"], mem="64G", mem_cap_per_gpu="128G")
+    sched["defaults"] = dict(_SCHED["defaults"], mem="470G")
+    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
+    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=2,
+                         exclusive=False)
+    assert "#SBATCH --mem=256G" in gtxt
 
 
 def test_explicit_mem_overrides_default(tmp_path):

@@ -18,20 +18,21 @@
       "mail_user": "%u@asu.edu",
       "export": "NONE"
     },
-    "_comment_gpu": "GPU jobs run on the SAME `public` partition (confirmed live: `srun -p public -G 1` allocated an A100-80GB).  default_type=a100 (4 per node, 80 GiB each; prefer over a30's 24 GiB).  exclusive=true for production (Sol GPU nodes are SHARED by default -> avoid contention); the benchmark sweep overrides this to false for faster scheduling.  CAVEAT: some A100s are MIG-sliced -- the benchmark's correctness gate must confirm a full 80 GiB GPU, not a 20 GiB slice. mem=64G: Sol's GPU default (24000 MB) is tight for a large TZP+k-point job; 64G is a safe floor for GPU jobs (CPU jobs keep the generous partition default).",
+    "_comment_gpu": "GPU jobs run on the SAME `public` partition (confirmed live: `srun -p public -G 1` allocated an A100-80GB).  default_type=a100 -- Sol A100 nodes are 48-core / 512-GiB hosts with 4x A100-80GiB each (prefer over a30's 24 GiB).  exclusive=false: these are SHARED 4-GPU boxes, and Sol's fairshare charges CHE = cores + GiB/4 + 25/A100 per hour -- a right-sized 1-GPU job (<=12 cores, <=128G) backfills into any node with one free GPU at ~69 CHE/h, while --exclusive must wait for a fully-idle node and burns the whole node (~276 CHE/h) to use one GPU.  Set exclusive=true only for benchmark-grade timings where node contention would pollute the measurement (the bench sweep manages its own setting).  mem=64G is the FLOOR for non-exclusive GPU jobs (Sol's unspecified default is a tight 24 GiB/GPU -- too small for a dense SIESTA diagonalization's host-side matrices); mem_cap_per_gpu=128G is the CEILING per requested GPU (512G/4 = the proportional host-RAM share; the emitter scales it by GPU count, and flags a job whose estimate exceeds it: more GPUs / --exclusive / CPU route).  CAVEAT: some A100s are MIG-sliced -- the benchmark's correctness gate must confirm a full 80 GiB GPU, not a 20 GiB slice.",
     "gpu": {
       "partition": "public",
       "default_type": "a100",
-      "exclusive": true,
-      "mem": "64G"
+      "exclusive": false,
+      "mem": "64G",
+      "mem_cap_per_gpu": "128G"
     },
-    "_comment_defaults": "Per-job values; CLI flags (--time/--np/--gres/--mem) override.  time=4h is safe under every public-QoS ceiling.  cpus_per_task is the OMP width per MPI rank (ELPA is OpenMP-threaded).  mem=null -> Sol's default (2 GiB/core or 24 GiB/GPU).  IMPORTANT: for a moderate system (e.g. the 444-atom BDT-Au junction), benchmark CPU (high np) vs GPU before committing -- single-GPU does NOT always beat many CPU cores for an O(N^3) diagon at this size.  See slurm-integration.md \u00a7 11.",
+    "_comment_defaults": "Per-job values; CLI flags (--time/--np/--gres/--mem) override.  time=4h is safe under every public-QoS ceiling.  cpus_per_task is the OMP width per MPI rank (ELPA is OpenMP-threaded).  mem=null -> Sol's default (2 GiB/core); non-exclusive GPU jobs are floored by gpu.mem instead.  IMPORTANT: for a moderate system (e.g. the 444-atom BDT-Au junction), benchmark CPU (high np) vs GPU before committing -- single-GPU does NOT always beat many CPU cores for an O(N^3) diagon at this size.  See slurm-integration.md \u00a7 11.",
     "defaults": {
       "time": "0-04:00:00",
       "cpus_per_task": 8,
       "mem": null
     },
-    "_comment_mem_model": "System-aware --mem estimator for CPU SIESTA jobs (molbuilder/siesta/memory.py).  When `defaults.mem` is null AND the job is a SIESTA .fdf, molbuilder estimates peak RSS from N_orb^2 x k-points (the dense diagonalization) + mesh + per-rank replication, x safety, capped at node_mem_gb.  This is what stops a high-np job (e.g. BDT-Au at np=64: OOM'd at 320 GB, survived 480 GB -- the estimator now requests ~470 GB there) from inheriting Sol's tiny per-core default and OOM-ing.  node_mem_gb=500: Sol `public` nodes have ~503 GB (515558 MB).  Coefficients are heuristic -- tune against a successful run's `sacct -o MaxRSS`.  An explicit --mem always overrides; GPU jobs use gpu.mem instead.",
+    "_comment_mem_model": "System-aware --mem estimator for CPU SIESTA jobs (molbuilder/siesta/memory.py).  When `defaults.mem` is null AND the job is a SIESTA .fdf, molbuilder estimates peak RSS from N_orb^2 x k-points (the dense diagonalization) + mesh + per-rank replication, x safety, capped at node_mem_gb.  This is what stops a high-np job (e.g. BDT-Au at np=64: OOM'd at 320 GB, survived 480 GB -- the estimator now requests ~470 GB there) from inheriting Sol's tiny per-core default and OOM-ing.  node_mem_gb=500: Sol `public` nodes have ~503 GB (515558 MB).  Coefficients are heuristic -- tune against a successful run's `sacct -o MaxRSS`.  An explicit --mem always overrides; non-exclusive GPU jobs clamp the estimate into the [gpu.mem floor, mem_cap_per_gpu x n_gpu ceiling] band.",
     "mem_model": {
       "node_mem_gb": 500,
       "safety": 1.3,

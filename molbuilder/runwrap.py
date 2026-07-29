@@ -3137,6 +3137,28 @@ def _parse_gres(gres: str) -> Tuple[Optional[str], int]:
     return m.group("type"), int(m.group("count"))
 
 
+_MEM_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]?)B?$", re.IGNORECASE)
+
+
+def _mem_to_mb(value: Any) -> Optional[int]:
+    """Parse a SLURM-style memory value to MB; ``None`` if unparseable.
+
+    Accepts the forms SLURM's ``--mem`` accepts: a bare number (MB, the
+    SLURM default unit) or a number with a K/M/G/T suffix (``64G``,
+    ``24000M``, ``2T``).  Used to compare the GPU floor/cap band values
+    against the estimator's/defaults' request -- NOT to validate user
+    input (runtime_config owns validation).
+    """
+    if value is None:
+        return None
+    m = _MEM_RE.match(str(value).strip())
+    if not m:
+        return None
+    mult = {"": 1, "K": 1 / 1024, "M": 1,
+            "G": 1024, "T": 1024 * 1024}[m.group(2).upper()]
+    return int(float(m.group(1)) * mult)
+
+
 def render_sbatch(script_path: Path,
                   scheduler: Mapping[str, Any],
                   *,
@@ -3224,17 +3246,31 @@ def render_sbatch(script_path: Path,
     cpus = cpus_per_task if cpus_per_task is not None \
         else defaults.get("cpus_per_task")
     walltime = time if time is not None else defaults.get("time")
-    # mem: caller arg wins, else GPU/CPU-specific site default,
-    # else the .fdf estimator.  Best-effort: estimation NEVER blocks
-    # emission; on any failure we fall back to the partition default.
+    # mem: an explicit caller --mem wins OUTRIGHT (the operator's
+    # judgment; never clamped).  Otherwise: site-wide ``defaults.mem``,
+    # else the job-specific .fdf estimator.  GPU jobs then clamp the
+    # result into the [``gpu.mem`` floor, ``gpu.mem_cap_per_gpu`` x
+    # n_gpus ceiling] band:
+    #   * the FLOOR covers the site's tight per-GPU host-RAM default
+    #     (Sol grants 24 GiB/GPU when unspecified -- too small for a
+    #     dense SIESTA diagonalization's host-side matrices);
+    #   * the CEILING keeps a shared-node GPU job inside its
+    #     PROPORTIONAL host-RAM share (node_RAM x n_gpus /
+    #     gpus_per_node; Sol A100 nodes: 512G / 4 = 128G per GPU), so
+    #     it backfills into a partially-used node instead of
+    #     blockading the other GPUs -- queue wait AND the fairshare
+    #     CHE burn (1 CHE per 4 GiB-hour on Sol) both scale with the
+    #     request.  A job whose estimate exceeds the cap is flagged in
+    #     the emitted header: give it more GPUs (the cap scales), run
+    #     it --exclusive, or route it to the CPU partition.
+    # Best-effort: estimation NEVER blocks emission; on any failure we
+    # fall back to the floor (GPU) or the partition default (CPU).
     # (Exclusive jobs ignore all of this and take the whole node.)
     mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
     else:
-        memory = gpu_cfg.get("mem") if gpu else None  # GPU-specific default
-        if memory is None:
-            memory = defaults.get("mem")       # site-wide fallback
+        memory = defaults.get("mem")           # site-wide fallback
         if memory is None and Path(script_path).suffix.lower() == ".fdf":
             try:
                 from .siesta.memory import (estimate_siesta_memory,
@@ -3254,6 +3290,43 @@ def render_sbatch(script_path: Path,
                         f"scheduler.mem_model or override with --mem.")
             except Exception:
                 memory = None   # fall back to the partition default
+        if gpu:
+            _floor_mb = _mem_to_mb(gpu_cfg.get("mem"))
+            _cap_mb = _mem_to_mb(gpu_cfg.get("mem_cap_per_gpu"))
+            if _cap_mb is not None:
+                _cap_mb *= max(1, int(gpu_count or 1))
+            _have_mb = _mem_to_mb(memory)
+            if _have_mb is None:
+                # Nothing to size from (no defaults.mem, no estimate):
+                # the floor IS the GPU request (better than the site's
+                # tight per-GPU default).
+                if _floor_mb is not None:
+                    memory = gpu_cfg.get("mem")
+                    mem_comment = (
+                        "# --mem = scheduler.gpu.mem (GPU floor; no "
+                        "job-specific estimate available).")
+            else:
+                _pre = memory
+                _clamped = _have_mb
+                if _floor_mb is not None and _clamped < _floor_mb:
+                    _clamped = _floor_mb
+                    mem_comment = (
+                        f"# --mem raised from {_pre} to the "
+                        f"scheduler.gpu.mem floor (GPU nodes grant a "
+                        f"tight per-GPU default; the floor is the site's "
+                        f"safe minimum for a GPU run).")
+                if _cap_mb is not None and _clamped > _cap_mb:
+                    _clamped = _cap_mb
+                    mem_comment = (
+                        f"# --mem CAPPED at gpu.mem_cap_per_gpu x "
+                        f"{max(1, int(gpu_count or 1))} GPU(s) -- the "
+                        f"node's proportional host-RAM share, kept so "
+                        f"this job backfills beside other GPU jobs.  "
+                        f"The uncapped value was {_pre}; if the run "
+                        f"OOMs: request more GPUs (the cap scales), "
+                        f"run --exclusive, or use the CPU route.")
+                if _clamped != _have_mb:
+                    memory = f"{-(-_clamped // 1024)}G"
 
     site = "asu-sol" if partition == "public" else "custom"
     lines: List[str] = [
