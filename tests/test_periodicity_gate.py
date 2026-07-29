@@ -257,3 +257,56 @@ class TestPeriodicityDoor:
         r = client.post("/api/structure/periodicity", json={
             "data": self._blob(_mol()), "op": "calibrate"})
         assert r.status_code == 400
+
+
+# ------------------------------------------------------------------ #
+#  The LOADER gate (§ 6.1 clause 1-2) — the live hemeC symptom        #
+# ------------------------------------------------------------------ #
+
+
+class TestLoaderGate:
+    """The gate must sit on BOTH pair seams.  from_scratch alone left
+    /api/build/load serving corrupted pairs unhealed — MolView drew the
+    box from the world origin while the Cell page showed healed values
+    (observed live on projects/hemeC-dithiol, 2026-07-29)."""
+
+    def _write_corrupted_pair(self, dirpath):
+        import json as _json
+        from molbuilder.workingcopy_structure import StructureCodec
+        s = _mol()                          # atoms near (10,10,10), vac 2.5
+        s.cell = np.eye(3) * 7.0            # explicit cell, no origin,
+        s.__post_init__()                   # atoms far outside [0, cell)
+        blob = StructureCodec().scratch_blob(s)
+        (dirpath / "m.xyz").write_text(blob["xyz"], encoding="utf-8")
+        (dirpath / "m.molstruct.json").write_text(
+            _json.dumps(blob["sidecar"]), encoding="utf-8")
+        return dirpath / "m.xyz"
+
+    def test_codec_read_heals_a_corrupted_pair(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        xyz = self._write_corrupted_pair(tmp_path)
+        healed = StructureCodec().read(xyz)
+        assert np.allclose(healed.cell_origin, [7.5, 7.5, 7.5])
+        assert contains_atoms(healed, healed.cell_origin)
+
+    def test_load_endpoint_serves_the_healed_resolved_origin(
+            self, tmp_path, monkeypatch):
+        pytest.importorskip("flask")
+        from molbuilder.diagnostics import Capabilities, set_capabilities
+        monkeypatch.chdir(tmp_path)
+        sdir = tmp_path / "projects" / "P" / "structure"
+        sdir.mkdir(parents=True)
+        xyz = self._write_corrupted_pair(sdir)
+        set_capabilities(Capabilities(runtime_config={},
+                                      conda_binary="/usr/bin/conda"))
+        try:
+            from molbuilder.web.app import create_app
+            client = create_app(config={}).test_client()
+            r = client.post("/api/build/load", json={"path": str(xyz)})
+            assert r.status_code == 200, r.get_json()
+            per = r.get_json()["periodicity"]
+            assert per["resolved_cell_origin"] is not None
+            assert np.allclose(per["resolved_cell_origin"],
+                               [7.5, 7.5, 7.5])
+        finally:
+            set_capabilities(None)

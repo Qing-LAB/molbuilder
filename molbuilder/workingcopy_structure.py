@@ -76,6 +76,13 @@ class StructureCodec:
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
             molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
+        # The frame-contract gate on the READ seam too (§ 6.1 clause 1-2:
+        # defaulting/healing is gated by the LOADER and saver of the pair).
+        # Without this, /api/build/load served a corrupted pair unhealed and
+        # MolView drew the box from the world origin -- the live symptom on
+        # projects/hemeC-dithiol (explicit cell, dropped origin).
+        from .periodicity_gate import validate_and_heal
+        struct, _notices = validate_and_heal(struct)
         return struct
 
     # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
