@@ -83,6 +83,265 @@ def _title_of(md_path: Path) -> str:
     return md_path.stem
 
 
+def _resolve_label(path: str, root: Path, label: Optional[str] = None) -> str:
+    """Return a display label for ``path`` — explicit label wins, else
+    the doc's H1 title, else the filename stem."""
+    if label:
+        return label
+    try:
+        resolved = root / path
+        if resolved.is_file():
+            return _title_of(resolved)
+    except Exception:
+        pass
+    return Path(path).stem
+
+
+def _subtitle_of(path: str, root: Path) -> str:
+    """A short, human-readable subtitle for a doc.  Strips the
+    `molbuilder — ` prefix from the H1 title so the sidebar shows
+    something concise like \"Design\" instead of the full
+    \"molbuilder — design\"."""
+    try:
+        resolved = root / path
+        if not resolved.is_file():
+            return ""
+        title = _title_of(resolved)
+        if title.lower().startswith("molbuilder"):
+            idx = title.find("—")
+            if idx < 0:
+                idx = title.find("-")
+            if idx >= 0:
+                return title[idx + 1:].strip()
+        return title
+    except Exception:
+        return ""
+
+
+def _build_toc_tree(root: Path) -> List[Dict]:
+    """Build the full document tree from ``toc.json``.
+
+    Returns a list of top-level tree nodes.  Each node is either a
+    **directory** (has ``children``) or a **document** (has ``path``).
+    Archive children are auto-populated from the filesystem.
+    """
+    import json as _json
+    toc_path = root / "toc.json"
+    if not toc_path.is_file():
+        return []   # fallback: empty tree
+    toc = _json.loads(toc_path.read_text(encoding="utf-8"))
+
+    # Collect all paths referenced in the toc tree (for auto-discovery).
+    _toc_paths: set = set()
+    _new_paths: Dict[str, list] = {}   # domain_label -> [new entries to persist]
+
+    def _collect_paths(node: dict) -> None:
+        if "path" in node:
+            _toc_paths.add(node["path"])
+        for c in node.get("children", []):
+            _collect_paths(c)
+    for n in toc.get("tree", []):
+        _collect_paths(n)
+
+    def _populate(node: dict, parent_rel: str = "") -> dict:
+        """Recursively resolve a toc.json node into a render-ready dict."""
+        if "path" in node and "children" not in node:
+            # Plain leaf — no sub-documents.
+            rel = node["path"]
+            return {
+                "path":     rel,
+                "label":    _resolve_label(rel, root, node.get("label")),
+                "subtitle": _subtitle_of(rel, root),
+            }
+        if "path" in node:
+            # Master doc with sub-documents — has both path and children.
+            rel = node["path"]
+            kids = [_populate(c) for c in node.get("children", [])]
+            return {
+                "path":     rel,
+                "label":    _resolve_label(rel, root, node.get("label")),
+                "subtitle": _subtitle_of(rel, root),
+                "children": kids,
+            }
+        # Directory node — has label + optional children.
+        label = node.get("label", "")
+        meta  = node.get("meta", "")
+        collapsed = node.get("collapsed", False)
+        children = list(node.get("children", []))
+
+        # Auto-discover: for each domain directory, find .md files not
+        # listed in toc.json and append them as unlisted children.
+        domain_dir = node.get("_dir")
+        if not domain_dir:
+            # Derive from the first child's path prefix.
+            for c in children:
+                if "path" in c:
+                    prefix = c["path"].split("/")[0] if "/" in c["path"] else ""
+                    if prefix and (root / prefix).is_dir():
+                        domain_dir = prefix
+                        break
+        if domain_dir:
+            subdir = root / domain_dir
+            if subdir.is_dir():
+                listed = {c["path"] for c in children if "path" in c}
+                # Build stem→path map for R5 prefix-grouping.
+                _stem_to_parent: Dict[str, str] = {
+                    Path(c["path"]).stem: c["path"]
+                    for c in children if "path" in c
+                }
+                new = []
+                for p in sorted(subdir.glob("*.md"), key=lambda p: p.name.lower()):
+                    rel = str(p.relative_to(root)).replace(os.sep, "/")
+                    if rel in listed or rel in _toc_paths:
+                        continue
+                    # R5: sub-documents share the master's stem as a prefix.
+                    stem = p.stem
+                    parent = None
+                    for pstem in _stem_to_parent:
+                        if stem.startswith(pstem + "-"):
+                            parent = pstem
+                            break
+                    entry = {"path": rel}
+                    if parent:
+                        entry["_parent"] = parent
+                    new.append(entry)
+                if new:
+                    _new_paths[label] = new
+                    children.extend(new)
+
+        # Resolve children, nesting sub-documents (R5 prefix convention)
+        # under their parent doc.
+        resolved: list = []
+        pending_subs: Dict[str, list] = {}   # parent_stem -> [sub-doc children]
+        for c in children:
+            if "_parent" in c:
+                parent_stem = c["_parent"]
+                pending_subs.setdefault(parent_stem, []).append(c)
+            else:
+                resolved.append(c)
+        # Now resolve: for each top-level child, if it's a doc node
+        # with pending sub-documents, nest them.
+        final_children = []
+        for c in resolved:
+            if "path" in c:
+                stem = Path(c["path"]).stem
+                if stem in pending_subs:
+                    c = dict(c)   # shallow copy
+                    c["children"] = pending_subs.pop(stem)
+            final_children.append(c)
+        # Any leftover subs (parent not found) — append flat.
+        for subs in pending_subs.values():
+            final_children.extend(subs)
+
+        resolved_children = [_populate(c) for c in final_children] if final_children else []
+        return {
+            "label":     label,
+            "meta":      meta,
+            "collapsed": collapsed,
+            "children":  resolved_children,
+        }
+
+    # Archive auto-population: scan archive/ tree and build a subtree.
+    archive_children: list = []
+    archive_root = root / "archive"
+    if archive_root.is_dir():
+        def _scan_dir(dir_path: Path) -> list:
+            items = []
+            for p in sorted(dir_path.iterdir(), key=lambda p: (p.is_dir(), p.name.lower())):
+                if p.is_dir():
+                    sub_items = _scan_dir(p)
+                    if sub_items:
+                        items.append({
+                            "label": p.name,
+                            "children": sub_items,
+                        })
+                elif p.suffix.lower() == ".md":
+                    rel = str(p.relative_to(root)).replace(os.sep, "/")
+                    items.append({
+                        "path":     rel,
+                        "label":    _resolve_label(rel, root),
+                        "subtitle": _subtitle_of(rel, root),
+                    })
+            return items
+
+        archive_children = _scan_dir(archive_root)
+
+    # Build the tree.
+    tree = []
+    for node in toc.get("tree", []):
+        if node.get("label") == "Archive":
+            node["children"] = archive_children
+        tree.append(_populate(node))
+
+    # Persist newly-discovered paths back to toc.json.
+    if _new_paths:
+        _dirty = False
+        for tn in toc.get("tree", []):
+            label = tn.get("label", "")
+            if label in _new_paths:
+                existing = tn.setdefault("children", [])
+                for entry in _new_paths[label]:
+                    parent = entry.get("_parent")
+                    if parent:
+                        for pc in existing:
+                            stem = Path(pc.get("path", "")).stem
+                            if stem == parent:
+                                pc.setdefault("children", []).append(
+                                    {"path": entry["path"]})
+                                break
+                        else:
+                            existing.append({"path": entry["path"]})
+                    else:
+                        existing.append({"path": entry["path"]})
+                _dirty = True
+        if _dirty:
+            tmp = toc_path.with_suffix(".tmp")
+            tmp.write_text(_json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+            os.replace(str(tmp), str(toc_path))
+
+    return tree
+
+
+@bp.route("/api/docs/toc", methods=["GET"])
+def api_docs_toc():
+    """Document tree for the sidebar — built from ``docs/toc.json``.
+
+    Response::
+
+        {ok, tree: [{label, meta?, path?, collapsed?, children?}]}
+
+    Leaf nodes have ``path``; directory nodes have ``children``.
+    The root README (``../README.md``) is a special ``readme`` key.
+    """
+    root = _docs_root()
+    if root is None:
+        return jsonify({"ok": False, "error": "docs/ not available"}), 404
+
+    toc_path = root / "toc.json"
+    if not toc_path.is_file():
+        return jsonify({"ok": True, "tree": [], "readme": None})
+
+    import json as _json
+    toc = _json.loads(toc_path.read_text(encoding="utf-8"))
+
+    tree = _build_toc_tree(root)
+
+    # Root README
+    readme_info = toc.get("root_readme")
+    readme = None
+    if readme_info:
+        repo_readme = (root.parent / "README.md")
+        if repo_readme.is_file():
+            readme = {
+                "path":     "../README.md",
+                "label":    "README.md",
+                "subtitle": "project root",
+            }
+
+    return jsonify({"ok": True, "tree": tree, "readme": readme})
+
+
 @bp.route("/api/docs/list", methods=["GET"])
 def api_docs_list():
     """Every ``docs/*.md`` (recursive), grouped by its top-level directory.
@@ -125,17 +384,60 @@ def api_docs_list():
     return jsonify({"ok": True, "groups": groups})
 
 
+@bp.route("/api/docs/img/<path:img_path>", methods=["GET"])
+def api_docs_img(img_path: str):
+    """Serve an image from ``docs/img/<img_path>``.
+
+    The Documents tab rewrites ``<img>`` src attributes to this
+    endpoint so images render regardless of the page's base URL.
+    """
+    from flask import send_file
+    root = _docs_root()
+    if root is None:
+        return jsonify({"ok": False, "error": "docs/ not available"}), 404
+    resolved = root / "img" / img_path
+    # Defence: reject .. traversal.
+    try:
+        resolved = resolved.resolve()
+        if os.path.commonpath([resolved, root]) != str(root):
+            raise ValueError
+    except (ValueError, OSError):
+        return jsonify({"ok": False, "error": "invalid path"}), 400
+    if not resolved.is_file():
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return send_file(str(resolved))
+
+
 @bp.route("/api/docs/read", methods=["GET"])
 def api_docs_read():
     """One doc's raw Markdown text (rendered client-side).
 
     Query: ``path`` -- relative to ``docs/`` (from ``/api/docs/list``).
+    Special: ``path=../README.md`` reads the project root README
+    (outside ``docs/``; validated separately).
     Response: ``{ok, path, title, text}`` or ``{ok:false, error}`` (400/404).
     """
     root = _docs_root()
     if root is None:
         return jsonify({"ok": False, "error": "docs/ not available"}), 404
     raw_path = (request.args.get("path") or "").strip()
+
+    # Root README: lives outside docs/, validated separately.
+    if raw_path == "../README.md":
+        repo_readme = root.parent / "README.md"
+        if not repo_readme.is_file():
+            return jsonify({"ok": False, "error": "README not found"}), 404
+        try:
+            text = repo_readme.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return jsonify({"ok": False, "error": f"read failed: {exc}"}), 404
+        return jsonify({
+            "ok":    True,
+            "path":  raw_path,
+            "title": "molbuilder — Project README",
+            "text":  text,
+        })
+
     try:
         resolved = _resolve_doc(raw_path, root)
     except ValueError as exc:

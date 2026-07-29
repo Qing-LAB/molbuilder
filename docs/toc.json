@@ -1,0 +1,108 @@
+{
+  "root_readme": true,
+  "tree": [
+    {
+      "label": "Spine",
+      "meta": "The top-level design docs — start here",
+      "children": [
+        { "path": "README.md", "label": "Documentation Index" },
+        { "path": "design.md" },
+        { "path": "architecture.md" },
+        { "path": "backend-architecture.md" },
+        { "path": "roadmap.md" }
+      ]
+    },
+    {
+      "label": "Model",
+      "meta": "The data model (L1): Structure, periodicity, annotations, chemistry, parse stack",
+      "children": [
+        { "path": "model/overview.md" },
+        { "path": "model/structure.md", "children": [
+          { "path": "model/structure-periodicity.md" },
+          { "path": "model/structure-annotations.md" },
+          { "path": "model/structure-molstruct.md" }
+        ]},
+        { "path": "model/chemistry.md" },
+        { "path": "model/parse.md" }
+      ]
+    },
+    {
+      "label": "Science",
+      "meta": "Scientific correctness: validation, chemistry, pseudopotentials",
+      "children": [
+        { "path": "science/overview.md" },
+        { "path": "science/validation.md" },
+        { "path": "science/chemistry-correctness.md" },
+        { "path": "science/pseudopotentials.md" }
+      ]
+    },
+    {
+      "label": "Engines",
+      "meta": "Per-engine emitter specs: SIESTA, PySCF, transport, builders, tuning",
+      "children": [
+        { "path": "engines/overview.md" },
+        { "path": "engines/siesta.md" },
+        { "path": "engines/pyscf.md" },
+        { "path": "engines/transport.md" },
+        { "path": "engines/builders.md" },
+        { "path": "engines/tuning.md" }
+      ]
+    },
+    {
+      "label": "Execution",
+      "meta": "Running jobs: contracts, single-job path, JobSet framework",
+      "children": [
+        { "path": "execution/overview.md" },
+        { "path": "execution/job-contracts.md" },
+        { "path": "execution/running-a-job.md" },
+        { "path": "execution/job-system.md" }
+      ]
+    },
+    {
+      "label": "Web",
+      "meta": "Front-end: tabs, MolView, workspace, projects, results, API, UI contract",
+      "children": [
+        { "path": "web/overview.md" },
+        { "path": "web/tabs.md" },
+        { "path": "web/molview.md" },
+        { "path": "web/vibrationview.md" },
+        { "path": "web/workspace.md" },
+        { "path": "web/projects.md" },
+        { "path": "web/presenters.md" },
+        { "path": "web/runtime.md" },
+        { "path": "web/notifications.md" },
+        { "path": "web/form-schema.md" },
+        { "path": "web/web-api.md" },
+        { "path": "web/ui-contract.md" },
+        { "path": "web/results.md" },
+        { "path": "web/trajectory.md" },
+        { "path": "web/spectra.md" }
+      ]
+    },
+    {
+      "label": "Ops",
+      "meta": "Installing and serving: env model, deployment, auth, rate-limit",
+      "children": [
+        { "path": "ops/installation.md" },
+        { "path": "ops/deployment.md" }
+      ]
+    },
+    {
+      "label": "Process",
+      "meta": "How we work: code conventions, test strategy, audit playbook, package layout",
+      "children": [
+        { "path": "process/package-layout.md" },
+        { "path": "process/conventions.md" },
+        { "path": "process/testing.md" },
+        { "path": "process/code-audit.md" },
+        { "path": "process/screenshots.md" }
+      ]
+    },
+    {
+      "label": "Archive",
+      "meta": "Historical documents, date-prefixed. Not a source of truth.",
+      "collapsed": true,
+      "children": []
+    }
+  ]
+}

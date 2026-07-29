@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='documents/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='documents/docs-render.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script. #}
 <script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 </head>
@@ -20,6 +21,10 @@
     <div class="docs-list-status" id="docs-list-status">Loading documents&hellip;</div>
   </aside>
   <section class="docs-view">
+    <div class="docs-view-bar" id="docs-view-bar" hidden>
+      <button class="docs-theme-btn" id="docs-theme-btn"
+              title="Toggle dark/light mode" aria-label="Toggle theme">◐</button>
+    </div>
     <div class="docs-view-empty" id="docs-view-empty">
       <h1>Documents</h1>
       <p>Every design doc, protocol, and guide under <code>docs/</code>, in one

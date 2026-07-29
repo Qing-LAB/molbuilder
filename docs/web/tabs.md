@@ -188,20 +188,109 @@ Generate):
 
 ## 5. Documents — the in-app reader (this page)
 
-`/documents` is the simplest tab: a doc list on the left, a render pane on the
-right, no sidebar. It lists every `docs/*.md` (`GET /api/docs/list`), fetches one
-doc's raw Markdown (`GET /api/docs/read?path=<rel>`), and renders it through the
-shared `markdown-render` primitive (Marked + DOMPurify, with Mermaid drawn in
-place).
+### 5.1 The sidebar — a tree, not a list
 
-**This tab is why the migration docs' links work.** Every internal link in these
-docs is written `?doc=<path-relative-to-docs>` — and *that* is exactly the
-query parameter this page reads: opening a doc writes `?doc=…` back into the URL,
-and loading a URL with `?doc=…` opens that doc. (`<path>` must be one the list
-returned; the server resolves it under the `docs/` root with traversal and
-non-`.md` guards.) A raw `.md` href would 404 — the document is served *through
-this tab*, via `?doc=`, never as a static file. That's the rule the migration's
-link convention (R7) encodes.
+The left rail shows the document tree as **collapsible folders**. Each folder
+is a domain (Model, Engines, Web, …) or a parent document with sub-documents.
+Click `▾` to collapse a folder, `▸` to expand it. Click a leaf to open the
+doc in the right pane.
+
+The tree is NOT a flat alphabetical dump. The order — spine first, then
+domain by domain, then archive last — is deliberate, and parent-child
+nesting (e.g. `structure.md` with `structure-periodicity.md` under it) shows
+which documents belong together.
+
+```mermaid
+flowchart LR
+  sidebar["Sidebar tree"] --> spine["Spine"]
+  sidebar --> model["Model"]
+  model --> overview["model/overview.md"]
+  model --> struct["model/structure.md"]
+  struct --> period["model/structure-periodicity.md"]
+  struct --> annot["model/structure-annotations.md"]
+  struct --> mols["model/structure-molstruct.md"]
+  model --> chem["model/chemistry.md"]
+  model --> parse["model/parse.md"]
+```
+
+### 5.2 `toc.json` — the table of contents
+
+The tree shape lives in `docs/toc.json`. It is a single JSON file —
+human-readable, hand-editable in any text editor — that lists every domain
+folder and every document in display order:
+
+```json
+{
+  "tree": [
+    {
+      "label": "Spine",
+      "children": [
+        { "path": "README.md" },
+        { "path": "design.md" },
+        …
+      ]
+    },
+    {
+      "label": "Model",
+      "children": [
+        { "path": "model/overview.md" },
+        { "path": "model/structure.md", "children": [
+          { "path": "model/structure-periodicity.md" },
+          …
+        ]},
+        …
+      ]
+    },
+    …
+    {
+      "label": "Archive",
+      "collapsed": true,
+      "children": []
+    }
+  ]
+}
+```
+
+Each entry is either a **document** (has `path` — `docs/`-relative) or a
+**folder** (has `label` + `children`). A folder with `"collapsed": true`
+starts hidden. The Archive folder's children are left empty — the server
+fills them in automatically by scanning the `archive/` directory.
+
+The root project `README.md` (`../README.md`) gets its own entry at the very
+top of the tree, above the spine.
+
+### 5.3 The tree stays in sync — auto-discovery
+
+When the Documents tab loads, the server reads `toc.json` and then checks
+every domain directory for `.md` files that are **not** listed in the TOC.
+New files are added to the tree automatically, and written back to
+`toc.json` so the file stays in sync.
+
+A new file named `model/structure-symmetry.md` would be discovered and
+nested under `model/structure.md` — because the name starts with
+`structure-`, the same prefix as its parent. This is the same filename
+convention R5 describes: sub-documents share the master's filename as a
+prefix.
+
+The server writes back to `toc.json` atomically (temp file + rename), so a
+crash during refresh never leaves a half-written TOC.
+
+> **When you write a new document:** drop the `.md` file in the right
+> directory (e.g. `docs/model/`), open or refresh the Documents tab, and
+> it appears.  If the name follows the `parent-` prefix convention, it
+> nests under its parent.  `toc.json` is updated automatically — no
+> manual editing needed.
+
+### 5.4 `?doc=` — why the links work
+
+Every internal link in the migration docs is written
+`?doc=<path-relative-to-docs>`. Opening a doc writes `?doc=…` back into
+the URL; loading a URL with `?doc=…` opens that doc and expands every
+folder along the path so you can see where it lives in the tree.
+
+A raw `.md` href would 404 — the document is served *through this tab*,
+via `?doc=`, never as a static file.  That is the link convention (R7)
+the migration depends on.
 
 ## 6. Save flow — the out-gate
 

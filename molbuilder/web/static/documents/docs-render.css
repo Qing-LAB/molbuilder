@@ -1,0 +1,138 @@
+/* docs-render.css — isolated markdown renderer theme
+ *
+ * A self-contained light/dark colour system for the Documents tab's
+ * right-hand render pane.  Does NOT depend on the app's global design
+ * tokens — the ``--dr-*`` custom properties are the only colours used.
+ * Toggle dark mode by adding ``.docs-render-dark`` to the same element.
+ */
+
+.docs-render {
+    --dr-bg:            #ffffff;
+    --dr-text:          #1f2328;
+    --dr-heading:       #0d1117;
+    --dr-code-bg:       #f6f8fa;
+    --dr-code-text:     #1f2328;
+    --dr-pre-bg:        #f6f8fa;
+    --dr-pre-border:    #d0d7de;
+    --dr-blockquote:    #656d76;
+    --dr-blockquote-bd: #d0d7de;
+    --dr-th-bg:         #f6f8fa;
+    --dr-table-border:  #d0d7de;
+    --dr-link:          #0969da;
+    --dr-mermaid-err:   #cf222e;
+
+    min-height: 100%;
+    background: var(--dr-bg);
+    color: var(--dr-text);
+    line-height: 1.7;
+    font-size: 15px;
+    border-radius: var(--radius-md);
+    padding: 2em 2.5em;
+    box-sizing: border-box;
+}
+
+/* ---- dark palette ---------------------------------------------- */
+
+.docs-render-dark {
+    --dr-bg:            #0d1117;
+    --dr-text:          #c9d1d9;
+    --dr-heading:       #e6edf3;
+    --dr-code-bg:       #161b22;
+    --dr-code-text:     #e6edf3;
+    --dr-pre-bg:        #161b22;
+    --dr-pre-border:    #30363d;
+    --dr-blockquote:    #8b949e;
+    --dr-blockquote-bd: #30363d;
+    --dr-th-bg:         #161b22;
+    --dr-table-border:  #30363d;
+    --dr-link:          #58a6ff;
+    --dr-mermaid-err:   #ff7b72;
+}
+
+/* ---- headings -------------------------------------------------- */
+
+.docs-render h1,
+.docs-render h2,
+.docs-render h3,
+.docs-render h4 {
+    color: var(--dr-heading);
+    line-height: 1.25;
+    margin: 1.5em 0 0.5em;
+}
+.docs-render h1 { font-size: 1.6em; }
+.docs-render h2 { font-size: 1.3em; }
+.docs-render h3 { font-size: 1.1em; }
+.docs-render > :first-child { margin-top: 0; }
+
+/* ---- body ------------------------------------------------------ */
+
+.docs-render p,
+.docs-render ul,
+.docs-render ol,
+.docs-render blockquote { margin: 0.5em 0; }
+
+.docs-render a { color: var(--dr-link); }
+
+/* ---- code ------------------------------------------------------ */
+
+.docs-render code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                 "Liberation Mono", monospace;
+    font-size: 0.9em;
+    background: var(--dr-code-bg);
+    color: var(--dr-code-text);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+}
+
+.docs-render pre {
+    background: var(--dr-pre-bg);
+    border: 1px solid var(--dr-pre-border);
+    border-radius: 6px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+}
+.docs-render pre code { background: none; padding: 0; }
+
+/* ---- blockquote ------------------------------------------------ */
+
+.docs-render blockquote {
+    border-left: 3px solid var(--dr-blockquote-bd);
+    padding-left: 1em;
+    color: var(--dr-blockquote);
+}
+
+/* ---- tables ---------------------------------------------------- */
+
+.docs-render table {
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+    font-size: 0.9em;
+}
+.docs-render th,
+.docs-render td {
+    border: 1px solid var(--dr-table-border);
+    padding: 0.35em 0.75em;
+    text-align: left;
+}
+.docs-render th {
+    background: var(--dr-th-bg);
+    color: var(--dr-heading);
+}
+
+/* ---- images & diagrams ----------------------------------------- */
+
+.docs-render img { max-width: 100%; height: auto; }
+
+.docs-render .mermaid-figure {
+    margin: 1em 0;
+    text-align: center;
+    overflow-x: auto;
+}
+.docs-render .mermaid-figure svg { max-width: 100%; height: auto; }
+.docs-render .mermaid-error {
+    color: var(--dr-mermaid-err);
+    font-size: 0.85em;
+    margin: 0.5em 0;
+}
