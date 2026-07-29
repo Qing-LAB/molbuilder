@@ -330,6 +330,26 @@ never saved back — and the **Results** tab is engine-frame by construction
 Two coupled views of one `(cell, cell_origin, axis_kind, vacuum)`, with a
 strict split between showing and writing.
 
+> **The one-onChange update contract (2026-07-29).** The canvas store's
+> `onChange` is the SINGLE channel through which every downstream view
+> updates — automatically, with no consumer-triggered redraws:
+>
+> - **Pull consumers** (DOM widgets: the Cell page, the panel) re-read the
+>   store's accessors on every notify.
+> - **Push consumers** (the render pipeline) are driven *from inside the
+>   channel*: the data model's one subscription diffs the engine-facing
+>   `{lattice, origin}` and hands changes to the geometry tier
+>   (`engine.setCell` → embed `setCellBox`) — a box move with atoms,
+>   animation, and selection untouched; full structure loads ride the
+>   existing `setData` push.
+> - **Private snapshots are caches, and this channel is their ONLY
+>   invalidator.** The engine's `_data.cell` and the embed's
+>   `state.current.cellBox` hold copies for rendering; any new derived
+>   view MUST either re-read the store on notify or be updated by the
+>   channel. Adding a snapshot without wiring its invalidation is exactly
+>   the 2026-07-29 stale-box bug: the Cell page showed the healed origin
+>   while the 3D box drew a copy nothing refreshed.
+
 **Display (read-only) — the MolView "Cell" page.** The MolView panel has two
 switchable pages `[ Selection | Cell ]`. The Cell page is **display-only**: it
 shows vacuum, the unit cell as a 3×3 matrix (non-orthogonal-ready), the cell
@@ -345,12 +365,16 @@ lives in Modify, not MolView. Each parameter group — vacuum, `axis_kind`, unit
 cell, cell origin — has its **own "Update" button**, so each group independently
 stays at its default or is committed. Editing STAGES a change; it does not touch
 the in-memory structure until that group's Update commits via
-`molview.data.commitPeriodicity` (vacuum / axis_kind / cell / cell_origin —
-re-resolving through the ONE server resolver). Cell-origin editing is enabled
-**only with an explicit cell** (with a derived cell the corner is auto and shown
-read-only); editing the origin moves the box, not the atoms, and "Calibrate
-coordinates to cell" bakes the shift in (§ 6). The fdf / structure-optimization
-tabs expose the same groups against the same accessors.
+`molview.data.commitPeriodicityOp(op, payload)` — one POST to the unified door
+(§ 6.2), whose returned truth blob the client adopts verbatim (Python owns the
+change; the JS calls and renders). Reset-to-derived edits (vacuum /
+periodicity under an explicit cell) are **confirm-gated** ("the cell boundary
+will move"); cell-origin editing is enabled **only with an explicit cell**
+(with a derived cell the corner is auto and shown read-only) and has its own
+"Reset origin to default" button; editing the origin moves the box, not the
+atoms. There is **no calibrate button** (§ 6.2 — emission translates
+implicitly), and **only the Modify tab has this editor**: the other tabs
+mount MolView read-only and carry no periodicity controls.
 
 ---
 

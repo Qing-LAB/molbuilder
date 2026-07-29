@@ -211,7 +211,7 @@ flowchart LR
     LOAD -->|"normalised structure payload"| DATA
     DATA -->|"applyOp(name)"| MOD
     MOD -->|"edited structure"| DATA
-    DATA -->|"setUnitCell / commitPeriodicity"| CELL
+    DATA -->|"commitPeriodicityOp (the § 6.2 door)"| CELL
     DATA -->|"save / load / undo (timeline)"| WS
     WS -->|"restore bytes"| DATA
 ```
@@ -331,11 +331,15 @@ caller can never mutate MolView's state by reference.
 `getLabelAtoms(label)`, `getLabels()`, `getFrozen`, `getRegions`, `isDirty`,
 `isEmpty`, `draftIdentity`.
 
-**Writes:** `commitPeriodicity`, `setUnitCell`, `setCellOrigin`, `setAxisKind`,
-`setVacuum`, `setLabel`, `markDirty`, `markSaved`, `installMolecule`,
-`exportFile`, `save`, `load`, `generate`, `applyOp`, `discard`, `undo`,
-`reloadFrames`, `setForces`, plus the frame API (§ 16), the `selection`
-sub-namespace (§ 15), and the `view` sub-namespace (§ 18).
+**Writes:** `commitPeriodicityOp` (**the** periodicity door — one POST to
+`/api/structure/periodicity`, adopt the returned truth;
+`structure-periodicity.md § 6.2`), `setLabel`, `markDirty`, `markSaved`,
+`installMolecule`, `exportFile`, `save`, `load`, `generate`, `applyOp`,
+`discard`, `undo`, `reloadFrames`, `setForces`, plus the frame API (§ 16),
+the `selection` sub-namespace (§ 15), and the `view` sub-namespace (§ 18).
+*(Legacy, ungated, pending removal — do not call: `commitPeriodicity`,
+`setUnitCell`, `setCellOrigin`, `setAxisKind`, `setVacuum`; they bypass the
+frame-contract gate.)*
 
 **The two structure primitives:**
 
