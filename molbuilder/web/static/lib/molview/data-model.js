@@ -20,7 +20,6 @@
  *     // display accessors, setters, + the server-resolved commit
  *     getUnitCell, getVacuum, getAxisKind,
  *     getUnitCellInfo, getUnitCellOrigin, getVacuumInfo, getAxisKindInfo,
- *     setUnitCell, setVacuum, setAxisKind, commitPeriodicity,
  *     // Operations (server round-trip + atomic state replacement)
  *     installMolecule, generate, applyOp, discard, undo,
  *     // Session-state timeline (§19.5): one save + one load, index-delta parameterized
@@ -514,25 +513,16 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     }
 
     // --- WRITE accessors (§1.2.1) -- the ONLY way consumers mutate the model. --- //
+    // _setPeriodicity is PRIVATE: the door's adoption writes through it.  The
+    // legacy public writers (setUnitCell / setCellOrigin / setAxisKind /
+    // setVacuum / commitPeriodicity) were REMOVED 2026-07-29 -- they bypassed
+    // the frame-contract gate (no validation, no heal, no notices; the
+    // hemeC-corruption class) and contaminated the API: there is ONE
+    // periodicity write path, commitPeriodicityOp below.
     function _setPeriodicity(patch) {
         var cs = _canvas();
         if (cs && typeof cs.setPeriodicity === "function") cs.setPeriodicity(patch);
     }
-    function setUnitCell(cell)  { _setPeriodicity({ cell: cell }); }
-    function setAxisKind(kinds) { _setPeriodicity({ axis_kind: kinds }); }
-    function setVacuum(vac)     { _setPeriodicity({ vacuum: vac }); }
-    // §3c: set the raw cell_origin -- the low corner an EXPLICIT cell is drawn from
-    // (an electrode junction whose cell wraps off-origin atoms).  Moves the BOX, not
-    // the atoms (SIESTA gets the shift at generation).  Pass null to clear (fall back
-    // to the resolved corner).  Only meaningful with an explicit cell; the server
-    // drops it otherwise.  Commit via commitPeriodicity so resolved_cell_origin
-    // (the drawn corner) re-resolves.
-    function setCellOrigin(origin) { _setPeriodicity({ cell_origin: origin }); }
-    // §3b: the Cell page's "Update" commit -- apply an explicit periodicity edit, then
-    // re-resolve the effective cell through the ONE server resolver (§3a) and write the
-    // fresh resolved_cell back so the render + display stay consistent.  Returns a
-    // promise.  An explicit `cell` wins (no re-resolve); a vacuum / axis_kind / cleared
-    // cell edit needs the server to recompute the bbox+vacuum default.
     // § 6.2 v3 — the unified periodicity door.  PYTHON OWNS THE CHANGE:
     // one POST per Cell-page edit; the gate applies the regime model
     // (vacuum/axis edits reset to derived; cell respects origin-then-
@@ -571,29 +561,6 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         });
     }
 
-    function commitPeriodicity(patch) {
-        patch = patch || {};
-        if ("cell"        in patch) setUnitCell(patch.cell);
-        if ("cell_origin" in patch) setCellOrigin(patch.cell_origin);   // §3c raw corner
-        if ("vacuum"      in patch) setVacuum(patch.vacuum);
-        if ("axis_kind"   in patch) setAxisKind(patch.axis_kind);
-        if (patch.cell) return Promise.resolve();   // explicit cell wins
-        // A cell_origin / vacuum / axis_kind / cleared-cell edit re-resolves through
-        // the server so resolved_cell (§3a) + resolved_cell_origin (§3c, the DRAWN
-        // corner = cell_origin for an explicit cell) stay consistent with the edit.
-        var blob = _scratchBlob();
-        if (!blob || !root.fetch) return Promise.resolve();
-        return root.fetch("/api/structure/resolve-cell", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ data: blob }),
-        }).then(function (r) { return r.json(); }).then(function (j) {
-            if (j && j.ok) _setPeriodicity({
-                resolved_cell: j.resolved_cell,
-                resolved_cell_origin: j.resolved_cell_origin || null,
-            });
-        }).catch(function () { /* best-effort; the explicit edit already landed */ });
-    }
     // Assign/replace a region label on a set of atom indices (in-memory; persists on
     // Save).  Routes to the selection store's label writer.
     function setLabel(label, indices) {
@@ -1717,12 +1684,7 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         isPersistSuspended:    isPersistSuspended,   // current gate state (the UI indicator reads this)
         onPersistStateChange:  onPersistStateChange, // subscribe to 0<->suspended edges (UI indicator)
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
-        commitPeriodicity:     commitPeriodicity,   // §3b legacy resolve round-trip
-        commitPeriodicityOp:   commitPeriodicityOp, // §6.2 v3 unified door (Python owns)
-        setUnitCell:           setUnitCell,
-        setCellOrigin:         setCellOrigin,   // §3c raw corner (explicit-cell offset)
-        setAxisKind:           setAxisKind,
-        setVacuum:             setVacuum,
+        commitPeriodicityOp:   commitPeriodicityOp, // §6.2 v3: THE periodicity door (Python owns)
         setLabel:              setLabel,
         isDirty:               isDirty,
         isEmpty:               isEmpty,

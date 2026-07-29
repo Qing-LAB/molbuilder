@@ -6,7 +6,7 @@
  * accessors the display uses (getVacuumInfo / getAxisKindInfo / getUnitCellInfo
  * -> { value, isDefault }) and commits through the MolView DATA API
  * (window.molbuilder.molview.data -- NOT the persistence-only workspace):
- *   - vacuum / pbc / unit cell -> data.commitPeriodicity (re-resolves the effective cell
+ *   - vacuum / pbc / unit cell -> data.commitPeriodicityOp (re-resolves the effective cell
  *     through the ONE server resolver, § 3a).
  * (k-grid is NOT here: it's a reciprocal-space sampling knob on SiestaConfig /
  * TransportConfig, not geometry -- structure-periodicity.md.)

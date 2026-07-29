@@ -3128,8 +3128,9 @@ def test_cell_survives_a_delete_op(page, flask_server, water_xyz_file):
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     _wait_panel_ready(page)
-    # Set a cell the way the Cell op-tab's Update button does.
-    page.evaluate("() => window.molbuilder.molview.data.setUnitCell([[5,0,0],[0,6,0],[0,0,7]])")
+    # Set a cell through THE periodicity door (the Cell op-tab's real path;
+    # the legacy ungated setUnitCell was removed 2026-07-29).
+    page.evaluate("async () => { await window.molbuilder.molview.data.commitPeriodicityOp('cell', [[5,0,0],[0,6,0],[0,0,7]]); }")
     assert page.evaluate(
         "() => window.molbuilder.molview.data.getUnitCell()") == [[5, 0, 0], [0, 6, 0], [0, 0, 7]]
     # Delete an atom (a count-changing op) through the module's applyOp.
@@ -4280,7 +4281,7 @@ def test_state_timeline_metadata_marks_dirty_and_restores(
         "a region-label edit did NOT set the timeline dirty flag")
 
     # Periodicity also marks dirty and rides in the snapshot.
-    page.evaluate(f"() => {_DATA}.setVacuum([2,2,2])")
+    page.evaluate(f"async () => {{ await {_DATA}.commitPeriodicityOp('vacuum', [2,2,2]); }}")
     page.wait_for_function(f"() => {_DATA}.getVacuum()[0] === 2")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is True
 
@@ -4290,7 +4291,7 @@ def test_state_timeline_metadata_marks_dirty_and_restores(
 
     # An UNCOMMITTED metadata edit on top: add a second label + change vacuum.
     page.evaluate(f"() => {_DATA}.setLabel('bridge', [1])")
-    page.evaluate(f"() => {_DATA}.setVacuum([4,4,4])")
+    page.evaluate(f"async () => {{ await {_DATA}.commitPeriodicityOp('vacuum', [4,4,4]); }}")
     page.wait_for_function(f"() => {_DATA}.getVacuum()[0] === 4")
     assert page.evaluate(f"() => {_DATA}.uncommitted") is True
 

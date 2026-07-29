@@ -2,7 +2,7 @@
 round-trip of the ``.xyz`` + ``.molstruct.json`` pair.
 
 The codec is the LIVE remnant of the retired working-copy stack: it is used by
-``/api/structure/resolve-cell`` (build.py) to rebuild a Structure from a scratch
+``/api/structure/periodicity`` (build.py) to rebuild a Structure from a scratch
 blob.  These tests exercise its public surface directly (``load`` / ``files`` /
 ``scratch_blob`` / ``from_scratch``) — no ``WorkingCopy`` wrapper (that class +
 the ``/api/workingcopy/*`` door were removed).
@@ -59,7 +59,7 @@ def test_labels_roundtrip_through_load(project):
 
 def test_scratch_blob_roundtrip(project):
     """``scratch_blob`` -> ``from_scratch`` restores structure + labels +
-    annotations (the exact round-trip ``/api/structure/resolve-cell`` relies on)."""
+    annotations (the exact round-trip the periodicity door relies on)."""
     s = CODEC.load(project / "mol.xyz")
     s.frozen_atoms = [4]
     s.set_channel("spin", AtomChannel("value", {2: 0.5}))

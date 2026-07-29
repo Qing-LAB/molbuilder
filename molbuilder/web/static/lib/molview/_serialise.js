@@ -88,7 +88,7 @@ export function createSerialiser(deps) {
     }
 
     // The scratch blob {xyz, sidecar} -- the codec shape exportFile() emits for a project-file
-    // save (projects.writeFile) and /api/structure/resolve-cell consumes (StructureCodec.
+    // save (projects.writeFile) and /api/structure/periodicity consumes (StructureCodec.
     // from_scratch).  ONE serialisation for BOTH the durable save AND the transient draft, built
     // through the §1.2.1 accessors (getRegions/getFrozen).  Periodicity persists RAW (null when
     // truly unset) so the file is truthful.

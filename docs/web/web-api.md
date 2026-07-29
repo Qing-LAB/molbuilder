@@ -109,9 +109,9 @@ Set on every response by an `after_request` hook (`app.py`):
   live in [`ops/deployment.md § 4`](?doc=ops/deployment.md).
 - The global upload cap is **50 MB** (`MAX_CONTENT_LENGTH`).
 
-## 2. Endpoint index — all 79 routes
+## 2. Endpoint index — all 78 routes
 
-The application currently has 79 non-static Flask routes. Section 3 groups the
+The application currently has 78 non-static Flask routes. Section 3 groups the
 full catalogue by owner and purpose; update this count whenever a route is added
 or removed. (The count — pinned by `test_http_status_contract.py` — is taken
 with the rate limiter disabled, the test-config default; a production config
@@ -164,7 +164,7 @@ tabs (their docs, this wave):
 
 **No module-doc home — documented in full in § 4:** the app-level routes
 (`/api/health`, `/api/backends`, the tab pages), the build env/script routes
-(`/api/build/{fdf,pyscf,preflight}`, `/api/structure/{analyze,resolve-cell,periodicity}`,
+(`/api/build/{fdf,pyscf,preflight}`, `/api/structure/{analyze,periodicity}`,
 `/api/run/install-wrapper`, `/api/siesta/install-pseudos`), `/api/checkpoint/*`,
 `/api/system/load`, `/api/docs/*`, `/api/admin/rate_limit/*`, and the optional
 auth routes.
@@ -186,7 +186,6 @@ auth routes.
 | POST `/api/build/pyscf` | `{ structure, config }` → the generated PySCF `.py` text |
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | `{ structure }` → the geometry/chemistry report + summary |
-| POST `/api/structure/resolve-cell` | `{ structure, … }` → the resolved periodic cell |
 | POST `/api/structure/periodicity` | the unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): one op per Cell-page edit (vacuum / axis_kind / cell / cell_origin / calibrate) through the frame-contract gate — returns the corrected truth blob + resolved views + heal notices |
 | POST `/api/run/install-wrapper` | install the run-wrapper script into a run dir (optional `continue_retries` 1–5 bakes the SIESTA warm-retry budget — `?doc=execution/running-a-job.md` § 3.5) |
 | POST `/api/siesta/install-pseudos` | install SIESTA pseudopotentials |
