@@ -5,105 +5,785 @@
       "label": "Spine",
       "meta": "The top-level design docs — start here",
       "children": [
-        { "path": "README.md", "label": "Documentation Index" },
-        { "path": "design.md" },
-        { "path": "architecture.md" },
-        { "path": "backend-architecture.md" },
-        { "path": "roadmap.md" },
-        { "path": "audit-2026-07-28-document-migration.md", "label": "Document Migration Audit" }
+        {
+          "path": "README.md",
+          "label": "Documentation Index"
+        },
+        {
+          "path": "design.md"
+        },
+        {
+          "path": "architecture.md"
+        },
+        {
+          "path": "backend-architecture.md"
+        },
+        {
+          "path": "roadmap.md"
+        },
+        {
+          "path": "audit-2026-07-28-document-migration.md",
+          "label": "Document Migration Audit"
+        }
       ]
     },
     {
       "label": "Model",
       "meta": "The data model (L1): Structure, periodicity, annotations, chemistry, parse stack",
       "children": [
-        { "path": "model/overview.md" },
-        { "path": "model/structure.md", "children": [
-          { "path": "model/structure-periodicity.md" },
-          { "path": "model/structure-annotations.md" },
-          { "path": "model/structure-molstruct.md" }
-        ]},
-        { "path": "model/chemistry.md" },
-        { "path": "model/parse.md" }
+        {
+          "path": "model/overview.md"
+        },
+        {
+          "path": "model/structure.md",
+          "children": [
+            {
+              "path": "model/structure-periodicity.md"
+            },
+            {
+              "path": "model/structure-annotations.md"
+            },
+            {
+              "path": "model/structure-molstruct.md"
+            }
+          ]
+        },
+        {
+          "path": "model/chemistry.md"
+        },
+        {
+          "path": "model/parse.md"
+        }
       ]
     },
     {
       "label": "Science",
       "meta": "Scientific correctness: validation, chemistry, pseudopotentials",
       "children": [
-        { "path": "science/overview.md" },
-        { "path": "science/validation.md" },
-        { "path": "science/chemistry-correctness.md" },
-        { "path": "science/pseudopotentials.md" }
+        {
+          "path": "science/overview.md"
+        },
+        {
+          "path": "science/validation.md"
+        },
+        {
+          "path": "science/chemistry-correctness.md"
+        },
+        {
+          "path": "science/pseudopotentials.md"
+        }
       ]
     },
     {
       "label": "Engines",
       "meta": "Per-engine emitter specs: SIESTA, PySCF, transport, builders, tuning",
       "children": [
-        { "path": "engines/overview.md" },
-        { "path": "engines/siesta.md" },
-        { "path": "engines/pyscf.md" },
-        { "path": "engines/transport.md" },
-        { "path": "engines/builders.md" },
-        { "path": "engines/tuning.md" }
+        {
+          "path": "engines/overview.md"
+        },
+        {
+          "path": "engines/siesta.md"
+        },
+        {
+          "path": "engines/pyscf.md"
+        },
+        {
+          "path": "engines/transport.md"
+        },
+        {
+          "path": "engines/builders.md"
+        },
+        {
+          "path": "engines/tuning.md"
+        }
       ]
     },
     {
       "label": "Execution",
       "meta": "Running jobs: contracts, single-job path, JobSet framework",
       "children": [
-        { "path": "execution/overview.md" },
-        { "path": "execution/job-contracts.md" },
-        { "path": "execution/running-a-job.md" },
-        { "path": "execution/job-system.md" }
+        {
+          "path": "execution/overview.md"
+        },
+        {
+          "path": "execution/job-contracts.md"
+        },
+        {
+          "path": "execution/running-a-job.md"
+        },
+        {
+          "path": "execution/job-system.md"
+        }
       ]
     },
     {
       "label": "Web",
       "meta": "Front-end: tabs, MolView, workspace, projects, results, API, UI contract",
       "children": [
-        { "path": "web/overview.md" },
-        { "path": "web/tabs.md" },
-        { "path": "web/molview.md" },
-        { "path": "web/vibrationview.md" },
-        { "path": "web/workspace.md" },
-        { "path": "web/projects.md" },
-        { "path": "web/presenters.md" },
-        { "path": "web/runtime.md" },
-        { "path": "web/notifications.md" },
-        { "path": "web/form-schema.md" },
-        { "path": "web/web-api.md" },
-        { "path": "web/ui-contract.md" },
-        { "path": "web/results.md" },
-        { "path": "web/trajectory.md" },
-        { "path": "web/spectra.md" }
+        {
+          "path": "web/overview.md"
+        },
+        {
+          "path": "web/tabs.md"
+        },
+        {
+          "path": "web/molview.md"
+        },
+        {
+          "path": "web/vibrationview.md"
+        },
+        {
+          "path": "web/workspace.md"
+        },
+        {
+          "path": "web/projects.md"
+        },
+        {
+          "path": "web/presenters.md"
+        },
+        {
+          "path": "web/runtime.md"
+        },
+        {
+          "path": "web/notifications.md"
+        },
+        {
+          "path": "web/form-schema.md"
+        },
+        {
+          "path": "web/web-api.md"
+        },
+        {
+          "path": "web/ui-contract.md"
+        },
+        {
+          "path": "web/results.md"
+        },
+        {
+          "path": "web/trajectory.md"
+        },
+        {
+          "path": "web/spectra.md"
+        }
       ]
     },
     {
       "label": "Ops",
       "meta": "Installing and serving: env model, deployment, auth, rate-limit",
       "children": [
-        { "path": "ops/installation.md" },
-        { "path": "ops/deployment.md" }
+        {
+          "path": "ops/installation.md"
+        },
+        {
+          "path": "ops/deployment.md"
+        }
       ]
     },
     {
       "label": "Process",
       "meta": "How we work: code conventions, test strategy, audit playbook, package layout",
       "children": [
-        { "path": "process/package-layout.md" },
-        { "path": "process/conventions.md" },
-        { "path": "process/testing.md" },
-        { "path": "process/code-audit.md" },
-        { "path": "process/screenshots.md" }
+        {
+          "path": "process/package-layout.md"
+        },
+        {
+          "path": "process/conventions.md"
+        },
+        {
+          "path": "process/testing.md"
+        },
+        {
+          "path": "process/code-audit.md"
+        },
+        {
+          "path": "process/screenshots.md"
+        },
+        {
+          "path": "process/code-audit.md"
+        }
       ]
     },
     {
       "label": "Archive",
       "meta": "Historical documents, date-prefixed. Not a source of truth.",
       "collapsed": true,
-      "children": []
+      "children": [
+        {
+          "path": "archive/2026-06-02-REVIEW_FINDINGS.md",
+          "label": "Codebase review findings — 2026-05-16",
+          "subtitle": "Codebase review findings — 2026-05-16"
+        },
+        {
+          "path": "archive/2026-06-02-tabs-watch.md",
+          "label": "Spec — Watch front-end behaviour",
+          "subtitle": "Spec — Watch front-end behaviour"
+        },
+        {
+          "path": "archive/2026-06-02-watch-api.md",
+          "label": "Spec — Watch HTTP endpoints",
+          "subtitle": "Spec — Watch HTTP endpoints"
+        },
+        {
+          "path": "archive/2026-07-03-atom-selection.md",
+          "label": "Spec — Atom-selection module",
+          "subtitle": "Spec — Atom-selection module"
+        },
+        {
+          "path": "archive/2026-07-03-embedded-viewer.md",
+          "label": "Embedded MolViewer — the standard structure viewer component",
+          "subtitle": "Embedded MolViewer — the standard structure viewer component"
+        },
+        {
+          "path": "archive/2026-07-05-browser-data-contract.md",
+          "label": "Browser-owned transient data — the structure app (working-copy)",
+          "subtitle": "Browser-owned transient data — the structure app (working-copy)"
+        },
+        {
+          "path": "archive/2026-07-05-working-copy-persistence.md",
+          "label": "Working-copy persistence — load, edit, save",
+          "subtitle": "Working-copy persistence — load, edit, save"
+        },
+        {
+          "path": "archive/2026-07-06-molview-module.md",
+          "label": "MolView module — design & contract",
+          "subtitle": "MolView module — design & contract"
+        },
+        {
+          "path": "archive/2026-07-06-workspace-state.md",
+          "label": "Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)",
+          "subtitle": "Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)"
+        },
+        {
+          "path": "archive/2026-07-28-decisions-log.md",
+          "label": "Decisions log — archived 2026-07-28 (historical record)",
+          "subtitle": "Decisions log — archived 2026-07-28 (historical record)"
+        },
+        {
+          "path": "archive/MIGRATION.md",
+          "label": "Migration ledger — old_docs/ → docs/",
+          "subtitle": "Migration ledger — old_docs/ → docs/"
+        },
+        {
+          "path": "archive/README.md",
+          "label": "Archive",
+          "subtitle": "Archive"
+        },
+        {
+          "label": "audits",
+          "children": [
+            {
+              "label": "audit-2026-06-26",
+              "children": [
+                {
+                  "path": "archive/audits/audit-2026-06-26/README.md",
+                  "label": "Codebase audit — 2026-06-26",
+                  "subtitle": "Codebase audit — 2026-06-26"
+                },
+                {
+                  "path": "archive/audits/audit-2026-06-26/SYNTHESIS.md",
+                  "label": "Audit synthesis — cross-cutting top 10",
+                  "subtitle": "Audit synthesis — cross-cutting top 10"
+                },
+                {
+                  "path": "archive/audits/audit-2026-06-26/T1_top_findings.md",
+                  "label": "T1 — Top-30 findings sweep",
+                  "subtitle": "T1 — Top-30 findings sweep"
+                },
+                {
+                  "path": "archive/audits/audit-2026-06-26/T3_css_ui.md",
+                  "label": "T3 — CSS/UI holistic audit",
+                  "subtitle": "T3 — CSS/UI holistic audit"
+                },
+                {
+                  "path": "archive/audits/audit-2026-06-26/T4_test_depth.md",
+                  "label": "T4 — Test-depth audit",
+                  "subtitle": "T4 — Test-depth audit"
+                }
+              ]
+            },
+            {
+              "label": "audit-2026-06-27",
+              "children": [
+                {
+                  "path": "archive/audits/audit-2026-06-27/README.md",
+                  "label": "Audit 2026-06-27 — SLURM/Sol session self-review + benchmark ground-truth",
+                  "subtitle": "Audit 2026-06-27 — SLURM/Sol session self-review + benchmark ground-truth"
+                }
+              ]
+            },
+            {
+              "label": "job-case-analysis",
+              "children": [
+                {
+                  "path": "archive/audits/job-case-analysis/ANALYSIS-G1K1C4.md",
+                  "label": "Benchmark analysis — `point-G1K1C4` (single rank on one A100)",
+                  "subtitle": "Benchmark analysis — `point-G1K1C4` (single rank on one A100)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "label": "old_docs",
+          "children": [
+            {
+              "path": "archive/old_docs/architecture.md",
+              "label": "molbuilder — architecture index (the design-foundation reference)",
+              "subtitle": "architecture index (the design-foundation reference)"
+            },
+            {
+              "path": "archive/old_docs/atom-selection-guide.md",
+              "label": "Atom selection — a developer's guide",
+              "subtitle": "Atom selection — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/batch-workflow-overview.md",
+              "label": "Running a batch of jobs — the big picture",
+              "subtitle": "Running a batch of jobs — the big picture"
+            },
+            {
+              "path": "archive/old_docs/checkpoints-guide.md",
+              "label": "Run checkpoints — a developer's & user's guide",
+              "subtitle": "Run checkpoints — a developer's & user's guide"
+            },
+            {
+              "path": "archive/old_docs/config.md",
+              "label": "Configuration — wrapper contract + generator inputs",
+              "subtitle": "Configuration — wrapper contract + generator inputs"
+            },
+            {
+              "path": "archive/old_docs/deployment.md",
+              "label": "Deploying molbuilder over a network (LAN · internet · auth · TLS)",
+              "subtitle": "Deploying molbuilder over a network (LAN · internet · auth · TLS)"
+            },
+            {
+              "path": "archive/old_docs/design.md",
+              "label": "molbuilder — design and roadmap",
+              "subtitle": "design and roadmap"
+            },
+            {
+              "path": "archive/old_docs/form-schema-guide.md",
+              "label": "Schema-driven forms — a developer's guide",
+              "subtitle": "Schema-driven forms — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/job-execution.md",
+              "label": "Job execution — the system, the workflow, the contract",
+              "subtitle": "Job execution — the system, the workflow, the contract"
+            },
+            {
+              "path": "archive/old_docs/jobset-infrastructure.md",
+              "label": "The JobSet infrastructure — one engine for \"a set of related jobs\"",
+              "subtitle": "The JobSet infrastructure — one engine for \"a set of related jobs\""
+            },
+            {
+              "path": "archive/old_docs/molviewer-guide.md",
+              "label": "The embedded MolViewer — a developer's guide",
+              "subtitle": "The embedded MolViewer — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/package-layout.md",
+              "label": "Package layout",
+              "subtitle": "Package layout"
+            },
+            {
+              "path": "archive/old_docs/README.md",
+              "label": "molbuilder — documentation index (FROZEN LEGACY TREE)",
+              "subtitle": "documentation index (FROZEN LEGACY TREE)"
+            },
+            {
+              "path": "archive/old_docs/README_install.md",
+              "label": "molbuilder — installation and environment preparation",
+              "subtitle": "installation and environment preparation"
+            },
+            {
+              "path": "archive/old_docs/results-tab-guide.md",
+              "label": "The Results tab & inspectors — a developer's guide",
+              "subtitle": "The Results tab & inspectors — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/roadmap.md",
+              "label": "Roadmap",
+              "subtitle": "Roadmap"
+            },
+            {
+              "path": "archive/old_docs/runtime-registry-guide.md",
+              "label": "The runtime registry — a developer's guide",
+              "subtitle": "The runtime registry — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/science.md",
+              "label": "Scientific correctness",
+              "subtitle": "Scientific correctness"
+            },
+            {
+              "path": "archive/old_docs/staged-relaxation-guide.md",
+              "label": "Staged relaxation — a user's guide",
+              "subtitle": "Staged relaxation — a user's guide"
+            },
+            {
+              "path": "archive/old_docs/structure-guide.md",
+              "label": "Structure build & save — a developer's guide",
+              "subtitle": "Structure build & save — a developer's guide"
+            },
+            {
+              "path": "archive/old_docs/transport-guide.md",
+              "label": "Transport (conductance) calculations — a developer's & user's guide",
+              "subtitle": "Transport (conductance) calculations — a developer's & user's guide"
+            },
+            {
+              "path": "archive/old_docs/workspace-guide.md",
+              "label": "The workspace state layer — a developer's guide",
+              "subtitle": "The workspace state layer — a developer's guide"
+            },
+            {
+              "label": "engines",
+              "children": [
+                {
+                  "path": "archive/old_docs/engines/builders.md",
+                  "label": "Spec — builders",
+                  "subtitle": "Spec — builders"
+                },
+                {
+                  "path": "archive/old_docs/engines/optimization-tuning.md",
+                  "label": "Optimization parameter tuning — cross-engine guide",
+                  "subtitle": "Optimization parameter tuning — cross-engine guide"
+                },
+                {
+                  "path": "archive/old_docs/engines/pyscf-publication-guide.md",
+                  "label": "PySCF — publication-quality parameter guide + staged-opt design",
+                  "subtitle": "PySCF — publication-quality parameter guide + staged-opt design"
+                },
+                {
+                  "path": "archive/old_docs/engines/pyscf.md",
+                  "label": "Spec — generated PySCF script",
+                  "subtitle": "Spec — generated PySCF script"
+                },
+                {
+                  "path": "archive/old_docs/engines/siesta-gpu.md",
+                  "label": "`molbuilder-siesta-gpu` — SIESTA built from source with CUDA-accelerated ELPA",
+                  "subtitle": "`molbuilder-siesta-gpu` — SIESTA built from source with CUDA-accelerated ELPA"
+                },
+                {
+                  "path": "archive/old_docs/engines/siesta.md",
+                  "label": "Spec — SIESTA `.fdf` emitter",
+                  "subtitle": "Spec — SIESTA `.fdf` emitter"
+                },
+                {
+                  "path": "archive/old_docs/engines/transport.md",
+                  "label": "Transport engine (TranSIESTA)",
+                  "subtitle": "Transport engine (TranSIESTA)"
+                }
+              ]
+            },
+            {
+              "label": "protocols",
+              "children": [
+                {
+                  "path": "archive/old_docs/protocols/atom-annotations.md",
+                  "label": "Unified atom annotations — the per-atom annotation channels model",
+                  "subtitle": "Unified atom annotations — the per-atom annotation channels model"
+                },
+                {
+                  "path": "archive/old_docs/protocols/backend-architecture.md",
+                  "label": "Backend architecture — the four concerns (data · construction · validation · execution)",
+                  "subtitle": "Backend architecture — the four concerns (data · construction · validation · execution)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/benchmark-workflow.md",
+                  "label": "Benchmark workflow — target-isolated, self-configuring",
+                  "subtitle": "Benchmark workflow — target-isolated, self-configuring"
+                },
+                {
+                  "path": "archive/old_docs/protocols/bundle-contract.md",
+                  "label": "Run-Bundle Contract",
+                  "subtitle": "Run-Bundle Contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/chemistry-correctness.md",
+                  "label": "Chemistry correctness — the control surface, end to end",
+                  "subtitle": "Chemistry correctness — the control surface, end to end"
+                },
+                {
+                  "path": "archive/old_docs/protocols/cli.md",
+                  "label": "Spec — command-line interface",
+                  "subtitle": "Spec — command-line interface"
+                },
+                {
+                  "path": "archive/old_docs/protocols/code-audit.md",
+                  "label": "Code-audit playbook",
+                  "subtitle": "Code-audit playbook"
+                },
+                {
+                  "path": "archive/old_docs/protocols/code-conventions.md",
+                  "label": "Code conventions",
+                  "subtitle": "Code conventions"
+                },
+                {
+                  "path": "archive/old_docs/protocols/data-vocabulary.md",
+                  "label": "Data vocabulary & persisted formats — the system's shared language",
+                  "subtitle": "Data vocabulary & persisted formats — the system's shared language"
+                },
+                {
+                  "path": "archive/old_docs/protocols/frontend-module-architecture.md",
+                  "label": "Frontend module architecture — the target the tabs migrate onto",
+                  "subtitle": "Frontend module architecture — the target the tabs migrate onto"
+                },
+                {
+                  "path": "archive/old_docs/protocols/inspector-registry.md",
+                  "label": "Inspector registry — `mount` / `dispose` / `isResult` / `resultCategory`",
+                  "subtitle": "Inspector registry — `mount` / `dispose` / `isResult` / `resultCategory`"
+                },
+                {
+                  "path": "archive/old_docs/protocols/job-decoder.md",
+                  "label": "Job decoder protocol",
+                  "subtitle": "Job decoder protocol"
+                },
+                {
+                  "path": "archive/old_docs/protocols/job-layout.md",
+                  "label": "Job layout — directory + filename protocol",
+                  "subtitle": "Job layout — directory + filename protocol"
+                },
+                {
+                  "path": "archive/old_docs/protocols/mobile-layout.md",
+                  "label": "Mobile layout — responsive-grid pattern",
+                  "subtitle": "Mobile layout — responsive-grid pattern"
+                },
+                {
+                  "path": "archive/old_docs/protocols/molview-esm-finalization.md",
+                  "label": "MolView ESM finalization — principles + plan (LIVING guidance)",
+                  "subtitle": "MolView ESM finalization — principles + plan (LIVING guidance)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/molview-migration-plan.md",
+                  "label": "MolView consumer migration — OPEN-WORK tracker",
+                  "subtitle": "MolView consumer migration — OPEN-WORK tracker"
+                },
+                {
+                  "path": "archive/old_docs/protocols/molview-module.md",
+                  "label": "MolView module — contract",
+                  "subtitle": "MolView module — contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/molview-render-streamline.md",
+                  "label": "MolView render streamline — the ONE render path",
+                  "subtitle": "MolView render streamline — the ONE render path"
+                },
+                {
+                  "path": "archive/old_docs/protocols/notifications.md",
+                  "label": "System notifications — the app-wide notification bar (contract)",
+                  "subtitle": "System notifications — the app-wide notification bar (contract)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/parse-module.md",
+                  "label": "Parse module protocol",
+                  "subtitle": "Parse module protocol"
+                },
+                {
+                  "path": "archive/old_docs/protocols/playwright-tests.md",
+                  "label": "Playwright test design — patterns and anti-patterns",
+                  "subtitle": "Playwright test design — patterns and anti-patterns"
+                },
+                {
+                  "path": "archive/old_docs/protocols/projects-sidebar-ui.md",
+                  "label": "Projects sidebar — UI + file-content preview contract (aspect E)",
+                  "subtitle": "Projects sidebar — UI + file-content preview contract (aspect E)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/projects-sidebar.md",
+                  "label": "Projects sidebar — module MASTER + architectural design",
+                  "subtitle": "Projects sidebar — module MASTER + architectural design"
+                },
+                {
+                  "path": "archive/old_docs/protocols/pseudopotential-validation.md",
+                  "label": "Pseudopotential validation — standard & process",
+                  "subtitle": "Pseudopotential validation — standard & process"
+                },
+                {
+                  "path": "archive/old_docs/protocols/rate-limit.md",
+                  "label": "Rate-limit + scanner-detection contract",
+                  "subtitle": "Rate-limit + scanner-detection contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/region-labels.md",
+                  "label": "Region-label convention for transport",
+                  "subtitle": "Region-label convention for transport"
+                },
+                {
+                  "path": "archive/old_docs/protocols/results-state-contract.md",
+                  "label": "Results-tab state contract",
+                  "subtitle": "Results-tab state contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/results-tab.md",
+                  "label": "Spec — `/results` tab (post-merge unified inspector)",
+                  "subtitle": "Spec — `/results` tab (post-merge unified inspector)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/run-checkpoints.md",
+                  "label": "Run-checkpoints — git-based working-dir state management",
+                  "subtitle": "Run-checkpoints — git-based working-dir state management"
+                },
+                {
+                  "path": "archive/old_docs/protocols/runtime-registry.md",
+                  "label": "`molbuilder-runtime.js` — module registry + ready Promises",
+                  "subtitle": "`molbuilder-runtime.js` — module registry + ready Promises"
+                },
+                {
+                  "path": "archive/old_docs/protocols/save-flow.md",
+                  "label": "Save-flow contract — the Save-panel UI",
+                  "subtitle": "Save-flow contract — the Save-panel UI"
+                },
+                {
+                  "path": "archive/old_docs/protocols/scientific-validation.md",
+                  "label": "Scientific validation — runtime machinery",
+                  "subtitle": "Scientific validation — runtime machinery"
+                },
+                {
+                  "path": "archive/old_docs/protocols/script-contract.md",
+                  "label": "Generated-Script Contract",
+                  "subtitle": "Generated-Script Contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/script-execution.md",
+                  "label": "Script-execution contract — warm-restart, cold-restart, project-id consistency",
+                  "subtitle": "Script-execution contract — warm-restart, cold-restart, project-id consistency"
+                },
+                {
+                  "path": "archive/old_docs/protocols/selection.md",
+                  "label": "Spec — Selection model (Projects sidebar + tab contract)",
+                  "subtitle": "Spec — Selection model (Projects sidebar + tab contract)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/sidecar-contract.md",
+                  "label": "Sidecar-driven boundary conditions — the three-stage contract",
+                  "subtitle": "Sidecar-driven boundary conditions — the three-stage contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/slurm-integration.md",
+                  "label": "SLURM integration — sbatch submission as a use case of the script generator",
+                  "subtitle": "SLURM integration — sbatch submission as a use case of the script generator"
+                },
+                {
+                  "path": "archive/old_docs/protocols/staged-execution.md",
+                  "label": "Staged execution & the `JobSet` framework",
+                  "subtitle": "Staged execution & the `JobSet` framework"
+                },
+                {
+                  "path": "archive/old_docs/protocols/structure-authority.md",
+                  "label": "Structure authority — the ONE codec + the ONE file door",
+                  "subtitle": "Structure authority — the ONE codec + the ONE file door"
+                },
+                {
+                  "path": "archive/old_docs/protocols/structure-load-save-contract.md",
+                  "label": "Structure load / save contract — the parser doors + the model primitives",
+                  "subtitle": "Structure load / save contract — the parser doors + the model primitives"
+                },
+                {
+                  "path": "archive/old_docs/protocols/structure-periodicity.md",
+                  "label": "Structure periodicity — cell / axis_kind / vacuum / kgrid (the periodicity contract)",
+                  "subtitle": "Structure periodicity — cell / axis_kind / vacuum / kgrid (the periodicity contract)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/test-strategy.md",
+                  "label": "Test strategy",
+                  "subtitle": "Test strategy"
+                },
+                {
+                  "path": "archive/old_docs/protocols/transiesta-workflow.md",
+                  "label": "TranSIESTA workflow — scientific basis & a consistency-first strategy",
+                  "subtitle": "TranSIESTA workflow — scientific basis & a consistency-first strategy"
+                },
+                {
+                  "path": "archive/old_docs/protocols/ui-design-contract.md",
+                  "label": "UI design contract — layout, CSS & module boundaries",
+                  "subtitle": "UI design contract — layout, CSS & module boundaries"
+                },
+                {
+                  "path": "archive/old_docs/protocols/vibrationview.md",
+                  "label": "VibrationView module — contract",
+                  "subtitle": "VibrationView module — contract"
+                },
+                {
+                  "path": "archive/old_docs/protocols/web-api.md",
+                  "label": "Web API — HTTP endpoint reference (`/api/*`)",
+                  "subtitle": "Web API — HTTP endpoint reference (`/api/*`)"
+                },
+                {
+                  "path": "archive/old_docs/protocols/web-module-map.md",
+                  "label": "Web module map — the front-end + web-API modules, in layers",
+                  "subtitle": "Web module map — the front-end + web-API modules, in layers"
+                },
+                {
+                  "path": "archive/old_docs/protocols/web-ui-coherence.md",
+                  "label": "Web-UI coherence rules",
+                  "subtitle": "Web-UI coherence rules"
+                },
+                {
+                  "path": "archive/old_docs/protocols/workspace-contract.md",
+                  "label": "Workspace — session state & file-access contract (the persistence layer)",
+                  "subtitle": "Workspace — session state & file-access contract (the persistence layer)"
+                }
+              ]
+            },
+            {
+              "label": "tabs",
+              "children": [
+                {
+                  "path": "archive/old_docs/tabs/architecture.md",
+                  "label": "Tab architecture and navigation",
+                  "subtitle": "Tab architecture and navigation"
+                },
+                {
+                  "path": "archive/old_docs/tabs/molbuilder.md",
+                  "label": "Molbuilder workspace — Modify subset",
+                  "subtitle": "Modify subset"
+                },
+                {
+                  "path": "archive/old_docs/tabs/results.md",
+                  "label": "`/results` tab — registry dispatch + file picker",
+                  "subtitle": "`/results` tab — registry dispatch + file picker"
+                },
+                {
+                  "path": "archive/old_docs/tabs/structure-optimization.md",
+                  "label": "`/structure-optimization` tab — SIESTA/PySCF form",
+                  "subtitle": "`/structure-optimization` tab — SIESTA/PySCF form"
+                },
+                {
+                  "label": "spectra",
+                  "children": [
+                    {
+                      "path": "archive/old_docs/tabs/spectra/spec.md",
+                      "label": "Spectrum-calculation tab — design spec",
+                      "subtitle": "Spectrum-calculation tab — design spec"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "types",
+              "children": [
+                {
+                  "path": "archive/old_docs/types/chemistry.md",
+                  "label": "Spec — chemistry: charge + protonation",
+                  "subtitle": "Spec — chemistry: charge + protonation"
+                },
+                {
+                  "path": "archive/old_docs/types/parsers.md",
+                  "label": "Spec — parser plug-in interface (RETIRED)",
+                  "subtitle": "Spec — parser plug-in interface (RETIRED)"
+                },
+                {
+                  "path": "archive/old_docs/types/structure.md",
+                  "label": "Spec — Structure dataclass + I/O",
+                  "subtitle": "Spec — Structure dataclass + I/O"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }
