@@ -28,8 +28,10 @@ never holds the plan itself (rule R3).
 
 ## The open workstreams at a glance
 
-Four streams of open work, in priority order. The first is the active
-priority; the others proceed around it.
+Six streams of open work, in priority order. The first is the active
+priority; the others proceed around it. (5 and 6 are consolidation streams
+added 2026-07-29 from the migration's deferred-work dig: science checks
+deferred with rationale, and named architecture seams.)
 
 ```mermaid
 flowchart TD
@@ -37,6 +39,8 @@ flowchart TD
     W2["2 · Transport calculation backends<br/>(TranSIESTA follow-ups + PySCF-NEGF)"]
     W3["3 · Data-model & front-end finalization<br/>(conceal the model · codec · ES-modules)"]
     W4["4 · Test-suite & housekeeping"]
+    W5["5 · Science-validation tail"]
+    W6["6 · Architecture seams"]
 
     W1 -. "Phase 3 builds the<br/>transport bundle mode" .-> W2
 
@@ -225,10 +229,25 @@ this is the plan tail.
 - **A4** — remove the obsolete disk-based selection/atom endpoints from the
   Modify tab once no live caller remains (the Results tab legitimately
   reads disk — verify before deleting); migrate or retire their tests.
+  *(Code audit 2026-07-29: the live caller is
+  `lib/molview/_selection-store-impl.js:70,353` — `_fetchAtoms` still POSTs
+  `structure_path` to `/api/selection/atoms`, reachable from `adoptSession`
+  and the eval-recovery refetch — so the precondition is not yet met; that
+  migration is the actual work.)*
 - **A5a** *(verification residual)* — confirm in a **real browser** that the
   `.molbuilder_workspace/` draft appears and updates both for a file loaded
   from the sidebar and for a freshly generated molecule. The mechanism ships
   (`web/blueprints/state_timeline.py`); only this check was never done.
+- **A6 — state-file lifecycle re-verification** *(recovered from the parked
+  task store, ex-#48)*: the 2026-07 workspace review verified three latent
+  defects against the OLD working-copy module — (1) state files keyed by a
+  sessionStorage-only random id leak unbounded **across** sessions (the
+  30-step window prunes only the current id); (2) orphan-listing mis-read
+  state files as drafts; (3) a corrupt history file makes undo a silent
+  no-op. The module was since replaced by `state_timeline.py`, so each
+  finding needs RE-verification against the new implementation ((2)'s
+  module is deleted — likely moot), then a GC/signal fix for whichever
+  survive.
 - **CLI through `StructureCodec`** — route the CLI's structure load/save
   through the L2 `StructureCodec` so a CLI save emits the `.xyz` +
   `.molstruct.json` pair like the web save does. Today `cli.py` writes
@@ -244,10 +263,16 @@ this is the plan tail.
   `/api/selection/atoms` and resolve a `by_value` rule, and no feature yet
   *produces* a per-atom value channel. Contract: `model/structure-annotations.md`
   § 7. Pin: filter atoms by a per-atom scalar range.
-- **Generic `fdf`-strategy registry** — wire the additive extension point that
-  translates a *new* annotation channel (e.g. `initspin`) into an engine block
-  via a registered `(channel, struct) → lines` strategy. Only the two built-ins
-  (`frozen` → `Geometry.Constraints`, region tags → transport) are wired today.
+- **Generic `fdf`-strategy registry — producers + consolidation** *(corrected
+  2026-07-29 after a code audit)*: the registry itself **already exists and is
+  wired** (`molbuilder/annotations_fdf.py`, hooked at `siesta/input.py:651-658`)
+  — but only tests register strategies. What's actually missing: a first
+  *production* strategy (e.g. `initspin` → `%block DM.InitSpin`), a
+  value-channel *producer*, and folding the **second, hand-rolled
+  frozen-constraints emitter** (`transport/orchestrate.py:130` builds
+  `Geometry.Constraints` with a bare `i + 1`, bypassing both
+  `siesta/input.py`'s emitter and the `engine_atom_index` API) into the one
+  shared path.
 
 **Finish the ES-module conversion.** The public API is exported from one
 import door and every consumer imports from it; the remaining transitional
@@ -332,11 +357,46 @@ dropped in the same commit that closes its item)*:
   classification + compute-budget heuristics inside a UI primitive; review
   and re-home the science (chemistry/validation domain) before its ESM
   conversion freezes the current shape.
+- **Form-schema render-complete callback** — the Structure-optimization tab
+  documents its own polling as "KNOWN GAP (audit 2026-07): polling is the
+  anti-pattern" (`structure-optimization/viewer.js:1272`) because form-schema
+  offers no render-complete signal; add the callback and retire the poll
+  (the migration audit's one unadopted P1 item).
+- **MolView finer-grained render invalidation** — the render-streamline
+  design's steps 2–4 (`web/molview.md § planned-work` points here); scope
+  before the ESM Phase C pass freezes the render path.
+- **Per-frame coordinates for measurements** (`positionsProvider`) — the
+  2026-06-09 measurement decision named "trajectory and structure inspectors
+  wire their own per-frame coords next"; verify whether it shipped, then
+  ship or retire.
+- **Pin the markdown-presenter dispatch** — `.md` markdown-beats-source
+  ordering is absent from `test_results_blueprint.py`'s
+  `INSPECTORS`/`EXPECTED_ORDER` and the node dispatch mirror — a silent
+  regression would go unnoticed.
+
+> **ESM ground truth (code census, 2026-07-29):** under the strict bar —
+> import/export only, zero `window.molbuilder` publishes — **no package entry
+> file qualifies yet**. The "fully converted" modules (MolView, VibrationView,
+> workspace, projects, xyz-io) are ESM *with a deliberate transitional door*,
+> per the never-big-bang rule; the doors fall in Phase C, per-global, once the
+> classic readers enumerated in the census (chiefly `lib/spectra/core.js`, the
+> presenter adapters + registry, `results/viewer.js`, `modify/structure/*.js`)
+> are converted. Templates today: 21 `type="module"` vs 49 classic script
+> tags. `runtime.whenReady` adoption is effectively "projects"-only.
 
 ---
 
 ## 4. Test-suite & housekeeping
 
+- **Per-tab wiring consolidation audit** *(recovered from the parked task
+  store, ex-#96 — was `in_progress` when the docs-first gate froze system
+  work; no findings were recorded, it restarts clean)*: audit each tab
+  (Build/Modify/Spectra/Transport/Results) end-to-end — template → JS
+  module → API endpoint → blueprint → L2 verb → validate → config
+  dataclass → render (fdf/py) — hunting broken/missing wiring, dead
+  endpoints, stale JS, retired config fields still referenced, and
+  duplicate code/design. Verify every finding vs code before fixing
+  (the `process/code-audit.md` playbook applies).
 - **E2E collection hygiene.** The Playwright/Chromium end-to-end tests fail
   (rather than skip) when swept into a unit-environment run that lacks the
   browser tooling — a tooling gap, not a product failure. Give them a
@@ -380,6 +440,79 @@ dropped in the same commit that closes its item)*:
 - **`test_vendor_licenses` Python floor.** The test imports `tomllib`
   (3.11+) while `pyproject.toml` claims `requires-python >= 3.9` — guard
   the import or raise the floor.
+- **Wheel packaging rot** (`process/package-layout.md § packaging` records
+  it): `[tool.setuptools.package-data]` still ships the retired
+  `web/static/watch/*.js` glob and has **no globs** for
+  `lib/{molview,workspace,viewer,vibrationview,spectra,results,transport}/`,
+  `structure-optimization/`, or the new `documents/` assets — a built wheel
+  omits the core viewer and most of the front end. Fix the globs + add a
+  test that the wheel's file list covers every `static/` file the templates
+  reference.
+- **No-shim policy violations** (ship-or-retire, both verified standing):
+  the `molbuilder/backends/` back-compat re-export package, and the
+  `_apply_sidecar_if_possible` dead alias (`web/blueprints/spectra.py:252`).
+- **Ship-or-retire decision batch** — named-in-design, never built, no
+  recorded retirement: the checkpoint tail (`prune`, a CLI `snapshot diff`
+  face, the `snippets/` library, wrapper-git "Path B" — running-a-job.md § 6
+  lists them as unbuilt), #32 MD viewer/editor (only *persistence* is
+  planned above), #34 stage-4 refinement preset, the `beforeunload`
+  discard guard (`web/runtime.md § never-shipped`), C1.8 PySCF smart
+  chkfile detection (`--warm-restart-any`), the PySCF BENCH-MARKS block
+  (`job-contracts.md § 7` gap note), and retiring bench's inline-shell
+  execution once cluster-validated (`job-system.md § 7`). Each needs one
+  explicit decision, not silence.
+- **Stale-comment sweep** (behavior-contradicting or rotted, all verified):
+  `web/app.py:18,413` call the working Transport tab a "placeholder";
+  `transport/transiesta.py` "electrode generation deferred" prose;
+  `projects/api.js:87`, `preview.js:77` (`EDIT_MAX_BYTES`),
+  `dispatcher.js:31-44` header, `rate_limit.py:71-74`,
+  `form-schema.js:28-45` + `_shared.py:520` docstrings,
+  `inspectors/registry.js:86`, `molbuilder-runtime.js:32-44` roster,
+  `siesta`/`pyscf` `__init__` docstrings, `build_peptide` docstring,
+  `modify.py:448` line-ref, `spectra/core.js:2247`, and
+  `model/structure-molstruct.md § 7`'s stale "migrating from
+  sidecar-contract" pointer (the engines wave closed; it lives at
+  `engines/overview.md § 3`).
+
+## 5. Science-validation tail  *(deferred with recorded rationale — needs a home)*
+
+From the 2026-07-24 validation-barrier audit ("still DEFERRED: need a
+hardness table / real-run verification / would risk false positives") and
+`science/pseudopotentials.md § deferred`:
+
+- **Mesh-cutoff element-hardness awareness** — compare the parsed
+  `PsmlInfo.suggested_mesh_ry` (already extracted) against
+  `cfg.mesh_cutoff`; needs the hardness table the audit named.
+- **Scalar-relativistic advisory for heavy elements.**
+- **Transport electrode cross-checks** — electrode-clone / atom-order /
+  electrode-position consistency (would need real-run verification to
+  avoid false positives).
+- **Basis ↔ pseudo consistency** — PAO l-channels vs the pseudo's
+  (deferred in `science/pseudopotentials.md`).
+- **IR intensity validation** — every generated spectra script still ships
+  the "IR INTENSITY SCAFFOLD — NOT YET VALIDATED" banner
+  (`spectra/pyscf_script.py:247,1139`); the four-step closure plan from the
+  archived spec needs to run (or the scaffold retired).
+
+## 6. Architecture seams (recorded intent → scheduled work)
+
+Named, bounded debt whose full statements live in their owning docs; listed
+here so scheduling them is a roadmap edit, not an archaeology dig:
+
+- **Backend concern seams W1–W5** — `backend-architecture.md § 5`:
+  runwrap's SIESTA reach-ins (W1), `jobset/runstatus.py`'s warm-file
+  table → producer-supplied inventory (W2), `runtime_config`'s untyped
+  scheduler dicts + mixed concerns (W3), transport's framework bypass
+  (W4, gated on multi-parent `depends_on` — the § 1 Phase 3 diamond),
+  `bundle_writer`/`script_emit` re-filing (W5).
+- **Boundary-condition contract rollout per engine** —
+  `engines/overview.md § 5` defines the four obligations (declare consumed
+  labels, schema pre-fill, Stage-3A divergence warn + 3B unrecognized-label
+  notice, verbatim emission) with spectra as the only fully-wired instance;
+  each engine adoption is one work item with its own test pins.
+- **`structure_to_dict` disposition** — `model/structure.md` calls it the
+  retained web composer; `backend-architecture.md § 2` calls it a vestigial
+  wrapper to delete. One decision, then align both docs.
 
 ---
 
