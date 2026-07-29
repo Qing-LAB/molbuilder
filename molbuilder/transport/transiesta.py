@@ -408,13 +408,24 @@ def _emit_geometry(struct: Structure,
     preserved verbatim so a hexagonal Au(111) surface keeps its real
     cell.  Only when no lattice is available does it fall back to the
     orthorhombic vacuum box (an isolated-cluster model), with a loud
-    warning.  Atom coordinates are always emitted verbatim.
+    warning.
+
+    Coordinates are emitted in the ENGINE frame (structure-periodicity.md
+    § 6.1 clause 5): SIESTA anchors the cell at (0,0,0), so atoms are
+    shifted by ``-resolve_cell_origin()`` — the SAME convention
+    ``render_fdf`` applies.  Emitting the cell at zero with world-frame
+    coordinates mistranslated a junction by its origin (review finding
+    2026-07-29: far-face atoms wrapped into the leads).
     """
     from ase.data import atomic_numbers as _Z
     species = sorted(set(struct.elements), key=lambda e: e.capitalize())
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
 
     resolved_cell = cell if cell is not None else struct.cell
+    origin = (struct.resolve_cell_origin()
+              if resolved_cell is not None else None)
+    positions = (struct.positions - np.asarray(origin, dtype=float)
+                 if origin is not None else struct.positions)
 
     lines: List[str] = ["# --- Geometry ---", ""]
     lines.append(f"NumberOfAtoms          {struct.n_atoms}")
@@ -430,7 +441,7 @@ def _emit_geometry(struct: Structure,
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")
-    for el, (x, y, z) in zip(struct.elements, struct.positions):
+    for el, (x, y, z) in zip(struct.elements, positions):
         lines.append(
             f"  {x:14.8f} {y:14.8f} {z:14.8f}  {species_idx[el]}"
         )

@@ -497,3 +497,72 @@ def test_methods_fragment_returns_placeholder_prose(labeled_device,
     assert "TranSIESTA" in txt
     assert "[CITE:" in txt or "Brandbyge" in txt
     assert "deferred" in txt.lower()
+
+
+# --------------------------------------------------------------------- #
+#  The engine-frame translation (task #32, 2026-07-29)                   #
+# --------------------------------------------------------------------- #
+
+
+def _coords_from_lines(lines):
+    import numpy as _np
+    a = next(i for i, l in enumerate(lines)
+             if "%block AtomicCoordinatesAndAtomicSpecies" in l)
+    out = []
+    for l in lines[a + 1:]:
+        if "%endblock" in l:
+            break
+        out.append([float(x) for x in l.split()[:3]])
+    return _np.array(out)
+
+
+def _junction():
+    import numpy as _np
+    from molbuilder.structure import Structure
+    s = Structure(elements=["Au", "S", "Au"],
+                  positions=_np.array([[6.0, 6.0, 6.0],
+                                       [7.0, 7.0, 7.0],
+                                       [8.0, 8.0, 8.0]]))
+    s.cell = _np.eye(3) * 10.0
+    s.cell_origin = _np.array([5.0, 5.0, 5.0])
+    s.__post_init__()
+    return s
+
+
+def test_emit_geometry_applies_the_engine_frame_shift():
+    """A junction cell captured around off-origin atoms: the TranSIESTA
+    deck must shift atoms by -cell_origin (cell anchored at zero) — it
+    used to emit world-frame coordinates, a 5 A mistranslation here."""
+    import numpy as _np
+    from molbuilder.transport.transiesta import _emit_geometry
+    coords = _coords_from_lines(_emit_geometry(_junction()))
+    assert _np.allclose(coords[0], [1.0, 1.0, 1.0])
+    assert _np.allclose(coords[2], [3.0, 3.0, 3.0])
+
+
+def test_transiesta_frame_equals_render_fdf_frame():
+    """The one frame convention (structure-periodicity.md § 6.1 clause 5):
+    both SIESTA emitters produce the SAME coordinates for the same
+    structure."""
+    import numpy as _np
+    from molbuilder.transport.transiesta import _emit_geometry
+    from molbuilder.siesta.input import render_fdf
+    from molbuilder.config.siesta import SiestaConfig
+    s = _junction()
+    ts = _coords_from_lines(_emit_geometry(s))
+    fdf = _coords_from_lines(
+        render_fdf(s, SiestaConfig(verbose_comments=False)).splitlines())
+    assert _np.allclose(_np.sort(ts, axis=0), _np.sort(fdf, axis=0))
+
+
+def test_imported_crystal_stays_verbatim_in_transiesta():
+    """Explicit cell, no origin (imported crystal): no shift, matching
+    render_fdf's no-shift convention."""
+    import numpy as _np
+    from molbuilder.structure import Structure
+    from molbuilder.transport.transiesta import _emit_geometry
+    s = Structure(elements=["Au"], positions=_np.array([[1.0, 2.0, 3.0]]))
+    s.cell = _np.eye(3) * 10.0
+    s.__post_init__()
+    coords = _coords_from_lines(_emit_geometry(s))
+    assert _np.allclose(coords[0], [1.0, 2.0, 3.0])
