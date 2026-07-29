@@ -25,6 +25,12 @@ date-prefixed file, you are reading history, not policy.
   date prefix in the same commit that supersedes it).
 - `audits/` holds point-in-time audit/analysis snapshots imported as whole
   directories — findings that were acted on; kept for the record.
+- **Whole-tree snapshots are the one exception to the date-prefix rule**:
+  `audits/…` directories and `old_docs/` (the pre-migration docs tree,
+  86 files, snapshot 2026-07-26) are imported verbatim as directories.
+  The snapshot's date and identity live in its Index row here — not in
+  per-file prefixes, which would break the per-file map in
+  `MIGRATION.md` and the trees' own internal links.
 
 ## Index
 

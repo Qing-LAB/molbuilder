@@ -12,9 +12,11 @@ visible in the name itself):
 - [`structure-molstruct.md`](?doc=model/structure-molstruct.md) — the `.molstruct.json`
   save file: envelope · schema versioning · codec · file pairing.
 
-**Companions** (separate model modules): `model/parse.md` (the read stack that
-produces a Structure from engine output), `model/data-vocabulary.md` (the model
-overview — shared JSON names). **Frontend** (migrating to `web/`): the
+**Companions** (separate model modules):
+[`model/parse.md`](?doc=model/parse.md) (the read stack that produces a
+Structure from engine output), [`model/overview.md`](?doc=model/overview.md)
+§ 2 (the shared JSON vocabulary). **Frontend** (see
+[`web/projects.md`](?doc=web/projects.md)): the
 projects-sidebar module (the Load/Save UI over the doors) and the MolView
 module (`molview.data`, the JS model primitives).
 
@@ -83,8 +85,8 @@ class Structure:
 
 Atom **order is identity**: the 0-based index into `elements`/`positions`,
 fixed by the atom order in the source file, is the canonical atom identity
-carried everywhere (see `model/data-vocabulary.md` § atom-index for the full
-provenance + the 0-based/1-based boundary).
+carried everywhere (see [`model/overview.md`](?doc=model/overview.md) § 2 for
+the full provenance + the 0-based/1-based boundary).
 
 ---
 

@@ -49,7 +49,7 @@ Two habits make the reuse rule work:
 
 | I need to… | Use | Do NOT | Detail |
 |---|---|---|---|
-| Check an env is present / has the right GPU · CUDA · ELPA codepath | `molbuilder envs {advise,clean,doctor,install,list,repair,validate}` (`envs/`); first-time build is the `scripts/install-env.sh bootstrap` shell entry | write a new doctor / checker | [`ops/installation.md`](?doc=ops/installation.md) |
+| Check an env is present / has the right GPU · CUDA · ELPA codepath | `molbuilder envs {advise,bootstrap,clean,doctor,install,list,repair,validate}` (`envs/`); `scripts/install-env.sh bootstrap` is the shell wrapper that hands off to `envs bootstrap` | write a new doctor / checker | [`ops/installation.md`](?doc=ops/installation.md) |
 | Read `molbuilder.json` (scheduler · routing · activation · script-gen) | `runtime_config.get_scheduler` / `get_routing` / `get_script_generation` / `require_activation` / `write_config_scope` | re-parse the JSON yourself | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5; server keys → [`ops/deployment.md`](?doc=ops/deployment.md) |
 | Emit a run wrapper / `.sbatch` for a job | `runwrap.write_run_wrapper` / `render_sbatch` / `write_sbatch` | hand-write shell / sbatch | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | Persist a versioned JSON artifact (`molbuilder/<name>@<major>`) | `persist.schema_major` / `check_schema_major` / `read_json` / `write_json` (atomic) | hand-roll the schema check + IO | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (data vocabulary) |
@@ -141,7 +141,7 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {advise,clean,doctor,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
+| `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {advise,bootstrap,clean,doctor,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
 | `siesta/`, `pyscf/` | L2 | per-engine input emitters + stage rendering | `siesta.input.render_fdf` / `render_siesta_stage_fdfs`; `pyscf.input.render_script` | [`engines/siesta.md`](?doc=engines/siesta.md), [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | `builders/`, `peptide/`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
 | `transport/` | L2 | TranSIESTA multi-run workflow + consistency preflight | `molbuilder transport …` | [`engines/transport.md`](?doc=engines/transport.md) |

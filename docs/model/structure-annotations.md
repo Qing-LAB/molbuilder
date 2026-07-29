@@ -209,10 +209,11 @@ The canonical labels the Modify tab ships and the emitter interprets:
 (`:195`) discovers leads, sorts by z-centroid, assigns chempot `Left`/`Right` +
 `semi-inf-direction`, emits `%block TS.Elec.<stem>`, the atom-ordering
 contiguity requirement, the bias-direction convention, and the NEGF literature
-references (Brandbyge PRB 65 165401, Stokbro, Reed, Solomon) — belongs with the
-transport engine: **`engines/transport.md`** (migrating in the engines wave;
-preserved meanwhile in the kept `old_docs/protocols/region-labels.md` —
-unprefixed and still pending, since its transport half awaits the engines wave).
+references (Brandbyge PRB 65 165401, Stokbro, Reed, Solomon) — belongs with
+the transport engine and lives in
+[`engines/transport.md`](?doc=engines/transport.md) (the engines wave closed
+this split; the legacy source is archived at
+`archive/old_docs/protocols/region-labels.md`).
 
 ---
 

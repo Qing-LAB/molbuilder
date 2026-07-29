@@ -19,8 +19,7 @@ which doc explains a thing, you know which folder holds it, and vice-versa.
 |---|---|
 | `molbuilder/` | the Python package — **all** app + backend code |
 | `tests/` | the test suite (`pyproject.toml` `testpaths=["tests"]`) |
-| `docs/` | these docs (domain-split: `model/ science/ engines/ execution/ web/ ops/ process/ archive/`) |
-| `old_docs/` | the **frozen** legacy docs — the migration source, deleted at closeout |
+| `docs/` | these docs (domain-split: `model/ science/ engines/ execution/ web/ ops/ process/ archive/`; the pre-migration tree is archived under `docs/archive/old_docs/`) |
 | `scripts/` | operator helpers (`install-env.sh`, screenshot capture, a bench script) |
 | `tools/` | dev/pytest tooling (`progress_plugin.py`, `testrun.py`, screenshot capture) |
 | `projects/` | runtime **project data** a running server reads/writes (`project/topic/structure/…`) |

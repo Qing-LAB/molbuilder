@@ -2,10 +2,12 @@
 
 **Role:** overview
 **Domain:** model
-**Companions:** `architecture.md` (where the model sits in the L1/L2/L3
-layering — composed last, so named not linked yet); `execution/` (the
-config↔scheduler parameter vocabulary, run identifiers, and persisted-artifacts
-registry — migrating from `data-vocabulary.md`, see § 3).
+**Companions:** [`architecture.md`](?doc=architecture.md) (where the model
+sits in the L1/L2/L3 layering);
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6 (the
+config↔scheduler parameter vocabulary, run identifiers, and
+persisted-artifacts registry — absorbed from the legacy
+`data-vocabulary.md`, see § 3).
 
 The **model** is molbuilder's L1 layer: the pure data objects, how they persist,
 and how files are read back into them. Everything else (engines, execution, the
@@ -130,5 +132,7 @@ vocabulary — the config↔scheduler parameter names (`mpi_np`/`cpus_per_task`/
 `time`/`mem`/…), run identifiers and paths (`SystemLabel`, warm-restart files,
 `point-<name>/`, SLURM job names), and the full persisted-artifacts registry
 (`job-set.json`, `decoded.json`, `environment.json`, checkpoint files, …) — is
-an **execution** concern and migrates to `execution/` (from the legacy
-`data-vocabulary.md`). This overview points there rather than duplicating it.
+an **execution** concern and lives in
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6 (absorbed
+from the legacy `data-vocabulary.md`). This overview points there rather than
+duplicating it.

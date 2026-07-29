@@ -48,15 +48,19 @@ header, inside the domain.
 - **R4 — one archive.** Superseded content moves to `archive/` with a
   `YYYY-MM-DD-` prefix; the archive README says what superseded it.
 - **R5 — names carry the vocabulary.** File names use the system's canonical
-  terms (see `model/data-vocabulary.md` once migrated) and must not collide
+  terms (the shared JSON vocabulary lives in
+  [`model/overview.md`](?doc=model/overview.md) § 2 and
+  [`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6) and must not collide
   across meanings — e.g. the run→next-calculation handoff is
   `execution/handoff-bundle.md`, never plain "bundle", which the JobSet
   framework owns. **Sub-documents share the master's filename as a prefix**, so
   the hierarchy is visible in the name itself: a master `structure.md` has subs
   `structure-periodicity.md`, `structure-annotations.md`, … (a filename prefix,
   not a subdirectory — the name alone shows the parent).
-- **R6 — born here.** New documents are created in this structure only; the
-  old tree is frozen (test-enforced against the ledger).
+- **R6 — born here.** New documents are created in this structure only. (The
+  legacy tree that predated it is archived under `archive/old_docs/`; the
+  2026-07 migration that got us here is closed — see
+  [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md).)
 - **R7 — internal links use the document-module convention.** The Documents
   tab serves docs through the module (`/documents?doc=<path>`), **never** as a
   raw `.md` path — a raw relative `.md` href 404s in the rendered view. So a
@@ -118,10 +122,10 @@ edits afterwards. They are re-read at every migration gate.
   example" in under a minute. (Single-surface docs keep their natural
   structure — this binds the two-surface ones.)
 
-## Migration protocol (per doc)
+## Reorganization protocol (any doc move or merge)
 
-Moving a doc from `old_docs/` is a **review gate**, not a file move.
-The editorial rules above apply to every step in full:
+Moving or merging a doc is a **review gate**, not a file move. The editorial
+rules above apply to every step in full:
 
 1. Read it against the current code — fix drift or archive it.
 2. Map the structure first (E1): this doc's TOC + its target-domain
@@ -133,22 +137,14 @@ The editorial rules above apply to every step in full:
 6. Add the provenance header (R2) and the index line here (R1) — same
    commit, always.
 7. Repoint inbound references — other docs, code comments, tests — to the
-   new path (grep-verified, per file; no blind rewrite). **Under keep-and-mark
-   this is a closeout task, not per-doc:** the old file stays resolvable (just
-   `_migrated_`-prefixed) until `old_docs/` is deleted, and merges shift
-   section numbers, so bulk comment-repointing is done once at closeout
-   (Wave 10) rather than churning every code file on each doc move.
-8. Mark the ledger row `moved` (or `merged-into <doc>` / `archived`), **and**
-   mark the old file done by renaming it with the `_migrated_` prefix
-   (keep-and-mark — the old tree is kept intact for the closeout
-   cross-check, never deleted mid-migration). Same commit as the move.
+   new path in the **same commit** (grep-verified, per file; no blind
+   rewrite). `tests/test_no_retired_doc_paths.py` enforces that every
+   `docs/**.md` path an active source cites exists on disk, so a move
+   that strands references fails the suite.
 
-**Order (see [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md) for the wave plan):** components
-first, bottom-up (the data model, then what builds on it, then the surfaces);
-the summary docs — `design.md` (a concise outline that points at the detailed
-docs) and `architecture.md` (the reuse map) — are composed **last**, over the
-settled tree, so they never summarize a moving target. `roadmap.md` (the
-forward plan) leads and is done early.
+*(This protocol ran the 2026-07 migration, whose migration-specific steps —
+wave ordering, the freeze, keep-and-mark, the per-file ledger — are recorded
+with the ledger at [`archive/MIGRATION.md`](?doc=archive/MIGRATION.md).)*
 
 ## Index
 

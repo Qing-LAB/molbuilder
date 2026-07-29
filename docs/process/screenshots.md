@@ -5,18 +5,21 @@
 **Companions:** [`testing.md`](?doc=process/testing.md) ·
 [`web/tabs.md`](?doc=web/tabs.md) (what each tab actually shows)
 
-The README references 10 screenshots under `docs/img/`.  This doc is
-the capture guide: for each filename, the URL to open, the state to
-set, the zoom region, and what the image must communicate.  Update
-this file whenever the README's image references change.
+`docs/img/` holds 10 screenshots.  This doc is the capture guide: for
+each filename, the URL to open, the state to set, the zoom region, and
+what the image must communicate.  **Since the 2026-07-28 README
+rewrite, the README embeds only `hero-molbuilder.png`** — the other
+nine are kept current per this manifest for docs embedding and any
+future README gallery.  Update this file whenever an embedding of one
+of these images changes.
 
 > **⚠ Known stale capture (2026-07-28).**  `tab-bar.png` — and the nav
 > strip inside `hero-molbuilder.png` — show **five** tabs.  The shipped
 > app has **six**: the **Documents** tab landed after these were taken
-> ([`web/tabs.md § 1`](?doc=web/tabs.md)).  The README's alt text for
-> `tab-bar.png` also still says "Five-tab nav strip".  Both need a
-> re-capture + an alt-text fix (the re-capture rule below already
-> mandates it: a new tab is exactly the trigger).
+> ([`web/tabs.md § 1`](?doc=web/tabs.md)).  Both need a re-capture (the
+> re-capture rule below already mandates it: a new tab is exactly the
+> trigger); the README's hero alt text deliberately avoids naming a tab
+> count until then.
 
 > **Demo data convention.**  Every screenshot uses the project at
 > `projects/BDT/` so the README reads as one continuous Au–BDT–Au

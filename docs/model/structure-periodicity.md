@@ -305,7 +305,8 @@ transport reading `struct.cell` (a `--cell-fdf` argument overrides it).
 
 **Not a periodicity concern (relocated):** the **k-grid** DFT sampling
 parameter and its `axis_kind`-gated clamp (dims = 1 unless the axis is
-`periodic`) live with `SiestaConfig` — see `engines/siesta.md` (migrating in
-the engines wave). The full k-grid physics (reciprocal MP grid, the
-Born–von Kármán supercell view) is preserved in the kept source
-`old_docs/protocols/_migrated_structure-periodicity.md` until that wave claims it.
+`periodic`) live with `SiestaConfig` — see
+[`engines/siesta.md`](?doc=engines/siesta.md) § 6, which owns the full k-grid
+story (the Monkhorst-Pack mesh and its emission from `cfg.kgrid`). The
+legacy deep-dive (reciprocal MP grid, the Born–von Kármán supercell view) is
+archived verbatim at `archive/old_docs/protocols/structure-periodicity.md`.

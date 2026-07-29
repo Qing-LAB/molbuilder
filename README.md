@@ -5,7 +5,7 @@ calculations. It helps you turn a molecular idea into a saved 3-D structure,
 generate input files for scientific software, run calculations on a workstation
 or cluster, and inspect the results in one workspace.
 
-![Molbuilder workspace showing the project sidebar, six tabs, and a molecular junction in the 3-D viewer](docs/img/hero-molbuilder.png)
+![Molbuilder workspace showing the project sidebar, the tab strip, and a molecular junction in the 3-D viewer](docs/img/hero-molbuilder.png)
 
 It is built for students and researchers who want help with the careful,
 repetitive parts of computational chemistry without hiding the scientific

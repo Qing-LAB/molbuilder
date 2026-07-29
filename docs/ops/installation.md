@@ -54,7 +54,7 @@ then hands off to `python -m molbuilder envs bootstrap`, which creates the
 (`doctor`). Add `--include-source-builds` to also build the GPU SIESTA env (§6).
 
 `doctor` verifies the installed backends; its checks include `siesta`, the
-`pyscf ` import probe, and AmberTools `LEaP`.
+`pyscf` import probe, and AmberTools `LEaP`.
 
 Then you're ready:
 

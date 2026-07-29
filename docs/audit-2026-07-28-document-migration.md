@@ -145,6 +145,7 @@ sections intentionally placed in multiple owners. **Archived** = retired or
 historical content, not missing guidance.
 
 | Archived document | Active disposition | Status |
+|---|---|---|
 | `README.md` | README.md + process/conventions.md | merged-into README.md |
 | `README_install.md` | ops/installation.md | merged-into ops/installation.md |
 | `architecture.md` | architecture.md | moved |

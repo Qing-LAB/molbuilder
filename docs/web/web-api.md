@@ -113,7 +113,9 @@ Set on every response by an `after_request` hook (`app.py`):
 
 The application currently has 78 non-static Flask routes. Section 3 groups the
 full catalogue by owner and purpose; update this count whenever a route is added
-or removed.
+or removed. (The count — pinned by `test_http_status_contract.py` — is taken
+with the rate limiter disabled, the test-config default; a production config
+with rate limiting on registers a few additional admin/auth routes.)
 
 ## 3. The route catalogue
 
@@ -195,8 +197,12 @@ doc; the routes are `GET /api/checkpoint/{state,list,diff,config}` and
 **System** — `GET /api/system/load` → `{ ok, data: { cpu, ram, gpu, … } }`, the
 1 Hz load strip's source.
 
-**Docs** — `GET /api/docs/list` (the docs tree) and `GET /api/docs/read` (one
-markdown doc) — what the Documents tab reads.
+**Docs** — `GET /api/docs/list` (the flat docs listing), `GET /api/docs/read`
+(one markdown doc; also serves the whitelisted root `../README.md` /
+`../LICENSE`), `GET /api/docs/toc` (the sidebar tree from `docs/toc.json`;
+auto-discovers new domain docs and best-effort persists the repaired tree —
+read-only installs are served from memory), and `GET /api/docs/img/<path>`
+(images only, contained to `docs/img/`) — what the Documents tab reads.
 
 **Admin** (rate-limit; admin-gated) — `GET /api/admin/rate_limit/status` (the
 blocked-IP list) and `POST /api/admin/rate_limit/clear` (unblock an IP, or
