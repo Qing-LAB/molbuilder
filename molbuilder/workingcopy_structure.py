@@ -8,8 +8,8 @@ pair; ``scratch_blob`` / ``from_scratch`` round-trip it through an in-memory
 ``{xyz, sidecar}`` blob.  It never learns what an atom means beyond structure +
 sidecar.
 
-USED BY: ``/api/structure/resolve-cell`` (web/blueprints/build.py) — rebuilds a
-Structure from a scratch blob via ``from_scratch`` to resolve the effective cell.
+USED BY: ``/api/structure/periodicity`` + ``/api/structure/save`` +
+``/api/build/load`` (web/blueprints/build.py) — the gated pair/blob seams.
 (This codec also *used* to back the ``molbuilder.workingcopy`` working-copy core +
 the ``/api/workingcopy/*`` structure-editor door; both were retired — the codec is
 the survivor.)
@@ -57,7 +57,8 @@ class StructureCodec:
     (+ in-memory scratch round-trip)."""
 
     # ---- load durable -> working Structure --------------------------- #
-    def load(self, source_path) -> Structure:
+    def load(self, source_path, *,
+             notices_out: "list | None" = None) -> Structure:
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
         # file picker accepts .xyz AND .pdb, and each needs its own parser: a
@@ -82,7 +83,9 @@ class StructureCodec:
         # MolView drew the box from the world origin -- the live symptom on
         # projects/hemeC-dithiol (explicit cell, dropped origin).
         from .periodicity_gate import validate_and_heal
-        struct, _notices = validate_and_heal(struct)
+        struct, notices = validate_and_heal(struct)
+        if notices_out is not None:
+            notices_out.extend(notices)
         return struct
 
     # ---- the durable files: <stem>.xyz + <stem>.molstruct.json ------- #
@@ -138,11 +141,14 @@ class StructureCodec:
         return target
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
-    def read(self, source_path) -> Structure:
+    def read(self, source_path, *,
+             notices_out: "list | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
-        metadata, not an error)."""
-        return self.load(source_path)
+        metadata, not an error).  ``notices_out`` collects the frame-contract
+        gate's heal notices (structure-periodicity.md 6.1) so the load door
+        can SURFACE a heal instead of silently rewriting the user's state."""
+        return self.load(source_path, notices_out=notices_out)
 
     # ---- scratch round-trip ------------------------------------------ #
     def scratch_blob(self, struct: Structure) -> Any:

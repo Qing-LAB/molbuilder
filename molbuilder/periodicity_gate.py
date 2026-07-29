@@ -209,12 +209,14 @@ def validate_and_heal(struct: Structure, *,
             corner[i] = lo[i] - max(0.0, (lens[i] - ext)) / 2.0
         healed.cell_origin = corner.copy()
         healed.__post_init__()
-    notices.append(_notice(
+    heal_note = _notice(
         "warn",
         "healed: the explicit cell did not contain the structure, so "
         "cell_origin was set to the wrapping corner "
         f"{np.round(corner, 4).tolist()} (bbox_min − vacuum per isolated "
-        "axis, centred where the per-side vacuum does not fit; § 6.1)."))
+        "axis, centred where the per-side vacuum does not fit; § 6.1).")
+    heal_note["kind"] = "heal"        # machine-readable: state was MODIFIED
+    notices.append(heal_note)
     return healed, notices
 
 

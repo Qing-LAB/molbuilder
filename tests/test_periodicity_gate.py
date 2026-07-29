@@ -468,3 +468,45 @@ class TestTabEmitContract:
 
 
 from pathlib import Path  # noqa: E402  (used by TestTabEmitContract)
+
+
+class TestLoadHealIsVisible:
+    """§ 6.1 clause 6 (approved 2026-07-29): a heal at the load door must
+    never be silent — the response carries the notices, marked with a
+    machine-readable kind so the client can dirty-mark the session."""
+
+    def test_load_response_carries_the_heal_notice(self, tmp_path, monkeypatch):
+        pytest.importorskip("flask")
+        from molbuilder.diagnostics import Capabilities, set_capabilities
+        import json as _json
+        from molbuilder.workingcopy_structure import StructureCodec
+        monkeypatch.chdir(tmp_path)
+        sdir = tmp_path / "projects" / "P" / "structure"
+        sdir.mkdir(parents=True)
+        s = _mol()
+        s.cell = np.eye(3) * 7.0        # the hemeC-class corrupted pair
+        s.__post_init__()
+        blob = StructureCodec().scratch_blob(s)
+        (sdir / "m.xyz").write_text(blob["xyz"], encoding="utf-8")
+        (sdir / "m.molstruct.json").write_text(
+            _json.dumps(blob["sidecar"]), encoding="utf-8")
+        set_capabilities(Capabilities(runtime_config={},
+                                      conda_binary="/usr/bin/conda"))
+        try:
+            from molbuilder.web.app import create_app
+            client = create_app(config={}).test_client()
+            r = client.post("/api/build/load",
+                            json={"path": str(sdir / "m.xyz")})
+            assert r.status_code == 200
+            notices = r.get_json().get("notices") or []
+            assert any(n.get("kind") == "heal" for n in notices)
+        finally:
+            set_capabilities(None)
+
+    def test_client_surfaces_and_dirty_marks(self):
+        """Source pin: the install path shows the notices and dirty-marks
+        on kind == 'heal' (the client half of clause 6)."""
+        base = Path(__file__).resolve().parents[1] / "molbuilder/web/static"
+        text = (base / "lib/molview/_install.js").read_text(encoding="utf-8")
+        assert "load-heal-" in text
+        assert 'kind === "heal"' in text and "markDirty" in text

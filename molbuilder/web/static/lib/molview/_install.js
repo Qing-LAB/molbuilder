@@ -284,6 +284,26 @@ export function createInstall(deps) {
         _trace("loadText:anchor:begin");
         await _anchor();
         _trace("loadText:anchor:awaited -> return");
+        // Frame-contract heal notices (§ 6.1 clause 6): a heal must be
+        // VISIBLE, and saving a healed state must be a CONSCIOUS act — the
+        // server corrected the pair in memory, so surface each notice on
+        // the app bar and mark the session dirty (disk still holds the
+        // unhealed pair until the user saves).
+        try {
+            const _heals = (r && r.notices) || [];
+            const bar = (root.molbuilder || {}).notify;
+            _heals.forEach(function (n, i) {
+                if (bar && bar.show) bar.show({
+                    id:      "load-heal-" + i,
+                    level:   n.level === "warn" ? "warn" : "info",
+                    message: n.message,
+                });
+            });
+            if (_heals.some(function (n) { return n.kind === "heal"; })) {
+                const cs = _canvas();
+                if (cs && typeof cs.markDirty === "function") cs.markDirty();
+            }
+        } catch (_) { /* notices must never break a load */ }
         return r;
     }
 

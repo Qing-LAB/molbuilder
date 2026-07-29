@@ -763,11 +763,16 @@ def api_build_load():
         if not _resolved.exists():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
         try:
-            struct = StructureCodec().read(_resolved)
+            _load_notices: list = []
+            struct = StructureCodec().read(_resolved,
+                                           notices_out=_load_notices)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
         return ok_structure_response(struct, extra={
+            # Frame-contract heal notices (surfaced + dirty-marked
+            # client-side; a heal must never be silent -- 6.1 clause 6).
+            "notices": _load_notices,
             "source_format": ("pdb" if str(_resolved).lower().endswith(".pdb")
                               else "xyz"),
             "title": struct.title or _resolved.name,
