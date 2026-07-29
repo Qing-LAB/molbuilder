@@ -104,10 +104,11 @@ function _mvdata() {
             // Vacuum only grows a DERIVED isolated axis; with an explicit cell it does
             // nothing, so mark the group "not applicable" instead of a silent no-op.
             tag("pv-vac-tag", explicitCell ? false : v.isDefault);
+            // § 6.2 v3: vacuum edits are ALLOWED under an explicit cell —
+            // they reset the box to the derived regime (confirm-gated in
+            // wire()).  The note warns; the button stays enabled.
             var vacNa = $("pv-vac-na");
             if (vacNa) vacNa.hidden = !explicitCell;
-            var vacBtn = $("pv-vac-update");
-            if (vacBtn) vacBtn.disabled = explicitCell;
         }
         if (w.getAxisKindInfo) {
             var av = axisInfo.value || [];
@@ -137,8 +138,7 @@ function _mvdata() {
                   + "(a bounding box can't define a commensurate lattice)."
                 : "Clear the explicit cell and fall back to the bbox+vacuum box.";
         }
-        var calBtn = $("pv-cell-calibrate");
-        if (calBtn) calBtn.disabled = !explicitCell;
+        // § 6.2 v3: no calibrate button — emission translates implicitly.
 
         // § 3c: the cell origin -- the low corner the box is drawn from.  Shows the
         // RESOLVED corner (getUnitCellOriginInfo().value); editing it sets an explicit
@@ -156,6 +156,8 @@ function _mvdata() {
             if (orgNa) orgNa.hidden = explicitCell;
             var orgBtn = $("pv-org-update");
             if (orgBtn) orgBtn.disabled = !explicitCell;
+            var orgReset = $("pv-org-reset");
+            if (orgReset) orgReset.disabled = !explicitCell;
         }
     }
 
@@ -164,28 +166,92 @@ function _mvdata() {
         if (!isFinite(raw)) return dflt;
         return isInt ? Math.max(1, Math.round(raw)) : raw;
     }
-    function commit(patch) {
+    // § 6.2 v3 — every edit goes through the ONE server door (Python owns
+    // the change); this page renders what comes back and surfaces the
+    // gate's notices through the app notification bar.
+    function _surfaceNotices(notices) {
+        var notify = (window.molbuilder || {}).notify;
+        if (!notify || !notify.show) return;
+        (notices || []).forEach(function (n, i) {
+            notify.show({
+                id:      "periodicity-" + i,
+                level:   n.level === "warn" ? "warn" : "info",
+                message: n.message,
+            });
+        });
+    }
+    function commitOp(op, payload) {
         var w = data();
-        if (!w || typeof w.commitPeriodicity !== "function") return;
-        Promise.resolve(w.commitPeriodicity(patch)).then(refresh);
+        if (!w || typeof w.commitPeriodicityOp !== "function") return;
+        return Promise.resolve(w.commitPeriodicityOp(op, payload))
+            .then(function (res) {
+                if (res && !res.ok && res.error) {
+                    var notify = (window.molbuilder || {}).notify;
+                    if (notify && notify.show) notify.show({
+                        id: "periodicity-error", level: "error",
+                        message: "Periodicity edit failed: " + res.error,
+                    });
+                } else if (res) {
+                    _surfaceNotices(res.notices);
+                }
+                refresh();
+            });
+    }
+    // Confirm-before for the reset-to-derived edits (vacuum / axis kinds
+    // under an explicit cell): the box boundary is about to move — the
+    // user must know BEFORE committing (§ 6.2 v3).
+    function _confirmReset(body) {
+        var w = data();
+        var info = (w && w.getUnitCellInfo) ? w.getUnitCellInfo()
+                                            : { isDefault: true };
+        if (info.isDefault) return Promise.resolve(true);   // already derived
+        var wm = (window.molbuilder || {}).warningModal;
+        if (!wm || !wm.confirm) return Promise.resolve(true);
+        return wm.confirm({
+            title: "Reset the box to the derived regime?",
+            body: body,
+            confirmLabel: "Update and reset",
+            cancelLabel:  "Cancel",
+        });
     }
 
     function wire() {
         var vac = $("pv-vac-update");
         if (vac) vac.addEventListener("click", function () {
-            commit({ vacuum: [num("pv-vac-a", 0), num("pv-vac-b", 0), num("pv-vac-c", 0)] });
+            var payload = [num("pv-vac-a", 0), num("pv-vac-b", 0),
+                           num("pv-vac-c", 0)];
+            _confirmReset(
+                "Updating vacuum resets the explicit unit cell and origin: "
+              + "the box is re-derived around the structure with the vacuum "
+              + "placed symmetrically per direction — the cell boundary "
+              + "will move."
+            ).then(function (ok) { if (ok) commitOp("vacuum", payload); });
         });
         var axis = $("pv-axis-update");
         if (axis) axis.addEventListener("click", function () {
-            commit({ axis_kind: ["pv-axis-a", "pv-axis-b", "pv-axis-c"].map(function (id) {
-                return $(id) ? $(id).value : "isolated";
-            }) });
+            var kinds = ["pv-axis-a", "pv-axis-b", "pv-axis-c"].map(
+                function (id) { return $(id) ? $(id).value : "isolated"; });
+            // Switching TO periodic keeps the explicit cell (no reset) —
+            // the confirm applies only to the reset-to-derived path.
+            var go = kinds.indexOf("periodic") !== -1
+                ? Promise.resolve(true)
+                : _confirmReset(
+                    "Changing the periodicity resets the explicit unit "
+                  + "cell and origin: the box is re-derived from the "
+                  + "structure size and vacuum — the cell boundary will "
+                  + "move.");
+            go.then(function (ok) { if (ok) commitOp("axis_kind", kinds); });
         });
-        // § 3c: commit an explicit cell_origin -- moves the box corner; the server
-        // re-resolves resolved_cell_origin (the drawn corner) through commitPeriodicity.
+        // § 6.2 v3: a manual origin is respected verbatim; the server warns
+        // that vacuum is no longer respected (only the cell parameters are).
         var org = $("pv-org-update");
         if (org) org.addEventListener("click", function () {
-            commit({ cell_origin: [num("pv-org-a", 0), num("pv-org-b", 0), num("pv-org-c", 0)] });
+            commitOp("cell_origin", [num("pv-org-a", 0), num("pv-org-b", 0),
+                                     num("pv-org-c", 0)]);
+        });
+        var orgReset = $("pv-org-reset");
+        if (orgReset) orgReset.addEventListener("click", function () {
+            commitOp("cell_origin", null);
         });
         var cell = $("pv-cell-update");
         if (cell) cell.addEventListener("click", function () {
@@ -198,21 +264,15 @@ function _mvdata() {
                 }
                 m.push(row);
             }
-            commit({ cell: m });   // explicit cell -- server keeps it, no re-resolve
+            commitOp("cell", m);   // origin-first, then vacuum (§ 6.2 v3)
         });
         var reset = $("pv-cell-reset");
         if (reset) reset.addEventListener("click", function () {
-            commit({ cell: null });   // clear -> fall back to the resolved bbox+vacuum
+            commitOp("cell", null);   // back to the derived regime
         });
-        // § 3c: calibrate is a GEOMETRY op (moves atoms into the cell), so it goes
-        // through applyOp -- not commitPeriodicity (which only re-resolves the cell).
-        var cal = $("pv-cell-calibrate");
-        if (cal) cal.addEventListener("click", function () {
-            var w = data();
-            if (w && typeof w.applyOp === "function") {
-                Promise.resolve(w.applyOp("calibrate", {})).then(refresh, function () {});
-            }
-        });
+        // § 6.2 v3: no calibrate handler — coordinate rewrites are not a
+        // periodicity edit (emission translates implicitly; the explicit
+        // rewrite lives with the Modify ops as /api/modify/calibrate).
     }
 
     function init() {

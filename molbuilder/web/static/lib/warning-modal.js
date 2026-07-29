@@ -72,7 +72,7 @@
         // stacking a second modal.
         if (_active) return _active.promise;
 
-        var dialog = _buildDialog(doc);
+        var dialog = _buildDialog(doc, opts);
         doc.body.appendChild(dialog);
 
         var resolve;
@@ -133,7 +133,8 @@
      * site stays readable and tests can mock createElement at a
      * single seam.
      */
-    function _buildDialog(doc) {
+    function _buildDialog(doc, txt) {
+        txt = txt || {};
         var dialog = doc.createElement("dialog");
         dialog.className = "molbuilder-warning-modal";
         dialog.setAttribute("aria-labelledby", "molbuilder-warning-title");
@@ -141,12 +142,12 @@
 
         var title = doc.createElement("h2");
         title.id = "molbuilder-warning-title";
-        title.textContent = TITLE;
+        title.textContent = txt.title || TITLE;
         dialog.appendChild(title);
 
         var body = doc.createElement("p");
         body.id = "molbuilder-warning-body";
-        body.textContent = BODY;
+        body.textContent = txt.body || BODY;
         dialog.appendChild(body);
 
         var actions = doc.createElement("div");
@@ -155,13 +156,13 @@
         var cancel = doc.createElement("button");
         cancel.type = "button";
         cancel.setAttribute("data-action", "cancel");
-        cancel.textContent = CANCEL;
+        cancel.textContent = txt.cancelLabel || CANCEL;
         actions.appendChild(cancel);
 
         var discard = doc.createElement("button");
         discard.type = "button";
         discard.setAttribute("data-action", "discard");
-        discard.textContent = DISCARD;
+        discard.textContent = txt.confirmLabel || DISCARD;
         actions.appendChild(discard);
 
         dialog.appendChild(actions);
@@ -195,6 +196,11 @@
 
     var api = {
         confirmDiscardUnsaved: confirmDiscardUnsaved,
+        // Generic confirm: the same modal machinery with caller text
+        // ({title, body, confirmLabel, cancelLabel}) -> Promise<bool>.
+        // First consumer: the Cell page's reset-to-derived warnings
+        // (structure-periodicity.md § 6.2 v3).
+        confirm: confirmDiscardUnsaved,
         isOpen:                isOpen,
         _reset:                _reset,
         // String constants exposed so tests can pin the documented

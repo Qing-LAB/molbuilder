@@ -742,11 +742,11 @@
                    aria-label="vacuum c">
           </div>
           <button id="pv-vac-update" class="full-btn" type="button">Update vacuum</button>
-          {#- Shown when an explicit cell is set: vacuum only grows a DERIVED isolated
-              axis, so it is inert here (structure-periodicity.md § 3c). -#}
+          {#- § 6.2 v3: shown when an explicit cell is set — updating vacuum is
+              ALLOWED but resets the box to the derived regime (confirm-gated). -#}
           <p id="pv-vac-na" class="pv-note" hidden>
-            Not applicable — an explicit unit cell is set (vacuum only pads a
-            default box).
+            An explicit unit cell is set — updating vacuum will <b>reset</b> it
+            (the box returns to the derived regime and the boundary moves).
           </p>
         </fieldset>
 
@@ -771,13 +771,13 @@
               Use default
             </button>
           </div>
-          {#- § 3c: the unified last step -- move atoms into [0,cell) with the cell at
-              the origin (the exact frame SIESTA uses).  Enabled only for an explicit
-              cell (an electrode junction). -#}
-          <button id="pv-cell-calibrate" class="full-btn" type="button" disabled
-                  title="Move the atoms into the cell (cell at origin, atoms in [0,cell)) -- the coordinate frame SIESTA will use.">
-            Calibrate coordinates to cell
-          </button>
+          {#- § 6.2 v3: there is NO calibrate button.  Emission translates to the
+              engine frame implicitly (cell at (0,0,0), atoms shifted); nothing on
+              this page moves atoms.  The note below says so. -#}
+          <p class="pv-note">
+            SIESTA receives this box anchored at (0,0,0) with the coordinates
+            shifted accordingly — automatically, at generation.
+          </p>
         </fieldset>
 
         <fieldset class="op-block">
@@ -796,7 +796,13 @@
             <input type="number" id="pv-org-c" class="pv-num" step="0.1"
                    aria-label="cell origin z" />
           </div>
-          <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
+          <div class="op-row pv-cell-actions">
+            <button id="pv-org-update" class="full-btn" type="button" disabled>Update origin</button>
+            <button id="pv-org-reset" class="ghost" type="button" disabled
+                    title="Clear the manual origin -- the other parameters (vacuum, periodicity) regain their freedom; the next vacuum/periodicity update re-derives the box.">
+              Reset origin to default
+            </button>
+          </div>
           <p id="pv-org-na" class="pv-note" hidden>
             The cell origin applies to an explicit cell only. Set a unit cell above
             first; otherwise the box corner is the molecule's bounding box (auto).

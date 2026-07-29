@@ -519,6 +519,44 @@ const root = (typeof window !== "undefined") ? window : globalThis;
     // fresh resolved_cell back so the render + display stay consistent.  Returns a
     // promise.  An explicit `cell` wins (no re-resolve); a vacuum / axis_kind / cleared
     // cell edit needs the server to recompute the bbox+vacuum default.
+    // § 6.2 v3 — the unified periodicity door.  PYTHON OWNS THE CHANGE:
+    // one POST per Cell-page edit; the gate applies the regime model
+    // (vacuum/axis edits reset to derived; cell respects origin-then-
+    // vacuum; origin edits warn) and returns the corrected TRUTH blob +
+    // resolved views + notices.  This client adopts — it never computes.
+    // Returns Promise<{ok, notices, error?}>.
+    function commitPeriodicityOp(op, payload) {
+        var blob = _scratchBlob();
+        if (!blob || !root.fetch) {
+            return Promise.resolve(
+                { ok: false, error: "no structure loaded", notices: [] });
+        }
+        return root.fetch("/api/structure/periodicity", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ data: blob, op: op, payload: payload }),
+        }).then(function (r) { return r.json(); }).then(function (j) {
+            if (!j || !j.ok) {
+                return { ok: false, notices: [],
+                         error: (j && j.error) || "periodicity edit failed" };
+            }
+            var sc = (j.blob && j.blob.sidecar) || {};
+            _setPeriodicity({
+                cell:                 sc.cell || null,
+                cell_origin:          sc.cell_origin || null,
+                vacuum:               sc.vacuum || [0, 0, 0],
+                axis_kind:            sc.axis_kind || null,
+                resolved_cell:        j.resolved_cell || null,
+                resolved_cell_origin: j.resolved_cell_origin || null,
+            });
+            try { markDirty(); } catch (_) { /* empty canvas */ }
+            return { ok: true, notices: j.notices || [] };
+        }).catch(function (e) {
+            return { ok: false, notices: [],
+                     error: String((e && e.message) || e) };
+        });
+    }
+
     function commitPeriodicity(patch) {
         patch = patch || {};
         if ("cell"        in patch) setUnitCell(patch.cell);
@@ -1664,7 +1702,8 @@ const root = (typeof window !== "undefined") ? window : globalThis;
         isPersistSuspended:    isPersistSuspended,   // current gate state (the UI indicator reads this)
         onPersistStateChange:  onPersistStateChange, // subscribe to 0<->suspended edges (UI indicator)
         // §1.2.1 WRITE accessors -- the concealed model's ONLY mutation surface.
-        commitPeriodicity:     commitPeriodicity,   // §3b Cell-page Update
+        commitPeriodicity:     commitPeriodicity,   // §3b legacy resolve round-trip
+        commitPeriodicityOp:   commitPeriodicityOp, // §6.2 v3 unified door (Python owns)
         setUnitCell:           setUnitCell,
         setCellOrigin:         setCellOrigin,   // §3c raw corner (explicit-cell offset)
         setAxisKind:           setAxisKind,
