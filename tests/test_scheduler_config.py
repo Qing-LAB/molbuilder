@@ -218,3 +218,49 @@ def test_committed_asu_sol_example_parses(sandbox):
     assert sched is not None
     assert sched["directives"]["partition"] == "public"
     assert sched["gpu"]["default_type"] == "a100"
+
+
+# --------------------------------------------------------------------- #
+#  The committed server template stays synced with the live reader      #
+# --------------------------------------------------------------------- #
+#
+# User rule (2026-07-29): the example .json templates are documentation
+# that MUST move with the code in the same commit.  The qlabsrv
+# missing-.run.sh regression was exactly this class of drift in reverse:
+# a live config predating the (templated) script_generation section.
+
+_EXAMPLES = Path(__file__).resolve().parents[1] / "docs" / "ops" / "examples"
+
+
+def test_server_template_parses_and_covers_the_load_bearing_sections():
+    from molbuilder.runtime_config import read_config
+    cfg = read_config(_EXAMPLES / "molbuilder.json.example")
+    missing = {"tls", "envs", "auth", "secret_key_file",
+               "script_generation"} - set(cfg)
+    assert not missing, (
+        f"molbuilder.json.example no longer demonstrates: {sorted(missing)} "
+        "-- the template must move with the reader in the same commit")
+
+
+def test_server_template_activation_is_a_legal_form():
+    from molbuilder.runtime_config import read_config
+    cfg = read_config(_EXAMPLES / "molbuilder.json.example")
+    activation = (cfg.get("script_generation") or {}).get("activation")
+    assert activation in ("source activate", "conda activate"), (
+        f"script_generation.activation in the template is {activation!r}; "
+        "the generator accepts only the two documented forms")
+
+
+def test_example_templates_cite_only_existing_docs():
+    """Every docs/... path named inside the example templates must exist
+    (the templates live under docs/, outside test_no_retired_doc_paths'
+    scan roots -- this closes that gap for them)."""
+    import re
+    repo = Path(__file__).resolve().parents[1]
+    bad = []
+    for name in ("molbuilder.json.example", "molbuilder.asu-sol.json"):
+        text = (_EXAMPLES / name).read_text(encoding="utf-8")
+        for m in re.finditer(r"docs/[A-Za-z0-9_\-./]+\.md", text):
+            if not (repo / m.group(0)).is_file():
+                bad.append(f"{name}: {m.group(0)}")
+    assert not bad, f"example templates cite missing docs: {bad}"

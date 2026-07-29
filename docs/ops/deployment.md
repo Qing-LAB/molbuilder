@@ -173,7 +173,7 @@ Two ready-made files ship beside this doc, in `ops/examples/`:
 
 | File | What it is |
 |---|---|
-| `molbuilder.json.example` | The full template — every supported section, each annotated with inline `_comment_*` keys. Copy it to your launch directory and edit. |
+| `molbuilder.json.example` | The server template — `tls` / `envs` / `auth` / `secret_key_file` / `script_generation`, each annotated with inline `_comment_*` keys. Copy it to your launch directory and edit. **`script_generation.activation` is required before the web UI (or CLI) can install any `.run.sh` wrapper** — a config predating that section is exactly the "the `.fdf` saved but no `.run.sh` appeared" symptom. Pinned by `tests/test_scheduler_config.py` (parses through the live reader; load-bearing sections present; cited docs exist) so it stays synced with the code. |
 | `molbuilder.asu-sol.json` | A real site preset (ASU Sol: SLURM `public` partition, A100 GPUs). The shape a working HPC config takes. Pinned by `tests/test_scheduler_config.py` so it stays valid against the live reader. |
 
 ```bash

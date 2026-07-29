@@ -76,6 +76,7 @@ from molbuilder import (
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.issues import Issue, ValidationError
+from molbuilder.runtime_config import RuntimeConfigError
 from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
@@ -248,6 +249,13 @@ def api_run_install_wrapper():
             continue_retries=continue_retries,
         )
     except WrapperError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except RuntimeConfigError as exc:
+        # Operator-config problem (e.g. script_generation.activation is
+        # not set -- the v2 generator refuses to emit).  The message is
+        # the actionable fix text; 400 per the four-bucket contract, not
+        # a 500 that reads like an internal fault.  This exact case hid
+        # the qlabsrv missing-.run.sh regression.
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:    # noqa: BLE001 -- surface any failure
         return jsonify({"ok": False,

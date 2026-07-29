@@ -1,6 +1,6 @@
 {
   "_comment_about_this_file":
-    "Template molbuilder.json showing every supported section.  Copy to ./molbuilder.json (repo root) or ~/.molbuilder/molbuilder.json, then DELETE the keys you don't need.  JSON doesn't support real comments, so each section is prefixed with a _comment_<section> key; molbuilder silently ignores any key starting with an underscore.  Full schema reference: docs/deployment.md § 'Config reference'.",
+    "Template molbuilder.json for a molbuilder SERVER deployment (tls / envs / auth / script_generation).  Copy to ./molbuilder.json (the directory you run `molbuilder serve` from) or ~/.config/molbuilder/molbuilder.json (the XDG fallback), then DELETE the keys you don't need.  The SCHEDULER / execution / routing sections for HPC script generation live in the companion template molbuilder.asu-sol.json in this same directory.  JSON doesn't support real comments, so each section is prefixed with a _comment_<section> key; molbuilder silently ignores any key starting with an underscore.  Full schema reference: docs/ops/deployment.md § 5 + docs/execution/running-a-job.md § 5.  This template is pinned against the live reader by tests/test_scheduler_config.py -- keep it in sync with the code in the same commit.",
 
   "_comment_tls":
     "TLS certificate paths.  Required for any non-loopback bind (the serve command refuses --host != 127.0.0.1 without TLS or --allow-insecure-binding).  Get a free Let's Encrypt cert via certbot, or use your institution's wildcard cert.  Omit this whole section for localhost-only deployments.",
@@ -19,7 +19,7 @@
   },
 
   "_comment_auth":
-    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/deployment.md.",
+    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/ops/deployment.md.",
   "auth": {
 
     "_comment_trust_proxy":
@@ -114,7 +114,7 @@
   "secret_key_file": "~/.molbuilder/secret.key",
 
   "_comment_script_generation":
-    "Inputs read by the wrapper GENERATOR at generate time and baked verbatim into every generated .run.sh.  Per docs/config.md (v2 rewrite, 2026-06-24): the wrapper itself does no runtime discovery -- it is a self-contained shell script that runs the baked lines and aborts loud on any error.\n\nTwo keys: 'preamble' (verbatim bash lines run before activation) and 'activation' (one of 'source activate' / 'conda activate').  Both are valid in either scope (server-wide molbuilder.json + project-scope .molbuilder.json).  Preamble strings concatenate across scopes (server first, project after).  Activation: project wins; else server-wide; else the generator refuses to emit a wrapper.",
+    "REQUIRED before molbuilder can install any .run.sh wrapper (the web Save-to-dir flow and the CLI both refuse without it -- a missing section is the classic 'the .fdf saved but no .run.sh appeared' symptom).  Inputs read by the wrapper GENERATOR at generate time and baked verbatim into every generated .run.sh.  Per docs/execution/running-a-job.md § 5 (v2 rewrite, 2026-06-24): the wrapper itself does no runtime discovery -- it is a self-contained shell script that runs the baked lines and aborts loud on any error.\n\nTwo keys: 'preamble' (verbatim bash lines run before activation) and 'activation' (one of 'source activate' / 'conda activate').  Both are valid in either scope (server-wide molbuilder.json + project-scope .molbuilder.json).  Preamble strings concatenate across scopes (server first, project after).  Activation: project wins; else server-wide; else the generator refuses to emit a wrapper.",
   "script_generation": {
 
     "_comment_preamble":

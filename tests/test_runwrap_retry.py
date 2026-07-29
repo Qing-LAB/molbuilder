@@ -226,3 +226,17 @@ class TestInstallWrapperEndpointValidation:
             "script_path": script_path, "continue_retries": "lots"})
         assert r.status_code == 400
         assert r.get_json()["ok"] is False
+
+    def test_unconfigured_activation_is_a_400_with_the_fix_text(self, web):
+        """No script_generation.activation configured -> the generator
+        refuses.  That is an OPERATOR-config error whose message IS the
+        fix; it must come back as a 400 carrying it, not a generic 500
+        'wrapper write failed'.  (The qlabsrv missing-.run.sh regression:
+        a pre-v2 molbuilder.json without the section made every wrapper
+        install fail this way.)"""
+        client, script_path = web       # sandbox has no molbuilder.json
+        r = client.post("/api/run/install-wrapper",
+                        json={"script_path": script_path})
+        assert r.status_code == 400
+        err = r.get_json()["error"]
+        assert "script_generation" in err and "activation" in err

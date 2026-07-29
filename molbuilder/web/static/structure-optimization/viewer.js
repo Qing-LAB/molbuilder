@@ -1583,6 +1583,12 @@ function _mvdata() {
         };
         let wrapperMsg = "";
         let wrapperCancelled = false;
+        // Tracked separately from installedOk: a failed wrapper step must
+        // drive the status line to ERROR severity on its own.  (The
+        // qlabsrv regression hid for weeks because the composite line
+        // rendered GREEN when pseudos succeeded but install-wrapper
+        // failed -- the failure text was buried mid-line.)
+        let wrapperOk = true;
         if (!installedOk) {
             wrapperMsg = "skipped .run.sh (pseudos incomplete; "
                        + "fix the install-pseudos errors above and "
@@ -1605,15 +1611,28 @@ function _mvdata() {
                     const verb = wr.overwritten ? "overwrote" : "wrote";
                     wrapperMsg = `${verb} ${wr.wrapper_name}`;
                 } else {
-                    wrapperMsg = ".run.sh failed: " + (wr.error || "unknown");
+                    wrapperOk = false;
+                    wrapperMsg = ".run.sh FAILED: " + (wr.error || "unknown");
                 }
             } catch (e) {
                 if (proj.isCancelError(e)) {
                     wrapperCancelled = true;
                 } else {
+                    wrapperOk = false;
                     wrapperMsg = ".run.sh network error: " + (e && e.message || String(e));
                 }
             }
+        }
+        if (!wrapperOk) {
+            // App-wide notification too (persists until cleared): the
+            // inline status alone let this failure go unread.  Stable id
+            // so repeat saves update one banner instead of stacking.
+            const notify = (window.molbuilder || {}).notify;
+            if (notify && notify.show) notify.show({
+                id: "install-wrapper-fdf", level: "error",
+                message: "Save wrote the .fdf but the .run.sh wrapper "
+                       + "was NOT installed — " + wrapperMsg,
+            });
         }
         if (wrapperCancelled) {
             setStatus("fdf-status",
@@ -1649,11 +1668,13 @@ function _mvdata() {
         }
 
         // Compose final status: write target + psml + wrapper line.
+        // ANY failed step drives the whole line to error severity --
+        // never render green with a failure buried mid-string.
         const segs = ["Wrote " + written.relPath];
         if (psmlMsg)    segs.push(psmlMsg);
         if (wrapperMsg) segs.push(wrapperMsg);
         setStatus("fdf-status", segs.join(" · "),
-            !installedOk ? "error" : "ok");
+            (!installedOk || !wrapperOk) ? "error" : "ok");
 
         // Refresh the sidebar so the newly-dropped .fdf + .psml + .run.sh
         // all appear in the directory listing.  saveToWorkspace's
@@ -1874,8 +1895,14 @@ function _mvdata() {
         }
         // PySCF wrapper: no mpi_np / no omp / no memory cap (the
         // in-script runtime block handles those).
+        // wrapperOk mirrors the SIESTA path: a failed install-wrapper
+        // MUST surface at error severity.  (The original code had no
+        // else branch at all -- a failed wrapper produced an empty
+        // message and a green "Wrote <file>", which is exactly how the
+        // missing-.run.sh regression stayed invisible.)
         let wrapperMsg = "";
         let wrapperCancelled = false;
+        let wrapperOk = true;
         try {
             const wr = await fetch("/api/run/install-wrapper", {
                 method: "POST",
@@ -1891,12 +1918,18 @@ function _mvdata() {
             if (wr.ok) {
                 const verb = wr.overwritten ? "overwrote" : "wrote";
                 wrapperMsg = `${verb} ${wr.wrapper_name}`;
+            } else {
+                wrapperOk = false;
+                wrapperMsg = ".run.sh FAILED: " + (wr.error || "unknown");
             }
         } catch (e) {
             if (proj.isCancelError(e)) {
                 wrapperCancelled = true;
+            } else {
+                wrapperOk = false;
+                wrapperMsg = ".run.sh network error: "
+                           + (e && e.message || String(e));
             }
-            /* other failures stay non-fatal */
         }
         if (wrapperCancelled) {
             setStatus("pyscf-status",
@@ -1904,9 +1937,18 @@ function _mvdata() {
               + " (.run.sh not installed).", "muted");
             return;
         }
+        if (!wrapperOk) {
+            const notify = (window.molbuilder || {}).notify;
+            if (notify && notify.show) notify.show({
+                id: "install-wrapper-pyscf", level: "error",
+                message: "Save wrote the .py but the .run.sh wrapper "
+                       + "was NOT installed — " + wrapperMsg,
+            });
+        }
         const segs = ["Wrote " + written.relPath];
         if (wrapperMsg) segs.push(wrapperMsg);
-        setStatus("pyscf-status", segs.join(" · "), "ok");
+        setStatus("pyscf-status", segs.join(" · "),
+            wrapperOk ? "ok" : "error");
         // Refresh sidebar so the freshly-dropped .py + .run.sh show
         // up in the listing.  install-wrapper writes outside the
         // writeFile path, so a manual refresh is needed.
