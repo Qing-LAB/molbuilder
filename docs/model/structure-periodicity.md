@@ -237,6 +237,69 @@ derived isolated axis), so the vacuum control reads "not applicable".
 
 ---
 
+## 6.1 The frame contract (v2, decided 2026-07-29) — one gate, a heal table, no silent frames
+
+Six clauses, agreed with the project owner; every periodicity change conforms
+to these or is a bug:
+
+1. **The truth is the pair — and only the pair.** The `.xyz` (coordinates in
+   the world frame) + `.molstruct.json` (`axis_kind`, `vacuum`, and *only
+   user-explicit* `cell` / `cell_origin`) are the single source of truth.
+   `resolved_cell` / `resolved_cell_origin` / wire fields / UI displays /
+   engine inputs are **computed views** and are never written back into the
+   truth. (A resolved cell materialised into `cell` with the origin dropped —
+   the 2026-07 hemeC corruption — is the violation this clause forbids.)
+2. **One gate.** All default-resolution, validation, and healing happen at
+   exactly one seam: the **loader/saver of the pair** (`StructureCodec`),
+   whose logic is shared verbatim by the periodicity mutation door (§ 6.2).
+   The UI edits truth and renders views; emitters translate; only the gate
+   corrects state.
+3. **The world frame belongs to the structure.** Atoms are authored relative
+   to the world origin (composition convenience); the **cell is constructed
+   around the structure**, never the structure moved into the cell — except
+   by the one sanctioned rewrite, *calibrate* (§ 6, user-invoked only).
+4. **The heal table** (right-handed cells enforced, `det(cell) > 0`;
+   per-axis `expected_corner = bbox_min − vacuum` on isolated, `bbox_min` on
+   transport, `0` on periodic):
+
+   | Stored state | Atoms contained? | Gate action |
+   |---|---|---|
+   | no `cell`, no `cell_origin` | — | fully derived (§ 4); **vacuum authoritative**; nothing to heal |
+   | explicit `cell`, no origin | in `[0, cell)` | legal (imported-crystal); vacuum **reference-only**; no heal |
+   | explicit `cell`, no origin | NO | **heal**: `cell_origin = expected_corner` + user notice (far-side slack noted); cell smaller than bbox → hard error |
+   | explicit `cell` + origin | in `[origin, origin+cell)` | legal, user-owned; **never healed**; vacuum reference-only |
+   | explicit `cell` + origin | NO | stored pair at load → heal + notice; **live manual edit → accept as typed + immediate warning** (actual per-side clearances reported), never auto-fixed |
+
+5. **Engine frames are one-way with provenance.** Emission translates the
+   truth into the engine's frame (SIESTA: cell at `(0,0,0)`, atoms shifted by
+   `−resolved_cell_origin`) through one concealed door, and **stamps the
+   applied shift** into the run artifacts (`frame_shift`). There is **no
+   automatic inverse**: run artifacts (trajectories, forces, restarts) stay in
+   the engine frame, and the Results-tab viewer displays that frame verbatim —
+   it is a second, read-only truth (the record of what the engine computed),
+   fed by the parser, never by the pair. Re-entry into the authoring workflow
+   passes the gate with an explicit frame choice: adopt-as-is (default, legal
+   row-2 state) or re-anchor via the stamped shift (opt-in).
+6. **UI reads views, edits truth** — the § 7 split, plus: every gate notice
+   surfaces in the editing page *and* through `molbuilder.notify`.
+
+## 6.2 The unified periodicity door (the five edits)
+
+One endpoint — `POST /api/structure/periodicity`, body `{data, op, payload}` —
+serves every Cell-page button; one module (`periodicity gate`) owns
+`apply_edit(struct, op, payload) → (struct′, notices)` and the
+`validate_and_heal` core shared with `StructureCodec`. Uniform response:
+`{ok, truth_patch, resolved_cell, resolved_cell_origin, notices[]}` — the
+client renders, it never computes.
+
+| op | Truth touched | Contract behaviour |
+|---|---|---|
+| `vacuum` | `vacuum` | derived cell only; under an explicit cell → notice "reference-only", no silent no-op |
+| `axis_kind` | `axis_kind` | `→ periodic` without an explicit cell = error (§ 4); `periodic → isolated` keeps the explicit cell + reference-only notice |
+| `cell` | `cell` | `null` = back to derived (error on a periodic axis); explicit = `det > 0` + containment → heal origin to `expected_corner` + notice when needed |
+| `cell_origin` | `cell_origin` | explicit-cell only; accepted as typed + immediate clearance warning; `null` = imported-crystal semantics, containment-checked |
+| `calibrate` | coordinates + `cell` (+ clears origin) | the one sanctioned rewrite: bake `−resolved_cell_origin` into atoms, materialise the cell at zero — the same math the SIESTA emit leg uses, so calibrated-then-emit ≡ emit |
+
 ## 7. Frontend surface (JS / user) — display vs edit
 
 Two coupled views of one `(cell, cell_origin, axis_kind, vacuum)`, with a
