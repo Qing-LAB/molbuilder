@@ -85,6 +85,82 @@ def test_toc_live_update_deduplicates_and_persists(tmp_path):
     ]
 
 
+def test_toc_build_survives_readonly_docs(tmp_path):
+    """A read-only docs/ (site-packages install, hardened deploy) must
+    not take the sidebar down: the repaired tree is served from memory
+    and the persist is silently skipped."""
+    import os as _os
+    from molbuilder.web.blueprints.docs import _build_toc_tree
+
+    (tmp_path / "process").mkdir()
+    (tmp_path / "process" / "code-audit.md").write_text(
+        "# Code audit\n", encoding="utf-8")
+    toc_path = tmp_path / "toc.json"
+    toc_path.write_text(json.dumps({"tree": [{
+        "label": "Process",
+        "children": [{"path": "process/code-audit.md"},
+                     {"path": "process/missing.md"}],   # needs repair
+    }]}), encoding="utf-8")
+    before = toc_path.read_text(encoding="utf-8")
+
+    _os.chmod(tmp_path, 0o555)
+    try:
+        tree = _build_toc_tree(tmp_path)      # must not raise
+    finally:
+        _os.chmod(tmp_path, 0o755)
+    assert [n["path"] for n in tree[0]["children"]] == [
+        "process/code-audit.md"]              # repaired in memory...
+    assert toc_path.read_text(encoding="utf-8") == before   # ...file kept
+
+
+def test_toc_endpoint_tolerates_corrupt_json(client, tmp_path, monkeypatch):
+    """A corrupt toc.json degrades to the empty-tree fallback, not a 500."""
+    (tmp_path / "toc.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr("molbuilder.web.blueprints.docs._docs_root",
+                        lambda: tmp_path)
+    r = client.get("/api/docs/toc")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True and body["tree"] == []
+    assert "toc.json" in body.get("note", "")
+
+
+# --------------------------------------------------------------------- #
+#  /api/docs/img — containment to docs/img/ + image-only                #
+# --------------------------------------------------------------------- #
+
+
+def test_img_serves_a_real_docs_image(client):
+    r = client.get("/api/docs/img/hero-molbuilder.png")
+    assert r.status_code == 200
+    assert r.data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.parametrize("bad", [
+    "../design.md",                   # docs/ file OUTSIDE img/ (the old hole)
+    "../toc.json",                    # ditto — served pre-hardening
+    "../../molbuilder/cli.py",        # repo escape
+    "../../../etc/passwd",            # filesystem escape
+])
+def test_img_rejects_paths_outside_docs_img(client, bad):
+    r = client.get("/api/docs/img/" + bad)
+    assert r.status_code == 400
+
+
+def test_img_rejects_non_image_files(client, tmp_path, monkeypatch):
+    (tmp_path / "img").mkdir(parents=True)
+    (tmp_path / "img" / "note.txt").write_text("hi", encoding="utf-8")
+    monkeypatch.setattr("molbuilder.web.blueprints.docs._docs_root",
+                        lambda: tmp_path)
+    r = client.get("/api/docs/img/note.txt")
+    assert r.status_code == 400
+    assert "not an image" in r.get_json()["error"]
+
+
+def test_img_missing_file_is_404(client):
+    assert client.get("/api/docs/img/nope.png").status_code == 404
+
+
 # --------------------------------------------------------------------- #
 #  /api/docs/list                                                       #
 # --------------------------------------------------------------------- #

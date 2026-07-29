@@ -29,6 +29,10 @@ from flask import Blueprint, jsonify, request
 
 bp = Blueprint("docs", __name__)
 
+# The only file types /api/docs/img will serve (second belt after the
+# docs/img/ containment check -- see api_docs_img).
+_IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico"}
+
 
 def _docs_root() -> Optional[Path]:
     """The repo's ``docs/`` directory, or ``None`` if it isn't present
@@ -334,10 +338,24 @@ def _build_toc_tree(root: Path) -> List[Dict]:
                     else:
                         existing.append({"path": entry["path"]})
     if _json.dumps(toc, sort_keys=True) != toc_before:
-        tmp = toc_path.with_suffix(".tmp")
-        tmp.write_text(_json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
-                       encoding="utf-8")
-        os.replace(str(tmp), str(toc_path))
+        # Best-effort persist of the repaired tree.  docs/ may be
+        # read-only (site-packages install, hardened deploy) and two
+        # requests may race -- a failed or skipped write must never
+        # take down the sidebar (the in-memory tree above is already
+        # correct for THIS response).  Unique per-process tmp name so
+        # concurrent writers cannot os.replace() each other's file
+        # out from under them.
+        tmp = toc_path.with_suffix(f".tmp.{os.getpid()}")
+        try:
+            tmp.write_text(
+                _json.dumps(toc, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8")
+            os.replace(str(tmp), str(toc_path))
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
     return tree
 
@@ -362,9 +380,17 @@ def api_docs_toc():
         return jsonify({"ok": True, "tree": [], "readme": None})
 
     import json as _json
-    toc = _json.loads(toc_path.read_text(encoding="utf-8"))
-
-    tree = _build_toc_tree(root)
+    # A corrupt toc.json (bad hand-edit, half-written file) degrades to
+    # the documented empty-tree fallback -- never a 500 for the whole
+    # sidebar.
+    try:
+        toc = _json.loads(toc_path.read_text(encoding="utf-8"))
+        tree = _build_toc_tree(root)
+    except (ValueError, OSError):
+        return jsonify({"ok": True, "tree": [], "readme": None,
+                        "note": "docs/toc.json is unreadable or invalid "
+                                "JSON; fix or delete it to restore the "
+                                "sidebar tree"})
 
     # Root README
     readme_info = toc.get("root_readme")
@@ -434,14 +460,22 @@ def api_docs_img(img_path: str):
     root = _docs_root()
     if root is None:
         return jsonify({"ok": False, "error": "docs/ not available"}), 404
-    resolved = root / "img" / img_path
-    # Defence: reject .. traversal.
+    # Containment is to docs/img/ itself, NOT docs/ -- this route's
+    # contract is "serve an image", and containing only to docs/ let
+    # ``../<any-doc>`` fetch arbitrary docs files with a guessed MIME
+    # (an .svg/.html ever added under docs/ would render same-origin
+    # as a live document).  Extension allowlist as the second belt.
+    img_root = root / "img"
+    resolved = img_root / img_path
     try:
         resolved = resolved.resolve()
-        if os.path.commonpath([resolved, root]) != str(root):
+        anchor = img_root.resolve()
+        if os.path.commonpath([resolved, anchor]) != str(anchor):
             raise ValueError
     except (ValueError, OSError):
         return jsonify({"ok": False, "error": "invalid path"}), 400
+    if resolved.suffix.lower() not in _IMG_EXTS:
+        return jsonify({"ok": False, "error": "not an image"}), 400
     if not resolved.is_file():
         return jsonify({"ok": False, "error": "not found"}), 404
     return send_file(str(resolved))
