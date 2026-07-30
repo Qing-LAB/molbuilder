@@ -141,14 +141,13 @@ route and never learns where anything landed.
 
 ## 2. What MolView is not
 
-Five jobs a viewer could plausibly grow into, and does not. Each boundary is
+Four jobs a viewer could plausibly grow into, and does not. Each boundary is
 here for a reason, and every one of them has been crossed at some point by
 something that seemed convenient at the time.
 
 | Not | Whose job it is | Why the boundary is there |
 |---|---|---|
 | a structure **parser** | the server | one parser, one set of chemistry rules. A parser in the browser would be a second, weaker opinion about what a file means, and the two would disagree on the awkward cases |
-| a structure **generator** | the server, driven by the Modify tab | building a molecule from a SMILES string, a name, a sequence or a file is a server call the tab's own panels make. A viewer that dispatched generation would have to know its host's modules by name — the exact inversion § 4 exists to prevent |
 | a **file manager** | the projects module | MolView produces and consumes bytes. Where those bytes live on disk is not a viewing concern, and MolView holds no file route |
 | a place to **keep** a saved session | the workspace module | MolView decides *when* to save and *how far* to step back; the workspace only knows *where the bytes go* (§ 11.2) |
 | an **animator of vibrations** | a separate module, with its own document | animating a normal mode is a different job with different data; it is not this module's business and is not described here |
@@ -778,9 +777,9 @@ thing and one MolView does not offer.
 - **`installMolecule(input)`** — the only way a structure gets in. It sends the
   text (and an optional sidecar) to the server and, on the structure that comes
   back, replaces the whole model at once and resets the undo history. Everything
-  upstream converges here: a generator builds text and installs it; the file
-  browser reads bytes and installs them. One entrance means one place the rules
-  are checked and one place the history is anchored.
+  upstream converges here — whatever built or fetched the text, it arrives this
+  way. One entrance means one place the rules are checked and one place the
+  history is anchored.
 - **`exportFile()`** — its exact inverse. Returns the structure text plus its
   sidecar, written from **the frame currently displayed** (§ 6.4). It **refuses**
   to produce anything when the geometry and the per-atom tags disagree about how
@@ -1498,7 +1497,7 @@ accident of the implementation or documenting something that belongs elsewhere.
 | § 15 the file map | — | for when you open the code |
 
 Two parts of this document earn their place by what they **exclude**: § 2 refuses
-five jobs by name, and § 11.1 keeps field-level JSON out. Boundaries are
+four jobs by name, and § 11.1 keeps field-level JSON out. Boundaries are
 load-bearing — most of what has gone wrong in this module was a fact quietly
 acquiring a second home.
 
