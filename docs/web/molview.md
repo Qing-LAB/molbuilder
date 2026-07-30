@@ -1522,21 +1522,35 @@ it. The rules:
 
 A rebuild takes long enough to be visible, so it shows the "Updating view…" cover
 and locks the viewer while it works. That leaves a window in which other things
-can arrive — a user click, or a timer-driven poll delivering new frames that no
+arrive anyway — a user click, or a timer-driven poll delivering new frames that no
 amount of disabled buttons could stop. **Nothing that lands in that window is
 silently dropped.**
 
-- **Switch changes** are honoured by the rebuild reading the switches *when it
-  runs*, not when it was scheduled. The latest values win.
-- **Pushed operations** — new forces, a seek, appended frames — are held and
-  replayed in arrival order once the rebuild finishes. A seek and a set of forces
-  are latest-wins, since only the last one matters. **Appended frames
-  accumulate**, because each poll tick's frames are a distinct piece of the run
-  and losing one would leave a hole.
-- **A full load cancels the held operations.** It replaces the atom set, so
-  anything queued refers to atoms or frames that no longer exist. A full load is
-  never itself refused: it supersedes a rebuild already under way, because it is
-  the more authoritative statement about what the structure is.
+This is the same shape as the write race of § 11.2 — something is in flight, and
+work keeps arriving — so it is worth stating the same way, as states and what
+happens to an arrival in each.
+
+```mermaid
+flowchart LR
+    IDLE(["IDLE<br/>the drawing matches the data"])
+    REB(["REBUILDING<br/>the cover is up"])
+    IDLE -->|"a change that needs a rebuild (§ 10.5)"| REB
+    REB -->|"a seek, new forces or new frames arrive:<br/>held, not applied"| REB
+    REB -->|"a switch changes:<br/>nothing is held"| REB
+    REB -->|"a full load arrives:<br/>drop everything held, rebuild from it"| REB
+    REB -->|"finished: replay what was held,<br/>in arrival order"| IDLE
+```
+
+| What arrives during a rebuild | What happens to it | Why |
+|---|---|---|
+| a **switch** change | nothing is held. The rebuild reads the switches *when it runs*, not when it was scheduled | the latest value is the one it should use, so there is nothing to replay |
+| a **seek** — a new displayed frame | held; only the last one survives | only the frame you end on matters |
+| **new forces** | held; only the last set survives | the same: only the last is the current answer |
+| **appended frames** | held, and they **accumulate** | each poll tick's frames are a distinct piece of the run, and losing one would leave a hole in the middle of it |
+| a **full load** | everything held is dropped, and the load supersedes the rebuild under way | it replaces the atom set, so anything held refers to atoms or frames that no longer exist. A full load is never itself refused: it is the more authoritative statement about what the structure is |
+
+When the rebuild finishes, what was held is replayed **in arrival order**, and the
+viewer is idle again.
 
 Otherwise: one update at a time. Nothing races a half-built movie.
 
@@ -1820,7 +1834,6 @@ workflow puts it — today the Modify tab, beside the editing it belongs next to
 A host that mounted a read-only viewer knows not to offer it, because it is the
 one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
 if it does.
-
 
 ### 11.3 Three different things that all look like saving
 
