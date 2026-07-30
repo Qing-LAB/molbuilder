@@ -1677,10 +1677,13 @@ and *restore where I was* — and the third is what a session restore needs.
 
 (None of this is the Export menu's *Snapshot*, which is a picture — § 11.3.)
 
-**Saving a state is something the user does.** Nothing else puts a point on the
-sequence. An edit — a delete, a rotate, a new electrode — changes the structure
-and does **not** record a state; the user decides when the structure is worth
-being able to come back to, and says so.
+**Saving a state is something the user does.** An edit — a delete, a rotate, a
+new electrode — changes the structure and does **not** record a state; the user
+decides when the structure is worth being able to come back to, and says so.
+
+The one point nobody asks for is **point 0**, laid down when a structure is
+opened. That is not a save; it is the floor the sequence stands on — the state
+you started from, so that a Retract from the first edit has somewhere to land.
 
 Three consequences follow, and they are the whole user-facing shape of this:
 
@@ -1701,46 +1704,6 @@ Three consequences follow, and they are the whole user-facing shape of this:
   is work here that is not on the sequence yet" is visible without opening a menu.
   Without it, an explicit-save history would silently lose work that a user
   assumed was being kept.
-
-**There is no automatic write.** Only installing a structure — the one anchoring
-write — and an explicit save or load touch storage, and each moves the history
-position only after its round trip has finished. The history mechanism is blind
-to the file format: the model hands it a way to record a state and a way to put
-one back, and nothing else.
-
-**Opening a new structure invalidates the old one's pending writes.** Anchoring a
-new molecule prunes the previous one's saved states and resets the position — so
-a save or a load of the *previous* structure that is still queued or still
-waiting on its round trip must not land. It is abandoned rather than applied,
-because applying it would put an old state over a freshly opened structure.
-
-That is the same rule as § 10.9's, in a different subsystem: **the more
-authoritative statement about what the structure is supersedes whatever is
-in flight.** A full load beats a queued redraw there; a new anchor beats a queued
-save here. Two places, one principle — which is a good sign it is the right one.
-
-Writes also pass a gate that can hold and coalesce them, so a burst of changes
-does not become a burst of round trips.
-
-**MolView owns the whole mechanism and the policy** — what a save records, what
-to prune, how far back a step goes, and the rule that nothing is recorded on its
-own. The **workspace** module owns only what sits underneath: where the bytes
-actually go, reached through an accessor handed in at mount. That is the entire
-division. See [`workspace.md`](?doc=web/workspace.md).
-
-**Save state and Retract are calls, not controls.** MolView offers the doors and
-draws no button for them. That is deliberate, and it is the opposite of the Export
-menu (§ 11.4) for a reason worth stating plainly: an export carries a **decision**
-— which copy it is read from, which frame, which files — and a decision made in
-the wrong place is exactly how the sidecar came to be dropped. Saving a state
-carries no decision. What a save *means* is fixed here, identically for every
-caller; the only thing that varies is *when* it is worth offering one, and a host
-knows that better than a viewer does. So the host places the control where its own
-workflow puts it — today the Modify tab, beside the editing it belongs next to.
-
-A host that mounted a read-only viewer knows not to offer it, because it is the
-one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
-if it does.
 
 **State is the truth. What you are looking at is not state.**
 
@@ -1773,6 +1736,51 @@ that is one rule rather than a list to maintain.
 > coordinates, so a session saved while a trajectory was loaded comes back as a
 > single structure. Frames *are* the truth and belong in a saved state; the
 > serialiser is simply behind, and that is where it is fixed.
+
+**Nothing is written on a timer, and nothing is written because something
+changed.** Storage is touched by exactly three things: opening a structure
+(which lays down point 0), an explicit save, and a load. Each moves the position
+only after its own round trip has finished.
+
+The mechanism is blind to the file format: the model hands it a way to record a
+state and a way to put one back, and nothing else.
+
+**Opening a new structure invalidates the old one's pending writes.** Anchoring a
+new molecule prunes the previous one's saved states and resets the position — so
+a save or a load of the *previous* structure that is still queued or still
+waiting on its round trip must not land. It is abandoned rather than applied,
+because applying it would put an old state over a freshly opened structure.
+
+That is the same rule as § 10.9's, in a different subsystem: **the more
+authoritative statement about what the structure is supersedes whatever is
+in flight.** A full load beats a queued redraw there; a new anchor beats a queued
+save here. Two places, one principle — which is a good sign it is the right one.
+
+**Writes happen one at a time, in order.** A save and a load cannot overlap, and
+neither can jump ahead of the other: each waits for the one before it, and the
+position moves only when its own round trip has landed. Two calls in flight at
+once is how a position comes to describe a state that was never written.
+
+**MolView owns the whole mechanism and the policy** — what a save records, what
+to prune, how far back a step goes, and the rule that nothing is recorded on its
+own. The **workspace** module owns only what sits underneath: where the bytes
+actually go, reached through an accessor handed in at mount. That is the entire
+division. See [`workspace.md`](?doc=web/workspace.md).
+
+**Save state and Retract are calls, not controls.** MolView offers the doors and
+draws no button for them. That is deliberate, and it is the opposite of the Export
+menu (§ 11.4) for a reason worth stating plainly: an export carries a **decision**
+— which copy it is read from, which frame, which files — and a decision made in
+the wrong place is exactly how the sidecar came to be dropped. Saving a state
+carries no decision. What a save *means* is fixed here, identically for every
+caller; the only thing that varies is *when* it is worth offering one, and a host
+knows that better than a viewer does. So the host places the control where its own
+workflow puts it — today the Modify tab, beside the editing it belongs next to.
+
+A host that mounted a read-only viewer knows not to offer it, because it is the
+one that passed the flag. The gate (§ 9.4) is what makes the guarantee true even
+if it does.
+
 
 ### 11.3 Three different things that all look like saving
 
