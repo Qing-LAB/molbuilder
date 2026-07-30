@@ -1737,6 +1737,12 @@ that is one rule rather than a list to maintain.
 > single structure. Frames *are* the truth and belong in a saved state; the
 > serialiser is simply behind, and that is where it is fixed.
 
+> **Transition.** The code also still has a page-hide flush that writes the
+> camera and the switches into the saved session. The table above and § 9.6
+> retire it: the camera is not read back at all, and none of that is state. It
+> is left from when reopening a session meant restoring what you had been
+> looking at.
+
 **Nothing is written on a timer, and nothing is written because something
 changed.** Storage is touched by exactly three things: opening a structure
 (which lays down point 0), an explicit save, and a load. Each moves the position
@@ -1760,6 +1766,26 @@ save here. Two places, one principle — which is a good sign it is the right on
 neither can jump ahead of the other: each waits for the one before it, and the
 position moves only when its own round trip has landed. Two calls in flight at
 once is how a position comes to describe a state that was never written.
+
+**A multi-step change holds its writes until it has finished.** Some operations
+reach their final state in more than one step — loading a structure sets the
+geometry, then adopts its labels a round trip later. In the window between, the
+model is internally inconsistent: the new geometry carrying the *previous*
+file's labels. A write landing there records a structure that never existed, and
+nothing downstream can tell, because the atom count matches.
+
+So a caller wraps an operation like that in a bracket — **hold, do the steps,
+release** — and the held writes collapse into one that lands when the bracket
+closes. Collapsing never drops a checkpoint: if anything held was a real saved
+state, that is what gets written, not a later refresh that happened to follow
+it. An explicit save is the one thing never bracketed: it moves the position,
+and holding the write while the position moved would separate the two.
+
+This is § 6.4's rule in a different subsystem. There, nobody is *told* anything
+until the master copy, the range and the frame number agree. Here, nothing is
+*written* until a multi-step change has settled. Two places, one principle: **an
+inconsistent halfway state is never allowed out** — not to a subscriber, not to
+storage.
 
 **MolView owns the whole mechanism and the policy** — what a save records, what
 to prune, how far back a step goes, and the rule that nothing is recorded on its
@@ -2213,6 +2239,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 11.2 — state is the truth, not the view of it | restoring brings back the structure and the selection; it does not bring back the camera, the displayed frame or the switches — and the saving mechanism itself excludes nothing |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its state over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
+| § 11.2 — a bracketed change writes once, at the end | a write requested mid-bracket does not land until the bracket closes, and what lands is the settled state; if a saved state was among the held writes, it is the one written |
 | § 11.2 — saving a state is the user's act, and undo returns to it | an edit records nothing and raises the badge; after three edits with no save between them, one undo restores the state before all three |
 | § 11.2 — the history is offered as calls, not as a control | a mounted viewer draws no save-state or retract button of its own, and the calls work all the same when a host wires its own |
 | § 11.2 — a Retract spends unsaved work first | from a saved point with edits on top, one Retract lands **on** that point with the edits discarded; a second lands on the point before it |
