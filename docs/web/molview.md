@@ -1043,21 +1043,27 @@ Beneath the commands sits the one piece of code that names the drawing library.
 It **holds the drawing copy** — the movie, the camera, the styles, the picking,
 the highlight spheres — and it draws the frame it is handed.
 
-**Its surface faces downward only. Nothing asks it anything.** It is handed
-frames, overlays, cell geometry and settings; it draws them. There is no way to
-read coordinates out, no way to ask which frame is showing, and no way to ask
-where the camera is pointing.
+**It answers exactly two questions, and they are both about itself.** *Is there a
+movie loaded at all?* and *how many frames does it have?* Both are asked only by
+the layer immediately above, both exist so that layer can find out whether its
+own last instruction landed (§ 10.10), and neither answer ever reaches a user.
 
-That is not an oversight, and it is the reason § 9.6 gives up saving the camera.
-Everything the sealed layer holds is either **derived** — the drawing copy,
-worked out from the master copy every redraw — or **given to it**. A derived
-thing can never be a source: asking it would be a second answer to a question the
-model already owns (§ 6.4), and the wrong one the moment the two had drifted. A
-given thing does not need asking, because whoever gave it still knows.
+**Everything else, it refuses.** There is no way to read coordinates out, no way
+to ask which frame is showing, and no way to ask where the camera is pointing.
 
-Keeping the camera out of what MolView tracks is what lets that sentence have no
-exceptions. One question would have been enough to require a door, a way to keep
-the answer fresh, and a rule about which of the two answers wins.
+The line between the two is worth being exact about, because it is easy to read
+as a loophole and it is not one. *"Did what I told you to do land?"* is a check.
+*"What is the structure?"* is a question about the truth, and the truth is not
+here. Everything the sealed layer holds is either **derived** — the drawing copy,
+worked out from the master copy every redraw — or **given to it**. Asking a
+derived thing for the truth is asking the wrong copy, and it will be the wrong
+one the moment the two have drifted (§ 6.4). Asking for something it was given is
+pointless, because whoever gave it still knows.
+
+Which is why the camera used to be the awkward case: it was neither derived nor
+given — the user put it there by dragging — so it was the one fact only this
+layer knew. § 9.6 resolves that by not keeping it at all, rather than by opening
+a third kind of question.
 
 This is the layer that makes § 5.3 true. Everything above it — the commands, the
 renderEngine, the model, the panel, the tab — could be read end to end without
@@ -1463,10 +1469,21 @@ underneath: where the bytes actually go, reached through an accessor handed in a
 mount. That is the entire division. See
 [`workspace.md`](?doc=web/workspace.md).
 
-A snapshot carries **the structure and the selection** — what the user was
-working on and what they had picked out. It does not carry the camera (§ 9.6),
-and it does not yet carry more than one frame of a trajectory; multi-frame saving
-is planned, not built.
+**What a snapshot carries: the structure and the selection** — what the user was
+working on, and which atoms they had picked out.
+
+**What it does not:** the camera (§ 9.6), the switches, or more than one frame of
+a trajectory.
+
+The switches deserve a word, because leaving them out is a choice rather than an
+oversight. Isolate, labels, arrows, the cell, the axes are **display state**, and
+they have the same problem the camera has: flipping one changes nothing about the
+structure, so nothing pushes a save. Restoring them would mean giving a toggle
+the power to write, which is a lot of machinery so that a user does not have to
+click a button again. The structure and the selection are the expensive things to
+recreate; a switch is one click.
+
+Multi-frame saving is planned, not built.
 
 ### 11.3 One atom-numbering translation, in one place
 
@@ -1638,6 +1655,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 10.8 — same atoms, every frame | a frame with a different atom count is a hard error, never coerced |
 | § 10.3 — forces in, arrows out | handing in ready-made arrows draws nothing |
 | § 11.1 — the count requirement is checked first | `orient` with one atom and `delete` with none are refused locally, with no request sent |
+| § 11.2 — a snapshot carries the structure and the selection | restoring brings back what was loaded and what was picked out; it does not restore switches or the camera, and nothing about a toggle triggers a write |
 | § 11.2 — a new structure invalidates the old one's pending writes | a save still in flight when a new structure is opened does not apply its snapshot over the new one |
 | § 11.2 — there is no automatic write | nothing persists except through installing, saving or loading, and each moves the history position only after its round trip finishes |
 | § 11.3 — one translation, one place | every surface agrees with the shared translation; none computes its own `+1` |
