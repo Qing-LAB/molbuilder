@@ -337,6 +337,26 @@ repointed at Phase 7 rather than deleted.
 **`lib/viewer/` is now dead but still on disk**, as planned: nothing imports its JS and
 nothing links its CSS. It stays until VibrationView takes its own copy (Phase 7).
 
+### Phase 2 — the pure bottom *(landed 2026-07-30)*
+
+**One gap closed:** every force arrow carried a `color` and a `radius` — appearance computed
+by the maths and re-sent on every frame of every trajectory, against § 6.5. It now lives
+beside `_SELECTION_GLOW` in the sealed layer as `_FORCE_ARROW`, and the maths emits
+`{start, end}`. The picture is unchanged provably, not by inspection: the ramp reads
+`t = |arrow| / |largest arrow|`, and every arrow in a set carries the same scale, so the
+ratio is the one the maths used.
+
+**Two channels the contract does not name, recorded rather than changed.** `frozen` is still
+a field rather than an ordinary label — § 6.6 parks that fold in
+[`model/structure-annotations.md`](?doc=model/structure-annotations.md) because it changes
+the sidecar format and the input generators. `values` (per-atom scalars) is task #24's
+programme. Both come from a field the atom really carries, which is the rule § 6.2 states.
+
+**17 tests replace 3 files.** The one worth naming is the numbering drift test: asserting
+`label == index + 1` cannot catch a hand-rolled `+1`, because it agrees with the translation
+by arithmetic coincidence. The test moves the shared translation and asserts the labels moved
+with it — reuse follows, re-derivation does not.
+
 ---
 
 ## 5. Open
